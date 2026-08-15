@@ -3,7 +3,7 @@
 > **文档定位**：KnowRealm-AI 第一版产品需求文档（PRD），覆盖产品定位、功能需求、架构约束、阶段规划与产品决策记录。
 >
 > 配套文档：
-> - 技术选型：`docs/技术栈设计与审查-v3.md`（v3.4）
+> - 技术选型：`docs/技术栈设计与审查-v3.md`（v3.5）
 > - 数据库设计：`docs/KnowRealm-AI-数据模型-v1.10.md`
 > - Learning Brain 扩展设计（F1~F18 机制与交互参考）：`docs/AI课堂助手-功能升级与创新扩展设计.md`
 > **项目定位**：开源、面向个人使用。所有设计先过两问：能否被现有 Postgres/Supabase 吸收？自部署用户要多跑几个容器？
@@ -113,7 +113,7 @@ Agent 运行态  = LangGraph Checkpoint（Supabase 独立 schema langgraph.*，�
 
 ## 3. 技术基线与架构红线
 
-技术栈详见 `docs/技术栈设计与审查-v3.md`（**v3.4**），此处仅列结论：Tauri 2 + React/TS + TanStack Router/Query + Zustand；FastAPI + LangChain/LangGraph + procrastinate（Postgres 队列，**无 Redis**）；Supabase（Postgres + pgvector + Auth + Storage + Realtime + RLS）；DashScope qwen-plus + text-embedding-v3；腾讯云 ASR + ffmpeg；迁移统一 Supabase CLI。
+技术栈详见 `docs/技术栈设计与审查-v3.md`（**v3.5**），此处仅列结论：Tauri 2 + React/TS + TanStack Router/Query + Zustand；FastAPI + LangChain/LangGraph + procrastinate（Postgres 队列，**无 Redis**）；Supabase（Postgres + pgvector + Auth + Storage + Realtime + RLS）；DashScope qwen-plus + text-embedding-v3；腾讯云 ASR + ffmpeg；迁移统一 Supabase CLI。
 
 ### 3.1 十一条架构与数据红线
 
