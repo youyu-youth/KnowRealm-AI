@@ -93,7 +93,7 @@ async def get_db() -> AsyncIterator[AsyncSession]:
         yield session
 ```
 
-> 无认证依赖：本机单用户（决策 #55），sidecar 仅监听 `127.0.0.1`，无 JWT/无 `get_current_user`/无 RLS claims 注入。
+> 无用户认证依赖：本机单用户（决策 #55），无 JWT/无 `get_current_user`/无 RLS claims 注入；但 localhost 不是信任边界，所有 API（含 health/SSE）必须校验 Tauri 壳生成的 `X-KnowRealm-Token` 单次启动能力令牌，缺失或错误返回 403。
 
 ### 4.2 Windows 事件循环（实测陷阱，技术栈 v4 §3.2）
 
@@ -134,7 +134,7 @@ async def chat_stream(payload: ChatRequest):
     return EventSourceResponse(event_gen())
 ```
 
-- SSE 端点用 **POST**（前端原生 `fetch` 流式读取 + `eventsource-parser` 解析；本机单用户无认证头）。
+- SSE 端点用 **POST**（前端原生 `fetch` 流式读取 + `eventsource-parser` 解析），并与普通 API 一样携带 `X-KnowRealm-Token`；能力令牌不是用户登录认证。
 - 流内异常要捕获并作为 `event: error` 发出，不能让连接无声断掉。
 - `interrupt` 事件须自带渲染所需 payload（如待确认总结全文），前端展示确认 UI 后走恢复接口。
 - 任务状态变更同样经 sidecar 进程内事件走 SSE 推送（UI 轮询兜底，功能需求基线 v2.1 §4.3.4）。

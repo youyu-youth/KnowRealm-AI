@@ -71,11 +71,13 @@ describe("首门课程持久化入口", () => {
     };
     let courses: Course[] = [];
     let receivedToken: string | null = null;
+    let postCalls = 0;
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/courses`, () =>
         HttpResponse.json(courses),
       ),
       http.post(`${TEST_SIDECAR_URL}/api/courses`, ({ request }) => {
+        postCalls += 1;
         receivedToken = request.headers.get("X-KnowRealm-Token");
         courses = [created];
         return HttpResponse.json(created, { status: 201 });
@@ -96,5 +98,6 @@ describe("首门课程持久化入口", () => {
 
     expect(await screen.findByText("操作系统")).toBeInTheDocument();
     expect(receivedToken).toBe(TEST_LAUNCH_TOKEN);
+    expect(postCalls).toBe(1);
   });
 });

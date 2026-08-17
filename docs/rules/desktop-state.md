@@ -22,7 +22,7 @@
 | 纯浏览器/本机会话状态 | **Zustand** | 录音进行中的电平、播放器进度、弹窗开关 |
 | 应该出现在 URL 里 | **Router searchParams** | 列表筛选、分页、tab |
 
-> 无登录会话（本机单用户，决策 #55）——没有 token/会话状态可管。
+> 无用户登录会话（本机单用户，决策 #55）——不在 Zustand 管用户 token/会话；Tauri 壳生成的单次启动能力令牌只存在于类型化 sidecar 桥接和统一 HTTP 客户端中。
 
 ```tsx
 // ❌ 最常见错误：把服务端数据搬进 Zustand
@@ -159,9 +159,14 @@ export class ApiError extends Error {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const resp = await fetch(`${config.sidecarBaseUrl}${path}`, {
+  const { baseUrl, token } = await getSidecarConfig();
+  const resp = await fetch(`${baseUrl}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+      "X-KnowRealm-Token": token,
+    },
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
@@ -171,7 +176,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 }
 ```
 
-- sidecar 端口由壳随机分配、经启动参数注入，UI 从 `config/` 读取（技术栈 v4 §十）；本机单用户**无认证头**。
+- sidecar 端口与单次启动能力令牌由壳生成，UI 只经类型化 Tauri 桥接读取；统一客户端必须覆盖注入 `X-KnowRealm-Token`，不能让调用方省略或替换。该令牌不是用户认证，不进入 Zustand 或持久化缓存。
 - 这是 UI 与后端的**唯一通道**——不存在数据库直连层（红线 #35 v2.0）。
 
 ### 4.2 状态推送（sidecar 进程内事件 → SSE）
@@ -202,9 +207,13 @@ export async function openSseStream(
   onEvent: (ev: { event: string; data: string }) => void,
   signal: AbortSignal,
 ) {
-  const resp = await fetch(`${config.sidecarBaseUrl}${path}`, {
+  const { baseUrl, token } = await getSidecarConfig();
+  const resp = await fetch(`${baseUrl}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-KnowRealm-Token": token,
+    },
     body: JSON.stringify(body),
     signal,
   });
