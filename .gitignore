@@ -192,5 +192,5 @@ reports/
 
 
 
-function-plans-introduction
-research
+# Browser tooling artifacts
+.playwright-mcp/
