@@ -63,7 +63,7 @@ const statusBadge = cva("inline-flex rounded-full px-2 py-0.5 text-xs", {
 ## 2. shadcn/ui
 
 - 组件通过 CLI 添加：`npx shadcn@latest add button dialog table`，产物落在 `components/ui/`。
-- **原语底座统一 Radix**：shadcn CLI v4 起同时提供 Radix 与 Base UI 两套原语，本项目统一选 Radix 底座，**禁止混搭**（两套原语的行为、焦点管理与包体积会叠加，且修复方式互不通用）。
+- **原语底座统一 Base UI**：shadcn CLI v4 起同时提供 Radix 与 Base UI 两套原语，本项目统一选 **Base UI** 底座（技术栈 v4 D2 定稿），**禁止混搭**（两套原语的行为、焦点管理与包体积会叠加，且修复方式互不通用）。
 - **不手改 `components/ui/` 里的生成代码**（下次 add/diff 会覆盖）——定制在外面包装：
 
 ```tsx
@@ -80,7 +80,7 @@ export function PageHeader({ title, action }: PageHeaderProps) {
 }
 ```
 
-- 业务组件优先组合 shadcn/ui（Button/Dialog/Table/Sheet…）+ Radix 行为，**不从零手写**交互控件。
+- 业务组件优先组合 shadcn/ui（Button/Dialog/Table/Sheet…）+ Base UI 行为，**不从零手写**交互控件。
 - 图标只用 `lucide-react`，保持整套图标线性风格统一。
 
 ## 3. ECharts（`charts/` 公共图表层）
@@ -119,8 +119,8 @@ export function BaseChart({ option }: { option: echarts.ComposeOption<...> }) {
 
 AI 对话答案、总结、复习资料都是 Markdown，统一经 `components/common/` 的渲染组件输出（`react-markdown`），页面不直接散用：
 
-- **代码块必须高亮**（功能基线 v1.4：程序员场景 AI 输出默认含代码块）——接入 shiki 或 rehype-highlight，主题跟随亮/暗令牌。
-- **树形大纲思维导图**（复习资料的 Markdown 大纲，功能基线 M4）：按标题层级解析渲染为可折叠树组件，不做图形化导图导出。
+- **代码块必须高亮**（功能需求基线 v2.1：程序员场景 AI 输出默认含代码块）——统一用 **shiki**（技术栈 v4 定稿），主题跟随亮/暗令牌。
+- **树形大纲思维导图**（复习资料的 Markdown 大纲，功能需求基线 v2.1 M4）：按标题层级解析渲染为可折叠树组件，不做图形化导图导出。
 - AI 产出的 Markdown 属不可信输入：经 `rehype-sanitize` 白名单过滤，禁止 `dangerouslySetInnerHTML` 直染。
 
 ## 5. 资源与样式文件归属
@@ -134,11 +134,11 @@ AI 对话答案、总结、复习资料都是 Markdown，统一经 `components/c
 | 图片/插画/字体 | `assets/`（大文件放 `public/`） |
 
 - 组件样式就近写在 className（Tailwind 之道），**不新建散装 `.css` 文件**；确需复杂选择器时集中到上述四个样式文件里。
-- **偏好双分离**（功能基线 M1）：主题/字号/语言/时区存云端 `user_settings`（跨设备漫游，经 API 读写），窗口尺寸/缓存目录等仅本机项存 SQLite `local_settings`——深色模式切换 = 改 `user_settings.theme` + 挂/摘 `<html>` 的 `.dark` class，不落第三处状态。
+- **偏好单一本地配置**（功能需求基线 v2.1 M1，决策 #51）：主题/字号/语言/时区/关窗行为/开机自启/速记快捷键/窗口记忆等全部存数据目录 `config/settings.json`（单一事实源，经 sidecar API 读写）——深色模式切换 = 改 `settings.theme` + 挂/摘 `<html>` 的 `.dark` class，不落第三处状态。
 
 ## 6. 可访问性（a11y）
 
-- **交互组件一律用 shadcn/Radix 原生**（Dialog/Popover/Select/Command 等自带焦点管理、键盘导航与 aria 属性）——这是"不从零手写交互控件"（§2）的另一半理由。
+- **交互组件一律用 shadcn/Base UI 原生**（Dialog/Popover/Select/Command 等自带焦点管理、键盘导航与 aria 属性）——这是"不从零手写交互控件"（§2）的另一半理由。
 - **禁止全局移除 focus ring**（如 `outline-none` 不配替代样式）；需要定制时改用 `focus-visible:` 令牌样式，键盘用户要能看见焦点在哪。
 
 ```tsx
@@ -152,7 +152,7 @@ AI 对话答案、总结、复习资料都是 Markdown，统一经 `components/c
 ```
 
 - 纯图标按钮必须 `aria-label`（走 i18n）；图标是装饰性文字补充时加 `aria-hidden`。
-- 命令面板（Ctrl+K）、弹窗、下拉支持键盘：Esc 关闭、方向键移动、Enter 确认——用 Radix 原生即自动获得，别用 `div` + `onClick` 手搓。
+- 命令面板（Ctrl+K）、弹窗、下拉支持键盘：Esc 关闭、方向键移动、Enter 确认——用 Base UI 原生即自动获得，别用 `div` + `onClick` 手搓。
 - 测试侧配合 `getByRole` 查询（desktop-react.md §6），角色查不到 = 可访问性缺口信号。
 
 ## 7. 反模式速查
@@ -162,13 +162,13 @@ AI 对话答案、总结、复习资料都是 Markdown，统一经 `components/c
 | `tailwind.config.js` / JS 配置 | `@theme`（CSS-first） |
 | 魔法值 `bg-[#xxx]` / `mt-[13px]` | 先加令牌再用工具类 |
 | 手改 `components/ui/` 生成代码 | 外层包装组件定制 |
-| 从零手写下拉/弹窗/表格 | shadcn/ui + Radix |
+| 从零手写下拉/弹窗/表格 | shadcn/ui + Base UI |
 | 混用多套图标库 | 只用 lucide-react |
 | 整包 import echarts | `echarts/core` 按需注册 |
 | 图表漏 dispose/resize | `charts/BaseChart` 统一封装 |
 | 页面里直接操作 echarts 实例 | 经 `charts/` 基础组件 |
 | 散装业务 `.css` 文件 | Tailwind 就近 + 四个全局样式文件 |
 | 复制粘贴同串类名 3+ 次 | 抽组件 / `cn()+cva` |
-| `div` + `onClick` 手搓交互控件 | shadcn/Radix 原生（键盘 + aria 自带） |
+| `div` + `onClick` 手搓交互控件 | shadcn/Base UI 原生（键盘 + aria 自带） |
 | 移除 focus ring / 纯图标按钮无 `aria-label` | `focus-visible:` 定制 + `aria-label` |
-| Radix 与 Base UI 原语混搭 | 全项目统一 Radix 底座（CLI v4 起可选） |
+| Radix 与 Base UI 原语混搭 | 全项目统一 Base UI 底座（CLI v4 起可选） |

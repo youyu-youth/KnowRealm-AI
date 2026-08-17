@@ -1,13 +1,13 @@
 # AI课堂助手：功能升级与创新扩展设计（最终版）
 
-> **文档定位**：Learning Brain（F1~F18）的**功能机制与交互设计参考**。⚠️ **历史文档**：编写于 2026-06 旧技术栈时期，正文中的技术实现与"现有系统"描述已过时，阅读前必读下方 §0 对齐声明；需求边界以《KnowRealm-AI-功能需求基线 v1.10》为准。  
+> **文档定位**：Learning Brain（F1~F18）的**功能机制与交互设计参考**。⚠️ **历史文档**：编写于 2026-06 旧技术栈时期，正文中的技术实现与"现有系统"描述已过时，阅读前必读下方 §0 对齐声明；需求边界以《KnowRealm-AI-功能需求基线 v2.1》为准。  
 > **目标**：不推翻现有“课堂记录 → AI 总结 → HITL → 知识点/习题/Todo/复习 → AI 问答”主流程，而是在其上增加长期学习状态建模能力，将产品从 **AI课堂助手** 逐步升级为 **AI Personal Learning Brain / AI Learning OS**。  
 > **适用端**：Tauri Desktop（Windows 为 V1 唯一首发平台）；微信小程序形态已废弃。  
 > **设计原则**：现有能力优先复用；扩展能力按阶段引入；所有 AI 判断尽可能可追溯、可验证、可被用户纠正。
 
 ---
 
-# 0. 与基线 v1.10 的对齐声明（必读）
+# 0. 与基线 v2.1 的对齐声明（必读）
 
 > 本文档编写于 2026-06 旧技术栈时期（微信小程序 + Spring Boot + MySQL + MinIO + Qdrant 设想）。产品与架构此后经基线 v1.1~v1.6 多轮演进，本文正文**未随之改写**。阅读规则如下。
 
@@ -23,14 +23,14 @@
 | # | 维度 | 本文过时表述（出现位置） | 现行权威 |
 |---|------|------------------------|---------|
 | D1 | 产品端形态 | 微信小程序 + Desktop 复用 | Tauri Desktop，Windows V1 唯一首发；小程序已废弃（基线 §1.3） |
-| D2 | "现有能力"叙述 | 微信登录 / Sa-Token / MinIO / 分享卡片 / 状态轮询（§2 整章） | Supabase Auth 邮箱+密码/OTP；Supabase Storage；不做分享=Markdown 本地导出；Realtime 为主+轮询兜底（基线 §4.1/§4.6、决策 #8/#15） |
+| D2 | "现有能力"叙述 | 微信登录 / Sa-Token / MinIO / 分享卡片 / 状态轮询（§2 整章） | 无登录/无账号（本地单用户，首启三步）；原始文件明文存数据目录 files/；不做分享=Markdown 本地导出；sidecar 进程内 SSE 事件为主+UI 轮询兜底（基线 §4.1/§4.6、决策 #3/#8/#15） |
 | D3 | 捕获入口 | 仅"录音+文档"双入口 | 五级捕获（速记/粘贴/剪藏/音频/文档）+ 收件箱 Inbox，records.course_id 可空（决策 #21） |
 | D4 | 目标用户与课程上下文 | 全学段学生；education_stage 唯一个性化输入 | 一切学习知识的人；learning_context + education_stage/depth 双字段（决策 #23） |
 | D5 | AI 对话形态 | 聊天仅作为 Record/Course 上下文二级功能 | 💬 AI 对话一级入口：自由聊天 + @记录/@课程/@全部资料挂载可切换；自由聊天不建向量索引、不进 Learning Evidence 链（决策 #22/#24） |
-| D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | FastAPI + LangChain/LangGraph + Supabase PostgreSQL（技术栈 v3.2） |
-| D7 | 异步与缓存 | Redis/Redisson + RabbitMQ（§27.4/§27.5） | procrastinate（PG 队列），无 Redis / RabbitMQ（决策 #1） |
-| D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | pgvector + semantic_embeddings 统一表；明确不做 Qdrant（基线 §5.2） |
-| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v1.10（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
+| D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | Tauri sidecar（Python 进程内）FastAPI + LangChain/LangGraph + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4） |
+| D7 | 异步与缓存 | Redis/Redisson + RabbitMQ（§27.4/§27.5） | 自研 processing_jobs 队列（SQLite 表即队列 + sidecar 进程内 asyncio worker），无 Redis / RabbitMQ / procrastinate（决策 #1） |
+| D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | sqlite-vec（vec0 虚拟表）+ semantic_embeddings 统一表；明确不做 Qdrant / pgvector（技术栈 v4） |
+| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.0（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
 | D10 | shares 表 | §25.1 保留 t_share | 不建 shares 表（决策 #15） |
 | D11 | F15 落地 | 不新增表（仅 action_type=PREVIEW） | 依赖 course_materials 课程级资料表（决策 #12） |
 | D12 | Teach-back 输入 | 语音解释 → ASR（§18.1） | V1 文本先行，语音后补（决策 #19） |
@@ -39,7 +39,7 @@
 | D15 | 优先级与阶段 | §6 S+/A+ 评级、§32 Phase 1~7、§37 P0~P3 | 基线 §4.7 阶段映射（F1=P2 … F16=P6）与 §5.1 阶段规划 |
 | D16 | 产品定位语境 | 毕业设计 / 项目展示 / 比赛（§33） | 开源、面向个人使用（基线头部） |
 
-> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v1.10》《技术栈设计与审查-v3》《KnowRealm-AI-数据模型-v1.10》。
+> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.1》《技术栈设计与审查-v4》《KnowRealm-AI-数据模型-v2.0》。
 
 ---
 
@@ -110,7 +110,7 @@ Tutor / Review / Quiz / Teach-back / Challenge
 
 # 2. 现有 PRD 能力：保持不变的基线
 
-> ⚠️ **历史快照（见 §0 对齐声明 D2）**：本章描述的是本文写作时点的旧项目形态（微信小程序 / Spring Boot / MinIO 等）。现行产品形态与功能范围以《功能需求基线 v1.10》§4 为准，**不得把本章当作现行功能清单**。本章的现存价值仅在于说明"M1~M6 模块边界被 Learning Brain 扩展复用"这一结构关系。
+> ⚠️ **历史快照（见 §0 对齐声明 D2）**：本章描述的是本文写作时点的旧项目形态（微信小程序 / Spring Boot / MinIO 等）。现行产品形态与功能范围以《功能需求基线 v2.1》§4 为准，**不得把本章当作现行功能清单**。本章的现存价值仅在于说明"M1~M6 模块边界被 Learning Brain 扩展复用"这一结构关系。
 
 以下能力视为已经实现，扩展设计必须建立在这些能力上，不重复建设。
 
@@ -2787,7 +2787,7 @@ t_source_anchor
 
 # 27. 技术实现建议
 
-> ⚠️ **历史快照（见 §0 对齐声明 D6/D7/D8/D13）**：本章 27.1~27.5 与 27.9 的技术选型（Java 系栈 / Qdrant / Redis / RabbitMQ / OTel+Langfuse）**已全部作废**，现行技术选型以《技术栈设计与审查-v3》（v3.5）为准。本章仅 27.6（FSRS 分阶段）、27.7（ECharts）、27.8（一期不做 TTS）的方向性结论仍有效。
+> ⚠️ **历史快照（见 §0 对齐声明 D6/D7/D8/D13）**：本章 27.1~27.5 与 27.9 的技术选型（Java 系栈 / Qdrant / Redis / RabbitMQ / OTel+Langfuse）**已全部作废**，现行技术选型以《技术栈设计与审查-v4》为准。本章仅 27.6（FSRS 分阶段）、27.7（ECharts）、27.8（一期不做 TTS）的方向性结论仍有效。
 
 > 以下技术以现有 PRD 与原扩展设计为基础，不为了“技术炫技”强行增加中间件。
 
@@ -3445,7 +3445,7 @@ Mastery Update
 
 # 38. 来源与设计边界说明
 
-- 现有业务基线来自旧《AI课堂助手 PRD v2.1》（该文档已删除，有效内容已并入《KnowRealm-AI-功能需求基线 v1.10》）。
+- 现有业务基线来自旧《AI课堂助手 PRD v2.1》（该文档已删除，有效内容已并入《KnowRealm-AI-功能需求基线 v2.1》）。
 - 原创新方向来自 `AI课堂助手-创新功能扩展设计-v1-去除排行榜.md`。
 - 本最终版对原扩展文档做了结构收敛与歧义消除，包括：
   - Knowledge Point 与 Concept 分层；

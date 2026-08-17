@@ -1,6 +1,6 @@
 # 规范：LangChain 1.x + LangGraph（AI 编排层）
 
-> 适用范围：`services/api/app/agents/`（Summary / Tutor / TeachBack / Autopilot / MisconceptionVerification 五个 Graph，功能基线红线 #2）及一切 LLM 调用、RAG 检索代码。
+> 适用范围：`backend/app/agents/`（Summary / Tutor / TeachBack / Autopilot / MisconceptionVerification 五个 Graph，功能需求基线红线 #2）及一切 LLM 调用、RAG 检索代码。
 
 ## 0. 版本基线（2026-08 核实）
 
@@ -8,9 +8,8 @@
 |---|---|---|
 | `langchain` / `langchain-core` | **1.3.x**（当前 1.3.15） | 稳定线 |
 | `langgraph` | **1.2.x**（当前 1.2.11） | ⚠️ **LangGraph 没有 1.3 版本**，版本线与 LangChain 相互独立，官方协调发布的兼容组合就是 langchain 1.3.x + langgraph 1.2.x |
-| `langgraph-checkpoint-postgres` | 最新稳定 | 跟随 langgraph 版本线 |
+| `langgraph-checkpoint-sqlite` | 最新稳定 | SqliteSaver 持久化到数据目录 `langgraph.db`（见 §7） |
 | `langchain-openai` / `langchain-community` | 1.x / 最新 | 配套 langchain-core 1.3.x |
-| ~~langchain-postgres~~ | — | **不采用**：向量存储用自建 `semantic_embeddings` 表（数据模型 §4.6，统一向量生命周期），其 PGVector collection 自建表与该设计冲突 |
 
 - 依赖统一用 **uv** 锁定（`uv.lock`），禁止手动改版本绕过锁文件。
 - 升级原则：小版本跟进，**不追 pre-release（如 1.4.0a1）**。
@@ -22,10 +21,10 @@
 ```
 langchain              # 仅 create_agent / middleware
 langchain-core         # 消息、Runnable、@tool、Document
-langchain-openai       # ChatOpenAI / OpenAIEmbeddings（指向 DashScope）
+langchain-openai       # ChatOpenAI / OpenAIEmbeddings（LLM 指向供应商卡端点；Embedding 固定 DashScope）
 langchain-community    # 文档 Loader
 langgraph              # StateGraph / interrupt / Command / checkpointer
-# 注意：不用 langchain-postgres（向量检索走自建 semantic_embeddings 表，见 §10）
+# 注意：向量检索走自建 semantic_embeddings 表 + sqlite-vec（见 §10），不引入向量库集成包
 ```
 
 ```python
@@ -39,31 +38,31 @@ from langchain.chains import RetrievalQA
 from langchain.agents import AgentExecutor, create_react_agent
 ```
 
-## 2. 模型接入：统一工厂，DashScope 走 OpenAI 兼容端点
+## 2. 模型接入：统一工厂，供应商卡自选 OpenAI 兼容端点
 
-模型实例只在一个工厂模块创建（如 `agents/llm.py`），密钥来自 `pydantic-settings`，禁止散落硬编码。
+模型实例只在一个工厂模块创建（`agents/llm.py`），配置来自数据目录 `config/providers.json`（供应商卡：base_url + key + model，用户自配；默认预设 DashScope qwen-plus），禁止散落硬编码。**评测基线（黄金样本）只对默认预设 qwen-plus 负责**，文档明示。
 
 ```python
 # agents/llm.py
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from app.core.config import settings
 
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 
 def get_llm(temperature: float = 0.3) -> ChatOpenAI:
+    card = load_llm_card()                 # config/providers.json——任意 OpenAI 兼容端点
     return ChatOpenAI(
-        model="qwen-plus",
-        base_url=DASHSCOPE_BASE_URL,
-        api_key=settings.dashscope_api_key,
+        model=card.model,                  # 默认预设 qwen-plus
+        base_url=card.base_url,
+        api_key=card.api_key,
         temperature=temperature,
     )
 
 def get_embeddings() -> OpenAIEmbeddings:
     return OpenAIEmbeddings(
-        model="text-embedding-v3",
+        model="text-embedding-v3",         # V1 固定 DashScope（换模型 = 全量重嵌入）
         base_url=DASHSCOPE_BASE_URL,
-        api_key=settings.dashscope_api_key,
-        dimensions=1024,                    # 必须与 pgvector 列 vector(1024) 一致
+        api_key=load_dashscope_key(),
+        dimensions=1024,                    # 必须与 sqlite-vec float[1024] 定义一致
         check_embedding_ctx_length=False,   # DashScope 兼容端点不支持 tiktoken 预分片，必须关
     )
 ```
@@ -93,7 +92,7 @@ agent = create_agent(
     model=get_llm(),
     tools=[search_course_material],
     system_prompt="你是课堂学习助手，回答须基于检索到的课程内容。",
-    checkpointer=InMemorySaver(),  # 生产换 PostgresSaver，见 §7
+    checkpointer=InMemorySaver(),  # 生产换 AsyncSqliteSaver，见 §7
 )
 
 result = agent.invoke(
@@ -129,9 +128,9 @@ kp = structured_llm.invoke("从以下转写文本中抽取知识点：\n" + tran
 
 ## 5. LangGraph StateGraph：固定管线用图
 
-Summary/Tutor/TeachBack/Autopilot/MisconceptionVerification 五个 Graph 各自独立文件，**通过 Learning Event 与 Profile 共享状态，禁止合并成超级 Graph**（架构约束 §29）。
+Summary/Tutor/TeachBack/Autopilot/MisconceptionVerification 五个 Graph 各自独立文件，**通过 Learning Event 与 Profile 共享状态，禁止合并成超级 Graph**（红线 #2）。
 
-**什么才进 Graph（负面清单，功能基线红线 #2）**：只有需要状态、暂停恢复、HITL 或 Agent 决策的流程才用 LangGraph；普通 CRUD 与确定性业务逻辑（Course/Quiz/Todo/EvidenceBuilder/MasteryEngine/QuestionSelector 等）写成普通确定性 Python Service，**不进 Graph**。
+**什么才进 Graph（负面清单，功能需求基线 v2.1 红线 #2）**：只有需要状态、暂停恢复、HITL 或 Agent 决策的流程才用 LangGraph；普通 CRUD 与确定性业务逻辑（Course/Quiz/Todo/EvidenceBuilder/MasteryEngine/QuestionSelector 等）写成普通确定性 Python Service，**不进 Graph**。
 
 **Agent/节点写入红线**：Graph 节点禁止直写 `user_concept_mastery` 等 mastery 类表（唯一写入口是 Mastery Engine，红线 #3）——节点只发 Learning Event；AI 产物（确认结果、版本链）必须落业务表，**Checkpoint 只存运行态、不是业务事实**。
 
@@ -227,21 +226,21 @@ graph.invoke(Command(resume={"action": "approve"}), config=config)
 
 | 场景 | 用什么 |
 |---|---|
-| 生产（Supabase Postgres） | `AsyncPostgresSaver`（`langgraph.checkpoint.postgres.aio`） |
-| 本地开发 / 单测 | `SqliteSaver`（aiosqlite）或 `InMemorySaver` |
+| 生产（数据目录 `langgraph.db`） | `AsyncSqliteSaver`（`langgraph.checkpoint.sqlite.aio`） |
+| 单测 | `InMemorySaver` |
 
 ```python
-# 生产：FastAPI 异步应用用 Async 版本
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+# 生产：langgraph.db 与 knowrealm.db 同目录、不同文件（数据模型 v2.0 §6）
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-checkpointer = AsyncPostgresSaver.from_conn_string(settings.database_url)
-await checkpointer.setup()          # 首次部署执行一次，建表；不要每次启动都跑
+checkpointer = AsyncSqliteSaver.from_conn_string(data_dir / "langgraph.db")
+await checkpointer.setup()          # 首次运行执行一次，建表；不要每次启动都跑
 graph = builder.compile(checkpointer=checkpointer)
 ```
 
 规则：
 - **每次 invoke 必传 `thread_id`**（放 `config["configurable"]`），无 thread_id 状态不持久化。命名要有业务含义：`record-{id}`、`chat-{session_id}`。
-- `setup()` 只在部署/初始化时执行，不是每次启动。
+- `setup()` 只在初始化时执行，不是每次启动。
 - **Checkpoint ≠ 业务事实**：HITL 确认结果、总结版本链等长期事实必须落业务表（`ai_summaries` 等）；Checkpoint 仅供暂停/恢复运行态，禁止从 checkpoint 表读业务数据（不手工查询 langgraph schema）。
 
 ## 8. 流式输出
@@ -270,44 +269,35 @@ async for chunk in graph.astream(
 | 缺用户输入 | `interrupt(...)` |
 | 未知异常 | 直接抛出，由 FastAPI 全局异常处理器兜底 + loguru 记录 |
 
-## 10. RAG 检索红线（pgvector）
+## 10. RAG 检索红线（sqlite-vec）
 
-向量存储用自建 `semantic_embeddings` 表（数据模型 §4.6，统一管理向量生命周期与软删），**不用** `langchain-postgres` 的 PGVector collection（它会自建独立表，与该设计冲突）。检索经 `services/` 封装层用 SQLAlchemy 原生 SQL 执行：
+向量存于 knowrealm.db 内的 **sqlite-vec `vec0` 虚拟表**（四类向量：Segment / 知识点 / Concept / 文档分片），向量生命周期与软删由 `semantic_embeddings` 业务表统一管理（数据模型 v2.0 §4.6）。检索一律经 `services/retrieval.py` 封装层：
 
 ```python
-from sqlalchemy import text
-
-# ✅ 唯一允许的方式：封装层强制注入过滤，三条件缺一不可
-#   user_id + deleted_at IS NULL 必带；course_id 视挂载范围（@课程带、@全部资料不带）
+# services/retrieval.py —— 唯一允许的检索入口（示意；vec0 查询具体形式以 sqlite-vec 版本为准）
+# ✅ 封装层强制注入过滤，缺一不可：
+#   deleted_at IS NULL 恒定注入（无 user_id——列已删）；
+#   course_id / record_id 仅范围检索时附加（@课程 / @记录带，@全部资料不带）
 async def search_segments(session: AsyncSession, query_vec: list[float], *,
-                          user_id: UUID, course_id: UUID | None, k: int = 5):
-    sql = """
-        SELECT source_type, source_id, content,
-               1 - (embedding <=> :vec::vector) AS score
-        FROM semantic_embeddings
-        WHERE user_id = :user_id
-          AND deleted_at IS NULL
-          {course_filter}
-        ORDER BY embedding <=> :vec::vector
-        LIMIT :k
-    """.format(course_filter="AND course_id = :course_id" if course_id else "")
-    rows = (await session.execute(text(sql), {
-        "vec": str(query_vec), "user_id": user_id, "course_id": course_id, "k": k,
-    })).all()
-    return rows
+                          course_id: str | None = None,
+                          record_id: str | None = None, k: int = 5):
+    # vec0 KNN 取候选 → join semantic_embeddings 恒定过滤 deleted_at IS NULL
+    # → 范围字段按需附加 → 已删数据不进入候选即在此完成
+    ...
 ```
 
 规则：
-- Graph 节点不得直接拼向量查询，一律走封装函数（由它注入过滤条件），**禁止裸相似度查询**。
-- embedding 维度 1024 与表定义 `vector(1024)` 强一致；索引与查询必须用同一个 embedding 模型。
-- v1.5 裁决 #24：`course_id` 可空——Inbox/未分类内容照常入索引，@全部资料全局检索时省略 course_id 条件，但 `user_id` 与 `deleted_at IS NULL` 永不省略。
+- Graph 节点与业务代码不得直接拼 vec0 MATCH 查询，一律走封装函数（由它注入过滤条件），**禁止裸向量查询**（红线 #28 v2.0）。
+- **`deleted_at IS NULL` 恒定前置过滤，任何场景不可省略**（无 user_id——单用户本地库，列已删除）。
+- 范围字段按需附加：`course_id` 可空（Inbox/未分类内容照常入索引），@全部资料全局检索时省略；@课程带 `course_id`、@记录带 `record_id`。
+- embedding 维度 1024 与 `float[1024]` 定义强一致；写入与查询必须用同一个 embedding 模型（text-embedding-v3，V1 固定）。
 
 ## 11. LLM 调用埋点（llm_call_logs）
 
-自建 `llm_call_logs` 表替代 Langfuse 自托管（v3.2 裁决），埋点规则：
+自建 `llm_call_logs` 表替代 Langfuse/Sentry 自托管（决策 #2），埋点规则：
 
 - **埋在统一封装层**（`agents/llm.py` 的调用包装 / LangChain callback），Graph 节点代码不手写埋点——节点只管业务，观测在工厂层一次接入。
-- 每次调用记录字段 = 数据模型 §4.10：`request_id`、`graph_name`、`graph_node`、`model`、`prompt_version`、`token_usage_json`、`latency_ms`、`error_code`（embedding 调用记 `embedding_model`）。
+- 每次调用记录字段 = 数据模型 v2.0 §4.10：`request_id`、`graph_name`、`graph_node`、`model`、`prompt_version`、`token_usage_json`、`latency_ms`、`error_code`（embedding 调用记 `embedding_model`）。
 - **隐私红线**：不记 prompt 与输出全文（同 fastapi.md §7.1）；埋点失败不得影响主流程（吞掉并 loguru 记 error code）。
 
 ## 12. 反模式速查
@@ -315,17 +305,16 @@ async def search_segments(session: AsyncSession, query_vec: list[float], *,
 | 禁止 | 用什么代替 |
 |---|---|
 | `AgentExecutor` / `create_react_agent` / 0.x chains | `create_agent()` / StateGraph |
-| `ChatTongyi` 专有集成 | `ChatOpenAI` + DashScope `base_url` |
+| `ChatTongyi` 专有集成 | `ChatOpenAI` + 供应商卡 `base_url`（DashScope 默认预设） |
 | 安装 monolithic 旧版 `langchain` 0.x | 拆分包（§1 清单）+ uv 锁定 |
 | 节点内直接改 state / 返回整个 state | 返回部分更新 dict |
 | 列表状态字段不加 reducer | `Annotated[list, operator.add]` |
 | 不传 `thread_id` 直接 invoke | 始终带 `thread_id` |
-| 生产用 `InMemorySaver` | `AsyncPostgresSaver` |
+| 生产用 `InMemorySaver` / PG 系 Saver | `AsyncSqliteSaver`（langgraph.db） |
 | `add_edge(node, START)` | 指向命名节点 |
-| 裸向量相似度查询（缺过滤条件） | 封装层强制 user_id + deleted_at 过滤，course_id 视范围 |
+| 裸向量查询 / 缺 `deleted_at IS NULL` 过滤 | 封装层恒定注入 deleted_at 过滤，范围字段视场景 |
 | 确定性业务逻辑（CRUD/EvidenceBuilder/MasteryEngine）进 Graph | 普通确定性 Python Service |
 | 节点直写 mastery 类表 | 只发 Learning Event（Mastery Engine 唯一写入口） |
 | 把业务事实只存 Checkpoint / 手工查 langgraph schema | 长期事实落业务表 |
-| 用 langchain-postgres PGVector collection | 自建 `semantic_embeddings` 表 + 原生 SQL |
 | 节点里手写埋点 / 记 prompt 全文 | 工厂层统一埋 `llm_call_logs`，只记元数据 |
-| 在节点里同步执行 ASR/ffmpeg 等重活 | 丢给 procrastinate worker，节点只编排 |
+| 在节点里同步执行 ASR/ffmpeg 等重活 | 丢给 processing_jobs worker（进程内任务池），节点只编排 |

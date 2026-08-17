@@ -6,12 +6,12 @@
 
 | 依赖 | 基线 | 说明 |
 |---|---|---|
-| React | **19.x**（当前 19.2.x） | 已定稿（2026-08 裁决）：React 18 已停止主动开发（仅安全补丁），19.2 稳定近两年、生态全兼容；v3.2 基线已同步 |
-| TypeScript | **6.0.x**（strict） | 7.0（Go 原生重写）已发布但属编译器架构更换，待生态工具链验证后再评估 |
-| Vite | **8.x** | Rolldown 内核（2026-03 起），8.2 patch 线稳定；配套 Vitest ≥4.1 |
-| TanStack Router | v1 | 与目录结构配套用 **code-based routing**（路由集中在 `app/router.tsx`，页面放 `pages/`） |
-| i18next + react-i18next | 最新稳定 | — |
-| Vitest + Testing Library | **≥4.1** | 4.1 起支持 Vite 8（v3 仅支持到 Vite 7） |
+| React | **19.x**（当前 19.2.x） | 已定稿（2026-08 裁决）：React 18 已停止主动开发（仅安全补丁），19.2 稳定近两年、生态全兼容；技术栈 v4 基线已同步 |
+| TypeScript | **~5.8**（strict） | 技术栈 v4 定稿基线；6.0/7.0（Go 原生重写）属编译器架构更换，待生态工具链验证后再评估 |
+| Vite | **7.x** | 技术栈 v4 定稿基线；配套 Vitest 3.x |
+| TanStack Router | v1 | **file-based routing**（页面放 `pages/`，路由树由生成器维护——技术栈 v4 D2） |
+| i18next + react-i18next | 最新稳定 | V1 仅中文 |
+| Vitest + Testing Library | **3.x** | Vite 7 配套线（4.x 面向 Vite 8） |
 
 ## 1. 组件规范
 
@@ -68,7 +68,7 @@ function useRecordStatus(recordId: string) {
 }
 ```
 
-- **状态刷新以 Supabase Realtime 为主、轮询为兜底**（功能基线 §4.3.4）：Realtime 订阅 `records.status` / `processing_jobs` 变更后触发 `invalidateQueries`；`refetchInterval` 只作为 Realtime 断连时的降级手段，不要当作唯一刷新机制。
+- **状态刷新以 SSE 事件推送为主、轮询为兜底**（功能需求基线 v2.1 §4.3.4）：sidecar 进程内事件经 SSE 推送 `records.status` / `processing_jobs` 变更，收到后触发 `invalidateQueries`（见 desktop-state.md §4.2）；`refetchInterval` 只作为 SSE 断连时的降级手段，不要当作唯一刷新机制。
 
 ## 3. TypeScript 规范
 
@@ -78,10 +78,11 @@ function useRecordStatus(recordId: string) {
 
 ```ts
 // ❌ status: string —— 什么都能塞进去
-// ✅ 状态机字面量联合
+// ✅ 状态机字面量联合（八态，功能需求基线 v2.1 §4.3.4；v1.x UPLOADING 随云端上传环节消解）
 type RecordStatus =
-  | "CREATED" | "UPLOADING" | "TRANSCRIBING"
-  | "SUMMARIZING" | "REVIEWING" | "DONE" | "FAILED";
+  | "NOTE" | "DRAFT" | "CONTENT_PROCESSING"
+  | "SUMMARY_PENDING" | "SUMMARY_PROCESSING" | "SUMMARY_READY"
+  | "COMPLETED" | "FAILED";
 
 // ✅ 判别联合 + 类型守卫，代替 as 断言
 type ApiResult<T> =
@@ -94,27 +95,21 @@ type ApiResult<T> =
 
 - `!` 非空断言、`as` 断言逐个注明理由；优先用可选链与判别联合解决。
 
-## 4. 路由（TanStack Router，code-based）
+## 4. 路由（TanStack Router，file-based）
 
-路由树集中在 `app/router.tsx` 定义，页面组件在 `pages/`，按 feature 懒加载：
+路由树由 file-based 生成器维护（Vite 插件），页面组件在 `pages/`，文件即路由：
 
 ```tsx
-// app/router.tsx
-import { createRootRoute, createRoute, createRouter, lazyRouteComponent } from "@tanstack/react-router";
+// pages/records.index.tsx —— 文件路径即路由 /records，路由树自动生成
+import { createFileRoute } from "@tanstack/react-router";
 
-const rootRoute = createRootRoute();
-
-const recordsRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/records",
-  component: lazyRouteComponent(() => import("../pages/RecordsPage")),  // 路由级代码分割
+export const Route = createFileRoute("/records/")({
   validateSearch: (search: Record<string, unknown>): { courseId?: string; page?: number } => ({
     courseId: typeof search.courseId === "string" ? search.courseId : undefined,
     page: Number(search.page ?? 1),
   }),
+  component: RecordsPage,          // 页面组件放同文件或就近引用
 });
-
-export const router = createRouter({ routeTree: rootRoute.addChildren([recordsRoute /* ... */]) });
 
 // main.tsx 注册类型，让 useNavigate/useSearch 全局类型安全
 declare module "@tanstack/react-router" {
@@ -125,20 +120,20 @@ declare module "@tanstack/react-router" {
 规则：
 - **URL 能表达的状态（筛选、分页、tab）放 searchParams**，不放 Zustand——刷新/分享链接才不丢。
 - 导航一律 `useNavigate()` / `<Link>`，禁止手拼 URL 字符串。
-- 新页面：`pages/` 建文件 + `router.tsx` 注册，两步缺一不可。
+- 新页面 = 在 `pages/` 建路由文件（生成器自动登记路由树），不手写 `createRoute` 编排。
 
 ## 5. i18n（界面文案）
 
 - 用户可见文案**一律 `t("key")`**，禁止硬编码中文字符串（含 placeholder、toast、确认弹窗）。
 - key 按 `feature.元素.用途` 分层：`record.list.emptyTitle`。
-- **术语约定（功能基线 v1.4）**：UI 文案以"**学习会话 / 学习记录**"泛称（覆盖课堂、技术分享、培训、自学），代码与数据实体仍为 Record——不写"上课/课堂"这种窄化措辞（学业场景文案除外）。
+- **术语约定（功能需求基线 v2.1 §1.2）**：UI 文案以"**学习会话 / 学习记录**"泛称（覆盖课堂、技术分享、培训、自学），代码与数据实体仍为 Record——不写"上课/课堂"这种窄化措辞（学业场景文案除外）。
 
 ```tsx
 const { t } = useTranslation();
 <p>{t("record.list.emptyTitle")}</p>
 ```
 
-- 语言文件放 `i18n/locales/{zh,en}.json`；新文案 zh/en 同步补齐，缺 key 不许合入。
+- 语言文件放 `i18n/locales/zh.json`（**V1 仅中文**，设置页隐藏语言项）；多语言启用时再补其他语言，缺 key 不许合入。
 
 ## 6. 测试（Vitest + Testing Library）
 

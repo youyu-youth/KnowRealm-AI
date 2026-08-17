@@ -1,10 +1,10 @@
 # 规范：FastAPI（后端服务层）
 
-> 适用范围：`services/api/` 全部代码。FastAPI 当前稳定线为 0.14x（2026-08 为 0.141.1），仍属 0.x 版本号——**minor 之间可能有破坏性变更，版本必须由 uv 锁定**。
+> 适用范围：`backend/app/` 全部代码（FastAPI 以 Tauri sidecar 形态运行，PyInstaller 打包随 `.msi` 分发）。FastAPI 当前稳定线为 0.14x（2026-08 为 0.141.1），仍属 0.x 版本号——**minor 之间可能有破坏性变更，版本必须由 uv 锁定**。
 
 ## 1. 分层：路由薄、业务下沉
 
-> 选型依据：官方模板（`crud.py` 函数层）与 zhanymkanov 流派（无 service 层、依赖链承载复用）均不采用——本项目 service 层是**事务边界**、procrastinate worker 复用业务逻辑、以及红线约束（如 Mastery 唯一写入口）的集中落点；与 [fastapi-best-architecture](https://github.com/fastapi-practices/fastapi-best-architecture) 三层路线一致。
+> 选型依据：官方模板（`crud.py` 函数层）与 zhanymkanov 流派（无 service 层、依赖链承载复用）均不采用——本项目 service 层是**事务边界**、processing_jobs worker 复用业务逻辑、以及红线约束（如 Mastery 唯一写入口）的集中落点；与 [fastapi-best-architecture](https://github.com/fastapi-practices/fastapi-best-architecture) 三层路线一致。
 
 ```
 app/
@@ -13,19 +13,20 @@ app/
 ├── models/      # SQLAlchemy ORM 模型
 ├── schemas/     # Pydantic 请求/响应模型
 ├── agents/      # LangGraph 编排
-├── workers/     # procrastinate 异步任务
-└── core/        # 配置、auth 验签、日志、依赖
+├── db/          # engine、user_version 迁移执行器
+└── core/        # 配置、日志、事件循环、依赖
 ```
+
+> 后台任务无独立 worker 进程：队列 = `processing_jobs` 表，由 sidecar 进程内 asyncio 任务池消费（数据模型 v2.0 §4.10）。
 
 ```python
 # ✅ 路由层应有的样子：一眼看清输入输出
 @router.post("", response_model=RecordOut, status_code=201)
 async def create_record(
     payload: RecordCreate,
-    user_id: str = Depends(get_current_user_id),
     svc: RecordService = Depends(get_record_service),
 ):
-    return await svc.create(user_id, payload)
+    return await svc.create(payload)
 
 # ❌ 路由里直接写 SQL / 调 LLM / 组装业务
 @router.post("/records")
@@ -79,42 +80,26 @@ class RecordOut(BaseModel):
     created_at: datetime
 ```
 
-- 内部模型**不要**直接暴露给 API：响应模型只挑该暴露的字段（防止 `user_id`、内部状态泄漏）。
+- 内部模型**不要**直接暴露给 API：响应模型只挑该暴露的字段（防止内部状态、技术字段泄漏）。
 
 ## 4. 依赖注入
 
 ### 4.1 数据库会话（每请求一会话）
 
 ```python
-# core/deps.py
+# api/deps.py
 async def get_db() -> AsyncIterator[AsyncSession]:
     async with SessionLocal() as session:
         yield session
 ```
 
-### 4.2 认证（Supabase JWT 验签 → user_id）
+> 无认证依赖：本机单用户（决策 #55），sidecar 仅监听 `127.0.0.1`，无 JWT/无 `get_current_user`/无 RLS claims 注入。
 
-```python
-from fastapi import Depends, HTTPException, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+### 4.2 Windows 事件循环（实测陷阱，技术栈 v4 §3.2）
 
-bearer = HTTPBearer(auto_error=False)
-
-async def get_current_user_id(
-    creds: HTTPAuthorizationCredentials | None = Security(bearer),
-) -> str:
-    if creds is None:
-        raise HTTPException(status_code=401, detail="未登录")
-    try:
-        claims = verify_supabase_jwt(creds.credentials)   # httpx 拉 JWKS 验签
-        return claims["sub"]
-    except TokenError:
-        raise HTTPException(status_code=401, detail="token 无效")
-```
-
-规则：
-- 需要登录的路由一律 `Depends(get_current_user_id)`，拿到的 `user_id` 作为参数显式传入 service——**每个查询都要带上它**（RLS 之外的第二道保险）。
-- 依赖抛 `HTTPException` 即可，不要在业务层 import FastAPI 异常。
+- uvicorn ≥0.36 硬编码 **ProactorEventLoop**——必须经 loop 工厂（`app/core/loop.py`）+ 专用入口启动，不在入口处散装 `asyncio.run`。
+- SQLite/aiosqlite 在 Proactor 下配合 anyio 无碍；所有 subprocess（ffmpeg）调用统一走 `asyncio.create_subprocess_exec`。
+- 对外 HTTP（LLM/剪藏）一律 httpx 且 **`trust_env=False`**——防本机系统代理劫持 localhost/直连请求（Windows 实测陷阱）。
 
 ## 5. 异步纪律：不阻塞事件循环
 
@@ -125,21 +110,21 @@ async def list_courses(...): ...
 
 # ❌ 在 async 路由里调同步阻塞库（requests、tencentcloud-sdk、ffmpeg）
 async def submit_asr(...):
-    client.flash_recognizer(req)   # 阻塞整个 worker 进程！
+    client.flash_recognizer(req)   # 阻塞整个 sidecar 进程（API 与 worker 同进程组）！
 ```
 
-- 腾讯云 ASR SDK（同步）、ffmpeg 等 CPU/IO 重活**只允许出现在 procrastinate worker**（`app/workers/`），API 进程内禁止。
+- 腾讯云 ASR SDK（同步）、ffmpeg 等 CPU/IO 重活**只允许出现在 processing_jobs worker 任务内**，API 协程禁止。
 - 实在无法异步的第三方同步调用，用 `asyncio.to_thread()` 包裹并注明原因。
 
 ## 6. SSE 流式（AI 问答）
 
-用 `sse-starlette`，不要手写 `StreamingResponse` 拼格式。事件类型遵守功能基线 §9.2 约定的六类：**`token`（增量文本）/ `status`（阶段状态）/ `citation`（来源引用）/ `interrupt`（HITL 暂停请求）/ `done` / `error`**：
+用 `sse-starlette`，不要手写 `StreamingResponse` 拼格式。事件类型遵守功能需求基线 v2.1 §9.2 约定的六类：**`token`（增量文本）/ `status`（阶段状态）/ `citation`（来源引用）/ `interrupt`（HITL 暂停请求）/ `done` / `error`**：
 
 ```python
 from sse_starlette.sse import EventSourceResponse
 
 @router.post("/chat/stream")
-async def chat_stream(payload: ChatRequest, user_id: str = Depends(get_current_user_id)):
+async def chat_stream(payload: ChatRequest):
     async def event_gen():
         async for chunk in tutor_graph.astream(..., stream_mode="messages"):
             if chunk_token := chunk[0].content:
@@ -149,14 +134,14 @@ async def chat_stream(payload: ChatRequest, user_id: str = Depends(get_current_u
     return EventSourceResponse(event_gen())
 ```
 
-- SSE 端点用 **POST**（前端 `@microsoft/fetch-event-source` 带 Bearer 头）。
+- SSE 端点用 **POST**（前端原生 `fetch` 流式读取 + `eventsource-parser` 解析；本机单用户无认证头）。
 - 流内异常要捕获并作为 `event: error` 发出，不能让连接无声断掉。
 - `interrupt` 事件须自带渲染所需 payload（如待确认总结全文），前端展示确认 UI 后走恢复接口。
+- 任务状态变更同样经 sidecar 进程内事件走 SSE 推送（UI 轮询兜底，功能需求基线 v2.1 §4.3.4）。
 
 ## 7. 错误处理
 
-- 业务错误：抛 `HTTPException(status_code=..., detail=...)`，语义化状态码（400 参数错 / 403 越权 / 404 不存在 / 409 状态冲突）。
-- **409 专属场景——乐观锁冲突**：可编辑实体带 `version` 字段（数据模型 §2），更新语句校验 version，不匹配返回 409 由用户决策，**禁止默认 Last-Write-Wins 静默覆盖**。
+- 业务错误：抛 `HTTPException(status_code=..., detail=...)`，语义化状态码（400 参数错 / 404 不存在 / 409 业务状态冲突，如未归类课程就触发升级）。
 - 未预期异常：注册全局处理器统一返 500 + request_id，禁止把堆栈发给前端：
 
 ```python
@@ -168,7 +153,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 - 错误响应格式保持统一（`{"detail": "..."}`），前端只解析一种结构。
 
-### 7.1 日志纪律（隐私红线，功能基线 §7）
+### 7.1 日志纪律（隐私红线，功能需求基线 v2.1 §7）
 
 ```python
 # ✅ 可记录：定位与统计所需的最小元数据
@@ -177,7 +162,7 @@ logger.info("asr_job_finished", record_id=record_id, duration_ms=elapsed,
 
 # ❌ 禁止记录：完整转写全文、Teach-back 全文、敏感对话内容、密钥、Token
 logger.debug("transcript", content=transcript)          # 违规！
-logger.error("auth_failed", token=access_token)          # 违规！
+logger.error("llm_call_failed", api_key=provider_key)   # 违规！
 ```
 
 白名单：`record_id` / `segment_id` / `session_id`、token **数量**（非 token 本身）、latency、model、prompt_version、error code。日志库已定案 **loguru**：附加字段用 kwargs 传（自动进 extra），如 `logger.info("asr_job_finished", record_id=rid, latency_ms=ms)`；启动时用 `InterceptHandler` 接管 uvicorn/SQLAlchemy 的标准 logging 输出，全项目单一出口。
@@ -191,30 +176,31 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str
-    supabase_url: str
-    supabase_service_role_key: str
-    dashscope_api_key: str
+    short_answer_review_threshold: float = 0.7   # 部署级配置（.env）
     environment: Literal["dev", "prod"] = "dev"
 
 settings = Settings()   # 模块级单例
 ```
 
-- **所有密钥/环境变量走 Settings**，禁止 `os.getenv` 散落各处，禁止硬编码。
-- `.env` 不进仓库；新增配置项必须给 `.env.example` 补注释。
+- **部署级配置走 Settings（.env）**：端口、阈值等——禁止 `os.getenv` 散落各处，禁止硬编码；`.env` 不进仓库，新增配置项必须给 `.env.example` 补注释。
+- **用户级配置不进 .env**：供应商密钥在数据目录 `config/providers.json`（明文，用户可见），偏好在 `config/settings.json`——均由 sidecar 在运行时读写，不经环境变量。数据目录与端口由壳经启动参数注入。
+- `environment` 等 Literal 字段约束取值集合，防配置漂移。
 
 ## 9. 生命周期（lifespan）
 
-engine、连接池、LangGraph checkpointer 等全局资源在 lifespan 中创建/销毁，**不要用 `@app.on_event`（已废弃）**：
+engine/session、LangGraph checkpointer 等全局资源在 lifespan 中创建/销毁，**不要用 `@app.on_event`（已废弃）**；数据目录解析、迁移执行、worker 启动也在此处（技术栈 v4 §7.2）：
 
 ```python
 from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.pool = await create_db_pool()      # 启动
+    app.state.data_dir = resolve_data_dir()          # 数据目录解析/创建/同步盘检测
+    await run_migrations(engine)                     # user_version 迁移按序执行
+    app.state.worker = await start_jobs_worker()     # processing_jobs 队列消费
     yield
-    await app.state.pool.close()                 # 关闭
+    await app.state.worker.stop()
+    await engine.dispose()
 
 app = FastAPI(lifespan=lifespan)
 ```
@@ -246,14 +232,12 @@ async def test_create_record(db_session, client):
     resp = await client.post(
         "/api/records",
         json={"course_id": str(uuid4()), "title": "操作系统第一课", "recorded_at": "..."},
-        headers=auth_headers,
     )
     assert resp.status_code == 201
 ```
 
-- 纯业务逻辑测试用 **SQLite（aiosqlite）** 内存库；涉及 pgvector / RLS 的测试才起真实 Postgres。
+- 测试库 = **aiosqlite 临时库重放迁移链**（生产同形态，见 data-layer.md §4）——无"真 Postgres"分层问题。
 - 用 `httpx.AsyncClient(transport=ASGITransport(app=app))` 测路由，不起真实服务。
-- 认证依赖在测试里用 `app.dependency_overrides` 替换，不真调 Supabase。
 
 ## 12. 工具链配置（Ruff + Pyright）
 
@@ -270,7 +254,7 @@ select = ["E", "F", "I", "B", "UP"]   # pycodestyle / pyflakes / isort / bugbear
 known-first-party = ["app"]
 ```
 
-- **Pyright（strict）** 做类型检查；CI 三关 = `ruff check` + `ruff format --check` + `pyright`（对齐 v3.2 CI 定义）。
+- **Pyright（strict）** 做类型检查；CI 三关 = `ruff check` + `ruff format --check` + `pyright`（对齐技术栈 v4 §3.6 CI 定义）。
 - Astral 的 `ty` 类型检查器为 2026 观察项，暂不引入。
 
 ## 13. 反模式速查
@@ -280,9 +264,9 @@ known-first-party = ["app"]
 | 路由里写 SQL / 业务逻辑 / 调 LLM | 下沉到 service / agents |
 | 不写 `response_model` | 必须声明（OpenAPI 类型来源） |
 | `@app.on_event("startup")` | `lifespan` |
-| async 路由里同步阻塞调用 | 异步库 / worker / `asyncio.to_thread` |
-| API 进程内跑 ASR / ffmpeg | procrastinate worker |
-| `os.getenv` / 硬编码密钥 | `pydantic-settings` |
+| async 路由里同步阻塞调用 | 异步库 / worker 任务 / `asyncio.to_thread` |
+| API 协程内跑 ASR / ffmpeg | processing_jobs worker 任务（进程内任务池） |
+| `os.getenv` / 硬编码配置 | `pydantic-settings`（部署级）/ `config/*.json`（用户级） |
 | 手拼 SSE 格式的 `StreamingResponse` | `sse-starlette` |
 | 路径动词式命名 `/getRecords` | 资源复数 + HTTP 方法语义 |
-| 查询不带 `user_id` | 依赖注入 user_id 并层层下传 |
+| uvicorn 入口散装 `asyncio.run` / httpx 不关 `trust_env` | loop 工厂（`core/loop.py`）+ `trust_env=False` |

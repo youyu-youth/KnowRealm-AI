@@ -7,7 +7,7 @@
 | 依赖 | 基线 |
 |---|---|
 | Tauri | **2.x**（2024-10 GA，2026 主流） |
-| tauri-plugin-sql / fs / dialog | 2.x 配套版 |
+| tauri-plugin-fs / dialog / global-shortcut / autostart / shell | 2.x 配套版（shell 承担 sidecar 拉起与看护） |
 | Rust | stable 工具链，`clippy` 零警告 |
 
 ## 1. 前后端分工：什么才进 Rust
@@ -17,7 +17,7 @@
 1. **纯 UI / 状态** → React（TS）解决；
 2. **Web API 能力**（fetch、IndexedDB、MediaRecorder 录音本身）→ WebView 内解决；
 3. **文件系统、窗口、系统电源、跨进程集成、性能敏感的本地 IO**（录音分片落盘索引、大文件路径管理）→ **Rust**；
-4. **业务逻辑 / 数据计算** → 不进 Rust，下沉到 FastAPI 后端。Rust 层只做"能力"，不做"业务"。
+4. **业务逻辑 / 数据计算** → 不进 Rust，下沉到 FastAPI sidecar。Rust 层只做"能力"，不做"业务"。
 
 ```
 React（services/tauri/ 封装 invoke）
@@ -90,23 +90,26 @@ export async function saveRecordingChunk(args: {
 - **权限最小化**：`capabilities/` 里只声明用到的 permission，逐项评审新增。
 
 ```json
-// capabilities/default.json —— 示例：录音暂存只需要写 app 数据目录
+// capabilities/default.json —— 示例：fs 权限收敛到数据目录（首启选定，非 appdata），
+// 录音分片仅写 cache/staging/
 {
   "identifier": "default",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "sql:default",
     "dialog:default",
-    { "identifier": "fs:allow-appdata-read-recursive" },
-    { "identifier": "fs:allow-appdata-write-recursive" }
+    "global-shortcut:default",
+    "autostart:default",
+    "shell:default",
+    { "identifier": "fs:allow-write-file" },
+    { "identifier": "fs:allow-read-file" }
   ]
 }
 ```
 
 - ❌ 禁止：`fs:default` 全开、`allow-write-all`、给整个磁盘开 scope、关闭 CSP。
 - `tauri.conf.json` 的 CSP 以 **`default-src 'self'`** 为基线（官方建议）；确需内联脚本用 Tauri 的 hash/nonce 注入，引入远程内容须显式审慎。
-- 密钥/敏感配置**不进** Rust 代码与前端，一律后端持有。
+- 密钥/敏感配置存数据目录 `config/providers.json`（sidecar 读取），**不进** Rust 代码与前端。
 
 ## 4. State 与并发
 
@@ -133,42 +136,25 @@ pub fn keep_awake(on: bool) -> anyhow::Result<()> { /* SetThreadExecutionState *
 pub fn keep_awake(_on: bool) -> anyhow::Result<()> { Ok(()) }
 ```
 
-## 5. 本地 SQLite（tauri-plugin-sql）
+## 5. 数据目录访问边界（无本地 SQLite）
 
-定位（对应架构 D1 决策）：**读缓存 + 录音暂存队列索引**。业务写一律在线走 FastAPI，**禁止在本地 SQLite 里积累待同步的业务数据变更**（除录音暂存队列这一个例外，它是上传前的暂存，不是业务编辑）。
-
-```ts
-// services/tauri/db.ts —— SQLite 连接与语句集中封装
-import Database from "@tauri-apps/plugin-sql";
-
-const db = await Database.load("sqlite:app-cache.db");
-
-// ✅ 参数化查询，禁止字符串拼 SQL
-export async function getCachedRecords(courseId: string) {
-  return db.select<{ id: string; title: string }[]>(
-    "SELECT id, title FROM cached_records WHERE course_id = $1",
-    [courseId],
-  );
-}
-```
-
-- SQL 语句集中在 `services/tauri/` 的封装模块里，组件/hooks 里禁止裸写 SQL。
-- **表名与结构以数据模型 §5 的十表为准**：`local_record_drafts`（录音草稿）、`local_files`（文件索引+上传队列）、`cached_courses/cached_records/cached_transcripts/cached_transcript_segments/cached_ai_summaries`（只读镜像）、`sync_outbox`（V1 仅文件注册类）、`sync_cursor`、`local_settings`——不自行发明新缓存表，增补须先改数据模型文档。
+- **UI 不直连数据库**（不引入 tauri-plugin-sql）：一切业务读写经 localhost sidecar API——sidecar 是 knowrealm.db 唯一写者（红线 #35 v2.0，技术栈 v4 D1）。
+- React/Tauri 对数据目录的直写**仅限录音分片落盘**（`cache/staging/`，防中断全损的暂存件）——这是唯一例外，且不是业务数据；会话与分片清单事实由 sidecar 写 `recording_sessions`（`chunk_paths`），前端不维护第二份。
+- sidecar 二进制（PyInstaller 产物）与 ffmpeg 经 `externalBin` 随包打进 `.msi`；壳用 shell 插件拉起/看护 sidecar（随机端口经启动参数注入，UI 从壳读取——技术栈 v4 §十）。
 
 ## 6. 录音链路（项目最关键的原生协同）
 
 ```
 WebView: getUserMedia → MediaRecorder(webm/opus)
-  ├─ 每片 5–10 分钟 stop() → blob → 暂存盘（防中断全损）
+  ├─ 每片 5–10 分钟 stop() → blob → Rust 写数据目录 cache/staging/（防中断全损）
   ├─ 启动时 isTypeSupported("audio/webm;codecs=opus") 探测，失败走降级提示
-  ├─ 分片索引写入本地 SQLite（record_id / chunk_index / path）
   └─ 后台节流风险：长录音时用 Tauri 防休眠（platform/power.rs）
 ```
 
 规则：
-- 分片上传用 Storage 直传（supabase-js），**不经 FastAPI 转发大文件**；
-- 转码在后端 worker 做（前端不做格式转换）：**ffmpeg 转码为 `ogg-opus@16kHz`**（腾讯云 ASR 不支持 webm 容器，功能基线裁决 #5 定稿）；无损 remux（`-c:a copy`）作为 S0 POC 的待验证优化项——若实测识别质量无差异再降级采用并回改文档；
-- 录音会话状态（进行中/分片数）在 Zustand，分片文件路径事实在 SQLite（`local_record_drafts` / `local_files`），两边不重复存。
+- **无上传环节**：结束后合并注册 record_files → sidecar 本地 ffmpeg 转 **`ogg-opus`（16kHz 重采样）**（腾讯云 ASR 不支持 webm 容器，此转码环节不可省略）；**存档原件 = 转码后 ogg-opus（files/）**，webm 分片为中间产物，转码成功即删（cache/）；
+- 转码在 sidecar worker 任务内做（前端不做格式转换；ffmpeg 为随包本地二进制，经 `asyncio.create_subprocess_exec` 调用）；
+- 录音会话状态（进行中/分片数）在 Zustand，会话与分片清单事实在 `recording_sessions`（sidecar 写，数据模型 v2.0 §4.2），两边不重复存。
 
 ## 7. Rust 代码质量
 
@@ -176,7 +162,7 @@ WebView: getUserMedia → MediaRecorder(webm/opus)
 - 错误类型用 `thiserror` 定义层级，命令层错误统一 `serde::Serialize`。
 - 不引入重型 crate 解决小问题（遵循项目"轻量化"定位）。
 
-## 8. 自动更新（updater，Phase 0 后启用）
+## 8. 自动更新（updater，后置启用，#47）
 
 - 用 `tauri-plugin-updater`，`capabilities/` 中只授 `updater:default` + `allow-check` / `allow-download-and-install`，不放开多余权限。
 - **签名密钥管理**：`TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` 只存 CI 环境变量，密钥文件与仓库物理分离；构建产物附 `.sig`，无签名更新包一律拒装。
@@ -186,14 +172,13 @@ WebView: getUserMedia → MediaRecorder(webm/opus)
 
 | 禁止 | 用什么代替 |
 |---|---|
-| 业务逻辑写进 Rust | 下沉 FastAPI；Rust 只做原生能力 |
+| 业务逻辑写进 Rust | 下沉 FastAPI sidecar；Rust 只做原生能力 |
 | 组件里裸 `invoke()` | `services/tauri/` 类型化封装 |
 | command 里 `unwrap()/expect()` | `Result` + thiserror |
 | 命令参数平铺一大串 | 收拢成 Args struct |
-| capabilities 开 `fs:default`/全盘 scope | 最小 permission + appdata scope |
+| capabilities 开 `fs:default`/全盘 scope | 最小 permission + 数据目录最小 scope |
 | 关闭 CSP | 保持默认 CSP |
 | `static mut` 共享状态 | `tauri::State` + tokio 锁 |
-| 前端拼 SQL 字符串 | 参数化查询（`$1` 占位） |
-| 本地 SQLite 当业务主库 | 只做缓存 + 录音暂存队列 |
-| 大文件走 FastAPI 上传 | Storage 直传 |
+| 前端直连数据库 / 直写业务数据 | 一切经 sidecar API（唯一写者） |
+| 数据目录直写超出录音分片落盘范围 | 分片只进 cache/staging/，业务数据经 sidecar |
 | 录音不做分片 / 不探测格式支持 | 5–10 分钟分片 + `isTypeSupported` 兜底 |

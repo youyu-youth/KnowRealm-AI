@@ -1,6 +1,6 @@
 # KnowRealm-AI
 
-面向"一切学习知识的人"的个人学习工作台：捕获学习素材，转化为可编辑、可追溯的学习资产，并长期维护学习状态。本文件是项目唯一术语表——只定义语言，不含实现细节。需求见 `docs/KnowRealm-AI-功能需求基线-v1.10.md`，数据模型见 `docs/KnowRealm-AI-数据模型-v1.10.md`。
+面向"一切学习知识的人"的个人学习工作台：捕获学习素材，转化为可编辑、可追溯的学习资产，并长期维护学习状态。数据活在用户自己的磁盘上，云端只是可选备份。本文件是项目唯一术语表——只定义语言，不含实现细节。需求见 `docs/KnowRealm-AI-功能需求基线-v2.1.md`，数据模型见 `docs/KnowRealm-AI-数据模型-v2.0.md`。
 
 ## Language
 
@@ -89,7 +89,7 @@ _Avoid_: 分数、正确率
 先怀疑再验证的 learner 状态：SUSPECTED → 验证 → CONFIRMED/DISMISSED → 纠错 → RESOLVED。一次答错不得定性。
 
 **业务态 / 技术态**:
-`record.status` 只表达用户可理解的业务状态（9 态，含 NOTE）；ASR/解析/嵌入等任务进度一律在 processing_jobs。两者不得混写。
+`record.status` 只表达用户可理解的业务状态（8 态，含 NOTE；UPLOADING 随 #55 消解）；ASR/解析/嵌入等任务进度一律在 processing_jobs。两者不得混写。
 
 **HITL**:
 Human-in-the-loop——AI 产出经用户确认/调整后才落定并解锁后续动作；Autopilot 只推荐不执行亦源于此。
@@ -99,3 +99,21 @@ Human-in-the-loop——AI 产出经用户确认/调整后才落定并解锁后�
 **Todo（Record 级）/ 计划项（Plan Item，目标级）/ 智能动作（Agent Action，此刻最优动作）**:
 三表分立、可引用、不合并。
 _Avoid_: 任务（泛称，指代不明时禁用）
+
+### 数据与备份
+
+**数据目录（Data Directory）**:
+全部工作台数据唯一的家——一个用户可见、可整体搬移的本地目录（数据库、原始文件、导出物、配置都在其中）。
+_Avoid_: 安装目录、缓存目录、云盘
+
+**全量导出（Full Export）**:
+把数据目录打包为单一可搬走文件的动作——数据主权与换机迁移的载体；默认不含供应商密钥，可选勾选包含。
+_Avoid_: 备份（专指快照备份）、分享
+
+**快照备份（Snapshot Backup）**:
+P2 起的可选异地备份——把全量导出推送到用户自配的 WebDAV/S3；单向推送，永不双向同步。
+_Avoid_: 同步、云同步
+
+**供应商（Provider）**:
+一项外部 AI 服务的连接配置（地址/密钥/模型名）。LLM 供应商可换（任意 OpenAI 兼容端点，DashScope 为默认预设）；Embedding 与 ASR 的供应商 V1 固定。
+_Avoid_: 账号、密钥（密钥只是供应商的一个字段）、服务商

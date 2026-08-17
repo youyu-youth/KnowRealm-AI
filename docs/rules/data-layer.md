@@ -1,17 +1,17 @@
-# 规范：数据层（Pydantic + SQLAlchemy + Supabase + SQLite）
+# 规范：数据层（Pydantic + SQLAlchemy + SQLite）
 
-> 适用范围：`services/api/` 的模型、Schema、数据库访问；`supabase/` 迁移文件。
+> 适用范围：`backend/app/` 的模型、Schema、数据库访问；`backend/migrations/` 迁移文件。
 
 ## 0. 版本基线与职责分工（2026-08 核实）
 
 | 组件 | 版本基线 | 职责 |
 |---|---|---|
 | Pydantic / pydantic-settings | **2.x**（≥2.11，当前 2.12/2.13 线） | 请求/响应校验、LLM 结构化输出 Schema、配置 |
-| SQLAlchemy | **2.0.x**（当前 2.0.52，勿用 2.1 beta） | ORM，async + psycopg 3 访问 Supabase Postgres |
-| supabase-py | **2.x**（当前 2.31.x） | Storage 上传/签名、Admin API（service role） |
-| SQLite（aiosqlite） | — | 后端单测 + LangGraph 本地开发；桌面端缓存（tauri-plugin-sql） |
+| SQLAlchemy | **2.0.x**（当前 2.0.52，勿用 2.1 beta） | ORM，async 访问 knowrealm.db |
+| aiosqlite | 最新 | SQLite 异步驱动（全项目唯一 DB 驱动） |
+| sqlite-vec | 最新 | 向量检索（vec0 虚拟表，检索红线见 langchain-langgraph.md §10） |
 
-一句话分工：**Pydantic 管边界校验，SQLAlchemy 管读写，Supabase 管云端事实，SQLite 只做缓存和测试**。
+一句话分工：**Pydantic 管边界校验，SQLAlchemy 管读写，SQLite（knowrealm.db）是唯一业务事实源**——sidecar 是数据库唯一写者，UI 不直连（红线 #35 v2.0）。
 
 ## 1. Pydantic v2
 
@@ -26,7 +26,7 @@ class CourseCreate(BaseModel):
 
 class CourseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)   # v2：替代 v1 的 orm_mode
-    id: UUID
+    id: str
     name: str
     created_at: datetime
 ```
@@ -57,27 +57,28 @@ class CourseCreate(BaseModel):
             raise ValueError("课程名不能为空白")
         return v
 
-# 配置一律继承 BaseSettings（详见 fastapi.md §8）
+# 配置一律继承 BaseSettings（详见 fastapi.md §8）；部署级配置才进 .env
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-    database_url: str
+    short_answer_review_threshold: float = 0.7   # 数据目录/端口由壳经启动参数注入，不入 .env
 ```
 
 - 跨字段校验用 `@model_validator(mode="after")`，单字段用 `@field_validator`。
 - LLM 结构化输出 Schema（习题/知识点/Concept）也是 Pydantic 模型，同样放 `schemas/`，字段必须带 `description`。
 
-## 2. SQLAlchemy 2.0（async + psycopg 3）
+## 2. SQLAlchemy 2.0（async + aiosqlite）
 
 > 选型依据：不采用官方模板的 **SQLModel**（ORM 与 Pydantic 合一）——其类型完备性与复杂查询能力弱于 SQLAlchemy 2.0 原生注解风格；生产社区主流（zhanymkanov/fastapi-best-practices 等）同为 SQLAlchemy + 独立 Pydantic schemas 的分离路线。
 
 ### 2.1 模型：2.0 类型注解风格 + 通用列规范
 
-**通用列规范（数据模型 §2，全表适用）**：
-- 表名 `snake_case` **复数、无前缀**（`records`、`record_files`）；主键 `uuid`；时间 `timestamptz`；JSON 一律 `jsonb`。
-- **可编辑实体**统一携带：`version`（乐观锁：更新校验 version，不匹配返回 409，不默认 Last-Write-Wins）、`updated_at`、`deleted_at`（软删，可空）。
-- **纯追加型事实表例外**（`learning_events` / `learning_evidence` / `chat_messages` / `llm_call_logs`）：不做软删与 version，只追加。
+**通用列规范（数据模型 v2.0 §2，SQLite 全表适用）**：
+- 表名 `snake_case` **复数、无前缀**（`records`、`record_files`）；主键 `id TEXT`（应用层生成 uuid4 字符串）；时间列 TEXT（ISO8601 UTC）；JSON 一律 TEXT（JSON 字符串）；数组 TEXT（JSON 数组字符串）。
+- **无 `user_id` 列、无 RLS**（本地单用户库）；sidecar 仅监听 127.0.0.1 且为唯一写者。
+- **可编辑实体**统一携带：`updated_at`、`deleted_at`（软删，可空）。
+- **纯追加型事实表例外**（`learning_events` / `learning_evidence` / `chat_messages` / `llm_call_logs`）：不做软删，只追加。
 - 幂等事实表（`learning_events`）必带 `idempotency_key` **UNIQUE**。
-- 用户私有表必有 `user_id`（带索引）。
+- **无 `version` 乐观锁列**（单写者无并发冲突，原 409/Last-Write-Wins 问题随同步概念整体删除）；`ai_summaries.version_no` / `transcripts.source_version` 是业务版本号，语义不同，保留。
 
 ```python
 # models/base.py
@@ -86,63 +87,80 @@ from sqlalchemy.orm import DeclarativeBase
 class Base(DeclarativeBase):
     pass
 
+# models/base.py —— 时间列统一类型：钉死 SQLite 落盘格式为 ISO8601 UTC 文本
+# （方言默认是空格分隔无时区，与数据模型 v2.0 §2 "TEXT(ISO8601 UTC)" 不符）
+from sqlalchemy.dialects.sqlite import DATETIME as SQLITE_DATETIME
+
+ISODateTime = SQLITE_DATETIME(
+    storage_format="%(year)04d-%(month)02d-%(day)02dT%(hour)02d:%(minute)02d:%(second)02d.%(microsecond)06dZ",
+    regexp=r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?Z",
+)
+
 # models/record.py
-from sqlalchemy import String, text
-from sqlalchemy.dialects.postgresql import UUID
+import uuid
+from datetime import UTC, datetime
+from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column
+
+def utcnow() -> datetime:
+    return datetime.now(UTC)          # 一律 aware UTC；禁 naive datetime 入库
 
 class Record(Base):
     __tablename__ = "records"          # ✅ snake_case 复数、无前缀
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True,
-                                          default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True,
+                                    default=lambda: str(uuid.uuid4()))
     title: Mapped[str] = mapped_column(String(200))
-    status: Mapped[str] = mapped_column(default="CREATED")
-    version: Mapped[int] = mapped_column(default=1)             # 乐观锁
-    created_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
-    updated_at: Mapped[datetime] = mapped_column(server_default=text("now()"))
-    deleted_at: Mapped[datetime | None] = mapped_column(default=None)   # 软删
+    status: Mapped[str] = mapped_column(String(30), default="DRAFT")  # 受控枚举，禁裸字符串
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow, onupdate=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)   # 软删
 ```
 
 ```python
 # ❌ 1.x 旧风格（Column(...)），项目内禁止新增
 class OldRecord(Base):
     __tablename__ = "t_record"        # ❌ t_ 前缀（数据模型明确无前缀）
-    id = Column(UUID, primary_key=True)
+    id = Column(String, primary_key=True)
 ```
 
 规则：
-- **迁移不走 Alembic**：schema 由 `supabase/migrations/*.sql` 管理（Supabase CLI 单一事实源），SQLAlchemy 模型手写维护、与迁移保持同步。改表 = 新增一个 SQL 迁移文件 + 手改模型。
+- **迁移不走 Alembic**：schema 由 `backend/migrations/*.sql` 管理（`PRAGMA user_version` 编号推进，唯一权威），SQLAlchemy 模型手写维护、与迁移保持同步。改表 = 新增一个编号 SQL 迁移文件 + 手改模型。
+- **时间列一律 `ISODateTime`**（ORM 映射用 `Mapped[datetime]` 保持人机工学，落盘格式钉死 ISO8601 UTC——见 base.py 片段）；写入只允许 aware UTC。
 
 ### 2.2 引擎与会话
 
 ```python
-# core/db.py
+# app/db/engine.py
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-engine = create_async_engine(
-    settings.database_url,          # postgresql+psycopg://...（psycopg 3，全项目唯一 PG 驱动）
-    pool_size=10,
-    max_overflow=5,
-)
+engine = create_async_engine(f"sqlite+aiosqlite:///{data_dir / 'knowrealm.db'}")
+
+@event.listens_for(engine.sync_engine, "connect")
+def _sqlite_pragma(dbapi_conn, _):
+    cur = dbapi_conn.cursor()
+    cur.execute("PRAGMA foreign_keys=ON")     # 外键约束，每连接生效
+    cur.execute("PRAGMA journal_mode=WAL")    # 数据库持久属性
+    cur.close()
+
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
 ```
 
-- 连接串 scheme 用 `postgresql+psycopg://`（不是 `postgresql://`（默认驱动）也不是 `+psycopg2://`）。
-- API 进程用 Supabase **transaction 池化端口**（6543）；procrastinate worker 用 **session 池化或 direct 端口（5432）**——`LISTEN/NOTIFY` 不被事务池化支持。
+- 连接串 scheme 用 `sqlite+aiosqlite:///`（不是同步的 `sqlite:///`）。
+- **不调池参数**（`pool_size`/`max_overflow` 是 PG 时代的调优项）——aiosqlite 方言默认连接管理即可，单用户单写者无并发压力。
 - `expire_on_commit=False`：避免 commit 后再访问属性触发多余的同步刷新。
+- **唯一写者**：API 与 worker 同进程组共用这一份 engine/SessionLocal；`knowrealm.db` 的写连接只存在于 sidecar 进程内。
 
 ### 2.3 查询：2.0 select 风格
 
 ```python
 from sqlalchemy import select
 
-async def get_record(session: AsyncSession, record_id: UUID, user_id: UUID) -> Record | None:
+async def get_record(session: AsyncSession, record_id: str) -> Record | None:
     stmt = (
         select(Record)
         .where(Record.id == record_id)
-        .where(Record.user_id == user_id)       # ✅ 每个 WHERE 都带 user_id
         .where(Record.deleted_at.is_(None))     # ✅ 可软删表必须过滤 deleted_at
     )
     return (await session.execute(stmt)).scalar_one_or_none()
@@ -160,6 +178,7 @@ session.query(Record).filter_by(id=record_id).first()
 - **事务边界在 service 层**：一个业务动作一个事务。
 - 会话随请求创建（FastAPI 依赖 `async with SessionLocal() as session: yield session`），用完即关，**禁止全局共享会话、禁止把会话存到对象属性里长期持有**。
 - 提交失败要让异常抛出去，不要吞掉再返回半成功状态。
+- **写事务短小**：WAL 允许一写多读，但并发写事务会 busy——LLM 调用、ffmpeg/ASR 等待等长活不持有写事务，先算后写。
 
 ```python
 # services/record_service.py —— 事务边界示例
@@ -169,56 +188,50 @@ async def create_with_todo(self, session: AsyncSession, ...):
         session.add_all(todos)
 ```
 
-## 3. Supabase
+## 3. 数据目录与迁移
 
-### 3.1 三个角色分清
+### 3.1 数据目录（唯一事实源）
 
-| 能力 | 客户端 | 谁能用 |
-|---|---|---|
-| 业务数据读写 | SQLAlchemy（直连 Postgres，**最小权限数据库角色**） | 后端 |
-| Storage 上传/签名、Admin API | `supabase-py`（**service role key**） | 仅后端必要管理操作（`core/` 封装） |
-| Auth 会话、直传、Realtime | `@supabase/supabase-js` | 仅桌面端前端 |
+布局（数据模型 v2.0 §5）：
 
-```python
-# 业务连接用最小权限角色（RLS 对其生效，双保险第一道在角色、第二道在代码）
-engine = create_async_engine(settings.database_url)   # 连接串内嵌最小权限角色凭证
-
-# service role 是最高权限，仅限 Storage/Admin 等必要管理操作，不下发前端、不进日志
-from supabase import create_client
-supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
-signed = supabase.storage.from_("recordings").create_signed_url(path, expires_in=3600)
+```
+%USERPROFILE%\KnowRealm\           ← 首启选择，可换；启动时检测同步盘接管
+├── knowrealm.db                   # 全部业务表（WAL）+ vec0 向量表
+├── langgraph.db                   # LangGraph Checkpoint（非业务事实，langchain-langgraph.md §7）
+├── files/                         # 存档原件（明文）：导入原件 + 转码后 ogg-opus
+├── cache/                         # 可清可重建：转码产物、staging/ 录音分片（转码成功即删）
+├── exports/   backups/            # 导出 zip / 启动滚动备份（每日 ×7）
+└── config/                        # settings.json + providers.json（明文密钥）
 ```
 
-### 3.2 数据隔离双保险
+规则：
+- **单写者**（红线 #35 v2.0）：业务数据的读写只经 sidecar API；UI 不直连数据库、不直写数据目录（录音分片落盘是唯一例外，见 desktop-tauri.md §5）。
+- **files/ 只进原件**：导入文件原样保留（可逆性优先）；可重建的中间产物进 `cache/`，不占 `files/`。
+- **向量与业务数据同库**：sqlite-vec vec0 表随 db 文件一体备份/导出/迁移——不引入独立向量库（Qdrant 等）。
+- 备份与全量导出用 `VACUUM INTO` 一致性快照原语；导出 zip 默认不含 `providers.json`。
 
-1. **最小权限角色 + 代码过滤（第一道）**：后端业务连接用最小权限数据库角色，且**每条查询/写入必须显式带 `user_id`**——service 层数据访问方法签名强制把 `user_id` 作为参数传入，缺失即 bug。
-2. **RLS（库层兜底）**：所有业务表开 RLS，策略 `auth.uid() = user_id`；迁移文件里逐表写明。service_role 绕过 RLS，故不能依赖 RLS 替代代码过滤。
-3. pgvector 检索同理且更严：**`user_id` + `deleted_at IS NULL` 必带，`course_id` 视挂载范围**（@课程带、@全部资料不带，v1.5 裁决 #24——`semantic_embeddings.course_id` 可空，Inbox 内容照常入索引）。详见 langchain-langgraph.md §10。
+### 3.2 迁移纪律（PRAGMA user_version）
 
-### 3.3 迁移纪律
+- 任何 schema 变更（表/列/索引/vec0 虚拟表）**只能**新增 `backend/migrations/NNNN_name.sql` 编号文件（四位递增），禁止手改运行中的库不落文件。
+- 迁移文件只写 DDL；`PRAGMA user_version` 由执行器（`app/db/migrations.py`）在脚本执行成功后统一推进——应用启动时比对编号、按序执行未应用脚本。
+- 迁移编号即版本：**不允许修改/删除已发布的迁移文件**，纠错 = 新增一个迁移。
 
-- 任何 schema 变更（表/列/索引/RLS/pgvector/Storage 策略）**只能**新增 `supabase/migrations/<timestamp>_xxx.sql` 文件，禁止在控制台手改后不落文件。
-- 本地 `supabase db reset` 可重放全部迁移——迁移文件必须幂等可重放（用 `create table if not exists` / `alter ... if exists` 等）。
+## 4. SQLite 纪律（生产主库，限制即生产约束）
 
-## 4. SQLite（边界最容易被突破，从严）
+SQLite 不再是"测试替身"而是生产本体，其方言限制直接决定模型写法：
 
-SQLite 在本项目只有三个合法用途，**永远不做云端主库**：
-
-| 用途 | 方式 |
+| 事项 | 约定 |
 |---|---|
-| 后端单测 | `sqlite+aiosqlite://` 内存库（纯逻辑测试；pgvector/RLS 相关测试必须用真 Postgres） |
-| LangGraph 本地开发 | `SqliteSaver`（生产换 AsyncPostgresSaver） |
-| 桌面端缓存 | tauri-plugin-sql（读缓存 + 录音暂存队列；**业务写一律在线走 API**） |
+| PG 专有类型全禁 | `UUID`→`String(36)`、`JSONB`→`sa.JSON`（TEXT 存储）、`vector`→vec0 虚拟表（不经 ORM 模型表达，检索走封装层） |
+| 时间 | 应用层统一 aware UTC（`datetime.now(UTC)`）生成；ISO8601 文本可按字典序比较排序 |
+| 布尔 | `Mapped[bool]` + `Boolean`（自动映射 INTEGER 0/1） |
+| 测试 | 临时库重放迁移链建表——生产与测试同形态，无 PG/SQLite 双库差异问题 |
 
 ```python
-# 测试夹具：SQLite 内存库
-engine = create_async_engine("sqlite+aiosqlite://")
-
-async with engine.begin() as conn:
-    await conn.run_sync(Base.metadata.create_all)   # 每个测试全新 schema
+# 测试夹具：临时库 + 迁移链（与生产同一路径建表，不用 create_all 防模型与 SQL 漂移）
+engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'test.db'}")
+await run_migrations(engine)        # app/db/migrations.py 的执行器，逐版本验证
 ```
-
-注意差异：SQLite 不支持 `UUID/JSONB/vector` 等 PG 专有类型——**测试模型与生产模型共用时，PG 专有类型须用 `sa.TypeDecorator` 或 `with_variant`**，不要为通过测试弱化生产模型定义。
 
 ## 5. 反模式速查
 
@@ -227,14 +240,13 @@ async with engine.begin() as conn:
 | Pydantic v1 写法（`class Config` / `parse_obj` / `@validator`） | `ConfigDict` / `model_validate` / `@field_validator` |
 | ORM 模型直接当 API 响应 | `schemas/` 独立模型 + `from_attributes` |
 | `Column(...)` 旧式模型、`session.query()` | `Mapped[]/mapped_column`、`select()` |
-| `postgresql://`（psycopg2）连接串 | `postgresql+psycopg://`（psycopg 3） |
-| Alembic 迁移 | `supabase/migrations/*.sql`（Supabase CLI） |
+| Alembic 迁移 | `backend/migrations/*.sql` + `PRAGMA user_version` |
 | 可软删表查询不过滤 `deleted_at` | 查询必带 `deleted_at IS NULL`（Base 层统一注入） |
-| 控制台手改 schema 不落迁移文件 | 一律新增 SQL 迁移文件 |
-| 业务连接用 service role / 查询不带 `user_id` | 最小权限角色 + service 方法签名强制传入 |
-| 覆盖式更新（Last-Write-Wins） | 校验 `version`，冲突返回 409 |
-| 追加型事实表（events/evidence/messages/logs）加软删或 version | 只追加，不可变 |
+| 手改 schema 不落迁移文件 | 一律新增编号 SQL 迁移文件 |
+| 引入 `user_id` 列 / RLS / `version` 乐观锁 | 本地单用户单写者，无此概念（数据模型 v2.0 §2） |
+| sidecar 之外任何进程直连写 knowrealm.db | 唯一写者 = sidecar，一切经 localhost API |
+| 长活（LLM/ffmpeg/ASR 等待）持有写事务 | 先算后写，写事务短小 |
+| 追加型事实表（events/evidence/messages/logs）加软删 | 只追加，不可变 |
 | 全局共享 / 长持有 AsyncSession | 请求级会话，`async with` 管理 |
-| service role key 出现在前端/日志 | 仅后端环境变量，仅管理操作 |
-| SQLite 存业务事实（做主库） | 云端事实一律进 Supabase Postgres |
-| 为 SQLite 测试弱化 PG 类型定义 | `TypeDecorator` / `with_variant` |
+| 独立向量库（Qdrant/Neo4j）存向量 | sqlite-vec 随 knowrealm.db 一体 |
+| 用 `create_all` 建生产/测试 schema | 迁移链重放（模型与 SQL 不漂移） |
