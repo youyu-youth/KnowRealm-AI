@@ -1,0 +1,412 @@
+{
+  "components": {
+    "schemas": {
+      "CourseCreate": {
+        "properties": {
+          "course_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选课程类型"
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningDepth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "职业或兴趣学习深度"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选课程说明",
+            "title": "Description"
+          },
+          "education_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EducationStage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "学业教育阶段"
+          },
+          "learning_context": {
+            "$ref": "#/components/schemas/LearningContext",
+            "description": "课程学习场景"
+          },
+          "name": {
+            "description": "课程名称",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "learning_context"
+        ],
+        "title": "CourseCreate",
+        "type": "object"
+      },
+      "CourseOut": {
+        "properties": {
+          "course_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningDepth"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "education_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EducationStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "learning_context": {
+            "$ref": "#/components/schemas/LearningContext"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "learning_context",
+          "education_stage",
+          "depth",
+          "course_type",
+          "description",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CourseOut",
+        "type": "object"
+      },
+      "CourseType": {
+        "enum": [
+          "MAJOR",
+          "GENERAL",
+          "ELECTIVE"
+        ],
+        "title": "CourseType",
+        "type": "string"
+      },
+      "EducationStage": {
+        "enum": [
+          "MIDDLE_SCHOOL",
+          "HIGH_SCHOOL",
+          "UNDERGRADUATE",
+          "GRADUATE",
+          "DOCTORAL"
+        ],
+        "title": "EducationStage",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LearningContext": {
+        "enum": [
+          "SCHOOL",
+          "CAREER",
+          "INTEREST"
+        ],
+        "title": "LearningContext",
+        "type": "string"
+      },
+      "LearningDepth": {
+        "enum": [
+          "BEGINNER",
+          "INTERMEDIATE",
+          "ADVANCED"
+        ],
+        "title": "LearningDepth",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "KnowRealm API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/courses": {
+      "get": {
+        "operationId": "list_courses_api_courses_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CourseOut"
+                  },
+                  "title": "Response List Courses Api Courses Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Courses",
+        "tags": [
+          "courses"
+        ]
+      },
+      "post": {
+        "operationId": "create_course_api_courses_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Course",
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "health_api_health_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Api Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Health"
+      }
+    }
+  }
+}

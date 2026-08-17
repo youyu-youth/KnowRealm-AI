@@ -1,0 +1,21 @@
+{
+  "name": "@knowrealm/api-types",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "types": "src/schema.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/schema.d.ts"
+    }
+  },
+  "scripts": {
+    "schema:generate": "uv --directory ../../backend run python -m scripts.export_openapi ../packages/api-types/openapi.json",
+    "schema:check": "uv --directory ../../backend run python -m scripts.export_openapi --check ../packages/api-types/openapi.json",
+    "generate": "pnpm run schema:generate && openapi-typescript openapi.json -o src/schema.d.ts",
+    "check": "pnpm run schema:check && openapi-typescript openapi.json -o src/schema.d.ts --check"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0"
+  }
+}
