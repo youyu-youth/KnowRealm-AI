@@ -1,8 +1,8 @@
 use std::error::Error;
+use std::ffi::OsString;
 use std::io;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -10,9 +10,12 @@ use std::time::{Duration, Instant};
 use getrandom::fill;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_shell::{ShellExt, process::CommandChild};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+#[cfg(target_os = "windows")]
+use std::process::{Command, Stdio};
 
 const LOOPBACK: &str = "127.0.0.1";
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -26,7 +29,7 @@ pub struct SidecarConfig {
 
 pub struct SidecarState {
     config: SidecarConfig,
-    child: Mutex<Child>,
+    child: Mutex<Option<CommandChild>>,
 }
 
 pub fn allocate_loopback_port() -> io::Result<u16> {
@@ -47,51 +50,46 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
     let token = launch_token()?;
     let data_dir = app.path().home_dir()?.join("KnowRealm");
     let (program, working_dir) = sidecar_program()?;
-    let mut command = Command::new(program);
-    command
+    let args = [
+        OsString::from("-m"),
+        OsString::from("app.server"),
+        OsString::from("--port"),
+        OsString::from(port.to_string()),
+        OsString::from("--token"),
+        OsString::from(&token),
+        OsString::from("--data-dir"),
+        data_dir.into_os_string(),
+    ];
+    let (mut events, child) = app
+        .shell()
+        .command(program)
         .current_dir(working_dir)
-        .args([
-            "-m",
-            "app.server",
-            "--port",
-            &port.to_string(),
-            "--token",
-            &token,
-            "--data-dir",
-        ])
-        .arg(data_dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    #[cfg(target_os = "windows")]
-    command.creation_flags(0x0800_0000);
+        .args(args)
+        .spawn()?;
+    tauri::async_runtime::spawn(async move { while events.recv().await.is_some() {} });
 
-    let mut child = command.spawn()?;
-    wait_until_ready(&mut child, port)?;
+    if let Err(error) = wait_until_ready(port) {
+        stop_process(child);
+        return Err(Box::new(error));
+    }
     Ok(SidecarState {
         config: SidecarConfig {
             base_url: format!("http://{LOOPBACK}:{port}"),
             token,
         },
-        child: Mutex::new(child),
+        child: Mutex::new(Some(child)),
     })
 }
 
-fn wait_until_ready(child: &mut Child, port: u16) -> io::Result<()> {
+fn wait_until_ready(port: u16) -> io::Result<()> {
     let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     while Instant::now() < deadline {
-        if let Some(status) = child.try_wait()? {
-            return Err(io::Error::other(format!(
-                "sidecar exited before startup: {status}"
-            )));
-        }
         if TcpStream::connect_timeout(&address.into(), Duration::from_millis(100)).is_ok() {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(50));
     }
-    stop_process(child);
     Err(io::Error::new(
         io::ErrorKind::TimedOut,
         "sidecar startup timed out",
@@ -130,15 +128,17 @@ pub fn get_sidecar_config(state: State<'_, SidecarState>) -> Result<SidecarConfi
 
 impl SidecarState {
     pub fn stop(&self) {
-        if let Ok(mut child) = self.child.lock() {
-            stop_process(&mut child);
+        if let Ok(mut child) = self.child.lock()
+            && let Some(child) = child.take()
+        {
+            stop_process(child);
         }
     }
 }
 
 #[cfg(target_os = "windows")]
-fn stop_process(child: &mut Child) {
-    let pid = child.id().to_string();
+fn stop_process(child: CommandChild) {
+    let pid = child.pid().to_string();
     let mut command = Command::new("taskkill");
     command
         .args(["/PID", &pid, "/T", "/F"])
@@ -147,13 +147,12 @@ fn stop_process(child: &mut Child) {
         .stderr(Stdio::null())
         .creation_flags(0x0800_0000);
     let _ = command.status();
-    let _ = child.wait();
+    let _ = child.kill();
 }
 
 #[cfg(not(target_os = "windows"))]
-fn stop_process(child: &mut Child) {
+fn stop_process(child: CommandChild) {
     let _ = child.kill();
-    let _ = child.wait();
 }
 
 #[cfg(test)]

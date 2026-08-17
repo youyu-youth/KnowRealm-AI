@@ -12,7 +12,10 @@ from sqlalchemy.pool import ConnectionPoolEntry
 
 
 def create_database(db_path: Path) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
-    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{db_path}",
+        hide_parameters=True,
+    )
 
     @event.listens_for(engine.sync_engine, "connect")
     def set_sqlite_pragmas(  # pyright: ignore[reportUnusedFunction]

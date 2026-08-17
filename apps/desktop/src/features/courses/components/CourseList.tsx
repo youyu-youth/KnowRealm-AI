@@ -30,7 +30,7 @@ export function CourseList({ courses }: CourseListProps) {
         return (
           <li
             key={course.id}
-            className="border-border flex min-h-12 items-center gap-6 border-b py-2 first:border-t"
+            className="border-border flex min-h-12 items-center gap-6 border-b first:border-t"
           >
             <div className="min-w-0 flex-1">
               <p

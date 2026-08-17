@@ -18,4 +18,13 @@ def setup_logging() -> None:
     logging.basicConfig(handlers=[handler], level=0, force=True)
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "sqlalchemy.engine"):
         logging.getLogger(name).handlers = [handler]
-    logger.configure(handlers=[{"sink": sys.stderr, "level": "INFO"}])
+    logger.configure(
+        handlers=[
+            {
+                "sink": sys.stderr,
+                "level": "INFO",
+                "backtrace": False,
+                "diagnose": False,
+            }
+        ]
+    )
