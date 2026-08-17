@@ -11,15 +11,6 @@ export class ApiError extends Error {
 
 function formatApiDetail(detail: unknown): string {
   if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    return detail
-      .flatMap((item) =>
-        typeof item === "object" && item !== null && "msg" in item
-          ? [String(item.msg)]
-          : [],
-      )
-      .join("；");
-  }
   return "";
 }
 
