@@ -1,0 +1,45 @@
+{
+  "app": {
+    "name": "KnowRealm",
+    "tagline": "个人学习工作台"
+  },
+  "nav": {
+    "label": "工作区导航",
+    "today": "今日",
+    "inbox": "收件箱",
+    "spaces": "知识空间",
+    "chat": "AI 对话",
+    "library": "资产库",
+    "profile": "学习画像",
+    "unavailable": "未接入",
+    "unavailableLabel": "{{label}}（未接入）"
+  },
+  "capture": {
+    "label": "快速捕获",
+    "note": "新建速记",
+    "import": "导入资料",
+    "record": "开始录音"
+  },
+  "today": {
+    "title": "今日",
+    "description": "从真实学习进度继续，而不是从示例任务开始。",
+    "emptyTitle": "今天没有待处理事项",
+    "emptyDescription": "当学习记录进入处理或确认阶段时，它们会出现在这里。"
+  },
+  "spaces": {
+    "title": "知识空间",
+    "description": "课程是唯一的知识容器，用来组织学习记录与后续学习资产。",
+    "emptyTitle": "还没有知识空间",
+    "emptyDescription": "首门课程的真实创建与持久化将在下一张实现票接入。",
+    "create": "新建知识空间"
+  },
+  "route": {
+    "loading": "正在打开工作区",
+    "errorTitle": "工作区暂时无法打开",
+    "errorDescription": "请重试，或先返回今日。",
+    "retry": "重试",
+    "notFoundTitle": "页面不存在",
+    "notFoundDescription": "这个地址没有对应的工作区。",
+    "backToday": "返回今日"
+  }
+}

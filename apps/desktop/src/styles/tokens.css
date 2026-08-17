@@ -1,0 +1,72 @@
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: "Noto Sans SC Variable", "Geist Variable", sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-canvas: var(--canvas);
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-strong: var(--surface-strong);
+  --color-ink: var(--ink);
+  --color-ink-strong: var(--ink-strong);
+  --color-focus: var(--focus);
+  --color-learning: var(--learning);
+  --color-learning-soft: var(--learning-soft);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --spacing-sidebar: 14rem;
+  --spacing-topbar: 4rem;
+  --spacing-content: 1.75rem;
+  --container-reading: 70ch;
+  --container-workbench: 92.5rem;
+  --breakpoint-compact: 68.75rem;
+
+  --text-headline: 1.625rem;
+  --text-headline--line-height: 1.28;
+  --text-headline--letter-spacing: -0.02em;
+  --text-section: 0.9375rem;
+  --text-section--line-height: 1.4;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.55;
+  --text-label: 0.75rem;
+  --text-label--line-height: 1.4;
+
+  --font-weight-headline: 650;
+  --font-weight-section: 600;
+  --font-weight-body: 450;
+  --font-weight-label: 520;
+
+  --radius-xs: 0.1875rem;
+  --radius-sm: 0.3125rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.625rem;
+  --radius-3xl: 0.625rem;
+  --radius-4xl: 0.625rem;
+}
