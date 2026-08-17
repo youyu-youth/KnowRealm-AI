@@ -30,8 +30,54 @@
     "title": "知识空间",
     "description": "课程是唯一的知识容器，用来组织学习记录与后续学习资产。",
     "emptyTitle": "还没有知识空间",
-    "emptyDescription": "首门课程的真实创建与持久化将在下一张实现票接入。",
-    "create": "新建知识空间"
+    "emptyDescription": "创建首门课程，为之后的学习记录设定清晰的场景与深度。",
+    "create": "新建知识空间",
+    "createFirst": "创建第一门课程",
+    "loading": "正在读取本地课程",
+    "errorTitle": "课程暂时无法读取",
+    "errorDescription": "本地服务可能仍在启动，请稍后重试。",
+    "retry": "重新读取",
+    "listLabel": "课程列表",
+    "updatedAt": "更新于 {{date}}",
+    "learningContext": {
+      "SCHOOL": "学业学习",
+      "CAREER": "职业技能",
+      "INTEREST": "兴趣自学"
+    },
+    "educationStage": {
+      "MIDDLE_SCHOOL": "初中",
+      "HIGH_SCHOOL": "高中",
+      "UNDERGRADUATE": "本科",
+      "GRADUATE": "硕士",
+      "DOCTORAL": "博士"
+    },
+    "depth": {
+      "BEGINNER": "入门",
+      "INTERMEDIATE": "进阶",
+      "ADVANCED": "深入"
+    },
+    "courseType": {
+      "MAJOR": "专业课",
+      "GENERAL": "通识课",
+      "ELECTIVE": "选修课"
+    },
+    "form": {
+      "title": "创建课程",
+      "description": "先确定这门课程的学习场景，后续 AI 输出会沿用这里的深度设定。",
+      "name": "课程名称",
+      "learningContext": "学习场景",
+      "learningContextHint": "每门课程独立设置，不会改变你的个人角色。",
+      "educationStage": "教育阶段",
+      "educationStagePlaceholder": "选择教育阶段",
+      "depth": "学习深度",
+      "depthPlaceholder": "选择学习深度",
+      "courseType": "课程类型（可选）",
+      "courseTypeNone": "暂不设置",
+      "courseDescription": "课程说明（可选）",
+      "cancel": "取消",
+      "submit": "创建课程",
+      "saving": "正在创建课程"
+    }
   },
   "route": {
     "loading": "正在打开工作区",
