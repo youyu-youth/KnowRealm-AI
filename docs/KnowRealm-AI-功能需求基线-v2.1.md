@@ -9,6 +9,7 @@
 > - 存储范式决策：`docs/adr/0001-local-first-storage.md`
 > **项目定位**：开源、面向个人使用、**本地优先**。所有设计先过两问：**数据是否落在用户可见、可整体搬移的本地目录？这项能力是否要求用户多装任何东西（容器/账号/付费云服务）？**
 > **编写日期**：2026-08-17
+> **实施顺序澄清（2026-08-17）**：桌面工程壳已初始化；开发从可见页面与真实业务纵切开始，不设独立 S0 或全量 Phase 0 前置阶段。录音 POC 随录音功能实施，sidecar 打包冒烟随首次可分发版本实施。
 > **变更记录**：v2.1（2026-08-17）**后端通信形态定稿（决策 #56）**——维持 FastAPI sidecar（localhost HTTP+SSE；三案对比否决自造 Rust/IPC 双协议层与全 Rust 重写，论证入技术栈 v4 §二）；**localhost 加固升为 Phase 0 硬性项**（随机端口 + 壳注入启动令牌 + 仅绑 127.0.0.1）；§11 新增 **Q15（分享形态与登录必要性——搁置待决，未拍板）**。
 > **变更记录**：v2.0（2026-08-17）**存储范式转向：本地优先（决策 #55，ADR-0001）**——本地磁盘成为唯一业务事实源（数据目录：SQLite + 原始文件），后端改为 Tauri sidecar（PyInstaller 随 `.msi` 分发，UI 走 localhost）；LLM 开放自选任意 OpenAI 兼容端点（DashScope 默认预设，供应商卡交互），Embedding V1 固定，ASR 腾讯不变；登录/认证/邮件整体作废，首启改为"选数据目录 → 配供应商 key → 角色卡"三步；多设备降级为全量导出→导入；V1 提供全量导出（Wave B），P2 可选快照备份（WebDAV/S3 单向推送），**双向同步永不做**；Supabase 全家桶（Auth/Storage/Realtime/RLS/pgvector/托管）除名；状态机 9 态→**8 态**（UPLOADING 消解）；pgvector→sqlite-vec、procrastinate→自研 SQLite 队列；数据目录布局与启动滚动备份定稿；受影响决策（#1/#3/#8/#10/#11/#16/#17/#25/#27/#28/#32/#34/#35/#37/#44/#49/#50/#51/#54）已按新范式改写。v1.1~v1.10 变更史见 git（文件 v1.10 于本版删除）。
 
@@ -281,8 +282,7 @@ DRAFT → CONTENT_PROCESSING（本地转码 + ASR 提交/轮询 或 文档解析
 
 | 阶段 | 内容 | 出口标准 |
 |------|------|---------|
-| **S0 POC（先行）** | 录音全链路（MediaRecorder→分片落盘→**本地** ffmpeg ogg-opus→ASR→带时间戳文本）；**sidecar 打包冒烟**（PyInstaller 体积/杀毒误报/冷启动时间/随壳自动拉起） | Windows 真实课堂录音跑通；打包体积与启动可接受 |
-| **Phase 0 工程基础** | Monorepo、backend/ FastAPI、SQLite 迁移体系（user_version）、数据目录解析与首启三步、**localhost 加固（随机端口 + 启动令牌，#56）**、Tauri 壳、**sidecar 打包流水线**、OpenAPI 类型生成、worker（进程内 asyncio）、日志/错误模型、CI、发布流水线（GitHub Releases `.msi` 手动分发，#47） | 首启三步→建课→列表闭环 |
+| **首个真实功能里程碑（Wave A-0）** | 工作台壳、导航、路由与真实空态；最小课程；单文件 TXT/MD/PDF 导入→Transcript→AI 总结→HITL 确认；单一 active LLM Provider；由首次消费者带入数据目录、SQLite 迁移、localhost API 加固、最小 worker 与日志 | 真实文件经本地 API 落盘并完成总结确认；错误可恢复；`SUMMARY_READY` 跨重启可继续；不以 mock 数据或静态页面冒充功能完成 |
 | **Phase 1 = MVP · Wave A（学习闭环主干）** | 课程 CRUD；录音/导入（统一转码 #31）；ASR+文档解析；Transcript（整段）；总结+HITL（长转写分级 #36）；知识点/习题/Todo/Markdown 导出；**AI 对话一级入口（自由聊天 + @记录挂载，SSE；上下文组装 #39）**；速记/粘贴捕获 + **Inbox 最小闭环**（#29/#30）；learning_events 四事件（#43） | **一节真实课堂（录音或导入）当日走通：转写 → 总结确认 → 知识点确认 → 习题作答 → 导出 .md；未归类内容可归类升级进同一闭环** |
 | **Phase 1 = MVP · Wave B（工作台完善）** | 模拟测试（简答 AI 评分 + 低置信复核标记）；复习资料；Inbox 整理增强（批量/筛选）；命令面板 Ctrl+K（LIKE 搜索，#32）；学习统计；设置完善/深色模式；空态引导卡（#42）；无 key 降级 + 健康检查面板（#38）；**全量数据导出/导入** | **本基线 §4.1~§4.6 MVP 项全量可用 + 工作台形态达成** |
 | Phase 2 学习数据基础 | Transcript/Document Segment、Source Anchor、Marker、Learning Evidence（Learning Event 已提前至 MVP，#33）、**sqlite-vec 语义检索**、**网页剪藏（正文抓取）**、**对话转学习资产**、**@全部资料全局 RAG**、**英文内容支持**、**Chat 联网搜索工具（Tavily，#53）**、**可选快照备份（WebDAV/S3，单向推送）** | AI 结论可回跳课堂原声 |
@@ -294,6 +294,16 @@ DRAFT → CONTENT_PROCESSING（本地转码 + ASR 提交/轮询 或 文档解析
 | Phase 8 可选协作 | Study Pod（仅在核心稳定后） | — |
 
 > **阶段启动门槛（#48）**：每个阶段（P2 起）开工前，先补该阶段详细设计评审再进入开发。
+
+#### 5.1.1 实施顺序与验证节奏
+
+- **页面优先不是静态页面批量铺设**：先完成应用壳、导航、路由和真实空态，再按 `桌面端 → localhost API → 数据` 纵切接通功能；未接通的入口不得伪装成功。
+- **工程基础按首次消费者拉取**：第一个持久化功能同步落数据目录与 SQLite 迁移；第一个 API 同步落实随机端口、启动令牌和仅绑定 `127.0.0.1`；第一个后台任务同步落最小 worker/`processing_jobs`；第一个 AI 功能同步落 Provider 配置、`llm_call_logs` 与 Checkpointer。CI、发布流水线和 `.msi` 不作为页面开发前置。
+- **首个实现顺序**：最小课程 → Record 工作台 → 文档导入 → AI 总结与 HITL；再扩展音频导入/ASR、录音捕获及 Wave A 其余能力。AI 总结对上游来源采用“至少一条真实来源已接通”，不要求音频与文档同时完成。
+- **首个 Provider 切片**：仅支持一个 active LLM Provider；DashScope 预设或自定义 OpenAI 兼容端点，最小字段为 `kind/api_key/base_url/model`。连接测试必须用保存的 model 做一次最小真实结构化生成，正式总结复用同一客户端。读取接口不返回原 key；空 key 更新默认保留，清除须显式操作；自定义地址仅接受不含内嵌凭据的绝对 `http/https` URL，默认校验 TLS，跨主机重定向不得携带 Authorization；前端不得直连 Provider。
+- **缺 Provider 可恢复**：Record 保持 `SUMMARY_PENDING`，页面引导配置后继续；不得新增业务状态或把可恢复缺配置写成永久失败。完整多 Provider 管理、健康面板与用量统计仍归 Wave B。
+- **验证跟随功能**：非平凡逻辑随实现留下最小可运行检查；一个较大业务闭环完成后再做集中集成与浏览器关键路径验证。sidecar 打包、冷启动、杀毒误报和新机 `.msi` 安装冒烟只在首次可分发里程碑执行。
+- **完成口径**：Wave A-0 是 tracer bullet，不等于 plan 05/06 全部完成；DOCX/PPTX、多文件混合、超长文档 map-reduce 和完整黄金样本在后续补齐后，才可宣称对应 plan 通过。
 
 ### 5.2 明确不做 / 暂缓清单
 
@@ -391,7 +401,7 @@ P2 快照备份：可选配置 WebDAV/S3 → 定期单向推送导出 zip；永�
 
 | 指标 | 目标 |
 |------|------|
-| 普通接口 | P95 ≤ **300ms**（localhost 无网络 RTT；S0 实测回填定值） |
+| 普通接口 | P95 ≤ **300ms**（localhost 无网络 RTT；首个真实闭环实测回填定值） |
 | AI Chat 首个流式事件 | ≤ 3s |
 | Summary 任务提交 | **提交后 2s 内返回 job_id 且 processing_jobs 可查询**；生成 90s 超时标记 FAILED 可重试 |
 | Desktop 首屏 | ≤ 2s（本地渲染，含 sidecar 冷启动） |
@@ -408,6 +418,7 @@ P2 快照备份：可选配置 WebDAV/S3 → 定期单向推送导出 zip；永�
 
 ### 8.4 测试策略
 
+- 测试不是独立的开工阶段：最小检查随功能实现；较大闭环完成后集中跑集成、浏览器关键路径与回归；`.msi` 安装验证仅在首次可分发里程碑执行
 - 后端 pytest：Event 幂等、Evidence Builder、Mastery 唯一写入口、Misconception 状态机、删除重算、**迁移升级链（user_version 逐版本）**
 - 前端 Vitest+RTL：记录创建、录音草稿恢复、处理失败重试、Summary HITL、Chat SSE、深色模式；Playwright 仅关键路径冒烟（可选）
 - **AI 评测集（按阶段拆分，#46）**：MVP 仅建**总结质量黄金样本（20 条真实课堂转写 + 人工标准总结）+ 人工评审 checklist**（含长转写回归样本）；习题 Groundedness 样本随 Wave B；引用准确性/Concept 抽取精度/简答评分一致性/误报率/推荐接受率随对应阶段补建
@@ -489,7 +500,7 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 24 | 个人知识库能力 | `semantic_embeddings.course_id` 可空（Inbox 内容入向量索引）；@全部资料全局 RAG（P2）；课程=唯一知识容器 | 泛化用户群的资料常不属任何"课"；个人量级全局检索无压力 |
 | 25 | 部署与外部依赖（v2.0 改写） | **零部署**：安装 `.msi` 即用；外部依赖 = DashScope（或自选 OpenAI 兼容 LLM）+ 腾讯云 ASR（+P2 可选 Tavily / WebDAV·S3）；各自备 key、可缺省降级（#38） | 作者本人是第一用户，开源供愿意自备密钥的同类人；无容器/账号/付费云服务 |
 | 26 | MVP 交付结构 | **Wave A / Wave B 双波次**，各自设验收线 | 单人项目分波降风险 |
-| 27 | 性能指标（v2.0 改写） | 普通接口 P95 ≤300ms（localhost，S0 回填）；Chat 首 token ≤3s；Summary 硬条件（2s 返回 job_id；90s 超时 FAILED） | 本地通信无网络变量，指标可硬 |
+| 27 | 性能指标（v2.0 改写） | 普通接口 P95 ≤300ms（localhost，首个真实闭环回填）；Chat 首 token ≤3s；Summary 硬条件（2s 返回 job_id；90s 超时 FAILED） | 本地通信无网络变量，指标可硬 |
 | 28 | 向量检索红线（v2.0 改写） | **恒定强制前置过滤 `deleted_at IS NULL`；course_id/record_id 仅范围检索附加；禁止裸向量查询** | user_id 列已删（单用户库）；软删过滤不变 |
 | 29 | 未归类内容 AI 处理 | **未选课不自动消费 token**；**升级强制先归类课程** | AI 上下文硬依赖；省 token |
 | 30 | 录音交互流程 | 开始前最小对话框；结束自动进**本地处理队列**；未选课录音 ASR 照做、停 SUMMARY_PENDING | ASR 是事实记录与课程无关 |
@@ -500,7 +511,7 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 35 | 前后端边界（v2.0 改写） | **UI 仅经 localhost sidecar API**；不直读/直写数据目录与数据库文件（单写者=sidecar） | 收敛写入口，保住"一个事实源一份写入逻辑" |
 | 36 | 长转写总结 | ≤3 万字单次生成；超过分块 map-reduce；**禁止静默截断** | 长上下文注意力衰减；截断违背溯源精神 |
 | 37 | 邮箱确认（v2.0 改写） | **作废**（无注册流程） | #55 衍生 |
-| 38 | 无 key 降级 | **功能级降级 + 启动健康检查面板**（对应入口置灰并提示缺失项）；不做月度 token 熔断 | 自部署用户未必配齐 key；熔断造成更坏体验 |
+| 38 | 无 key 降级 | **功能级降级 + 启动健康检查面板**（对应入口置灰并提示缺失项）；首个 AI 闭环先实现就地缺配置恢复，完整健康面板在 Wave B；不做月度 token 熔断 | 自部署用户未必配齐 key；熔断造成更坏体验 |
 | 39 | Record Chat MVP 上下文 | **转写全文常驻** + 溢出按轮数递减；P2 起改摘要+检索 | MVP 无向量；细节追问必须转写在上下文 |
 | 40 | 删 Record × 对话 | **不级联删 chat**：会话保留可读、挂载标失效态 | 对话有独立价值 |
 | 41 | 软删语义 | V1 无恢复 UI、删除弹窗明示"不可恢复"；**业务行软删 30 天后异步物理清理**（与文件/向量清理同批次） | 无恢复入口的软删等价硬删且数据永久堆积 |
@@ -509,7 +520,7 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 44 | 导入上限（v2.0 改写） | **时长双限**：录音 ≤3h、导入 ≤5h（对齐 ASR 供应商上限）；**体积硬限消解**为磁盘剩余空间防呆（≥2× 预估体积） | 本地存储无上传瓶颈；时长限是 ASR 供应商约束 |
 | 45 | 英文支持边界 | **英文文本 V1 正常处理、输出中文**；P2"英文支持"仅指 ASR 英文语音 + 输出语言可选 | 程序员粘贴英文文档是 V1 主路径 |
 | 46 | AI 评测落地 | **按阶段拆分**：MVP 总结黄金样本 20 条 + 人工 checklist；其余随阶段补建 | 一次建全套既做不了也不必要 |
-| 47 | 分发与更新 | **GitHub Releases 手动 `.msi`**（v2.0 含 sidecar，体积 +150~250MB）；应用内"检查更新"仅链接跳转；Tauri updater 后置 | updater 需更新服务器与签名基建 |
+| 47 | 分发与更新 | **GitHub Releases 手动 `.msi`**（v2.0 含 sidecar，体积 +150~250MB）；打包、安装与冷启动冒烟在首次可分发里程碑执行，不阻塞此前页面与业务闭环；应用内"检查更新"仅链接跳转；Tauri updater 后置 | updater 需更新服务器与签名基建 |
 | 48 | 阶段启动门槛 | **每阶段（P2 起）启动前先补详细设计评审再开工** | 摘要级 PRD 覆盖不到实现细节 |
 | 49 | 文件路径规则（v2.0 改写） | 数据目录 `files/{record_id}/{file_id}.{ext}`（course 段不进路径）；归类课程后不迁移（归属以表字段为准） | 本地目录无需 user/course 分层；record_id 已唯一 |
 | 50 | 多设备（v2.0 改写） | **单机为主；换机 = 全量导出 → 导入**；设置漫游概念删除（单一本地配置随导出包走） | 无云端即无漫游；快照满足"非同时多设备" |
@@ -518,7 +529,7 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 53 | Agent 工具域 | **工具仅限聊天域**（红线 #11）；**Wave A Chat 以 LangGraph agent 循环实现**（检索为第一工具）；**P2 落地 web_search**：SearchProvider 抽象，默认 Tavily，预留博查/智谱；无 key 按 #38 降级 | 纯管线实现会导致 P2 加工具=重构 |
 | 54 | 终审修补包（v2.0 改写） | **登录终态部分作废（#55 取代）**；维持项：音频时长双限（见 #44 改写）；热词=课程手动列表（≤100 词，courses.hot_words）；处理中删除竞态（worker 每步写前校验 deleted_at）；多文件定序（导入先后，处理开始后不可重排）；统计入口=今日页底部卡片、AI 总结口径=ai_summaries 行数；角色卡 Wave B；~~signed URL~~ 作废 | 原 A 案登录为云端前提下的设计 |
 | 55 | **存储范式（v2.0 根决策，ADR-0001）** | **本地磁盘 = 唯一业务事实源**（数据目录：SQLite + files/，用户可见可搬移）；后端 = Tauri sidecar（PyInstaller 随 .msi，UI 走 localhost）；**LLM 自选任意 OpenAI 兼容端点**（DashScope 默认预设，供应商卡交互），Embedding V1 固定 text-embedding-v3，ASR 腾讯；云端降级为可选增强——V1 全量导出、P2 可选快照备份（WebDAV/S3 单向）、**双向同步永不做**；Supabase 全家桶除名；登录作废、首启三步；多设备=导出→导入；状态机 8 态；user_id 列全删；数据目录布局定稿（knowrealm.db/files/cache/exports/backups/config + langgraph.db）；启动滚动备份（每日×7）；导出默认不含密钥；静态加密 V1 不做 | v1.x"云端唯一事实源"源于先选 Supabase 后谈定位的顺序错误；free 档装不下（50MB 单文件 vs 3h 录音）、东京机房代理依赖、Pro $25/月、自部署须跑 docker——对"开源、个人使用"全是不符点；BYO-key 本地桌面是同类开源主流（Obsidian/思源/AnythingLLM 桌面版/Jan/Cherry Studio）；课堂录音不可再生故 P2 保留可选异地备份；决策时点代码沉没成本≈0 |
-| 56 | 后端通信形态（v2.1 定稿） | **维持 FastAPI sidecar（localhost HTTP+SSE）**；否决自造 Rust/stdio 双协议层（两套手写契约、无 OpenAPI 类型生成、SSE 自造）与全 Rust 重写（LangGraph interrupt/HITL 无 Rust 等价物=核心差异化不可迁移，PyMuPDF/LangChain 生态全弃）；**localhost 加固为 Phase 0 硬性项**：随机端口（壳分配注入）+ 一次性启动令牌（中间件校验请求头）+ 仅绑 127.0.0.1 | 本机回环 HTTP 单次调用 ~0.1–1ms，相对 LLM/ffmpeg/ASR 的秒~分钟级耗时是噪声——性能不构成区分度，区分度在契约维护：40+ 端点 OpenAPI codegen 单一事实源 + Pydantic 同源 Schema（API 请求响应与 LLM 结构化输出共用一套）+ UniApp 端未来契约复用（§1.3）；完整对比入技术栈 v4 §二 |
+| 56 | 后端通信形态（v2.1 定稿） | **维持 FastAPI sidecar（localhost HTTP+SSE）**；否决自造 Rust/stdio 双协议层（两套手写契约、无 OpenAPI 类型生成、SSE 自造）与全 Rust 重写（LangGraph interrupt/HITL 无 Rust 等价物=核心差异化不可迁移，PyMuPDF/LangChain 生态全弃）；**localhost 加固随首个 localhost API 同步落地**：随机端口（壳分配注入）+ 一次性启动令牌（中间件校验请求头）+ 仅绑 127.0.0.1，不作为页面开发前的独立阶段 | 本机回环 HTTP 单次调用 ~0.1–1ms，相对 LLM/ffmpeg/ASR 的秒~分钟级耗时是噪声——性能不构成区分度，区分度在契约维护：40+ 端点 OpenAPI codegen 单一事实源 + Pydantic 同源 Schema（API 请求响应与 LLM 结构化输出共用一套）+ UniApp 端未来契约复用（§1.3）；完整对比入技术栈 v4 §二 |
 
 ---
 
@@ -528,8 +539,8 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 
 | # | 问题 | 影响范围 | 前置条件 |
 |---|------|---------|---------|
-| Q6 | 录音 POC 结果回填：WebView2 后台节流对 MediaRecorder 定时器影响、分片策略实测、异常退出恢复、本地 ffmpeg 转码实测 | 录音方案锁定 | S0 必做，最高优先 |
-| Q14 | sidecar 打包冒烟结果回填：PyInstaller 体积/杀毒误报率/冷启动时间 | 打包与分发方案 | S0 与 Q6 同批 |
+| Q6 | 录音 POC 结果回填：WebView2 后台节流对 MediaRecorder 定时器影响、分片策略实测、异常退出恢复、本地 ffmpeg 转码实测 | 录音方案锁定 | 录音功能 plan 03 的首张实现票，不阻塞此前页面与文档闭环 |
+| Q14 | sidecar 打包冒烟结果回填：PyInstaller 体积/杀毒误报率/冷启动时间 | 打包与分发方案 | 首次可分发 `.msi` 的准入条件，不与录音 POC 捆绑 |
 | Q15 | **分享形态与登录必要性（搁置待决，2026-08-17 grilling 提出未拍板）**——候选：(i) 单文件 HTML 导出（P2，零服务零账号，文件即可分享）；(ii) GitHub Gist·Pages 发布渠道（P3，供应商卡 BYO PAT——GitHub 角色是"发布渠道"非"登录"）；(iii) 均不做（`.md` 导出已覆盖"发给同学"场景）。登录侧共识候选：桌面端**永不加应用级登录**（本地应用做 OAuth 须自造服务端；身份需求一律走单次外呼 BYO token）——**同样未拍板** | 分享/导出体系（§4.4.2）；P3 若落地发布渠道，红线 #12 白名单须增补"发布推送"通道 | 用户明确搁置；重启讨论以本行为起点 |
 
 ---
@@ -538,8 +549,8 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 
 | # | 风险 | 等级 | 缓解 |
 |---|------|------|------|
-| R1 | 录音→ASR 格式链路（webm 不被 ASR 支持；WebView2 AAC 编码不完整） | **高** | S0 POC 先行；ffmpeg ogg-opus 转码为硬约束；运行时 isTypeSupported 探测兜底 |
-| R2 | sidecar 打包（PyInstaller 体积 +150~250MB / 杀毒误报 / 冷启动时间） | **高** | S0 冒烟先行（§11-Q14）；UPX 关闭换取误报率；启动预热 |
+| R1 | 录音→ASR 格式链路（webm 不被 ASR 支持；WebView2 AAC 编码不完整） | **高** | plan 03 首票完成 POC；ffmpeg ogg-opus 转码为硬约束；运行时 isTypeSupported 探测兜底；风险不阻塞此前文档闭环 |
+| R2 | sidecar 打包（PyInstaller 体积 +150~250MB / 杀毒误报 / 冷启动时间） | **高** | 首次可分发 `.msi` 前完成冒烟（§11-Q14）；UPX 关闭换取误报率；启动预热 |
 | R3 | SQLite 单文件损坏（断电/磁盘错误） | 中 | WAL 模式；启动滚动备份 backups/（每日×7）；引导用户导出习惯 |
 | R4 | 数据目录被 OneDrive/同步盘接管（锁冲突+上传风暴） | 中 | 首启检测已知同步目录并提示改选 |
 | R5 | 3 小时长录音稳定性（系统休眠/WebView 节流/磁盘占满） | 高 | 分片落盘、防休眠、磁盘防呆、POC 验证 |
@@ -553,20 +564,24 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 
 ## 13. 验收清单（关键项）
 
-**S0 / Phase 0**
+**首个真实功能里程碑（Wave A-0）**
 
-- [ ] 录音全链路 POC（Windows）通过：MediaRecorder→分片→本地 ffmpeg ogg-opus→ASR→带时间戳文本
-- [ ] sidecar 打包冒烟通过：体积/杀毒误报/冷启动可接受（§11-Q14）
-- [ ] 数据目录落地：默认路径 + 首启选择 + 同步盘检测；SQLite WAL + `backend/migrations`（user_version）迁移体系
-- [ ] 首启三步闭环：选目录 → 配 key（可跳过降级）→ 角色卡
+- [ ] 工作台壳、导航、路由与真实空态可用；未接通入口不伪造成功
+- [ ] 最小课程创建/列表与 Record 工作区使用真实本地数据
+- [ ] 真实 TXT/MD/PDF 单文件经本地 API 落盘并生成 Transcript
+- [ ] 单一 active LLM Provider 可保存并跨重启读取；GET 仅返回掩码/已配置态，不返回原 key
+- [ ] 连接测试使用保存的 model 完成最小真实结构化生成；错误 key、错误 model、超时均可识别并重试
+- [ ] 未配置 Provider 时 Record 保持 `SUMMARY_PENDING`，配置后可继续，不丢失 Transcript
+- [ ] 真实 Transcript → 结构化总结 → 调整 → 确认；`SUMMARY_CONFIRMED` 事件幂等，`ai_summaries` 版本链可查
+- [ ] `SUMMARY_READY` 时重启应用仍可继续 HITL 确认
+- [ ] 数据目录、SQLite WAL 与迁移体系由首个持久化功能同步落地
 - [ ] UI 仅经 localhost sidecar API，不直读数据目录（#35 v2.0）
 - [ ] localhost 加固生效：随机端口 + 启动令牌校验，同机无令牌进程调用被拒；仅绑 127.0.0.1（#56）
-- [ ] llm_call_logs 可追踪 model/prompt/token/latency/node
-- [ ] 启动滚动备份（backups/ 每日×7）生效
+- [ ] `llm_call_logs` 可追踪 model/prompt/token/latency/node，且日志不含 key、Authorization、Transcript 或总结全文
 
 **Phase 1 = MVP（Wave A → Wave B）**
 
-- [ ] 录音 POC + ffmpeg ogg-opus **统一转码**链路通过；ASR 任务可重试（S0/#31）
+- [ ] plan 03 实施时完成录音 POC + ffmpeg ogg-opus **统一转码**链路；ASR 任务可重试（Q6/#31）
 - [ ] Wave A 验收线：真实课堂当日走通 录音→转写→总结确认→知识点确认→习题作答→导出 .md；未归类内容可归类升级进同一闭环（#26）
 - [ ] LangGraph Checkpointer（langgraph.db）可暂停恢复；Summary HITL 跨重启恢复
 - [ ] 结构化输出全部经 Pydantic Schema；超长转写分级总结无静默截断（#36）
@@ -577,6 +592,12 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 - [ ] 总结质量黄金样本 20 条 + 人工评审 checklist 建立并纳入回归（#46）
 - [ ] 无 key 功能级降级 + 健康检查面板（#38）
 - [ ] 核心流程有集成测试
+
+**首次可分发里程碑**
+
+- [ ] sidecar 打包冒烟通过：体积/杀毒误报/冷启动可接受（§11-Q14）
+- [ ] Windows `.msi` 在干净环境完成安装、启动、退出与再次启动冒烟
+- [ ] CI / GitHub Releases 手动发布流水线可重复执行
 
 **Phase 2+（随阶段验收）**
 
