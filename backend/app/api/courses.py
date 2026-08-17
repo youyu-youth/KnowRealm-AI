@@ -2,13 +2,18 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_launch_token
-from app.schemas.course import CourseCreate, CourseOut
+from app.schemas.course import CourseCreate, CourseOut, ErrorResponse
 from app.services.course_service import CourseService
 
 router = APIRouter(
     prefix="/api/courses",
     tags=["courses"],
     dependencies=[Depends(require_launch_token)],
+    responses={
+        403: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+        500: {"model": ErrorResponse},
+    },
 )
 
 

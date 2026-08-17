@@ -3,6 +3,7 @@ from pathlib import Path
 
 import uvicorn
 
+from app.core.logging import setup_logging
 from app.main import create_app
 
 
@@ -22,6 +23,7 @@ def main() -> None:
     if not args.token:
         parser.error("启动令牌不能为空")
 
+    setup_logging()
     app = create_app(data_dir=args.data_dir, launch_token=args.token)
     uvicorn.run(
         app,
@@ -29,6 +31,7 @@ def main() -> None:
         port=args.port,
         access_log=False,
         log_config=None,
+        loop="app.core.loop:selector_loop_factory",
     )
 
 

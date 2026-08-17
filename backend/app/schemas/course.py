@@ -37,6 +37,15 @@ class CourseType(StrEnum):
     ELECTIVE = "ELECTIVE"
 
 
+class CourseStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    ARCHIVED = "ARCHIVED"
+
+
+class ErrorResponse(BaseModel):
+    detail: str = Field(description="可直接展示的错误说明")
+
+
 class CourseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100, description="课程名称")
     learning_context: LearningContext = Field(description="课程学习场景")
@@ -83,7 +92,7 @@ class CourseOut(BaseModel):
     depth: LearningDepth | None
     course_type: CourseType | None
     description: str | None
-    status: str
+    status: CourseStatus
     created_at: datetime
     updated_at: datetime
 

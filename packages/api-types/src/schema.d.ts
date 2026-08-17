@@ -78,11 +78,15 @@ export interface components {
             learning_context: components["schemas"]["LearningContext"];
             /** Name */
             name: string;
-            /** Status */
-            status: string;
+            status: components["schemas"]["CourseStatus"];
             /** Updated At */
             updated_at: string;
         };
+        /**
+         * CourseStatus
+         * @enum {string}
+         */
+        CourseStatus: "ACTIVE" | "ARCHIVED";
         /**
          * CourseType
          * @enum {string}
@@ -93,10 +97,13 @@ export interface components {
          * @enum {string}
          */
         EducationStage: "MIDDLE_SCHOOL" | "HIGH_SCHOOL" | "UNDERGRADUATE" | "GRADUATE" | "DOCTORAL";
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
+        /** ErrorResponse */
+        ErrorResponse: {
+            /**
+             * Detail
+             * @description 可直接展示的错误说明
+             */
+            detail: string;
         };
         /**
          * LearningContext
@@ -108,19 +115,6 @@ export interface components {
          * @enum {string}
          */
         LearningDepth: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
-        /** ValidationError */
-        ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-        };
     };
     responses: never;
     parameters: never;
@@ -150,13 +144,31 @@ export interface operations {
                     "application/json": components["schemas"]["CourseOut"][];
                 };
             };
-            /** @description Validation Error */
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -185,13 +197,31 @@ export interface operations {
                     "application/json": components["schemas"]["CourseOut"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
@@ -218,13 +248,31 @@ export interface operations {
                     };
                 };
             };
-            /** @description Validation Error */
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

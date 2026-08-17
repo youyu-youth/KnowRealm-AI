@@ -37,21 +37,16 @@ import type {
   LearningContext,
   LearningDepth,
 } from "@/features/courses/api/types";
-
-const learningContexts: LearningContext[] = ["SCHOOL", "CAREER", "INTEREST"];
-const educationStages: EducationStage[] = [
-  "MIDDLE_SCHOOL",
-  "HIGH_SCHOOL",
-  "UNDERGRADUATE",
-  "GRADUATE",
-  "DOCTORAL",
-];
-const learningDepths: LearningDepth[] = [
-  "BEGINNER",
-  "INTERMEDIATE",
-  "ADVANCED",
-];
-const courseTypes: CourseType[] = ["MAJOR", "GENERAL", "ELECTIVE"];
+import {
+  courseTypeLabelKeys,
+  courseTypes,
+  educationStageLabelKeys,
+  educationStages,
+  learningContextLabelKeys,
+  learningContexts,
+  learningDepthLabelKeys,
+  learningDepths,
+} from "@/features/courses/courseOptions";
 const NO_COURSE_TYPE = "NONE";
 
 type CreateCourseDialogProps = {
@@ -74,15 +69,15 @@ export function CreateCourseDialog({
   const [description, setDescription] = useState("");
   const learningContextItems = learningContexts.map((value) => ({
     value,
-    label: t(`spaces.learningContext.${value}`),
+    label: t(learningContextLabelKeys[value]),
   }));
   const educationStageItems = educationStages.map((value) => ({
     value,
-    label: t(`spaces.educationStage.${value}`),
+    label: t(educationStageLabelKeys[value]),
   }));
   const learningDepthItems = learningDepths.map((value) => ({
     value,
-    label: t(`spaces.depth.${value}`),
+    label: t(learningDepthLabelKeys[value]),
   }));
   const courseTypeItems: Array<{
     value: CourseType | typeof NO_COURSE_TYPE;
@@ -91,7 +86,7 @@ export function CreateCourseDialog({
     { value: NO_COURSE_TYPE, label: t("spaces.form.courseTypeNone") },
     ...courseTypes.map((value) => ({
       value,
-      label: t(`spaces.courseType.${value}`),
+      label: t(courseTypeLabelKeys[value]),
     })),
   ];
   const createCourse = useMutation({
@@ -188,14 +183,14 @@ export function CreateCourseDialog({
               >
                 <SelectTrigger id="learning-context" className="w-full">
                   <SelectValue>
-                    {t(`spaces.learningContext.${learningContext}`)}
+                    {t(learningContextLabelKeys[learningContext])}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
                     {learningContexts.map((value) => (
                       <SelectItem key={value} value={value}>
-                        {t(`spaces.learningContext.${value}`)}
+                        {t(learningContextLabelKeys[value])}
                       </SelectItem>
                     ))}
                   </SelectGroup>
@@ -225,7 +220,7 @@ export function CreateCourseDialog({
                       placeholder={t("spaces.form.educationStagePlaceholder")}
                     >
                       {educationStage
-                        ? t(`spaces.educationStage.${educationStage}`)
+                        ? t(educationStageLabelKeys[educationStage])
                         : null}
                     </SelectValue>
                   </SelectTrigger>
@@ -233,7 +228,7 @@ export function CreateCourseDialog({
                     <SelectGroup>
                       {educationStages.map((value) => (
                         <SelectItem key={value} value={value}>
-                          {t(`spaces.educationStage.${value}`)}
+                          {t(educationStageLabelKeys[value])}
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -258,14 +253,14 @@ export function CreateCourseDialog({
                     <SelectValue
                       placeholder={t("spaces.form.depthPlaceholder")}
                     >
-                      {depth ? t(`spaces.depth.${depth}`) : null}
+                      {depth ? t(learningDepthLabelKeys[depth]) : null}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectGroup>
                       {learningDepths.map((value) => (
                         <SelectItem key={value} value={value}>
-                          {t(`spaces.depth.${value}`)}
+                          {t(learningDepthLabelKeys[value])}
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -286,7 +281,7 @@ export function CreateCourseDialog({
                 <SelectTrigger id="course-type" className="w-full">
                   <SelectValue>
                     {courseType
-                      ? t(`spaces.courseType.${courseType}`)
+                      ? t(courseTypeLabelKeys[courseType])
                       : t("spaces.form.courseTypeNone")}
                   </SelectValue>
                 </SelectTrigger>
@@ -297,7 +292,7 @@ export function CreateCourseDialog({
                     </SelectItem>
                     {courseTypes.map((value) => (
                       <SelectItem key={value} value={value}>
-                        {t(`spaces.courseType.${value}`)}
+                        {t(courseTypeLabelKeys[value])}
                       </SelectItem>
                     ))}
                   </SelectGroup>

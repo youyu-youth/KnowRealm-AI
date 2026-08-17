@@ -90,20 +90,20 @@ async def test_token_context_constraints_and_sqlite_pragmas(tmp_path: Path) -> N
         }
 
         headers = {"X-KnowRealm-Token": TOKEN}
-        assert (
-            await client.post(
-                "/api/courses",
-                headers=headers,
-                json={"name": "数学", "learning_context": "SCHOOL"},
-            )
-        ).status_code == 422
-        assert (
-            await client.post(
-                "/api/courses",
-                headers=headers,
-                json={"name": "Rust", "learning_context": "CAREER"},
-            )
-        ).status_code == 422
+        school_error = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={"name": "数学", "learning_context": "SCHOOL"},
+        )
+        career_error = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={"name": "Rust", "learning_context": "CAREER"},
+        )
+        assert school_error.status_code == 422
+        assert career_error.status_code == 422
+        assert isinstance(school_error.json()["detail"], str)
+        assert isinstance(career_error.json()["detail"], str)
 
         career = await client.post(
             "/api/courses",

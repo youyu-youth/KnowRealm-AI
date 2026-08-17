@@ -172,6 +172,8 @@ langgraph.sqlite3
 # =========================================================
 
 models/
+!backend/app/models/
+!backend/app/models/**
 checkpoints/
 *.ckpt
 *.safetensors
