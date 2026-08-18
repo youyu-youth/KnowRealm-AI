@@ -195,6 +195,99 @@ async def test_list_sorts_by_updated_time_and_hides_soft_deleted_courses(tmp_pat
         assert [course["name"] for course in visible.json()] == ["旧课程"]
 
 
+@pytest.mark.anyio
+async def test_list_courses_searches_literal_name_and_combines_filters(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with course_client(data_dir) as client:
+        courses = [
+            {
+                "name": "操作系统",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+                "course_type": "MAJOR",
+            },
+            {
+                "name": "操作系统通识",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+                "course_type": "GENERAL",
+            },
+            {
+                "name": r"SQL 100%_\\ 转义",
+                "learning_context": "CAREER",
+                "depth": "INTERMEDIATE",
+                "course_type": "MAJOR",
+            },
+            {
+                "name": "SQL 100XY 转义",
+                "learning_context": "CAREER",
+                "depth": "INTERMEDIATE",
+                "course_type": "MAJOR",
+            },
+        ]
+        for payload in courses:
+            assert (await client.post("/api/courses", json=payload)).status_code == 201
+
+        chinese = await client.get("/api/courses", params={"q": "  操作  "})
+        combined = await client.get(
+            "/api/courses",
+            params={
+                "q": "操作",
+                "education_stage": "UNDERGRADUATE",
+                "course_type": "MAJOR",
+            },
+        )
+        literal = await client.get("/api/courses", params={"q": r"%_\\"})
+        blank = await client.get("/api/courses", params={"q": "   "})
+        missing = await client.get("/api/courses", params={"q": "不存在"})
+
+        assert [course["name"] for course in chinese.json()] == [
+            "操作系统通识",
+            "操作系统",
+        ]
+        assert [course["name"] for course in combined.json()] == ["操作系统"]
+        assert [course["name"] for course in literal.json()] == [r"SQL 100%_\\ 转义"]
+        assert len(blank.json()) == len(courses)
+        assert missing.json() == []
+
+
+@pytest.mark.anyio
+async def test_filtered_list_never_returns_soft_deleted_courses(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_course_app(data_dir) as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        created = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "墓碑课程",
+                "learning_context": "SCHOOL",
+                "education_stage": "HIGH_SCHOOL",
+                "course_type": "ELECTIVE",
+            },
+        )
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE courses SET deleted_at = :deleted_at WHERE id = :id"),
+                {
+                    "deleted_at": "2026-08-18T00:00:00.000000Z",
+                    "id": created.json()["id"],
+                },
+            )
+
+        visible = await client.get(
+            "/api/courses",
+            headers=headers,
+            params={
+                "q": "墓碑",
+                "education_stage": "HIGH_SCHOOL",
+                "course_type": "ELECTIVE",
+            },
+        )
+
+        assert visible.json() == []
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

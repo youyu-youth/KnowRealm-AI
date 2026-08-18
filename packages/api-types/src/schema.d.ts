@@ -126,7 +126,11 @@ export type $defs = Record<string, never>;
 export interface operations {
     list_courses_api_courses_get: {
         parameters: {
-            query?: never;
+            query?: {
+                q?: string | null;
+                education_stage?: components["schemas"]["EducationStage"] | null;
+                course_type?: components["schemas"]["CourseType"] | null;
+            };
             header?: {
                 "x-knowrealm-token"?: string | null;
             };

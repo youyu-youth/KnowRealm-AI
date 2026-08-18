@@ -221,6 +221,55 @@
         "operationId": "list_courses_api_courses_get",
         "parameters": [
           {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "education_stage",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EducationStage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Education Stage"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CourseType"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Type"
+            }
+          },
+          {
             "in": "header",
             "name": "x-knowrealm-token",
             "required": false,

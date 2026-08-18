@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_launch_token
-from app.schemas.course import CourseCreate, CourseOut, ErrorResponse
+from app.schemas.course import CourseCreate, CourseOut, CourseType, EducationStage, ErrorResponse
 from app.services.course_service import CourseService
 
 router = APIRouter(
@@ -27,6 +29,11 @@ async def create_course(
 
 
 @router.get("", response_model=list[CourseOut])
-async def list_courses(session: AsyncSession = Depends(get_db)) -> list[CourseOut]:
-    courses = await CourseService.list(session)
+async def list_courses(
+    session: AsyncSession = Depends(get_db),
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    education_stage: Annotated[EducationStage | None, Query()] = None,
+    course_type: Annotated[CourseType | None, Query()] = None,
+) -> list[CourseOut]:
+    courses = await CourseService.list(session, q, education_stage, course_type)
     return [CourseOut.model_validate(course) for course in courses]
