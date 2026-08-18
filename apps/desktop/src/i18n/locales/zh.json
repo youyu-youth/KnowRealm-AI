@@ -37,8 +37,20 @@
     "errorTitle": "课程暂时无法读取",
     "errorDescription": "本地服务可能仍在启动，请稍后重试。",
     "retry": "重新读取",
+    "noResultsTitle": "没有匹配结果",
+    "noResultsDescription": "调整搜索或筛选条件，或清除全部条件后查看最近更新的课程。",
     "listLabel": "课程列表",
     "updatedAt": "更新于 {{date}}",
+    "filters": {
+      "searchLabel": "搜索课程",
+      "searchPlaceholder": "输入课程名称",
+      "searchAction": "搜索",
+      "educationStage": "教育阶段筛选",
+      "allEducationStages": "全部教育阶段",
+      "courseType": "课程类型筛选",
+      "allCourseTypes": "全部课程类型",
+      "clear": "清除全部条件"
+    },
     "learningContext": {
       "SCHOOL": "学业学习",
       "CAREER": "职业技能",

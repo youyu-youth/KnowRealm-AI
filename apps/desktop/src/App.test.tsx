@@ -2,8 +2,11 @@
 
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
+import { TEST_SIDECAR_URL } from "@/mocks/handlers";
+import { server } from "@/mocks/server";
 
 vi.mock("@/services/tauri/sidecar", () => ({
   getSidecarConfig: vi.fn().mockResolvedValue({
@@ -49,5 +52,33 @@ describe("工作台骨架", () => {
       "href",
       "/",
     );
+  });
+
+  it("从受校验 URL 恢复课程搜索与筛选条件", async () => {
+    let requestedUrl: URL | undefined;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, ({ request }) => {
+        requestedUrl = new URL(request.url);
+        return HttpResponse.json([]);
+      }),
+    );
+    window.history.replaceState(
+      null,
+      "",
+      "/spaces?q=%E6%93%8D%E4%BD%9C&education_stage=UNDERGRADUATE&course_type=MAJOR",
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("searchbox", { name: "搜索课程" }),
+    ).toHaveValue("操作");
+    expect(
+      screen.getByRole("combobox", { name: "教育阶段筛选" }),
+    ).toHaveTextContent("本科");
+    expect(
+      screen.getByRole("combobox", { name: "课程类型筛选" }),
+    ).toHaveTextContent("专业课");
+    expect(requestedUrl?.searchParams.get("q")).toBe("操作");
   });
 });

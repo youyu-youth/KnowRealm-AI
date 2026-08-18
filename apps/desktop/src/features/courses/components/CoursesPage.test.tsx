@@ -3,7 +3,9 @@
 import type { components } from "@knowrealm/api-types";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import type { CourseListQuery } from "@/features/courses/api/types";
 import { CoursesPage } from "@/features/courses/components/CoursesPage";
 import { TEST_LAUNCH_TOKEN, TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
@@ -19,6 +21,15 @@ vi.mock("@/services/tauri/sidecar", () => ({
 }));
 
 describe("首门课程持久化入口", () => {
+  function CourseDiscoveryHarness({
+    initialFilters = {},
+  }: {
+    initialFilters?: CourseListQuery;
+  }) {
+    const [filters, setFilters] = useState(initialFilters);
+    return <CoursesPage filters={filters} onFiltersChange={setFilters} />;
+  }
+
   async function selectEducationStage() {
     const trigger = screen.getByRole("combobox", { name: "教育阶段" });
     fireEvent.click(trigger);
@@ -29,13 +40,23 @@ describe("首门课程持久化入口", () => {
     await waitFor(() => expect(trigger).toHaveTextContent("本科"));
   }
 
+  async function selectFilterOption(comboboxName: string, optionName: string) {
+    const trigger = screen.getByRole("combobox", { name: comboboxName });
+    fireEvent.click(trigger);
+    const option = await screen.findByRole("option", { name: optionName });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    await waitFor(() => expect(trigger).toHaveTextContent(optionName));
+  }
+
   it("保存失败后保留输入并提供可重试错误", async () => {
     server.use(
       http.post(`${TEST_SIDECAR_URL}/api/courses`, () =>
         HttpResponse.json({ detail: "本地服务暂时不可用" }, { status: 500 }),
       ),
     );
-    renderWithQuery(<CoursesPage />);
+    renderWithQuery(<CourseDiscoveryHarness />);
 
     fireEvent.click(
       await screen.findByRole("button", { name: "新建知识空间" }),
@@ -83,7 +104,7 @@ describe("首门课程持久化入口", () => {
         return HttpResponse.json(created, { status: 201 });
       }),
     );
-    renderWithQuery(<CoursesPage />);
+    renderWithQuery(<CourseDiscoveryHarness />);
 
     fireEvent.click(
       await screen.findByRole("button", { name: "新建知识空间" }),
@@ -99,5 +120,84 @@ describe("首门课程持久化入口", () => {
     expect(await screen.findByText("操作系统")).toBeInTheDocument();
     expect(receivedToken).toBe(TEST_LAUNCH_TOKEN);
     expect(postCalls).toBe(1);
+  });
+
+  it("通过可访问控件组合搜索筛选并一次清除", async () => {
+    const operationSystems: Course[] = [
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "操作系统",
+        learning_context: "SCHOOL",
+        education_stage: "UNDERGRADUATE",
+        depth: null,
+        course_type: "MAJOR",
+        description: null,
+        status: "ACTIVE",
+        created_at: "2026-08-17T00:00:00.000000Z",
+        updated_at: "2026-08-18T00:00:00.000000Z",
+      },
+    ];
+    const allCourses = [
+      ...operationSystems,
+      { ...operationSystems[0], id: "second", name: "编译原理" },
+    ];
+    const requests: URL[] = [];
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, ({ request }) => {
+        const url = new URL(request.url);
+        requests.push(url);
+        return HttpResponse.json(url.search ? operationSystems : allCourses);
+      }),
+    );
+    renderWithQuery(<CourseDiscoveryHarness />);
+
+    expect(await screen.findByText("编译原理")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索课程" }), {
+      target: { value: "  操作  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+    await selectFilterOption("教育阶段筛选", "本科");
+    await selectFilterOption("课程类型筛选", "专业课");
+
+    await waitFor(() =>
+      expect(
+        requests[requests.length - 1]?.searchParams.get("course_type"),
+      ).toBe("MAJOR"),
+    );
+    const latestRequest = requests[requests.length - 1];
+    expect(latestRequest?.searchParams.get("q")).toBe("操作");
+    expect(latestRequest?.searchParams.get("education_stage")).toBe(
+      "UNDERGRADUATE",
+    );
+    expect(screen.queryByText("编译原理")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "清除全部条件" }));
+
+    expect(await screen.findByText("编译原理")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索课程" })).toHaveValue("");
+  });
+
+  it("区分无匹配结果，并在查询失败后重试", async () => {
+    let calls = 0;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () => {
+        calls += 1;
+        if (calls === 1) {
+          return HttpResponse.json({ detail: "数据库忙" }, { status: 500 });
+        }
+        return HttpResponse.json([]);
+      }),
+    );
+    renderWithQuery(
+      <CourseDiscoveryHarness initialFilters={{ q: "不存在" }} />,
+    );
+
+    expect(await screen.findByText("课程暂时无法读取")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
+
+    expect(await screen.findByText("没有匹配结果")).toBeInTheDocument();
+    expect(screen.queryByText("还没有知识空间")).not.toBeInTheDocument();
+    expect(calls).toBe(2);
   });
 });

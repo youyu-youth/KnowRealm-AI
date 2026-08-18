@@ -92,7 +92,7 @@ export function CreateCourseDialog({
   const createCourse = useMutation({
     mutationFn: courseApi.create,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: courseKeys.list() });
+      await queryClient.invalidateQueries({ queryKey: courseKeys.lists() });
       resetForm();
       onOpenChange(false);
     },
