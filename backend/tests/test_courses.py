@@ -199,6 +199,7 @@ async def test_list_sorts_by_updated_time_and_hides_soft_deleted_courses(tmp_pat
 async def test_list_courses_searches_literal_name_and_combines_filters(tmp_path: Path) -> None:
     data_dir = tmp_path / "KnowRealm"
     async with course_client(data_dir) as client:
+        long_name = "课" * 100
         courses = [
             {
                 "name": "操作系统",
@@ -224,6 +225,11 @@ async def test_list_courses_searches_literal_name_and_combines_filters(tmp_path:
                 "depth": "INTERMEDIATE",
                 "course_type": "MAJOR",
             },
+            {
+                "name": long_name,
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
         ]
         for payload in courses:
             assert (await client.post("/api/courses", json=payload)).status_code == 201
@@ -239,6 +245,9 @@ async def test_list_courses_searches_literal_name_and_combines_filters(tmp_path:
         )
         literal = await client.get("/api/courses", params={"q": r"%_\\"})
         blank = await client.get("/api/courses", params={"q": "   "})
+        trimmed_boundary = await client.get(
+            "/api/courses", params={"q": f"  {long_name}  "}
+        )
         missing = await client.get("/api/courses", params={"q": "不存在"})
 
         assert [course["name"] for course in chinese.json()] == [
@@ -248,6 +257,7 @@ async def test_list_courses_searches_literal_name_and_combines_filters(tmp_path:
         assert [course["name"] for course in combined.json()] == ["操作系统"]
         assert [course["name"] for course in literal.json()] == [r"SQL 100%_\\ 转义"]
         assert len(blank.json()) == len(courses)
+        assert [course["name"] for course in trimmed_boundary.json()] == [long_name]
         assert missing.json() == []
 
 

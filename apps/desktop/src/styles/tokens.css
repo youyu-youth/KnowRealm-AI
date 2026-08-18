@@ -42,6 +42,8 @@
   --spacing-sidebar: 14rem;
   --spacing-topbar: 4rem;
   --spacing-content: 1.75rem;
+  --spacing-filter-search: 15rem;
+  --spacing-filter-select: 11rem;
   --container-reading: 70ch;
   --container-workbench: 92.5rem;
   --breakpoint-compact: 68.75rem;

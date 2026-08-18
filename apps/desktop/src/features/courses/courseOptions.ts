@@ -40,3 +40,17 @@ export const learningContexts = keysOf(learningContextLabelKeys);
 export const educationStages = keysOf(educationStageLabelKeys);
 export const learningDepths = keysOf(learningDepthLabelKeys);
 export const courseTypes = keysOf(courseTypeLabelKeys);
+
+export function isEducationStage(value: unknown): value is EducationStage {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(educationStageLabelKeys, value)
+  );
+}
+
+export function isCourseType(value: unknown): value is CourseType {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(courseTypeLabelKeys, value)
+  );
+}

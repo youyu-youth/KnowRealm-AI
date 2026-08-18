@@ -181,12 +181,29 @@ describe("首门课程持久化入口", () => {
   it("区分无匹配结果，并在查询失败后重试", async () => {
     let calls = 0;
     server.use(
-      http.get(`${TEST_SIDECAR_URL}/api/courses`, () => {
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, ({ request }) => {
         calls += 1;
         if (calls === 1) {
           return HttpResponse.json({ detail: "数据库忙" }, { status: 500 });
         }
-        return HttpResponse.json([]);
+        return HttpResponse.json(
+          new URL(request.url).search
+            ? []
+            : [
+                {
+                  id: "existing",
+                  name: "已有课程",
+                  learning_context: "INTEREST",
+                  education_stage: null,
+                  depth: "BEGINNER",
+                  course_type: null,
+                  description: null,
+                  status: "ACTIVE",
+                  created_at: "2026-08-17T00:00:00.000000Z",
+                  updated_at: "2026-08-18T00:00:00.000000Z",
+                },
+              ],
+        );
       }),
     );
     renderWithQuery(
@@ -198,6 +215,56 @@ describe("首门课程持久化入口", () => {
 
     expect(await screen.findByText("没有匹配结果")).toBeInTheDocument();
     expect(screen.queryByText("还没有知识空间")).not.toBeInTheDocument();
-    expect(calls).toBe(2);
+    expect(calls).toBe(3);
+  });
+
+  it("空库即使带有筛选 URL 仍显示真实空态", async () => {
+    renderWithQuery(
+      <CourseDiscoveryHarness initialFilters={{ q: "不存在" }} />,
+    );
+
+    expect(await screen.findByText("还没有知识空间")).toBeInTheDocument();
+    expect(screen.queryByText("没有匹配结果")).not.toBeInTheDocument();
+  });
+
+  it("真实空态探测失败后仍可通过新搜索恢复", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, ({ request }) => {
+        const query = new URL(request.url).searchParams.get("q");
+        if (!query) {
+          return HttpResponse.json({ detail: "数据库忙" }, { status: 500 });
+        }
+        return HttpResponse.json(
+          query === "操作"
+            ? [
+                {
+                  id: "recovered",
+                  name: "操作系统",
+                  learning_context: "SCHOOL",
+                  education_stage: "UNDERGRADUATE",
+                  depth: null,
+                  course_type: "MAJOR",
+                  description: null,
+                  status: "ACTIVE",
+                  created_at: "2026-08-17T00:00:00.000000Z",
+                  updated_at: "2026-08-18T00:00:00.000000Z",
+                },
+              ]
+            : [],
+        );
+      }),
+    );
+    renderWithQuery(
+      <CourseDiscoveryHarness initialFilters={{ q: "不存在" }} />,
+    );
+
+    expect(await screen.findByText("课程暂时无法读取")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索课程" }), {
+      target: { value: "操作" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+    expect(await screen.findByText("操作系统")).toBeInTheDocument();
+    expect(screen.queryByText("课程暂时无法读取")).not.toBeInTheDocument();
   });
 });

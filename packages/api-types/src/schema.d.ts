@@ -127,8 +127,11 @@ export interface operations {
     list_courses_api_courses_get: {
         parameters: {
             query?: {
+                /** @description 课程名称子串 */
                 q?: string | null;
+                /** @description 教育阶段筛选 */
                 education_stage?: components["schemas"]["EducationStage"] | null;
+                /** @description 课程类型筛选 */
                 course_type?: components["schemas"]["CourseType"] | null;
             };
             header?: {

@@ -46,6 +46,19 @@ class ErrorResponse(BaseModel):
     detail: str = Field(description="可直接展示的错误说明")
 
 
+class CourseListQuery(BaseModel):
+    q: str | None = Field(default=None, max_length=100, description="课程名称子串")
+    education_stage: EducationStage | None = Field(default=None, description="教育阶段筛选")
+    course_type: CourseType | None = Field(default=None, description="课程类型筛选")
+
+    @field_validator("q", mode="before")
+    @classmethod
+    def clean_query(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
 class CourseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=100, description="课程名称")
     learning_context: LearningContext = Field(description="课程学习场景")

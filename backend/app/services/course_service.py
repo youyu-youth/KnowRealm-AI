@@ -22,10 +22,8 @@ class CourseService:
         course_type: CourseType | None = None,
     ) -> list[Course]:
         statement = select(Course).where(Course.deleted_at.is_(None))
-        if query := q.strip() if q else "":
-            statement = statement.where(
-                Course.name.contains(query, autoescape=True, escape="\\")
-            )
+        if q:
+            statement = statement.where(Course.name.contains(q, autoescape=True, escape="\\"))
         if education_stage is not None:
             statement = statement.where(Course.education_stage == education_stage.value)
         if course_type is not None:

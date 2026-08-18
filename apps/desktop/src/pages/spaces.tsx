@@ -1,28 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import type {
-  CourseListQuery,
-  CourseType,
-  EducationStage,
-} from "@/features/courses/api/types";
+import type { CourseListQuery } from "@/features/courses/api/types";
 import { CoursesPage } from "@/features/courses/components/CoursesPage";
 import {
-  courseTypeLabelKeys,
-  educationStageLabelKeys,
+  isCourseType,
+  isEducationStage,
 } from "@/features/courses/courseOptions";
-
-function isEducationStage(value: unknown): value is EducationStage {
-  return (
-    typeof value === "string" &&
-    Object.prototype.hasOwnProperty.call(educationStageLabelKeys, value)
-  );
-}
-
-function isCourseType(value: unknown): value is CourseType {
-  return (
-    typeof value === "string" &&
-    Object.prototype.hasOwnProperty.call(courseTypeLabelKeys, value)
-  );
-}
 
 export const Route = createFileRoute("/spaces")({
   validateSearch: (search): CourseListQuery => {

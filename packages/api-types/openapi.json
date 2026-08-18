@@ -221,6 +221,7 @@
         "operationId": "list_courses_api_courses_get",
         "parameters": [
           {
+            "description": "课程名称子串",
             "in": "query",
             "name": "q",
             "required": false,
@@ -234,10 +235,12 @@
                   "type": "null"
                 }
               ],
+              "description": "课程名称子串",
               "title": "Q"
             }
           },
           {
+            "description": "教育阶段筛选",
             "in": "query",
             "name": "education_stage",
             "required": false,
@@ -250,10 +253,12 @@
                   "type": "null"
                 }
               ],
+              "description": "教育阶段筛选",
               "title": "Education Stage"
             }
           },
           {
+            "description": "课程类型筛选",
             "in": "query",
             "name": "course_type",
             "required": false,
@@ -266,6 +271,7 @@
                   "type": "null"
                 }
               ],
+              "description": "课程类型筛选",
               "title": "Course Type"
             }
           },
