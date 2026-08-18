@@ -2,7 +2,9 @@ import { apiFetch } from "@/services/http/client";
 import type {
   Course,
   CourseCreate,
+  CourseDetail,
   CourseListQuery,
+  CourseUpdate,
 } from "@/features/courses/api/types";
 
 export const courseApi = {
@@ -19,6 +21,12 @@ export const courseApi = {
   create: (payload: CourseCreate) =>
     apiFetch<Course>("/api/courses", {
       method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  get: (courseId: string) => apiFetch<CourseDetail>(`/api/courses/${courseId}`),
+  update: (courseId: string, payload: CourseUpdate) =>
+    apiFetch<Course>(`/api/courses/${courseId}`, {
+      method: "PATCH",
       body: JSON.stringify(payload),
     }),
 };

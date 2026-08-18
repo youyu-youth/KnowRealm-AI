@@ -27,7 +27,13 @@ describe("首门课程持久化入口", () => {
     initialFilters?: CourseListQuery;
   }) {
     const [filters, setFilters] = useState(initialFilters);
-    return <CoursesPage filters={filters} onFiltersChange={setFilters} />;
+    return (
+      <CoursesPage
+        filters={filters}
+        onFiltersChange={setFilters}
+        onOpenCourse={vi.fn()}
+      />
+    );
   }
 
   async function selectEducationStage() {

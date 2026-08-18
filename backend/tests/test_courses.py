@@ -245,9 +245,7 @@ async def test_list_courses_searches_literal_name_and_combines_filters(tmp_path:
         )
         literal = await client.get("/api/courses", params={"q": r"%_\\"})
         blank = await client.get("/api/courses", params={"q": "   "})
-        trimmed_boundary = await client.get(
-            "/api/courses", params={"q": f"  {long_name}  "}
-        )
+        trimmed_boundary = await client.get("/api/courses", params={"q": f"  {long_name}  "})
         missing = await client.get("/api/courses", params={"q": "不存在"})
 
         assert [course["name"] for course in chinese.json()] == [
@@ -296,6 +294,211 @@ async def test_filtered_list_never_returns_soft_deleted_courses(tmp_path: Path) 
         )
 
         assert visible.json() == []
+
+
+@pytest.mark.anyio
+async def test_course_detail_returns_context_and_hot_words(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_course_app(data_dir) as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        created = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "操作系统",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+                "course_type": "MAJOR",
+                "description": "理解进程、内存与文件系统。",
+            },
+        )
+        course_id = created.json()["id"]
+
+        detail = await client.get(f"/api/courses/{course_id}", headers=headers)
+        assert detail.status_code == 200
+        assert detail.json() == {
+            **created.json(),
+            "hot_words": [],
+        }
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE courses SET hot_words = :hot_words WHERE id = :id"),
+                {"hot_words": '["进程", "内存", "文件系统"]', "id": course_id},
+            )
+
+        with_words = await client.get(f"/api/courses/{course_id}", headers=headers)
+        assert with_words.json()["hot_words"] == ["进程", "内存", "文件系统"]
+
+        missing = await client.get("/api/courses/nonexistent-id", headers=headers)
+        assert missing.status_code == 404
+        assert isinstance(missing.json()["detail"], str)
+
+
+@pytest.mark.anyio
+async def test_edit_updates_fields_and_bumps_updated_at(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with course_client(data_dir) as client:
+        headers = {"X-KnowRealm-Token": TOKEN}
+        await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "旧课程",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        edited = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "操作系统",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+                "course_type": "MAJOR",
+                "description": "旧说明",
+            },
+        )
+        course_id = edited.json()["id"]
+
+        updated = await client.patch(
+            f"/api/courses/{course_id}",
+            headers=headers,
+            json={
+                "name": "  操作系统导论  ",
+                "description": "",
+                "course_type": None,
+            },
+        )
+        assert updated.status_code == 200
+        assert updated.json()["name"] == "操作系统导论"
+        assert updated.json()["description"] is None
+        assert updated.json()["course_type"] is None
+
+        no_op = await client.patch(f"/api/courses/{course_id}", headers=headers, json={})
+        assert no_op.status_code == 200
+        assert no_op.json() == updated.json()
+
+        detail = await client.get(f"/api/courses/{course_id}", headers=headers)
+        assert detail.json()["updated_at"] >= edited.json()["updated_at"]
+
+        listing = await client.get("/api/courses", headers=headers)
+        assert [course["name"] for course in listing.json()] == [
+            "操作系统导论",
+            "旧课程",
+        ]
+
+
+@pytest.mark.anyio
+async def test_edit_rejects_blank_name_and_keeps_old_data(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with course_client(data_dir) as client:
+        headers = {"X-KnowRealm-Token": TOKEN}
+        created = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "操作系统",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+            },
+        )
+        course_id = created.json()["id"]
+
+        blank = await client.patch(
+            f"/api/courses/{course_id}", headers=headers, json={"name": "   "}
+        )
+        too_long = await client.patch(
+            f"/api/courses/{course_id}", headers=headers, json={"name": "课" * 101}
+        )
+        assert blank.status_code == 422
+        assert too_long.status_code == 422
+
+        detail = await client.get(f"/api/courses/{course_id}", headers=headers)
+        assert detail.json()["name"] == "操作系统"
+
+
+@pytest.mark.anyio
+async def test_edit_context_switch_requires_and_clears_counterpart(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with course_client(data_dir) as client:
+        headers = {"X-KnowRealm-Token": TOKEN}
+        created = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "操作系统",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+                "depth": None,
+            },
+        )
+        course_id = created.json()["id"]
+
+        switch_without_depth = await client.patch(
+            f"/api/courses/{course_id}",
+            headers=headers,
+            json={"learning_context": "CAREER"},
+        )
+        assert switch_without_depth.status_code == 422
+        detail_after_rejection = await client.get(f"/api/courses/{course_id}", headers=headers)
+        assert detail_after_rejection.json()["learning_context"] == "SCHOOL"
+        assert detail_after_rejection.json()["education_stage"] == "UNDERGRADUATE"
+
+        switched = await client.patch(
+            f"/api/courses/{course_id}",
+            headers=headers,
+            json={"learning_context": "CAREER", "depth": "INTERMEDIATE"},
+        )
+        assert switched.status_code == 200
+        assert switched.json()["education_stage"] is None
+        assert switched.json()["depth"] == "INTERMEDIATE"
+
+        back_without_stage = await client.patch(
+            f"/api/courses/{course_id}",
+            headers=headers,
+            json={"learning_context": "SCHOOL", "depth": None},
+        )
+        assert back_without_stage.status_code == 422
+
+        back = await client.patch(
+            f"/api/courses/{course_id}",
+            headers=headers,
+            json={"learning_context": "SCHOOL", "education_stage": "GRADUATE"},
+        )
+        assert back.status_code == 200
+        assert back.json()["education_stage"] == "GRADUATE"
+        assert back.json()["depth"] is None
+
+
+@pytest.mark.anyio
+async def test_detail_and_edit_hide_soft_deleted_course(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_course_app(data_dir) as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        created = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "墓碑课程",
+                "learning_context": "SCHOOL",
+                "education_stage": "HIGH_SCHOOL",
+            },
+        )
+        course_id = created.json()["id"]
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE courses SET deleted_at = :deleted_at WHERE id = :id"),
+                {"deleted_at": "2026-08-18T00:00:00.000000Z", "id": course_id},
+            )
+
+        detail = await client.get(f"/api/courses/{course_id}", headers=headers)
+        edit = await client.patch(
+            f"/api/courses/{course_id}", headers=headers, json={"name": "新名字"}
+        )
+        assert detail.status_code == 404
+        assert edit.status_code == 404
 
 
 @pytest.fixture

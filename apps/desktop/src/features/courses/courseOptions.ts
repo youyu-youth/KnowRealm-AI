@@ -41,6 +41,26 @@ export const educationStages = keysOf(educationStageLabelKeys);
 export const learningDepths = keysOf(learningDepthLabelKeys);
 export const courseTypes = keysOf(courseTypeLabelKeys);
 
+/** 教育阶段（SCHOOL）或学习深度（其余场景）的展示文案 key；均缺省时为 null。 */
+export function courseLevelLabelKey(course: {
+  education_stage: EducationStage | null;
+  depth: LearningDepth | null;
+}): string | null {
+  if (course.education_stage) {
+    return educationStageLabelKeys[course.education_stage];
+  }
+  if (course.depth) {
+    return learningDepthLabelKeys[course.depth];
+  }
+  return null;
+}
+
+export const courseDateFormatter = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
 export function isEducationStage(value: unknown): value is EducationStage {
   return (
     typeof value === "string" &&

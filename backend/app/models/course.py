@@ -17,6 +17,7 @@ class Course(Base):
     depth: Mapped[str | None] = mapped_column(String(20), default=None)
     course_type: Mapped[str | None] = mapped_column(String(20), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
+    hot_words: Mapped[str | None] = mapped_column(Text, default=None)
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)

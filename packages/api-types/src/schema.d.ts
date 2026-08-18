@@ -22,6 +22,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{course_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Course */
+        get: operations["get_course_api_courses__course_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Course */
+        patch: operations["update_course_api_courses__course_id__patch"];
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -64,6 +82,29 @@ export interface components {
              */
             name: string;
         };
+        /** CourseDetailOut */
+        CourseDetailOut: {
+            course_type: components["schemas"]["CourseType"] | null;
+            /** Created At */
+            created_at: string;
+            depth: components["schemas"]["LearningDepth"] | null;
+            /** Description */
+            description: string | null;
+            education_stage: components["schemas"]["EducationStage"] | null;
+            /**
+             * Hot Words
+             * @description ASR 热词摘要
+             */
+            hot_words?: string[];
+            /** Id */
+            id: string;
+            learning_context: components["schemas"]["LearningContext"];
+            /** Name */
+            name: string;
+            status: components["schemas"]["CourseStatus"];
+            /** Updated At */
+            updated_at: string;
+        };
         /** CourseOut */
         CourseOut: {
             course_type: components["schemas"]["CourseType"] | null;
@@ -92,6 +133,27 @@ export interface components {
          * @enum {string}
          */
         CourseType: "MAJOR" | "GENERAL" | "ELECTIVE";
+        /** CourseUpdate */
+        CourseUpdate: {
+            /** @description 可选课程类型 */
+            course_type?: components["schemas"]["CourseType"] | null;
+            /** @description 职业或兴趣学习深度 */
+            depth?: components["schemas"]["LearningDepth"] | null;
+            /**
+             * Description
+             * @description 可选课程说明
+             */
+            description?: string | null;
+            /** @description 学业教育阶段 */
+            education_stage?: components["schemas"]["EducationStage"] | null;
+            /** @description 课程学习场景 */
+            learning_context?: components["schemas"]["LearningContext"] | null;
+            /**
+             * Name
+             * @description 课程名称
+             */
+            name?: string | null;
+        };
         /**
          * EducationStage
          * @enum {string}
@@ -160,6 +222,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Unprocessable Content */
             422: {
                 headers: {
@@ -206,6 +277,139 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_course_api_courses__course_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseDetailOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_course_api_courses__course_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CourseUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

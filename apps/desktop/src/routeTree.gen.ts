@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from "./pages/__root";
 import { Route as IndexRouteImport } from "./pages/index";
 import { Route as SpacesRouteImport } from "./pages/spaces";
+import { Route as SpacesIndexRouteImport } from "./pages/spaces.index";
+import { Route as SpacesCourseIdRouteImport } from "./pages/spaces.$courseId";
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
@@ -22,31 +24,46 @@ const SpacesRoute = SpacesRouteImport.update({
   path: "/spaces",
   getParentRoute: () => rootRouteImport,
 } as any);
+const SpacesIndexRoute = SpacesIndexRouteImport.update({
+  id: "/",
+  path: "/",
+  getParentRoute: () => SpacesRoute,
+} as any);
+const SpacesCourseIdRoute = SpacesCourseIdRouteImport.update({
+  id: "/$courseId",
+  path: "/$courseId",
+  getParentRoute: () => SpacesRoute,
+} as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
-  "/spaces": typeof SpacesRoute;
+  "/spaces": typeof SpacesRouteWithChildren;
+  "/spaces/$courseId": typeof SpacesCourseIdRoute;
+  "/spaces/": typeof SpacesIndexRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
-  "/spaces": typeof SpacesRoute;
+  "/spaces/$courseId": typeof SpacesCourseIdRoute;
+  "/spaces": typeof SpacesIndexRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
-  "/spaces": typeof SpacesRoute;
+  "/spaces": typeof SpacesRouteWithChildren;
+  "/spaces/$courseId": typeof SpacesCourseIdRoute;
+  "/spaces/": typeof SpacesIndexRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
-  fullPaths: "/" | "/spaces";
+  fullPaths: "/" | "/spaces" | "/spaces/$courseId" | "/spaces/";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/spaces";
-  id: "__root__" | "/" | "/spaces";
+  to: "/" | "/spaces/$courseId" | "/spaces";
+  id: "__root__" | "/" | "/spaces" | "/spaces/$courseId" | "/spaces/";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
-  SpacesRoute: typeof SpacesRoute;
+  SpacesRoute: typeof SpacesRouteWithChildren;
 }
 
 declare module "@tanstack/react-router" {
@@ -65,12 +82,39 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof SpacesRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/spaces/": {
+      id: "/spaces/";
+      path: "/";
+      fullPath: "/spaces/";
+      preLoaderRoute: typeof SpacesIndexRouteImport;
+      parentRoute: typeof SpacesRoute;
+    };
+    "/spaces/$courseId": {
+      id: "/spaces/$courseId";
+      path: "/$courseId";
+      fullPath: "/spaces/$courseId";
+      preLoaderRoute: typeof SpacesCourseIdRouteImport;
+      parentRoute: typeof SpacesRoute;
+    };
   }
 }
 
+interface SpacesRouteChildren {
+  SpacesCourseIdRoute: typeof SpacesCourseIdRoute;
+  SpacesIndexRoute: typeof SpacesIndexRoute;
+}
+
+const SpacesRouteChildren: SpacesRouteChildren = {
+  SpacesCourseIdRoute: SpacesCourseIdRoute,
+  SpacesIndexRoute: SpacesIndexRoute,
+};
+
+const SpacesRouteWithChildren =
+  SpacesRoute._addFileChildren(SpacesRouteChildren);
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  SpacesRoute: SpacesRoute,
+  SpacesRoute: SpacesRouteWithChildren,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

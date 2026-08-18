@@ -89,6 +89,47 @@
       "cancel": "取消",
       "submit": "创建课程",
       "saving": "正在创建课程"
+    },
+    "detail": {
+      "backToSpaces": "返回知识空间",
+      "loading": "正在读取课程",
+      "errorTitle": "课程暂时无法读取",
+      "errorDescription": "本地服务可能仍在启动，请稍后重试。",
+      "retry": "重新读取",
+      "notFoundTitle": "课程不存在或已删除",
+      "notFoundDescription": "这个地址没有对应的课程，或课程已被删除，无法继续操作。",
+      "infoTitle": "课程信息",
+      "edit": "编辑课程",
+      "tabs": {
+        "overview": "概览",
+        "records": "学习记录"
+      },
+      "label": {
+        "name": "课程名称",
+        "context": "学习场景",
+        "educationStage": "教育阶段",
+        "depth": "学习深度",
+        "courseType": "课程类型",
+        "description": "课程说明",
+        "hotWords": "热词"
+      },
+      "notSetValue": "未设置",
+      "noDescription": "暂无说明",
+      "noHotWords": "暂无热词"
+    },
+    "editForm": {
+      "title": "编辑课程",
+      "description": "调整课程的基础信息，保存后列表与详情会同步刷新。",
+      "cancel": "取消",
+      "submit": "保存修改",
+      "saving": "正在保存",
+      "nameRequired": "请填写课程名称",
+      "stageRequired": "学业场景必须选择教育阶段",
+      "depthRequired": "请选择学习深度"
+    },
+    "records": {
+      "pendingTitle": "学习记录尚未接入",
+      "pendingDescription": "学习记录功能将在后续计划接入这里。当前不会展示任何学习记录，也不会用模拟内容填充。"
     }
   },
   "route": {

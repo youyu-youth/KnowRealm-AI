@@ -5,4 +5,6 @@ export const courseKeys = {
   lists: () => [...courseKeys.all, "list"] as const,
   list: (query: CourseListQuery = {}) =>
     [...courseKeys.lists(), query] as const,
+  detail: (courseId: string) =>
+    [...courseKeys.all, "detail", courseId] as const,
 };

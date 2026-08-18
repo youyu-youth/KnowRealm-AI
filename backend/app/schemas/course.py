@@ -1,6 +1,9 @@
+import json
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any, cast
 
+from loguru import logger
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -95,6 +98,32 @@ class CourseCreate(BaseModel):
         return self
 
 
+class CourseUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100, description="课程名称")
+    learning_context: LearningContext | None = Field(default=None, description="课程学习场景")
+    education_stage: EducationStage | None = Field(default=None, description="学业教育阶段")
+    depth: LearningDepth | None = Field(default=None, description="职业或兴趣学习深度")
+    course_type: CourseType | None = Field(default=None, description="可选课程类型")
+    description: str | None = Field(default=None, description="可选课程说明")
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("课程名称不能为空白")
+        return cleaned
+
+    @field_validator("description")
+    @classmethod
+    def clean_description(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
+
 class CourseOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -113,3 +142,24 @@ class CourseOut(BaseModel):
     def serialize_utc(self, value: datetime) -> str:
         utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
         return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+class CourseDetailOut(CourseOut):
+    hot_words: list[str] = Field(default_factory=list, description="ASR 热词摘要")
+
+    @field_validator("hot_words", mode="before")
+    @classmethod
+    def parse_hot_words(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        # 列在 ORM 中是 TEXT 存储的 JSON 数组；元素类型静态未知（cast），逐项运行时收窄。
+        try:
+            parsed: object = json.loads(value) if isinstance(value, str) else value
+        except json.JSONDecodeError:
+            # 隐私红线：日志不携带热词内容，只记录事件本身。
+            logger.warning("course_hot_words_json_invalid")
+            return []
+        if not isinstance(parsed, list):
+            logger.warning("course_hot_words_json_invalid")
+            return []
+        return [word for word in cast("list[object]", parsed) if isinstance(word, str)]

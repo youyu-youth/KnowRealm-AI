@@ -67,6 +67,95 @@
         "title": "CourseCreate",
         "type": "object"
       },
+      "CourseDetailOut": {
+        "properties": {
+          "course_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningDepth"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "education_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EducationStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hot_words": {
+            "description": "ASR 热词摘要",
+            "items": {
+              "type": "string"
+            },
+            "title": "Hot Words",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "learning_context": {
+            "$ref": "#/components/schemas/LearningContext"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CourseStatus"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "learning_context",
+          "education_stage",
+          "depth",
+          "course_type",
+          "description",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CourseDetailOut",
+        "type": "object"
+      },
       "CourseOut": {
         "properties": {
           "course_type": {
@@ -164,6 +253,82 @@
         ],
         "title": "CourseType",
         "type": "string"
+      },
+      "CourseUpdate": {
+        "properties": {
+          "course_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CourseType"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选课程类型"
+          },
+          "depth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningDepth"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "职业或兴趣学习深度"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选课程说明",
+            "title": "Description"
+          },
+          "education_stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EducationStage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "学业教育阶段"
+          },
+          "learning_context": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "课程学习场景"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "课程名称",
+            "title": "Name"
+          }
+        },
+        "title": "CourseUpdate",
+        "type": "object"
       },
       "EducationStage": {
         "enum": [
@@ -317,6 +482,16 @@
             },
             "description": "Forbidden"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -394,6 +569,16 @@
             },
             "description": "Forbidden"
           },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -416,6 +601,190 @@
           }
         },
         "summary": "Create Course",
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/courses/{course_id}": {
+      "get": {
+        "operationId": "get_course_api_courses__course_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Course",
+        "tags": [
+          "courses"
+        ]
+      },
+      "patch": {
+        "operationId": "update_course_api_courses__course_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CourseUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Update Course",
         "tags": [
           "courses"
         ]

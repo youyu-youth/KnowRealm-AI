@@ -12,42 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import { Textarea } from "@/components/ui/textarea";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
-import type {
-  CourseType,
-  EducationStage,
-  LearningContext,
-  LearningDepth,
-} from "@/features/courses/api/types";
 import {
-  courseTypeLabelKeys,
-  courseTypes,
-  educationStageLabelKeys,
-  educationStages,
-  learningContextLabelKeys,
-  learningContexts,
-  learningDepthLabelKeys,
-  learningDepths,
-} from "@/features/courses/courseOptions";
-const NO_COURSE_TYPE = "NONE";
+  type CourseFormValues,
+  courseFormPayloadFromValues,
+  emptyCourseFormValues,
+  invalidCourseFormField,
+} from "@/features/courses/courseFormValues";
+import { CourseFormFields } from "@/features/courses/components/CourseFormFields";
 
 type CreateCourseDialogProps = {
   open: boolean;
@@ -60,35 +34,7 @@ export function CreateCourseDialog({
 }: CreateCourseDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [name, setName] = useState("");
-  const [learningContext, setLearningContext] =
-    useState<LearningContext>("SCHOOL");
-  const [educationStage, setEducationStage] = useState<EducationStage | "">("");
-  const [depth, setDepth] = useState<LearningDepth | "">("");
-  const [courseType, setCourseType] = useState<CourseType | "">("");
-  const [description, setDescription] = useState("");
-  const learningContextItems = learningContexts.map((value) => ({
-    value,
-    label: t(learningContextLabelKeys[value]),
-  }));
-  const educationStageItems = educationStages.map((value) => ({
-    value,
-    label: t(educationStageLabelKeys[value]),
-  }));
-  const learningDepthItems = learningDepths.map((value) => ({
-    value,
-    label: t(learningDepthLabelKeys[value]),
-  }));
-  const courseTypeItems: Array<{
-    value: CourseType | typeof NO_COURSE_TYPE;
-    label: string;
-  }> = [
-    { value: NO_COURSE_TYPE, label: t("spaces.form.courseTypeNone") },
-    ...courseTypes.map((value) => ({
-      value,
-      label: t(courseTypeLabelKeys[value]),
-    })),
-  ];
+  const [values, setValues] = useState<CourseFormValues>(emptyCourseFormValues);
   const createCourse = useMutation({
     mutationFn: courseApi.create,
     onSuccess: async () => {
@@ -98,17 +44,10 @@ export function CreateCourseDialog({
     },
   });
 
-  const requiredContextSelected =
-    learningContext === "SCHOOL" ? educationStage !== "" : depth !== "";
-  const canSubmit = name.trim().length > 0 && requiredContextSelected;
+  const canSubmit = invalidCourseFormField(values) === null;
 
   function resetForm() {
-    setName("");
-    setLearningContext("SCHOOL");
-    setEducationStage("");
-    setDepth("");
-    setCourseType("");
-    setDescription("");
+    setValues(emptyCourseFormValues);
     createCourse.reset();
   }
 
@@ -117,33 +56,10 @@ export function CreateCourseDialog({
     onOpenChange(nextOpen);
   }
 
-  function handleLearningContext(value: LearningContext | null) {
-    if (value === null) return;
-    setLearningContext(value);
-    if (value === "SCHOOL") setDepth("");
-    else setEducationStage("");
-  }
-
-  function handleCourseType(value: string | null) {
-    if (value === "MAJOR" || value === "GENERAL" || value === "ELECTIVE") {
-      setCourseType(value);
-    } else {
-      setCourseType("");
-    }
-  }
-
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit) return;
-    createCourse.mutate({
-      name,
-      learning_context: learningContext,
-      education_stage:
-        learningContext === "SCHOOL" ? educationStage || null : null,
-      depth: learningContext === "SCHOOL" ? null : depth || null,
-      course_type: courseType || null,
-      description: description || null,
-    });
+    createCourse.mutate(courseFormPayloadFromValues(values));
   }
 
   return (
@@ -157,161 +73,10 @@ export function CreateCourseDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="course-name">
-                {t("spaces.form.name")}
-              </FieldLabel>
-              <Input
-                id="course-name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                autoFocus
-                maxLength={100}
-                required
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="learning-context">
-                {t("spaces.form.learningContext")}
-              </FieldLabel>
-              <Select
-                items={learningContextItems}
-                value={learningContext}
-                onValueChange={handleLearningContext}
-              >
-                <SelectTrigger id="learning-context" className="w-full">
-                  <SelectValue>
-                    {t(learningContextLabelKeys[learningContext])}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {learningContexts.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {t(learningContextLabelKeys[value])}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <FieldDescription>
-                {t("spaces.form.learningContextHint")}
-              </FieldDescription>
-            </Field>
-
-            {learningContext === "SCHOOL" ? (
-              <Field>
-                <FieldLabel htmlFor="education-stage">
-                  {t("spaces.form.educationStage")}
-                </FieldLabel>
-                <Select
-                  items={educationStageItems}
-                  value={educationStage || null}
-                  onValueChange={(value) => setEducationStage(value ?? "")}
-                >
-                  <SelectTrigger
-                    id="education-stage"
-                    className="w-full"
-                    aria-required="true"
-                  >
-                    <SelectValue
-                      placeholder={t("spaces.form.educationStagePlaceholder")}
-                    >
-                      {educationStage
-                        ? t(educationStageLabelKeys[educationStage])
-                        : null}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {educationStages.map((value) => (
-                        <SelectItem key={value} value={value}>
-                          {t(educationStageLabelKeys[value])}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-            ) : (
-              <Field>
-                <FieldLabel htmlFor="learning-depth">
-                  {t("spaces.form.depth")}
-                </FieldLabel>
-                <Select
-                  items={learningDepthItems}
-                  value={depth || null}
-                  onValueChange={(value) => setDepth(value ?? "")}
-                >
-                  <SelectTrigger
-                    id="learning-depth"
-                    className="w-full"
-                    aria-required="true"
-                  >
-                    <SelectValue
-                      placeholder={t("spaces.form.depthPlaceholder")}
-                    >
-                      {depth ? t(learningDepthLabelKeys[depth]) : null}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {learningDepths.map((value) => (
-                        <SelectItem key={value} value={value}>
-                          {t(learningDepthLabelKeys[value])}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              </Field>
-            )}
-
-            <Field>
-              <FieldLabel htmlFor="course-type">
-                {t("spaces.form.courseType")}
-              </FieldLabel>
-              <Select
-                items={courseTypeItems}
-                value={courseType || NO_COURSE_TYPE}
-                onValueChange={handleCourseType}
-              >
-                <SelectTrigger id="course-type" className="w-full">
-                  <SelectValue>
-                    {courseType
-                      ? t(courseTypeLabelKeys[courseType])
-                      : t("spaces.form.courseTypeNone")}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value={NO_COURSE_TYPE}>
-                      {t("spaces.form.courseTypeNone")}
-                    </SelectItem>
-                    {courseTypes.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {t(courseTypeLabelKeys[value])}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="course-description">
-                {t("spaces.form.courseDescription")}
-              </FieldLabel>
-              <Textarea
-                id="course-description"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                rows={3}
-              />
-            </Field>
-          </FieldGroup>
+          <CourseFormFields
+            values={values}
+            onChange={(patch) => setValues((prev) => ({ ...prev, ...patch }))}
+          />
 
           {createCourse.isError ? (
             <Alert variant="destructive">

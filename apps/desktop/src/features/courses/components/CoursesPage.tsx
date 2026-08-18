@@ -22,9 +22,14 @@ import { CreateCourseDialog } from "@/features/courses/components/CreateCourseDi
 type CoursesPageProps = {
   filters: CourseListQuery;
   onFiltersChange: (filters: CourseListQuery) => void;
+  onOpenCourse: (courseId: string) => void;
 };
 
-export function CoursesPage({ filters, onFiltersChange }: CoursesPageProps) {
+export function CoursesPage({
+  filters,
+  onFiltersChange,
+  onOpenCourse,
+}: CoursesPageProps) {
   const { t } = useTranslation();
   const [createOpen, setCreateOpen] = useState(false);
   const courses = useQuery({
@@ -131,7 +136,7 @@ export function CoursesPage({ filters, onFiltersChange }: CoursesPageProps) {
           </EmptyContent>
         </Empty>
       ) : (
-        <CourseList courses={visibleCourses} />
+        <CourseList courses={visibleCourses} onOpenCourse={onOpenCourse} />
       )}
 
       <CreateCourseDialog open={createOpen} onOpenChange={setCreateOpen} />

@@ -1,7 +1,9 @@
 import type { components, operations } from "@knowrealm/api-types";
 
 export type Course = components["schemas"]["CourseOut"];
+export type CourseDetail = components["schemas"]["CourseDetailOut"];
 export type CourseCreate = components["schemas"]["CourseCreate"];
+export type CourseUpdate = components["schemas"]["CourseUpdate"];
 export type LearningContext = components["schemas"]["LearningContext"];
 export type EducationStage = components["schemas"]["EducationStage"];
 export type LearningDepth = components["schemas"]["LearningDepth"];
