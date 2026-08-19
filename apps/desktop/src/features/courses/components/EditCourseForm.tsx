@@ -3,7 +3,14 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
 import type { CourseDetail, CourseUpdate } from "@/features/courses/api/types";
@@ -37,6 +44,10 @@ export function EditCourseForm({
     field: CourseRequiredField;
     message: string;
   } | null>(null);
+  const [hotWordsText, setHotWordsText] = useState(() =>
+    (course.hot_words ?? []).join("\n"),
+  );
+  const [hotWordsError, setHotWordsError] = useState<string | null>(null);
   const updateCourse = useMutation({
     mutationFn: (payload: CourseUpdate) => courseApi.update(course.id, payload),
     onSuccess: async () => {
@@ -71,7 +82,19 @@ export function EditCourseForm({
       rejectInvalid(invalidField, fieldErrorMessages[invalidField]);
       return;
     }
-    updateCourse.mutate(courseFormPayloadFromValues(values));
+    const hotWords = hotWordsText
+      .split("\n")
+      .map((word) => word.trim())
+      .filter(Boolean);
+    if (hotWords.length > 100) {
+      setHotWordsError(t("spaces.editForm.hotWordsTooMany"));
+      document.getElementById("course-hot-words")?.focus();
+      return;
+    }
+    updateCourse.mutate({
+      ...courseFormPayloadFromValues(values),
+      hot_words: hotWords,
+    });
   }
 
   const errors: Partial<Record<keyof CourseFormValues, string>> = fieldError
@@ -93,6 +116,32 @@ export function EditCourseForm({
         onChange={handleChange}
         errors={errors}
       />
+
+      <Field data-invalid={hotWordsError ? "true" : undefined}>
+        <FieldLabel htmlFor="course-hot-words">
+          {t("spaces.editForm.hotWords")}
+        </FieldLabel>
+        <Textarea
+          id="course-hot-words"
+          value={hotWordsText}
+          onChange={(event) => {
+            setHotWordsText(event.target.value);
+            setHotWordsError(null);
+          }}
+          aria-invalid={hotWordsError ? true : undefined}
+          aria-describedby="course-hot-words-description"
+          className="min-h-28 resize-y"
+        />
+        <FieldDescription id="course-hot-words-description">
+          {t("spaces.editForm.hotWordsDescription", {
+            count: hotWordsText
+              .split("\n")
+              .map((word) => word.trim())
+              .filter(Boolean).length,
+          })}
+        </FieldDescription>
+        <FieldError>{hotWordsError}</FieldError>
+      </Field>
 
       {updateCourse.isError ? (
         <Alert variant="destructive">

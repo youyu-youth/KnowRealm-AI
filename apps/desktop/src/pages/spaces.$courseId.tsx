@@ -24,6 +24,7 @@ export function CourseDetailRoute() {
           replace: true,
         })
       }
+      onDeleted={() => navigate({ to: "/spaces" })}
     />
   );
 }

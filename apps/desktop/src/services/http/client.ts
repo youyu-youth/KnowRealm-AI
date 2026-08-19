@@ -33,6 +33,9 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, detail);
   }
 
+  // 204 按 HTTP 语义没有 JSON body；调用方以 void 作为 T。
+  if (response.status === 204) return undefined as T;
+
   // OpenAPI types are the compile-time authority; FastAPI validates the runtime payload.
   return response.json() as Promise<T>;
 }

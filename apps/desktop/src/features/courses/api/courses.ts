@@ -29,4 +29,6 @@ export const courseApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  delete: (courseId: string) =>
+    apiFetch<void>(`/api/courses/${courseId}`, { method: "DELETE" }),
 };

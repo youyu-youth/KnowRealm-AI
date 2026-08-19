@@ -21,12 +21,14 @@ type CourseDetailPageProps = {
   courseId: string;
   tab: CourseTab;
   onTabChange: (tab: CourseTab) => void;
+  onDeleted: () => void | Promise<void>;
 };
 
 export function CourseDetailPage({
   courseId,
   tab,
   onTabChange,
+  onDeleted,
 }: CourseDetailPageProps) {
   const { t } = useTranslation();
   const course = useQuery({
@@ -130,7 +132,7 @@ export function CourseDetailPage({
           </TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-6">
-          <CourseOverview course={detail} />
+          <CourseOverview course={detail} onDeleted={onDeleted} />
         </TabsContent>
         <TabsContent value="records" className="mt-6">
           <CourseRecordsPanel />

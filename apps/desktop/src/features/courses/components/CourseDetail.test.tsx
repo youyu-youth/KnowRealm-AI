@@ -167,6 +167,7 @@ describe("课程详情与编辑", () => {
       depth: null,
       course_type: "MAJOR",
       description: "理解进程、内存与文件系统。",
+      hot_words: [],
     });
   });
 
@@ -278,5 +279,108 @@ describe("课程详情与编辑", () => {
       "操作系统导论",
     );
     expect(screen.getByRole("button", { name: "保存修改" })).toBeEnabled();
+  });
+
+  it("热词超过 100 个时保留输入且不请求，合法热词按输入顺序随 PATCH 保存", async () => {
+    let current = schoolCourse;
+    let patchCalls = 0;
+    let patchBody: unknown;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(current)),
+      http.patch(DETAIL_URL, async ({ request }) => {
+        patchCalls += 1;
+        patchBody = await request.json();
+        current = {
+          ...schoolCourse,
+          hot_words: ["进程", "文件系统", "内存"],
+          updated_at: "2026-08-19T08:00:00.000000Z",
+        };
+        return HttpResponse.json(current);
+      }),
+    );
+    renderAt(ROUTE_PATH);
+
+    fireEvent.click(await screen.findByRole("button", { name: "编辑课程" }));
+    const hotWords = screen.getByRole("textbox", { name: "手动热词" });
+    const tooMany = Array.from(
+      { length: 101 },
+      (_, index) => `热词${index}`,
+    ).join("\n");
+    fireEvent.change(hotWords, { target: { value: tooMany } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+
+    expect(await screen.findByText("最多保存 100 个热词")).toBeVisible();
+    expect(hotWords).toHaveFocus();
+    expect(hotWords).toHaveValue(tooMany);
+    expect(patchCalls).toBe(0);
+
+    fireEvent.change(hotWords, {
+      target: { value: " 进程 \n\n 文件系统\n内存 " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+
+    expect(await screen.findByText("进程 · 文件系统 · 内存")).toBeVisible();
+    expect(patchCalls).toBe(1);
+    expect(patchBody).toMatchObject({
+      hot_words: ["进程", "文件系统", "内存"],
+    });
+  });
+
+  it("取消删除不会发请求或改变课程状态", async () => {
+    let deleteCalls = 0;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.delete(DETAIL_URL, () => {
+        deleteCalls += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderAt(ROUTE_PATH);
+
+    fireEvent.click(await screen.findByRole("button", { name: "删除课程" }));
+    expect(screen.getByRole("heading", { name: "确认删除课程" })).toBeVisible();
+    expect(screen.getByText(/当前没有恢复界面/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "确认删除课程" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(deleteCalls).toBe(0);
+    expect(screen.getByRole("heading", { name: "操作系统" })).toBeVisible();
+  });
+
+  it("删除失败可原地重试，成功后失效缓存并返回知识空间", async () => {
+    let deleteCalls = 0;
+    let deleteToken: string | null = null;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
+      http.delete(DETAIL_URL, ({ request }) => {
+        deleteCalls += 1;
+        deleteToken = request.headers.get("X-KnowRealm-Token");
+        if (deleteCalls === 1) {
+          return HttpResponse.json(
+            { detail: "数据库暂时忙，请重试" },
+            { status: 500 },
+          );
+        }
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderAt(ROUTE_PATH);
+
+    fireEvent.click(await screen.findByRole("button", { name: "删除课程" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(await screen.findByText("数据库暂时忙，请重试")).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认删除" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(await screen.findByText("还没有知识空间")).toBeVisible();
+    expect(window.location.pathname).toBe("/spaces");
+    expect(deleteCalls).toBe(2);
+    expect(deleteToken).toBe(TEST_LAUNCH_TOKEN);
   });
 });

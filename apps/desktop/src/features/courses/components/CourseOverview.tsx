@@ -8,12 +8,14 @@ import {
   learningContextLabelKeys,
 } from "@/features/courses/courseOptions";
 import { EditCourseForm } from "@/features/courses/components/EditCourseForm";
+import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDialog";
 
 type CourseOverviewProps = {
   course: CourseDetail;
+  onDeleted: () => void | Promise<void>;
 };
 
-export function CourseOverview({ course }: CourseOverviewProps) {
+export function CourseOverview({ course, onDeleted }: CourseOverviewProps) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
 
@@ -67,9 +69,12 @@ export function CourseOverview({ course }: CourseOverviewProps) {
         <h2 className="text-section font-section text-ink">
           {t("spaces.detail.infoTitle")}
         </h2>
-        <Button onClick={() => setEditing(true)}>
-          {t("spaces.detail.edit")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <DeleteCourseDialog course={course} onDeleted={onDeleted} />
+          <Button onClick={() => setEditing(true)}>
+            {t("spaces.detail.edit")}
+          </Button>
+        </div>
       </div>
       <dl className="border-border mt-4 border-t">
         {rows.map((row) => (
