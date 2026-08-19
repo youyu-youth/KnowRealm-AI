@@ -406,6 +406,185 @@ async def test_record_detail_api_enforces_record_and_parent_visibility(
 
 
 @pytest.mark.anyio
+async def test_record_delete_soft_deletes_visible_record_and_persists_after_restart(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    headers = {"X-KnowRealm-Token": TOKEN}
+    record_id = "77777777-7777-4777-8777-777777777777"
+    deleted_record_id = "88888888-8888-4888-8888-888888888888"
+    hidden_parent_record_id = "99999999-9999-4999-8999-999999999999"
+
+    async with running_record_app(data_dir) as (app, client):
+        visible_course = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "可见课程",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        hidden_course = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "已删除课程",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        visible_course_id = visible_course.json()["id"]
+        hidden_course_id = hidden_course.json()["id"]
+        async with app.state.session_factory() as session, session.begin():
+            for seeded_id, course_id, deleted_at in (
+                (record_id, visible_course_id, None),
+                (
+                    deleted_record_id,
+                    visible_course_id,
+                    "2026-08-19T09:00:00.000000Z",
+                ),
+                (hidden_parent_record_id, hidden_course_id, None),
+            ):
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO records (
+                            id, course_id, capture_type, title, status, duration_ms,
+                            summary_confirmed_at, created_at, updated_at, deleted_at
+                        ) VALUES (
+                            :id, :course_id, 'QUICK_NOTE', '待删除记录', 'NOTE', 0,
+                            NULL, '2026-08-19T08:00:00.000000Z',
+                            '2026-08-19T08:00:00.000000Z', :deleted_at
+                        )
+                        """
+                    ),
+                    {
+                        "id": seeded_id,
+                        "course_id": course_id,
+                        "deleted_at": deleted_at,
+                    },
+                )
+            await session.execute(
+                text(
+                    "UPDATE courses SET deleted_at = '2026-08-19T09:00:00.000000Z' WHERE id = :id"
+                ),
+                {"id": hidden_course_id},
+            )
+
+        assert (await client.delete(f"/api/records/{record_id}")).status_code == 403
+        assert (
+            await client.delete(
+                f"/api/records/{record_id}",
+                headers={"X-KnowRealm-Token": "wrong"},
+            )
+        ).status_code == 403
+        deleted = await client.delete(f"/api/records/{record_id}", headers=headers)
+
+        assert deleted.status_code == 204
+        assert deleted.content == b""
+        assert (
+            await client.get(f"/api/courses/{visible_course_id}/records", headers=headers)
+        ).json() == []
+        assert (await client.get(f"/api/records/{record_id}", headers=headers)).status_code == 404
+        for invisible_id in (
+            record_id,
+            deleted_record_id,
+            hidden_parent_record_id,
+            "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        ):
+            assert (
+                await client.delete(f"/api/records/{invisible_id}", headers=headers)
+            ).status_code == 404
+
+        async with app.state.session_factory() as session:
+            deleted_at, updated_at = (
+                await session.execute(
+                    text("SELECT deleted_at, updated_at FROM records WHERE id = :record_id"),
+                    {"record_id": record_id},
+                )
+            ).one()
+            hidden_parent_deleted_at = (
+                await session.execute(
+                    text("SELECT deleted_at FROM records WHERE id = :record_id"),
+                    {"record_id": hidden_parent_record_id},
+                )
+            ).scalar_one()
+        assert deleted_at == updated_at
+        assert deleted_at > "2026-08-19T08:00:00.000000Z"
+        assert hidden_parent_deleted_at is None
+
+    async with running_record_app(data_dir) as (_app, restarted_client):
+        assert (
+            await restarted_client.get(
+                f"/api/courses/{visible_course_id}/records",
+                headers=headers,
+            )
+        ).json() == []
+        assert (
+            await restarted_client.get(f"/api/records/{record_id}", headers=headers)
+        ).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_record_delete_rolls_back_when_tombstone_write_fails(tmp_path: Path) -> None:
+    async with running_record_app(tmp_path / "KnowRealm") as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        course = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "事务课程",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        course_id = course.json()["id"]
+        record_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO records (
+                        id, course_id, capture_type, title, status, duration_ms,
+                        summary_confirmed_at, created_at, updated_at, deleted_at
+                    ) VALUES (
+                        :record_id, :course_id, 'QUICK_NOTE', '事务记录', 'NOTE', 0,
+                        NULL, '2026-08-19T08:00:00.000000Z',
+                        '2026-08-19T08:00:00.000000Z', NULL
+                    );
+                    """
+                ),
+                {"record_id": record_id, "course_id": course_id},
+            )
+            await session.execute(
+                text(
+                    """
+                    CREATE TRIGGER fail_record_soft_delete
+                    BEFORE UPDATE OF deleted_at ON records
+                    WHEN NEW.deleted_at IS NOT NULL
+                    BEGIN
+                        SELECT RAISE(ABORT, 'forced record update failure');
+                    END
+                    """
+                )
+            )
+
+        failed = await client.delete(f"/api/records/{record_id}", headers=headers)
+
+        assert failed.status_code == 500
+        assert (await client.get(f"/api/records/{record_id}", headers=headers)).status_code == 200
+        async with app.state.session_factory() as session:
+            tombstone = (
+                await session.execute(
+                    text("SELECT deleted_at, updated_at FROM records WHERE id = :record_id"),
+                    {"record_id": record_id},
+                )
+            ).one()
+        assert tombstone == (None, "2026-08-19T08:00:00.000000Z")
+
+
+@pytest.mark.anyio
 async def test_deleting_course_soft_deletes_its_records_in_one_transaction(
     tmp_path: Path,
 ) -> None:

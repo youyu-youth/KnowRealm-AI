@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_launch_token
@@ -30,6 +30,21 @@ async def get_record(
     if record is None:
         raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
     return RecordOut.model_validate(record)
+
+
+@router.delete(
+    "/records/{record_id}",
+    status_code=204,
+    response_class=Response,
+    response_model=None,
+)
+async def delete_record(
+    record_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    if not await RecordService.soft_delete(session, str(record_id)):
+        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+    return Response(status_code=204)
 
 
 @router.get("/courses/{course_id}/records", response_model=list[RecordOut])

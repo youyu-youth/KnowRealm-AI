@@ -7,5 +7,17 @@ export const Route = createFileRoute("/records/$recordId")({
 
 export function RecordDetailRoute() {
   const { recordId } = Route.useParams();
-  return <RecordDetailPage recordId={recordId} />;
+  const navigate = Route.useNavigate();
+  return (
+    <RecordDetailPage
+      recordId={recordId}
+      onDeleted={(courseId) =>
+        navigate({
+          to: "/spaces/$courseId",
+          params: { courseId },
+          search: { tab: "records" },
+        })
+      }
+    />
+  );
 }

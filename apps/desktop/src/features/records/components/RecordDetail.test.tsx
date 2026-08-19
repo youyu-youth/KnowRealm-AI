@@ -2,7 +2,13 @@
 
 import "@testing-library/jest-dom/vitest";
 import type { components } from "@knowrealm/api-types";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
@@ -14,6 +20,8 @@ type RecordOut = components["schemas"]["RecordOut"];
 const RECORD_ID = "22222222-2222-4222-8222-222222222222";
 const COURSE_ID = "11111111-1111-4111-8111-111111111111";
 const DETAIL_URL = `${TEST_SIDECAR_URL}/api/records/${RECORD_ID}`;
+const COURSE_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}`;
+const COURSE_RECORDS_URL = `${COURSE_URL}/records`;
 const ROUTE_PATH = `/records/${RECORD_ID}`;
 
 const record: RecordOut = {
@@ -26,6 +34,20 @@ const record: RecordOut = {
   summary_confirmed_at: null,
   created_at: "2026-08-19T08:30:00.000000Z",
   updated_at: "2026-08-19T08:30:00.000000Z",
+};
+
+const course: components["schemas"]["CourseDetailOut"] = {
+  id: COURSE_ID,
+  name: "操作系统",
+  learning_context: "SCHOOL",
+  education_stage: "UNDERGRADUATE",
+  depth: null,
+  course_type: "MAJOR",
+  description: null,
+  status: "ACTIVE",
+  hot_words: [],
+  created_at: "2026-08-19T08:00:00.000000Z",
+  updated_at: "2026-08-19T08:00:00.000000Z",
 };
 
 vi.mock("@/services/tauri/sidecar", () => ({
@@ -183,6 +205,9 @@ describe("学习记录详情", () => {
       await screen.findByRole("heading", { name: "未命名学习记录" }),
     ).toBeInTheDocument();
     expect(
+      screen.queryByRole("button", { name: "删除学习记录" }),
+    ).not.toBeInTheDocument();
+    expect(
       await screen.findByRole("link", { name: "返回知识空间" }),
     ).toHaveAttribute("href", "/spaces");
   });
@@ -201,5 +226,105 @@ describe("学习记录详情", () => {
       screen.queryByRole("button", { name: /重试|恢复/ }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/error|code|任务/)).not.toBeInTheDocument();
+  });
+
+  it("取消或关闭确认对话框不发删除请求，并将焦点恢复到删除入口", async () => {
+    let deleteCalls = 0;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.delete(DETAIL_URL, () => {
+        deleteCalls += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderAt();
+
+    const trigger = await screen.findByRole("button", { name: "删除学习记录" });
+    fireEvent.click(trigger);
+    expect(
+      screen.getByRole("heading", { name: "确认删除学习记录" }),
+    ).toBeVisible();
+    expect(screen.getByText(/无法恢复/)).toBeVisible();
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(deleteCalls).toBe(0);
+
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "确认删除学习记录" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(deleteCalls).toBe(0);
+  });
+
+  it("删除失败保留详情并可重试，成功后刷新课程列表缓存并导航", async () => {
+    let deleted = false;
+    let deleteCalls = 0;
+    let listCalls = 0;
+    let deleteToken: string | null = null;
+    server.use(
+      http.get(COURSE_URL, () => HttpResponse.json(course)),
+      http.get(COURSE_RECORDS_URL, () => {
+        listCalls += 1;
+        return HttpResponse.json(deleted ? [] : [record]);
+      }),
+      http.get(DETAIL_URL, () =>
+        deleted
+          ? HttpResponse.json(
+              { detail: "学习记录不存在或已删除" },
+              { status: 404 },
+            )
+          : HttpResponse.json(record),
+      ),
+      http.delete(DETAIL_URL, async ({ request }) => {
+        deleteCalls += 1;
+        deleteToken = request.headers.get("X-KnowRealm-Token");
+        if (deleteCalls === 1) {
+          await delay(100);
+          return HttpResponse.json(
+            { detail: "数据库暂时忙，请重试" },
+            { status: 500 },
+          );
+        }
+        await delay(100);
+        deleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderAt(`/spaces/${COURSE_ID}?tab=records`);
+
+    fireEvent.click(
+      await screen.findByRole("link", { name: /操作系统第一讲/ }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "删除学习记录" }),
+    );
+    const confirm = screen.getByRole("button", { name: "确认删除" });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirm).toBeDisabled());
+    fireEvent.click(confirm);
+
+    expect(deleteCalls).toBe(1);
+    expect(await screen.findByText("数据库暂时忙，请重试")).toBeVisible();
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(window.location.pathname).toBe(`/records/${RECORD_ID}`);
+
+    const retry = screen.getByRole("button", { name: "确认删除" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).toBeDisabled());
+    fireEvent.click(retry);
+    expect(deleteCalls).toBe(2);
+
+    expect(
+      await screen.findByRole("heading", { name: "还没有学习记录" }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe(`/spaces/${COURSE_ID}`);
+    expect(window.location.search).toBe("?tab=records");
+    expect(deleteCalls).toBe(2);
+    expect(deleteToken).toBe(TEST_LAUNCH_TOKEN);
+    expect(listCalls).toBe(2);
   });
 });

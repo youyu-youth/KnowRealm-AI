@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
+import { DeleteRecordDialog } from "@/features/records/components/DeleteRecordDialog";
 import {
   captureTypeLabelKeys,
   formatRecordDuration,
@@ -18,6 +19,7 @@ import { ApiError } from "@/services/http/client";
 
 type RecordDetailPageProps = {
   recordId: string;
+  onDeleted: (courseId: string) => void | Promise<void>;
 };
 
 const unavailableTabs = [
@@ -28,7 +30,10 @@ const unavailableTabs = [
   { value: "quiz", labelKey: "record.detail.tabs.quiz" },
 ] as const;
 
-export function RecordDetailPage({ recordId }: RecordDetailPageProps) {
+export function RecordDetailPage({
+  recordId,
+  onDeleted,
+}: RecordDetailPageProps) {
   const { t } = useTranslation();
   const record = useQuery({
     queryKey: recordKeys.detail(recordId),
@@ -118,34 +123,42 @@ export function RecordDetailPage({ recordId }: RecordDetailPageProps) {
         </Link>
       )}
 
-      <header className="mt-5 min-w-0">
+      <header className="mt-5 flex min-w-0 items-start justify-between gap-4">
         <h1
-          className="text-headline font-headline text-ink-strong truncate"
+          className="text-headline font-headline text-ink-strong min-w-0 truncate"
           title={title}
         >
           {title}
         </h1>
-        <div className="text-label text-muted-foreground mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
-          <span>{t(captureTypeLabelKeys[detail.capture_type])}</span>
-          <span aria-hidden="true">·</span>
-          <time dateTime={detail.created_at}>
-            {t("spaces.records.createdAt", {
-              date: recordDateFormatter.format(new Date(detail.created_at)),
-            })}
-          </time>
-          {detail.duration_ms > 0 ? (
-            <>
-              <span aria-hidden="true">·</span>
-              <span>{formatRecordDuration(detail.duration_ms, t)}</span>
-            </>
-          ) : null}
-          <span
-            className={`${statusClassNames[detail.status]} font-label rounded-xs px-2 py-1 whitespace-nowrap`}
-          >
-            {t(statusLabelKeys[detail.status])}
-          </span>
-        </div>
+        {detail.course_id ? (
+          <DeleteRecordDialog
+            recordId={detail.id}
+            courseId={detail.course_id}
+            title={title}
+            onDeleted={onDeleted}
+          />
+        ) : null}
       </header>
+      <div className="text-label text-muted-foreground mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
+        <span>{t(captureTypeLabelKeys[detail.capture_type])}</span>
+        <span aria-hidden="true">·</span>
+        <time dateTime={detail.created_at}>
+          {t("spaces.records.createdAt", {
+            date: recordDateFormatter.format(new Date(detail.created_at)),
+          })}
+        </time>
+        {detail.duration_ms > 0 ? (
+          <>
+            <span aria-hidden="true">·</span>
+            <span>{formatRecordDuration(detail.duration_ms, t)}</span>
+          </>
+        ) : null}
+        <span
+          className={`${statusClassNames[detail.status]} font-label rounded-xs px-2 py-1 whitespace-nowrap`}
+        >
+          {t(statusLabelKeys[detail.status])}
+        </span>
+      </div>
 
       <Tabs value="summary" className="mt-8 min-w-0">
         <TabsList
