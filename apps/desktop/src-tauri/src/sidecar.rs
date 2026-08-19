@@ -115,6 +115,7 @@ fn wait_for_bound_port(events: &mpsc::Receiver<CommandEvent>) -> io::Result<u16>
                     continue;
                 };
                 let port = value
+                    .trim()
                     .parse::<u16>()
                     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
                 if port == 0 {
@@ -263,11 +264,11 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_port_reported_by_the_spawned_sidecar() {
+    fn reads_the_newline_terminated_port_reported_by_the_spawned_sidecar() {
         let (sender, receiver) = mpsc::channel();
         sender
             .send(CommandEvent::Stdout(
-                b"KNOWREALM_SIDECAR_PORT=43127".to_vec(),
+                b"KNOWREALM_SIDECAR_PORT=43127\r\n".to_vec(),
             ))
             .expect("port event");
 
