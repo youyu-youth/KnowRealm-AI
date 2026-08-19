@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -10,6 +11,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
+from app.services.course_service import CourseService
 
 TOKEN = "test-launch-token"
 
@@ -499,6 +501,176 @@ async def test_detail_and_edit_hide_soft_deleted_course(tmp_path: Path) -> None:
         )
         assert detail.status_code == 404
         assert edit.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_hot_words_patch_is_ordered_bounded_and_atomic(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with course_client(data_dir) as client:
+        created = await client.post(
+            "/api/courses",
+            json={
+                "name": "操作系统",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+            },
+        )
+        course_id = created.json()["id"]
+        expected_words = [f"热词{index}" for index in range(100)]
+
+        saved = await client.patch(
+            f"/api/courses/{course_id}",
+            json={"hot_words": [f"  {word}  " for word in expected_words]},
+        )
+        assert saved.status_code == 200
+        assert (await client.get(f"/api/courses/{course_id}")).json()["hot_words"] == (
+            expected_words
+        )
+
+        too_many = await client.patch(
+            f"/api/courses/{course_id}",
+            json={"name": "不应保存", "hot_words": [f"词{index}" for index in range(101)]},
+        )
+        blank_item = await client.patch(
+            f"/api/courses/{course_id}",
+            json={"name": "也不应保存", "hot_words": ["有效", "   "]},
+        )
+        assert too_many.status_code == 422
+        assert blank_item.status_code == 422
+
+        unchanged = (await client.get(f"/api/courses/{course_id}")).json()
+        assert unchanged["name"] == "操作系统"
+        assert unchanged["hot_words"] == expected_words
+
+
+@pytest.mark.anyio
+async def test_delete_course_returns_204_and_hides_every_read_path(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_course_app(data_dir) as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        created = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "待删除课程",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+                "course_type": "MAJOR",
+            },
+        )
+        course_id = created.json()["id"]
+
+        deleted = await client.delete(f"/api/courses/{course_id}", headers=headers)
+        assert deleted.status_code == 204
+        assert deleted.content == b""
+        assert (await client.get("/api/courses", headers=headers)).json() == []
+        assert (
+            await client.get(
+                "/api/courses",
+                headers=headers,
+                params={
+                    "q": "待删除",
+                    "education_stage": "UNDERGRADUATE",
+                    "course_type": "MAJOR",
+                },
+            )
+        ).json() == []
+        assert (await client.get(f"/api/courses/{course_id}", headers=headers)).status_code == 404
+        assert (
+            await client.patch(
+                f"/api/courses/{course_id}",
+                headers=headers,
+                json={"name": "不可编辑"},
+            )
+        ).status_code == 404
+        assert (
+            await client.delete(f"/api/courses/{course_id}", headers=headers)
+        ).status_code == 404
+
+        async with app.state.session_factory() as session:
+            tombstone = (
+                await session.execute(
+                    text("SELECT deleted_at, updated_at FROM courses WHERE id = :id"),
+                    {"id": course_id},
+                )
+            ).one()
+        assert tombstone.deleted_at is not None
+        assert tombstone.updated_at == tombstone.deleted_at
+
+
+@pytest.mark.anyio
+async def test_cleanup_keeps_30_day_tombstones_and_removes_only_expired(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    now = datetime(2026, 8, 19, 12, 0, tzinfo=UTC)
+    async with running_course_app(data_dir) as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        course_ids: dict[str, str] = {}
+        for name in ("未到期", "整三十天", "已到期", "未删除"):
+            response = await client.post(
+                "/api/courses",
+                headers=headers,
+                json={
+                    "name": name,
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+            )
+            course_ids[name] = response.json()["id"]
+
+        async with app.state.session_factory() as session, session.begin():
+            for name, deleted_at in {
+                "未到期": now - timedelta(days=29),
+                "整三十天": now - timedelta(days=30),
+                "已到期": now - timedelta(days=30, microseconds=1),
+            }.items():
+                await session.execute(
+                    text("UPDATE courses SET deleted_at = :deleted_at WHERE id = :id"),
+                    {
+                        "deleted_at": deleted_at.isoformat(timespec="microseconds").replace(
+                            "+00:00", "Z"
+                        ),
+                        "id": course_ids[name],
+                    },
+                )
+
+        await CourseService.purge_expired(app.state.session_factory, now=now)
+
+        async with app.state.session_factory() as session:
+            remaining_ids = set((await session.execute(text("SELECT id FROM courses"))).scalars())
+        assert remaining_ids == {
+            course_ids["未到期"],
+            course_ids["整三十天"],
+            course_ids["未删除"],
+        }
+
+
+@pytest.mark.anyio
+async def test_sidecar_startup_schedules_tombstone_cleanup(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_course_app(data_dir) as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        created = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "过期墓碑",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE courses SET deleted_at = :deleted_at WHERE id = :id"),
+                {"deleted_at": "2020-01-01T00:00:00.000000Z", "id": created.json()["id"]},
+            )
+
+    async with running_course_app(data_dir) as (restarted_app, _client):
+        await restarted_app.state.course_tombstone_cleanup_task
+        async with restarted_app.state.session_factory() as session:
+            remaining = (await session.execute(text("SELECT count(*) FROM courses"))).scalar_one()
+        assert remaining == 0
 
 
 @pytest.fixture

@@ -1,6 +1,9 @@
+import json
+from datetime import datetime, timedelta
+
 from fastapi import HTTPException
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.base import utcnow
 from app.models.course import Course
@@ -46,6 +49,11 @@ class CourseService:
                 changes.pop("name", None)
             if changes.get("learning_context") is None:
                 changes.pop("learning_context", None)
+            if "hot_words" in changes:
+                changes["hot_words"] = json.dumps(
+                    changes["hot_words"] or [],
+                    ensure_ascii=False,
+                )
             if changes:
                 final_context = changes.get("learning_context", course.learning_context)
                 if final_context == LearningContext.SCHOOL:
@@ -84,3 +92,30 @@ class CourseService:
             statement = statement.where(Course.course_type == course_type.value)
         statement = statement.order_by(Course.updated_at.desc())
         return list((await session.scalars(statement)).all())
+
+    @staticmethod
+    async def soft_delete(session: AsyncSession, course_id: str) -> bool:
+        async with session.begin():
+            course = await CourseService.get(session, course_id)
+            if course is None:
+                return False
+            deleted_at = utcnow()
+            course.deleted_at = deleted_at
+            course.updated_at = deleted_at
+            await session.flush()
+        return True
+
+    @staticmethod
+    async def purge_expired(
+        session_factory: async_sessionmaker[AsyncSession],
+        *,
+        now: datetime | None = None,
+    ) -> None:
+        cutoff = (now or utcnow()) - timedelta(days=30)
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                delete(Course).where(
+                    Course.deleted_at.is_not(None),
+                    Course.deleted_at < cutoff,
+                )
+            )

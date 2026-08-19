@@ -33,7 +33,8 @@ export interface paths {
         get: operations["get_course_api_courses__course_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Course */
+        delete: operations["delete_course_api_courses__course_id__delete"];
         options?: never;
         head?: never;
         /** Update Course */
@@ -146,6 +147,11 @@ export interface components {
             description?: string | null;
             /** @description 学业教育阶段 */
             education_stage?: components["schemas"]["EducationStage"] | null;
+            /**
+             * Hot Words
+             * @description 按输入顺序保存的 ASR 手动热词
+             */
+            hot_words?: string[] | null;
             /** @description 课程学习场景 */
             learning_context?: components["schemas"]["LearningContext"] | null;
             /**
@@ -334,6 +340,64 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["CourseDetailOut"];
                 };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_course_api_courses__course_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Forbidden */
             403: {

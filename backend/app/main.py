@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -15,6 +16,7 @@ from app.core.data_dir import ensure_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
+from app.services.course_service import CourseService
 
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:1420",
@@ -36,8 +38,20 @@ def create_app(
         await run_migrations(db_path)
         engine, session_factory = create_database(db_path)
         app.state.session_factory = session_factory
-        yield
-        await engine.dispose()
+
+        async def cleanup_course_tombstones() -> None:
+            try:
+                await CourseService.purge_expired(session_factory)
+            except Exception:
+                logger.exception("course_tombstone_cleanup_failed")
+
+        cleanup_task = asyncio.create_task(cleanup_course_tombstones())
+        app.state.course_tombstone_cleanup_task = cleanup_task
+        try:
+            yield
+        finally:
+            await cleanup_task
+            await engine.dispose()
 
     app = FastAPI(
         title="KnowRealm API",
@@ -50,7 +64,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=list(cors_origins),
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type", "X-KnowRealm-Token"],
     )
     app.include_router(courses.router)

@@ -105,6 +105,11 @@ class CourseUpdate(BaseModel):
     depth: LearningDepth | None = Field(default=None, description="职业或兴趣学习深度")
     course_type: CourseType | None = Field(default=None, description="可选课程类型")
     description: str | None = Field(default=None, description="可选课程说明")
+    hot_words: list[str] | None = Field(
+        default=None,
+        max_length=100,
+        description="按输入顺序保存的 ASR 手动热词",
+    )
 
     @field_validator("name")
     @classmethod
@@ -122,6 +127,16 @@ class CourseUpdate(BaseModel):
         if value is None:
             return None
         return value.strip() or None
+
+    @field_validator("hot_words")
+    @classmethod
+    def clean_hot_words(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned = [word.strip() for word in value]
+        if any(not word for word in cleaned):
+            raise ValueError("热词不能为空白")
+        return cleaned
 
 
 class CourseOut(BaseModel):

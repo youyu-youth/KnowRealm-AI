@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_launch_token
@@ -71,3 +71,13 @@ async def update_course(
     if course is None:
         raise HTTPException(status_code=404, detail="课程不存在或已删除")
     return CourseOut.model_validate(course)
+
+
+@router.delete("/{course_id}", status_code=204, response_class=Response)
+async def delete_course(
+    course_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    if not await CourseService.soft_delete(session, course_id):
+        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+    return Response(status_code=204)
