@@ -11,7 +11,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/code-review/SKILL.md",
-      "computedHash": "591a274f7be02c24da6628b464b66be44c351adfccd7e8c12f550715c695e3fe"
+      "computedHash": "ed37e8274799af5bd0642d1cf02046aef8ed74ffe457cdd4e3859d4061a90f34"
     },
     "code-review-and-quality": {
       "source": "addyosmani/agent-skills",
@@ -77,7 +77,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/diagnosing-bugs/SKILL.md",
-      "computedHash": "b69bc2ee03ee31200639deed65168ab9e48db43af3ed47889a66c4bd190601eb"
+      "computedHash": "5ee02243034d63ad1aeb7155cbf954d87bdcc75d5045f84b476dda8facec16b5"
     },
     "domain-modeling": {
       "source": "mattpocock/skills",
@@ -101,25 +101,25 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/productivity/grill-me/SKILL.md",
-      "computedHash": "7edd436132b43ea2973710f0c28a9879c9b0910651eb89a991a7e98cb6dbbacb"
+      "computedHash": "5e0c683385eafd83f106ac6c9d67dfbbfe5aa4b3fe65aad114eb1055a99c818f"
     },
     "grill-with-docs": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/grill-with-docs/SKILL.md",
-      "computedHash": "96718e0a89e48c7d76cc9759c7094a82ff34eb89ddc46a30388063fa9812356f"
+      "computedHash": "a610223c9796f755b603f15ec114849a4b38b9ba3006acfa9bdf3cc56dd44dad"
     },
     "grilling": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/productivity/grilling/SKILL.md",
-      "computedHash": "4eb5bf61b1e602f9cedbd3a5e4469dfba1db0247d5d40956d03299c455b91197"
+      "computedHash": "89c8165a058f123865181a09bd13fe6a0429e47e02a699ceccc1f80308e44a1a"
     },
     "handoff": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/productivity/handoff/SKILL.md",
-      "computedHash": "7b03a812d5ca10fa8fe69d4cf8a34542684db51f5db0271254b96074e9f3a243"
+      "computedHash": "9ea2a5de5ca2d717f913356de982fdc4fe27d28a300c16598cd43a4865491008"
     },
     "idea-refine": {
       "source": "addyosmani/agent-skills",
@@ -137,7 +137,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/improve-codebase-architecture/SKILL.md",
-      "computedHash": "3929c6892605b67b60503ced451876e9b313d1a909ab7066fbcd9967c56ed226"
+      "computedHash": "f7fd27287067900e816b87a8917347424ad6780435ce4157d69ba8c5e8e13fba"
     },
     "incremental-implementation": {
       "source": "addyosmani/agent-skills",
@@ -275,7 +275,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/tdd/SKILL.md",
-      "computedHash": "140859ce43d1eb75823f67848c0cd0bc224ce7928ec33c55fa0c599f3bb3a4df"
+      "computedHash": "c9b939b8d82b68fcf0ccd4a357f7432aed0dc5657b96b6054564dca8a0443e61"
     },
     "teach": {
       "source": "mattpocock/skills",
@@ -293,19 +293,19 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/to-spec/SKILL.md",
-      "computedHash": "144cf30cf527faff7f9211ae81ad3de5aaa6390f639b87ca5a48f5e818a8d33e"
+      "computedHash": "bb1135b6a8da696c9586486035722dd52899f01050916562c798629a641569d4"
     },
     "to-tickets": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/to-tickets/SKILL.md",
-      "computedHash": "e817ecc8ffbb51dd5edd7cc141fe209f31c298dfd66b886e0c6c9aba2dd70266"
+      "computedHash": "ae4c5c3600ca0c21e58d36734a03ef366032b2d4804f7a20171a6d2d79887d02"
     },
     "triage": {
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/triage/SKILL.md",
-      "computedHash": "f844266a4d3b742b42045a162acb8eda26b8e9359a3b7a3526665c453148473a"
+      "computedHash": "efbf98b9036bb4a0c7529e7b2bac1ac7a44ad833e6d2a1cd050f5e15b15691c1"
     },
     "using-agent-skills": {
       "source": "addyosmani/agent-skills",
@@ -323,7 +323,7 @@
       "source": "mattpocock/skills",
       "sourceType": "github",
       "skillPath": "skills/engineering/wayfinder/SKILL.md",
-      "computedHash": "d6f094c4d06e575818049adf8206670d1412c6a8afd011fe59434d414f9f17ed"
+      "computedHash": "e0d47e75e0ba6fd16f24566f39f2574d6e3d0ece1f4d317dc992d9d31681a4b0"
     },
     "wizard": {
       "source": "mattpocock/skills",
