@@ -1,16 +1,19 @@
 use std::error::Error;
 use std::ffi::OsString;
-use std::io;
-use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, TcpStream};
+use std::io::{self, Read, Write};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use getrandom::fill;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_shell::{ShellExt, process::CommandChild};
+use tauri_plugin_shell::{
+    ShellExt,
+    process::{CommandChild, CommandEvent},
+};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -18,7 +21,11 @@ use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
 
 const LOOPBACK: &str = "127.0.0.1";
+const PORT_MARKER: &str = "KNOWREALM_SIDECAR_PORT=";
+#[cfg(not(test))]
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
+#[cfg(test)]
+const STARTUP_TIMEOUT: Duration = Duration::from_millis(200);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -32,13 +39,6 @@ pub struct SidecarState {
     child: Mutex<Option<CommandChild>>,
 }
 
-pub fn allocate_loopback_port() -> io::Result<u16> {
-    // ponytail: releasing the OS-selected port leaves a tiny TOCTOU window;
-    // pass an inherited socket only if real collision evidence appears.
-    let listener = TcpListener::bind((LOOPBACK, 0))?;
-    Ok(listener.local_addr()?.port())
-}
-
 pub fn launch_token() -> io::Result<String> {
     let mut bytes = [0_u8; 32];
     fill(&mut bytes).map_err(|error| io::Error::other(error.to_string()))?;
@@ -46,7 +46,6 @@ pub fn launch_token() -> io::Result<String> {
 }
 
 pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
-    let port = allocate_loopback_port()?;
     let token = launch_token()?;
     let data_dir = app.path().home_dir()?.join("KnowRealm");
     let (program, working_dir) = sidecar_program()?;
@@ -54,7 +53,7 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         OsString::from("-m"),
         OsString::from("app.server"),
         OsString::from("--port"),
-        OsString::from(port.to_string()),
+        OsString::from("0"),
         OsString::from("--token"),
         OsString::from(&token),
         OsString::from("--data-dir"),
@@ -66,9 +65,25 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         .current_dir(working_dir)
         .args(args)
         .spawn()?;
-    tauri::async_runtime::spawn(async move { while events.recv().await.is_some() {} });
+    let (event_tx, event_rx) = mpsc::channel();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event) = events.recv().await {
+            if event_tx.send(event).is_err() {
+                break;
+            }
+        }
+    });
 
-    if let Err(error) = wait_until_ready(port) {
+    let port = match wait_for_bound_port(&event_rx) {
+        Ok(port) => port,
+        Err(error) => {
+            stop_process(child);
+            return Err(Box::new(error));
+        }
+    };
+    thread::spawn(move || while event_rx.recv().is_ok() {});
+
+    if let Err(error) = wait_until_ready(port, &token) {
         stop_process(child);
         return Err(Box::new(error));
     }
@@ -81,19 +96,91 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
     })
 }
 
-fn wait_until_ready(port: u16) -> io::Result<()> {
-    let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+fn wait_for_bound_port(events: &mpsc::Receiver<CommandEvent>) -> io::Result<u16> {
+    let deadline = Instant::now() + STARTUP_TIMEOUT;
+    loop {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "sidecar did not report its bound port",
+            ));
+        }
+        match events.recv_timeout(remaining) {
+            Ok(CommandEvent::Stdout(bytes)) => {
+                let Ok(line) = std::str::from_utf8(&bytes) else {
+                    continue;
+                };
+                let Some(value) = line.strip_prefix(PORT_MARKER) else {
+                    continue;
+                };
+                let port = value
+                    .parse::<u16>()
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+                if port == 0 {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "sidecar reported port zero",
+                    ));
+                }
+                return Ok(port);
+            }
+            Ok(CommandEvent::Error(error)) => return Err(io::Error::other(error)),
+            Ok(CommandEvent::Terminated(payload)) => {
+                return Err(io::Error::other(format!(
+                    "sidecar terminated before startup: {:?}",
+                    payload.code
+                )));
+            }
+            Ok(_) => {}
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "sidecar did not report its bound port",
+                ));
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "sidecar event stream closed before startup",
+                ));
+            }
+        }
+    }
+}
+
+fn wait_until_ready(port: u16, token: &str) -> io::Result<()> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     while Instant::now() < deadline {
-        if TcpStream::connect_timeout(&address.into(), Duration::from_millis(100)).is_ok() {
+        if health_is_ready(port, token).unwrap_or(false) {
             return Ok(());
         }
         thread::sleep(Duration::from_millis(50));
     }
     Err(io::Error::new(
         io::ErrorKind::TimedOut,
-        "sidecar startup timed out",
+        "sidecar health check timed out",
     ))
+}
+
+fn health_is_ready(port: u16, token: &str) -> io::Result<bool> {
+    let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+    let mut stream = TcpStream::connect_timeout(&address.into(), Duration::from_millis(100))?;
+    stream.set_read_timeout(Some(Duration::from_millis(100)))?;
+    stream.set_write_timeout(Some(Duration::from_millis(100)))?;
+    write!(
+        stream,
+        "GET /api/health HTTP/1.1\r\nHost: {LOOPBACK}:{port}\r\nX-KnowRealm-Token: {token}\r\nConnection: close\r\n\r\n"
+    )?;
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    let Some((headers, body)) = response.split_once("\r\n\r\n") else {
+        return Ok(false);
+    };
+    Ok(
+        (headers.starts_with("HTTP/1.1 200 ") || headers.starts_with("HTTP/1.0 200 "))
+            && body.trim() == r#"{"status":"ok"}"#,
+    )
 }
 
 #[cfg(debug_assertions)]
@@ -157,16 +244,70 @@ fn stop_process(child: CommandChild) {
 
 #[cfg(test)]
 mod tests {
-    use super::{allocate_loopback_port, launch_token};
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+
+    use tauri_plugin_shell::process::CommandEvent;
+
+    use super::{health_is_ready, launch_token, wait_for_bound_port, wait_until_ready};
 
     #[test]
-    fn allocates_random_port_and_unique_launch_tokens() {
-        let port = allocate_loopback_port().expect("loopback port");
+    fn creates_unique_launch_tokens() {
         let first = launch_token().expect("first token");
         let second = launch_token().expect("second token");
 
-        assert!(port > 0);
         assert_eq!(first.len(), 64);
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn reads_the_port_reported_by_the_spawned_sidecar() {
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(CommandEvent::Stdout(
+                b"KNOWREALM_SIDECAR_PORT=43127".to_vec(),
+            ))
+            .expect("port event");
+
+        assert_eq!(
+            wait_for_bound_port(&receiver).expect("reported port"),
+            43127
+        );
+    }
+
+    #[test]
+    fn health_probe_sends_the_launch_token_and_checks_the_response() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("health listener");
+        let port = listener.local_addr().expect("health address").port();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("health connection");
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                let mut chunk = [0_u8; 256];
+                let size = stream.read(&mut chunk).expect("health request");
+                assert!(size > 0, "health request ended before its headers");
+                request.extend_from_slice(&chunk[..size]);
+            }
+            let request = std::str::from_utf8(&request).expect("utf8 request");
+            assert!(request.contains("X-KnowRealm-Token: test-launch-token\r\n"));
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"status\":\"ok\"}",
+                )
+                .expect("health response");
+        });
+
+        assert!(health_is_ready(port, "test-launch-token").expect("health probe"));
+        server.join().expect("health server");
+    }
+
+    #[test]
+    fn rejects_an_unverified_tcp_listener() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("fake listener");
+        let port = listener.local_addr().expect("fake address").port();
+
+        assert!(wait_until_ready(port, "test-launch-token").is_err());
     }
 }

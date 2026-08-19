@@ -1,6 +1,5 @@
 import secrets
 import signal
-import socket
 import subprocess
 import sys
 import time
@@ -8,12 +7,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-
-
-def random_local_port() -> int:
-    with socket.socket() as listener:
-        listener.bind(("127.0.0.1", 0))
-        return listener.getsockname()[1]
 
 
 def stop_process_tree(process: subprocess.Popen[bytes]) -> tuple[bytes, bytes]:
@@ -25,8 +18,7 @@ def stop_process_tree(process: subprocess.Popen[bytes]) -> tuple[bytes, bytes]:
     return process.communicate(timeout=10)
 
 
-def test_real_process_uses_random_loopback_port_and_requires_token(tmp_path: Path) -> None:
-    port = random_local_port()
+def test_real_process_selects_random_loopback_port_and_requires_token(tmp_path: Path) -> None:
     token = secrets.token_urlsafe(32)
     process = subprocess.Popen(
         [
@@ -34,7 +26,7 @@ def test_real_process_uses_random_loopback_port_and_requires_token(tmp_path: Pat
             "-m",
             "app.server",
             "--port",
-            str(port),
+            "0",
             "--token",
             token,
             "--data-dir",
@@ -44,6 +36,12 @@ def test_real_process_uses_random_loopback_port_and_requires_token(tmp_path: Pat
         stderr=subprocess.PIPE,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
     )
+    assert process.stdout is not None
+    port_line = process.stdout.readline()
+    prefix = b"KNOWREALM_SIDECAR_PORT="
+    assert port_line.startswith(prefix)
+    port = int(port_line.removeprefix(prefix))
+    assert port > 0
     base_url = f"http://127.0.0.1:{port}"
 
     try:
@@ -76,5 +74,5 @@ def test_real_process_uses_random_loopback_port_and_requires_token(tmp_path: Pat
     finally:
         stdout, stderr = stop_process_tree(process)
 
-    assert token.encode() not in stdout
+    assert token.encode() not in port_line + stdout
     assert token.encode() not in stderr

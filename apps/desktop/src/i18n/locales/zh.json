@@ -127,7 +127,8 @@
       "stageRequired": "学业场景必须选择教育阶段",
       "depthRequired": "请选择学习深度",
       "hotWords": "手动热词",
-      "hotWordsDescription": "每行一个，空行会忽略；已填写 {{count}} / 100 个。",
+      "hotWordsDescription": "每行一个，空行无效；已填写 {{count}} / 100 个。",
+      "hotWordsBlank": "热词不能为空行",
       "hotWordsTooMany": "最多保存 100 个热词"
     },
     "delete": {

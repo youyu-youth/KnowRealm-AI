@@ -1,6 +1,6 @@
 # 工作台骨架与课程管理
 
-Status: ready-for-agent
+Status: resolved
 
 ## Problem Statement
 
@@ -85,7 +85,7 @@ KnowRealm 当前只有已初始化的 Tauri + React 工程和一份视觉合同�
 - 主题在本计划跟随操作系统亮/暗偏好；用户可持久化主题设置属于后续设置功能。两种主题都使用同一连续色面、焦点和 Zero Card Chrome 规则。
 - FastAPI sidecar 是 SQLite 的唯一写者；React 和 Tauri 不直连数据库，也不直接写业务数据目录。
 - 数据目录默认使用用户目录下的 KnowRealm 目录，并创建数据库、文件、缓存、导出、备份和配置所需子目录。完整首启选择、目录迁移与迁移 UI 不在本计划内。
-- sidecar 只绑定 `127.0.0.1`。Tauri 壳每次启动分配随机端口并生成密码学安全的单次启动令牌，通过启动参数传给 sidecar；前端从壳的类型化桥接读取 base URL 与令牌，不使用固定端口或构建时环境变量。
+- sidecar 每次启动直接绑定 `127.0.0.1:0`，由操作系统分配随机端口并通过受信任的子进程 stdout 回传；Tauri 壳生成密码学安全的单次启动令牌，通过启动参数传给 sidecar，并在暴露配置前使用令牌验证健康响应。前端从壳的类型化桥接读取 base URL 与令牌，不使用固定端口或构建时环境变量。
 - 所有受保护 API 请求携带 `X-KnowRealm-Token`。缺失或不匹配返回 403；令牌、Authorization、课程正文与热词不得进入日志。健康探测同样要求令牌，避免留下旁路。
 - sidecar 对生产 WebView origin 和本地开发 origin 使用最小 CORS 允许列表，不允许 `*`；令牌请求头列入允许头。
 - API 资源合同如下：`GET /api/courses` 列表与筛选，`POST /api/courses` 创建，`GET /api/courses/{course_id}` 详情，`PATCH /api/courses/{course_id}` 编辑与热词维护，`DELETE /api/courses/{course_id}` 软删除。删除成功返回 204。

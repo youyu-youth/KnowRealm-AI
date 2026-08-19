@@ -281,7 +281,7 @@ describe("课程详情与编辑", () => {
     expect(screen.getByRole("button", { name: "保存修改" })).toBeEnabled();
   });
 
-  it("热词超过 100 个时保留输入且不请求，合法热词按输入顺序随 PATCH 保存", async () => {
+  it("无效或超过 100 个热词时保留输入且不请求，合法热词按输入顺序随 PATCH 保存", async () => {
     let current = schoolCourse;
     let patchCalls = 0;
     let patchBody: unknown;
@@ -316,6 +316,15 @@ describe("课程详情与编辑", () => {
 
     fireEvent.change(hotWords, {
       target: { value: " 进程 \n\n 文件系统\n内存 " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+
+    expect(await screen.findByText("热词不能为空行")).toBeVisible();
+    expect(hotWords).toHaveFocus();
+    expect(patchCalls).toBe(0);
+
+    fireEvent.change(hotWords, {
+      target: { value: " 进程 \n 文件系统\n内存 " },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
 

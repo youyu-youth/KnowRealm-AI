@@ -31,10 +31,8 @@ type EditCourseFormProps = {
 };
 
 function parseHotWords(value: string): string[] {
-  return value
-    .split("\n")
-    .map((word) => word.trim())
-    .filter(Boolean);
+  if (!value.trim()) return [];
+  return value.split("\n").map((word) => word.trim());
 }
 
 export function EditCourseForm({
@@ -90,6 +88,11 @@ export function EditCourseForm({
       return;
     }
     const hotWords = parseHotWords(hotWordsText);
+    if (hotWords.some((word) => !word)) {
+      setHotWordsError(t("spaces.editForm.hotWordsBlank"));
+      document.getElementById("course-hot-words")?.focus();
+      return;
+    }
     if (hotWords.length > 100) {
       setHotWordsError(t("spaces.editForm.hotWordsTooMany"));
       document.getElementById("course-hot-words")?.focus();

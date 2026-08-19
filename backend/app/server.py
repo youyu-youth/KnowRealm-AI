@@ -9,8 +9,8 @@ from app.main import create_app
 
 def port_number(value: str) -> int:
     port = int(value)
-    if not 1 <= port <= 65535:
-        raise argparse.ArgumentTypeError("端口必须在 1 到 65535 之间")
+    if not 0 <= port <= 65535:
+        raise argparse.ArgumentTypeError("端口必须在 0 到 65535 之间")
     return port
 
 
@@ -25,7 +25,7 @@ def main() -> None:
 
     setup_logging()
     app = create_app(data_dir=args.data_dir, launch_token=args.token)
-    uvicorn.run(
+    config = uvicorn.Config(
         app,
         host="127.0.0.1",
         port=args.port,
@@ -33,6 +33,11 @@ def main() -> None:
         log_config=None,
         loop="app.core.loop:selector_loop_factory",
     )
+    server = uvicorn.Server(config)
+    listener = config.bind_socket()
+    bound_port = listener.getsockname()[1]
+    print(f"KNOWREALM_SIDECAR_PORT={bound_port}", flush=True)
+    server.run(sockets=[listener])
 
 
 if __name__ == "__main__":
