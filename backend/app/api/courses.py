@@ -73,7 +73,7 @@ async def update_course(
     return CourseOut.model_validate(course)
 
 
-@router.delete("/{course_id}", status_code=204, response_class=Response)
+@router.delete("/{course_id}", status_code=204, response_class=Response, response_model=None)
 async def delete_course(
     course_id: str,
     session: AsyncSession = Depends(get_db),

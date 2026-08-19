@@ -30,6 +30,13 @@ type EditCourseFormProps = {
   onSaved: () => void | Promise<void>;
 };
 
+function parseHotWords(value: string): string[] {
+  return value
+    .split("\n")
+    .map((word) => word.trim())
+    .filter(Boolean);
+}
+
 export function EditCourseForm({
   course,
   onCancel,
@@ -82,10 +89,7 @@ export function EditCourseForm({
       rejectInvalid(invalidField, fieldErrorMessages[invalidField]);
       return;
     }
-    const hotWords = hotWordsText
-      .split("\n")
-      .map((word) => word.trim())
-      .filter(Boolean);
+    const hotWords = parseHotWords(hotWordsText);
     if (hotWords.length > 100) {
       setHotWordsError(t("spaces.editForm.hotWordsTooMany"));
       document.getElementById("course-hot-words")?.focus();
@@ -134,10 +138,7 @@ export function EditCourseForm({
         />
         <FieldDescription id="course-hot-words-description">
           {t("spaces.editForm.hotWordsDescription", {
-            count: hotWordsText
-              .split("\n")
-              .map((word) => word.trim())
-              .filter(Boolean).length,
+            count: parseHotWords(hotWordsText).length,
           })}
         </FieldDescription>
         <FieldError>{hotWordsError}</FieldError>

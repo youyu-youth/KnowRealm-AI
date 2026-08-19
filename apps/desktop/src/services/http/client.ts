@@ -14,10 +14,7 @@ function formatApiDetail(detail: unknown): string {
   return "";
 }
 
-export async function apiFetch<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+async function request(path: string, init?: RequestInit): Promise<Response> {
   const { baseUrl, token } = await getSidecarConfig();
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
@@ -33,9 +30,20 @@ export async function apiFetch<T>(
     throw new ApiError(response.status, detail);
   }
 
-  // 204 按 HTTP 语义没有 JSON body；调用方以 void 作为 T。
-  if (response.status === 204) return undefined as T;
+  return response;
+}
 
+export async function apiFetch<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
   // OpenAPI types are the compile-time authority; FastAPI validates the runtime payload.
-  return response.json() as Promise<T>;
+  return (await request(path, init)).json() as Promise<T>;
+}
+
+export async function apiFetchNoContent(
+  path: string,
+  init?: RequestInit,
+): Promise<void> {
+  await request(path, init);
 }

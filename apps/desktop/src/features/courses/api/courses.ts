@@ -1,4 +1,4 @@
-import { apiFetch } from "@/services/http/client";
+import { apiFetch, apiFetchNoContent } from "@/services/http/client";
 import type {
   Course,
   CourseCreate,
@@ -30,5 +30,5 @@ export const courseApi = {
       body: JSON.stringify(payload),
     }),
   delete: (courseId: string) =>
-    apiFetch<void>(`/api/courses/${courseId}`, { method: "DELETE" }),
+    apiFetchNoContent(`/api/courses/${courseId}`, { method: "DELETE" }),
 };
