@@ -4,7 +4,7 @@
 
 ## 功能描述 / 目标
 
-音频（导入 + 录音共用）→ 带时间戳转写全文的完整后端管线，并引入 sidecar SSE 状态推送与 processing_jobs 技术任务态——状态机真正"动起来"的第一环。
+音频（导入 + 录音共用）→ 带时间戳转写全文的完整后端管线，复用 05 已落地的 worker、processing_jobs 与轮询入口，并增加 sidecar SSE 状态推送。
 
 ## 功能范围
 
@@ -14,7 +14,7 @@
 - worker 统一转码：全部音频 ffmpeg → ogg-opus@16kHz（#31，不可省略）
 - 腾讯云录音文件识别（标准版）：句子级时间戳、热词取课程设置（01 维护的 ≤100 词）
 - Transcript 持久化（V1 整段合并文本，快速展示用）；转写文本编辑与保存
-- processing_jobs 技术任务态（业务态不混写）；sidecar 进程内事件（SSE）推送 records 状态变更（UI 轮询兜底，#8）
+- 复用 processing_jobs 技术任务态与 UI 轮询入口；增加 sidecar 进程内事件（SSE）推送 records 状态变更（#8）
 - 失败 → FAILED + 可重试；content_hash 落盘校验；处理中删除竞态（每步写前校验 deleted_at，软删即终止丢弃产物，#54）
 
 **不做**：
@@ -34,7 +34,7 @@
 ## 前置依赖
 
 - 02（记录详情展示转写）
-- P0-07（进程内 asyncio worker 骨架）
+- 05（复用进程内 asyncio worker、processing_jobs、record_files 与轮询状态入口）
 
 ## 验收标准（出口线）
 

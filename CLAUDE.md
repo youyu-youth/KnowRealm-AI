@@ -56,3 +56,11 @@
 ### Domain docs
 
 单上下文布局：根目录 `CONTEXT.md` + `docs/adr/`。见 `docs/agents/domain.md`。
+
+
+
+## 参考
+- LangGraph 文档： https://langchain-ai.github.io/langgraph/
+- LangChain 文档： https://python.langchain.com/docs/
+- FastAPI 文档： https://fastapi.tiangolo.com/
+- shadcn ui 文档：https://ui.shadcn.com/docs

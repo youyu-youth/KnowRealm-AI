@@ -26,7 +26,7 @@
 | 09 | Todo 清单 | A | 06 | §4.4.2 | `09-todo-list.md` |
 | 10 | Markdown 导出 | A | 06、07 | §4.4.2 | `10-markdown-export.md` |
 | 11 | 轻捕获与收件箱 | A（B 增段） | 02、06 | §4.3.0 / §6.6 | `11-capture-inbox.md` |
-| 12 | AI 对话（自由+@记录） | A | 02、04、06、07 | §4.5 | `12-ai-chat.md` |
+| 12 | AI 对话（自由+@记录） | A | 02、06、07；05 或 04 至少一条真实 Transcript 来源 | §4.5 | `12-ai-chat.md` |
 | 13 | 偏好设置 | B | 11 | §4.1 | `13-preferences.md` |
 | 14 | 档案、供应商与数据目录 | B | 01、06（扩展首闭环 Provider 切片） | §4.1 / §6.4 | `14-account-profile.md` |
 | 15 | 模拟测试 | B | 08 | §4.4.2 | `15-mock-test.md` |
@@ -52,7 +52,7 @@
 | 数据目录、SQLite WAL 与迁移体系、课程新建 + 列表 | 01；随首个持久化功能一起交付 |
 | FastAPI sidecar、OpenAPI → api-types 类型链、localhost 加固（随机端口 + 启动令牌 + 仅绑 127.0.0.1，#56） | 01；随首个 localhost API 一起交付 |
 | 工作台导航、路由、顶栏、真实空态与全局状态边界 | 01；先于课程页面交付，后续 plan 复用 |
-| 进程内 asyncio worker、`processing_jobs` 与最小 SSE/轮询状态 | 05；随首个后台任务一起交付 |
+| 进程内 asyncio worker、`processing_jobs` 与处理中轮询 | 05；随首个后台任务一起交付 |
 | 单一 active LLM Provider、`llm_call_logs`、LangGraph Checkpointer | 06；随首个 AI 功能一起交付 |
 | 启动滚动备份（backups/ 每日×7） | Wave A-0 退出前；数据库产生真实业务数据后验证 |
 | 档案/角色卡、完整 Provider 卡、数据目录迁移与导出 | 14，不前置到首个闭环 |
@@ -78,7 +78,7 @@
 | 横切能力 | 承载 plan |
 |---------|----------|
 | learning_events 四事件（#43） | SUMMARY_CONFIRMED→06 / KNOWLEDGE_CONFIRMED→07 / QUIZ_ANSWERED→08 / QUIZ_TEST_COMPLETED→15 |
-| sidecar SSE 状态推送（UI 轮询兜底，#8） | 04（首个真实信号源；02 先轮询兜底） |
+| sidecar SSE 状态推送（UI 轮询兜底，#8） | 05 先随首个 worker 落轮询兜底；04 随音频长任务接入 SSE，并复用同一 Record 查询入口 |
 | 全量导出/导入（原 P2 提前 Wave B，#55） | 14 |
 | 空态引导卡（#42） | 各 plan 的空态范围行 |
 | 总结评测黄金样本（#46） | 06；习题 Groundedness 样本→15 |
