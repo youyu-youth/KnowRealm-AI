@@ -123,7 +123,7 @@ export function RecordDetailPage({
         </Link>
       )}
 
-      <header className="mt-5 flex min-w-0 items-start justify-between gap-4">
+      <header className="mt-5 flex min-w-0 items-baseline justify-between gap-4">
         <h1
           className="text-headline font-headline text-ink-strong min-w-0 truncate"
           title={title}
