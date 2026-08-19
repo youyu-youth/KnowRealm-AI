@@ -21,6 +21,17 @@ router = APIRouter(
 )
 
 
+@router.get("/records/{record_id}", response_model=RecordOut)
+async def get_record(
+    record_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> RecordOut:
+    record = await RecordService.get(session, str(record_id))
+    if record is None:
+        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+    return RecordOut.model_validate(record)
+
+
 @router.get("/courses/{course_id}/records", response_model=list[RecordOut])
 async def list_course_records(
     course_id: UUID,

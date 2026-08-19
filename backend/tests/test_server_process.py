@@ -121,7 +121,8 @@ def test_real_process_reads_preseeded_record_over_protected_socket(tmp_path: Pat
                 id, course_id, capture_type, title, status, duration_ms,
                 summary_confirmed_at, created_at, updated_at, deleted_at
             ) VALUES (
-                'record-http', '11111111-1111-4111-8111-111111111111',
+                '22222222-2222-4222-8222-222222222222',
+                '11111111-1111-4111-8111-111111111111',
                 'AUDIO_IMPORT', '植入记录',
                 'CONTENT_PROCESSING', 65000, NULL,
                 '2026-08-19T08:30:00.000000Z',
@@ -142,7 +143,7 @@ def test_real_process_reads_preseeded_record_over_protected_socket(tmp_path: Pat
             assert response.status_code == 200
             assert response.json() == [
                 {
-                    "id": "record-http",
+                    "id": "22222222-2222-4222-8222-222222222222",
                     "course_id": "11111111-1111-4111-8111-111111111111",
                     "capture_type": "AUDIO_IMPORT",
                     "title": "植入记录",
@@ -153,9 +154,15 @@ def test_real_process_reads_preseeded_record_over_protected_socket(tmp_path: Pat
                     "updated_at": "2026-08-19T08:30:00.000000Z",
                 }
             ]
+            detail = client.get(
+                f"{base_url}/api/records/22222222-2222-4222-8222-222222222222",
+                headers={"X-KnowRealm-Token": token},
+            )
+            assert detail.status_code == 200
+            assert detail.json() == response.json()[0]
             assert (
                 client.get(
-                    f"{base_url}/api/courses/11111111-1111-4111-8111-111111111111/records"
+                    f"{base_url}/api/records/22222222-2222-4222-8222-222222222222"
                 ).status_code
                 == 403
             )

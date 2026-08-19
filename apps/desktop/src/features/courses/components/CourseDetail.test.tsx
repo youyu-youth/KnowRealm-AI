@@ -199,6 +199,10 @@ describe("课程详情与编辑", () => {
     const list = await screen.findByRole("list", { name: "学习记录列表" });
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(8);
+    expect(within(items[0]).getByRole("link")).toHaveAttribute(
+      "href",
+      `/records/${records[0].id}`,
+    );
     expect(within(items[0]).getByText("音频导入")).toBeInTheDocument();
     expect(within(items[0]).getByText("1 分 5 秒")).toBeInTheDocument();
     expect(within(items[0]).getByText(/2026/)).toBeInTheDocument();

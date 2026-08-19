@@ -306,6 +306,106 @@ async def test_course_records_api_is_protected_sorted_and_filters_tombstones(
 
 
 @pytest.mark.anyio
+async def test_record_detail_api_enforces_record_and_parent_visibility(
+    tmp_path: Path,
+) -> None:
+    async with running_record_app(tmp_path / "KnowRealm") as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        visible_course = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "可见课程",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        deleted_course = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "已删除课程",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        visible_course_id = visible_course.json()["id"]
+        deleted_course_id = deleted_course.json()["id"]
+        record_ids = {
+            "visible": "22222222-2222-4222-8222-222222222222",
+            "inbox": "33333333-3333-4333-8333-333333333333",
+            "deleted": "44444444-4444-4444-8444-444444444444",
+            "deleted_parent": "55555555-5555-4555-8555-555555555555",
+        }
+        async with app.state.session_factory() as session, session.begin():
+            for name, record_id in record_ids.items():
+                course_id = {
+                    "visible": visible_course_id,
+                    "inbox": None,
+                    "deleted": visible_course_id,
+                    "deleted_parent": deleted_course_id,
+                }[name]
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO records (
+                            id, course_id, capture_type, title, status, duration_ms,
+                            summary_confirmed_at, created_at, updated_at, deleted_at
+                        ) VALUES (
+                            :id, :course_id, 'QUICK_NOTE', :title, 'NOTE', 0,
+                            NULL, '2026-08-19T08:00:00.000000Z',
+                            '2026-08-19T08:00:00.000000Z', :deleted_at
+                        )
+                        """
+                    ),
+                    {
+                        "id": record_id,
+                        "course_id": course_id,
+                        "title": name,
+                        "deleted_at": (
+                            "2026-08-19T09:00:00.000000Z" if name == "deleted" else None
+                        ),
+                    },
+                )
+            await session.execute(
+                text(
+                    "UPDATE courses SET deleted_at = '2026-08-19T09:00:00.000000Z' WHERE id = :id"
+                ),
+                {"id": deleted_course_id},
+            )
+
+        visible = await client.get(
+            f"/api/records/{record_ids['visible']}",
+            headers=headers,
+        )
+        inbox = await client.get(
+            f"/api/records/{record_ids['inbox']}",
+            headers=headers,
+        )
+
+        assert visible.status_code == 200
+        assert visible.json()["course_id"] == visible_course_id
+        assert "deleted_at" not in visible.json()
+        assert inbox.status_code == 200
+        assert inbox.json()["course_id"] is None
+        for record_id in (
+            record_ids["deleted"],
+            record_ids["deleted_parent"],
+            "66666666-6666-4666-8666-666666666666",
+        ):
+            assert (
+                await client.get(f"/api/records/{record_id}", headers=headers)
+            ).status_code == 404
+        assert (await client.get(f"/api/records/{record_ids['visible']}")).status_code == 403
+        assert (
+            await client.get(
+                f"/api/records/{record_ids['visible']}",
+                headers={"X-KnowRealm-Token": "wrong"},
+            )
+        ).status_code == 403
+
+
+@pytest.mark.anyio
 async def test_deleting_course_soft_deletes_its_records_in_one_transaction(
     tmp_path: Path,
 ) -> None:

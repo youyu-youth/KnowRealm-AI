@@ -175,6 +175,31 @@
       }
     }
   },
+  "record": {
+    "detail": {
+      "loading": "正在读取学习记录详情",
+      "errorTitle": "学习记录暂时无法读取",
+      "errorDescription": "本地服务可能仍在启动，请稍后重试。",
+      "retry": "重新读取",
+      "notFoundTitle": "学习记录不存在或已删除",
+      "notFoundDescription": "这个地址没有对应的学习记录，或学习记录及所属课程已被删除。",
+      "backToCourseRecords": "返回课程学习记录",
+      "backToSpaces": "返回知识空间",
+      "tabs": {
+        "summary": "Summary",
+        "transcript": "Transcript",
+        "highlights": "Highlights",
+        "notes": "Notes",
+        "flashcards": "Flashcards",
+        "quiz": "Quiz"
+      },
+      "assetsUnavailable": "其余学习资产尚未接入",
+      "summaryEmptyTitle": "还没有生成总结",
+      "summaryEmptyDescription": "当前没有可展示的真实总结；此页面不会自动触发生成。",
+      "failedTitle": "学习记录处理失败",
+      "failedDescription": "当前暂无可用恢复操作。"
+    }
+  },
   "route": {
     "loading": "正在打开工作区",
     "errorTitle": "工作区暂时无法打开",
