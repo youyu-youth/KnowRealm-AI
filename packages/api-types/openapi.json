@@ -1,6 +1,18 @@
 {
   "components": {
     "schemas": {
+      "CaptureType": {
+        "enum": [
+          "RECORDING",
+          "AUDIO_IMPORT",
+          "DOCUMENT_IMPORT",
+          "PASTE",
+          "QUICK_NOTE",
+          "CLIP"
+        ],
+        "title": "CaptureType",
+        "type": "string"
+      },
       "CourseCreate": {
         "properties": {
           "course_type": {
@@ -387,6 +399,85 @@
           "ADVANCED"
         ],
         "title": "LearningDepth",
+        "type": "string"
+      },
+      "RecordOut": {
+        "properties": {
+          "capture_type": {
+            "$ref": "#/components/schemas/CaptureType"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "summary_confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Confirmed At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "capture_type",
+          "title",
+          "status",
+          "duration_ms",
+          "summary_confirmed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "RecordOut",
+        "type": "object"
+      },
+      "RecordStatus": {
+        "enum": [
+          "NOTE",
+          "DRAFT",
+          "CONTENT_PROCESSING",
+          "SUMMARY_PENDING",
+          "SUMMARY_PROCESSING",
+          "SUMMARY_READY",
+          "COMPLETED",
+          "FAILED"
+        ],
+        "title": "RecordStatus",
         "type": "string"
       }
     }
@@ -882,6 +973,99 @@
         "summary": "Update Course",
         "tags": [
           "courses"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/records": {
+      "get": {
+        "operationId": "list_course_records_api_courses__course_id__records_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/RecordOut"
+                  },
+                  "title": "Response List Course Records Api Courses  Course Id  Records Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Course Records",
+        "tags": [
+          "records"
         ]
       }
     },

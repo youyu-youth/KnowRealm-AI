@@ -7,18 +7,21 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { TEST_LAUNCH_TOKEN, TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 
 type CourseDetail = components["schemas"]["CourseDetailOut"];
+type RecordOut = components["schemas"]["RecordOut"];
 
 const COURSE_ID = "11111111-1111-4111-8111-111111111111";
 const DETAIL_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}`;
+const RECORDS_URL = `${DETAIL_URL}/records`;
 const ROUTE_PATH = `/spaces/${COURSE_ID}`;
 
 const schoolCourse: CourseDetail = {
@@ -34,6 +37,29 @@ const schoolCourse: CourseDetail = {
   created_at: "2026-08-17T00:00:00.000000Z",
   updated_at: "2026-08-18T00:00:00.000000Z",
 };
+
+const recordStatuses: RecordOut["status"][] = [
+  "FAILED",
+  "COMPLETED",
+  "SUMMARY_READY",
+  "SUMMARY_PROCESSING",
+  "SUMMARY_PENDING",
+  "CONTENT_PROCESSING",
+  "DRAFT",
+  "NOTE",
+];
+
+const records: RecordOut[] = recordStatuses.map((status, index) => ({
+  id: `record-${index + 1}`,
+  course_id: COURSE_ID,
+  capture_type: index === 0 ? "AUDIO_IMPORT" : "QUICK_NOTE",
+  title: index === 7 ? "   " : `学习记录 ${index + 1}`,
+  status,
+  duration_ms: index === 0 ? 65_000 : 0,
+  summary_confirmed_at: null,
+  created_at: `2026-08-${String(19 - index).padStart(2, "0")}T08:00:00.000000Z`,
+  updated_at: `2026-08-${String(19 - index).padStart(2, "0")}T08:00:00.000000Z`,
+}));
 
 vi.mock("@/services/tauri/sidecar", () => ({
   getSidecarConfig: vi.fn().mockResolvedValue({
@@ -87,10 +113,15 @@ describe("课程详情与编辑", () => {
   });
 
   it("tab 状态受 URL 校验：记录宿主可恢复、切换写回 URL、非法值回退概览", async () => {
-    server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(RECORDS_URL, () => HttpResponse.json([])),
+    );
     renderAt(`${ROUTE_PATH}?tab=records`);
 
-    expect(await screen.findByText("学习记录尚未接入")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "还没有学习记录" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("课程信息")).not.toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
 
@@ -104,7 +135,89 @@ describe("课程详情与编辑", () => {
     render(<App />);
 
     expect(await screen.findByText("课程信息")).toBeInTheDocument();
-    expect(screen.queryByText("学习记录尚未接入")).not.toBeInTheDocument();
+    expect(screen.queryByText("还没有学习记录")).not.toBeInTheDocument();
+  });
+
+  it("学习记录加载中保持稳定状态", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(RECORDS_URL, async () => {
+        await delay(200);
+        return HttpResponse.json([]);
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=records`);
+
+    expect(await screen.findByText("正在读取学习记录")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.queryByText("还没有学习记录")).not.toBeInTheDocument();
+  });
+
+  it("学习记录加载失败可原地重试且不伪装为空态", async () => {
+    let calls = 0;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(RECORDS_URL, () => {
+        calls += 1;
+        return calls <= 3
+          ? HttpResponse.json({ detail: "数据库暂时忙" }, { status: 500 })
+          : HttpResponse.json([]);
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=records`);
+
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "学习记录暂时无法读取" },
+        { timeout: 6_000 },
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("还没有学习记录")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "还没有学习记录" }),
+    ).toBeInTheDocument();
+    expect(calls).toBe(4);
+  });
+
+  it("真实列表呈现标题回退、采集类型、八态、创建时间和有效时长", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(RECORDS_URL, ({ request }) => {
+        expect(request.headers.get("X-KnowRealm-Token")).toBe(
+          TEST_LAUNCH_TOKEN,
+        );
+        return HttpResponse.json(records);
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=records`);
+
+    const list = await screen.findByRole("list", { name: "学习记录列表" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(8);
+    expect(within(items[0]).getByText("音频导入")).toBeInTheDocument();
+    expect(within(items[0]).getByText("1 分 5 秒")).toBeInTheDocument();
+    expect(within(items[0]).getByText(/2026/)).toBeInTheDocument();
+    expect(within(items[7]).getByText("未命名学习记录")).toBeInTheDocument();
+    expect(
+      within(items[7]).queryByText(/秒|分钟|小时/),
+    ).not.toBeInTheDocument();
+    for (const label of [
+      "仅保存",
+      "草稿",
+      "内容处理中",
+      "等待生成总结",
+      "总结生成中",
+      "总结待确认",
+      "已完成",
+      "处理失败",
+    ]) {
+      expect(within(list).getByText(label)).toBeInTheDocument();
+    }
   });
 
   it("不存在或已软删课程显示未找到状态并提供返回知识空间路径", async () => {

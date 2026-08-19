@@ -2,11 +2,12 @@ import json
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.base import utcnow
 from app.models.course import Course
+from app.models.record import Record
 from app.schemas.course import (
     CourseCreate,
     CourseType,
@@ -100,6 +101,14 @@ class CourseService:
             if course is None:
                 return False
             deleted_at = utcnow()
+            await session.execute(
+                update(Record)
+                .where(
+                    Record.course_id == course_id,
+                    Record.deleted_at.is_(None),
+                )
+                .values(deleted_at=deleted_at, updated_at=deleted_at)
+            )
             course.deleted_at = deleted_at
             course.updated_at = deleted_at
             await session.flush()

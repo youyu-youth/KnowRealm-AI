@@ -135,7 +135,7 @@ export function CourseDetailPage({
           <CourseOverview course={detail} onDeleted={onDeleted} />
         </TabsContent>
         <TabsContent value="records" className="mt-6">
-          <CourseRecordsPanel />
+          <CourseRecordsPanel courseId={courseId} />
         </TabsContent>
       </Tabs>
     </section>

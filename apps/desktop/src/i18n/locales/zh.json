@@ -140,8 +140,39 @@
       "deleting": "正在删除课程"
     },
     "records": {
-      "pendingTitle": "学习记录尚未接入",
-      "pendingDescription": "学习记录功能将在后续计划接入这里。当前不会展示任何学习记录，也不会用模拟内容填充。"
+      "title": "学习记录",
+      "loading": "正在读取学习记录",
+      "errorTitle": "学习记录暂时无法读取",
+      "errorDescription": "本地服务可能仍在启动，请稍后重试。",
+      "retry": "重新读取",
+      "emptyTitle": "还没有学习记录",
+      "emptyDescription": "当真实捕获内容归入这门课程后，学习记录会显示在这里。",
+      "listLabel": "学习记录列表",
+      "untitled": "未命名学习记录",
+      "createdAt": "创建于 {{date}}",
+      "captureType": {
+        "RECORDING": "录音",
+        "AUDIO_IMPORT": "音频导入",
+        "DOCUMENT_IMPORT": "文档导入",
+        "PASTE": "粘贴文本",
+        "QUICK_NOTE": "速记",
+        "CLIP": "剪藏"
+      },
+      "status": {
+        "NOTE": "仅保存",
+        "DRAFT": "草稿",
+        "CONTENT_PROCESSING": "内容处理中",
+        "SUMMARY_PENDING": "等待生成总结",
+        "SUMMARY_PROCESSING": "总结生成中",
+        "SUMMARY_READY": "总结待确认",
+        "COMPLETED": "已完成",
+        "FAILED": "处理失败"
+      },
+      "duration": {
+        "hours": "{{count}} 小时",
+        "minutes": "{{count}} 分",
+        "seconds": "{{count}} 秒"
+      }
     }
   },
   "route": {

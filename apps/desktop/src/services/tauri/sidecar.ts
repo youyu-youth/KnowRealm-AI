@@ -8,6 +8,11 @@ export type SidecarConfig = {
 let configPromise: Promise<SidecarConfig> | undefined;
 
 export function getSidecarConfig(): Promise<SidecarConfig> {
-  configPromise ??= invoke<SidecarConfig>("get_sidecar_config");
+  configPromise ??= invoke<SidecarConfig>("get_sidecar_config").catch(
+    (error: unknown) => {
+      configPromise = undefined;
+      throw error;
+    },
+  );
   return configPromise;
 }

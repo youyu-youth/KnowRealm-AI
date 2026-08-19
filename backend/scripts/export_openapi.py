@@ -21,7 +21,7 @@ def main() -> None:
             )
         return
 
-    args.output.write_text(rendered, encoding="utf-8")
+    args.output.write_text(rendered, encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

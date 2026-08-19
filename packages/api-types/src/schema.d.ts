@@ -41,6 +41,23 @@ export interface paths {
         patch: operations["update_course_api_courses__course_id__patch"];
         trace?: never;
     };
+    "/api/courses/{course_id}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Course Records */
+        get: operations["list_course_records_api_courses__course_id__records_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -62,6 +79,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * CaptureType
+         * @enum {string}
+         */
+        CaptureType: "RECORDING" | "AUDIO_IMPORT" | "DOCUMENT_IMPORT" | "PASTE" | "QUICK_NOTE" | "CLIP";
         /** CourseCreate */
         CourseCreate: {
             /** @description 可选课程类型 */
@@ -183,6 +205,30 @@ export interface components {
          * @enum {string}
          */
         LearningDepth: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+        /** RecordOut */
+        RecordOut: {
+            capture_type: components["schemas"]["CaptureType"];
+            /** Course Id */
+            course_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Id */
+            id: string;
+            status: components["schemas"]["RecordStatus"];
+            /** Summary Confirmed At */
+            summary_confirmed_at: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * RecordStatus
+         * @enum {string}
+         */
+        RecordStatus: "NOTE" | "DRAFT" | "CONTENT_PROCESSING" | "SUMMARY_PENDING" | "SUMMARY_PROCESSING" | "SUMMARY_READY" | "COMPLETED" | "FAILED";
     };
     responses: never;
     parameters: never;
@@ -461,6 +507,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourseOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_course_records_api_courses__course_id__records_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"][];
                 };
             };
             /** @description Forbidden */

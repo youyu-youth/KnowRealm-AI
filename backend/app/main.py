@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from app.api import courses
+from app.api import courses, records
 from app.api.deps import require_launch_token
 from app.core.data_dir import ensure_data_dir
 from app.db.engine import create_database
@@ -68,6 +68,7 @@ def create_app(
         allow_headers=["Content-Type", "X-KnowRealm-Token"],
     )
     app.include_router(courses.router)
+    app.include_router(records.router)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(  # pyright: ignore[reportUnusedFunction]
