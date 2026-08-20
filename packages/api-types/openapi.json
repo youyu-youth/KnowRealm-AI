@@ -1,6 +1,26 @@
 {
   "components": {
     "schemas": {
+      "Body_import_document_api_document_imports_post": {
+        "properties": {
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id",
+          "file"
+        ],
+        "title": "Body_import_document_api_document_imports_post",
+        "type": "object"
+      },
       "CaptureType": {
         "enum": [
           "RECORDING",
@@ -358,6 +378,24 @@
         "title": "CourseUpdate",
         "type": "object"
       },
+      "DocumentImportAccepted": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "job_id"
+        ],
+        "title": "DocumentImportAccepted",
+        "type": "object"
+      },
       "EducationStage": {
         "enum": [
           "MIDDLE_SCHOOL",
@@ -399,6 +437,101 @@
           "ADVANCED"
         ],
         "title": "LearningDepth",
+        "type": "string"
+      },
+      "ProcessingJobErrorCode": {
+        "enum": [
+          "NON_UTF8_TEXT",
+          "CORRUPT_DOCUMENT",
+          "PASSWORD_PROTECTED",
+          "FORMAT_MISMATCH",
+          "NO_EXTRACTABLE_TEXT",
+          "TEMPORARY_IO",
+          "INTERNAL_ERROR"
+        ],
+        "title": "ProcessingJobErrorCode",
+        "type": "string"
+      },
+      "ProcessingJobOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessingJobErrorCode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "job_type": {
+            "$ref": "#/components/schemas/ProcessingJobType"
+          },
+          "max_attempts": {
+            "title": "Max Attempts",
+            "type": "integer"
+          },
+          "progress": {
+            "title": "Progress",
+            "type": "number"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProcessingJobStatus"
+          }
+        },
+        "required": [
+          "id",
+          "record_id",
+          "job_type",
+          "status",
+          "progress",
+          "attempts",
+          "max_attempts",
+          "error_code",
+          "retryable"
+        ],
+        "title": "ProcessingJobOut",
+        "type": "object"
+      },
+      "ProcessingJobStatus": {
+        "enum": [
+          "PENDING",
+          "RUNNING",
+          "SUCCEEDED",
+          "FAILED",
+          "CANCELLED"
+        ],
+        "title": "ProcessingJobStatus",
+        "type": "string"
+      },
+      "ProcessingJobType": {
+        "enum": [
+          "DOCUMENT_PARSE"
+        ],
+        "title": "ProcessingJobType",
         "type": "string"
       },
       "RecordOut": {
@@ -479,6 +612,70 @@
         ],
         "title": "RecordStatus",
         "type": "string"
+      },
+      "TranscriptAvailability": {
+        "enum": [
+          "NOT_READY",
+          "READY"
+        ],
+        "title": "TranscriptAvailability",
+        "type": "string"
+      },
+      "TranscriptOut": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "edited_by_user": {
+            "title": "Edited By User",
+            "type": "boolean"
+          },
+          "language": {
+            "title": "Language",
+            "type": "string"
+          },
+          "source_version": {
+            "title": "Source Version",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "language",
+          "content",
+          "source_version",
+          "edited_by_user",
+          "updated_at"
+        ],
+        "title": "TranscriptOut",
+        "type": "object"
+      },
+      "TranscriptReadOut": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TranscriptAvailability"
+          },
+          "transcript": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TranscriptOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "transcript"
+        ],
+        "title": "TranscriptReadOut",
+        "type": "object"
       }
     }
   },
@@ -1069,6 +1266,125 @@
         ]
       }
     },
+    "/api/document-imports": {
+      "post": {
+        "operationId": "import_document_api_document_imports_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_document_api_document_imports_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentImportAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Insufficient Storage"
+          }
+        },
+        "summary": "Import Document",
+        "tags": [
+          "document-imports"
+        ]
+      }
+    },
     "/api/health": {
       "get": {
         "operationId": "health_api_health_get",
@@ -1137,6 +1453,95 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/processing-jobs/{job_id}": {
+      "get": {
+        "operationId": "get_processing_job_api_processing_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Processing Job",
+        "tags": [
+          "processing-jobs"
+        ]
       }
     },
     "/api/records/{record_id}": {
@@ -1303,6 +1708,95 @@
           }
         },
         "summary": "Get Record",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/api/records/{record_id}/transcript": {
+      "get": {
+        "operationId": "get_record_transcript_api_records__record_id__transcript_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscriptReadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Record Transcript",
         "tags": [
           "records"
         ]

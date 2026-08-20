@@ -1,4 +1,4 @@
-import { Link, Outlet } from "@tanstack/react-router";
+import { Link, Outlet, useNavigate } from "@tanstack/react-router";
 import {
   Archive,
   BookOpenText,
@@ -12,7 +12,9 @@ import {
   UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
@@ -25,9 +27,9 @@ const navigationItems = [
 ] as const;
 
 const captureItems = [
-  { labelKey: "capture.note", icon: NotebookPen },
-  { labelKey: "capture.import", icon: Upload },
-  { labelKey: "capture.record", icon: Mic },
+  { labelKey: "capture.note", icon: NotebookPen, available: false },
+  { labelKey: "capture.import", icon: Upload, available: true },
+  { labelKey: "capture.record", icon: Mic, available: false },
 ] as const;
 
 const activeNavClass =
@@ -37,6 +39,8 @@ const inactiveNavClass =
 
 export function AppShell() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [importOpen, setImportOpen] = useState(false);
 
   return (
     <div className="bg-canvas text-foreground flex h-screen min-w-0 overflow-hidden">
@@ -109,29 +113,32 @@ export function AppShell() {
             {t("capture.label")}
           </p>
           <div className="flex min-w-0 items-center gap-1">
-            {captureItems.map(({ labelKey, icon: Icon }, index) => {
+            {captureItems.map(({ labelKey, icon: Icon, available }) => {
               const label = t(labelKey);
               return (
                 <Button
                   key={labelKey}
-                  variant={
-                    index === captureItems.length - 1 ? "default" : "ghost"
-                  }
+                  variant={available ? "default" : "ghost"}
                   size="sm"
-                  disabled
+                  disabled={!available}
+                  onClick={available ? () => setImportOpen(true) : undefined}
                   className={cn(
                     "disabled:pointer-events-auto disabled:opacity-70",
-                    index === captureItems.length - 1
-                      ? "hover:bg-primary-hover disabled:hover:bg-primary"
+                    available
+                      ? "hover:bg-primary-hover"
                       : "disabled:hover:bg-transparent",
                   )}
-                  aria-label={t("nav.unavailableLabel", { label })}
+                  aria-label={
+                    available ? label : t("nav.unavailableLabel", { label })
+                  }
                 >
                   <Icon data-icon="inline-start" aria-hidden="true" />
                   <span className="max-compact:sr-only">{label}</span>
-                  <span className="text-label max-compact:sr-only">
-                    {t("nav.unavailable")}
-                  </span>
+                  {available ? null : (
+                    <span className="text-label max-compact:sr-only">
+                      {t("nav.unavailable")}
+                    </span>
+                  )}
                 </Button>
               );
             })}
@@ -141,6 +148,17 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <DocumentImportDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onAccepted={({ record_id, job_id }) =>
+          navigate({
+            to: "/records/$recordId",
+            params: { recordId: record_id },
+            search: { tab: "transcript", jobId: job_id },
+          })
+        }
+      />
     </div>
   );
 }

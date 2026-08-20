@@ -1,10 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  documentImportApi,
+  documentImportKeys,
+} from "@/features/document-import/api";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import { DeleteRecordDialog } from "@/features/records/components/DeleteRecordDialog";
@@ -19,11 +24,13 @@ import { ApiError } from "@/services/http/client";
 
 type RecordDetailPageProps = {
   recordId: string;
+  tab: "summary" | "transcript";
+  jobId?: string;
+  onTabChange: (tab: "summary" | "transcript") => void;
   onDeleted: (courseId: string) => void | Promise<void>;
 };
 
 const unavailableTabs = [
-  { value: "transcript", labelKey: "record.detail.tabs.transcript" },
   { value: "highlights", labelKey: "record.detail.tabs.highlights" },
   { value: "notes", labelKey: "record.detail.tabs.notes" },
   { value: "flashcards", labelKey: "record.detail.tabs.flashcards" },
@@ -32,9 +39,13 @@ const unavailableTabs = [
 
 export function RecordDetailPage({
   recordId,
+  tab,
+  jobId,
+  onTabChange,
   onDeleted,
 }: RecordDetailPageProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const record = useQuery({
     queryKey: recordKeys.detail(recordId),
     queryFn: () => recordApi.get(recordId),
@@ -43,6 +54,28 @@ export function RecordDetailPage({
         ? false
         : failureCount < 2,
   });
+  const job = useQuery({
+    queryKey: documentImportKeys.job(jobId ?? ""),
+    queryFn: () => documentImportApi.getJob(jobId ?? ""),
+    enabled: tab === "transcript" && Boolean(jobId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "PENDING" || status === "RUNNING" ? 2_000 : false;
+    },
+  });
+  const transcript = useQuery({
+    queryKey: recordKeys.transcript(recordId),
+    queryFn: () => recordApi.getTranscript(recordId),
+    enabled:
+      tab === "transcript" && (!jobId || job.data?.status === "SUCCEEDED"),
+  });
+
+  useEffect(() => {
+    if (job.data?.status !== "SUCCEEDED") return;
+    void queryClient.invalidateQueries({
+      queryKey: recordKeys.detail(recordId),
+    });
+  }, [job.data?.status, queryClient, recordId]);
 
   if (record.isPending) {
     return (
@@ -160,13 +193,24 @@ export function RecordDetailPage({
         </span>
       </div>
 
-      <Tabs value="summary" className="mt-8 min-w-0">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          if (value === "summary" || value === "transcript") {
+            onTabChange(value);
+          }
+        }}
+        className="mt-8 min-w-0"
+      >
         <TabsList
           variant="line"
           className="max-w-full flex-wrap justify-start gap-x-3 gap-y-2"
         >
           <TabsTrigger value="summary">
             {t("record.detail.tabs.summary")}
+          </TabsTrigger>
+          <TabsTrigger value="transcript">
+            {t("record.detail.tabs.transcript")}
           </TabsTrigger>
           {unavailableTabs.map(({ value, labelKey }) => (
             <TabsTrigger
@@ -200,6 +244,78 @@ export function RecordDetailPage({
               ? t("record.detail.failedDescription")
               : t("record.detail.summaryEmptyDescription")}
           </p>
+        </TabsContent>
+        <TabsContent
+          value="transcript"
+          className="border-border mt-6 border-t pt-8"
+        >
+          {job.isError ? (
+            <>
+              <h2 className="text-section font-section text-ink">
+                {t("record.detail.transcript.errorTitle")}
+              </h2>
+              <p className="max-w-reading text-body text-muted-foreground mt-2">
+                {job.error.message}
+              </p>
+            </>
+          ) : job.data?.status === "FAILED" ||
+            job.data?.status === "CANCELLED" ? (
+            <>
+              <h2 className="text-section font-section text-ink">
+                {t("record.detail.transcript.errorTitle")}
+              </h2>
+              <p className="max-w-reading text-body text-muted-foreground mt-2">
+                {job.data.status === "CANCELLED"
+                  ? t("record.detail.transcript.cancelledDescription")
+                  : job.data.retryable
+                    ? t("record.detail.transcript.temporaryDescription")
+                    : job.data.error_code
+                      ? t(
+                          `record.detail.transcript.errors.${job.data.error_code}`,
+                        )
+                      : t("record.detail.transcript.errors.INTERNAL_ERROR")}
+              </p>
+            </>
+          ) : (Boolean(jobId) && job.isPending) ||
+            job.data?.status === "PENDING" ||
+            job.data?.status === "RUNNING" ||
+            transcript.isPending ? (
+            <>
+              <h2 className="text-section font-section text-ink flex items-center gap-2">
+                <Spinner aria-hidden="true" />
+                {t("record.detail.transcript.processingTitle")}
+              </h2>
+              <p
+                role="status"
+                className="max-w-reading text-body text-muted-foreground mt-2"
+              >
+                {t("record.detail.transcript.processingDescription")}
+              </p>
+            </>
+          ) : transcript.isError ? (
+            <>
+              <h2 className="text-section font-section text-ink">
+                {t("record.detail.transcript.errorTitle")}
+              </h2>
+              <p className="max-w-reading text-body text-muted-foreground mt-2">
+                {transcript.error.message}
+              </p>
+            </>
+          ) : transcript.data?.status === "READY" &&
+            transcript.data.transcript ? (
+            <pre className="max-w-reading text-body text-ink font-body break-words whitespace-pre-wrap">
+              {transcript.data.transcript.content}
+            </pre>
+          ) : (
+            <>
+              <h2 className="text-section font-section text-ink">
+                {t("record.detail.transcript.notReadyTitle")}
+              </h2>
+              <p className="max-w-reading text-body text-muted-foreground mt-2">
+                {t("record.detail.transcript.notReadyDescription")}
+              </p>
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </section>

@@ -58,6 +58,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/document-imports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Document */
+        post: operations["import_document_api_document_imports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -67,6 +84,23 @@ export interface paths {
         };
         /** Health */
         get: operations["health_api_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/processing-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Processing Job */
+        get: operations["get_processing_job_api_processing_jobs__job_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -93,10 +127,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/transcript": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Record Transcript */
+        get: operations["get_record_transcript_api_records__record_id__transcript_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_import_document_api_document_imports_post */
+        Body_import_document_api_document_imports_post: {
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+            /** File */
+            file: string;
+        };
         /**
          * CaptureType
          * @enum {string}
@@ -200,6 +261,13 @@ export interface components {
              */
             name?: string | null;
         };
+        /** DocumentImportAccepted */
+        DocumentImportAccepted: {
+            /** Job Id */
+            job_id: string;
+            /** Record Id */
+            record_id: string;
+        };
         /**
          * EducationStage
          * @enum {string}
@@ -223,6 +291,39 @@ export interface components {
          * @enum {string}
          */
         LearningDepth: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+        /**
+         * ProcessingJobErrorCode
+         * @enum {string}
+         */
+        ProcessingJobErrorCode: "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "INTERNAL_ERROR";
+        /** ProcessingJobOut */
+        ProcessingJobOut: {
+            /** Attempts */
+            attempts: number;
+            error_code: components["schemas"]["ProcessingJobErrorCode"] | null;
+            /** Id */
+            id: string;
+            job_type: components["schemas"]["ProcessingJobType"];
+            /** Max Attempts */
+            max_attempts: number;
+            /** Progress */
+            progress: number;
+            /** Record Id */
+            record_id: string | null;
+            /** Retryable */
+            retryable: boolean;
+            status: components["schemas"]["ProcessingJobStatus"];
+        };
+        /**
+         * ProcessingJobStatus
+         * @enum {string}
+         */
+        ProcessingJobStatus: "PENDING" | "RUNNING" | "SUCCEEDED" | "FAILED" | "CANCELLED";
+        /**
+         * ProcessingJobType
+         * @enum {string}
+         */
+        ProcessingJobType: "DOCUMENT_PARSE";
         /** RecordOut */
         RecordOut: {
             capture_type: components["schemas"]["CaptureType"];
@@ -247,6 +348,29 @@ export interface components {
          * @enum {string}
          */
         RecordStatus: "NOTE" | "DRAFT" | "CONTENT_PROCESSING" | "SUMMARY_PENDING" | "SUMMARY_PROCESSING" | "SUMMARY_READY" | "COMPLETED" | "FAILED";
+        /**
+         * TranscriptAvailability
+         * @enum {string}
+         */
+        TranscriptAvailability: "NOT_READY" | "READY";
+        /** TranscriptOut */
+        TranscriptOut: {
+            /** Content */
+            content: string;
+            /** Edited By User */
+            edited_by_user: boolean;
+            /** Language */
+            language: string;
+            /** Source Version */
+            source_version: number;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** TranscriptReadOut */
+        TranscriptReadOut: {
+            status: components["schemas"]["TranscriptAvailability"];
+            transcript: components["schemas"]["TranscriptOut"] | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -625,6 +749,95 @@ export interface operations {
             };
         };
     };
+    import_document_api_document_imports_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_import_document_api_document_imports_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentImportAccepted"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient Storage */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     health_api_health_get: {
         parameters: {
             query?: never;
@@ -649,6 +862,66 @@ export interface operations {
             };
             /** @description Forbidden */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_processing_job_api_processing_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingJobOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -755,6 +1028,66 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_record_transcript_api_records__record_id__transcript_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptReadOut"];
+                };
             };
             /** @description Forbidden */
             403: {

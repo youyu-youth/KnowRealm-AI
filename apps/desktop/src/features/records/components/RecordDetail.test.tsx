@@ -23,6 +23,8 @@ const DETAIL_URL = `${TEST_SIDECAR_URL}/api/records/${RECORD_ID}`;
 const COURSE_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}`;
 const COURSE_RECORDS_URL = `${COURSE_URL}/records`;
 const ROUTE_PATH = `/records/${RECORD_ID}`;
+const JOB_ID = "33333333-3333-4333-8333-333333333333";
+const JOB_URL = `${TEST_SIDECAR_URL}/api/processing-jobs/${JOB_ID}`;
 
 const record: RecordOut = {
   id: RECORD_ID,
@@ -145,12 +147,15 @@ describe("学习记录详情", () => {
     );
   });
 
-  it("加载期间不闪现空态，Summary 诚实为空且其余资产页签禁用", async () => {
+  it("加载期间不闪现空态，普通详情默认 Summary 且仅未接入资产禁用", async () => {
     server.use(
       http.get(DETAIL_URL, async () => {
         await delay(200);
         return HttpResponse.json(record);
       }),
+      http.get(`${DETAIL_URL}/transcript`, () =>
+        HttpResponse.json({ status: "NOT_READY", transcript: null }),
+      ),
     );
     renderAt();
 
@@ -166,13 +171,8 @@ describe("学习记录详情", () => {
       "aria-selected",
       "true",
     );
-    for (const label of [
-      "Transcript",
-      "Highlights",
-      "Notes",
-      "Flashcards",
-      "Quiz",
-    ]) {
+    expect(screen.getByRole("tab", { name: "Transcript" })).toBeEnabled();
+    for (const label of ["Highlights", "Notes", "Flashcards", "Quiz"]) {
       expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
         "aria-disabled",
         "true",
@@ -184,6 +184,8 @@ describe("学习记录详情", () => {
     }
     expect(screen.getByText("其余学习资产尚未接入")).toBeInTheDocument();
     expect(screen.queryByText(/示例总结/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Transcript" }));
+    expect(await screen.findByText("正文尚未生成")).toBeVisible();
   });
 
   it("返回路径由真实课程归属决定，空课程归属返回知识空间", async () => {
@@ -226,6 +228,71 @@ describe("学习记录详情", () => {
       screen.queryByRole("button", { name: /重试|恢复/ }),
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/error|code|任务/)).not.toBeInTheDocument();
+  });
+
+  it("Transcript 区分确定性与可恢复失败，且终态不读取正文", async () => {
+    let transcriptCalls = 0;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          capture_type: "DOCUMENT_IMPORT",
+          status: "FAILED",
+        }),
+      ),
+      http.get(JOB_URL, () =>
+        HttpResponse.json({
+          id: JOB_ID,
+          record_id: RECORD_ID,
+          job_type: "DOCUMENT_PARSE",
+          status: "FAILED",
+          progress: 0,
+          attempts: 1,
+          max_attempts: 3,
+          error_code: "FORMAT_MISMATCH",
+          retryable: false,
+        }),
+      ),
+      http.get(`${DETAIL_URL}/transcript`, () => {
+        transcriptCalls += 1;
+        return HttpResponse.json({ status: "NOT_READY", transcript: null });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
+
+    expect(await screen.findByText("文件内容与扩展名不匹配。")).toBeVisible();
+    expect(transcriptCalls).toBe(0);
+    expect(screen.queryByRole("button", { name: /重试/ })).toBeNull();
+
+    cleanup();
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          capture_type: "DOCUMENT_IMPORT",
+          status: "FAILED",
+        }),
+      ),
+      http.get(JOB_URL, () =>
+        HttpResponse.json({
+          id: JOB_ID,
+          record_id: RECORD_ID,
+          job_type: "DOCUMENT_PARSE",
+          status: "FAILED",
+          progress: 0,
+          attempts: 1,
+          max_attempts: 3,
+          error_code: "TEMPORARY_IO",
+          retryable: true,
+        }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
+    expect(
+      await screen.findByText(
+        "本地文件暂时无法读取；自动恢复将在后续任务接入。",
+      ),
+    ).toBeVisible();
   });
 
   it("取消或关闭确认对话框不发删除请求，并将焦点恢复到删除入口", async () => {

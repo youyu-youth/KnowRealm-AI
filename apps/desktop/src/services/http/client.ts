@@ -17,7 +17,9 @@ function formatApiDetail(detail: unknown): string {
 async function request(path: string, init?: RequestInit): Promise<Response> {
   const { baseUrl, token } = await getSidecarConfig();
   const headers = new Headers(init?.headers);
-  headers.set("Content-Type", "application/json");
+  if (!(init?.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
   headers.set("X-KnowRealm-Token", token);
   const response = await fetch(`${baseUrl}${path}`, { ...init, headers });
 
