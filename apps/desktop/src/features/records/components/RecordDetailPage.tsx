@@ -6,10 +6,8 @@ import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  documentImportApi,
-  documentImportKeys,
-} from "@/features/document-import/api";
+import { documentImportApi } from "@/features/document-import/api/documentImports";
+import { documentImportKeys } from "@/features/document-import/api/keys";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import { DeleteRecordDialog } from "@/features/records/components/DeleteRecordDialog";
@@ -72,10 +70,22 @@ export function RecordDetailPage({
 
   useEffect(() => {
     if (job.data?.status !== "SUCCEEDED") return;
-    void queryClient.invalidateQueries({
-      queryKey: recordKeys.detail(recordId),
-    });
-  }, [job.data?.status, queryClient, recordId]);
+    void Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: recordKeys.detail(recordId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: recordKeys.transcript(recordId),
+      }),
+      ...(record.data?.course_id
+        ? [
+            queryClient.invalidateQueries({
+              queryKey: recordKeys.courseList(record.data.course_id),
+            }),
+          ]
+        : []),
+    ]);
+  }, [job.data?.status, queryClient, record.data?.course_id, recordId]);
 
   if (record.isPending) {
     return (
@@ -303,7 +313,7 @@ export function RecordDetailPage({
             </>
           ) : transcript.data?.status === "READY" &&
             transcript.data.transcript ? (
-            <pre className="max-w-reading text-body text-ink font-body break-words whitespace-pre-wrap">
+            <pre className="max-w-reading text-body text-ink font-body font-sans break-words whitespace-pre-wrap">
               {transcript.data.transcript.content}
             </pre>
           ) : (

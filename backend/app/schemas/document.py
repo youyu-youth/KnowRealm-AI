@@ -26,6 +26,14 @@ class ProcessingJobErrorCode(StrEnum):
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
+class RecordFileType(StrEnum):
+    DOCUMENT = "DOCUMENT"
+
+
+class RecordFileSourceType(StrEnum):
+    UPLOADED = "UPLOADED"
+
+
 class DocumentImportAccepted(BaseModel):
     record_id: str
     job_id: str

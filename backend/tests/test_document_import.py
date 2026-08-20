@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
+from zipfile import ZipFile
 
 import aiosqlite
 import httpx
@@ -72,6 +73,20 @@ def docx_bytes() -> bytes:
     document.sections[0].footer.paragraphs[0].text = "excluded footer"
     output = BytesIO()
     document.save(output)
+    return output.getvalue()
+
+
+def corrupt_docx_bytes() -> bytes:
+    output = BytesIO()
+    with ZipFile(output, "w") as archive:
+        archive.writestr("word/document.xml", "<document />")
+    return output.getvalue()
+
+
+def malformed_xml_docx_bytes() -> bytes:
+    output = BytesIO()
+    with ZipFile(output, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types>")
     return output.getvalue()
 
 
@@ -225,6 +240,8 @@ async def test_deterministic_parse_failures_expose_only_stable_codes(tmp_path: P
         ("broken.pdf", b"%PDF-1.7\nbroken", "CORRUPT_DOCUMENT"),
         ("locked.pdf", password_pdf_bytes(), "PASSWORD_PROTECTED"),
         ("scan.pdf", image_only_pdf_bytes(), "NO_EXTRACTABLE_TEXT"),
+        ("partial.docx", corrupt_docx_bytes(), "CORRUPT_DOCUMENT"),
+        ("malformed.docx", malformed_xml_docx_bytes(), "CORRUPT_DOCUMENT"),
         ("blank.md", b" \r\n\t", "NO_EXTRACTABLE_TEXT"),
     )
     async with running_document_app(tmp_path / "KnowRealm") as (_app, client):
@@ -483,9 +500,31 @@ async def test_worker_claims_only_due_pending_job_from_persistent_queue(tmp_path
         terminal = await wait_for_terminal_job(client, job_id)
         transcript = await client.get(f"/api/records/{record_id}/transcript")
 
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE records SET deleted_at = :now WHERE id = :record_id"),
+                {"now": now, "record_id": record_id},
+            )
+            await session.execute(
+                text(
+                    "UPDATE processing_jobs SET status = 'PENDING', next_run_at = NULL "
+                    "WHERE id = :job_id"
+                ),
+                {"job_id": job_id},
+            )
+        await asyncio.sleep(0.15)
+        async with app.state.session_factory() as session:
+            skipped = (
+                await session.execute(
+                    text("SELECT status, attempts FROM processing_jobs WHERE id = :job_id"),
+                    {"job_id": job_id},
+                )
+            ).one()
+
     assert terminal["status"] == "SUCCEEDED"
     assert terminal["attempts"] == 1
     assert transcript.json()["transcript"]["content"] == "persistent queue"
+    assert skipped == ("PENDING", 1)
 
 
 @pytest.fixture

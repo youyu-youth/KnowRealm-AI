@@ -6,6 +6,7 @@ import pymupdf
 from docx import Document
 from docx.opc.exceptions import PackageNotFoundError
 from docx.text.paragraph import Paragraph
+from lxml.etree import XMLSyntaxError  # pyright: ignore[reportUnknownVariableType]
 
 from app.schemas.document import ProcessingJobErrorCode
 
@@ -52,7 +53,7 @@ def extract_docx(path: Path) -> str:
         raise DocumentParseError(ProcessingJobErrorCode.FORMAT_MISMATCH)
     try:
         document = Document(str(path))
-    except (PackageNotFoundError, ValueError):
+    except (KeyError, PackageNotFoundError, ValueError, XMLSyntaxError):
         raise DocumentParseError(ProcessingJobErrorCode.CORRUPT_DOCUMENT) from None
     blocks: list[str] = []
     for block in document.iter_inner_content():

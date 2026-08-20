@@ -11,7 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models.base import utcnow
 from app.models.document import ProcessingJob, RecordFile, Transcript
 from app.models.record import Record
-from app.schemas.document import ProcessingJobErrorCode
+from app.schemas.document import (
+    ProcessingJobErrorCode,
+    ProcessingJobStatus,
+    ProcessingJobType,
+)
+from app.schemas.record import RecordStatus
 from app.services.document_parser import DocumentParseError, extract_document_text
 
 ERROR_MESSAGES = {
@@ -59,7 +64,7 @@ class DocumentWorker:
         except OSError:
             await self._fail(job_id, record_id, ProcessingJobErrorCode.TEMPORARY_IO)
         except Exception:
-            logger.error(
+            logger.exception(
                 "document_parse_failed",
                 job_id=job_id,
                 record_id=record_id,
@@ -76,9 +81,11 @@ class DocumentWorker:
             job = (
                 await session.scalars(
                     select(ProcessingJob)
+                    .join(Record, ProcessingJob.record_id == Record.id)
                     .where(
-                        ProcessingJob.job_type == "DOCUMENT_PARSE",
-                        ProcessingJob.status == "PENDING",
+                        ProcessingJob.job_type == ProcessingJobType.DOCUMENT_PARSE,
+                        ProcessingJob.status == ProcessingJobStatus.PENDING,
+                        Record.deleted_at.is_(None),
                         or_(
                             ProcessingJob.next_run_at.is_(None),
                             ProcessingJob.next_run_at <= now,
@@ -94,9 +101,12 @@ class DocumentWorker:
                 CursorResult[tuple[()]],
                 await session.execute(
                     update(ProcessingJob)
-                    .where(ProcessingJob.id == job.id, ProcessingJob.status == "PENDING")
+                    .where(
+                        ProcessingJob.id == job.id,
+                        ProcessingJob.status == ProcessingJobStatus.PENDING,
+                    )
                     .values(
-                        status="RUNNING",
+                        status=ProcessingJobStatus.RUNNING,
                         attempts=ProcessingJob.attempts + 1,
                         started_at=now,
                         updated_at=now,
@@ -112,7 +122,15 @@ class DocumentWorker:
             record_file_id = input_dict.get("record_file_id")
             if not isinstance(record_file_id, str):
                 return job.id, job.record_id, Path()
-            record_file = await session.get(RecordFile, record_file_id)
+            record_file = (
+                await session.scalars(
+                    select(RecordFile).where(
+                        RecordFile.id == record_file_id,
+                        RecordFile.record_id == job.record_id,
+                        RecordFile.deleted_at.is_(None),
+                    )
+                )
+            ).one_or_none()
             if record_file is None:
                 return job.id, job.record_id, Path()
             path = (self._data_dir / record_file.file_path).resolve()
@@ -125,8 +143,15 @@ class DocumentWorker:
         now = utcnow()
         async with self._session_factory() as session, session.begin():
             job = await session.get(ProcessingJob, job_id)
-            record = await session.get(Record, record_id)
-            if job is None or record is None or job.status != "RUNNING":
+            record = (
+                await session.scalars(
+                    select(Record).where(
+                        Record.id == record_id,
+                        Record.deleted_at.is_(None),
+                    )
+                )
+            ).one_or_none()
+            if job is None or record is None or job.status != ProcessingJobStatus.RUNNING:
                 return
             session.add(
                 Transcript(
@@ -139,11 +164,11 @@ class DocumentWorker:
                     updated_at=now,
                 )
             )
-            job.status = "SUCCEEDED"
+            job.status = ProcessingJobStatus.SUCCEEDED
             job.progress = 1
             job.finished_at = now
             job.updated_at = now
-            record.status = "SUMMARY_PENDING"
+            record.status = RecordStatus.SUMMARY_PENDING
             record.updated_at = now
             await session.flush()
 
@@ -156,14 +181,21 @@ class DocumentWorker:
         now = utcnow()
         async with self._session_factory() as session, session.begin():
             job = await session.get(ProcessingJob, job_id)
-            record = await session.get(Record, record_id)
-            if job is None or record is None or job.status != "RUNNING":
+            record = (
+                await session.scalars(
+                    select(Record).where(
+                        Record.id == record_id,
+                        Record.deleted_at.is_(None),
+                    )
+                )
+            ).one_or_none()
+            if job is None or record is None or job.status != ProcessingJobStatus.RUNNING:
                 return
-            job.status = "FAILED"
+            job.status = ProcessingJobStatus.FAILED
             job.error_code = code.value
             job.error_message = ERROR_MESSAGES[code]
             job.finished_at = now
             job.updated_at = now
-            record.status = "FAILED"
+            record.status = RecordStatus.FAILED
             record.updated_at = now
             await session.flush()

@@ -5,10 +5,6 @@ export type DocumentImportAccepted =
   components["schemas"]["DocumentImportAccepted"];
 export type ProcessingJobOut = components["schemas"]["ProcessingJobOut"];
 
-export const documentImportKeys = {
-  job: (jobId: string) => ["processing-jobs", jobId] as const,
-};
-
 export const documentImportApi = {
   create(courseId: string, file: File) {
     const body = new FormData();

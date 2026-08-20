@@ -15,7 +15,14 @@ from app.models.course import Course
 from app.models.document import ProcessingJob, RecordFile
 from app.models.record import Record
 from app.schemas.course import CourseStatus
-from app.schemas.document import DocumentImportAccepted
+from app.schemas.document import (
+    DocumentImportAccepted,
+    ProcessingJobStatus,
+    ProcessingJobType,
+    RecordFileSourceType,
+    RecordFileType,
+)
+from app.schemas.record import CaptureType, RecordStatus
 from app.services.course_service import CourseService
 
 SUPPORTED_DOCUMENTS = {
@@ -88,9 +95,9 @@ class DocumentImportService:
                     Record(
                         id=record_id,
                         course_id=course_id,
-                        capture_type="DOCUMENT_IMPORT",
+                        capture_type=CaptureType.DOCUMENT_IMPORT,
                         title=Path(original_name).stem,
-                        status="CONTENT_PROCESSING",
+                        status=RecordStatus.CONTENT_PROCESSING,
                         duration_ms=0,
                         summary_confirmed_at=None,
                         created_at=now,
@@ -103,8 +110,8 @@ class DocumentImportService:
                         RecordFile(
                             id=file_id,
                             record_id=record_id,
-                            file_type="DOCUMENT",
-                            source_type="UPLOADED",
+                            file_type=RecordFileType.DOCUMENT,
+                            source_type=RecordFileSourceType.UPLOADED,
                             file_path=final_path.relative_to(data_dir).as_posix(),
                             original_name=original_name,
                             mime_type=SUPPORTED_DOCUMENTS[extension],
@@ -117,8 +124,8 @@ class DocumentImportService:
                         ProcessingJob(
                             id=job_id,
                             record_id=record_id,
-                            job_type="DOCUMENT_PARSE",
-                            status="PENDING",
+                            job_type=ProcessingJobType.DOCUMENT_PARSE,
+                            status=ProcessingJobStatus.PENDING,
                             progress=0,
                             attempts=0,
                             max_attempts=3,

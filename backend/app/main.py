@@ -60,9 +60,13 @@ def create_app(
                 yield
             finally:
                 document_worker.stop()
-                await document_worker_task
-                await cleanup_task
-                await engine.dispose()
+                try:
+                    await document_worker_task
+                finally:
+                    try:
+                        await cleanup_task
+                    finally:
+                        await engine.dispose()
         finally:
             data_directory_lock.release()
 

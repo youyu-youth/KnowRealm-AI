@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { documentImportApi } from "@/features/document-import/api";
+import { documentImportApi } from "@/features/document-import/api/documentImports";
 
 vi.mock("@/services/tauri/sidecar", () => ({
   getSidecarConfig: vi.fn().mockResolvedValue({

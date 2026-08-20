@@ -166,6 +166,8 @@ describe("工作台骨架", () => {
     expect(window.location.search).toBe(`?tab=transcript&jobId=${jobId}`);
     expect(jobCalls).toBe(2);
     expect(importCalls).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 2_200));
+    expect(jobCalls).toBe(2);
     await waitFor(() =>
       expect(screen.getByText("等待生成总结")).toBeInTheDocument(),
     );

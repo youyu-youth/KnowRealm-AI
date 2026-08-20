@@ -20,6 +20,7 @@ TOKEN = "test-launch-token"
 async def course_client(data_dir: Path) -> AsyncGenerator[httpx.AsyncClient]:
     app = create_app(data_dir=data_dir, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
+        await app.state.course_tombstone_cleanup_task
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://testserver",
@@ -34,6 +35,7 @@ async def running_course_app(
 ) -> AsyncGenerator[tuple[FastAPI, httpx.AsyncClient]]:
     app = create_app(data_dir=data_dir, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
+        await app.state.course_tombstone_cleanup_task
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app),
             base_url="http://testserver",

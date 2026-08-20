@@ -28,7 +28,7 @@ import { courseKeys } from "@/features/courses/api/keys";
 import {
   documentImportApi,
   type DocumentImportAccepted,
-} from "@/features/document-import/api";
+} from "@/features/document-import/api/documentImports";
 import { recordKeys } from "@/features/records/api/keys";
 
 type DocumentImportDialogProps = {

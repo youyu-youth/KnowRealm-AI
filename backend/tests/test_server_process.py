@@ -127,6 +127,67 @@ def test_second_sidecar_cannot_open_locked_data_directory(tmp_path: Path) -> Non
         stop_process_tree(after_crash)
 
 
+def test_real_process_imports_document_and_reads_it_after_restart(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    token = secrets.token_urlsafe(32)
+    process = start_sidecar(data_dir, token)
+    try:
+        base_url, _ = wait_for_sidecar(process, token)
+        headers = {"X-KnowRealm-Token": token}
+        with httpx.Client(base_url=base_url, headers=headers, trust_env=False) as client:
+            course = client.post(
+                "/api/courses",
+                json={
+                    "name": "真实进程文档导入",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+            )
+            accepted = client.post(
+                "/api/document-imports",
+                data={"course_id": course.json()["id"]},
+                files={"file": ("lecture.md", "# 第一讲\n进程与线程", "text/markdown")},
+            )
+            assert accepted.status_code == 202
+            body = accepted.json()
+            job = None
+            for _ in range(100):
+                job = client.get(f"/api/processing-jobs/{body['job_id']}").json()
+                if job["status"] in {"SUCCEEDED", "FAILED"}:
+                    break
+                time.sleep(0.05)
+            assert job is not None
+            assert job["status"] == "SUCCEEDED"
+            assert (
+                client.get(f"/api/records/{body['record_id']}/transcript").json()["transcript"][
+                    "content"
+                ]
+                == "# 第一讲\n进程与线程"
+            )
+    finally:
+        stop_process_tree(process)
+
+    restart_token = secrets.token_urlsafe(32)
+    restarted = start_sidecar(data_dir, restart_token)
+    try:
+        restarted_url, _ = wait_for_sidecar(restarted, restart_token)
+        with httpx.Client(
+            base_url=restarted_url,
+            headers={"X-KnowRealm-Token": restart_token},
+            trust_env=False,
+        ) as client:
+            assert client.get(f"/api/records/{body['record_id']}").status_code == 200
+            assert (
+                client.get(f"/api/records/{body['record_id']}/transcript").json()["status"]
+                == "READY"
+            )
+            stored_files = list((data_dir / "files" / body["record_id"]).iterdir())
+            assert len(stored_files) == 1
+            assert stored_files[0].read_bytes() == "# 第一讲\n进程与线程".encode()
+    finally:
+        stop_process_tree(restarted)
+
+
 def test_real_process_reads_preseeded_record_over_protected_socket(tmp_path: Path) -> None:
     data_dir = tmp_path / "KnowRealm"
     data_dir.mkdir()
