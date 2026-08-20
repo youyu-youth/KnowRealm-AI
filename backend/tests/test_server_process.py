@@ -93,6 +93,31 @@ def test_real_process_selects_random_loopback_port_and_requires_token(tmp_path: 
     assert token.encode() not in stderr
 
 
+def test_second_sidecar_cannot_open_locked_data_directory(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    first_token = secrets.token_urlsafe(32)
+    first = start_sidecar(data_dir, first_token)
+    try:
+        wait_for_sidecar(first, first_token)
+        second = start_sidecar(data_dir, secrets.token_urlsafe(32))
+        try:
+            _, second_stderr = second.communicate(timeout=10)
+            assert second.returncode != 0
+            assert "DATA_DIRECTORY_IN_USE" in second_stderr.decode(errors="replace")
+        finally:
+            if second.poll() is None:
+                stop_process_tree(second)
+    finally:
+        stop_process_tree(first)
+
+    restarted_token = secrets.token_urlsafe(32)
+    restarted = start_sidecar(data_dir, restarted_token)
+    try:
+        wait_for_sidecar(restarted, restarted_token)
+    finally:
+        stop_process_tree(restarted)
+
+
 def test_real_process_reads_preseeded_record_over_protected_socket(tmp_path: Path) -> None:
     data_dir = tmp_path / "KnowRealm"
     data_dir.mkdir()

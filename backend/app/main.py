@@ -12,7 +12,7 @@ from loguru import logger
 
 from app.api import courses, records
 from app.api.deps import require_launch_token
-from app.core.data_dir import ensure_data_dir
+from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
@@ -33,25 +33,31 @@ def create_app(
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
-        resolved_data_dir = ensure_data_dir(data_dir)
-        db_path = resolved_data_dir / "knowrealm.db"
-        await run_migrations(db_path)
-        engine, session_factory = create_database(db_path)
-        app.state.session_factory = session_factory
-
-        async def cleanup_course_tombstones() -> None:
-            try:
-                await CourseService.purge_expired(session_factory)
-            except Exception:
-                logger.exception("course_tombstone_cleanup_failed")
-
-        cleanup_task = asyncio.create_task(cleanup_course_tombstones())
-        app.state.course_tombstone_cleanup_task = cleanup_task
+        resolved_data_dir = data_dir.expanduser().resolve()
+        resolved_data_dir.mkdir(parents=True, exist_ok=True)
+        data_directory_lock = DataDirectoryLock.acquire(resolved_data_dir)
         try:
-            yield
+            ensure_data_dir(resolved_data_dir)
+            db_path = resolved_data_dir / "knowrealm.db"
+            await run_migrations(db_path)
+            engine, session_factory = create_database(db_path)
+            app.state.session_factory = session_factory
+
+            async def cleanup_course_tombstones() -> None:
+                try:
+                    await CourseService.purge_expired(session_factory)
+                except Exception:
+                    logger.exception("course_tombstone_cleanup_failed")
+
+            cleanup_task = asyncio.create_task(cleanup_course_tombstones())
+            app.state.course_tombstone_cleanup_task = cleanup_task
+            try:
+                yield
+            finally:
+                await cleanup_task
+                await engine.dispose()
         finally:
-            await cleanup_task
-            await engine.dispose()
+            data_directory_lock.release()
 
     app = FastAPI(
         title="KnowRealm API",
