@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
+from app.models.document import Transcript
 from app.models.record import Record
 from app.services.course_service import CourseService
 
@@ -39,6 +40,14 @@ class RecordService:
             .order_by(Record.created_at.desc())
         )
         return list((await session.scalars(statement)).all())
+
+    @staticmethod
+    async def get_transcript(session: AsyncSession, record_id: str) -> Transcript | None:
+        statement = select(Transcript).where(
+            Transcript.record_id == record_id,
+            Transcript.deleted_at.is_(None),
+        )
+        return (await session.scalars(statement)).one_or_none()
 
     @staticmethod
     async def soft_delete(session: AsyncSession, record_id: str) -> bool:

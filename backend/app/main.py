@@ -10,13 +10,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from app.api import courses, records
+from app.api import courses, document_imports, processing_jobs, records
 from app.api.deps import require_launch_token
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
 from app.services.course_service import CourseService
+from app.services.document_worker import DocumentWorker
 
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:1420",
@@ -42,6 +43,7 @@ def create_app(
             await run_migrations(db_path)
             engine, session_factory = create_database(db_path)
             app.state.session_factory = session_factory
+            app.state.data_dir = resolved_data_dir
 
             async def cleanup_course_tombstones() -> None:
                 try:
@@ -51,9 +53,14 @@ def create_app(
 
             cleanup_task = asyncio.create_task(cleanup_course_tombstones())
             app.state.course_tombstone_cleanup_task = cleanup_task
+            document_worker = DocumentWorker(session_factory, resolved_data_dir)
+            document_worker_task = asyncio.create_task(document_worker.run())
+            app.state.document_worker_task = document_worker_task
             try:
                 yield
             finally:
+                document_worker.stop()
+                await document_worker_task
                 await cleanup_task
                 await engine.dispose()
         finally:
@@ -74,6 +81,8 @@ def create_app(
         allow_headers=["Content-Type", "X-KnowRealm-Token"],
     )
     app.include_router(courses.router)
+    app.include_router(document_imports.router)
+    app.include_router(processing_jobs.router)
     app.include_router(records.router)
 
     @app.exception_handler(RequestValidationError)

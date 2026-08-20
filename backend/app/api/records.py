@@ -5,6 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_launch_token
 from app.schemas.course import ErrorResponse
+from app.schemas.document import (
+    TranscriptAvailability,
+    TranscriptOut,
+    TranscriptReadOut,
+)
 from app.schemas.record import RecordOut
 from app.services.record_service import RecordService
 
@@ -30,6 +35,23 @@ async def get_record(
     if record is None:
         raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
     return RecordOut.model_validate(record)
+
+
+@router.get("/records/{record_id}/transcript", response_model=TranscriptReadOut)
+async def get_record_transcript(
+    record_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> TranscriptReadOut:
+    record = await RecordService.get(session, str(record_id))
+    if record is None:
+        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+    transcript = await RecordService.get_transcript(session, str(record_id))
+    if transcript is None:
+        return TranscriptReadOut(status=TranscriptAvailability.NOT_READY, transcript=None)
+    return TranscriptReadOut(
+        status=TranscriptAvailability.READY,
+        transcript=TranscriptOut.model_validate(transcript),
+    )
 
 
 @router.delete(

@@ -33,9 +33,7 @@ class DataDirectoryLock:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError:
             handle.close()
-            raise DataDirectoryInUseError(
-                "DATA_DIRECTORY_IN_USE：数据目录正在使用"
-            ) from None
+            raise DataDirectoryInUseError("DATA_DIRECTORY_IN_USE：数据目录正在使用") from None
         return cls(handle)
 
     def release(self) -> None:

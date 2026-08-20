@@ -49,7 +49,7 @@ async def assert_records_schema(db_path: Path) -> None:
         ).fetchall()
         indexes = await (await connection.execute("PRAGMA index_list(records)")).fetchall()
 
-    assert version == (2,)
+    assert version == (3,)
     assert [column[1] for column in columns] == [
         "id",
         "course_id",

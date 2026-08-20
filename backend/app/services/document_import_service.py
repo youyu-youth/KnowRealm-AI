@@ -1,0 +1,137 @@
+import asyncio
+import hashlib
+import json
+import os
+import shutil
+from pathlib import Path
+from typing import BinaryIO
+from uuid import uuid4
+
+from fastapi import HTTPException, UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.base import utcnow
+from app.models.course import Course
+from app.models.document import ProcessingJob, RecordFile
+from app.models.record import Record
+from app.schemas.course import CourseStatus
+from app.schemas.document import DocumentImportAccepted
+from app.services.course_service import CourseService
+
+SUPPORTED_DOCUMENTS = {
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
+
+
+def _copy_upload(source: BinaryIO, target: Path) -> tuple[int, str]:
+    source.seek(0)
+    size = 0
+    digest = hashlib.sha256()
+    with target.open("xb") as output:
+        while chunk := source.read(1024 * 1024):
+            size += len(chunk)
+            digest.update(chunk)
+            output.write(chunk)
+        output.flush()
+        os.fsync(output.fileno())
+    return size, digest.hexdigest()
+
+
+def _remove_import_file(path: Path) -> None:
+    path.unlink(missing_ok=True)
+    try:
+        path.parent.rmdir()
+    except OSError:
+        pass
+
+
+class DocumentImportService:
+    @staticmethod
+    async def create(
+        session: AsyncSession,
+        data_dir: Path,
+        course_id: str,
+        upload: UploadFile,
+    ) -> DocumentImportAccepted:
+        original_name = (upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+        extension = Path(original_name).suffix.lower()
+        if not original_name or extension not in SUPPORTED_DOCUMENTS:
+            raise HTTPException(status_code=400, detail="仅支持 TXT、MD、PDF 或 DOCX 文件")
+
+        record_id, file_id, job_id = (str(uuid4()) for _ in range(3))
+        target_dir = data_dir / "files" / record_id
+        target_dir.mkdir(parents=True)
+        temporary_path = target_dir / f".{file_id}.tmp"
+        final_path = target_dir / f"{file_id}{extension}"
+        try:
+            file_size, content_hash = await asyncio.to_thread(
+                _copy_upload, upload.file, temporary_path
+            )
+            if file_size == 0:
+                raise HTTPException(status_code=400, detail="文件不能为空")
+            free_after_write = (await asyncio.to_thread(shutil.disk_usage, target_dir)).free
+            if free_after_write + file_size < file_size * 2:
+                raise HTTPException(status_code=507, detail="数据目录可用空间不足")
+            await asyncio.to_thread(os.replace, temporary_path, final_path)
+
+            now = utcnow()
+            async with session.begin():
+                course: Course | None = await CourseService.get(session, course_id)
+                if course is None:
+                    raise HTTPException(status_code=404, detail="课程不存在或已删除")
+                if course.status != CourseStatus.ACTIVE:
+                    raise HTTPException(status_code=409, detail="已归档课程不能接受新文档")
+                session.add(
+                    Record(
+                        id=record_id,
+                        course_id=course_id,
+                        capture_type="DOCUMENT_IMPORT",
+                        title=Path(original_name).stem,
+                        status="CONTENT_PROCESSING",
+                        duration_ms=0,
+                        summary_confirmed_at=None,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                await session.flush()
+                session.add_all(
+                    [
+                        RecordFile(
+                            id=file_id,
+                            record_id=record_id,
+                            file_type="DOCUMENT",
+                            source_type="UPLOADED",
+                            file_path=final_path.relative_to(data_dir).as_posix(),
+                            original_name=original_name,
+                            mime_type=SUPPORTED_DOCUMENTS[extension],
+                            file_size=file_size,
+                            sequence_no=0,
+                            content_hash=content_hash,
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                        ProcessingJob(
+                            id=job_id,
+                            record_id=record_id,
+                            job_type="DOCUMENT_PARSE",
+                            status="PENDING",
+                            progress=0,
+                            attempts=0,
+                            max_attempts=3,
+                            input_json=json.dumps({"record_file_id": file_id}),
+                            created_at=now,
+                            updated_at=now,
+                        ),
+                    ]
+                )
+                await session.flush()
+        except BaseException:
+            await asyncio.to_thread(_remove_import_file, final_path)
+            await asyncio.to_thread(_remove_import_file, temporary_path)
+            raise
+
+        return DocumentImportAccepted(record_id=record_id, job_id=job_id)

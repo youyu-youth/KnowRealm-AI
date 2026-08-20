@@ -21,8 +21,7 @@ def start_sidecar(data_dir: Path, token: str) -> subprocess.Popen[bytes]:
             "app.server",
             "--port",
             "0",
-            "--token",
-            token,
+            f"--token={token}",
             "--data-dir",
             str(data_dir),
         ],
@@ -114,8 +113,18 @@ def test_second_sidecar_cannot_open_locked_data_directory(tmp_path: Path) -> Non
     restarted = start_sidecar(data_dir, restarted_token)
     try:
         wait_for_sidecar(restarted, restarted_token)
+        restarted.kill()
+        restarted.communicate(timeout=10)
     finally:
-        stop_process_tree(restarted)
+        if restarted.poll() is None:
+            stop_process_tree(restarted)
+
+    after_crash_token = secrets.token_urlsafe(32)
+    after_crash = start_sidecar(data_dir, after_crash_token)
+    try:
+        wait_for_sidecar(after_crash, after_crash_token)
+    finally:
+        stop_process_tree(after_crash)
 
 
 def test_real_process_reads_preseeded_record_over_protected_socket(tmp_path: Path) -> None:
