@@ -926,7 +926,8 @@ async def test_deleted_job_is_rechecked_after_claim_before_parsing(
         observe_parse,
     )
 
-    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+    data_dir = tmp_path / "KnowRealm"
+    async with running_document_app(data_dir) as (_app, client):
         course = await client.post(
             "/api/courses",
             json={
@@ -945,21 +946,22 @@ async def test_deleted_job_is_rechecked_after_claim_before_parsing(
 
         assert (await client.delete(f"/api/records/{body['record_id']}")).status_code == 204
         continue_after_delete.set()
-        await asyncio.sleep(0.15)
 
-        async with app.state.session_factory() as session:
-            job_status = (
-                await session.execute(
-                    text("SELECT status FROM processing_jobs WHERE id = :job_id"),
-                    {"job_id": body["job_id"]},
-                )
-            ).scalar_one()
-            transcript_count = (
-                await session.execute(
-                    text("SELECT count(*) FROM transcripts WHERE record_id = :record_id"),
-                    {"record_id": body["record_id"]},
-                )
-            ).scalar_one()
+    async with aiosqlite.connect(data_dir / "knowrealm.db") as connection:
+        job_cursor = await connection.execute(
+            "SELECT status FROM processing_jobs WHERE id = ?",
+            (body["job_id"],),
+        )
+        transcript_cursor = await connection.execute(
+            "SELECT count(*) FROM transcripts WHERE record_id = ?",
+            (body["record_id"],),
+        )
+        job_row = await job_cursor.fetchone()
+        transcript_row = await transcript_cursor.fetchone()
+        assert job_row is not None
+        assert transcript_row is not None
+        job_status = cast(str, job_row[0])
+        transcript_count = cast(int, transcript_row[0])
 
     assert parser_calls == 0
     assert job_status == "CANCELLED"
@@ -987,7 +989,8 @@ async def test_delete_after_parse_before_commit_discards_result(
 
     monkeypatch.setattr(DocumentWorker, "_succeed", gated_succeed)
 
-    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+    data_dir = tmp_path / "KnowRealm"
+    async with running_document_app(data_dir) as (_app, client):
         course = await client.post(
             "/api/courses",
             json={
@@ -1006,21 +1009,22 @@ async def test_delete_after_parse_before_commit_discards_result(
 
         assert (await client.delete(f"/api/records/{body['record_id']}")).status_code == 204
         continue_commit.set()
-        await asyncio.sleep(0.15)
 
-        async with app.state.session_factory() as session:
-            job_status = (
-                await session.execute(
-                    text("SELECT status FROM processing_jobs WHERE id = :job_id"),
-                    {"job_id": body["job_id"]},
-                )
-            ).scalar_one()
-            transcript_count = (
-                await session.execute(
-                    text("SELECT count(*) FROM transcripts WHERE record_id = :record_id"),
-                    {"record_id": body["record_id"]},
-                )
-            ).scalar_one()
+    async with aiosqlite.connect(data_dir / "knowrealm.db") as connection:
+        job_cursor = await connection.execute(
+            "SELECT status FROM processing_jobs WHERE id = ?",
+            (body["job_id"],),
+        )
+        transcript_cursor = await connection.execute(
+            "SELECT count(*) FROM transcripts WHERE record_id = ?",
+            (body["record_id"],),
+        )
+        job_row = await job_cursor.fetchone()
+        transcript_row = await transcript_cursor.fetchone()
+        assert job_row is not None
+        assert transcript_row is not None
+        job_status = cast(str, job_row[0])
+        transcript_count = cast(int, transcript_row[0])
 
     assert job_status == "CANCELLED"
     assert transcript_count == 0

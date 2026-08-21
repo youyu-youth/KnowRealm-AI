@@ -23,10 +23,34 @@ class DocumentCleanupService:
         *,
         now: datetime | None = None,
     ) -> None:
-        resolved_data_dir = data_dir.resolve()
+        resolved_data_dir = await asyncio.to_thread(data_dir.resolve)
+        files_root, cleanup_root = await asyncio.gather(
+            DocumentCleanupService._managed_directory(
+                resolved_data_dir / "files",
+                resolved_data_dir,
+            ),
+            DocumentCleanupService._managed_directory(
+                resolved_data_dir / ".cleanup",
+                resolved_data_dir,
+            ),
+        )
+        if files_root is None or cleanup_root is None:
+            logger.error(
+                "document_cleanup_unsafe_root",
+                error_code="DOCUMENT_CLEANUP_UNSAFE_ROOT",
+            )
+            return
         cutoff = (now or utcnow()) - timedelta(days=30)
-        await DocumentCleanupService._recover_staged(session_factory, resolved_data_dir)
-        await DocumentCleanupService._purge_orphans(session_factory, resolved_data_dir)
+        await DocumentCleanupService._recover_staged(
+            session_factory,
+            files_root,
+            cleanup_root,
+        )
+        await DocumentCleanupService._purge_orphans(
+            session_factory,
+            files_root,
+            cleanup_root,
+        )
 
         async with session_factory() as session:
             record_ids = list(
@@ -46,6 +70,8 @@ class DocumentCleanupService:
             await DocumentCleanupService._purge_record(
                 session_factory,
                 resolved_data_dir,
+                files_root,
+                cleanup_root,
                 record_id,
                 cutoff,
             )
@@ -63,18 +89,32 @@ class DocumentCleanupService:
     async def _purge_record(
         session_factory: async_sessionmaker[AsyncSession],
         data_dir: Path,
+        files_root: Path,
+        cleanup_root: Path,
         record_id: str,
         cutoff: datetime,
     ) -> None:
         if not await DocumentCleanupService._paths_are_safe(
             session_factory,
             data_dir,
+            files_root,
             record_id,
         ):
             return
 
-        source_dir = data_dir / "files" / record_id
-        staged_dir = data_dir / ".cleanup" / record_id / "files" / record_id
+        source_dir = files_root / record_id
+        staged_record = cleanup_root / record_id
+        staged_dir = staged_record / "files" / record_id
+        if (
+            await DocumentCleanupService._managed_directory(staged_record, cleanup_root) is None
+            or await DocumentCleanupService._managed_directory(staged_dir, staged_record) is None
+        ):
+            logger.error(
+                "document_cleanup_unsafe_path",
+                error_code="DOCUMENT_CLEANUP_UNSAFE_PATH",
+                record_id=record_id,
+            )
+            return
         moved = False
         if await asyncio.to_thread(source_dir.exists):
             try:
@@ -142,11 +182,20 @@ class DocumentCleanupService:
     async def _paths_are_safe(
         session_factory: async_sessionmaker[AsyncSession],
         data_dir: Path,
+        files_root: Path,
         record_id: str,
     ) -> bool:
-        prefix = f"files/{record_id}/"
-        files_root = (data_dir / "files").resolve()
-        record_root = (files_root / record_id).resolve()
+        record_root = await DocumentCleanupService._managed_directory(
+            files_root / record_id,
+            files_root,
+        )
+        if record_root is None:
+            logger.error(
+                "document_cleanup_unsafe_path",
+                error_code="DOCUMENT_CLEANUP_UNSAFE_PATH",
+                record_id=record_id,
+            )
+            return False
         async with session_factory() as session:
             paths = list(
                 (
@@ -155,30 +204,33 @@ class DocumentCleanupService:
                     )
                 ).scalars()
             )
-            active_reference = (
-                await session.execute(
-                    select(RecordFile.id)
-                    .join(Record, RecordFile.record_id == Record.id)
-                    .where(
-                        RecordFile.record_id != record_id,
-                        RecordFile.file_path.like(f"{prefix}%"),
-                        RecordFile.deleted_at.is_(None),
-                        Record.deleted_at.is_(None),
+            active_paths = list(
+                (
+                    await session.execute(
+                        select(RecordFile.file_path)
+                        .join(Record, RecordFile.record_id == Record.id)
+                        .where(
+                            RecordFile.record_id != record_id,
+                            RecordFile.deleted_at.is_(None),
+                            Record.deleted_at.is_(None),
+                        )
                     )
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
+                ).scalars()
+            )
 
-        for raw_path in paths:
-            path = PurePosixPath(raw_path)
-            resolved_path = (data_dir / Path(*path.parts)).resolve()
+        resolved_paths = await asyncio.to_thread(
+            lambda: [
+                (PurePosixPath(raw), (data_dir / Path(*PurePosixPath(raw).parts)).resolve())
+                for raw in paths
+            ]
+        )
+        for path, resolved_path in resolved_paths:
             if (
                 path.is_absolute()
                 or ".." in path.parts
                 or len(path.parts) < 3
                 or path.parts[0] != "files"
                 or path.parts[1] != record_id
-                or not record_root.is_relative_to(files_root)
                 or not resolved_path.is_relative_to(record_root)
             ):
                 logger.error(
@@ -187,7 +239,10 @@ class DocumentCleanupService:
                     record_id=record_id,
                 )
                 return False
-        if active_reference is not None:
+        resolved_active_paths = await asyncio.to_thread(
+            lambda: [(data_dir / Path(*PurePosixPath(raw).parts)).resolve() for raw in active_paths]
+        )
+        if any(path.is_relative_to(record_root) for path in resolved_active_paths):
             logger.error(
                 "document_cleanup_active_path",
                 error_code="DOCUMENT_CLEANUP_ACTIVE_PATH",
@@ -195,6 +250,35 @@ class DocumentCleanupService:
             )
             return False
         return True
+
+    @staticmethod
+    async def _managed_directory(path: Path, root: Path) -> Path | None:
+        return await asyncio.to_thread(
+            DocumentCleanupService._resolve_managed_directory,
+            path,
+            root,
+        )
+
+    @staticmethod
+    def _resolve_managed_directory(path: Path, root: Path) -> Path | None:
+        if path.is_symlink() or path.is_junction():
+            return None
+        resolved = path.resolve()
+        return resolved if resolved.is_relative_to(root) else None
+
+    @staticmethod
+    def _list_uuid_directories(root: Path) -> tuple[list[Path], list[str]]:
+        safe: list[Path] = []
+        unsafe: list[str] = []
+        for candidate in root.iterdir():
+            if not DocumentCleanupService._is_uuid(candidate.name):
+                continue
+            resolved = DocumentCleanupService._resolve_managed_directory(candidate, root)
+            if resolved is None or not candidate.is_dir():
+                unsafe.append(candidate.name)
+            else:
+                safe.append(resolved)
+        return safe, unsafe
 
     @staticmethod
     async def _restore_staged(
@@ -216,17 +300,22 @@ class DocumentCleanupService:
     @staticmethod
     async def _recover_staged(
         session_factory: async_sessionmaker[AsyncSession],
-        data_dir: Path,
+        files_root: Path,
+        cleanup_root: Path,
     ) -> None:
-        cleanup_root = data_dir / ".cleanup"
         if not await asyncio.to_thread(cleanup_root.exists):
             return
-        staged_records = await asyncio.to_thread(lambda: list(cleanup_root.iterdir()))
+        staged_records, unsafe_records = await asyncio.to_thread(
+            DocumentCleanupService._list_uuid_directories,
+            cleanup_root,
+        )
+        for record_id in unsafe_records:
+            logger.error(
+                "document_cleanup_unsafe_path",
+                error_code="DOCUMENT_CLEANUP_UNSAFE_PATH",
+                record_id=record_id,
+            )
         for staged_record in staged_records:
-            if not staged_record.is_dir() or not DocumentCleanupService._is_uuid(
-                staged_record.name
-            ):
-                continue
             record_id = staged_record.name
             staged_dir = staged_record / "files" / record_id
             async with session_factory() as session:
@@ -242,25 +331,38 @@ class DocumentCleanupService:
                         error_code="DOCUMENT_CLEANUP_STAGED_DELETE_FAILED",
                         record_id=record_id,
                     )
+            elif await DocumentCleanupService._managed_directory(staged_dir, staged_record) is None:
+                logger.error(
+                    "document_cleanup_unsafe_path",
+                    error_code="DOCUMENT_CLEANUP_UNSAFE_PATH",
+                    record_id=record_id,
+                )
             elif await asyncio.to_thread(staged_dir.exists):
                 await DocumentCleanupService._restore_staged(
                     staged_dir,
-                    data_dir / "files" / record_id,
+                    files_root / record_id,
                     record_id,
                 )
 
     @staticmethod
     async def _purge_orphans(
         session_factory: async_sessionmaker[AsyncSession],
-        data_dir: Path,
+        files_root: Path,
+        cleanup_root: Path,
     ) -> None:
-        files_root = data_dir / "files"
         if not await asyncio.to_thread(files_root.exists):
             return
-        candidates = await asyncio.to_thread(lambda: list(files_root.iterdir()))
+        candidates, unsafe_candidates = await asyncio.to_thread(
+            DocumentCleanupService._list_uuid_directories,
+            files_root,
+        )
+        for record_id in unsafe_candidates:
+            logger.error(
+                "document_cleanup_unsafe_path",
+                error_code="DOCUMENT_CLEANUP_UNSAFE_PATH",
+                record_id=record_id,
+            )
         for candidate in candidates:
-            if not candidate.is_dir() or not DocumentCleanupService._is_uuid(candidate.name):
-                continue
             record_id = candidate.name
             async with session_factory() as session:
                 record_exists = (
@@ -268,8 +370,19 @@ class DocumentCleanupService:
                 ).scalar_one_or_none()
             if record_exists is not None:
                 continue
-            staged_record = data_dir / ".cleanup" / record_id
+            staged_record = cleanup_root / record_id
             staged_dir = staged_record / "files" / record_id
+            if (
+                await DocumentCleanupService._managed_directory(staged_record, cleanup_root) is None
+                or await DocumentCleanupService._managed_directory(staged_dir, staged_record)
+                is None
+            ):
+                logger.error(
+                    "document_cleanup_unsafe_path",
+                    error_code="DOCUMENT_CLEANUP_UNSAFE_PATH",
+                    record_id=record_id,
+                )
+                continue
             try:
                 await asyncio.to_thread(staged_dir.parent.mkdir, parents=True, exist_ok=True)
                 await asyncio.to_thread(os.replace, candidate, staged_dir)

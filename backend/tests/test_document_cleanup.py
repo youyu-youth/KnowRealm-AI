@@ -1,5 +1,7 @@
 import asyncio
 import os
+import subprocess
+import sys
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -17,6 +19,18 @@ from app.main import create_app
 from app.services.document_cleanup_service import DocumentCleanupService
 
 TOKEN = "test-launch-token"
+
+
+def link_test_directory(link: Path, target: Path) -> None:
+    if sys.platform == "win32":
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)],
+            check=True,
+            capture_output=True,
+            creationflags=0x08000000,
+        )
+    else:
+        link.symlink_to(target, target_is_directory=True)
 
 
 @asynccontextmanager
@@ -174,20 +188,23 @@ async def test_cleanup_rejects_unsafe_or_active_paths_and_retries_file_failure(
         active = await import_document(client, course_id, "active.txt")
         traversal = await import_document(client, course_id, "traversal.txt")
         active_pointer = await import_document(client, course_id, "pointer.txt")
+        reverse_pointer = await import_document(client, course_id, "reverse.txt")
         file_failure = await import_document(client, course_id, "failure.txt")
         active_path = stored_file(data_dir, active["record_id"])
+        reverse_path = stored_file(data_dir, reverse_pointer["record_id"])
         failure_dir = stored_file(data_dir, file_failure["record_id"]).parent
         expired_at = (
             (now - timedelta(days=31)).isoformat(timespec="microseconds").replace("+00:00", "Z")
         )
         async with app.state.session_factory() as session, session.begin():
             await session.execute(
-                text("UPDATE records SET deleted_at = :deleted_at WHERE id IN (:a, :b, :c)"),
+                text("UPDATE records SET deleted_at = :deleted_at WHERE id IN (:a, :b, :c, :d)"),
                 {
                     "deleted_at": expired_at,
                     "a": traversal["record_id"],
                     "b": active_pointer["record_id"],
                     "c": file_failure["record_id"],
+                    "d": reverse_pointer["record_id"],
                 },
             )
             await session.execute(
@@ -201,6 +218,16 @@ async def test_cleanup_rejects_unsafe_or_active_paths_and_retries_file_failure(
                 {
                     "path": active_path.relative_to(data_dir).as_posix(),
                     "id": active_pointer["record_id"],
+                },
+            )
+            await session.execute(
+                text("UPDATE record_files SET file_path = :path WHERE record_id = :id"),
+                {
+                    "path": (
+                        f"files/{active['record_id']}/../{reverse_pointer['record_id']}/"
+                        f"{reverse_path.name}"
+                    ),
+                    "id": active["record_id"],
                 },
             )
 
@@ -224,9 +251,11 @@ async def test_cleanup_rejects_unsafe_or_active_paths_and_retries_file_failure(
             active["record_id"],
             traversal["record_id"],
             active_pointer["record_id"],
+            reverse_pointer["record_id"],
             file_failure["record_id"],
         } <= remaining
         assert active_path.exists()
+        assert reverse_path.exists()
         assert failure_dir.exists()
 
         monkeypatch.setattr("app.services.document_cleanup_service.os.replace", original_replace)
@@ -243,6 +272,88 @@ async def test_cleanup_rejects_unsafe_or_active_paths_and_retries_file_failure(
     assert file_failure["record_id"] not in remaining_after_retry
     assert traversal["record_id"] in remaining_after_retry
     assert active_pointer["record_id"] in remaining_after_retry
+    assert reverse_pointer["record_id"] in remaining_after_retry
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("root_name", ["files", ".cleanup"])
+async def test_cleanup_refuses_linked_managed_roots(
+    tmp_path: Path,
+    root_name: str,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    external_root = tmp_path / f"outside-{root_name.lstrip('.')}"
+    marker = external_root / str(uuid4()) / "private.txt"
+    marker.parent.mkdir(parents=True)
+    marker.write_bytes(b"outside")
+    logs = StringIO()
+    sink_id = logger.add(logs, format="{message} {extra}", level="ERROR")
+    try:
+        async with running_cleanup_app(data_dir) as (app, _client):
+            managed_root = data_dir / root_name
+            if managed_root.exists():
+                managed_root.rmdir()
+            link_test_directory(managed_root, external_root)
+            await DocumentCleanupService.purge_expired(
+                app.state.session_factory,
+                data_dir,
+            )
+    finally:
+        logger.remove(sink_id)
+
+    assert marker.read_bytes() == b"outside"
+    assert "DOCUMENT_CLEANUP_UNSAFE_ROOT" in logs.getvalue()
+
+
+@pytest.mark.anyio
+async def test_cleanup_refuses_linked_orphan_candidate(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    external_root = tmp_path / "outside-candidate"
+    marker = external_root / "private.txt"
+    external_root.mkdir()
+    marker.write_bytes(b"outside")
+    record_id = str(uuid4())
+    logs = StringIO()
+    sink_id = logger.add(logs, format="{message} {extra}", level="ERROR")
+    try:
+        async with running_cleanup_app(data_dir) as (app, _client):
+            candidate = data_dir / "files" / record_id
+            link_test_directory(candidate, external_root)
+            await DocumentCleanupService.purge_expired(
+                app.state.session_factory,
+                data_dir,
+            )
+    finally:
+        logger.remove(sink_id)
+
+    assert marker.read_bytes() == b"outside"
+    assert "DOCUMENT_CLEANUP_UNSAFE_PATH" in logs.getvalue()
+
+
+@pytest.mark.anyio
+async def test_cleanup_top_level_logs_only_stable_error_code(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sensitive = str(tmp_path / "private-document.txt")
+
+    async def fail_cleanup(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError(f"forced cleanup failure: {sensitive}")
+
+    monkeypatch.setattr(DocumentCleanupService, "purge_expired", fail_cleanup)
+    logs = StringIO()
+    sink_id = logger.add(logs, format="{message} {extra}", level="ERROR")
+    try:
+        app = create_app(data_dir=tmp_path / "KnowRealm", launch_token=TOKEN)
+        async with app.router.lifespan_context(app):
+            pass
+    finally:
+        logger.remove(sink_id)
+
+    output = logs.getvalue()
+    assert "DOCUMENT_CLEANUP_FAILED" in output
+    assert "forced cleanup failure" not in output
+    assert sensitive not in output
 
 
 @pytest.mark.anyio

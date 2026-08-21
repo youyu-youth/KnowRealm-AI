@@ -52,7 +52,10 @@ def create_app(
                         resolved_data_dir,
                     )
                 except Exception:
-                    logger.exception("course_tombstone_cleanup_failed")
+                    logger.error(
+                        "course_tombstone_cleanup_failed",
+                        error_code="DOCUMENT_CLEANUP_FAILED",
+                    )
 
             cleanup_task = asyncio.create_task(cleanup_course_tombstones())
             app.state.course_tombstone_cleanup_task = cleanup_task
