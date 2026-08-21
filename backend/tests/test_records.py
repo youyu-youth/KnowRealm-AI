@@ -527,6 +527,93 @@ async def test_record_delete_soft_deletes_visible_record_and_persists_after_rest
 
 
 @pytest.mark.anyio
+async def test_record_delete_cancels_only_nonterminal_jobs(tmp_path: Path) -> None:
+    async with running_record_app(tmp_path / "KnowRealm") as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+        course = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "操作系统",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        record_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO records (
+                        id, course_id, capture_type, title, status, duration_ms,
+                        summary_confirmed_at, created_at, updated_at, deleted_at
+                    ) VALUES (
+                        :record_id, :course_id, 'DOCUMENT_IMPORT', '待删除文档',
+                        'CONTENT_PROCESSING', 0, NULL,
+                        '2026-08-19T08:00:00.000000Z',
+                        '2026-08-19T08:00:00.000000Z', NULL
+                    )
+                    """
+                ),
+                {"record_id": record_id, "course_id": course.json()["id"]},
+            )
+            for status in ("PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"):
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO processing_jobs (
+                            id, record_id, job_type, status, progress, attempts,
+                            max_attempts, next_run_at, input_json, result_json,
+                            error_code, error_message, started_at, finished_at,
+                            created_at, updated_at
+                        ) VALUES (
+                            :id, :record_id, 'DOCUMENT_PARSE', :status, 0, 0,
+                            3, :next_run_at, '{}', NULL, NULL, NULL, NULL, NULL,
+                            '2026-08-19T08:00:00.000000Z',
+                            '2026-08-19T08:00:00.000000Z'
+                        )
+                        """
+                    ),
+                    {
+                        "id": f"job-{status.lower()}",
+                        "record_id": record_id,
+                        "status": status,
+                        "next_run_at": (
+                            "2099-01-01T00:00:00.000000Z" if status == "PENDING" else None
+                        ),
+                    },
+                )
+
+        deleted = await client.delete(f"/api/records/{record_id}", headers=headers)
+        repeated = await client.delete(f"/api/records/{record_id}", headers=headers)
+        assert deleted.status_code == 204
+        assert repeated.status_code == 404
+
+        async with app.state.session_factory() as session:
+            jobs = (
+                await session.execute(
+                    text(
+                        "SELECT id, status, finished_at FROM processing_jobs "
+                        "WHERE record_id = :record_id ORDER BY id"
+                    ),
+                    {"record_id": record_id},
+                )
+            ).all()
+        assert [(job.id, job.status) for job in jobs] == [
+            ("job-cancelled", "CANCELLED"),
+            ("job-failed", "FAILED"),
+            ("job-pending", "CANCELLED"),
+            ("job-running", "CANCELLED"),
+            ("job-succeeded", "SUCCEEDED"),
+        ]
+        assert all(
+            job.finished_at is not None
+            for job in jobs
+            if job.id in {"job-pending", "job-running"}
+        )
+
+
+@pytest.mark.anyio
 async def test_record_delete_rolls_back_when_tombstone_write_fails(tmp_path: Path) -> None:
     async with running_record_app(tmp_path / "KnowRealm") as (app, client):
         headers = {"X-KnowRealm-Token": TOKEN}
@@ -617,6 +704,25 @@ async def test_deleting_course_soft_deletes_its_records_in_one_transaction(
                     ),
                     {"record_id": record_id, "course_id": course_id},
                 )
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO processing_jobs (
+                            id, record_id, job_type, status, progress, attempts,
+                            max_attempts, next_run_at, input_json, result_json,
+                            error_code, error_message, started_at, finished_at,
+                            created_at, updated_at
+                        ) VALUES (
+                            :job_id, :record_id, 'DOCUMENT_PARSE', 'RUNNING', 0, 1,
+                            3, NULL, '{}', NULL, NULL, NULL,
+                            '2026-08-19T08:00:00.000000Z', NULL,
+                            '2026-08-19T08:00:00.000000Z',
+                            '2026-08-19T08:00:00.000000Z'
+                        )
+                        """
+                    ),
+                    {"job_id": f"job-{record_id}", "record_id": record_id},
+                )
 
         deleted = await client.delete(f"/api/courses/{course_id}", headers=headers)
 
@@ -640,11 +746,15 @@ async def test_deleting_course_soft_deletes_its_records_in_one_transaction(
                     {"course_id": course_id},
                 )
             ).all()
+            job_statuses = (
+                await session.execute(text("SELECT status FROM processing_jobs ORDER BY id"))
+            ).scalars().all()
         assert course_deleted_at is not None
         assert record_tombstones == [
             (course_deleted_at, course_deleted_at),
             (course_deleted_at, course_deleted_at),
         ]
+        assert job_statuses == ["CANCELLED", "CANCELLED"]
 
 
 @pytest.mark.anyio
@@ -682,6 +792,24 @@ async def test_course_delete_rolls_back_record_tombstones_when_parent_update_fai
             await session.execute(
                 text(
                     """
+                    INSERT INTO processing_jobs (
+                        id, record_id, job_type, status, progress, attempts,
+                        max_attempts, next_run_at, input_json, result_json,
+                        error_code, error_message, started_at, finished_at,
+                        created_at, updated_at
+                    ) VALUES (
+                        'job-rollback', 'record-rollback', 'DOCUMENT_PARSE',
+                        'PENDING', 0, 0, 3, '2099-01-01T00:00:00.000000Z',
+                        '{}', NULL, NULL, NULL, NULL, NULL,
+                        '2026-08-19T08:00:00.000000Z',
+                        '2026-08-19T08:00:00.000000Z'
+                    )
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
                     CREATE TRIGGER fail_course_soft_delete
                     BEFORE UPDATE OF deleted_at ON courses
                     WHEN NEW.deleted_at IS NOT NULL
@@ -707,8 +835,14 @@ async def test_course_delete_rolls_back_record_tombstones_when_parent_update_fai
                     text("SELECT deleted_at FROM records WHERE id = 'record-rollback'")
                 )
             ).scalar_one()
+            job_status = (
+                await session.execute(
+                    text("SELECT status FROM processing_jobs WHERE id = 'job-rollback'")
+                )
+            ).scalar_one()
         assert course_deleted_at is None
         assert record_deleted_at is None
+        assert job_status == "PENDING"
         visible = await client.get(f"/api/courses/{course_id}/records", headers=headers)
         assert [record["id"] for record in visible.json()] == ["record-rollback"]
 

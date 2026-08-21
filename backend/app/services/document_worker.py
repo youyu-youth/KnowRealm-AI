@@ -21,6 +21,7 @@ from app.schemas.document import (
 )
 from app.schemas.record import RecordStatus
 from app.services.document_parser import DocumentParseError, extract_document_text
+from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
 from app.services.processing_job_policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
 
 ERROR_MESSAGES = {
@@ -61,6 +62,14 @@ class DocumentWorker:
         self._stopped.set()
 
     async def recover_interrupted(self) -> None:
+        async with self._session_factory() as session, session.begin():
+            await cancel_nonterminal_jobs(
+                session,
+                record_filter=ProcessingJob.record_id.in_(
+                    select(Record.id).where(Record.deleted_at.is_not(None))
+                ),
+                now=utcnow(),
+            )
         await self._recover_running(ProcessingJobErrorCode.WORKER_INTERRUPTED)
 
     async def _recover_running(self, code: ProcessingJobErrorCode) -> None:
@@ -118,6 +127,8 @@ class DocumentWorker:
         if claimed is None:
             return False
         job_id, record_id, path = claimed
+        if not await self._can_continue(job_id, record_id):
+            return True
         try:
             content = await asyncio.to_thread(extract_document_text, path)
         except DocumentParseError as exc:
@@ -139,6 +150,22 @@ class DocumentWorker:
         else:
             await self._succeed(job_id, record_id, content)
         return True
+
+    async def _can_continue(self, job_id: str, record_id: str) -> bool:
+        async with self._session_factory() as session:
+            active_job = (
+                await session.execute(
+                    select(ProcessingJob.id)
+                    .join(Record, ProcessingJob.record_id == Record.id)
+                    .where(
+                        ProcessingJob.id == job_id,
+                        ProcessingJob.status == ProcessingJobStatus.RUNNING,
+                        Record.id == record_id,
+                        Record.deleted_at.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+        return active_job is not None
 
     async def _claim_one(self) -> tuple[str, str, Path] | None:
         now = utcnow()

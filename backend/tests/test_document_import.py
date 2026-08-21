@@ -23,6 +23,7 @@ from sqlalchemy import text
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
 from app.models.document import ProcessingJob
+from app.services.document_worker import DocumentWorker
 from app.services.processing_job_service import ProcessingJobService
 
 TOKEN = "test-launch-token"
@@ -446,6 +447,7 @@ async def test_restart_recovers_running_jobs_and_keeps_archived_course_transcrip
         for filename, content in (
             ("resume.txt", b"resume after restart"),
             ("exhausted.txt", b"manual retry required"),
+            ("cancelled.txt", b"deleted before restart"),
         ):
             response = await client.post(
                 "/api/document-imports",
@@ -462,7 +464,7 @@ async def test_restart_recovers_running_jobs_and_keeps_archived_course_transcrip
             "UPDATE courses SET status = 'ARCHIVED' WHERE id = ?",
             (course.json()["id"],),
         )
-        for attempts, item in zip((1, 3), accepted, strict=True):
+        for attempts, item in zip((1, 3, 1), accepted, strict=True):
             await connection.execute(
                 "DELETE FROM transcripts WHERE record_id = ?",
                 (item["record_id"],),
@@ -477,15 +479,26 @@ async def test_restart_recovers_running_jobs_and_keeps_archived_course_transcrip
                 "finished_at = NULL WHERE id = ?",
                 (attempts, item["job_id"]),
             )
+        await connection.execute(
+            "UPDATE records SET deleted_at = ? WHERE id = ?",
+            (
+                clock[0].isoformat(timespec="microseconds").replace("+00:00", "Z"),
+                accepted[2]["record_id"],
+            ),
+        )
         await connection.commit()
 
     async with running_document_app(data_dir) as (app, client):
         async with app.state.session_factory() as session:
             pending_job = await session.get(ProcessingJob, accepted[0]["job_id"])
+            cancelled_job = await session.get(ProcessingJob, accepted[2]["job_id"])
         assert pending_job is not None
+        assert cancelled_job is not None
         assert pending_job.status == "PENDING"
         assert pending_job.next_run_at is not None
         assert pending_job.next_run_at.replace(tzinfo=UTC) == clock[0] + timedelta(seconds=2)
+        assert cancelled_job.status == "CANCELLED"
+        assert cancelled_job.attempts == 1
         clock[0] += timedelta(seconds=2)
         resumed = await wait_for_terminal_job(client, accepted[0]["job_id"])
         resumed_record = await client.get(f"/api/records/{accepted[0]['record_id']}")
@@ -883,6 +896,134 @@ async def test_import_compensates_database_failure_and_allows_duplicate_content(
         assert failed.status_code == 500
 
     assert [path for path in (data_dir / "files").rglob("*") if path.is_file()] == (stored_files)
+
+
+@pytest.mark.anyio
+async def test_deleted_job_is_rechecked_after_claim_before_parsing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claimed = asyncio.Event()
+    continue_after_delete = asyncio.Event()
+    parser_calls = 0
+    original_claim = DocumentWorker._claim_one
+
+    async def gated_claim(worker: DocumentWorker) -> tuple[str, str, Path] | None:
+        result = await original_claim(worker)
+        if result is not None:
+            claimed.set()
+            await continue_after_delete.wait()
+        return result
+
+    def observe_parse(path: Path) -> str:
+        nonlocal parser_calls
+        parser_calls += 1
+        return path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(DocumentWorker, "_claim_one", gated_claim)
+    monkeypatch.setattr(
+        "app.services.document_worker.extract_document_text",
+        observe_parse,
+    )
+
+    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "删除竞态",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        accepted = await client.post(
+            "/api/document-imports",
+            data={"course_id": course.json()["id"]},
+            files={"file": ("cancel.txt", b"must not parse", "text/plain")},
+        )
+        body = accepted.json()
+        await asyncio.wait_for(claimed.wait(), timeout=2)
+
+        assert (await client.delete(f"/api/records/{body['record_id']}")).status_code == 204
+        continue_after_delete.set()
+        await asyncio.sleep(0.15)
+
+        async with app.state.session_factory() as session:
+            job_status = (
+                await session.execute(
+                    text("SELECT status FROM processing_jobs WHERE id = :job_id"),
+                    {"job_id": body["job_id"]},
+                )
+            ).scalar_one()
+            transcript_count = (
+                await session.execute(
+                    text("SELECT count(*) FROM transcripts WHERE record_id = :record_id"),
+                    {"record_id": body["record_id"]},
+                )
+            ).scalar_one()
+
+    assert parser_calls == 0
+    assert job_status == "CANCELLED"
+    assert transcript_count == 0
+
+
+@pytest.mark.anyio
+async def test_delete_after_parse_before_commit_discards_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parsed = asyncio.Event()
+    continue_commit = asyncio.Event()
+    original_succeed = DocumentWorker._succeed
+
+    async def gated_succeed(
+        worker: DocumentWorker,
+        job_id: str,
+        record_id: str,
+        content: str,
+    ) -> None:
+        parsed.set()
+        await continue_commit.wait()
+        await original_succeed(worker, job_id, record_id, content)
+
+    monkeypatch.setattr(DocumentWorker, "_succeed", gated_succeed)
+
+    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "提交前删除",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        accepted = await client.post(
+            "/api/document-imports",
+            data={"course_id": course.json()["id"]},
+            files={"file": ("parsed.txt", b"discard this", "text/plain")},
+        )
+        body = accepted.json()
+        await asyncio.wait_for(parsed.wait(), timeout=2)
+
+        assert (await client.delete(f"/api/records/{body['record_id']}")).status_code == 204
+        continue_commit.set()
+        await asyncio.sleep(0.15)
+
+        async with app.state.session_factory() as session:
+            job_status = (
+                await session.execute(
+                    text("SELECT status FROM processing_jobs WHERE id = :job_id"),
+                    {"job_id": body["job_id"]},
+                )
+            ).scalar_one()
+            transcript_count = (
+                await session.execute(
+                    text("SELECT count(*) FROM transcripts WHERE record_id = :record_id"),
+                    {"record_id": body["record_id"]},
+                )
+            ).scalar_one()
+
+    assert job_status == "CANCELLED"
+    assert transcript_count == 0
 
 
 @pytest.mark.anyio

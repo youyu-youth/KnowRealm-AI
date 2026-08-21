@@ -2,9 +2,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
-from app.models.document import Transcript
+from app.models.document import ProcessingJob, Transcript
 from app.models.record import Record
 from app.services.course_service import CourseService
+from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
 
 
 class RecordService:
@@ -58,5 +59,10 @@ class RecordService:
             deleted_at = utcnow()
             record.deleted_at = deleted_at
             record.updated_at = deleted_at
+            await cancel_nonterminal_jobs(
+                session,
+                record_filter=ProcessingJob.record_id == record_id,
+                now=deleted_at,
+            )
             await session.flush()
         return True
