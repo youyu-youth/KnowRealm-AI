@@ -46,10 +46,38 @@ class DocumentCleanupService:
             files_root,
             cleanup_root,
         )
+        async with session_factory() as session:
+            active_paths = list(
+                (
+                    await session.execute(
+                        select(RecordFile.file_path)
+                        .join(Record, RecordFile.record_id == Record.id)
+                        .where(
+                            RecordFile.deleted_at.is_(None),
+                            Record.deleted_at.is_(None),
+                        )
+                    )
+                ).scalars()
+            )
+        resolved_active_paths = await asyncio.to_thread(
+            lambda: [
+                (resolved_data_dir / Path(*PurePosixPath(raw).parts)).resolve()
+                for raw in active_paths
+            ]
+        )
+        active_target_record_ids: set[str] = set()
+        for path in resolved_active_paths:
+            if not path.is_relative_to(files_root):
+                continue
+            relative_parts = path.relative_to(files_root).parts
+            if relative_parts and DocumentCleanupService._is_uuid(relative_parts[0]):
+                active_target_record_ids.add(relative_parts[0])
+        active_targets = frozenset(active_target_record_ids)
         await DocumentCleanupService._purge_orphans(
             session_factory,
             files_root,
             cleanup_root,
+            active_targets,
         )
 
         async with session_factory() as session:
@@ -72,6 +100,7 @@ class DocumentCleanupService:
                 resolved_data_dir,
                 files_root,
                 cleanup_root,
+                active_targets,
                 record_id,
                 cutoff,
             )
@@ -91,6 +120,7 @@ class DocumentCleanupService:
         data_dir: Path,
         files_root: Path,
         cleanup_root: Path,
+        active_targets: frozenset[str],
         record_id: str,
         cutoff: datetime,
     ) -> None:
@@ -98,6 +128,7 @@ class DocumentCleanupService:
             session_factory,
             data_dir,
             files_root,
+            active_targets,
             record_id,
         ):
             return
@@ -183,6 +214,7 @@ class DocumentCleanupService:
         session_factory: async_sessionmaker[AsyncSession],
         data_dir: Path,
         files_root: Path,
+        active_targets: frozenset[str],
         record_id: str,
     ) -> bool:
         record_root = await DocumentCleanupService._managed_directory(
@@ -201,19 +233,6 @@ class DocumentCleanupService:
                 (
                     await session.execute(
                         select(RecordFile.file_path).where(RecordFile.record_id == record_id)
-                    )
-                ).scalars()
-            )
-            active_paths = list(
-                (
-                    await session.execute(
-                        select(RecordFile.file_path)
-                        .join(Record, RecordFile.record_id == Record.id)
-                        .where(
-                            RecordFile.record_id != record_id,
-                            RecordFile.deleted_at.is_(None),
-                            Record.deleted_at.is_(None),
-                        )
                     )
                 ).scalars()
             )
@@ -239,10 +258,7 @@ class DocumentCleanupService:
                     record_id=record_id,
                 )
                 return False
-        resolved_active_paths = await asyncio.to_thread(
-            lambda: [(data_dir / Path(*PurePosixPath(raw).parts)).resolve() for raw in active_paths]
-        )
-        if any(path.is_relative_to(record_root) for path in resolved_active_paths):
+        if record_id in active_targets:
             logger.error(
                 "document_cleanup_active_path",
                 error_code="DOCUMENT_CLEANUP_ACTIVE_PATH",
@@ -349,6 +365,7 @@ class DocumentCleanupService:
         session_factory: async_sessionmaker[AsyncSession],
         files_root: Path,
         cleanup_root: Path,
+        active_targets: frozenset[str],
     ) -> None:
         if not await asyncio.to_thread(files_root.exists):
             return
@@ -364,6 +381,13 @@ class DocumentCleanupService:
             )
         for candidate in candidates:
             record_id = candidate.name
+            if record_id in active_targets:
+                logger.error(
+                    "document_cleanup_active_path",
+                    error_code="DOCUMENT_CLEANUP_ACTIVE_PATH",
+                    record_id=record_id,
+                )
+                continue
             async with session_factory() as session:
                 record_exists = (
                     await session.execute(select(Record.id).where(Record.id == record_id))

@@ -331,6 +331,33 @@ async def test_cleanup_refuses_linked_orphan_candidate(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_cleanup_keeps_orphan_directory_referenced_by_active_record(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    orphan_id = str(uuid4())
+    marker = data_dir / "files" / orphan_id / "private.txt"
+    async with running_cleanup_app(data_dir) as (app, client):
+        course_id = await create_course(client, "活跃孤儿引用")
+        active = await import_document(client, course_id, "active.txt")
+        marker.parent.mkdir(parents=True)
+        marker.write_bytes(b"active reference")
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE record_files SET file_path = :path WHERE record_id = :id"),
+                {
+                    "path": f"files/{active['record_id']}/../{orphan_id}/{marker.name}",
+                    "id": active["record_id"],
+                },
+            )
+
+        await DocumentCleanupService.purge_expired(
+            app.state.session_factory,
+            data_dir,
+        )
+
+    assert marker.read_bytes() == b"active reference"
+
+
+@pytest.mark.anyio
 async def test_cleanup_top_level_logs_only_stable_error_code(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
