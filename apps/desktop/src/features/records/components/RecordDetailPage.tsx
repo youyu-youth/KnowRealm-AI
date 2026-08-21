@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -44,6 +44,7 @@ export function RecordDetailPage({
 }: RecordDetailPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [isDeleting, setIsDeleting] = useState(false);
   const record = useQuery({
     queryKey: recordKeys.detail(recordId),
     queryFn: () => recordApi.get(recordId),
@@ -55,8 +56,9 @@ export function RecordDetailPage({
   const job = useQuery({
     queryKey: documentImportKeys.job(jobId ?? ""),
     queryFn: () => documentImportApi.getJob(jobId ?? ""),
-    enabled: tab === "transcript" && Boolean(jobId),
+    enabled: tab === "transcript" && Boolean(jobId) && !isDeleting,
     refetchInterval: (query) => {
+      if (isDeleting) return false;
       const status = query.state.data?.status;
       return status === "PENDING" || status === "RUNNING" ? 2_000 : false;
     },
@@ -193,6 +195,8 @@ export function RecordDetailPage({
             recordId={detail.id}
             courseId={detail.course_id}
             title={title}
+            jobId={jobId}
+            onDeletingChange={setIsDeleting}
             onDeleted={onDeleted}
           />
         ) : null}

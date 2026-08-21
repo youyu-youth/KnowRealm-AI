@@ -421,16 +421,81 @@ describe("学习记录详情", () => {
     expect(deleteCalls).toBe(0);
   });
 
+  it("处理中删除失败后恢复轮询，再次确认时停止轮询并清理导航", async () => {
+    let jobCalls = 0;
+    let deleteCalls = 0;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          capture_type: "DOCUMENT_IMPORT",
+          status: "CONTENT_PROCESSING",
+        }),
+      ),
+      http.get(JOB_URL, () => {
+        jobCalls += 1;
+        return HttpResponse.json({
+          id: JOB_ID,
+          record_id: RECORD_ID,
+          job_type: "DOCUMENT_PARSE",
+          status: "RUNNING",
+          progress: 0,
+          attempts: 1,
+          max_attempts: 3,
+          error_code: null,
+          retryable: false,
+        });
+      }),
+      http.get(COURSE_URL, () => HttpResponse.json(course)),
+      http.get(COURSE_RECORDS_URL, () => HttpResponse.json([])),
+      http.delete(DETAIL_URL, async () => {
+        deleteCalls += 1;
+        if (deleteCalls === 1) {
+          return HttpResponse.json(
+            { detail: "数据库暂时忙，请重试" },
+            { status: 500 },
+          );
+        }
+        await delay(2_300);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
+
+    expect(await screen.findByText("正在提取文档正文")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "删除学习记录" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+    expect(await screen.findByText("数据库暂时忙，请重试")).toBeVisible();
+
+    const callsAfterFailure = jobCalls;
+    await new Promise((resolve) => window.setTimeout(resolve, 2_100));
+    expect(jobCalls).toBeGreaterThan(callsAfterFailure);
+
+    const confirm = screen.getByRole("button", { name: "确认删除" });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirm).toBeDisabled());
+    const callsWhileDeleting = jobCalls;
+    await new Promise((resolve) => window.setTimeout(resolve, 2_100));
+    expect(jobCalls).toBe(callsWhileDeleting);
+
+    expect(
+      await screen.findByRole("heading", { name: "还没有学习记录" }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe(`/spaces/${COURSE_ID}`);
+    expect(window.location.search).toBe("?tab=records");
+  });
+
   it("删除失败保留详情并可重试，成功后刷新课程列表缓存并导航", async () => {
     let deleted = false;
     let deleteCalls = 0;
     let listCalls = 0;
     let deleteToken: string | null = null;
+    const failedRecord = { ...record, status: "FAILED" as const };
     server.use(
       http.get(COURSE_URL, () => HttpResponse.json(course)),
       http.get(COURSE_RECORDS_URL, () => {
         listCalls += 1;
-        return HttpResponse.json(deleted ? [] : [record]);
+        return HttpResponse.json(deleted ? [] : [failedRecord]);
       }),
       http.get(DETAIL_URL, () =>
         deleted
@@ -438,7 +503,7 @@ describe("学习记录详情", () => {
               { detail: "学习记录不存在或已删除" },
               { status: 404 },
             )
-          : HttpResponse.json(record),
+          : HttpResponse.json(failedRecord),
       ),
       http.delete(DETAIL_URL, async ({ request }) => {
         deleteCalls += 1;

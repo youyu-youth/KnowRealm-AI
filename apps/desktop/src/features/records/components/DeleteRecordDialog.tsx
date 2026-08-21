@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
+import { documentImportKeys } from "@/features/document-import/api/keys";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 
@@ -21,6 +22,8 @@ type DeleteRecordDialogProps = {
   recordId: string;
   courseId: string;
   title: string;
+  jobId?: string;
+  onDeletingChange: (deleting: boolean) => void;
   onDeleted: (courseId: string) => void | Promise<void>;
 };
 
@@ -28,6 +31,8 @@ export function DeleteRecordDialog({
   recordId,
   courseId,
   title,
+  jobId,
+  onDeletingChange,
   onDeleted,
 }: DeleteRecordDialogProps) {
   const { t } = useTranslation();
@@ -35,7 +40,15 @@ export function DeleteRecordDialog({
   const [open, setOpen] = useState(false);
   const deleteRecord = useMutation({
     mutationFn: () => recordApi.delete(recordId),
+    onMutate: () => onDeletingChange(true),
+    onError: () => onDeletingChange(false),
     onSuccess: async () => {
+      if (jobId) {
+        await queryClient.cancelQueries({
+          queryKey: documentImportKeys.job(jobId),
+          exact: true,
+        });
+      }
       await queryClient.invalidateQueries({
         queryKey: recordKeys.courseList(courseId),
         exact: true,
@@ -45,6 +58,16 @@ export function DeleteRecordDialog({
         queryKey: recordKeys.detail(recordId),
         exact: true,
       });
+      queryClient.removeQueries({
+        queryKey: recordKeys.transcript(recordId),
+        exact: true,
+      });
+      if (jobId) {
+        queryClient.removeQueries({
+          queryKey: documentImportKeys.job(jobId),
+          exact: true,
+        });
+      }
       setOpen(false);
       await onDeleted(courseId);
     },
