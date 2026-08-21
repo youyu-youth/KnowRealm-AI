@@ -1,9 +1,8 @@
 import json
-from datetime import datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select, update
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
 from app.models.course import Course
@@ -124,18 +123,3 @@ class CourseService:
             course.updated_at = deleted_at
             await session.flush()
         return True
-
-    @staticmethod
-    async def purge_expired(
-        session_factory: async_sessionmaker[AsyncSession],
-        *,
-        now: datetime | None = None,
-    ) -> None:
-        cutoff = (now or utcnow()) - timedelta(days=30)
-        async with session_factory() as session, session.begin():
-            await session.execute(
-                delete(Course).where(
-                    Course.deleted_at.is_not(None),
-                    Course.deleted_at < cutoff,
-                )
-            )

@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
-from app.services.course_service import CourseService
+from app.services.document_cleanup_service import DocumentCleanupService
 
 TOKEN = "test-launch-token"
 
@@ -637,7 +637,11 @@ async def test_cleanup_keeps_30_day_tombstones_and_removes_only_expired(
                     },
                 )
 
-        await CourseService.purge_expired(app.state.session_factory, now=now)
+        await DocumentCleanupService.purge_expired(
+            app.state.session_factory,
+            data_dir,
+            now=now,
+        )
 
         async with app.state.session_factory() as session:
             remaining_ids = set((await session.execute(text("SELECT id FROM courses"))).scalars())

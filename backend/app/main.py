@@ -16,7 +16,7 @@ from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
-from app.services.course_service import CourseService
+from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import DocumentWorker
 
 DEFAULT_CORS_ORIGINS = (
@@ -47,12 +47,16 @@ def create_app(
 
             async def cleanup_course_tombstones() -> None:
                 try:
-                    await CourseService.purge_expired(session_factory)
+                    await DocumentCleanupService.purge_expired(
+                        session_factory,
+                        resolved_data_dir,
+                    )
                 except Exception:
                     logger.exception("course_tombstone_cleanup_failed")
 
             cleanup_task = asyncio.create_task(cleanup_course_tombstones())
             app.state.course_tombstone_cleanup_task = cleanup_task
+            await cleanup_task
             document_worker = DocumentWorker(session_factory, resolved_data_dir)
             await document_worker.recover_interrupted()
             document_worker_task = asyncio.create_task(document_worker.run())

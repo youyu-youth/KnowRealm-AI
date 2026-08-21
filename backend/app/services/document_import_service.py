@@ -8,6 +8,7 @@ from typing import BinaryIO
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
@@ -137,8 +138,15 @@ class DocumentImportService:
                 )
                 await session.flush()
         except BaseException:
-            await asyncio.to_thread(_remove_import_file, final_path)
-            await asyncio.to_thread(_remove_import_file, temporary_path)
+            for path in (final_path, temporary_path):
+                try:
+                    await asyncio.to_thread(_remove_import_file, path)
+                except OSError:
+                    logger.error(
+                        "document_import_compensation_failed",
+                        error_code="DOCUMENT_IMPORT_COMPENSATION_FAILED",
+                        record_id=record_id,
+                    )
             raise
 
         return DocumentImportAccepted(record_id=record_id, job_id=job_id)
