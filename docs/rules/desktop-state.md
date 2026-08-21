@@ -72,5 +72,5 @@ queries: {
 - AI 问答与 sidecar 状态推送统一使用 POST SSE：原生 `fetch` 读取流，`eventsource-parser` 解析；原生 `EventSource` 因不支持 POST 而不使用。
 - 事件类型固定为 `token`、`status`、`citation`、`interrupt`、`done`、`error`，调用方必须显式处理 `error` 和 `done`。
 - 连接同样携带 `X-KnowRealm-Token`；组件卸载或用户停止时调用 `AbortController.abort()`，防止连接泄漏。
-- `records.status`、`processing_jobs` 等状态以 sidecar 进程内事件经 SSE 推送；不引入 Realtime 或 WebSocket。轮询 `refetchInterval` 仅作断线兜底。
+- `records.status`、`processing_jobs` 等状态最终以 sidecar 进程内事件经 SSE 推送；不引入 Realtime 或 WebSocket。阶段例外：plan 05 在 plan 04 接入 SSE 前，仅对 PENDING/RUNNING 文档任务使用条件轮询；终态立即停止。plan 04 完成后，轮询只作断线兜底。
 - 状态事件的消费路径固定为：事件到达 → queryKey 工厂定位缓存 → `invalidateQueries` → Query 重取。

@@ -1,6 +1,6 @@
-# KnowRealm-AI 数据模型 v2.0
+# KnowRealm-AI 数据模型 v2.1
 
-> **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.1》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.md`（v4.1）。
+> **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.2》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.2.md`。
 > **核心原则（v2.0 范式，ADR-0001 / 决策 #55）**：
 > - **SQLite（knowrealm.db，WAL）= 唯一业务事实源**——全部业务实体、学习状态、向量、技术任务状态
 > - **LangGraph Checkpoint（langgraph.db，独立文件）= Agent 运行态**（框架自管，非业务事实）
@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：v2.1（2026-08-20）**文档任务与单写者约束定稿**——processing_jobs 增加 CANCELLED、失败分类与重试转移；删除 record_files.processing_status，技术任务状态以 processing_jobs 为唯一事实源；同一数据目录增加进程生命周期排他锁；文档 Transcript 语言 V1 写 und；content_hash 仅用于完整性校验和重复检测，允许重复导入。
 > **变更记录**：v2.0（2026-08-17）**SQLite 化范式转向（#55）**——`user_id` 列全删（单用户库）、RLS/auth.uid 全删、Storage 桶→数据目录 `files/`、pgvector→sqlite-vec（vec0 虚拟表）、jsonb→TEXT(JSON)、text[]→TEXT(JSON)、timestamptz→TEXT(ISO8601 UTC)、uuid PK→TEXT(应用生成 uuid4)、`version` 乐观锁列全删（单写者无并发冲突）；~~user_settings~~ 并入 `config/settings.json`、profiles→单行 `profile`；状态机 9 态→**8 态**（UPLOADING 消解）；新增 `recording_sessions`（录音会话恢复）；`processing_jobs` 升格为**任务队列本体**（自研队列替代 procrastinate）；SQLite 本地十表（cached_*/sync_*/local_*）整体删除；§7 改为"备份、导出与换机"。v1.1~v1.10 变更史见 git（文件 v1.10 于本版删除；v1.11 表结构审查裁决〔transcripts 补 deleted_at/source_version、chat 失效态运行时推导、Wave A 基线 15 张〕已并入本版）。
 
 ---
@@ -16,14 +17,14 @@
 
 | 层 | 存储 | 职责 | 禁止 |
 |----|------|------|------|
-| 本地业务事实 | 数据目录 `knowrealm.db`（SQLite WAL）+ `files/`（原始文件） | 全部业务实体、学习状态、向量、技术任务状态 | — |
+| 本地业务事实 | 数据目录 `knowrealm.db`（SQLite WAL）+ `files/`（原始文件） | 全部业务实体、学习状态、向量、技术任务状态；同一数据目录由 sidecar 持有进程生命周期排他锁 | UI/第二个 sidecar 直写 |
 | Agent 运行态 | `langgraph.db`（SqliteSaver，独立文件） | Graph 暂停/恢复状态（HITL 等待等） | 当业务表查询；长期事实只存这里 |
 | 云端（可选，P2） | 用户自配 WebDAV/S3 上的导出 zip | 只读快照副本（防丢/换机） | 任何形式的回写与双向同步 |
 
 ## 2. 通用规范（SQLite 全表适用）
 
 - 表名 `snake_case`，无前缀；主键 `id TEXT`（应用层生成 uuid4）；时间 `created_at TEXT`（ISO8601 UTC）；JSON 一律 `TEXT`（存 JSON 字符串）；数组 `TEXT`（JSON 数组字符串）
-- **无 `user_id` 列、无 RLS**（单用户本地库，v2.0 #55）；sidecar 仅监听 127.0.0.1 且为唯一写者（红线 #35 v2.0）
+- **无 `user_id` 列、无 RLS**（单用户本地库，#55）；sidecar 仅监听 127.0.0.1；同一数据目录必须先取得操作系统非阻塞排他锁再迁移或启动 worker，确保最多一个写者（红线 #35）
 - 可编辑实体统一携带：`updated_at`、`deleted_at`（软删，可空）；纯追加型事实表（events/evidence/messages/logs）不做软删。~~version 乐观锁~~ 删（单写者无并发冲突；`ai_summaries.version_no`/`transcripts.source_version` 为业务版本号，语义不同，保留）
 - 状态/枚举字段用受控枚举（CHECK 约束或应用层 Enum 注册），禁止裸字符串随意写入
 - **PRAGMA**：`foreign_keys=ON`、`journal_mode=WAL`；连接仅 sidecar（UI 不直连库）
@@ -79,7 +80,7 @@
 | course_type | TEXT | MAJOR / GENERAL / ELECTIVE——可空 |
 | description | TEXT | 可空 |
 | hot_words | TEXT | JSON 数组，可空（#54）——ASR 热词手动列表（≤100 词）；自动同步 P2 |
-| status | TEXT | ACTIVE / ARCHIVED |
+| status | TEXT | ACTIVE / ARCHIVED；只有 ACTIVE 可接受新捕获、归类、升级或 AI 触发 |
 
 CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context≠'SCHOOL' → depth 非空`
 索引：`(updated_at desc)`、`(learning_context)`、`(course_type)`
@@ -91,7 +92,7 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | course_id | TEXT | FK，**可空——为空即收件箱 Inbox 未分类捕获** |
 | capture_type | TEXT | RECORDING / AUDIO_IMPORT / DOCUMENT_IMPORT / PASTE / QUICK_NOTE / CLIP |
 | title | TEXT | |
-| status | TEXT | 业务状态机 **8 态（v2.0）**：NOTE / DRAFT / CONTENT_PROCESSING / SUMMARY_PENDING / SUMMARY_PROCESSING / SUMMARY_READY / COMPLETED / FAILED（技术任务状态入 processing_jobs） |
+| status | TEXT | 业务状态机 **8 态**：NOTE / DRAFT / CONTENT_PROCESSING / SUMMARY_PENDING / SUMMARY_PROCESSING / SUMMARY_READY / COMPLETED / FAILED（技术任务状态只入 processing_jobs） |
 | duration_ms | INTEGER | ≥0 |
 | summary_confirmed_at | TEXT | HITL 确认时刻 |
 
@@ -108,8 +109,7 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | file_size | INTEGER | ≥0 |
 | duration_ms | INTEGER | 仅音频 |
 | sequence_no | INTEGER | 多文件合并顺序，≥0（导入先后定序，处理开始后不可重排，#54） |
-| processing_status | TEXT | 文件级处理状态 |
-| content_hash | TEXT | 校验/去重 |
+| content_hash | TEXT | 完整性校验/重复检测；不设 UNIQUE，相同文件允许创建独立 Record |
 
 索引：`(record_id, sequence_no)`、`(content_hash)`
 
@@ -117,7 +117,7 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id / record_id | TEXT | record_id UNIQUE（一 Record 一份当前转写） |
-| language | TEXT | 默认 zh-CN |
+| language | TEXT | BCP 47 或 `und`；文档导入 V1 不做语言猜测，统一写 `und`，ASR 可写已知语言 |
 | content | TEXT | 当前合并全文（快速展示用；可溯源自 transcript_segments）；**轻捕获（速记/粘贴/剪藏）无 record_file，内容直接写入此表** |
 | source_version | INTEGER | 用户编辑次数/版本 |
 | edited_by_user | INTEGER | 0/1 |
@@ -393,15 +393,15 @@ user_selected_preference（JSON）、observed_learning_preference（JSON）、ob
 | id | TEXT | PK |
 | record_id | TEXT | 可空 |
 | job_type | TEXT | ASR / AUDIO_TRANSCODE / DOCUMENT_PARSE / EMBEDDING / CONCEPT_EXTRACTION / SUMMARY / CLEANUP / BACKUP_EXPORT / … |
-| status | TEXT | PENDING / RUNNING / SUCCEEDED / FAILED |
+| status | TEXT | PENDING / RUNNING / SUCCEEDED / FAILED / CANCELLED |
 | progress | REAL | 0~1 |
-| attempts / max_attempts | INTEGER | 重试控制 |
+| attempts / max_attempts | INTEGER | 当前重试轮次的尝试次数/上限；DOCUMENT_PARSE 每轮最多 3 次，首次执行计入 |
 | next_run_at | TEXT | 可空——退避重试调度 |
-| input_json / result_json | TEXT | |
-| error_code / error_message | TEXT | |
+| input_json / result_json | TEXT | 按 job_type 使用类型化结构；DOCUMENT_PARSE 的 input_json 含 record_file_id |
+| error_code / error_message | TEXT | 稳定 error_code 决定可重试性；正文不得进入错误或日志 |
 | started_at / finished_at | TEXT | |
 
-worker = sidecar 进程内 asyncio 任务池：轮询 PENDING（`next_run_at` 到期）→ 原子置 RUNNING → 执行 → 落结果/退避重试。与 `records.status` 的分工：后者是用户可理解业务态，前者承载并行技术任务与队列语义。
+worker = sidecar 进程内 asyncio 任务池：轮询 PENDING（`next_run_at` 到期）→ 原子置 RUNNING → 执行 → 落结果/退避重试。状态转移：`PENDING→RUNNING→SUCCEEDED`；可恢复失败且额度未耗尽时 `RUNNING→PENDING` 并设置退避；额度耗尽或确定性失败时 `RUNNING→FAILED`；删除 Record 时该 Record 的 PENDING/RUNNING Job→CANCELLED，已终态 Job 不改写。手动重试复用原 Job，原子执行 `Record FAILED→CONTENT_PROCESSING`、`Job FAILED→PENDING`，`attempts` 归零并清空 progress/error/started_at/finished_at，开启新一轮额度。sidecar 在持有数据目录排他锁后，启动时将遗留 RUNNING 按剩余额度恢复为 PENDING 或置为 FAILED/WORKER_INTERRUPTED。与 `records.status` 的分工：后者是用户可理解业务态，前者是技术状态唯一事实源；record_files 不重复保存技术状态。
 
 **llm_call_logs** — LLM 调用观测（P0，追加型）
 request_id、graph_name、graph_node、model、prompt_version、embedding_model、token_usage_json、latency_ms、retrieval_count、evidence_count、interrupt_count、error_code、created_at。
@@ -413,6 +413,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 
 ```
 %USERPROFILE%\KnowRealm\           ← 数据目录（首启选择，可换；检测同步盘接管）
+├── .knowrealm.lock                 # sidecar 运行期锁对象；必须由 OS 排他锁持有，不能只靠易残留 sentinel 判断
 ├── knowrealm.db                   # §4 全部业务表（WAL）——唯一事实源
 ├── langgraph.db                   # LangGraph Checkpoint（SqliteSaver 自管，非业务事实）
 ├── files/                         # 存档原件（明文，#49）
@@ -442,7 +443,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 | 全量导出（V1，Wave B） | zip = db 快照（VACUUM INTO）+ files/ + config/（**默认不含 providers.json，可选勾选含**）；输出至 exports/ 与用户选定位置 |
 | 换机恢复 | 新机首启 → 选空数据目录 → 从导出包导入 → 校验落位（向量索引在 db 内，一体迁移） |
 | 快照备份（P2） | 可选配置 WebDAV/S3 → 定期单向推送导出 zip；**无回写路径**（红线 #1） |
-| 冲突处理 | **无此问题**——单机单写者（原 409/乐观锁机制随同步概念删除） |
+| 冲突处理 | 同一数据目录的操作系统排他锁保证单写者；第二个 sidecar 在迁移/worker 前失败并提示目录正被使用。进程退出或崩溃由 OS 自动释放锁；原 409/乐观锁机制随同步概念删除 |
 
 ## 8. 功能 → 业务实体 → 数据表映射
 
@@ -502,7 +503,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 
 删除 Record 时的清理链（功能基线 §6.5）：
 
-1. 软删：record 及其全部子资产（files/transcript/segments/anchors/summaries/kp/quizzes/todo）——**chat_sessions/chat_messages 不级联**：挂载会话保留可读、标记"原记录已删除"失效态（运行时推导，v1.11），仅显式删会话才删消息（#40）
+1. 软删：record 及其全部子资产（files/transcript/segments/anchors/summaries/kp/quizzes/todo），同事务将该 Record 的 PENDING/RUNNING processing_jobs 置为 CANCELLED，已终态 Job 保留原状态——**chat_sessions/chat_messages 不级联**：挂载会话保留可读、标记"原记录已删除"失效态（运行时推导，v1.11），仅显式删会话才删消息（#40）
 2. 文件：`files/{record_id}/` 目录异步物理删除（30 天批次）
 3. 向量：`semantic_embeddings.deleted_at` 标记 → 同批次物理清理（含 vec0 行）；**业务行软删 30 天后异步物理清理**（V1 无恢复 UI，#41）
 4. 学习状态：该 Record 产生的 learning_evidence 按 record_id **排除出掌握度计算**（行保留作审计），受影响 Concept 由 Mastery Engine 异步重算（#18）

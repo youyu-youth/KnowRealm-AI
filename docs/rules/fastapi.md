@@ -46,7 +46,7 @@
 - SSE 端点使用 POST，并与普通 API 一样校验 `X-KnowRealm-Token`。
 - 事件类型固定为 `token`、`status`、`citation`、`interrupt`、`done`、`error`。
 - 流内异常必须转换为 `error` 事件，不能无声断开；`interrupt` 必须携带前端渲染确认界面所需的完整 payload，并由恢复接口继续流程。
-- sidecar 状态变更同样通过进程内事件推送 SSE；UI 轮询仅作断线兜底。
+- sidecar 状态变更最终通过进程内事件推送 SSE；阶段例外：plan 05 在 plan 04 接入 SSE 前，可由 UI 对 PENDING/RUNNING 文档任务条件轮询同一查询入口，终态立即停止；plan 04 完成后轮询仅作断线兜底。
 
 ## 6. 错误与日志
 
@@ -62,7 +62,7 @@
 - 用户级供应商密钥存于数据目录 `config/providers.json`，偏好存于 `config/settings.json`，均由 sidecar 运行时读写；数据目录、端口和启动令牌由 Tauri 壳通过启动参数注入，不进入 `.env`。
 - 取值有限的配置使用 `Literal` 等类型约束。
 - engine/session factory、LangGraph checkpointer、迁移和 worker 的创建与销毁统一放在 FastAPI `lifespan`；不得新增 `@app.on_event`。
-- lifespan 启动顺序：解析数据目录 → 执行迁移 → 创建共享资源 → 启动 worker；退出时停止 worker 并释放 engine 等资源。
+- lifespan 启动顺序：解析数据目录 → 获取进程生命周期 OS 排他锁 → 执行迁移 → 创建共享资源 → 启动 worker。拿锁失败必须在迁移、备份和 worker 前退出；退出时先停止 worker、释放 engine 等资源，再释放目录锁。不得只用可能残留的 sentinel 文件判断占用。
 
 ## 8. 测试与质量门禁
 

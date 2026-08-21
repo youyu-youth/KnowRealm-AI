@@ -62,8 +62,10 @@ const statusBadge = cva("inline-flex rounded-full px-2 py-0.5 text-xs", {
 
 ## 2. shadcn/ui
 
+- 不重复造轮子，优先使用 shadcn ui  组件库，并符合设计规范
+
 - 组件通过 CLI 添加：`npx shadcn@latest add button dialog table`，产物落在 `components/ui/`。
-- **原语底座统一 Base UI**：shadcn CLI v4 起同时提供 Radix 与 Base UI 两套原语，本项目统一选 **Base UI** 底座（技术栈 v4 D2 定稿），**禁止混搭**（两套原语的行为、焦点管理与包体积会叠加，且修复方式互不通用）。
+- **原语底座统一 Base UI**：shadcn CLI v4 起同时提供 Radix 与 Base UI 两套原语，本项目统一选 **Base UI** 底座（技术栈 v4.2 D2 定稿），**禁止混搭**（两套原语的行为、焦点管理与包体积会叠加，且修复方式互不通用）。
 - **不手改 `components/ui/` 里的生成代码**（下次 add/diff 会覆盖）——定制在外面包装：
 
 ```tsx
@@ -119,8 +121,8 @@ export function BaseChart({ option }: { option: echarts.ComposeOption<...> }) {
 
 AI 对话答案、总结、复习资料都是 Markdown，统一经 `components/common/` 的渲染组件输出（`react-markdown`），页面不直接散用：
 
-- **代码块必须高亮**（功能需求基线 v2.1：程序员场景 AI 输出默认含代码块）——统一用 **shiki**（技术栈 v4 定稿），主题跟随亮/暗令牌。
-- **树形大纲思维导图**（复习资料的 Markdown 大纲，功能需求基线 v2.1 M4）：按标题层级解析渲染为可折叠树组件，不做图形化导图导出。
+- **代码块必须高亮**（功能需求基线 v2.2：程序员场景 AI 输出默认含代码块）——统一用 **shiki**（技术栈 v4.2 定稿），主题跟随亮/暗令牌。
+- **树形大纲思维导图**（复习资料的 Markdown 大纲，功能需求基线 v2.2 M4）：按标题层级解析渲染为可折叠树组件，不做图形化导图导出。
 - AI 产出的 Markdown 属不可信输入：经 `rehype-sanitize` 白名单过滤，禁止 `dangerouslySetInnerHTML` 直染。
 
 ## 5. 资源与样式文件归属
@@ -134,7 +136,7 @@ AI 对话答案、总结、复习资料都是 Markdown，统一经 `components/c
 | 图片/插画/字体 | `assets/`（大文件放 `public/`） |
 
 - 组件样式就近写在 className（Tailwind 之道），**不新建散装 `.css` 文件**；确需复杂选择器时集中到上述四个样式文件里。
-- **偏好单一本地配置**（功能需求基线 v2.1 M1，决策 #51）：主题/字号/语言/时区/关窗行为/开机自启/速记快捷键/窗口记忆等全部存数据目录 `config/settings.json`（单一事实源，经 sidecar API 读写）——深色模式切换 = 改 `settings.theme` + 挂/摘 `<html>` 的 `.dark` class，不落第三处状态。
+- **偏好单一本地配置**（功能需求基线 v2.2 M1，决策 #51）：主题/字号/语言/时区/关窗行为/开机自启/速记快捷键/窗口记忆等全部存数据目录 `config/settings.json`（单一事实源，经 sidecar API 读写）——深色模式切换 = 改 `settings.theme` + 挂/摘 `<html>` 的 `.dark` class，不落第三处状态。
 
 ## 6. 可访问性（a11y）
 

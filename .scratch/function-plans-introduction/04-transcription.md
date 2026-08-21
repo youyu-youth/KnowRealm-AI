@@ -4,7 +4,7 @@
 
 ## 功能描述 / 目标
 
-音频（导入 + 录音共用）→ 带时间戳转写全文的完整后端管线，复用 05 已落地的 worker、processing_jobs 与轮询入口，并增加 sidecar SSE 状态推送。
+音频（导入 + 录音共用）→ 带时间戳转写全文的完整后端管线，复用 05 已落地的 worker、processing_jobs、record_files 与轮询入口，并增加 sidecar SSE 状态推送；本 plan 同时拥有多文件定序与音频+文档混合来源的真实集成出口。
 
 ## 功能范围
 
@@ -15,14 +15,15 @@
 - 腾讯云录音文件识别（标准版）：句子级时间戳、热词取课程设置（01 维护的 ≤100 词）
 - Transcript 持久化（V1 整段合并文本，快速展示用）；转写文本编辑与保存
 - 复用 processing_jobs 技术任务态与 UI 轮询入口；增加 sidecar 进程内事件（SSE）推送 records 状态变更（#8）
-- 失败 → FAILED + 可重试；content_hash 落盘校验；处理中删除竞态（每步写前校验 deleted_at，软删即终止丢弃产物，#54）
+- 一 Record 多文件定序与音频+文档混合来源：按 sequence_no 合并 Transcript，形成对 05 单文件结构的首个真实扩展验收
+- 失败分类、重试与 idempotency_key 按音频链路另行定稿，不直接套用 05 的文档错误分类；处理中删除竞态（每步写前校验 deleted_at，软删即终止丢弃产物并将非终态 Job 置为 CANCELLED，#54）
 
 **不做**：
 - Segment 句子级持久化（P2）、英文 ASR（P2）、音频文件本身的前端预览播放
 
 ## 核心业务流程
 
-导入音频 / 收到录音分片 → 注册 record_files → CONTENT_PROCESSING（worker 本地 ffmpeg 转码 + ASR 提交/轮询，多文件并行按序合并）→ Transcript 落库 → 已选课自动触发 06 / 未选课停 SUMMARY_PENDING → sidecar SSE 推送状态
+导入音频 / 收到录音分片 → 注册 record_files → CONTENT_PROCESSING（worker 本地 ffmpeg 转码 + ASR 提交/轮询，多文件按序合并）→ Transcript 落库 → 已选 ACTIVE 课程由 06 触发总结 / 未选课停 SUMMARY_PENDING → sidecar SSE 推送状态
 
 ## 关键业务规则
 
@@ -39,7 +40,8 @@
 ## 验收标准（出口线）
 
 - [ ] 导入 1 个 MP3 → 状态流转可见（SSE 推送）→ 详情页看到带时间戳转写全文
-- [ ] 已选课自动进入总结触发；未选课停 SUMMARY_PENDING
+- [ ] 同一 Record 真实挂载音频+文档并按 sequence_no 合并展示；多文件入口与聚合规则可验收
+- [ ] 已选 ACTIVE 课程由 06 自动进入总结触发；未选课停 SUMMARY_PENDING
 - [ ] ASR 失败 → FAILED → 重试成功
-- [ ] 删除处理中记录 → 链路终止、无产物入库
+- [ ] 删除处理中记录 → 非终态 Job=CANCELLED、链路终止且无产物入库
 - [ ] 超 5h 音频被拒收；磁盘空间不足时给出明确提示

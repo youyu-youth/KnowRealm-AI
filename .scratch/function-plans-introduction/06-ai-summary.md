@@ -9,7 +9,7 @@
 ## 功能范围
 
 **做**：
-- CONTENT_PROCESSING 完成且已选课 → 自动触发（含 11 的升级触发，走同一管线）
+- 存在 Transcript、Record=SUMMARY_PENDING、课程存在且 ACTIVE → 创建 Summary Job 并自动触发（含 11 的升级触发，走同一管线）；05 只提供输入契约，不生成 Summary
 - 结构化输出：课程主题（一句话）+ 摘要（500~1000 字）+ 分点结构（Pydantic Schema 校验入库）
 - HITL 循环：生成 → 展示 → 【确认】（解锁后续按钮）/【调整】（输入反馈重新生成，次数不限）
 - 跨重启 / 隔天恢复：LangGraph interrupt + checkpointer（应用重启后未确认总结可继续处理）
@@ -25,22 +25,23 @@
 
 ## 核心业务流程
 
-转写完成 → SUMMARY_PROCESSING（生成，提交 2s 内返回 job_id）→ SUMMARY_READY（HITL 待确认，进今日页待办）→ 确认 → COMPLETED + 事件落表 + 解锁后续；调整 → 反馈重生成（不限次）
+Transcript 已存在 + Record=SUMMARY_PENDING + 课程 ACTIVE → SUMMARY_PROCESSING（生成，提交 2s 内返回 job_id）→ SUMMARY_READY（HITL 待确认，进今日页待办）→ 确认 → COMPLETED + 事件落表 + 解锁后续；调整 → 反馈重生成（不限次）
 
 ## 关键业务规则
 
 - 确认结果与版本链落业务表（ai_summaries），Checkpoint 只存运行态
 - 生成 90s 超时 → FAILED 可重试；提交 2s 内返回 job_id 且 processing_jobs 可查询（#27）
 - AI 上下文必含课程 learning_context / education_stage / depth（升级强制先归类的根因）
+- Summary Job 创建前再次校验课程仍为 ACTIVE；05 解析期间课程被归档时保留 Transcript，但不触发 AI
 - prompt 版本化；prompt 与输出全文不进日志
 
 ## 前置依赖
 
-- 05（首个真实文档来源闭环）或 04（后续音频来源）；开工时至少一条真实 Transcript 来源已接通，不要求两条来源同时完成
+- 05（提供首个真实 Transcript + SUMMARY_PENDING 文档来源）或 04（后续音频来源）；开工时至少一条真实 Transcript 来源已接通，不要求两条来源同时完成
 
 ## 验收标准（出口线）
 
-- [ ] 至少一条真实来源走通：Transcript 完成 → 总结自动出 → 调整一次（如"更简洁"）→ 确认 → 状态 COMPLETED、后续按钮解锁；仅文档通过时不冒充录音链路完成
+- [ ] 至少一条真实来源走通：Transcript + SUMMARY_PENDING → 校验 ACTIVE → Summary Job → 调整一次（如"更简洁"）→ 确认 → 状态 COMPLETED、后续按钮解锁；仅文档通过时不冒充录音链路完成
 - [ ] 重启应用后，未确认的总结可继续确认（跨重启恢复）
 - [ ] 3 万字以上长转写无截断（黄金样本回归通过）
 - [ ] SUMMARY_CONFIRMED 事件落表且幂等键唯一

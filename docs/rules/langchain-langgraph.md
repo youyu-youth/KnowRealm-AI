@@ -130,7 +130,7 @@ kp = structured_llm.invoke("从以下转写文本中抽取知识点：\n" + tran
 
 Summary/Tutor/TeachBack/Autopilot/MisconceptionVerification 五个 Graph 各自独立文件，**通过 Learning Event 与 Profile 共享状态，禁止合并成超级 Graph**（红线 #2）。
 
-**什么才进 Graph（负面清单，功能需求基线 v2.1 红线 #2）**：只有需要状态、暂停恢复、HITL 或 Agent 决策的流程才用 LangGraph；普通 CRUD 与确定性业务逻辑（Course/Quiz/Todo/EvidenceBuilder/MasteryEngine/QuestionSelector 等）写成普通确定性 Python Service，**不进 Graph**。
+**什么才进 Graph（负面清单，功能需求基线 v2.2 红线 #2）**：只有需要状态、暂停恢复、HITL 或 Agent 决策的流程才用 LangGraph；普通 CRUD 与确定性业务逻辑（Course/Quiz/Todo/EvidenceBuilder/MasteryEngine/QuestionSelector 等）写成普通确定性 Python Service，**不进 Graph**。
 
 **Agent/节点写入红线**：Graph 节点禁止直写 `user_concept_mastery` 等 mastery 类表（唯一写入口是 Mastery Engine，红线 #3）——节点只发 Learning Event；AI 产物（确认结果、版本链）必须落业务表，**Checkpoint 只存运行态、不是业务事实**。
 
@@ -230,7 +230,7 @@ graph.invoke(Command(resume={"action": "approve"}), config=config)
 | 单测 | `InMemorySaver` |
 
 ```python
-# 生产：langgraph.db 与 knowrealm.db 同目录、不同文件（数据模型 v2.0 §6）
+# 生产：langgraph.db 与 knowrealm.db 同目录、不同文件（数据模型 v2.1 §6）
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 checkpointer = AsyncSqliteSaver.from_conn_string(data_dir / "langgraph.db")
@@ -271,7 +271,7 @@ async for chunk in graph.astream(
 
 ## 10. RAG 检索红线（sqlite-vec）
 
-向量存于 knowrealm.db 内的 **sqlite-vec `vec0` 虚拟表**（四类向量：Segment / 知识点 / Concept / 文档分片），向量生命周期与软删由 `semantic_embeddings` 业务表统一管理（数据模型 v2.0 §4.6）。检索一律经 `services/retrieval.py` 封装层：
+向量存于 knowrealm.db 内的 **sqlite-vec `vec0` 虚拟表**（四类向量：Segment / 知识点 / Concept / 文档分片），向量生命周期与软删由 `semantic_embeddings` 业务表统一管理（数据模型 v2.1 §4.6）。检索一律经 `services/retrieval.py` 封装层：
 
 ```python
 # services/retrieval.py —— 唯一允许的检索入口（示意；vec0 查询具体形式以 sqlite-vec 版本为准）
@@ -297,7 +297,7 @@ async def search_segments(session: AsyncSession, query_vec: list[float], *,
 自建 `llm_call_logs` 表替代 Langfuse/Sentry 自托管（决策 #2），埋点规则：
 
 - **埋在统一封装层**（`agents/llm.py` 的调用包装 / LangChain callback），Graph 节点代码不手写埋点——节点只管业务，观测在工厂层一次接入。
-- 每次调用记录字段 = 数据模型 v2.0 §4.10：`request_id`、`graph_name`、`graph_node`、`model`、`prompt_version`、`token_usage_json`、`latency_ms`、`error_code`（embedding 调用记 `embedding_model`）。
+- 每次调用记录字段 = 数据模型 v2.1 §4.10：`request_id`、`graph_name`、`graph_node`、`model`、`prompt_version`、`token_usage_json`、`latency_ms`、`error_code`（embedding 调用记 `embedding_model`）。
 - **隐私红线**：不记 prompt 与输出全文（同 fastapi.md §7.1）；埋点失败不得影响主流程（吞掉并 loguru 记 error code）。
 
 ## 12. 反模式速查

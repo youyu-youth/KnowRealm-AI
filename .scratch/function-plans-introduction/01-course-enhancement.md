@@ -43,11 +43,11 @@
 - 工作台骨架只承载跨页面稳定结构，不包含课程或后续功能的业务状态；后续 plan 复用内容路由出口，不重复实现外壳
 - `learning_context` 必填；SCHOOL 必填 `education_stage`，CAREER/INTEREST 必填 `depth`（#23）；`course_type` 可空
 - 热词上限 100 词，超出拒绝；本 plan 只维护，04 的 ASR 才消费
-- UI 仅通过 localhost sidecar API 读写；查询恒定过滤 `deleted_at`；软删级联与 30 天物理清理规则以数据模型 v2.0 为准
+- UI 仅通过 localhost sidecar API 读写；查询恒定过滤 `deleted_at`；软删级联与 30 天物理清理规则以数据模型 v2.1 为准
 
 ## 前置依赖
 
-- 桌面工程初始化已完成；`DESIGN.md`、PRD v2.1 与数据模型 v2.0 已定稿
+- 桌面工程初始化已完成；`DESIGN.md`、PRD v2.2 与数据模型 v2.1 已定稿
 - 数据/API/安全基础属于 01-B 的交付内容，不是 plan 01 的开工门槛
 
 ## 验收标准（出口线）

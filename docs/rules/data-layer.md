@@ -5,7 +5,7 @@
 ## 1. 核心架构
 
 - **Pydantic 管边界校验，SQLAlchemy 管持久化，`knowrealm.db` 是唯一业务事实源。**
-- FastAPI sidecar 是数据库唯一写者；UI 只能通过 localhost API 读写业务数据，不得直连数据库或直写数据目录。录音分片落盘是唯一例外，见 `desktop-tauri.md`。
+- FastAPI sidecar 是数据库唯一写者；同一数据目录必须由 sidecar 持有进程生命周期操作系统排他锁，拿锁失败时不得执行迁移、备份或启动 worker。UI 只能通过 localhost API 读写业务数据，不得直连数据库或直写数据目录。录音分片落盘是唯一例外，见 `desktop-tauri.md`。
 - 本地单用户库不设 `user_id`、RLS 或通用 `version` 乐观锁列。`ai_summaries.version_no`、`transcripts.source_version` 属于业务版本号，继续保留。
 - 固定技术线：Pydantic / pydantic-settings 2.x（≥2.11）、SQLAlchemy 2.0.x、aiosqlite、sqlite-vec；依赖版本以锁文件为准，不采用 SQLModel、SQLAlchemy 2.1 beta 或其他数据库驱动。
 
@@ -34,7 +34,7 @@
 
 - 模型使用 `DeclarativeBase`、`Mapped[T]`、`mapped_column()`；查询使用 `select()`，不得新增 `Column(...)` 旧式声明或 `session.query()`。
 - 引擎使用 `sqlite+aiosqlite:///` 和 `async_sessionmaker(..., expire_on_commit=False)`；不配置 `pool_size`、`max_overflow` 等 PostgreSQL 式池参数。
-- 每个连接启用 `PRAGMA foreign_keys=ON`；数据库启用 WAL。API 与进程内 worker 共用 sidecar 内同一份 engine / session factory。
+- 每个连接启用 `PRAGMA foreign_keys=ON`；数据库启用 WAL。API 与进程内 worker 共用 sidecar 内同一份 engine / session factory；engine 只能在数据目录排他锁取得后创建。
 - 所有带 `deleted_at` 的表，其列表、详情、关联和计数查询都必须过滤 `deleted_at IS NULL`。优先通过 soft-delete mixin + `with_loader_criteria` 在 Base 层统一注入，避免调用方遗漏。
 
 ## 4. 会话与事务
@@ -50,6 +50,7 @@
 
 | 路径 | 内容与约束 |
 |---|---|
+| `.knowrealm.lock` | sidecar 运行期 OS 排他锁对象；不能只判断文件是否存在，进程退出/崩溃后锁必须由 OS 自动释放 |
 | `knowrealm.db` | 全部业务表、WAL、vec0 向量表 |
 | `langgraph.db` | LangGraph checkpoint，不是业务事实源 |
 | `files/` | 导入原件与转码后的 ogg-opus；原件保持可逆 |
