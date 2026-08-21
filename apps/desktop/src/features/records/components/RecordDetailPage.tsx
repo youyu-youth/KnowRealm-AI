@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import { useEffect } from "react";
@@ -66,6 +66,21 @@ export function RecordDetailPage({
     queryFn: () => recordApi.getTranscript(recordId),
     enabled:
       tab === "transcript" && (!jobId || job.data?.status === "SUCCEEDED"),
+  });
+  const retryJob = useMutation({
+    mutationFn: () => documentImportApi.retry(jobId ?? "", recordId),
+    onSuccess: (nextJob) => {
+      queryClient.setQueryData(documentImportKeys.job(jobId ?? ""), nextJob);
+      void job.refetch();
+      void queryClient.invalidateQueries({
+        queryKey: recordKeys.detail(recordId),
+      });
+      if (record.data?.course_id) {
+        void queryClient.invalidateQueries({
+          queryKey: recordKeys.courseList(record.data.course_id),
+        });
+      }
+    },
   });
 
   useEffect(() => {
@@ -277,14 +292,34 @@ export function RecordDetailPage({
               <p className="max-w-reading text-body text-muted-foreground mt-2">
                 {job.data.status === "CANCELLED"
                   ? t("record.detail.transcript.cancelledDescription")
-                  : job.data.retryable
-                    ? t("record.detail.transcript.temporaryDescription")
-                    : job.data.error_code
-                      ? t(
-                          `record.detail.transcript.errors.${job.data.error_code}`,
-                        )
-                      : t("record.detail.transcript.errors.INTERNAL_ERROR")}
+                  : job.data.error_code
+                    ? t(
+                        `record.detail.transcript.errors.${job.data.error_code}`,
+                      )
+                    : t("record.detail.transcript.errors.INTERNAL_ERROR")}
               </p>
+              {job.data.status === "FAILED" && job.data.retryable && jobId ? (
+                <div className="max-w-reading mt-5 flex flex-col items-start gap-3">
+                  <p className="text-body text-muted-foreground">
+                    {t("record.detail.transcript.retryableDescription")}
+                  </p>
+                  <Button
+                    variant="outline"
+                    disabled={retryJob.isPending}
+                    onClick={() => retryJob.mutate()}
+                  >
+                    {retryJob.isPending ? <Spinner aria-hidden="true" /> : null}
+                    {retryJob.isPending
+                      ? t("record.detail.transcript.retrying")
+                      : t("record.detail.transcript.retry")}
+                  </Button>
+                  {retryJob.isError ? (
+                    <p role="alert" className="text-body text-destructive">
+                      {retryJob.error.message}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
             </>
           ) : (Boolean(jobId) && job.isPending) ||
             job.data?.status === "PENDING" ||

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_serializer
 
@@ -23,6 +24,8 @@ class ProcessingJobErrorCode(StrEnum):
     FORMAT_MISMATCH = "FORMAT_MISMATCH"
     NO_EXTRACTABLE_TEXT = "NO_EXTRACTABLE_TEXT"
     TEMPORARY_IO = "TEMPORARY_IO"
+    SQLITE_BUSY = "SQLITE_BUSY"
+    WORKER_INTERRUPTED = "WORKER_INTERRUPTED"
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
@@ -37,6 +40,10 @@ class RecordFileSourceType(StrEnum):
 class DocumentImportAccepted(BaseModel):
     record_id: str
     job_id: str
+
+
+class ProcessingJobRetryRequest(BaseModel):
+    record_id: UUID
 
 
 class ProcessingJobOut(BaseModel):

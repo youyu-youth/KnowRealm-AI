@@ -221,7 +221,9 @@
         "notReadyTitle": "正文尚未生成",
         "notReadyDescription": "当前没有可展示的真实正文。",
         "errorTitle": "文档正文提取失败",
-        "temporaryDescription": "本地文件暂时无法读取；自动恢复将在后续任务接入。",
+        "retryableDescription": "原文件和学习记录仍保留，可以开启新一轮处理。",
+        "retry": "重新处理文档",
+        "retrying": "正在重新处理",
         "cancelledDescription": "此处理任务已取消。",
         "errors": {
           "NON_UTF8_TEXT": "文本文件不是 UTF-8 编码，请转换编码后重新选择。",
@@ -230,6 +232,8 @@
           "FORMAT_MISMATCH": "文件内容与扩展名不匹配。",
           "NO_EXTRACTABLE_TEXT": "文档中没有可提取的文本。",
           "TEMPORARY_IO": "本地文件暂时无法读取。",
+          "SQLITE_BUSY": "本地数据库暂时繁忙。",
+          "WORKER_INTERRUPTED": "上次处理被意外中断。",
           "INTERNAL_ERROR": "文档处理失败。"
         }
       },

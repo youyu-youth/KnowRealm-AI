@@ -109,6 +109,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/processing-jobs/{job_id}/retries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Processing Job */
+        post: operations["retry_processing_job_api_processing_jobs__job_id__retries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}": {
         parameters: {
             query?: never;
@@ -295,7 +312,7 @@ export interface components {
          * ProcessingJobErrorCode
          * @enum {string}
          */
-        ProcessingJobErrorCode: "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "INTERNAL_ERROR";
+        ProcessingJobErrorCode: "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "SQLITE_BUSY" | "WORKER_INTERRUPTED" | "INTERNAL_ERROR";
         /** ProcessingJobOut */
         ProcessingJobOut: {
             /** Attempts */
@@ -313,6 +330,14 @@ export interface components {
             /** Retryable */
             retryable: boolean;
             status: components["schemas"]["ProcessingJobStatus"];
+        };
+        /** ProcessingJobRetryRequest */
+        ProcessingJobRetryRequest: {
+            /**
+             * Record Id
+             * Format: uuid
+             */
+            record_id: string;
         };
         /**
          * ProcessingJobStatus
@@ -922,6 +947,88 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_processing_job_api_processing_jobs__job_id__retries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProcessingJobRetryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProcessingJobOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

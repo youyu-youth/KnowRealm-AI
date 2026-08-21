@@ -54,6 +54,7 @@ def create_app(
             cleanup_task = asyncio.create_task(cleanup_course_tombstones())
             app.state.course_tombstone_cleanup_task = cleanup_task
             document_worker = DocumentWorker(session_factory, resolved_data_dir)
+            await document_worker.recover_interrupted()
             document_worker_task = asyncio.create_task(document_worker.run())
             app.state.document_worker_task = document_worker_task
             try:
@@ -106,7 +107,7 @@ def create_app(
         exc: Exception,
     ) -> JSONResponse:
         request_id = str(uuid4())
-        logger.exception(
+        logger.error(
             "unhandled_error",
             path=request.url.path,
             request_id=request_id,

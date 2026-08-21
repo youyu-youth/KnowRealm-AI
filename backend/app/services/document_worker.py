@@ -1,11 +1,14 @@
 import asyncio
+import errno
 import json
+from datetime import timedelta
 from pathlib import Path
 from typing import cast
 
 from loguru import logger
 from sqlalchemy import or_, select, update
 from sqlalchemy.engine import CursorResult
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.base import utcnow
@@ -18,6 +21,7 @@ from app.schemas.document import (
 )
 from app.schemas.record import RecordStatus
 from app.services.document_parser import DocumentParseError, extract_document_text
+from app.services.processing_job_policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
 
 ERROR_MESSAGES = {
     ProcessingJobErrorCode.NON_UTF8_TEXT: "文本文件不是 UTF-8 编码",
@@ -26,8 +30,21 @@ ERROR_MESSAGES = {
     ProcessingJobErrorCode.FORMAT_MISMATCH: "文件内容与扩展名不匹配",
     ProcessingJobErrorCode.NO_EXTRACTABLE_TEXT: "文档没有可提取的文本",
     ProcessingJobErrorCode.TEMPORARY_IO: "文档暂时无法读取",
+    ProcessingJobErrorCode.SQLITE_BUSY: "本地数据库暂时繁忙",
+    ProcessingJobErrorCode.WORKER_INTERRUPTED: "文档处理被意外中断",
     ProcessingJobErrorCode.INTERNAL_ERROR: "文档处理失败",
 }
+
+
+def _is_sqlite_busy(error: OperationalError) -> bool:
+    message = str(error.orig).lower()
+    return "database is locked" in message or "database is busy" in message
+
+
+def _is_temporary_io_error(error: OSError) -> bool:
+    return error.errno in {errno.EAGAIN, errno.EBUSY, errno.EINTR, errno.ETIMEDOUT} or getattr(
+        error, "winerror", None
+    ) in {32, 33}
 
 
 class DocumentWorker:
@@ -43,9 +60,53 @@ class DocumentWorker:
     def stop(self) -> None:
         self._stopped.set()
 
+    async def recover_interrupted(self) -> None:
+        await self._recover_running(ProcessingJobErrorCode.WORKER_INTERRUPTED)
+
+    async def _recover_running(self, code: ProcessingJobErrorCode) -> None:
+        now = utcnow()
+        async with self._session_factory() as session, session.begin():
+            jobs = (
+                await session.scalars(
+                    select(ProcessingJob)
+                    .join(Record, ProcessingJob.record_id == Record.id)
+                    .where(
+                        ProcessingJob.job_type == ProcessingJobType.DOCUMENT_PARSE,
+                        ProcessingJob.status == ProcessingJobStatus.RUNNING,
+                        Record.deleted_at.is_(None),
+                    )
+                )
+            ).all()
+            for job in jobs:
+                if job.attempts < job.max_attempts:
+                    job.status = ProcessingJobStatus.PENDING
+                    job.next_run_at = now + timedelta(seconds=2 ** max(job.attempts, 0))
+                else:
+                    job.status = ProcessingJobStatus.FAILED
+                    job.finished_at = now
+                    if job.record_id is not None:
+                        record = await session.get(Record, job.record_id)
+                        if record is not None:
+                            record.status = RecordStatus.FAILED
+                            record.updated_at = now
+                job.error_code = code.value
+                job.error_message = ERROR_MESSAGES[code]
+                job.updated_at = now
+            await session.flush()
+
     async def run(self) -> None:
         while not self._stopped.is_set():
-            if await self._process_one():
+            try:
+                if await self._process_one():
+                    continue
+            except OperationalError as exc:
+                if not _is_sqlite_busy(exc):
+                    raise
+                logger.warning(
+                    "document_worker_retryable_failure",
+                    error_code=ProcessingJobErrorCode.SQLITE_BUSY,
+                )
+                await self._recover_running(ProcessingJobErrorCode.SQLITE_BUSY)
                 continue
             try:
                 await asyncio.wait_for(self._stopped.wait(), timeout=0.05)
@@ -61,13 +122,17 @@ class DocumentWorker:
             content = await asyncio.to_thread(extract_document_text, path)
         except DocumentParseError as exc:
             await self._fail(job_id, record_id, exc.code)
-        except OSError:
-            await self._fail(job_id, record_id, ProcessingJobErrorCode.TEMPORARY_IO)
+        except OSError as exc:
+            code = (
+                ProcessingJobErrorCode.TEMPORARY_IO
+                if _is_temporary_io_error(exc)
+                else ProcessingJobErrorCode.INTERNAL_ERROR
+            )
+            logger.error("document_parse_failed", error_code=code)
+            await self._fail(job_id, record_id, code)
         except Exception:
-            logger.exception(
+            logger.error(
                 "document_parse_failed",
-                job_id=job_id,
-                record_id=record_id,
                 error_code=ProcessingJobErrorCode.INTERNAL_ERROR,
             )
             await self._fail(job_id, record_id, ProcessingJobErrorCode.INTERNAL_ERROR)
@@ -166,6 +231,9 @@ class DocumentWorker:
             )
             job.status = ProcessingJobStatus.SUCCEEDED
             job.progress = 1
+            job.next_run_at = None
+            job.error_code = None
+            job.error_message = None
             job.finished_at = now
             job.updated_at = now
             record.status = RecordStatus.SUMMARY_PENDING
@@ -190,6 +258,14 @@ class DocumentWorker:
                 )
             ).one_or_none()
             if job is None or record is None or job.status != ProcessingJobStatus.RUNNING:
+                return
+            if code in RETRYABLE_PROCESSING_JOB_ERROR_CODES and job.attempts < job.max_attempts:
+                job.status = ProcessingJobStatus.PENDING
+                job.next_run_at = now + timedelta(seconds=2 ** (job.attempts - 1))
+                job.error_code = code.value
+                job.error_message = ERROR_MESSAGES[code]
+                job.updated_at = now
+                await session.flush()
                 return
             job.status = ProcessingJobStatus.FAILED
             job.error_code = code.value

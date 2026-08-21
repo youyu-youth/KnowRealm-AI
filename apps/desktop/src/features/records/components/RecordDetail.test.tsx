@@ -25,6 +25,7 @@ const COURSE_RECORDS_URL = `${COURSE_URL}/records`;
 const ROUTE_PATH = `/records/${RECORD_ID}`;
 const JOB_ID = "33333333-3333-4333-8333-333333333333";
 const JOB_URL = `${TEST_SIDECAR_URL}/api/processing-jobs/${JOB_ID}`;
+const JOB_RETRY_URL = `${JOB_URL}/retries`;
 
 const record: RecordOut = {
   id: RECORD_ID,
@@ -288,11 +289,104 @@ describe("学习记录详情", () => {
       ),
     );
     renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
-    expect(
-      await screen.findByText(
-        "本地文件暂时无法读取；自动恢复将在后续任务接入。",
+    expect(await screen.findByText("本地文件暂时无法读取。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重新处理文档" })).toBeVisible();
+  });
+
+  it("可恢复失败手动重试防重复提交，失败保留上下文且成功恢复轮询", async () => {
+    let retryCalls = 0;
+    let jobCalls = 0;
+    let retryAccepted = false;
+    let terminalJobCalls = 0;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          capture_type: "DOCUMENT_IMPORT",
+          status: retryAccepted ? "CONTENT_PROCESSING" : "FAILED",
+        }),
       ),
+      http.get(JOB_URL, () => {
+        jobCalls += 1;
+        const status = retryAccepted
+          ? jobCalls >= 3
+            ? "SUCCEEDED"
+            : "RUNNING"
+          : "FAILED";
+        if (status === "SUCCEEDED") terminalJobCalls += 1;
+        return HttpResponse.json({
+          id: JOB_ID,
+          record_id: RECORD_ID,
+          job_type: "DOCUMENT_PARSE",
+          status,
+          progress: status === "SUCCEEDED" ? 1 : 0,
+          attempts: retryAccepted ? 1 : 3,
+          max_attempts: 3,
+          error_code: retryAccepted ? null : "TEMPORARY_IO",
+          retryable: !retryAccepted,
+        });
+      }),
+      http.post(JOB_RETRY_URL, async ({ request }) => {
+        retryCalls += 1;
+        expect(await request.json()).toEqual({ record_id: RECORD_ID });
+        await delay(100);
+        if (retryCalls === 1) {
+          return HttpResponse.json(
+            { detail: "数据库暂时繁忙，请稍后重试" },
+            { status: 500 },
+          );
+        }
+        retryAccepted = true;
+        return HttpResponse.json(
+          {
+            id: JOB_ID,
+            record_id: RECORD_ID,
+            job_type: "DOCUMENT_PARSE",
+            status: "PENDING",
+            progress: 0,
+            attempts: 0,
+            max_attempts: 3,
+            error_code: null,
+            retryable: false,
+          },
+          { status: 202 },
+        );
+      }),
+      http.get(`${DETAIL_URL}/transcript`, () =>
+        HttpResponse.json({
+          status: "READY",
+          transcript: {
+            language: "und",
+            content: "重试后恢复的正文",
+            source_version: 1,
+            edited_by_user: false,
+            updated_at: "2026-08-21T12:00:00.000000Z",
+          },
+        }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
+
+    const retry = await screen.findByRole("button", { name: "重新处理文档" });
+    fireEvent.click(retry);
+    await waitFor(() => expect(retry).toBeDisabled());
+    fireEvent.click(retry);
+    expect(retryCalls).toBe(1);
+    expect(
+      await screen.findByText("数据库暂时繁忙，请稍后重试"),
+    ).toHaveAttribute("role", "alert");
+    expect(screen.getByText("本地文件暂时无法读取。")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新处理文档" }));
+    expect(await screen.findByText("正在提取文档正文")).toBeVisible();
+    expect(
+      await screen.findByText("重试后恢复的正文", {}, { timeout: 6_000 }),
     ).toBeVisible();
+    expect(retryCalls).toBe(2);
+    expect(screen.queryByRole("button", { name: "重新处理文档" })).toBeNull();
+
+    await new Promise((resolve) => window.setTimeout(resolve, 2_200));
+    expect(terminalJobCalls).toBe(1);
   });
 
   it("取消或关闭确认对话框不发删除请求，并将焦点恢复到删除入口", async () => {

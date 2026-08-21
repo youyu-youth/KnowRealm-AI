@@ -447,6 +447,8 @@
           "FORMAT_MISMATCH",
           "NO_EXTRACTABLE_TEXT",
           "TEMPORARY_IO",
+          "SQLITE_BUSY",
+          "WORKER_INTERRUPTED",
           "INTERNAL_ERROR"
         ],
         "title": "ProcessingJobErrorCode",
@@ -514,6 +516,20 @@
           "retryable"
         ],
         "title": "ProcessingJobOut",
+        "type": "object"
+      },
+      "ProcessingJobRetryRequest": {
+        "properties": {
+          "record_id": {
+            "format": "uuid",
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id"
+        ],
+        "title": "ProcessingJobRetryRequest",
         "type": "object"
       },
       "ProcessingJobStatus": {
@@ -1517,6 +1533,16 @@
             },
             "description": "Not Found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -1539,6 +1565,115 @@
           }
         },
         "summary": "Get Processing Job",
+        "tags": [
+          "processing-jobs"
+        ]
+      }
+    },
+    "/api/processing-jobs/{job_id}/retries": {
+      "post": {
+        "operationId": "retry_processing_job_api_processing_jobs__job_id__retries_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessingJobRetryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessingJobOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Retry Processing Job",
         "tags": [
           "processing-jobs"
         ]

@@ -17,4 +17,13 @@ export const documentImportApi = {
   },
   getJob: (jobId: string) =>
     apiFetch<ProcessingJobOut>(`/api/processing-jobs/${jobId}`),
+  retry(jobId: string, recordId: string) {
+    const body: components["schemas"]["ProcessingJobRetryRequest"] = {
+      record_id: recordId,
+    };
+    return apiFetch<ProcessingJobOut>(`/api/processing-jobs/${jobId}/retries`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
 };

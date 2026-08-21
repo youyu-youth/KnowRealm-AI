@@ -1,9 +1,13 @@
 import asyncio
+import errno
+import threading
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from io import BytesIO
+from datetime import UTC, datetime, timedelta
+from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 from zipfile import ZipFile
 
@@ -13,10 +17,13 @@ import pymupdf
 import pytest
 from docx import Document
 from fastapi import FastAPI
+from loguru import logger
 from sqlalchemy import text
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
+from app.models.document import ProcessingJob
+from app.services.processing_job_service import ProcessingJobService
 
 TOKEN = "test-launch-token"
 
@@ -39,7 +46,7 @@ async def wait_for_terminal_job(
     client: httpx.AsyncClient,
     job_id: str,
 ) -> dict[str, object]:
-    for _ in range(100):
+    for _ in range(250):
         response = await client.get(f"/api/processing-jobs/{job_id}")
         assert response.status_code == 200
         job = response.json()
@@ -278,6 +285,455 @@ async def test_deterministic_parse_failures_expose_only_stable_codes(tmp_path: P
             }
             assert record.json()["status"] == "FAILED"
             assert transcript.json() == {"status": "NOT_READY", "transcript": None}
+
+
+@pytest.mark.anyio
+async def test_temporary_io_retries_twice_then_succeeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    clock = [datetime(2026, 8, 21, tzinfo=UTC)]
+
+    def fail_twice(path: Path) -> str:
+        nonlocal calls
+        calls += 1
+        if calls < 3:
+            raise BlockingIOError(errno.EAGAIN, "temporary read failure")
+        return path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        "app.services.document_worker.extract_document_text",
+        fail_twice,
+    )
+    monkeypatch.setattr("app.services.document_worker.utcnow", lambda: clock[0])
+    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "自动恢复",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        accepted = await client.post(
+            "/api/document-imports",
+            data={"course_id": course.json()["id"]},
+            files={"file": ("recover.txt", b"recovered", "text/plain")},
+        )
+        job_id = accepted.json()["job_id"]
+
+        first_retry = None
+        for _ in range(100):
+            first_retry = (await client.get(f"/api/processing-jobs/{job_id}")).json()
+            if first_retry["status"] == "PENDING" and first_retry["attempts"] == 1:
+                break
+            await asyncio.sleep(0.01)
+
+        async with app.state.session_factory() as session:
+            first_job = await session.get(ProcessingJob, job_id)
+        assert first_job is not None
+        assert first_job.next_run_at is not None
+        assert first_job.next_run_at.replace(tzinfo=UTC) == clock[0] + timedelta(seconds=1)
+        clock[0] += timedelta(seconds=1)
+
+        second_retry = None
+        for _ in range(100):
+            second_retry = (await client.get(f"/api/processing-jobs/{job_id}")).json()
+            if second_retry["status"] == "PENDING" and second_retry["attempts"] == 2:
+                break
+            await asyncio.sleep(0.01)
+        async with app.state.session_factory() as session:
+            second_job = await session.get(ProcessingJob, job_id)
+        assert second_job is not None
+        assert second_job.next_run_at is not None
+        assert second_job.next_run_at.replace(tzinfo=UTC) == clock[0] + timedelta(seconds=2)
+        clock[0] += timedelta(seconds=2)
+
+        terminal = await wait_for_terminal_job(client, job_id)
+        transcript = await client.get(f"/api/records/{accepted.json()['record_id']}/transcript")
+
+    assert first_retry is not None
+    assert first_retry["status"] == "PENDING"
+    assert first_retry["attempts"] == 1
+    assert second_retry is not None
+    assert second_retry["status"] == "PENDING"
+    assert second_retry["attempts"] == 2
+    assert terminal["status"] == "SUCCEEDED"
+    assert terminal["attempts"] == 3
+    assert transcript.json()["transcript"]["content"] == "recovered"
+
+
+@pytest.mark.anyio
+async def test_exhausted_temporary_failure_can_retry_same_job_and_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def fail_first_round(path: Path) -> str:
+        nonlocal calls
+        calls += 1
+        if calls <= 3:
+            raise BlockingIOError(errno.EAGAIN, "temporary read failure")
+        return path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        "app.services.document_worker.extract_document_text",
+        fail_first_round,
+    )
+    data_dir = tmp_path / "KnowRealm"
+    async with running_document_app(data_dir) as (_, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "手动恢复",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        accepted = await client.post(
+            "/api/document-imports",
+            data={"course_id": course.json()["id"]},
+            files={"file": ("recover.txt", b"same source", "text/plain")},
+        )
+        body = accepted.json()
+        exhausted = await wait_for_terminal_job(client, body["job_id"])
+        failed_record = await client.get(f"/api/records/{body['record_id']}")
+
+        retry = await client.post(
+            f"/api/processing-jobs/{body['job_id']}/retries",
+            json={"record_id": body["record_id"]},
+        )
+        succeeded = await wait_for_terminal_job(client, body["job_id"])
+        recovered_record = await client.get(f"/api/records/{body['record_id']}")
+        transcript = await client.get(f"/api/records/{body['record_id']}/transcript")
+
+    assert exhausted["status"] == "FAILED"
+    assert exhausted["attempts"] == 3
+    assert exhausted["retryable"] is True
+    assert failed_record.json()["status"] == "FAILED"
+    assert retry.status_code == 202
+    assert retry.json()["id"] == body["job_id"]
+    assert retry.json()["record_id"] == body["record_id"]
+    assert retry.json()["attempts"] == 0
+    assert retry.json()["error_code"] is None
+    assert succeeded["status"] == "SUCCEEDED"
+    assert succeeded["attempts"] == 1
+    assert recovered_record.json()["status"] == "SUMMARY_PENDING"
+    assert transcript.json()["transcript"]["content"] == "same source"
+    assert len(list((data_dir / "files" / body["record_id"]).iterdir())) == 1
+
+
+@pytest.mark.anyio
+async def test_restart_recovers_running_jobs_and_keeps_archived_course_transcript(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [datetime(2026, 8, 21, tzinfo=UTC)]
+    monkeypatch.setattr("app.services.document_worker.utcnow", lambda: clock[0])
+    data_dir = tmp_path / "KnowRealm"
+    async with running_document_app(data_dir) as (_, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "重启恢复",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        accepted: list[dict[str, str]] = []
+        for filename, content in (
+            ("resume.txt", b"resume after restart"),
+            ("exhausted.txt", b"manual retry required"),
+        ):
+            response = await client.post(
+                "/api/document-imports",
+                data={"course_id": course.json()["id"]},
+                files={"file": (filename, content, "text/plain")},
+            )
+            accepted.append(cast(dict[str, str], response.json()))
+        for item in accepted:
+            assert (await wait_for_terminal_job(client, item["job_id"]))["status"] == ("SUCCEEDED")
+
+    async with aiosqlite.connect(data_dir / "knowrealm.db") as connection:
+        await connection.execute("PRAGMA foreign_keys=ON")
+        await connection.execute(
+            "UPDATE courses SET status = 'ARCHIVED' WHERE id = ?",
+            (course.json()["id"],),
+        )
+        for attempts, item in zip((1, 3), accepted, strict=True):
+            await connection.execute(
+                "DELETE FROM transcripts WHERE record_id = ?",
+                (item["record_id"],),
+            )
+            await connection.execute(
+                "UPDATE records SET status = 'CONTENT_PROCESSING' WHERE id = ?",
+                (item["record_id"],),
+            )
+            await connection.execute(
+                "UPDATE processing_jobs SET status = 'RUNNING', attempts = ?, "
+                "error_code = NULL, error_message = NULL, next_run_at = NULL, "
+                "finished_at = NULL WHERE id = ?",
+                (attempts, item["job_id"]),
+            )
+        await connection.commit()
+
+    async with running_document_app(data_dir) as (app, client):
+        async with app.state.session_factory() as session:
+            pending_job = await session.get(ProcessingJob, accepted[0]["job_id"])
+        assert pending_job is not None
+        assert pending_job.status == "PENDING"
+        assert pending_job.next_run_at is not None
+        assert pending_job.next_run_at.replace(tzinfo=UTC) == clock[0] + timedelta(seconds=2)
+        clock[0] += timedelta(seconds=2)
+        resumed = await wait_for_terminal_job(client, accepted[0]["job_id"])
+        resumed_record = await client.get(f"/api/records/{accepted[0]['record_id']}")
+        transcript = await client.get(f"/api/records/{accepted[0]['record_id']}/transcript")
+        exhausted = await wait_for_terminal_job(client, accepted[1]["job_id"])
+        exhausted_record = await client.get(f"/api/records/{accepted[1]['record_id']}")
+
+    assert resumed["status"] == "SUCCEEDED"
+    assert resumed["attempts"] == 2
+    assert resumed_record.json()["status"] == "SUMMARY_PENDING"
+    assert transcript.json()["transcript"]["content"] == "resume after restart"
+    assert exhausted["status"] == "FAILED"
+    assert exhausted["attempts"] == 3
+    assert exhausted["error_code"] == "WORKER_INTERRUPTED"
+    assert exhausted["retryable"] is True
+    assert exhausted_record.json()["status"] == "FAILED"
+
+
+@pytest.mark.anyio
+async def test_sqlite_busy_requeues_running_job_without_stopping_worker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parser_started = threading.Event()
+    continue_parse = threading.Event()
+    parse_calls = 0
+
+    def gated_parse(path: Path) -> str:
+        nonlocal parse_calls
+        parse_calls += 1
+        parser_started.set()
+        if not continue_parse.wait(timeout=10):
+            raise OSError("test parser gate timed out")
+        return path.read_text(encoding="utf-8")
+
+    monkeypatch.setattr(
+        "app.services.document_worker.extract_document_text",
+        gated_parse,
+    )
+    data_dir = tmp_path / "KnowRealm"
+    async with running_document_app(data_dir) as (_, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "SQLite 恢复",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        accepted = await client.post(
+            "/api/document-imports",
+            data={"course_id": course.json()["id"]},
+            files={"file": ("busy.txt", b"busy recovered", "text/plain")},
+        )
+        body = accepted.json()
+        assert await asyncio.to_thread(parser_started.wait, 2)
+
+        lock = await aiosqlite.connect(data_dir / "knowrealm.db")
+        try:
+            await lock.execute("BEGIN IMMEDIATE")
+            continue_parse.set()
+            await asyncio.sleep(7)
+            await lock.rollback()
+        finally:
+            await lock.close()
+
+        terminal = await wait_for_terminal_job(client, body["job_id"])
+        transcript = await client.get(f"/api/records/{body['record_id']}/transcript")
+
+    assert terminal["status"] == "SUCCEEDED"
+    assert terminal["attempts"] == 2
+    assert parse_calls == 2
+    assert transcript.json()["transcript"]["content"] == "busy recovered"
+
+
+@pytest.mark.anyio
+async def test_manual_retry_rejects_invalid_jobs_without_partial_updates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_document_app(data_dir) as (app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "非法重试",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        failed: list[dict[str, str]] = []
+        for index in range(3):
+            accepted = await client.post(
+                "/api/document-imports",
+                data={"course_id": course.json()["id"]},
+                files={"file": (f"fake-{index}.pdf", b"not a pdf", "application/pdf")},
+            )
+            failed.append(cast(dict[str, str], accepted.json()))
+        for item in failed:
+            assert (await wait_for_terminal_job(client, item["job_id"]))["status"] == ("FAILED")
+
+        succeeded = await client.post(
+            "/api/document-imports",
+            data={"course_id": course.json()["id"]},
+            files={"file": ("done.txt", b"done", "text/plain")},
+        )
+        succeeded_body = cast(dict[str, str], succeeded.json())
+        assert (await wait_for_terminal_job(client, succeeded_body["job_id"]))[
+            "status"
+        ] == "SUCCEEDED"
+
+        deterministic = await client.post(
+            f"/api/processing-jobs/{failed[0]['job_id']}/retries",
+            json={"record_id": failed[0]["record_id"]},
+        )
+        mismatch = await client.post(
+            f"/api/processing-jobs/{failed[0]['job_id']}/retries",
+            json={"record_id": failed[1]["record_id"]},
+        )
+        invalid_record_id = await client.post(
+            f"/api/processing-jobs/{failed[0]['job_id']}/retries",
+            json={"record_id": "not-a-uuid"},
+        )
+        non_failed = await client.post(
+            f"/api/processing-jobs/{succeeded_body['job_id']}/retries",
+            json={"record_id": succeeded_body["record_id"]},
+        )
+
+        assert (await client.delete(f"/api/records/{failed[1]['record_id']}")).status_code == 204
+        deleted_record = await client.post(
+            f"/api/processing-jobs/{failed[1]['job_id']}/retries",
+            json={"record_id": failed[1]["record_id"]},
+        )
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE processing_jobs SET error_code = 'SQLITE_BUSY' WHERE id = :job_id"),
+                {"job_id": failed[2]["job_id"]},
+            )
+        busy_failure = await client.get(f"/api/processing-jobs/{failed[2]['job_id']}")
+        release_parse = threading.Event()
+
+        def gated_retry(_path: Path) -> str:
+            if not release_parse.wait(timeout=5):
+                raise TimeoutError("test retry parser gate timed out")
+            return "retried once"
+
+        monkeypatch.setattr(
+            "app.services.document_worker.extract_document_text",
+            gated_retry,
+        )
+        concurrent_retries = await asyncio.gather(
+            client.post(
+                f"/api/processing-jobs/{failed[2]['job_id']}/retries",
+                json={"record_id": failed[2]["record_id"]},
+            ),
+            client.post(
+                f"/api/processing-jobs/{failed[2]['job_id']}/retries",
+                json={"record_id": failed[2]["record_id"]},
+            ),
+        )
+        release_parse.set()
+        assert sorted(response.status_code for response in concurrent_retries) == [202, 409]
+        await wait_for_terminal_job(client, failed[2]["job_id"])
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE processing_jobs SET status = 'CANCELLED' WHERE id = :job_id"),
+                {"job_id": failed[2]["job_id"]},
+            )
+        cancelled = await client.post(
+            f"/api/processing-jobs/{failed[2]['job_id']}/retries",
+            json={"record_id": failed[2]["record_id"]},
+        )
+
+        unchanged_failed = await client.get(f"/api/processing-jobs/{failed[0]['job_id']}")
+        unchanged_succeeded = await client.get(f"/api/processing-jobs/{succeeded_body['job_id']}")
+        unchanged_cancelled = await client.get(f"/api/processing-jobs/{failed[2]['job_id']}")
+
+    assert deterministic.status_code == 409
+    assert mismatch.status_code == 409
+    assert invalid_record_id.status_code == 422
+    assert non_failed.status_code == 409
+    assert deleted_record.status_code == 404
+    assert cancelled.status_code == 409
+    assert unchanged_failed.json()["status"] == "FAILED"
+    assert unchanged_failed.json()["attempts"] == 1
+    assert unchanged_succeeded.json()["status"] == "SUCCEEDED"
+    assert busy_failure.json()["error_code"] == "SQLITE_BUSY"
+    assert busy_failure.json()["retryable"] is True
+    assert unchanged_cancelled.json()["status"] == "CANCELLED"
+
+
+@pytest.mark.anyio
+async def test_unexpected_io_and_parser_errors_are_not_retryable_or_logged(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+    logs = StringIO()
+    sink_id = logger.add(logs, format="{message} {extra}", level="ERROR")
+
+    def fail_unexpected(_path: Path) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise FileNotFoundError("private-source-path")
+        raise RuntimeError("private-document-content")
+
+    monkeypatch.setattr(
+        "app.services.document_worker.extract_document_text",
+        fail_unexpected,
+    )
+    try:
+        async with running_document_app(tmp_path / "KnowRealm") as (_, client):
+            course = await client.post(
+                "/api/courses",
+                json={
+                    "name": "不可恢复错误",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+            )
+            jobs: list[dict[str, str]] = []
+            for index in range(2):
+                accepted = await client.post(
+                    "/api/document-imports",
+                    data={"course_id": course.json()["id"]},
+                    files={"file": (f"private-{index}.txt", b"private", "text/plain")},
+                )
+                jobs.append(cast(dict[str, str], accepted.json()))
+            failures = [await wait_for_terminal_job(client, item["job_id"]) for item in jobs]
+
+            async def fail_job_query(*_args: object) -> None:
+                raise RuntimeError("private-job-query-stack")
+
+            monkeypatch.setattr(ProcessingJobService, "get", fail_job_query)
+            failed_query = await client.get(f"/api/processing-jobs/{jobs[0]['job_id']}")
+    finally:
+        logger.remove(sink_id)
+
+    assert all(failure["status"] == "FAILED" for failure in failures)
+    assert all(failure["attempts"] == 1 for failure in failures)
+    assert all(failure["error_code"] == "INTERNAL_ERROR" for failure in failures)
+    assert all(failure["retryable"] is False for failure in failures)
+    assert failed_query.status_code == 500
+    assert "private-source-path" not in logs.getvalue()
+    assert "private-document-content" not in logs.getvalue()
+    assert "private-job-query-stack" not in logs.getvalue()
 
 
 @pytest.mark.anyio
