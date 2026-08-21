@@ -607,9 +607,7 @@ async def test_record_delete_cancels_only_nonterminal_jobs(tmp_path: Path) -> No
             ("job-succeeded", "SUCCEEDED"),
         ]
         assert all(
-            job.finished_at is not None
-            for job in jobs
-            if job.id in {"job-pending", "job-running"}
+            job.finished_at is not None for job in jobs if job.id in {"job-pending", "job-running"}
         )
 
 
@@ -747,8 +745,10 @@ async def test_deleting_course_soft_deletes_its_records_in_one_transaction(
                 )
             ).all()
             job_statuses = (
-                await session.execute(text("SELECT status FROM processing_jobs ORDER BY id"))
-            ).scalars().all()
+                (await session.execute(text("SELECT status FROM processing_jobs ORDER BY id")))
+                .scalars()
+                .all()
+            )
         assert course_deleted_at is not None
         assert record_tombstones == [
             (course_deleted_at, course_deleted_at),

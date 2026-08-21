@@ -18,9 +18,7 @@ async def cancel_nonterminal_jobs(
         update(ProcessingJob)
         .where(
             record_filter,
-            ProcessingJob.status.in_(
-                (ProcessingJobStatus.PENDING, ProcessingJobStatus.RUNNING)
-            ),
+            ProcessingJob.status.in_((ProcessingJobStatus.PENDING, ProcessingJobStatus.RUNNING)),
         )
         .values(
             status=ProcessingJobStatus.CANCELLED,

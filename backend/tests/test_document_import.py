@@ -906,7 +906,7 @@ async def test_deleted_job_is_rechecked_after_claim_before_parsing(
     claimed = asyncio.Event()
     continue_after_delete = asyncio.Event()
     parser_calls = 0
-    original_claim = DocumentWorker._claim_one
+    original_claim = DocumentWorker._claim_one  # pyright: ignore[reportPrivateUsage]
 
     async def gated_claim(worker: DocumentWorker) -> tuple[str, str, Path] | None:
         result = await original_claim(worker)
@@ -973,7 +973,7 @@ async def test_delete_after_parse_before_commit_discards_result(
 ) -> None:
     parsed = asyncio.Event()
     continue_commit = asyncio.Event()
-    original_succeed = DocumentWorker._succeed
+    original_succeed = DocumentWorker._succeed  # pyright: ignore[reportPrivateUsage]
 
     async def gated_succeed(
         worker: DocumentWorker,
