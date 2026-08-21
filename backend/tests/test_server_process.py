@@ -5,6 +5,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -186,6 +187,110 @@ def test_real_process_imports_document_and_reads_it_after_restart(tmp_path: Path
             assert stored_files[0].read_bytes() == "# 第一讲\n进程与线程".encode()
     finally:
         stop_process_tree(restarted)
+
+
+def test_real_process_restart_keeps_recent_tombstone_and_purges_expired_assets(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    first_token = secrets.token_urlsafe(32)
+    first = start_sidecar(data_dir, first_token)
+    try:
+        wait_for_sidecar(first, first_token)
+    finally:
+        stop_process_tree(first)
+
+    db_path = data_dir / "knowrealm.db"
+    course_id = "11111111-1111-4111-8111-111111111111"
+    expired_record_id = "22222222-2222-4222-8222-222222222222"
+    recent_record_id = "33333333-3333-4333-8333-333333333333"
+    expired_file_id = "44444444-4444-4444-8444-444444444444"
+    recent_file_id = "55555555-5555-4555-8555-555555555555"
+    expired_job_id = "66666666-6666-4666-8666-666666666666"
+    recent_job_id = "77777777-7777-4777-8777-777777777777"
+    now = datetime.now(UTC)
+    current = now.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    expired_at = (now - timedelta(days=31)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    recent_at = (now - timedelta(days=29)).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    for record_id, body in (
+        (expired_record_id, b"expired"),
+        (recent_record_id, b"recent"),
+    ):
+        record_dir = data_dir / "files" / record_id
+        record_dir.mkdir(parents=True)
+        (record_dir / "source.txt").write_bytes(body)
+
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.executescript(
+            f"""
+            INSERT INTO courses (
+                id, name, learning_context, education_stage, depth,
+                course_type, description, hot_words, status,
+                created_at, updated_at, deleted_at
+            ) VALUES (
+                '{course_id}', '删除清理重启', 'INTEREST', NULL, 'BEGINNER',
+                NULL, NULL, NULL, 'ACTIVE', '{current}', '{current}', NULL
+            );
+            INSERT INTO records (
+                id, course_id, capture_type, title, status, duration_ms,
+                summary_confirmed_at, created_at, updated_at, deleted_at
+            ) VALUES
+                ('{expired_record_id}', '{course_id}', 'DOCUMENT_IMPORT', '已到期',
+                 'CONTENT_PROCESSING', 0, NULL, '{current}', '{current}', '{expired_at}'),
+                ('{recent_record_id}', '{course_id}', 'DOCUMENT_IMPORT', '未到期',
+                 'CONTENT_PROCESSING', 0, NULL, '{current}', '{current}', '{recent_at}');
+            INSERT INTO record_files (
+                id, record_id, file_type, source_type, file_path, original_name,
+                mime_type, file_size, duration_ms, sequence_no, content_hash,
+                created_at, updated_at, deleted_at
+            ) VALUES
+                ('{expired_file_id}', '{expired_record_id}', 'DOCUMENT', 'UPLOADED',
+                 'files/{expired_record_id}/source.txt', 'expired.txt', 'text/plain', 7,
+                 NULL, 0, 'expired-hash', '{current}', '{current}', NULL),
+                ('{recent_file_id}', '{recent_record_id}', 'DOCUMENT', 'UPLOADED',
+                 'files/{recent_record_id}/source.txt', 'recent.txt', 'text/plain', 6,
+                 NULL, 0, 'recent-hash', '{current}', '{current}', NULL);
+            INSERT INTO processing_jobs (
+                id, record_id, job_type, status, progress, attempts, max_attempts,
+                next_run_at, input_json, result_json, error_code, error_message,
+                started_at, finished_at, created_at, updated_at
+            ) VALUES
+                ('{expired_job_id}', '{expired_record_id}', 'DOCUMENT_PARSE', 'CANCELLED',
+                 0, 1, 3, NULL, '{{}}', NULL, NULL, NULL, '{current}', '{current}',
+                 '{current}', '{current}'),
+                ('{recent_job_id}', '{recent_record_id}', 'DOCUMENT_PARSE', 'CANCELLED',
+                 0, 1, 3, NULL, '{{}}', NULL, NULL, NULL, '{current}', '{current}',
+                 '{current}', '{current}');
+            """
+        )
+
+    token = secrets.token_urlsafe(32)
+    restarted = start_sidecar(data_dir, token)
+    try:
+        base_url, _ = wait_for_sidecar(restarted, token)
+        with httpx.Client(
+            base_url=base_url,
+            headers={"X-KnowRealm-Token": token},
+            trust_env=False,
+        ) as client:
+            assert client.get(f"/api/records/{expired_record_id}").status_code == 404
+            assert client.get(f"/api/records/{recent_record_id}").status_code == 404
+    finally:
+        stop_process_tree(restarted)
+
+    with sqlite3.connect(db_path) as connection:
+        assert (
+            connection.execute(
+                "SELECT id FROM records WHERE id = ?", (expired_record_id,)
+            ).fetchone()
+            is None
+        )
+        assert connection.execute(
+            "SELECT status, attempts FROM processing_jobs WHERE id = ?", (recent_job_id,)
+        ).fetchone() == ("CANCELLED", 1)
+    assert not (data_dir / "files" / expired_record_id).exists()
+    assert (data_dir / "files" / recent_record_id / "source.txt").read_bytes() == b"recent"
 
 
 def test_real_process_recovers_running_document_job_after_crash(tmp_path: Path) -> None:
