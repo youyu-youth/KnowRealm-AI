@@ -381,18 +381,18 @@ class DocumentCleanupService:
             )
         for candidate in candidates:
             record_id = candidate.name
+            async with session_factory() as session:
+                record_exists = (
+                    await session.execute(select(Record.id).where(Record.id == record_id))
+                ).scalar_one_or_none()
+            if record_exists is not None:
+                continue
             if record_id in active_targets:
                 logger.error(
                     "document_cleanup_active_path",
                     error_code="DOCUMENT_CLEANUP_ACTIVE_PATH",
                     record_id=record_id,
                 )
-                continue
-            async with session_factory() as session:
-                record_exists = (
-                    await session.execute(select(Record.id).where(Record.id == record_id))
-                ).scalar_one_or_none()
-            if record_exists is not None:
                 continue
             staged_record = cleanup_root / record_id
             staged_dir = staged_record / "files" / record_id
