@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-human
+**Status:** completed
 
 - [x] 现有顶部导入对话框在本票据支持一次选择一个 MP3、AAC、WAV 或 M4A；纯音频可不选课程，也可绑定 ACTIVE 课程，取消或关闭不创建业务数据，多来源选择留给 02。
 - [x] 单音频 Record 标题由服务端取文件名 stem，capture_type=AUDIO_IMPORT，来源顺序固定为 sequence_no=0；请求不新增标题输入或自定义排序。
@@ -52,5 +52,7 @@
 - 真实 sidecar / socket / ffmpeg / 重启持久化：真实进程自动化通过；腾讯只在 HTTP transport 边界使用官方响应形状替身。
 - 桌面组件：Vitest/MSW 39/39、Cargo 4/4 通过。
 - 双轴审查：固定起点 `3702706`，Standards PASS，Spec PASS。
-- 未执行：真实腾讯 P0、真实 Tauri Network/渲染；磁盘不足场景按用户明确决定不测试。
+- 人工验收：用户在真实 Tauri 中确认录音文件可正常导入，并通过真实腾讯 ASR 生成 Transcript；据此明确接受并关闭 01。
+- 未单独验证：真实腾讯任务中途重启恢复与片边界正文、Tauri DevTools 启动令牌证据及完整主题/焦点/溢出专项检查；这些未验证边界不冒充为已完成 checklist。
+- 磁盘不足场景按用户明确决定不测试。
 - 02 承接：多来源、录音 staging 与批次级孤儿清理。
