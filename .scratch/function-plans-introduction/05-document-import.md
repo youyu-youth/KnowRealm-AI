@@ -19,7 +19,7 @@
 
 **不做**：
 - DOC、PPT/PPTX、OCR、网页剪藏（P2）
-- 多文件、音频+文档混合与 SSE（移交 04）
+- 封口 Capture Batch、多文件、音频+文档混合与 Record 级 SSE（移交 04）
 - 未选课文档与 Inbox 可达性（移交 11）
 - Summary Job、Provider、LangGraph 与 HITL（移交 06）
 

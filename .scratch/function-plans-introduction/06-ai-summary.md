@@ -15,7 +15,8 @@
 - 跨重启 / 隔天恢复：LangGraph interrupt + checkpointer（应用重启后未确认总结可继续处理）
 - 版本链：每次生成记录 model / prompt_version / latency / token / version_no，可回溯
 - 长转写分级：≤3 万字单次生成；超过按语义段落分块 map-reduce，禁止静默截断（#36）
-- 用户编辑转写文本后可基于新文本重新触发（编辑入口在 04）
+- 每个 Summary 绑定生成时的 `transcript_source_version`；写回前再次校验仍为当前版本
+- 用户编辑 Transcript 后旧 Summary 标记 SUPERSEDED、Record 回 SUMMARY_PENDING；仅在用户明确触发后基于新版本重新生成（编辑入口在 04）
 - SUMMARY_CONFIRMED 事件落 learning_events（幂等键，#43）
 - llm_call_logs 埋点接入（本 plan 首个消费者，工厂层统一埋点）
 - 总结质量黄金样本 20 条 + 人工评审 checklist 建立（含长转写回归样本，#46）
@@ -32,7 +33,8 @@ Transcript 已存在 + Record=SUMMARY_PENDING + 课程 ACTIVE → SUMMARY_PROCES
 - 确认结果与版本链落业务表（ai_summaries），Checkpoint 只存运行态
 - 生成 90s 超时 → FAILED 可重试；提交 2s 内返回 job_id 且 processing_jobs 可查询（#27）
 - AI 上下文必含课程 learning_context / education_stage / depth（升级强制先归类的根因）
-- Summary Job 创建前再次校验课程仍为 ACTIVE；05 解析期间课程被归档时保留 Transcript，但不触发 AI
+- Summary Job 创建前再次校验课程仍为 ACTIVE；05/04 内容处理期间课程被归档时保留 Transcript，但不触发 AI
+- Summary 写回前比较 `transcript_source_version`；版本已变化则丢弃迟到结果，不覆盖当前 Transcript 对应的总结状态
 - prompt 版本化；prompt 与输出全文不进日志
 
 ## 前置依赖
@@ -45,3 +47,4 @@ Transcript 已存在 + Record=SUMMARY_PENDING + 课程 ACTIVE → SUMMARY_PROCES
 - [ ] 重启应用后，未确认的总结可继续确认（跨重启恢复）
 - [ ] 3 万字以上长转写无截断（黄金样本回归通过）
 - [ ] SUMMARY_CONFIRMED 事件落表且幂等键唯一
+- [ ] 生成期间 Transcript 版本变化时迟到 Summary 不写回；显式重生成的新 Summary 正确绑定新 source_version

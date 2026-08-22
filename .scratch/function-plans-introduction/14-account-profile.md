@@ -10,7 +10,7 @@
 
 **做**：
 - 档案：昵称、头像（数据目录本地文件）、角色 primary_role 四选一 + about_me（≤200 字）——本地 profile 表，随时可改（#52）
-- 供应商卡（/api/providers）：DashScope 预设 / 自定义 OpenAI 兼容端点（base_url + key + model）/ 腾讯云 ASR；CRUD + 连接测试；密钥存 config/providers.json（明文，#11）
+- 供应商卡（/api/providers）：DashScope 预设 / 自定义 OpenAI 兼容端点（base_url + key + model）/ 腾讯云 ASR；CRUD + 连接测试；密钥存 config/providers.json（明文，#11）。腾讯 key 配置与 External Processing Consent 分立
 - 数据目录管理：打开数据目录 / 更改数据目录（停写 → 移动 → 重启）
 - 全量导出：zip（db 快照 + files + config；默认不含密钥，可选勾选含）
 - 从导出包导入：换机恢复（新机首启选空目录 → 导入校验落位，§6.4）
@@ -31,6 +31,7 @@
 - LLM 可自选任意 OpenAI 兼容端点，DashScope 为默认预设（#55）；Embedding V1 固定
 - 导出默认不含 providers.json；勾选含密钥时明示明文风险（#11）
 - 数据目录是唯一事实源，同一时刻不可双写（更改目录必须经停写-移动-重启）
+- 连接测试不得暗示或代替 ASR 外发同意；首次实际发送转码音频片段前仍由 04 独立告知并取同意
 
 ## 前置依赖
 

@@ -6,10 +6,10 @@
 
 | 依赖 | 基线 | 说明 |
 |---|---|---|
-| React | **19.x**（当前 19.2.x） | 已定稿（2026-08 裁决）：React 18 已停止主动开发（仅安全补丁），19.2 稳定近两年、生态全兼容；技术栈 v4.2 基线已同步 |
-| TypeScript | **~5.8**（strict） | 技术栈 v4.2 定稿基线；6.0/7.0（Go 原生重写）属编译器架构更换，待生态工具链验证后再评估 |
-| Vite | **7.x** | 技术栈 v4.2 定稿基线；配套 Vitest 3.x |
-| TanStack Router | v1 | **file-based routing**（页面放 `pages/`，路由树由生成器维护——技术栈 v4.2 D2） |
+| React | **19.x**（当前 19.2.x） | 已定稿（2026-08 裁决）：React 18 已停止主动开发（仅安全补丁），19.2 稳定近两年、生态全兼容；技术栈 v4.3 基线已同步 |
+| TypeScript | **~5.8**（strict） | 技术栈 v4.3 定稿基线；6.0/7.0（Go 原生重写）属编译器架构更换，待生态工具链验证后再评估 |
+| Vite | **7.x** | 技术栈 v4.3 定稿基线；配套 Vitest 3.x |
+| TanStack Router | v1 | **file-based routing**（页面放 `pages/`，路由树由生成器维护——技术栈 v4.3 D2） |
 | i18next + react-i18next | 最新稳定 | V1 仅中文 |
 | Vitest + Testing Library | **3.x** | Vite 7 配套线（4.x 面向 Vite 8） |
 
@@ -58,17 +58,18 @@ import { RecordCard } from "@/features/records/components/RecordCard";
 - 依赖数组交给 ESLint 检查，**禁止关闭 `react-hooks/exhaustive-deps`**，确实无需依赖时写注释说明原因。
 
 ```tsx
-// ✅ 自定义 hook：封装"录音状态轮询"这类可复用逻辑
+// ✅ plan 05 在 SSE 接入前的内容处理条件轮询
 function useRecordStatus(recordId: string) {
   return useQuery({
     queryKey: recordKeys.detail(recordId),
     queryFn: () => recordApi.get(recordId),
-    refetchInterval: (q) => (q.state.data?.status === "DONE" ? false : 3000),
+    refetchInterval: (q) =>
+      q.state.data?.status === "CONTENT_PROCESSING" ? 2000 : false,
   });
 }
 ```
 
-- **状态刷新最终以 SSE 事件推送为主、轮询为兜底**（功能需求基线 v2.2 §4.3.4）：sidecar 进程内事件经 SSE 推送 `records.status` / `processing_jobs` 变更，收到后触发 `invalidateQueries`（见 desktop-state.md §4.2）。阶段例外：plan 05 在 plan 04 接入 SSE 前，可对 PENDING/RUNNING 文档任务使用 `refetchInterval` 条件轮询；终态立即停止，不能扩张成全局常驻轮询。
+- **Record 级 SSE 只发失效通知，REST/SQLite 是事实源**（功能需求基线 v2.3 §4.3.4）：收到事件、重连或窗口恢复后触发 `invalidateQueries` 并重取 Record/Jobs（见 desktop-state.md §4.2）；SSE 断线时仅非终态 Record 每 2 秒条件轮询，终态立即停止，不做事件重放。阶段例外：plan 05 在 plan 04 接入 SSE 前可直接使用同一条件轮询。
 
 ## 3. TypeScript 规范
 
@@ -78,7 +79,7 @@ function useRecordStatus(recordId: string) {
 
 ```ts
 // ❌ status: string —— 什么都能塞进去
-// ✅ 状态机字面量联合（八态，功能需求基线 v2.2 §4.3.4；v1.x UPLOADING 随云端上传环节消解）
+// ✅ 状态机字面量联合（八态，功能需求基线 v2.3 §4.3.4；v1.x UPLOADING 随云端上传环节消解）
 type RecordStatus =
   | "NOTE" | "DRAFT" | "CONTENT_PROCESSING"
   | "SUMMARY_PENDING" | "SUMMARY_PROCESSING" | "SUMMARY_READY"
@@ -126,7 +127,7 @@ declare module "@tanstack/react-router" {
 
 - 用户可见文案**一律 `t("key")`**，禁止硬编码中文字符串（含 placeholder、toast、确认弹窗）。
 - key 按 `feature.元素.用途` 分层：`record.list.emptyTitle`。
-- **术语约定（功能需求基线 v2.2 §1.2）**：UI 文案以"**学习会话 / 学习记录**"泛称（覆盖课堂、技术分享、培训、自学），代码与数据实体仍为 Record——不写"上课/课堂"这种窄化措辞（学业场景文案除外）。
+- **术语约定（功能需求基线 v2.3 §1.2）**：UI 文案以"**学习会话 / 学习记录**"泛称（覆盖课堂、技术分享、培训、自学），代码与数据实体仍为 Record——不写"上课/课堂"这种窄化措辞（学业场景文案除外）。
 
 ```tsx
 const { t } = useTranslation();

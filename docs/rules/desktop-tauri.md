@@ -138,9 +138,9 @@ pub fn keep_awake(_on: bool) -> anyhow::Result<()> { Ok(()) }
 
 ## 5. 数据目录访问边界（无本地 SQLite）
 
-- **UI 不直连数据库**（不引入 tauri-plugin-sql）：一切业务读写经 localhost sidecar API——sidecar 是 knowrealm.db 唯一写者（红线 #35，技术栈 v4.2 D1）。同一数据目录的第二个 sidecar 必须在迁移/worker 前因 OS 排他锁失败而退出；壳把“数据目录正在使用”作为可理解的启动错误展示，不能自动换目录或绕过锁。
+- **UI 不直连数据库**（不引入 tauri-plugin-sql）：一切业务读写经 localhost sidecar API——sidecar 是 knowrealm.db 唯一写者（红线 #35，技术栈 v4.3 D1）。同一数据目录的第二个 sidecar 必须在迁移/worker 前因 OS 排他锁失败而退出；壳把“数据目录正在使用”作为可理解的启动错误展示，不能自动换目录或绕过锁。
 - React/Tauri 对数据目录的直写**仅限录音分片落盘**（`cache/staging/`，防中断全损的暂存件）——这是唯一例外，且不是业务数据；会话与分片清单事实由 sidecar 写 `recording_sessions`（`chunk_paths`），前端不维护第二份。
-- sidecar 二进制（PyInstaller 产物）与 ffmpeg 经 `externalBin` 随包打进 `.msi`；壳用 shell 插件拉起/看护 sidecar（随机端口经启动参数注入，UI 从壳读取——技术栈 v4.2 §十）。
+- sidecar 二进制与可审计 LGPL-compatible ffmpeg 经 `externalBin` 随包打进 `.msi`；生产禁止读取系统 PATH。壳用 shell 插件拉起/看护 sidecar（随机端口经启动参数注入，UI 从壳读取——技术栈 v4.3 §十）。
 
 ## 6. 录音链路（项目最关键的原生协同）
 
@@ -152,9 +152,9 @@ WebView: getUserMedia → MediaRecorder(webm/opus)
 ```
 
 规则：
-- **无上传环节**：结束后合并注册 record_files → sidecar 本地 ffmpeg 转 **`ogg-opus`（16kHz 重采样）**（腾讯云 ASR 不支持 webm 容器，此转码环节不可省略）；**存档原件 = 转码后 ogg-opus（files/）**，webm 分片为中间产物，转码成功即删（cache/）；
-- 转码在 sidecar worker 任务内做（前端不做格式转换；ffmpeg 为随包本地二进制，经 `asyncio.create_subprocess_exec` 调用）；
-- 录音会话状态（进行中/分片数）在 Zustand，会话与分片清单事实在 `recording_sessions`（sidecar 写，数据模型 v2.1 §4.2），两边不重复存。
+- 03 只负责 staging 分片、`recording_sessions` 恢复与 finalize；清单封口后不得追加或重排。04 负责合并、ffmpeg 转 `ogg-opus` 16kHz、原子注册最终 `record_file`，成功后才删除 WebM；
+- 转码在 sidecar worker 内经 `asyncio.create_subprocess_exec` 调用随包 ffmpeg；首次 ASR 外发须独立同意，只发送转码片段，不发送导入原件或录音 WebM；
+- 录音 UI 状态在 Zustand；会话与有序分片清单事实在 `recording_sessions`（sidecar 写，数据模型 v2.2 §4.2），两边不重复存。
 
 ## 7. Rust 代码质量
 

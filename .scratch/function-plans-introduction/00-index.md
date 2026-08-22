@@ -1,6 +1,6 @@
-# 功能计划索引（PRD v2.2 → 最小闭环拆分）
+# 功能计划索引（PRD v2.3 → 最小闭环拆分）
 
-> 生成：2026-08-16（/grill-with-docs 拆分会话产物，两轮 grilling 共识）；2026-08-17 随本地优先范式转向（决策 #55 / ADR-0001）整体回写；同日澄清实施顺序：页面与真实功能优先，取消独立 S0 / 全量 Phase 0 前置；2026-08-20 定稿文档导入边界（决策 #57）：05 单文件、06 总结、04 多文件/混合来源/SSE、11 未选课文档
+> 生成：2026-08-16（/grill-with-docs 拆分会话产物，两轮 grilling 共识）；2026-08-17 随本地优先范式转向（决策 #55 / ADR-0001）整体回写；同日澄清实施顺序：页面与真实功能优先，取消独立 S0 / 全量 Phase 0 前置；2026-08-20 定稿文档导入边界（决策 #57）；2026-08-22 定稿 Capture Batch、录音交接、随包 ffmpeg、本地 ASR 切片、隐私同意、SSE 失效通知与 Transcript 版本合同（决策 #58 / ADR-0002~0006）
 > 消费方式：每份 plan 依次走 grill 流程 `to-spec → to-tickets → implement`，结合当时代码库真实状态
 > 术语：遵循 `CONTEXT.md`（学习记录=Record、知识空间=课程统称、归类/升级/捕获）
 
@@ -19,7 +19,7 @@
 | 02 | 记录列表与详情 | A | 01 | §4.3.4 / §9.1 / §6.5 | `02-record-workspace.md` |
 | 05 | 单文件文档导入 | A | 02；按需引入最小 worker/`processing_jobs` 与数据目录排他锁 | §4.3.2 | `05-document-import.md` |
 | 06 | AI 总结与 HITL | A | 05（首闭环）或 04（后续来源）；至少一条真实来源接通；按需引入最小 Provider/日志/Checkpointer | §4.4.1 | `06-ai-summary.md` |
-| 04 | 音频导入与转写管线 | A | 02；复用 05 已落的 worker 基础 | §4.3.2 / §4.3.3 | `04-transcription.md` |
+| 04 | 音频导入与转写管线 | A | 02、05；完整出口集成已完成的 06 | §4.3.2 / §4.3.3 / §4.3.4 | `04-transcription.md` |
 | 03 | 录音捕获 | A | 02、04；录音 POC 是本 plan 首张实现票 | §4.3.1 | `03-recording.md` |
 | 07 | 知识点提取 | A | 06 | §4.4.2 | `07-knowledge-points.md` |
 | 08 | 习题生成与作答 | A | 06 | §4.4.2 | `08-quiz.md` |
@@ -43,7 +43,7 @@
 - 工作台骨架不是静态页面批量铺设：未实现入口必须禁用或进入明确的未接入状态，不使用示例数据、死按钮或假成功；课程页从真实空态开始，并在同一 plan 内接通本地数据。
 - 所有桌面页面统一遵循 `DESIGN.md` 的 Continuous Work Surface：稳定侧栏与捕获栏、Zero Card Chrome、亮/暗色、键盘焦点、无整体横向溢出及规定桌面尺寸；各功能 plan 不另起视觉体系。
 - 首个出口：真实 TXT/MD/PDF 单文件经 localhost API 落盘 → Transcript → 结构化总结 → 调整 → 确认；Provider/处理失败可恢复，`SUMMARY_READY` 跨重启可继续。
-- Wave A-0 只是一条真实 tracer bullet；DOCX 属于 05 完整出口，多文件/音频混合与 SSE 属于 04，超长文档 map-reduce 与完整黄金样本属于 06。各 plan 只按自己的出口独立宣称完成。
+- Wave A-0 只是一条真实 tracer bullet；DOCX 属于 05，封口 Capture Batch、音频/混合来源、Record 级 SSE 与 Transcript 版本编辑属于 04，超长文档 map-reduce 与完整黄金样本属于 06。各 plan 只按自己的出口独立宣称完成。
 
 ## 按需工程基础（不建独立 Phase 0 plan）
 
@@ -62,7 +62,8 @@
 
 | 事项 | 承载方式 |
 |------|---------|
-| 录音链路 POC（WebView2 节流 / 分片 / 异常恢复 / 本地 ffmpeg 转码，§11-Q6） | 03 的首张实现票；不阻塞 01/02/05/06 |
+| 录音捕获 POC（真实麦克风、最小化/隐藏/锁屏、分片连续性、强杀恢复，§11-Q6） | 03 的首张实现票；不阻塞 01/02/05/06 |
+| 音频处理 P0（随包 ffmpeg、真实腾讯请求、`<5MB` 切片、边界文本、重启恢复） | 04 的首张实现票；不依赖 03，可用真实导入音频验证 |
 | sidecar 打包冒烟（PyInstaller 体积 / 杀毒误报 / 冷启动，§11-Q14） | 首次可分发 `.msi` 的准入条件；不与录音 POC 捆绑 |
 
 ## 首个 Provider 切片与验证节奏
@@ -78,7 +79,7 @@
 | 横切能力 | 承载 plan |
 |---------|----------|
 | learning_events 四事件（#43） | SUMMARY_CONFIRMED→06 / KNOWLEDGE_CONFIRMED→07 / QUIZ_ANSWERED→08 / QUIZ_TEST_COMPLETED→15 |
-| sidecar SSE 状态推送（UI 轮询兜底，#8） | 05 先随首个 worker 落轮询兜底；04 随音频长任务接入 SSE，并复用同一 Record 查询入口 |
+| sidecar Record 级 SSE 失效通知（REST 事实源，断线条件轮询，#8/#58） | 05 先随首个 worker落轮询；04 接入 authenticated fetch-stream，并复用同一 Record/Jobs 查询入口 |
 | 全量导出/导入（原 P2 提前 Wave B，#55） | 14 |
 | 空态引导卡（#42） | 各 plan 的空态范围行 |
 | 总结评测黄金样本（#46） | 06；习题 Groundedness 样本→15 |
