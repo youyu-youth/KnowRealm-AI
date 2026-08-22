@@ -1,6 +1,6 @@
 # 单文件文档导入与本地解析
 
-Status: ready-for-agent
+Status: completed
 
 ## Problem Statement
 
