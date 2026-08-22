@@ -151,11 +151,11 @@ export function AppShell() {
       <DocumentImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-        onAccepted={({ record_id, job_id }) =>
+        onAccepted={({ record_id }) =>
           navigate({
             to: "/records/$recordId",
             params: { recordId: record_id },
-            search: { tab: "transcript", jobId: job_id },
+            search: { tab: "transcript" },
           })
         }
       />

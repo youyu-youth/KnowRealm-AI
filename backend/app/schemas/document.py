@@ -2,10 +2,12 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class ProcessingJobType(StrEnum):
+    AUDIO_TRANSCODE = "AUDIO_TRANSCODE"
+    ASR = "ASR"
     DOCUMENT_PARSE = "DOCUMENT_PARSE"
 
 
@@ -17,7 +19,29 @@ class ProcessingJobStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+class AiSummaryStatus(StrEnum):
+    GENERATED = "GENERATED"
+    CONFIRMED = "CONFIRMED"
+    SUPERSEDED = "SUPERSEDED"
+
+
+class AsrChunkStatus(StrEnum):
+    PENDING = "PENDING"
+    SUBMITTED = "SUBMITTED"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    EXPIRED = "EXPIRED"
+
+
 class ProcessingJobErrorCode(StrEnum):
+    AUDIO_TRANSCODE_FAILED = "AUDIO_TRANSCODE_FAILED"
+    ASR_AUTH_FAILED = "ASR_AUTH_FAILED"
+    ASR_QUOTA_EXHAUSTED = "ASR_QUOTA_EXHAUSTED"
+    ASR_TEMPORARY_UNAVAILABLE = "ASR_TEMPORARY_UNAVAILABLE"
+    ASR_SUBMIT_UNKNOWN = "ASR_SUBMIT_UNKNOWN"
+    ASR_RECOGNITION_FAILED = "ASR_RECOGNITION_FAILED"
+    ASR_TASK_EXPIRED = "ASR_TASK_EXPIRED"
+    NO_SPEECH_DETECTED = "NO_SPEECH_DETECTED"
     NON_UTF8_TEXT = "NON_UTF8_TEXT"
     CORRUPT_DOCUMENT = "CORRUPT_DOCUMENT"
     PASSWORD_PROTECTED = "PASSWORD_PROTECTED"
@@ -30,6 +54,7 @@ class ProcessingJobErrorCode(StrEnum):
 
 
 class RecordFileType(StrEnum):
+    AUDIO = "AUDIO"
     DOCUMENT = "DOCUMENT"
 
 
@@ -40,6 +65,18 @@ class RecordFileSourceType(StrEnum):
 class DocumentImportAccepted(BaseModel):
     record_id: str
     job_id: str
+
+
+class AudioImportAccepted(BaseModel):
+    record_id: str
+    transcode_job_id: str
+    asr_job_id: str
+
+
+class ProcessingJobWaitingReason(StrEnum):
+    CONSENT_REQUIRED = "CONSENT_REQUIRED"
+    ASR_KEY_REQUIRED = "ASR_KEY_REQUIRED"
+    OFFLINE = "OFFLINE"
 
 
 class ProcessingJobRetryRequest(BaseModel):
@@ -56,8 +93,14 @@ class ProcessingJobOut(BaseModel):
     progress: float
     attempts: int
     max_attempts: int
+    waiting_reason: ProcessingJobWaitingReason | None
     error_code: ProcessingJobErrorCode | None
     retryable: bool
+
+
+class RecordJobsOut(BaseModel):
+    jobs: list[ProcessingJobOut]
+    progress: float
 
 
 class TranscriptAvailability(StrEnum):
@@ -83,3 +126,8 @@ class TranscriptOut(BaseModel):
 class TranscriptReadOut(BaseModel):
     status: TranscriptAvailability
     transcript: TranscriptOut | None
+
+
+class TranscriptUpdateRequest(BaseModel):
+    content: str = Field(min_length=1)
+    expected_source_version: int = Field(ge=1)

@@ -37,6 +37,12 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/ffmpeg"],
+    "resources": {
+      "binaries/*.dll": ".",
+      "binaries/ffmpeg-runtime/LICENSE.txt": "licenses/ffmpeg/LICENSE.txt",
+      "binaries/ffmpeg-runtime/SOURCE.txt": "licenses/ffmpeg/SOURCE.txt"
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -23,6 +23,7 @@ from app.schemas.record import RecordStatus
 from app.services.document_parser import DocumentParseError, extract_document_text
 from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
 from app.services.processing_job_policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
+from app.services.record_invalidation import RecordInvalidationNotifier
 
 ERROR_MESSAGES = {
     ProcessingJobErrorCode.NON_UTF8_TEXT: "文本文件不是 UTF-8 编码",
@@ -53,9 +54,11 @@ class DocumentWorker:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         data_dir: Path,
+        record_notifier: RecordInvalidationNotifier,
     ) -> None:
         self._session_factory = session_factory
         self._data_dir = data_dir
+        self._record_notifier = record_notifier
         self._stopped = asyncio.Event()
 
     def stop(self) -> None:
@@ -74,6 +77,7 @@ class DocumentWorker:
 
     async def _recover_running(self, code: ProcessingJobErrorCode) -> None:
         now = utcnow()
+        record_ids: set[str] = set()
         async with self._session_factory() as session, session.begin():
             jobs = (
                 await session.scalars(
@@ -87,6 +91,8 @@ class DocumentWorker:
                 )
             ).all()
             for job in jobs:
+                if job.record_id is not None:
+                    record_ids.add(job.record_id)
                 if job.attempts < job.max_attempts:
                     job.status = ProcessingJobStatus.PENDING
                     job.next_run_at = now + timedelta(seconds=2 ** max(job.attempts, 0))
@@ -102,6 +108,8 @@ class DocumentWorker:
                 job.error_message = ERROR_MESSAGES[code]
                 job.updated_at = now
             await session.flush()
+        for record_id in record_ids:
+            await self._record_notifier.notify(record_id)
 
     async def run(self) -> None:
         while not self._stopped.is_set():
@@ -127,6 +135,7 @@ class DocumentWorker:
         if claimed is None:
             return False
         job_id, record_id, path = claimed
+        await self._record_notifier.notify(record_id)
         if not await self._can_continue(job_id, record_id):
             return True
         try:
@@ -266,6 +275,7 @@ class DocumentWorker:
             record.status = RecordStatus.SUMMARY_PENDING
             record.updated_at = now
             await session.flush()
+        await self._record_notifier.notify(record_id)
 
     async def _fail(
         self,
@@ -292,13 +302,13 @@ class DocumentWorker:
                 job.error_code = code.value
                 job.error_message = ERROR_MESSAGES[code]
                 job.updated_at = now
-                await session.flush()
-                return
-            job.status = ProcessingJobStatus.FAILED
-            job.error_code = code.value
-            job.error_message = ERROR_MESSAGES[code]
-            job.finished_at = now
-            job.updated_at = now
-            record.status = RecordStatus.FAILED
-            record.updated_at = now
+            else:
+                job.status = ProcessingJobStatus.FAILED
+                job.error_code = code.value
+                job.error_message = ERROR_MESSAGES[code]
+                job.finished_at = now
+                job.updated_at = now
+                record.status = RecordStatus.FAILED
+                record.updated_at = now
             await session.flush()
+        await self._record_notifier.notify(record_id)

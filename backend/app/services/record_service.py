@@ -1,9 +1,12 @@
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
-from app.models.document import ProcessingJob, Transcript
+from app.models.document import AiSummary, ProcessingJob, Transcript
 from app.models.record import Record
+from app.schemas.document import AiSummaryStatus, TranscriptUpdateRequest
+from app.schemas.record import RecordStatus
 from app.services.course_service import CourseService
 from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
 
@@ -66,3 +69,57 @@ class RecordService:
             )
             await session.flush()
         return True
+
+    @staticmethod
+    async def update_transcript(
+        session: AsyncSession,
+        record_id: str,
+        body: TranscriptUpdateRequest,
+    ) -> Transcript:
+        if not body.content.strip():
+            raise HTTPException(status_code=422, detail="Transcript 正文不能为空")
+        now = utcnow()
+        async with session.begin():
+            record = await RecordService.get(session, record_id)
+            if record is None:
+                raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+            if record.status in (
+                RecordStatus.CONTENT_PROCESSING,
+                RecordStatus.SUMMARY_PROCESSING,
+            ):
+                raise HTTPException(status_code=409, detail="当前状态不允许编辑 Transcript")
+            transcript = (
+                await session.scalars(
+                    update(Transcript)
+                    .where(
+                        Transcript.record_id == record_id,
+                        Transcript.deleted_at.is_(None),
+                        Transcript.source_version == body.expected_source_version,
+                    )
+                    .values(
+                        content=body.content,
+                        source_version=Transcript.source_version + 1,
+                        edited_by_user=True,
+                        updated_at=now,
+                    )
+                    .returning(Transcript)
+                )
+            ).one_or_none()
+            if transcript is None:
+                current = await RecordService.get_transcript(session, record_id)
+                if current is None:
+                    raise HTTPException(status_code=404, detail="Transcript 尚未生成")
+                raise HTTPException(status_code=409, detail="Transcript 已被其他操作更新")
+            await session.execute(
+                update(AiSummary)
+                .where(
+                    AiSummary.record_id == record_id,
+                    AiSummary.deleted_at.is_(None),
+                    AiSummary.status.in_((AiSummaryStatus.GENERATED, AiSummaryStatus.CONFIRMED)),
+                )
+                .values(status=AiSummaryStatus.SUPERSEDED, updated_at=now)
+            )
+            record.status = RecordStatus.SUMMARY_PENDING
+            record.updated_at = now
+            await session.flush()
+        return transcript

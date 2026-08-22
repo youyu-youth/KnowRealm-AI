@@ -12,6 +12,7 @@ import {
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
+import { recordApi } from "@/features/records/api/records";
 import { TEST_LAUNCH_TOKEN, TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 
@@ -24,8 +25,27 @@ const COURSE_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}`;
 const COURSE_RECORDS_URL = `${COURSE_URL}/records`;
 const ROUTE_PATH = `/records/${RECORD_ID}`;
 const JOB_ID = "33333333-3333-4333-8333-333333333333";
-const JOB_URL = `${TEST_SIDECAR_URL}/api/processing-jobs/${JOB_ID}`;
-const JOB_RETRY_URL = `${JOB_URL}/retries`;
+const JOBS_URL = `${DETAIL_URL}/jobs`;
+const JOB_RETRY_URL = `${TEST_SIDECAR_URL}/api/processing-jobs/${JOB_ID}/retries`;
+
+function jobsResponse(
+  job: Partial<components["schemas"]["ProcessingJobOut"]> = {},
+) {
+  const completeJob: components["schemas"]["ProcessingJobOut"] = {
+    id: JOB_ID,
+    record_id: RECORD_ID,
+    job_type: "DOCUMENT_PARSE",
+    status: "FAILED",
+    progress: 0,
+    attempts: 1,
+    max_attempts: 3,
+    error_code: "TEMPORARY_IO",
+    retryable: true,
+    waiting_reason: null,
+    ...job,
+  };
+  return { jobs: [completeJob], progress: completeJob.progress };
+}
 
 const record: RecordOut = {
   id: RECORD_ID,
@@ -157,6 +177,7 @@ describe("学习记录详情", () => {
       http.get(`${DETAIL_URL}/transcript`, () =>
         HttpResponse.json({ status: "NOT_READY", transcript: null }),
       ),
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 0 })),
     );
     renderAt();
 
@@ -207,9 +228,7 @@ describe("学习记录详情", () => {
     expect(
       await screen.findByRole("heading", { name: "未命名学习记录" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "删除学习记录" }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除学习记录" })).toBeVisible();
     expect(
       await screen.findByRole("link", { name: "返回知识空间" }),
     ).toHaveAttribute("href", "/spaces");
@@ -231,7 +250,7 @@ describe("学习记录详情", () => {
     expect(screen.queryByText(/error|code|任务/)).not.toBeInTheDocument();
   });
 
-  it("Transcript 区分确定性与可恢复失败，且终态不读取正文", async () => {
+  it("Transcript 区分确定性与可恢复失败", async () => {
     let transcriptCalls = 0;
     server.use(
       http.get(DETAIL_URL, () =>
@@ -241,28 +260,20 @@ describe("学习记录详情", () => {
           status: "FAILED",
         }),
       ),
-      http.get(JOB_URL, () =>
-        HttpResponse.json({
-          id: JOB_ID,
-          record_id: RECORD_ID,
-          job_type: "DOCUMENT_PARSE",
-          status: "FAILED",
-          progress: 0,
-          attempts: 1,
-          max_attempts: 3,
-          error_code: "FORMAT_MISMATCH",
-          retryable: false,
-        }),
+      http.get(JOBS_URL, () =>
+        HttpResponse.json(
+          jobsResponse({ error_code: "FORMAT_MISMATCH", retryable: false }),
+        ),
       ),
       http.get(`${DETAIL_URL}/transcript`, () => {
         transcriptCalls += 1;
         return HttpResponse.json({ status: "NOT_READY", transcript: null });
       }),
     );
-    renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
+    renderAt(`${ROUTE_PATH}?tab=transcript`);
 
     expect(await screen.findByText("文件内容与扩展名不匹配。")).toBeVisible();
-    expect(transcriptCalls).toBe(0);
+    expect(transcriptCalls).toBe(1);
     expect(screen.queryByRole("button", { name: /重试/ })).toBeNull();
 
     cleanup();
@@ -274,23 +285,11 @@ describe("学习记录详情", () => {
           status: "FAILED",
         }),
       ),
-      http.get(JOB_URL, () =>
-        HttpResponse.json({
-          id: JOB_ID,
-          record_id: RECORD_ID,
-          job_type: "DOCUMENT_PARSE",
-          status: "FAILED",
-          progress: 0,
-          attempts: 1,
-          max_attempts: 3,
-          error_code: "TEMPORARY_IO",
-          retryable: true,
-        }),
-      ),
+      http.get(JOBS_URL, () => HttpResponse.json(jobsResponse())),
     );
-    renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
+    renderAt(`${ROUTE_PATH}?tab=transcript`);
     expect(await screen.findByText("本地文件暂时无法读取。")).toBeVisible();
-    expect(screen.getByRole("button", { name: "重新处理文档" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "重新处理" })).toBeVisible();
   });
 
   it("可恢复失败手动重试防重复提交，失败保留上下文且成功恢复轮询", async () => {
@@ -303,10 +302,15 @@ describe("学习记录详情", () => {
         HttpResponse.json({
           ...record,
           capture_type: "DOCUMENT_IMPORT",
-          status: retryAccepted ? "CONTENT_PROCESSING" : "FAILED",
+          status:
+            retryAccepted && jobCalls >= 3
+              ? "SUMMARY_PENDING"
+              : retryAccepted
+                ? "CONTENT_PROCESSING"
+                : "FAILED",
         }),
       ),
-      http.get(JOB_URL, () => {
+      http.get(JOBS_URL, () => {
         jobCalls += 1;
         const status = retryAccepted
           ? jobCalls >= 3
@@ -314,17 +318,15 @@ describe("学习记录详情", () => {
             : "RUNNING"
           : "FAILED";
         if (status === "SUCCEEDED") terminalJobCalls += 1;
-        return HttpResponse.json({
-          id: JOB_ID,
-          record_id: RECORD_ID,
-          job_type: "DOCUMENT_PARSE",
-          status,
-          progress: status === "SUCCEEDED" ? 1 : 0,
-          attempts: retryAccepted ? 1 : 3,
-          max_attempts: 3,
-          error_code: retryAccepted ? null : "TEMPORARY_IO",
-          retryable: !retryAccepted,
-        });
+        return HttpResponse.json(
+          jobsResponse({
+            status,
+            progress: status === "SUCCEEDED" ? 1 : 0,
+            attempts: retryAccepted ? 1 : 3,
+            error_code: retryAccepted ? null : "TEMPORARY_IO",
+            retryable: !retryAccepted,
+          }),
+        );
       }),
       http.post(JOB_RETRY_URL, async ({ request }) => {
         retryCalls += 1;
@@ -348,6 +350,7 @@ describe("学习记录详情", () => {
             max_attempts: 3,
             error_code: null,
             retryable: false,
+            waiting_reason: null,
           },
           { status: 202 },
         );
@@ -365,9 +368,9 @@ describe("学习记录详情", () => {
         }),
       ),
     );
-    renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
+    renderAt(`${ROUTE_PATH}?tab=transcript`);
 
-    const retry = await screen.findByRole("button", { name: "重新处理文档" });
+    const retry = await screen.findByRole("button", { name: "重新处理" });
     fireEvent.click(retry);
     await waitFor(() => expect(retry).toBeDisabled());
     fireEvent.click(retry);
@@ -377,16 +380,185 @@ describe("学习记录详情", () => {
     ).toHaveAttribute("role", "alert");
     expect(screen.getByText("本地文件暂时无法读取。")).toBeVisible();
 
-    fireEvent.click(screen.getByRole("button", { name: "重新处理文档" }));
-    expect(await screen.findByText("正在提取文档正文")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "重新处理" }));
     expect(
       await screen.findByText("重试后恢复的正文", {}, { timeout: 6_000 }),
     ).toBeVisible();
     expect(retryCalls).toBe(2);
-    expect(screen.queryByRole("button", { name: "重新处理文档" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "重新处理" })).toBeNull();
 
+    await screen.findByText("等待生成总结", {}, { timeout: 6_000 });
+    const callsAtTerminal = terminalJobCalls;
     await new Promise((resolve) => window.setTimeout(resolve, 2_200));
-    expect(terminalJobCalls).toBe(1);
+    expect(terminalJobCalls).toBe(callsAtTerminal);
+  });
+
+  it("SSE 只触发 REST 失效刷新，并携带启动令牌", async () => {
+    let streamCalls = 0;
+    server.use(
+      http.get(`${DETAIL_URL}/events`, ({ request }) => {
+        streamCalls += 1;
+        expect(request.headers.get("X-KnowRealm-Token")).toBe(
+          TEST_LAUNCH_TOKEN,
+        );
+        expect(request.headers.get("Accept")).toBe("text/event-stream");
+        return new HttpResponse(
+          `event: invalidate\ndata: {"record_id":"${RECORD_ID}"}\n\n`,
+          {
+            headers: { "Content-Type": "text/event-stream" },
+          },
+        );
+      }),
+    );
+    const onOpen = vi.fn();
+    const onInvalidate = vi.fn();
+
+    await expect(
+      recordApi.subscribe(
+        RECORD_ID,
+        undefined,
+        onOpen,
+        onInvalidate,
+      ),
+    ).rejects.toThrow("Record 事件流已断开");
+
+    expect(streamCalls).toBe(1);
+    expect(onOpen).toHaveBeenCalledOnce();
+    expect(onInvalidate).toHaveBeenCalledOnce();
+  });
+
+  it("独立同意后继续同一 ASR 任务", async () => {
+    let consentCalls = 0;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "CONTENT_PROCESSING" }),
+      ),
+      http.get(JOBS_URL, () =>
+        HttpResponse.json(
+          jobsResponse({
+            job_type: "ASR",
+            status: "PENDING",
+            waiting_reason: "CONSENT_REQUIRED",
+            error_code: null,
+            retryable: false,
+          }),
+        ),
+      ),
+      http.get(`${DETAIL_URL}/transcript`, () =>
+        HttpResponse.json({ status: "NOT_READY", transcript: null }),
+      ),
+      http.get(`${DETAIL_URL}/events`, () =>
+        HttpResponse.json({ detail: "stream unavailable" }, { status: 503 }),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/tencent-asr`,
+        ({ request }) => {
+          consentCalls += 1;
+          expect(request.headers.get("X-KnowRealm-Token")).toBe(
+            TEST_LAUNCH_TOKEN,
+          );
+          return HttpResponse.json({
+            granted_at: "2026-08-22T10:00:00.000000Z",
+          });
+        },
+      ),
+    );
+
+    renderAt(`${ROUTE_PATH}?tab=transcript`);
+
+    expect(
+      await screen.findByText("首次发送前需要单独同意外部语音识别。"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "原始文件保留在本机，仅转码后的音频片段会发送至腾讯云识别。",
+      ),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "同意并继续识别" }));
+    await waitFor(() => expect(consentCalls).toBe(1));
+  });
+
+  it("Transcript 409 保留草稿，载入新版本后可成功保存", async () => {
+    let version = 1;
+    let patchCalls = 0;
+    let transcriptGets = 0;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(`${DETAIL_URL}/transcript`, () => {
+        transcriptGets += 1;
+        return HttpResponse.json({
+          status: "READY",
+          transcript: {
+            language: "zh-CN",
+            content:
+              version === 1
+                ? "初始正文"
+                : version === 2
+                  ? "服务端新版本"
+                  : "合并后的正文",
+            source_version: version,
+            edited_by_user: version > 1,
+            updated_at: "2026-08-22T10:00:00.000000Z",
+          },
+        });
+      }),
+      http.patch(`${DETAIL_URL}/transcript`, async ({ request }) => {
+        patchCalls += 1;
+        const payload = (await request.json()) as {
+          content: string;
+          expected_source_version: number;
+        };
+        if (patchCalls === 1) {
+          expect(payload).toEqual({
+            content: "我的草稿",
+            expected_source_version: 1,
+          });
+          version = 2;
+          return HttpResponse.json(
+            { detail: "Transcript 已被其他操作更新" },
+            { status: 409 },
+          );
+        }
+        expect(payload).toEqual({
+          content: "合并后的正文",
+          expected_source_version: 2,
+        });
+        version = 3;
+        return HttpResponse.json({
+          language: "zh-CN",
+          content: payload.content,
+          source_version: version,
+          edited_by_user: true,
+          updated_at: "2026-08-22T10:05:00.000000Z",
+        });
+      }),
+    );
+
+    renderAt(`${ROUTE_PATH}?tab=transcript`);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑正文" }));
+    const editor = screen.getByRole("textbox", {
+      name: "Transcript 正文编辑器",
+    });
+    fireEvent.change(editor, { target: { value: "我的草稿" } });
+    version = 2;
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => expect(transcriptGets).toBeGreaterThan(1));
+    fireEvent.click(screen.getByRole("button", { name: "保存正文" }));
+
+    expect(await screen.findByText(/正文已在其他操作中更新/)).toBeVisible();
+    expect(editor).toHaveValue("我的草稿");
+    fireEvent.click(screen.getByRole("button", { name: "载入最新版本" }));
+    await waitFor(() => expect(editor).toHaveValue("服务端新版本"));
+    fireEvent.change(editor, { target: { value: "合并后的正文" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存正文" }));
+    expect(
+      await screen.findByText(
+        (_content, element) =>
+          element?.tagName === "PRE" && element.textContent === "合并后的正文",
+      ),
+    ).toBeVisible();
+    expect(patchCalls).toBe(2);
   });
 
   it("取消或关闭确认对话框不发删除请求，并将焦点恢复到删除入口", async () => {
@@ -432,20 +604,22 @@ describe("学习记录详情", () => {
           status: "CONTENT_PROCESSING",
         }),
       ),
-      http.get(JOB_URL, () => {
+      http.get(JOBS_URL, () => {
         jobCalls += 1;
-        return HttpResponse.json({
-          id: JOB_ID,
-          record_id: RECORD_ID,
-          job_type: "DOCUMENT_PARSE",
-          status: "RUNNING",
-          progress: 0,
-          attempts: 1,
-          max_attempts: 3,
-          error_code: null,
-          retryable: false,
-        });
+        return HttpResponse.json(
+          jobsResponse({
+            status: "RUNNING",
+            error_code: null,
+            retryable: false,
+          }),
+        );
       }),
+      http.get(`${DETAIL_URL}/transcript`, () =>
+        HttpResponse.json({ status: "NOT_READY", transcript: null }),
+      ),
+      http.get(`${DETAIL_URL}/events`, () =>
+        HttpResponse.json({ detail: "stream unavailable" }, { status: 503 }),
+      ),
       http.get(COURSE_URL, () => HttpResponse.json(course)),
       http.get(COURSE_RECORDS_URL, () => HttpResponse.json([])),
       http.delete(DETAIL_URL, async () => {
@@ -460,9 +634,9 @@ describe("学习记录详情", () => {
         return new HttpResponse(null, { status: 204 });
       }),
     );
-    renderAt(`${ROUTE_PATH}?tab=transcript&jobId=${JOB_ID}`);
+    renderAt(`${ROUTE_PATH}?tab=transcript`);
 
-    expect(await screen.findByText("正在提取文档正文")).toBeVisible();
+    expect(await screen.findByText("正在生成 Transcript")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "删除学习记录" }));
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
     expect(await screen.findByText("数据库暂时忙，请重试")).toBeVisible();
@@ -483,7 +657,7 @@ describe("学习记录详情", () => {
     ).toBeVisible();
     expect(window.location.pathname).toBe(`/spaces/${COURSE_ID}`);
     expect(window.location.search).toBe("?tab=records");
-  });
+  }, 10_000);
 
   it("删除失败保留详情并可重试，成功后刷新课程列表缓存并导航", async () => {
     let deleted = false;

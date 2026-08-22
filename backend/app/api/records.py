@@ -1,16 +1,25 @@
+import asyncio
+import json
+import shutil
+from collections.abc import AsyncGenerator
+from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Response
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.api.deps import get_db, require_launch_token
 from app.schemas.course import ErrorResponse
 from app.schemas.document import (
+    RecordJobsOut,
     TranscriptAvailability,
     TranscriptOut,
     TranscriptReadOut,
+    TranscriptUpdateRequest,
 )
-from app.schemas.record import RecordOut
+from app.schemas.record import RecordOut, RecordStatus
+from app.services.processing_job_service import ProcessingJobService
 from app.services.record_service import RecordService
 
 router = APIRouter(
@@ -25,6 +34,11 @@ router = APIRouter(
     },
 )
 
+STREAMING_RECORD_STATUSES = {
+    RecordStatus.CONTENT_PROCESSING,
+    RecordStatus.SUMMARY_PROCESSING,
+}
+
 
 @router.get("/records/{record_id}", response_model=RecordOut)
 async def get_record(
@@ -35,6 +49,14 @@ async def get_record(
     if record is None:
         raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
     return RecordOut.model_validate(record)
+
+
+@router.get("/records/{record_id}/jobs", response_model=RecordJobsOut)
+async def get_record_jobs(
+    record_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> RecordJobsOut:
+    return await ProcessingJobService.list_for_record(session, str(record_id))
 
 
 @router.get("/records/{record_id}/transcript", response_model=TranscriptReadOut)
@@ -54,6 +76,18 @@ async def get_record_transcript(
     )
 
 
+@router.patch("/records/{record_id}/transcript", response_model=TranscriptOut)
+async def update_record_transcript(
+    record_id: UUID,
+    body: TranscriptUpdateRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> TranscriptOut:
+    transcript = await RecordService.update_transcript(session, str(record_id), body)
+    await request.app.state.record_notifier.notify(str(record_id))
+    return TranscriptOut.model_validate(transcript)
+
+
 @router.delete(
     "/records/{record_id}",
     status_code=204,
@@ -62,11 +96,59 @@ async def get_record_transcript(
 )
 async def delete_record(
     record_id: UUID,
+    request: Request,
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     if not await RecordService.soft_delete(session, str(record_id)):
         raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+    cache_dir = Path(request.app.state.data_dir) / "cache" / "audio" / str(record_id)
+    await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
+    await request.app.state.record_notifier.notify(str(record_id))
     return Response(status_code=204)
+
+
+@router.get("/records/{record_id}/events", response_class=EventSourceResponse)
+async def stream_record_events(
+    record_id: UUID,
+    request: Request,
+) -> EventSourceResponse:
+    value = str(record_id)
+    async with request.app.state.session_factory() as session:
+        record = await RecordService.get(session, value)
+        if record is None:
+            raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        initially_streaming = record.status in STREAMING_RECORD_STATUSES
+
+    async def still_streaming() -> bool:
+        session_factory: async_sessionmaker[AsyncSession] = request.app.state.session_factory
+        async with session_factory() as session:
+            record = await RecordService.get(session, value)
+            return record is not None and record.status in STREAMING_RECORD_STATUSES
+
+    async def events() -> AsyncGenerator[ServerSentEvent]:
+        notifier = request.app.state.record_notifier
+        version = notifier.version(value)
+        yield ServerSentEvent(
+            event="invalidate",
+            data=json.dumps({"record_id": value}, separators=(",", ":")),
+        )
+        if not initially_streaming:
+            return
+        while not await request.is_disconnected():
+            try:
+                version = await asyncio.wait_for(
+                    notifier.wait_for_change(value, version), timeout=15
+                )
+            except TimeoutError:
+                continue
+            yield ServerSentEvent(
+                event="invalidate",
+                data=json.dumps({"record_id": value}, separators=(",", ":")),
+            )
+            if not await still_streaming():
+                return
+
+    return EventSourceResponse(events(), ping=15)
 
 
 @router.get("/courses/{course_id}/records", response_model=list[RecordOut])

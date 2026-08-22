@@ -1,10 +1,15 @@
 import asyncio
+import io
+import json
+import os
 import secrets
+import shutil
 import signal
 import sqlite3
 import subprocess
 import sys
 import time
+import wave
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -14,22 +19,136 @@ import pytest
 from app.db.migrations import run_migrations
 
 
-def start_sidecar(data_dir: Path, token: str) -> subprocess.Popen[bytes]:
+def start_sidecar(
+    data_dir: Path,
+    token: str,
+    *,
+    ffmpeg_path: Path | None = None,
+    empty_path: bool = False,
+    asr_control: Path | None = None,
+) -> subprocess.Popen[bytes]:
+    if asr_control is not None and ffmpeg_path is None:
+        ffmpeg_path = (
+            Path(__file__).resolve().parents[2]
+            / "apps"
+            / "desktop"
+            / "src-tauri"
+            / "binaries"
+            / "ffmpeg-x86_64-pc-windows-msvc.exe"
+        )
+        if not ffmpeg_path.is_file():
+            pytest.skip("尚未运行 desktop prepare:ffmpeg")
+    resolved_ffmpeg = str(ffmpeg_path) if ffmpeg_path is not None else shutil.which("ffmpeg")
+    if resolved_ffmpeg is None:
+        pytest.skip("真实 ffmpeg 不可用")
+    environment = os.environ.copy()
+    if empty_path:
+        environment["PATH"] = ""
+    command = [
+        sys.executable,
+        *(
+            [str(Path(__file__).with_name("sidecar_asr_fixture.py"))]
+            if asr_control
+            else ["-m", "app.server"]
+        ),
+        "--port",
+        "0",
+        f"--token={token}",
+        "--data-dir",
+        str(data_dir),
+        "--ffmpeg",
+        resolved_ffmpeg,
+    ]
+    if asr_control is not None:
+        command.extend(["--asr-control", str(asr_control)])
     return subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "app.server",
-            "--port",
-            "0",
-            f"--token={token}",
-            "--data-dir",
-            str(data_dir),
-        ],
+        command,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        env=environment,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
     )
+
+
+def short_wav() -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16_000)
+        audio.writeframes(b"\x00\x00" * 16_000)
+    return output.getvalue()
+
+
+def over_five_hours_wav() -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(1)
+        audio.writeframes(b"\x00\x00" * (5 * 60 * 60 + 1))
+    return output.getvalue()
+
+
+def write_asr_fixture(data_dir: Path, control: Path, mode: str) -> None:
+    config = data_dir / "config"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "settings.json").write_text(
+        json.dumps({"tencent_asr_consent_granted_at": "2026-08-22T00:00:00Z"}),
+        encoding="utf-8",
+    )
+    write_provider_config(data_dir)
+    control.write_text(json.dumps({"mode": mode}), encoding="utf-8")
+
+
+def write_provider_config(data_dir: Path) -> None:
+    config = data_dir / "config"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "providers.json").write_text(
+        json.dumps(
+            {
+                "tencent_asr": {
+                    "secret_id": "fixture-id",
+                    "secret_key": "fixture-key",
+                    "region": "ap-shanghai",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def asr_events(control: Path) -> list[dict[str, object]]:
+    path = control.with_suffix(".events.json")
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+
+
+def wait_for_job(
+    client: httpx.Client,
+    record_id: str,
+    *,
+    status: str,
+    attempts: int | None = None,
+) -> dict[str, object]:
+    for _ in range(300):
+        job = client.get(f"/api/records/{record_id}/jobs").json()["jobs"][1]
+        if job["status"] == status and (attempts is None or job["attempts"] == attempts):
+            return job
+        time.sleep(0.05)
+    pytest.fail(f"ASR Job 未进入 {status}")
+
+
+def wait_for_waiting_reason(
+    client: httpx.Client,
+    record_id: str,
+    reason: str,
+) -> dict[str, object]:
+    for _ in range(300):
+        job = client.get(f"/api/records/{record_id}/jobs").json()["jobs"][1]
+        if job["waiting_reason"] == reason:
+            return job
+        time.sleep(0.05)
+    pytest.fail(f"ASR Job 未进入等待态 {reason}")
 
 
 def wait_for_sidecar(
@@ -91,6 +210,271 @@ def test_real_process_selects_random_loopback_port_and_requires_token(tmp_path: 
 
     assert token.encode() not in port_line + stdout
     assert token.encode() not in stderr
+
+
+def test_real_process_audio_import_uses_bundled_ffmpeg_with_empty_path(tmp_path: Path) -> None:
+    ffmpeg = (
+        Path(__file__).resolve().parents[2]
+        / "apps"
+        / "desktop"
+        / "src-tauri"
+        / "binaries"
+        / "ffmpeg-x86_64-pc-windows-msvc.exe"
+    )
+    if not ffmpeg.is_file():
+        pytest.skip("尚未运行 desktop prepare:ffmpeg")
+    data_dir = tmp_path / "KnowRealm"
+    token = secrets.token_urlsafe(32)
+    process = start_sidecar(data_dir, token, ffmpeg_path=ffmpeg, empty_path=True)
+    stopped = False
+    stderr = b""
+    try:
+        base_url, _ = wait_for_sidecar(process, token)
+        with httpx.Client(
+            base_url=base_url,
+            headers={"X-KnowRealm-Token": token},
+            trust_env=False,
+        ) as client:
+            assert (
+                client.post(
+                    "/api/audio-imports",
+                    files={"file": ("格式不符.mp3", short_wav(), "audio/mpeg")},
+                ).status_code
+                == 400
+            )
+            assert (
+                client.post(
+                    "/api/audio-imports",
+                    files={"file": ("损坏.wav", b"RIFF0000WAVEbroken", "audio/wav")},
+                ).status_code
+                == 400
+            )
+            too_long = client.post(
+                "/api/audio-imports",
+                files={"file": ("超长.wav", over_five_hours_wav(), "audio/wav")},
+            )
+            assert too_long.status_code == 400
+            assert too_long.json()["detail"].startswith("AUDIO_TOO_LONG")
+            accepted = client.post(
+                "/api/audio-imports",
+                files={"file": ("真实进程.wav", short_wav(), "audio/wav")},
+            )
+            if accepted.status_code != 202:
+                _, stderr = stop_process_tree(process)
+                stopped = True
+                pytest.fail(
+                    f"audio import returned {accepted.status_code}: {accepted.text}\n"
+                    f"{stderr.decode(errors='replace')}"
+                )
+            record_id = accepted.json()["record_id"]
+            for _ in range(200):
+                jobs = client.get(f"/api/records/{record_id}/jobs").json()["jobs"]
+                if jobs[0]["status"] == "SUCCEEDED":
+                    break
+                time.sleep(0.05)
+            else:
+                pytest.fail("随包 ffmpeg 未完成真实进程转码")
+            assert jobs[1]["waiting_reason"] == "CONSENT_REQUIRED"
+            chunks = list((data_dir / "cache" / "audio" / record_id).rglob("chunk-*.ogg"))
+            assert chunks
+            assert all(chunk.stat().st_size < 5 * 1024 * 1024 for chunk in chunks)
+    finally:
+        if not stopped:
+            _, stderr = stop_process_tree(process)
+
+    assert token.encode() not in stderr
+    with sqlite3.connect(data_dir / "knowrealm.db") as connection:
+        assert connection.execute("SELECT count(*) FROM records").fetchone() == (1,)
+        assert connection.execute("SELECT count(*) FROM record_files").fetchone() == (1,)
+        assert connection.execute("SELECT count(*) FROM processing_jobs").fetchone() == (2,)
+
+
+def test_real_process_audio_asr_and_sse_over_protected_socket(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    control = tmp_path / "asr-control.json"
+    control.write_text(json.dumps({"mode": "pending", "online": False}), encoding="utf-8")
+    token = secrets.token_urlsafe(32)
+    process = start_sidecar(data_dir, token, asr_control=control)
+    try:
+        base_url, _ = wait_for_sidecar(process, token)
+        with httpx.Client(
+            base_url=base_url,
+            headers={"X-KnowRealm-Token": token},
+            trust_env=False,
+        ) as client:
+            accepted = client.post(
+                "/api/audio-imports",
+                files={"file": ("真实控制面.wav", short_wav(), "audio/wav")},
+            )
+            assert accepted.status_code == 202
+            record_id = accepted.json()["record_id"]
+            assert wait_for_waiting_reason(client, record_id, "CONSENT_REQUIRED")["attempts"] == 0
+            assert (
+                client.post("/api/settings/external-processing-consents/tencent-asr").status_code
+                == 200
+            )
+            assert wait_for_waiting_reason(client, record_id, "ASR_KEY_REQUIRED")["attempts"] == 0
+            write_provider_config(data_dir)
+            assert wait_for_waiting_reason(client, record_id, "OFFLINE")["attempts"] == 0
+            control.write_text(json.dumps({"mode": "pending", "online": True}), encoding="utf-8")
+            wait_for_job(client, record_id, status="RUNNING")
+            with client.stream("GET", f"/api/records/{record_id}/events") as stream:
+                assert stream.status_code == 200
+                lines = stream.iter_lines()
+                assert next(lines) == "event: invalidate"
+                assert json.loads(next(lines).removeprefix("data: ")) == {"record_id": record_id}
+                assert next(lines) == ""
+                control.write_text(json.dumps({"mode": "success"}), encoding="utf-8")
+                remaining = list(lines)
+                assert "event: invalidate" in remaining
+                assert f'data: {{"record_id":"{record_id}"}}' in remaining
+            job = wait_for_job(client, record_id, status="SUCCEEDED", attempts=1)
+            transcript = client.get(f"/api/records/{record_id}/transcript").json()
+            assert transcript["transcript"]["content"] == "真实进程替身正文。"
+            assert job["progress"] == 1
+    finally:
+        _, stderr = stop_process_tree(process)
+
+    events = asr_events(control)
+    assert [event["event"] for event in events].count("submit") == 1
+    assert [event["event"] for event in events].count("poll") >= 1
+    assert token.encode() not in stderr
+    assert not (data_dir / "cache" / "audio" / record_id).exists()
+
+
+def test_real_process_asr_restart_resumes_persisted_task_id(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    control = tmp_path / "asr-control.json"
+    write_asr_fixture(data_dir, control, "pending")
+    first_token = secrets.token_urlsafe(32)
+    first = start_sidecar(data_dir, first_token, asr_control=control)
+    try:
+        first_url, _ = wait_for_sidecar(first, first_token)
+        with httpx.Client(
+            base_url=first_url,
+            headers={"X-KnowRealm-Token": first_token},
+            trust_env=False,
+        ) as client:
+            accepted = client.post(
+                "/api/audio-imports",
+                files={"file": ("重启恢复.wav", short_wav(), "audio/wav")},
+            )
+            record_id = accepted.json()["record_id"]
+            for _ in range(300):
+                if any(event["event"] == "poll" for event in asr_events(control)):
+                    break
+                time.sleep(0.05)
+            else:
+                pytest.fail("真实 sidecar 未提交并轮询 ASR TaskId")
+    finally:
+        stop_process_tree(first)
+
+    control.write_text(json.dumps({"mode": "success"}), encoding="utf-8")
+    restart_token = secrets.token_urlsafe(32)
+    restarted = start_sidecar(data_dir, restart_token, asr_control=control)
+    try:
+        restart_url, _ = wait_for_sidecar(restarted, restart_token)
+        with httpx.Client(
+            base_url=restart_url,
+            headers={"X-KnowRealm-Token": restart_token},
+            trust_env=False,
+        ) as client:
+            wait_for_job(client, record_id, status="SUCCEEDED")
+            assert client.get(f"/api/records/{record_id}/transcript").json()["status"] == "READY"
+    finally:
+        stop_process_tree(restarted)
+
+    assert [event["event"] for event in asr_events(control)].count("submit") == 1
+
+
+def test_real_process_http_503_retries_three_times(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    control = tmp_path / "asr-control.json"
+    write_asr_fixture(data_dir, control, "poll_503")
+    token = secrets.token_urlsafe(32)
+    process = start_sidecar(data_dir, token, asr_control=control)
+    try:
+        base_url, _ = wait_for_sidecar(process, token)
+        with httpx.Client(
+            base_url=base_url,
+            headers={"X-KnowRealm-Token": token},
+            trust_env=False,
+            timeout=15,
+        ) as client:
+            transient = client.post(
+                "/api/audio-imports",
+                files={"file": ("有限重试.wav", short_wav(), "audio/wav")},
+            ).json()
+            failed = wait_for_job(client, transient["record_id"], status="FAILED", attempts=3)
+            assert failed["error_code"] == "ASR_TEMPORARY_UNAVAILABLE"
+    finally:
+        stop_process_tree(process)
+
+
+def test_real_process_asr_failure_retry_and_delete_races(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    control = tmp_path / "asr-control.json"
+    write_asr_fixture(data_dir, control, "submit_timeout")
+    token = secrets.token_urlsafe(32)
+    process = start_sidecar(data_dir, token, asr_control=control)
+    try:
+        base_url, _ = wait_for_sidecar(process, token)
+        with httpx.Client(
+            base_url=base_url,
+            headers={"X-KnowRealm-Token": token},
+            trust_env=False,
+        ) as client:
+            unknown = client.post(
+                "/api/audio-imports",
+                files={"file": ("提交未知.wav", short_wav(), "audio/wav")},
+            ).json()
+            failed = wait_for_job(client, unknown["record_id"], status="FAILED", attempts=1)
+            assert failed["error_code"] == "ASR_SUBMIT_UNKNOWN"
+            control.write_text(json.dumps({"mode": "success"}), encoding="utf-8")
+            assert (
+                client.post(
+                    f"/api/processing-jobs/{unknown['asr_job_id']}/retries",
+                    json={"record_id": unknown["record_id"]},
+                ).status_code
+                == 202
+            )
+            wait_for_job(client, unknown["record_id"], status="SUCCEEDED")
+
+            for mode in ("invalid_json", "invalid_task_id"):
+                control.write_text(json.dumps({"mode": mode}), encoding="utf-8")
+                invalid = client.post(
+                    "/api/audio-imports",
+                    files={"file": (f"{mode}.wav", short_wav(), "audio/wav")},
+                ).json()
+                failed = wait_for_job(client, invalid["record_id"], status="FAILED", attempts=1)
+                assert failed["error_code"] == "ASR_RECOGNITION_FAILED"
+
+            control.write_text(json.dumps({"mode": "pending"}), encoding="utf-8")
+            deleting = client.post(
+                "/api/audio-imports",
+                files={"file": ("删除竞态.wav", short_wav(), "audio/wav")},
+            ).json()
+            wait_for_job(client, deleting["record_id"], status="RUNNING")
+            with client.stream("GET", f"/api/records/{deleting['record_id']}/events") as stream:
+                lines = stream.iter_lines()
+                assert next(lines) == "event: invalidate"
+                assert next(lines).startswith("data: ")
+                assert next(lines) == ""
+                with httpx.Client(
+                    base_url=base_url,
+                    headers={"X-KnowRealm-Token": token},
+                    trust_env=False,
+                ) as mutator:
+                    assert (
+                        mutator.delete(f"/api/records/{deleting['record_id']}").status_code == 204
+                    )
+                remaining = list(lines)
+                assert "event: invalidate" in remaining
+            time.sleep(1.2)
+            assert not (data_dir / "cache" / "audio" / deleting["record_id"]).exists()
+            assert client.get(f"/api/records/{deleting['record_id']}").status_code == 404
+    finally:
+        stop_process_tree(process)
 
 
 def test_second_sidecar_cannot_open_locked_data_directory(tmp_path: Path) -> None:

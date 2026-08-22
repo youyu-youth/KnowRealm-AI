@@ -10,14 +10,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from app.api import courses, document_imports, processing_jobs, records
+from app.api import audio_imports, courses, document_imports, processing_jobs, records, settings
 from app.api.deps import require_launch_token
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
+from app.services.audio_worker import AudioWorker
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import DocumentWorker
+from app.services.record_invalidation import RecordInvalidationNotifier
+from app.services.tencent_asr_client import TencentAsrClient
 
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:1420",
@@ -30,8 +33,12 @@ def create_app(
     *,
     data_dir: Path,
     launch_token: str,
+    ffmpeg_path: Path | None = None,
+    asr_client: TencentAsrClient | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
+    record_notifier = RecordInvalidationNotifier()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         resolved_data_dir = data_dir.expanduser().resolve()
@@ -44,6 +51,7 @@ def create_app(
             engine, session_factory = create_database(db_path)
             app.state.session_factory = session_factory
             app.state.data_dir = resolved_data_dir
+            app.state.ffmpeg_path = ffmpeg_path.resolve() if ffmpeg_path is not None else None
 
             async def cleanup_course_tombstones() -> None:
                 try:
@@ -60,21 +68,43 @@ def create_app(
             cleanup_task = asyncio.create_task(cleanup_course_tombstones())
             app.state.course_tombstone_cleanup_task = cleanup_task
             await cleanup_task
-            document_worker = DocumentWorker(session_factory, resolved_data_dir)
+            document_worker = DocumentWorker(session_factory, resolved_data_dir, record_notifier)
             await document_worker.recover_interrupted()
             document_worker_task = asyncio.create_task(document_worker.run())
             app.state.document_worker_task = document_worker_task
+            audio_worker = (
+                AudioWorker(
+                    session_factory,
+                    resolved_data_dir,
+                    ffmpeg_path.resolve(),
+                    asr_client or TencentAsrClient(),
+                    record_notifier,
+                )
+                if ffmpeg_path is not None
+                else None
+            )
+            audio_worker_task = None
+            if audio_worker is not None:
+                await audio_worker.recover_interrupted()
+                audio_worker_task = asyncio.create_task(audio_worker.run())
+                app.state.audio_worker_task = audio_worker_task
             try:
                 yield
             finally:
+                if audio_worker is not None:
+                    audio_worker.stop()
                 document_worker.stop()
                 try:
-                    await document_worker_task
+                    if audio_worker_task is not None:
+                        await audio_worker_task
                 finally:
                     try:
-                        await cleanup_task
+                        await document_worker_task
                     finally:
-                        await engine.dispose()
+                        try:
+                            await cleanup_task
+                        finally:
+                            await engine.dispose()
         finally:
             data_directory_lock.release()
 
@@ -85,6 +115,7 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.launch_token = launch_token
+    app.state.record_notifier = record_notifier
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(cors_origins),
@@ -93,6 +124,8 @@ def create_app(
         allow_headers=["Content-Type", "X-KnowRealm-Token"],
     )
     app.include_router(courses.router)
+    app.include_router(audio_imports.router)
+    app.include_router(settings.router)
     app.include_router(document_imports.router)
     app.include_router(processing_jobs.router)
     app.include_router(records.router)

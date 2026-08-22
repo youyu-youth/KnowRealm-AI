@@ -48,6 +48,13 @@ pub fn launch_token() -> io::Result<String> {
 pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
     let token = launch_token()?;
     let data_dir = app.path().home_dir()?.join("KnowRealm");
+    let ffmpeg = ffmpeg_program()?;
+    if !ffmpeg.is_file() {
+        return Err(Box::new(io::Error::new(
+            io::ErrorKind::NotFound,
+            "bundled ffmpeg is missing",
+        )));
+    }
     let (program, working_dir) = sidecar_program()?;
     let args = [
         OsString::from("-m"),
@@ -58,6 +65,8 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         OsString::from(&token),
         OsString::from("--data-dir"),
         data_dir.into_os_string(),
+        OsString::from("--ffmpeg"),
+        ffmpeg.into_os_string(),
     ];
     let (mut events, child) = app
         .shell()
@@ -193,6 +202,27 @@ fn sidecar_program() -> io::Result<(PathBuf, PathBuf)> {
         "./.venv/bin/python"
     });
     Ok((python, backend))
+}
+
+#[cfg(debug_assertions)]
+fn ffmpeg_program() -> io::Result<PathBuf> {
+    Ok(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("binaries/ffmpeg-x86_64-pc-windows-msvc.exe"),
+    )
+}
+
+#[cfg(not(debug_assertions))]
+fn ffmpeg_program() -> io::Result<PathBuf> {
+    let executable_dir = std::env::current_exe()?
+        .parent()
+        .map(PathBuf::from)
+        .ok_or_else(|| io::Error::other("desktop executable has no parent directory"))?;
+    Ok(executable_dir.join(if cfg!(target_os = "windows") {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    }))
 }
 
 #[cfg(not(debug_assertions))]

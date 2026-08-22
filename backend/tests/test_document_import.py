@@ -136,7 +136,7 @@ async def assert_document_import_schema(db_path: Path) -> None:
             await connection.execute("PRAGMA index_list(processing_jobs)")
         ).fetchall()
 
-    assert version == (3,)
+    assert version == (4,)
     assert {"record_files", "transcripts", "processing_jobs"} <= tables
     assert "processing_status" not in {column[1] for column in record_file_columns}
     assert {index[1] for index in processing_job_indexes} >= {
@@ -169,7 +169,7 @@ async def test_txt_import_preserves_file_and_builds_real_transcript(tmp_path: Pa
     data_dir = tmp_path / "KnowRealm"
     source = b"\xef\xbb\xbfline one\r\n# heading\rline three"
 
-    async with running_document_app(data_dir) as (_app, client):
+    async with running_document_app(data_dir) as (app, client):
         course = await client.post(
             "/api/courses",
             json={
@@ -189,6 +189,7 @@ async def test_txt_import_preserves_file_and_builds_real_transcript(tmp_path: Pa
         job = await wait_for_terminal_job(client, accepted_body["job_id"])
         record = await client.get(f"/api/records/{accepted_body['record_id']}")
         transcript = await client.get(f"/api/records/{accepted_body['record_id']}/transcript")
+        notification_version = app.state.record_notifier.version(accepted_body["record_id"])
 
     assert job["status"] == "SUCCEEDED"
     assert job["record_id"] == accepted_body["record_id"]
@@ -198,6 +199,7 @@ async def test_txt_import_preserves_file_and_builds_real_transcript(tmp_path: Pa
     assert transcript.json()["status"] == "READY"
     assert transcript.json()["transcript"]["language"] == "und"
     assert transcript.json()["transcript"]["content"] == ("line one\n# heading\nline three")
+    assert notification_version > 0
     stored_files = list((data_dir / "files" / accepted_body["record_id"]).iterdir())
     assert len(stored_files) == 1
     assert stored_files[0].read_bytes() == source
@@ -283,6 +285,7 @@ async def test_deterministic_parse_failures_expose_only_stable_codes(tmp_path: P
                 "max_attempts": 3,
                 "error_code": expected_code,
                 "retryable": False,
+                "waiting_reason": None,
             }
             assert record.json()["status"] == "FAILED"
             assert transcript.json() == {"status": "NOT_READY", "transcript": None}

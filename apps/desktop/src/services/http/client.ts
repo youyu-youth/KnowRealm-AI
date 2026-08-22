@@ -14,7 +14,10 @@ function formatApiDetail(detail: unknown): string {
   return "";
 }
 
-async function request(path: string, init?: RequestInit): Promise<Response> {
+export async function apiRequest(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
   const { baseUrl, token } = await getSidecarConfig();
   const headers = new Headers(init?.headers);
   if (!(init?.body instanceof FormData)) {
@@ -40,12 +43,12 @@ export async function apiFetch<T>(
   init?: RequestInit,
 ): Promise<T> {
   // OpenAPI types are the compile-time authority; FastAPI validates the runtime payload.
-  return (await request(path, init)).json() as Promise<T>;
+  return (await apiRequest(path, init)).json() as Promise<T>;
 }
 
 export async function apiFetchNoContent(
   path: string,
   init?: RequestInit,
 ): Promise<void> {
-  await request(path, init);
+  await apiRequest(path, init);
 }

@@ -10,6 +10,8 @@
     "test": "vitest run --passWithNoTests",
     "format:check": "prettier --check .",
     "preview": "vite preview",
+    "prepare:ffmpeg": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-ffmpeg.ps1",
+    "pretauri": "pnpm prepare:ffmpeg",
     "tauri": "tauri"
   },
   "dependencies": {

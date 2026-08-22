@@ -112,7 +112,7 @@ Record 详情通过 Record 级 Job 聚合接口展示进度、等待、失败和
 - 单来源 Record 的 capture_type 取 DOCUMENT_IMPORT、AUDIO_IMPORT 或 RECORDING；包含多种来源类型的 Record 使用 MULTI_SOURCE。混合类型只描述捕获来源，不新增 Batch 状态机。
 - 标题由服务端确定。单来源使用文件名 stem；多来源使用“首文件 stem + 等 N 个文件”；请求不接受自定义标题，避免前后端产生两份标题规则。
 - Record File 增加或使用可持久化顺序字段表达 `sequence_no`，并扩展文件类型/来源枚举以区分 DOCUMENT、AUDIO、UPLOADED 与 RECORDED。顺序约束在同一 Record 内唯一且非负。
-- 导入音频原件是正式 Record File，保存在正式文件区。标准化音频、ASR 片和临时正文是可重建缓存，只进入 cache。
+- 导入音频原件是正式 Record File，保存在正式文件区。标准化音频、ASR 片和临时正文是可重建缓存，只进入 cache；本功能不新增分别配置 `files`、`cache` 或保留标准化 Ogg 的设置。
 - 录音功能只负责捕获、staging 和 finalize 交接。转写功能负责合并已封口 WebM staging、执行转码、原子登记最终 AUDIO/RECORDED Record File，并仅在登记成功后删除 WebM staging。
 - Tauri 通过 `externalBin` 随包分发固定版本、可审计且 LGPL-compatible 的 ffmpeg。运行时只解析应用资源中的二进制，不探测或回退到系统 PATH。
 - 每个音频来源创建一个 AUDIO_TRANSCODE Job 和一个 ASR Job，并保持转码先于识别的依赖。每个文档来源复用既有 DOCUMENT_PARSE Job。
@@ -138,9 +138,9 @@ Record 详情通过 Record 级 Job 聚合接口展示进度、等待、失败和
 - 内容完成后 Record 进入 SUMMARY_PENDING。只有 Course 在最终化时仍为 ACTIVE，已完成的总结功能才可自动接续；处理期间归档的 Course 仍保留 Transcript，但不自动创建 Summary Job。
 - `GET /api/records/{record_id}/jobs` 返回该 Record 下按来源顺序和执行阶段稳定排序的 Job 视图，至少包含类型、状态、进度、等待原因、稳定错误码、attempts 以及是否允许手动重试。它是 UI 状态的权威来源。
 - Record 详情 URL 只保留 `recordId` 与 tab。移除 `jobId` 搜索参数及其数据依赖；刷新、直达和恢复一律先读 Record，再读 Record 级 Jobs。
-- `/api/records/{record_id}/events` 是带启动令牌的 authenticated fetch stream。不能使用无法附加自定义头的原生 EventSource。
-- 事件流只发送 Record 数据已失效的通知，不承载完整 Record、Job、Transcript 或进度快照；客户端收到事件、重连成功或窗口重新获得焦点后，通过 REST 重新读取权威状态。
-- V1 不提供事件序号、Last-Event-ID 或服务端重放。事件流断开时，仅非终态 Record 每 2 秒条件轮询；恢复连接或进入终态后停止轮询。
+- `GET /api/records/{record_id}/events` 是带启动令牌的 authenticated fetch stream；需要请求体的 AI/Chat 命令流继续使用 POST。两类流共用 `EventSourceResponse`，不能使用无法附加自定义头的原生 EventSource。
+- Record 事件固定为 `invalidate`，只携带 `record_id`，不承载完整 Record、Job、Transcript 或进度快照；客户端收到事件、重连成功或窗口重新获得焦点后，通过 REST 重新读取权威状态。
+- V1 不提供事件序号、Last-Event-ID 或服务端重放。Record 仅在 `CONTENT_PROCESSING` 或 `SUMMARY_PROCESSING` 时保持连接；事件流断开后立即刷新一次 REST，并每 2 秒条件轮询和尝试重连，恢复连接或离开处理态后停止。
 - Transcript 编辑使用现有 Record Transcript 接口的 PATCH 语义，请求包含正文和 `expected_source_version`。只有内容已成功且 Summary 不处于处理中时允许保存。
 - Transcript 更新在同一事务中比较当前 `source_version`。不匹配返回 409 且不写入；成功时 `source_version + 1`，把现有旧 Summary 标为 SUPERSEDED，并将 Record 设为 SUMMARY_PENDING。
 - Transcript 编辑成功不自动触发重新总结。用户必须执行明确的重新生成动作；Summary Worker 在写入前还必须核对绑定的 `transcript_source_version`，过期结果不得覆盖新版本。
@@ -158,7 +158,7 @@ Record 详情通过 Record 级 Job 聚合接口展示进度、等待、失败和
 
 - 测试只断言可观察合同：HTTP 状态与响应、SQLite/文件系统结果、进程重启后的状态、外部调用次数与参数边界、页面可访问行为。不得绑定 Worker 私有函数、组件内部 state、CSS 类名、具体 SQLAlchemy 调用或 JSON 序列化实现。
 - 自动化主接缝复用现有真实 sidecar 进程测试：在随机 `127.0.0.1` 端口启动实际进程，使用真实启动令牌、正式迁移、临时数据目录、SQLite、文件系统、Worker 和随包 ffmpeg；只在腾讯 ASR 网络传输边界使用可编程替身。
-- 主接缝覆盖 Capture Batch 的整批预校验和原子注册：合法单音频、音频+文档、格式不支持、损坏音频、录音超过 3 小时、批次音频超过 5 小时、磁盘不足，以及所有失败场景均无 Record/File/Job 残留。
+- 主接缝覆盖 Capture Batch 的整批预校验和原子注册：合法单音频、音频+文档、格式不支持、损坏音频、录音超过 3 小时、批次音频超过 5 小时，以及已执行失败场景均无 Record/File/Job 残留。磁盘不足测试按用户明确决定不执行，产品侧空间校验继续保留。
 - 主接缝使用真实 ffmpeg 探测、转码和切片，验证运行时不读取系统 PATH、输出为 Ogg Opus 16kHz、片顺序稳定、目标时长不超过 5 分钟且每片严格小于 5MB。
 - ASR 传输替身按真实提交/查询响应形状工作，能够返回 TaskId、处理中、成功、静音、鉴权、配额、临时故障、任务过期和“提交超时但无 TaskId”。测试关注调用次数、顺序和恢复结果，不测试替身内部实现。
 - 检查点测试覆盖顺序提交、多片成功、成功片不重提、有效 TaskId 继续轮询、失败/过期/未提交片的手动重试、自动重试最多 3 次，以及 `ASR_SUBMIT_UNKNOWN` 不自动重提。

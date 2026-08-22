@@ -4,6 +4,7 @@ export const recordKeys = {
     [...recordKeys.all, "detail", recordId] as const,
   transcript: (recordId: string) =>
     [...recordKeys.all, "transcript", recordId] as const,
+  jobs: (recordId: string) => [...recordKeys.all, "jobs", recordId] as const,
   courseList: (courseId: string) =>
     [...recordKeys.all, "course", courseId] as const,
 };

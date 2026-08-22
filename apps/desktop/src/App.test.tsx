@@ -47,7 +47,7 @@ describe("工作台骨架", () => {
     expect(screen.getByRole("button", { name: "新建知识空间" })).toBeEnabled();
   });
 
-  it("通过真实 multipart 请求导入文档并进入可轮询的 Transcript", async () => {
+  it("通过真实 multipart 请求导入文档并进入记录级 Transcript", async () => {
     const course: components["schemas"]["CourseOut"] = {
       id: "11111111-1111-4111-8111-111111111111",
       name: "操作系统",
@@ -88,25 +88,31 @@ describe("工作台骨架", () => {
           course_id: course.id,
           capture_type: "DOCUMENT_IMPORT",
           title: "lecture",
-          status: jobCalls === 0 ? "CONTENT_PROCESSING" : "SUMMARY_PENDING",
+          status: "SUMMARY_PENDING",
           duration_ms: 0,
           summary_confirmed_at: null,
           created_at: "2026-08-20T08:30:00.000000Z",
           updated_at: "2026-08-20T08:30:00.000000Z",
         }),
       ),
-      http.get(`${TEST_SIDECAR_URL}/api/processing-jobs/${jobId}`, () => {
+      http.get(`${TEST_SIDECAR_URL}/api/records/${recordId}/jobs`, () => {
         jobCalls += 1;
         return HttpResponse.json({
-          id: jobId,
-          record_id: recordId,
-          job_type: "DOCUMENT_PARSE",
-          status: jobCalls === 1 ? "PENDING" : "SUCCEEDED",
-          progress: jobCalls === 1 ? 0 : 1,
-          attempts: jobCalls === 1 ? 0 : 1,
-          max_attempts: 3,
-          error_code: null,
-          retryable: false,
+          jobs: [
+            {
+              id: jobId,
+              record_id: recordId,
+              job_type: "DOCUMENT_PARSE",
+              status: "SUCCEEDED",
+              progress: 1,
+              attempts: 1,
+              max_attempts: 3,
+              error_code: null,
+              retryable: false,
+              waiting_reason: null,
+            },
+          ],
+          progress: 1,
         });
       }),
       http.get(`${TEST_SIDECAR_URL}/api/records/${recordId}/transcript`, () => {
@@ -126,7 +132,7 @@ describe("工作台骨架", () => {
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "导入资料" }));
-    expect(screen.getByRole("heading", { name: "导入单个文档" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "导入单个资料" })).toBeVisible();
     expect(screen.queryByRole("option", { name: "已归档" })).toBeNull();
     expect(screen.getByRole("button", { name: "开始导入" })).toBeDisabled();
 
@@ -142,7 +148,7 @@ describe("工作台骨架", () => {
     fireEvent.pointerDown(courseOption);
     fireEvent.pointerUp(courseOption);
     fireEvent.click(courseOption);
-    fireEvent.change(screen.getByLabelText("选择文档"), {
+    fireEvent.change(screen.getByLabelText("选择文件"), {
       target: { files: [new File(["# 第一讲"], "lecture.md")] },
     });
     const submit = screen.getByRole("button", { name: "开始导入" });
@@ -154,7 +160,7 @@ describe("工作台骨架", () => {
       () => expect(window.location.pathname).toBe(`/records/${recordId}`),
       { timeout: 3_000 },
     );
-    await waitFor(() => expect(jobCalls).toBe(2), { timeout: 5_000 });
+    await waitFor(() => expect(jobCalls).toBe(1));
     await waitFor(() => expect(transcriptCalls).toBe(1));
     expect(
       await screen.findByText(
@@ -163,15 +169,71 @@ describe("工作台骨架", () => {
           element.textContent === "# 第一讲\n进程与线程",
       ),
     ).toBeVisible();
-    expect(window.location.search).toBe(`?tab=transcript&jobId=${jobId}`);
-    expect(jobCalls).toBe(2);
+    expect(window.location.search).toBe("?tab=transcript");
+    expect(jobCalls).toBe(1);
     expect(importCalls).toBe(1);
     await new Promise((resolve) => setTimeout(resolve, 2_200));
-    expect(jobCalls).toBe(2);
+    expect(jobCalls).toBe(1);
     await waitFor(() =>
       expect(screen.getByText("等待生成总结")).toBeInTheDocument(),
     );
   }, 15_000);
+
+  it("单音频可不选课程，并且 URL 不暴露任务标识", async () => {
+    const recordId = "44444444-4444-4444-8444-444444444444";
+    let importCalls = 0;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
+      http.post(`${TEST_SIDECAR_URL}/api/audio-imports`, ({ request }) => {
+        importCalls += 1;
+        expect(request.headers.get("Content-Type")).not.toBe(
+          "application/json",
+        );
+        return HttpResponse.json(
+          {
+            record_id: recordId,
+            transcode_job_id: "55555555-5555-4555-8555-555555555555",
+            asr_job_id: "66666666-6666-4666-8666-666666666666",
+          },
+          { status: 202 },
+        );
+      }),
+      http.get(`${TEST_SIDECAR_URL}/api/records/${recordId}`, () =>
+        HttpResponse.json({
+          id: recordId,
+          course_id: null,
+          capture_type: "AUDIO_IMPORT",
+          title: "第一讲",
+          status: "SUMMARY_PENDING",
+          duration_ms: 1_000,
+          summary_confirmed_at: null,
+          created_at: "2026-08-22T08:30:00.000000Z",
+          updated_at: "2026-08-22T08:30:00.000000Z",
+        }),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/records/${recordId}/jobs`, () =>
+        HttpResponse.json({ jobs: [], progress: 1 }),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/records/${recordId}/transcript`, () =>
+        HttpResponse.json({ status: "NOT_READY", transcript: null }),
+      ),
+    );
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "导入资料" }));
+    fireEvent.change(screen.getByLabelText("选择文件"), {
+      target: { files: [new File(["RIFFaudio"], "第一讲.wav")] },
+    });
+    const submit = screen.getByRole("button", { name: "开始导入" });
+    await waitFor(() => expect(submit).toBeEnabled());
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(importCalls).toBe(1));
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/records/${recordId}`),
+    );
+    expect(window.location.search).toBe("?tab=transcript");
+  });
 
   it("未知地址提供返回今日的路径", async () => {
     window.history.replaceState(null, "", "/missing");

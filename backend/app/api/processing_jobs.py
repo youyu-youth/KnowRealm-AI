@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_launch_token
@@ -37,6 +37,9 @@ async def get_processing_job(
 async def retry_processing_job(
     job_id: UUID,
     body: ProcessingJobRetryRequest,
+    request: Request,
     session: AsyncSession = Depends(get_db),
 ) -> ProcessingJobOut:
-    return await ProcessingJobService.retry(session, str(job_id), str(body.record_id))
+    job = await ProcessingJobService.retry(session, str(job_id), str(body.record_id))
+    await request.app.state.record_notifier.notify(str(body.record_id))
+    return job

@@ -21,14 +21,16 @@
     "record": "开始录音"
   },
   "documentImport": {
-    "title": "导入单个文档",
-    "description": "选择一门未归档课程和一个本地文档。导入后会保留原文件并提取正文。",
+    "title": "导入单个资料",
+    "description": "选择一个本地文档或音频。原文件会保留在本机数据目录。",
     "course": "所属课程",
     "coursePlaceholder": "选择课程",
+    "noCourse": "不绑定课程",
+    "audioCourseHint": "音频可不绑定课程，也可归入一门未归档课程。",
     "courseError": "课程暂时无法读取，请关闭后重试。",
     "noActiveCourse": "当前没有可接收文档的课程。",
-    "file": "选择文档",
-    "fileHint": "支持 TXT、MD、PDF、DOCX；文本文件须为 UTF-8。",
+    "file": "选择文件",
+    "fileHint": "文档支持 TXT、MD、PDF、DOCX；音频支持 MP3、AAC、WAV、M4A。",
     "cancel": "取消",
     "submit": "开始导入",
     "submitting": "正在导入"
@@ -215,17 +217,56 @@
         "quiz": "Quiz"
       },
       "assetsUnavailable": "其余学习资产尚未接入",
+      "jobs": {
+        "title": "处理进度",
+        "progress": "{{value}}%",
+        "progressLabel": "学习记录总处理进度",
+        "types": {
+          "AUDIO_TRANSCODE": "本地音频规范化与切片",
+          "ASR": "腾讯云语音识别",
+          "DOCUMENT_PARSE": "本地文档正文提取"
+        },
+        "status": {
+          "PENDING": "等待中",
+          "RUNNING": "处理中",
+          "SUCCEEDED": "已完成",
+          "FAILED": "失败",
+          "CANCELLED": "已取消"
+        }
+      },
       "transcript": {
-        "processingTitle": "正在提取文档正文",
-        "processingDescription": "处理会在本地完成，完成后此页自动更新。",
+        "processingTitle": "正在生成 Transcript",
+        "processingDescription": "页面会通过本地事件流更新；连接中断时每 2 秒恢复读取。",
         "notReadyTitle": "正文尚未生成",
         "notReadyDescription": "当前没有可展示的真实正文。",
-        "errorTitle": "文档正文提取失败",
+        "contentTitle": "Transcript 正文",
+        "errorTitle": "Transcript 处理失败",
         "retryableDescription": "原文件和学习记录仍保留，可以开启新一轮处理。",
-        "retry": "重新处理文档",
+        "retry": "重新处理",
         "retrying": "正在重新处理",
         "cancelledDescription": "此处理任务已取消。",
+        "waiting": {
+          "CONSENT_REQUIRED": "首次发送前需要单独同意外部语音识别。",
+          "ASR_KEY_REQUIRED": "尚未配置腾讯云 ASR 凭据，请在本地 Provider 配置中补齐。",
+          "OFFLINE": "当前无法连接腾讯云；联网后同一任务会自动继续。"
+        },
+        "consentDisclosure": "原始文件保留在本机，仅转码后的音频片段会发送至腾讯云识别。",
+        "grantConsent": "同意并继续识别",
+        "edit": "编辑正文",
+        "editorLabel": "Transcript 正文编辑器",
+        "save": "保存正文",
+        "cancelEdit": "取消编辑",
+        "conflict": "正文已在其他操作中更新。你的修改尚未覆盖服务端内容。",
+        "reload": "载入最新版本",
         "errors": {
+          "AUDIO_TRANSCODE_FAILED": "音频规范化或切片失败，请确认原文件可读取后重试。",
+          "ASR_AUTH_FAILED": "腾讯云凭据无效，请修正 Provider 配置后重试。",
+          "ASR_QUOTA_EXHAUSTED": "腾讯云识别额度不足，请补充额度后重试。",
+          "ASR_TEMPORARY_UNAVAILABLE": "腾讯云识别暂时不可用，有限自动重试已停止。",
+          "ASR_SUBMIT_UNKNOWN": "提交结果未知，为避免重复任务已停止自动重提。确认云端状态后可手动重试。",
+          "ASR_RECOGNITION_FAILED": "腾讯云未能完成这段音频的识别。",
+          "ASR_TASK_EXPIRED": "腾讯云任务已过期，可从原检查点手动重试。",
+          "NO_SPEECH_DETECTED": "音频中没有检测到可识别语音。",
           "NON_UTF8_TEXT": "文本文件不是 UTF-8 编码，请转换编码后重新选择。",
           "CORRUPT_DOCUMENT": "文档已损坏，无法读取。",
           "PASSWORD_PROTECTED": "文档受密码保护，请先移除密码。",
