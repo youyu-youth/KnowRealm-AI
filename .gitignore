@@ -198,3 +198,6 @@ reports/
 
 # Browser tooling artifacts
 .playwright-mcp/
+
+
+.codegraph
