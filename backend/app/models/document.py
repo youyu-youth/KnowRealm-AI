@@ -39,6 +39,7 @@ class RecordingSession(Base):
     updated_at: Mapped[datetime] = mapped_column(ISODateTime)
     state: Mapped[RecordingSessionState] = mapped_column(String(20))
     chunk_paths: Mapped[str] = mapped_column(Text)
+    recorded_duration_ms: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Transcript(Base):

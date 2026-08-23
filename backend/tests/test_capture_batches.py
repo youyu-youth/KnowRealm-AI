@@ -432,8 +432,9 @@ async def test_sealed_recording_registers_final_ogg_before_deleting_webm_staging
             stored = (
                 await session.execute(
                     text(
-                        "SELECT source_type, file_path FROM record_files "
-                        "WHERE record_id = :record_id"
+                        "SELECT rf.source_type, rf.file_path, r.created_at "
+                        "FROM record_files rf JOIN records r ON r.id = rf.record_id "
+                        "WHERE rf.record_id = :record_id"
                     ),
                     {"record_id": session_id},
                 )
@@ -446,6 +447,7 @@ async def test_sealed_recording_registers_final_ogg_before_deleting_webm_staging
     assert sorted(item.status_code for item in responses) == [202, 409]
     assert stored[0] == "RECORDED"
     assert stored[1].endswith(".ogg")
+    assert stored[2] == now
     assert (data_dir / stored[1]).is_file()
     assert state == "DONE"
     assert all(not path.exists() for path in chunks)

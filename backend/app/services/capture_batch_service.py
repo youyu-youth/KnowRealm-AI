@@ -168,9 +168,7 @@ class CaptureBatchService:
                     )
                 course = await CourseService.get(session, course_id) if course_id else None
                 if course_id and course is None:
-                    raise HTTPException(status_code=404, detail="课程不存在或已删除")
-                if course is not None and course.status != CourseStatus.ACTIVE:
-                    raise HTTPException(status_code=409, detail="已归档课程不能接受新录音")
+                    course_id = None
                 hot_words = (
                     ",".join(
                         f"{word}|5" for word in CourseDetailOut.model_validate(course).hot_words
@@ -187,7 +185,7 @@ class CaptureBatchService:
                         status=RecordStatus.CONTENT_PROCESSING,
                         duration_ms=duration_ms,
                         summary_confirmed_at=None,
-                        created_at=now,
+                        created_at=current.started_at,
                         updated_at=now,
                     )
                 )

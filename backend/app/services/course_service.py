@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
 from app.models.course import Course
-from app.models.document import ProcessingJob
+from app.models.document import ProcessingJob, RecordingSession
 from app.models.record import Record
 from app.schemas.course import (
     CourseCreate,
@@ -15,6 +15,7 @@ from app.schemas.course import (
     EducationStage,
     LearningContext,
 )
+from app.schemas.document import RecordingSessionState
 from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
 
 
@@ -110,6 +111,14 @@ class CourseService:
                 session,
                 record_filter=ProcessingJob.record_id.in_(record_ids),
                 now=deleted_at,
+            )
+            await session.execute(
+                update(RecordingSession)
+                .where(
+                    RecordingSession.course_id == course_id,
+                    RecordingSession.state != RecordingSessionState.DONE,
+                )
+                .values(course_id=None, updated_at=deleted_at)
             )
             await session.execute(
                 update(Record)

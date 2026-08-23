@@ -7,7 +7,7 @@
 | 依赖 | 基线 |
 |---|---|
 | Tauri | **2.x**（2024-10 GA，2026 主流） |
-| tauri-plugin-fs / dialog / global-shortcut / autostart / shell | 2.x 配套版（shell 承担 sidecar 拉起与看护） |
+| tauri-plugin-dialog / global-shortcut / autostart / shell | 2.x 配套版（shell 承担 sidecar 拉起与看护） |
 | Rust | stable 工具链，`clippy` 零警告 |
 
 ## 1. 前后端分工：什么才进 Rust
@@ -16,16 +16,16 @@
 
 1. **纯 UI / 状态** → React（TS）解决；
 2. **Web API 能力**（fetch、IndexedDB、MediaRecorder 录音本身）→ WebView 内解决；
-3. **文件系统、窗口、系统电源、跨进程集成、性能敏感的本地 IO**（录音分片落盘索引、大文件路径管理）→ **Rust**；
-4. **业务逻辑 / 数据计算** → 不进 Rust，下沉到 FastAPI sidecar。Rust 层只做"能力"，不做"业务"。
+3. **窗口、系统电源、进程拉起与看护、需要操作系统权限的能力** → **Rust**；
+4. **业务逻辑、数据库与数据目录内的文件生命周期**（包括录音分片落盘、清单与恢复）→ FastAPI sidecar。Rust 层只做系统能力，不做业务或业务文件协调。
 
 ```
 React（services/tauri/ 封装 invoke）
-   │  invoke("save_recording_chunk", {...})   唯一通道
+   │  invoke("set_recording_keep_awake", {...})
    ▼
 src-tauri/src/commands/  ← 参数校验 + 编排
    ▼
-src-tauri/src/services/  ← 原生能力实现（fs、平台 API）
+src-tauri/src/services/  ← 原生能力实现（窗口、进程、平台 API）
 ```
 
 规则：**React 不直接调 plugin API 的地方一律经 `services/tauri/` 封装**（类型化 + 统一错误处理），组件里禁止散落裸 `invoke()`。
@@ -33,13 +33,13 @@ src-tauri/src/services/  ← 原生能力实现（fs、平台 API）
 ## 2. Command 规范
 
 ```rust
-// commands/recording.rs
-use serde::{Deserialize, Serialize};
+// commands/power.rs
+use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CommandError {
-    #[error("IO 错误: {0}")]
-    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Power(#[from] crate::services::power::PowerError),
 }
 impl serde::Serialize for CommandError {   // 错误必须可序列化，才能传回前端
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
@@ -47,24 +47,13 @@ impl serde::Serialize for CommandError {   // 错误必须可序列化，才能�
     }
 }
 
-#[derive(Deserialize)]
-pub struct SaveChunkArgs {
-    pub record_id: String,
-    pub chunk_index: u32,
-}
-
-#[derive(Serialize)]
-pub struct SaveChunkResult {
-    pub saved_path: String,
-}
-
 #[tauri::command]
-pub async fn save_recording_chunk(
-    args: SaveChunkArgs,
-    state: tauri::State<'_, crate::state::AppState>,
-) -> Result<SaveChunkResult, CommandError> {
-    let path = crate::services::recording::save_chunk(&state, &args).await?;
-    Ok(SaveChunkResult { saved_path: path })
+pub fn set_recording_keep_awake(
+    enabled: bool,
+    state: tauri::State<'_, crate::state::PowerState>,
+) -> Result<(), CommandError> {
+    crate::services::power::set_keep_awake(&state, enabled)?;
+    Ok(())
 }
 ```
 
@@ -72,11 +61,8 @@ pub async fn save_recording_chunk(
 // services/tauri/recording.ts —— 前端侧类型化封装
 import { invoke } from "@tauri-apps/api/core";
 
-export async function saveRecordingChunk(args: {
-  recordId: string;      // Rust snake_case 字段在 JS 侧自动映射为 camelCase
-  chunkIndex: number;
-}): Promise<{ savedPath: string }> {
-  return invoke("save_recording_chunk", { args });
+export function setRecordingKeepAwake(enabled: boolean): Promise<void> {
+  return invoke("set_recording_keep_awake", { enabled });
 }
 ```
 
@@ -90,8 +76,7 @@ export async function saveRecordingChunk(args: {
 - **权限最小化**：`capabilities/` 里只声明用到的 permission，逐项评审新增。
 
 ```json
-// capabilities/default.json —— 示例：fs 权限收敛到数据目录（首启选定，非 appdata），
-// 录音分片仅写 cache/staging/
+// capabilities/default.json —— 仅授予当前窗口实际使用的系统能力
 {
   "identifier": "default",
   "windows": ["main"],
@@ -100,9 +85,7 @@ export async function saveRecordingChunk(args: {
     "dialog:default",
     "global-shortcut:default",
     "autostart:default",
-    "shell:default",
-    { "identifier": "fs:allow-write-file" },
-    { "identifier": "fs:allow-read-file" }
+    "shell:default"
   ]
 }
 ```
@@ -138,21 +121,22 @@ pub fn keep_awake(_on: bool) -> anyhow::Result<()> { Ok(()) }
 
 ## 5. 数据目录访问边界（无本地 SQLite）
 
-- **UI 不直连数据库**（不引入 tauri-plugin-sql）：一切业务读写经 localhost sidecar API——sidecar 是 knowrealm.db 唯一写者（红线 #35，技术栈 v4.3 D1）。同一数据目录的第二个 sidecar 必须在迁移/worker 前因 OS 排他锁失败而退出；壳把“数据目录正在使用”作为可理解的启动错误展示，不能自动换目录或绕过锁。
-- React/Tauri 对数据目录的直写**仅限录音分片落盘**（`cache/staging/`，防中断全损的暂存件）——这是唯一例外，且不是业务数据；会话与分片清单事实由 sidecar 写 `recording_sessions`（`chunk_paths`），前端不维护第二份。
+- **UI 不直连数据库**（不引入 tauri-plugin-sql）：一切业务读写经 localhost sidecar API——sidecar 是 `knowrealm.db` 与数据目录业务文件的唯一协调者。同一数据目录的第二个 sidecar 必须在迁移或 worker 启动前因 OS 排他锁失败而退出；壳把“数据目录正在使用”作为可理解的启动错误展示，不能自动换目录或绕过锁。
+- React/Tauri 不直接写数据目录。录音 WebM 分片通过受启动令牌保护的 sidecar 接口写入 `cache/staging/`；sidecar 同时维护 `recording_sessions` 的会话与有序分片清单，前端不维护第二份。
 - sidecar 二进制与可审计 LGPL-compatible ffmpeg 经 `externalBin` 随包打进 `.msi`；生产禁止读取系统 PATH。壳用 shell 插件拉起/看护 sidecar（随机端口经启动参数注入，UI 从壳读取——技术栈 v4.3 §十）。
 
 ## 6. 录音链路（项目最关键的原生协同）
 
 ```
 WebView: getUserMedia → MediaRecorder(webm/opus)
-  ├─ 每片 5–10 分钟 stop() → blob → Rust 写数据目录 cache/staging/（防中断全损）
+  ├─ 每片 5–10 分钟 stop() → blob → sidecar 安全写入 cache/staging/
   ├─ 启动时 isTypeSupported("audio/webm;codecs=opus") 探测，失败走降级提示
   └─ 后台节流风险：长录音时用 Tauri 防休眠（platform/power.rs）
 ```
 
 规则：
 - 03 只负责 staging 分片、`recording_sessions` 恢复与 finalize；清单封口后不得追加或重排。04 负责合并、ffmpeg 转 `ogg-opus` 16kHz、原子注册最终 `record_file`，成功后才删除 WebM；
+- sidecar 接收分片后校验大小、顺序与 SHA-256 幂等性，先写临时文件并原子改名，再更新会话清单；启动恢复只处理本会话目录内的孤儿暂存件；
 - 转码在 sidecar worker 内经 `asyncio.create_subprocess_exec` 调用随包 ffmpeg；首次 ASR 外发须独立同意，只发送转码片段，不发送导入原件或录音 WebM；
 - 录音 UI 状态在 Zustand；会话与有序分片清单事实在 `recording_sessions`（sidecar 写，数据模型 v2.2 §4.2），两边不重复存。
 
@@ -176,9 +160,8 @@ WebView: getUserMedia → MediaRecorder(webm/opus)
 | 组件里裸 `invoke()` | `services/tauri/` 类型化封装 |
 | command 里 `unwrap()/expect()` | `Result` + thiserror |
 | 命令参数平铺一大串 | 收拢成 Args struct |
-| capabilities 开 `fs:default`/全盘 scope | 最小 permission + 数据目录最小 scope |
+| capabilities 开 `fs:default`/全盘 scope | 只授予实际使用的系统能力 |
 | 关闭 CSP | 保持默认 CSP |
 | `static mut` 共享状态 | `tauri::State` + tokio 锁 |
-| 前端直连数据库 / 直写业务数据 | 一切经 sidecar API（唯一写者） |
-| 数据目录直写超出录音分片落盘范围 | 分片只进 cache/staging/，业务数据经 sidecar |
+| 前端直连数据库 / React 或 Tauri 直接写数据目录 | 一切经 sidecar API（唯一协调者） |
 | 录音不做分片 / 不探测格式支持 | 5–10 分钟分片 + `isTypeSupported` 兜底 |

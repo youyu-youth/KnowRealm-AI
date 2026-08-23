@@ -5,7 +5,7 @@
 ## 1. 核心架构
 
 - **Pydantic 管边界校验，SQLAlchemy 管持久化，`knowrealm.db` 是唯一业务事实源。**
-- FastAPI sidecar 是数据库唯一写者；同一数据目录必须由 sidecar 持有进程生命周期操作系统排他锁，拿锁失败时不得执行迁移、备份或启动 worker。UI 只能通过 localhost API 读写业务数据，不得直连数据库或直写数据目录。录音分片落盘是唯一例外，见 `desktop-tauri.md`。
+- FastAPI sidecar 是数据库与数据目录业务文件的唯一协调者；同一数据目录必须由 sidecar 持有进程生命周期操作系统排他锁，拿锁失败时不得执行迁移、备份或启动 worker。UI 与 Tauri 只能通过 localhost API 读写业务数据和录音暂存，不得直连数据库或直接写数据目录。
 - 本地单用户库不设 `user_id`、RLS 或通用 `version` 乐观锁列。`ai_summaries.version_no`、`transcripts.source_version` 属于业务版本号，继续保留。
 - 固定技术线：Pydantic / pydantic-settings 2.x（≥2.11）、SQLAlchemy 2.0.x、aiosqlite、sqlite-vec；依赖版本以锁文件为准，不采用 SQLModel、SQLAlchemy 2.1 beta 或其他数据库驱动。
 

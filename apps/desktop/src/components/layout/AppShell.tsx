@@ -12,9 +12,15 @@ import {
   UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
+import { RecordingExperience } from "@/features/recording/RecordingExperience";
+import {
+  blocksNewRecording,
+  useRecordingSessions,
+} from "@/features/recording/api/queries";
+import { useRecordingUiStore } from "@/features/recording/store";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
@@ -29,7 +35,7 @@ const navigationItems = [
 const captureItems = [
   { labelKey: "capture.note", icon: NotebookPen, available: false },
   { labelKey: "capture.import", icon: Upload, available: true },
-  { labelKey: "capture.record", icon: Mic, available: false },
+  { labelKey: "capture.record", icon: Mic, available: true },
 ] as const;
 
 const activeNavClass =
@@ -41,6 +47,26 @@ export function AppShell() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [importOpen, setImportOpen] = useState(false);
+  const setRecordingOpen = useRecordingUiStore((state) => state.setStartOpen);
+  const recordingSessions = useRecordingSessions();
+  const recordingActive = (recordingSessions.data ?? []).some(
+    blocksNewRecording,
+  );
+
+  const openCapture = (labelKey: (typeof captureItems)[number]["labelKey"]) => {
+    if (labelKey === "capture.import") setImportOpen(true);
+    if (labelKey === "capture.record") setRecordingOpen(true);
+  };
+
+  const openRecord = useCallback(
+    ({ record_id }: { record_id: string }) =>
+      navigate({
+        to: "/records/$recordId",
+        params: { recordId: record_id },
+        search: { tab: "transcript" },
+      }),
+    [navigate],
+  );
 
   return (
     <div className="bg-canvas text-foreground flex h-screen min-w-0 overflow-hidden">
@@ -113,18 +139,22 @@ export function AppShell() {
             {t("capture.label")}
           </p>
           <div className="flex min-w-0 items-center gap-1">
+            <RecordingExperience onAccepted={openRecord} />
             {captureItems.map(({ labelKey, icon: Icon, available }) => {
               const label = t(labelKey);
               return (
                 <Button
                   key={labelKey}
-                  variant={available ? "default" : "ghost"}
+                  variant={labelKey === "capture.record" ? "default" : "ghost"}
                   size="sm"
-                  disabled={!available}
-                  onClick={available ? () => setImportOpen(true) : undefined}
+                  disabled={
+                    !available ||
+                    (labelKey === "capture.record" && recordingActive)
+                  }
+                  onClick={available ? () => openCapture(labelKey) : undefined}
                   className={cn(
                     "disabled:pointer-events-auto disabled:opacity-70",
-                    available
+                    labelKey === "capture.record"
                       ? "hover:bg-primary-hover"
                       : "disabled:hover:bg-transparent",
                   )}
@@ -151,13 +181,7 @@ export function AppShell() {
       <DocumentImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-        onAccepted={({ record_id }) =>
-          navigate({
-            to: "/records/$recordId",
-            params: { recordId: record_id },
-            search: { tab: "transcript" },
-          })
-        }
+        onAccepted={openRecord}
       />
     </div>
   );

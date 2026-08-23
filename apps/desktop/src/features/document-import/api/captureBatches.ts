@@ -14,4 +14,12 @@ export const captureBatchApi = {
       body,
     });
   },
+  createRecording(recordingSessionId: string) {
+    const body = new FormData();
+    body.set("recording_session_id", recordingSessionId);
+    return apiFetch<CaptureBatchAccepted>("/api/capture-batches", {
+      method: "POST",
+      body,
+    });
+  },
 };

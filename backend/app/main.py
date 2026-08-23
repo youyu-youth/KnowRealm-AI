@@ -16,6 +16,7 @@ from app.api import (
     courses,
     document_imports,
     processing_jobs,
+    recording_sessions,
     records,
     settings,
 )
@@ -139,6 +140,7 @@ def create_app(
     app.include_router(settings.router)
     app.include_router(document_imports.router)
     app.include_router(processing_jobs.router)
+    app.include_router(recording_sessions.router)
     app.include_router(records.router)
 
     @app.exception_handler(RequestValidationError)
