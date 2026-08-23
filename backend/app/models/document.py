@@ -5,6 +5,7 @@ from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, ISODateTime, utcnow
+from app.schemas.document import RecordingSessionState
 
 
 class RecordFile(Base):
@@ -36,7 +37,7 @@ class RecordingSession(Base):
     title: Mapped[str | None] = mapped_column(Text, default=None)
     started_at: Mapped[datetime] = mapped_column(ISODateTime)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime)
-    state: Mapped[str] = mapped_column(String(20))
+    state: Mapped[RecordingSessionState] = mapped_column(String(20))
     chunk_paths: Mapped[str] = mapped_column(Text)
 
 

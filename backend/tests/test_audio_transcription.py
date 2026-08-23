@@ -767,6 +767,7 @@ async def test_delete_during_asr_poll_rejects_late_text_and_cleans_cache(tmp_pat
             await asyncio.sleep(0.02)
         else:
             pytest.fail("删除后的迟到 ASR 结果遗留了 cache")
+        assert not (data_dir / "cache" / "sources" / record_id).exists()
         assert (await client.get(f"/api/records/{record_id}/transcript")).status_code == 404
 
 

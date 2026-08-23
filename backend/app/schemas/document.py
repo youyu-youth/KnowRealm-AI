@@ -63,6 +63,13 @@ class RecordFileSourceType(StrEnum):
     UPLOADED = "UPLOADED"
 
 
+class RecordingSessionState(StrEnum):
+    RECORDING = "RECORDING"
+    PAUSED = "PAUSED"
+    FINALIZING = "FINALIZING"
+    DONE = "DONE"
+
+
 class DocumentImportAccepted(BaseModel):
     record_id: str
     job_id: str

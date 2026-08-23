@@ -1,6 +1,7 @@
 import asyncio
 import errno
 import json
+import shutil
 from datetime import timedelta
 from pathlib import Path
 from typing import cast
@@ -148,6 +149,13 @@ class DocumentWorker:
                 )
                 await self._recover_running(ProcessingJobErrorCode.SQLITE_BUSY)
                 continue
+            except Exception:
+                logger.error(
+                    "document_worker_unexpected_failure",
+                    error_code=ProcessingJobErrorCode.INTERNAL_ERROR,
+                )
+                await self._recover_running(ProcessingJobErrorCode.INTERNAL_ERROR)
+                continue
             try:
                 await asyncio.wait_for(self._stopped.wait(), timeout=1)
             except TimeoutError:
@@ -272,13 +280,15 @@ class DocumentWorker:
         cache_dir.mkdir(parents=True, exist_ok=True)
         source_path = cache_dir / f"{job_id}.txt"
         await asyncio.to_thread(source_path.write_text, content, encoding="utf-8")
-        await complete_source_job(
+        accepted = await complete_source_job(
             self._session_factory,
             self._data_dir,
             record_id,
             job_id,
             json.dumps({"source_text_path": source_path.relative_to(self._data_dir).as_posix()}),
         )
+        if not accepted:
+            await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
         await self._record_notifier.notify(record_id)
 
     async def _fail(

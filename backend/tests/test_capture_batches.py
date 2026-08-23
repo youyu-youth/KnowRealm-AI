@@ -24,6 +24,7 @@ from app.services.tencent_asr_client import (
     TencentAsrTask,
     TencentAsrTaskStatus,
 )
+from app.services.transcript_finalizer import complete_source_job
 
 TOKEN = "test-launch-token"
 
@@ -140,7 +141,7 @@ async def test_two_documents_are_registered_and_published_in_selection_order(
 
     assert accepted["job_ids"] and len(cast(list[str], accepted["job_ids"])) == 2
     assert record.json()["title"] == "first 等 2 个文件"
-    assert record.json()["capture_type"] == "MULTI_SOURCE"
+    assert record.json()["capture_type"] == "DOCUMENT_IMPORT"
     assert files == [("first.txt", 0), ("second.md", 1)]
     assert [job["job_type"] for job in jobs.json()["jobs"]] == [
         "DOCUMENT_PARSE",
@@ -196,6 +197,49 @@ async def test_audio_and_document_publish_one_transcript_in_selection_order(
 
 
 @pytest.mark.anyio
+async def test_multiple_audio_sources_keep_their_own_job_dependencies(tmp_path: Path) -> None:
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None:
+        pytest.skip("真实 ffmpeg 不可用")
+    data_dir = tmp_path / "KnowRealm"
+    (data_dir / "config").mkdir(parents=True)
+    (data_dir / "config" / "providers.json").write_text(
+        '{"tencent_asr":{"secret_id":"id","secret_key":"key","region":"ap-shanghai"}}',
+        encoding="utf-8",
+    )
+    (data_dir / "config" / "settings.json").write_text(
+        '{"tencent_asr_consent_granted_at":"2026-08-23T00:00:00Z"}',
+        encoding="utf-8",
+    )
+    async with running_app(
+        data_dir,
+        ffmpeg_path=Path(ffmpeg),
+        asr_client=SuccessfulAsrClient(),
+    ) as (_, client):
+        response = await client.post(
+            "/api/capture-batches",
+            files=[
+                ("files", ("first.wav", wav_bytes(), "audio/wav")),
+                ("files", ("second.wav", wav_bytes(), "audio/wav")),
+            ],
+        )
+        assert response.status_code == 202
+        record_id = response.json()["record_id"]
+        transcript = await wait_for_transcript(client, record_id)
+        record = await client.get(f"/api/records/{record_id}")
+        jobs = (await client.get(f"/api/records/{record_id}/jobs")).json()["jobs"]
+
+    assert record.json()["capture_type"] == "AUDIO_IMPORT"
+    assert transcript["content"] == "audio body\n\naudio body"
+    assert [(job["sequence_no"], job["job_type"]) for job in jobs] == [
+        (0, "AUDIO_TRANSCODE"),
+        (0, "ASR"),
+        (1, "AUDIO_TRANSCODE"),
+        (1, "ASR"),
+    ]
+
+
+@pytest.mark.anyio
 async def test_invalid_middle_source_rejects_the_whole_batch_without_business_rows(
     tmp_path: Path,
 ) -> None:
@@ -231,6 +275,81 @@ async def test_invalid_middle_source_rejects_the_whole_batch_without_business_ro
         for path in data_dir.rglob("*")
         if path.is_file() and path.suffix != ".db" and path.name != ".knowrealm.lock"
     ] == []
+
+
+@pytest.mark.anyio
+async def test_database_registration_failure_removes_rows_and_placed_files(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_app(data_dir) as (app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "事务补偿",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "CREATE TRIGGER reject_capture_jobs BEFORE INSERT ON processing_jobs "
+                    "BEGIN SELECT RAISE(ABORT, 'forced registration failure'); END"
+                )
+            )
+        with pytest.raises(Exception, match="forced registration failure"):
+            await client.post(
+                "/api/capture-batches",
+                data={"course_id": course.json()["id"]},
+                files=[("files", ("source.txt", b"body", "text/plain"))],
+            )
+        async with app.state.session_factory() as session:
+            counts = [
+                await session.scalar(text(f"SELECT count(*) FROM {table}"))
+                for table in ("records", "record_files", "processing_jobs")
+            ]
+
+    assert counts == [0, 0, 0]
+    assert not any((data_dir / "files").rglob("*") if (data_dir / "files").exists() else ())
+
+
+@pytest.mark.anyio
+async def test_failed_source_pauses_its_record_without_blocking_other_records(
+    tmp_path: Path,
+) -> None:
+    async with running_app(tmp_path / "KnowRealm") as (_app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "失败隔离",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        failed = await client.post(
+            "/api/capture-batches",
+            data={"course_id": course.json()["id"]},
+            files=[
+                ("files", ("blank.txt", b" \n", "text/plain")),
+                ("files", ("must-pause.txt", b"must not publish", "text/plain")),
+            ],
+        )
+        healthy = await client.post(
+            "/api/capture-batches",
+            data={"course_id": course.json()["id"]},
+            files=[("files", ("healthy.txt", b"healthy", "text/plain"))],
+        )
+        await wait_for_transcript(client, healthy.json()["record_id"])
+        failed_jobs = (await client.get(f"/api/records/{failed.json()['record_id']}/jobs")).json()[
+            "jobs"
+        ]
+        failed_transcript = await client.get(
+            f"/api/records/{failed.json()['record_id']}/transcript"
+        )
+
+    assert [job["status"] for job in failed_jobs] == ["FAILED", "PENDING"]
+    assert failed_transcript.json()["status"] == "NOT_READY"
 
 
 @pytest.mark.anyio
@@ -293,9 +412,15 @@ async def test_sealed_recording_registers_final_ogg_before_deleting_webm_staging
                 ),
                 {"id": session_id, "now": now, "chunks": json.dumps(relative_chunks)},
             )
-        response = await client.post(
-            "/api/capture-batches",
-            data={"recording_session_id": session_id},
+        responses = await asyncio.gather(
+            client.post(
+                "/api/capture-batches",
+                data={"recording_session_id": session_id},
+            ),
+            client.post(
+                "/api/capture-batches",
+                data={"recording_session_id": session_id},
+            ),
         )
         async with app.state.session_factory() as session:
             stored = (
@@ -312,7 +437,7 @@ async def test_sealed_recording_registers_final_ogg_before_deleting_webm_staging
                 {"id": session_id},
             )
 
-    assert response.status_code == 202
+    assert sorted(item.status_code for item in responses) == [202, 409]
     assert stored[0] == "RECORDED"
     assert stored[1].endswith(".ogg")
     assert (data_dir / stored[1]).is_file()
@@ -349,6 +474,116 @@ async def test_startup_cleanup_keeps_only_staging_owned_by_an_active_recording(
 
         assert owned.is_file()
         assert not orphan.exists()
+
+
+@pytest.mark.anyio
+async def test_restart_with_missing_source_cache_does_not_publish_or_block_startup(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_app(data_dir) as (app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "缺失缓存",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        accepted = await client.post(
+            "/api/capture-batches",
+            data={"course_id": course.json()["id"]},
+            files=[("files", ("source.txt", b"body", "text/plain"))],
+        )
+        record_id = accepted.json()["record_id"]
+        await wait_for_transcript(client, record_id)
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("DELETE FROM transcripts WHERE record_id = :record_id"),
+                {"record_id": record_id},
+            )
+            await session.execute(
+                text("UPDATE records SET status = 'CONTENT_PROCESSING' WHERE id = :record_id"),
+                {"record_id": record_id},
+            )
+
+    async with running_app(data_dir) as (_app, client):
+        transcript = await client.get(f"/api/records/{record_id}/transcript")
+
+    assert transcript.status_code == 200
+    assert transcript.json()["status"] == "NOT_READY"
+
+
+@pytest.mark.anyio
+async def test_concurrent_source_completion_publishes_exactly_one_transcript(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_app(data_dir) as (app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "并发最终化",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        accepted = await client.post(
+            "/api/capture-batches",
+            data={"course_id": course.json()["id"]},
+            files=[
+                ("files", ("first.txt", b"first", "text/plain")),
+                ("files", ("second.txt", b"second", "text/plain")),
+            ],
+        )
+        record_id = accepted.json()["record_id"]
+        await wait_for_transcript(client, record_id)
+        jobs = (await client.get(f"/api/records/{record_id}/jobs")).json()["jobs"]
+        source_dir = data_dir / "cache" / "sources" / record_id
+        source_dir.mkdir(parents=True)
+        results: list[str] = []
+        for index, job in enumerate(jobs):
+            path = source_dir / f"{job['id']}.txt"
+            path.write_text(("first", "second")[index], encoding="utf-8")
+            results.append(json.dumps({"source_text_path": path.relative_to(data_dir).as_posix()}))
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("DELETE FROM transcripts WHERE record_id = :record_id"),
+                {"record_id": record_id},
+            )
+            await session.execute(
+                text("UPDATE records SET status = 'CONTENT_PROCESSING' WHERE id = :record_id"),
+                {"record_id": record_id},
+            )
+            await session.execute(
+                text(
+                    "UPDATE processing_jobs SET status = 'RUNNING', result_json = NULL "
+                    "WHERE record_id = :record_id"
+                ),
+                {"record_id": record_id},
+            )
+
+        await asyncio.gather(
+            *(
+                complete_source_job(
+                    app.state.session_factory,
+                    data_dir,
+                    record_id,
+                    job["id"],
+                    result,
+                )
+                for job, result in zip(jobs, results, strict=True)
+            )
+        )
+        transcript = await wait_for_transcript(client, record_id)
+        async with app.state.session_factory() as session:
+            count = await session.scalar(
+                text("SELECT count(*) FROM transcripts WHERE record_id = :record_id"),
+                {"record_id": record_id},
+            )
+
+    assert transcript["content"] == "first\n\nsecond"
+    assert count == 1
 
 
 @pytest.fixture

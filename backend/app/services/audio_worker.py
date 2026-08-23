@@ -8,7 +8,7 @@ from typing import cast
 
 import httpx
 from loguru import logger
-from sqlalchemy import or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -331,6 +331,8 @@ class AudioWorker:
                         ProcessingJob.record_id == record_id,
                         ProcessingJob.job_type == ProcessingJobType.ASR,
                         ProcessingJob.status == ProcessingJobStatus.PENDING,
+                        func.json_extract(ProcessingJob.input_json, "$.depends_on_job_id")
+                        == job_id,
                     )
                 )
             ).one_or_none()
@@ -692,7 +694,7 @@ class AudioWorker:
         source_dir.mkdir(parents=True, exist_ok=True)
         source_path = source_dir / f"{job_id}.txt"
         await asyncio.to_thread(source_path.write_text, content, encoding="utf-8")
-        await complete_source_job(
+        accepted = await complete_source_job(
             self._session_factory,
             self._data_dir,
             record_id,
@@ -713,6 +715,8 @@ class AudioWorker:
                 separators=(",", ":"),
             ),
         )
+        if not accepted:
+            await asyncio.to_thread(shutil.rmtree, source_dir, ignore_errors=True)
         await self._record_notifier.notify(record_id)
 
     async def _fail_asr(

@@ -36,12 +36,15 @@ async def run_migrations(db_path: Path) -> None:
             try:
                 await connection.execute("PRAGMA foreign_keys=OFF")
                 await connection.executescript(
-                    f"BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version={version};\nCOMMIT;"
+                    f"BEGIN IMMEDIATE;\n{sql}\n"
+                    "CREATE TEMP TABLE _foreign_key_guard ("
+                    "violations INTEGER CHECK (violations = 0));\n"
+                    "INSERT INTO _foreign_key_guard "
+                    "SELECT count(*) FROM pragma_foreign_key_check;\n"
+                    "DROP TABLE _foreign_key_guard;\n"
+                    f"PRAGMA user_version={version};\nCOMMIT;"
                 )
                 await connection.execute("PRAGMA foreign_keys=ON")
-                violations = await (await connection.execute("PRAGMA foreign_key_check")).fetchall()
-                if violations:
-                    raise RuntimeError(f"迁移 {version:04d} 产生外键错误")
             except Exception:
                 await connection.rollback()
                 await connection.execute("PRAGMA foreign_keys=ON")

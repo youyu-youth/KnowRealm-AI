@@ -971,6 +971,7 @@ async def test_deleted_job_is_rechecked_after_claim_before_parsing(
     assert parser_calls == 0
     assert job_status == "CANCELLED"
     assert transcript_count == 0
+    assert not (data_dir / "cache" / "sources" / body["record_id"]).exists()
 
 
 @pytest.mark.anyio

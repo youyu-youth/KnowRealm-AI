@@ -22,6 +22,7 @@ from app.schemas.document import (
     ProcessingJobType,
     RecordFileSourceType,
     RecordFileType,
+    RecordingSessionState,
 )
 from app.schemas.record import CaptureType, RecordStatus
 from app.services.audio_import_service import (
@@ -50,6 +51,9 @@ class PreparedSource:
         return self.extension in SUPPORTED_AUDIO
 
 
+_RECORDING_FINALIZE_LOCK = asyncio.Lock()
+
+
 class CaptureBatchService:
     @staticmethod
     async def create_recording(
@@ -58,10 +62,23 @@ class CaptureBatchService:
         ffmpeg_path: Path,
         recording_session_id: str,
     ) -> CaptureBatchAccepted:
+        # ponytail: one sidecar writer; replace with a DB claim if writers become multi-process.
+        async with _RECORDING_FINALIZE_LOCK:
+            return await CaptureBatchService._create_recording(
+                session, data_dir, ffmpeg_path, recording_session_id
+            )
+
+    @staticmethod
+    async def _create_recording(
+        session: AsyncSession,
+        data_dir: Path,
+        ffmpeg_path: Path,
+        recording_session_id: str,
+    ) -> CaptureBatchAccepted:
         recording = await session.get(RecordingSession, recording_session_id)
         if recording is None:
             raise HTTPException(status_code=404, detail="RECORDING_NOT_FOUND：录音会话不存在")
-        if recording.state != "FINALIZING":
+        if recording.state != RecordingSessionState.FINALIZING:
             raise HTTPException(status_code=409, detail="RECORDING_NOT_SEALED：录音清单尚未封口")
         raw_paths: object = json.loads(recording.chunk_paths)
         if not isinstance(raw_paths, list) or not raw_paths:
@@ -109,7 +126,7 @@ class CaptureBatchService:
             free = (await asyncio.to_thread(shutil.disk_usage, work_dir)).free
             if free < total_size * 2:
                 raise HTTPException(status_code=507, detail="INSUFFICIENT_DISK：数据目录空间不足")
-            final_dir.mkdir(parents=True)
+            final_dir.mkdir(parents=True, exist_ok=True)
             process = await asyncio.create_subprocess_exec(
                 str(ffmpeg_path),
                 "-hide_banner",
@@ -145,7 +162,7 @@ class CaptureBatchService:
             now = utcnow()
             async with session.begin():
                 current = await session.get(RecordingSession, recording_session_id)
-                if current is None or current.state != "FINALIZING":
+                if current is None or current.state != RecordingSessionState.FINALIZING:
                     raise HTTPException(
                         status_code=409, detail="RECORDING_NOT_SEALED：录音交接状态已改变"
                     )
@@ -236,11 +253,15 @@ class CaptureBatchService:
                         ),
                     ]
                 )
-                current.state = "DONE"
+                current.state = RecordingSessionState.DONE
                 current.updated_at = now
                 await session.flush()
         except BaseException:
-            await asyncio.to_thread(shutil.rmtree, final_dir, ignore_errors=True)
+            await asyncio.to_thread(final_path.unlink, missing_ok=True)
+            try:
+                await asyncio.to_thread(final_dir.rmdir)
+            except OSError:
+                pass
             raise
         else:
             for path in chunk_paths:
@@ -349,12 +370,13 @@ class CaptureBatchService:
             now = utcnow()
             job_ids: list[str] = []
             async with session.begin():
+                source_kinds = {source.is_audio for source in prepared}
                 capture_type = (
-                    CaptureType.AUDIO_IMPORT
-                    if len(prepared) == 1 and prepared[0].is_audio
+                    CaptureType.MULTI_SOURCE
+                    if len(source_kinds) > 1
+                    else CaptureType.AUDIO_IMPORT
+                    if prepared[0].is_audio
                     else CaptureType.DOCUMENT_IMPORT
-                    if len(prepared) == 1
-                    else CaptureType.MULTI_SOURCE
                 )
                 session.add(
                     Record(
