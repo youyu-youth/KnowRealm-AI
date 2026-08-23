@@ -101,8 +101,11 @@ async def delete_record(
 ) -> Response:
     if not await RecordService.soft_delete(session, str(record_id)):
         raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
-    cache_dir = Path(request.app.state.data_dir) / "cache" / "audio" / str(record_id)
-    await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
+    for cache_dir in (
+        Path(request.app.state.data_dir) / "cache" / "audio" / str(record_id),
+        Path(request.app.state.data_dir) / "cache" / "sources" / str(record_id),
+    ):
+        await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
     await request.app.state.record_notifier.notify(str(record_id))
     return Response(status_code=204)
 

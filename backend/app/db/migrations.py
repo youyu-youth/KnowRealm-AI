@@ -34,9 +34,15 @@ async def run_migrations(db_path: Path) -> None:
                 continue
             sql = path.read_text(encoding="utf-8")
             try:
+                await connection.execute("PRAGMA foreign_keys=OFF")
                 await connection.executescript(
                     f"BEGIN IMMEDIATE;\n{sql}\nPRAGMA user_version={version};\nCOMMIT;"
                 )
+                await connection.execute("PRAGMA foreign_keys=ON")
+                violations = await (await connection.execute("PRAGMA foreign_key_check")).fetchall()
+                if violations:
+                    raise RuntimeError(f"迁移 {version:04d} 产生外键错误")
             except Exception:
                 await connection.rollback()
+                await connection.execute("PRAGMA foreign_keys=ON")
                 raise

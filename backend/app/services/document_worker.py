@@ -12,7 +12,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.base import utcnow
-from app.models.document import ProcessingJob, RecordFile, Transcript
+from app.models.document import ProcessingJob, RecordFile
 from app.models.record import Record
 from app.schemas.document import (
     ProcessingJobErrorCode,
@@ -24,6 +24,7 @@ from app.services.document_parser import DocumentParseError, extract_document_te
 from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
 from app.services.processing_job_policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
 from app.services.record_invalidation import RecordInvalidationNotifier
+from app.services.transcript_finalizer import complete_source_job, finalize_record_if_ready
 
 ERROR_MESSAGES = {
     ProcessingJobErrorCode.NON_UTF8_TEXT: "文本文件不是 UTF-8 编码",
@@ -74,6 +75,23 @@ class DocumentWorker:
                 now=utcnow(),
             )
         await self._recover_running(ProcessingJobErrorCode.WORKER_INTERRUPTED)
+        async with self._session_factory() as session:
+            record_ids = list(
+                (
+                    await session.scalars(
+                        select(ProcessingJob.record_id)
+                        .where(
+                            ProcessingJob.job_type == ProcessingJobType.DOCUMENT_PARSE,
+                            ProcessingJob.status == ProcessingJobStatus.SUCCEEDED,
+                            ProcessingJob.record_id.is_not(None),
+                        )
+                        .distinct()
+                    )
+                ).all()
+            )
+        for record_id in record_ids:
+            if record_id is not None:
+                await finalize_record_if_ready(self._session_factory, self._data_dir, record_id)
 
     async def _recover_running(self, code: ProcessingJobErrorCode) -> None:
         now = utcnow()
@@ -118,7 +136,12 @@ class DocumentWorker:
                     continue
             except OperationalError as exc:
                 if not _is_sqlite_busy(exc):
-                    raise
+                    logger.error(
+                        "document_worker_unexpected_failure",
+                        error_code=ProcessingJobErrorCode.INTERNAL_ERROR,
+                    )
+                    await self._recover_running(ProcessingJobErrorCode.INTERNAL_ERROR)
+                    continue
                 logger.warning(
                     "document_worker_retryable_failure",
                     error_code=ProcessingJobErrorCode.SQLITE_BUSY,
@@ -126,7 +149,7 @@ class DocumentWorker:
                 await self._recover_running(ProcessingJobErrorCode.SQLITE_BUSY)
                 continue
             try:
-                await asyncio.wait_for(self._stopped.wait(), timeout=0.05)
+                await asyncio.wait_for(self._stopped.wait(), timeout=1)
             except TimeoutError:
                 pass
 
@@ -187,6 +210,7 @@ class DocumentWorker:
                         ProcessingJob.job_type == ProcessingJobType.DOCUMENT_PARSE,
                         ProcessingJob.status == ProcessingJobStatus.PENDING,
                         Record.deleted_at.is_(None),
+                        Record.status == RecordStatus.CONTENT_PROCESSING,
                         or_(
                             ProcessingJob.next_run_at.is_(None),
                             ProcessingJob.next_run_at <= now,
@@ -241,40 +265,20 @@ class DocumentWorker:
             return job.id, job.record_id, path
 
     async def _succeed(self, job_id: str, record_id: str, content: str) -> None:
-        now = utcnow()
-        async with self._session_factory() as session, session.begin():
-            job = await session.get(ProcessingJob, job_id)
-            record = (
-                await session.scalars(
-                    select(Record).where(
-                        Record.id == record_id,
-                        Record.deleted_at.is_(None),
-                    )
-                )
-            ).one_or_none()
-            if job is None or record is None or job.status != ProcessingJobStatus.RUNNING:
-                return
-            session.add(
-                Transcript(
-                    record_id=record_id,
-                    language="und",
-                    content=content,
-                    source_version=1,
-                    edited_by_user=False,
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
-            job.status = ProcessingJobStatus.SUCCEEDED
-            job.progress = 1
-            job.next_run_at = None
-            job.error_code = None
-            job.error_message = None
-            job.finished_at = now
-            job.updated_at = now
-            record.status = RecordStatus.SUMMARY_PENDING
-            record.updated_at = now
-            await session.flush()
+        cache_dir = (self._data_dir / "cache" / "sources" / record_id).resolve()
+        cache_root = (self._data_dir / "cache").resolve()
+        if not cache_dir.is_relative_to(cache_root):
+            return
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        source_path = cache_dir / f"{job_id}.txt"
+        await asyncio.to_thread(source_path.write_text, content, encoding="utf-8")
+        await complete_source_job(
+            self._session_factory,
+            self._data_dir,
+            record_id,
+            job_id,
+            json.dumps({"source_text_path": source_path.relative_to(self._data_dir).as_posix()}),
+        )
         await self._record_notifier.notify(record_id)
 
     async def _fail(

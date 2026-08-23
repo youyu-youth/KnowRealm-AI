@@ -13,7 +13,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.base import utcnow
-from app.models.document import ProcessingJob, RecordFile, Transcript
+from app.models.document import ProcessingJob, RecordFile
 from app.models.record import Record
 from app.schemas.document import (
     AsrChunkStatus,
@@ -34,6 +34,7 @@ from app.services.tencent_asr_client import (
     TencentAsrCredentials,
     TencentAsrTaskStatus,
 )
+from app.services.transcript_finalizer import complete_source_job, finalize_record_if_ready
 
 MAX_CHUNK_BYTES = 5 * 1024 * 1024
 CHUNK_DURATION_MS = 5 * 60 * 1000
@@ -96,15 +97,39 @@ class AudioWorker:
                     updated_at=now,
                 )
             )
+        async with self._session_factory() as session:
+            record_ids = list(
+                (
+                    await session.scalars(
+                        select(ProcessingJob.record_id)
+                        .where(
+                            ProcessingJob.job_type == ProcessingJobType.ASR,
+                            ProcessingJob.status == ProcessingJobStatus.SUCCEEDED,
+                            ProcessingJob.record_id.is_not(None),
+                        )
+                        .distinct()
+                    )
+                ).all()
+            )
+        for record_id in record_ids:
+            if record_id is not None:
+                await finalize_record_if_ready(self._session_factory, self._data_dir, record_id)
 
     async def run(self) -> None:
         while not self._stopped.is_set():
-            if await self._process_transcode():
-                continue
-            if await self._process_asr():
-                continue
             try:
-                await asyncio.wait_for(self._stopped.wait(), timeout=0.05)
+                if await self._process_transcode():
+                    continue
+                if await self._process_asr():
+                    continue
+            except Exception:
+                logger.error(
+                    "audio_worker_unexpected_failure",
+                    error_code=ProcessingJobErrorCode.INTERNAL_ERROR,
+                )
+                await self.recover_interrupted()
+            try:
+                await asyncio.wait_for(self._stopped.wait(), timeout=1)
             except TimeoutError:
                 pass
 
@@ -146,6 +171,7 @@ class AudioWorker:
                         ProcessingJob.job_type == ProcessingJobType.AUDIO_TRANSCODE,
                         ProcessingJob.status == ProcessingJobStatus.PENDING,
                         Record.deleted_at.is_(None),
+                        Record.status == RecordStatus.CONTENT_PROCESSING,
                         or_(ProcessingJob.next_run_at.is_(None), ProcessingJob.next_run_at <= now),
                     )
                     .order_by(ProcessingJob.created_at, ProcessingJob.id)
@@ -385,6 +411,7 @@ class AudioWorker:
                         ProcessingJob.job_type == ProcessingJobType.ASR,
                         ProcessingJob.status == ProcessingJobStatus.PENDING,
                         Record.deleted_at.is_(None),
+                        Record.status == RecordStatus.CONTENT_PROCESSING,
                         or_(ProcessingJob.next_run_at.is_(None), ProcessingJob.next_run_at <= now),
                     )
                     .order_by(ProcessingJob.created_at, ProcessingJob.id)
@@ -658,35 +685,19 @@ class AudioWorker:
                 "没有检测到可识别语音",
             )
             return
-        now = utcnow()
-        async with self._session_factory() as session, session.begin():
-            job = await session.get(ProcessingJob, job_id)
-            record = await session.get(Record, record_id)
-            if (
-                job is None
-                or record is None
-                or record.deleted_at is not None
-                or job.status != ProcessingJobStatus.RUNNING
-            ):
-                return
-            transcript = (
-                await session.scalars(select(Transcript).where(Transcript.record_id == record_id))
-            ).one_or_none()
-            if transcript is None:
-                session.add(
-                    Transcript(
-                        record_id=record_id,
-                        language="zh-CN",
-                        content=content,
-                        source_version=1,
-                        edited_by_user=False,
-                        created_at=now,
-                        updated_at=now,
-                    )
-                )
-            job.status = ProcessingJobStatus.SUCCEEDED
-            job.progress = 1
-            job.result_json = json.dumps(
+        source_dir = (self._data_dir / "cache" / "sources" / record_id).resolve()
+        cache_root = (self._data_dir / "cache").resolve()
+        if not source_dir.is_relative_to(cache_root):
+            return
+        source_dir.mkdir(parents=True, exist_ok=True)
+        source_path = source_dir / f"{job_id}.txt"
+        await asyncio.to_thread(source_path.write_text, content, encoding="utf-8")
+        await complete_source_job(
+            self._session_factory,
+            self._data_dir,
+            record_id,
+            job_id,
+            json.dumps(
                 {
                     "cursor": len(by_index),
                     "chunks": [
@@ -697,18 +708,11 @@ class AudioWorker:
                         }
                         for index in sorted(by_index)
                     ],
+                    "source_text_path": source_path.relative_to(self._data_dir).as_posix(),
                 },
                 separators=(",", ":"),
-            )
-            job.error_code = None
-            job.error_message = None
-            job.finished_at = now
-            job.updated_at = now
-            record.status = RecordStatus.SUMMARY_PENDING
-            record.updated_at = now
-            await session.flush()
-        cache_dir = self._data_dir / "cache" / "audio" / record_id
-        await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
+            ),
+        )
         await self._record_notifier.notify(record_id)
 
     async def _fail_asr(

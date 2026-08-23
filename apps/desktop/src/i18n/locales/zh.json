@@ -21,8 +21,8 @@
     "record": "开始录音"
   },
   "documentImport": {
-    "title": "导入单个资料",
-    "description": "选择一个本地文档或音频。原文件会保留在本机数据目录。",
+    "title": "导入资料",
+    "description": "按选择顺序提交一个或多个文档、音频或混合资料。原文件会保留在本机数据目录。",
     "course": "所属课程",
     "coursePlaceholder": "选择课程",
     "noCourse": "不绑定课程",
@@ -169,6 +169,7 @@
         "RECORDING": "录音",
         "AUDIO_IMPORT": "音频导入",
         "DOCUMENT_IMPORT": "文档导入",
+        "MULTI_SOURCE": "混合资料",
         "PASTE": "粘贴文本",
         "QUICK_NOTE": "速记",
         "CLIP": "剪藏"

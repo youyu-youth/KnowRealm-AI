@@ -5,6 +5,7 @@ export const captureTypeLabelKeys = {
   RECORDING: "spaces.records.captureType.RECORDING",
   AUDIO_IMPORT: "spaces.records.captureType.AUDIO_IMPORT",
   DOCUMENT_IMPORT: "spaces.records.captureType.DOCUMENT_IMPORT",
+  MULTI_SOURCE: "spaces.records.captureType.MULTI_SOURCE",
   PASTE: "spaces.records.captureType.PASTE",
   QUICK_NOTE: "spaces.records.captureType.QUICK_NOTE",
   CLIP: "spaces.records.captureType.CLIP",

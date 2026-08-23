@@ -10,13 +10,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from app.api import audio_imports, courses, document_imports, processing_jobs, records, settings
+from app.api import (
+    audio_imports,
+    capture_batches,
+    courses,
+    document_imports,
+    processing_jobs,
+    records,
+    settings,
+)
 from app.api.deps import require_launch_token
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
 from app.services.audio_worker import AudioWorker
+from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import DocumentWorker
 from app.services.record_invalidation import RecordInvalidationNotifier
@@ -68,6 +77,7 @@ def create_app(
             cleanup_task = asyncio.create_task(cleanup_course_tombstones())
             app.state.course_tombstone_cleanup_task = cleanup_task
             await cleanup_task
+            await CacheLifecycleService.cleanup_orphans(session_factory, resolved_data_dir)
             document_worker = DocumentWorker(session_factory, resolved_data_dir, record_notifier)
             await document_worker.recover_interrupted()
             document_worker_task = asyncio.create_task(document_worker.run())
@@ -125,6 +135,7 @@ def create_app(
     )
     app.include_router(courses.router)
     app.include_router(audio_imports.router)
+    app.include_router(capture_batches.router)
     app.include_router(settings.router)
     app.include_router(document_imports.router)
     app.include_router(processing_jobs.router)

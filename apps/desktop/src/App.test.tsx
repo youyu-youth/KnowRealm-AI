@@ -72,13 +72,13 @@ describe("工作台骨架", () => {
           { ...course, id: "archived", name: "已归档", status: "ARCHIVED" },
         ]),
       ),
-      http.post(`${TEST_SIDECAR_URL}/api/document-imports`, ({ request }) => {
+      http.post(`${TEST_SIDECAR_URL}/api/capture-batches`, ({ request }) => {
         importCalls += 1;
         expect(request.headers.get("Content-Type")).not.toBe(
           "application/json",
         );
         return HttpResponse.json(
-          { record_id: recordId, job_id: jobId },
+          { record_id: recordId, job_ids: [jobId, "job-2"] },
           { status: 202 },
         );
       }),
@@ -132,7 +132,7 @@ describe("工作台骨架", () => {
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "导入资料" }));
-    expect(screen.getByRole("heading", { name: "导入单个资料" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "导入资料" })).toBeVisible();
     expect(screen.queryByRole("option", { name: "已归档" })).toBeNull();
     expect(screen.getByRole("button", { name: "开始导入" })).toBeDisabled();
 
@@ -149,9 +149,17 @@ describe("工作台骨架", () => {
     fireEvent.pointerUp(courseOption);
     fireEvent.click(courseOption);
     fireEvent.change(screen.getByLabelText("选择文件"), {
-      target: { files: [new File(["# 第一讲"], "lecture.md")] },
+      target: {
+        files: [
+          new File(["# 第一讲"], "lecture.md"),
+          new File(["补充"], "notes.txt"),
+        ],
+      },
     });
     const submit = screen.getByRole("button", { name: "开始导入" });
+    expect(
+      screen.getAllByRole("listitem").map((item) => item.textContent),
+    ).toEqual(["1lecture.md", "2notes.txt"]);
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
@@ -184,7 +192,7 @@ describe("工作台骨架", () => {
     let importCalls = 0;
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
-      http.post(`${TEST_SIDECAR_URL}/api/audio-imports`, ({ request }) => {
+      http.post(`${TEST_SIDECAR_URL}/api/capture-batches`, ({ request }) => {
         importCalls += 1;
         expect(request.headers.get("Content-Type")).not.toBe(
           "application/json",
@@ -192,8 +200,10 @@ describe("工作台骨架", () => {
         return HttpResponse.json(
           {
             record_id: recordId,
-            transcode_job_id: "55555555-5555-4555-8555-555555555555",
-            asr_job_id: "66666666-6666-4666-8666-666666666666",
+            job_ids: [
+              "55555555-5555-4555-8555-555555555555",
+              "66666666-6666-4666-8666-666666666666",
+            ],
           },
           { status: 202 },
         );

@@ -36,7 +36,7 @@ MAX_AUDIO_DURATION_MS = 5 * 60 * 60 * 1000
 _DURATION = re.compile(rb"Duration: (\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)")
 
 
-def _copy_upload(source: BinaryIO, target: Path) -> tuple[int, str]:
+def copy_upload(source: BinaryIO, target: Path) -> tuple[int, str]:
     source.seek(0)
     size = 0
     digest = hashlib.sha256()
@@ -50,7 +50,7 @@ def _copy_upload(source: BinaryIO, target: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
-def _matches_extension(path: Path, extension: str) -> bool:
+def matches_audio_extension(path: Path, extension: str) -> bool:
     with path.open("rb") as source:
         head = source.read(16)
     if extension == ".wav":
@@ -66,7 +66,7 @@ def _matches_extension(path: Path, extension: str) -> bool:
     return False
 
 
-async def _probe_duration_ms(ffmpeg_path: Path, path: Path) -> int:
+async def probe_audio_duration_ms(ffmpeg_path: Path, path: Path) -> int:
     process = await asyncio.create_subprocess_exec(
         str(ffmpeg_path),
         "-hide_banner",
@@ -119,13 +119,13 @@ class AudioImportService:
         final_path = final_dir / f"{file_id}{extension}"
         try:
             file_size, content_hash = await asyncio.to_thread(
-                _copy_upload, upload.file, temporary_path
+                copy_upload, upload.file, temporary_path
             )
             if file_size == 0:
                 raise HTTPException(status_code=400, detail="CORRUPT_AUDIO：音频不能为空")
-            if not await asyncio.to_thread(_matches_extension, temporary_path, extension):
+            if not await asyncio.to_thread(matches_audio_extension, temporary_path, extension):
                 raise HTTPException(status_code=400, detail="UNSUPPORTED_AUDIO：格式与内容不匹配")
-            duration_ms = await _probe_duration_ms(ffmpeg_path, temporary_path)
+            duration_ms = await probe_audio_duration_ms(ffmpeg_path, temporary_path)
             if duration_ms > MAX_AUDIO_DURATION_MS:
                 raise HTTPException(status_code=400, detail="AUDIO_TOO_LONG：音频时长超过 5 小时")
             free_after_write = (await asyncio.to_thread(shutil.disk_usage, import_dir)).free

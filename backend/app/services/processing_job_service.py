@@ -2,7 +2,7 @@ import json
 from typing import cast
 
 from fastapi import HTTPException
-from sqlalchemy import case, select, update
+from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,6 +46,10 @@ class ProcessingJobService:
 
     @staticmethod
     def to_out(job: ProcessingJob) -> ProcessingJobOut:
+        raw_input: object = json.loads(job.input_json)
+        input_data = cast(dict[str, object], raw_input) if isinstance(raw_input, dict) else {}
+        sequence_no = input_data.get("sequence_no", 0)
+        source_name = input_data.get("source_name")
         retryable = (
             job.error_code is not None
             and ProcessingJobErrorCode(job.error_code) in RETRYABLE_PROCESSING_JOB_ERROR_CODES
@@ -67,6 +71,8 @@ class ProcessingJobService:
                 ProcessingJobErrorCode(job.error_code) if job.error_code is not None else None
             ),
             retryable=retryable,
+            sequence_no=sequence_no if isinstance(sequence_no, int) else 0,
+            source_name=source_name if isinstance(source_name, str) else None,
         )
 
     @staticmethod
@@ -78,19 +84,27 @@ class ProcessingJobService:
                 await session.scalars(
                     select(ProcessingJob)
                     .where(ProcessingJob.record_id == record_id)
-                    .order_by(
-                        case(
-                            (ProcessingJob.job_type == ProcessingJobType.AUDIO_TRANSCODE, 0),
-                            (ProcessingJob.job_type == ProcessingJobType.DOCUMENT_PARSE, 1),
-                            (ProcessingJob.job_type == ProcessingJobType.ASR, 2),
-                            else_=3,
-                        ),
-                        ProcessingJob.created_at,
-                        ProcessingJob.id,
-                    )
+                    .order_by(ProcessingJob.created_at, ProcessingJob.id)
                 )
             ).all()
         )
+        phase = {
+            ProcessingJobType.AUDIO_TRANSCODE: 0,
+            ProcessingJobType.DOCUMENT_PARSE: 0,
+            ProcessingJobType.ASR: 1,
+        }
+
+        def sort_key(job: ProcessingJob) -> tuple[int, int, str]:
+            raw: object = json.loads(job.input_json)
+            sort_input = cast(dict[str, object], raw) if isinstance(raw, dict) else {}
+            sequence_no = sort_input.get("sequence_no", 0)
+            return (
+                sequence_no if isinstance(sequence_no, int) else 0,
+                phase.get(ProcessingJobType(job.job_type), 2),
+                job.id,
+            )
+
+        jobs.sort(key=sort_key)
         progress = sum(job.progress for job in jobs) / len(jobs) if jobs else 0
         return RecordJobsOut(
             jobs=[ProcessingJobService.to_out(job) for job in jobs],

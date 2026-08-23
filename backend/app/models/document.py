@@ -26,6 +26,20 @@ class RecordFile(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
 
 
+class RecordingSession(Base):
+    __tablename__ = "recording_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    course_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("courses.id", ondelete="SET NULL"), default=None
+    )
+    title: Mapped[str | None] = mapped_column(Text, default=None)
+    started_at: Mapped[datetime] = mapped_column(ISODateTime)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime)
+    state: Mapped[str] = mapped_column(String(20))
+    chunk_paths: Mapped[str] = mapped_column(Text)
+
+
 class Transcript(Base):
     __tablename__ = "transcripts"
 

@@ -371,7 +371,7 @@ async def test_audio_prevalidation_rejects_without_business_rows_or_formal_files
 
         with monkeypatch.context() as scoped:
             scoped.setattr(
-                "app.services.audio_import_service._probe_duration_ms",
+                "app.services.audio_import_service.probe_audio_duration_ms",
                 too_long_probe,
             )
             too_long = await client.post(

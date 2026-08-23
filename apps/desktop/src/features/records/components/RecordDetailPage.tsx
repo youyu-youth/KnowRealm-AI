@@ -536,6 +536,7 @@ function JobProgress({
             className="text-body flex min-w-0 items-center justify-between gap-4 py-3"
           >
             <span className="min-w-0 truncate">
+              {job.source_name ? `${job.source_name} · ` : null}
               {t(`record.detail.jobs.types.${job.job_type}`)}
             </span>
             <span className="text-label text-muted-foreground shrink-0">

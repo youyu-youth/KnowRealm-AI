@@ -59,6 +59,7 @@ class RecordFileType(StrEnum):
 
 
 class RecordFileSourceType(StrEnum):
+    RECORDED = "RECORDED"
     UPLOADED = "UPLOADED"
 
 
@@ -71,6 +72,11 @@ class AudioImportAccepted(BaseModel):
     record_id: str
     transcode_job_id: str
     asr_job_id: str
+
+
+class CaptureBatchAccepted(BaseModel):
+    record_id: str
+    job_ids: list[str]
 
 
 class ProcessingJobWaitingReason(StrEnum):
@@ -96,6 +102,8 @@ class ProcessingJobOut(BaseModel):
     waiting_reason: ProcessingJobWaitingReason | None
     error_code: ProcessingJobErrorCode | None
     retryable: bool
+    sequence_no: int = 0
+    source_name: str | None = None
 
 
 class RecordJobsOut(BaseModel):

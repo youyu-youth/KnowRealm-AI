@@ -136,7 +136,7 @@ async def assert_document_import_schema(db_path: Path) -> None:
             await connection.execute("PRAGMA index_list(processing_jobs)")
         ).fetchall()
 
-    assert version == (4,)
+    assert version == (6,)
     assert {"record_files", "transcripts", "processing_jobs"} <= tables
     assert "processing_status" not in {column[1] for column in record_file_columns}
     assert {index[1] for index in processing_job_indexes} >= {
@@ -286,6 +286,8 @@ async def test_deterministic_parse_failures_expose_only_stable_codes(tmp_path: P
                 "error_code": expected_code,
                 "retryable": False,
                 "waiting_reason": None,
+                "sequence_no": 0,
+                "source_name": None,
             }
             assert record.json()["status"] == "FAILED"
             assert transcript.json() == {"status": "NOT_READY", "transcript": None}

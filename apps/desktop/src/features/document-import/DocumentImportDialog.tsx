@@ -23,29 +23,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  audioImportApi,
-  type AudioImportAccepted,
-} from "@/features/audio-import/api/audioImports";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
 import {
-  documentImportApi,
-  type DocumentImportAccepted,
-} from "@/features/document-import/api/documentImports";
+  captureBatchApi,
+  type CaptureBatchAccepted,
+} from "@/features/document-import/api/captureBatches";
 import { recordKeys } from "@/features/records/api/keys";
 
-type ImportAccepted = DocumentImportAccepted | AudioImportAccepted;
 type ImportVariables = {
   selectedCourseId: string | null;
-  selectedFile: File;
-  audio: boolean;
+  selectedFiles: File[];
 };
 
 type DocumentImportDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAccepted: (result: ImportAccepted) => void | Promise<void>;
+  onAccepted: (result: CaptureBatchAccepted) => void | Promise<void>;
 };
 
 const audioExtensions = [".mp3", ".aac", ".wav", ".m4a"];
@@ -59,12 +53,13 @@ export function DocumentImportDialog({
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
   const [courseId, setCourseId] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const isAudio = file
-    ? audioExtensions.some((extension) =>
+  const [files, setFiles] = useState<File[]>([]);
+  const hasDocument = files.some(
+    (file) =>
+      !audioExtensions.some((extension) =>
         file.name.toLocaleLowerCase().endsWith(extension),
-      )
-    : false;
+      ),
+  );
   const courses = useQuery({
     queryKey: courseKeys.list(),
     queryFn: () => courseApi.list(),
@@ -74,7 +69,7 @@ export function DocumentImportDialog({
     (course) => course.status === "ACTIVE",
   );
   const courseItems = [
-    ...(isAudio
+    ...(!hasDocument
       ? [{ value: "__none__", label: t("documentImport.noCourse") }]
       : []),
     ...activeCourses.map((course) => ({
@@ -82,11 +77,13 @@ export function DocumentImportDialog({
       label: course.name,
     })),
   ];
-  const importDocument = useMutation<ImportAccepted, Error, ImportVariables>({
-    mutationFn: ({ selectedCourseId, selectedFile, audio }: ImportVariables) =>
-      audio
-        ? audioImportApi.create(selectedCourseId, selectedFile)
-        : documentImportApi.create(selectedCourseId ?? "", selectedFile),
+  const importDocument = useMutation<
+    CaptureBatchAccepted,
+    Error,
+    ImportVariables
+  >({
+    mutationFn: ({ selectedCourseId, selectedFiles }) =>
+      captureBatchApi.create(selectedCourseId, selectedFiles),
     onSuccess: async (result, variables) => {
       if (variables.selectedCourseId) {
         await queryClient.invalidateQueries({
@@ -101,7 +98,7 @@ export function DocumentImportDialog({
 
   function resetForm() {
     setCourseId(null);
-    setFile(null);
+    setFiles([]);
     if (fileInput.current) fileInput.current.value = "";
     importDocument.reset();
   }
@@ -114,11 +111,10 @@ export function DocumentImportDialog({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!file || (!isAudio && !courseId)) return;
+    if (files.length === 0 || (hasDocument && !courseId)) return;
     importDocument.mutate({
       selectedCourseId: courseId,
-      selectedFile: file,
-      audio: isAudio,
+      selectedFiles: files,
     });
   }
 
@@ -148,7 +144,7 @@ export function DocumentImportDialog({
               <SelectTrigger
                 id="document-import-course"
                 className="w-full"
-                aria-required={!isAudio}
+                aria-required={hasDocument}
               >
                 <SelectValue
                   placeholder={t("documentImport.coursePlaceholder")}
@@ -156,7 +152,7 @@ export function DocumentImportDialog({
                   {courseId
                     ? (activeCourses.find((course) => course.id === courseId)
                         ?.name ?? null)
-                    : isAudio
+                    : !hasDocument
                       ? t("documentImport.noCourse")
                       : null}
                 </SelectValue>
@@ -172,13 +168,15 @@ export function DocumentImportDialog({
               </SelectContent>
             </Select>
             {courses.isError ||
-            (!isAudio && !courses.isPending && activeCourses.length === 0) ? (
+            (hasDocument &&
+              !courses.isPending &&
+              activeCourses.length === 0) ? (
               <FieldDescription>
                 {courses.isError
                   ? t("documentImport.courseError")
                   : t("documentImport.noActiveCourse")}
               </FieldDescription>
-            ) : isAudio ? (
+            ) : !hasDocument ? (
               <FieldDescription>
                 {t("documentImport.audioCourseHint")}
               </FieldDescription>
@@ -193,11 +191,34 @@ export function DocumentImportDialog({
               ref={fileInput}
               id="document-import-file"
               type="file"
+              multiple
               accept=".txt,.md,.pdf,.docx,.mp3,.aac,.wav,.m4a"
               aria-required="true"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              onChange={(event) =>
+                setFiles(Array.from(event.target.files ?? []))
+              }
             />
             <FieldDescription>{t("documentImport.fileHint")}</FieldDescription>
+            {files.length > 0 ? (
+              <ol className="border-border max-h-32 min-w-0 divide-y overflow-y-auto border-y">
+                {files.map((selectedFile, index) => (
+                  <li
+                    key={`${selectedFile.name}-${selectedFile.size}-${index}`}
+                    className="text-body text-ink flex min-w-0 gap-3 py-2"
+                  >
+                    <span className="text-label text-muted-foreground shrink-0 tabular-nums">
+                      {index + 1}
+                    </span>
+                    <span
+                      className="min-w-0 truncate"
+                      title={selectedFile.name}
+                    >
+                      {selectedFile.name}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            ) : null}
           </Field>
 
           {importDocument.isError ? (
@@ -219,7 +240,9 @@ export function DocumentImportDialog({
             <Button
               type="submit"
               disabled={
-                !file || (!isAudio && !courseId) || importDocument.isPending
+                files.length === 0 ||
+                (hasDocument && !courseId) ||
+                importDocument.isPending
               }
             >
               {importDocument.isPending ? (

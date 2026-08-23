@@ -43,6 +43,8 @@ function jobsResponse(
     retryable: true,
     waiting_reason: null,
     ...job,
+    sequence_no: job.sequence_no ?? 0,
+    source_name: job.source_name ?? null,
   };
   return { jobs: [completeJob], progress: completeJob.progress };
 }
@@ -414,12 +416,7 @@ describe("学习记录详情", () => {
     const onInvalidate = vi.fn();
 
     await expect(
-      recordApi.subscribe(
-        RECORD_ID,
-        undefined,
-        onOpen,
-        onInvalidate,
-      ),
+      recordApi.subscribe(RECORD_ID, undefined, onOpen, onInvalidate),
     ).rejects.toThrow("Record 事件流已断开");
 
     expect(streamCalls).toBe(1);

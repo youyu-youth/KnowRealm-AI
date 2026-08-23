@@ -21,6 +21,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/capture-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Capture Batch */
+        post: operations["create_capture_batch_api_capture_batches_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses": {
         parameters: {
             query?: never;
@@ -244,6 +261,15 @@ export interface components {
             /** Transcode Job Id */
             transcode_job_id: string;
         };
+        /** Body_create_capture_batch_api_capture_batches_post */
+        Body_create_capture_batch_api_capture_batches_post: {
+            /** Course Id */
+            course_id?: string | null;
+            /** Files */
+            files?: string[] | null;
+            /** Recording Session Id */
+            recording_session_id?: string | null;
+        };
         /** Body_import_audio_api_audio_imports_post */
         Body_import_audio_api_audio_imports_post: {
             /** Course Id */
@@ -261,11 +287,18 @@ export interface components {
             /** File */
             file: string;
         };
+        /** CaptureBatchAccepted */
+        CaptureBatchAccepted: {
+            /** Job Ids */
+            job_ids: string[];
+            /** Record Id */
+            record_id: string;
+        };
         /**
          * CaptureType
          * @enum {string}
          */
-        CaptureType: "RECORDING" | "AUDIO_IMPORT" | "DOCUMENT_IMPORT" | "PASTE" | "QUICK_NOTE" | "CLIP";
+        CaptureType: "RECORDING" | "AUDIO_IMPORT" | "DOCUMENT_IMPORT" | "MULTI_SOURCE" | "PASTE" | "QUICK_NOTE" | "CLIP";
         /** CourseCreate */
         CourseCreate: {
             /** @description 可选课程类型 */
@@ -425,6 +458,13 @@ export interface components {
             record_id: string | null;
             /** Retryable */
             retryable: boolean;
+            /**
+             * Sequence No
+             * @default 0
+             */
+            sequence_no: number;
+            /** Source Name */
+            source_name?: string | null;
             status: components["schemas"]["ProcessingJobStatus"];
             waiting_reason: components["schemas"]["ProcessingJobWaitingReason"] | null;
         };
@@ -556,6 +596,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AudioImportAccepted"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient Storage */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_capture_batch_api_capture_batches_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_create_capture_batch_api_capture_batches_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaptureBatchAccepted"];
                 };
             };
             /** @description Bad Request */
