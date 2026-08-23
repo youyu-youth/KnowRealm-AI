@@ -1,6 +1,6 @@
 # Capture Batch 音频导入与转写管线
 
-Status: ready-for-agent
+Status: ready-for-human
 
 ## Problem Statement
 

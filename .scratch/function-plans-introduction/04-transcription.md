@@ -2,6 +2,8 @@
 
 > Wave: A ｜ PRD: §4.3.2（音频）/ §4.3.3 / §4.3.4 ｜ 决策引用: #8 #31 #35 #44 #45 #49 #54 #58 ｜ ADR: 0002~0006
 
+> Status: ready-for-human（Issue 01/02 实现与自动化已完成；真实腾讯 P0、真实 Tauri Network/渲染待人工验收）
+
 ## 功能描述 / 目标
 
 把一次封口的 Capture Batch（音频、文档或混合来源）可靠地转成一份合并 Transcript，并为音频提供随包 ffmpeg、本地顺序切片、腾讯 ASR 检查点恢复、隐私同意与 Record 级状态通知。复用 05 的 worker / `processing_jobs` / 文档解析基础；完整总结出口由 06 承担。
