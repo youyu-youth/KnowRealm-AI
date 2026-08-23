@@ -204,3 +204,7 @@ apps/desktop/src-tauri/binaries/
 
 
 .codegraph
+docs/code-review/
+录音文件
+
+.scratch/**/**.sh

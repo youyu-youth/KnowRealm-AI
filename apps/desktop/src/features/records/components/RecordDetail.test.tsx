@@ -291,6 +291,7 @@ describe("学习记录详情", () => {
     );
     renderAt(`${ROUTE_PATH}?tab=transcript`);
     expect(await screen.findByText("本地文件暂时无法读取。")).toBeVisible();
+    expect(screen.getByText("失败 · 第 1 次尝试（最多 3 次）")).toBeVisible();
     expect(screen.getByRole("button", { name: "重新处理" })).toBeVisible();
   });
 
@@ -723,5 +724,41 @@ describe("学习记录详情", () => {
     expect(deleteCalls).toBe(2);
     expect(deleteToken).toBe(TEST_LAUNCH_TOKEN);
     expect(listCalls).toBe(2);
+  });
+
+  it("完成任务不再把重试次数显示为完成进度", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(JOBS_URL, () =>
+        HttpResponse.json(
+          jobsResponse({
+            status: "SUCCEEDED",
+            progress: 1,
+            attempts: 1,
+            max_attempts: 3,
+            error_code: null,
+            retryable: false,
+          }),
+        ),
+      ),
+      http.get(`${DETAIL_URL}/transcript`, () =>
+        HttpResponse.json({
+          status: "READY",
+          transcript: {
+            language: "zh-CN",
+            content: "已完成的转写正文",
+            source_version: 1,
+            edited_by_user: false,
+            updated_at: "2026-08-23T12:00:00.000000Z",
+          },
+        }),
+      ),
+    );
+
+    renderAt(`${ROUTE_PATH}?tab=transcript`);
+
+    expect(await screen.findByText("100%")).toBeVisible();
+    expect(screen.getByText("已完成")).toBeVisible();
+    expect(screen.queryByText(/已完成.*1\/3/)).not.toBeInTheDocument();
   });
 });

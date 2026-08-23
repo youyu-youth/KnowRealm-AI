@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — 单音频转写与可恢复控制面
 
-**Status:** ready-for-human
+**Status:** completed
 
 - [x] 现有顶部导入对话框升级为平台原生多选，接受 MP3、AAC、WAV、M4A、TXT、MD、PDF、DOCX；选择顺序作为请求中唯一的来源顺序，取消或关闭不产生业务数据。
 - [x] `POST /api/capture-batches` 一次接收可空 course_id 和有序来源数组，提交即封口；不持久化 Capture Batch 实体，也不提供提交后追加、移除单个来源或重排接口。

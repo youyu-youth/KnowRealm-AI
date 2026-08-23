@@ -222,6 +222,7 @@
         "title": "处理进度",
         "progress": "{{value}}%",
         "progressLabel": "学习记录总处理进度",
+        "attempts": "第 {{current}} 次尝试（最多 {{max}} 次）",
         "types": {
           "AUDIO_TRANSCODE": "本地音频规范化与切片",
           "ASR": "腾讯云语音识别",

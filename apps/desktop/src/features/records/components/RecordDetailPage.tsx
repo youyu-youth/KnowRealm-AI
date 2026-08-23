@@ -540,8 +540,15 @@ function JobProgress({
               {t(`record.detail.jobs.types.${job.job_type}`)}
             </span>
             <span className="text-label text-muted-foreground shrink-0">
-              {t(`record.detail.jobs.status.${job.status}`)} · {job.attempts}/
-              {job.max_attempts}
+              {t(`record.detail.jobs.status.${job.status}`)}
+              {job.attempts > 0 &&
+              job.status !== "SUCCEEDED" &&
+              job.status !== "CANCELLED"
+                ? ` · ${t("record.detail.jobs.attempts", {
+                    current: job.attempts,
+                    max: job.max_attempts,
+                  })}`
+                : null}
             </span>
           </li>
         ))}
