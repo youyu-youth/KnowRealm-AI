@@ -52,8 +52,26 @@ def valid_summary() -> SummaryContent:
     )
 
 
+def adjusted_summary() -> SummaryContent:
+    return SummaryContent(
+        topic="进程调度（修订版）",
+        abstract="这是根据用户反馈修订后的结构化总结摘要。" * 30,
+        sections=[
+            SummarySection(
+                heading="调度策略",
+                points=["反馈驱动的新版本按既定策略选择下一个进程。"],
+            )
+        ],
+    )
+
+
 class FakeSummaryModel:
-    def __init__(self, output: object | None = None) -> None:
+    def __init__(
+        self,
+        output: object | None = None,
+        sequence: list[object] | None = None,
+    ) -> None:
+        self.sequence = list(sequence) if sequence is not None else None
         self.output = output if output is not None else valid_summary()
         self.prompts: list[str] = []
         self.started = asyncio.Event()
@@ -74,6 +92,8 @@ class FakeSummaryModel:
         self.prompts.append(prompt)
         self.started.set()
         await self.release.wait()
+        if self.sequence is not None:
+            return SummaryModelResult(output=self.sequence.pop(0), token_usage={"total_tokens": 42})
         return SummaryModelResult(output=self.output, token_usage={"total_tokens": 42})
 
 
@@ -139,6 +159,22 @@ async def wait_for_record_status(
             return
         await asyncio.sleep(0.02)
     pytest.fail(f"Record 未进入 {status}")
+
+
+async def wait_for_summary_version(
+    client: httpx.AsyncClient,
+    record_id: str,
+    version_no: int,
+) -> dict[str, object]:
+    for _ in range(200):
+        raw: object = (await client.get(f"/api/records/{record_id}/summary")).json()
+        payload = cast(dict[str, object], raw)
+        summary = payload.get("summary")
+        current = cast(dict[str, object], summary) if isinstance(summary, dict) else {}
+        if current.get("version_no") == version_no:
+            return current
+        await asyncio.sleep(0.02)
+    pytest.fail(f"Summary 未进入版本 {version_no}")
 
 
 async def assert_summary_schema(db_path: Path) -> None:
@@ -476,3 +512,295 @@ async def test_normal_document_source_auto_enqueues_and_checkpoint_survives_rest
     assert first_state.values["record_id"] == record_id
     assert restored_state.values["record_id"] == record_id
     assert summary.json()["summary"]["topic"] == "操作系统中的进程调度"
+
+
+async def prepare_ready_summary(app: FastAPI, client: httpx.AsyncClient) -> str:
+    record_id = await create_pending_record(app, client)
+    await configure_provider(client)
+    await client.post("/api/settings/external-processing-consents/llm")
+    accepted = await client.post(f"/api/records/{record_id}/summary-jobs")
+    assert accepted.status_code == 202
+    await wait_for_record_status(client, record_id, "SUMMARY_READY")
+    return record_id
+
+
+@pytest.mark.anyio
+async def test_adjust_validates_input_then_supersedes_previous_only_on_success(
+    tmp_path: Path,
+) -> None:
+    fake = FakeSummaryModel(
+        sequence=[valid_summary().model_dump(), adjusted_summary().model_dump()]
+    )
+    async with running_summary_app(tmp_path / "KnowRealm", summary_model=fake) as (app, client):
+        record_id = await prepare_ready_summary(app, client)
+        first_id = (await client.get(f"/api/records/{record_id}/summary")).json()["summary"]["id"]
+        blank = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "   "},
+        )
+        too_long = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "长" * 1001},
+        )
+        unknown = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": "99999999-9999-4999-8999-999999999999", "feedback": "更简洁"},
+        )
+        accepted = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "更简洁一些，侧重调度策略"},
+        )
+        duplicate = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "再次调整"},
+        )
+        second = await wait_for_summary_version(client, record_id, 2)
+        stale_adjust = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "对旧版本调整"},
+        )
+        versions = await client.get(f"/api/records/{record_id}/summaries")
+        detail = await client.get(f"/api/records/{record_id}/summaries/{first_id}")
+        missing = await client.get(
+            f"/api/records/{record_id}/summaries/99999999-9999-4999-8999-999999999999"
+        )
+        async with app.state.session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT version_no, status, user_feedback, prompt_version "
+                        "FROM ai_summaries ORDER BY version_no"
+                    )
+                )
+            ).all()
+            adjust_log = (
+                await session.execute(
+                    text(
+                        "SELECT prompt_version, error_code FROM llm_call_logs "
+                        "WHERE graph_node='generate' ORDER BY created_at"
+                    )
+                )
+            ).all()
+            job_count = await session.scalar(
+                text("SELECT count(*) FROM processing_jobs WHERE job_type='SUMMARY'")
+            )
+
+    assert blank.status_code == 422
+    assert too_long.status_code == 422
+    assert unknown.status_code == 409
+    assert accepted.status_code == 202
+    assert duplicate.status_code == 409
+    assert stale_adjust.status_code == 409
+    assert second["topic"] == "进程调度（修订版）"
+    assert second["user_feedback"] == "更简洁一些，侧重调度策略"
+    assert [tuple(row) for row in rows] == [
+        (1, "SUPERSEDED", None, "summary-v1"),
+        (2, "GENERATED", "更简洁一些，侧重调度策略", "summary-adjust-v1"),
+    ]
+    assert len(fake.prompts) == 2
+    assert "更简洁一些，侧重调度策略" in fake.prompts[1]
+    assert "操作系统中的进程调度" in fake.prompts[1]
+    assert "进程调度用于决定就绪进程获得处理器的顺序。" in fake.prompts[1]
+    assert [tuple(row) for row in adjust_log] == [
+        ("summary-v1", None),
+        ("summary-adjust-v1", None),
+    ]
+    assert job_count == 2
+    assert [version["version_no"] for version in versions.json()] == [2, 1]
+    assert detail.json()["status"] == "SUPERSEDED"
+    assert detail.json()["version_no"] == 1
+    assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_adjust_failure_keeps_previous_confirmable_and_reuses_failed_job(
+    tmp_path: Path,
+) -> None:
+    fake = FakeSummaryModel(
+        sequence=[
+            valid_summary().model_dump(),
+            {"topic": "", "abstract": "过短", "sections": []},
+            adjusted_summary().model_dump(),
+        ]
+    )
+    async with running_summary_app(tmp_path / "KnowRealm", summary_model=fake) as (app, client):
+        record_id = await prepare_ready_summary(app, client)
+        first_id = (await client.get(f"/api/records/{record_id}/summary")).json()["summary"]["id"]
+        failed_adjust = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "第一次反馈"},
+        )
+        adjust_job_id = failed_adjust.json()["job_id"]
+        for _ in range(200):
+            jobs = (await client.get(f"/api/records/{record_id}/jobs")).json()["jobs"]
+            adjust_job = next((job for job in jobs if job["id"] == adjust_job_id), None)
+            if adjust_job is not None and adjust_job["status"] == "FAILED":
+                break
+            await asyncio.sleep(0.02)
+        else:
+            pytest.fail("调整任务未进入 FAILED")
+        after_failure = await client.get(f"/api/records/{record_id}/summary")
+        record_after_failure = await client.get(f"/api/records/{record_id}")
+        retried_adjust = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "换一条反馈重试"},
+        )
+        second = await wait_for_summary_version(client, record_id, 2)
+        async with app.state.session_factory() as session:
+            job_count = await session.scalar(
+                text("SELECT count(*) FROM processing_jobs WHERE job_type='SUMMARY'")
+            )
+            reused_feedback = await session.scalar(
+                text("SELECT input_json FROM processing_jobs WHERE id=:id"),
+                {"id": retried_adjust.json()["job_id"]},
+            )
+            stale_confirm = await client.post(
+                f"/api/records/{record_id}/summary-confirmations",
+                json={"summary_id": first_id},
+            )
+            confirmed = await client.post(
+                f"/api/records/{record_id}/summary-confirmations",
+                json={"summary_id": second["id"]},
+            )
+
+    assert failed_adjust.status_code == 202
+    assert record_after_failure.json()["status"] == "SUMMARY_READY"
+    assert after_failure.json()["summary"]["id"] == first_id
+    assert after_failure.json()["summary"]["status"] == "GENERATED"
+    assert retried_adjust.status_code == 202
+    assert retried_adjust.json()["job_id"] == failed_adjust.json()["job_id"]
+    reused_input = json.loads(cast(str, reused_feedback))
+    assert reused_input["feedback"] == "换一条反馈重试"
+    assert job_count == 2
+    assert stale_confirm.status_code == 409
+    assert confirmed.status_code == 200
+    assert confirmed.json()["record_status"] == "COMPLETED"
+
+
+@pytest.mark.anyio
+async def test_confirm_is_idempotent_and_writes_single_learning_event(tmp_path: Path) -> None:
+    fake = FakeSummaryModel()
+    async with running_summary_app(tmp_path / "KnowRealm", summary_model=fake) as (app, client):
+        record_id = await prepare_ready_summary(app, client)
+        summary_id = (await client.get(f"/api/records/{record_id}/summary")).json()["summary"]["id"]
+        missing = await client.post(
+            f"/api/records/{record_id}/summary-confirmations",
+            json={"summary_id": "99999999-9999-4999-8999-999999999999"},
+        )
+        confirmed = await client.post(
+            f"/api/records/{record_id}/summary-confirmations",
+            json={"summary_id": summary_id},
+        )
+        repeated = await client.post(
+            f"/api/records/{record_id}/summary-confirmations",
+            json={"summary_id": summary_id},
+        )
+        record = await client.get(f"/api/records/{record_id}")
+        summary = await client.get(f"/api/records/{record_id}/summary")
+        async with app.state.session_factory() as session:
+            events = (await session.execute(text("SELECT * FROM learning_events"))).all()
+            summary_row = (
+                await session.execute(
+                    text("SELECT status, confirmed_at FROM ai_summaries WHERE id=:id"),
+                    {"id": summary_id},
+                )
+            ).one()
+            course_id = await session.scalar(
+                text("SELECT course_id FROM records WHERE id=:id"), {"id": record_id}
+            )
+
+    assert missing.status_code == 404
+    assert confirmed.status_code == 200
+    assert confirmed.json()["record_status"] == "COMPLETED"
+    assert confirmed.json()["summary"]["status"] == "CONFIRMED"
+    assert repeated.status_code == 200
+    assert repeated.json() == confirmed.json()
+    assert record.json()["status"] == "COMPLETED"
+    assert record.json()["summary_confirmed_at"] is not None
+    assert summary.json()["summary"]["status"] == "CONFIRMED"
+    assert summary.json()["action_required"] == "NONE"
+    assert len(events) == 1
+    event = events[0]._mapping
+    assert event["event_type"] == "SUMMARY_CONFIRMED"
+    assert event["source_type"] == "AI_SUMMARY"
+    assert event["source_id"] == summary_id
+    assert event["idempotency_key"] == f"summary-confirmed:{summary_id}"
+    assert event["record_id"] == record_id
+    assert event["course_id"] == course_id
+    assert summary_row[0] == "CONFIRMED"
+    assert summary_row[1] is not None
+
+
+@pytest.mark.anyio
+async def test_adjust_resume_and_confirm_survive_full_app_restart(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_summary_app(data_dir, summary_model=FakeSummaryModel()) as (app, client):
+        record_id = await prepare_ready_summary(app, client)
+        first_id = (await client.get(f"/api/records/{record_id}/summary")).json()["summary"]["id"]
+        thread_id = f"summary-{record_id}-source-1"
+
+    async with running_summary_app(
+        data_dir, summary_model=FakeSummaryModel(output=adjusted_summary().model_dump())
+    ) as (app, client):
+        accepted = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "更简洁"},
+        )
+        second = await wait_for_summary_version(client, record_id, 2)
+        snapshot = await app.state.summary_graph.aget_state(
+            {"configurable": {"thread_id": thread_id}}
+        )
+
+    async with running_summary_app(
+        data_dir, summary_model=FakeSummaryModel(output=adjusted_summary().model_dump())
+    ) as (_app, client):
+        confirmed = await client.post(
+            f"/api/records/{record_id}/summary-confirmations",
+            json={"summary_id": second["id"]},
+        )
+        summary = await client.get(f"/api/records/{record_id}/summary")
+
+    assert accepted.status_code == 202
+    assert snapshot.values["summary"]["topic"] == "进程调度（修订版）"
+    assert confirmed.status_code == 200
+    assert confirmed.json()["record_status"] == "COMPLETED"
+    assert summary.json()["summary"]["version_no"] == 2
+    assert summary.json()["summary"]["status"] == "CONFIRMED"
+
+
+@pytest.mark.anyio
+async def test_worker_restart_recovery_keeps_previous_version_for_interrupted_adjust(
+    tmp_path: Path,
+) -> None:
+    fake = FakeSummaryModel(output=adjusted_summary().model_dump())
+    async with running_summary_app(tmp_path / "KnowRealm", summary_model=fake) as (app, client):
+        record_id = await prepare_ready_summary(app, client)
+        first_id = (await client.get(f"/api/records/{record_id}/summary")).json()["summary"]["id"]
+        accepted = await client.post(
+            f"/api/records/{record_id}/summary-adjustments",
+            json={"summary_id": first_id, "feedback": "更简洁"},
+        )
+        job_id = accepted.json()["job_id"]
+        # 模拟调整已被认领后应用崩溃：任务停在 RUNNING、Record 停在 SUMMARY_PROCESSING
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE processing_jobs SET status='RUNNING' WHERE id=:id"),
+                {"id": job_id},
+            )
+            await session.execute(
+                text("UPDATE records SET status='SUMMARY_PROCESSING' WHERE id=:id"),
+                {"id": record_id},
+            )
+
+    async with running_summary_app(tmp_path / "KnowRealm", summary_model=fake) as (_app, client):
+        await wait_for_record_status(client, record_id, "SUMMARY_READY")
+        summary = await client.get(f"/api/records/{record_id}/summary")
+        confirmed = await client.post(
+            f"/api/records/{record_id}/summary-confirmations",
+            json={"summary_id": first_id},
+        )
+
+    assert summary.json()["summary"]["id"] == first_id
+    assert summary.json()["summary"]["status"] == "GENERATED"
+    assert confirmed.status_code == 200
+    assert confirmed.json()["record_status"] == "COMPLETED"

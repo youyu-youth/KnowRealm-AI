@@ -5,7 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_launch_token
 from app.schemas.course import ErrorResponse
-from app.schemas.summary import SummaryJobAccepted, SummaryReadOut
+from app.schemas.summary import (
+    SummaryAdjustRequest,
+    SummaryConfirmOut,
+    SummaryConfirmRequest,
+    SummaryJobAccepted,
+    SummaryOut,
+    SummaryReadOut,
+)
 from app.services.summary_service import SummaryService
 
 router = APIRouter(
@@ -43,3 +50,52 @@ async def submit_summary(
 ) -> SummaryJobAccepted:
     submitted = await SummaryService.submit(session, request.app.state.data_dir, str(record_id))
     return SummaryJobAccepted(job_id=submitted.job_id)
+
+
+@router.post(
+    "/{record_id}/summary-adjustments",
+    response_model=SummaryJobAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def adjust_summary(
+    record_id: UUID,
+    body: SummaryAdjustRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> SummaryJobAccepted:
+    submitted = await SummaryService.adjust(
+        session,
+        request.app.state.data_dir,
+        str(record_id),
+        body,
+    )
+    return SummaryJobAccepted(job_id=submitted.job_id)
+
+
+@router.post("/{record_id}/summary-confirmations", response_model=SummaryConfirmOut)
+async def confirm_summary(
+    record_id: UUID,
+    body: SummaryConfirmRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> SummaryConfirmOut:
+    result = await SummaryService.confirm(session, str(record_id), body)
+    await request.app.state.record_notifier.notify(str(record_id))
+    return result
+
+
+@router.get("/{record_id}/summaries", response_model=list[SummaryOut])
+async def list_summaries(
+    record_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> list[SummaryOut]:
+    return await SummaryService.list_versions(session, str(record_id))
+
+
+@router.get("/{record_id}/summaries/{summary_id}", response_model=SummaryOut)
+async def get_summary_version(
+    record_id: UUID,
+    summary_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> SummaryOut:
+    return await SummaryService.get_version(session, str(record_id), str(summary_id))

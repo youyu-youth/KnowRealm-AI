@@ -64,7 +64,7 @@ API 类型一律 `import ... from "@knowrealm/api-types"`（禁止手写重复�
 ## 测试约定
 
 - **无全局 jsdom**：需要 DOM 的测试文件首行写 `// @vitest-environment jsdom`；services 层测试走 node 环境。
-- MSW **仅测试启用**：`test/setup.ts` 全局 `server.listen({ onUnhandledRequest: "error" })`；`mocks/handlers.ts` 只有 2 个兜底 handler（courses、recording-sessions 空列表），具体路由在测试内 `server.use(...)` 局部覆盖；无 mockServiceWorker.js，dev 运行不经 MSW。
+- MSW **仅测试启用**：`test/setup.ts` 全局 `server.listen({ onUnhandledRequest: "error" })`；`mocks/handlers.ts` 只有 3 个兜底 handler（courses、recording-sessions、today/pending-summaries 空列表），具体路由在测试内 `server.use(...)` 局部覆盖；无 mockServiceWorker.js，dev 运行不经 MSW。
 - 涉及 Tauri 的测试一律 `vi.mock("@/services/tauri/sidecar")`（及 `recording`）桩掉 invoke。
 - 组件测试用 `renderWithQuery()`（`test/test-utils.tsx`：retry:false 临时 QueryClient + i18n）。
 - eslint 的 `react-refresh/only-export-components` 已豁免 `Route` 导出（file-based 路由必需）。

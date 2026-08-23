@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -57,6 +58,7 @@ class SummaryOut(BaseModel):
     status: str
     model: str
     prompt_version: str
+    user_feedback: str | None = None
     created_at: datetime
 
     @field_serializer("created_at")
@@ -74,6 +76,22 @@ class SummaryReadOut(BaseModel):
 
 class SummaryJobAccepted(BaseModel):
     job_id: str
+
+
+class SummaryAdjustRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    summary_id: UUID
+    feedback: str = Field(min_length=1, max_length=1000, description="调整反馈")
+
+
+class SummaryConfirmRequest(BaseModel):
+    summary_id: UUID
+
+
+class SummaryConfirmOut(BaseModel):
+    summary: SummaryOut
+    record_status: str
 
 
 class LlmProviderTestOut(BaseModel):

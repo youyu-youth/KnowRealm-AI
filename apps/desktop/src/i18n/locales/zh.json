@@ -81,8 +81,15 @@
   "today": {
     "title": "今日",
     "description": "从真实学习进度继续，而不是从示例任务开始。",
+    "loading": "正在读取今日待办",
+    "errorTitle": "今日待办暂时无法读取",
+    "errorDescription": "本地服务可能仍在启动，请稍后重试。",
+    "retry": "重新读取",
     "emptyTitle": "今天没有待处理事项",
-    "emptyDescription": "当学习记录进入处理或确认阶段时，它们会出现在这里。"
+    "emptyDescription": "当学习记录进入处理或确认阶段时，它们会出现在这里。",
+    "todoTitle": "等待确认的总结",
+    "todoListLabel": "待确认总结列表",
+    "todoAction": "去确认"
   },
   "spaces": {
     "title": "知识空间",
@@ -261,6 +268,7 @@
         "quiz": "Quiz"
       },
       "assetsUnavailable": "其余学习资产尚未接入",
+      "assetsCompleted": "总结已确认，已满足解锁条件；其余学习资产尚未接入",
       "jobs": {
         "title": "处理进度",
         "progress": "{{value}}%",
@@ -357,7 +365,14 @@
         "consentTitle": "同意外部 AI 处理",
         "consentDisclosure": "生成总结会把当前 Transcript 正文发送到你配置的第三方 AI Provider；原始音视频不会发送。",
         "grantConsent": "同意发送 Transcript",
-        "pendingConfirmation": "AI 生成 · 待确认；调整与确认将在下一票接入"
+        "pendingConfirmation": "AI 生成 · 待确认",
+        "confirmedLabel": "AI 总结 · 已确认",
+        "confirm": "确认总结",
+        "adjust": "调整总结",
+        "adjustFeedbackLabel": "调整反馈",
+        "adjustFeedbackPlaceholder": "告诉 AI 怎么改，例如：更简洁、侧重某个主题（1～1000 字）",
+        "submitAdjustment": "提交调整",
+        "cancelAdjustment": "取消调整"
       },
       "failedTitle": "学习记录处理失败",
       "failedDescription": "当前暂无可用恢复操作。"

@@ -8,4 +8,7 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/recording-sessions`, () =>
     HttpResponse.json([]),
   ),
+  http.get(`${TEST_SIDECAR_URL}/api/today/pending-summaries`, () =>
+    HttpResponse.json([]),
+  ),
 ];

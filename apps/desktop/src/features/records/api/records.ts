@@ -27,6 +27,21 @@ export const recordApi = {
       `/api/records/${recordId}/summary-jobs`,
       { method: "POST" },
     ),
+  adjustSummary(
+    recordId: string,
+    body: components["schemas"]["SummaryAdjustRequest"],
+  ) {
+    return apiFetch<components["schemas"]["SummaryJobAccepted"]>(
+      `/api/records/${recordId}/summary-adjustments`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+  confirmSummary(recordId: string, summaryId: string) {
+    return apiFetch<components["schemas"]["SummaryConfirmOut"]>(
+      `/api/records/${recordId}/summary-confirmations`,
+      { method: "POST", body: JSON.stringify({ summary_id: summaryId }) },
+    );
+  },
   updateTranscript(
     recordId: string,
     body: components["schemas"]["TranscriptUpdateRequest"],

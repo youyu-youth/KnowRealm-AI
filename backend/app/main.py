@@ -23,6 +23,7 @@ from app.api import (
     records,
     settings,
     summaries,
+    today,
 )
 from app.api.deps import require_launch_token
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
@@ -167,6 +168,7 @@ def create_app(
     app.include_router(capture_batches.router)
     app.include_router(settings.router)
     app.include_router(summaries.router)
+    app.include_router(today.router)
     app.include_router(document_imports.router)
     app.include_router(processing_jobs.router)
     app.include_router(recording_sessions.router)

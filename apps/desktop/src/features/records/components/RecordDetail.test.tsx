@@ -29,6 +29,8 @@ const JOBS_URL = `${DETAIL_URL}/jobs`;
 const JOB_RETRY_URL = `${TEST_SIDECAR_URL}/api/processing-jobs/${JOB_ID}/retries`;
 const SUMMARY_URL = `${DETAIL_URL}/summary`;
 const SUMMARY_JOBS_URL = `${DETAIL_URL}/summary-jobs`;
+const SUMMARY_ADJUST_URL = `${DETAIL_URL}/summary-adjustments`;
+const SUMMARY_CONFIRM_URL = `${DETAIL_URL}/summary-confirmations`;
 const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
 const LLM_TEST_URL = `${LLM_PROVIDER_URL}/tests`;
 const LLM_CONSENT_URL = `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/llm`;
@@ -450,6 +452,7 @@ describe("学习记录详情", () => {
             ],
             prompt_version: "summary-v1",
             model: "qwen-plus",
+            user_feedback: null,
             created_at: "2026-08-23T10:00:00Z",
           },
         }),
@@ -460,15 +463,226 @@ describe("学习记录详情", () => {
     expect(
       await screen.findByRole("heading", { name: "虚拟内存" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("AI 生成 · 待确认；调整与确认将在下一票接入"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("AI 生成 · 待确认")).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "核心机制" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /确认|调整/ }),
+      screen.getByRole("button", { name: "确认总结" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "调整总结" }),
+    ).toBeInTheDocument();
+  });
+
+  it("调整生成新版本后确认完成，未实现入口保持禁用", async () => {
+    const firstId = "44444444-4444-4444-8444-444444444444";
+    const secondId = "66666666-6666-4666-8666-666666666666";
+    let phase: "ready" | "processing" | "adjusted" | "confirmed" = "ready";
+    let adjustedAt = 0;
+    let adjustBody: { summary_id: string; feedback: string } | null = null;
+    let confirmBody: { summary_id: string } | null = null;
+    const summaryOf = (id: string, version: number, status: string) => ({
+      id,
+      record_id: RECORD_ID,
+      version_no: version,
+      status,
+      transcript_source_version: 1,
+      topic: version === 1 ? "进程调度" : "进程调度（修订版）",
+      abstract:
+        version === 1
+          ? "调度器按照既定策略选择下一个获得处理器的进程。"
+          : "根据反馈修订后的摘要内容。",
+      sections: [{ heading: "核心机制", points: ["就绪队列决定候选顺序。"] }],
+      prompt_version: version === 1 ? "summary-v1" : "summary-adjust-v1",
+      model: "qwen-plus",
+      user_feedback: version === 1 ? null : "请更简洁，侧重调度策略",
+      created_at: "2026-08-23T10:00:00Z",
+    });
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          status: phase === "confirmed" ? "COMPLETED" : "SUMMARY_READY",
+        }),
+      ),
+      http.get(SUMMARY_URL, () => {
+        if (phase === "processing" && Date.now() - adjustedAt > 300) {
+          phase = "adjusted";
+        }
+        if (phase === "ready")
+          return HttpResponse.json({
+            action_required: "NONE",
+            active_job_id: null,
+            blocked_reason: null,
+            summary: summaryOf(firstId, 1, "GENERATED"),
+          });
+        if (phase === "processing")
+          return HttpResponse.json({
+            action_required: "NONE",
+            active_job_id: JOB_ID,
+            blocked_reason: null,
+            summary: null,
+          });
+        return HttpResponse.json({
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: null,
+          summary: summaryOf(
+            secondId,
+            2,
+            phase === "confirmed" ? "CONFIRMED" : "GENERATED",
+          ),
+        });
+      }),
+      http.post(SUMMARY_ADJUST_URL, async ({ request }) => {
+        adjustBody = (await request.json()) as {
+          summary_id: string;
+          feedback: string;
+        };
+        phase = "processing";
+        adjustedAt = Date.now();
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+      http.post(SUMMARY_CONFIRM_URL, async ({ request }) => {
+        confirmBody = (await request.json()) as { summary_id: string };
+        phase = "confirmed";
+        return HttpResponse.json({
+          summary: summaryOf(secondId, 2, "CONFIRMED"),
+          record_status: "COMPLETED",
+        });
+      }),
+    );
+    renderAt();
+
+    expect(
+      await screen.findByRole("heading", { name: "进程调度" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "调整总结" }));
+    const feedbackInput = screen.getByRole("textbox", {
+      name: "调整反馈",
+    });
+    expect(
+      screen.getByRole("button", { name: "提交调整" }),
+    ).toBeDisabled();
+    fireEvent.change(feedbackInput, {
+      target: { value: "请更简洁，侧重调度策略" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交调整" }));
+    await waitFor(() =>
+      expect(adjustBody).toEqual({
+        summary_id: firstId,
+        feedback: "请更简洁，侧重调度策略",
+      }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "正在生成总结" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "进程调度（修订版）" },
+        { timeout: 3_500 },
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "确认总结" }));
+    await waitFor(() => expect(confirmBody).toEqual({ summary_id: secondId }));
+    expect(
+      await screen.findByText("AI 总结 · 已确认"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("总结已确认，已满足解锁条件；其余学习资产尚未接入"),
+    ).toBeInTheDocument();
+    for (const label of ["Highlights", "Notes", "Flashcards", "Quiz"]) {
+      expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    }
+    expect(
+      screen.queryByRole("button", { name: "确认总结" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "调整总结" }),
+    ).not.toBeInTheDocument();
+  }, 10_000);
+
+  it("调整返回 409 时提示旧版本并刷新到当前版本", async () => {
+    const firstId = "44444444-4444-4444-8444-444444444444";
+    const secondId = "66666666-6666-4666-8666-666666666666";
+    let rejected = false;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "SUMMARY_READY" }),
+      ),
+      http.get(SUMMARY_URL, () =>
+        HttpResponse.json({
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: null,
+          summary: rejected
+            ? {
+                id: secondId,
+                record_id: RECORD_ID,
+                version_no: 2,
+                status: "GENERATED",
+                transcript_source_version: 1,
+                topic: "进程调度（修订版）",
+                abstract: "另一端已生成的新版本。",
+                sections: [
+                  { heading: "核心机制", points: ["就绪队列决定候选顺序。"] },
+                ],
+                prompt_version: "summary-adjust-v1",
+                model: "qwen-plus",
+                user_feedback: "别处的反馈",
+                created_at: "2026-08-23T10:05:00Z",
+              }
+            : {
+                id: firstId,
+                record_id: RECORD_ID,
+                version_no: 1,
+                status: "GENERATED",
+                transcript_source_version: 1,
+                topic: "进程调度",
+                abstract: "调度器按照既定策略选择下一个获得处理器的进程。",
+                sections: [
+                  { heading: "核心机制", points: ["就绪队列决定候选顺序。"] },
+                ],
+                prompt_version: "summary-v1",
+                model: "qwen-plus",
+                user_feedback: null,
+                created_at: "2026-08-23T10:00:00Z",
+              },
+        }),
+      ),
+      http.post(SUMMARY_ADJUST_URL, () => {
+        rejected = true;
+        return HttpResponse.json(
+          { detail: "总结已是旧版本，请刷新后重试" },
+          { status: 409 },
+        );
+      }),
+    );
+    renderAt();
+
+    expect(
+      await screen.findByRole("heading", { name: "进程调度" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "调整总结" }));
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "调整反馈" }),
+      { target: { value: "更简洁" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "提交调整" }));
+    expect(
+      await screen.findByRole("alert", { name: "" }),
+    ).toHaveTextContent("总结已是旧版本，请刷新后重试");
+    expect(
+      await screen.findByRole("heading", { name: "进程调度（修订版）" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "确认总结" }),
+    ).toBeInTheDocument();
   });
 
   it("总结失败可明确重试，课程归档则不提供生成动作", async () => {

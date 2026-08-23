@@ -23,6 +23,7 @@ import {
 } from "@/features/records/recordPresentation";
 import { settingsApi } from "@/features/settings/api/settings";
 import { settingsKeys } from "@/features/settings/api/keys";
+import { todayKeys } from "@/features/today/api/keys";
 import { ApiError } from "@/services/http/client";
 
 type RecordDetailPageProps = {
@@ -259,7 +260,11 @@ export function RecordDetailPage({
           id="record-assets-unavailable"
           className="text-label text-muted-foreground mt-3"
         >
-          {t("record.detail.assetsUnavailable")}
+          {t(
+            detail.status === "COMPLETED"
+              ? "record.detail.assetsCompleted"
+              : "record.detail.assetsUnavailable",
+          )}
         </p>
 
         <TabsContent
@@ -467,6 +472,7 @@ function SummaryPanel({ recordId }: { recordId: string }) {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: recordKeys.detail(recordId) }),
       queryClient.invalidateQueries({ queryKey: recordKeys.summary(recordId) }),
+      queryClient.invalidateQueries({ queryKey: todayKeys.pendingSummaries }),
     ]);
   const submit = useMutation({
     mutationFn: () => recordApi.submitSummary(recordId),
@@ -521,33 +527,47 @@ function SummaryPanel({ recordId }: { recordId: string }) {
 
   if (summary.data.summary) {
     const content = summary.data.summary;
+    const confirmed = content.status === "CONFIRMED";
     return (
-      <article className="max-w-reading min-w-0">
-        <p className="text-label text-muted-foreground">
-          {t("record.detail.summary.pendingConfirmation")}
-        </p>
-        <h2 className="text-headline font-headline text-ink-strong mt-2">
-          {content.topic}
-        </h2>
-        <p className="text-body text-ink mt-5 whitespace-pre-wrap">
-          {content.abstract}
-        </p>
-        {content.sections.map((section) => (
-          <section
-            key={section.heading}
-            className="border-border mt-8 border-t pt-6"
-          >
-            <h3 className="text-section font-section text-ink">
-              {section.heading}
-            </h3>
-            <ul className="text-body text-ink mt-3 list-disc space-y-2 pl-5">
-              {section.points.map((point) => (
-                <li key={point}>{point}</li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </article>
+      <>
+        <article className="max-w-reading min-w-0">
+          <p className="text-label text-muted-foreground">
+            {t(
+              confirmed
+                ? "record.detail.summary.confirmedLabel"
+                : "record.detail.summary.pendingConfirmation",
+            )}
+          </p>
+          <h2 className="text-headline font-headline text-ink-strong mt-2">
+            {content.topic}
+          </h2>
+          <p className="text-body text-ink mt-5 whitespace-pre-wrap">
+            {content.abstract}
+          </p>
+          {content.sections.map((section) => (
+            <section
+              key={section.heading}
+              className="border-border mt-8 border-t pt-6"
+            >
+              <h3 className="text-section font-section text-ink">
+                {section.heading}
+              </h3>
+              <ul className="text-body text-ink mt-3 list-disc space-y-2 pl-5">
+                {section.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </article>
+        {!confirmed ? (
+          <SummaryReviewActions
+            recordId={recordId}
+            summaryId={content.id}
+            onChanged={() => void refresh()}
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -629,6 +649,113 @@ function SummaryPanel({ recordId }: { recordId: string }) {
       description={t("record.detail.summary.processingDescription")}
       pending
     />
+  );
+}
+
+function SummaryReviewActions({
+  recordId,
+  summaryId,
+  onChanged,
+}: {
+  recordId: string;
+  summaryId: string;
+  onChanged: () => void;
+}) {
+  const { t } = useTranslation();
+  const [adjusting, setAdjusting] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const confirm = useMutation({
+    mutationFn: () => recordApi.confirmSummary(recordId, summaryId),
+    onSuccess: onChanged,
+    onError: onChanged,
+  });
+  const adjust = useMutation({
+    mutationFn: (text: string) =>
+      recordApi.adjustSummary(recordId, {
+        summary_id: summaryId,
+        feedback: text,
+      }),
+    onSuccess: () => {
+      setAdjusting(false);
+      setFeedback("");
+      onChanged();
+    },
+    onError: onChanged,
+  });
+  const mutationError = (confirm.error ?? adjust.error) ?? null;
+
+  return (
+    <section className="border-border mt-8 max-w-reading border-t pt-6">
+      <div className="flex flex-wrap gap-2">
+        <Button
+          disabled={confirm.isPending || adjust.isPending}
+          onClick={() => confirm.mutate()}
+        >
+          {confirm.isPending ? <Spinner aria-hidden="true" /> : null}
+          {t("record.detail.summary.confirm")}
+        </Button>
+        {!adjusting ? (
+          <Button
+            variant="outline"
+            disabled={confirm.isPending || adjust.isPending}
+            onClick={() => {
+              setAdjusting(true);
+              adjust.reset();
+            }}
+          >
+            {t("record.detail.summary.adjust")}
+          </Button>
+        ) : null}
+      </div>
+      {adjusting ? (
+        <form
+          className="mt-6"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (feedback.trim()) adjust.mutate(feedback.trim());
+          }}
+        >
+          <Label htmlFor="summary-adjust-feedback">
+            {t("record.detail.summary.adjustFeedbackLabel")}
+          </Label>
+          <Textarea
+            id="summary-adjust-feedback"
+            value={feedback}
+            onChange={(event) => setFeedback(event.target.value)}
+            rows={4}
+            maxLength={1000}
+            className="mt-2"
+            placeholder={t("record.detail.summary.adjustFeedbackPlaceholder")}
+          />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="submit"
+              disabled={!feedback.trim() || adjust.isPending}
+            >
+              {adjust.isPending ? <Spinner aria-hidden="true" /> : null}
+              {t("record.detail.summary.submitAdjustment")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={adjust.isPending}
+              onClick={() => {
+                setAdjusting(false);
+                setFeedback("");
+                adjust.reset();
+              }}
+            >
+              {t("record.detail.summary.cancelAdjustment")}
+            </Button>
+          </div>
+        </form>
+      ) : null}
+      {mutationError ? (
+        <p role="alert" className="text-body text-destructive mt-4">
+          {mutationError.message}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
