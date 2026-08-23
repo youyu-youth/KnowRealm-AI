@@ -107,7 +107,7 @@ Record 详情通过 Record 级 Job 聚合接口展示进度、等待、失败和
 - 文件选择器使用平台原生多选能力和明确的 accept 提示，但后端仍是格式与内容可信边界；扩展名或前端 MIME 不能替代服务端探测。
 - 支持的音频输入限定为 MP3、AAC、WAV、M4A，以及录音功能交付的已封口 staging；文档格式完全复用既有 TXT、MD、PDF、DOCX 合同。
 - 整批预校验在正式注册前完成：来源非空、格式受支持、音频可探测且未损坏、单次录音不超过 3 小时、批次全部音频总时长不超过 5 小时、数据盘可用空间至少为批次原件总字节的两倍（2×）。
-- 任一预校验失败都拒绝整批，删除本次临时输入且不创建 Record、Record File 或 Processing Job。错误使用稳定码 `UNSUPPORTED_AUDIO`、`CORRUPT_AUDIO`、`AUDIO_TOO_LONG`、`INSUFFICIENT_DISK`。
+- 任一预校验失败都拒绝整批，删除本次临时输入且不创建 Record、Record File 或 Processing Job。空批次/空来源和通用格式边界使用稳定码 `EMPTY_BATCH`、`EMPTY_SOURCE`、`UNSUPPORTED_SOURCE`；音频边界使用 `UNSUPPORTED_AUDIO`、`CORRUPT_AUDIO`、`AUDIO_TOO_LONG`、`INSUFFICIENT_DISK`。
 - audio-only 与 RECORDING Record 允许 `course_id` 为空；只要批次包含文档就要求非空且指向 ACTIVE Course。未选课文档和未选课混合来源继续由后续 Inbox 计划承接。
 - 单来源 Record 的 capture_type 取 DOCUMENT_IMPORT、AUDIO_IMPORT 或 RECORDING；包含多种来源类型的 Record 使用 MULTI_SOURCE。混合类型只描述捕获来源，不新增 Batch 状态机。
 - 标题由服务端确定。单来源使用文件名 stem；多来源使用“首文件 stem + 等 N 个文件”；请求不接受自定义标题，避免前后端产生两份标题规则。

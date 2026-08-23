@@ -240,8 +240,10 @@ async def test_multiple_audio_sources_keep_their_own_job_dependencies(tmp_path: 
 
 
 @pytest.mark.anyio
-async def test_invalid_middle_source_rejects_the_whole_batch_without_business_rows(
+@pytest.mark.parametrize("invalid_index", [0, 1, 2])
+async def test_invalid_source_at_any_position_rejects_the_whole_batch_without_business_rows(
     tmp_path: Path,
+    invalid_index: int,
 ) -> None:
     data_dir = tmp_path / "KnowRealm"
     async with running_app(data_dir) as (app, client):
@@ -253,14 +255,18 @@ async def test_invalid_middle_source_rejects_the_whole_batch_without_business_ro
                 "depth": "BEGINNER",
             },
         )
+        sources = [
+            ("files", ("first.txt", b"first", "text/plain")),
+            ("files", ("second.md", b"second", "text/markdown")),
+        ]
+        sources.insert(
+            invalid_index,
+            ("files", ("broken.exe", b"broken", "application/octet-stream")),
+        )
         response = await client.post(
             "/api/capture-batches",
             data={"course_id": course.json()["id"]},
-            files=[
-                ("files", ("first.txt", b"first", "text/plain")),
-                ("files", ("broken.exe", b"broken", "application/octet-stream")),
-                ("files", ("last.md", b"last", "text/markdown")),
-            ],
+            files=sources,
         )
         async with app.state.session_factory() as session:
             counts: list[int | None] = []

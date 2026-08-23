@@ -77,17 +77,22 @@ describe("工作台骨架", () => {
         expect(request.headers.get("Content-Type")).not.toBe(
           "application/json",
         );
-        return HttpResponse.json(
-          { record_id: recordId, job_ids: [jobId, "job-2"] },
-          { status: 202 },
-        );
+        return importCalls === 1
+          ? HttpResponse.json(
+              { detail: "UNSUPPORTED_SOURCE：不支持的来源格式" },
+              { status: 400 },
+            )
+          : HttpResponse.json(
+              { record_id: recordId, job_ids: [jobId, "job-2", "job-3"] },
+              { status: 202 },
+            );
       }),
       http.get(`${TEST_SIDECAR_URL}/api/records/${recordId}`, () =>
         HttpResponse.json({
           id: recordId,
           course_id: course.id,
-          capture_type: "DOCUMENT_IMPORT",
-          title: "lecture",
+          capture_type: "MULTI_SOURCE",
+          title: "voice 等 2 个文件",
           status: "SUMMARY_PENDING",
           duration_ms: 0,
           summary_confirmed_at: null,
@@ -102,6 +107,34 @@ describe("工作台骨架", () => {
             {
               id: jobId,
               record_id: recordId,
+              job_type: "AUDIO_TRANSCODE",
+              status: "SUCCEEDED",
+              progress: 1,
+              attempts: 1,
+              max_attempts: 3,
+              error_code: null,
+              retryable: false,
+              waiting_reason: null,
+              sequence_no: 0,
+              source_name: "voice.wav",
+            },
+            {
+              id: "job-2",
+              record_id: recordId,
+              job_type: "ASR",
+              status: "SUCCEEDED",
+              progress: 1,
+              attempts: 1,
+              max_attempts: 3,
+              error_code: null,
+              retryable: false,
+              waiting_reason: null,
+              sequence_no: 0,
+              source_name: "voice.wav",
+            },
+            {
+              id: "job-3",
+              record_id: recordId,
               job_type: "DOCUMENT_PARSE",
               status: "SUCCEEDED",
               progress: 1,
@@ -110,6 +143,8 @@ describe("工作台骨架", () => {
               error_code: null,
               retryable: false,
               waiting_reason: null,
+              sequence_no: 1,
+              source_name: "notes.md",
             },
           ],
           progress: 1,
@@ -151,19 +186,23 @@ describe("工作台骨架", () => {
     fireEvent.change(screen.getByLabelText("选择文件"), {
       target: {
         files: [
-          new File(["# 第一讲"], "lecture.md"),
-          new File(["补充"], "notes.txt"),
+          new File(["audio"], "voice.wav"),
+          new File(["# 第一讲"], "notes.md"),
         ],
       },
     });
     const submit = screen.getByRole("button", { name: "开始导入" });
     expect(
       screen.getAllByRole("listitem").map((item) => item.textContent),
-    ).toEqual(["1lecture.md", "2notes.txt"]);
+    ).toEqual(["1voice.wav", "2notes.md"]);
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
-    await waitFor(() => expect(importCalls).toBe(1));
+    expect(
+      await screen.findByText("UNSUPPORTED_SOURCE：不支持的来源格式"),
+    ).toBeVisible();
+    fireEvent.click(submit);
+    await waitFor(() => expect(importCalls).toBe(2));
     await waitFor(
       () => expect(window.location.pathname).toBe(`/records/${recordId}`),
       { timeout: 3_000 },
@@ -178,8 +217,9 @@ describe("工作台骨架", () => {
       ),
     ).toBeVisible();
     expect(window.location.search).toBe("?tab=transcript");
+    expect(screen.getByText("混合资料")).toBeInTheDocument();
     expect(jobCalls).toBe(1);
-    expect(importCalls).toBe(1);
+    expect(importCalls).toBe(2);
     await new Promise((resolve) => setTimeout(resolve, 2_200));
     expect(jobCalls).toBe(1);
     await waitFor(() =>
