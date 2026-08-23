@@ -17,6 +17,13 @@
 
 > 文档惯例：评审定稿即升版并**重命名文件**；改版本号须同步全部交叉引用（PRD / 技术栈 / CONTEXT.md / 扩展设计文档头部），历史"变更记录"行是史实、不改动。
 
+## 仓库布局与命令总览
+
+- `apps/desktop` — Tauri 2 桌面端（pnpm workspace）：dev/build/test/lint 命令见 `apps/desktop/CLAUDE.md`
+- `backend` — FastAPI sidecar（uv 管理）：pytest/ruff/pyright 命令见 `backend/CLAUDE.md`
+- `packages/api-types` — OpenAPI → TS 类型生成（前后端契约链：后端 schema 变更后须重新 generate）
+- 无根 package.json；前端 workspace 由 `pnpm-workspace.yaml` 定义，后端独立用 uv
+
 ## 编码规范
 
 1. 写任何代码前必须遵循 `.claude/rules/` 下的编码规范（**正本**；`docs/rules/` 为发布镜像，改动须同步保持一致）。任何时候不要更改rules下的文件。
@@ -24,6 +31,7 @@
 2. 设计或创建对应的桌面端ui时，需要遵循 impeccable skill 的规范要求，以及调用它来设计。
    - 不要重复造轮子，需要搞清楚当前的ui组件是否 可以用 shadcn ui 来实现。并保持设计规范。
 3. **git commit  的提交信息使用中文描述**
+4. 在测试中产生的任何临时文件，在测试完毕之后都要进行删除
 
 ## DESIGN.md
 
