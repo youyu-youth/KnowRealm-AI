@@ -151,6 +151,9 @@ async def _finalize_record_if_ready(
         data_dir / "cache" / "sources" / record_id,
     ):
         await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
+    from app.services.summary_service import SummaryService
+
+    await SummaryService.enqueue_if_eligible(session_factory, data_dir, record_id)
     return True
 
 
@@ -276,4 +279,7 @@ async def complete_source_job(
                 data_dir / "cache" / "sources" / record_id,
             ):
                 await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
+            from app.services.summary_service import SummaryService
+
+            await SummaryService.enqueue_if_eligible(session_factory, data_dir, record_id)
         return True

@@ -10,7 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { recordApi } from "@/features/records/api/records";
 import { TEST_LAUNCH_TOKEN, TEST_SIDECAR_URL } from "@/mocks/handlers";
@@ -27,6 +27,11 @@ const ROUTE_PATH = `/records/${RECORD_ID}`;
 const JOB_ID = "33333333-3333-4333-8333-333333333333";
 const JOBS_URL = `${DETAIL_URL}/jobs`;
 const JOB_RETRY_URL = `${TEST_SIDECAR_URL}/api/processing-jobs/${JOB_ID}/retries`;
+const SUMMARY_URL = `${DETAIL_URL}/summary`;
+const SUMMARY_JOBS_URL = `${DETAIL_URL}/summary-jobs`;
+const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
+const LLM_TEST_URL = `${LLM_PROVIDER_URL}/tests`;
+const LLM_CONSENT_URL = `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/llm`;
 
 function jobsResponse(
   job: Partial<components["schemas"]["ProcessingJobOut"]> = {},
@@ -83,6 +88,20 @@ vi.mock("@/services/tauri/sidecar", () => ({
 }));
 
 vi.stubGlobal("scrollTo", vi.fn());
+
+beforeEach(() => {
+  server.use(
+    http.get(SUMMARY_URL, () =>
+      HttpResponse.json({
+        action_required: "GENERATE",
+        active_job_id: null,
+        blocked_reason: null,
+        summary: null,
+      }),
+    ),
+    http.get(LLM_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
+  );
+});
 
 afterEach(() => {
   cleanup();
@@ -212,6 +231,292 @@ describe("学习记录详情", () => {
     expect(await screen.findByText("正文尚未生成")).toBeVisible();
   });
 
+  it("配置 Provider 时密钥不回显，保存后可测试连接再继续", async () => {
+    let savedProvider: components["schemas"]["LlmProviderOut"] | null = null;
+    let savedBody: components["schemas"]["LlmProviderUpdate"] | null = null;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(SUMMARY_URL, () =>
+        HttpResponse.json({
+          action_required: savedProvider
+            ? "GRANT_CONSENT"
+            : "CONFIGURE_PROVIDER",
+          active_job_id: null,
+          blocked_reason: null,
+          summary: null,
+        }),
+      ),
+      http.get(LLM_PROVIDER_URL, () =>
+        HttpResponse.json({ provider: savedProvider }),
+      ),
+      http.put(LLM_PROVIDER_URL, async ({ request }) => {
+        savedBody =
+          (await request.json()) as components["schemas"]["LlmProviderUpdate"];
+        savedProvider = {
+          base_url: savedBody.base_url,
+          model: savedBody.model,
+          has_api_key: true,
+          api_key_hint: "sk-…1234",
+        };
+        return HttpResponse.json({ provider: savedProvider });
+      }),
+      http.post(LLM_TEST_URL, () =>
+        HttpResponse.json({ ok: true, model: "qwen-plus" }),
+      ),
+    );
+    renderAt();
+
+    expect(
+      await screen.findByRole("heading", { name: "配置 AI Provider" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByDisplayValue(/sk-/)).not.toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("API Key"), {
+      target: { value: "sk-secret-1234" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存 Provider" }));
+    await waitFor(() => expect(savedBody?.api_key).toBe("sk-secret-1234"));
+    expect(screen.getByLabelText("API Key")).toHaveValue("");
+    fireEvent.click(await screen.findByRole("button", { name: "测试连接" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "连接测试成功（qwen-plus）",
+    );
+    fireEvent.change(screen.getByLabelText("模型"), {
+      target: { value: "qwen-max" },
+    });
+    await waitFor(() => {
+      expect(
+        screen.queryByText("连接测试成功（qwen-plus）"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "继续" }),
+      ).not.toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存 Provider" }));
+    await waitFor(() => expect(savedBody?.model).toBe("qwen-max"));
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    expect(
+      await screen.findByRole("heading", { name: "同意外部 AI 处理" }),
+    ).toBeInTheDocument();
+  });
+
+  it("单独同意后可明确生成，错过 Worker 事件仍通过条件轮询恢复", async () => {
+    let action: components["schemas"]["SummaryAction"] = "GRANT_CONSENT";
+    let consentCalls = 0;
+    let submitCalls = 0;
+    let submittedAt = 0;
+    let releaseProvider!: () => void;
+    const providerReady = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    let providerRequests = 0;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(LLM_PROVIDER_URL, async () => {
+        providerRequests += 1;
+        await providerReady;
+        return HttpResponse.json({
+          provider: {
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model: "qwen-plus",
+            has_api_key: true,
+            api_key_hint: "••••1234",
+          },
+        });
+      }),
+      http.put(LLM_PROVIDER_URL, async ({ request }) => {
+        const body =
+          (await request.json()) as components["schemas"]["LlmProviderUpdate"];
+        return HttpResponse.json({
+          provider: {
+            base_url: body.base_url,
+            model: body.model,
+            has_api_key: true,
+            api_key_hint: "••••1234",
+          },
+        });
+      }),
+      http.get(SUMMARY_URL, () => {
+        const ready = submittedAt > 0 && Date.now() - submittedAt > 1_000;
+        return HttpResponse.json({
+          action_required: action,
+          active_job_id: action === "NONE" && !ready ? JOB_ID : null,
+          blocked_reason: null,
+          summary: ready
+            ? {
+                id: "55555555-5555-4555-8555-555555555555",
+                record_id: RECORD_ID,
+                version_no: 1,
+                status: "GENERATED",
+                transcript_source_version: 1,
+                topic: "轮询恢复的总结",
+                abstract:
+                  "页面在错过 Worker 状态切换事件后，通过 active Job 条件轮询读取到最终总结。",
+                sections: [
+                  { heading: "恢复", points: ["没有创建第二条事件流。"] },
+                ],
+                prompt_version: "summary-v1",
+                model: "qwen-plus",
+                created_at: "2026-08-23T10:00:00Z",
+              }
+            : null,
+        });
+      }),
+      http.post(LLM_CONSENT_URL, () => {
+        consentCalls += 1;
+        action = "GENERATE";
+        return HttpResponse.json({
+          current: true,
+          granted_at: "2026-08-23T10:00:00Z",
+        });
+      }),
+      http.post(SUMMARY_JOBS_URL, () => {
+        submitCalls += 1;
+        action = "NONE";
+        submittedAt = Date.now();
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+    );
+    renderAt();
+
+    await waitFor(() => expect(providerRequests).toBe(1));
+    expect(
+      screen.queryByRole("button", { name: "同意发送 Transcript" }),
+    ).not.toBeInTheDocument();
+    releaseProvider();
+    expect(
+      await screen.findByText(/当前 Provider：qwen-plus/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "更改 Provider" }));
+    expect(
+      await screen.findByLabelText("清除已保存的 API Key"),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("模型"), {
+      target: { value: "qwen-max" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存 Provider" }));
+    fireEvent.click(await screen.findByRole("button", { name: "继续" }));
+    expect(
+      await screen.findByText(/当前 Provider：qwen-max/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/当前 Provider：qwen-plus/),
+    ).not.toBeInTheDocument();
+    expect(providerRequests).toBe(1);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "同意发送 Transcript" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "生成总结" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "生成总结" }));
+    expect(
+      await screen.findByRole("heading", { name: "正在生成总结" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "轮询恢复的总结" },
+        { timeout: 3_500 },
+      ),
+    ).toBeInTheDocument();
+    expect(consentCalls).toBe(1);
+    expect(submitCalls).toBe(1);
+  });
+
+  it("展示真实结构化总结并明确标为待确认", async () => {
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "SUMMARY_READY" }),
+      ),
+      http.get(SUMMARY_URL, () =>
+        HttpResponse.json({
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: null,
+          summary: {
+            id: "44444444-4444-4444-8444-444444444444",
+            record_id: RECORD_ID,
+            version_no: 1,
+            status: "GENERATED",
+            transcript_source_version: 1,
+            topic: "虚拟内存",
+            abstract:
+              "虚拟内存通过地址空间抽象隔离进程，并借助分页机制按需映射物理内存。",
+            sections: [
+              {
+                heading: "核心机制",
+                points: ["页表完成虚拟地址到物理地址的转换。"],
+              },
+            ],
+            prompt_version: "summary-v1",
+            model: "qwen-plus",
+            created_at: "2026-08-23T10:00:00Z",
+          },
+        }),
+      ),
+    );
+    renderAt();
+
+    expect(
+      await screen.findByRole("heading", { name: "虚拟内存" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("AI 生成 · 待确认；调整与确认将在下一票接入"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "核心机制" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /确认|调整/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("总结失败可明确重试，课程归档则不提供生成动作", async () => {
+    let retried = false;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "FAILED" }),
+      ),
+      http.get(SUMMARY_URL, () =>
+        HttpResponse.json({
+          action_required: retried ? "NONE" : "RETRY",
+          active_job_id: retried ? JOB_ID : null,
+          blocked_reason: null,
+          summary: null,
+        }),
+      ),
+      http.post(SUMMARY_JOBS_URL, () => {
+        retried = true;
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+    );
+    renderAt();
+    fireEvent.click(await screen.findByRole("button", { name: "重新生成" }));
+    expect(
+      await screen.findByRole("heading", { name: "正在生成总结" }),
+    ).toBeInTheDocument();
+
+    cleanup();
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(SUMMARY_URL, () =>
+        HttpResponse.json({
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: "COURSE_ARCHIVED",
+          summary: null,
+        }),
+      ),
+    );
+    renderAt();
+    expect(
+      await screen.findByText("所属课程已归档，不能再发起新的总结。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "生成总结" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("返回路径由真实课程归属决定，空课程归属返回知识空间", async () => {
     server.use(http.get(DETAIL_URL, () => HttpResponse.json(record)));
     renderAt();
@@ -236,16 +541,25 @@ describe("学习记录详情", () => {
     ).toHaveAttribute("href", "/spaces");
   });
 
-  it("FAILED 只显示通用失败说明且没有伪造恢复动作", async () => {
+  it("正文未就绪的 FAILED 记录不伪造恢复动作", async () => {
     server.use(
       http.get(DETAIL_URL, () =>
         HttpResponse.json({ ...record, status: "FAILED" }),
       ),
+      http.get(SUMMARY_URL, () =>
+        HttpResponse.json({
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: "TRANSCRIPT_NOT_READY",
+          summary: null,
+        }),
+      ),
     );
     renderAt();
 
-    expect(await screen.findByText("学习记录处理失败")).toBeInTheDocument();
-    expect(screen.getByText("当前暂无可用恢复操作。")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Transcript 尚未准备好。"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /重试|恢复/ }),
     ).not.toBeInTheDocument();

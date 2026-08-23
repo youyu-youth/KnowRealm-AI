@@ -7,3 +7,5 @@ export type TranscriptReadOut = components["schemas"]["TranscriptReadOut"];
 export type TranscriptOut = components["schemas"]["TranscriptOut"];
 export type RecordJobsOut = components["schemas"]["RecordJobsOut"];
 export type ProcessingJobOut = components["schemas"]["ProcessingJobOut"];
+export type SummaryReadOut = components["schemas"]["SummaryReadOut"];
+export type SummaryOut = components["schemas"]["SummaryOut"];

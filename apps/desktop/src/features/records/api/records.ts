@@ -2,6 +2,7 @@ import type {
   ProcessingJobOut,
   RecordJobsOut,
   RecordOut,
+  SummaryReadOut,
   TranscriptOut,
   TranscriptReadOut,
 } from "@/features/records/api/types";
@@ -19,6 +20,13 @@ export const recordApi = {
     apiFetch<TranscriptReadOut>(`/api/records/${recordId}/transcript`),
   getJobs: (recordId: string) =>
     apiFetch<RecordJobsOut>(`/api/records/${recordId}/jobs`),
+  getSummary: (recordId: string) =>
+    apiFetch<SummaryReadOut>(`/api/records/${recordId}/summary`),
+  submitSummary: (recordId: string) =>
+    apiFetch<components["schemas"]["SummaryJobAccepted"]>(
+      `/api/records/${recordId}/summary-jobs`,
+      { method: "POST" },
+    ),
   updateTranscript(
     recordId: string,
     body: components["schemas"]["TranscriptUpdateRequest"],

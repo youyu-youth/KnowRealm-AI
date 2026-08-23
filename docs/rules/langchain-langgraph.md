@@ -6,10 +6,10 @@
 
 | 包 | 基线 | 说明 |
 |---|---|---|
-| `langchain` / `langchain-core` | **1.3.x**（当前 1.3.15） | 稳定线 |
+| `langchain` / `langchain-core` | **1.3.x / 兼容的 1.x（<2）**（当前 1.3.16 / 1.6.0） | 两者独立发布；由 uv 解析兼容组合 |
 | `langgraph` | **1.2.x**（当前 1.2.11） | ⚠️ **LangGraph 没有 1.3 版本**，版本线与 LangChain 相互独立，官方协调发布的兼容组合就是 langchain 1.3.x + langgraph 1.2.x |
 | `langgraph-checkpoint-sqlite` | 最新稳定 | SqliteSaver 持久化到数据目录 `langgraph.db`（见 §7） |
-| `langchain-openai` / `langchain-community` | 1.x / 最新 | 配套 langchain-core 1.3.x |
+| `langchain-openai` / `langchain-community` | 1.x / 最新 | 配套已解析的 langchain-core 1.x |
 
 - 依赖统一用 **uv** 锁定（`uv.lock`），禁止手动改版本绕过锁文件。
 - 升级原则：小版本跟进，**不追 pre-release（如 1.4.0a1）**。

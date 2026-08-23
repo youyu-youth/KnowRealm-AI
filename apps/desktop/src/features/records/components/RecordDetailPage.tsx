@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -20,6 +22,7 @@ import {
   statusLabelKeys,
 } from "@/features/records/recordPresentation";
 import { settingsApi } from "@/features/settings/api/settings";
+import { settingsKeys } from "@/features/settings/api/keys";
 import { ApiError } from "@/services/http/client";
 
 type RecordDetailPageProps = {
@@ -78,6 +81,7 @@ export function RecordDetailPage({
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: recordKeys.detail(recordId) }),
       queryClient.invalidateQueries({ queryKey: recordKeys.jobs(recordId) }),
+      queryClient.invalidateQueries({ queryKey: recordKeys.summary(recordId) }),
       queryClient.invalidateQueries({
         queryKey: recordKeys.transcript(recordId),
       }),
@@ -262,20 +266,8 @@ export function RecordDetailPage({
           value="summary"
           className="border-border mt-6 border-t pt-8"
         >
-          <h2 className="text-section font-section text-ink">
-            {t(
-              detail.status === "FAILED"
-                ? "record.detail.failedTitle"
-                : "record.detail.summaryEmptyTitle",
-            )}
-          </h2>
-          <p className="max-w-reading text-body text-muted-foreground mt-2">
-            {t(
-              detail.status === "FAILED"
-                ? "record.detail.failedDescription"
-                : "record.detail.summaryEmptyDescription",
-            )}
-          </p>
+          <SummaryProviderSettings onChanged={() => void invalidateRecord()} />
+          <SummaryPanel recordId={recordId} />
         </TabsContent>
 
         <TabsContent
@@ -417,6 +409,412 @@ export function RecordDetailPage({
         </TabsContent>
       </Tabs>
     </section>
+  );
+}
+
+function SummaryProviderSettings({ onChanged }: { onChanged: () => void }) {
+  const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const provider = useQuery({
+    queryKey: settingsKeys.llmProvider,
+    queryFn: settingsApi.getLlmProvider,
+  });
+  const configured = provider.data?.provider;
+
+  if (!configured?.has_api_key) return null;
+  if (editing) {
+    return (
+      <div className="border-border mb-8 border-b pb-8">
+        <ProviderConfiguration
+          onSaved={() => {
+            setEditing(false);
+            onChanged();
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="border-border max-w-reading mb-8 flex flex-wrap items-center justify-between gap-3 border-b pb-5">
+      <p className="text-label text-muted-foreground min-w-0 break-all">
+        {t("record.detail.summary.configuredProvider", {
+          model: configured.model,
+          baseUrl: configured.base_url,
+        })}
+      </p>
+      <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+        {t("record.detail.summary.changeProvider")}
+      </Button>
+    </div>
+  );
+}
+
+function SummaryPanel({ recordId }: { recordId: string }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const provider = useQuery({
+    queryKey: settingsKeys.llmProvider,
+    queryFn: settingsApi.getLlmProvider,
+  });
+  const summary = useQuery({
+    queryKey: recordKeys.summary(recordId),
+    queryFn: () => recordApi.getSummary(recordId),
+    refetchInterval: (query) =>
+      query.state.data?.active_job_id ? 2_000 : false,
+  });
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: recordKeys.detail(recordId) }),
+      queryClient.invalidateQueries({ queryKey: recordKeys.summary(recordId) }),
+    ]);
+  const submit = useMutation({
+    mutationFn: () => recordApi.submitSummary(recordId),
+    onSuccess: () => void refresh(),
+  });
+  const consent = useMutation({
+    mutationFn: settingsApi.grantLlmConsent,
+    onSuccess: () => void refresh(),
+  });
+  useEffect(() => {
+    if (!summary.data?.active_job_id && !summary.data?.summary) return;
+    void queryClient.invalidateQueries({
+      queryKey: recordKeys.detail(recordId),
+    });
+  }, [
+    queryClient,
+    recordId,
+    summary.data?.active_job_id,
+    summary.data?.summary,
+  ]);
+
+  if (summary.isPending) {
+    return (
+      <p
+        role="status"
+        className="text-body text-muted-foreground flex items-center gap-2"
+      >
+        <Spinner aria-hidden="true" />
+        {t("record.detail.summary.loading")}
+      </p>
+    );
+  }
+  if (summary.isError) {
+    return (
+      <section className="max-w-reading">
+        <h2 className="text-section font-section text-ink">
+          {t("record.detail.summary.errorTitle")}
+        </h2>
+        <p role="alert" className="text-body text-destructive mt-2">
+          {summary.error.message}
+        </p>
+        <Button
+          variant="outline"
+          className="mt-5"
+          onClick={() => void summary.refetch()}
+        >
+          {t("record.detail.retry")}
+        </Button>
+      </section>
+    );
+  }
+
+  if (summary.data.summary) {
+    const content = summary.data.summary;
+    return (
+      <article className="max-w-reading min-w-0">
+        <p className="text-label text-muted-foreground">
+          {t("record.detail.summary.pendingConfirmation")}
+        </p>
+        <h2 className="text-headline font-headline text-ink-strong mt-2">
+          {content.topic}
+        </h2>
+        <p className="text-body text-ink mt-5 whitespace-pre-wrap">
+          {content.abstract}
+        </p>
+        {content.sections.map((section) => (
+          <section
+            key={section.heading}
+            className="border-border mt-8 border-t pt-6"
+          >
+            <h3 className="text-section font-section text-ink">
+              {section.heading}
+            </h3>
+            <ul className="text-body text-ink mt-3 list-disc space-y-2 pl-5">
+              {section.points.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </article>
+    );
+  }
+
+  if (summary.data.blocked_reason) {
+    return (
+      <SummaryActionState
+        title={t("record.detail.summary.blockedTitle")}
+        description={t(
+          `record.detail.summary.blocked.${summary.data.blocked_reason}`,
+        )}
+      />
+    );
+  }
+  if (summary.data.action_required === "CONFIGURE_PROVIDER") {
+    return <ProviderConfiguration onSaved={() => void refresh()} />;
+  }
+  if (summary.data.action_required === "GRANT_CONSENT") {
+    if (provider.isPending) {
+      return (
+        <SummaryActionState
+          title={t("record.detail.summary.providerTitle")}
+          description={t("record.detail.summary.loading")}
+          pending
+        />
+      );
+    }
+    if (provider.isError) {
+      return (
+        <SummaryActionState
+          title={t("record.detail.summary.providerTitle")}
+          description={provider.error.message}
+          action={t("record.detail.retry")}
+          onAction={() => void provider.refetch()}
+        />
+      );
+    }
+    if (!provider.data.provider?.has_api_key) {
+      return <ProviderConfiguration onSaved={() => void refresh()} />;
+    }
+    return (
+      <SummaryActionState
+        title={t("record.detail.summary.consentTitle")}
+        description={t("record.detail.summary.consentDisclosure")}
+        error={consent.error}
+        action={t("record.detail.summary.grantConsent")}
+        pending={consent.isPending}
+        onAction={() => consent.mutate()}
+      />
+    );
+  }
+  if (["GENERATE", "RETRY"].includes(summary.data.action_required)) {
+    const retry = summary.data.action_required === "RETRY";
+    return (
+      <SummaryActionState
+        title={t(
+          retry
+            ? "record.detail.summary.failedTitle"
+            : "record.detail.summary.emptyTitle",
+        )}
+        description={t(
+          retry
+            ? "record.detail.summary.failedDescription"
+            : "record.detail.summary.emptyDescription",
+        )}
+        error={submit.error}
+        action={t(
+          retry
+            ? "record.detail.summary.retry"
+            : "record.detail.summary.generate",
+        )}
+        pending={submit.isPending}
+        onAction={() => submit.mutate()}
+      />
+    );
+  }
+  return (
+    <SummaryActionState
+      title={t("record.detail.summary.processingTitle")}
+      description={t("record.detail.summary.processingDescription")}
+      pending
+    />
+  );
+}
+
+function SummaryActionState({
+  title,
+  description,
+  action,
+  pending = false,
+  error,
+  onAction,
+}: {
+  title: string;
+  description: string;
+  action?: string;
+  pending?: boolean;
+  error?: Error | null;
+  onAction?: () => void;
+}) {
+  return (
+    <section className="max-w-reading">
+      <h2 className="text-section font-section text-ink flex items-center gap-2">
+        {pending && !action ? <Spinner aria-hidden="true" /> : null}
+        {title}
+      </h2>
+      <p className="text-body text-muted-foreground mt-2">{description}</p>
+      {action && onAction ? (
+        <Button className="mt-5" disabled={pending} onClick={onAction}>
+          {pending ? <Spinner aria-hidden="true" /> : null}
+          {action}
+        </Button>
+      ) : null}
+      {error ? (
+        <p role="alert" className="text-body text-destructive mt-3">
+          {error.message}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function ProviderConfiguration({
+  onSaved,
+  onCancel,
+}: {
+  onSaved: () => void;
+  onCancel?: () => void;
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const provider = useQuery({
+    queryKey: settingsKeys.llmProvider,
+    queryFn: settingsApi.getLlmProvider,
+  });
+  const save = useMutation({
+    mutationFn: (form: HTMLFormElement) => {
+      const data = new FormData(form);
+      return settingsApi.updateLlmProvider({
+        base_url: String(data.get("base_url") ?? ""),
+        model: String(data.get("model") ?? ""),
+        api_key: String(data.get("api_key") ?? ""),
+        clear_api_key: data.get("clear_api_key") === "on",
+      });
+    },
+    onSuccess: (updated, form) => {
+      const apiKey = form.elements.namedItem("api_key");
+      const clearApiKey = form.elements.namedItem("clear_api_key");
+      if (apiKey instanceof HTMLInputElement) apiKey.value = "";
+      if (clearApiKey instanceof HTMLInputElement) clearApiKey.checked = false;
+      queryClient.setQueryData(settingsKeys.llmProvider, updated);
+    },
+  });
+  const test = useMutation({ mutationFn: settingsApi.testLlmProvider });
+
+  if (provider.isPending) {
+    return (
+      <SummaryActionState
+        title={t("record.detail.summary.providerTitle")}
+        description={t("record.detail.summary.loading")}
+        pending
+      />
+    );
+  }
+
+  return (
+    <form
+      className="max-w-reading"
+      onChange={() => {
+        save.reset();
+        test.reset();
+      }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        save.mutate(event.currentTarget);
+      }}
+    >
+      <h2 className="text-section font-section text-ink">
+        {t("record.detail.summary.providerTitle")}
+      </h2>
+      <p className="text-body text-muted-foreground mt-2">
+        {t("record.detail.summary.providerDescription")}
+      </p>
+      <div className="mt-6 grid gap-5">
+        <div className="grid gap-2">
+          <Label htmlFor="llm-base-url">
+            {t("record.detail.summary.baseUrl")}
+          </Label>
+          <Input
+            id="llm-base-url"
+            name="base_url"
+            type="url"
+            required
+            defaultValue={
+              provider.data?.provider?.base_url ??
+              "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            }
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="llm-model">{t("record.detail.summary.model")}</Label>
+          <Input
+            id="llm-model"
+            name="model"
+            required
+            defaultValue={provider.data?.provider?.model ?? "qwen-plus"}
+          />
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="llm-api-key">
+            {t("record.detail.summary.apiKey")}
+          </Label>
+          <Input
+            id="llm-api-key"
+            name="api_key"
+            type="password"
+            placeholder={
+              provider.data?.provider?.api_key_hint ??
+              t("record.detail.summary.apiKeyPlaceholder")
+            }
+          />
+        </div>
+        {provider.data?.provider?.has_api_key ? (
+          <Label>
+            <input type="checkbox" name="clear_api_key" />
+            {t("record.detail.summary.clearApiKey")}
+          </Label>
+        ) : null}
+      </div>
+      <div className="mt-6 flex flex-wrap gap-2">
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending ? <Spinner aria-hidden="true" /> : null}
+          {t("record.detail.summary.saveProvider")}
+        </Button>
+        {save.data?.provider?.has_api_key ||
+        provider.data?.provider?.has_api_key ? (
+          <Button
+            variant="outline"
+            type="button"
+            disabled={test.isPending}
+            onClick={() => test.mutate()}
+          >
+            {test.isPending ? <Spinner aria-hidden="true" /> : null}
+            {t("record.detail.summary.testProvider")}
+          </Button>
+        ) : null}
+        {save.isSuccess ? (
+          <Button type="button" variant="ghost" onClick={onSaved}>
+            {t("record.detail.summary.continue")}
+          </Button>
+        ) : null}
+        {onCancel ? (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            {t("record.detail.summary.cancelProviderEdit")}
+          </Button>
+        ) : null}
+      </div>
+      {test.isSuccess ? (
+        <p role="status" className="text-body text-muted-foreground mt-3">
+          {t("record.detail.summary.testSucceeded", { model: test.data.model })}
+        </p>
+      ) : null}
+      {provider.isError || save.isError || test.isError ? (
+        <p role="alert" className="text-body text-destructive mt-3">
+          {(provider.error ?? save.error ?? test.error)?.message}
+        </p>
+      ) : null}
+    </form>
   );
 }
 

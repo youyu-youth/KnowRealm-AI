@@ -2,6 +2,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
@@ -11,6 +12,13 @@ class TencentAsrConfig:
     secret_id: str
     secret_key: str
     region: str
+
+
+@dataclass(frozen=True)
+class LlmProviderConfig:
+    base_url: str
+    api_key: str
+    model: str
 
 
 def _read_json(path: Path) -> dict[str, object]:
@@ -62,3 +70,69 @@ def load_tencent_asr_config(data_dir: Path) -> TencentAsrConfig | None:
         secret_key=cast(str, secret_key),
         region=cast(str, region),
     )
+
+
+def load_llm_provider(data_dir: Path) -> LlmProviderConfig | None:
+    raw = _read_json(data_dir / "config" / "providers.json").get("llm")
+    if not isinstance(raw, dict):
+        return None
+    provider = cast(dict[str, object], raw)
+    base_url = provider.get("base_url")
+    api_key = provider.get("api_key")
+    model = provider.get("model")
+    if not all(isinstance(value, str) for value in (base_url, api_key, model)):
+        return None
+    return LlmProviderConfig(cast(str, base_url), cast(str, api_key), cast(str, model))
+
+
+def save_llm_provider(
+    data_dir: Path,
+    *,
+    base_url: str,
+    api_key: str,
+    model: str,
+    clear_api_key: bool,
+) -> LlmProviderConfig:
+    path = data_dir / "config" / "providers.json"
+    providers = _read_json(path)
+    current = load_llm_provider(data_dir)
+    saved_key = "" if clear_api_key else api_key or (current.api_key if current else "")
+    providers["llm"] = {"base_url": base_url, "api_key": saved_key, "model": model}
+    _write_json(path, providers)
+    return LlmProviderConfig(base_url, saved_key, model)
+
+
+def llm_provider_fingerprint(provider: LlmProviderConfig) -> str:
+    return sha256(f"{provider.base_url}\0{provider.api_key}".encode()).hexdigest()
+
+
+def llm_consent(data_dir: Path) -> tuple[str | None, bool]:
+    provider = load_llm_provider(data_dir)
+    raw = _read_json(data_dir / "config" / "settings.json").get("llm_external_processing_consent")
+    if not isinstance(raw, dict):
+        return None, False
+    consent = cast(dict[str, object], raw)
+    granted_at = consent.get("granted_at")
+    fingerprint = consent.get("provider_fingerprint")
+    current = (
+        provider is not None
+        and bool(provider.api_key)
+        and isinstance(fingerprint, str)
+        and fingerprint == llm_provider_fingerprint(provider)
+    )
+    return (granted_at if isinstance(granted_at, str) else None), current
+
+
+def grant_llm_consent(data_dir: Path) -> str | None:
+    provider = load_llm_provider(data_dir)
+    if provider is None or not provider.api_key:
+        return None
+    path = data_dir / "config" / "settings.json"
+    settings = _read_json(path)
+    granted_at = datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    settings["llm_external_processing_consent"] = {
+        "provider_fingerprint": llm_provider_fingerprint(provider),
+        "granted_at": granted_at,
+    }
+    _write_json(path, settings)
+    return granted_at

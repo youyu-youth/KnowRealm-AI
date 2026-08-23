@@ -102,3 +102,43 @@ class AiSummary(Base):
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+
+
+class LlmCallLog(Base):
+    __tablename__ = "llm_call_logs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    request_id: Mapped[str] = mapped_column(String(36))
+    graph_name: Mapped[str] = mapped_column(String(50))
+    graph_node: Mapped[str] = mapped_column(String(50))
+    model: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    embedding_model: Mapped[str | None] = mapped_column(Text, default=None)
+    token_usage_json: Mapped[str] = mapped_column(Text)
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    retrieval_count: Mapped[int | None] = mapped_column(Integer, default=None)
+    evidence_count: Mapped[int | None] = mapped_column(Integer, default=None)
+    interrupt_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(50), default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+
+
+class LearningEvent(Base):
+    __tablename__ = "learning_events"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(String(36))
+    record_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    concept_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    event_type: Mapped[str] = mapped_column(String(50))
+    source_type: Mapped[str] = mapped_column(String(50))
+    source_id: Mapped[str] = mapped_column(String(36))
+    result: Mapped[str | None] = mapped_column(Text, default=None)
+    score: Mapped[float | None] = mapped_column(Float, default=None)
+    difficulty: Mapped[str | None] = mapped_column(String(30), default=None)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, default=None)
+    metadata_json: Mapped[str] = mapped_column(Text)
+    idempotency_key: Mapped[str] = mapped_column(Text, unique=True)
+    schema_version: Mapped[int] = mapped_column(Integer)
+    occurred_at: Mapped[datetime] = mapped_column(ISODateTime)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)

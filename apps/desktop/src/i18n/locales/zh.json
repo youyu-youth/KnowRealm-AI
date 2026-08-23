@@ -269,7 +269,8 @@
         "types": {
           "AUDIO_TRANSCODE": "本地音频规范化与切片",
           "ASR": "腾讯云语音识别",
-          "DOCUMENT_PARSE": "本地文档正文提取"
+          "DOCUMENT_PARSE": "本地文档正文提取",
+          "SUMMARY": "AI 总结"
         },
         "status": {
           "PENDING": "等待中",
@@ -323,8 +324,41 @@
           "INTERNAL_ERROR": "文档处理失败。"
         }
       },
-      "summaryEmptyTitle": "还没有生成总结",
-      "summaryEmptyDescription": "当前没有可展示的真实总结；此页面不会自动触发生成。",
+      "summary": {
+        "loading": "正在读取总结",
+        "errorTitle": "总结暂时无法读取",
+        "emptyTitle": "还没有生成总结",
+        "emptyDescription": "正文已准备好，你可以明确发起一次 AI 总结。",
+        "generate": "生成总结",
+        "processingTitle": "正在生成总结",
+        "processingDescription": "页面会通过本地事件流更新；正文不会写入事件流。",
+        "failedTitle": "总结生成失败",
+        "failedDescription": "原正文仍保留，可以明确重试一次。",
+        "retry": "重新生成",
+        "blockedTitle": "当前无法生成总结",
+        "blocked": {
+          "COURSE_ARCHIVED": "所属课程已归档，不能再发起新的总结。",
+          "TRANSCRIPT_NOT_READY": "Transcript 尚未准备好。"
+        },
+        "providerTitle": "配置 AI Provider",
+        "providerDescription": "配置 OpenAI-compatible 端点、模型和本机密钥；密钥不会展示或发送到前端日志。",
+        "configuredProvider": "当前 Provider：{{model}} · {{baseUrl}}",
+        "changeProvider": "更改 Provider",
+        "cancelProviderEdit": "取消更改",
+        "baseUrl": "Base URL",
+        "model": "模型",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "输入本机 API Key",
+        "clearApiKey": "清除已保存的 API Key",
+        "saveProvider": "保存 Provider",
+        "testProvider": "测试连接",
+        "continue": "继续",
+        "testSucceeded": "连接测试成功（{{model}}）",
+        "consentTitle": "同意外部 AI 处理",
+        "consentDisclosure": "生成总结会把当前 Transcript 正文发送到你配置的第三方 AI Provider；原始音视频不会发送。",
+        "grantConsent": "同意发送 Transcript",
+        "pendingConfirmation": "AI 生成 · 待确认；调整与确认将在下一票接入"
+      },
       "failedTitle": "学习记录处理失败",
       "failedDescription": "当前暂无可用恢复操作。"
     }
