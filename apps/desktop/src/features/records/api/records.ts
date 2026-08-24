@@ -27,6 +27,43 @@ export const recordApi = {
     apiFetch<KnowledgePointReadOut>(
       `/api/records/${recordId}/knowledge-points`,
     ),
+  createKnowledgePoint(
+    recordId: string,
+    body: components["schemas"]["KnowledgePointWriteRequest"],
+  ) {
+    return apiFetch<components["schemas"]["KnowledgePointOut"]>(
+      `/api/records/${recordId}/knowledge-points`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+  updateKnowledgePoint(
+    recordId: string,
+    itemId: string,
+    body: components["schemas"]["KnowledgePointWriteRequest"],
+  ) {
+    return apiFetch<components["schemas"]["KnowledgePointOut"]>(
+      `/api/records/${recordId}/knowledge-points/${itemId}`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    );
+  },
+  deleteKnowledgePoint(recordId: string, itemId: string) {
+    return apiFetchNoContent(
+      `/api/records/${recordId}/knowledge-points/${itemId}`,
+      { method: "DELETE" },
+    );
+  },
+  confirmKnowledgePointBatch(recordId: string, batchId: string) {
+    return apiFetch<KnowledgePointReadOut>(
+      `/api/records/${recordId}/knowledge-point-batches/${batchId}/confirmations`,
+      { method: "POST" },
+    );
+  },
+  discardKnowledgePointBatch(recordId: string, batchId: string) {
+    return apiFetch<KnowledgePointReadOut>(
+      `/api/records/${recordId}/knowledge-point-batches/${batchId}/discards`,
+      { method: "POST" },
+    );
+  },
   submitKnowledgePoints: (recordId: string) =>
     apiFetch<components["schemas"]["KnowledgePointJobAccepted"]>(
       `/api/records/${recordId}/knowledge-point-jobs`,

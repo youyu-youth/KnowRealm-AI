@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
 from app.models.course import Course
-from app.models.document import AiSummary, KnowledgePoint, ProcessingJob, Transcript
+from app.models.document import AiSummary, KnowledgePoint, LearningEvent, ProcessingJob, Transcript
 from app.models.record import Record
 from app.schemas.course import CourseStatus
 from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
@@ -23,6 +23,7 @@ from app.schemas.knowledge_point import (
     KnowledgePointInputMode,
     KnowledgePointOut,
     KnowledgePointReadOut,
+    KnowledgePointWriteRequest,
 )
 from app.services.local_config import (
     LlmProviderConfig,
@@ -119,7 +120,24 @@ async def _failed_job(session: AsyncSession, record_id: str) -> ProcessingJob | 
     ).one_or_none()
 
 
-async def _visible_items(session: AsyncSession, record_id: str) -> list[KnowledgePoint]:
+async def _visible_items(
+    session: AsyncSession,
+    record_id: str,
+    *,
+    include_superseded: bool = False,
+) -> list[KnowledgePoint]:
+    statuses: tuple[KnowledgePointGenerationStatus, ...] = (
+        (
+            KnowledgePointGenerationStatus.DRAFT,
+            KnowledgePointGenerationStatus.ACTIVE,
+            KnowledgePointGenerationStatus.SUPERSEDED,
+        )
+        if include_superseded
+        else (
+            KnowledgePointGenerationStatus.DRAFT,
+            KnowledgePointGenerationStatus.ACTIVE,
+        )
+    )
     return list(
         (
             await session.scalars(
@@ -127,12 +145,7 @@ async def _visible_items(session: AsyncSession, record_id: str) -> list[Knowledg
                 .where(
                     KnowledgePoint.record_id == record_id,
                     KnowledgePoint.deleted_at.is_(None),
-                    KnowledgePoint.generation_status.in_(
-                        (
-                            KnowledgePointGenerationStatus.DRAFT,
-                            KnowledgePointGenerationStatus.ACTIVE,
-                        )
-                    ),
+                    KnowledgePoint.generation_status.in_(statuses),
                 )
                 .order_by(KnowledgePoint.importance.desc(), KnowledgePoint.created_at)
             )
@@ -152,9 +165,11 @@ class KnowledgePointService:
         session: AsyncSession,
         data_dir: Path,
         record_id: str,
+        *,
+        include_superseded: bool = False,
     ) -> KnowledgePointReadOut:
         record = await _get_record(session, record_id)
-        items = await _visible_items(session, record_id)
+        items = await _visible_items(session, record_id, include_superseded=include_superseded)
         output = [_knowledge_point_out(item) for item in items]
         active = await _active_job(session, record_id)
         if active is not None:
@@ -289,6 +304,250 @@ class KnowledgePointService:
                 status_code=409,
                 detail="已有进行中的知识点生成任务",
             ) from None
+
+    @staticmethod
+    async def create(
+        session: AsyncSession,
+        record_id: str,
+        body: KnowledgePointWriteRequest,
+    ) -> KnowledgePointOut:
+        async with session.begin():
+            await _get_record(session, record_id)
+            item = _new_item(
+                record_id,
+                name=body.name,
+                detail=body.detail,
+                tags=body.tags,
+                importance=body.importance,
+            )
+            session.add(item)
+            await session.flush()
+            return _knowledge_point_out(item)
+
+    @staticmethod
+    async def update(
+        session: AsyncSession,
+        record_id: str,
+        item_id: str,
+        body: KnowledgePointWriteRequest,
+    ) -> KnowledgePointOut:
+        async with session.begin():
+            await _get_record(session, record_id)
+            item = await _editable_item(session, record_id, item_id)
+            item.name = body.name
+            item.detail = body.detail
+            item.tags = _dump_tags(body.tags)
+            item.importance = body.importance
+            item.updated_at = utcnow()
+            await session.flush()
+            return _knowledge_point_out(item)
+
+    @staticmethod
+    async def delete(session: AsyncSession, record_id: str, item_id: str) -> None:
+        async with session.begin():
+            await _get_record(session, record_id)
+            item = await _editable_item(session, record_id, item_id)
+            now = utcnow()
+            item.deleted_at = now
+            item.updated_at = now
+
+    @staticmethod
+    async def confirm(
+        session: AsyncSession,
+        data_dir: Path,
+        record_id: str,
+        batch_id: str,
+    ) -> KnowledgePointReadOut:
+        try:
+            async with session.begin():
+                record = await _get_record(session, record_id)
+                draft_rows = await _batch_rows(
+                    session, record_id, batch_id, KnowledgePointGenerationStatus.DRAFT
+                )
+                if not draft_rows:
+                    if await _confirm_event(session, batch_id) is None:
+                        raise HTTPException(status_code=404, detail="知识点批次不存在")
+                    return await KnowledgePointService.read(session, data_dir, record_id)
+                summary_id = draft_rows[0].generated_from_summary_id
+                summary = (
+                    await session.get(AiSummary, summary_id) if summary_id else None
+                )
+                course = (
+                    await session.get(Course, record.course_id)
+                    if record.course_id
+                    else None
+                )
+                if (
+                    summary is None
+                    or summary.deleted_at is not None
+                    or summary.status != AiSummaryStatus.CONFIRMED
+                    or course is None
+                    or course.deleted_at is not None
+                    or course.status != CourseStatus.ACTIVE
+                ):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="总结已换代或课程已归档，请丢弃当前候选后重新生成",
+                    )
+                now = utcnow()
+                for row in draft_rows:
+                    row.generation_status = KnowledgePointGenerationStatus.ACTIVE
+                    row.updated_at = now
+                other_active = list(
+                    (
+                        await session.scalars(
+                            select(KnowledgePoint).where(
+                                KnowledgePoint.record_id == record_id,
+                                KnowledgePoint.batch_id != batch_id,
+                                KnowledgePoint.batch_id.is_not(None),
+                                KnowledgePoint.generation_status
+                                == KnowledgePointGenerationStatus.ACTIVE,
+                                KnowledgePoint.deleted_at.is_(None),
+                            )
+                        )
+                    ).all()
+                )
+                for row in other_active:
+                    row.generation_status = KnowledgePointGenerationStatus.SUPERSEDED
+                    row.updated_at = now
+                session.add(
+                    LearningEvent(
+                        id=str(uuid4()),
+                        course_id=cast(str, record.course_id),
+                        record_id=record_id,
+                        concept_id=None,
+                        event_type="KNOWLEDGE_CONFIRMED",
+                        source_type="KNOWLEDGE_BATCH",
+                        source_id=batch_id,
+                        result=None,
+                        score=None,
+                        difficulty=None,
+                        duration_ms=None,
+                        metadata_json=json.dumps(
+                            {
+                                "batch_id": batch_id,
+                                "confirmed_count": len(draft_rows),
+                                "generated_from_summary_id": summary_id,
+                            },
+                            separators=(",", ":"),
+                        ),
+                        idempotency_key=f"knowledge-confirmed:{batch_id}",
+                        schema_version=1,
+                        occurred_at=now,
+                        created_at=now,
+                    )
+                )
+        except IntegrityError:
+            # 并发确认时由幂等键唯一约束兜底：另一事务已提交，读取现状返回。
+            pass
+        return await KnowledgePointService.read(session, data_dir, record_id)
+
+    @staticmethod
+    async def discard(
+        session: AsyncSession,
+        data_dir: Path,
+        record_id: str,
+        batch_id: str,
+    ) -> KnowledgePointReadOut:
+        async with session.begin():
+            await _get_record(session, record_id)
+            draft_rows = await _batch_rows(
+                session, record_id, batch_id, KnowledgePointGenerationStatus.DRAFT
+            )
+            if not draft_rows:
+                if await _confirm_event(session, batch_id) is not None:
+                    raise HTTPException(status_code=409, detail="批次已确认，不能丢弃")
+                raise HTTPException(status_code=404, detail="知识点批次不存在")
+            now = utcnow()
+            for row in draft_rows:
+                row.deleted_at = now
+                row.updated_at = now
+        return await KnowledgePointService.read(session, data_dir, record_id)
+
+
+def _dump_tags(tags: list[str]) -> str:
+    return json.dumps(tags, ensure_ascii=False, separators=(",", ":"))
+
+
+def _new_item(
+    record_id: str,
+    *,
+    name: str,
+    detail: str,
+    tags: list[str],
+    importance: int,
+) -> KnowledgePoint:
+    return KnowledgePoint(
+        id=str(uuid4()),
+        record_id=record_id,
+        batch_id=None,
+        name=name,
+        detail=detail,
+        tags=_dump_tags(tags),
+        importance=importance,
+        generated_from_summary_id=None,
+        generation_status=KnowledgePointGenerationStatus.ACTIVE,
+        source_anchor_id=None,
+        created_at=utcnow(),
+        updated_at=utcnow(),
+        deleted_at=None,
+    )
+
+
+async def _editable_item(
+    session: AsyncSession,
+    record_id: str,
+    item_id: str,
+) -> KnowledgePoint:
+    item = (
+        await session.scalars(
+            select(KnowledgePoint).where(
+                KnowledgePoint.id == item_id,
+                KnowledgePoint.record_id == record_id,
+                KnowledgePoint.deleted_at.is_(None),
+            )
+        )
+    ).one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="知识点不存在或已删除")
+    if item.generation_status == KnowledgePointGenerationStatus.SUPERSEDED:
+        raise HTTPException(status_code=409, detail="过时批次的知识点不能编辑或删除")
+    return item
+
+
+async def _batch_rows(
+    session: AsyncSession,
+    record_id: str,
+    batch_id: str,
+    status: KnowledgePointGenerationStatus,
+) -> list[KnowledgePoint]:
+    return list(
+        (
+            await session.scalars(
+                select(KnowledgePoint)
+                .where(
+                    KnowledgePoint.record_id == record_id,
+                    KnowledgePoint.batch_id == batch_id,
+                    KnowledgePoint.generation_status == status,
+                    KnowledgePoint.deleted_at.is_(None),
+                )
+                .order_by(KnowledgePoint.created_at)
+            )
+        ).all()
+    )
+
+
+async def _confirm_event(
+    session: AsyncSession,
+    batch_id: str,
+) -> LearningEvent | None:
+    return (
+        await session.scalars(
+            select(LearningEvent).where(
+                LearningEvent.idempotency_key == f"knowledge-confirmed:{batch_id}"
+            )
+        )
+    ).one_or_none()
 
 
 def _job_input_json(

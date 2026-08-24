@@ -4,16 +4,21 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 import aiosqlite
 import httpx
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.llm import StructuredModelResult
 from app.db.migrations import run_migrations
 from app.main import create_app
+from app.models.base import utcnow
+from app.models.document import LearningEvent
 from app.schemas.knowledge_point import KnowledgePointBatch
 
 TOKEN = "test-launch-token"
@@ -211,6 +216,34 @@ async def wait_for_action(
             return payload
         await asyncio.sleep(0.02)
     pytest.fail(f"知识点状态未进入 {action}")
+
+
+def draft_batch_id(payload: dict[str, object]) -> str:
+    items = cast(list[dict[str, object]], payload["items"])
+    batch_ids = {
+        cast(str, item["batch_id"])
+        for item in items
+        if item["generation_status"] == "DRAFT"
+    }
+    assert len(batch_ids) == 1
+    return batch_ids.pop()
+
+
+async def confirmed_event_count(
+    session_factory: async_sessionmaker[AsyncSession],
+    record_id: str,
+) -> int:
+    async with session_factory() as session:
+        return cast(
+            int,
+            await session.scalar(
+                text(
+                    "SELECT count(*) FROM learning_events "
+                    "WHERE event_type='KNOWLEDGE_CONFIRMED' AND record_id=:record_id"
+                ),
+                {"record_id": record_id},
+            ),
+        )
 
 
 @pytest.mark.anyio
@@ -523,3 +556,370 @@ async def test_soft_delete_during_generation_discards_candidates(tmp_path: Path)
     assert accepted.status_code == 202
     assert status == "CANCELLED"
     assert candidate_count == 0
+
+
+async def generate_draft_batch(
+    client: httpx.AsyncClient,
+    record_id: str,
+) -> tuple[str, dict[str, object]]:
+    accepted = await client.post(f"/api/records/{record_id}/knowledge-point-jobs")
+    assert accepted.status_code == 202, accepted.text
+    payload = await wait_for_candidates(client, record_id)
+    return draft_batch_id(payload), payload
+
+
+async def add_manual_item(
+    client: httpx.AsyncClient,
+    record_id: str,
+    name: str = "手工补充：调度队列",
+    importance: int = 2,
+) -> httpx.Response:
+    return await client.post(
+        f"/api/records/{record_id}/knowledge-points",
+        json={
+            "name": name,
+            "detail": "就绪队列与阻塞队列承担不同的进程状态。",
+            "tags": ["手工"],
+            "importance": importance,
+        },
+    )
+
+
+@pytest.mark.anyio
+async def test_manual_add_creates_independent_active_row_without_events(
+    tmp_path: Path,
+) -> None:
+    model = FakeKnowledgePointModel()
+    async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        created = await add_manual_item(client, record_id)
+        reread = await client.get(f"/api/records/{record_id}/knowledge-points")
+
+        async with app.state.session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT batch_id, generated_from_summary_id, generation_status "
+                        "FROM knowledge_points WHERE record_id=:record_id"
+                    ),
+                    {"record_id": record_id},
+                )
+            ).one()
+            event_count = await confirmed_event_count(app.state.session_factory, record_id)
+
+    assert created.status_code == 201, created.text
+    body = cast(dict[str, object], created.json())
+    assert body["generation_status"] == "ACTIVE"
+    assert body["batch_id"] is None
+    assert body["generated_from_summary_id"] is None
+    assert row == (None, None, "ACTIVE")
+    items = cast(list[dict[str, object]], reread.json()["items"])
+    assert [item["name"] for item in items] == ["手工补充：调度队列"]
+    assert reread.json()["action_required"] == "GENERATE"
+    assert event_count == 0
+
+
+@pytest.mark.anyio
+async def test_edit_and_delete_apply_immediately_on_draft_rows(tmp_path: Path) -> None:
+    model = FakeKnowledgePointModel()
+    async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        _batch_id, candidates = await generate_draft_batch(client, record_id)
+        items = cast(list[dict[str, object]], candidates["items"])
+        first_id = cast(str, items[0]["id"])
+        second_id = cast(str, items[1]["id"])
+
+        edited = await client.patch(
+            f"/api/records/{record_id}/knowledge-points/{first_id}",
+            json={
+                "name": "调度器",
+                "detail": "调度器决定处理器时间的分配对象。",
+                "tags": ["操作系统"],
+                "importance": 3,
+            },
+        )
+        deleted = await client.delete(f"/api/records/{record_id}/knowledge-points/{second_id}")
+        missing = await client.delete(f"/api/records/{record_id}/knowledge-points/{second_id}")
+        after = await client.get(f"/api/records/{record_id}/knowledge-points")
+
+        async with app.state.session_factory() as session:
+            deleted_row = (
+                await session.execute(
+                    text("SELECT deleted_at IS NOT NULL FROM knowledge_points WHERE id=:id"),
+                    {"id": second_id},
+                )
+            ).scalar_one()
+
+    assert edited.status_code == 200, edited.text
+    edited_body = cast(dict[str, object], edited.json())
+    assert edited_body["name"] == "调度器"
+    assert edited_body["tags"] == ["操作系统"]
+    assert edited_body["importance"] == 3
+    assert edited_body["generation_status"] == "DRAFT"
+    assert deleted.status_code == 204
+    assert missing.status_code == 404
+    assert cast(int, deleted_row) == 1
+    remaining = cast(list[dict[str, object]], after.json()["items"])
+    assert [item["id"] for item in remaining] == [first_id]
+    assert after.json()["action_required"] == "CONFIRM"
+
+
+@pytest.mark.anyio
+async def test_confirm_transaction_supersedes_old_ai_batch_and_keeps_manual_rows(
+    tmp_path: Path,
+) -> None:
+    model = FakeKnowledgePointModel()
+    async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        first_batch, _first = await generate_draft_batch(client, record_id)
+        first_confirm = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{first_batch}/confirmations"
+        )
+        manual = await add_manual_item(client, record_id)
+        second_batch, _second = await generate_draft_batch(client, record_id)
+        second_confirm = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{second_batch}/confirmations"
+        )
+        visible = await client.get(f"/api/records/{record_id}/knowledge-points")
+        traced = await client.get(
+            f"/api/records/{record_id}/knowledge-points?include=superseded"
+        )
+
+        async with app.state.session_factory() as session:
+            event_rows = (
+                await session.execute(
+                    text(
+                        "SELECT source_type, source_id, idempotency_key, metadata_json "
+                        "FROM learning_events WHERE event_type='KNOWLEDGE_CONFIRMED' "
+                        "ORDER BY created_at"
+                    )
+                )
+            ).all()
+        traced_items = cast(list[dict[str, object]], traced.json()["items"])
+        superseded_id = next(
+            cast(str, item["id"])
+            for item in traced_items
+            if item["generation_status"] == "SUPERSEDED"
+        )
+        old_row_edit = await client.patch(
+            f"/api/records/{record_id}/knowledge-points/{superseded_id}",
+            json={
+                "name": "尝试编辑过时行",
+                "detail": "不应被允许。",
+                "tags": [],
+                "importance": 1,
+            },
+        )
+
+    assert manual.status_code == 201
+    assert first_confirm.status_code == 200, first_confirm.text
+    assert second_confirm.status_code == 200, second_confirm.text
+    assert [(row[0], row[1], row[2]) for row in event_rows] == [
+        ("KNOWLEDGE_BATCH", first_batch, f"knowledge-confirmed:{first_batch}"),
+        ("KNOWLEDGE_BATCH", second_batch, f"knowledge-confirmed:{second_batch}"),
+    ]
+    assert json.loads(event_rows[1][3]) == {
+        "batch_id": second_batch,
+        "confirmed_count": 2,
+        "generated_from_summary_id": summary_id,
+    }
+    visible_items = cast(list[dict[str, object]], visible.json()["items"])
+    assert {item["generation_status"] for item in visible_items} == {"ACTIVE"}
+    assert {item["batch_id"] for item in visible_items} == {second_batch, None}
+    assert [item["importance"] for item in visible_items] == [5, 4, 2]
+    assert {(item["batch_id"], item["generation_status"]) for item in traced_items} == {
+        (first_batch, "SUPERSEDED"),
+        (second_batch, "ACTIVE"),
+        (None, "ACTIVE"),
+    }
+    assert old_row_edit.status_code == 409
+    assert len(model.prompts) == 2
+
+
+@pytest.mark.anyio
+async def test_double_confirm_is_idempotent_and_event_key_is_unique(
+    tmp_path: Path,
+) -> None:
+    model = FakeKnowledgePointModel()
+    async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, payload = await generate_draft_batch(client, record_id)
+
+        first = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{batch_id}/confirmations"
+        )
+        second = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{batch_id}/confirmations"
+        )
+        unknown = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{uuid4()}/confirmations"
+        )
+        event_count = await confirmed_event_count(app.state.session_factory, record_id)
+
+        for item in cast(list[dict[str, object]], payload["items"]):
+            await client.delete(f"/api/records/{record_id}/knowledge-points/{item['id']}")
+        third = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{batch_id}/confirmations"
+        )
+        final_event_count = await confirmed_event_count(app.state.session_factory, record_id)
+
+        with pytest.raises(IntegrityError):
+            async with app.state.session_factory() as session, session.begin():
+                session.add(
+                    LearningEvent(
+                        id=str(uuid4()),
+                        course_id="11111111-1111-4111-8111-111111111111",
+                        record_id=record_id,
+                        event_type="KNOWLEDGE_CONFIRMED",
+                        source_type="KNOWLEDGE_BATCH",
+                        source_id=batch_id,
+                        metadata_json="{}",
+                        idempotency_key=f"knowledge-confirmed:{batch_id}",
+                        schema_version=1,
+                        occurred_at=utcnow(),
+                    )
+                )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["items"] == first.json()["items"]
+    assert unknown.status_code == 404
+    assert event_count == 1
+    assert third.status_code == 200
+    assert third.json()["items"] == []
+    assert final_event_count == 1
+
+
+@pytest.mark.anyio
+async def test_confirm_blocked_by_stale_summary_or_archived_course_but_discard_works(
+    tmp_path: Path,
+) -> None:
+    model = FakeKnowledgePointModel()
+    async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        stale_batch, _payload = await generate_draft_batch(client, record_id)
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE ai_summaries SET status='SUPERSEDED' WHERE record_id=:record_id"),
+                {"record_id": record_id},
+            )
+        stale_confirm = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/confirmations"
+        )
+        stale_discard = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/discards"
+        )
+        after_discard = await client.get(f"/api/records/{record_id}/knowledge-points")
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE ai_summaries SET status='CONFIRMED' WHERE record_id=:record_id"),
+                {"record_id": record_id},
+            )
+        archived_batch, _payload = await generate_draft_batch(client, record_id)
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE courses SET status='ARCHIVED' "
+                    "WHERE id=(SELECT course_id FROM records WHERE id=:record_id)"
+                ),
+                {"record_id": record_id},
+            )
+        archived_confirm = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{archived_batch}/confirmations"
+        )
+        event_count = await confirmed_event_count(app.state.session_factory, record_id)
+
+    assert stale_confirm.status_code == 409
+    assert stale_confirm.json()["detail"] == "总结已换代或课程已归档，请丢弃当前候选后重新生成"
+    assert stale_discard.status_code == 200
+    assert after_discard.json()["items"] == []
+    assert after_discard.json()["blocked_reason"] == "SUMMARY_NOT_CONFIRMED"
+    assert archived_confirm.status_code == 409
+    assert event_count == 0
+
+
+@pytest.mark.anyio
+async def test_discard_soft_deletes_batch_and_keeps_manual_rows(tmp_path: Path) -> None:
+    model = FakeKnowledgePointModel()
+    async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, _payload = await generate_draft_batch(client, record_id)
+        manual = await add_manual_item(client, record_id)
+
+        discarded = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{batch_id}/discards"
+        )
+        again = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{batch_id}/discards"
+        )
+        after = await client.get(f"/api/records/{record_id}/knowledge-points")
+
+        async with app.state.session_factory() as session:
+            remaining_draft = (
+                await session.execute(
+                    text(
+                        "SELECT count(*) FROM knowledge_points "
+                        "WHERE batch_id=:batch_id AND deleted_at IS NULL"
+                    ),
+                    {"batch_id": batch_id},
+                )
+            ).scalar_one()
+
+    assert manual.status_code == 201
+    assert discarded.status_code == 200, discarded.text
+    assert again.status_code == 404
+    items = cast(list[dict[str, object]], after.json()["items"])
+    assert [item["name"] for item in items] == ["手工补充：调度队列"]
+    assert items[0]["generation_status"] == "ACTIVE"
+    assert after.json()["action_required"] == "GENERATE"
+    assert cast(int, remaining_draft) == 0
+
+
+@pytest.mark.anyio
+async def test_manual_changes_after_confirm_do_not_record_events(tmp_path: Path) -> None:
+    model = FakeKnowledgePointModel()
+    async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, candidates = await generate_draft_batch(client, record_id)
+        await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{batch_id}/confirmations"
+        )
+        items = cast(list[dict[str, object]], candidates["items"])
+
+        await add_manual_item(client, record_id, name="确认后的手工补充")
+        edited = await client.patch(
+            f"/api/records/{record_id}/knowledge-points/{cast(str, items[0]['id'])}",
+            json={
+                "name": "确认后的编辑",
+                "detail": "编辑已生效但不产生新事件。",
+                "tags": [],
+                "importance": 5,
+            },
+        )
+        await client.delete(f"/api/records/{record_id}/knowledge-points/{items[1]['id']}")
+        event_count = await confirmed_event_count(app.state.session_factory, record_id)
+        final = await client.get(f"/api/records/{record_id}/knowledge-points")
+
+    assert edited.status_code == 200
+    assert event_count == 1
+    final_items = cast(list[dict[str, object]], final.json()["items"])
+    assert [item["name"] for item in final_items] == ["确认后的编辑", "确认后的手工补充"]
+    assert all(item["generation_status"] == "ACTIVE" for item in final_items)

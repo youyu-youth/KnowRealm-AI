@@ -84,6 +84,25 @@ const course: components["schemas"]["CourseDetailOut"] = {
   updated_at: "2026-08-19T08:00:00.000000Z",
 };
 
+function draftKnowledgePoint(
+  overrides: Partial<components["schemas"]["KnowledgePointOut"]> = {},
+): components["schemas"]["KnowledgePointOut"] {
+  return {
+    id: "44444444-4444-4444-8444-444444444444",
+    record_id: RECORD_ID,
+    batch_id: JOB_ID,
+    name: "进程调度",
+    detail: "调度器从就绪队列中选择下一个运行的进程。",
+    tags: ["操作系统"],
+    importance: 5,
+    generated_from_summary_id: "55555555-5555-4555-8555-555555555555",
+    generation_status: "DRAFT",
+    created_at: "2026-08-24T12:00:00.000000Z",
+    updated_at: "2026-08-24T12:00:00.000000Z",
+    ...overrides,
+  };
+}
+
 vi.mock("@/services/tauri/sidecar", () => ({
   getSidecarConfig: vi.fn().mockResolvedValue({
     baseUrl: "http://127.0.0.1:43127",
@@ -467,7 +486,9 @@ describe("学习记录详情", () => {
       ),
     ).toBeVisible();
     expect(screen.getByText("基于总结提取")).toBeVisible();
-    expect(screen.getByText("重要度 5 / 5")).toBeVisible();
+    expect(
+      screen.getByRole("group", { name: "进程调度 · 重要度 5 / 5" }),
+    ).toBeVisible();
     expect(screen.getByText("#操作系统")).toBeVisible();
   });
 
@@ -513,6 +534,378 @@ describe("学习记录详情", () => {
     fireEvent.click(await screen.findByRole("button", { name: "重试生成" }));
     expect(
       await screen.findByRole("heading", { name: "重试后的候选" }),
+    ).toBeVisible();
+  });
+
+  it("候选审阅支持星级即时调整、编辑与删除", async () => {
+    const firstId = "44444444-4444-4444-8444-444444444444";
+    const secondId = "66666666-6666-4666-8666-666666666666";
+    const patchBodies: components["schemas"]["KnowledgePointWriteRequest"][] =
+      [];
+    let items: components["schemas"]["KnowledgePointOut"][] = [
+      draftKnowledgePoint(),
+      draftKnowledgePoint({
+        id: secondId,
+        name: "时间片",
+        importance: 4,
+        tags: [],
+      }),
+    ];
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items,
+          action_required: items.length ? "CONFIRM" : "GENERATE",
+          active_job_id: null,
+          blocked_reason: null,
+          input_mode: "FULL_TRANSCRIPT",
+        }),
+      ),
+      http.patch(`${KNOWLEDGE_POINTS_URL}/${firstId}`, async ({ request }) => {
+        const body =
+          (await request.json()) as components["schemas"]["KnowledgePointWriteRequest"];
+        patchBodies.push(body);
+        items = items.map((item) =>
+          item.id === firstId
+            ? { ...item, ...body, updated_at: "2026-08-24T12:10:00.000000Z" }
+            : item,
+        );
+        return HttpResponse.json(items.find((item) => item.id === firstId));
+      }),
+      http.delete(`${KNOWLEDGE_POINTS_URL}/${secondId}`, () => {
+        items = items.filter((item) => item.id !== secondId);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    expect(
+      await screen.findByRole("heading", { name: "进程调度" }),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "把 进程调度 设为重要度 2" }),
+    );
+    await waitFor(() => expect(patchBodies[0]?.importance).toBe(2));
+    expect(
+      screen.getByRole("group", { name: "进程调度 · 重要度 2 / 5" }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑 进程调度" }));
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "调度器" },
+    });
+    fireEvent.change(screen.getByLabelText("详情"), {
+      target: { value: "调度器决定处理器时间的分配对象。" },
+    });
+    fireEvent.change(screen.getByLabelText("标签"), {
+      target: { value: "操作系统，调度" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(
+      await screen.findByRole("heading", { name: "调度器" }),
+    ).toBeVisible();
+    expect(patchBodies[1]).toMatchObject({
+      name: "调度器",
+      detail: "调度器决定处理器时间的分配对象。",
+      tags: ["操作系统", "调度"],
+      importance: 2,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "删除 时间片" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "时间片" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "确认保存" })).toBeVisible();
+  });
+
+  it("手工补充即时保存为独立知识点", async () => {
+    let items: components["schemas"]["KnowledgePointOut"][] = [
+      draftKnowledgePoint(),
+    ];
+    let createdBody:
+      components["schemas"]["KnowledgePointWriteRequest"] | null = null;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items,
+          action_required: items.length ? "CONFIRM" : "GENERATE",
+          active_job_id: null,
+          blocked_reason: null,
+          input_mode: "FULL_TRANSCRIPT",
+        }),
+      ),
+      http.post(KNOWLEDGE_POINTS_URL, async ({ request }) => {
+        createdBody =
+          (await request.json()) as components["schemas"]["KnowledgePointWriteRequest"];
+        const created = draftKnowledgePoint({
+          id: "77777777-7777-4777-8777-777777777777",
+          name: createdBody.name,
+          detail: createdBody.detail,
+          tags: createdBody.tags,
+          importance: createdBody.importance,
+          batch_id: null,
+          generated_from_summary_id: null,
+          generation_status: "ACTIVE",
+        });
+        items = [...items, created];
+        return HttpResponse.json(created, { status: 201 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "添加知识点" }));
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "手工补充：就绪队列" },
+    });
+    fireEvent.change(screen.getByLabelText("详情"), {
+      target: { value: "就绪队列保存可运行进程。" },
+    });
+    fireEvent.change(screen.getByLabelText("标签"), {
+      target: { value: "手工，队列" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    expect(
+      await screen.findByRole("heading", { name: "手工补充：就绪队列" }),
+    ).toBeVisible();
+    expect(createdBody).toMatchObject({
+      name: "手工补充：就绪队列",
+      detail: "就绪队列保存可运行进程。",
+      tags: ["手工", "队列"],
+      importance: 3,
+    });
+    expect(screen.getByText("已保存到本地 · 待确认")).toBeVisible();
+  });
+
+  it("确认批次后候选转为正式知识点且列表保持稳定", async () => {
+    let confirmed = false;
+    const draftItems = [
+      draftKnowledgePoint(),
+      draftKnowledgePoint({
+        id: "66666666-6666-4666-8666-666666666666",
+        name: "时间片",
+        importance: 4,
+        tags: [],
+      }),
+    ];
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items: confirmed
+            ? draftItems.map((item) => ({
+                ...item,
+                generation_status: "ACTIVE" as const,
+              }))
+            : draftItems,
+          action_required: confirmed ? "NONE" : "CONFIRM",
+          active_job_id: null,
+          blocked_reason: null,
+          input_mode: null,
+        }),
+      ),
+      http.post(
+        `${DETAIL_URL}/knowledge-point-batches/${JOB_ID}/confirmations`,
+        () => {
+          confirmed = true;
+          return HttpResponse.json({
+            items: draftItems.map((item) => ({
+              ...item,
+              generation_status: "ACTIVE" as const,
+            })),
+            action_required: "NONE",
+            active_job_id: null,
+            blocked_reason: null,
+            input_mode: null,
+          });
+        },
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    expect(
+      await screen.findByRole("heading", { name: "候选知识点" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "确认保存" }));
+    expect(
+      await screen.findByRole("heading", { name: "知识点" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "确认保存" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "丢弃整批" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen
+        .getAllByRole("heading", { level: 3 })
+        .map((heading) => heading.textContent),
+    ).toEqual(["进程调度", "时间片"]);
+    expect(screen.getByText("已保存到本地 · 按重要度排序")).toBeVisible();
+  });
+
+  it("确认被换代阻止时给出丢弃重生成引导", async () => {
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items: [draftKnowledgePoint()],
+          action_required: "CONFIRM",
+          active_job_id: null,
+          blocked_reason: null,
+          input_mode: "FULL_TRANSCRIPT",
+        }),
+      ),
+      http.post(
+        `${DETAIL_URL}/knowledge-point-batches/${JOB_ID}/confirmations`,
+        () =>
+          HttpResponse.json(
+            { detail: "总结已换代或课程已归档，请丢弃当前候选后重新生成" },
+            { status: 409 },
+          ),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "确认保存" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "总结已换代或课程已归档，请丢弃当前候选后重新生成",
+    );
+    expect(screen.getByRole("heading", { name: "候选知识点" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "丢弃整批" })).toBeVisible();
+  });
+
+  it("丢弃整批候选回到可重新生成的初始态", async () => {
+    let discarded = false;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json(
+          discarded
+            ? {
+                items: [],
+                action_required: "GENERATE",
+                active_job_id: null,
+                blocked_reason: null,
+                input_mode: null,
+              }
+            : {
+                items: [draftKnowledgePoint()],
+                action_required: "CONFIRM",
+                active_job_id: null,
+                blocked_reason: null,
+                input_mode: "FULL_TRANSCRIPT",
+              },
+        ),
+      ),
+      http.post(
+        `${DETAIL_URL}/knowledge-point-batches/${JOB_ID}/discards`,
+        () => {
+          discarded = true;
+          return HttpResponse.json({
+            items: [],
+            action_required: "GENERATE",
+            active_job_id: null,
+            blocked_reason: null,
+            input_mode: null,
+          });
+        },
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    expect(
+      await screen.findByRole("heading", { name: "候选知识点" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "丢弃整批" }));
+    expect(
+      await screen.findByRole("button", { name: "生成候选知识点" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "进程调度" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("确认后仍可编辑、删除与手工补充", async () => {
+    const itemId = "44444444-4444-4444-8444-444444444444";
+    let items: components["schemas"]["KnowledgePointOut"][] = [
+      draftKnowledgePoint({ generation_status: "ACTIVE" }),
+    ];
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items,
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: null,
+          input_mode: null,
+        }),
+      ),
+      http.patch(`${KNOWLEDGE_POINTS_URL}/${itemId}`, async ({ request }) => {
+        const body =
+          (await request.json()) as components["schemas"]["KnowledgePointWriteRequest"];
+        items = items.map((item) =>
+          item.id === itemId ? { ...item, ...body } : item,
+        );
+        return HttpResponse.json(items.find((item) => item.id === itemId));
+      }),
+      http.post(KNOWLEDGE_POINTS_URL, async ({ request }) => {
+        const body =
+          (await request.json()) as components["schemas"]["KnowledgePointWriteRequest"];
+        const created = draftKnowledgePoint({
+          id: "77777777-7777-4777-8777-777777777777",
+          name: body.name,
+          detail: body.detail,
+          tags: body.tags,
+          importance: body.importance,
+          batch_id: null,
+          generated_from_summary_id: null,
+          generation_status: "ACTIVE",
+        });
+        items = [...items, created];
+        return HttpResponse.json(created, { status: 201 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    expect(
+      await screen.findByRole("heading", { name: "知识点" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "编辑 进程调度" }));
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "确认后的编辑" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(
+      await screen.findByRole("heading", { name: "确认后的编辑" }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "添加知识点" }));
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "确认后的补充" },
+    });
+    fireEvent.change(screen.getByLabelText("详情"), {
+      target: { value: "继续补充的内容。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    expect(
+      await screen.findByRole("heading", { name: "确认后的补充" }),
     ).toBeVisible();
   });
 

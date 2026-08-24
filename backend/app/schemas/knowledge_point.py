@@ -37,6 +37,10 @@ class KnowledgePointBatch(BaseModel):
     )
 
 
+class KnowledgePointWriteRequest(KnowledgePointCandidate):
+    """手工新增与行内编辑共用的请求体，校验边界与候选一致。"""
+
+
 class KnowledgePointGenerationStatus(StrEnum):
     DRAFT = "DRAFT"
     ACTIVE = "ACTIVE"
