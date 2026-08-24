@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：2026-08-24 **知识点提取定稿（07 plan grill）**——knowledge_points 取消独立 status 列（generation_status 单列承载，对齐 quizzes）；importance 定标 1~5、tags ≤5；AI 候选生成即落 DRAFT 行、每 Record 至多一个在途 DRAFT 批次；确认时绑定的 Summary 须仍为 CONFIRMED；批次溯源（model / prompt_version / 候选条数）记入 processing_jobs.result_json，表不加列。
 > **变更记录**：v2.2（2026-08-22）**多来源音频与版本绑定定稿**——records.capture_type 增加 MULTI_SOURCE；Capture Batch 明确为非持久化命令边界；Transcript source_version 同时作为内容版本与显式保存前置条件；ai_summaries 绑定 transcript_source_version；KP/Quiz/Todo 的 AI 结果绑定 summary_id 且可标记 SUPERSEDED；processing_jobs 定义 ASR 顺序切片检查点、等待态与差异化手动重试。
 > **变更记录**：v2.1（2026-08-20）**文档任务与单写者约束定稿**——processing_jobs 增加 CANCELLED、失败分类与重试转移；删除 record_files.processing_status，技术任务状态以 processing_jobs 为唯一事实源；同一数据目录增加进程生命周期排他锁；文档 Transcript 语言 V1 写 und；content_hash 仅用于完整性校验和重复检测，允许重复导入。
 > **变更记录**：v2.0（2026-08-17）**SQLite 化范式转向（#55）**——`user_id` 列全删（单用户库）、RLS/auth.uid 全删、Storage 桶→数据目录 `files/`、pgvector→sqlite-vec（vec0 虚拟表）、jsonb→TEXT(JSON)、text[]→TEXT(JSON)、timestamptz→TEXT(ISO8601 UTC)、uuid PK→TEXT(应用生成 uuid4)、`version` 乐观锁列全删（单写者无并发冲突）；~~user_settings~~ 并入 `config/settings.json`、profiles→单行 `profile`；状态机 9 态→**8 态**（UPLOADING 消解）；新增 `recording_sessions`（录音会话恢复）；`processing_jobs` 升格为**任务队列本体**（自研队列替代 procrastinate）；SQLite 本地十表（cached_*/sync_*/local_*）整体删除；§7 改为"备份、导出与换机"。v1.1~v1.10 变更史见 git（文件 v1.10 于本版删除；v1.11 表结构审查裁决〔transcripts 补 deleted_at/source_version、chat 失效态运行时推导、Wave A 基线 15 张〕已并入本版）。
@@ -176,12 +177,11 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | id / record_id | TEXT | |
 | batch_id | TEXT | 可空；同次 AI 候选批次共用，手工补充可空 |
 | name / detail | TEXT | |
-| tags | TEXT | JSON 数组 |
-| importance | REAL | |
-| status | TEXT | AI_GENERATED / CONFIRMED |
-| generated_from_summary_id | TEXT | 可空；AI 生成时绑定已确认 Summary，手工补充可空 |
-| generation_status | TEXT | DRAFT / ACTIVE / SUPERSEDED；确认新批次后才将旧 AI 批次置 SUPERSEDED，用户确认/编辑的历史行不自动删除 |
-| source_anchor_id | TEXT | 可空，主锚点（完整来源走 source_anchor_links） |
+| tags | TEXT | JSON 数组（≤5 个） |
+| importance | REAL | 1~5 |
+| generated_from_summary_id | TEXT | 可空；AI 生成时绑定已确认 Summary，手工补充可空；确认批次时该 Summary 仍须 CONFIRMED |
+| generation_status | TEXT | DRAFT / ACTIVE / SUPERSEDED（单列状态，2026-08-24 取消原 status 列，对齐 quizzes）；确认新批次后才将旧 AI 批次置 SUPERSEDED，用户确认/编辑的历史行不自动删除 |
+| source_anchor_id | TEXT | 可空，主锚点（完整来源走 source_anchor_links；P1 恒空） |
 | updated_at | TEXT | |
 
 **quizzes** — 习题（P1）

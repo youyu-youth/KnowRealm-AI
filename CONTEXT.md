@@ -91,6 +91,10 @@ _Avoid_: 概念（那是 Course 级实体）
 Course 级规范概念，跨记录长期存在，用于掌握度建模。与 KP 不得混同或互并。
 _Avoid_: 标签、主题、知识点
 
+**候选批次（Candidate Batch）**:
+一次 AI 生成产出的候选集合（知识点 / 习题共用），经用户确认整体生效；新批次确认后旧 AI 批次才置过时，用户已保存内容永不随批次换代删除。
+_Avoid_: 捕获批次（那是 Record 的创建边界）、版本（Transcript / Summary 的概念）
+
 ### 学习状态
 
 **学习事件（Learning Event）**:

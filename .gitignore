@@ -208,3 +208,5 @@ docs/code-review/
 录音文件
 
 .scratch/**/**.sh
+opencode.jsonc
+.mcp.json

@@ -60,6 +60,13 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 
 
+## git 规范
+### git commit 规范
+1. 格式为 type(scope): subject，scope 可省略，但 type 和冒号后的一个空格不可省略。
+   - feat：新功能;  fix: 缺陷修复;  refactor: 重构;  perf: 性能优化; docs: 文档变更; chore: 杂项 等。
+2. subject 用中文书写，以动词开头（实现、修复、完善、重构、移除……），描述“这个提交做了什么”，结尾不加句号。
+
+
 ## 文档的更新
 
 任何文档的更新不要保存以前过期的任何信息，这会增大误解。
