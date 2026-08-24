@@ -20,6 +20,7 @@ from app.models.base import utcnow
 from app.models.course import Course
 from app.models.document import AiSummary, KnowledgePoint, ProcessingJob, Transcript
 from app.models.record import Record
+from app.schemas.course import CourseStatus
 from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
 from app.schemas.knowledge_point import (
     KnowledgePointGenerationStatus,
@@ -34,7 +35,7 @@ from app.services.local_config import (
 )
 from app.services.record_invalidation import RecordInvalidationNotifier
 
-PROMPT_VERSION = "kp-v1"
+PROMPT_VERSION = "kp_v1"
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,30 @@ def build_knowledge_point_prompt(claimed: _ClaimedKnowledgePointJob) -> str:
         f"摘要：{claimed.summary.abstract}\n"
         f"{sections}"
         f"{transcript}"
+    )
+
+
+def _source_is_current(
+    record: Record | None,
+    course: Course | None,
+    summary: AiSummary | None,
+    transcript: Transcript | None,
+    *,
+    record_id: str,
+    source_version: int,
+) -> bool:
+    return bool(
+        record is not None
+        and record.deleted_at is None
+        and course is not None
+        and course.deleted_at is None
+        and course.status == CourseStatus.ACTIVE
+        and summary is not None
+        and summary.record_id == record_id
+        and summary.deleted_at is None
+        and summary.status == AiSummaryStatus.CONFIRMED
+        and transcript is not None
+        and transcript.source_version == source_version
     )
 
 
@@ -209,17 +234,15 @@ class KnowledgePointWorker:
             except ValueError:
                 input_mode = None
             if (
-                record is None
-                or course is None
-                or course.deleted_at is not None
-                or course.status != "ACTIVE"
-                or summary is None
-                or summary.record_id != job.record_id
-                or summary.deleted_at is not None
-                or summary.status != AiSummaryStatus.CONFIRMED
-                or transcript is None
-                or not isinstance(source_version, int)
-                or transcript.source_version != source_version
+                not isinstance(source_version, int)
+                or not _source_is_current(
+                    record,
+                    course,
+                    summary,
+                    transcript,
+                    record_id=job.record_id,
+                    source_version=source_version,
+                )
                 or input_mode is None
                 or input_data.get("provider_fingerprint") != llm_provider_fingerprint(provider)
             ):
@@ -228,6 +251,9 @@ class KnowledgePointWorker:
                 job.finished_at = now
                 job.updated_at = now
                 return None
+            current_summary = cast(AiSummary, summary)
+            current_transcript = cast(Transcript, transcript)
+            current_course = cast(Course, course)
             claimed = cast(
                 CursorResult[tuple[()]],
                 await session.execute(
@@ -249,16 +275,16 @@ class KnowledgePointWorker:
             return _ClaimedKnowledgePointJob(
                 job_id=job.id,
                 record_id=job.record_id,
-                summary_id=summary.id,
+                summary_id=current_summary.id,
                 source_version=source_version,
                 input_mode=input_mode,
                 transcript=(
-                    transcript.content
+                    current_transcript.content
                     if input_mode == KnowledgePointInputMode.FULL_TRANSCRIPT
                     else None
                 ),
-                summary=_summary_content(summary),
-                course=course,
+                summary=_summary_content(current_summary),
+                course=current_course,
                 provider=provider,
             )
 
@@ -285,16 +311,13 @@ class KnowledgePointWorker:
             )
             if job is None or job.status != ProcessingJobStatus.RUNNING:
                 return
-            if (
-                record is None
-                or course is None
-                or course.deleted_at is not None
-                or course.status != "ACTIVE"
-                or summary is None
-                or summary.status != AiSummaryStatus.CONFIRMED
-                or summary.deleted_at is not None
-                or transcript is None
-                or transcript.source_version != claimed.source_version
+            if not _source_is_current(
+                record,
+                course,
+                summary,
+                transcript,
+                record_id=claimed.record_id,
+                source_version=claimed.source_version,
             ):
                 job.status = ProcessingJobStatus.CANCELLED
                 job.result_json = json.dumps({"reason": "PREREQUISITE_CHANGED"})

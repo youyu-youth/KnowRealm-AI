@@ -12,6 +12,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
+import { settingsApi } from "@/features/settings/api/settings";
 
 type KnowledgePointPanelProps = {
   recordId: string;
@@ -32,6 +33,13 @@ export function KnowledgePointPanel({
   });
   const submit = useMutation({
     mutationFn: () => recordApi.submitKnowledgePoints(recordId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: recordKeys.knowledgePoints(recordId),
+      }),
+  });
+  const consent = useMutation({
+    mutationFn: settingsApi.grantLlmConsent,
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: recordKeys.knowledgePoints(recordId),
@@ -74,8 +82,7 @@ export function KnowledgePointPanel({
   const summaryOnly = data.input_mode === "SUMMARY_ONLY";
   const showSummaryAction =
     data.blocked_reason === "SUMMARY_NOT_CONFIRMED" ||
-    data.blocked_reason === "PROVIDER_NOT_CONFIGURED" ||
-    data.blocked_reason === "CONSENT_REQUIRED";
+    data.blocked_reason === "PROVIDER_NOT_CONFIGURED";
 
   return (
     <div className="max-w-reading min-w-0">
@@ -116,6 +123,24 @@ export function KnowledgePointPanel({
               <Button variant="outline" onClick={onOpenSummary}>
                 {t("record.detail.knowledgePoints.openSummary")}
               </Button>
+            </EmptyContent>
+          ) : data.blocked_reason === "CONSENT_REQUIRED" ? (
+            <EmptyContent className="items-start">
+              <Button
+                variant="outline"
+                disabled={consent.isPending}
+                onClick={() => consent.mutate()}
+              >
+                {consent.isPending ? (
+                  <Spinner data-icon="inline-start" aria-hidden="true" />
+                ) : null}
+                {t("record.detail.knowledgePoints.grantConsent")}
+              </Button>
+              {consent.isError ? (
+                <p role="alert" className="text-body text-destructive">
+                  {consent.error.message}
+                </p>
+              ) : null}
             </EmptyContent>
           ) : null}
         </Empty>

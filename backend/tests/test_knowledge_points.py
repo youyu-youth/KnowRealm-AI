@@ -14,8 +14,25 @@ from sqlalchemy import text
 from app.agents.llm import SummaryModelResult
 from app.db.migrations import run_migrations
 from app.main import create_app
+from app.schemas.knowledge_point import KnowledgePointBatch
 
 TOKEN = "test-launch-token"
+
+
+def test_candidate_schema_rejects_instead_of_trimming() -> None:
+    with pytest.raises(ValueError):
+        KnowledgePointBatch.model_validate(
+            {
+                "items": [
+                    {
+                        "name": " 进程调度 ",
+                        "detail": "操作系统选择下一个进程。",
+                        "tags": ["调度"],
+                        "importance": 5,
+                    }
+                ]
+            }
+        )
 
 
 class FakeKnowledgePointModel:
@@ -285,12 +302,12 @@ async def test_generate_candidates_persists_draft_batch_and_provenance(tmp_path:
     result = json.loads(cast(str, job_row.result_json))
     assert result == {
         "model": "qwen-plus",
-        "prompt_version": "kp-v1",
+        "prompt_version": "kp_v1",
         "candidate_count": 2,
         "input_mode": "FULL_TRANSCRIPT",
     }
     assert job_row.status == "SUCCEEDED"
-    assert tuple(log_row) == ("knowledge-points", "generate", "kp-v1", None)
+    assert tuple(log_row) == ("knowledge-points", "generate", "kp_v1", None)
 
 
 @pytest.mark.anyio
@@ -458,3 +475,51 @@ async def test_active_job_guard_rejects_duplicate_submit(tmp_path: Path) -> None
     assert first.status_code == 202
     assert duplicate.status_code == 409
     assert active_count == 1
+
+
+@pytest.mark.anyio
+async def test_soft_delete_during_generation_discards_candidates(tmp_path: Path) -> None:
+    model = FakeKnowledgePointModel()
+    model.release.clear()
+    async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        accepted = await client.post(f"/api/records/{record_id}/knowledge-point-jobs")
+        await asyncio.wait_for(model.started.wait(), timeout=2)
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE records SET deleted_at=:deleted_at WHERE id=:record_id"),
+                {
+                    "record_id": record_id,
+                    "deleted_at": "2026-08-24T10:00:00.000000Z",
+                },
+            )
+        model.release.set()
+
+        status = "RUNNING"
+        candidate_count = -1
+        for _attempt in range(40):
+            async with app.state.session_factory() as session:
+                status = cast(
+                    str,
+                    await session.scalar(
+                        text("SELECT status FROM processing_jobs WHERE id=:job_id"),
+                        {"job_id": accepted.json()["job_id"]},
+                    ),
+                )
+                candidate_count = cast(
+                    int,
+                    await session.scalar(
+                        text("SELECT count(*) FROM knowledge_points WHERE record_id=:record_id"),
+                        {"record_id": record_id},
+                    ),
+                )
+            if status == "CANCELLED":
+                break
+            await asyncio.sleep(0.05)
+
+    assert accepted.status_code == 202
+    assert status == "CANCELLED"
+    assert candidate_count == 0

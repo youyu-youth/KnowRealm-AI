@@ -17,6 +17,6 @@
 
 ## Verification
 
-- 后端：`119 passed`；新增知识点闭环用例 `6 passed`；Ruff 通过，变更文件 Pyright `0 errors`。全项目 Pyright 仍有既有 `app/core/logging.py:46` 一处错误。
-- 桌面端：`54 passed`，TypeScript/Vite 生产构建与 ESLint 通过，UI 反模式检测无发现；OpenAPI 类型已同步。
+- 后端：`121 passed`；新增知识点闭环用例 `8 passed`；Ruff 通过，变更文件 Pyright `0 errors`。全项目 Pyright 仍有既有 `app/core/logging.py:46` 一处错误。
+- 桌面端：`56 passed`，TypeScript/Vite 生产构建与 ESLint 通过，UI 反模式检测无发现；OpenAPI 类型已同步。
 - 真实本地 HTTP + SQLite 读取返回 `CONFIRM / FULL_TRANSCRIPT / 2 条候选`。真实外部 LLM 未调用；Chrome 远程调试权限未放行，因此本轮未取得浏览器渲染截图。

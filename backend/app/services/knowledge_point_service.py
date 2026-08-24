@@ -1,6 +1,5 @@
 import asyncio
 import json
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import cast
@@ -15,6 +14,7 @@ from app.models.base import utcnow
 from app.models.course import Course
 from app.models.document import AiSummary, KnowledgePoint, ProcessingJob, Transcript
 from app.models.record import Record
+from app.schemas.course import CourseStatus
 from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
 from app.schemas.knowledge_point import (
     KnowledgePointAction,
@@ -32,12 +32,6 @@ from app.services.local_config import (
 )
 
 TRANSCRIPT_LIMIT = 30_000
-
-
-@dataclass(frozen=True)
-class SubmittedKnowledgePointJob:
-    job_id: str
-    created: bool
 
 
 def _knowledge_point_out(item: KnowledgePoint) -> KnowledgePointOut:
@@ -172,7 +166,7 @@ class KnowledgePointService:
             )
 
         course = await session.get(Course, record.course_id) if record.course_id else None
-        if course is None or course.deleted_at is not None or course.status != "ACTIVE":
+        if course is None or course.deleted_at is not None or course.status != CourseStatus.ACTIVE:
             return KnowledgePointReadOut(
                 items=output,
                 action_required=KnowledgePointAction.NONE,
@@ -240,7 +234,7 @@ class KnowledgePointService:
         session: AsyncSession,
         data_dir: Path,
         record_id: str,
-    ) -> SubmittedKnowledgePointJob:
+    ) -> str:
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
             raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
@@ -250,7 +244,11 @@ class KnowledgePointService:
             async with session.begin():
                 record = await _get_record(session, record_id)
                 course = await session.get(Course, record.course_id) if record.course_id else None
-                if course is None or course.deleted_at is not None or course.status != "ACTIVE":
+                if (
+                    course is None
+                    or course.deleted_at is not None
+                    or course.status != CourseStatus.ACTIVE
+                ):
                     raise HTTPException(status_code=409, detail="归档课程不能生成知识点")
                 summary = await _confirmed_summary(session, record_id)
                 if summary is None:
@@ -279,13 +277,13 @@ class KnowledgePointService:
                     previous = cast(dict[str, object], json.loads(failed.input_json))
                     if previous.get("generated_from_summary_id") == summary.id:
                         _requeue_failed(failed, input_json)
-                        return SubmittedKnowledgePointJob(failed.id, False)
+                        return failed.id
 
                 now = utcnow()
                 job = _new_job(record_id, input_json=input_json, now=now)
                 session.add(job)
                 await session.flush()
-                return SubmittedKnowledgePointJob(job.id, True)
+                return job.id
         except IntegrityError:
             raise HTTPException(
                 status_code=409,

@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 
 class KnowledgePointCandidate(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, strict=True)
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     name: str = Field(min_length=1, max_length=100, description="知识点名称")
     detail: str = Field(min_length=1, max_length=2000, description="知识点详情")
@@ -15,10 +15,16 @@ class KnowledgePointCandidate(BaseModel):
     @field_validator("tags")
     @classmethod
     def validate_tags(cls, value: list[str]) -> list[str]:
-        tags = [tag.strip() for tag in value]
-        if any(not tag or len(tag) > 20 for tag in tags):
+        if any(not tag or tag != tag.strip() or len(tag) > 20 for tag in value):
             raise ValueError("每个标签必须为 1 至 20 字")
-        return tags
+        return value
+
+    @field_validator("name", "detail")
+    @classmethod
+    def reject_surrounding_whitespace(cls, value: str) -> str:
+        if value != value.strip():
+            raise ValueError("名称与详情不能包含首尾空白")
+        return value
 
 
 class KnowledgePointBatch(BaseModel):

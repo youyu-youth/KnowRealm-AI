@@ -343,6 +343,73 @@ describe("学习记录详情", () => {
     );
   });
 
+  it("知识点缺少 Provider 时打开可操作的配置态", async () => {
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items: [],
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: "PROVIDER_NOT_CONFIGURED",
+          input_mode: null,
+        }),
+      ),
+      http.get(SUMMARY_URL, () =>
+        HttpResponse.json({
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: null,
+          summary: null,
+        }),
+      ),
+      http.get(LLM_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "前往 Summary" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "配置 AI Provider" }),
+    ).toBeVisible();
+  });
+
+  it("知识点同意失效时可原地授权并恢复生成入口", async () => {
+    let consentGranted = false;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items: [],
+          action_required: consentGranted ? "GENERATE" : "NONE",
+          active_job_id: null,
+          blocked_reason: consentGranted ? null : "CONSENT_REQUIRED",
+          input_mode: null,
+        }),
+      ),
+      http.post(LLM_CONSENT_URL, () => {
+        consentGranted = true;
+        return HttpResponse.json({
+          current: true,
+          granted_at: "2026-08-24T10:00:00Z",
+        });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "同意并继续生成" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "生成候选知识点" }),
+    ).toBeVisible();
+  });
+
   it("生成后轮询展示持久化候选，并明示超长输入基于总结提取", async () => {
     let submittedAt = 0;
     server.use(

@@ -18,9 +18,12 @@ from app.services.local_config import LlmProviderConfig
 
 
 @dataclass(frozen=True)
-class SummaryModelResult:
+class StructuredModelResult:
     output: object
     token_usage: dict[str, object]
+
+
+SummaryModelResult = StructuredModelResult
 
 
 @dataclass(frozen=True)
@@ -45,17 +48,20 @@ class StructuredModel(Protocol):
         api_key: str,
         model: str,
         prompt: str,
-    ) -> SummaryModelResult: ...
+    ) -> StructuredModelResult: ...
 
 
 SummaryModel = StructuredModel
 KnowledgePointModel = StructuredModel
 
 
-class SummaryGenerationError(Exception):
+class StructuredGenerationError(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+SummaryGenerationError = StructuredGenerationError
 
 
 class _OpenAiCompatibleStructuredModel:
@@ -69,7 +75,7 @@ class _OpenAiCompatibleStructuredModel:
         api_key: str,
         model: str,
         prompt: str,
-    ) -> SummaryModelResult:
+    ) -> StructuredModelResult:
         http_client = openai.DefaultAsyncHttpxClient(trust_env=False)
         try:
             llm = ChatOpenAI(
@@ -95,7 +101,7 @@ class _OpenAiCompatibleStructuredModel:
             output = raw_response.get("parsed")
             raw_message = raw_response.get("raw")
             usage = getattr(raw_message, "usage_metadata", None)
-            return SummaryModelResult(
+            return StructuredModelResult(
                 output=output,
                 token_usage=cast(dict[str, object], usage) if isinstance(usage, dict) else {},
             )
@@ -157,7 +163,7 @@ async def _call_structured_model(
     token_usage: dict[str, object] = {}
     error_code: str | None = None
     content: BaseModel | None = None
-    failure: SummaryGenerationError | None = None
+    failure: StructuredGenerationError | None = None
     try:
         result = await structured_model.generate(
             base_url=provider.base_url,
@@ -169,11 +175,11 @@ async def _call_structured_model(
         content = output_schema.model_validate(result.output)
     except ValidationError as exc:
         error_code = invalid_output_code
-        failure = SummaryGenerationError(error_code)
+        failure = StructuredGenerationError(error_code)
         failure.__cause__ = exc
     except Exception as exc:
         error_code = "PROVIDER_REQUEST_FAILED"
-        failure = SummaryGenerationError(error_code)
+        failure = StructuredGenerationError(error_code)
         failure.__cause__ = exc
     latency_ms = max(0, round((perf_counter() - started) * 1000))
     try:
@@ -200,7 +206,7 @@ async def _call_structured_model(
     if failure is not None:
         raise failure
     if content is None:
-        raise SummaryGenerationError(invalid_output_code)
+        raise StructuredGenerationError(invalid_output_code)
     return _StructuredCallResult(content, token_usage, latency_ms)
 
 

@@ -284,7 +284,10 @@ export function RecordDetailPage({
           value="summary"
           className="border-border mt-6 border-t pt-8"
         >
-          <SummaryProviderSettings onChanged={() => void invalidateRecord()} />
+          <SummaryProviderSettings
+            showWhenMissing={detail.status === "COMPLETED"}
+            onChanged={() => void invalidateRecord()}
+          />
           <SummaryPanel recordId={recordId} />
         </TabsContent>
 
@@ -440,7 +443,13 @@ export function RecordDetailPage({
   );
 }
 
-function SummaryProviderSettings({ onChanged }: { onChanged: () => void }) {
+function SummaryProviderSettings({
+  showWhenMissing,
+  onChanged,
+}: {
+  showWhenMissing: boolean;
+  onChanged: () => void;
+}) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const provider = useQuery({
@@ -449,7 +458,11 @@ function SummaryProviderSettings({ onChanged }: { onChanged: () => void }) {
   });
   const configured = provider.data?.provider;
 
-  if (!configured?.has_api_key) return null;
+  if (!configured?.has_api_key) {
+    return showWhenMissing ? (
+      <ProviderConfiguration onSaved={onChanged} />
+    ) : null;
+  }
   if (editing) {
     return (
       <div className="border-border mb-8 border-b pb-8">

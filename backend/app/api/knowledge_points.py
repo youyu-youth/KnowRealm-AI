@@ -41,9 +41,9 @@ async def submit_knowledge_point_job(
     request: Request,
     session: AsyncSession = Depends(get_db),
 ) -> KnowledgePointJobAccepted:
-    submitted = await KnowledgePointService.submit(
+    job_id = await KnowledgePointService.submit(
         session,
         request.app.state.data_dir,
         str(record_id),
     )
-    return KnowledgePointJobAccepted(job_id=submitted.job_id)
+    return KnowledgePointJobAccepted(job_id=job_id)
