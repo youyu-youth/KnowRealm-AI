@@ -89,9 +89,11 @@ export function KnowledgePointPanel({
 
   const data = knowledgePoints.data;
   const summaryOnly = data.input_mode === "SUMMARY_ONLY";
+  const summarySuperseded = data.blocked_reason === "SUMMARY_SUPERSEDED";
   const showSummaryAction =
     data.blocked_reason === "SUMMARY_NOT_CONFIRMED" ||
-    data.blocked_reason === "PROVIDER_NOT_CONFIGURED";
+    data.blocked_reason === "PROVIDER_NOT_CONFIGURED" ||
+    summarySuperseded;
   const draftBatchId =
     data.items.find((item) => item.generation_status === "DRAFT")?.batch_id ??
     null;
@@ -121,7 +123,11 @@ export function KnowledgePointPanel({
       ) : null}
 
       {draftBatchId ? (
-        <BatchActions recordId={recordId} batchId={draftBatchId} />
+        <BatchActions
+          recordId={recordId}
+          batchId={draftBatchId}
+          confirmDisabled={summarySuperseded}
+        />
       ) : null}
 
       {canManualAdd ? <ManualAddSection recordId={recordId} /> : null}
@@ -608,9 +614,11 @@ function parseTags(raw: string): string[] {
 function BatchActions({
   recordId,
   batchId,
+  confirmDisabled,
 }: {
   recordId: string;
   batchId: string;
+  confirmDisabled: boolean;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -637,7 +645,7 @@ function BatchActions({
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Button
-          disabled={confirm.isPending || discard.isPending}
+          disabled={confirmDisabled || confirm.isPending || discard.isPending}
           onClick={() => confirm.mutate()}
         >
           {confirm.isPending ? <Spinner aria-hidden="true" /> : null}

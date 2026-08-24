@@ -88,6 +88,20 @@ async def _confirmed_summary(session: AsyncSession, record_id: str) -> AiSummary
     ).one_or_none()
 
 
+async def _superseded_summary_exists(session: AsyncSession, record_id: str) -> bool:
+    return (
+        await session.scalars(
+            select(AiSummary.id)
+            .where(
+                AiSummary.record_id == record_id,
+                AiSummary.status == AiSummaryStatus.SUPERSEDED,
+                AiSummary.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+    ).first() is not None
+
+
 async def _active_job(session: AsyncSession, record_id: str) -> ProcessingJob | None:
     return (
         await session.scalars(
@@ -189,10 +203,15 @@ class KnowledgePointService:
             )
         summary = await _confirmed_summary(session, record_id)
         if summary is None:
+            blocked = (
+                KnowledgePointBlockedReason.SUMMARY_SUPERSEDED
+                if await _superseded_summary_exists(session, record_id)
+                else KnowledgePointBlockedReason.SUMMARY_NOT_CONFIRMED
+            )
             return KnowledgePointReadOut(
                 items=output,
                 action_required=KnowledgePointAction.NONE,
-                blocked_reason=KnowledgePointBlockedReason.SUMMARY_NOT_CONFIRMED,
+                blocked_reason=blocked,
             )
         transcript = (
             await session.scalars(
@@ -217,6 +236,14 @@ class KnowledgePointService:
             None,
         )
         if draft is not None and draft.batch_id is not None:
+            if draft.generated_from_summary_id != summary.id:
+                # 候选绑定的总结已被换代（转写编辑后确认了新总结），确认必被 409 拒绝，
+                # 读端点直接给出换代原因，引导丢弃后基于新总结重新生成。
+                return KnowledgePointReadOut(
+                    items=output,
+                    action_required=KnowledgePointAction.NONE,
+                    blocked_reason=KnowledgePointBlockedReason.SUMMARY_SUPERSEDED,
+                )
             job = await session.get(ProcessingJob, draft.batch_id)
             return KnowledgePointReadOut(
                 items=output,

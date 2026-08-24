@@ -753,7 +753,7 @@ export interface components {
          * KnowledgePointBlockedReason
          * @enum {string}
          */
-        KnowledgePointBlockedReason: "SUMMARY_NOT_CONFIRMED" | "COURSE_ARCHIVED" | "TRANSCRIPT_NOT_READY" | "PROVIDER_NOT_CONFIGURED" | "CONSENT_REQUIRED";
+        KnowledgePointBlockedReason: "SUMMARY_NOT_CONFIRMED" | "SUMMARY_SUPERSEDED" | "COURSE_ARCHIVED" | "TRANSCRIPT_NOT_READY" | "PROVIDER_NOT_CONFIGURED" | "CONSENT_REQUIRED";
         /**
          * KnowledgePointGenerationStatus
          * @enum {string}

@@ -508,6 +508,10 @@ function SummaryPanel({ recordId }: { recordId: string }) {
     Promise.all([
       queryClient.invalidateQueries({ queryKey: recordKeys.detail(recordId) }),
       queryClient.invalidateQueries({ queryKey: recordKeys.summary(recordId) }),
+      // 总结确认可能解除知识点重新生成锁定，需一并失效
+      queryClient.invalidateQueries({
+        queryKey: recordKeys.knowledgePoints(recordId),
+      }),
       queryClient.invalidateQueries({ queryKey: todayKeys.pendingSummaries }),
     ]);
   const submit = useMutation({

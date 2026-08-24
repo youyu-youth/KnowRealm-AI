@@ -421,6 +421,10 @@
             "title": "请先确认总结",
             "description": "知识点只从当前已确认的总结生成。返回 Summary 完成确认后即可继续。"
           },
+          "SUMMARY_SUPERSEDED": {
+            "title": "转写已修改，总结需要更新",
+            "description": "转写编辑导致原总结过时。已保存的知识点不受影响；待新总结确认后即可基于新总结重新生成知识点。如有待确认的旧候选，请先丢弃。"
+          },
           "COURSE_ARCHIVED": {
             "title": "课程已归档",
             "description": "归档课程不能再发起知识点生成。"

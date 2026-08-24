@@ -14,12 +14,13 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agents.llm import StructuredModelResult
+from app.agents.llm import StructuredModelResult, SummaryModel
 from app.db.migrations import run_migrations
 from app.main import create_app
 from app.models.base import utcnow
 from app.models.document import LearningEvent
 from app.schemas.knowledge_point import KnowledgePointBatch
+from app.schemas.summary import SummaryContent, SummarySection
 
 TOKEN = "test-launch-token"
 
@@ -94,11 +95,14 @@ class FakeKnowledgePointModel:
 async def running_knowledge_point_app(
     data_dir: Path,
     model: FakeKnowledgePointModel,
+    *,
+    summary_model: SummaryModel | None = None,
 ) -> AsyncGenerator[tuple[FastAPI, httpx.AsyncClient]]:
     app = create_app(
         data_dir=data_dir,
         launch_token=TOKEN,
         knowledge_point_model=model,
+        summary_model=summary_model,
     )
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(
@@ -847,7 +851,7 @@ async def test_confirm_blocked_by_stale_summary_or_archived_course_but_discard_w
     assert stale_confirm.json()["detail"] == "总结已换代或课程已归档，请丢弃当前候选后重新生成"
     assert stale_discard.status_code == 200
     assert after_discard.json()["items"] == []
-    assert after_discard.json()["blocked_reason"] == "SUMMARY_NOT_CONFIRMED"
+    assert after_discard.json()["blocked_reason"] == "SUMMARY_SUPERSEDED"
     assert archived_confirm.status_code == 409
     assert event_count == 0
 
@@ -923,3 +927,245 @@ async def test_manual_changes_after_confirm_do_not_record_events(tmp_path: Path)
     final_items = cast(list[dict[str, object]], final.json()["items"])
     assert [item["name"] for item in final_items] == ["确认后的编辑", "确认后的手工补充"]
     assert all(item["generation_status"] == "ACTIVE" for item in final_items)
+
+
+class FakeRegenerationSummaryModel:
+    """换代链路测试中驱动新总结生成的最小 Fake，契约与 test_summary 的 Fake 一致。"""
+
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+
+    async def generate(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        prompt: str,
+    ) -> StructuredModelResult:
+        assert base_url == "https://example.com/v1"
+        assert api_key == "sk-test"
+        assert model == "qwen-plus"
+        self.prompts.append(prompt)
+        output = SummaryContent(
+            topic="进程调度（第二代）",
+            abstract="转写修订后的第二代总结摘要，用于验证换代后的重新生成链路。" * 30,
+            sections=[
+                SummarySection(
+                    heading="调度",
+                    points=["调度器按修订后的策略选择下一个进程。"],
+                )
+            ],
+        )
+        return StructuredModelResult(output=output, token_usage={"total_tokens": 42})
+
+
+async def wait_for_summary_version(
+    client: httpx.AsyncClient,
+    record_id: str,
+    version_no: int,
+) -> dict[str, object]:
+    for _ in range(200):
+        raw: object = (await client.get(f"/api/records/{record_id}/summary")).json()
+        payload = cast(dict[str, object], raw)
+        summary = payload.get("summary")
+        current = cast(dict[str, object], summary) if isinstance(summary, dict) else {}
+        if current.get("version_no") == version_no:
+            return current
+        await asyncio.sleep(0.02)
+    pytest.fail(f"Summary 未进入版本 {version_no}")
+
+
+async def edit_transcript(
+    client: httpx.AsyncClient,
+    record_id: str,
+) -> httpx.Response:
+    return await client.patch(
+        f"/api/records/{record_id}/transcript",
+        json={
+            "content": "修订后的转写正文：调度器按优先级从就绪队列选择进程。",
+            "expected_source_version": 1,
+        },
+    )
+
+
+async def confirm_new_summary(
+    client: httpx.AsyncClient,
+    record_id: str,
+) -> dict[str, object]:
+    await client.post(f"/api/records/{record_id}/summary-jobs")
+    summary = await wait_for_summary_version(client, record_id, 2)
+    confirmed = await client.post(
+        f"/api/records/{record_id}/summary-confirmations",
+        json={"summary_id": summary["id"]},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    return summary
+
+
+@pytest.mark.anyio
+async def test_transcript_regeneration_full_chain(tmp_path: Path) -> None:
+    model = FakeKnowledgePointModel()
+    summary_model = FakeRegenerationSummaryModel()
+    async with running_knowledge_point_app(
+        tmp_path / "KnowRealm", model, summary_model=summary_model
+    ) as (app, client):
+        record_id, first_summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        first_batch, first_payload = await generate_draft_batch(client, record_id)
+        first_confirm = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{first_batch}/confirmations"
+        )
+        manual = await add_manual_item(client, record_id)
+        stale_batch, _stale_payload = await generate_draft_batch(client, record_id)
+        saved_item_id = cast(
+            str, cast(list[dict[str, object]], first_payload["items"])[0]["id"]
+        )
+
+        transcript_edit = await edit_transcript(client, record_id)
+        record_after_edit = await client.get(f"/api/records/{record_id}")
+        saved_during_change = await client.get(
+            f"/api/records/{record_id}/knowledge-points"
+        )
+        edit_during_change = await client.patch(
+            f"/api/records/{record_id}/knowledge-points/{saved_item_id}",
+            json={
+                "name": "进程调度",
+                "detail": "调度器按优先级从就绪队列选择下一个进程。",
+                "tags": ["调度"],
+                "importance": 5,
+            },
+        )
+        blocked_confirm = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/confirmations"
+        )
+        blocked_submit = await client.post(
+            f"/api/records/{record_id}/knowledge-point-jobs"
+        )
+        discarded = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/discards"
+        )
+        after_discard = await client.get(f"/api/records/{record_id}/knowledge-points")
+
+        second_summary = await confirm_new_summary(client, record_id)
+        record_after_summary = await client.get(f"/api/records/{record_id}")
+        unlocked = await client.get(f"/api/records/{record_id}/knowledge-points")
+
+        second_batch, _second_payload = await generate_draft_batch(client, record_id)
+        second_confirm = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{second_batch}/confirmations"
+        )
+        final = await client.get(f"/api/records/{record_id}/knowledge-points")
+        traced = await client.get(
+            f"/api/records/{record_id}/knowledge-points?include=superseded"
+        )
+        event_count = await confirmed_event_count(app.state.session_factory, record_id)
+        async with app.state.session_factory() as session:
+            event_rows = (
+                await session.execute(
+                    text(
+                        "SELECT source_id, metadata_json FROM learning_events "
+                        "WHERE event_type='KNOWLEDGE_CONFIRMED' ORDER BY created_at"
+                    )
+                )
+            ).all()
+
+    assert first_confirm.status_code == 200, first_confirm.text
+    assert manual.status_code == 201, manual.text
+    assert transcript_edit.status_code == 200, transcript_edit.text
+    assert record_after_edit.json()["status"] == "SUMMARY_PENDING"
+    during_items = cast(list[dict[str, object]], saved_during_change.json()["items"])
+    assert {
+        (cast(str | None, item["batch_id"]), cast(str, item["generation_status"]))
+        for item in during_items
+    } == {
+        (first_batch, "ACTIVE"),
+        (stale_batch, "DRAFT"),
+        (None, "ACTIVE"),
+    }
+    assert saved_during_change.json()["action_required"] == "NONE"
+    assert saved_during_change.json()["blocked_reason"] == "SUMMARY_SUPERSEDED"
+    assert edit_during_change.status_code == 200, edit_during_change.text
+    assert blocked_confirm.status_code == 409
+    assert blocked_confirm.json()["detail"] == "总结已换代或课程已归档，请丢弃当前候选后重新生成"
+    assert blocked_submit.status_code == 409
+    assert blocked_submit.json()["detail"] == "请先确认当前总结"
+    assert discarded.status_code == 200, discarded.text
+    after_discard_items = cast(list[dict[str, object]], after_discard.json()["items"])
+    assert {
+        (cast(str | None, item["batch_id"]), cast(str, item["generation_status"]))
+        for item in after_discard_items
+    } == {(first_batch, "ACTIVE"), (None, "ACTIVE")}
+    assert after_discard.json()["blocked_reason"] == "SUMMARY_SUPERSEDED"
+    assert record_after_summary.json()["status"] == "COMPLETED"
+    assert unlocked.json()["action_required"] == "GENERATE"
+    assert unlocked.json()["blocked_reason"] is None
+    assert second_confirm.status_code == 200, second_confirm.text
+    final_items = cast(list[dict[str, object]], final.json()["items"])
+    assert {
+        (cast(str | None, item["batch_id"]), cast(str, item["generation_status"]))
+        for item in final_items
+    } == {(second_batch, "ACTIVE"), (None, "ACTIVE")}
+    traced_items = cast(list[dict[str, object]], traced.json()["items"])
+    assert {
+        (cast(str | None, item["batch_id"]), cast(str, item["generation_status"]))
+        for item in traced_items
+    } == {
+        (first_batch, "SUPERSEDED"),
+        (second_batch, "ACTIVE"),
+        (None, "ACTIVE"),
+    }
+    assert [row[0] for row in event_rows] == [first_batch, second_batch]
+    assert json.loads(event_rows[1][1])["generated_from_summary_id"] == (
+        second_summary["id"]
+    )
+    assert second_summary["id"] != first_summary_id
+    assert event_count == 2
+    assert len(model.prompts) == 3
+
+
+@pytest.mark.anyio
+async def test_stale_draft_after_new_summary_confirm_guides_discard(
+    tmp_path: Path,
+) -> None:
+    model = FakeKnowledgePointModel()
+    summary_model = FakeRegenerationSummaryModel()
+    async with running_knowledge_point_app(
+        tmp_path / "KnowRealm", model, summary_model=summary_model
+    ) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        stale_batch, stale_payload = await generate_draft_batch(client, record_id)
+
+        await edit_transcript(client, record_id)
+        second_summary = await confirm_new_summary(client, record_id)
+        stale_read = await client.get(f"/api/records/{record_id}/knowledge-points")
+        stale_confirm = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/confirmations"
+        )
+        stale_submit = await client.post(
+            f"/api/records/{record_id}/knowledge-point-jobs"
+        )
+        discarded = await client.post(
+            f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/discards"
+        )
+        after = await client.get(f"/api/records/{record_id}/knowledge-points")
+        event_count = await confirmed_event_count(app.state.session_factory, record_id)
+
+    assert second_summary["version_no"] == 2
+    stale_items = cast(list[dict[str, object]], stale_read.json()["items"])
+    assert len(stale_items) == len(cast(list[dict[str, object]], stale_payload["items"]))
+    assert all(item["generation_status"] == "DRAFT" for item in stale_items)
+    assert stale_read.json()["action_required"] == "NONE"
+    assert stale_read.json()["blocked_reason"] == "SUMMARY_SUPERSEDED"
+    assert stale_confirm.status_code == 409
+    assert stale_submit.status_code == 409
+    assert stale_submit.json()["detail"] == "已有待确认的知识点候选"
+    assert discarded.status_code == 200, discarded.text
+    assert after.json()["items"] == []
+    assert after.json()["action_required"] == "GENERATE"
+    assert after.json()["blocked_reason"] is None
+    assert event_count == 0

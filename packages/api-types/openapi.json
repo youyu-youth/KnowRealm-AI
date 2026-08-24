@@ -601,6 +601,7 @@
       "KnowledgePointBlockedReason": {
         "enum": [
           "SUMMARY_NOT_CONFIRMED",
+          "SUMMARY_SUPERSEDED",
           "COURSE_ARCHIVED",
           "TRANSCRIPT_NOT_READY",
           "PROVIDER_NOT_CONFIGURED",

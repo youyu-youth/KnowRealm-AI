@@ -786,6 +786,181 @@ describe("学习记录详情", () => {
     expect(screen.getByRole("button", { name: "丢弃整批" })).toBeVisible();
   });
 
+  it("转写换代后已保存知识点保持可编辑且重新生成入口锁定", async () => {
+    const itemId = "44444444-4444-4444-8444-444444444444";
+    let items: components["schemas"]["KnowledgePointOut"][] = [
+      draftKnowledgePoint({ generation_status: "ACTIVE" }),
+    ];
+    server.use(
+      // 换代后 Record 回 SUMMARY_PENDING，知识点页签仍可见可选
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "SUMMARY_PENDING" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items,
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: "SUMMARY_SUPERSEDED",
+          input_mode: null,
+        }),
+      ),
+      http.patch(`${KNOWLEDGE_POINTS_URL}/${itemId}`, async ({ request }) => {
+        const body =
+          (await request.json()) as components["schemas"]["KnowledgePointWriteRequest"];
+        items = items.map((item) =>
+          item.id === itemId ? { ...item, ...body } : item,
+        );
+        return HttpResponse.json(items.find((item) => item.id === itemId));
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    const tab = await screen.findByRole("tab", { name: "知识点" });
+    expect(tab).toBeEnabled();
+    expect(tab).toHaveAttribute("aria-selected", "true");
+    expect(
+      await screen.findByRole("heading", { name: "转写已修改，总结需要更新" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/已保存的知识点不受影响；待新总结确认后/),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "前往 Summary" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "生成候选知识点" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "进程调度" })).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑 进程调度" }));
+    fireEvent.change(screen.getByLabelText("名称"), {
+      target: { value: "换代中的编辑" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(
+      await screen.findByRole("heading", { name: "换代中的编辑" }),
+    ).toBeVisible();
+  });
+
+  it("换代后确认被禁用并引导丢弃，新总结确认后重新生成恢复", async () => {
+    let stage: "blocked" | "discarded" | "unlocked" = "blocked";
+    let jobSubmitted = false;
+    const pendingSummary: components["schemas"]["SummaryOut"] = {
+      id: "55555555-5555-4555-8555-555555555555",
+      record_id: RECORD_ID,
+      version_no: 2,
+      transcript_source_version: 2,
+      topic: "进程调度（第二代）",
+      abstract: "转写修订后的第二代总结摘要。",
+      sections: [{ heading: "调度", points: ["调度器按修订后的策略选择进程。"] }],
+      status: "GENERATED",
+      model: "qwen-plus",
+      prompt_version: "summary-v1",
+      user_feedback: null,
+      created_at: "2026-08-24T13:00:00.000000Z",
+    };
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          status: stage === "unlocked" ? "COMPLETED" : "SUMMARY_PENDING",
+        }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () => {
+        if (stage === "blocked") {
+          return HttpResponse.json({
+            items: [draftKnowledgePoint()],
+            action_required: "NONE",
+            active_job_id: null,
+            blocked_reason: "SUMMARY_SUPERSEDED",
+            input_mode: null,
+          });
+        }
+        if (stage === "discarded") {
+          return HttpResponse.json({
+            items: [],
+            action_required: "NONE",
+            active_job_id: null,
+            blocked_reason: "SUMMARY_SUPERSEDED",
+            input_mode: null,
+          });
+        }
+        return HttpResponse.json({
+          items: [],
+          action_required: "GENERATE",
+          active_job_id: jobSubmitted ? JOB_ID : null,
+          blocked_reason: null,
+          input_mode: null,
+        });
+      }),
+      http.get(SUMMARY_URL, () =>
+        HttpResponse.json({
+          summary: pendingSummary,
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: null,
+        }),
+      ),
+      http.post(SUMMARY_CONFIRM_URL, () => {
+        stage = "unlocked";
+        return HttpResponse.json({
+          summary: { ...pendingSummary, status: "CONFIRMED" },
+          record_status: "COMPLETED",
+        });
+      }),
+      http.post(`${DETAIL_URL}/knowledge-point-batches/${JOB_ID}/discards`, () => {
+        stage = "discarded";
+        return HttpResponse.json({
+          items: [],
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: "SUMMARY_SUPERSEDED",
+          input_mode: null,
+        });
+      }),
+      http.post(KNOWLEDGE_POINT_JOBS_URL, () => {
+        jobSubmitted = true;
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    expect(
+      await screen.findByRole("heading", { name: "候选知识点" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认保存" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "丢弃整批" })).toBeEnabled();
+    expect(
+      screen.getByRole("heading", { name: "转写已修改，总结需要更新" }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "丢弃整批" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "丢弃整批" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "候选知识点" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "转写已修改，总结需要更新" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "生成候选知识点" }),
+    ).not.toBeInTheDocument();
+
+    // 在 Summary 页签确认新总结后，回到知识点页签重新生成入口已恢复
+    fireEvent.click(screen.getByRole("button", { name: "前往 Summary" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认总结" }));
+    fireEvent.click(screen.getByRole("tab", { name: "知识点" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "生成候选知识点" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "正在生成知识点" }),
+    ).toBeVisible();
+  });
+
   it("丢弃整批候选回到可重新生成的初始态", async () => {
     let discarded = false;
     server.use(
