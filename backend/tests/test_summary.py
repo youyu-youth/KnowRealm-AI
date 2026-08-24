@@ -7,11 +7,12 @@ from typing import cast
 
 import aiosqlite
 import httpx
+import openai
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.agents.llm import SummaryModel, SummaryModelResult
+from app.agents.llm import OpenAiCompatibleSummaryModel, SummaryModel, SummaryModelResult
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
 from app.schemas.summary import SummaryContent, SummarySection
@@ -804,3 +805,112 @@ async def test_worker_restart_recovery_keeps_previous_version_for_interrupted_ad
     assert summary.json()["summary"]["status"] == "GENERATED"
     assert confirmed.status_code == 200
     assert confirmed.json()["record_status"] == "COMPLETED"
+
+
+@pytest.mark.anyio
+async def test_json_schema_rejection_falls_back_to_json_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    received: dict[str, str] = {}
+
+    class SchemaRunnable:
+        async def ainvoke(self, prompt: str) -> object:
+            received["json_schema"] = prompt
+            response = httpx.Response(
+                400,
+                request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"),
+                json={"error": {"message": "This response_format type is unavailable now"}},
+            )
+            raise openai.BadRequestError(
+                "400 Bad Request",
+                response=response,  # pyright: ignore[reportArgumentType]
+                body=None,
+            )
+
+    class RawMessage:
+        usage_metadata = {"total_tokens": 7}
+
+    class JsonModeRunnable:
+        async def ainvoke(self, prompt: str) -> object:
+            received["json_mode"] = prompt
+            return {
+                "raw": RawMessage(),
+                "parsed": valid_summary().model_dump(),
+                "parsing_error": None,
+            }
+
+    class StubChatOpenAI:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def with_structured_output(
+            self,
+            _schema: object,
+            *,
+            method: str,
+            include_raw: bool,
+            **kwargs: object,
+        ) -> object:
+            assert include_raw is True
+            if method == "json_schema":
+                assert kwargs.get("strict") is True
+                return SchemaRunnable()
+            assert method == "json_mode"
+            assert kwargs.get("max_tokens") == 8192
+            return JsonModeRunnable()
+
+    monkeypatch.setattr("app.agents.llm.ChatOpenAI", StubChatOpenAI)
+    result = await OpenAiCompatibleSummaryModel().generate(
+        base_url="https://api.deepseek.com",
+        api_key="sk-test",
+        model="deepseek-v4-flash",
+        prompt="总结指令",
+    )
+
+    content = SummaryContent.model_validate(result.output)
+    assert content.topic == "操作系统中的进程调度"
+    assert received["json_schema"] == "总结指令"
+    assert "JSON Schema" in received["json_mode"]
+    assert received["json_mode"] != "总结指令"
+    assert result.token_usage == {"total_tokens": 7}
+
+
+@pytest.mark.anyio
+async def test_provider_auth_error_does_not_fall_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    class AuthErrorRunnable:
+        async def ainvoke(self, _prompt: str) -> object:
+            response = httpx.Response(
+                401,
+                request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"),
+                json={"error": {"message": "Authentication Fails"}},
+            )
+            raise openai.AuthenticationError(
+                "401",
+                response=response,  # pyright: ignore[reportArgumentType]
+                body=None,
+            )
+
+    class StubChatOpenAI:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def with_structured_output(
+            self,
+            _schema: object,
+            *,
+            method: str,
+            include_raw: bool,
+            **_kwargs: object,
+        ) -> object:
+            assert method == "json_schema"
+            assert include_raw is True
+            return AuthErrorRunnable()
+
+    monkeypatch.setattr("app.agents.llm.ChatOpenAI", StubChatOpenAI)
+    with pytest.raises(Exception, match="401"):
+        await OpenAiCompatibleSummaryModel().generate(
+            base_url="https://api.deepseek.com",
+            api_key="sk-wrong",
+            model="deepseek-v4-flash",
+            prompt="总结指令",
+        )
