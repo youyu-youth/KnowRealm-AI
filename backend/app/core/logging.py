@@ -1,5 +1,6 @@
 import logging
 import sys
+from pathlib import Path
 
 from loguru import logger
 
@@ -13,18 +14,33 @@ class InterceptHandler(logging.Handler):
         logger.opt(exception=record.exc_info).log(level, record.getMessage())
 
 
-def setup_logging() -> None:
+def setup_logging(data_dir: Path | None = None) -> None:
     handler = InterceptHandler()
     logging.basicConfig(handlers=[handler], level=0, force=True)
     for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "sqlalchemy.engine"):
-        logging.getLogger(name).handlers = [handler]
-    logger.configure(
-        handlers=[
+        named = logging.getLogger(name)
+        named.handlers = [handler]
+        named.propagate = False
+    sinks = [
+        {
+            "sink": sys.stderr,
+            "level": "INFO",
+            "backtrace": False,
+            "diagnose": False,
+        }
+    ]
+    if data_dir is not None:
+        logs_dir = data_dir / "logs"
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        sinks.append(
             {
-                "sink": sys.stderr,
+                "sink": logs_dir / "backend.log",
                 "level": "INFO",
                 "backtrace": False,
                 "diagnose": False,
+                "rotation": "10 MB",
+                "retention": 5,
+                "encoding": "utf-8",
             }
-        ]
-    )
+        )
+    logger.configure(handlers=sinks)

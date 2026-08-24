@@ -26,7 +26,7 @@ def main() -> None:
     if not args.ffmpeg.is_file():
         parser.error("随包 ffmpeg 不存在")
 
-    setup_logging()
+    setup_logging(data_dir=args.data_dir)
     app = create_app(
         data_dir=args.data_dir,
         launch_token=args.token,

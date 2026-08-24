@@ -90,7 +90,13 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
             return Err(Box::new(error));
         }
     };
-    thread::spawn(move || while event_rx.recv().is_ok() {});
+    thread::spawn(move || {
+        while let Ok(event) = event_rx.recv() {
+            if let CommandEvent::Stderr(bytes) = event {
+                let _ = io::stderr().write_all(&bytes);
+            }
+        }
+    });
 
     if let Err(error) = wait_until_ready(port, &token) {
         stop_process(child);
@@ -136,6 +142,9 @@ fn wait_for_bound_port(events: &mpsc::Receiver<CommandEvent>) -> io::Result<u16>
                 return Ok(port);
             }
             Ok(CommandEvent::Error(error)) => return Err(io::Error::other(error)),
+            Ok(CommandEvent::Stderr(bytes)) => {
+                let _ = io::stderr().write_all(&bytes);
+            }
             Ok(CommandEvent::Terminated(payload)) => {
                 return Err(io::Error::other(format!(
                     "sidecar terminated before startup: {:?}",
