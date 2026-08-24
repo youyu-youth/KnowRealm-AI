@@ -402,6 +402,11 @@ describe("学习记录详情", () => {
     );
     renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
 
+    expect(
+      await screen.findByText(
+        "生成时将向当前 Provider 发送课程上下文、已确认总结与 Transcript；超长 Transcript 仅发送总结。",
+      ),
+    ).toBeVisible();
     fireEvent.click(
       await screen.findByRole("button", { name: "同意并继续生成" }),
     );

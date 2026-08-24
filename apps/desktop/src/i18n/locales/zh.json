@@ -413,7 +413,7 @@
           },
           "CONSENT_REQUIRED": {
             "title": "需要外部 AI 处理同意",
-            "description": "请在 Summary 中确认外发范围后再生成知识点。"
+            "description": "生成时将向当前 Provider 发送课程上下文、已确认总结与 Transcript；超长 Transcript 仅发送总结。"
           }
         }
       },

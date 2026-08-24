@@ -11,7 +11,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.agents.llm import SummaryModelResult
+from app.agents.llm import StructuredModelResult
 from app.db.migrations import run_migrations
 from app.main import create_app
 from app.schemas.knowledge_point import KnowledgePointBatch
@@ -74,7 +74,7 @@ class FakeKnowledgePointModel:
         api_key: str,
         model: str,
         prompt: str,
-    ) -> SummaryModelResult:
+    ) -> StructuredModelResult:
         assert base_url == "https://example.com/v1"
         assert api_key == "sk-test"
         assert model == "qwen-plus"
@@ -82,7 +82,7 @@ class FakeKnowledgePointModel:
         self.started.set()
         await self.release.wait()
         output = self.sequence.pop(0) if self.sequence is not None else self.output
-        return SummaryModelResult(output=output, token_usage={"total_tokens": 21})
+        return StructuredModelResult(output=output, token_usage={"total_tokens": 21})
 
 
 @asynccontextmanager

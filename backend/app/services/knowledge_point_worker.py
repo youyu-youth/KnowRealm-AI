@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.agents.llm import (
     KnowledgePointCallResult,
     KnowledgePointModel,
-    SummaryGenerationError,
+    StructuredGenerationError,
     call_knowledge_point_model,
 )
 from app.models.base import utcnow
@@ -180,7 +180,7 @@ class KnowledgePointWorker:
                 prompt=build_knowledge_point_prompt(claimed),
                 prompt_version=PROMPT_VERSION,
             )
-        except SummaryGenerationError as exc:
+        except StructuredGenerationError as exc:
             await self._fail(claimed, exc.code)
         except Exception:
             await self._fail(claimed, "INTERNAL_ERROR")
