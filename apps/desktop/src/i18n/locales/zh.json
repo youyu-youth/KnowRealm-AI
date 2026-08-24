@@ -262,13 +262,14 @@
       "tabs": {
         "summary": "Summary",
         "transcript": "Transcript",
-        "highlights": "Highlights",
-        "notes": "Notes",
-        "flashcards": "Flashcards",
-        "quiz": "Quiz"
+        "knowledgePoints": "知识点",
+        "quiz": "习题",
+        "review": "复习",
+        "todo": "Todo",
+        "askAi": "Ask AI"
       },
-      "assetsUnavailable": "其余学习资产尚未接入",
-      "assetsCompleted": "总结已确认，已满足解锁条件；其余学习资产尚未接入",
+      "assetsUnavailable": "习题、复习、Todo 与 Ask AI 尚未接入",
+      "assetsCompleted": "总结已确认；习题、复习、Todo 与 Ask AI 尚未接入",
       "jobs": {
         "title": "处理进度",
         "progress": "{{value}}%",
@@ -278,7 +279,8 @@
           "AUDIO_TRANSCODE": "本地音频规范化与切片",
           "ASR": "腾讯云语音识别",
           "DOCUMENT_PARSE": "本地文档正文提取",
-          "SUMMARY": "AI 总结"
+          "SUMMARY": "AI 总结",
+          "KNOWLEDGE_EXTRACTION": "知识点提取"
         },
         "status": {
           "PENDING": "等待中",
@@ -373,6 +375,46 @@
         "adjustFeedbackPlaceholder": "告诉 AI 怎么改，例如：更简洁、侧重某个主题（1～1000 字）",
         "submitAdjustment": "提交调整",
         "cancelAdjustment": "取消调整"
+      },
+      "knowledgePoints": {
+        "loading": "正在读取知识点",
+        "readErrorTitle": "知识点暂时无法读取",
+        "emptyTitle": "提取这条记录的知识点",
+        "emptyDescription": "AI 会根据课程上下文、已确认总结与 Transcript 生成一批候选，并保存到本地。",
+        "generate": "生成候选知识点",
+        "processingTitle": "正在生成知识点",
+        "processingDescription": "候选生成后会自动保存；你可以离开页面，稍后再回来。",
+        "failedTitle": "知识点生成失败",
+        "failedDescription": "已确认总结与 Transcript 仍保留，可以手动重试同一任务。",
+        "retry": "重试生成",
+        "openSummary": "前往 Summary",
+        "summaryOnly": "基于总结提取",
+        "candidatesTitle": "候选知识点",
+        "savedLocally": "已保存到本地 · 待确认",
+        "importance": "重要度 {{value}} / 5",
+        "tagsLabel": "知识点标签",
+        "blocked": {
+          "SUMMARY_NOT_CONFIRMED": {
+            "title": "请先确认总结",
+            "description": "知识点只从当前已确认的总结生成。返回 Summary 完成确认后即可继续。"
+          },
+          "COURSE_ARCHIVED": {
+            "title": "课程已归档",
+            "description": "归档课程不能再发起知识点生成。"
+          },
+          "TRANSCRIPT_NOT_READY": {
+            "title": "Transcript 尚未准备好",
+            "description": "正文生成完成后才能提取知识点。"
+          },
+          "PROVIDER_NOT_CONFIGURED": {
+            "title": "请先配置 AI Provider",
+            "description": "知识点生成复用 Summary 中的 Provider 配置。"
+          },
+          "CONSENT_REQUIRED": {
+            "title": "需要外部 AI 处理同意",
+            "description": "请在 Summary 中确认外发范围后再生成知识点。"
+          }
+        }
       },
       "failedTitle": "学习记录处理失败",
       "failedDescription": "当前暂无可用恢复操作。"

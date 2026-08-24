@@ -14,6 +14,7 @@ import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { ProcessingJobOut, RecordOut } from "@/features/records/api/types";
 import { DeleteRecordDialog } from "@/features/records/components/DeleteRecordDialog";
+import { KnowledgePointPanel } from "@/features/records/components/KnowledgePointPanel";
 import {
   captureTypeLabelKeys,
   formatRecordDuration,
@@ -28,16 +29,16 @@ import { ApiError } from "@/services/http/client";
 
 type RecordDetailPageProps = {
   recordId: string;
-  tab: "summary" | "transcript";
-  onTabChange: (tab: "summary" | "transcript") => void;
+  tab: "summary" | "transcript" | "knowledge-points";
+  onTabChange: (tab: "summary" | "transcript" | "knowledge-points") => void;
   onDeleted: (courseId: string | null) => void | Promise<void>;
 };
 
 const unavailableTabs = [
-  { value: "highlights", labelKey: "record.detail.tabs.highlights" },
-  { value: "notes", labelKey: "record.detail.tabs.notes" },
-  { value: "flashcards", labelKey: "record.detail.tabs.flashcards" },
   { value: "quiz", labelKey: "record.detail.tabs.quiz" },
+  { value: "review", labelKey: "record.detail.tabs.review" },
+  { value: "todo", labelKey: "record.detail.tabs.todo" },
+  { value: "ask-ai", labelKey: "record.detail.tabs.askAi" },
 ] as const;
 
 const processingStatuses = new Set([
@@ -83,6 +84,9 @@ export function RecordDetailPage({
       queryClient.invalidateQueries({ queryKey: recordKeys.detail(recordId) }),
       queryClient.invalidateQueries({ queryKey: recordKeys.jobs(recordId) }),
       queryClient.invalidateQueries({ queryKey: recordKeys.summary(recordId) }),
+      queryClient.invalidateQueries({
+        queryKey: recordKeys.knowledgePoints(recordId),
+      }),
       queryClient.invalidateQueries({
         queryKey: recordKeys.transcript(recordId),
       }),
@@ -230,7 +234,13 @@ export function RecordDetailPage({
       <Tabs
         value={tab}
         onValueChange={(value) => {
-          if (value === "summary" || value === "transcript") onTabChange(value);
+          if (
+            value === "summary" ||
+            value === "transcript" ||
+            value === "knowledge-points"
+          ) {
+            onTabChange(value);
+          }
         }}
         className="mt-8 min-w-0"
       >
@@ -243,6 +253,9 @@ export function RecordDetailPage({
           </TabsTrigger>
           <TabsTrigger value="transcript">
             {t("record.detail.tabs.transcript")}
+          </TabsTrigger>
+          <TabsTrigger value="knowledge-points">
+            {t("record.detail.tabs.knowledgePoints")}
           </TabsTrigger>
           {unavailableTabs.map(({ value, labelKey }) => (
             <TabsTrigger
@@ -411,6 +424,16 @@ export function RecordDetailPage({
               </p>
             </section>
           )}
+        </TabsContent>
+
+        <TabsContent
+          value="knowledge-points"
+          className="border-border mt-6 min-w-0 border-t pt-8"
+        >
+          <KnowledgePointPanel
+            recordId={recordId}
+            onOpenSummary={() => onTabChange("summary")}
+          />
         </TabsContent>
       </Tabs>
     </section>
@@ -682,10 +705,10 @@ function SummaryReviewActions({
     },
     onError: onChanged,
   });
-  const mutationError = (confirm.error ?? adjust.error) ?? null;
+  const mutationError = confirm.error ?? adjust.error ?? null;
 
   return (
-    <section className="border-border mt-8 max-w-reading border-t pt-6">
+    <section className="border-border max-w-reading mt-8 border-t pt-6">
       <div className="flex flex-wrap gap-2">
         <Button
           disabled={confirm.isPending || adjust.isPending}

@@ -7,11 +7,12 @@ from uuid import uuid4
 import openai
 from langchain_openai import ChatOpenAI
 from loguru import logger
-from pydantic import SecretStr, ValidationError
+from pydantic import BaseModel, SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.base import utcnow
 from app.models.document import LlmCallLog
+from app.schemas.knowledge_point import KnowledgePointBatch
 from app.schemas.summary import SummaryContent
 from app.services.local_config import LlmProviderConfig
 
@@ -29,7 +30,14 @@ class SummaryCallResult:
     latency_ms: int
 
 
-class SummaryModel(Protocol):
+@dataclass(frozen=True)
+class KnowledgePointCallResult:
+    content: KnowledgePointBatch
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
+class StructuredModel(Protocol):
     async def generate(
         self,
         *,
@@ -40,13 +48,20 @@ class SummaryModel(Protocol):
     ) -> SummaryModelResult: ...
 
 
+SummaryModel = StructuredModel
+KnowledgePointModel = StructuredModel
+
+
 class SummaryGenerationError(Exception):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
 
 
-class OpenAiCompatibleSummaryModel:
+class _OpenAiCompatibleStructuredModel:
+    def __init__(self, output_schema: type[BaseModel]) -> None:
+        self._output_schema = output_schema
+
     async def generate(
         self,
         *,
@@ -66,7 +81,7 @@ class OpenAiCompatibleSummaryModel:
                 http_async_client=http_client,
             )
             structured = llm.with_structured_output(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-                SummaryContent,
+                self._output_schema,
                 method="json_schema",
                 include_raw=True,
                 strict=True,
@@ -87,18 +102,18 @@ class OpenAiCompatibleSummaryModel:
         finally:
             await http_client.aclose()
 
-    @staticmethod
     async def _generate_json_mode(
+        self,
         llm: ChatOpenAI,
         prompt: str,
     ) -> dict[str, object]:
         structured = llm.with_structured_output(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
-            SummaryContent,
+            self._output_schema,
             method="json_mode",
             include_raw=True,
             max_tokens=8192,
         )
-        schema_text = json.dumps(SummaryContent.model_json_schema(), ensure_ascii=False)
+        schema_text = json.dumps(self._output_schema.model_json_schema(), ensure_ascii=False)
         # json_object 端点依赖提示词携带结构；8192 为推理模型（思考与正文同计费）留足输出空间
         json_prompt = (
             prompt
@@ -108,33 +123,52 @@ class OpenAiCompatibleSummaryModel:
         return cast(dict[str, object], await structured.ainvoke(json_prompt))
 
 
-async def call_summary_model(
+class OpenAiCompatibleSummaryModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self) -> None:
+        super().__init__(SummaryContent)
+
+
+class OpenAiCompatibleKnowledgePointModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self) -> None:
+        super().__init__(KnowledgePointBatch)
+
+
+@dataclass(frozen=True)
+class _StructuredCallResult:
+    content: BaseModel
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
+async def _call_structured_model(
     *,
     session_factory: async_sessionmaker[AsyncSession],
-    summary_model: SummaryModel,
+    structured_model: StructuredModel,
     provider: LlmProviderConfig,
     prompt: str,
     graph_name: str,
     graph_node: str,
     prompt_version: str,
-) -> SummaryCallResult:
+    output_schema: type[BaseModel],
+    invalid_output_code: str,
+) -> _StructuredCallResult:
     request_id = str(uuid4())
     started = perf_counter()
     token_usage: dict[str, object] = {}
     error_code: str | None = None
-    content: SummaryContent | None = None
+    content: BaseModel | None = None
     failure: SummaryGenerationError | None = None
     try:
-        result = await summary_model.generate(
+        result = await structured_model.generate(
             base_url=provider.base_url,
             api_key=provider.api_key,
             model=provider.model,
             prompt=prompt,
         )
         token_usage = result.token_usage
-        content = SummaryContent.model_validate(result.output)
+        content = output_schema.model_validate(result.output)
     except ValidationError as exc:
-        error_code = "INVALID_STRUCTURED_OUTPUT"
+        error_code = invalid_output_code
         failure = SummaryGenerationError(error_code)
         failure.__cause__ = exc
     except Exception as exc:
@@ -166,5 +200,59 @@ async def call_summary_model(
     if failure is not None:
         raise failure
     if content is None:
-        raise SummaryGenerationError("INVALID_STRUCTURED_OUTPUT")
-    return SummaryCallResult(content=content, token_usage=token_usage, latency_ms=latency_ms)
+        raise SummaryGenerationError(invalid_output_code)
+    return _StructuredCallResult(content, token_usage, latency_ms)
+
+
+async def call_summary_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    summary_model: SummaryModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    graph_name: str,
+    graph_node: str,
+    prompt_version: str,
+) -> SummaryCallResult:
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=summary_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name=graph_name,
+        graph_node=graph_node,
+        prompt_version=prompt_version,
+        output_schema=SummaryContent,
+        invalid_output_code="INVALID_STRUCTURED_OUTPUT",
+    )
+    return SummaryCallResult(
+        content=cast(SummaryContent, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )
+
+
+async def call_knowledge_point_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    knowledge_point_model: KnowledgePointModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> KnowledgePointCallResult:
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=knowledge_point_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="knowledge-points",
+        graph_node="generate",
+        prompt_version=prompt_version,
+        output_schema=KnowledgePointBatch,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+    )
+    return KnowledgePointCallResult(
+        content=cast(KnowledgePointBatch, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )

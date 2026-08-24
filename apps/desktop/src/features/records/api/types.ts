@@ -9,3 +9,6 @@ export type RecordJobsOut = components["schemas"]["RecordJobsOut"];
 export type ProcessingJobOut = components["schemas"]["ProcessingJobOut"];
 export type SummaryReadOut = components["schemas"]["SummaryReadOut"];
 export type SummaryOut = components["schemas"]["SummaryOut"];
+export type KnowledgePointReadOut =
+  components["schemas"]["KnowledgePointReadOut"];
+export type KnowledgePointOut = components["schemas"]["KnowledgePointOut"];

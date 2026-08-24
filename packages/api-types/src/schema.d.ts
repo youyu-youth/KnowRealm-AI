@@ -265,6 +265,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/knowledge-point-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Knowledge Point Job */
+        post: operations["submit_knowledge_point_job_api_records__record_id__knowledge_point_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/records/{record_id}/knowledge-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Knowledge Points */
+        get: operations["get_knowledge_points_api_records__record_id__knowledge_points_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/summaries": {
         parameters: {
             query?: never;
@@ -658,6 +692,65 @@ export interface components {
             granted_at: string | null;
         };
         /**
+         * KnowledgePointAction
+         * @enum {string}
+         */
+        KnowledgePointAction: "NONE" | "GENERATE" | "CONFIRM" | "RETRY";
+        /**
+         * KnowledgePointBlockedReason
+         * @enum {string}
+         */
+        KnowledgePointBlockedReason: "SUMMARY_NOT_CONFIRMED" | "COURSE_ARCHIVED" | "TRANSCRIPT_NOT_READY" | "PROVIDER_NOT_CONFIGURED" | "CONSENT_REQUIRED";
+        /**
+         * KnowledgePointGenerationStatus
+         * @enum {string}
+         */
+        KnowledgePointGenerationStatus: "DRAFT" | "ACTIVE" | "SUPERSEDED";
+        /**
+         * KnowledgePointInputMode
+         * @enum {string}
+         */
+        KnowledgePointInputMode: "FULL_TRANSCRIPT" | "SUMMARY_ONLY";
+        /** KnowledgePointJobAccepted */
+        KnowledgePointJobAccepted: {
+            /** Job Id */
+            job_id: string;
+        };
+        /** KnowledgePointOut */
+        KnowledgePointOut: {
+            /** Batch Id */
+            batch_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Detail */
+            detail: string;
+            /** Generated From Summary Id */
+            generated_from_summary_id: string | null;
+            generation_status: components["schemas"]["KnowledgePointGenerationStatus"];
+            /** Id */
+            id: string;
+            /** Importance */
+            importance: number;
+            /** Name */
+            name: string;
+            /** Record Id */
+            record_id: string;
+            /** Tags */
+            tags: string[];
+            /** Updated At */
+            updated_at: string;
+        };
+        /** KnowledgePointReadOut */
+        KnowledgePointReadOut: {
+            action_required: components["schemas"]["KnowledgePointAction"];
+            /** Active Job Id */
+            active_job_id?: string | null;
+            blocked_reason?: components["schemas"]["KnowledgePointBlockedReason"] | null;
+            input_mode?: components["schemas"]["KnowledgePointInputMode"] | null;
+            /** Items */
+            items: components["schemas"]["KnowledgePointOut"][];
+        };
+        /**
          * LearningContext
          * @enum {string}
          */
@@ -717,7 +810,7 @@ export interface components {
          * ProcessingJobErrorCode
          * @enum {string}
          */
-        ProcessingJobErrorCode: "AUDIO_TRANSCODE_FAILED" | "ASR_AUTH_FAILED" | "ASR_QUOTA_EXHAUSTED" | "ASR_TEMPORARY_UNAVAILABLE" | "ASR_SUBMIT_UNKNOWN" | "ASR_RECOGNITION_FAILED" | "ASR_TASK_EXPIRED" | "NO_SPEECH_DETECTED" | "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "SQLITE_BUSY" | "WORKER_INTERRUPTED" | "INTERNAL_ERROR" | "INVALID_STRUCTURED_OUTPUT" | "PROVIDER_REQUEST_FAILED" | "STALE_TRANSCRIPT";
+        ProcessingJobErrorCode: "AUDIO_TRANSCODE_FAILED" | "ASR_AUTH_FAILED" | "ASR_QUOTA_EXHAUSTED" | "ASR_TEMPORARY_UNAVAILABLE" | "ASR_SUBMIT_UNKNOWN" | "ASR_RECOGNITION_FAILED" | "ASR_TASK_EXPIRED" | "NO_SPEECH_DETECTED" | "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "SQLITE_BUSY" | "WORKER_INTERRUPTED" | "INTERNAL_ERROR" | "INVALID_STRUCTURED_OUTPUT" | "PROVIDER_REQUEST_FAILED" | "STALE_TRANSCRIPT" | "LLM_OUTPUT_INVALID";
         /** ProcessingJobOut */
         ProcessingJobOut: {
             /** Attempts */
@@ -761,7 +854,7 @@ export interface components {
          * ProcessingJobType
          * @enum {string}
          */
-        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY";
+        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION";
         /**
          * ProcessingJobWaitingReason
          * @enum {string}
@@ -2491,6 +2584,144 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_knowledge_point_job_api_records__record_id__knowledge_point_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePointJobAccepted"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_knowledge_points_api_records__record_id__knowledge_points_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePointReadOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

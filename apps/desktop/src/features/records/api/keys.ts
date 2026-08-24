@@ -7,6 +7,8 @@ export const recordKeys = {
   jobs: (recordId: string) => [...recordKeys.all, "jobs", recordId] as const,
   summary: (recordId: string) =>
     [...recordKeys.all, "summary", recordId] as const,
+  knowledgePoints: (recordId: string) =>
+    [...recordKeys.all, "knowledge-points", recordId] as const,
   courseList: (courseId: string) =>
     [...recordKeys.all, "course", courseId] as const,
 };

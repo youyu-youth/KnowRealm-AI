@@ -31,6 +31,8 @@ const SUMMARY_URL = `${DETAIL_URL}/summary`;
 const SUMMARY_JOBS_URL = `${DETAIL_URL}/summary-jobs`;
 const SUMMARY_ADJUST_URL = `${DETAIL_URL}/summary-adjustments`;
 const SUMMARY_CONFIRM_URL = `${DETAIL_URL}/summary-confirmations`;
+const KNOWLEDGE_POINTS_URL = `${DETAIL_URL}/knowledge-points`;
+const KNOWLEDGE_POINT_JOBS_URL = `${DETAIL_URL}/knowledge-point-jobs`;
 const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
 const LLM_TEST_URL = `${LLM_PROVIDER_URL}/tests`;
 const LLM_CONSENT_URL = `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/llm`;
@@ -217,7 +219,8 @@ describe("学习记录详情", () => {
       "true",
     );
     expect(screen.getByRole("tab", { name: "Transcript" })).toBeEnabled();
-    for (const label of ["Highlights", "Notes", "Flashcards", "Quiz"]) {
+    expect(screen.getByRole("tab", { name: "知识点" })).toBeEnabled();
+    for (const label of ["习题", "复习", "Todo", "Ask AI"]) {
       expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
         "aria-disabled",
         "true",
@@ -227,7 +230,9 @@ describe("学习记录详情", () => {
         "-1",
       );
     }
-    expect(screen.getByText("其余学习资产尚未接入")).toBeInTheDocument();
+    expect(
+      screen.getByText("习题、复习、Todo 与 Ask AI 尚未接入"),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/示例总结/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Transcript" }));
     expect(await screen.findByText("正文尚未生成")).toBeVisible();
@@ -299,6 +304,144 @@ describe("学习记录详情", () => {
     expect(
       await screen.findByRole("heading", { name: "同意外部 AI 处理" }),
     ).toBeInTheDocument();
+  });
+
+  it("知识点页签按 PRD 命名落地，未确认总结时引导返回 Summary", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items: [],
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: "SUMMARY_NOT_CONFIRMED",
+          input_mode: null,
+        }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    expect(
+      await screen.findByRole("heading", { name: "请先确认总结" }),
+    ).toBeVisible();
+    expect(screen.getByRole("tab", { name: "知识点" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    for (const label of ["习题", "复习", "Todo", "Ask AI"]) {
+      expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+    }
+    fireEvent.click(screen.getByRole("button", { name: "前往 Summary" }));
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+  });
+
+  it("生成后轮询展示持久化候选，并明示超长输入基于总结提取", async () => {
+    let submittedAt = 0;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () => {
+        const done = submittedAt > 0 && Date.now() - submittedAt > 700;
+        return HttpResponse.json({
+          items: done
+            ? [
+                {
+                  id: "44444444-4444-4444-8444-444444444444",
+                  record_id: RECORD_ID,
+                  batch_id: JOB_ID,
+                  name: "进程调度",
+                  detail: "调度器从就绪队列中选择下一个运行的进程。",
+                  tags: ["操作系统", "调度"],
+                  importance: 5,
+                  generated_from_summary_id:
+                    "55555555-5555-4555-8555-555555555555",
+                  generation_status: "DRAFT",
+                  created_at: "2026-08-24T12:00:00.000000Z",
+                  updated_at: "2026-08-24T12:00:00.000000Z",
+                },
+              ]
+            : [],
+          action_required: done ? "CONFIRM" : submittedAt ? "NONE" : "GENERATE",
+          active_job_id: !done && submittedAt ? JOB_ID : null,
+          blocked_reason: null,
+          input_mode: "SUMMARY_ONLY",
+        });
+      }),
+      http.post(KNOWLEDGE_POINT_JOBS_URL, () => {
+        submittedAt = Date.now();
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "生成候选知识点" }),
+    );
+    expect(await screen.findByText("正在生成知识点")).toBeVisible();
+    expect(
+      await screen.findByRole(
+        "heading",
+        { name: "进程调度" },
+        { timeout: 4_000 },
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("基于总结提取")).toBeVisible();
+    expect(screen.getByText("重要度 5 / 5")).toBeVisible();
+    expect(screen.getByText("#操作系统")).toBeVisible();
+  });
+
+  it("知识点生成失败可手动重试", async () => {
+    let retried = false;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items: retried
+            ? [
+                {
+                  id: "44444444-4444-4444-8444-444444444444",
+                  record_id: RECORD_ID,
+                  batch_id: JOB_ID,
+                  name: "重试后的候选",
+                  detail: "候选已由复用的失败任务生成。",
+                  tags: [],
+                  importance: 3,
+                  generated_from_summary_id:
+                    "55555555-5555-4555-8555-555555555555",
+                  generation_status: "DRAFT",
+                  created_at: "2026-08-24T12:00:00.000000Z",
+                  updated_at: "2026-08-24T12:00:00.000000Z",
+                },
+              ]
+            : [],
+          action_required: retried ? "CONFIRM" : "RETRY",
+          active_job_id: null,
+          blocked_reason: null,
+          input_mode: "FULL_TRANSCRIPT",
+        }),
+      ),
+      http.post(KNOWLEDGE_POINT_JOBS_URL, () => {
+        retried = true;
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "重试生成" }));
+    expect(
+      await screen.findByRole("heading", { name: "重试后的候选" }),
+    ).toBeVisible();
   });
 
   it("单独同意后可明确生成，错过 Worker 事件仍通过条件轮询恢复", async () => {
@@ -562,9 +705,7 @@ describe("学习记录详情", () => {
     const feedbackInput = screen.getByRole("textbox", {
       name: "调整反馈",
     });
-    expect(
-      screen.getByRole("button", { name: "提交调整" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "提交调整" })).toBeDisabled();
     fireEvent.change(feedbackInput, {
       target: { value: "请更简洁，侧重调度策略" },
     });
@@ -587,13 +728,15 @@ describe("学习记录详情", () => {
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "确认总结" }));
     await waitFor(() => expect(confirmBody).toEqual({ summary_id: secondId }));
+    expect(await screen.findByText("AI 总结 · 已确认")).toBeInTheDocument();
     expect(
-      await screen.findByText("AI 总结 · 已确认"),
+      screen.getByText("总结已确认；习题、复习、Todo 与 Ask AI 尚未接入"),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("总结已确认，已满足解锁条件；其余学习资产尚未接入"),
-    ).toBeInTheDocument();
-    for (const label of ["Highlights", "Notes", "Flashcards", "Quiz"]) {
+    expect(screen.getByRole("tab", { name: "知识点" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    for (const label of ["习题", "复习", "Todo", "Ask AI"]) {
       expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
         "aria-disabled",
         "true",
@@ -669,14 +812,13 @@ describe("学习记录详情", () => {
       await screen.findByRole("heading", { name: "进程调度" }),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "调整总结" }));
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "调整反馈" }),
-      { target: { value: "更简洁" } },
-    );
+    fireEvent.change(screen.getByRole("textbox", { name: "调整反馈" }), {
+      target: { value: "更简洁" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "提交调整" }));
-    expect(
-      await screen.findByRole("alert", { name: "" }),
-    ).toHaveTextContent("总结已是旧版本，请刷新后重试");
+    expect(await screen.findByRole("alert", { name: "" })).toHaveTextContent(
+      "总结已是旧版本，请刷新后重试",
+    );
     expect(
       await screen.findByRole("heading", { name: "进程调度（修订版）" }),
     ).toBeInTheDocument();

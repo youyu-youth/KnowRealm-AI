@@ -588,6 +588,187 @@
         "title": "ExternalProcessingConsentOut",
         "type": "object"
       },
+      "KnowledgePointAction": {
+        "enum": [
+          "NONE",
+          "GENERATE",
+          "CONFIRM",
+          "RETRY"
+        ],
+        "title": "KnowledgePointAction",
+        "type": "string"
+      },
+      "KnowledgePointBlockedReason": {
+        "enum": [
+          "SUMMARY_NOT_CONFIRMED",
+          "COURSE_ARCHIVED",
+          "TRANSCRIPT_NOT_READY",
+          "PROVIDER_NOT_CONFIGURED",
+          "CONSENT_REQUIRED"
+        ],
+        "title": "KnowledgePointBlockedReason",
+        "type": "string"
+      },
+      "KnowledgePointGenerationStatus": {
+        "enum": [
+          "DRAFT",
+          "ACTIVE",
+          "SUPERSEDED"
+        ],
+        "title": "KnowledgePointGenerationStatus",
+        "type": "string"
+      },
+      "KnowledgePointInputMode": {
+        "enum": [
+          "FULL_TRANSCRIPT",
+          "SUMMARY_ONLY"
+        ],
+        "title": "KnowledgePointInputMode",
+        "type": "string"
+      },
+      "KnowledgePointJobAccepted": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "KnowledgePointJobAccepted",
+        "type": "object"
+      },
+      "KnowledgePointOut": {
+        "properties": {
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "generated_from_summary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated From Summary Id"
+          },
+          "generation_status": {
+            "$ref": "#/components/schemas/KnowledgePointGenerationStatus"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "importance": {
+            "title": "Importance",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "record_id",
+          "batch_id",
+          "name",
+          "detail",
+          "tags",
+          "importance",
+          "generated_from_summary_id",
+          "generation_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "KnowledgePointOut",
+        "type": "object"
+      },
+      "KnowledgePointReadOut": {
+        "properties": {
+          "action_required": {
+            "$ref": "#/components/schemas/KnowledgePointAction"
+          },
+          "active_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Job Id"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgePointBlockedReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgePointInputMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgePointOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "action_required"
+        ],
+        "title": "KnowledgePointReadOut",
+        "type": "object"
+      },
       "LearningContext": {
         "enum": [
           "SCHOOL",
@@ -757,7 +938,8 @@
           "INTERNAL_ERROR",
           "INVALID_STRUCTURED_OUTPUT",
           "PROVIDER_REQUEST_FAILED",
-          "STALE_TRANSCRIPT"
+          "STALE_TRANSCRIPT",
+          "LLM_OUTPUT_INVALID"
         ],
         "title": "ProcessingJobErrorCode",
         "type": "string"
@@ -883,7 +1065,8 @@
           "AUDIO_TRANSCODE",
           "ASR",
           "DOCUMENT_PARSE",
-          "SUMMARY"
+          "SUMMARY",
+          "KNOWLEDGE_EXTRACTION"
         ],
         "title": "ProcessingJobType",
         "type": "string"
@@ -3679,6 +3862,204 @@
         "summary": "Get Record Jobs",
         "tags": [
           "records"
+        ]
+      }
+    },
+    "/api/records/{record_id}/knowledge-point-jobs": {
+      "post": {
+        "operationId": "submit_knowledge_point_job_api_records__record_id__knowledge_point_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgePointJobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Submit Knowledge Point Job",
+        "tags": [
+          "knowledge-points"
+        ]
+      }
+    },
+    "/api/records/{record_id}/knowledge-points": {
+      "get": {
+        "operationId": "get_knowledge_points_api_records__record_id__knowledge_points_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgePointReadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Knowledge Points",
+        "tags": [
+          "knowledge-points"
         ]
       }
     },

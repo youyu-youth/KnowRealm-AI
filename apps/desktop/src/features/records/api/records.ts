@@ -1,5 +1,6 @@
 import type {
   ProcessingJobOut,
+  KnowledgePointReadOut,
   RecordJobsOut,
   RecordOut,
   SummaryReadOut,
@@ -22,6 +23,15 @@ export const recordApi = {
     apiFetch<RecordJobsOut>(`/api/records/${recordId}/jobs`),
   getSummary: (recordId: string) =>
     apiFetch<SummaryReadOut>(`/api/records/${recordId}/summary`),
+  getKnowledgePoints: (recordId: string) =>
+    apiFetch<KnowledgePointReadOut>(
+      `/api/records/${recordId}/knowledge-points`,
+    ),
+  submitKnowledgePoints: (recordId: string) =>
+    apiFetch<components["schemas"]["KnowledgePointJobAccepted"]>(
+      `/api/records/${recordId}/knowledge-point-jobs`,
+      { method: "POST" },
+    ),
   submitSummary: (recordId: string) =>
     apiFetch<components["schemas"]["SummaryJobAccepted"]>(
       `/api/records/${recordId}/summary-jobs`,

@@ -11,13 +11,19 @@ from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from loguru import logger
 
-from app.agents.llm import OpenAiCompatibleSummaryModel, SummaryModel
+from app.agents.llm import (
+    KnowledgePointModel,
+    OpenAiCompatibleKnowledgePointModel,
+    OpenAiCompatibleSummaryModel,
+    SummaryModel,
+)
 from app.agents.summary import build_summary_graph
 from app.api import (
     audio_imports,
     capture_batches,
     courses,
     document_imports,
+    knowledge_points,
     processing_jobs,
     recording_sessions,
     records,
@@ -34,6 +40,7 @@ from app.services.audio_worker import AudioWorker
 from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import DocumentWorker
+from app.services.knowledge_point_worker import KnowledgePointWorker
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_worker import SummaryWorker
 from app.services.tencent_asr_client import TencentAsrClient
@@ -52,6 +59,7 @@ def create_app(
     ffmpeg_path: Path | None = None,
     asr_client: TencentAsrClient | None = None,
     summary_model: SummaryModel | None = None,
+    knowledge_point_model: KnowledgePointModel | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
     record_notifier = RecordInvalidationNotifier()
@@ -70,6 +78,9 @@ def create_app(
             app.state.data_dir = resolved_data_dir
             app.state.ffmpeg_path = ffmpeg_path.resolve() if ffmpeg_path is not None else None
             app.state.summary_model = summary_model or OpenAiCompatibleSummaryModel()
+            app.state.knowledge_point_model = (
+                knowledge_point_model or OpenAiCompatibleKnowledgePointModel()
+            )
 
             async def cleanup_course_tombstones() -> None:
                 try:
@@ -124,9 +135,19 @@ def create_app(
                 await summary_worker.recover_interrupted()
                 summary_worker_task = asyncio.create_task(summary_worker.run())
                 app.state.summary_worker_task = summary_worker_task
+                knowledge_point_worker = KnowledgePointWorker(
+                    session_factory,
+                    resolved_data_dir,
+                    app.state.knowledge_point_model,
+                    record_notifier,
+                )
+                await knowledge_point_worker.recover_interrupted()
+                knowledge_point_worker_task = asyncio.create_task(knowledge_point_worker.run())
+                app.state.knowledge_point_worker_task = knowledge_point_worker_task
                 try:
                     yield
                 finally:
+                    knowledge_point_worker.stop()
                     summary_worker.stop()
                     if audio_worker is not None:
                         audio_worker.stop()
@@ -135,16 +156,19 @@ def create_app(
                         await summary_worker_task
                     finally:
                         try:
-                            if audio_worker_task is not None:
-                                await audio_worker_task
+                            await knowledge_point_worker_task
                         finally:
                             try:
-                                await document_worker_task
+                                if audio_worker_task is not None:
+                                    await audio_worker_task
                             finally:
                                 try:
-                                    await cleanup_task
+                                    await document_worker_task
                                 finally:
-                                    await engine.dispose()
+                                    try:
+                                        await cleanup_task
+                                    finally:
+                                        await engine.dispose()
         finally:
             data_directory_lock.release()
 
@@ -168,6 +192,7 @@ def create_app(
     app.include_router(capture_batches.router)
     app.include_router(settings.router)
     app.include_router(summaries.router)
+    app.include_router(knowledge_points.router)
     app.include_router(today.router)
     app.include_router(document_imports.router)
     app.include_router(processing_jobs.router)
