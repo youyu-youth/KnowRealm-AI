@@ -6,6 +6,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
+from app.schemas.quiz import QUIZ_COUNT_CHOICES
+
 
 @dataclass(frozen=True)
 class TencentAsrConfig:
@@ -121,6 +123,24 @@ def llm_consent(data_dir: Path) -> tuple[str | None, bool]:
         and fingerprint == llm_provider_fingerprint(provider)
     )
     return (granted_at if isinstance(granted_at, str) else None), current
+
+
+DEFAULT_QUIZ_LAST_COUNT = 5
+
+
+def load_quiz_last_count(data_dir: Path) -> int:
+    value = _read_json(data_dir / "config" / "settings.json").get("quiz_last_count")
+    return (
+        value if isinstance(value, int) and value in QUIZ_COUNT_CHOICES else DEFAULT_QUIZ_LAST_COUNT
+    )
+
+
+def save_quiz_last_count(data_dir: Path, count: int) -> int:
+    path = data_dir / "config" / "settings.json"
+    settings = _read_json(path)
+    settings["quiz_last_count"] = count
+    _write_json(path, settings)
+    return count
 
 
 def grant_llm_consent(data_dir: Path) -> str | None:

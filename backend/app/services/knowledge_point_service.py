@@ -396,14 +396,8 @@ class KnowledgePointService:
                         raise HTTPException(status_code=404, detail="知识点批次不存在")
                     return await KnowledgePointService.read(session, data_dir, record_id)
                 summary_id = draft_rows[0].generated_from_summary_id
-                summary = (
-                    await session.get(AiSummary, summary_id) if summary_id else None
-                )
-                course = (
-                    await session.get(Course, record.course_id)
-                    if record.course_id
-                    else None
-                )
+                summary = await session.get(AiSummary, summary_id) if summary_id else None
+                course = await session.get(Course, record.course_id) if record.course_id else None
                 if (
                     summary is None
                     or summary.deleted_at is not None

@@ -30,4 +30,15 @@ export const settingsApi = {
       "/api/settings/external-processing-consents/llm",
       { method: "POST" },
     ),
+  getPreferences: () =>
+    apiFetch<components["schemas"]["PreferencesOut"]>(
+      "/api/settings/preferences",
+    ),
+  updatePreferences: (
+    body: components["schemas"]["PreferencesUpdate"],
+  ) =>
+    apiFetch<components["schemas"]["PreferencesOut"]>(
+      "/api/settings/preferences",
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
 };

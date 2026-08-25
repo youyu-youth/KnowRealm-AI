@@ -14,7 +14,9 @@ from loguru import logger
 from app.agents.llm import (
     KnowledgePointModel,
     OpenAiCompatibleKnowledgePointModel,
+    OpenAiCompatibleQuizModel,
     OpenAiCompatibleSummaryModel,
+    QuizModel,
     SummaryModel,
 )
 from app.agents.summary import build_summary_graph
@@ -25,6 +27,7 @@ from app.api import (
     document_imports,
     knowledge_points,
     processing_jobs,
+    quizzes,
     recording_sessions,
     records,
     settings,
@@ -41,6 +44,7 @@ from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import DocumentWorker
 from app.services.knowledge_point_worker import KnowledgePointWorker
+from app.services.quiz_worker import QuizWorker
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_worker import SummaryWorker
 from app.services.tencent_asr_client import TencentAsrClient
@@ -60,6 +64,7 @@ def create_app(
     asr_client: TencentAsrClient | None = None,
     summary_model: SummaryModel | None = None,
     knowledge_point_model: KnowledgePointModel | None = None,
+    quiz_model: QuizModel | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
     record_notifier = RecordInvalidationNotifier()
@@ -81,6 +86,7 @@ def create_app(
             app.state.knowledge_point_model = (
                 knowledge_point_model or OpenAiCompatibleKnowledgePointModel()
             )
+            app.state.quiz_model = quiz_model or OpenAiCompatibleQuizModel()
 
             async def cleanup_course_tombstones() -> None:
                 try:
@@ -144,31 +150,44 @@ def create_app(
                 await knowledge_point_worker.recover_interrupted()
                 knowledge_point_worker_task = asyncio.create_task(knowledge_point_worker.run())
                 app.state.knowledge_point_worker_task = knowledge_point_worker_task
+                quiz_worker = QuizWorker(
+                    session_factory,
+                    resolved_data_dir,
+                    app.state.quiz_model,
+                    record_notifier,
+                )
+                await quiz_worker.recover_interrupted()
+                quiz_worker_task = asyncio.create_task(quiz_worker.run())
+                app.state.quiz_worker_task = quiz_worker_task
                 try:
                     yield
                 finally:
+                    quiz_worker.stop()
                     knowledge_point_worker.stop()
                     summary_worker.stop()
                     if audio_worker is not None:
                         audio_worker.stop()
                     document_worker.stop()
                     try:
-                        await summary_worker_task
+                        await quiz_worker_task
                     finally:
                         try:
-                            await knowledge_point_worker_task
+                            await summary_worker_task
                         finally:
                             try:
-                                if audio_worker_task is not None:
-                                    await audio_worker_task
+                                await knowledge_point_worker_task
                             finally:
                                 try:
-                                    await document_worker_task
+                                    if audio_worker_task is not None:
+                                        await audio_worker_task
                                 finally:
                                     try:
-                                        await cleanup_task
+                                        await document_worker_task
                                     finally:
-                                        await engine.dispose()
+                                        try:
+                                            await cleanup_task
+                                        finally:
+                                            await engine.dispose()
         finally:
             data_directory_lock.release()
 
@@ -193,6 +212,7 @@ def create_app(
     app.include_router(settings.router)
     app.include_router(summaries.router)
     app.include_router(knowledge_points.router)
+    app.include_router(quizzes.router)
     app.include_router(today.router)
     app.include_router(document_imports.router)
     app.include_router(processing_jobs.router)

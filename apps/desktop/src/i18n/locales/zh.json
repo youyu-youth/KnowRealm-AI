@@ -268,8 +268,8 @@
         "todo": "Todo",
         "askAi": "Ask AI"
       },
-      "assetsUnavailable": "习题、复习、Todo 与 Ask AI 尚未接入",
-      "assetsCompleted": "总结已确认；习题、复习、Todo 与 Ask AI 尚未接入",
+      "assetsUnavailable": "确认总结后解锁习题；复习、Todo 与 Ask AI 尚未接入",
+      "assetsCompleted": "复习、Todo 与 Ask AI 尚未接入",
       "jobs": {
         "title": "处理进度",
         "progress": "{{value}}%",
@@ -280,7 +280,8 @@
           "ASR": "腾讯云语音识别",
           "DOCUMENT_PARSE": "本地文档正文提取",
           "SUMMARY": "AI 总结",
-          "KNOWLEDGE_EXTRACTION": "知识点提取"
+          "KNOWLEDGE_EXTRACTION": "知识点提取",
+          "QUIZ_GENERATION": "习题生成"
         },
         "status": {
           "PENDING": "等待中",
@@ -444,7 +445,70 @@
         }
       },
       "failedTitle": "学习记录处理失败",
-      "failedDescription": "当前暂无可用恢复操作。"
+      "failedDescription": "当前暂无可用恢复操作。",
+      "quiz": {
+        "loading": "正在读取习题",
+        "readErrorTitle": "习题暂时无法读取",
+        "processingTitle": "正在生成习题候选",
+        "processingDescription": "题目基于已确认的总结生成，完成后可在此审阅。",
+        "emptyTitle": "还没有习题",
+        "emptyDescription": "基于已确认的总结生成一批练习题，生成后先审阅再使用。",
+        "generate": "生成习题",
+        "failedTitle": "上次生成没有成功",
+        "failedDescription": "模型输出不符合要求或调用失败，可以重新生成。",
+        "retry": "重新生成",
+        "candidatesTitle": "习题候选（只读）",
+        "candidatesHint": "共 {{count}} 题，基于当前已确认的总结生成",
+        "discardBatch": "丢弃本批候选",
+        "discardConfirm": "确认丢弃",
+        "discardCancel": "取消",
+        "openSummary": "查看总结",
+        "grantConsent": "同意外部 AI 处理",
+        "blocked": {
+          "SUMMARY_NOT_CONFIRMED": {
+            "title": "先确认总结，再生成习题",
+            "description": "习题基于已确认的总结生成；当前记录的总结还没有确认。"
+          },
+          "SUMMARY_SUPERSEDED": {
+            "title": "总结已更新，请重新生成习题",
+            "description": "候选基于旧版总结生成；转写或总结调整后，请丢弃当前候选再重新生成。"
+          },
+          "COURSE_ARCHIVED": {
+            "title": "课程已归档",
+            "description": "归档课程不能生成新的习题。"
+          },
+          "PROVIDER_NOT_CONFIGURED": {
+            "title": "先配置 AI Provider",
+            "description": "生成习题需要在总结页配置可用的 AI Provider。"
+          },
+          "CONSENT_REQUIRED": {
+            "title": "需要同意外部 AI 处理",
+            "description": "生成习题会把已确认的总结发送给你配置的 AI 服务。"
+          }
+        },
+        "type": {
+          "MULTIPLE_CHOICE": "选择题",
+          "TRUE_FALSE": "判断题",
+          "SHORT_ANSWER": "简答题"
+        },
+        "difficulty": {
+          "EASY": "容易",
+          "MEDIUM": "中等",
+          "HARD": "困难"
+        },
+        "correctAnswer": "正确答案：{{answer}}",
+        "referenceAnswer": "参考答案：{{answer}}",
+        "explanation": "解析：{{detail}}",
+        "dialog": {
+          "title": "生成习题",
+          "description": "选择题型组合与总题数；题目数量会严格按所选档位生成。",
+          "questionTypes": "题型（可多选）",
+          "totalCount": "总题数",
+          "typeRequired": "至少选择一种题型",
+          "submit": "开始生成",
+          "cancel": "取消"
+        }
+      }
     }
   },
   "route": {

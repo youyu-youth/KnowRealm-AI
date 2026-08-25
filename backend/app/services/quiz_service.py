@@ -1,0 +1,377 @@
+import asyncio
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import cast
+from uuid import uuid4
+
+from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.base import utcnow
+from app.models.course import Course
+from app.models.document import AiSummary, ProcessingJob, Quiz
+from app.models.record import Record
+from app.schemas.course import CourseStatus
+from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
+from app.schemas.quiz import (
+    QuizAction,
+    QuizAnswerResult,
+    QuizBlockedReason,
+    QuizDifficulty,
+    QuizGenerateRequest,
+    QuizGenerationStatus,
+    QuizOut,
+    QuizQuestionType,
+    QuizReadOut,
+)
+from app.services.local_config import (
+    LlmProviderConfig,
+    llm_consent,
+    llm_provider_fingerprint,
+    load_llm_provider,
+)
+
+
+def _quiz_out(item: Quiz) -> QuizOut:
+    user_answer: int | str | None = None
+    if item.user_answer_json is not None:
+        raw_answer = cast(object, json.loads(item.user_answer_json))
+        user_answer = raw_answer if isinstance(raw_answer, (int, str)) else None
+    return QuizOut(
+        id=item.id,
+        record_id=item.record_id,
+        batch_id=item.batch_id,
+        generated_from_summary_id=item.generated_from_summary_id,
+        generation_status=QuizGenerationStatus(item.generation_status),
+        question_type=QuizQuestionType(item.question_type),
+        stem=item.stem,
+        options=cast(list[str], json.loads(item.options_json)),
+        correct_answer=cast(int | str, json.loads(item.correct_answer_json)),
+        explanation=item.explanation,
+        difficulty=QuizDifficulty(item.difficulty),
+        user_answer=user_answer,
+        answer_result=QuizAnswerResult(item.answer_result) if item.answer_result else None,
+        answered_at=item.answered_at,
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
+
+
+async def _provider_state(data_dir: Path) -> tuple[LlmProviderConfig | None, bool]:
+    provider, consent = await asyncio.gather(
+        asyncio.to_thread(load_llm_provider, data_dir),
+        asyncio.to_thread(llm_consent, data_dir),
+    )
+    return provider, consent[1]
+
+
+async def _get_record(session: AsyncSession, record_id: str) -> Record:
+    record = (
+        await session.scalars(
+            select(Record).where(Record.id == record_id, Record.deleted_at.is_(None))
+        )
+    ).one_or_none()
+    if record is None:
+        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+    return record
+
+
+async def _confirmed_summary(session: AsyncSession, record_id: str) -> AiSummary | None:
+    return (
+        await session.scalars(
+            select(AiSummary)
+            .where(
+                AiSummary.record_id == record_id,
+                AiSummary.status == AiSummaryStatus.CONFIRMED,
+                AiSummary.deleted_at.is_(None),
+            )
+            .order_by(AiSummary.version_no.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+
+
+async def _superseded_summary_exists(session: AsyncSession, record_id: str) -> bool:
+    return (
+        await session.scalars(
+            select(AiSummary.id)
+            .where(
+                AiSummary.record_id == record_id,
+                AiSummary.status == AiSummaryStatus.SUPERSEDED,
+                AiSummary.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+    ).first() is not None
+
+
+async def _active_job(session: AsyncSession, record_id: str) -> ProcessingJob | None:
+    return (
+        await session.scalars(
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.record_id == record_id,
+                ProcessingJob.job_type == ProcessingJobType.QUIZ_GENERATION,
+                ProcessingJob.status.in_(
+                    (ProcessingJobStatus.PENDING, ProcessingJobStatus.RUNNING)
+                ),
+            )
+            .order_by(ProcessingJob.created_at.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+
+
+async def _failed_job(session: AsyncSession, record_id: str) -> ProcessingJob | None:
+    return (
+        await session.scalars(
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.record_id == record_id,
+                ProcessingJob.job_type == ProcessingJobType.QUIZ_GENERATION,
+                ProcessingJob.status == ProcessingJobStatus.FAILED,
+            )
+            .order_by(ProcessingJob.created_at.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+
+
+async def _visible_items(session: AsyncSession, record_id: str) -> list[Quiz]:
+    return list(
+        (
+            await session.scalars(
+                select(Quiz)
+                .where(
+                    Quiz.record_id == record_id,
+                    Quiz.deleted_at.is_(None),
+                    Quiz.generation_status.in_(
+                        (QuizGenerationStatus.DRAFT, QuizGenerationStatus.ACTIVE)
+                    ),
+                )
+                .order_by(Quiz.created_at)
+            )
+        ).all()
+    )
+
+
+class QuizService:
+    @staticmethod
+    async def read(session: AsyncSession, data_dir: Path, record_id: str) -> QuizReadOut:
+        record = await _get_record(session, record_id)
+        items = await _visible_items(session, record_id)
+        output = [_quiz_out(item) for item in items]
+        active = await _active_job(session, record_id)
+        if active is not None:
+            return QuizReadOut(
+                items=output,
+                action_required=QuizAction.NONE,
+                active_job_id=active.id,
+            )
+
+        course = await session.get(Course, record.course_id) if record.course_id else None
+        if course is None or course.deleted_at is not None or course.status != CourseStatus.ACTIVE:
+            return QuizReadOut(
+                items=output,
+                action_required=QuizAction.NONE,
+                blocked_reason=QuizBlockedReason.COURSE_ARCHIVED,
+            )
+        summary = await _confirmed_summary(session, record_id)
+        if summary is None:
+            blocked = (
+                QuizBlockedReason.SUMMARY_SUPERSEDED
+                if await _superseded_summary_exists(session, record_id)
+                else QuizBlockedReason.SUMMARY_NOT_CONFIRMED
+            )
+            return QuizReadOut(
+                items=output,
+                action_required=QuizAction.NONE,
+                blocked_reason=blocked,
+            )
+        draft = next(
+            (item for item in items if item.generation_status == QuizGenerationStatus.DRAFT),
+            None,
+        )
+        if draft is not None and draft.batch_id is not None:
+            if draft.generated_from_summary_id != summary.id:
+                # 候选绑定的总结已被换代（转写编辑后确认了新总结），候选基于旧内容，
+                # 读端点直接给出换代原因，引导丢弃后基于新总结重新生成。
+                return QuizReadOut(
+                    items=output,
+                    action_required=QuizAction.NONE,
+                    blocked_reason=QuizBlockedReason.SUMMARY_SUPERSEDED,
+                )
+            return QuizReadOut(
+                items=output,
+                action_required=QuizAction.ADOPT,
+            )
+        provider, consent_current = await _provider_state(data_dir)
+        if provider is None or not provider.api_key:
+            return QuizReadOut(
+                items=output,
+                action_required=QuizAction.NONE,
+                blocked_reason=QuizBlockedReason.PROVIDER_NOT_CONFIGURED,
+            )
+        if not consent_current:
+            return QuizReadOut(
+                items=output,
+                action_required=QuizAction.NONE,
+                blocked_reason=QuizBlockedReason.CONSENT_REQUIRED,
+            )
+        failed = await _failed_job(session, record_id)
+        return QuizReadOut(
+            items=output,
+            action_required=(QuizAction.RETRY if failed is not None else QuizAction.GENERATE),
+        )
+
+    @staticmethod
+    async def submit(
+        session: AsyncSession,
+        data_dir: Path,
+        record_id: str,
+        body: QuizGenerateRequest,
+    ) -> str:
+        provider, consent_current = await _provider_state(data_dir)
+        if provider is None or not provider.api_key:
+            raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+        if not consent_current:
+            raise HTTPException(status_code=409, detail="请先同意外部 AI 处理")
+        try:
+            async with session.begin():
+                record = await _get_record(session, record_id)
+                course = await session.get(Course, record.course_id) if record.course_id else None
+                if (
+                    course is None
+                    or course.deleted_at is not None
+                    or course.status != CourseStatus.ACTIVE
+                ):
+                    raise HTTPException(status_code=409, detail="归档课程不能生成习题")
+                summary = await _confirmed_summary(session, record_id)
+                if summary is None:
+                    raise HTTPException(status_code=409, detail="请先确认当前总结")
+                if await _active_job(session, record_id) is not None:
+                    raise HTTPException(status_code=409, detail="已有进行中的习题生成任务")
+                if any(
+                    item.generation_status == QuizGenerationStatus.DRAFT
+                    for item in await _visible_items(session, record_id)
+                ):
+                    raise HTTPException(status_code=409, detail="已有待审阅的习题候选")
+
+                input_json = _job_input_json(provider, summary, body)
+                failed = await _failed_job(session, record_id)
+                if failed is not None:
+                    previous = cast(dict[str, object], json.loads(failed.input_json))
+                    if previous.get("generated_from_summary_id") == summary.id:
+                        _requeue_failed(failed, input_json)
+                        return failed.id
+
+                now = utcnow()
+                job = _new_job(record_id, input_json=input_json, now=now)
+                session.add(job)
+                await session.flush()
+                return job.id
+        except IntegrityError:
+            raise HTTPException(
+                status_code=409,
+                detail="已有进行中的习题生成任务",
+            ) from None
+
+    @staticmethod
+    async def discard(
+        session: AsyncSession,
+        data_dir: Path,
+        record_id: str,
+        batch_id: str,
+    ) -> QuizReadOut:
+        async with session.begin():
+            await _get_record(session, record_id)
+            rows = await _batch_rows(session, record_id, batch_id, QuizGenerationStatus.DRAFT)
+            if not rows:
+                adopted = await _batch_rows(
+                    session, record_id, batch_id, QuizGenerationStatus.ACTIVE
+                )
+                if adopted:
+                    raise HTTPException(status_code=409, detail="批次已采用，不能丢弃")
+                raise HTTPException(status_code=404, detail="习题批次不存在")
+            now = utcnow()
+            for row in rows:
+                row.deleted_at = now
+                row.updated_at = now
+        return await QuizService.read(session, data_dir, record_id)
+
+
+async def _batch_rows(
+    session: AsyncSession,
+    record_id: str,
+    batch_id: str,
+    status: QuizGenerationStatus,
+) -> list[Quiz]:
+    return list(
+        (
+            await session.scalars(
+                select(Quiz)
+                .where(
+                    Quiz.record_id == record_id,
+                    Quiz.batch_id == batch_id,
+                    Quiz.generation_status == status,
+                    Quiz.deleted_at.is_(None),
+                )
+                .order_by(Quiz.created_at)
+            )
+        ).all()
+    )
+
+
+def _job_input_json(
+    provider: LlmProviderConfig,
+    summary: AiSummary,
+    body: QuizGenerateRequest,
+) -> str:
+    return json.dumps(
+        {
+            "provider_fingerprint": llm_provider_fingerprint(provider),
+            "generated_from_summary_id": summary.id,
+            "question_types": [item.value for item in body.question_types],
+            "total_count": body.total_count,
+        },
+        separators=(",", ":"),
+    )
+
+
+def _requeue_failed(job: ProcessingJob, input_json: str) -> None:
+    job.input_json = input_json
+    job.status = ProcessingJobStatus.PENDING
+    job.progress = 0
+    job.attempts = 0
+    job.next_run_at = None
+    job.result_json = None
+    job.error_code = None
+    job.error_message = None
+    job.started_at = None
+    job.finished_at = None
+    job.updated_at = utcnow()
+
+
+def _new_job(record_id: str, *, input_json: str, now: datetime) -> ProcessingJob:
+    return ProcessingJob(
+        id=str(uuid4()),
+        record_id=record_id,
+        job_type=ProcessingJobType.QUIZ_GENERATION,
+        status=ProcessingJobStatus.PENDING,
+        progress=0,
+        attempts=0,
+        max_attempts=1,
+        next_run_at=None,
+        waiting_reason=None,
+        input_json=input_json,
+        result_json=None,
+        error_code=None,
+        error_message=None,
+        started_at=None,
+        finished_at=None,
+        created_at=now,
+        updated_at=now,
+    )

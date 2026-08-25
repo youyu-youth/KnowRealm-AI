@@ -126,6 +126,32 @@ class KnowledgePoint(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
 
 
+class Quiz(Base):
+    __tablename__ = "quizzes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    record_id: Mapped[str] = mapped_column(String(36), ForeignKey("records.id", ondelete="CASCADE"))
+    batch_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("processing_jobs.id", ondelete="SET NULL"), default=None
+    )
+    generated_from_summary_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("ai_summaries.id", ondelete="SET NULL"), default=None
+    )
+    generation_status: Mapped[str] = mapped_column(String(20))
+    question_type: Mapped[str] = mapped_column(String(20))
+    stem: Mapped[str] = mapped_column(String(500))
+    options_json: Mapped[str] = mapped_column(Text)
+    correct_answer_json: Mapped[str] = mapped_column(Text)
+    explanation: Mapped[str] = mapped_column(Text)
+    difficulty: Mapped[str] = mapped_column(String(10))
+    user_answer_json: Mapped[str | None] = mapped_column(Text, default=None)
+    answer_result: Mapped[str | None] = mapped_column(String(10), default=None)
+    answered_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+
+
 class LlmCallLog(Base):
     __tablename__ = "llm_call_logs"
 

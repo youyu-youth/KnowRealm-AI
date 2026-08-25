@@ -962,6 +962,38 @@
         "title": "LlmProviderUpdate",
         "type": "object"
       },
+      "PreferencesOut": {
+        "properties": {
+          "quiz_last_count": {
+            "title": "Quiz Last Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quiz_last_count"
+        ],
+        "title": "PreferencesOut",
+        "type": "object"
+      },
+      "PreferencesUpdate": {
+        "properties": {
+          "quiz_last_count": {
+            "description": "习题生成档位偏好",
+            "enum": [
+              3,
+              5,
+              10
+            ],
+            "title": "Quiz Last Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quiz_last_count"
+        ],
+        "title": "PreferencesUpdate",
+        "type": "object"
+      },
       "ProcessingJobErrorCode": {
         "enum": [
           "AUDIO_TRANSCODE_FAILED",
@@ -1111,7 +1143,8 @@
           "ASR",
           "DOCUMENT_PARSE",
           "SUMMARY",
-          "KNOWLEDGE_EXTRACTION"
+          "KNOWLEDGE_EXTRACTION",
+          "QUIZ_GENERATION"
         ],
         "title": "ProcessingJobType",
         "type": "string"
@@ -1124,6 +1157,288 @@
         ],
         "title": "ProcessingJobWaitingReason",
         "type": "string"
+      },
+      "QuizAction": {
+        "enum": [
+          "NONE",
+          "GENERATE",
+          "ADOPT",
+          "RETRY"
+        ],
+        "title": "QuizAction",
+        "type": "string"
+      },
+      "QuizAnswerResult": {
+        "enum": [
+          "CORRECT",
+          "WRONG"
+        ],
+        "title": "QuizAnswerResult",
+        "type": "string"
+      },
+      "QuizBlockedReason": {
+        "enum": [
+          "SUMMARY_NOT_CONFIRMED",
+          "SUMMARY_SUPERSEDED",
+          "COURSE_ARCHIVED",
+          "PROVIDER_NOT_CONFIGURED",
+          "CONSENT_REQUIRED"
+        ],
+        "title": "QuizBlockedReason",
+        "type": "string"
+      },
+      "QuizDifficulty": {
+        "enum": [
+          "EASY",
+          "MEDIUM",
+          "HARD"
+        ],
+        "title": "QuizDifficulty",
+        "type": "string"
+      },
+      "QuizGenerateRequest": {
+        "properties": {
+          "question_types": {
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestionType"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Question Types",
+            "type": "array"
+          },
+          "total_count": {
+            "description": "总题数档位",
+            "enum": [
+              3,
+              5,
+              10
+            ],
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question_types",
+          "total_count"
+        ],
+        "title": "QuizGenerateRequest",
+        "type": "object"
+      },
+      "QuizGenerationStatus": {
+        "enum": [
+          "DRAFT",
+          "ACTIVE",
+          "SUPERSEDED"
+        ],
+        "title": "QuizGenerationStatus",
+        "type": "string"
+      },
+      "QuizJobAccepted": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "QuizJobAccepted",
+        "type": "object"
+      },
+      "QuizOut": {
+        "properties": {
+          "answer_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuizAnswerResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "batch_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Batch Id"
+          },
+          "correct_answer": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Correct Answer"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/QuizDifficulty"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "generated_from_summary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated From Summary Id"
+          },
+          "generation_status": {
+            "$ref": "#/components/schemas/QuizGenerationStatus"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "question_type": {
+            "$ref": "#/components/schemas/QuizQuestionType"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "stem": {
+            "title": "Stem",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "user_answer": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Answer"
+          }
+        },
+        "required": [
+          "id",
+          "record_id",
+          "batch_id",
+          "generated_from_summary_id",
+          "generation_status",
+          "question_type",
+          "stem",
+          "options",
+          "correct_answer",
+          "explanation",
+          "difficulty",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "QuizOut",
+        "type": "object"
+      },
+      "QuizQuestionType": {
+        "enum": [
+          "MULTIPLE_CHOICE",
+          "TRUE_FALSE",
+          "SHORT_ANSWER"
+        ],
+        "title": "QuizQuestionType",
+        "type": "string"
+      },
+      "QuizReadOut": {
+        "properties": {
+          "action_required": {
+            "$ref": "#/components/schemas/QuizAction"
+          },
+          "active_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Job Id"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuizBlockedReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuizOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "action_required"
+        ],
+        "title": "QuizReadOut",
+        "type": "object"
       },
       "RecordJobsOut": {
         "properties": {
@@ -4669,6 +4984,323 @@
         ]
       }
     },
+    "/api/records/{record_id}/quiz-batches/{batch_id}/discards": {
+      "post": {
+        "operationId": "discard_quiz_batch_api_records__record_id__quiz_batches__batch_id__discards_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizReadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Discard Quiz Batch",
+        "tags": [
+          "quizzes"
+        ]
+      }
+    },
+    "/api/records/{record_id}/quiz-jobs": {
+      "post": {
+        "operationId": "submit_quiz_job_api_records__record_id__quiz_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizJobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Submit Quiz Job",
+        "tags": [
+          "quizzes"
+        ]
+      }
+    },
+    "/api/records/{record_id}/quizzes": {
+      "get": {
+        "operationId": "get_quizzes_api_records__record_id__quizzes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizReadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Quizzes",
+        "tags": [
+          "quizzes"
+        ]
+      }
+    },
     "/api/records/{record_id}/summaries": {
       "get": {
         "operationId": "list_summaries_api_records__record_id__summaries_get",
@@ -5790,6 +6422,172 @@
           }
         },
         "summary": "Grant Tencent Asr Consent",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/preferences": {
+      "get": {
+        "operationId": "get_preferences_api_settings_preferences_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Preferences",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_preferences_api_settings_preferences_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Put Preferences",
         "tags": [
           "settings"
         ]

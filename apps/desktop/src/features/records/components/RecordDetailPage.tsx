@@ -15,6 +15,7 @@ import { recordApi } from "@/features/records/api/records";
 import type { ProcessingJobOut, RecordOut } from "@/features/records/api/types";
 import { DeleteRecordDialog } from "@/features/records/components/DeleteRecordDialog";
 import { KnowledgePointPanel } from "@/features/records/components/KnowledgePointPanel";
+import { QuizPanel } from "@/features/records/components/QuizPanel";
 import {
   captureTypeLabelKeys,
   formatRecordDuration,
@@ -27,15 +28,16 @@ import { settingsKeys } from "@/features/settings/api/keys";
 import { todayKeys } from "@/features/today/api/keys";
 import { ApiError } from "@/services/http/client";
 
+type RecordDetailTab = "summary" | "transcript" | "knowledge-points" | "quiz";
+
 type RecordDetailPageProps = {
   recordId: string;
-  tab: "summary" | "transcript" | "knowledge-points";
-  onTabChange: (tab: "summary" | "transcript" | "knowledge-points") => void;
+  tab: RecordDetailTab;
+  onTabChange: (tab: RecordDetailTab) => void;
   onDeleted: (courseId: string | null) => void | Promise<void>;
 };
 
 const unavailableTabs = [
-  { value: "quiz", labelKey: "record.detail.tabs.quiz" },
   { value: "review", labelKey: "record.detail.tabs.review" },
   { value: "todo", labelKey: "record.detail.tabs.todo" },
   { value: "ask-ai", labelKey: "record.detail.tabs.askAi" },
@@ -86,6 +88,9 @@ export function RecordDetailPage({
       queryClient.invalidateQueries({ queryKey: recordKeys.summary(recordId) }),
       queryClient.invalidateQueries({
         queryKey: recordKeys.knowledgePoints(recordId),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: recordKeys.quizzes(recordId),
       }),
       queryClient.invalidateQueries({
         queryKey: recordKeys.transcript(recordId),
@@ -237,7 +242,8 @@ export function RecordDetailPage({
           if (
             value === "summary" ||
             value === "transcript" ||
-            value === "knowledge-points"
+            value === "knowledge-points" ||
+            value === "quiz"
           ) {
             onTabChange(value);
           }
@@ -256,6 +262,15 @@ export function RecordDetailPage({
           </TabsTrigger>
           <TabsTrigger value="knowledge-points">
             {t("record.detail.tabs.knowledgePoints")}
+          </TabsTrigger>
+          <TabsTrigger
+            value="quiz"
+            disabled={detail.status !== "COMPLETED"}
+            aria-describedby={
+              detail.status === "COMPLETED" ? undefined : "record-assets-unavailable"
+            }
+          >
+            {t("record.detail.tabs.quiz")}
           </TabsTrigger>
           {unavailableTabs.map(({ value, labelKey }) => (
             <TabsTrigger
@@ -434,6 +449,16 @@ export function RecordDetailPage({
           className="border-border mt-6 min-w-0 border-t pt-8"
         >
           <KnowledgePointPanel
+            recordId={recordId}
+            onOpenSummary={() => onTabChange("summary")}
+          />
+        </TabsContent>
+
+        <TabsContent
+          value="quiz"
+          className="border-border mt-6 min-w-0 border-t pt-8"
+        >
+          <QuizPanel
             recordId={recordId}
             onOpenSummary={() => onTabChange("summary")}
           />

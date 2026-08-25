@@ -12,3 +12,7 @@ export type SummaryOut = components["schemas"]["SummaryOut"];
 export type KnowledgePointReadOut =
   components["schemas"]["KnowledgePointReadOut"];
 export type KnowledgePointOut = components["schemas"]["KnowledgePointOut"];
+export type QuizReadOut = components["schemas"]["QuizReadOut"];
+export type QuizOut = components["schemas"]["QuizOut"];
+export type QuizGenerateRequest =
+  components["schemas"]["QuizGenerateRequest"];

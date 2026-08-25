@@ -11,6 +11,7 @@ class ProcessingJobType(StrEnum):
     DOCUMENT_PARSE = "DOCUMENT_PARSE"
     SUMMARY = "SUMMARY"
     KNOWLEDGE_EXTRACTION = "KNOWLEDGE_EXTRACTION"
+    QUIZ_GENERATION = "QUIZ_GENERATION"
 
 
 class ProcessingJobStatus(StrEnum):

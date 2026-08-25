@@ -11,6 +11,8 @@ from app.schemas.settings import (
     LlmProviderOut,
     LlmProviderStateOut,
     LlmProviderUpdate,
+    PreferencesOut,
+    PreferencesUpdate,
 )
 from app.schemas.summary import LlmProviderTestOut
 from app.services.local_config import (
@@ -19,7 +21,9 @@ from app.services.local_config import (
     grant_llm_consent,
     llm_consent,
     load_llm_provider,
+    load_quiz_last_count,
     save_llm_provider,
+    save_quiz_last_count,
 )
 
 router = APIRouter(
@@ -106,6 +110,20 @@ async def post_llm_consent(request: Request) -> LlmConsentOut:
     if granted_at is None:
         raise HTTPException(status_code=409, detail="请先配置包含密钥的 LLM Provider")
     return LlmConsentOut(granted_at=granted_at, current=True)
+
+
+@router.get("/preferences", response_model=PreferencesOut)
+async def get_preferences(request: Request) -> PreferencesOut:
+    quiz_last_count = await asyncio.to_thread(load_quiz_last_count, request.app.state.data_dir)
+    return PreferencesOut(quiz_last_count=quiz_last_count)
+
+
+@router.put("/preferences", response_model=PreferencesOut)
+async def put_preferences(body: PreferencesUpdate, request: Request) -> PreferencesOut:
+    quiz_last_count = await asyncio.to_thread(
+        save_quiz_last_count, request.app.state.data_dir, body.quiz_last_count
+    )
+    return PreferencesOut(quiz_last_count=quiz_last_count)
 
 
 @router.post("/providers/llm/tests", response_model=LlmProviderTestOut)

@@ -9,6 +9,8 @@ export const recordKeys = {
     [...recordKeys.all, "summary", recordId] as const,
   knowledgePoints: (recordId: string) =>
     [...recordKeys.all, "knowledge-points", recordId] as const,
+  quizzes: (recordId: string) =>
+    [...recordKeys.all, "quizzes", recordId] as const,
   courseList: (courseId: string) =>
     [...recordKeys.all, "course", courseId] as const,
 };

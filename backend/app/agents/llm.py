@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models.base import utcnow
 from app.models.document import LlmCallLog
 from app.schemas.knowledge_point import KnowledgePointBatch
+from app.schemas.quiz import QuizBatch
 from app.schemas.summary import SummaryContent
 from app.services.local_config import LlmProviderConfig
 
@@ -40,6 +41,13 @@ class KnowledgePointCallResult:
     latency_ms: int
 
 
+@dataclass(frozen=True)
+class QuizCallResult:
+    content: QuizBatch
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
 class StructuredModel(Protocol):
     async def generate(
         self,
@@ -53,6 +61,7 @@ class StructuredModel(Protocol):
 
 SummaryModel = StructuredModel
 KnowledgePointModel = StructuredModel
+QuizModel = StructuredModel
 
 
 class StructuredGenerationError(Exception):
@@ -137,6 +146,11 @@ class OpenAiCompatibleSummaryModel(_OpenAiCompatibleStructuredModel):
 class OpenAiCompatibleKnowledgePointModel(_OpenAiCompatibleStructuredModel):
     def __init__(self) -> None:
         super().__init__(KnowledgePointBatch)
+
+
+class OpenAiCompatibleQuizModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self) -> None:
+        super().__init__(QuizBatch)
 
 
 @dataclass(frozen=True)
@@ -259,6 +273,32 @@ async def call_knowledge_point_model(
     )
     return KnowledgePointCallResult(
         content=cast(KnowledgePointBatch, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )
+
+
+async def call_quiz_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    quiz_model: QuizModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> QuizCallResult:
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=quiz_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="quiz",
+        graph_node="generate",
+        prompt_version=prompt_version,
+        output_schema=QuizBatch,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+    )
+    return QuizCallResult(
+        content=cast(QuizBatch, result.content),
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
     )

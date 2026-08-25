@@ -1,6 +1,8 @@
 import type {
   ProcessingJobOut,
   KnowledgePointReadOut,
+  QuizGenerateRequest,
+  QuizReadOut,
   RecordJobsOut,
   RecordOut,
   SummaryReadOut,
@@ -69,6 +71,20 @@ export const recordApi = {
       `/api/records/${recordId}/knowledge-point-jobs`,
       { method: "POST" },
     ),
+  getQuizzes: (recordId: string) =>
+    apiFetch<QuizReadOut>(`/api/records/${recordId}/quizzes`),
+  submitQuizGeneration(recordId: string, body: QuizGenerateRequest) {
+    return apiFetch<components["schemas"]["QuizJobAccepted"]>(
+      `/api/records/${recordId}/quiz-jobs`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+  discardQuizBatch(recordId: string, batchId: string) {
+    return apiFetch<QuizReadOut>(
+      `/api/records/${recordId}/quiz-batches/${batchId}/discards`,
+      { method: "POST" },
+    );
+  },
   submitSummary: (recordId: string) =>
     apiFetch<components["schemas"]["SummaryJobAccepted"]>(
       `/api/records/${recordId}/summary-jobs`,

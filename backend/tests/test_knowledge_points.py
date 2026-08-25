@@ -225,9 +225,7 @@ async def wait_for_action(
 def draft_batch_id(payload: dict[str, object]) -> str:
     items = cast(list[dict[str, object]], payload["items"])
     batch_ids = {
-        cast(str, item["batch_id"])
-        for item in items
-        if item["generation_status"] == "DRAFT"
+        cast(str, item["batch_id"]) for item in items if item["generation_status"] == "DRAFT"
     }
     assert len(batch_ids) == 1
     return batch_ids.pop()
@@ -273,7 +271,7 @@ async def test_knowledge_point_migration_creates_table_and_active_job_guard(
             ).fetchall()
         }
 
-    assert version == (9,)
+    assert version == (10,)
     assert {
         "id",
         "record_id",
@@ -693,9 +691,7 @@ async def test_confirm_transaction_supersedes_old_ai_batch_and_keeps_manual_rows
             f"/api/records/{record_id}/knowledge-point-batches/{second_batch}/confirmations"
         )
         visible = await client.get(f"/api/records/{record_id}/knowledge-points")
-        traced = await client.get(
-            f"/api/records/{record_id}/knowledge-points?include=superseded"
-        )
+        traced = await client.get(f"/api/records/{record_id}/knowledge-points?include=superseded")
 
         async with app.state.session_factory() as session:
             event_rows = (
@@ -1020,15 +1016,11 @@ async def test_transcript_regeneration_full_chain(tmp_path: Path) -> None:
         )
         manual = await add_manual_item(client, record_id)
         stale_batch, _stale_payload = await generate_draft_batch(client, record_id)
-        saved_item_id = cast(
-            str, cast(list[dict[str, object]], first_payload["items"])[0]["id"]
-        )
+        saved_item_id = cast(str, cast(list[dict[str, object]], first_payload["items"])[0]["id"])
 
         transcript_edit = await edit_transcript(client, record_id)
         record_after_edit = await client.get(f"/api/records/{record_id}")
-        saved_during_change = await client.get(
-            f"/api/records/{record_id}/knowledge-points"
-        )
+        saved_during_change = await client.get(f"/api/records/{record_id}/knowledge-points")
         edit_during_change = await client.patch(
             f"/api/records/{record_id}/knowledge-points/{saved_item_id}",
             json={
@@ -1041,9 +1033,7 @@ async def test_transcript_regeneration_full_chain(tmp_path: Path) -> None:
         blocked_confirm = await client.post(
             f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/confirmations"
         )
-        blocked_submit = await client.post(
-            f"/api/records/{record_id}/knowledge-point-jobs"
-        )
+        blocked_submit = await client.post(f"/api/records/{record_id}/knowledge-point-jobs")
         discarded = await client.post(
             f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/discards"
         )
@@ -1058,9 +1048,7 @@ async def test_transcript_regeneration_full_chain(tmp_path: Path) -> None:
             f"/api/records/{record_id}/knowledge-point-batches/{second_batch}/confirmations"
         )
         final = await client.get(f"/api/records/{record_id}/knowledge-points")
-        traced = await client.get(
-            f"/api/records/{record_id}/knowledge-points?include=superseded"
-        )
+        traced = await client.get(f"/api/records/{record_id}/knowledge-points?include=superseded")
         event_count = await confirmed_event_count(app.state.session_factory, record_id)
         async with app.state.session_factory() as session:
             event_rows = (
@@ -1118,9 +1106,7 @@ async def test_transcript_regeneration_full_chain(tmp_path: Path) -> None:
         (None, "ACTIVE"),
     }
     assert [row[0] for row in event_rows] == [first_batch, second_batch]
-    assert json.loads(event_rows[1][1])["generated_from_summary_id"] == (
-        second_summary["id"]
-    )
+    assert json.loads(event_rows[1][1])["generated_from_summary_id"] == (second_summary["id"])
     assert second_summary["id"] != first_summary_id
     assert event_count == 2
     assert len(model.prompts) == 3
@@ -1146,9 +1132,7 @@ async def test_stale_draft_after_new_summary_confirm_guides_discard(
         stale_confirm = await client.post(
             f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/confirmations"
         )
-        stale_submit = await client.post(
-            f"/api/records/{record_id}/knowledge-point-jobs"
-        )
+        stale_submit = await client.post(f"/api/records/{record_id}/knowledge-point-jobs")
         discarded = await client.post(
             f"/api/records/{record_id}/knowledge-point-batches/{stale_batch}/discards"
         )

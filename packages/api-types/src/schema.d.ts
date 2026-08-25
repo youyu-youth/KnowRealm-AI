@@ -352,6 +352,57 @@ export interface paths {
         patch: operations["update_knowledge_point_api_records__record_id__knowledge_points__item_id__patch"];
         trace?: never;
     };
+    "/api/records/{record_id}/quiz-batches/{batch_id}/discards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Discard Quiz Batch */
+        post: operations["discard_quiz_batch_api_records__record_id__quiz_batches__batch_id__discards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/records/{record_id}/quiz-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Quiz Job */
+        post: operations["submit_quiz_job_api_records__record_id__quiz_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/records/{record_id}/quizzes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Quizzes */
+        get: operations["get_quizzes_api_records__record_id__quizzes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/summaries": {
         parameters: {
             query?: never;
@@ -502,6 +553,24 @@ export interface paths {
         put?: never;
         /** Grant Tencent Asr Consent */
         post: operations["grant_tencent_asr_consent_api_settings_external_processing_consents_tencent_asr_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Preferences */
+        get: operations["get_preferences_api_settings_preferences_get"];
+        /** Put Preferences */
+        put: operations["put_preferences_api_settings_preferences_put"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -885,6 +954,20 @@ export interface components {
             /** Model */
             model: string;
         };
+        /** PreferencesOut */
+        PreferencesOut: {
+            /** Quiz Last Count */
+            quiz_last_count: number;
+        };
+        /** PreferencesUpdate */
+        PreferencesUpdate: {
+            /**
+             * Quiz Last Count
+             * @description 习题生成档位偏好
+             * @enum {integer}
+             */
+            quiz_last_count: 3 | 5 | 10;
+        };
         /**
          * ProcessingJobErrorCode
          * @enum {string}
@@ -933,12 +1016,98 @@ export interface components {
          * ProcessingJobType
          * @enum {string}
          */
-        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION";
+        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION";
         /**
          * ProcessingJobWaitingReason
          * @enum {string}
          */
         ProcessingJobWaitingReason: "CONSENT_REQUIRED" | "ASR_KEY_REQUIRED" | "OFFLINE";
+        /**
+         * QuizAction
+         * @enum {string}
+         */
+        QuizAction: "NONE" | "GENERATE" | "ADOPT" | "RETRY";
+        /**
+         * QuizAnswerResult
+         * @enum {string}
+         */
+        QuizAnswerResult: "CORRECT" | "WRONG";
+        /**
+         * QuizBlockedReason
+         * @enum {string}
+         */
+        QuizBlockedReason: "SUMMARY_NOT_CONFIRMED" | "SUMMARY_SUPERSEDED" | "COURSE_ARCHIVED" | "PROVIDER_NOT_CONFIGURED" | "CONSENT_REQUIRED";
+        /**
+         * QuizDifficulty
+         * @enum {string}
+         */
+        QuizDifficulty: "EASY" | "MEDIUM" | "HARD";
+        /** QuizGenerateRequest */
+        QuizGenerateRequest: {
+            /** Question Types */
+            question_types: components["schemas"]["QuizQuestionType"][];
+            /**
+             * Total Count
+             * @description 总题数档位
+             * @enum {integer}
+             */
+            total_count: 3 | 5 | 10;
+        };
+        /**
+         * QuizGenerationStatus
+         * @enum {string}
+         */
+        QuizGenerationStatus: "DRAFT" | "ACTIVE" | "SUPERSEDED";
+        /** QuizJobAccepted */
+        QuizJobAccepted: {
+            /** Job Id */
+            job_id: string;
+        };
+        /** QuizOut */
+        QuizOut: {
+            answer_result?: components["schemas"]["QuizAnswerResult"] | null;
+            /** Answered At */
+            answered_at?: string | null;
+            /** Batch Id */
+            batch_id: string | null;
+            /** Correct Answer */
+            correct_answer: number | string;
+            /** Created At */
+            created_at: string | null;
+            difficulty: components["schemas"]["QuizDifficulty"];
+            /** Explanation */
+            explanation: string;
+            /** Generated From Summary Id */
+            generated_from_summary_id: string | null;
+            generation_status: components["schemas"]["QuizGenerationStatus"];
+            /** Id */
+            id: string;
+            /** Options */
+            options: string[];
+            question_type: components["schemas"]["QuizQuestionType"];
+            /** Record Id */
+            record_id: string;
+            /** Stem */
+            stem: string;
+            /** Updated At */
+            updated_at: string | null;
+            /** User Answer */
+            user_answer?: number | string | null;
+        };
+        /**
+         * QuizQuestionType
+         * @enum {string}
+         */
+        QuizQuestionType: "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER";
+        /** QuizReadOut */
+        QuizReadOut: {
+            action_required: components["schemas"]["QuizAction"];
+            /** Active Job Id */
+            active_job_id?: string | null;
+            blocked_reason?: components["schemas"]["QuizBlockedReason"] | null;
+            /** Items */
+            items: components["schemas"]["QuizOut"][];
+        };
         /** RecordJobsOut */
         RecordJobsOut: {
             /** Jobs */
@@ -3185,6 +3354,218 @@ export interface operations {
             };
         };
     };
+    discard_quiz_batch_api_records__record_id__quiz_batches__batch_id__discards_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizReadOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_quiz_job_api_records__record_id__quiz_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizGenerateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizJobAccepted"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_quizzes_api_records__record_id__quizzes_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizReadOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_summaries_api_records__record_id__summaries_get: {
         parameters: {
             query?: never;
@@ -3924,6 +4305,126 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExternalProcessingConsentOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_preferences_api_settings_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_preferences_api_settings_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PreferencesUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PreferencesOut"];
                 };
             };
             /** @description Forbidden */

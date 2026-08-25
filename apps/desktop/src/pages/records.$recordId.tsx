@@ -2,12 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { RecordDetailPage } from "@/features/records/components/RecordDetailPage";
 
 type RecordDetailSearch = {
-  tab?: "transcript" | "knowledge-points";
+  tab?: "transcript" | "knowledge-points" | "quiz";
 };
 
 export const Route = createFileRoute("/records/$recordId")({
   validateSearch: (search: Record<string, unknown>): RecordDetailSearch => ({
-    ...(search.tab === "transcript" || search.tab === "knowledge-points"
+    ...(search.tab === "transcript" ||
+    search.tab === "knowledge-points" ||
+    search.tab === "quiz"
       ? { tab: search.tab }
       : {}),
   }),

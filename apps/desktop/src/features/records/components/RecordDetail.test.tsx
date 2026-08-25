@@ -33,6 +33,10 @@ const SUMMARY_ADJUST_URL = `${DETAIL_URL}/summary-adjustments`;
 const SUMMARY_CONFIRM_URL = `${DETAIL_URL}/summary-confirmations`;
 const KNOWLEDGE_POINTS_URL = `${DETAIL_URL}/knowledge-points`;
 const KNOWLEDGE_POINT_JOBS_URL = `${DETAIL_URL}/knowledge-point-jobs`;
+const QUIZZES_URL = `${DETAIL_URL}/quizzes`;
+const QUIZ_JOBS_URL = `${DETAIL_URL}/quiz-jobs`;
+const QUIZ_BATCH_DISCARDS_URL = `${DETAIL_URL}/quiz-batches/${JOB_ID}/discards`;
+const PREFERENCES_URL = `${TEST_SIDECAR_URL}/api/settings/preferences`;
 const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
 const LLM_TEST_URL = `${LLM_PROVIDER_URL}/tests`;
 const LLM_CONSENT_URL = `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/llm`;
@@ -250,7 +254,7 @@ describe("学习记录详情", () => {
       );
     }
     expect(
-      screen.getByText("习题、复习、Todo 与 Ask AI 尚未接入"),
+      screen.getByText("确认总结后解锁习题；复习、Todo 与 Ask AI 尚未接入"),
     ).toBeInTheDocument();
     expect(screen.queryByText(/示例总结/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Transcript" }));
@@ -1370,13 +1374,17 @@ describe("学习记录详情", () => {
     await waitFor(() => expect(confirmBody).toEqual({ summary_id: secondId }));
     expect(await screen.findByText("AI 总结 · 已确认")).toBeInTheDocument();
     expect(
-      screen.getByText("总结已确认；习题、复习、Todo 与 Ask AI 尚未接入"),
+      screen.getByText("复习、Todo 与 Ask AI 尚未接入"),
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "知识点" })).not.toHaveAttribute(
       "aria-disabled",
       "true",
     );
-    for (const label of ["习题", "复习", "Todo", "Ask AI"]) {
+    expect(screen.getByRole("tab", { name: "习题" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    for (const label of ["复习", "Todo", "Ask AI"]) {
       expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
         "aria-disabled",
         "true",
@@ -2070,5 +2078,216 @@ describe("学习记录详情", () => {
     expect(await screen.findByText("100%")).toBeVisible();
     expect(screen.getByText("已完成")).toBeVisible();
     expect(screen.queryByText(/已完成.*1\/3/)).not.toBeInTheDocument();
+  });
+});
+
+function quizItem(
+  overrides: Partial<components["schemas"]["QuizOut"]> = {},
+): components["schemas"]["QuizOut"] {
+  return {
+    id: "66666666-6666-4666-8666-666666666666",
+    record_id: RECORD_ID,
+    batch_id: JOB_ID,
+    generated_from_summary_id: "55555555-5555-4555-8555-555555555555",
+    generation_status: "DRAFT",
+    question_type: "MULTIPLE_CHOICE",
+    stem: "进程调度的基本功能是什么？",
+    options: [
+      "选择就绪进程分配处理器",
+      "管理内存分配",
+      "处理外部中断",
+      "维护文件系统",
+    ],
+    correct_answer: 0,
+    explanation: "进程调度决定哪个就绪进程获得处理器。",
+    difficulty: "EASY",
+    user_answer: null,
+    answer_result: null,
+    answered_at: null,
+    created_at: "2026-08-25T12:00:00.000000Z",
+    updated_at: "2026-08-25T12:00:00.000000Z",
+    ...overrides,
+  };
+}
+
+function quizReadOut(
+  overrides: Partial<components["schemas"]["QuizReadOut"]> = {},
+): components["schemas"]["QuizReadOut"] {
+  return {
+    items: [],
+    action_required: "GENERATE",
+    active_job_id: null,
+    blocked_reason: null,
+    ...overrides,
+  };
+}
+
+const completedRecord: RecordOut = {
+  ...record,
+  status: "COMPLETED",
+  summary_confirmed_at: "2026-08-24T12:00:00.000000Z",
+};
+
+describe("习题页签", () => {
+  it("未完成记录页签禁用，完成后未确认总结则引导去总结页签", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(QUIZZES_URL, () => HttpResponse.json(quizReadOut())),
+    );
+    renderAt(ROUTE_PATH);
+
+    const quizTab = await screen.findByRole("tab", { name: "习题" });
+    expect(quizTab).toHaveAttribute("aria-disabled", "true");
+
+    cleanup();
+    window.history.replaceState(null, "", "/");
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          quizReadOut({
+            action_required: "NONE",
+            blocked_reason: "SUMMARY_NOT_CONFIRMED",
+          }),
+        ),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(
+      await screen.findByRole("heading", { name: "先确认总结，再生成习题" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "查看总结" }));
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+
+  it("生成对话框默认读取偏好档位，取消题型阻止提交，成功后写回偏好并进入进行中态", async () => {
+    let generating = false;
+    const submittedBodies: object[] = [];
+    const preferenceBodies: object[] = [];
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          generating
+            ? quizReadOut({ action_required: "NONE", active_job_id: JOB_ID })
+            : quizReadOut(),
+        ),
+      ),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 3 }),
+      ),
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        preferenceBodies.push((await request.json()) as object);
+        return HttpResponse.json({ quiz_last_count: 3 });
+      }),
+      http.post(QUIZ_JOBS_URL, async ({ request }) => {
+        submittedBodies.push((await request.json()) as object);
+        generating = true;
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "生成习题" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeVisible();
+    expect(
+      screen.getByRole("checkbox", { name: "选择题", checked: true }),
+    ).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "简答题" })).toBeVisible();
+    expect(
+      screen.getByRole("radio", { name: "3", checked: true }),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "简答题" }));
+    const submit = screen.getByRole("button", { name: "开始生成" });
+    fireEvent.click(submit);
+
+    expect(await screen.findByText("正在生成习题候选")).toBeVisible();
+    expect(submittedBodies).toEqual([
+      {
+        question_types: ["MULTIPLE_CHOICE", "TRUE_FALSE"],
+        total_count: 3,
+      },
+    ]);
+    expect(preferenceBodies).toEqual([{ quiz_last_count: 3 }]);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("候选只读审阅展示答案与解析，二次确认丢弃后回到可生成态", async () => {
+    let discarded = false;
+    let discardCalls = 0;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          discarded
+            ? quizReadOut()
+            : quizReadOut({
+                action_required: "ADOPT",
+                items: [
+                  quizItem(),
+                  quizItem({
+                    id: "77777777-7777-4777-8777-777777777777",
+                    question_type: "TRUE_FALSE",
+                    stem: "时间片越小，系统效率越高。",
+                    options: ["对", "错"],
+                    correct_answer: 1,
+                    explanation: "时间片过小会导致上下文切换开销过大。",
+                    difficulty: "MEDIUM",
+                  }),
+                ],
+              }),
+        ),
+      ),
+      http.post(QUIZ_BATCH_DISCARDS_URL, () => {
+        discardCalls += 1;
+        discarded = true;
+        return HttpResponse.json(quizReadOut());
+      }),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 5 }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(
+      await screen.findByRole("heading", { name: "习题候选（只读）" }),
+    ).toBeVisible();
+    expect(screen.getByText("共 2 题，基于当前已确认的总结生成")).toBeVisible();
+    expect(screen.getByText("正确答案：A. 选择就绪进程分配处理器")).toBeVisible();
+    expect(
+      screen.getByText("解析：进程调度决定哪个就绪进程获得处理器。"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("解析：时间片过小会导致上下文切换开销过大。"),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "丢弃本批候选" }));
+    fireEvent.click(await screen.findByRole("button", { name: "确认丢弃" }));
+
+    expect(
+      await screen.findByRole("button", { name: "生成习题" }),
+    ).toBeVisible();
+    expect(discardCalls).toBe(1);
+  });
+
+  it("生成失败展示可重试状态", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(quizReadOut({ action_required: "RETRY" })),
+      ),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 5 }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(await screen.findByText("上次生成没有成功")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeVisible();
   });
 });

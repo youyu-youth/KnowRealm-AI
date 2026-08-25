@@ -1,3 +1,4 @@
+from typing import Literal
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, field_validator
@@ -47,3 +48,11 @@ class LlmProviderStateOut(BaseModel):
 class LlmConsentOut(BaseModel):
     granted_at: str | None
     current: bool
+
+
+class PreferencesOut(BaseModel):
+    quiz_last_count: int
+
+
+class PreferencesUpdate(BaseModel):
+    quiz_last_count: Literal[3, 5, 10] = Field(description="习题生成档位偏好")
