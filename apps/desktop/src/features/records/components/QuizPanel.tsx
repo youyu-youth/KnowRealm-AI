@@ -808,7 +808,7 @@ function GenerateQuizDialog({
   const [selectedTypes, setSelectedTypes] = useState<QuizQuestionType[]>([
     ...ALL_QUESTION_TYPES,
   ]);
-  const [totalCount, setTotalCount] = useState<QuizCount>(5);
+  const [selectedCount, setSelectedCount] = useState<QuizCount | null>(null);
   const preferences = useQuery({
     queryKey: settingsKeys.preferences,
     queryFn: settingsApi.getPreferences,
@@ -834,15 +834,10 @@ function GenerateQuizDialog({
       ]);
     },
   });
-  const preferencesLoaded = open && !preferences.isPending && preferences.data;
-  if (preferencesLoaded) {
-    const saved = QUIZ_COUNTS.find(
-      (count) => count === preferences.data.quiz_last_count,
-    );
-    if (saved && saved !== totalCount) {
-      setTotalCount(saved);
-    }
-  }
+  const savedCount = QUIZ_COUNTS.find(
+    (count) => count === preferences.data?.quiz_last_count,
+  );
+  const totalCount = selectedCount ?? savedCount ?? 5;
 
   const toggleType = (type: QuizQuestionType, checked: boolean) => {
     setSelectedTypes((previous) =>
@@ -890,7 +885,7 @@ function GenerateQuizDialog({
             value={String(totalCount)}
             onValueChange={(value) => {
               const next = QUIZ_COUNTS.find((count) => String(count) === value);
-              if (next) setTotalCount(next);
+              if (next) setSelectedCount(next);
             }}
             className="grid grid-cols-3 gap-2"
           >

@@ -2242,6 +2242,10 @@ describe("习题页签", () => {
       screen.getByRole("radio", { name: "3", checked: true }),
     ).toBeVisible();
 
+    fireEvent.click(screen.getByRole("radio", { name: "10" }));
+    expect(
+      screen.getByRole("radio", { name: "10", checked: true }),
+    ).toBeVisible();
     fireEvent.click(screen.getByRole("checkbox", { name: "简答题" }));
     const submit = screen.getByRole("button", { name: "开始生成" });
     fireEvent.click(submit);
@@ -2250,10 +2254,10 @@ describe("习题页签", () => {
     expect(submittedBodies).toEqual([
       {
         question_types: ["MULTIPLE_CHOICE", "TRUE_FALSE"],
-        total_count: 3,
+        total_count: 10,
       },
     ]);
-    expect(preferenceBodies).toEqual([{ quiz_last_count: 3 }]);
+    expect(preferenceBodies).toEqual([{ quiz_last_count: 10 }]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

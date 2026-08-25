@@ -51,7 +51,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 遵循 DESIGN.md 文件 的ui产品风格设计
 
 
-## 工具(tools)使用习惯
+## 工具(tools)使用习惯，重要原则
 
 - 在探索或检索代码库时，优先使用 codegraph 相关工具来探索或检索代码
 - 当需要爬取网页数据的时候，你可以使用firecrawl 相关工具来进行爬取
