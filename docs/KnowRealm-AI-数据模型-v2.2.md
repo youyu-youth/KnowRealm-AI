@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：2026-08-25 **习题生成与作答定稿（08 plan grill）**——quizzes 增作答三列（user_answer_json / answer_result 可空 CORRECT·WRONG，NULL=简答待自评 / answered_at，与 QUIZ_ANSWERED 同事务写）并补软删标注；不建 model / prompt_version / quality_score / cognitive_level / concept_id / source_anchor_id 列（溯源记 processing_jobs.result_json——07 先例，P3 / P5 / 评测域后补）；选择题单选、判断题 options 固定「对/错」两项与选择题同构；逐题模式一题一答、简答二态自评；learning_events 幂等键构造定为 `{event-slug}:{source-id}`（quiz-answered:{quiz_id}）；习题批次采纳不发学习事件；Wave B 测验模式同题再答键位另立（quiz-answered:test:{item_id} 风格）。
 > **变更记录**：2026-08-24 **知识点提取定稿（07 plan grill）**——knowledge_points 取消独立 status 列（generation_status 单列承载，对齐 quizzes）；importance 定标 1~5、tags ≤5；AI 候选生成即落 DRAFT 行、每 Record 至多一个在途 DRAFT 批次；确认时绑定的 Summary 须仍为 CONFIRMED；批次溯源（model / prompt_version / 候选条数）记入 processing_jobs.result_json，表不加列。
 > **变更记录**：v2.2（2026-08-22）**多来源音频与版本绑定定稿**——records.capture_type 增加 MULTI_SOURCE；Capture Batch 明确为非持久化命令边界；Transcript source_version 同时作为内容版本与显式保存前置条件；ai_summaries 绑定 transcript_source_version；KP/Quiz/Todo 的 AI 结果绑定 summary_id 且可标记 SUPERSEDED；processing_jobs 定义 ASR 顺序切片检查点、等待态与差异化手动重试。
 > **变更记录**：v2.1（2026-08-20）**文档任务与单写者约束定稿**——processing_jobs 增加 CANCELLED、失败分类与重试转移；删除 record_files.processing_status，技术任务状态以 processing_jobs 为唯一事实源；同一数据目录增加进程生命周期排他锁；文档 Transcript 语言 V1 写 und；content_hash 仅用于完整性校验和重复检测，允许重复导入。
@@ -184,23 +185,23 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | source_anchor_id | TEXT | 可空，主锚点（完整来源走 source_anchor_links；P1 恒空） |
 | updated_at | TEXT | |
 
-**quizzes** — 习题（P1）
+**quizzes** — 习题（P1，〔软删〕；2026-08-25 08 plan grill 定稿）
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id / record_id | TEXT | |
-| concept_id | TEXT | 可空（P3 起回填） |
 | batch_id | TEXT | 同次生成批次 |
 | generated_from_summary_id | TEXT | 生成批次绑定的已确认 Summary |
 | generation_status | TEXT | DRAFT / ACTIVE / SUPERSEDED；已作答历史不随批次换代删除 |
-| question_type | TEXT | MULTIPLE_CHOICE / TRUE_FALSE / SHORT_ANSWER |
+| question_type | TEXT | MULTIPLE_CHOICE / TRUE_FALSE / SHORT_ANSWER；选择题单选，判断题 options 固定「对/错」两项（与选择题同构） |
 | stem | TEXT | 题干 |
-| options_json / correct_answer_json | TEXT | JSON（简答题为参考答案） |
+| options_json / correct_answer_json | TEXT | JSON；correct_answer：选择题 / 判断题 = 正确项下标，简答题 = 参考答案文本 |
 | explanation | TEXT | 解析 |
 | difficulty | TEXT | EASY / MEDIUM / HARD |
-| cognitive_level | TEXT | RECALL / UNDERSTAND / APPLY / ANALYZE / TRANSFER（P5 起用） |
-| source_anchor_id | TEXT | 可空 |
-| quality_score | REAL | 可空，0~1 |
-| model / prompt_version | TEXT | |
+| user_answer_json | TEXT | 用户作答；与 answer_result / answered_at 同事务写 |
+| answer_result | TEXT | 可空：CORRECT / WRONG；NULL = 简答已提交待自评（客观题提交即判分） |
+| answered_at | TEXT | 可空；非空 = 已作答锁定（一题一答，不可重做） |
+
+不建 model / prompt_version（溯源记 processing_jobs.result_json，07 先例）、quality_score（评测域 Wave B）、cognitive_level（P5）、concept_id（P3 起回填）、source_anchor_id——均由后续迁移加列。
 
 **quiz_tests** — 模拟/自适应测试（P1；ADAPTIVE 模式 P5）
 | 字段 | 类型 | 说明 |
@@ -317,7 +318,7 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 | source_type / source_id | TEXT | 行为来源（如 quiz_test_item） |
 | result / score / difficulty / duration_ms | TEXT / REAL / TEXT / INTEGER | 一个行为只记一个事件 |
 | metadata_json | TEXT | |
-| idempotency_key | TEXT | **UNIQUE**（幂等） |
+| idempotency_key | TEXT | **UNIQUE**（幂等）；构造格式 `{event-slug}:{source-id}`——summary-confirmed:{summary_id} / knowledge-confirmed:{batch_id} / quiz-answered:{quiz_id}（Wave B 测验同题再答另立键位） |
 | schema_version | INTEGER | |
 | occurred_at / created_at | TEXT | 索引 (occurred_at desc)、(concept_id, occurred_at desc)、(course_id, event_type, occurred_at desc) |
 

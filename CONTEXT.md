@@ -95,11 +95,19 @@ _Avoid_: 标签、主题、知识点
 一次 AI 生成产出的候选集合（知识点 / 习题共用），经用户确认整体生效；新批次确认后旧 AI 批次才置过时，用户已保存内容永不随批次换代删除。
 _Avoid_: 捕获批次（那是 Record 的创建边界）、版本（Transcript / Summary 的概念）
 
+**批次采纳（Batch Adoption）**:
+习题候选批次经用户确认整体生效的管理动作。它不是学习行为、不发学习事件——区别于知识点批次确认（那是学习行为，落 KNOWLEDGE_CONFIRMED）。
+_Avoid_: 确认（与总结确认、知识点确认混称）
+
 ### 学习状态
 
 **学习事件（Learning Event）**:
 用户发生的一个学习行为，带幂等键，一行为一事件。
 _Avoid_: 日志、记录
+
+**作答（Answer）**:
+用户对一道已采纳习题提交解答的学习行为：客观题提交即判分，简答题对照参考答案自评对错；一题一答，一行为一事件（QUIZ_ANSWERED）。
+_Avoid_: 测验（quiz_test 域，Wave B）、重做
 
 **学习证据（Learning Evidence）**:
 事件对某 Concept 学习状态的证据（带权重/置信度）。**AI 自述（AI_SYNTHESIS）不是证据**——证据只来自答题、Teach-back、Recall 验证、Tutor 检查、课堂信号、用户确认。
