@@ -556,6 +556,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/todos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Todos */
+        get: operations["get_todos_api_records__record_id__todos_get"];
+        put?: never;
+        /** Create Todo */
+        post: operations["create_todo_api_records__record_id__todos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/records/{record_id}/todos/{todo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Todo */
+        delete: operations["delete_todo_api_records__record_id__todos__todo_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Todo */
+        patch: operations["update_todo_api_records__record_id__todos__todo_id__patch"];
+        trace?: never;
+    };
+    "/api/records/{record_id}/todos/{todo_id}/toggles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Toggle Todo */
+        post: operations["toggle_todo_api_records__record_id__todos__todo_id__toggles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/transcript": {
         parameters: {
             query?: never;
@@ -1067,7 +1120,7 @@ export interface components {
          * ProcessingJobType
          * @enum {string}
          */
-        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION";
+        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION";
         /**
          * ProcessingJobWaitingReason
          * @enum {string}
@@ -1372,6 +1425,74 @@ export interface components {
             record_id: string;
             /** Title */
             title: string;
+        };
+        /**
+         * TodoAction
+         * @enum {string}
+         */
+        TodoAction: "NONE" | "GENERATE" | "ADOPT" | "RETRY";
+        /**
+         * TodoBlockedReason
+         * @enum {string}
+         */
+        TodoBlockedReason: "SUMMARY_NOT_CONFIRMED" | "SUMMARY_SUPERSEDED" | "COURSE_ARCHIVED" | "PROVIDER_NOT_CONFIGURED" | "CONSENT_REQUIRED";
+        /**
+         * TodoGenerationStatus
+         * @enum {string}
+         */
+        TodoGenerationStatus: "DRAFT" | "ACTIVE" | "SUPERSEDED";
+        /** TodoOut */
+        TodoOut: {
+            /** Batch Id */
+            batch_id: string | null;
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at: string | null;
+            /** Generated From Summary Id */
+            generated_from_summary_id: string | null;
+            generation_status: components["schemas"]["TodoGenerationStatus"] | null;
+            /** Id */
+            id: string;
+            /** Record Id */
+            record_id: string;
+            /** Sort Order */
+            sort_order: number;
+            source: components["schemas"]["TodoSource"];
+            status: components["schemas"]["TodoStatus"];
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /** TodoReadOut */
+        TodoReadOut: {
+            action_required: components["schemas"]["TodoAction"];
+            /** Active Job Id */
+            active_job_id?: string | null;
+            blocked_reason?: components["schemas"]["TodoBlockedReason"] | null;
+            /** Items */
+            items: components["schemas"]["TodoOut"][];
+        };
+        /**
+         * TodoSource
+         * @enum {string}
+         */
+        TodoSource: "AI" | "MANUAL";
+        /**
+         * TodoStatus
+         * @enum {string}
+         */
+        TodoStatus: "TODO" | "DONE";
+        /** TodoToggleRequest */
+        TodoToggleRequest: {
+            status: components["schemas"]["TodoStatus"];
+        };
+        /** TodoWriteRequest */
+        TodoWriteRequest: {
+            /**
+             * Content
+             * @description 待办内容
+             */
+            content: string;
         };
         /**
          * TranscriptAvailability
@@ -4259,6 +4380,321 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_todos_api_records__record_id__todos_get: {
+        parameters: {
+            query?: {
+                include?: "superseded" | null;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoReadOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_todo_api_records__record_id__todos_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_todo_api_records__record_id__todos__todo_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_todo_api_records__record_id__todos__todo_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoWriteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    toggle_todo_api_records__record_id__todos__todo_id__toggles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+                todo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TodoToggleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodoOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

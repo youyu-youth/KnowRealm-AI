@@ -268,8 +268,8 @@
         "todo": "Todo",
         "askAi": "Ask AI"
       },
-      "assetsUnavailable": "确认总结后解锁习题；复习、Todo 与 Ask AI 尚未接入",
-      "assetsCompleted": "复习、Todo 与 Ask AI 尚未接入",
+      "assetsUnavailable": "确认总结后解锁习题与 Todo；复习与 Ask AI 尚未接入",
+      "assetsCompleted": "复习与 Ask AI 尚未接入",
       "jobs": {
         "title": "处理进度",
         "progress": "{{value}}%",
@@ -536,6 +536,44 @@
           "typeRequired": "至少选择一种题型",
           "submit": "开始生成",
           "cancel": "取消"
+        }
+      },
+      "todo": {
+        "loading": "正在读取待办清单",
+        "readErrorTitle": "待办清单暂时无法读取",
+        "listTitle": "待办清单",
+        "addTitle": "添加待办",
+        "inputLabel": "新增待办内容",
+        "placeholder": "想到什么直接记",
+        "add": "添加",
+        "save": "保存",
+        "cancelEdit": "取消",
+        "edit": "编辑待办 {{content}}",
+        "delete": "删除待办 {{content}}",
+        "editInputLabel": "编辑待办内容",
+        "openSummary": "查看总结",
+        "grantConsent": "同意外部 AI 处理",
+        "blocked": {
+          "SUMMARY_NOT_CONFIRMED": {
+            "title": "先确认总结，再生成待办建议",
+            "description": "手工记录随时可用，不受影响；确认总结后可一键生成这节课的行动项建议。"
+          },
+          "SUMMARY_SUPERSEDED": {
+            "title": "总结已更新，请重新确认",
+            "description": "转写修改导致原总结过时；手工记录不受影响，确认新总结后可生成待办建议。"
+          },
+          "COURSE_ARCHIVED": {
+            "title": "课程已归档",
+            "description": "归档课程不能生成待办建议；手工记录不受影响。"
+          },
+          "PROVIDER_NOT_CONFIGURED": {
+            "title": "先配置 AI Provider",
+            "description": "生成待办建议需要在总结页配置可用的 AI Provider；手工记录不受影响。"
+          },
+          "CONSENT_REQUIRED": {
+            "title": "需要同意外部 AI 处理",
+            "description": "生成待办建议会把已确认的总结发送给你配置的 AI 服务。"
+          }
         }
       }
     }

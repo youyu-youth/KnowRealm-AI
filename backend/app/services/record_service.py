@@ -3,7 +3,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
-from app.models.document import AiSummary, ProcessingJob, Transcript
+from app.models.document import AiSummary, ProcessingJob, TodoItem, Transcript
 from app.models.record import Record
 from app.schemas.document import AiSummaryStatus, TranscriptUpdateRequest
 from app.schemas.record import RecordStatus
@@ -66,6 +66,14 @@ class RecordService:
                 session,
                 record_filter=ProcessingJob.record_id == record_id,
                 now=deleted_at,
+            )
+            await session.execute(
+                update(TodoItem)
+                .where(
+                    TodoItem.record_id == record_id,
+                    TodoItem.deleted_at.is_(None),
+                )
+                .values(deleted_at=deleted_at, updated_at=deleted_at)
             )
             await session.flush()
         return True

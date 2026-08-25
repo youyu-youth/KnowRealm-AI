@@ -12,6 +12,7 @@ class ProcessingJobType(StrEnum):
     SUMMARY = "SUMMARY"
     KNOWLEDGE_EXTRACTION = "KNOWLEDGE_EXTRACTION"
     QUIZ_GENERATION = "QUIZ_GENERATION"
+    TODO_GENERATION = "TODO_GENERATION"
 
 
 class ProcessingJobStatus(StrEnum):

@@ -6,6 +6,8 @@ import type {
   RecordJobsOut,
   RecordOut,
   SummaryReadOut,
+  TodoOut,
+  TodoReadOut,
   TranscriptOut,
   TranscriptReadOut,
 } from "@/features/records/api/types";
@@ -119,6 +121,35 @@ export const recordApi = {
     return apiFetch<components["schemas"]["QuizOut"]>(
       `/api/records/${recordId}/quizzes/${quizId}/self-assessments`,
       { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+  getTodos: (recordId: string) =>
+    apiFetch<TodoReadOut>(`/api/records/${recordId}/todos`),
+  createTodo(recordId: string, content: string) {
+    return apiFetch<TodoOut>(`/api/records/${recordId}/todos`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    });
+  },
+  updateTodo(recordId: string, todoId: string, content: string) {
+    return apiFetch<TodoOut>(`/api/records/${recordId}/todos/${todoId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ content }),
+    });
+  },
+  deleteTodo(recordId: string, todoId: string) {
+    return apiFetchNoContent(`/api/records/${recordId}/todos/${todoId}`, {
+      method: "DELETE",
+    });
+  },
+  toggleTodo(
+    recordId: string,
+    todoId: string,
+    status: components["schemas"]["TodoStatus"],
+  ) {
+    return apiFetch<TodoOut>(
+      `/api/records/${recordId}/todos/${todoId}/toggles`,
+      { method: "POST", body: JSON.stringify({ status }) },
     );
   },
   submitSummary: (recordId: string) =>

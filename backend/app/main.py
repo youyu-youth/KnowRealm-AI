@@ -33,6 +33,7 @@ from app.api import (
     settings,
     summaries,
     today,
+    todos,
 )
 from app.api.deps import require_launch_token
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
@@ -213,6 +214,7 @@ def create_app(
     app.include_router(summaries.router)
     app.include_router(knowledge_points.router)
     app.include_router(quizzes.router)
+    app.include_router(todos.router)
     app.include_router(today.router)
     app.include_router(document_imports.router)
     app.include_router(processing_jobs.router)

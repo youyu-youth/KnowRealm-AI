@@ -255,7 +255,7 @@ describe("学习记录详情", () => {
       );
     }
     expect(
-      screen.getByText("确认总结后解锁习题；复习、Todo 与 Ask AI 尚未接入"),
+      screen.getByText("确认总结后解锁习题与 Todo；复习与 Ask AI 尚未接入"),
     ).toBeInTheDocument();
     expect(screen.queryByText(/示例总结/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Transcript" }));
@@ -1380,7 +1380,7 @@ describe("学习记录详情", () => {
     await waitFor(() => expect(confirmBody).toEqual({ summary_id: secondId }));
     expect(await screen.findByText("AI 总结 · 已确认")).toBeInTheDocument();
     expect(
-      screen.getByText("复习、Todo 与 Ask AI 尚未接入"),
+      screen.getByText("复习与 Ask AI 尚未接入"),
     ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "知识点" })).not.toHaveAttribute(
       "aria-disabled",
@@ -1390,7 +1390,11 @@ describe("学习记录详情", () => {
       "aria-disabled",
       "true",
     );
-    for (const label of ["复习", "Todo", "Ask AI"]) {
+    expect(screen.getByRole("tab", { name: "Todo" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    for (const label of ["复习", "Ask AI"]) {
       expect(screen.getByRole("tab", { name: label })).toHaveAttribute(
         "aria-disabled",
         "true",
@@ -2742,5 +2746,235 @@ describe("习题页签", () => {
 
     expect(await screen.findByText("上次生成没有成功")).toBeVisible();
     expect(screen.getByRole("button", { name: "重新生成" })).toBeVisible();
+  });
+});
+
+describe("Todo 页签", () => {
+  const TODOS_URL = `${DETAIL_URL}/todos`;
+
+  function todoOut(
+    overrides: Partial<components["schemas"]["TodoOut"]> = {},
+  ): components["schemas"]["TodoOut"] {
+    return {
+      id: "66666666-6666-4666-8666-666666666666",
+      record_id: RECORD_ID,
+      batch_id: null,
+      content: "复习进程调度",
+      status: "TODO",
+      source: "MANUAL",
+      generated_from_summary_id: null,
+      generation_status: null,
+      sort_order: 0,
+      created_at: "2026-08-25T12:00:00.000000Z",
+      updated_at: "2026-08-25T12:00:00.000000Z",
+      ...overrides,
+    };
+  }
+
+  function todoReadOut(
+    overrides: Partial<components["schemas"]["TodoReadOut"]> = {},
+  ): components["schemas"]["TodoReadOut"] {
+    return {
+      items: [],
+      action_required: "NONE",
+      active_job_id: null,
+      blocked_reason: null,
+      ...overrides,
+    };
+  }
+
+  it("未完成记录页签禁用，完成后未确认总结时空态指引去总结页签", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(TODOS_URL, () => HttpResponse.json(todoReadOut())),
+    );
+    renderAt(ROUTE_PATH);
+
+    const todoTab = await screen.findByRole("tab", { name: "Todo" });
+    expect(todoTab).toHaveAttribute("aria-disabled", "true");
+
+    cleanup();
+    window.history.replaceState(null, "", "/");
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(TODOS_URL, () =>
+        HttpResponse.json(
+          todoReadOut({ blocked_reason: "SUMMARY_NOT_CONFIRMED" }),
+        ),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "先确认总结，再生成待办建议",
+      }),
+    ).toBeVisible();
+    // 手动记账不受门控限制：空态指引之外仍提供新增表单
+    expect(screen.getByLabelText("新增待办内容")).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "查看总结" }));
+    await waitFor(() => expect(window.location.search).toBe(""));
+  });
+
+  it("未同意外发的空态可一键授权并恢复", async () => {
+    let granted = false;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(TODOS_URL, () =>
+        HttpResponse.json(
+          granted
+            ? todoReadOut()
+            : todoReadOut({ blocked_reason: "CONSENT_REQUIRED" }),
+        ),
+      ),
+      http.post(LLM_CONSENT_URL, () => {
+        granted = true;
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    expect(
+      await screen.findByRole("heading", { name: "需要同意外部 AI 处理" }),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "同意外部 AI 处理" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "需要同意外部 AI 处理" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByLabelText("新增待办内容")).toBeEnabled();
+  });
+
+  it("勾选完成划线弱化、取消勾选恢复，行内编辑与删除即时生效", async () => {
+    const itemA = todoOut();
+    const itemB = todoOut({
+      id: "77777777-7777-4777-8777-777777777777",
+      content: "补课后作业",
+      sort_order: 1,
+    });
+    let items = [itemA, itemB];
+    const toggleBodies: object[] = [];
+    const patchBodies: object[] = [];
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(TODOS_URL, () =>
+        HttpResponse.json(todoReadOut({ items: [...items] })),
+      ),
+      http.post(`${TODOS_URL}/${itemA.id}/toggles`, async ({ request }) => {
+        const body = (await request.json()) as { status: "TODO" | "DONE" };
+        toggleBodies.push(body);
+        items = items.map((item) =>
+          item.id === itemA.id ? { ...item, status: body.status } : item,
+        );
+        return HttpResponse.json(items[0]);
+      }),
+      http.patch(`${TODOS_URL}/${itemB.id}`, async ({ request }) => {
+        patchBodies.push((await request.json()) as object);
+        items = items.map((item) =>
+          item.id === itemB.id
+            ? { ...item, content: "补完课后作业并订正" }
+            : item,
+        );
+        return HttpResponse.json(items[1]);
+      }),
+      http.delete(`${TODOS_URL}/${itemB.id}`, () => {
+        items = items.filter((item) => item.id !== itemB.id);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    expect(await screen.findByText("复习进程调度")).toBeVisible();
+    expect(screen.getByText("补课后作业")).toBeVisible();
+
+    // 勾选完成 → 划线弱化原位保留
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "复习进程调度" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("复习进程调度", { selector: "span" })).toHaveClass("line-through"),
+    );
+    expect(toggleBodies).toEqual([{ status: "DONE" }]);
+
+    // 取消勾选恢复未完成态
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "复习进程调度" }),
+    );
+    await waitFor(() =>
+      expect(screen.getByText("复习进程调度", { selector: "span" })).not.toHaveClass("line-through"),
+    );
+
+    // 行内编辑保存新内容
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑待办 补课后作业" }),
+    );
+    const editor = screen.getByLabelText("编辑待办内容");
+    expect(editor).toHaveValue("补课后作业");
+    fireEvent.change(editor, { target: { value: "补完课后作业并订正" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(screen.getByText("补完课后作业并订正")).toBeVisible(),
+    );
+    expect(patchBodies).toEqual([{ content: "补完课后作业并订正" }]);
+
+    // 删除后条目消失
+    fireEvent.click(
+      screen.getByRole("button", { name: "删除待办 补完课后作业并订正" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByText("补完课后作业并订正"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("复习进程调度")).toBeVisible();
+  });
+
+  it("blocked 下清单照常可用，新增待办追加在列表尾部", async () => {
+    const itemA = todoOut();
+    let items = [itemA];
+    const createBodies: object[] = [];
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(TODOS_URL, () =>
+        HttpResponse.json(
+          todoReadOut({
+            items: [...items],
+            blocked_reason: "SUMMARY_NOT_CONFIRMED",
+          }),
+        ),
+      ),
+      http.post(TODOS_URL, async ({ request }) => {
+        createBodies.push((await request.json()) as object);
+        const created = todoOut({
+          id: "88888888-8888-4888-8888-888888888888",
+          content: "查参考资料",
+          sort_order: items.length,
+        });
+        items = [...items, created];
+        return HttpResponse.json(created, { status: 201 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    expect(await screen.findByText("复习进程调度")).toBeVisible();
+    // 有条目时不显示 blocked 空态，但手动记账照常可用
+    expect(
+      screen.queryByRole("heading", { name: "先确认总结，再生成待办建议" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("新增待办内容"), {
+      target: { value: "查参考资料" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "添加" }));
+    await waitFor(() => expect(screen.getByText("查参考资料")).toBeVisible());
+    expect(createBodies).toEqual([{ content: "查参考资料" }]);
+    expect(screen.getByLabelText("新增待办内容")).toHaveValue("");
+    // 新条目排在既有条目之后
+    expect(
+      screen.getAllByRole("listitem").map((item) => item.textContent),
+    ).toEqual(["复习进程调度", "查参考资料"]);
   });
 });
