@@ -21,6 +21,14 @@ class QuizQuestionType(StrEnum):
     SHORT_ANSWER = "SHORT_ANSWER"
 
 
+class QuizLearningEventType(StrEnum):
+    ANSWERED = "QUIZ_ANSWERED"
+
+
+class QuizLearningEventSourceType(StrEnum):
+    QUESTION = "QUIZ_QUESTION"
+
+
 class QuizQuestionCandidate(BaseModel):
     """LLM 结构化输出的单题候选，题型形状在 Schema 层就地校验。"""
 
@@ -125,6 +133,10 @@ class QuizGenerateRequest(BaseModel):
         return value
 
 
+class QuizObjectiveAnswerRequest(BaseModel):
+    answer: int = Field(ge=0, description="用户所选选项的下标（从 0 开始）")
+
+
 class QuizOut(BaseModel):
     id: str
     record_id: str
@@ -134,8 +146,8 @@ class QuizOut(BaseModel):
     question_type: QuizQuestionType
     stem: str
     options: list[str]
-    correct_answer: int | str
-    explanation: str
+    correct_answer: int | str | None
+    explanation: str | None
     difficulty: QuizDifficulty
     user_answer: int | str | None = None
     answer_result: QuizAnswerResult | None = None

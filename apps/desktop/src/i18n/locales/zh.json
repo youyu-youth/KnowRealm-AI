@@ -512,6 +512,11 @@
         "correctAnswer": "正确答案：{{answer}}",
         "referenceAnswer": "参考答案：{{answer}}",
         "explanation": "解析：{{detail}}",
+        "submitAnswer": "提交答案",
+        "result": {
+          "CORRECT": "回答正确",
+          "WRONG": "回答错误"
+        },
         "dialog": {
           "title": "生成习题",
           "description": "选择题型组合与总题数；题目数量会严格按所选档位生成。",

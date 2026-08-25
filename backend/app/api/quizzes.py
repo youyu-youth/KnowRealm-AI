@@ -11,6 +11,8 @@ from app.schemas.quiz import (
     QuizConflictResponse,
     QuizGenerateRequest,
     QuizJobAccepted,
+    QuizObjectiveAnswerRequest,
+    QuizOut,
     QuizReadOut,
 )
 from app.services.quiz_service import QuizAdoptionBlocked, QuizService
@@ -110,4 +112,26 @@ async def adopt_quiz_batch(
         )
         return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
     await request.app.state.record_notifier.notify(str(record_id))
+    return result
+
+
+@router.post(
+    "/{record_id}/quizzes/{quiz_id}/answers",
+    response_model=QuizOut,
+)
+async def answer_objective_quiz(
+    record_id: UUID,
+    quiz_id: UUID,
+    body: QuizObjectiveAnswerRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> QuizOut:
+    result, changed = await QuizService.answer_objective(
+        session,
+        str(record_id),
+        str(quiz_id),
+        body,
+    )
+    if changed:
+        await request.app.state.record_notifier.notify(str(record_id))
     return result

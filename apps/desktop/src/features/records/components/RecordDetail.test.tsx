@@ -2128,6 +2128,18 @@ function quizReadOut(
   };
 }
 
+function readObjectiveAnswer(body: unknown): number {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("answer" in body) ||
+    typeof body.answer !== "number"
+  ) {
+    throw new Error("客观题作答请求缺少数字 answer");
+  }
+  return body.answer;
+}
+
 const completedRecord: RecordOut = {
   ...record,
   status: "COMPLETED",
@@ -2413,6 +2425,182 @@ describe("习题页签", () => {
       screen.queryByRole("button", { name: "采用本批" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "丢弃本批候选" })).toBeVisible();
+  });
+
+  it("选择题与判断题提交后即时判分并锁定展示答案解析", async () => {
+    const submitted: Array<{ quizId: string; body: object }> = [];
+    let quizReads = 0;
+    const choice = quizItem({ generation_status: "ACTIVE" });
+    const trueFalse = quizItem({
+      id: "77777777-7777-4777-8777-777777777777",
+      generation_status: "ACTIVE",
+      question_type: "TRUE_FALSE",
+      stem: "时间片越小，系统效率越高。",
+      options: ["对", "错"],
+      correct_answer: 1,
+      explanation: "时间片过小会导致上下文切换开销过大。",
+      difficulty: "MEDIUM",
+    });
+    let items = [choice, trueFalse];
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () => {
+        quizReads += 1;
+        return HttpResponse.json(
+          quizReadOut({
+            action_required: "GENERATE",
+            items,
+          }),
+        );
+      }),
+      http.post(
+        `${QUIZZES_URL}/:quizId/answers`,
+        async ({ params, request }) => {
+          const answer = readObjectiveAnswer(await request.json());
+          const item = params.quizId === choice.id ? choice : trueFalse;
+          submitted.push({ quizId: String(params.quizId), body: { answer } });
+          await delay(100);
+          const answered: components["schemas"]["QuizOut"] = {
+            ...item,
+            user_answer: answer,
+            answer_result: answer === item.correct_answer ? "CORRECT" : "WRONG",
+            answered_at: "2026-08-25T13:00:00.000000Z",
+            updated_at: "2026-08-25T13:00:00.000000Z",
+          };
+          items = items.map((current) =>
+            current.id === answered.id ? answered : current,
+          );
+          return HttpResponse.json(answered);
+        },
+      ),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 5 }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(await screen.findByText(choice.stem)).toBeVisible();
+    expect(screen.queryByText(/正确答案：/)).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("radio", { name: `C. ${choice.options[2]}` }),
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "提交答案" })[0]);
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("button", { name: "提交答案" })[1],
+      ).toBeDisabled(),
+    );
+    expect(screen.getByRole("radio", { name: "错" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+
+    expect(await screen.findByText("回答错误")).toBeVisible();
+    await waitFor(() => expect(quizReads).toBeGreaterThan(1));
+    expect(
+      screen.getByText("正确答案：A. 选择就绪进程分配处理器"),
+    ).toBeVisible();
+    expect(
+      screen.getByText("解析：进程调度决定哪个就绪进程获得处理器。"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("radio", { name: `C. ${choice.options[2]}` }),
+    ).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.click(screen.getByRole("radio", { name: "错" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
+    expect(await screen.findByText("回答正确")).toBeVisible();
+    expect(screen.getByText("正确答案：错")).toBeVisible();
+    expect(submitted).toEqual([
+      { quizId: choice.id, body: { answer: 2 } },
+      { quizId: trueFalse.id, body: { answer: 1 } },
+    ]);
+  });
+
+  it("总结换代后 ACTIVE 客观题仍可继续作答", async () => {
+    let active = quizItem({
+      generation_status: "ACTIVE",
+      correct_answer: null,
+      explanation: null,
+    });
+    let submitCalls = 0;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          quizReadOut({
+            action_required: "NONE",
+            blocked_reason: "SUMMARY_SUPERSEDED",
+            items: [active],
+          }),
+        ),
+      ),
+      http.post(`${QUIZZES_URL}/:quizId/answers`, async ({ request }) => {
+        const answer = readObjectiveAnswer(await request.json());
+        submitCalls += 1;
+        active = {
+          ...active,
+          correct_answer: 0,
+          explanation: "进程调度决定哪个就绪进程获得处理器。",
+          user_answer: answer,
+          answer_result: answer === 0 ? "CORRECT" : "WRONG",
+          answered_at: "2026-08-25T13:00:00.000000Z",
+        };
+        return HttpResponse.json(active);
+      }),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 5 }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(await screen.findByText(active.stem)).toBeVisible();
+    expect(screen.queryByText(/正确答案：/)).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("radio", { name: "A. 选择就绪进程分配处理器" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
+
+    expect(await screen.findByText("回答正确")).toBeVisible();
+    expect(
+      screen.getByText("正确答案：A. 选择就绪进程分配处理器"),
+    ).toBeVisible();
+    expect(submitCalls).toBe(1);
+  });
+
+  it("重进习题页后恢复已答选择与只读反馈", async () => {
+    const answered = quizItem({
+      generation_status: "ACTIVE",
+      user_answer: 0,
+      answer_result: "CORRECT",
+      answered_at: "2026-08-25T13:00:00.000000Z",
+    });
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          quizReadOut({ action_required: "GENERATE", items: [answered] }),
+        ),
+      ),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 5 }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(
+      await screen.findByRole("radio", {
+        name: "A. 选择就绪进程分配处理器",
+        checked: true,
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText("回答正确")).toBeVisible();
+    expect(
+      screen.getByText("正确答案：A. 选择就绪进程分配处理器"),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "提交答案" }),
+    ).not.toBeInTheDocument();
   });
 
   it("生成失败展示可重试状态", async () => {

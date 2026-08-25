@@ -91,6 +91,16 @@ export const recordApi = {
       { method: "POST" },
     );
   },
+  answerObjectiveQuiz(
+    recordId: string,
+    quizId: string,
+    body: components["schemas"]["QuizObjectiveAnswerRequest"],
+  ) {
+    return apiFetch<components["schemas"]["QuizOut"]>(
+      `/api/records/${recordId}/quizzes/${quizId}/answers`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
   submitSummary: (recordId: string) =>
     apiFetch<components["schemas"]["SummaryJobAccepted"]>(
       `/api/records/${recordId}/summary-jobs`,

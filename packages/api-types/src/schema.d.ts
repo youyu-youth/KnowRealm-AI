@@ -420,6 +420,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/quizzes/{quiz_id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Answer Objective Quiz */
+        post: operations["answer_objective_quiz_api_records__record_id__quizzes__quiz_id__answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/summaries": {
         parameters: {
             query?: never;
@@ -1086,6 +1103,14 @@ export interface components {
             /** Job Id */
             job_id: string;
         };
+        /** QuizObjectiveAnswerRequest */
+        QuizObjectiveAnswerRequest: {
+            /**
+             * Answer
+             * @description 用户所选选项的下标（从 0 开始）
+             */
+            answer: number;
+        };
         /** QuizOut */
         QuizOut: {
             answer_result?: components["schemas"]["QuizAnswerResult"] | null;
@@ -1094,12 +1119,12 @@ export interface components {
             /** Batch Id */
             batch_id: string | null;
             /** Correct Answer */
-            correct_answer: number | string;
+            correct_answer: number | string | null;
             /** Created At */
             created_at: string | null;
             difficulty: components["schemas"]["QuizDifficulty"];
             /** Explanation */
-            explanation: string;
+            explanation: string | null;
             /** Generated From Summary Id */
             generated_from_summary_id: string | null;
             generation_status: components["schemas"]["QuizGenerationStatus"];
@@ -3612,6 +3637,80 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuizReadOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    answer_objective_quiz_api_records__record_id__quizzes__quiz_id__answers_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+                quiz_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizObjectiveAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizOut"];
                 };
             };
             /** @description Forbidden */

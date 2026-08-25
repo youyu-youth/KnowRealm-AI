@@ -951,3 +951,191 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
     assert updated.json() == {"quiz_last_count": 10}
     assert reread.json() == {"quiz_last_count": 10}
     assert invalid.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_answer_objective_quizzes_scores_once_and_persists_events(tmp_path: Path) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, draft = await generate_draft_batch(client, record_id)
+        adopted = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations"
+        )
+        assert adopted.status_code == 200, adopted.text
+        items = cast(list[dict[str, object]], draft["items"])
+        multiple_choice = next(item for item in items if item["question_type"] == "MULTIPLE_CHOICE")
+        true_false = next(item for item in items if item["question_type"] == "TRUE_FALSE")
+        adopted_items = cast(list[dict[str, object]], adopted.json()["items"])
+        unanswered = next(item for item in adopted_items if item["id"] == multiple_choice["id"])
+        assert unanswered["correct_answer"] is None
+        assert unanswered["explanation"] is None
+
+        invalid = await client.post(
+            f"/api/records/{record_id}/quizzes/{multiple_choice['id']}/answers",
+            json={"answer": 99},
+        )
+        wrong = await client.post(
+            f"/api/records/{record_id}/quizzes/{multiple_choice['id']}/answers",
+            json={"answer": 2},
+        )
+        repeated = await client.post(
+            f"/api/records/{record_id}/quizzes/{multiple_choice['id']}/answers",
+            json={"answer": 0},
+        )
+        correct = await client.post(
+            f"/api/records/{record_id}/quizzes/{true_false['id']}/answers",
+            json={"answer": 1},
+        )
+        restored = await read_quizzes(client, record_id)
+
+        async with app.state.session_factory() as session:
+            events = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT source_type, source_id, result, score, difficulty, "
+                            "duration_ms, concept_id, metadata_json, idempotency_key "
+                            "FROM learning_events "
+                            "WHERE event_type='QUIZ_ANSWERED' ORDER BY source_id"
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+    assert invalid.status_code == 400, invalid.text
+    assert wrong.status_code == 200, wrong.text
+    assert wrong.json()["user_answer"] == 2
+    assert wrong.json()["answer_result"] == "WRONG"
+    assert wrong.json()["answered_at"] is not None
+    assert wrong.json()["correct_answer"] == 0
+    assert wrong.json()["explanation"] == "进程调度决定哪个就绪进程获得处理器。"
+    assert repeated.status_code == 200, repeated.text
+    assert repeated.json()["user_answer"] == 2
+    assert repeated.json()["answer_result"] == "WRONG"
+    assert repeated.json()["answered_at"] == wrong.json()["answered_at"]
+    assert correct.status_code == 200, correct.text
+    assert correct.json()["answer_result"] == "CORRECT"
+    restored_items = cast(list[dict[str, object]], restored["items"])
+    restored_wrong = next(item for item in restored_items if item["id"] == multiple_choice["id"])
+    assert restored_wrong["user_answer"] == 2
+    assert restored_wrong["answer_result"] == "WRONG"
+    assert len(events) == 2
+    by_source_id = {event["source_id"]: event for event in events}
+    wrong_event = by_source_id[multiple_choice["id"]]
+    assert wrong_event["source_type"] == "QUIZ_QUESTION"
+    assert wrong_event["result"] == "WRONG"
+    assert wrong_event["score"] is None
+    assert wrong_event["difficulty"] == "EASY"
+    assert wrong_event["duration_ms"] is None
+    assert wrong_event["concept_id"] is None
+    assert wrong_event["idempotency_key"] == f"quiz-answered:{multiple_choice['id']}"
+    assert json.loads(wrong_event["metadata_json"]) == {
+        "batch_id": batch_id,
+        "question_type": "MULTIPLE_CHOICE",
+        "generated_from_summary_id": summary_id,
+    }
+    assert "answer" not in wrong_event["metadata_json"]
+
+
+@pytest.mark.anyio
+async def test_objective_answer_requires_active_batch_but_not_current_summary(
+    tmp_path: Path,
+) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        first_batch_id, first_draft = await generate_draft_batch(client, record_id)
+        first_items = cast(list[dict[str, object]], first_draft["items"])
+        first_choice = next(
+            item for item in first_items if item["question_type"] == "MULTIPLE_CHOICE"
+        )
+        draft_answer = await client.post(
+            f"/api/records/{record_id}/quizzes/{first_choice['id']}/answers",
+            json={"answer": 0},
+        )
+        await client.post(f"/api/records/{record_id}/quiz-batches/{first_batch_id}/confirmations")
+        second_batch_id, _second_draft = await generate_draft_batch(client, record_id)
+        await client.post(f"/api/records/{record_id}/quiz-batches/{second_batch_id}/confirmations")
+        superseded_answer = await client.post(
+            f"/api/records/{record_id}/quizzes/{first_choice['id']}/answers",
+            json={"answer": 0},
+        )
+
+        active = await read_quizzes(client, record_id)
+        active_items = cast(list[dict[str, object]], active["items"])
+        active_choice = next(
+            item for item in active_items if item["question_type"] == "MULTIPLE_CHOICE"
+        )
+        active_short = next(
+            item for item in active_items if item["question_type"] == "SHORT_ANSWER"
+        )
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE ai_summaries SET status='SUPERSEDED' WHERE record_id=:record_id"),
+                {"record_id": record_id},
+            )
+        after_summary_replacement = await client.post(
+            f"/api/records/{record_id}/quizzes/{active_choice['id']}/answers",
+            json={"answer": 0},
+        )
+        short_answer = await client.post(
+            f"/api/records/{record_id}/quizzes/{active_short['id']}/answers",
+            json={"answer": 0},
+        )
+
+    assert draft_answer.status_code == 409
+    assert superseded_answer.status_code == 409
+    assert after_summary_replacement.status_code == 200
+    assert after_summary_replacement.json()["answer_result"] == "CORRECT"
+    assert short_answer.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_objective_answer_and_event_roll_back_together(tmp_path: Path) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, draft = await generate_draft_batch(client, record_id)
+        await client.post(f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations")
+        items = cast(list[dict[str, object]], draft["items"])
+        choice = next(item for item in items if item["question_type"] == "MULTIPLE_CHOICE")
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "CREATE TRIGGER reject_quiz_answer_event BEFORE INSERT ON learning_events "
+                    "WHEN NEW.event_type='QUIZ_ANSWERED' BEGIN "
+                    "SELECT RAISE(ABORT, 'forced event failure'); END"
+                )
+            )
+
+        failed = await client.post(
+            f"/api/records/{record_id}/quizzes/{choice['id']}/answers",
+            json={"answer": 0},
+        )
+        async with app.state.session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT user_answer_json, answer_result, answered_at FROM quizzes "
+                        "WHERE id=:quiz_id"
+                    ),
+                    {"quiz_id": choice["id"]},
+                )
+            ).one()
+            event_count = await session.scalar(
+                text("SELECT count(*) FROM learning_events WHERE idempotency_key=:idempotency_key"),
+                {"idempotency_key": f"quiz-answered:{choice['id']}"},
+            )
+
+    assert failed.status_code == 500
+    assert tuple(row) == (None, None, None)
+    assert event_count == 0

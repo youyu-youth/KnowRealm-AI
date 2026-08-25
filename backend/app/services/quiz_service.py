@@ -7,12 +7,13 @@ from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
 from app.models.course import Course
-from app.models.document import AiSummary, ProcessingJob, Quiz
+from app.models.document import AiSummary, LearningEvent, ProcessingJob, Quiz
 from app.models.record import Record
 from app.schemas.course import CourseStatus
 from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
@@ -23,6 +24,9 @@ from app.schemas.quiz import (
     QuizDifficulty,
     QuizGenerateRequest,
     QuizGenerationStatus,
+    QuizLearningEventSourceType,
+    QuizLearningEventType,
+    QuizObjectiveAnswerRequest,
     QuizOut,
     QuizQuestionType,
     QuizReadOut,
@@ -40,6 +44,9 @@ def _quiz_out(item: Quiz) -> QuizOut:
     if item.user_answer_json is not None:
         raw_answer = cast(object, json.loads(item.user_answer_json))
         user_answer = raw_answer if isinstance(raw_answer, (int, str)) else None
+    answer_visible = (
+        item.generation_status == QuizGenerationStatus.DRAFT or item.answered_at is not None
+    )
     return QuizOut(
         id=item.id,
         record_id=item.record_id,
@@ -49,8 +56,10 @@ def _quiz_out(item: Quiz) -> QuizOut:
         question_type=QuizQuestionType(item.question_type),
         stem=item.stem,
         options=cast(list[str], json.loads(item.options_json)),
-        correct_answer=cast(int | str, json.loads(item.correct_answer_json)),
-        explanation=item.explanation,
+        correct_answer=(
+            cast(int | str, json.loads(item.correct_answer_json)) if answer_visible else None
+        ),
+        explanation=item.explanation if answer_visible else None,
         difficulty=QuizDifficulty(item.difficulty),
         user_answer=user_answer,
         answer_result=QuizAnswerResult(item.answer_result) if item.answer_result else None,
@@ -416,6 +425,98 @@ class QuizService:
             ):
                 raise
         return await QuizService.read(session, data_dir, record_id)
+
+    @staticmethod
+    async def answer_objective(
+        session: AsyncSession,
+        record_id: str,
+        quiz_id: str,
+        body: QuizObjectiveAnswerRequest,
+    ) -> tuple[QuizOut, bool]:
+        async with session.begin():
+            record = await _get_record(session, record_id)
+            quiz = (
+                await session.scalars(
+                    select(Quiz).where(
+                        Quiz.id == quiz_id,
+                        Quiz.record_id == record_id,
+                        Quiz.deleted_at.is_(None),
+                    )
+                )
+            ).one_or_none()
+            if quiz is None:
+                raise HTTPException(status_code=404, detail="习题不存在或已删除")
+            if quiz.generation_status != QuizGenerationStatus.ACTIVE:
+                raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+            if quiz.question_type not in (
+                QuizQuestionType.MULTIPLE_CHOICE,
+                QuizQuestionType.TRUE_FALSE,
+            ):
+                raise HTTPException(status_code=409, detail="该题不是客观题")
+            options = cast(list[str], json.loads(quiz.options_json))
+            if body.answer >= len(options):
+                raise HTTPException(status_code=400, detail="所选答案下标超出选项范围")
+            if quiz.answered_at is not None:
+                return _quiz_out(quiz), False
+            if record.course_id is None:
+                raise HTTPException(status_code=409, detail="学习记录缺少课程归属，不能作答")
+
+            now = utcnow()
+            correct_answer = cast(int, json.loads(quiz.correct_answer_json))
+            answer_result = (
+                QuizAnswerResult.CORRECT
+                if body.answer == correct_answer
+                else QuizAnswerResult.WRONG
+            )
+            updated = await session.execute(
+                update(Quiz)
+                .where(
+                    Quiz.id == quiz_id,
+                    Quiz.generation_status == QuizGenerationStatus.ACTIVE,
+                    Quiz.answered_at.is_(None),
+                )
+                .values(
+                    user_answer_json=json.dumps(body.answer),
+                    answer_result=answer_result,
+                    answered_at=now,
+                    updated_at=now,
+                )
+            )
+            if not isinstance(updated, CursorResult) or updated.rowcount != 1:
+                await session.refresh(quiz)
+                if quiz.generation_status != QuizGenerationStatus.ACTIVE:
+                    raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+                return _quiz_out(quiz), False
+
+            session.add(
+                LearningEvent(
+                    id=str(uuid4()),
+                    course_id=record.course_id,
+                    record_id=record_id,
+                    concept_id=None,
+                    event_type=QuizLearningEventType.ANSWERED,
+                    source_type=QuizLearningEventSourceType.QUESTION,
+                    source_id=quiz_id,
+                    result=answer_result,
+                    score=None,
+                    difficulty=quiz.difficulty,
+                    duration_ms=None,
+                    metadata_json=json.dumps(
+                        {
+                            "batch_id": quiz.batch_id,
+                            "question_type": quiz.question_type,
+                            "generated_from_summary_id": quiz.generated_from_summary_id,
+                        },
+                        separators=(",", ":"),
+                    ),
+                    idempotency_key=f"quiz-answered:{quiz_id}",
+                    schema_version=1,
+                    occurred_at=now,
+                    created_at=now,
+                )
+            )
+            await session.flush()
+            return _quiz_out(quiz), True
 
 
 class QuizAdoptionBlocked(Exception):

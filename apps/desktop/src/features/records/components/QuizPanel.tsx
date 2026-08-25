@@ -30,7 +30,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
-import type { QuizOut } from "@/features/records/api/types";
+import type { QuizOut, QuizReadOut } from "@/features/records/api/types";
 import { settingsApi } from "@/features/settings/api/settings";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { cn } from "@/lib/utils";
@@ -136,6 +136,7 @@ export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
 
       {activeItems.length ? (
         <ActiveQuizList
+          recordId={recordId}
           items={activeItems}
           onRegenerate={
             generateAction === "GENERATE" ? () => setDialogOpen(true) : null
@@ -377,15 +378,46 @@ function QuizCandidateList({
 }
 
 function ActiveQuizList({
+  recordId,
   items,
   onRegenerate,
   className,
 }: {
+  recordId: string;
   items: QuizOut[];
   onRegenerate: (() => void) | null;
   className?: string;
 }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [selectedAnswers, setSelectedAnswers] = useState<
+    Record<string, number>
+  >({});
+  const submitAnswer = useMutation({
+    mutationFn: ({ quizId, answer }: { quizId: string; answer: number }) =>
+      recordApi.answerObjectiveQuiz(recordId, quizId, { answer }),
+    onSuccess: async (answered) => {
+      queryClient.setQueryData<QuizReadOut>(
+        recordKeys.quizzes(recordId),
+        (current) =>
+          current
+            ? {
+                ...current,
+                items: current.items.map((item) =>
+                  item.id === answered.id ? answered : item,
+                ),
+              }
+            : current,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: recordKeys.quizzes(recordId),
+      });
+    },
+    onError: () =>
+      queryClient.invalidateQueries({
+        queryKey: recordKeys.quizzes(recordId),
+      }),
+  });
 
   return (
     <section className={className} aria-labelledby="active-quizzes-title">
@@ -401,25 +433,128 @@ function ActiveQuizList({
         </p>
       </div>
       <ol className="mt-4">
-        {items.map((item, index) => (
-          <li
-            key={item.id}
-            className="border-border border-t py-5 first:border-t-0"
-          >
-            <div className="text-label text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="font-label">
-                {index + 1}.{" "}
-                {t(`record.detail.quiz.type.${item.question_type}`)}
-              </span>
-              <span>
-                {t(`record.detail.quiz.difficulty.${item.difficulty}`)}
-              </span>
-            </div>
-            <h3 className="text-section font-section text-ink mt-2 break-words">
-              {item.stem}
-            </h3>
-          </li>
-        ))}
+        {items.map((item, index) => {
+          const objective =
+            item.question_type === "MULTIPLE_CHOICE" ||
+            item.question_type === "TRUE_FALSE";
+          const answered = item.answered_at !== null;
+          const selected =
+            typeof item.user_answer === "number"
+              ? item.user_answer
+              : selectedAnswers[item.id];
+          const submitting =
+            submitAnswer.isPending && submitAnswer.variables.quizId === item.id;
+          const correctIndex =
+            typeof item.correct_answer === "number"
+              ? item.correct_answer
+              : null;
+          const correctAnswer =
+            correctIndex === null
+              ? item.correct_answer
+              : objectiveAnswerLabel(item, correctIndex);
+
+          return (
+            <li
+              key={item.id}
+              className="border-border border-t py-5 first:border-t-0"
+            >
+              <article>
+                <div className="text-label text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="font-label">
+                    {index + 1}.{" "}
+                    {t(`record.detail.quiz.type.${item.question_type}`)}
+                  </span>
+                  <span>
+                    {t(`record.detail.quiz.difficulty.${item.difficulty}`)}
+                  </span>
+                </div>
+                <h3 className="text-section font-section text-ink mt-2 break-words">
+                  {item.stem}
+                </h3>
+                {objective ? (
+                  <>
+                    <RadioGroup
+                      value={selected === undefined ? "" : String(selected)}
+                      disabled={answered || submitAnswer.isPending}
+                      onValueChange={(value) =>
+                        setSelectedAnswers((current) => ({
+                          ...current,
+                          [item.id]: Number(value),
+                        }))
+                      }
+                      className="mt-4 grid gap-2"
+                    >
+                      {item.options.map((_option, optionIndex) => {
+                        const id = `quiz-${item.id}-option-${optionIndex}`;
+                        return (
+                          <Field key={id} orientation="horizontal">
+                            <RadioGroupItem
+                              id={id}
+                              value={String(optionIndex)}
+                            />
+                            <FieldLabel htmlFor={id}>
+                              {objectiveAnswerLabel(item, optionIndex)}
+                            </FieldLabel>
+                          </Field>
+                        );
+                      })}
+                    </RadioGroup>
+                    {answered ? (
+                      <div className="mt-4">
+                        <p
+                          role="status"
+                          className={cn(
+                            "text-body font-medium",
+                            item.answer_result === "CORRECT"
+                              ? "text-success-foreground"
+                              : "text-destructive",
+                          )}
+                        >
+                          {t(`record.detail.quiz.result.${item.answer_result}`)}
+                        </p>
+                        <p className="text-label text-ink mt-2">
+                          {t("record.detail.quiz.correctAnswer", {
+                            answer: correctAnswer,
+                          })}
+                        </p>
+                        <p className="text-body text-muted-foreground mt-2 whitespace-pre-wrap">
+                          {t("record.detail.quiz.explanation", {
+                            detail: item.explanation,
+                          })}
+                        </p>
+                      </div>
+                    ) : (
+                      <Button
+                        className="mt-4"
+                        disabled={
+                          selected === undefined || submitAnswer.isPending
+                        }
+                        onClick={() =>
+                          submitAnswer.mutate({
+                            quizId: item.id,
+                            answer: selected,
+                          })
+                        }
+                      >
+                        {submitting ? <Spinner aria-hidden="true" /> : null}
+                        {t("record.detail.quiz.submitAnswer")}
+                      </Button>
+                    )}
+                    {submitAnswer.isError &&
+                    submitAnswer.variables.quizId === item.id ? (
+                      <p
+                        role="alert"
+                        className="text-body text-destructive mt-3"
+                      >
+                        {submitAnswer.error.message}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+              </article>
+            </li>
+          );
+        })}
       </ol>
       {onRegenerate ? (
         <div className="border-border mt-8 border-t pt-6">
@@ -430,6 +565,13 @@ function ActiveQuizList({
       ) : null}
     </section>
   );
+}
+
+function objectiveAnswerLabel(item: QuizOut, optionIndex: number): string {
+  const option = item.options[optionIndex];
+  return item.question_type === "TRUE_FALSE"
+    ? option
+    : `${String.fromCharCode(65 + optionIndex)}. ${option}`;
 }
 
 function QuizQuestionCard({ item, index }: { item: QuizOut; index: number }) {
