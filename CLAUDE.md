@@ -55,8 +55,9 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 - 在探索或检索代码库时，优先使用 codegraph 相关工具来探索或检索代码
 - 当需要爬取网页数据的时候，你可以使用firecrawl 相关工具来进行爬取
-- 当需要操作浏览器的时候，你可以使用playwright 工具来进行操作
 - 技术文档查询时，适用context7 tools 即可 (在LLM知识库对该技术文档的掌握低于90%时即可使用 context7 实时查询)
+- 如果使用 lsp 工具更为高效，如 pyright-lsp，则使用它
+- 涉及到浏览器交互的操作，优先使用 browser-use mcp 工具
 
 
 

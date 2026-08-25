@@ -210,3 +210,4 @@ docs/code-review/
 .scratch/**/**.sh
 opencode.jsonc
 .mcp.json
+img
