@@ -1482,6 +1482,34 @@
         "title": "QuizReadOut",
         "type": "object"
       },
+      "QuizSelfAssessmentRequest": {
+        "properties": {
+          "result": {
+            "$ref": "#/components/schemas/QuizAnswerResult"
+          }
+        },
+        "required": [
+          "result"
+        ],
+        "title": "QuizSelfAssessmentRequest",
+        "type": "object"
+      },
+      "QuizShortAnswerRequest": {
+        "properties": {
+          "answer": {
+            "description": "用户提交的简答作答",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "answer"
+        ],
+        "title": "QuizShortAnswerRequest",
+        "type": "object"
+      },
       "RecordJobsOut": {
         "properties": {
           "jobs": {
@@ -5471,7 +5499,7 @@
     },
     "/api/records/{record_id}/quizzes/{quiz_id}/answers": {
       "post": {
-        "operationId": "answer_objective_quiz_api_records__record_id__quizzes__quiz_id__answers_post",
+        "operationId": "answer_quiz_api_records__record_id__quizzes__quiz_id__answers_post",
         "parameters": [
           {
             "in": "path",
@@ -5514,7 +5542,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/QuizObjectiveAnswerRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/QuizObjectiveAnswerRequest"
+                  },
+                  {
+                    "$ref": "#/components/schemas/QuizShortAnswerRequest"
+                  }
+                ],
+                "title": "Body"
               }
             }
           },
@@ -5582,7 +5618,126 @@
             "description": "Internal Server Error"
           }
         },
-        "summary": "Answer Objective Quiz",
+        "summary": "Answer Quiz",
+        "tags": [
+          "quizzes"
+        ]
+      }
+    },
+    "/api/records/{record_id}/quizzes/{quiz_id}/self-assessments": {
+      "post": {
+        "operationId": "self_assess_short_quiz_api_records__record_id__quizzes__quiz_id__self_assessments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "quiz_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Quiz Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizSelfAssessmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Self Assess Short Quiz",
         "tags": [
           "quizzes"
         ]

@@ -137,6 +137,21 @@ class QuizObjectiveAnswerRequest(BaseModel):
     answer: int = Field(ge=0, description="用户所选选项的下标（从 0 开始）")
 
 
+class QuizShortAnswerRequest(BaseModel):
+    answer: str = Field(min_length=1, max_length=2000, description="用户提交的简答作答")
+
+    @field_validator("answer")
+    @classmethod
+    def reject_blank_answer(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("简答作答不能为空")
+        return value
+
+
+class QuizSelfAssessmentRequest(BaseModel):
+    result: QuizAnswerResult
+
+
 class QuizOut(BaseModel):
     id: str
     record_id: str

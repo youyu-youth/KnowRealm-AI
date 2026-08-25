@@ -14,6 +14,8 @@ from app.schemas.quiz import (
     QuizObjectiveAnswerRequest,
     QuizOut,
     QuizReadOut,
+    QuizSelfAssessmentRequest,
+    QuizShortAnswerRequest,
 )
 from app.services.quiz_service import QuizAdoptionBlocked, QuizService
 
@@ -119,14 +121,44 @@ async def adopt_quiz_batch(
     "/{record_id}/quizzes/{quiz_id}/answers",
     response_model=QuizOut,
 )
-async def answer_objective_quiz(
+async def answer_quiz(
     record_id: UUID,
     quiz_id: UUID,
-    body: QuizObjectiveAnswerRequest,
+    body: QuizObjectiveAnswerRequest | QuizShortAnswerRequest,
     request: Request,
     session: AsyncSession = Depends(get_db),
 ) -> QuizOut:
-    result, changed = await QuizService.answer_objective(
+    if isinstance(body, QuizShortAnswerRequest):
+        result, changed = await QuizService.answer_short(
+            session,
+            str(record_id),
+            str(quiz_id),
+            body,
+        )
+    else:
+        result, changed = await QuizService.answer_objective(
+            session,
+            str(record_id),
+            str(quiz_id),
+            body,
+        )
+    if changed:
+        await request.app.state.record_notifier.notify(str(record_id))
+    return result
+
+
+@router.post(
+    "/{record_id}/quizzes/{quiz_id}/self-assessments",
+    response_model=QuizOut,
+)
+async def self_assess_short_quiz(
+    record_id: UUID,
+    quiz_id: UUID,
+    body: QuizSelfAssessmentRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> QuizOut:
+    result, changed = await QuizService.self_assess_short(
         session,
         str(record_id),
         str(quiz_id),

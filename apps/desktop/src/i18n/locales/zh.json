@@ -513,6 +513,17 @@
         "referenceAnswer": "参考答案：{{answer}}",
         "explanation": "解析：{{detail}}",
         "submitAnswer": "提交答案",
+        "shortAnswer": {
+          "label": "你的作答",
+          "submit": "提交作答",
+          "pending": "待自评",
+          "correct": "自评正确",
+          "wrong": "自评错误"
+        },
+        "completion": {
+          "title": "本批练习已完成",
+          "score": "答对 {{correct}} / {{total}}"
+        },
         "result": {
           "CORRECT": "回答正确",
           "WRONG": "回答错误"

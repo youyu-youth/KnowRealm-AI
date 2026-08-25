@@ -2140,6 +2140,30 @@ function readObjectiveAnswer(body: unknown): number {
   return body.answer;
 }
 
+function readShortAnswer(body: unknown): string {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("answer" in body) ||
+    typeof body.answer !== "string"
+  ) {
+    throw new Error("简答题作答请求缺少字符串 answer");
+  }
+  return body.answer;
+}
+
+function readSelfAssessment(body: unknown): "CORRECT" | "WRONG" {
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("result" in body) ||
+    (body.result !== "CORRECT" && body.result !== "WRONG")
+  ) {
+    throw new Error("简答题自评请求缺少二态 result");
+  }
+  return body.result;
+}
+
 const completedRecord: RecordOut = {
   ...record,
   status: "COMPLETED",
@@ -2515,6 +2539,103 @@ describe("习题页签", () => {
       { quizId: choice.id, body: { answer: 2 } },
       { quizId: trueFalse.id, body: { answer: 1 } },
     ]);
+  });
+
+  it("简答提交后显示参考答案并自评，全部完成后展示答对计数", async () => {
+    const referenceAnswer =
+      "调度器按照策略从就绪队列中选择下一个占用处理器的进程。";
+    const choice = quizItem({
+      generation_status: "ACTIVE",
+      user_answer: 0,
+      answer_result: "CORRECT",
+      answered_at: "2026-08-25T13:00:00.000000Z",
+    });
+    const trueFalse = quizItem({
+      id: "77777777-7777-4777-8777-777777777777",
+      generation_status: "ACTIVE",
+      question_type: "TRUE_FALSE",
+      stem: "时间片越小，系统效率越高。",
+      options: ["对", "错"],
+      correct_answer: 1,
+      explanation: "时间片过小会导致上下文切换开销过大。",
+      difficulty: "MEDIUM",
+      user_answer: 0,
+      answer_result: "WRONG",
+      answered_at: "2026-08-25T13:01:00.000000Z",
+    });
+    let short = quizItem({
+      id: "88888888-8888-4888-8888-888888888888",
+      generation_status: "ACTIVE",
+      question_type: "SHORT_ANSWER",
+      stem: "简述进程调度器的职责。",
+      options: [],
+      correct_answer: null,
+      explanation: null,
+      difficulty: "MEDIUM",
+    });
+    let items = [choice, trueFalse, short];
+    const submitted: object[] = [];
+    const assessed: object[] = [];
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(quizReadOut({ action_required: "GENERATE", items })),
+      ),
+      http.post(`${QUIZZES_URL}/:quizId/answers`, async ({ request }) => {
+        const answer = readShortAnswer(await request.json());
+        submitted.push({ answer });
+        short = {
+          ...short,
+          correct_answer: referenceAnswer,
+          explanation: "调度器负责就绪队列管理与处理器时间分配。",
+          user_answer: answer,
+          answered_at: "2026-08-25T13:02:00.000000Z",
+        };
+        items = [choice, trueFalse, short];
+        return HttpResponse.json(short);
+      }),
+      http.post(
+        `${QUIZZES_URL}/:quizId/self-assessments`,
+        async ({ request }) => {
+          const result = readSelfAssessment(await request.json());
+          assessed.push({ result });
+          short = { ...short, answer_result: result };
+          items = [choice, trueFalse, short];
+          return HttpResponse.json(short);
+        },
+      ),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 5 }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(await screen.findByText(short.stem)).toBeVisible();
+    const answer = screen.getByRole("textbox", { name: "你的作答" });
+    expect(answer).toHaveAttribute("maxlength", "2000");
+    expect(screen.getByRole("button", { name: "提交作答" })).toBeDisabled();
+    expect(screen.queryByText(/参考答案：/)).not.toBeInTheDocument();
+
+    fireEvent.change(answer, {
+      target: { value: "调度器从就绪队列中选择下一个进程。" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交作答" }));
+
+    expect(
+      await screen.findByText(`参考答案：${referenceAnswer}`),
+    ).toBeVisible();
+    expect(screen.getByText("待自评")).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "你的作答" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "自评正确" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "本批练习已完成" }),
+    ).toBeVisible();
+    expect(screen.getByText("答对 2 / 3")).toBeVisible();
+    expect(submitted).toEqual([
+      { answer: "调度器从就绪队列中选择下一个进程。" },
+    ]);
+    expect(assessed).toEqual([{ result: "CORRECT" }]);
   });
 
   it("总结换代后 ACTIVE 客观题仍可继续作答", async () => {

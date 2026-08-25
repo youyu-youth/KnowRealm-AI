@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { QuizOut, QuizReadOut } from "@/features/records/api/types";
@@ -393,31 +394,55 @@ function ActiveQuizList({
   const [selectedAnswers, setSelectedAnswers] = useState<
     Record<string, number>
   >({});
+  const [shortAnswers, setShortAnswers] = useState<Record<string, string>>({});
+  const updateAnsweredItem = async (answered: QuizOut) => {
+    queryClient.setQueryData<QuizReadOut>(
+      recordKeys.quizzes(recordId),
+      (current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((item) =>
+                item.id === answered.id ? answered : item,
+              ),
+            }
+          : current,
+    );
+    await queryClient.invalidateQueries({
+      queryKey: recordKeys.quizzes(recordId),
+    });
+  };
+  const refreshQuizzes = () =>
+    queryClient.invalidateQueries({
+      queryKey: recordKeys.quizzes(recordId),
+    });
   const submitAnswer = useMutation({
     mutationFn: ({ quizId, answer }: { quizId: string; answer: number }) =>
       recordApi.answerObjectiveQuiz(recordId, quizId, { answer }),
-    onSuccess: async (answered) => {
-      queryClient.setQueryData<QuizReadOut>(
-        recordKeys.quizzes(recordId),
-        (current) =>
-          current
-            ? {
-                ...current,
-                items: current.items.map((item) =>
-                  item.id === answered.id ? answered : item,
-                ),
-              }
-            : current,
-      );
-      await queryClient.invalidateQueries({
-        queryKey: recordKeys.quizzes(recordId),
-      });
-    },
-    onError: () =>
-      queryClient.invalidateQueries({
-        queryKey: recordKeys.quizzes(recordId),
-      }),
+    onSuccess: updateAnsweredItem,
+    onError: refreshQuizzes,
   });
+  const submitShortAnswer = useMutation({
+    mutationFn: ({ quizId, answer }: { quizId: string; answer: string }) =>
+      recordApi.answerShortQuiz(recordId, quizId, { answer }),
+    onSuccess: updateAnsweredItem,
+    onError: refreshQuizzes,
+  });
+  const selfAssessShort = useMutation({
+    mutationFn: ({
+      quizId,
+      result,
+    }: {
+      quizId: string;
+      result: components["schemas"]["QuizAnswerResult"];
+    }) => recordApi.selfAssessShortQuiz(recordId, quizId, { result }),
+    onSuccess: updateAnsweredItem,
+    onError: refreshQuizzes,
+  });
+  const completed = items.every((item) => item.answer_result !== null);
+  const correctCount = items.filter(
+    (item) => item.answer_result === "CORRECT",
+  ).length;
 
   return (
     <section className={className} aria-labelledby="active-quizzes-title">
@@ -432,6 +457,19 @@ function ActiveQuizList({
           {t("record.detail.quiz.activeHint", { count: items.length })}
         </p>
       </div>
+      {completed ? (
+        <div className="border-border bg-surface-subtle mt-4 rounded-lg border p-4">
+          <h3 className="text-section font-section text-ink">
+            {t("record.detail.quiz.completion.title")}
+          </h3>
+          <p className="text-body text-muted-foreground mt-1">
+            {t("record.detail.quiz.completion.score", {
+              correct: correctCount,
+              total: items.length,
+            })}
+          </p>
+        </div>
+      ) : null}
       <ol className="mt-4">
         {items.map((item, index) => {
           const objective =
@@ -452,6 +490,13 @@ function ActiveQuizList({
             correctIndex === null
               ? item.correct_answer
               : objectiveAnswerLabel(item, correctIndex);
+          const shortAnswer =
+            typeof item.user_answer === "string"
+              ? item.user_answer
+              : (shortAnswers[item.id] ?? "");
+          const submittingShort =
+            submitShortAnswer.isPending &&
+            submitShortAnswer.variables.quizId === item.id;
 
           return (
             <li
@@ -550,7 +595,126 @@ function ActiveQuizList({
                       </p>
                     ) : null}
                   </>
-                ) : null}
+                ) : (
+                  <>
+                    <Field className="mt-4">
+                      <FieldLabel htmlFor={`quiz-${item.id}-short-answer`}>
+                        {t("record.detail.quiz.shortAnswer.label")}
+                      </FieldLabel>
+                      <Textarea
+                        id={`quiz-${item.id}-short-answer`}
+                        value={shortAnswer}
+                        maxLength={2000}
+                        disabled={answered || submitShortAnswer.isPending}
+                        onChange={(event) =>
+                          setShortAnswers((current) => ({
+                            ...current,
+                            [item.id]: event.target.value,
+                          }))
+                        }
+                      />
+                    </Field>
+                    {answered ? (
+                      <div className="mt-4">
+                        <p className="text-label text-ink whitespace-pre-wrap">
+                          {t("record.detail.quiz.referenceAnswer", {
+                            answer: item.correct_answer,
+                          })}
+                        </p>
+                        <p className="text-body text-muted-foreground mt-2 whitespace-pre-wrap">
+                          {t("record.detail.quiz.explanation", {
+                            detail: item.explanation,
+                          })}
+                        </p>
+                        {item.answer_result === null ? (
+                          <div className="mt-4">
+                            <p
+                              role="status"
+                              className="text-body text-muted-foreground font-medium"
+                            >
+                              {t("record.detail.quiz.shortAnswer.pending")}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button
+                                disabled={selfAssessShort.isPending}
+                                onClick={() =>
+                                  selfAssessShort.mutate({
+                                    quizId: item.id,
+                                    result: "CORRECT",
+                                  })
+                                }
+                              >
+                                {t("record.detail.quiz.shortAnswer.correct")}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                disabled={selfAssessShort.isPending}
+                                onClick={() =>
+                                  selfAssessShort.mutate({
+                                    quizId: item.id,
+                                    result: "WRONG",
+                                  })
+                                }
+                              >
+                                {t("record.detail.quiz.shortAnswer.wrong")}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p
+                            role="status"
+                            className={cn(
+                              "text-body mt-4 font-medium",
+                              item.answer_result === "CORRECT"
+                                ? "text-success-foreground"
+                                : "text-destructive",
+                            )}
+                          >
+                            {t(
+                              `record.detail.quiz.result.${item.answer_result}`,
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <Button
+                        className="mt-4"
+                        disabled={
+                          !shortAnswer.trim() || submitShortAnswer.isPending
+                        }
+                        onClick={() =>
+                          submitShortAnswer.mutate({
+                            quizId: item.id,
+                            answer: shortAnswer,
+                          })
+                        }
+                      >
+                        {submittingShort ? (
+                          <Spinner aria-hidden="true" />
+                        ) : null}
+                        {t("record.detail.quiz.shortAnswer.submit")}
+                      </Button>
+                    )}
+                    {submitShortAnswer.isError &&
+                    submitShortAnswer.variables.quizId === item.id ? (
+                      <p
+                        role="alert"
+                        className="text-body text-destructive mt-3"
+                      >
+                        {submitShortAnswer.error.message}
+                      </p>
+                    ) : null}
+                    {selfAssessShort.isError &&
+                    selfAssessShort.variables.quizId === item.id ? (
+                      <p
+                        role="alert"
+                        className="text-body text-destructive mt-3"
+                      >
+                        {selfAssessShort.error.message}
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </article>
             </li>
           );

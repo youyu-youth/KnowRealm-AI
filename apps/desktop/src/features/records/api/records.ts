@@ -101,6 +101,26 @@ export const recordApi = {
       { method: "POST", body: JSON.stringify(body) },
     );
   },
+  answerShortQuiz(
+    recordId: string,
+    quizId: string,
+    body: components["schemas"]["QuizShortAnswerRequest"],
+  ) {
+    return apiFetch<components["schemas"]["QuizOut"]>(
+      `/api/records/${recordId}/quizzes/${quizId}/answers`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+  selfAssessShortQuiz(
+    recordId: string,
+    quizId: string,
+    body: components["schemas"]["QuizSelfAssessmentRequest"],
+  ) {
+    return apiFetch<components["schemas"]["QuizOut"]>(
+      `/api/records/${recordId}/quizzes/${quizId}/self-assessments`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
   submitSummary: (recordId: string) =>
     apiFetch<components["schemas"]["SummaryJobAccepted"]>(
       `/api/records/${recordId}/summary-jobs`,

@@ -1043,6 +1043,200 @@ async def test_answer_objective_quizzes_scores_once_and_persists_events(tmp_path
 
 
 @pytest.mark.anyio
+async def test_short_answer_reveals_reference_without_creating_event(tmp_path: Path) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, draft = await generate_draft_batch(client, record_id)
+        short_draft = next(
+            item
+            for item in cast(list[dict[str, object]], draft["items"])
+            if item["question_type"] == "SHORT_ANSWER"
+        )
+        adopted = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations"
+        )
+        short_active = next(
+            item
+            for item in cast(list[dict[str, object]], adopted.json()["items"])
+            if item["id"] == short_draft["id"]
+        )
+
+        blank = await client.post(
+            f"/api/records/{record_id}/quizzes/{short_draft['id']}/answers",
+            json={"answer": "   "},
+        )
+        submitted = await client.post(
+            f"/api/records/{record_id}/quizzes/{short_draft['id']}/answers",
+            json={"answer": "调度器从就绪队列中选择下一个进程。"},
+        )
+        repeated = await client.post(
+            f"/api/records/{record_id}/quizzes/{short_draft['id']}/answers",
+            json={"answer": "第二次提交不能覆盖首次作答。"},
+        )
+        restored = await read_quizzes(client, record_id)
+        async with app.state.session_factory() as session:
+            event_count = await session.scalar(
+                text("SELECT count(*) FROM learning_events WHERE source_id=:quiz_id"),
+                {"quiz_id": short_draft["id"]},
+            )
+
+    assert short_active["correct_answer"] is None
+    assert short_active["explanation"] is None
+    assert blank.status_code == 422, blank.text
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["user_answer"] == "调度器从就绪队列中选择下一个进程。"
+    assert submitted.json()["answer_result"] is None
+    assert submitted.json()["answered_at"] is not None
+    assert submitted.json()["correct_answer"] == short_draft["correct_answer"]
+    assert submitted.json()["explanation"] == short_draft["explanation"]
+    assert repeated.json()["user_answer"] == submitted.json()["user_answer"]
+    restored_short = next(
+        item
+        for item in cast(list[dict[str, object]], restored["items"])
+        if item["id"] == short_draft["id"]
+    )
+    assert restored_short == submitted.json()
+    assert event_count == 0
+
+
+@pytest.mark.anyio
+async def test_short_answer_self_assessment_creates_event_and_completes_batch(
+    tmp_path: Path,
+) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, draft = await generate_draft_batch(client, record_id)
+        items = cast(list[dict[str, object]], draft["items"])
+        choice = next(item for item in items if item["question_type"] == "MULTIPLE_CHOICE")
+        true_false = next(item for item in items if item["question_type"] == "TRUE_FALSE")
+        short = next(item for item in items if item["question_type"] == "SHORT_ANSWER")
+        await client.post(f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations")
+
+        premature = await client.post(
+            f"/api/records/{record_id}/quizzes/{short['id']}/self-assessments",
+            json={"result": "CORRECT"},
+        )
+        await client.post(
+            f"/api/records/{record_id}/quizzes/{choice['id']}/answers",
+            json={"answer": 0},
+        )
+        await client.post(
+            f"/api/records/{record_id}/quizzes/{true_false['id']}/answers",
+            json={"answer": 0},
+        )
+        await client.post(
+            f"/api/records/{record_id}/quizzes/{short['id']}/answers",
+            json={"answer": "调度器负责选择就绪进程。"},
+        )
+        pending = await read_quizzes(client, record_id)
+        assessed = await client.post(
+            f"/api/records/{record_id}/quizzes/{short['id']}/self-assessments",
+            json={"result": "CORRECT"},
+        )
+        repeated = await client.post(
+            f"/api/records/{record_id}/quizzes/{short['id']}/self-assessments",
+            json={"result": "WRONG"},
+        )
+        completed = await read_quizzes(client, record_id)
+        async with app.state.session_factory() as session:
+            events = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT source_id, result, difficulty, metadata_json, idempotency_key "
+                            "FROM learning_events WHERE event_type='QUIZ_ANSWERED' "
+                            "ORDER BY source_id"
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+    pending_items = cast(list[dict[str, object]], pending["items"])
+    pending_short = next(item for item in pending_items if item["id"] == short["id"])
+    completed_items = cast(list[dict[str, object]], completed["items"])
+    assert premature.status_code == 409, premature.text
+    assert pending_short["answer_result"] is None
+    assert not all(item["answer_result"] is not None for item in pending_items)
+    assert assessed.status_code == 200, assessed.text
+    assert assessed.json()["answer_result"] == "CORRECT"
+    assert repeated.json()["answer_result"] == "CORRECT"
+    assert all(item["answer_result"] is not None for item in completed_items)
+    assert sum(item["answer_result"] == "CORRECT" for item in completed_items) == 2
+    assert len(events) == 3
+    short_event = next(event for event in events if event["source_id"] == short["id"])
+    assert short_event["result"] == "CORRECT"
+    assert short_event["difficulty"] == "MEDIUM"
+    assert short_event["idempotency_key"] == f"quiz-answered:{short['id']}"
+    assert json.loads(short_event["metadata_json"]) == {
+        "batch_id": batch_id,
+        "question_type": "SHORT_ANSWER",
+        "generated_from_summary_id": summary_id,
+    }
+
+
+@pytest.mark.anyio
+async def test_short_self_assessment_and_event_roll_back_together(tmp_path: Path) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, draft = await generate_draft_batch(client, record_id)
+        short = next(
+            item
+            for item in cast(list[dict[str, object]], draft["items"])
+            if item["question_type"] == "SHORT_ANSWER"
+        )
+        await client.post(f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations")
+        submitted = await client.post(
+            f"/api/records/{record_id}/quizzes/{short['id']}/answers",
+            json={"answer": "调度器负责选择就绪进程。"},
+        )
+        assert submitted.status_code == 200, submitted.text
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "CREATE TRIGGER reject_short_answer_event BEFORE INSERT ON learning_events "
+                    "WHEN NEW.event_type='QUIZ_ANSWERED' BEGIN "
+                    "SELECT RAISE(ABORT, 'forced event failure'); END"
+                )
+            )
+
+        failed = await client.post(
+            f"/api/records/{record_id}/quizzes/{short['id']}/self-assessments",
+            json={"result": "CORRECT"},
+        )
+        async with app.state.session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT user_answer_json, answer_result, answered_at FROM quizzes "
+                        "WHERE id=:quiz_id"
+                    ),
+                    {"quiz_id": short["id"]},
+                )
+            ).one()
+            event_count = await session.scalar(
+                text("SELECT count(*) FROM learning_events WHERE source_id=:quiz_id"),
+                {"quiz_id": short["id"]},
+            )
+
+    assert failed.status_code == 500
+    assert json.loads(row.user_answer_json) == "调度器负责选择就绪进程。"
+    assert row.answer_result is None
+    assert row.answered_at is not None
+    assert event_count == 0
+
+
+@pytest.mark.anyio
 async def test_objective_answer_requires_active_batch_but_not_current_summary(
     tmp_path: Path,
 ) -> None:

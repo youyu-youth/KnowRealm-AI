@@ -30,6 +30,8 @@ from app.schemas.quiz import (
     QuizOut,
     QuizQuestionType,
     QuizReadOut,
+    QuizSelfAssessmentRequest,
+    QuizShortAnswerRequest,
 )
 from app.services.local_config import (
     LlmProviderConfig,
@@ -176,6 +178,56 @@ async def _visible_items(
                 .order_by(Quiz.created_at)
             )
         ).all()
+    )
+
+
+async def _answerable_quiz(session: AsyncSession, record_id: str, quiz_id: str) -> Quiz:
+    quiz = (
+        await session.scalars(
+            select(Quiz).where(
+                Quiz.id == quiz_id,
+                Quiz.record_id == record_id,
+                Quiz.deleted_at.is_(None),
+            )
+        )
+    ).one_or_none()
+    if quiz is None:
+        raise HTTPException(status_code=404, detail="习题不存在或已删除")
+    if quiz.generation_status != QuizGenerationStatus.ACTIVE:
+        raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+    return quiz
+
+
+def _answer_event(
+    record: Record,
+    quiz: Quiz,
+    result: QuizAnswerResult,
+    now: datetime,
+) -> LearningEvent:
+    return LearningEvent(
+        id=str(uuid4()),
+        course_id=record.course_id,
+        record_id=record.id,
+        concept_id=None,
+        event_type=QuizLearningEventType.ANSWERED,
+        source_type=QuizLearningEventSourceType.QUESTION,
+        source_id=quiz.id,
+        result=result,
+        score=None,
+        difficulty=quiz.difficulty,
+        duration_ms=None,
+        metadata_json=json.dumps(
+            {
+                "batch_id": quiz.batch_id,
+                "question_type": quiz.question_type,
+                "generated_from_summary_id": quiz.generated_from_summary_id,
+            },
+            separators=(",", ":"),
+        ),
+        idempotency_key=f"quiz-answered:{quiz.id}",
+        schema_version=1,
+        occurred_at=now,
+        created_at=now,
     )
 
 
@@ -435,19 +487,7 @@ class QuizService:
     ) -> tuple[QuizOut, bool]:
         async with session.begin():
             record = await _get_record(session, record_id)
-            quiz = (
-                await session.scalars(
-                    select(Quiz).where(
-                        Quiz.id == quiz_id,
-                        Quiz.record_id == record_id,
-                        Quiz.deleted_at.is_(None),
-                    )
-                )
-            ).one_or_none()
-            if quiz is None:
-                raise HTTPException(status_code=404, detail="习题不存在或已删除")
-            if quiz.generation_status != QuizGenerationStatus.ACTIVE:
-                raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+            quiz = await _answerable_quiz(session, record_id, quiz_id)
             if quiz.question_type not in (
                 QuizQuestionType.MULTIPLE_CHOICE,
                 QuizQuestionType.TRUE_FALSE,
@@ -488,34 +528,87 @@ class QuizService:
                     raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
                 return _quiz_out(quiz), False
 
-            session.add(
-                LearningEvent(
-                    id=str(uuid4()),
-                    course_id=record.course_id,
-                    record_id=record_id,
-                    concept_id=None,
-                    event_type=QuizLearningEventType.ANSWERED,
-                    source_type=QuizLearningEventSourceType.QUESTION,
-                    source_id=quiz_id,
-                    result=answer_result,
-                    score=None,
-                    difficulty=quiz.difficulty,
-                    duration_ms=None,
-                    metadata_json=json.dumps(
-                        {
-                            "batch_id": quiz.batch_id,
-                            "question_type": quiz.question_type,
-                            "generated_from_summary_id": quiz.generated_from_summary_id,
-                        },
-                        separators=(",", ":"),
-                    ),
-                    idempotency_key=f"quiz-answered:{quiz_id}",
-                    schema_version=1,
-                    occurred_at=now,
-                    created_at=now,
+            session.add(_answer_event(record, quiz, answer_result, now))
+            await session.flush()
+            return _quiz_out(quiz), True
+
+    @staticmethod
+    async def answer_short(
+        session: AsyncSession,
+        record_id: str,
+        quiz_id: str,
+        body: QuizShortAnswerRequest,
+    ) -> tuple[QuizOut, bool]:
+        async with session.begin():
+            await _get_record(session, record_id)
+            quiz = await _answerable_quiz(session, record_id, quiz_id)
+            if quiz.question_type != QuizQuestionType.SHORT_ANSWER:
+                raise HTTPException(status_code=409, detail="该题不是简答题")
+            if quiz.answered_at is not None:
+                return _quiz_out(quiz), False
+
+            now = utcnow()
+            updated = await session.execute(
+                update(Quiz)
+                .where(
+                    Quiz.id == quiz_id,
+                    Quiz.generation_status == QuizGenerationStatus.ACTIVE,
+                    Quiz.answered_at.is_(None),
+                )
+                .values(
+                    user_answer_json=json.dumps(body.answer, ensure_ascii=False),
+                    answered_at=now,
+                    updated_at=now,
                 )
             )
+            if not isinstance(updated, CursorResult) or updated.rowcount != 1:
+                await session.refresh(quiz)
+                if quiz.generation_status != QuizGenerationStatus.ACTIVE:
+                    raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+                return _quiz_out(quiz), False
+
+            await session.refresh(quiz)
+            return _quiz_out(quiz), True
+
+    @staticmethod
+    async def self_assess_short(
+        session: AsyncSession,
+        record_id: str,
+        quiz_id: str,
+        body: QuizSelfAssessmentRequest,
+    ) -> tuple[QuizOut, bool]:
+        async with session.begin():
+            record = await _get_record(session, record_id)
+            quiz = await _answerable_quiz(session, record_id, quiz_id)
+            if quiz.question_type != QuizQuestionType.SHORT_ANSWER:
+                raise HTTPException(status_code=409, detail="该题不是简答题")
+            if quiz.answered_at is None:
+                raise HTTPException(status_code=409, detail="请先提交简答作答")
+            if quiz.answer_result is not None:
+                return _quiz_out(quiz), False
+            if record.course_id is None:
+                raise HTTPException(status_code=409, detail="学习记录缺少课程归属，不能作答")
+
+            now = utcnow()
+            updated = await session.execute(
+                update(Quiz)
+                .where(
+                    Quiz.id == quiz_id,
+                    Quiz.generation_status == QuizGenerationStatus.ACTIVE,
+                    Quiz.answered_at.is_not(None),
+                    Quiz.answer_result.is_(None),
+                )
+                .values(answer_result=body.result, updated_at=now)
+            )
+            if not isinstance(updated, CursorResult) or updated.rowcount != 1:
+                await session.refresh(quiz)
+                if quiz.generation_status != QuizGenerationStatus.ACTIVE:
+                    raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+                return _quiz_out(quiz), False
+
+            session.add(_answer_event(record, quiz, body.result, now))
             await session.flush()
+            await session.refresh(quiz)
             return _quiz_out(quiz), True
 
 

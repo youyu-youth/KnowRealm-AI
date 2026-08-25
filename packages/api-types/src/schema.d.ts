@@ -429,8 +429,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Answer Objective Quiz */
-        post: operations["answer_objective_quiz_api_records__record_id__quizzes__quiz_id__answers_post"];
+        /** Answer Quiz */
+        post: operations["answer_quiz_api_records__record_id__quizzes__quiz_id__answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/records/{record_id}/quizzes/{quiz_id}/self-assessments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Self Assess Short Quiz */
+        post: operations["self_assess_short_quiz_api_records__record_id__quizzes__quiz_id__self_assessments_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1155,6 +1172,18 @@ export interface components {
             blocked_reason?: components["schemas"]["QuizBlockedReason"] | null;
             /** Items */
             items: components["schemas"]["QuizOut"][];
+        };
+        /** QuizSelfAssessmentRequest */
+        QuizSelfAssessmentRequest: {
+            result: components["schemas"]["QuizAnswerResult"];
+        };
+        /** QuizShortAnswerRequest */
+        QuizShortAnswerRequest: {
+            /**
+             * Answer
+             * @description 用户提交的简答作答
+             */
+            answer: string;
         };
         /** RecordJobsOut */
         RecordJobsOut: {
@@ -3686,7 +3715,7 @@ export interface operations {
             };
         };
     };
-    answer_objective_quiz_api_records__record_id__quizzes__quiz_id__answers_post: {
+    answer_quiz_api_records__record_id__quizzes__quiz_id__answers_post: {
         parameters: {
             query?: never;
             header?: {
@@ -3700,7 +3729,81 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["QuizObjectiveAnswerRequest"];
+                "application/json": components["schemas"]["QuizObjectiveAnswerRequest"] | components["schemas"]["QuizShortAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    self_assess_short_quiz_api_records__record_id__quizzes__quiz_id__self_assessments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+                quiz_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizSelfAssessmentRequest"];
             };
         };
         responses: {
