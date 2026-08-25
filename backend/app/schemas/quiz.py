@@ -158,5 +158,10 @@ class QuizReadOut(BaseModel):
     blocked_reason: QuizBlockedReason | None = None
 
 
+class QuizConflictResponse(BaseModel):
+    detail: str
+    blocked_reason: QuizBlockedReason
+
+
 class QuizJobAccepted(BaseModel):
     job_id: str

@@ -35,6 +35,7 @@ const KNOWLEDGE_POINTS_URL = `${DETAIL_URL}/knowledge-points`;
 const KNOWLEDGE_POINT_JOBS_URL = `${DETAIL_URL}/knowledge-point-jobs`;
 const QUIZZES_URL = `${DETAIL_URL}/quizzes`;
 const QUIZ_JOBS_URL = `${DETAIL_URL}/quiz-jobs`;
+const QUIZ_BATCH_CONFIRMATIONS_URL = `${DETAIL_URL}/quiz-batches/${JOB_ID}/confirmations`;
 const QUIZ_BATCH_DISCARDS_URL = `${DETAIL_URL}/quiz-batches/${JOB_ID}/discards`;
 const PREFERENCES_URL = `${TEST_SIDECAR_URL}/api/settings/preferences`;
 const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
@@ -855,7 +856,9 @@ describe("学习记录详情", () => {
       transcript_source_version: 2,
       topic: "进程调度（第二代）",
       abstract: "转写修订后的第二代总结摘要。",
-      sections: [{ heading: "调度", points: ["调度器按修订后的策略选择进程。"] }],
+      sections: [
+        { heading: "调度", points: ["调度器按修订后的策略选择进程。"] },
+      ],
       status: "GENERATED",
       model: "qwen-plus",
       prompt_version: "summary-v1",
@@ -911,16 +914,19 @@ describe("学习记录详情", () => {
           record_status: "COMPLETED",
         });
       }),
-      http.post(`${DETAIL_URL}/knowledge-point-batches/${JOB_ID}/discards`, () => {
-        stage = "discarded";
-        return HttpResponse.json({
-          items: [],
-          action_required: "NONE",
-          active_job_id: null,
-          blocked_reason: "SUMMARY_SUPERSEDED",
-          input_mode: null,
-        });
-      }),
+      http.post(
+        `${DETAIL_URL}/knowledge-point-batches/${JOB_ID}/discards`,
+        () => {
+          stage = "discarded";
+          return HttpResponse.json({
+            items: [],
+            action_required: "NONE",
+            active_job_id: null,
+            blocked_reason: "SUMMARY_SUPERSEDED",
+            input_mode: null,
+          });
+        },
+      ),
       http.post(KNOWLEDGE_POINT_JOBS_URL, () => {
         jobSubmitted = true;
         return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
@@ -2189,9 +2195,7 @@ describe("习题页签", () => {
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "生成习题" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "生成习题" }));
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeVisible();
     expect(
@@ -2258,7 +2262,9 @@ describe("习题页签", () => {
       await screen.findByRole("heading", { name: "习题候选（只读）" }),
     ).toBeVisible();
     expect(screen.getByText("共 2 题，基于当前已确认的总结生成")).toBeVisible();
-    expect(screen.getByText("正确答案：A. 选择就绪进程分配处理器")).toBeVisible();
+    expect(
+      screen.getByText("正确答案：A. 选择就绪进程分配处理器"),
+    ).toBeVisible();
     expect(
       screen.getByText("解析：进程调度决定哪个就绪进程获得处理器。"),
     ).toBeVisible();
@@ -2273,6 +2279,140 @@ describe("习题页签", () => {
       await screen.findByRole("button", { name: "生成习题" }),
     ).toBeVisible();
     expect(discardCalls).toBe(1);
+  });
+
+  it("采用前提示旧批未完成数，采用后旧批退出且新批平滑进入", async () => {
+    const oldBatchId = "88888888-8888-4888-8888-888888888888";
+    let adopted = false;
+    let adoptionCalls = 0;
+    const candidateItems = [
+      quizItem(),
+      quizItem({
+        id: "77777777-7777-4777-8777-777777777777",
+        question_type: "TRUE_FALSE",
+        stem: "时间片越小，系统效率越高。",
+        options: ["对", "错"],
+        correct_answer: 1,
+        explanation: "时间片过小会导致上下文切换开销过大。",
+        difficulty: "MEDIUM",
+      }),
+    ];
+    const activeItems = [
+      quizItem({
+        id: "99999999-9999-4999-8999-999999999991",
+        batch_id: oldBatchId,
+        generation_status: "ACTIVE",
+        stem: "旧批已完成题",
+        user_answer: 0,
+        answer_result: "CORRECT",
+        answered_at: "2026-08-25T13:00:00.000000Z",
+      }),
+      quizItem({
+        id: "99999999-9999-4999-8999-999999999992",
+        batch_id: oldBatchId,
+        generation_status: "ACTIVE",
+        stem: "旧批未完成题",
+      }),
+    ];
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          adopted
+            ? quizReadOut({
+                action_required: "GENERATE",
+                items: candidateItems.map((item) => ({
+                  ...item,
+                  generation_status: "ACTIVE" as const,
+                })),
+              })
+            : quizReadOut({
+                action_required: "ADOPT",
+                items: [...activeItems, ...candidateItems],
+              }),
+        ),
+      ),
+      http.post(QUIZ_BATCH_CONFIRMATIONS_URL, () => {
+        adoptionCalls += 1;
+        adopted = true;
+        return HttpResponse.json(
+          quizReadOut({
+            action_required: "GENERATE",
+            items: candidateItems.map((item) => ({
+              ...item,
+              generation_status: "ACTIVE" as const,
+            })),
+          }),
+        );
+      }),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 5 }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(
+      await screen.findByRole("heading", { name: "已采用习题" }),
+    ).toBeVisible();
+    expect(screen.getByText("旧批未完成题")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "采用本批" }));
+
+    expect(
+      await screen.findByRole("dialog", { name: "采用这批习题？" }),
+    ).toBeVisible();
+    expect(screen.getByText(/旧批次仍有 1 题未作答/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "确认采用" }));
+
+    await waitFor(() =>
+      expect(screen.queryByText("旧批未完成题")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("进程调度的基本功能是什么？")).toBeVisible();
+    expect(screen.getByRole("button", { name: "再生成一批" })).toBeVisible();
+    expect(adoptionCalls).toBe(1);
+  });
+
+  it("换代候选采用失败后关闭弹窗并引导丢弃重生成", async () => {
+    let stale = false;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          quizReadOut({
+            action_required: stale ? "NONE" : "ADOPT",
+            blocked_reason: stale ? "SUMMARY_SUPERSEDED" : null,
+            items: [quizItem()],
+          }),
+        ),
+      ),
+      http.post(QUIZ_BATCH_CONFIRMATIONS_URL, () => {
+        stale = true;
+        return HttpResponse.json(
+          {
+            detail: "总结已换代，请丢弃当前候选后重新生成",
+            blocked_reason: "SUMMARY_SUPERSEDED",
+          },
+          { status: 409 },
+        );
+      }),
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ quiz_last_count: 5 }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "采用本批" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认采用" }));
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "总结已更新，请重新生成习题",
+      }),
+    ).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "采用本批" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "丢弃本批候选" })).toBeVisible();
   });
 
   it("生成失败展示可重试状态", async () => {

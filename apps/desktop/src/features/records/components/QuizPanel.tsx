@@ -33,6 +33,7 @@ import { recordApi } from "@/features/records/api/records";
 import type { QuizOut } from "@/features/records/api/types";
 import { settingsApi } from "@/features/settings/api/settings";
 import { settingsKeys } from "@/features/settings/api/keys";
+import { cn } from "@/lib/utils";
 
 const QUIZ_COUNTS = [3, 5, 10] as const;
 
@@ -103,7 +104,13 @@ export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
   const draftItems = data.items.filter(
     (item) => item.generation_status === "DRAFT",
   );
+  const activeItems = data.items.filter(
+    (item) => item.generation_status === "ACTIVE",
+  );
   const draftBatchId = draftItems[0]?.batch_id ?? null;
+  const oldRemainingCount = activeItems.filter(
+    (item) => item.answer_result === null,
+  ).length;
   const showSummaryAction =
     data.blocked_reason === "SUMMARY_NOT_CONFIRMED" ||
     data.blocked_reason === "SUMMARY_SUPERSEDED" ||
@@ -122,11 +129,25 @@ export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
           recordId={recordId}
           batchId={draftBatchId}
           items={draftItems}
+          oldRemainingCount={oldRemainingCount}
+          canAdopt={data.action_required === "ADOPT"}
+        />
+      ) : null}
+
+      {activeItems.length ? (
+        <ActiveQuizList
+          items={activeItems}
+          onRegenerate={
+            generateAction === "GENERATE" ? () => setDialogOpen(true) : null
+          }
+          className={draftBatchId ? "mt-10" : undefined}
         />
       ) : null}
 
       {data.active_job_id ? (
-        <section className={draftBatchId ? "mt-8" : undefined}>
+        <section
+          className={draftBatchId || activeItems.length ? "mt-8" : undefined}
+        >
           <h2 className="text-section font-section text-ink flex items-center gap-2">
             <Spinner aria-hidden="true" />
             {t("record.detail.quiz.processingTitle")}
@@ -136,7 +157,12 @@ export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
           </p>
         </section>
       ) : data.blocked_reason ? (
-        <Empty className="items-start p-0 text-left">
+        <Empty
+          className={cn(
+            "items-start p-0 text-left",
+            (draftBatchId || activeItems.length) && "mt-8",
+          )}
+        >
           <EmptyHeader className="items-start text-left">
             <EmptyTitle role="heading" aria-level={2}>
               {t(`record.detail.quiz.blocked.${data.blocked_reason}.title`)}
@@ -173,7 +199,7 @@ export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
             </EmptyContent>
           ) : null}
         </Empty>
-      ) : generateAction === "GENERATE" ? (
+      ) : generateAction === "GENERATE" && !activeItems.length ? (
         <Empty className="items-start p-0 text-left">
           <EmptyHeader className="items-start text-left">
             <EmptyTitle role="heading" aria-level={2}>
@@ -214,14 +240,19 @@ function QuizCandidateList({
   recordId,
   batchId,
   items,
+  oldRemainingCount,
+  canAdopt,
 }: {
   recordId: string;
   batchId: string;
   items: QuizOut[];
+  oldRemainingCount: number;
+  canAdopt: boolean;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const [adoptionOpen, setAdoptionOpen] = useState(false);
   const invalidate = () =>
     queryClient.invalidateQueries({
       queryKey: recordKeys.quizzes(recordId),
@@ -230,6 +261,18 @@ function QuizCandidateList({
     mutationFn: () => recordApi.discardQuizBatch(recordId, batchId),
     onSuccess: () => void invalidate(),
     onError: () => void invalidate(),
+  });
+  const adopt = useMutation({
+    mutationFn: () => recordApi.adoptQuizBatch(recordId, batchId),
+    onSuccess: (data) => {
+      setAdoptionOpen(false);
+      queryClient.setQueryData(recordKeys.quizzes(recordId), data);
+      void invalidate();
+    },
+    onError: () => {
+      setAdoptionOpen(false);
+      void invalidate();
+    },
   });
 
   return (
@@ -251,6 +294,11 @@ function QuizCandidateList({
         ))}
       </ol>
       <div className="border-border mt-8 flex flex-wrap gap-2 border-t pt-6">
+        {canAdopt ? (
+          <Button onClick={() => setAdoptionOpen(true)}>
+            {t("record.detail.quiz.adoptBatch")}
+          </Button>
+        ) : null}
         {confirmingDiscard ? (
           <>
             <Button
@@ -279,6 +327,106 @@ function QuizCandidateList({
         <p role="alert" className="text-body text-destructive mt-4">
           {discard.error.message}
         </p>
+      ) : null}
+      {adopt.isError ? (
+        <p role="alert" className="text-body text-destructive mt-4">
+          {adopt.error.message}
+        </p>
+      ) : null}
+      <Dialog open={adoptionOpen} onOpenChange={setAdoptionOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("record.detail.quiz.adoptDialog.title")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("record.detail.quiz.adoptDialog.description")}
+            </DialogDescription>
+          </DialogHeader>
+          <Alert>
+            <AlertTitle>
+              {oldRemainingCount
+                ? t("record.detail.quiz.adoptDialog.remainingTitle", {
+                    count: oldRemainingCount,
+                  })
+                : t("record.detail.quiz.adoptDialog.noRemainingTitle")}
+            </AlertTitle>
+            <AlertDescription>
+              {t("record.detail.quiz.adoptDialog.remainingDescription")}
+            </AlertDescription>
+          </Alert>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={adopt.isPending}
+              onClick={() => setAdoptionOpen(false)}
+            >
+              {t("record.detail.quiz.adoptDialog.cancel")}
+            </Button>
+            <Button disabled={adopt.isPending} onClick={() => adopt.mutate()}>
+              {adopt.isPending ? (
+                <Spinner data-icon="inline-start" aria-hidden="true" />
+              ) : null}
+              {t("record.detail.quiz.adoptDialog.confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
+}
+
+function ActiveQuizList({
+  items,
+  onRegenerate,
+  className,
+}: {
+  items: QuizOut[];
+  onRegenerate: (() => void) | null;
+  className?: string;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <section className={className} aria-labelledby="active-quizzes-title">
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h2
+          id="active-quizzes-title"
+          className="text-section font-section text-ink"
+        >
+          {t("record.detail.quiz.activeTitle")}
+        </h2>
+        <p className="text-label text-muted-foreground">
+          {t("record.detail.quiz.activeHint", { count: items.length })}
+        </p>
+      </div>
+      <ol className="mt-4">
+        {items.map((item, index) => (
+          <li
+            key={item.id}
+            className="border-border border-t py-5 first:border-t-0"
+          >
+            <div className="text-label text-muted-foreground flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="font-label">
+                {index + 1}.{" "}
+                {t(`record.detail.quiz.type.${item.question_type}`)}
+              </span>
+              <span>
+                {t(`record.detail.quiz.difficulty.${item.difficulty}`)}
+              </span>
+            </div>
+            <h3 className="text-section font-section text-ink mt-2 break-words">
+              {item.stem}
+            </h3>
+          </li>
+        ))}
+      </ol>
+      {onRegenerate ? (
+        <div className="border-border mt-8 border-t pt-6">
+          <Button variant="outline" onClick={onRegenerate}>
+            {t("record.detail.quiz.regenerate")}
+          </Button>
+        </div>
       ) : null}
     </section>
   );

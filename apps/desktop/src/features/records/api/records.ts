@@ -85,6 +85,12 @@ export const recordApi = {
       { method: "POST" },
     );
   },
+  adoptQuizBatch(recordId: string, batchId: string) {
+    return apiFetch<QuizReadOut>(
+      `/api/records/${recordId}/quiz-batches/${batchId}/confirmations`,
+      { method: "POST" },
+    );
+  },
   submitSummary: (recordId: string) =>
     apiFetch<components["schemas"]["SummaryJobAccepted"]>(
       `/api/records/${recordId}/summary-jobs`,

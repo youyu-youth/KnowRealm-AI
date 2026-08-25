@@ -352,6 +352,23 @@ export interface paths {
         patch: operations["update_knowledge_point_api_records__record_id__knowledge_points__item_id__patch"];
         trace?: never;
     };
+    "/api/records/{record_id}/quiz-batches/{batch_id}/confirmations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adopt Quiz Batch */
+        post: operations["adopt_quiz_batch_api_records__record_id__quiz_batches__batch_id__confirmations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/quiz-batches/{batch_id}/discards": {
         parameters: {
             query?: never;
@@ -1037,6 +1054,12 @@ export interface components {
          * @enum {string}
          */
         QuizBlockedReason: "SUMMARY_NOT_CONFIRMED" | "SUMMARY_SUPERSEDED" | "COURSE_ARCHIVED" | "PROVIDER_NOT_CONFIGURED" | "CONSENT_REQUIRED";
+        /** QuizConflictResponse */
+        QuizConflictResponse: {
+            blocked_reason: components["schemas"]["QuizBlockedReason"];
+            /** Detail */
+            detail: string;
+        };
         /**
          * QuizDifficulty
          * @enum {string}
@@ -3354,6 +3377,76 @@ export interface operations {
             };
         };
     };
+    adopt_quiz_batch_api_records__record_id__quiz_batches__batch_id__confirmations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+                batch_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizReadOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizConflictResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     discard_quiz_batch_api_records__record_id__quiz_batches__batch_id__discards_post: {
         parameters: {
             query?: never;
@@ -3499,7 +3592,9 @@ export interface operations {
     };
     get_quizzes_api_records__record_id__quizzes_get: {
         parameters: {
-            query?: never;
+            query?: {
+                include?: "superseded" | null;
+            };
             header?: {
                 "x-knowrealm-token"?: string | null;
             };

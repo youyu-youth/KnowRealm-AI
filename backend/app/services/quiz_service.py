@@ -6,7 +6,7 @@ from typing import cast
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -140,7 +140,21 @@ async def _failed_job(session: AsyncSession, record_id: str) -> ProcessingJob | 
     ).one_or_none()
 
 
-async def _visible_items(session: AsyncSession, record_id: str) -> list[Quiz]:
+async def _visible_items(
+    session: AsyncSession,
+    record_id: str,
+    *,
+    include_superseded: bool = False,
+) -> list[Quiz]:
+    statuses = (
+        (
+            QuizGenerationStatus.DRAFT,
+            QuizGenerationStatus.ACTIVE,
+            QuizGenerationStatus.SUPERSEDED,
+        )
+        if include_superseded
+        else (QuizGenerationStatus.DRAFT, QuizGenerationStatus.ACTIVE)
+    )
     return list(
         (
             await session.scalars(
@@ -148,9 +162,7 @@ async def _visible_items(session: AsyncSession, record_id: str) -> list[Quiz]:
                 .where(
                     Quiz.record_id == record_id,
                     Quiz.deleted_at.is_(None),
-                    Quiz.generation_status.in_(
-                        (QuizGenerationStatus.DRAFT, QuizGenerationStatus.ACTIVE)
-                    ),
+                    Quiz.generation_status.in_(statuses),
                 )
                 .order_by(Quiz.created_at)
             )
@@ -160,9 +172,19 @@ async def _visible_items(session: AsyncSession, record_id: str) -> list[Quiz]:
 
 class QuizService:
     @staticmethod
-    async def read(session: AsyncSession, data_dir: Path, record_id: str) -> QuizReadOut:
+    async def read(
+        session: AsyncSession,
+        data_dir: Path,
+        record_id: str,
+        *,
+        include_superseded: bool = False,
+    ) -> QuizReadOut:
         record = await _get_record(session, record_id)
-        items = await _visible_items(session, record_id)
+        items = await _visible_items(
+            session,
+            record_id,
+            include_superseded=include_superseded,
+        )
         output = [_quiz_out(item) for item in items]
         active = await _active_job(session, record_id)
         if active is not None:
@@ -301,6 +323,106 @@ class QuizService:
                 row.deleted_at = now
                 row.updated_at = now
         return await QuizService.read(session, data_dir, record_id)
+
+    @staticmethod
+    async def adopt(
+        session: AsyncSession,
+        data_dir: Path,
+        record_id: str,
+        batch_id: str,
+    ) -> QuizReadOut:
+        try:
+            async with session.begin():
+                record = await _get_record(session, record_id)
+                draft_rows = await _batch_rows(
+                    session,
+                    record_id,
+                    batch_id,
+                    QuizGenerationStatus.DRAFT,
+                )
+                if not draft_rows:
+                    if await _batch_rows(
+                        session,
+                        record_id,
+                        batch_id,
+                        QuizGenerationStatus.ACTIVE,
+                    ):
+                        return await QuizService.read(session, data_dir, record_id)
+                    if await _batch_rows(
+                        session,
+                        record_id,
+                        batch_id,
+                        QuizGenerationStatus.SUPERSEDED,
+                    ):
+                        raise HTTPException(status_code=409, detail="习题批次已被新批次替代")
+                    raise HTTPException(status_code=404, detail="习题批次不存在")
+
+                summary_id = draft_rows[0].generated_from_summary_id
+                summary = await session.get(AiSummary, summary_id) if summary_id else None
+                if (
+                    summary is None
+                    or summary.deleted_at is not None
+                    or summary.status != AiSummaryStatus.CONFIRMED
+                ):
+                    raise QuizAdoptionBlocked(
+                        QuizBlockedReason.SUMMARY_SUPERSEDED,
+                        "总结已换代，请丢弃当前候选后重新生成",
+                    )
+                course = await session.get(Course, record.course_id) if record.course_id else None
+                if (
+                    course is None
+                    or course.deleted_at is not None
+                    or course.status != CourseStatus.ACTIVE
+                ):
+                    raise QuizAdoptionBlocked(
+                        QuizBlockedReason.COURSE_ARCHIVED,
+                        "课程已归档，不能采用习题候选",
+                    )
+
+                now = utcnow()
+                await session.execute(
+                    update(Quiz)
+                    .where(
+                        Quiz.record_id == record_id,
+                        Quiz.batch_id != batch_id,
+                        Quiz.generation_status == QuizGenerationStatus.ACTIVE,
+                        Quiz.deleted_at.is_(None),
+                    )
+                    .values(
+                        generation_status=QuizGenerationStatus.SUPERSEDED,
+                        updated_at=now,
+                    )
+                )
+                await session.execute(
+                    update(Quiz)
+                    .where(
+                        Quiz.record_id == record_id,
+                        Quiz.batch_id == batch_id,
+                        Quiz.generation_status == QuizGenerationStatus.DRAFT,
+                        Quiz.deleted_at.is_(None),
+                    )
+                    .values(
+                        generation_status=QuizGenerationStatus.ACTIVE,
+                        updated_at=now,
+                    )
+                )
+        except IntegrityError:
+            # 同一批并发采用时，数据库约束胜出的一方已提交；返回当前事实。
+            if not await _batch_rows(
+                session,
+                record_id,
+                batch_id,
+                QuizGenerationStatus.ACTIVE,
+            ):
+                raise
+        return await QuizService.read(session, data_dir, record_id)
+
+
+class QuizAdoptionBlocked(Exception):
+    def __init__(self, blocked_reason: QuizBlockedReason, detail: str) -> None:
+        super().__init__(detail)
+        self.blocked_reason = blocked_reason
+        self.detail = detail
 
 
 async def _batch_rows(

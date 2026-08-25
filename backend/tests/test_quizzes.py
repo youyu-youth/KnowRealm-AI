@@ -10,6 +10,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from app.agents.llm import StructuredModelResult, SummaryModel
 from app.db.migrations import run_migrations
@@ -277,7 +278,7 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
             ).fetchall()
         }
 
-    assert version == (10,)
+    assert version == (11,)
     assert {
         "id",
         "record_id",
@@ -298,6 +299,133 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
         "deleted_at",
     } == columns
     assert "idx_processing_jobs_one_active_quiz_generation" in job_indexes
+
+
+@pytest.mark.anyio
+async def test_adopt_batch_supersedes_previous_batch_and_keeps_history(tmp_path: Path) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        first_batch_id, _first_draft = await generate_draft_batch(client, record_id)
+        first_adoption = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{first_batch_id}/confirmations"
+        )
+        repeated_adoption = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{first_batch_id}/confirmations"
+        )
+        async with app.state.session_factory() as session, session.begin():
+            first_item_id = cast(
+                str,
+                await session.scalar(
+                    text(
+                        "SELECT id FROM quizzes WHERE batch_id=:batch_id "
+                        "ORDER BY created_at LIMIT 1"
+                    ),
+                    {"batch_id": first_batch_id},
+                ),
+            )
+            await session.execute(
+                text(
+                    "UPDATE quizzes SET user_answer_json='0', answer_result='CORRECT', "
+                    "answered_at='2026-08-25T13:00:00.000000Z' WHERE id=:item_id"
+                ),
+                {"item_id": first_item_id},
+            )
+
+        second_batch_id, during_regeneration = await generate_draft_batch(client, record_id)
+        async with app.state.session_factory() as session:
+            with pytest.raises(IntegrityError):
+                await session.execute(
+                    text("UPDATE quizzes SET generation_status='ACTIVE' WHERE batch_id=:batch_id"),
+                    {"batch_id": second_batch_id},
+                )
+                await session.commit()
+            await session.rollback()
+
+        second_adoption = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{second_batch_id}/confirmations"
+        )
+        visible = await read_quizzes(client, record_id)
+        history_response = await client.get(f"/api/records/{record_id}/quizzes?include=superseded")
+        async with app.state.session_factory() as session:
+            quiz_events = await session.scalar(
+                text("SELECT count(*) FROM learning_events WHERE event_type LIKE 'QUIZ_%'")
+            )
+
+    assert first_adoption.status_code == 200, first_adoption.text
+    assert repeated_adoption.status_code == 200, repeated_adoption.text
+    during_items = cast(list[dict[str, object]], during_regeneration["items"])
+    assert {item["generation_status"] for item in during_items} == {"ACTIVE", "DRAFT"}
+    assert second_adoption.status_code == 200, second_adoption.text
+    visible_items = cast(list[dict[str, object]], visible["items"])
+    assert {item["batch_id"] for item in visible_items} == {second_batch_id}
+    assert {item["generation_status"] for item in visible_items} == {"ACTIVE"}
+    history_items = cast(list[dict[str, object]], history_response.json()["items"])
+    old_items = [item for item in history_items if item["batch_id"] == first_batch_id]
+    assert len(history_items) == 6
+    assert {item["generation_status"] for item in old_items} == {"SUPERSEDED"}
+    answered = next(item for item in old_items if item["id"] == first_item_id)
+    assert answered["user_answer"] == 0
+    assert answered["answer_result"] == "CORRECT"
+    assert answered["answered_at"] == "2026-08-25T13:00:00.000000Z"
+    assert quiz_events == 0
+
+
+@pytest.mark.anyio
+async def test_adopt_stale_draft_returns_blocked_reason_and_keeps_active_batch(
+    tmp_path: Path,
+) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        active_batch_id, _first = await generate_draft_batch(client, record_id)
+        adopted = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{active_batch_id}/confirmations"
+        )
+        stale_batch_id, _second = await generate_draft_batch(client, record_id)
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE ai_summaries SET status='SUPERSEDED' WHERE record_id=:record_id"),
+                {"record_id": record_id},
+            )
+        stale_adoption = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{stale_batch_id}/confirmations"
+        )
+        stale_read = await read_quizzes(client, record_id)
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE ai_summaries SET status='CONFIRMED' WHERE record_id=:record_id"),
+                {"record_id": record_id},
+            )
+            await session.execute(
+                text(
+                    "UPDATE courses SET status='ARCHIVED' WHERE id="
+                    "(SELECT course_id FROM records WHERE id=:record_id)"
+                ),
+                {"record_id": record_id},
+            )
+        archived_adoption = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{stale_batch_id}/confirmations"
+        )
+
+    assert adopted.status_code == 200, adopted.text
+    assert stale_adoption.status_code == 409
+    assert stale_adoption.json()["blocked_reason"] == "SUMMARY_SUPERSEDED"
+    stale_items = cast(list[dict[str, object]], stale_read["items"])
+    assert stale_read["blocked_reason"] == "SUMMARY_SUPERSEDED"
+    assert any(
+        item["batch_id"] == active_batch_id and item["generation_status"] == "ACTIVE"
+        for item in stale_items
+    )
+    assert archived_adoption.status_code == 409
+    assert archived_adoption.json()["blocked_reason"] == "COURSE_ARCHIVED"
 
 
 @pytest.mark.anyio

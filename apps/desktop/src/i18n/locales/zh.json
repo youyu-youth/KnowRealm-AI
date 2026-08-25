@@ -459,9 +459,22 @@
         "retry": "重新生成",
         "candidatesTitle": "习题候选（只读）",
         "candidatesHint": "共 {{count}} 题，基于当前已确认的总结生成",
+        "activeTitle": "已采用习题",
+        "activeHint": "当前批次共 {{count}} 题",
+        "regenerate": "再生成一批",
+        "adoptBatch": "采用本批",
         "discardBatch": "丢弃本批候选",
         "discardConfirm": "确认丢弃",
         "discardCancel": "取消",
+        "adoptDialog": {
+          "title": "采用这批习题？",
+          "description": "采用后，这批题将成为当前题库，旧 AI 批次会退出默认列表。",
+          "remainingTitle": "旧批次仍有 {{count}} 题未作答",
+          "noRemainingTitle": "旧批次没有未完成题目",
+          "remainingDescription": "采用不会删除历史作答；旧批次仍可通过回溯 API 查询。",
+          "confirm": "确认采用",
+          "cancel": "取消"
+        },
         "openSummary": "查看总结",
         "grantConsent": "同意外部 AI 处理",
         "blocked": {
