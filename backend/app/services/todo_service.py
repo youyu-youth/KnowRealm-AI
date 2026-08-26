@@ -1,9 +1,12 @@
 import asyncio
+import json
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
@@ -23,7 +26,12 @@ from app.schemas.todo import (
     TodoToggleRequest,
     TodoWriteRequest,
 )
-from app.services.local_config import LlmProviderConfig, llm_consent, load_llm_provider
+from app.services.local_config import (
+    LlmProviderConfig,
+    llm_consent,
+    llm_provider_fingerprint,
+    load_llm_provider,
+)
 
 
 def _todo_out(item: TodoItem) -> TodoOut:
@@ -106,6 +114,21 @@ async def _active_job(session: AsyncSession, record_id: str) -> ProcessingJob | 
                 ProcessingJob.status.in_(
                     (ProcessingJobStatus.PENDING, ProcessingJobStatus.RUNNING)
                 ),
+            )
+            .order_by(ProcessingJob.created_at.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+
+
+async def _failed_job(session: AsyncSession, record_id: str) -> ProcessingJob | None:
+    return (
+        await session.scalars(
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.record_id == record_id,
+                ProcessingJob.job_type == ProcessingJobType.TODO_GENERATION,
+                ProcessingJob.status == ProcessingJobStatus.FAILED,
             )
             .order_by(ProcessingJob.created_at.desc())
             .limit(1)
@@ -201,6 +224,18 @@ class TodoService:
                 action_required=TodoAction.NONE,
                 blocked_reason=blocked,
             )
+        draft = next(
+            (item for item in items if item.generation_status == TodoGenerationStatus.DRAFT),
+            None,
+        )
+        if draft is not None and draft.batch_id is not None:
+            if draft.generated_from_summary_id != summary.id:
+                return TodoReadOut(
+                    items=output,
+                    action_required=TodoAction.NONE,
+                    blocked_reason=TodoBlockedReason.SUMMARY_SUPERSEDED,
+                )
+            return TodoReadOut(items=output, action_required=TodoAction.ADOPT)
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
             return TodoReadOut(
@@ -214,7 +249,77 @@ class TodoService:
                 action_required=TodoAction.NONE,
                 blocked_reason=TodoBlockedReason.CONSENT_REQUIRED,
             )
-        return TodoReadOut(items=output, action_required=TodoAction.NONE)
+        failed = await _failed_job(session, record_id)
+        return TodoReadOut(
+            items=output,
+            action_required=TodoAction.RETRY if failed is not None else TodoAction.GENERATE,
+        )
+
+    @staticmethod
+    async def submit(session: AsyncSession, data_dir: Path, record_id: str) -> str:
+        provider, consent_current = await _provider_state(data_dir)
+        if provider is None or not provider.api_key:
+            raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+        if not consent_current:
+            raise HTTPException(status_code=409, detail="请先同意外部 AI 处理")
+        try:
+            async with session.begin():
+                record = await _get_record(session, record_id)
+                course = await session.get(Course, record.course_id) if record.course_id else None
+                if (
+                    course is None
+                    or course.deleted_at is not None
+                    or course.status != CourseStatus.ACTIVE
+                ):
+                    raise HTTPException(status_code=409, detail="归档课程不能生成 Todo")
+                summary = await _confirmed_summary(session, record_id)
+                if summary is None:
+                    raise HTTPException(status_code=409, detail="请先确认当前总结")
+                if await _active_job(session, record_id) is not None:
+                    raise HTTPException(status_code=409, detail="已有进行中的 Todo 生成任务")
+                if any(
+                    item.generation_status == TodoGenerationStatus.DRAFT
+                    for item in await _visible_items(session, record_id)
+                ):
+                    raise HTTPException(status_code=409, detail="已有待审阅的 Todo 候选")
+                input_json = json.dumps(
+                    {
+                        "provider_fingerprint": llm_provider_fingerprint(provider),
+                        "generated_from_summary_id": summary.id,
+                    },
+                    separators=(",", ":"),
+                )
+                failed = await _failed_job(session, record_id)
+                if failed is not None:
+                    previous = cast(dict[str, object], json.loads(failed.input_json))
+                    if previous.get("generated_from_summary_id") == summary.id:
+                        _requeue_failed(failed, input_json)
+                        return failed.id
+                now = utcnow()
+                job = ProcessingJob(
+                    id=str(uuid4()),
+                    record_id=record_id,
+                    job_type=ProcessingJobType.TODO_GENERATION,
+                    status=ProcessingJobStatus.PENDING,
+                    progress=0,
+                    attempts=0,
+                    max_attempts=1,
+                    next_run_at=None,
+                    waiting_reason=None,
+                    input_json=input_json,
+                    result_json=None,
+                    error_code=None,
+                    error_message=None,
+                    started_at=None,
+                    finished_at=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(job)
+                await session.flush()
+                return job.id
+        except IntegrityError:
+            raise HTTPException(status_code=409, detail="已有进行中的 Todo 生成任务") from None
 
     @staticmethod
     async def create(session: AsyncSession, record_id: str, body: TodoWriteRequest) -> TodoOut:
@@ -277,9 +382,126 @@ class TodoService:
         async with session.begin():
             await _get_record(session, record_id)
             item = await _editable_item(session, record_id, todo_id)
+            if item.generation_status == TodoGenerationStatus.DRAFT:
+                raise HTTPException(status_code=409, detail="候选待办不能勾选完成")
             # 重复置同态直接返回现状（幂等）；状态变化才写 updated_at。
             if TodoStatus(item.status) != body.status:
                 item.status = body.status
                 item.updated_at = utcnow()
                 await session.flush()
             return _todo_out(item)
+
+    @staticmethod
+    async def discard(
+        session: AsyncSession, data_dir: Path, record_id: str, batch_id: str
+    ) -> TodoReadOut:
+        async with session.begin():
+            await _get_record(session, record_id)
+            rows = await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.DRAFT)
+            if not rows:
+                if await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.ACTIVE):
+                    raise HTTPException(status_code=409, detail="批次已采纳，不能丢弃")
+                raise HTTPException(status_code=404, detail="Todo 批次不存在")
+            now = utcnow()
+            for row in rows:
+                row.deleted_at = now
+                row.updated_at = now
+        return await TodoService.read(session, data_dir, record_id)
+
+    @staticmethod
+    async def adopt(
+        session: AsyncSession, data_dir: Path, record_id: str, batch_id: str
+    ) -> TodoReadOut:
+        async with session.begin():
+            record = await _get_record(session, record_id)
+            rows = await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.DRAFT)
+            if not rows:
+                if await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.ACTIVE):
+                    return await TodoService.read(session, data_dir, record_id)
+                if await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.SUPERSEDED):
+                    raise HTTPException(status_code=409, detail="Todo 批次已被新批次替代")
+                raise HTTPException(status_code=404, detail="Todo 批次不存在")
+            summary = await session.get(AiSummary, rows[0].generated_from_summary_id)
+            if (
+                summary is None
+                or summary.deleted_at is not None
+                or summary.status != AiSummaryStatus.CONFIRMED
+            ):
+                raise TodoAdoptionBlocked(
+                    TodoBlockedReason.SUMMARY_SUPERSEDED,
+                    "总结已换代，请丢弃当前候选后重新生成",
+                )
+            course = await session.get(Course, record.course_id) if record.course_id else None
+            if (
+                course is None
+                or course.deleted_at is not None
+                or course.status != CourseStatus.ACTIVE
+            ):
+                raise TodoAdoptionBlocked(
+                    TodoBlockedReason.COURSE_ARCHIVED, "课程已归档，不能采纳 Todo 候选"
+                )
+            now = utcnow()
+            await session.execute(
+                update(TodoItem)
+                .where(
+                    TodoItem.record_id == record_id,
+                    TodoItem.batch_id != batch_id,
+                    TodoItem.generation_status == TodoGenerationStatus.ACTIVE,
+                    TodoItem.deleted_at.is_(None),
+                )
+                .values(generation_status=TodoGenerationStatus.SUPERSEDED, updated_at=now)
+            )
+            await session.execute(
+                update(TodoItem)
+                .where(
+                    TodoItem.record_id == record_id,
+                    TodoItem.batch_id == batch_id,
+                    TodoItem.generation_status == TodoGenerationStatus.DRAFT,
+                    TodoItem.deleted_at.is_(None),
+                )
+                .values(generation_status=TodoGenerationStatus.ACTIVE, updated_at=now)
+            )
+        return await TodoService.read(session, data_dir, record_id)
+
+
+class TodoAdoptionBlocked(Exception):
+    def __init__(self, blocked_reason: TodoBlockedReason, detail: str) -> None:
+        super().__init__(detail)
+        self.blocked_reason = blocked_reason
+        self.detail = detail
+
+
+async def _batch_rows(
+    session: AsyncSession,
+    record_id: str,
+    batch_id: str,
+    status: TodoGenerationStatus,
+) -> list[TodoItem]:
+    return list(
+        (
+            await session.scalars(
+                select(TodoItem)
+                .where(
+                    TodoItem.record_id == record_id,
+                    TodoItem.batch_id == batch_id,
+                    TodoItem.generation_status == status,
+                    TodoItem.deleted_at.is_(None),
+                )
+                .order_by(TodoItem.sort_order)
+            )
+        ).all()
+    )
+
+
+def _requeue_failed(job: ProcessingJob, input_json: str) -> None:
+    job.input_json = input_json
+    job.status = ProcessingJobStatus.PENDING
+    job.progress = 0
+    job.attempts = 0
+    job.next_run_at = None
+    job.result_json = None
+    job.error_code = None
+    job.error_message = None
+    job.started_at = None
+    job.finished_at = None
+    job.updated_at = utcnow()

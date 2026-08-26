@@ -16,8 +16,10 @@ from app.agents.llm import (
     OpenAiCompatibleKnowledgePointModel,
     OpenAiCompatibleQuizModel,
     OpenAiCompatibleSummaryModel,
+    OpenAiCompatibleTodoModel,
     QuizModel,
     SummaryModel,
+    TodoModel,
 )
 from app.agents.summary import build_summary_graph
 from app.api import (
@@ -49,6 +51,7 @@ from app.services.quiz_worker import QuizWorker
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_worker import SummaryWorker
 from app.services.tencent_asr_client import TencentAsrClient
+from app.services.todo_worker import TodoWorker
 
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:1420",
@@ -66,6 +69,7 @@ def create_app(
     summary_model: SummaryModel | None = None,
     knowledge_point_model: KnowledgePointModel | None = None,
     quiz_model: QuizModel | None = None,
+    todo_model: TodoModel | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
     record_notifier = RecordInvalidationNotifier()
@@ -88,6 +92,7 @@ def create_app(
                 knowledge_point_model or OpenAiCompatibleKnowledgePointModel()
             )
             app.state.quiz_model = quiz_model or OpenAiCompatibleQuizModel()
+            app.state.todo_model = todo_model or OpenAiCompatibleTodoModel()
 
             async def cleanup_course_tombstones() -> None:
                 try:
@@ -160,9 +165,19 @@ def create_app(
                 await quiz_worker.recover_interrupted()
                 quiz_worker_task = asyncio.create_task(quiz_worker.run())
                 app.state.quiz_worker_task = quiz_worker_task
+                todo_worker = TodoWorker(
+                    session_factory,
+                    resolved_data_dir,
+                    app.state.todo_model,
+                    record_notifier,
+                )
+                await todo_worker.recover_interrupted()
+                todo_worker_task = asyncio.create_task(todo_worker.run())
+                app.state.todo_worker_task = todo_worker_task
                 try:
                     yield
                 finally:
+                    todo_worker.stop()
                     quiz_worker.stop()
                     knowledge_point_worker.stop()
                     summary_worker.stop()
@@ -170,25 +185,28 @@ def create_app(
                         audio_worker.stop()
                     document_worker.stop()
                     try:
-                        await quiz_worker_task
+                        await todo_worker_task
                     finally:
                         try:
-                            await summary_worker_task
+                            await quiz_worker_task
                         finally:
                             try:
-                                await knowledge_point_worker_task
+                                await summary_worker_task
                             finally:
                                 try:
-                                    if audio_worker_task is not None:
-                                        await audio_worker_task
+                                    await knowledge_point_worker_task
                                 finally:
                                     try:
-                                        await document_worker_task
+                                        if audio_worker_task is not None:
+                                            await audio_worker_task
                                     finally:
                                         try:
-                                            await cleanup_task
+                                            await document_worker_task
                                         finally:
-                                            await engine.dispose()
+                                            try:
+                                                await cleanup_task
+                                            finally:
+                                                await engine.dispose()
         finally:
             data_directory_lock.release()
 

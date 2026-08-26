@@ -2,17 +2,20 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db, require_launch_token
 from app.schemas.course import ErrorResponse
 from app.schemas.todo import (
+    TodoConflictResponse,
+    TodoJobAccepted,
     TodoOut,
     TodoReadOut,
     TodoToggleRequest,
     TodoWriteRequest,
 )
-from app.services.todo_service import TodoService
+from app.services.todo_service import TodoAdoptionBlocked, TodoService
 
 router = APIRouter(
     prefix="/api/records",
@@ -40,6 +43,60 @@ async def get_todos(
         str(record_id),
         include_superseded=include == "superseded",
     )
+
+
+@router.post(
+    "/{record_id}/todo-jobs",
+    response_model=TodoJobAccepted,
+    status_code=202,
+)
+async def submit_todo_job(
+    record_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> TodoJobAccepted:
+    job_id = await TodoService.submit(session, request.app.state.data_dir, str(record_id))
+    await request.app.state.record_notifier.notify(str(record_id))
+    return TodoJobAccepted(job_id=job_id)
+
+
+@router.post(
+    "/{record_id}/todo-batches/{batch_id}/discards",
+    response_model=TodoReadOut,
+)
+async def discard_todo_batch(
+    record_id: UUID,
+    batch_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> TodoReadOut:
+    result = await TodoService.discard(
+        session, request.app.state.data_dir, str(record_id), str(batch_id)
+    )
+    await request.app.state.record_notifier.notify(str(record_id))
+    return result
+
+
+@router.post(
+    "/{record_id}/todo-batches/{batch_id}/confirmations",
+    response_model=TodoReadOut,
+    responses={409: {"model": TodoConflictResponse}},
+)
+async def adopt_todo_batch(
+    record_id: UUID,
+    batch_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> TodoReadOut | JSONResponse:
+    try:
+        result = await TodoService.adopt(
+            session, request.app.state.data_dir, str(record_id), str(batch_id)
+        )
+    except TodoAdoptionBlocked as error:
+        body = TodoConflictResponse(detail=error.detail, blocked_reason=error.blocked_reason)
+        return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
+    await request.app.state.record_notifier.notify(str(record_id))
+    return result
 
 
 @router.post(

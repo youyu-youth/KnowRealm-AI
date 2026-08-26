@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 TODO_CONTENT_MAX_LENGTH = 500
 
@@ -38,9 +38,7 @@ class TodoBlockedReason(StrEnum):
 
 
 class TodoWriteRequest(BaseModel):
-    content: str = Field(
-        min_length=1, max_length=TODO_CONTENT_MAX_LENGTH, description="待办内容"
-    )
+    content: str = Field(min_length=1, max_length=TODO_CONTENT_MAX_LENGTH, description="待办内容")
 
     @field_validator("content")
     @classmethod
@@ -80,3 +78,31 @@ class TodoReadOut(BaseModel):
     action_required: TodoAction
     active_job_id: str | None = None
     blocked_reason: TodoBlockedReason | None = None
+
+
+class TodoCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    content: str = Field(strict=True, min_length=1, max_length=TODO_CONTENT_MAX_LENGTH)
+
+    @field_validator("content")
+    @classmethod
+    def reject_blank_candidate(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("待办内容不能为空")
+        return value
+
+
+class TodoBatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[TodoCandidate] = Field(min_length=3, max_length=8)
+
+
+class TodoJobAccepted(BaseModel):
+    job_id: str
+
+
+class TodoConflictResponse(BaseModel):
+    detail: str
+    blocked_reason: TodoBlockedReason

@@ -15,6 +15,7 @@ from app.models.document import LlmCallLog
 from app.schemas.knowledge_point import KnowledgePointBatch
 from app.schemas.quiz import QuizBatch
 from app.schemas.summary import SummaryContent
+from app.schemas.todo import TodoBatch
 from app.services.local_config import LlmProviderConfig
 
 
@@ -48,6 +49,13 @@ class QuizCallResult:
     latency_ms: int
 
 
+@dataclass(frozen=True)
+class TodoCallResult:
+    content: TodoBatch
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
 class StructuredModel(Protocol):
     async def generate(
         self,
@@ -62,6 +70,7 @@ class StructuredModel(Protocol):
 SummaryModel = StructuredModel
 KnowledgePointModel = StructuredModel
 QuizModel = StructuredModel
+TodoModel = StructuredModel
 
 
 class StructuredGenerationError(Exception):
@@ -151,6 +160,11 @@ class OpenAiCompatibleKnowledgePointModel(_OpenAiCompatibleStructuredModel):
 class OpenAiCompatibleQuizModel(_OpenAiCompatibleStructuredModel):
     def __init__(self) -> None:
         super().__init__(QuizBatch)
+
+
+class OpenAiCompatibleTodoModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self) -> None:
+        super().__init__(TodoBatch)
 
 
 @dataclass(frozen=True)
@@ -299,6 +313,32 @@ async def call_quiz_model(
     )
     return QuizCallResult(
         content=cast(QuizBatch, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )
+
+
+async def call_todo_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    todo_model: TodoModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> TodoCallResult:
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=todo_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="todo",
+        graph_node="generate",
+        prompt_version=prompt_version,
+        output_schema=TodoBatch,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+    )
+    return TodoCallResult(
+        content=cast(TodoBatch, result.content),
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
     )
