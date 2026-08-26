@@ -3,6 +3,7 @@ import {
   buildExportFileName,
   selectActiveQuizzes,
   selectFormalTodos,
+  serializeAggregateMarkdown,
   serializeKnowledgePointsMarkdown,
   serializeQuizMarkdown,
   serializeSummaryMarkdown,
@@ -379,6 +380,76 @@ describe("serializeTodoMarkdown", () => {
     expect(quizMarkdown.match(/^# /gm)).toHaveLength(1);
     expect(todoMarkdown).toContain("- [ ] \\# 第一步\n  \\<script\\>");
     expect(todoMarkdown.match(/^# /gm)).toHaveLength(1);
+  });
+});
+
+describe("serializeAggregateMarkdown", () => {
+  const summary = serializeSummaryMarkdown(
+    "操作系统第一讲",
+    summarySnapshot,
+    summaryLabels,
+  );
+  const knowledgePoints = serializeKnowledgePointsMarkdown(
+    "操作系统第一讲",
+    [
+      {
+        name: "进程调度",
+        detail: "从就绪队列选择下一个进程。",
+        importance: 5,
+        tags: [],
+      },
+    ],
+    knowledgePointLabels,
+  );
+  const quizzes = serializeQuizMarkdown(
+    "操作系统第一讲",
+    [quiz({ id: "quiz-1" })],
+    quizLabels,
+  );
+  const todos = serializeTodoMarkdown(
+    "操作系统第一讲",
+    [todo({ id: "todo-1", sort_order: 0 })],
+    "Todo",
+  );
+
+  it("按 Summary、知识点、习题、Todo 固定顺序合并且只保留一个一级标题", () => {
+    const markdown = serializeAggregateMarkdown("操作系统第一讲", [
+      summary,
+      knowledgePoints,
+      quizzes,
+      todos,
+    ]);
+
+    expect(markdown).not.toBeNull();
+    expect(markdown?.match(/^# /gm)).toHaveLength(1);
+    expect(markdown).toMatch(
+      /## 总结[\s\S]*## 知识点[\s\S]*## 习题[\s\S]*## Todo/,
+    );
+    expect(markdown).toMatch(/## 总结\n\n[\s\S]*\n\n## 知识点/);
+    expect(markdown?.endsWith("\n")).toBe(true);
+    expect(markdown).not.toContain("\r");
+  });
+
+  it("自然省略缺失资产，不生成空标题", () => {
+    const markdown = serializeAggregateMarkdown("操作系统第一讲", [
+      summary,
+      null,
+      null,
+      todos,
+    ]);
+
+    expect(markdown).toContain("## 总结");
+    expect(markdown).toContain("## Todo");
+    expect(markdown).not.toMatch(/## 知识点|## 习题|## 复习资料/);
+  });
+
+  it("全部资产为空时返回 null，相同输入输出完全一致", () => {
+    expect(
+      serializeAggregateMarkdown("操作系统第一讲", [null, null, null, null]),
+    ).toBeNull();
+    expect(serializeAggregateMarkdown("操作系统第一讲", [summary, todos])).toBe(
+      serializeAggregateMarkdown("操作系统第一讲", [summary, todos]),
+    );
   });
 });
 

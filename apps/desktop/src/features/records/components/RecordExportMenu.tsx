@@ -26,6 +26,7 @@ type RecordExportMenuProps = {
   recordId: string;
   tab: RecordDetailTab;
   busy: boolean;
+  onExportAll: () => void;
   onExport: (asset: ExportableAsset) => void;
 };
 
@@ -42,29 +43,44 @@ export function RecordExportMenu({
   recordId,
   tab,
   busy,
+  onExportAll,
   onExport,
 }: RecordExportMenuProps) {
   const { t } = useTranslation();
   const summary = useQuery({
     queryKey: recordKeys.summary(recordId),
     queryFn: () => recordApi.getSummary(recordId),
-    enabled: tab === "summary",
+    enabled: (query) => tab === "summary" || query.state.data !== undefined,
   });
   const knowledgePoints = useQuery({
     queryKey: recordKeys.knowledgePoints(recordId),
     queryFn: () => recordApi.getKnowledgePoints(recordId),
-    enabled: tab === "knowledge-points",
+    enabled: (query) =>
+      tab === "knowledge-points" || query.state.data !== undefined,
   });
   const quizzes = useQuery({
     queryKey: recordKeys.quizzes(recordId),
     queryFn: () => recordApi.getQuizzes(recordId),
-    enabled: tab === "quiz",
+    enabled: (query) => tab === "quiz" || query.state.data !== undefined,
   });
   const todos = useQuery({
     queryKey: recordKeys.todos(recordId),
     queryFn: () => recordApi.getTodos(recordId),
-    enabled: tab === "todo",
+    enabled: (query) => tab === "todo" || query.state.data !== undefined,
   });
+  const allKnownEmpty =
+    summary.isSuccess &&
+    knowledgePoints.isSuccess &&
+    quizzes.isSuccess &&
+    todos.isSuccess &&
+    !summary.isStale &&
+    !knowledgePoints.isStale &&
+    !quizzes.isStale &&
+    !todos.isStale &&
+    summary.data.summary?.status !== "CONFIRMED" &&
+    selectActiveKnowledgePoints(knowledgePoints.data.items).length === 0 &&
+    selectActiveQuizzes(quizzes.data.items).length === 0 &&
+    selectFormalTodos(todos.data.items).length === 0;
 
   const currentTab = useMemo<CurrentTabAvailability>(() => {
     if (tab === "summary") {
@@ -150,6 +166,22 @@ export function RecordExportMenu({
         <ChevronDown aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
+        <DropdownMenuItem
+          disabled={busy || allKnownEmpty}
+          onClick={onExportAll}
+        >
+          <Download aria-hidden="true" />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-sm">
+              {t("record.detail.export.allAssets")}
+            </span>
+            {allKnownEmpty ? (
+              <span className="text-muted-foreground text-xs">
+                {t("record.detail.export.allEmpty")}
+              </span>
+            ) : null}
+          </span>
+        </DropdownMenuItem>
         <DropdownMenuItem
           disabled={
             busy ||

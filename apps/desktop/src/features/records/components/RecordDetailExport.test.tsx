@@ -189,6 +189,9 @@ beforeEach(() => {
       return HttpResponse.json(record);
     }),
     http.get(SUMMARY_URL, () => summaryResponse(confirmedSummary)),
+    http.get(KNOWLEDGE_POINTS_URL, () => knowledgePointsResponse([])),
+    http.get(QUIZZES_URL, () => quizzesResponse([])),
+    http.get(TODOS_URL, () => todosResponse([])),
     http.get(LLM_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
     http.get(PREFERENCES_URL, () => HttpResponse.json({ quiz_last_count: 3 })),
   );
@@ -209,9 +212,252 @@ async function openExportMenu() {
   return screen.findByRole("menuitem", { name: /导出当前 Tab/ });
 }
 
+async function openAggregateExportMenu() {
+  fireEvent.click(await screen.findByRole("button", { name: "导出 Markdown" }));
+  return screen.findByRole("menuitem", { name: /导出全部学习资产/ });
+}
+
 const SAVED_PATH = "C:\\学习资料\\操作系统第一讲-总结.md";
 
 describe("学习资产 Markdown 导出", () => {
+  it("聚合导出并行读取四类最新事实，按固定顺序保存不可变快照", async () => {
+    const reads = { summary: 0, knowledgePoints: 0, quizzes: 0, todos: 0 };
+    server.use(
+      http.get(SUMMARY_URL, () => {
+        reads.summary += 1;
+        return summaryResponse(confirmedSummary);
+      }),
+      http.get(KNOWLEDGE_POINTS_URL, () => {
+        reads.knowledgePoints += 1;
+        return knowledgePointsResponse([knowledgePoint()]);
+      }),
+      http.get(QUIZZES_URL, () => {
+        reads.quizzes += 1;
+        return quizzesResponse([quiz()]);
+      }),
+      http.get(TODOS_URL, () => {
+        reads.todos += 1;
+        return todosResponse([todo()]);
+      }),
+    );
+    saveMock.mockResolvedValue("C:\\学习资料\\操作系统第一讲-学习资产.md");
+    writeTextFileMock.mockResolvedValue(undefined);
+    renderAt();
+
+    await waitFor(() => expect(reads.summary).toBeGreaterThan(0));
+    const readsBeforeExport = { ...reads };
+    fireEvent.click(await openAggregateExportMenu());
+
+    await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
+    expect(reads.summary).toBeGreaterThan(readsBeforeExport.summary);
+    expect(reads.knowledgePoints).toBeGreaterThan(
+      readsBeforeExport.knowledgePoints,
+    );
+    expect(reads.quizzes).toBeGreaterThan(readsBeforeExport.quizzes);
+    expect(reads.todos).toBeGreaterThan(readsBeforeExport.todos);
+    expect(saveMock).toHaveBeenCalledWith("操作系统第一讲-学习资产.md");
+    const markdown = writeTextFileMock.mock.calls[0][1];
+    expect(markdown).toMatch(
+      /## 总结[\s\S]*## 知识点[\s\S]*## 习题[\s\S]*## Todo/,
+    );
+    expect(markdown.match(/^# /gm)).toHaveLength(1);
+    expect(markdown).not.toMatch(/正确答案|解析/);
+  });
+
+  it("聚合导出自然省略尚未生成的资产", async () => {
+    server.use(
+      http.get(SUMMARY_URL, () => summaryResponse(null)),
+      http.get(KNOWLEDGE_POINTS_URL, () => knowledgePointsResponse([])),
+      http.get(QUIZZES_URL, () => quizzesResponse([quiz()])),
+      http.get(TODOS_URL, () => todosResponse([])),
+    );
+    saveMock.mockResolvedValue("D:\\资料\\操作系统第一讲-学习资产.md");
+    writeTextFileMock.mockResolvedValue(undefined);
+    renderAt();
+
+    fireEvent.click(await openAggregateExportMenu());
+
+    await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
+    const markdown = writeTextFileMock.mock.calls[0][1];
+    expect(markdown).toContain("## 习题");
+    expect(markdown).not.toMatch(/## 总结|## 知识点|## Todo/);
+  });
+
+  it("聚合最新读取确认全部为空时提示暂无内容且不打开保存对话框", async () => {
+    server.use(
+      http.get(SUMMARY_URL, () => summaryResponse(null)),
+      http.get(KNOWLEDGE_POINTS_URL, () => knowledgePointsResponse([])),
+      http.get(QUIZZES_URL, () => quizzesResponse([])),
+      http.get(TODOS_URL, () => todosResponse([])),
+    );
+    renderAt();
+
+    fireEvent.click(await openAggregateExportMenu());
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "暂无可导出内容",
+    );
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(writeTextFileMock).not.toHaveBeenCalled();
+  });
+
+  it("聚合任一读取失败时整次失败且不打开保存对话框", async () => {
+    server.use(
+      http.get(SUMMARY_URL, () => summaryResponse(confirmedSummary)),
+      http.get(KNOWLEDGE_POINTS_URL, () => knowledgePointsResponse([])),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json({ detail: "数据库暂时繁忙" }, { status: 500 }),
+      ),
+      http.get(TODOS_URL, () => todosResponse([todo()])),
+    );
+    renderAt();
+
+    fireEvent.click(await openAggregateExportMenu());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "读取学习资产失败，未导出文件",
+    );
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(writeTextFileMock).not.toHaveBeenCalled();
+  });
+
+  it("聚合响应不可解释时按读取失败处理", async () => {
+    server.use(
+      http.get(SUMMARY_URL, () => summaryResponse(confirmedSummary)),
+      http.get(KNOWLEDGE_POINTS_URL, () => knowledgePointsResponse([])),
+      http.get(QUIZZES_URL, () => HttpResponse.json({})),
+      http.get(TODOS_URL, () => todosResponse([])),
+    );
+    renderAt();
+
+    fireEvent.click(await openAggregateExportMenu());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "读取学习资产失败，未导出文件",
+    );
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it.each([{}, { summary: {} }, { summary: [] }])(
+    "聚合 Summary 响应不可解释时按读取失败处理：%o",
+    async (response) => {
+      let summaryGets = 0;
+      server.use(
+        http.get(SUMMARY_URL, () => {
+          summaryGets += 1;
+          return summaryGets === 1
+            ? summaryResponse(confirmedSummary)
+            : HttpResponse.json(response);
+        }),
+        http.get(KNOWLEDGE_POINTS_URL, () => knowledgePointsResponse([])),
+        http.get(QUIZZES_URL, () => quizzesResponse([])),
+        http.get(TODOS_URL, () => todosResponse([])),
+      );
+      renderAt();
+
+      fireEvent.click(await openAggregateExportMenu());
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "读取学习资产失败，未导出文件",
+      );
+      expect(saveMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("四类缓存事实均已知且全部为空时禁用聚合导出", async () => {
+    const reads = { knowledgePoints: 0, quizzes: 0, todos: 0 };
+    server.use(
+      http.get(SUMMARY_URL, () => summaryResponse(null)),
+      http.get(KNOWLEDGE_POINTS_URL, () => {
+        reads.knowledgePoints += 1;
+        return knowledgePointsResponse([]);
+      }),
+      http.get(QUIZZES_URL, () => {
+        reads.quizzes += 1;
+        return quizzesResponse([]);
+      }),
+      http.get(TODOS_URL, () => {
+        reads.todos += 1;
+        return todosResponse([]);
+      }),
+    );
+    renderAt();
+
+    fireEvent.click(await screen.findByRole("tab", { name: "知识点" }));
+    await waitFor(() => expect(reads.knowledgePoints).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("tab", { name: "习题" }));
+    await waitFor(() => expect(reads.quizzes).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("tab", { name: "Todo" }));
+    await waitFor(() => expect(reads.todos).toBeGreaterThan(0));
+
+    const item = await openAggregateExportMenu();
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveTextContent("暂无可导出内容");
+  });
+
+  it("聚合读取完成后冻结快照，保存对话框停留期间的新事实不进入文件", async () => {
+    let summaryGets = 0;
+    server.use(
+      http.get(SUMMARY_URL, () => {
+        summaryGets += 1;
+        return summaryResponse({
+          ...confirmedSummary,
+          topic: summaryGets > 2 ? "保存期间的新主题" : "点击时的主题",
+        });
+      }),
+      http.get(KNOWLEDGE_POINTS_URL, () => knowledgePointsResponse([])),
+      http.get(QUIZZES_URL, () => quizzesResponse([])),
+      http.get(TODOS_URL, () => todosResponse([])),
+    );
+    let finishSave: (path: string) => void = (path) => {
+      throw new Error(`保存对话框尚未就绪：${path}`);
+    };
+    saveMock.mockImplementation(
+      () => new Promise((resolve) => (finishSave = resolve)),
+    );
+    writeTextFileMock.mockResolvedValue(undefined);
+    renderAt();
+
+    fireEvent.click(await openAggregateExportMenu());
+    await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1));
+    server.use(
+      http.get(SUMMARY_URL, () =>
+        summaryResponse({ ...confirmedSummary, topic: "保存期间的新主题" }),
+      ),
+    );
+    finishSave("D:\\资料\\操作系统第一讲-学习资产.md");
+
+    await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
+    expect(writeTextFileMock.mock.calls[0][1]).toContain("点击时的主题");
+    expect(writeTextFileMock.mock.calls[0][1]).not.toContain(
+      "保存期间的新主题",
+    );
+  });
+
+  it("聚合导出进行中禁用重复触发并只打开一个保存对话框", async () => {
+    server.use(
+      http.get(SUMMARY_URL, () => summaryResponse(confirmedSummary)),
+      http.get(KNOWLEDGE_POINTS_URL, async () => {
+        await delay(400);
+        return knowledgePointsResponse([]);
+      }),
+      http.get(QUIZZES_URL, () => quizzesResponse([])),
+      http.get(TODOS_URL, () => todosResponse([])),
+    );
+    saveMock.mockResolvedValue("D:\\资料\\操作系统第一讲-学习资产.md");
+    writeTextFileMock.mockResolvedValue(undefined);
+    renderAt();
+
+    fireEvent.click(await openAggregateExportMenu());
+
+    expect(await screen.findByText("正在导出…")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "导出 Markdown" }),
+    ).toBeDisabled();
+    await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
+    expect(saveMock).toHaveBeenCalledTimes(1);
+  });
+
   it("Summary 导出：最新读取后组装快照，经保存对话框写入并显示成功与打开动作", async () => {
     saveMock.mockResolvedValue(SAVED_PATH);
     writeTextFileMock.mockResolvedValue(undefined);
@@ -520,11 +766,11 @@ describe("学习资产 Markdown 导出", () => {
     expect(saveMock).not.toHaveBeenCalled();
   });
 
-  it("取消保存时不写文件、不报错、不显示成功", async () => {
+  it("聚合导出取消保存时不写文件、不报错、不显示成功", async () => {
     saveMock.mockResolvedValue(null);
     renderAt();
 
-    const item = await openExportMenu();
+    const item = await openAggregateExportMenu();
     fireEvent.click(item);
 
     await waitFor(() => expect(saveMock).toHaveBeenCalledTimes(1));
@@ -559,14 +805,14 @@ describe("学习资产 Markdown 导出", () => {
     expect(writeTextFileMock).not.toHaveBeenCalled();
   });
 
-  it("写入失败时显示页内错误且不出现成功状态", async () => {
+  it("聚合导出写入失败时显示页内错误且不出现成功状态", async () => {
     saveMock.mockResolvedValue(SAVED_PATH);
     writeTextFileMock.mockRejectedValue(
       new Error("failed to write file: Access Denied"),
     );
     renderAt();
 
-    const item = await openExportMenu();
+    const item = await openAggregateExportMenu();
     fireEvent.click(item);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -575,11 +821,11 @@ describe("学习资产 Markdown 导出", () => {
     expect(screen.queryByText(/已保存/)).not.toBeInTheDocument();
   });
 
-  it("保存对话框以异常结束时按写入失败提示，不停留在导出中", async () => {
+  it("聚合保存对话框以异常结束时按写入失败提示，不停留在导出中", async () => {
     saveMock.mockRejectedValue(new Error("dialog plugin error"));
     renderAt();
 
-    const item = await openExportMenu();
+    const item = await openAggregateExportMenu();
     fireEvent.click(item);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -589,13 +835,13 @@ describe("学习资产 Markdown 导出", () => {
     expect(writeTextFileMock).not.toHaveBeenCalled();
   });
 
-  it("打开文件失败单独提示，不推翻文件已保存的事实", async () => {
+  it("聚合保存成功后打开文件失败单独提示，不推翻已保存事实", async () => {
     saveMock.mockResolvedValue(SAVED_PATH);
     writeTextFileMock.mockResolvedValue(undefined);
     openMock.mockRejectedValue(new Error("no application"));
     renderAt();
 
-    const item = await openExportMenu();
+    const item = await openAggregateExportMenu();
     fireEvent.click(item);
 
     fireEvent.click(await screen.findByRole("button", { name: "打开文件" }));

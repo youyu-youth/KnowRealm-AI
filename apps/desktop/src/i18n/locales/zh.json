@@ -272,6 +272,7 @@
       "assetsCompleted": "复习与 Ask AI 尚未接入",
       "export": {
         "menuLabel": "导出 Markdown",
+        "allAssets": "导出全部学习资产",
         "currentTab": "导出当前 Tab",
         "unsupportedTab": "当前 Tab 暂不支持导出",
         "contentUnavailable": "内容暂不可用，稍后再试",
@@ -284,6 +285,8 @@
         "knowledgePointsAsset": "知识点",
         "quizAsset": "习题",
         "todoAsset": "Todo",
+        "allAssetsFileLabel": "学习资产",
+        "allEmpty": "暂无可导出内容",
         "summaryTopic": "主题",
         "summaryAbstract": "摘要",
         "importanceLabel": "重要度",
@@ -302,6 +305,7 @@
         "openFile": "打开文件",
         "openFailed": "无法打开文件",
         "readFailed": "读取学习资产失败，未导出文件",
+        "invalidResponse": "学习资产响应格式无效",
         "writeFailed": "文件写入失败，未保存"
       },
       "jobs": {

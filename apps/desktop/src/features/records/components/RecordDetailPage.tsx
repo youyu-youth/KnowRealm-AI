@@ -245,6 +245,7 @@ export function RecordDetailPage({
             recordId={recordId}
             tab={tab}
             busy={recordExport.state.phase === "exporting"}
+            onExportAll={() => void recordExport.exportAll(recordId, title)}
             onExport={(asset) =>
               void recordExport.exportAsset(asset, recordId, title)
             }

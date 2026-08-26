@@ -252,6 +252,24 @@ export function serializeTodoMarkdown(
   ]);
 }
 
+/** 复用单项文档正文，按调用方给定的白名单顺序合并为一个 Record 文档。 */
+export function serializeAggregateMarkdown(
+  recordTitle: string,
+  assetDocuments: readonly (string | null)[],
+): string | null {
+  const title = `# ${escapePlainText(recordTitle)}`;
+  const prefix = `${title}\n\n`;
+  const assets = assetDocuments
+    .filter((document): document is string => document !== null)
+    .map((document) => {
+      if (!document.startsWith(prefix) || !document.endsWith("\n")) {
+        throw new Error("聚合导出的单项 Markdown 格式无效");
+      }
+      return document.slice(prefix.length, -1);
+    });
+  return assets.length ? assembleDocument([title, ...assets]) : null;
+}
+
 const WINDOWS_RESERVED_NAMES = new Set([
   "CON",
   "PRN",
