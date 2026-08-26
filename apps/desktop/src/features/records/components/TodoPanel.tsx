@@ -40,6 +40,21 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
     mutationFn: settingsApi.grantLlmConsent,
     onSuccess: () => void invalidate(),
   });
+  const generate = useMutation({
+    mutationFn: () => recordApi.submitTodoGeneration(recordId),
+    onSuccess: () => void invalidate(),
+  });
+  const batchId =
+    todos.data?.items.find((item) => item.generation_status === "DRAFT")
+      ?.batch_id ?? null;
+  const adopt = useMutation({
+    mutationFn: () => recordApi.adoptTodoBatch(recordId, batchId!),
+    onSuccess: () => void invalidate(),
+  });
+  const discard = useMutation({
+    mutationFn: () => recordApi.discardTodoBatch(recordId, batchId!),
+    onSuccess: () => void invalidate(),
+  });
 
   if (todos.isPending) {
     return (
@@ -71,6 +86,12 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
   }
 
   const data = todos.data;
+  const candidates = data.items.filter(
+    (item) => item.generation_status === "DRAFT",
+  );
+  const visibleItems = data.items.filter(
+    (item) => item.generation_status !== "DRAFT",
+  );
   // 手动增删改勾与生成门控解耦：blocked_reason 只影响 AI 生成入口（后续票），
   // 这里仅在清单为空时给出下一步指引。
   const showSummaryAction =
@@ -80,7 +101,82 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
 
   return (
     <div className="max-w-reading min-w-0">
-      {data.items.length ? (
+      {!data.blocked_reason && data.active_job_id ? (
+        <p
+          role="status"
+          className="text-body text-muted-foreground mb-6 flex items-center gap-2"
+        >
+          <Spinner aria-hidden="true" />
+          {t("record.detail.todo.generating")}
+        </p>
+      ) : !data.blocked_reason &&
+        (data.action_required === "GENERATE" ||
+          data.action_required === "RETRY") ? (
+        <div className="mb-6">
+          {data.action_required === "RETRY" ? (
+            <p className="text-body text-destructive mb-3">
+              {t("record.detail.todo.generationFailed")}
+            </p>
+          ) : null}
+          <Button
+            disabled={generate.isPending}
+            onClick={() => generate.mutate()}
+          >
+            {generate.isPending ? <Spinner aria-hidden="true" /> : null}
+            {data.action_required === "RETRY"
+              ? t("record.detail.todo.retryGeneration")
+              : t("record.detail.todo.generate")}
+          </Button>
+          {generate.isError ? (
+            <p role="alert" className="text-body text-destructive mt-2">
+              {generate.error.message}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {candidates.length ? (
+        <section aria-labelledby="todo-candidates-title" className="mb-8">
+          <h2
+            id="todo-candidates-title"
+            className="text-section font-section text-ink"
+          >
+            {t("record.detail.todo.candidateTitle")}
+          </h2>
+          <p className="text-body text-muted-foreground mt-1">
+            {t("record.detail.todo.candidateDescription")}
+          </p>
+          <ul className="mt-3">
+            {candidates.map((item) => (
+              <TodoRow key={item.id} item={item} recordId={recordId} isDraft />
+            ))}
+          </ul>
+          <div className="mt-4 flex gap-2">
+            <Button
+              disabled={!batchId || adopt.isPending}
+              onClick={() => adopt.mutate()}
+            >
+              {adopt.isPending ? <Spinner aria-hidden="true" /> : null}
+              {t("record.detail.todo.adopt")}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!batchId || discard.isPending}
+              onClick={() => discard.mutate()}
+            >
+              {discard.isPending ? <Spinner aria-hidden="true" /> : null}
+              {t("record.detail.todo.discard")}
+            </Button>
+          </div>
+          {adopt.isError || discard.isError ? (
+            <p role="alert" className="text-body text-destructive mt-2">
+              {(adopt.error ?? discard.error)?.message}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {visibleItems.length ? (
         <section aria-labelledby="todo-list-title">
           <h2
             id="todo-list-title"
@@ -89,12 +185,12 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
             {t("record.detail.todo.listTitle")}
           </h2>
           <ul className="mt-3">
-            {data.items.map((item) => (
+            {visibleItems.map((item) => (
               <TodoRow key={item.id} item={item} recordId={recordId} />
             ))}
           </ul>
         </section>
-      ) : data.blocked_reason ? (
+      ) : data.blocked_reason && !candidates.length ? (
         <Empty className="items-start p-0 text-left">
           <EmptyHeader className="items-start text-left">
             <EmptyTitle role="heading" aria-level={2}>
@@ -136,13 +232,25 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
 
       <AddTodoForm
         recordId={recordId}
-        className={data.items.length ? "border-border mt-8 border-t pt-6" : undefined}
+        className={
+          visibleItems.length || candidates.length
+            ? "border-border mt-8 border-t pt-6"
+            : undefined
+        }
       />
     </div>
   );
 }
 
-function TodoRow({ item, recordId }: { item: TodoOut; recordId: string }) {
+function TodoRow({
+  item,
+  recordId,
+  isDraft = false,
+}: {
+  item: TodoOut;
+  recordId: string;
+  isDraft?: boolean;
+}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -218,15 +326,18 @@ function TodoRow({ item, recordId }: { item: TodoOut; recordId: string }) {
   return (
     <li className="border-border border-t py-3 first:border-t-0">
       <div className="flex min-w-0 items-start gap-3">
-        <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-3">
-          <Checkbox
-            checked={done}
-            disabled={toggle.isPending}
-            onCheckedChange={(checked) =>
-              toggle.mutate(checked ? "DONE" : "TODO")
-            }
-            className="mt-1"
-          />
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          {!isDraft ? (
+            <Checkbox
+              aria-label={item.content}
+              checked={done}
+              disabled={toggle.isPending}
+              onCheckedChange={(checked) =>
+                toggle.mutate(checked ? "DONE" : "TODO")
+              }
+              className="mt-1"
+            />
+          ) : null}
           <span
             className={cn(
               "text-body text-ink min-w-0 flex-1 break-words",
@@ -235,7 +346,7 @@ function TodoRow({ item, recordId }: { item: TodoOut; recordId: string }) {
           >
             {item.content}
           </span>
-        </label>
+        </div>
         <div className="flex shrink-0 items-center gap-1">
           <Button
             variant="ghost"

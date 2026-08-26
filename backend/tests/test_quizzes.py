@@ -278,7 +278,7 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
             ).fetchall()
         }
 
-    assert version == (12,)
+    assert version == (13,)
     assert {
         "id",
         "record_id",

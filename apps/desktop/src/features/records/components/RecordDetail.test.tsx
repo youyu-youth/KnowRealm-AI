@@ -1379,9 +1379,7 @@ describe("学习记录详情", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认总结" }));
     await waitFor(() => expect(confirmBody).toEqual({ summary_id: secondId }));
     expect(await screen.findByText("AI 总结 · 已确认")).toBeInTheDocument();
-    expect(
-      screen.getByText("复习与 Ask AI 尚未接入"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("复习与 Ask AI 尚未接入")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "知识点" })).not.toHaveAttribute(
       "aria-disabled",
       "true",
@@ -2783,6 +2781,94 @@ describe("Todo 页签", () => {
     };
   }
 
+  it("生成候选后可修剪并整批采纳", async () => {
+    const candidate = todoOut({
+      batch_id: JOB_ID,
+      content: "复习调度算法",
+      source: "AI",
+      generated_from_summary_id: "55555555-5555-4555-8555-555555555555",
+      generation_status: "DRAFT",
+    });
+    let data = todoReadOut({ action_required: "GENERATE" });
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(TODOS_URL, () => HttpResponse.json(data)),
+      http.post(`${DETAIL_URL}/todo-jobs`, () => {
+        data = todoReadOut({ items: [candidate], action_required: "ADOPT" });
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+      http.patch(`${TODOS_URL}/${candidate.id}`, async ({ request }) => {
+        const body = (await request.json()) as { content: string };
+        candidate.content = body.content;
+        return HttpResponse.json(candidate);
+      }),
+      http.post(`${DETAIL_URL}/todo-batches/${JOB_ID}/confirmations`, () => {
+        candidate.generation_status = "ACTIVE";
+        data = todoReadOut({ items: [candidate], action_required: "GENERATE" });
+        return HttpResponse.json(data);
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "生成 Todo 建议" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "待审阅建议" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "编辑待办 复习调度算法" }),
+    );
+    fireEvent.change(screen.getByLabelText("编辑待办内容"), {
+      target: { value: "复习并对比调度算法" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByText("复习并对比调度算法")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "采纳候选" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "待审阅建议" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("checkbox", { name: "复习并对比调度算法" }),
+    ).toBeVisible();
+  });
+
+  it("失败态可重试，候选可整批丢弃", async () => {
+    const candidate = todoOut({
+      batch_id: JOB_ID,
+      source: "AI",
+      generated_from_summary_id: "55555555-5555-4555-8555-555555555555",
+      generation_status: "DRAFT",
+    });
+    let data = todoReadOut({ action_required: "RETRY" });
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(TODOS_URL, () => HttpResponse.json(data)),
+      http.post(`${DETAIL_URL}/todo-jobs`, () => {
+        data = todoReadOut({ items: [candidate], action_required: "ADOPT" });
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+      http.post(`${DETAIL_URL}/todo-batches/${JOB_ID}/discards`, () => {
+        data = todoReadOut({ action_required: "GENERATE" });
+        return HttpResponse.json(data);
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    expect(await screen.findByText("上次生成没有成功")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "重新生成" }));
+    expect(
+      await screen.findByRole("heading", { name: "待审阅建议" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "丢弃候选" }));
+    expect(
+      await screen.findByRole("button", { name: "生成 Todo 建议" }),
+    ).toBeVisible();
+  });
+
   it("未完成记录页签禁用，完成后未确认总结时空态指引去总结页签", async () => {
     server.use(
       http.get(DETAIL_URL, () => HttpResponse.json(record)),
@@ -2837,9 +2923,7 @@ describe("Todo 页签", () => {
     expect(
       await screen.findByRole("heading", { name: "需要同意外部 AI 处理" }),
     ).toBeVisible();
-    fireEvent.click(
-      screen.getByRole("button", { name: "同意外部 AI 处理" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "同意外部 AI 处理" }));
     await waitFor(() =>
       expect(
         screen.queryByRole("heading", { name: "需要同意外部 AI 处理" }),
@@ -2891,20 +2975,20 @@ describe("Todo 页签", () => {
     expect(screen.getByText("补课后作业")).toBeVisible();
 
     // 勾选完成 → 划线弱化原位保留
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "复习进程调度" }),
-    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "复习进程调度" }));
     await waitFor(() =>
-      expect(screen.getByText("复习进程调度", { selector: "span" })).toHaveClass("line-through"),
+      expect(
+        screen.getByText("复习进程调度", { selector: "span" }),
+      ).toHaveClass("line-through"),
     );
     expect(toggleBodies).toEqual([{ status: "DONE" }]);
 
     // 取消勾选恢复未完成态
-    fireEvent.click(
-      screen.getByRole("checkbox", { name: "复习进程调度" }),
-    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "复习进程调度" }));
     await waitFor(() =>
-      expect(screen.getByText("复习进程调度", { selector: "span" })).not.toHaveClass("line-through"),
+      expect(
+        screen.getByText("复习进程调度", { selector: "span" }),
+      ).not.toHaveClass("line-through"),
     );
 
     // 行内编辑保存新内容
@@ -2925,9 +3009,7 @@ describe("Todo 页签", () => {
       screen.getByRole("button", { name: "删除待办 补完课后作业并订正" }),
     );
     await waitFor(() =>
-      expect(
-        screen.queryByText("补完课后作业并订正"),
-      ).not.toBeInTheDocument(),
+      expect(screen.queryByText("补完课后作业并订正")).not.toBeInTheDocument(),
     );
     expect(screen.getByText("复习进程调度")).toBeVisible();
   });

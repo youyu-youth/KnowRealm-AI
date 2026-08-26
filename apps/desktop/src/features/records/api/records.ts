@@ -125,6 +125,24 @@ export const recordApi = {
   },
   getTodos: (recordId: string) =>
     apiFetch<TodoReadOut>(`/api/records/${recordId}/todos`),
+  submitTodoGeneration(recordId: string) {
+    return apiFetch<components["schemas"]["TodoJobAccepted"]>(
+      `/api/records/${recordId}/todo-jobs`,
+      { method: "POST" },
+    );
+  },
+  discardTodoBatch(recordId: string, batchId: string) {
+    return apiFetch<TodoReadOut>(
+      `/api/records/${recordId}/todo-batches/${batchId}/discards`,
+      { method: "POST" },
+    );
+  },
+  adoptTodoBatch(recordId: string, batchId: string) {
+    return apiFetch<TodoReadOut>(
+      `/api/records/${recordId}/todo-batches/${batchId}/confirmations`,
+      { method: "POST" },
+    );
+  },
   createTodo(recordId: string, content: string) {
     return apiFetch<TodoOut>(`/api/records/${recordId}/todos`, {
       method: "POST",

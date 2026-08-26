@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -41,7 +42,7 @@ async def running_todo_app(data_dir: Path) -> AsyncGenerator[tuple[FastAPI, http
 
 
 class FakeTodoModel:
-    def __init__(self, output: object | None = None) -> None:
+    def __init__(self, output: object | None = None, *, blocked: bool = False) -> None:
         self.output = output or {
             "items": [
                 {"content": "复习进程调度"},
@@ -50,9 +51,15 @@ class FakeTodoModel:
             ]
         }
         self.prompt = ""
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        if not blocked:
+            self.release.set()
 
     async def generate(self, **kwargs: object) -> StructuredModelResult:
         self.prompt = cast(str, kwargs["prompt"])
+        self.started.set()
+        await self.release.wait()
         return StructuredModelResult(output=self.output, token_usage={"total_tokens": 12})
 
 
@@ -200,8 +207,17 @@ async def test_generate_todo_candidates_persists_one_draft_batch(tmp_path: Path)
 
 
 @pytest.mark.anyio
-async def test_invalid_output_retry_reuses_failed_todo_job(tmp_path: Path) -> None:
-    model = FakeTodoModel({"items": [{"content": "只有一条"}]})
+@pytest.mark.parametrize(
+    "invalid_output",
+    [
+        {"items": [{"content": "只有一条"}]},
+        {"items": [{"content": "第一条"}, {"content": "   "}, {"content": "第三条"}]},
+    ],
+)
+async def test_invalid_output_retry_reuses_failed_todo_job(
+    tmp_path: Path, invalid_output: object
+) -> None:
+    model = FakeTodoModel(invalid_output)
     async with running_generated_todo_app(tmp_path, model) as (app, client):
         await seed_record(app, client)
         await configure_todo_generation(client)
@@ -217,6 +233,23 @@ async def test_invalid_output_retry_reuses_failed_todo_job(tmp_path: Path) -> No
         assert retried.status_code == 202
         assert retried.json()["job_id"] == first_id
         assert (await wait_for_todo_job(client, first_id))["status"] == "SUCCEEDED"
+
+
+@pytest.mark.anyio
+async def test_running_todo_job_rejects_duplicate_submission(tmp_path: Path) -> None:
+    model = FakeTodoModel(blocked=True)
+    async with running_generated_todo_app(tmp_path, model) as (app, client):
+        await seed_record(app, client)
+        await configure_todo_generation(client)
+        first = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
+        first_id = cast(str, first.json()["job_id"])
+        await asyncio.wait_for(model.started.wait(), timeout=2)
+        duplicate = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
+        model.release.set()
+        finished = await wait_for_todo_job(client, first_id)
+
+    assert duplicate.status_code == 409
+    assert finished["status"] == "SUCCEEDED"
 
 
 @pytest.mark.anyio

@@ -553,6 +553,14 @@
         "editInputLabel": "编辑待办内容",
         "openSummary": "查看总结",
         "grantConsent": "同意外部 AI 处理",
+        "generate": "生成 Todo 建议",
+        "generating": "正在生成 Todo 建议",
+        "generationFailed": "上次生成没有成功",
+        "retryGeneration": "重新生成",
+        "candidateTitle": "待审阅建议",
+        "candidateDescription": "编辑或删除不合适的建议，确认后整批采纳。",
+        "adopt": "采纳候选",
+        "discard": "丢弃候选",
         "blocked": {
           "SUMMARY_NOT_CONFIRMED": {
             "title": "先确认总结，再生成待办建议",
