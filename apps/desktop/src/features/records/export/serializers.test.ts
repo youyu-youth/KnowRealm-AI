@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildExportFileName,
+  selectActiveQuizzes,
+  selectFormalTodos,
   serializeKnowledgePointsMarkdown,
+  serializeQuizMarkdown,
   serializeSummaryMarkdown,
+  serializeTodoMarkdown,
 } from "@/features/records/export/serializers";
+import type { QuizOut, TodoOut } from "@/features/records/api/types";
 
 const summaryLabels = {
   assetTitle: "总结",
@@ -15,6 +20,70 @@ const knowledgePointLabels = {
   assetTitle: "知识点",
   importanceLabel: "重要度",
   tagsLabel: "标签",
+};
+
+const quizLabels = {
+  assetTitle: "习题",
+  questionTypeLabel: "题型",
+  stemLabel: "题干",
+  difficultyLabel: "难度",
+  optionsLabel: "选项",
+  userAnswerLabel: "用户答案",
+  resultLabel: "结果",
+  correctAnswerLabel: "正确答案",
+  referenceAnswerLabel: "参考答案",
+  explanationLabel: "解析",
+  pendingSelfAssessment: "待自评",
+  questionTypes: {
+    MULTIPLE_CHOICE: "选择题",
+    TRUE_FALSE: "判断题",
+    SHORT_ANSWER: "简答题",
+  },
+  difficulties: { EASY: "简单", MEDIUM: "中等", HARD: "困难" },
+  results: { CORRECT: "正确", WRONG: "错误" },
+};
+
+const quiz = (overrides: Partial<QuizOut> & Pick<QuizOut, "id">): QuizOut => {
+  const { id, ...rest } = overrides;
+  return {
+    id,
+    record_id: "record-1",
+    batch_id: "batch-active",
+    generated_from_summary_id: "summary-1",
+    generation_status: "ACTIVE",
+    question_type: "MULTIPLE_CHOICE",
+    stem: "哪个页面置换算法会淘汰最久未使用的页面？",
+    options: ["FIFO", "LRU", "Clock"],
+    correct_answer: null,
+    explanation: null,
+    difficulty: "MEDIUM",
+    user_answer: null,
+    answer_result: null,
+    answered_at: null,
+    created_at: "2026-08-26T00:00:00Z",
+    updated_at: "2026-08-26T00:00:00Z",
+    ...rest,
+  };
+};
+
+const todo = (
+  overrides: Partial<TodoOut> & Pick<TodoOut, "id" | "sort_order">,
+): TodoOut => {
+  const { id, sort_order, ...rest } = overrides;
+  return {
+    id,
+    sort_order,
+    record_id: "record-1",
+    batch_id: null,
+    content: "整理本节笔记",
+    status: "TODO",
+    source: "MANUAL",
+    generated_from_summary_id: null,
+    generation_status: null,
+    created_at: "2026-08-26T00:00:00Z",
+    updated_at: "2026-08-26T00:00:00Z",
+    ...rest,
+  };
 };
 
 const summarySnapshot = {
@@ -141,6 +210,178 @@ describe("serializeKnowledgePointsMarkdown", () => {
   });
 });
 
+describe("serializeQuizMarkdown", () => {
+  it("未作答 ACTIVE 题只输出题型、题干、难度与页面顺序选项", () => {
+    const markdown = serializeQuizMarkdown(
+      "操作系统第一讲",
+      selectActiveQuizzes([
+        quiz({ id: "draft", generation_status: "DRAFT" }),
+        quiz({ id: "active", correct_answer: null, explanation: null }),
+        quiz({ id: "old", generation_status: "SUPERSEDED" }),
+      ]),
+      quizLabels,
+    );
+
+    expect(markdown).toBe(
+      [
+        "# 操作系统第一讲",
+        "",
+        "## 习题",
+        "",
+        "### 1",
+        "",
+        "- 题型：选择题",
+        "- 难度：中等",
+        "",
+        "**题干**",
+        "",
+        "哪个页面置换算法会淘汰最久未使用的页面？",
+        "",
+        "**选项**",
+        "",
+        "- A. FIFO",
+        "- B. LRU",
+        "- C. Clock",
+        "",
+      ].join("\n"),
+    );
+    expect(markdown).not.toMatch(/答案|结果|解析/);
+  });
+
+  it("已作答客观题以选项文字输出用户答案、结果、正确答案和解析", () => {
+    const markdown = serializeQuizMarkdown(
+      "记录",
+      [
+        quiz({
+          id: "answered",
+          user_answer: 0,
+          correct_answer: 1,
+          answer_result: "WRONG",
+          answered_at: "2026-08-26T01:00:00Z",
+          explanation: "LRU 近似利用局部性原理。",
+        }),
+      ],
+      quizLabels,
+    );
+
+    expect(markdown).toContain("**用户答案**\n\nA. FIFO");
+    expect(markdown).toContain("**结果**\n\n错误");
+    expect(markdown).toContain("**正确答案**\n\nB. LRU");
+    expect(markdown).toContain("**解析**\n\nLRU 近似利用局部性原理。");
+    expect(markdown).not.toContain("\n\n0\n");
+    expect(markdown).not.toContain("\n\n1\n");
+  });
+
+  it.each([
+    [null, "待自评"],
+    ["CORRECT" as const, "正确"],
+  ])("简答题已提交后输出用户答案、参考答案、解析和结果 %s", (result, label) => {
+    const markdown = serializeQuizMarkdown(
+      "记录",
+      [
+        quiz({
+          id: `short-${result ?? "pending"}`,
+          question_type: "SHORT_ANSWER",
+          stem: "解释局部性原理。",
+          options: [],
+          user_answer: "程序倾向访问最近用过或相邻的数据。",
+          correct_answer: "时间局部性与空间局部性。",
+          explanation: "两类局部性共同提高缓存命中率。",
+          answer_result: result,
+          answered_at: "2026-08-26T01:00:00Z",
+        }),
+      ],
+      quizLabels,
+    );
+
+    expect(markdown).toContain(
+      "**用户答案**\n\n程序倾向访问最近用过或相邻的数据。",
+    );
+    expect(markdown).toContain("**参考答案**\n\n时间局部性与空间局部性。");
+    expect(markdown).toContain("**解析**\n\n两类局部性共同提高缓存命中率。");
+    expect(markdown).toContain(`**结果**\n\n${label}`);
+  });
+});
+
+describe("serializeTodoMarkdown", () => {
+  it("按 sort_order 混排 ACTIVE AI、手工与被接管项，并过滤 DRAFT/SUPERSEDED", () => {
+    const items = selectFormalTodos([
+      todo({
+        id: "done-ai",
+        sort_order: 30,
+        content: "完成课后练习",
+        status: "DONE",
+        source: "AI",
+        generation_status: "ACTIVE",
+      }),
+      todo({
+        id: "draft",
+        sort_order: 10,
+        source: "AI",
+        generation_status: "DRAFT",
+      }),
+      todo({ id: "manual", sort_order: 20, content: "补充手工笔记" }),
+      todo({
+        id: "taken-over",
+        sort_order: 15,
+        content: "复习被接管项",
+        source: "AI",
+        generation_status: null,
+      }),
+      todo({
+        id: "old",
+        sort_order: 5,
+        source: "AI",
+        generation_status: "SUPERSEDED",
+      }),
+    ]);
+
+    expect(serializeTodoMarkdown("操作系统第一讲", items, "Todo")).toBe(
+      [
+        "# 操作系统第一讲",
+        "",
+        "## Todo",
+        "",
+        "- [ ] 复习被接管项",
+        "- [ ] 补充手工笔记",
+        "- [x] 完成课后练习",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("习题与 Todo 的纯文本不会注入标题、链接或原始 HTML", () => {
+    const quizMarkdown = serializeQuizMarkdown(
+      "记录",
+      [
+        quiz({
+          id: "escaped",
+          stem: "# 不是标题，参见 [资料]",
+          options: ["<script>", "普通选项", "第三项"],
+        }),
+      ],
+      quizLabels,
+    );
+    const todoMarkdown = serializeTodoMarkdown(
+      "记录",
+      [
+        todo({
+          id: "todo-escaped",
+          sort_order: 0,
+          content: "# 第一步\n<script>",
+        }),
+      ],
+      "Todo",
+    );
+
+    expect(quizMarkdown).toContain("\\# 不是标题，参见 \\[资料\\]");
+    expect(quizMarkdown).toContain("A. \\<script\\>");
+    expect(quizMarkdown.match(/^# /gm)).toHaveLength(1);
+    expect(todoMarkdown).toContain("- [ ] \\# 第一步\n  \\<script\\>");
+    expect(todoMarkdown.match(/^# /gm)).toHaveLength(1);
+  });
+});
+
 describe("纯文本转义", () => {
   it("井号、星号与反引号不会破坏 Markdown 结构，渲染后可见文本不变", () => {
     const markdown = serializeSummaryMarkdown(
@@ -222,6 +463,44 @@ describe("纯文本转义", () => {
 
     expect(markdown).toContain("第一段\n第二段\n\n第三段");
     expect(markdown).not.toContain("\r");
+  });
+
+  it("行首列表、序号、分隔线、代码围栏与表格符号保持纯文本", () => {
+    const markdown = serializeTodoMarkdown(
+      "记录",
+      [
+        todo({
+          id: "block-markdown",
+          sort_order: 0,
+          content: [
+            "- 子项",
+            "+ 另一项",
+            "1. 第一步",
+            "---",
+            "~~~",
+            "| A | B |",
+            "    四空格不是代码块",
+            "\tTab 也不是代码块",
+            "  \t混合缩进也不是代码块",
+          ].join("\n"),
+        }),
+      ],
+      "Todo",
+    );
+
+    expect(markdown).toContain(
+      [
+        "- [ ] \\- 子项",
+        "  \\+ 另一项",
+        "  1\\. 第一步",
+        "  \\---",
+        "  \\~~~",
+        "  \\| A \\| B \\|",
+        "  &#32;   四空格不是代码块",
+        "  &#9;Tab 也不是代码块",
+        "    &#9;混合缩进也不是代码块",
+      ].join("\n"),
+    );
   });
 });
 

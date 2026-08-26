@@ -1,4 +1,8 @@
-import type { KnowledgePointOut } from "@/features/records/api/types";
+import type {
+  KnowledgePointOut,
+  QuizOut,
+  TodoOut,
+} from "@/features/records/api/types";
 
 export type SummaryExportSnapshot = {
   topic: string;
@@ -28,12 +32,36 @@ export type KnowledgePointExportLabels = {
   tagsLabel: string;
 };
 
+export type QuizExportLabels = {
+  assetTitle: string;
+  questionTypeLabel: string;
+  stemLabel: string;
+  difficultyLabel: string;
+  optionsLabel: string;
+  userAnswerLabel: string;
+  resultLabel: string;
+  correctAnswerLabel: string;
+  referenceAnswerLabel: string;
+  explanationLabel: string;
+  pendingSelfAssessment: string;
+  questionTypes: Record<QuizOut["question_type"], string>;
+  difficulties: Record<QuizOut["difficulty"], string>;
+  results: Record<NonNullable<QuizOut["answer_result"]>, string>;
+};
+
 /**
  * 纯文本字段转义：井号、星号、下划线、反引号、方括号与原始 HTML 不改变文档结构，
  * 反斜杠先行转义保证用户输入的反斜杠不会吞掉后续转义；渲染后的可见文本不变。
  */
 function escapePlainText(text: string): string {
-  return text.replace(/\r\n?/g, "\n").replace(/([\\`*_#&<>[\]])/g, "\\$1");
+  return text
+    .replace(/\r\n?/g, "\n")
+    .replace(/([\\`*_#&<>[\]|])/g, "\\$1")
+    .replace(/^(\s*)([-+])(?=\s)/gm, "$1\\$2")
+    .replace(/^(\s*)(\d+)([.)])(?=\s)/gm, "$1$2\\$3")
+    .replace(/^(\s*)([-=~]{3,})(\s*)$/gm, "$1\\$2$3")
+    .replace(/^ {4}/gm, "&#32;   ")
+    .replace(/^( {0,3})\t/gm, "$1&#9;");
 }
 
 /** 区块之间一个空行，文件末尾一个换行。 */
@@ -100,6 +128,128 @@ export function serializeKnowledgePointsMarkdown(
     blocks.push(fields.join("\n"));
   }
   return assembleDocument(blocks);
+}
+
+/** 只保留当前 ACTIVE 习题，沿用接口与页面顺序。 */
+export function selectActiveQuizzes(items: readonly QuizOut[]): QuizOut[] {
+  return items.filter((item) => item.generation_status === "ACTIVE");
+}
+
+function objectiveAnswerText(item: QuizOut, index: number): string {
+  const option = item.options[index];
+  return item.question_type === "TRUE_FALSE"
+    ? option
+    : `${String.fromCharCode(65 + index)}. ${option}`;
+}
+
+function labeledText(label: string, text: string): string[] {
+  return [`**${escapePlainText(label)}**`, escapePlainText(text)];
+}
+
+export function serializeQuizMarkdown(
+  recordTitle: string,
+  items: readonly QuizOut[],
+  labels: QuizExportLabels,
+): string {
+  const blocks = [
+    `# ${escapePlainText(recordTitle)}`,
+    `## ${escapePlainText(labels.assetTitle)}`,
+  ];
+  items.forEach((item, index) => {
+    blocks.push(`### ${index + 1}`);
+    blocks.push(
+      [
+        `- ${escapePlainText(labels.questionTypeLabel)}：${escapePlainText(labels.questionTypes[item.question_type])}`,
+        `- ${escapePlainText(labels.difficultyLabel)}：${escapePlainText(labels.difficulties[item.difficulty])}`,
+      ].join("\n"),
+    );
+    blocks.push(...labeledText(labels.stemLabel, item.stem));
+    if (item.options.length) {
+      blocks.push(`**${escapePlainText(labels.optionsLabel)}**`);
+      blocks.push(
+        item.options
+          .map(
+            (_option, optionIndex) =>
+              `- ${escapePlainText(objectiveAnswerText(item, optionIndex))}`,
+          )
+          .join("\n"),
+      );
+    }
+    if (item.answered_at === null) return;
+
+    if (item.question_type === "SHORT_ANSWER") {
+      if (
+        typeof item.user_answer !== "string" ||
+        typeof item.correct_answer !== "string" ||
+        item.explanation === null
+      ) {
+        return;
+      }
+      blocks.push(
+        ...labeledText(labels.userAnswerLabel, item.user_answer),
+        ...labeledText(labels.referenceAnswerLabel, item.correct_answer),
+        ...labeledText(labels.explanationLabel, item.explanation),
+        ...labeledText(
+          labels.resultLabel,
+          item.answer_result === null || item.answer_result === undefined
+            ? labels.pendingSelfAssessment
+            : labels.results[item.answer_result],
+        ),
+      );
+      return;
+    }
+
+    if (
+      typeof item.user_answer !== "number" ||
+      typeof item.correct_answer !== "number" ||
+      !item.answer_result ||
+      item.explanation === null
+    ) {
+      return;
+    }
+
+    blocks.push(
+      ...labeledText(
+        labels.userAnswerLabel,
+        objectiveAnswerText(item, item.user_answer),
+      ),
+      ...labeledText(labels.resultLabel, labels.results[item.answer_result]),
+      ...labeledText(
+        labels.correctAnswerLabel,
+        objectiveAnswerText(item, item.correct_answer),
+      ),
+      ...labeledText(labels.explanationLabel, item.explanation),
+    );
+  });
+  return assembleDocument(blocks);
+}
+
+/** 正式 Todo 是 ACTIVE AI 项，以及 generation_status 为 null 的手工/被接管项。 */
+export function selectFormalTodos(items: readonly TodoOut[]): TodoOut[] {
+  return items
+    .filter(
+      (item) =>
+        item.generation_status === "ACTIVE" || item.generation_status === null,
+    )
+    .slice()
+    .sort((left, right) => left.sort_order - right.sort_order);
+}
+
+export function serializeTodoMarkdown(
+  recordTitle: string,
+  items: readonly TodoOut[],
+  assetTitle: string,
+): string {
+  return assembleDocument([
+    `# ${escapePlainText(recordTitle)}`,
+    `## ${escapePlainText(assetTitle)}`,
+    items
+      .map(
+        (item) =>
+          `- [${item.status === "DONE" ? "x" : " "}] ${escapePlainText(item.content).replace(/\n/g, "\n  ")}`,
+      )
+      .join("\n"),
+  ]);
 }
 
 const WINDOWS_RESERVED_NAMES = new Set([

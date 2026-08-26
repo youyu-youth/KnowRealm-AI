@@ -4,8 +4,12 @@ import { recordApi } from "@/features/records/api/records";
 import {
   buildExportFileName,
   selectActiveKnowledgePoints,
+  selectActiveQuizzes,
+  selectFormalTodos,
   serializeKnowledgePointsMarkdown,
+  serializeQuizMarkdown,
   serializeSummaryMarkdown,
+  serializeTodoMarkdown,
 } from "@/features/records/export/serializers";
 import {
   chooseMarkdownSavePath,
@@ -20,7 +24,7 @@ export type RecordExportState =
   | { phase: "saved"; path: string; openError: string | null }
   | { phase: "failed"; stage: "read" | "write"; message: string };
 
-export type ExportableAsset = "summary" | "knowledge-points";
+export type ExportableAsset = "summary" | "knowledge-points" | "quiz" | "todo";
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -127,27 +131,99 @@ export function useRecordExport() {
           return;
         }
 
-        const read = await readAsset(() =>
-          recordApi.getKnowledgePoints(recordId),
-        );
+        if (asset === "knowledge-points") {
+          const read = await readAsset(() =>
+            recordApi.getKnowledgePoints(recordId),
+          );
+          if (!read) return;
+          const items = selectActiveKnowledgePoints(read.items);
+          if (!items.length) {
+            setState({
+              phase: "unavailable",
+              message: t("record.detail.export.knowledgePointsEmpty"),
+            });
+            return;
+          }
+          const markdown = serializeKnowledgePointsMarkdown(
+            recordTitle,
+            items,
+            {
+              assetTitle: t("record.detail.export.knowledgePointsAsset"),
+              importanceLabel: t("record.detail.export.importanceLabel"),
+              tagsLabel: t("record.detail.export.tagsLabel"),
+            },
+          );
+          await persist(
+            markdown,
+            recordTitle,
+            t("record.detail.export.knowledgePointsAsset"),
+          );
+          return;
+        }
+
+        if (asset === "quiz") {
+          const read = await readAsset(() => recordApi.getQuizzes(recordId));
+          if (!read) return;
+          const items = selectActiveQuizzes(read.items);
+          if (!items.length) {
+            setState({
+              phase: "unavailable",
+              message: t("record.detail.export.quizEmpty"),
+            });
+            return;
+          }
+          const markdown = serializeQuizMarkdown(recordTitle, items, {
+            assetTitle: t("record.detail.export.quizAsset"),
+            questionTypeLabel: t("record.detail.export.questionTypeLabel"),
+            stemLabel: t("record.detail.export.stemLabel"),
+            difficultyLabel: t("record.detail.export.difficultyLabel"),
+            optionsLabel: t("record.detail.export.optionsLabel"),
+            userAnswerLabel: t("record.detail.export.userAnswerLabel"),
+            resultLabel: t("record.detail.export.resultLabel"),
+            correctAnswerLabel: t("record.detail.export.correctAnswerLabel"),
+            referenceAnswerLabel: t(
+              "record.detail.export.referenceAnswerLabel",
+            ),
+            explanationLabel: t("record.detail.export.explanationLabel"),
+            pendingSelfAssessment: t("record.detail.quiz.shortAnswer.pending"),
+            questionTypes: {
+              MULTIPLE_CHOICE: t("record.detail.quiz.type.MULTIPLE_CHOICE"),
+              TRUE_FALSE: t("record.detail.quiz.type.TRUE_FALSE"),
+              SHORT_ANSWER: t("record.detail.quiz.type.SHORT_ANSWER"),
+            },
+            difficulties: {
+              EASY: t("record.detail.quiz.difficulty.EASY"),
+              MEDIUM: t("record.detail.quiz.difficulty.MEDIUM"),
+              HARD: t("record.detail.quiz.difficulty.HARD"),
+            },
+            results: {
+              CORRECT: t("record.detail.quiz.result.CORRECT"),
+              WRONG: t("record.detail.quiz.result.WRONG"),
+            },
+          });
+          await persist(
+            markdown,
+            recordTitle,
+            t("record.detail.export.quizAsset"),
+          );
+          return;
+        }
+
+        const read = await readAsset(() => recordApi.getTodos(recordId));
         if (!read) return;
-        const items = selectActiveKnowledgePoints(read.items);
+        const items = selectFormalTodos(read.items);
         if (!items.length) {
           setState({
             phase: "unavailable",
-            message: t("record.detail.export.knowledgePointsEmpty"),
+            message: t("record.detail.export.todoEmpty"),
           });
           return;
         }
-        const markdown = serializeKnowledgePointsMarkdown(recordTitle, items, {
-          assetTitle: t("record.detail.export.knowledgePointsAsset"),
-          importanceLabel: t("record.detail.export.importanceLabel"),
-          tagsLabel: t("record.detail.export.tagsLabel"),
-        });
+        const assetTitle = t("record.detail.export.todoAsset");
         await persist(
-          markdown,
+          serializeTodoMarkdown(recordTitle, items, assetTitle),
           recordTitle,
-          t("record.detail.export.knowledgePointsAsset"),
+          assetTitle,
         );
       } finally {
         runningRef.current = false;

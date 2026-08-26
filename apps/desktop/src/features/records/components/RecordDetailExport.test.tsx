@@ -23,15 +23,20 @@ import { server } from "@/mocks/server";
 type RecordOut = components["schemas"]["RecordOut"];
 type SummaryOut = components["schemas"]["SummaryOut"];
 type KnowledgePointOut = components["schemas"]["KnowledgePointOut"];
+type QuizOut = components["schemas"]["QuizOut"];
+type TodoOut = components["schemas"]["TodoOut"];
 
 const RECORD_ID = "22222222-2222-4222-8222-222222222222";
 const COURSE_ID = "11111111-1111-4111-8111-111111111111";
 const DETAIL_URL = `${TEST_SIDECAR_URL}/api/records/${RECORD_ID}`;
 const SUMMARY_URL = `${DETAIL_URL}/summary`;
 const KNOWLEDGE_POINTS_URL = `${DETAIL_URL}/knowledge-points`;
+const QUIZZES_URL = `${DETAIL_URL}/quizzes`;
+const TODOS_URL = `${DETAIL_URL}/todos`;
 const JOBS_URL = `${DETAIL_URL}/jobs`;
 const TRANSCRIPT_URL = `${DETAIL_URL}/transcript`;
 const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
+const PREFERENCES_URL = `${TEST_SIDECAR_URL}/api/settings/preferences`;
 const ROUTE_PATH = `/records/${RECORD_ID}`;
 
 const record: RecordOut = {
@@ -99,6 +104,63 @@ function knowledgePointsResponse(items: KnowledgePointOut[]) {
   });
 }
 
+function quiz(overrides: Partial<QuizOut> = {}): QuizOut {
+  return {
+    id: "77777777-7777-4777-8777-777777777777",
+    record_id: RECORD_ID,
+    batch_id: "88888888-8888-4888-8888-888888888888",
+    generated_from_summary_id: confirmedSummary.id,
+    generation_status: "ACTIVE",
+    question_type: "MULTIPLE_CHOICE",
+    stem: "哪个算法淘汰最久未使用的页面？",
+    options: ["FIFO", "LRU", "Clock"],
+    correct_answer: null,
+    explanation: null,
+    difficulty: "MEDIUM",
+    user_answer: null,
+    answer_result: null,
+    answered_at: null,
+    created_at: "2026-08-24T12:00:00.000000Z",
+    updated_at: "2026-08-24T12:00:00.000000Z",
+    ...overrides,
+  };
+}
+
+function quizzesResponse(items: QuizOut[]) {
+  return HttpResponse.json({
+    items,
+    action_required: "NONE",
+    active_job_id: null,
+    blocked_reason: null,
+  });
+}
+
+function todo(overrides: Partial<TodoOut> = {}): TodoOut {
+  return {
+    id: "99999999-9999-4999-8999-999999999999",
+    record_id: RECORD_ID,
+    batch_id: null,
+    content: "完成课后练习",
+    status: "TODO",
+    source: "MANUAL",
+    generated_from_summary_id: null,
+    generation_status: null,
+    sort_order: 0,
+    created_at: "2026-08-24T12:00:00.000000Z",
+    updated_at: "2026-08-24T12:00:00.000000Z",
+    ...overrides,
+  };
+}
+
+function todosResponse(items: TodoOut[]) {
+  return HttpResponse.json({
+    items,
+    action_required: "NONE",
+    active_job_id: null,
+    blocked_reason: null,
+  });
+}
+
 const saveMock = vi.mocked(chooseMarkdownSavePath);
 const writeTextFileMock = vi.mocked(writeMarkdownFile);
 const openMock = vi.mocked(openExportedFile);
@@ -128,6 +190,7 @@ beforeEach(() => {
     }),
     http.get(SUMMARY_URL, () => summaryResponse(confirmedSummary)),
     http.get(LLM_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
+    http.get(PREFERENCES_URL, () => HttpResponse.json({ quiz_last_count: 3 })),
   );
 });
 
@@ -324,6 +387,137 @@ describe("学习资产 Markdown 导出", () => {
     const item = await openExportMenu();
     expect(item).toHaveAttribute("aria-disabled", "true");
     expect(item).toHaveTextContent("还没有正式知识点");
+  });
+
+  it("习题导出：菜单可用、触发时重新读取且只保存 ACTIVE 题", async () => {
+    let reads = 0;
+    server.use(
+      http.get(QUIZZES_URL, () => {
+        reads += 1;
+        return quizzesResponse([
+          quiz({ id: "draft", generation_status: "DRAFT" }),
+          quiz({ id: "active" }),
+          quiz({ id: "old", generation_status: "SUPERSEDED" }),
+        ]);
+      }),
+    );
+    saveMock.mockResolvedValue("D:\\资料\\操作系统第一讲-习题.md");
+    writeTextFileMock.mockResolvedValue(undefined);
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    const item = await openExportMenu();
+    expect(item).not.toHaveAttribute("aria-disabled", "true");
+    const readsAfterMount = reads;
+    fireEvent.click(item);
+
+    await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
+    expect(reads).toBeGreaterThan(readsAfterMount);
+    expect(saveMock).toHaveBeenCalledWith("操作系统第一讲-习题.md");
+    const [, markdown] = writeTextFileMock.mock.calls[0];
+    expect(markdown).toContain("## 习题");
+    expect(markdown).toContain("哪个算法淘汰最久未使用的页面？");
+    expect(markdown.match(/^### /gm)).toHaveLength(1);
+    expect(markdown).not.toMatch(/正确答案|解析/);
+  });
+
+  it("Todo 导出：菜单可用、触发时重新读取并保存正式混排清单", async () => {
+    let reads = 0;
+    server.use(
+      http.get(TODOS_URL, () => {
+        reads += 1;
+        return todosResponse([
+          todo({
+            id: "done-ai",
+            content: "完成课后练习",
+            status: "DONE",
+            source: "AI",
+            generation_status: "ACTIVE",
+            sort_order: 2,
+          }),
+          todo({ id: "manual", content: "补充笔记", sort_order: 1 }),
+          todo({
+            id: "draft",
+            generation_status: "DRAFT",
+            source: "AI",
+            sort_order: 0,
+          }),
+        ]);
+      }),
+    );
+    saveMock.mockResolvedValue("D:\\资料\\操作系统第一讲-Todo.md");
+    writeTextFileMock.mockResolvedValue(undefined);
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    const item = await openExportMenu();
+    expect(item).not.toHaveAttribute("aria-disabled", "true");
+    const readsAfterMount = reads;
+    fireEvent.click(item);
+
+    await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
+    expect(reads).toBeGreaterThan(readsAfterMount);
+    expect(saveMock).toHaveBeenCalledWith("操作系统第一讲-Todo.md");
+    expect(writeTextFileMock.mock.calls[0][1]).toBe(
+      [
+        "# 操作系统第一讲",
+        "",
+        "## Todo",
+        "",
+        "- [ ] 补充笔记",
+        "- [x] 完成课后练习",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("没有 ACTIVE 习题时禁用导出且不进入保存流程", async () => {
+    server.use(
+      http.get(QUIZZES_URL, () =>
+        quizzesResponse([quiz({ generation_status: "DRAFT" })]),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    const item = await openExportMenu();
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveTextContent("还没有正式习题");
+    fireEvent.click(item);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it("没有正式 Todo 时禁用导出且不进入保存流程", async () => {
+    server.use(
+      http.get(TODOS_URL, () =>
+        todosResponse([todo({ generation_status: "SUPERSEDED" })]),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    const item = await openExportMenu();
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveTextContent("还没有正式 Todo");
+    fireEvent.click(item);
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it("习题最新读取失败时显示错误，不伪装成空内容", async () => {
+    let reads = 0;
+    server.use(
+      http.get(QUIZZES_URL, () => {
+        reads += 1;
+        return reads === 1
+          ? quizzesResponse([quiz()])
+          : HttpResponse.json({ detail: "数据库暂时繁忙" }, { status: 500 });
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    const item = await openExportMenu();
+    fireEvent.click(item);
+
+    expect(
+      await screen.findByRole("alert", {}, { timeout: 4_000 }),
+    ).toHaveTextContent("读取学习资产失败，未导出文件");
+    expect(saveMock).not.toHaveBeenCalled();
   });
 
   it("取消保存时不写文件、不报错、不显示成功", async () => {

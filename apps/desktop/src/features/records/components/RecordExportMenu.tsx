@@ -12,7 +12,11 @@ import {
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { RecordDetailTab } from "@/features/records/components/RecordDetailPage";
-import { selectActiveKnowledgePoints } from "@/features/records/export/serializers";
+import {
+  selectActiveKnowledgePoints,
+  selectActiveQuizzes,
+  selectFormalTodos,
+} from "@/features/records/export/serializers";
 import type {
   ExportableAsset,
   RecordExportState,
@@ -50,6 +54,16 @@ export function RecordExportMenu({
     queryKey: recordKeys.knowledgePoints(recordId),
     queryFn: () => recordApi.getKnowledgePoints(recordId),
     enabled: tab === "knowledge-points",
+  });
+  const quizzes = useQuery({
+    queryKey: recordKeys.quizzes(recordId),
+    queryFn: () => recordApi.getQuizzes(recordId),
+    enabled: tab === "quiz",
+  });
+  const todos = useQuery({
+    queryKey: recordKeys.todos(recordId),
+    queryFn: () => recordApi.getTodos(recordId),
+    enabled: tab === "todo",
   });
 
   const currentTab = useMemo<CurrentTabAvailability>(() => {
@@ -92,11 +106,39 @@ export function RecordExportMenu({
           : t("record.detail.export.knowledgePointsEmpty"),
       };
     }
+    if (tab === "quiz") {
+      if (quizzes.isPending || quizzes.isError) {
+        return {
+          asset: "quiz",
+          disabledReason: t("record.detail.export.contentUnavailable"),
+        };
+      }
+      return {
+        asset: "quiz",
+        disabledReason: selectActiveQuizzes(quizzes.data.items).length
+          ? null
+          : t("record.detail.export.quizEmpty"),
+      };
+    }
+    if (tab === "todo") {
+      if (todos.isPending || todos.isError) {
+        return {
+          asset: "todo",
+          disabledReason: t("record.detail.export.contentUnavailable"),
+        };
+      }
+      return {
+        asset: "todo",
+        disabledReason: selectFormalTodos(todos.data.items).length
+          ? null
+          : t("record.detail.export.todoEmpty"),
+      };
+    }
     return {
       asset: null,
       disabledReason: t("record.detail.export.unsupportedTab"),
     };
-  }, [knowledgePoints, summary, t, tab]);
+  }, [knowledgePoints, quizzes, summary, t, tab, todos]);
 
   return (
     <DropdownMenu>
