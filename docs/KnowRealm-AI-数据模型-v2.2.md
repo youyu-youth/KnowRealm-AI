@@ -512,7 +512,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 | 学习目标/计划 | Goal/Plan | learning_goals、learning_plans、learning_plan_items | P6 |
 | Autopilot | AgentAction | learning_agent_actions、learning_agent_feedback | P6 |
 | Learning Passport | Snapshot | learning_passport_snapshots | P7 |
-| Markdown 导出 | — | 无需表（sidecar 组装 .md，前端写文件） | MVP |
+| 学习资产 Markdown 导出 | — | 无需表（前端基于 sidecar API 响应组装 .md，并通过 Tauri 写文件） | MVP |
 
 ## 9. 删除与数据一致性策略
 

@@ -243,7 +243,7 @@ DRAFT → CONTENT_PROCESSING（本地转码 + ASR 提交/轮询 或 文档解析
 | 模拟测试 | 从题库抽题组卷、作答、评分；简答题 AI 语义评分但**最终分值与评分依据必须保存**；评分低置信（<0.7，**部署级可配置** `SHORT_ANSWER_REVIEW_THRESHOLD`，不进用户 UI）时标记"建议人工复核"——confidence 为 **LLM 结构化输出自评字段，仅用于 UI 复核标记，禁止参与掌握度计算**（#33）；每次作答落 learning_events（QUIZ_ANSWERED / QUIZ_TEST_COMPLETED，#43） | MVP |
 | 复习资料 | 考前速记 + Top 重点清单 + **Markdown 大纲思维导图**（树形渲染，不做图形导图） | MVP |
 | Todo 清单 | AI 生成 + 手动增删改，TODO/DONE，Record 级 | MVP |
-| Markdown 导出 | 总结/复习资料/知识点一键导出为 `.md` 文件到本地（用户自选位置） | MVP |
+| 学习资产 Markdown 导出 | 总结/知识点/习题/Todo/复习资料可单项或聚合导出为 `.md` 文件到本地（用户自选位置；只包含当前已生成且符合条件的内容） | MVP |
 | 全量数据导出 | 数据目录打包 zip（db 快照 + files + config，默认不含密钥）——数据自主权与换机迁移载体（**提前至 V1，原 P2**，#55） | MVP（Wave B） |
 | 课件差异分析 | 课堂讲解 vs 课件内容：已覆盖/课件有未讲/老师额外补充/重复强调/疑似考点，结构化结果 + 版本记录 | P3 |
 | 重新生成 | 所有 AI 产出支持基于反馈或编辑后文本重新生成，不限制次数 | MVP |

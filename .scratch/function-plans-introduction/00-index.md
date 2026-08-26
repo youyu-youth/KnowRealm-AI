@@ -24,13 +24,13 @@
 | 07 | 知识点提取 | A | 06 | §4.4.2 | `07-knowledge-points.md` |
 | 08 | 习题生成与作答 | A | 06 | §4.4.2 | `08-quiz.md` |
 | 09 | Todo 清单 | A | 06 | §4.4.2 | `09-todo-list.md` |
-| 10 | Markdown 导出 | A | 06、07 | §4.4.2 | `10-markdown-export.md` |
+| 10 | 学习资产 Markdown 导出 | A | 06、07、08、09 | §4.4.2 | `10-markdown-export.md` |
 | 11 | 轻捕获与收件箱 | A（B 增段） | 02、05、06 | §4.3.0 / §6.6 | `11-capture-inbox.md` |
 | 12 | AI 对话（自由+@记录） | A | 02、06、07；05 或 04 至少一条真实 Transcript 来源 | §4.5 | `12-ai-chat.md` |
 | 13 | 偏好设置 | B | 11 | §4.1 | `13-preferences.md` |
 | 14 | 档案、供应商与数据目录 | B | 01、06（扩展首闭环 Provider 切片） | §4.1 / §6.4 | `14-account-profile.md` |
 | 15 | 模拟测试 | B | 08 | §4.4.2 | `15-mock-test.md` |
-| 16 | 复习资料 | B | 06、07 | §4.4.2 | `16-review-materials.md` |
+| 16 | 复习资料 | B | 06、07、10 | §4.4.2 | `16-review-materials.md` |
 | 17 | 学习统计 | B | Wave A 功能集 | §4.1 | `17-learning-stats.md` |
 | 18 | 全局搜索与命令面板 | B | 02、07 | §9.1 | `18-search-command.md` |
 | 19 | 无 key 降级与健康面板 | B | 04、06、12 | §4.1 | `19-degradation-health.md` |
