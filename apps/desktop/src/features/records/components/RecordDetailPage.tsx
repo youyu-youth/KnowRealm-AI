@@ -15,8 +15,13 @@ import { recordApi } from "@/features/records/api/records";
 import type { ProcessingJobOut, RecordOut } from "@/features/records/api/types";
 import { DeleteRecordDialog } from "@/features/records/components/DeleteRecordDialog";
 import { KnowledgePointPanel } from "@/features/records/components/KnowledgePointPanel";
+import {
+  RecordExportMenu,
+  RecordExportStatus,
+} from "@/features/records/components/RecordExportMenu";
 import { QuizPanel } from "@/features/records/components/QuizPanel";
 import { TodoPanel } from "@/features/records/components/TodoPanel";
+import { useRecordExport } from "@/features/records/export/useRecordExport";
 import {
   captureTypeLabelKeys,
   formatRecordDuration,
@@ -29,7 +34,7 @@ import { settingsKeys } from "@/features/settings/api/keys";
 import { todayKeys } from "@/features/today/api/keys";
 import { ApiError } from "@/services/http/client";
 
-type RecordDetailTab =
+export type RecordDetailTab =
   | "summary"
   | "transcript"
   | "knowledge-points"
@@ -66,6 +71,7 @@ export function RecordDetailPage({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [editBaseVersion, setEditBaseVersion] = useState<number | null>(null);
+  const recordExport = useRecordExport();
   const record = useQuery({
     queryKey: recordKeys.detail(recordId),
     queryFn: () => recordApi.get(recordId),
@@ -234,15 +240,29 @@ export function RecordDetailPage({
         >
           {title}
         </h1>
-        <DeleteRecordDialog
-          recordId={detail.id}
-          courseId={detail.course_id}
-          title={title}
-          onDeletingChange={setIsDeleting}
-          onDeleted={onDeleted}
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          <RecordExportMenu
+            recordId={recordId}
+            tab={tab}
+            busy={recordExport.state.phase === "exporting"}
+            onExport={(asset) =>
+              void recordExport.exportAsset(asset, recordId, title)
+            }
+          />
+          <DeleteRecordDialog
+            recordId={detail.id}
+            courseId={detail.course_id}
+            title={title}
+            onDeletingChange={setIsDeleting}
+            onDeleted={onDeleted}
+          />
+        </div>
       </header>
       <RecordMetadata detail={detail} />
+      <RecordExportStatus
+        state={recordExport.state}
+        onOpenFile={(path) => void recordExport.openSavedFile(path)}
+      />
 
       <Tabs
         value={tab}
