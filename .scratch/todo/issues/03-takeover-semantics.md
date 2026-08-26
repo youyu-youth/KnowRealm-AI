@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] 接管谓词落进 01 的勾选与编辑端点：`generation_status = ACTIVE` 且 `source = AI` 的行被编辑 content 或勾选 DONE（任一方向）即置 `generation_status = NULL`；`generated_from_summary_id` 溯源保留、`source` 不翻转；取消勾选不回退（NULL 幂等）；删除 ACTIVE 的 AI 项 = 直接软删，不涉接管
-- [ ] 完整接管场景验证：生成 → 采纳 → 部分条目勾 DONE / 编辑 → 换代重新生成并采纳新批 → 被接管项与手工项保留可见，仅仍 ACTIVE 的旧批行置 SUPERSEDED
-- [ ] DRAFT 候选的修剪（编辑 / 删除）不触发接管——项仍属批次、随采纳整体 ACTIVE
-- [ ] 手工项行为不因谓词变化而改变（回归）
-- [ ] 后端 HTTP 全流程测试覆盖上述场景；接管谓词对手工行为无扰动的回归断言
+- [x] 接管谓词落进 01 的勾选与编辑端点：`generation_status = ACTIVE` 且 `source = AI` 的行被编辑 content 或勾选 DONE（任一方向）即置 `generation_status = NULL`；`generated_from_summary_id` 溯源保留、`source` 不翻转；取消勾选不回退（NULL 幂等）；删除 ACTIVE 的 AI 项 = 直接软删，不涉接管
+- [x] 完整接管场景验证：生成 → 采纳 → 部分条目勾 DONE / 编辑 → 换代重新生成并采纳新批 → 被接管项与手工项保留可见，仅仍 ACTIVE 的旧批行置 SUPERSEDED
+- [x] DRAFT 候选的修剪（编辑 / 删除）不触发接管——项仍属批次、随采纳整体 ACTIVE
+- [x] 手工项行为不因谓词变化而改变（回归）
+- [x] 后端 HTTP 全流程测试覆盖上述场景；接管谓词对手工行为无扰动的回归断言

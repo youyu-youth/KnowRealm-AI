@@ -335,6 +335,7 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
                 {"content": "完成课后调度题"},
                 {"content": "整理调度算法对比"},
                 {"content": "画出调度时序图"},
+                {"content": "总结调度选择规则"},
             ]
         }
     )
@@ -342,6 +343,19 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
         await seed_record(app, client)
         await configure_todo_generation(client)
         manual = await create_todo(client, "用户手工项")
+        manual_id = cast(str, manual.json()["id"])
+        manual_edited = await client.patch(
+            f"/api/records/{RECORD_ID}/todos/{manual_id}",
+            json={"content": "用户手工修改项"},
+        )
+        manual_toggled = await client.post(
+            f"/api/records/{RECORD_ID}/todos/{manual_id}/toggles",
+            json={"status": "DONE"},
+        )
+        assert manual_edited.json()["source"] == "MANUAL"
+        assert manual_edited.json()["generation_status"] is None
+        assert manual_toggled.json()["source"] == "MANUAL"
+        assert manual_toggled.json()["generation_status"] is None
         submitted = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
         batch_id = cast(str, submitted.json()["job_id"])
         await wait_for_todo_job(client, batch_id)
@@ -369,12 +383,16 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
         assert deleted.status_code == 204
         assert toggled.status_code == 409
         assert duplicate.status_code == 409
+        assert edited.json()["source"] == "AI"
+        assert edited.json()["batch_id"] == batch_id
+        assert edited.json()["generated_from_summary_id"] == SUMMARY_ID
+        assert edited.json()["generation_status"] == "DRAFT"
         assert adopted.status_code == 200, adopted.text
         adopted_items = cast(list[dict[str, object]], adopted.json()["items"])
-        assert any(item["id"] == manual.json()["id"] for item in adopted_items)
+        assert any(item["id"] == manual_id for item in adopted_items)
         assert [
             item["content"] for item in adopted_items if item["generation_status"] == "ACTIVE"
-        ] == ["修剪后的建议", "整理调度算法对比", "画出调度时序图"]
+        ] == ["修剪后的建议", "整理调度算法对比", "画出调度时序图", "总结调度选择规则"]
 
         active = [item for item in adopted_items if item["generation_status"] == "ACTIVE"]
         edited_active = await client.patch(
@@ -389,9 +407,45 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
             f"/api/records/{RECORD_ID}/todos/{active[1]['id']}/toggles",
             json={"status": "DONE"},
         )
+        untoggled_active = await client.post(
+            f"/api/records/{RECORD_ID}/todos/{active[1]['id']}/toggles",
+            json={"status": "TODO"},
+        )
+        deleted_active = await client.delete(f"/api/records/{RECORD_ID}/todos/{active[2]['id']}")
+        assert edited_active.json()["source"] == "AI"
+        assert edited_active.json()["batch_id"] == batch_id
+        assert edited_active.json()["generated_from_summary_id"] == SUMMARY_ID
         assert edited_active.json()["generation_status"] is None
+        assert toggled_active.json()["source"] == "AI"
+        assert toggled_active.json()["batch_id"] == batch_id
+        assert toggled_active.json()["generated_from_summary_id"] == SUMMARY_ID
         assert toggled_active.json()["generation_status"] is None
         assert repeated_toggle.json()["generation_status"] is None
+        assert untoggled_active.json()["status"] == "TODO"
+        assert untoggled_active.json()["generation_status"] is None
+        assert deleted_active.status_code == 204
+
+        async with app.state.session_factory() as session:
+            deleted_states = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT id, source, generation_status, deleted_at FROM todo_items "
+                            "WHERE id IN (:draft_id, :active_id) ORDER BY id"
+                        ),
+                        {"draft_id": candidates[1]["id"], "active_id": active[2]["id"]},
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        assert {
+            row["id"]: (row["source"], row["generation_status"], row["deleted_at"] is not None)
+            for row in deleted_states
+        } == {
+            candidates[1]["id"]: ("AI", "DRAFT", True),
+            active[2]["id"]: ("AI", "ACTIVE", True),
+        }
 
         second = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
         second_id = cast(str, second.json()["job_id"])
@@ -417,11 +471,20 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
             )
             == 2
         )
-        assert any(item["id"] == manual.json()["id"] for item in visible)
-        assert any(
-            item["batch_id"] == batch_id and item["generation_status"] == "SUPERSEDED"
-            for item in history.json()["items"]
+        saved_manual = next(item for item in visible if item["id"] == manual_id)
+        assert saved_manual["content"] == "用户手工修改项"
+        assert saved_manual["status"] == "DONE"
+        assert saved_manual["source"] == "MANUAL"
+        assert saved_manual["generation_status"] is None
+        history_items = cast(list[dict[str, object]], history.json()["items"])
+        assert (
+            next(item for item in history_items if item["id"] == active[3]["id"])[
+                "generation_status"
+            ]
+            == "SUPERSEDED"
         )
+        deleted_ids = {candidates[1]["id"], active[2]["id"]}
+        assert not any(item["id"] in deleted_ids for item in history_items)
 
         third = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
         third_id = cast(str, third.json()["job_id"])

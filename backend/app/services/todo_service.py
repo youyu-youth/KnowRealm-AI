@@ -365,7 +365,10 @@ class TodoService:
             await _get_record(session, record_id)
             item = await _editable_item(session, record_id, todo_id)
             item.content = body.content
-            if item.generation_status == TodoGenerationStatus.ACTIVE:
+            if (
+                item.generation_status == TodoGenerationStatus.ACTIVE
+                and item.source == TodoSource.AI
+            ):
                 item.generation_status = None
             item.updated_at = utcnow()
             await session.flush()
@@ -395,7 +398,10 @@ class TodoService:
             # 重复置同态直接返回现状（幂等）；状态变化才写 updated_at。
             if TodoStatus(item.status) != body.status:
                 item.status = body.status
-                if item.generation_status == TodoGenerationStatus.ACTIVE:
+                if (
+                    item.generation_status == TodoGenerationStatus.ACTIVE
+                    and item.source == TodoSource.AI
+                ):
                     item.generation_status = None
                 item.updated_at = utcnow()
                 await session.flush()
