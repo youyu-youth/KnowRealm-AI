@@ -2869,6 +2869,47 @@ describe("Todo 页签", () => {
     ).toBeVisible();
   });
 
+  it("总结换代时禁止采纳旧候选，并给出丢弃重生成指引", async () => {
+    const candidate = todoOut({
+      batch_id: JOB_ID,
+      source: "AI",
+      generated_from_summary_id: "55555555-5555-4555-8555-555555555555",
+      generation_status: "DRAFT",
+    });
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(TODOS_URL, () =>
+        HttpResponse.json(
+          todoReadOut({
+            items: [candidate],
+            blocked_reason: "SUMMARY_SUPERSEDED",
+          }),
+        ),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    expect(await screen.findByText(/总结已更新，请丢弃旧候选/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "采纳候选" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "丢弃候选" })).toBeEnabled();
+  });
+
+  it("Provider 缺失时指引前往配置入口", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(TODOS_URL, () =>
+        HttpResponse.json(
+          todoReadOut({ blocked_reason: "PROVIDER_NOT_CONFIGURED" }),
+        ),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=todo`);
+
+    expect(
+      await screen.findByRole("button", { name: "前往 Provider 配置" }),
+    ).toBeVisible();
+  });
+
   it("未完成记录页签禁用，完成后未确认总结时空态指引去总结页签", async () => {
     server.use(
       http.get(DETAIL_URL, () => HttpResponse.json(record)),

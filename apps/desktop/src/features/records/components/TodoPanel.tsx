@@ -25,6 +25,8 @@ type TodoPanelProps = {
   onOpenSummary: () => void;
 };
 
+const errorTextClassName = "text-body text-destructive mt-2";
+
 export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -128,7 +130,7 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
               : t("record.detail.todo.generate")}
           </Button>
           {generate.isError ? (
-            <p role="alert" className="text-body text-destructive mt-2">
+            <p role="alert" className={errorTextClassName}>
               {generate.error.message}
             </p>
           ) : null}
@@ -146,6 +148,14 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
           <p className="text-body text-muted-foreground mt-1">
             {t("record.detail.todo.candidateDescription")}
           </p>
+          {data.blocked_reason ? (
+            <p role="alert" className="text-body text-destructive mt-3">
+              {t(`record.detail.todo.blocked.${data.blocked_reason}.title`)}：
+              {t(
+                `record.detail.todo.blocked.${data.blocked_reason}.description`,
+              )}
+            </p>
+          ) : null}
           <ul className="mt-3">
             {candidates.map((item) => (
               <TodoRow key={item.id} item={item} recordId={recordId} isDraft />
@@ -153,7 +163,9 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
           </ul>
           <div className="mt-4 flex gap-2">
             <Button
-              disabled={!batchId || adopt.isPending}
+              disabled={
+                !batchId || adopt.isPending || Boolean(data.blocked_reason)
+              }
               onClick={() => adopt.mutate()}
             >
               {adopt.isPending ? <Spinner aria-hidden="true" /> : null}
@@ -169,7 +181,7 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
             </Button>
           </div>
           {adopt.isError || discard.isError ? (
-            <p role="alert" className="text-body text-destructive mt-2">
+            <p role="alert" className={errorTextClassName}>
               {(adopt.error ?? discard.error)?.message}
             </p>
           ) : null}
@@ -205,7 +217,11 @@ export function TodoPanel({ recordId, onOpenSummary }: TodoPanelProps) {
           {showSummaryAction ? (
             <EmptyContent className="items-start">
               <Button variant="outline" onClick={onOpenSummary}>
-                {t("record.detail.todo.openSummary")}
+                {t(
+                  data.blocked_reason === "PROVIDER_NOT_CONFIGURED"
+                    ? "record.detail.todo.openProvider"
+                    : "record.detail.todo.openSummary",
+                )}
               </Button>
             </EmptyContent>
           ) : data.blocked_reason === "CONSENT_REQUIRED" ? (
@@ -315,7 +331,7 @@ function TodoRow({
           </Button>
         </form>
         {update.isError ? (
-          <p role="alert" className="text-body text-destructive mt-2">
+          <p role="alert" className={errorTextClassName}>
             {update.error.message}
           </p>
         ) : null}
@@ -380,7 +396,7 @@ function TodoRow({
         </div>
       </div>
       {mutationError ? (
-        <p role="alert" className="text-body text-destructive mt-2">
+        <p role="alert" className={errorTextClassName}>
           {mutationError.message}
         </p>
       ) : null}

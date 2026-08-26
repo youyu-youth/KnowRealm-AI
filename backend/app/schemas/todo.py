@@ -83,7 +83,12 @@ class TodoReadOut(BaseModel):
 class TodoCandidate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    content: str = Field(strict=True, min_length=1, max_length=TODO_CONTENT_MAX_LENGTH)
+    content: str = Field(
+        strict=True,
+        min_length=1,
+        max_length=TODO_CONTENT_MAX_LENGTH,
+        description="具体、可执行的待办内容",
+    )
 
     @field_validator("content")
     @classmethod
@@ -96,7 +101,11 @@ class TodoCandidate(BaseModel):
 class TodoBatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    items: list[TodoCandidate] = Field(min_length=3, max_length=8)
+    items: list[TodoCandidate] = Field(
+        min_length=3,
+        max_length=8,
+        description="根据已确认总结生成的 3 至 8 条待办建议",
+    )
 
 
 class TodoJobAccepted(BaseModel):

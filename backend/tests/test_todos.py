@@ -42,14 +42,15 @@ async def running_todo_app(data_dir: Path) -> AsyncGenerator[tuple[FastAPI, http
 
 
 class FakeTodoModel:
-    def __init__(self, output: object | None = None, *, blocked: bool = False) -> None:
-        self.output = output or {
+    def __init__(self, *outputs: object, blocked: bool = False) -> None:
+        default_output = {
             "items": [
                 {"content": "复习进程调度"},
                 {"content": "完成课后调度题"},
                 {"content": "整理调度算法对比"},
             ]
         }
+        self.outputs = list(outputs) or [default_output]
         self.prompt = ""
         self.started = asyncio.Event()
         self.release = asyncio.Event()
@@ -60,7 +61,8 @@ class FakeTodoModel:
         self.prompt = cast(str, kwargs["prompt"])
         self.started.set()
         await self.release.wait()
-        return StructuredModelResult(output=self.output, token_usage={"total_tokens": 12})
+        output = self.outputs.pop(0) if len(self.outputs) > 1 else self.outputs[0]
+        return StructuredModelResult(output=output, token_usage={"total_tokens": 12})
 
 
 async def configure_todo_generation(client: httpx.AsyncClient) -> None:
@@ -217,7 +219,7 @@ async def test_generate_todo_candidates_persists_one_draft_batch(tmp_path: Path)
 async def test_invalid_output_retry_reuses_failed_todo_job(
     tmp_path: Path, invalid_output: object
 ) -> None:
-    model = FakeTodoModel(invalid_output)
+    model = FakeTodoModel(invalid_output, FakeTodoModel().outputs[0])
     async with running_generated_todo_app(tmp_path, model) as (app, client):
         await seed_record(app, client)
         await configure_todo_generation(client)
@@ -228,11 +230,46 @@ async def test_invalid_output_retry_reuses_failed_todo_job(
         assert failed["error_code"] == "LLM_OUTPUT_INVALID"
         assert (await read_todos(client))["action_required"] == "RETRY"
 
-        model.output = FakeTodoModel().output
         retried = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
         assert retried.status_code == 202
         assert retried.json()["job_id"] == first_id
         assert (await wait_for_todo_job(client, first_id))["status"] == "SUCCEEDED"
+
+
+@pytest.mark.anyio
+async def test_failed_job_from_old_summary_is_not_retried(tmp_path: Path) -> None:
+    model = FakeTodoModel({"items": [{"content": "只有一条"}]}, FakeTodoModel().outputs[0])
+    async with running_generated_todo_app(tmp_path, model) as (app, client):
+        await seed_record(app, client)
+        await configure_todo_generation(client)
+        first = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
+        first_id = cast(str, first.json()["job_id"])
+        assert (await wait_for_todo_job(client, first_id))["status"] == "FAILED"
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE ai_summaries SET status='SUPERSEDED' WHERE id=:id"),
+                {"id": SUMMARY_ID},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO ai_summaries "
+                    "(id, record_id, version_no, transcript_source_version, topic, abstract, "
+                    "summary_json, status, model, prompt_version, token_usage_json, latency_ms, "
+                    "user_feedback, confirmed_at, created_at, updated_at, deleted_at) "
+                    "SELECT :id, record_id, 2, transcript_source_version, topic, abstract, "
+                    "summary_json, 'CONFIRMED', model, prompt_version, token_usage_json, "
+                    "latency_ms, NULL, updated_at, created_at, updated_at, NULL "
+                    "FROM ai_summaries WHERE id=:old_id"
+                ),
+                {"id": SUPERSEDED_SUMMARY_ID, "old_id": SUMMARY_ID},
+            )
+
+        assert (await read_todos(client))["action_required"] == "GENERATE"
+        second = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
+        second_id = cast(str, second.json()["job_id"])
+        assert second_id != first_id
+        assert (await wait_for_todo_job(client, second_id))["status"] == "SUCCEEDED"
 
 
 @pytest.mark.anyio
@@ -253,8 +290,54 @@ async def test_running_todo_job_rejects_duplicate_submission(tmp_path: Path) -> 
 
 
 @pytest.mark.anyio
-async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
+async def test_todo_generation_rejects_missing_prerequisites_and_archive(
+    tmp_path: Path,
+) -> None:
     model = FakeTodoModel()
+    async with running_generated_todo_app(tmp_path, model) as (app, client):
+        await seed_record(app, client, summary_status=None)
+        await seed_record(app, client, record_id=OTHER_RECORD_ID)
+
+        no_provider = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
+        assert no_provider.status_code == 409
+        await client.put(
+            "/api/settings/providers/llm",
+            json={
+                "base_url": "https://example.invalid/v1",
+                "api_key": "secret",
+                "model": "fake-model",
+            },
+        )
+        no_consent = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
+        assert no_consent.status_code == 409
+        await client.post("/api/settings/external-processing-consents/llm")
+        no_summary = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
+        assert no_summary.status_code == 409
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE courses SET status='ARCHIVED' WHERE id="
+                    "(SELECT course_id FROM records WHERE id=:record_id)"
+                ),
+                {"record_id": OTHER_RECORD_ID},
+            )
+        archived = await client.post(f"/api/records/{OTHER_RECORD_ID}/todo-jobs")
+        assert archived.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
+    model = FakeTodoModel(
+        {
+            "items": [
+                {"content": "复习进程调度"},
+                {"content": "完成课后调度题"},
+                {"content": "整理调度算法对比"},
+                {"content": "画出调度时序图"},
+            ]
+        }
+    )
     async with running_generated_todo_app(tmp_path, model) as (app, client):
         await seed_record(app, client)
         await configure_todo_generation(client)
@@ -291,7 +374,24 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
         assert any(item["id"] == manual.json()["id"] for item in adopted_items)
         assert [
             item["content"] for item in adopted_items if item["generation_status"] == "ACTIVE"
-        ] == ["修剪后的建议", "整理调度算法对比"]
+        ] == ["修剪后的建议", "整理调度算法对比", "画出调度时序图"]
+
+        active = [item for item in adopted_items if item["generation_status"] == "ACTIVE"]
+        edited_active = await client.patch(
+            f"/api/records/{RECORD_ID}/todos/{active[0]['id']}",
+            json={"content": "用户接管后的建议"},
+        )
+        toggled_active = await client.post(
+            f"/api/records/{RECORD_ID}/todos/{active[1]['id']}/toggles",
+            json={"status": "DONE"},
+        )
+        repeated_toggle = await client.post(
+            f"/api/records/{RECORD_ID}/todos/{active[1]['id']}/toggles",
+            json={"status": "DONE"},
+        )
+        assert edited_active.json()["generation_status"] is None
+        assert toggled_active.json()["generation_status"] is None
+        assert repeated_toggle.json()["generation_status"] is None
 
         second = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
         second_id = cast(str, second.json()["job_id"])
@@ -303,7 +403,20 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
         history = await client.get(
             f"/api/records/{RECORD_ID}/todos", params={"include": "superseded"}
         )
-        assert all(item.get("batch_id") != batch_id for item in visible)
+        assert not any(
+            item.get("batch_id") == batch_id and item["generation_status"] == "ACTIVE"
+            for item in visible
+        )
+        assert (
+            len(
+                [
+                    item
+                    for item in visible
+                    if item.get("batch_id") == batch_id and item["generation_status"] is None
+                ]
+            )
+            == 2
+        )
         assert any(item["id"] == manual.json()["id"] for item in visible)
         assert any(
             item["batch_id"] == batch_id and item["generation_status"] == "SUPERSEDED"
@@ -316,6 +429,23 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
         discarded = await client.post(f"/api/records/{RECORD_ID}/todo-batches/{third_id}/discards")
         assert discarded.status_code == 200
         assert discarded.json()["action_required"] == "GENERATE"
+
+        stale = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
+        stale_id = cast(str, stale.json()["job_id"])
+        await wait_for_todo_job(client, stale_id)
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE ai_summaries SET status='SUPERSEDED' WHERE id=:id"),
+                {"id": SUMMARY_ID},
+            )
+        stale_adopt = await client.post(
+            f"/api/records/{RECORD_ID}/todo-batches/{stale_id}/confirmations"
+        )
+        assert stale_adopt.status_code == 409
+        assert stale_adopt.json()["blocked_reason"] == "SUMMARY_SUPERSEDED"
+        assert (
+            await client.post(f"/api/records/{RECORD_ID}/todo-batches/{stale_id}/discards")
+        ).status_code == 200
 
 
 @pytest.mark.anyio

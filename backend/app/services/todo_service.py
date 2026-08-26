@@ -1,7 +1,6 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import cast
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -121,8 +120,10 @@ async def _active_job(session: AsyncSession, record_id: str) -> ProcessingJob | 
     ).one_or_none()
 
 
-async def _failed_job(session: AsyncSession, record_id: str) -> ProcessingJob | None:
-    return (
+async def _failed_job(
+    session: AsyncSession, record_id: str, summary_id: str
+) -> ProcessingJob | None:
+    jobs = (
         await session.scalars(
             select(ProcessingJob)
             .where(
@@ -131,9 +132,16 @@ async def _failed_job(session: AsyncSession, record_id: str) -> ProcessingJob | 
                 ProcessingJob.status == ProcessingJobStatus.FAILED,
             )
             .order_by(ProcessingJob.created_at.desc())
-            .limit(1)
         )
-    ).one_or_none()
+    ).all()
+    return next(
+        (
+            job
+            for job in jobs
+            if json.loads(job.input_json).get("generated_from_summary_id") == summary_id
+        ),
+        None,
+    )
 
 
 async def _visible_items(
@@ -249,7 +257,7 @@ class TodoService:
                 action_required=TodoAction.NONE,
                 blocked_reason=TodoBlockedReason.CONSENT_REQUIRED,
             )
-        failed = await _failed_job(session, record_id)
+        failed = await _failed_job(session, record_id, summary.id)
         return TodoReadOut(
             items=output,
             action_required=TodoAction.RETRY if failed is not None else TodoAction.GENERATE,
@@ -289,12 +297,10 @@ class TodoService:
                     },
                     separators=(",", ":"),
                 )
-                failed = await _failed_job(session, record_id)
+                failed = await _failed_job(session, record_id, summary.id)
                 if failed is not None:
-                    previous = cast(dict[str, object], json.loads(failed.input_json))
-                    if previous.get("generated_from_summary_id") == summary.id:
-                        _requeue_failed(failed, input_json)
-                        return failed.id
+                    _requeue_failed(failed, input_json)
+                    return failed.id
                 now = utcnow()
                 job = ProcessingJob(
                     id=str(uuid4()),
@@ -359,6 +365,8 @@ class TodoService:
             await _get_record(session, record_id)
             item = await _editable_item(session, record_id, todo_id)
             item.content = body.content
+            if item.generation_status == TodoGenerationStatus.ACTIVE:
+                item.generation_status = None
             item.updated_at = utcnow()
             await session.flush()
             return _todo_out(item)
@@ -387,6 +395,8 @@ class TodoService:
             # 重复置同态直接返回现状（幂等）；状态变化才写 updated_at。
             if TodoStatus(item.status) != body.status:
                 item.status = body.status
+                if item.generation_status == TodoGenerationStatus.ACTIVE:
+                    item.generation_status = None
                 item.updated_at = utcnow()
                 await session.flush()
             return _todo_out(item)

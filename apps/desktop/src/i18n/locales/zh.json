@@ -552,6 +552,7 @@
         "delete": "删除待办 {{content}}",
         "editInputLabel": "编辑待办内容",
         "openSummary": "查看总结",
+        "openProvider": "前往 Provider 配置",
         "grantConsent": "同意外部 AI 处理",
         "generate": "生成 Todo 建议",
         "generating": "正在生成 Todo 建议",
@@ -567,8 +568,8 @@
             "description": "手工记录随时可用，不受影响；确认总结后可一键生成这节课的行动项建议。"
           },
           "SUMMARY_SUPERSEDED": {
-            "title": "总结已更新，请重新确认",
-            "description": "转写修改导致原总结过时；手工记录不受影响，确认新总结后可生成待办建议。"
+            "title": "总结已更新，请丢弃旧候选",
+            "description": "丢弃当前候选并确认新总结后，再重新生成待办建议；手工记录不受影响。"
           },
           "COURSE_ARCHIVED": {
             "title": "课程已归档",
