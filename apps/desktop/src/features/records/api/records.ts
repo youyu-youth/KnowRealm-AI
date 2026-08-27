@@ -22,6 +22,16 @@ import type { components } from "@knowrealm/api-types";
 export const recordApi = {
   get: (recordId: string) => apiFetch<RecordOut>(`/api/records/${recordId}`),
   listInbox: () => apiFetch<RecordOut[]>("/api/inbox"),
+  classify: (recordId: string, courseId: string) =>
+    apiFetch<RecordOut>(`/api/records/${recordId}/classification`, {
+      method: "POST",
+      body: JSON.stringify({ course_id: courseId }),
+    }),
+  upgrade: (recordId: string, courseId: string | null) =>
+    apiFetch<components["schemas"]["RecordUpgradeAccepted"]>(
+      `/api/records/${recordId}/upgrade`,
+      { method: "POST", body: JSON.stringify({ course_id: courseId }) },
+    ),
   getTranscript: (recordId: string) =>
     apiFetch<TranscriptReadOut>(`/api/records/${recordId}/transcript`),
   getJobs: (recordId: string) =>

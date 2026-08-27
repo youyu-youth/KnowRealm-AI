@@ -248,6 +248,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/classification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Classify Record */
+        post: operations["classify_record_api_records__record_id__classification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/events": {
         parameters: {
             query?: never;
@@ -693,6 +710,23 @@ export interface paths {
         head?: never;
         /** Update Record Transcript */
         patch: operations["update_record_transcript_api_records__record_id__transcript_patch"];
+        trace?: never;
+    };
+    "/api/records/{record_id}/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upgrade Record */
+        post: operations["upgrade_record_api_records__record_id__upgrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/settings/external-processing-consents/llm": {
@@ -1320,6 +1354,14 @@ export interface components {
              */
             answer: string;
         };
+        /** RecordClassificationRequest */
+        RecordClassificationRequest: {
+            /**
+             * Course Id
+             * Format: uuid
+             */
+            course_id: string;
+        };
         /** RecordJobsOut */
         RecordJobsOut: {
             /** Jobs */
@@ -1351,6 +1393,17 @@ export interface components {
          * @enum {string}
          */
         RecordStatus: "NOTE" | "DRAFT" | "CONTENT_PROCESSING" | "SUMMARY_PENDING" | "SUMMARY_PROCESSING" | "SUMMARY_READY" | "COMPLETED" | "FAILED";
+        /** RecordUpgradeAccepted */
+        RecordUpgradeAccepted: {
+            record: components["schemas"]["RecordOut"];
+            /** Summary Job Id */
+            summary_job_id: string | null;
+        };
+        /** RecordUpgradeRequest */
+        RecordUpgradeRequest: {
+            /** Course Id */
+            course_id?: string | null;
+        };
         /** RecordingChunkAccepted */
         RecordingChunkAccepted: {
             /** Can Continue */
@@ -1427,7 +1480,7 @@ export interface components {
          * SummaryBlockedReason
          * @enum {string}
          */
-        SummaryBlockedReason: "COURSE_ARCHIVED" | "TRANSCRIPT_NOT_READY";
+        SummaryBlockedReason: "COURSE_REQUIRED" | "COURSE_ARCHIVED" | "TRANSCRIPT_NOT_READY";
         /** SummaryConfirmOut */
         SummaryConfirmOut: {
             /** Record Status */
@@ -3078,6 +3131,79 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    classify_record_api_records__record_id__classification_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordClassificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5176,6 +5302,79 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    upgrade_record_api_records__record_id__upgrade_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordUpgradeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordUpgradeAccepted"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

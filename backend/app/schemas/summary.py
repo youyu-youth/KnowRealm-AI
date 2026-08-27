@@ -41,6 +41,7 @@ class SummaryAction(StrEnum):
 
 
 class SummaryBlockedReason(StrEnum):
+    COURSE_REQUIRED = "COURSE_REQUIRED"
     COURSE_ARCHIVED = "COURSE_ARCHIVED"
     TRANSCRIPT_NOT_READY = "TRANSCRIPT_NOT_READY"
 

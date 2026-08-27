@@ -1517,6 +1517,20 @@
         "title": "QuizShortAnswerRequest",
         "type": "object"
       },
+      "RecordClassificationRequest": {
+        "properties": {
+          "course_id": {
+            "format": "uuid",
+            "title": "Course Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "RecordClassificationRequest",
+        "type": "object"
+      },
       "RecordJobsOut": {
         "properties": {
           "jobs": {
@@ -1616,6 +1630,48 @@
         ],
         "title": "RecordStatus",
         "type": "string"
+      },
+      "RecordUpgradeAccepted": {
+        "properties": {
+          "record": {
+            "$ref": "#/components/schemas/RecordOut"
+          },
+          "summary_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Job Id"
+          }
+        },
+        "required": [
+          "record",
+          "summary_job_id"
+        ],
+        "title": "RecordUpgradeAccepted",
+        "type": "object"
+      },
+      "RecordUpgradeRequest": {
+        "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          }
+        },
+        "title": "RecordUpgradeRequest",
+        "type": "object"
       },
       "RecordingChunkAccepted": {
         "properties": {
@@ -1805,6 +1861,7 @@
       },
       "SummaryBlockedReason": {
         "enum": [
+          "COURSE_REQUIRED",
           "COURSE_ARCHIVED",
           "TRANSCRIPT_NOT_READY"
         ],
@@ -4504,6 +4561,115 @@
           }
         },
         "summary": "Get Record",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/api/records/{record_id}/classification": {
+      "post": {
+        "operationId": "classify_record_api_records__record_id__classification_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordClassificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Classify Record",
         "tags": [
           "records"
         ]
@@ -7745,6 +7911,115 @@
           }
         },
         "summary": "Update Record Transcript",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/api/records/{record_id}/upgrade": {
+      "post": {
+        "operationId": "upgrade_record_api_records__record_id__upgrade_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUpgradeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordUpgradeAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Upgrade Record",
         "tags": [
           "records"
         ]

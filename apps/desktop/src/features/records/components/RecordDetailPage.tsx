@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { ProcessingJobOut, RecordOut } from "@/features/records/api/types";
+import { ActiveCourseSelect } from "@/features/courses/components/ActiveCourseSelect";
 import { DeleteRecordDialog } from "@/features/records/components/DeleteRecordDialog";
 import { KnowledgePointPanel } from "@/features/records/components/KnowledgePointPanel";
 import {
@@ -35,11 +36,7 @@ import { todayKeys } from "@/features/today/api/keys";
 import { ApiError } from "@/services/http/client";
 
 export type RecordDetailTab =
-  | "summary"
-  | "transcript"
-  | "knowledge-points"
-  | "quiz"
-  | "todo";
+  "summary" | "transcript" | "knowledge-points" | "quiz" | "todo";
 
 type RecordDetailPageProps = {
   recordId: string;
@@ -297,7 +294,9 @@ export function RecordDetailPage({
             value="quiz"
             disabled={detail.status !== "COMPLETED"}
             aria-describedby={
-              detail.status === "COMPLETED" ? undefined : "record-assets-unavailable"
+              detail.status === "COMPLETED"
+                ? undefined
+                : "record-assets-unavailable"
             }
           >
             {t("record.detail.tabs.quiz")}
@@ -306,7 +305,9 @@ export function RecordDetailPage({
             value="todo"
             disabled={detail.status !== "COMPLETED"}
             aria-describedby={
-              detail.status === "COMPLETED" ? undefined : "record-assets-unavailable"
+              detail.status === "COMPLETED"
+                ? undefined
+                : "record-assets-unavailable"
             }
           >
             {t("record.detail.tabs.todo")}
@@ -342,7 +343,7 @@ export function RecordDetailPage({
             showWhenMissing={detail.status === "COMPLETED"}
             onChanged={() => void invalidateRecord()}
           />
-          <SummaryPanel recordId={recordId} />
+          <SummaryPanel record={detail} />
         </TabsContent>
 
         <TabsContent
@@ -565,9 +566,10 @@ function SummaryProviderSettings({
   );
 }
 
-function SummaryPanel({ recordId }: { recordId: string }) {
+function SummaryPanel({ record }: { record: RecordOut }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const recordId = record.id;
   const provider = useQuery({
     queryKey: settingsKeys.llmProvider,
     queryFn: settingsApi.getLlmProvider,
@@ -590,6 +592,10 @@ function SummaryPanel({ recordId }: { recordId: string }) {
     ]);
   const submit = useMutation({
     mutationFn: () => recordApi.submitSummary(recordId),
+    onSuccess: () => void refresh(),
+  });
+  const upgrade = useMutation({
+    mutationFn: () => recordApi.upgrade(recordId, null),
     onSuccess: () => void refresh(),
   });
   const consent = useMutation({
@@ -686,6 +692,22 @@ function SummaryPanel({ recordId }: { recordId: string }) {
   }
 
   if (summary.data.blocked_reason) {
+    if (summary.data.blocked_reason === "COURSE_REQUIRED") {
+      return (
+        <section className="max-w-reading">
+          <h2 className="text-section font-section text-ink">
+            {t("record.detail.summary.blockedTitle")}
+          </h2>
+          <p className="text-body text-muted-foreground mt-2">
+            {t("record.detail.summary.blocked.COURSE_REQUIRED")}
+          </p>
+          <SummaryCourseUpgradePanel
+            record={record}
+            onChanged={() => void refresh()}
+          />
+        </section>
+      );
+    }
     return (
       <SummaryActionState
         title={t("record.detail.summary.blockedTitle")}
@@ -734,6 +756,19 @@ function SummaryPanel({ recordId }: { recordId: string }) {
   }
   if (["GENERATE", "RETRY"].includes(summary.data.action_required)) {
     const retry = summary.data.action_required === "RETRY";
+    // 已归类 NOTE 只能经升级推进：直接 submit 会因状态不是 SUMMARY_PENDING 被 409 拒绝。
+    if (!retry && record.status === "NOTE" && record.course_id) {
+      return (
+        <SummaryActionState
+          title={t("record.detail.summary.emptyTitle")}
+          description={t("record.detail.summary.emptyDescription")}
+          error={upgrade.error}
+          action={t("record.detail.summary.upgrade")}
+          pending={upgrade.isPending}
+          onAction={() => upgrade.mutate()}
+        />
+      );
+    }
     return (
       <SummaryActionState
         title={t(
@@ -763,6 +798,70 @@ function SummaryPanel({ recordId }: { recordId: string }) {
       description={t("record.detail.summary.processingDescription")}
       pending
     />
+  );
+}
+
+function SummaryCourseUpgradePanel({
+  record,
+  onChanged,
+}: {
+  record: RecordOut;
+  onChanged: () => void;
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [courseId, setCourseId] = useState<string | null>(null);
+  const upgrade = useMutation({
+    mutationFn: () => recordApi.upgrade(record.id, courseId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: recordKeys.detail(record.id),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: recordKeys.summary(record.id),
+        }),
+        queryClient.invalidateQueries({ queryKey: recordKeys.inbox() }),
+        ...(courseId
+          ? [
+              queryClient.invalidateQueries({
+                queryKey: recordKeys.courseList(courseId),
+              }),
+            ]
+          : []),
+      ]);
+      onChanged();
+    },
+  });
+  return (
+    <div className="mt-5">
+      <div className="max-w-reading">
+        <ActiveCourseSelect
+          id="summary-upgrade-course"
+          value={courseId}
+          onValueChange={setCourseId}
+          disabled={upgrade.isPending}
+        />
+      </div>
+      <Button
+        className="mt-5"
+        disabled={courseId === null || upgrade.isPending}
+        onClick={() => upgrade.mutate()}
+      >
+        {upgrade.isPending ? (
+          <Spinner
+            data-icon="inline-start"
+            aria-label={t("record.detail.summary.upgrading")}
+          />
+        ) : null}
+        {t("record.detail.summary.classifyAndUpgrade")}
+      </Button>
+      {upgrade.isError ? (
+        <p role="alert" className="text-body text-destructive mt-3">
+          {upgrade.error.message}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

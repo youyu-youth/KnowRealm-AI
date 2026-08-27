@@ -7,6 +7,7 @@ from typing import cast
 from uuid import uuid4
 
 from fastapi import HTTPException
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -146,7 +147,13 @@ class SummaryService:
                 summary=_summary_out(confirmed),
                 action_required=SummaryAction.NONE,
             )
-        course = await session.get(Course, record.course_id) if record.course_id else None
+        if record.course_id is None:
+            return SummaryReadOut(
+                summary=None,
+                action_required=SummaryAction.NONE,
+                blocked_reason=SummaryBlockedReason.COURSE_REQUIRED,
+            )
+        course = await session.get(Course, record.course_id)
         if course is None or course.deleted_at is not None or course.status != "ACTIVE":
             return SummaryReadOut(
                 summary=None,
@@ -404,6 +411,25 @@ class SummaryService:
                 )
             except HTTPException:
                 return None
+
+    @staticmethod
+    async def enqueue_if_eligible_best_effort(
+        session_factory: async_sessionmaker[AsyncSession],
+        data_dir: Path,
+        record_id: str,
+        *,
+        log_event: str,
+        error_code: str,
+    ) -> str | None:
+        # 供本地事务已提交的调用方使用：Provider、同意或入队异常都不回滚本地事实。
+        try:
+            submitted = await SummaryService.enqueue_if_eligible(
+                session_factory, data_dir, record_id
+            )
+            return submitted.job_id if submitted is not None else None
+        except Exception:
+            logger.error(log_event, error_code=error_code, record_id=record_id)
+            return None
 
     @staticmethod
     async def _enqueue(

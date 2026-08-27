@@ -18,8 +18,15 @@ from app.schemas.document import (
     TranscriptReadOut,
     TranscriptUpdateRequest,
 )
-from app.schemas.record import RecordOut, RecordStatus
+from app.schemas.record import (
+    RecordClassificationRequest,
+    RecordOut,
+    RecordStatus,
+    RecordUpgradeAccepted,
+    RecordUpgradeRequest,
+)
 from app.services.processing_job_service import ProcessingJobService
+from app.services.record_classification_service import RecordClassificationService
 from app.services.record_service import RecordService
 
 router = APIRouter(
@@ -116,6 +123,46 @@ async def delete_record(
         await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
     await request.app.state.record_notifier.notify(str(record_id))
     return Response(status_code=204)
+
+
+@router.post(
+    "/records/{record_id}/classification",
+    response_model=RecordOut,
+    responses={409: {"model": ErrorResponse}},
+)
+async def classify_record(
+    record_id: UUID,
+    body: RecordClassificationRequest,
+    session: AsyncSession = Depends(get_db),
+) -> RecordOut:
+    record = await RecordClassificationService.classify(
+        session,
+        str(record_id),
+        str(body.course_id),
+    )
+    return RecordOut.model_validate(record)
+
+
+@router.post(
+    "/records/{record_id}/upgrade",
+    response_model=RecordUpgradeAccepted,
+    responses={409: {"model": ErrorResponse}},
+)
+async def upgrade_record(
+    record_id: UUID,
+    body: RecordUpgradeRequest,
+    request: Request,
+) -> RecordUpgradeAccepted:
+    record, summary_job_id = await RecordClassificationService.upgrade(
+        request.app.state.session_factory,
+        request.app.state.data_dir,
+        str(record_id),
+        str(body.course_id) if body.course_id is not None else None,
+    )
+    return RecordUpgradeAccepted(
+        record=RecordOut.model_validate(record),
+        summary_job_id=summary_job_id,
+    )
 
 
 @router.get("/records/{record_id}/events", response_class=EventSourceResponse)

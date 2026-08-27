@@ -9,9 +9,32 @@ import uvicorn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from app.agents.llm import SummaryModelResult  # noqa: E402
 from app.core.logging import setup_logging  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.schemas.summary import SummaryContent, SummarySection  # noqa: E402
 from app.services.tencent_asr_client import TencentAsrClient  # noqa: E402
+
+
+class FakeSummaryModel:
+    async def generate(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        prompt: str,
+    ) -> SummaryModelResult:
+        return SummaryModelResult(
+            output=SummaryContent(
+                topic="真实进程升级主题",
+                abstract="用于真实 socket 升级验收的合成摘要。" * 30,
+                sections=[
+                    SummarySection(heading="核心内容", points=["合成要点，不依赖真实供应商。"])
+                ],
+            ),
+            token_usage={"total_tokens": 1},
+        )
 
 
 class FixtureTencentAsrTransport(httpx.AsyncBaseTransport):
@@ -117,6 +140,7 @@ def main() -> None:
     parser.add_argument("--data-dir", required=True, type=Path)
     parser.add_argument("--ffmpeg", required=True, type=Path)
     parser.add_argument("--asr-control", required=True, type=Path)
+    parser.add_argument("--fake-summary", action="store_true")
     args = parser.parse_args()
     setup_logging()
     app = create_app(
@@ -124,6 +148,7 @@ def main() -> None:
         launch_token=args.token,
         ffmpeg_path=args.ffmpeg,
         asr_client=TencentAsrClient(transport=FixtureTencentAsrTransport(args.asr_control)),
+        summary_model=FakeSummaryModel() if args.fake_summary else None,
     )
     config = uvicorn.Config(
         app,

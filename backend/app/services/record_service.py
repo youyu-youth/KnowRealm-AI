@@ -139,7 +139,9 @@ class RecordService:
                 )
                 .values(status=AiSummaryStatus.SUPERSEDED, updated_at=now)
             )
-            record.status = RecordStatus.SUMMARY_PENDING
-            record.updated_at = now
+            # NOTE 是纯本地文本：编辑只更新 Transcript，保持 NOTE、不推进到总结流程。
+            if record.status != RecordStatus.NOTE:
+                record.status = RecordStatus.SUMMARY_PENDING
+                record.updated_at = now
             await session.flush()
         return transcript

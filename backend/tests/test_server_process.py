@@ -17,6 +17,7 @@ import httpx
 import pytest
 
 from app.db.migrations import run_migrations
+from app.services.local_config import LlmProviderConfig, llm_provider_fingerprint
 
 
 def start_sidecar(
@@ -26,6 +27,7 @@ def start_sidecar(
     ffmpeg_path: Path | None = None,
     empty_path: bool = False,
     asr_control: Path | None = None,
+    fake_summary: bool = False,
 ) -> subprocess.Popen[bytes]:
     if asr_control is not None and ffmpeg_path is None:
         ffmpeg_path = (
@@ -61,6 +63,8 @@ def start_sidecar(
     ]
     if asr_control is not None:
         command.extend(["--asr-control", str(asr_control)])
+    if fake_summary:
+        command.append("--fake-summary")
     return subprocess.Popen(
         command,
         stdout=subprocess.PIPE,
@@ -894,3 +898,163 @@ def test_real_process_reads_preseeded_record_over_protected_socket(tmp_path: Pat
 
     assert token.encode() not in port_line + stdout
     assert token.encode() not in stderr
+
+
+def test_real_process_inbox_classify_and_upgrade_over_real_socket(tmp_path: Path) -> None:
+    token = secrets.token_urlsafe(32)
+    data_dir = tmp_path / "KnowRealm"
+    control = tmp_path / "asr-control.json"
+    control.write_text(json.dumps({"mode": "success"}), encoding="utf-8")
+    config = data_dir / "config"
+    config.mkdir(parents=True)
+    (config / "providers.json").write_text(
+        json.dumps(
+            {
+                "llm": {
+                    "base_url": "https://example.com/v1",
+                    "api_key": "sk-test",
+                    "model": "qwen-plus",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (config / "settings.json").write_text(
+        json.dumps(
+            {
+                "llm_external_processing_consent": {
+                    "provider_fingerprint": llm_provider_fingerprint(
+                        LlmProviderConfig(
+                            base_url="https://example.com/v1",
+                            api_key="sk-test",
+                            model="qwen-plus",
+                        )
+                    ),
+                    "granted_at": "2026-08-27T00:00:00Z",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    note_id = ""
+    doc_id = ""
+    course_id = ""
+
+    process = start_sidecar(data_dir, token, asr_control=control, fake_summary=True)
+    try:
+        base_url, _ = wait_for_sidecar(process, token)
+        with httpx.Client(trust_env=False) as client:
+            headers = {"X-KnowRealm-Token": token}
+            course_id = client.post(
+                f"{base_url}/api/courses",
+                headers=headers,
+                json={
+                    "name": "真实插座课程",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+            ).json()["id"]
+            note = client.post(
+                f"{base_url}/api/text-captures",
+                headers=headers,
+                json={"capture_type": "QUICK_NOTE", "content": "真实插座速记\n\n正文"},
+            ).json()
+            note_id = note["record_id"]
+            assert note["summary_job_id"] is None
+            inbox_ids = {
+                entry["id"] for entry in client.get(f"{base_url}/api/inbox", headers=headers).json()
+            }
+            assert note_id in inbox_ids
+
+            classified = client.post(
+                f"{base_url}/api/records/{note_id}/classification",
+                headers=headers,
+                json={"course_id": course_id},
+            )
+            assert classified.status_code == 200
+            assert classified.json()["course_id"] == course_id
+            assert classified.json()["status"] == "NOTE"
+            assert (
+                client.get(f"{base_url}/api/records/{note_id}/jobs", headers=headers).json()["jobs"]
+                == []
+            )
+            inbox_after = {
+                entry["id"] for entry in client.get(f"{base_url}/api/inbox", headers=headers).json()
+            }
+            assert note_id not in inbox_after
+
+            batch = client.post(
+                f"{base_url}/api/capture-batches",
+                headers=headers,
+                files=[("files", ("inbox.txt", b"real socket doc body", "text/plain"))],
+            )
+            assert batch.status_code == 202
+            doc_id = batch.json()["record_id"]
+            for _ in range(300):
+                status = client.get(f"{base_url}/api/records/{doc_id}", headers=headers).json()[
+                    "status"
+                ]
+                if status == "SUMMARY_PENDING":
+                    break
+                time.sleep(0.05)
+            else:
+                pytest.fail("未选课文档未停在 SUMMARY_PENDING")
+
+            upgraded = client.post(
+                f"{base_url}/api/records/{doc_id}/upgrade",
+                headers=headers,
+                json={"course_id": course_id},
+            )
+            assert upgraded.status_code == 200
+            upgraded_body = upgraded.json()
+            assert upgraded_body["record"]["course_id"] == course_id
+            assert upgraded_body["record"]["status"] == "SUMMARY_PENDING"
+            assert upgraded_body["summary_job_id"]
+            for _ in range(300):
+                status = client.get(f"{base_url}/api/records/{doc_id}", headers=headers).json()[
+                    "status"
+                ]
+                if status == "SUMMARY_READY":
+                    break
+                time.sleep(0.05)
+            else:
+                pytest.fail("升级后总结未就绪")
+            summary = client.get(f"{base_url}/api/records/{doc_id}/summary", headers=headers).json()
+            assert summary["summary"] is not None
+    finally:
+        stop_process_tree(process)
+
+    with sqlite3.connect(data_dir / "knowrealm.db") as connection:
+        note_row = connection.execute(
+            "SELECT course_id, status FROM records WHERE id = ?", (note_id,)
+        ).fetchone()
+        assert note_row == (course_id, "NOTE")
+        note_job_count = connection.execute(
+            "SELECT count(*) FROM processing_jobs WHERE record_id = ?", (note_id,)
+        ).fetchone()[0]
+        assert note_job_count == 0
+        doc_row = connection.execute(
+            "SELECT course_id, status FROM records WHERE id = ?", (doc_id,)
+        ).fetchone()
+        assert doc_row == (course_id, "SUMMARY_READY")
+        summary_job_count = connection.execute(
+            "SELECT count(*) FROM processing_jobs WHERE record_id = ? AND job_type = 'SUMMARY'",
+            (doc_id,),
+        ).fetchone()[0]
+        assert summary_job_count == 1
+
+    process = start_sidecar(data_dir, token, asr_control=control, fake_summary=True)
+    try:
+        base_url, _ = wait_for_sidecar(process, token)
+        with httpx.Client(trust_env=False) as client:
+            headers = {"X-KnowRealm-Token": token}
+            restarted_note = client.get(f"{base_url}/api/records/{note_id}", headers=headers).json()
+            assert restarted_note["course_id"] == course_id
+            assert restarted_note["status"] == "NOTE"
+            inbox_ids = {
+                entry["id"] for entry in client.get(f"{base_url}/api/inbox", headers=headers).json()
+            }
+            assert note_id not in inbox_ids
+            assert doc_id not in inbox_ids
+    finally:
+        stop_process_tree(process)

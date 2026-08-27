@@ -389,9 +389,13 @@
         "retry": "重新生成",
         "blockedTitle": "当前无法生成总结",
         "blocked": {
+          "COURSE_REQUIRED": "请先归类并升级：选择一门进行中的课程后，才能进入总结流程。",
           "COURSE_ARCHIVED": "所属课程已归档，不能再发起新的总结。",
           "TRANSCRIPT_NOT_READY": "Transcript 尚未准备好。"
         },
+        "upgrade": "升级进入总结流程",
+        "upgrading": "正在升级",
+        "classifyAndUpgrade": "归类并升级",
         "providerTitle": "配置 AI Provider",
         "providerDescription": "配置 OpenAI-compatible 端点、模型和本机密钥；密钥不会展示或发送到前端日志。",
         "configuredProvider": "当前 Provider：{{model}} · {{baseUrl}}",
@@ -663,6 +667,25 @@
     "errorTitle": "收件箱暂时无法读取",
     "retry": "重试",
     "listLabel": "未归类记录列表",
+    "classifiedFeedback": "已归类到 {{course}}",
+    "classify": {
+      "action": "归类 {{title}}",
+      "short": "归类",
+      "title": "归类到课程",
+      "description": "「{{title}}」只会保存课程归属，不会调用 AI 生成总结。",
+      "cancel": "取消",
+      "confirm": "归类",
+      "submitting": "正在归类"
+    },
+    "upgrade": {
+      "action": "升级 {{title}}",
+      "short": "升级",
+      "title": "升级并生成总结",
+      "description": "「{{title}}」将归类到所选课程并进入总结流程；Provider 未配置或未同意外部处理时只保存归类，稍后可从总结页继续。",
+      "cancel": "取消",
+      "confirm": "升级",
+      "submitting": "正在升级"
+    },
     "delete": {
       "action": "删除 {{title}}",
       "title": "删除学习记录",
@@ -671,5 +694,12 @@
       "confirm": "删除",
       "deleting": "正在删除"
     }
+  },
+  "courseSelect": {
+    "label": "所属课程",
+    "placeholder": "选择课程",
+    "hint": "只列出进行中的课程。",
+    "noActive": "暂无进行中的课程，请先在知识空间创建或恢复课程。",
+    "error": "课程暂时无法读取，请关闭后重试。"
   }
 }

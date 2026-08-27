@@ -58,3 +58,16 @@ class TextCaptureCreate(BaseModel):
 class TextCaptureAccepted(BaseModel):
     record_id: str
     summary_job_id: str | None
+
+
+class RecordClassificationRequest(BaseModel):
+    course_id: UUID
+
+
+class RecordUpgradeRequest(BaseModel):
+    course_id: UUID | None = None
+
+
+class RecordUpgradeAccepted(BaseModel):
+    record: RecordOut
+    summary_job_id: str | None

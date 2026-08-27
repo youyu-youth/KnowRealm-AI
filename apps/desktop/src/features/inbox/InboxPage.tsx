@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Trash2 } from "lucide-react";
+import { FolderInput, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
+import { InboxRowActions } from "@/features/inbox/InboxRowActions";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { RecordOut } from "@/features/records/api/types";
@@ -29,6 +30,9 @@ import {
 
 export function InboxPage() {
   const { t } = useTranslation();
+  const [classifiedFeedback, setClassifiedFeedback] = useState<string | null>(
+    null,
+  );
   const records = useQuery({
     queryKey: recordKeys.inbox(),
     queryFn: () => recordApi.listInbox(),
@@ -86,6 +90,15 @@ export function InboxPage() {
       <p className="max-w-reading text-body text-muted-foreground mt-2">
         {t("inbox.description")}
       </p>
+      {classifiedFeedback ? (
+        <p
+          role="status"
+          className="text-body text-muted-foreground mt-4 flex items-center gap-2"
+        >
+          <FolderInput aria-hidden="true" className="size-4" />
+          {classifiedFeedback}
+        </p>
+      ) : null}
       {records.data.length === 0 ? (
         <Empty className="border-border mt-8 items-start rounded-none border-t p-0 pt-8 text-start">
           <EmptyHeader className="items-start text-start">
@@ -103,7 +116,15 @@ export function InboxPage() {
           className="border-border mt-8 border-t"
         >
           {records.data.map((record) => (
-            <InboxRow key={record.id} record={record} />
+            <InboxRow
+              key={record.id}
+              record={record}
+              onClassified={(courseName) =>
+                setClassifiedFeedback(
+                  t("inbox.classifiedFeedback", { course: courseName }),
+                )
+              }
+            />
           ))}
         </ul>
       )}
@@ -111,7 +132,13 @@ export function InboxPage() {
   );
 }
 
-function InboxRow({ record }: { record: RecordOut }) {
+function InboxRow({
+  record,
+  onClassified,
+}: {
+  record: RecordOut;
+  onClassified: (courseName: string) => void;
+}) {
   const { t } = useTranslation();
   const title = record.title.trim() || t("spaces.records.untitled");
   return (
@@ -145,6 +172,7 @@ function InboxRow({ record }: { record: RecordOut }) {
           {t(statusLabelKeys[record.status])}
         </span>
       </Link>
+      <InboxRowActions record={record} onClassified={onClassified} />
       <InboxDeleteButton recordId={record.id} title={title} />
     </li>
   );

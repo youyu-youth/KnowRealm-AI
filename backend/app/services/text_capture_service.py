@@ -2,7 +2,6 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import HTTPException
-from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.models.base import utcnow
@@ -11,6 +10,7 @@ from app.models.record import Record
 from app.schemas.course import CourseStatus
 from app.schemas.record import RecordStatus, TextCaptureAccepted, TextCaptureCreate
 from app.services.course_service import CourseService
+from app.services.summary_service import SummaryService
 
 MAX_TEXT_BYTES = 1024 * 1024
 TITLE_MAX_CHARS = 100
@@ -91,25 +91,11 @@ class TextCaptureService:
 
         summary_job_id: str | None = None
         if course_selected:
-            summary_job_id = await _try_enqueue_summary(session_factory, data_dir, record_id)
+            summary_job_id = await SummaryService.enqueue_if_eligible_best_effort(
+                session_factory,
+                data_dir,
+                record_id,
+                log_event="text_capture_summary_enqueue_failed",
+                error_code="TEXT_CAPTURE_SUMMARY_ENQUEUE_FAILED",
+            )
         return TextCaptureAccepted(record_id=record_id, summary_job_id=summary_job_id)
-
-
-async def _try_enqueue_summary(
-    session_factory: async_sessionmaker[AsyncSession],
-    data_dir: Path,
-    record_id: str,
-) -> str | None:
-    # 本地 Record/Transcript 已提交；Provider 缺失、未同意或入队失败都不回滚捕获结果。
-    from app.services.summary_service import SummaryService
-
-    try:
-        submitted = await SummaryService.enqueue_if_eligible(session_factory, data_dir, record_id)
-        return submitted.job_id if submitted is not None else None
-    except Exception:
-        logger.error(
-            "text_capture_summary_enqueue_failed",
-            error_code="TEXT_CAPTURE_SUMMARY_ENQUEUE_FAILED",
-            record_id=record_id,
-        )
-        return None
