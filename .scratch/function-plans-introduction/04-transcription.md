@@ -34,7 +34,7 @@
 **不做**：
 - V1 Segment / 句子时间戳 / 音频时间轴、英文 ASR、静音检测增强、重叠切片或文本去重
 - COS / S3 / 公网 URL、持久化 Capture Batch、父/聚合 Job、ASR 切片表、并发提交片、多账户或 ASR Provider 抽象
-- 新导入页面、录音捕获 UI（03）、未选课文档/混合来源（11）、完整 Summary/HITL（06）、音频播放器
+- 新导入页面、录音捕获 UI（03）、文档/混合来源的可选课程与 Inbox 可达性（11）、完整 Summary/HITL（06）、音频播放器
 
 ## 核心业务流程
 
@@ -42,7 +42,7 @@
 
 ## 关键业务规则
 
-- audio-only / 录音可不选课；批次只要含 document 就必须选择 ACTIVE 课程。未选课文档与未选课混合来源仍由 11 承接
+- audio-only / 录音可不选课；文档/混合批次的课程可选能力由 11 扩展到统一 Capture Batch。无课程批次仍完成内容处理与 Transcript，但不得自动触发 Summary
 - 课程在内容处理期间归档：已受理内容继续完成并保留 Transcript，但不得自动触发 Summary
 - 一个音频一个 ASR Job，片状态只保存在该 Job JSON；不用“每片一个 Job”或批次父 Job
 - 正式文件：导入原件或录音最终 Ogg。缓存：标准化音频、ASR 片、临时文本
