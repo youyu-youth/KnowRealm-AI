@@ -4,6 +4,7 @@ import {
   BookOpenText,
   Bot,
   CalendarDays,
+  ClipboardPaste,
   Inbox,
   Library,
   Mic,
@@ -12,7 +13,8 @@ import {
   UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
@@ -21,11 +23,17 @@ import {
   useRecordingSessions,
 } from "@/features/recording/api/queries";
 import { useRecordingUiStore } from "@/features/recording/store";
+import { recordKeys } from "@/features/records/api/keys";
+import type {
+  TextCaptureAccepted,
+  TextCaptureMode,
+} from "@/features/text-capture/api/textCaptures";
+import { TextCaptureDialog } from "@/features/text-capture/TextCaptureDialog";
 import { cn } from "@/lib/utils";
 
 const navigationItems = [
   { labelKey: "nav.today", icon: CalendarDays, to: "/" },
-  { labelKey: "nav.inbox", icon: Inbox },
+  { labelKey: "nav.inbox", icon: Inbox, to: "/inbox" },
   { labelKey: "nav.spaces", icon: Archive, to: "/spaces" },
   { labelKey: "nav.chat", icon: Bot },
   { labelKey: "nav.library", icon: Library },
@@ -33,9 +41,10 @@ const navigationItems = [
 ] as const;
 
 const captureItems = [
-  { labelKey: "capture.note", icon: NotebookPen, available: false },
-  { labelKey: "capture.import", icon: Upload, available: true },
-  { labelKey: "capture.record", icon: Mic, available: true },
+  { labelKey: "capture.note", icon: NotebookPen },
+  { labelKey: "capture.paste", icon: ClipboardPaste },
+  { labelKey: "capture.import", icon: Upload },
+  { labelKey: "capture.record", icon: Mic },
 ] as const;
 
 const activeNavClass =
@@ -46,7 +55,10 @@ const inactiveNavClass =
 export function AppShell() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [importOpen, setImportOpen] = useState(false);
+  const [textCapture, setTextCapture] = useState<TextCaptureMode | null>(null);
+  const [captureFeedback, setCaptureFeedback] = useState("");
   const setRecordingOpen = useRecordingUiStore((state) => state.setStartOpen);
   const recordingSessions = useRecordingSessions();
   const recordingActive = (recordingSessions.data ?? []).some(
@@ -54,6 +66,8 @@ export function AppShell() {
   );
 
   const openCapture = (labelKey: (typeof captureItems)[number]["labelKey"]) => {
+    if (labelKey === "capture.note") setTextCapture("QUICK_NOTE");
+    if (labelKey === "capture.paste") setTextCapture("PASTE");
     if (labelKey === "capture.import") setImportOpen(true);
     if (labelKey === "capture.record") setRecordingOpen(true);
   };
@@ -67,6 +81,27 @@ export function AppShell() {
       }),
     [navigate],
   );
+
+  const handleTextAccepted = useCallback(
+    async (result: TextCaptureAccepted, courseSelected: boolean) => {
+      if (courseSelected) {
+        await navigate({
+          to: "/records/$recordId",
+          params: { recordId: result.record_id },
+        });
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: recordKeys.inbox() });
+      setCaptureFeedback(t("capture.savedFeedback"));
+    },
+    [navigate, queryClient, t],
+  );
+
+  useEffect(() => {
+    if (!captureFeedback) return;
+    const timer = window.setTimeout(() => setCaptureFeedback(""), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [captureFeedback]);
 
   return (
     <div className="bg-canvas text-foreground flex h-screen min-w-0 overflow-hidden">
@@ -140,40 +175,40 @@ export function AppShell() {
           </p>
           <div className="flex min-w-0 items-center gap-1">
             <RecordingExperience onAccepted={openRecord} />
-            {captureItems.map(({ labelKey, icon: Icon, available }) => {
+            {captureItems.map(({ labelKey, icon: Icon }) => {
               const label = t(labelKey);
+              const isRecord = labelKey === "capture.record";
               return (
                 <Button
                   key={labelKey}
-                  variant={labelKey === "capture.record" ? "default" : "ghost"}
+                  variant={isRecord ? "default" : "ghost"}
                   size="sm"
-                  disabled={
-                    !available ||
-                    (labelKey === "capture.record" && recordingActive)
-                  }
-                  onClick={available ? () => openCapture(labelKey) : undefined}
+                  disabled={isRecord && recordingActive}
+                  onClick={() => openCapture(labelKey)}
                   className={cn(
                     "disabled:pointer-events-auto disabled:opacity-70",
-                    labelKey === "capture.record"
+                    isRecord
                       ? "hover:bg-primary-hover"
                       : "disabled:hover:bg-transparent",
                   )}
-                  aria-label={
-                    available ? label : t("nav.unavailableLabel", { label })
-                  }
+                  aria-label={label}
                 >
                   <Icon data-icon="inline-start" aria-hidden="true" />
                   <span className="max-compact:sr-only">{label}</span>
-                  {available ? null : (
-                    <span className="text-label max-compact:sr-only">
-                      {t("nav.unavailable")}
-                    </span>
-                  )}
                 </Button>
               );
             })}
           </div>
         </header>
+        {captureFeedback ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="bg-paper px-content text-label text-muted-foreground pt-2"
+          >
+            {captureFeedback}
+          </p>
+        ) : null}
         <main className="bg-paper min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
@@ -183,6 +218,16 @@ export function AppShell() {
         onOpenChange={setImportOpen}
         onAccepted={openRecord}
       />
+      {textCapture ? (
+        <TextCaptureDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setTextCapture(null);
+          }}
+          captureType={textCapture}
+          onAccepted={handleTextAccepted}
+        />
+      ) : null}
     </div>
   );
 }

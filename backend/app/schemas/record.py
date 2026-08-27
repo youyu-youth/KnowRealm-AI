@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class CaptureType(StrEnum):
@@ -46,3 +47,14 @@ class RecordOut(BaseModel):
     @field_serializer("summary_confirmed_at")
     def serialize_optional_utc(self, value: datetime | None) -> str | None:
         return None if value is None else self.serialize_utc(value)
+
+
+class TextCaptureCreate(BaseModel):
+    capture_type: CaptureType
+    content: str = Field(min_length=1)
+    course_id: UUID | None = None
+
+
+class TextCaptureAccepted(BaseModel):
+    record_id: str
+    summary_job_id: str | None

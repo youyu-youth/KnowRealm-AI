@@ -43,7 +43,7 @@ describe("工作台骨架", () => {
     expect(
       await screen.findByRole("heading", { name: "今日" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /收件箱/ })).toBeDisabled();
+    expect(screen.getByRole("link", { name: "收件箱" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "开始录音" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("link", { name: "知识空间" }));

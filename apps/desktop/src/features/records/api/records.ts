@@ -21,6 +21,7 @@ import type { components } from "@knowrealm/api-types";
 
 export const recordApi = {
   get: (recordId: string) => apiFetch<RecordOut>(`/api/records/${recordId}`),
+  listInbox: () => apiFetch<RecordOut[]>("/api/inbox"),
   getTranscript: (recordId: string) =>
     apiFetch<TranscriptReadOut>(`/api/records/${recordId}/transcript`),
   getJobs: (recordId: string) =>

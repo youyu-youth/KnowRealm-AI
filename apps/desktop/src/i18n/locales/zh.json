@@ -18,7 +18,9 @@
     "label": "快速捕获",
     "note": "新建速记",
     "import": "导入资料",
-    "record": "开始录音"
+    "record": "开始录音",
+    "paste": "粘贴文本",
+    "savedFeedback": "已保存到本地收件箱"
   },
   "recording": {
     "startTitle": "开始录音",
@@ -69,7 +71,7 @@
     "course": "所属课程",
     "coursePlaceholder": "选择课程",
     "noCourse": "不绑定课程",
-    "audioCourseHint": "音频可不绑定课程，也可归入一门未归档课程。",
+    "audioCourseHint": "可不绑定课程，稍后从收件箱整理；也可归入一门未归档课程。",
     "courseError": "课程暂时无法读取，请关闭后重试。",
     "noActiveCourse": "当前没有可接收文档的课程。",
     "file": "选择文件",
@@ -258,6 +260,7 @@
       "notFoundTitle": "学习记录不存在或已删除",
       "notFoundDescription": "这个地址没有对应的学习记录，或学习记录及所属课程已被删除。",
       "backToCourseRecords": "返回课程学习记录",
+      "backToInbox": "返回收件箱",
       "backToSpaces": "返回知识空间",
       "tabs": {
         "summary": "Summary",
@@ -633,5 +636,40 @@
     "notFoundTitle": "页面不存在",
     "notFoundDescription": "这个地址没有对应的工作区。",
     "backToday": "返回今日"
+  },
+  "textCapture": {
+    "quickNoteTitle": "新建速记",
+    "quickNoteDescription": "一句话先存下来，不需要选择课程，稍后可再整理。",
+    "pasteTitle": "粘贴文本",
+    "pasteDescription": "保存一段较长的文本，可选择归入一门课程或暂不归类。",
+    "body": "正文",
+    "bodyHint": "标题自动取正文第一行，换行与段落会原样保留。",
+    "sizeExceeded": "正文超过 1 MiB，请改用 TXT 或 MD 文档导入。",
+    "course": "所属课程",
+    "coursePlaceholder": "选择课程",
+    "noCourse": "暂不归类",
+    "courseHint": "默认暂不归类，保存后可从收件箱整理；选择课程后将进入该课程的总结流程。",
+    "courseError": "课程暂时无法读取，请关闭后重试。",
+    "cancel": "取消",
+    "submit": "保存",
+    "submitting": "正在保存"
+  },
+  "inbox": {
+    "title": "收件箱",
+    "description": "所有暂未归类的学习记录都会集中在这里，按创建时间倒序排列。",
+    "loading": "正在读取收件箱…",
+    "emptyTitle": "收件箱是空的",
+    "emptyDescription": "使用顶部捕获栏的速记、粘贴文本或导入资料，先把内容保存下来再整理归属。",
+    "errorTitle": "收件箱暂时无法读取",
+    "retry": "重试",
+    "listLabel": "未归类记录列表",
+    "delete": {
+      "action": "删除 {{title}}",
+      "title": "删除学习记录",
+      "description": "确定要删除「{{title}}」吗？删除后不可恢复。",
+      "cancel": "取消",
+      "confirm": "删除",
+      "deleting": "正在删除"
+    }
   }
 }

@@ -227,9 +227,9 @@ export function RecordDetailPage({
           {t("record.detail.backToCourseRecords")}
         </Link>
       ) : (
-        <Link to="/spaces" className={backLinkClass}>
+        <Link to="/inbox" className={backLinkClass}>
           <ArrowLeft className="size-4" aria-hidden="true" />
-          {t("record.detail.backToSpaces")}
+          {t("record.detail.backToInbox")}
         </Link>
       )}
 

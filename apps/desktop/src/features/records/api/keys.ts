@@ -15,4 +15,5 @@ export const recordKeys = {
     [...recordKeys.all, "todos", recordId] as const,
   courseList: (courseId: string) =>
     [...recordKeys.all, "course", courseId] as const,
+  inbox: () => [...recordKeys.all, "inbox"] as const,
 };

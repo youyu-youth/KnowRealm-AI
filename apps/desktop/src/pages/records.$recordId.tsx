@@ -41,7 +41,7 @@ export function RecordDetailRoute() {
               params: { courseId },
               search: { tab: "records" },
             })
-          : navigate({ to: "/spaces" })
+          : navigate({ to: "/inbox" })
       }
     />
   );

@@ -1529,7 +1529,7 @@ describe("学习记录详情", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("返回路径由真实课程归属决定，空课程归属返回知识空间", async () => {
+  it("返回路径由真实课程归属决定，空课程归属返回收件箱", async () => {
     server.use(http.get(DETAIL_URL, () => HttpResponse.json(record)));
     renderAt();
 
@@ -1549,8 +1549,8 @@ describe("学习记录详情", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除学习记录" })).toBeVisible();
     expect(
-      await screen.findByRole("link", { name: "返回知识空间" }),
-    ).toHaveAttribute("href", "/spaces");
+      await screen.findByRole("link", { name: "返回收件箱" }),
+    ).toHaveAttribute("href", "/inbox");
   });
 
   it("正文未就绪的 FAILED 记录不伪造恢复动作", async () => {

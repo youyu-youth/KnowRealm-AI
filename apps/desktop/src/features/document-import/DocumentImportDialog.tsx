@@ -42,8 +42,6 @@ type DocumentImportDialogProps = {
   onAccepted: (result: CaptureBatchAccepted) => void | Promise<void>;
 };
 
-const audioExtensions = [".mp3", ".aac", ".wav", ".m4a"];
-
 export function DocumentImportDialog({
   open,
   onOpenChange,
@@ -54,12 +52,6 @@ export function DocumentImportDialog({
   const fileInput = useRef<HTMLInputElement>(null);
   const [courseId, setCourseId] = useState<string | null>(null);
   const [files, setFiles] = useState<File[]>([]);
-  const hasDocument = files.some(
-    (file) =>
-      !audioExtensions.some((extension) =>
-        file.name.toLocaleLowerCase().endsWith(extension),
-      ),
-  );
   const courses = useQuery({
     queryKey: courseKeys.list(),
     queryFn: () => courseApi.list(),
@@ -69,9 +61,7 @@ export function DocumentImportDialog({
     (course) => course.status === "ACTIVE",
   );
   const courseItems = [
-    ...(!hasDocument
-      ? [{ value: "__none__", label: t("documentImport.noCourse") }]
-      : []),
+    { value: "__none__", label: t("documentImport.noCourse") },
     ...activeCourses.map((course) => ({
       value: course.id,
       label: course.name,
@@ -89,6 +79,8 @@ export function DocumentImportDialog({
         await queryClient.invalidateQueries({
           queryKey: recordKeys.courseList(variables.selectedCourseId),
         });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: recordKeys.inbox() });
       }
       resetForm();
       onOpenChange(false);
@@ -111,7 +103,7 @@ export function DocumentImportDialog({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (files.length === 0 || (hasDocument && !courseId)) return;
+    if (files.length === 0) return;
     importDocument.mutate({
       selectedCourseId: courseId,
       selectedFiles: files,
@@ -141,20 +133,14 @@ export function DocumentImportDialog({
               }
               disabled={courses.isPending || courseItems.length === 0}
             >
-              <SelectTrigger
-                id="document-import-course"
-                className="w-full"
-                aria-required={hasDocument}
-              >
+              <SelectTrigger id="document-import-course" className="w-full">
                 <SelectValue
                   placeholder={t("documentImport.coursePlaceholder")}
                 >
                   {courseId
                     ? (activeCourses.find((course) => course.id === courseId)
                         ?.name ?? null)
-                    : !hasDocument
-                      ? t("documentImport.noCourse")
-                      : null}
+                    : t("documentImport.noCourse")}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -167,20 +153,15 @@ export function DocumentImportDialog({
                 </SelectGroup>
               </SelectContent>
             </Select>
-            {courses.isError ||
-            (hasDocument &&
-              !courses.isPending &&
-              activeCourses.length === 0) ? (
+            {courses.isError ? (
               <FieldDescription>
-                {courses.isError
-                  ? t("documentImport.courseError")
-                  : t("documentImport.noActiveCourse")}
+                {t("documentImport.courseError")}
               </FieldDescription>
-            ) : !hasDocument ? (
+            ) : (
               <FieldDescription>
                 {t("documentImport.audioCourseHint")}
               </FieldDescription>
-            ) : null}
+            )}
           </Field>
 
           <Field>
@@ -239,11 +220,7 @@ export function DocumentImportDialog({
             </DialogClose>
             <Button
               type="submit"
-              disabled={
-                files.length === 0 ||
-                (hasDocument && !courseId) ||
-                importDocument.isPending
-              }
+              disabled={files.length === 0 || importDocument.isPending}
             >
               {importDocument.isPending ? (
                 <Spinner

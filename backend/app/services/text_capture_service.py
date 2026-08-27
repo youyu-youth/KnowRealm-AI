@@ -1,0 +1,115 @@
+from pathlib import Path
+from uuid import uuid4
+
+from fastapi import HTTPException
+from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.models.base import utcnow
+from app.models.document import Transcript
+from app.models.record import Record
+from app.schemas.course import CourseStatus
+from app.schemas.record import RecordStatus, TextCaptureAccepted, TextCaptureCreate
+from app.services.course_service import CourseService
+
+MAX_TEXT_BYTES = 1024 * 1024
+TITLE_MAX_CHARS = 100
+
+TEXT_CAPTURE_TYPES = {"QUICK_NOTE", "PASTE"}
+
+
+def normalize_content(content: str) -> str:
+    return content.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def content_title(content: str) -> str:
+    for line in content.split("\n"):
+        stripped = line.strip()
+        if stripped:
+            return stripped[:TITLE_MAX_CHARS]
+    return ""
+
+
+class TextCaptureService:
+    @staticmethod
+    async def create(
+        session_factory: async_sessionmaker[AsyncSession],
+        data_dir: Path,
+        body: TextCaptureCreate,
+    ) -> TextCaptureAccepted:
+        if body.capture_type not in TEXT_CAPTURE_TYPES:
+            raise HTTPException(
+                status_code=422, detail="UNSUPPORTED_TEXT_CAPTURE：仅支持速记或粘贴文本"
+            )
+        if body.course_id is not None and body.capture_type != "PASTE":
+            raise HTTPException(status_code=422, detail="QUICK_NOTE_NO_COURSE：速记不能选择课程")
+        content = normalize_content(body.content)
+        if not content.strip():
+            raise HTTPException(status_code=422, detail="EMPTY_TEXT：正文不能为空")
+        if len(content.encode("utf-8")) > MAX_TEXT_BYTES:
+            raise HTTPException(
+                status_code=422,
+                detail="TEXT_TOO_LARGE：正文超过 1 MiB，请改用 TXT 或 MD 文档导入",
+            )
+
+        record_id = str(uuid4())
+        now = utcnow()
+        course_selected = body.course_id is not None
+        async with session_factory() as session, session.begin():
+            if course_selected:
+                course = await CourseService.get(session, str(body.course_id))
+                if course is None:
+                    raise HTTPException(status_code=404, detail="课程不存在或已删除")
+                if course.status != CourseStatus.ACTIVE:
+                    raise HTTPException(status_code=409, detail="已归档课程不能接受新资料")
+            session.add(
+                Record(
+                    id=record_id,
+                    course_id=str(body.course_id) if course_selected else None,
+                    capture_type=body.capture_type,
+                    title=content_title(content),
+                    status=(RecordStatus.SUMMARY_PENDING if course_selected else RecordStatus.NOTE),
+                    duration_ms=0,
+                    summary_confirmed_at=None,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await session.flush()
+            session.add(
+                Transcript(
+                    record_id=record_id,
+                    language="und",
+                    content=content,
+                    source_version=1,
+                    edited_by_user=False,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            await session.flush()
+
+        summary_job_id: str | None = None
+        if course_selected:
+            summary_job_id = await _try_enqueue_summary(session_factory, data_dir, record_id)
+        return TextCaptureAccepted(record_id=record_id, summary_job_id=summary_job_id)
+
+
+async def _try_enqueue_summary(
+    session_factory: async_sessionmaker[AsyncSession],
+    data_dir: Path,
+    record_id: str,
+) -> str | None:
+    # 本地 Record/Transcript 已提交；Provider 缺失、未同意或入队失败都不回滚捕获结果。
+    from app.services.summary_service import SummaryService
+
+    try:
+        submitted = await SummaryService.enqueue_if_eligible(session_factory, data_dir, record_id)
+        return submitted.job_id if submitted is not None else None
+    except Exception:
+        logger.error(
+            "text_capture_summary_enqueue_failed",
+            error_code="TEXT_CAPTURE_SUMMARY_ENQUEUE_FAILED",
+            record_id=record_id,
+        )
+        return None

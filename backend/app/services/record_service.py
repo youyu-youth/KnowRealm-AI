@@ -46,6 +46,18 @@ class RecordService:
         return list((await session.scalars(statement)).all())
 
     @staticmethod
+    async def list_inbox(session: AsyncSession) -> list[Record]:
+        statement = (
+            select(Record)
+            .where(
+                Record.course_id.is_(None),
+                Record.deleted_at.is_(None),
+            )
+            .order_by(Record.created_at.desc(), Record.id.desc())
+        )
+        return list((await session.scalars(statement)).all())
+
+    @staticmethod
     async def get_transcript(session: AsyncSession, record_id: str) -> Transcript | None:
         statement = select(Transcript).where(
             Transcript.record_id == record_id,

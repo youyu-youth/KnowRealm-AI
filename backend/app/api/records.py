@@ -40,6 +40,14 @@ STREAMING_RECORD_STATUSES = {
 }
 
 
+@router.get("/inbox", response_model=list[RecordOut])
+async def list_inbox_records(
+    session: AsyncSession = Depends(get_db),
+) -> list[RecordOut]:
+    records = await RecordService.list_inbox(session)
+    return [RecordOut.model_validate(record) for record in records]
+
+
 @router.get("/records/{record_id}", response_model=RecordOut)
 async def get_record(
     record_id: UUID,

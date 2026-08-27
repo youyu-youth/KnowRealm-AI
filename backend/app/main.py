@@ -34,6 +34,7 @@ from app.api import (
     records,
     settings,
     summaries,
+    text_captures,
     today,
     todos,
 )
@@ -238,6 +239,7 @@ def create_app(
     app.include_router(processing_jobs.router)
     app.include_router(recording_sessions.router)
     app.include_router(records.router)
+    app.include_router(text_captures.router)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(  # pyright: ignore[reportUnusedFunction]

@@ -793,6 +793,7 @@ async def test_import_rejects_invalid_boundaries_before_business_creation(
             "/api/document-imports",
             files={"file": ("ok.txt", b"text", "text/plain")},
         )
+        unclassified_id = missing_course.json()["record_id"]
         missing_file = await client.post(
             "/api/document-imports",
             data={"course_id": active.json()["id"]},
@@ -837,10 +838,12 @@ async def test_import_rejects_invalid_boundaries_before_business_creation(
             empty.status_code,
             unsupported.status_code,
             no_space.status_code,
-        ] == [403, 422, 422, 404, 409, 400, 400, 507]
+        ] == [403, 202, 422, 404, 409, 400, 400, 507]
         assert (await client.get(f"/api/courses/{active.json()['id']}/records")).json() == []
+        assert (await client.get(f"/api/records/{unclassified_id}")).json()["course_id"] is None
 
-    assert list((data_dir / "files").rglob("*")) == []
+    placed = [path for path in (data_dir / "files").rglob("*") if path.is_file()]
+    assert [path.relative_to(data_dir / "files").parts[0] for path in placed] == [unclassified_id]
 
 
 @pytest.mark.anyio

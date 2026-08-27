@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from "./pages/__root";
 import { Route as IndexRouteImport } from "./pages/index";
+import { Route as InboxRouteImport } from "./pages/inbox";
 import { Route as SpacesRouteImport } from "./pages/spaces";
 import { Route as RecordsRecordIdRouteImport } from "./pages/records.$recordId";
 import { Route as SpacesIndexRouteImport } from "./pages/spaces.index";
@@ -18,6 +19,11 @@ import { Route as SpacesCourseIdRouteImport } from "./pages/spaces.$courseId";
 const IndexRoute = IndexRouteImport.update({
   id: "/",
   path: "/",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const InboxRoute = InboxRouteImport.update({
+  id: "/inbox",
+  path: "/inbox",
   getParentRoute: () => rootRouteImport,
 } as any);
 const SpacesRoute = SpacesRouteImport.update({
@@ -43,6 +49,7 @@ const SpacesCourseIdRoute = SpacesCourseIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
+  "/inbox": typeof InboxRoute;
   "/spaces": typeof SpacesRouteWithChildren;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
@@ -50,6 +57,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
+  "/inbox": typeof InboxRoute;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
   "/spaces": typeof SpacesIndexRoute;
@@ -57,6 +65,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
+  "/inbox": typeof InboxRoute;
   "/spaces": typeof SpacesRouteWithChildren;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
@@ -65,12 +74,18 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    "/" | "/spaces" | "/records/$recordId" | "/spaces/$courseId" | "/spaces/";
+    | "/"
+    | "/inbox"
+    | "/spaces"
+    | "/records/$recordId"
+    | "/spaces/$courseId"
+    | "/spaces/";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/records/$recordId" | "/spaces/$courseId" | "/spaces";
+  to: "/" | "/inbox" | "/records/$recordId" | "/spaces/$courseId" | "/spaces";
   id:
     | "__root__"
     | "/"
+    | "/inbox"
     | "/spaces"
     | "/records/$recordId"
     | "/spaces/$courseId"
@@ -79,6 +94,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
+  InboxRoute: typeof InboxRoute;
   SpacesRoute: typeof SpacesRouteWithChildren;
   RecordsRecordIdRoute: typeof RecordsRecordIdRoute;
 }
@@ -90,6 +106,13 @@ declare module "@tanstack/react-router" {
       path: "/";
       fullPath: "/";
       preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/inbox": {
+      id: "/inbox";
+      path: "/inbox";
+      fullPath: "/inbox";
+      preLoaderRoute: typeof InboxRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/spaces": {
@@ -138,6 +161,7 @@ const SpacesRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  InboxRoute: InboxRoute,
   SpacesRoute: SpacesRouteWithChildren,
   RecordsRecordIdRoute: RecordsRecordIdRoute,
 };

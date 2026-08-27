@@ -28,13 +28,13 @@ router = APIRouter(
 @router.post("", status_code=202, response_model=DocumentImportAccepted)
 async def import_document(
     request: Request,
-    course_id: Annotated[UUID, Form()],
     file: Annotated[UploadFile, File()],
+    course_id: Annotated[UUID | None, Form()] = None,
     session: AsyncSession = Depends(get_db),
 ) -> DocumentImportAccepted:
     return await DocumentImportService.create(
         session,
         request.app.state.data_dir,
-        str(course_id),
+        str(course_id) if course_id is not None else None,
         file,
     )

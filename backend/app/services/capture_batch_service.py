@@ -334,10 +334,7 @@ class CaptureBatchService:
                     )
                 )
 
-            has_document = any(not source.is_audio for source in prepared)
             course = await CourseService.get(session, course_id) if course_id is not None else None
-            if has_document and course_id is None:
-                raise HTTPException(status_code=422, detail="COURSE_REQUIRED：文档批次必须选择课程")
             if course_id is not None and course is None:
                 raise HTTPException(status_code=404, detail="课程不存在或已删除")
             if course is not None and course.status != CourseStatus.ACTIVE:

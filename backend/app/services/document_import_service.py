@@ -61,7 +61,7 @@ class DocumentImportService:
     async def create(
         session: AsyncSession,
         data_dir: Path,
-        course_id: str,
+        course_id: str | None,
         upload: UploadFile,
     ) -> DocumentImportAccepted:
         original_name = (upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
@@ -87,11 +87,12 @@ class DocumentImportService:
 
             now = utcnow()
             async with session.begin():
-                course: Course | None = await CourseService.get(session, course_id)
-                if course is None:
-                    raise HTTPException(status_code=404, detail="课程不存在或已删除")
-                if course.status != CourseStatus.ACTIVE:
-                    raise HTTPException(status_code=409, detail="已归档课程不能接受新文档")
+                if course_id is not None:
+                    course: Course | None = await CourseService.get(session, course_id)
+                    if course is None:
+                        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+                    if course.status != CourseStatus.ACTIVE:
+                        raise HTTPException(status_code=409, detail="已归档课程不能接受新文档")
                 session.add(
                     Record(
                         id=record_id,
