@@ -126,6 +126,8 @@ export function TextCaptureDialog({
               onChange={(event) => setContent(event.target.value)}
               rows={10}
               autoFocus
+              // field-sizing-content 会让超长单行粘贴把 Dialog 撑宽、撑高，恢复固定尺寸后在框内滚动。
+              className="field-sizing-fixed"
               aria-required="true"
               aria-describedby="text-capture-body-hint"
             />
