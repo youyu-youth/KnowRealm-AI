@@ -58,9 +58,7 @@ class ParsedReply:
     citations: list[dict[str, int | str]]
 
 
-def parse_citation_reply(
-    text: str, *, transcript: str, record_id: str
-) -> ParsedReply:
+def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> ParsedReply:
     """从回答尾部识别「[n] 摘录」引用块：剥离入 citations，逐条子串校验。
 
     - 只有文末连续匹配引用行格式的部分才算引用块，正文中的 [1] 角标不受影响；
