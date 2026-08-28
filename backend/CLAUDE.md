@@ -28,17 +28,17 @@ python -m app.server --port 0 --token <32字节hex> --data-dir %USERPROFILE%\Kno
 app/
 ├── main.py          # create_app 工厂 + lifespan（顺序见下）；CORS 限 tauri 来源；全局异常处理器
 ├── server.py        # CLI 入口：bind_socket → stdout 打 KNOWREALM_SIDECAR_PORT=<port> → uvicorn 运行
-├── api/             # 薄路由层：10 个 router + deps.py（令牌与会话依赖），全部挂 require_launch_token
+├── api/             # 薄路由层：16 个 router + deps.py（令牌与会话依赖），全部挂 require_launch_token
 ├── agents/          # LangGraph 编排：summary（固定 StateGraph + HITL interrupt）、llm（结构化调用与 llm_call_logs 埋点）
-├── services/        # 业务逻辑与事务边界（21 个文件）
-├── models/          # SQLAlchemy ORM：base（ISODateTime/utcnow）/ course / record / document
-├── schemas/         # Pydantic v2：course / record / document / recording / settings / summary / today（业务枚举集中地）
+├── services/        # 业务逻辑与事务边界（23 个文件）
+├── models/          # SQLAlchemy ORM：base（ISODateTime/utcnow）/ course / record / document / chat / profile
+├── schemas/         # Pydantic v2：course / record / document / recording / settings / summary / today / knowledge_point / quiz / todo / chat / profile（业务枚举集中地）
 ├── core/            # data_dir（OS 排他锁）/ logging（loguru InterceptHandler）/ loop；无 config.py
 └── db/              # engine（WAL + PRAGMA foreign_keys=ON）/ migrations（迁移执行器）
 ```
 
-- api 路由前缀：`/api/courses`、`/api/records…`（含 `GET /records/{id}/events` SSE、`/{id}/summary*` 总结读/生成/调整/确认/版本、`/{id}/transcript`、`/{id}/jobs`）、`/api/audio-imports`、`/api/capture-batches`、`/api/document-imports`、`/api/processing-jobs`、`/api/recording-sessions`、`/api/settings…`（providers/llm 与 external-processing-consents）、`/api/today/pending-summaries`、`/api/health`。
-- services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation）；双 worker（document_worker / audio_worker）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service / summary_worker）；今日待办（today_service）。
+- api 路由前缀：`/api/courses`、`/api/records…`（含 `GET /records/{id}/events` SSE、`/{id}/summary*` 总结读/生成/调整/确认/版本、`/{id}/transcript`、`/{id}/jobs`）、`/api/audio-imports`、`/api/capture-batches`、`/api/chat-sessions`、`/api/document-imports`、`/api/processing-jobs`、`/api/profile`、`/api/recording-sessions`、`/api/settings…`（providers/llm 与 external-processing-consents）、`/api/today/pending-summaries`、`/api/health`。
+- services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation）；双 worker（document_worker / audio_worker）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service / summary_worker）；今日待办（today_service）；AI 对话（chat_session_service）；档案（profile_service）。
 
 ## 关键机制
 
@@ -52,7 +52,7 @@ app/
 
 ### 迁移纪律
 
-`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0007**；`tests/test_records.py` 等断言 `user_version == 7`，**新增迁移需同步这些断言**。
+`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0014**（chat_sessions / chat_messages / profile 三表）；`tests/test_records.py` 等断言 `user_version == 14`，**新增迁移需同步这些断言**。
 
 ### 令牌校验
 

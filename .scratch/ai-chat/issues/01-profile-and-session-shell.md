@@ -6,13 +6,13 @@
 
 **Status:** ready-for-agent
 
-- [ ] 设置页"档案"区块：角色四选一 + 自我介绍（≤200 字校验），保存持久化、重开回显
-- [ ] 档案读取/更新接口只暴露 `primary_role` 与 `about_me` 两字段；未建档时读取返回空档案语义不报错
-- [ ] 迁移 0014 一次建 chat_sessions（软删）/ chat_messages（追加型）/ profile（全列）三表；测试 `PRAGMA user_version` 断言推进；后端目录文档迁移版本行更新
-- [ ] `/chat` 空态引导卡；新建自由对话即时出现在列表；列表按 updated_at 倒序
-- [ ] 创建自由对话落一条 SYSTEM 快照消息（角色 + 自我介绍；未建档中性默认）——落库内容自动化断言
-- [ ] 重命名即时生效；删除有"不可恢复"确认弹窗，删除后不再出现（软删）
-- [ ] `/chat/$sessionId` 显示明确的"消息功能未接入"状态，无死按钮、无假成功
-- [ ] OpenAPI → api-types 生成物同步
-- [ ] 后端测试（ASGITransport + 完整迁移重放）与前端测试（MSW + getByRole）齐备
+- [x] 设置页"档案"区块：角色四选一 + 自我介绍（≤200 字校验），保存持久化、重开回显
+- [x] 档案读取/更新接口只暴露 `primary_role` 与 `about_me` 两字段；未建档时读取返回空档案语义不报错
+- [x] 迁移 0014 一次建 chat_sessions（软删）/ chat_messages（追加型）/ profile（全列）三表；测试 `PRAGMA user_version` 断言推进；后端目录文档迁移版本行更新
+- [x] `/chat` 空态引导卡；新建自由对话即时出现在列表；列表按 updated_at 倒序
+- [x] 创建自由对话落一条 SYSTEM 快照消息（角色 + 自我介绍；未建档中性默认）——落库内容自动化断言
+- [x] 重命名即时生效；删除有"不可恢复"确认弹窗，删除后不再出现（软删）
+- [x] `/chat/$sessionId` 显示明确的"消息功能未接入"状态，无死按钮、无假成功
+- [x] OpenAPI → api-types 生成物同步
+- [x] 后端测试（ASGITransport + 完整迁移重放）与前端测试（MSW + getByRole）齐备
 - [ ] 人工：档案表单交互与空态引导文案

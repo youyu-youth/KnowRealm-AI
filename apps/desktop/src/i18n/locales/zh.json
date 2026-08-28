@@ -11,6 +11,7 @@
     "chat": "AI 对话",
     "library": "资产库",
     "profile": "学习画像",
+    "settings": "设置",
     "unavailable": "未接入",
     "unavailableLabel": "{{label}}（未接入）"
   },
@@ -713,5 +714,66 @@
     "hint": "只列出进行中的课程。",
     "noActive": "暂无进行中的课程，请先在知识空间创建或恢复课程。",
     "error": "课程暂时无法读取，请关闭后重试。"
+  },
+  "chat": {
+    "title": "AI 对话",
+    "description": "在这里向 AI 提问与追问；自由聊天会参考你的档案调整回答风格。",
+    "newSession": "新建对话",
+    "creating": "正在创建对话",
+    "loading": "正在读取对话",
+    "errorTitle": "对话暂时无法读取",
+    "retry": "重试",
+    "emptyTitle": "开始第一场对话",
+    "emptyDescription": "新建一场自由对话，直接向 AI 提问学习问题；先在设置页完善档案，回答会更贴合你的角色与水平。挂载学习记录追问细节的能力将在后续版本接入。",
+    "emptyAction": "新建自由对话",
+    "listLabel": "对话列表",
+    "untitled": "新对话",
+    "updatedAt": "更新于 {{time}}",
+    "detailLabel": "对话 {{title}}",
+    "rename": {
+      "action": "重命名 {{title}}",
+      "title": "重命名对话",
+      "description": "为对话取一个能看出主题的名字，仅影响列表展示。",
+      "label": "对话标题",
+      "save": "保存",
+      "cancel": "取消",
+      "saving": "正在保存"
+    },
+    "delete": {
+      "action": "删除 {{title}}",
+      "title": "删除对话",
+      "description": "删除「{{title}}」后不可恢复，对话内的消息记录将一并消失。",
+      "confirm": "删除",
+      "cancel": "取消",
+      "deleting": "正在删除"
+    },
+    "messagesUnavailableTitle": "消息功能未接入",
+    "messagesUnavailableDescription": "发送提问与流式回答将在后续版本接入；当前可以新建、重命名和删除对话。",
+    "notFoundTitle": "对话不存在或已删除",
+    "notFoundDescription": "这个地址没有对应的对话，或对话已被删除。",
+    "backToList": "返回对话列表"
+  },
+  "settings": {
+    "title": "设置",
+    "profile": {
+      "sectionTitle": "档案",
+      "sectionDescription": "角色与自我介绍会在新建自由对话时注入，让回答贴合你的水平；修改只影响之后的新对话，不追溯历史对话。",
+      "roleLegend": "我的角色",
+      "role": {
+        "STUDENT": "学生",
+        "DEVELOPER": "程序员",
+        "OFFICE_WORKER": "职场人",
+        "OTHER": "其他"
+      },
+      "aboutMeLabel": "自我介绍",
+      "aboutMePlaceholder": "用一两句话介绍你的背景和学习目标，例如：三年后端，正在补操作系统基础。",
+      "charCount": "{{count}}/200",
+      "save": "保存档案",
+      "saving": "正在保存",
+      "savedFeedback": "档案已保存",
+      "loading": "正在读取档案",
+      "errorTitle": "档案暂时无法读取",
+      "retry": "重试"
+    }
   }
 }

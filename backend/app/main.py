@@ -25,10 +25,12 @@ from app.agents.summary import build_summary_graph
 from app.api import (
     audio_imports,
     capture_batches,
+    chat_sessions,
     courses,
     document_imports,
     knowledge_points,
     processing_jobs,
+    profile,
     quizzes,
     recording_sessions,
     records,
@@ -240,6 +242,8 @@ def create_app(
     app.include_router(recording_sessions.router)
     app.include_router(records.router)
     app.include_router(text_captures.router)
+    app.include_router(chat_sessions.router)
+    app.include_router(profile.router)
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(  # pyright: ignore[reportUnusedFunction]

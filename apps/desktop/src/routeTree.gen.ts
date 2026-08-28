@@ -11,7 +11,10 @@
 import { Route as rootRouteImport } from "./pages/__root";
 import { Route as IndexRouteImport } from "./pages/index";
 import { Route as InboxRouteImport } from "./pages/inbox";
+import { Route as SettingsRouteImport } from "./pages/settings";
 import { Route as SpacesRouteImport } from "./pages/spaces";
+import { Route as ChatIndexRouteImport } from "./pages/chat.index";
+import { Route as ChatSessionIdRouteImport } from "./pages/chat.$sessionId";
 import { Route as RecordsRecordIdRouteImport } from "./pages/records.$recordId";
 import { Route as SpacesIndexRouteImport } from "./pages/spaces.index";
 import { Route as SpacesCourseIdRouteImport } from "./pages/spaces.$courseId";
@@ -26,9 +29,24 @@ const InboxRoute = InboxRouteImport.update({
   path: "/inbox",
   getParentRoute: () => rootRouteImport,
 } as any);
+const SettingsRoute = SettingsRouteImport.update({
+  id: "/settings",
+  path: "/settings",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const SpacesRoute = SpacesRouteImport.update({
   id: "/spaces",
   path: "/spaces",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ChatIndexRoute = ChatIndexRouteImport.update({
+  id: "/chat/",
+  path: "/chat/",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
+  id: "/chat/$sessionId",
+  path: "/chat/$sessionId",
   getParentRoute: () => rootRouteImport,
 } as any);
 const RecordsRecordIdRoute = RecordsRecordIdRouteImport.update({
@@ -50,25 +68,34 @@ const SpacesCourseIdRoute = SpacesCourseIdRouteImport.update({
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
+  "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
+  "/chat/$sessionId": typeof ChatSessionIdRoute;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
+  "/chat/": typeof ChatIndexRoute;
   "/spaces/": typeof SpacesIndexRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
+  "/settings": typeof SettingsRoute;
+  "/chat/$sessionId": typeof ChatSessionIdRoute;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
+  "/chat": typeof ChatIndexRoute;
   "/spaces": typeof SpacesIndexRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
+  "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
+  "/chat/$sessionId": typeof ChatSessionIdRoute;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
+  "/chat/": typeof ChatIndexRoute;
   "/spaces/": typeof SpacesIndexRoute;
 }
 export interface FileRouteTypes {
@@ -76,27 +103,44 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/inbox"
+    | "/settings"
     | "/spaces"
+    | "/chat/$sessionId"
     | "/records/$recordId"
     | "/spaces/$courseId"
+    | "/chat/"
     | "/spaces/";
   fileRoutesByTo: FileRoutesByTo;
-  to: "/" | "/inbox" | "/records/$recordId" | "/spaces/$courseId" | "/spaces";
+  to:
+    | "/"
+    | "/inbox"
+    | "/settings"
+    | "/chat/$sessionId"
+    | "/records/$recordId"
+    | "/spaces/$courseId"
+    | "/chat"
+    | "/spaces";
   id:
     | "__root__"
     | "/"
     | "/inbox"
+    | "/settings"
     | "/spaces"
+    | "/chat/$sessionId"
     | "/records/$recordId"
     | "/spaces/$courseId"
+    | "/chat/"
     | "/spaces/";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   InboxRoute: typeof InboxRoute;
+  SettingsRoute: typeof SettingsRoute;
   SpacesRoute: typeof SpacesRouteWithChildren;
+  ChatSessionIdRoute: typeof ChatSessionIdRoute;
   RecordsRecordIdRoute: typeof RecordsRecordIdRoute;
+  ChatIndexRoute: typeof ChatIndexRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -115,11 +159,32 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof InboxRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/settings": {
+      id: "/settings";
+      path: "/settings";
+      fullPath: "/settings";
+      preLoaderRoute: typeof SettingsRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/spaces": {
       id: "/spaces";
       path: "/spaces";
       fullPath: "/spaces";
       preLoaderRoute: typeof SpacesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/chat/": {
+      id: "/chat/";
+      path: "/chat";
+      fullPath: "/chat/";
+      preLoaderRoute: typeof ChatIndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/chat/$sessionId": {
+      id: "/chat/$sessionId";
+      path: "/chat/$sessionId";
+      fullPath: "/chat/$sessionId";
+      preLoaderRoute: typeof ChatSessionIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/records/$recordId": {
@@ -162,8 +227,11 @@ const SpacesRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InboxRoute: InboxRoute,
+  SettingsRoute: SettingsRoute,
   SpacesRoute: SpacesRouteWithChildren,
+  ChatSessionIdRoute: ChatSessionIdRoute,
   RecordsRecordIdRoute: RecordsRecordIdRoute,
+  ChatIndexRoute: ChatIndexRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

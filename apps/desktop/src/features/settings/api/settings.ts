@@ -34,9 +34,7 @@ export const settingsApi = {
     apiFetch<components["schemas"]["PreferencesOut"]>(
       "/api/settings/preferences",
     ),
-  updatePreferences: (
-    body: components["schemas"]["PreferencesUpdate"],
-  ) =>
+  updatePreferences: (body: components["schemas"]["PreferencesUpdate"]) =>
     apiFetch<components["schemas"]["PreferencesOut"]>(
       "/api/settings/preferences",
       { method: "PUT", body: JSON.stringify(body) },

@@ -6,6 +6,16 @@ export const TEST_LAUNCH_TOKEN = "test-launch-token";
 export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
   http.get(`${TEST_SIDECAR_URL}/api/inbox`, () => HttpResponse.json([])),
+  http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+    HttpResponse.json([]),
+  ),
+  http.get(`${TEST_SIDECAR_URL}/api/profile`, () =>
+    HttpResponse.json({
+      primary_role: null,
+      about_me: null,
+      updated_at: null,
+    }),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/recording-sessions`, () =>
     HttpResponse.json([]),
   ),
