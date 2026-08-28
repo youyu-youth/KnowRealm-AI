@@ -105,7 +105,7 @@ describe("AI 对话", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("列表按最近更新排序，重命名即时生效", async () => {
+  it("列表按最近更新排序，重命名即时生效且不改变排序", async () => {
     let renamed = false;
     const first = chatSession(FIRST_SESSION_ID, { title: "线程调度答疑" });
     const second = chatSession(SECOND_SESSION_ID, { title: "文件系统速记" });
@@ -113,13 +113,7 @@ describe("AI 对话", () => {
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json(
           renamed
-            ? [
-                chatSession(FIRST_SESSION_ID, {
-                  title: "操作系统答疑",
-                  updated_at: "2026-08-27T09:00:00.000000Z",
-                }),
-                second,
-              ]
+            ? [second, chatSession(FIRST_SESSION_ID, { title: "操作系统答疑" })]
             : [second, first],
         ),
       ),
@@ -128,10 +122,7 @@ describe("AI 对话", () => {
         () => {
           renamed = true;
           return HttpResponse.json(
-            chatSession(FIRST_SESSION_ID, {
-              title: "操作系统答疑",
-              updated_at: "2026-08-27T09:00:00.000000Z",
-            }),
+            chatSession(FIRST_SESSION_ID, { title: "操作系统答疑" }),
           );
         },
       ),
@@ -155,6 +146,9 @@ describe("AI 对话", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findByText("操作系统答疑")).toBeVisible();
+    const updatedRows = screen.getAllByRole("listitem");
+    expect(updatedRows[0]).toHaveTextContent("文件系统速记");
+    expect(updatedRows[1]).toHaveTextContent("操作系统答疑");
     expect(screen.queryByText("线程调度答疑")).not.toBeInTheDocument();
   });
 

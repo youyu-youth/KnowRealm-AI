@@ -144,7 +144,7 @@ async def test_create_free_chat_after_profile_snapshots_role_and_about_me(
 
 
 @pytest.mark.anyio
-async def test_list_orders_by_updated_at_desc_and_rename_moves_session_to_top(
+async def test_list_orders_by_updated_at_desc_and_rename_keeps_position(
     tmp_path: Path,
 ) -> None:
     async with running_chat_app(tmp_path) as (_app, client):
@@ -161,9 +161,10 @@ async def test_list_orders_by_updated_at_desc_and_rename_moves_session_to_top(
         assert renamed.status_code == 200
         assert renamed.json()["title"] == "操作系统答疑"
 
+        # 重命名只改标题，不推进 updated_at：列表"最近更新"仍是会话活跃度。
         after_rename = await client.get("/api/chat-sessions")
-        assert [item["id"] for item in after_rename.json()] == [first["id"], second["id"]]
-        assert after_rename.json()[0]["title"] == "操作系统答疑"
+        assert [item["id"] for item in after_rename.json()] == [second["id"], first["id"]]
+        assert after_rename.json()[1]["title"] == "操作系统答疑"
 
 
 @pytest.mark.anyio

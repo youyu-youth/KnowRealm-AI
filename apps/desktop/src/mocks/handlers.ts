@@ -13,7 +13,6 @@ export const handlers = [
     HttpResponse.json({
       primary_role: null,
       about_me: null,
-      updated_at: null,
     }),
   ),
   http.get(`${TEST_SIDECAR_URL}/api/recording-sessions`, () =>

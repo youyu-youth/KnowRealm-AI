@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MessageSquarePlus } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -21,7 +20,6 @@ export function NewChatButton({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [error, setError] = useState("");
 
   const createSession = useMutation({
     mutationFn: () => chatApi.create(),
@@ -32,19 +30,13 @@ export function NewChatButton({
         params: { sessionId: session.id },
       });
     },
-    onError: (createError: Error) => {
-      setError(createError.message);
-    },
   });
 
   return (
     <div className="flex flex-col gap-2">
       <Button
         variant={variant}
-        onClick={() => {
-          setError("");
-          createSession.mutate();
-        }}
+        onClick={() => createSession.mutate()}
         disabled={createSession.isPending}
       >
         {createSession.isPending ? (
@@ -54,9 +46,9 @@ export function NewChatButton({
         )}
         {t(labelKey)}
       </Button>
-      {error ? (
+      {createSession.isError ? (
         <Alert variant="destructive" className="w-auto">
-          <AlertDescription>{error}</AlertDescription>
+          <AlertDescription>{createSession.error.message}</AlertDescription>
         </Alert>
       ) : null}
     </div>

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,10 +40,10 @@ async def list_chat_sessions(
 
 @router.get("/{session_id}", response_model=ChatSessionOut)
 async def get_chat_session(
-    session_id: str,
+    session_id: UUID,
     session: AsyncSession = Depends(get_db),
 ) -> ChatSessionOut:
-    chat = await ChatSessionService.get(session, session_id)
+    chat = await ChatSessionService.get(session, str(session_id))
     if chat is None:
         raise HTTPException(status_code=404, detail="对话不存在或已删除")
     return ChatSessionOut.model_validate(chat)
@@ -49,11 +51,11 @@ async def get_chat_session(
 
 @router.patch("/{session_id}", response_model=ChatSessionOut)
 async def rename_chat_session(
-    session_id: str,
+    session_id: UUID,
     payload: ChatSessionRename,
     session: AsyncSession = Depends(get_db),
 ) -> ChatSessionOut:
-    chat = await ChatSessionService.rename(session, session_id, payload.title)
+    chat = await ChatSessionService.rename(session, str(session_id), payload.title)
     if chat is None:
         raise HTTPException(status_code=404, detail="对话不存在或已删除")
     return ChatSessionOut.model_validate(chat)
@@ -61,9 +63,9 @@ async def rename_chat_session(
 
 @router.delete("/{session_id}", status_code=204, response_class=Response, response_model=None)
 async def delete_chat_session(
-    session_id: str,
+    session_id: UUID,
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    if not await ChatSessionService.soft_delete(session, session_id):
+    if not await ChatSessionService.soft_delete(session, str(session_id)):
         raise HTTPException(status_code=404, detail="对话不存在或已删除")
     return Response(status_code=204)

@@ -87,7 +87,11 @@ function ChatSessionRow({
           })}
         </time>
       </Link>
-      <RenameChatDialog sessionId={session.id} title={title} />
+      <RenameChatDialog
+        sessionId={session.id}
+        displayTitle={title}
+        hasCustomTitle={session.title !== null}
+      />
       <DeleteChatDialog
         sessionId={session.id}
         title={title}
@@ -99,10 +103,12 @@ function ChatSessionRow({
 
 function RenameChatDialog({
   sessionId,
-  title,
+  displayTitle,
+  hasCustomTitle,
 }: {
   sessionId: string;
-  title: string;
+  displayTitle: string;
+  hasCustomTitle: boolean;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -113,9 +119,8 @@ function RenameChatDialog({
     mutationFn: (nextTitle: string) => chatApi.rename(sessionId, nextTitle),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
-      queryClient.removeQueries({
+      await queryClient.invalidateQueries({
         queryKey: chatKeys.detail(sessionId),
-        exact: true,
       });
       setOpen(false);
     },
@@ -124,7 +129,8 @@ function RenameChatDialog({
   function handleOpenChange(nextOpen: boolean) {
     if (renameSession.isPending) return;
     if (!nextOpen) renameSession.reset();
-    setDraftTitle(nextOpen ? (title === t("chat.untitled") ? "" : title) : "");
+    // 只有用户重命名过的标题才回填编辑框；默认"新对话"从空开始。
+    setDraftTitle(nextOpen && hasCustomTitle ? displayTitle : "");
     setOpen(nextOpen);
   }
 
@@ -138,7 +144,7 @@ function RenameChatDialog({
           <Button
             variant="ghost"
             size="sm"
-            aria-label={t("chat.rename.action", { title })}
+            aria-label={t("chat.rename.action", { title: displayTitle })}
           />
         }
       >

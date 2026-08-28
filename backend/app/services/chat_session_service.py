@@ -88,8 +88,8 @@ class ChatSessionService:
             chat = await ChatSessionService.get(session, session_id)
             if chat is None:
                 return None
+            # 重命名只改展示标题，不推进 updated_at：列表"最近更新"语义 = 会话活跃度（消息往来）。
             chat.title = title
-            chat.updated_at = utcnow()
             await session.flush()
             return chat
 

@@ -16,3 +16,9 @@
 - [x] OpenAPI → api-types 生成物同步
 - [x] 后端测试（ASGITransport + 完整迁移重放）与前端测试（MSW + getByRole）齐备
 - [ ] 人工：档案表单交互与空态引导文案
+
+**实现决策补记（评审后定案）：**
+
+- 设置页此前不存在（`features/settings/` 仅有 API 层），本票为承载"档案"区块新建了 `/settings` 路由与左栏"设置"入口——即 plan 13 的 P0-05 设置页框架以最小形态提前落地，后续偏好分区在该页扩展。
+- 重命名只改 `title`，不推进 `chat_sessions.updated_at`：列表"最近更新"语义固定为会话活跃度（消息往来，工单 02 发送消息时推进），改名不把旧对话顶到首位。
+- `ProfileOut` 严格只暴露 `primary_role` 与 `about_me` 两字段（工单原文"只暴露两字段"），不含 `updated_at` 等元数据。

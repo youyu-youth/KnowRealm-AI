@@ -1,7 +1,6 @@
-from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PrimaryRole(StrEnum):
@@ -12,20 +11,12 @@ class PrimaryRole(StrEnum):
 
 
 class ProfileOut(BaseModel):
-    """档案读取/保存结果；未建档时字段均为 None（空档案语义）。"""
+    """档案读取/保存结果，只暴露角色与自我介绍；未建档时字段均为 None（空档案语义）。"""
 
     model_config = ConfigDict(from_attributes=True)
 
     primary_role: PrimaryRole | None = Field(default=None, description="用户角色，未建档为空")
     about_me: str | None = Field(default=None, description="自我介绍，未建档为空")
-    updated_at: datetime | None = Field(default=None, description="最近更新时间，未建档为空")
-
-    @field_serializer("updated_at")
-    def serialize_utc(self, value: datetime | None) -> str | None:
-        if value is None:
-            return None
-        utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-        return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 class ProfileUpdate(BaseModel):

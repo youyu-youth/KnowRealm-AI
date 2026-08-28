@@ -85,9 +85,9 @@ export function SettingsPage() {
         <p className="max-w-reading text-body text-muted-foreground">
           {t("settings.profile.sectionDescription")}
         </p>
-        {/* key 随档案更新时间变化：保存成功并重取后表单以最新档案重挂载，回显服务端事实。 */}
+        {/* key 随服务端档案内容变化：保存成功并重取后表单以最新档案重挂载，回显服务端事实。 */}
         <ProfileForm
-          key={profile.data.updated_at ?? "empty"}
+          key={`${profile.data.primary_role ?? "none"}|${profile.data.about_me ?? ""}`}
           initial={profile.data}
         />
       </div>

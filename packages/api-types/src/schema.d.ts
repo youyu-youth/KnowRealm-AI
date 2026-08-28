@@ -1352,7 +1352,7 @@ export interface components {
         ProcessingJobWaitingReason: "CONSENT_REQUIRED" | "ASR_KEY_REQUIRED" | "OFFLINE";
         /**
          * ProfileOut
-         * @description 档案读取/保存结果；未建档时字段均为 None（空档案语义）。
+         * @description 档案读取/保存结果，只暴露角色与自我介绍；未建档时字段均为 None（空档案语义）。
          */
         ProfileOut: {
             /**
@@ -1362,11 +1362,6 @@ export interface components {
             about_me?: string | null;
             /** @description 用户角色，未建档为空 */
             primary_role?: components["schemas"]["PrimaryRole"] | null;
-            /**
-             * Updated At
-             * @description 最近更新时间，未建档为空
-             */
-            updated_at?: string | null;
         };
         /** ProfileUpdate */
         ProfileUpdate: {

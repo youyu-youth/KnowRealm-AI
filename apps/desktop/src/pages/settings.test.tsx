@@ -67,7 +67,6 @@ describe("设置页档案区块", () => {
     const stored: ProfileOut = {
       primary_role: "DEVELOPER",
       about_me: "三年后端，正在补操作系统基础",
-      updated_at: "2026-08-27T08:00:00.000000Z",
     };
     const bodies: object[] = [];
     server.use(
@@ -79,7 +78,6 @@ describe("设置页档案区块", () => {
         return HttpResponse.json({
           primary_role: "STUDENT",
           about_me: "正在学 Rust",
-          updated_at: "2026-08-27T09:00:00.000000Z",
         });
       }),
     );

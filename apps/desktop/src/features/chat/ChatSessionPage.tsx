@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Construction } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Empty,
@@ -14,6 +15,7 @@ import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
 import { ChatSessionList } from "@/features/chat/ChatSessionList";
 import { NewChatButton } from "@/features/chat/NewChatButton";
+import { ApiError } from "@/services/http/client";
 
 export function ChatSessionPage() {
   const { t } = useTranslation();
@@ -70,22 +72,40 @@ export function ChatSessionPage() {
             {t("chat.loading")}
           </p>
         ) : detail.isError ? (
-          <Empty className="border-border items-start rounded-none border-t p-0 pt-8 text-start">
-            <EmptyHeader className="items-start text-start">
+          detail.error instanceof ApiError && detail.error.status === 404 ? (
+            <Empty className="border-border items-start rounded-none border-t p-0 pt-8 text-start">
+              <EmptyHeader className="items-start text-start">
+                <h2 className="text-section font-section text-ink">
+                  {t("chat.notFoundTitle")}
+                </h2>
+                <EmptyDescription className="max-w-reading text-body text-start">
+                  {t("chat.notFoundDescription")}
+                </EmptyDescription>
+              </EmptyHeader>
+              <Link
+                to="/chat"
+                className="text-body text-primary hover:text-primary-hover focus-visible:ring-ring/40 rounded-sm focus-visible:ring-3"
+              >
+                {t("chat.backToList")}
+              </Link>
+            </Empty>
+          ) : (
+            <div role="alert">
               <h2 className="text-section font-section text-ink">
-                {t("chat.notFoundTitle")}
+                {t("chat.errorTitle")}
               </h2>
-              <EmptyDescription className="max-w-reading text-body text-start">
-                {t("chat.notFoundDescription")}
-              </EmptyDescription>
-            </EmptyHeader>
-            <Link
-              to="/chat"
-              className="text-body text-primary hover:text-primary-hover focus-visible:ring-ring/40 rounded-sm focus-visible:ring-3"
-            >
-              {t("chat.backToList")}
-            </Link>
-          </Empty>
+              <p className="max-w-reading text-body text-muted-foreground mt-2">
+                {detail.error.message}
+              </p>
+              <Button
+                variant="outline"
+                className="mt-5"
+                onClick={() => void detail.refetch()}
+              >
+                {t("chat.retry")}
+              </Button>
+            </div>
+          )
         ) : (
           <article
             aria-label={t("chat.detailLabel", {

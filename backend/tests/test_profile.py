@@ -44,11 +44,7 @@ async def test_read_profile_before_setup_returns_empty_semantics(tmp_path: Path)
         response = await client.get("/api/profile")
 
         assert response.status_code == 200
-        assert response.json() == {
-            "primary_role": None,
-            "about_me": None,
-            "updated_at": None,
-        }
+        assert response.json() == {"primary_role": None, "about_me": None}
         assert await profile_row_count(tmp_path) == 0
 
 
@@ -61,9 +57,10 @@ async def test_save_profile_persists_single_row_and_echoes(tmp_path: Path) -> No
         )
         assert saved.status_code == 200
         body = saved.json()
-        assert body["primary_role"] == "DEVELOPER"
-        assert body["about_me"] == "三年后端，正在补操作系统基础"
-        assert body["updated_at"] is not None
+        assert body == {
+            "primary_role": "DEVELOPER",
+            "about_me": "三年后端，正在补操作系统基础",
+        }
 
         reread = await client.get("/api/profile")
         assert reread.status_code == 200
