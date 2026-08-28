@@ -177,7 +177,7 @@ async def _session_context(
 
 
 def _cited_excerpts(raw: str | None, record_id: str | None) -> tuple[str, ...]:
-    """消费 citations_json 的 record_id/quote；引用生成与展示由 Issue 04 接入。"""
+    """消费 citations_json 的 quote（限本记录、≤80 字），供长转写时回喂近三轮引用摘录。"""
     if raw is None or record_id is None:
         return ()
     try:
@@ -240,6 +240,15 @@ class ChatMessageService:
                 chat = await ChatSessionService.get(session, session_id)
                 if chat is None:
                     raise HTTPException(status_code=404, detail="对话不存在或已删除")
+                if (
+                    chat.record_id is not None
+                    and (await RecordService.get(session, chat.record_id)) is None
+                ):
+                    # 失效态运行时推导：挂载记录软删后发送被拒，会话只读。
+                    raise HTTPException(
+                        status_code=409,
+                        detail="CHAT_RECORD_UNAVAILABLE：原记录已删除，对话已失效",
+                    )
                 last = await _last_message(session, session_id)
                 if last is not None and last.role == ChatRole.USER:
                     # 补答：会话末尾是无回复的 user 消息，复用原行重新生成，不重复落库。

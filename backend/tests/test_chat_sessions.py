@@ -14,6 +14,7 @@ from app.main import create_app
 from app.models.base import utcnow
 from app.models.document import Transcript
 from app.services.chat_session_service import NEUTRAL_PROFILE_SNAPSHOT
+from app.services.local_config import save_llm_provider
 
 TOKEN = "test-launch-token"
 
@@ -284,3 +285,49 @@ async def test_create_rejects_unsupported_mode_and_rename_validates_title(
             json={"title": "不存在的会话"},
         )
         assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_deleted_mount_record_marks_session_invalid_and_rejects_send(
+    tmp_path: Path,
+) -> None:
+    # accept 先校验供应商，需已配置才能走到失效态校验。
+    save_llm_provider(
+        tmp_path,
+        base_url="https://stub.example.com/v1",
+        api_key="sk-test",
+        model="stub-chat-model",
+        clear_api_key=False,
+    )
+    async with running_chat_app(tmp_path) as (_app, client):
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "原始内容"}
+        )
+        record_id = capture.json()["record_id"]
+        free = await client.post("/api/chat-sessions", json={})
+        assert free.json()["record_deleted"] is False
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+        assert created.json()["record_deleted"] is False
+
+        deleted = await client.delete(f"/api/records/{record_id}")
+        assert deleted.status_code == 204
+
+        # 列表与详情标记失效；自由聊天不受影响；会话保留可读。
+        listed = await client.get("/api/chat-sessions")
+        by_id = {item["id"]: item for item in listed.json()}
+        assert by_id[session_id]["record_deleted"] is True
+        assert by_id[free.json()["id"]]["record_deleted"] is False
+        detail = await client.get(f"/api/chat-sessions/{session_id}")
+        assert detail.status_code == 200
+        assert detail.json()["record_deleted"] is True
+        history = await client.get(f"/api/chat-sessions/{session_id}/messages")
+        assert history.status_code == 200
+
+        # 失效会话发送返回语义化冲突错误，不落 user 行。
+        rejected = await client.post(
+            f"/api/chat-sessions/{session_id}/messages", json={"content": "还能问吗"}
+        )
+        assert rejected.status_code == 409
+        assert "CHAT_RECORD_UNAVAILABLE" in rejected.json()["detail"]
+        assert await message_rows(tmp_path, session_id) == []

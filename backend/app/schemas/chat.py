@@ -82,6 +82,9 @@ class ChatSessionOut(BaseModel):
     title: str | None = Field(default=None, description="会话标题，未重命名时为空")
     record_id: str | None = Field(default=None, description="挂载的学习记录，自由聊天为空")
     course_id: str | None = Field(default=None, description="挂载记录所属课程，自由聊天为空")
+    record_deleted: bool = Field(
+        default=False, description="挂载记录已软删（运行时推导，无失效列），会话只读"
+    )
     created_at: datetime
     updated_at: datetime
 

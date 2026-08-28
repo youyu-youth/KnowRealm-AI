@@ -10,7 +10,7 @@ from app.models.course import Course
 from app.models.document import Transcript
 from app.models.profile import PROFILE_ID, Profile
 from app.models.record import Record
-from app.schemas.chat import ChatMode, ChatRecordOption, ChatRole
+from app.schemas.chat import ChatMode, ChatRecordOption, ChatRole, ChatSessionOut
 from app.schemas.profile import PrimaryRole
 from app.services.record_service import RecordService
 
@@ -105,6 +105,39 @@ class ChatSessionService:
                 )
             await session.flush()
             return chat
+
+    @staticmethod
+    def to_out(chat: ChatSession, *, record_deleted: bool = False) -> ChatSessionOut:
+        """失效态由记录软删标记运行时推导（无失效列）：挂载记录不存在或已软删即失效。"""
+        out = ChatSessionOut.model_validate(chat)
+        out.record_deleted = record_deleted
+        return out
+
+    @staticmethod
+    async def list_out(session: AsyncSession) -> list[ChatSessionOut]:
+        rows = (
+            await session.execute(
+                select(ChatSession, Record.deleted_at)
+                .outerjoin(Record, Record.id == ChatSession.record_id)
+                .where(ChatSession.deleted_at.is_(None))
+                .order_by(ChatSession.updated_at.desc())
+            )
+        ).all()
+        return [
+            ChatSessionService.to_out(chat, record_deleted=deleted_at is not None)
+            for chat, deleted_at in rows
+        ]
+
+    @staticmethod
+    async def get_out(session: AsyncSession, session_id: str) -> ChatSessionOut | None:
+        chat = await ChatSessionService.get(session, session_id)
+        if chat is None:
+            return None
+        record_deleted = (
+            chat.record_id is not None
+            and (await RecordService.get(session, chat.record_id)) is None
+        )
+        return ChatSessionService.to_out(chat, record_deleted=record_deleted)
 
     @staticmethod
     async def list(session: AsyncSession) -> list[ChatSession]:

@@ -39,15 +39,15 @@ async def create_chat_session(
     chat = await ChatSessionService.create(
         session, record_id=str(payload.record_id) if payload.record_id is not None else None
     )
-    return ChatSessionOut.model_validate(chat)
+    # 创建时挂载记录已校验存活，失效态恒为 False。
+    return ChatSessionService.to_out(chat)
 
 
 @router.get("", response_model=list[ChatSessionOut])
 async def list_chat_sessions(
     session: AsyncSession = Depends(get_db),
 ) -> list[ChatSessionOut]:
-    chats = await ChatSessionService.list(session)
-    return [ChatSessionOut.model_validate(chat) for chat in chats]
+    return await ChatSessionService.list_out(session)
 
 
 @router.get("/record-options", response_model=list[ChatRecordOption])
@@ -62,10 +62,10 @@ async def get_chat_session(
     session_id: UUID,
     session: AsyncSession = Depends(get_db),
 ) -> ChatSessionOut:
-    chat = await ChatSessionService.get(session, str(session_id))
+    chat = await ChatSessionService.get_out(session, str(session_id))
     if chat is None:
         raise HTTPException(status_code=404, detail="对话不存在或已删除")
-    return ChatSessionOut.model_validate(chat)
+    return chat
 
 
 @router.patch("/{session_id}", response_model=ChatSessionOut)
@@ -74,10 +74,13 @@ async def rename_chat_session(
     payload: ChatSessionRename,
     session: AsyncSession = Depends(get_db),
 ) -> ChatSessionOut:
-    chat = await ChatSessionService.rename(session, str(session_id), payload.title)
-    if chat is None:
+    renamed = await ChatSessionService.rename(session, str(session_id), payload.title)
+    if renamed is None:
         raise HTTPException(status_code=404, detail="对话不存在或已删除")
-    return ChatSessionOut.model_validate(chat)
+    out = await ChatSessionService.get_out(session, str(session_id))
+    if out is None:
+        raise HTTPException(status_code=404, detail="对话不存在或已删除")
+    return out
 
 
 @router.delete("/{session_id}", status_code=204, response_class=Response, response_model=None)
