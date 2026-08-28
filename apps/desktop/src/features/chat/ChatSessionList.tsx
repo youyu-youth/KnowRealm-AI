@@ -78,14 +78,21 @@ function ChatSessionRow({
         >
           {title}
         </span>
-        <time
-          dateTime={session.updated_at}
-          className="text-label text-muted-foreground mt-1 block"
-        >
-          {t("chat.updatedAt", {
-            time: chatDateFormatter.format(new Date(session.updated_at)),
-          })}
-        </time>
+        <span className="mt-1 flex flex-wrap items-center gap-2">
+          {session.record_deleted ? (
+            <span className="text-label bg-destructive/10 text-destructive font-label rounded-xs px-2 py-0.5">
+              {t("chat.recordDeleted")}
+            </span>
+          ) : null}
+          <time
+            dateTime={session.updated_at}
+            className="text-label text-muted-foreground"
+          >
+            {t("chat.updatedAt", {
+              time: chatDateFormatter.format(new Date(session.updated_at)),
+            })}
+          </time>
+        </span>
       </Link>
       <RenameChatDialog
         sessionId={session.id}

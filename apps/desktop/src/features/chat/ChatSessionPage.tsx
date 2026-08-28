@@ -126,13 +126,18 @@ export function ChatSessionPage() {
             })}
             className="flex h-full min-h-0 flex-col"
           >
-            <header className="shrink-0">
+            <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2">
               <h1
                 className="text-headline font-headline text-ink-strong break-words"
                 title={detail.data.title ?? t("chat.untitled")}
               >
                 {detail.data.title ?? t("chat.untitled")}
               </h1>
+              {detail.data.record_deleted ? (
+                <span className="text-label bg-destructive/10 text-destructive font-label rounded-xs px-2 py-0.5">
+                  {t("chat.recordDeleted")}
+                </span>
+              ) : null}
             </header>
             <div className="mt-6 flex min-h-0 flex-1 flex-col">
               {provider.isPending ? null : (
@@ -141,6 +146,7 @@ export function ChatSessionPage() {
                   providerHasApiKey={
                     provider.data?.provider?.has_api_key ?? false
                   }
+                  recordDeleted={detail.data.record_deleted}
                   messages={messages}
                   stream={{
                     isStreaming,
@@ -165,6 +171,7 @@ export function ChatSessionPage() {
 type ChatConversationProps = {
   providerReady: boolean;
   providerHasApiKey: boolean;
+  recordDeleted: boolean;
   messages: UseQueryResult<ChatMessage[], Error>;
   stream: ReturnType<typeof useChatStream>;
 };
@@ -173,6 +180,7 @@ type ChatConversationProps = {
 function ChatConversation({
   providerReady,
   providerHasApiKey,
+  recordDeleted,
   messages,
   stream,
 }: ChatConversationProps) {
@@ -209,7 +217,10 @@ function ChatConversation({
         />
       )}
       <ChatComposer
-        disabled={messages.isPending}
+        disabled={messages.isPending || recordDeleted}
+        disabledHint={
+          recordDeleted ? t("chat.composer.recordDeletedHint") : undefined
+        }
         isStreaming={isStreaming}
         onSend={send}
         onStop={stop}

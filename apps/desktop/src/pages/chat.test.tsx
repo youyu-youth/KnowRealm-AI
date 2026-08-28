@@ -702,3 +702,65 @@ describe("挂载对话引用", () => {
     expect(screen.queryByRole("list", { name: "引用来源" })).toBeNull();
   });
 });
+
+describe("挂载会话失效态", () => {
+  const RECORD_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+
+  it("列表对失效会话显示原记录已删除标记", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([
+          chatSession(FIRST_SESSION_ID, {
+            title: "失效会话",
+            record_id: RECORD_ID,
+            record_deleted: true,
+          }),
+          chatSession(SECOND_SESSION_ID, { title: "正常会话" }),
+        ]),
+      ),
+    );
+    renderAt("/chat");
+
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("原记录已删除");
+    expect(rows[1]).not.toHaveTextContent("原记录已删除");
+  });
+
+  it("会话页保留可读历史，输入区禁用并说明原因", async () => {
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: RECORD_ID,
+      record_deleted: true,
+    });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            SYSTEM_ROW,
+            messageRow("user-row", "USER", "旧提问"),
+            messageRow("assistant-row", "ASSISTANT", "旧回答", "stub"),
+          ]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    // 历史仍可读；头部与侧栏列表各有一个失效标记。
+    expect(await screen.findByText("旧提问")).toBeVisible();
+    expect(screen.getByText("旧回答")).toBeVisible();
+    expect(screen.getAllByText("原记录已删除")).toHaveLength(2);
+
+    const input = screen.getByRole("textbox", { name: "提问输入框" });
+    expect(input).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+    expect(
+      screen.getByText("原记录已删除，对话已失效，无法继续发送。"),
+    ).toBeVisible();
+  });
+});
