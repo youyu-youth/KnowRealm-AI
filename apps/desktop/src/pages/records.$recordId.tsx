@@ -3,6 +3,7 @@ import { RecordDetailPage } from "@/features/records/components/RecordDetailPage
 
 type RecordDetailSearch = {
   tab?: "transcript" | "knowledge-points" | "quiz" | "todo";
+  highlight?: string;
 };
 
 export const Route = createFileRoute("/records/$recordId")({
@@ -13,18 +14,22 @@ export const Route = createFileRoute("/records/$recordId")({
     search.tab === "todo"
       ? { tab: search.tab }
       : {}),
+    ...(typeof search.highlight === "string" && search.highlight
+      ? { highlight: search.highlight }
+      : {}),
   }),
   component: RecordDetailRoute,
 });
 
 export function RecordDetailRoute() {
   const { recordId } = Route.useParams();
-  const { tab = "summary" } = Route.useSearch();
+  const { tab = "summary", highlight } = Route.useSearch();
   const navigate = Route.useNavigate();
   return (
     <RecordDetailPage
       recordId={recordId}
       tab={tab}
+      highlight={highlight}
       onTabChange={(nextTab) =>
         void navigate({
           to: "/records/$recordId",

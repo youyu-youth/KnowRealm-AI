@@ -3101,3 +3101,51 @@ describe("Todo 页签", () => {
     ).toEqual(["复习进程调度", "查参考资料"]);
   });
 });
+
+describe("转写引用定位", () => {
+  const QUOTE = "MVCC 依赖 undo 日志实现多版本读";
+
+  function renderTranscriptWith(content: string, highlight?: string) {
+    window.Element.prototype.scrollIntoView = vi.fn();
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(record)),
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(`${DETAIL_URL}/transcript`, () =>
+        HttpResponse.json({
+          status: "READY",
+          transcript: {
+            language: "und",
+            content,
+            source_version: 1,
+            edited_by_user: false,
+            updated_at: "2026-08-21T12:00:00.000000Z",
+          },
+        }),
+      ),
+    );
+    const search = highlight
+      ? `?tab=transcript&highlight=${encodeURIComponent(highlight)}`
+      : "?tab=transcript";
+    renderAt(`${ROUTE_PATH}${search}`);
+  }
+
+  it("带 highlight 打开时定位首个匹配并滚动高亮", async () => {
+    renderTranscriptWith(
+      `开头段落。${QUOTE}，写入保留旧版本。结尾段落。`,
+      QUOTE,
+    );
+
+    const mark = await screen.findByText(QUOTE, { selector: "mark" });
+    expect(mark).toBeVisible();
+    expect(window.Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("转写中找不到摘录时提示原文已变动，不高亮", async () => {
+    renderTranscriptWith("转写已被整段改写。", QUOTE);
+
+    expect(
+      await screen.findByText("原文已变动，未能定位引用内容。"),
+    ).toBeVisible();
+    expect(document.querySelector("mark")).toBeNull();
+  });
+});

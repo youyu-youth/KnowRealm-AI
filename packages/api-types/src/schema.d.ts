@@ -1003,6 +1003,27 @@ export interface components {
          * @enum {string}
          */
         CaptureType: "RECORDING" | "AUDIO_IMPORT" | "DOCUMENT_IMPORT" | "MULTI_SOURCE" | "PASTE" | "QUICK_NOTE" | "CLIP";
+        /**
+         * ChatCitationOut
+         * @description 回答引用：正文 [n] 角标对应的一条转写摘录。
+         */
+        ChatCitationOut: {
+            /**
+             * Index
+             * @description 正文角标序号
+             */
+            index: number;
+            /**
+             * Quote
+             * @description 转写原文摘录，不超过 80 字
+             */
+            quote: string;
+            /**
+             * Record Id
+             * @description 被引用的学习记录 ID
+             */
+            record_id: string;
+        };
         /** ChatMessageCreate */
         ChatMessageCreate: {
             /**
@@ -1013,6 +1034,11 @@ export interface components {
         };
         /** ChatMessageOut */
         ChatMessageOut: {
+            /**
+             * Citations
+             * @description 回答引用，无引用为空
+             */
+            citations?: components["schemas"]["ChatCitationOut"][];
             /** Content */
             content: string;
             /** Created At */
@@ -1086,6 +1112,12 @@ export interface components {
             /** Id */
             id: string;
             mode: components["schemas"]["ChatMode"];
+            /**
+             * Record Deleted
+             * @description 挂载记录已软删（运行时推导，无失效列），会话只读
+             * @default false
+             */
+            record_deleted: boolean;
             /**
              * Record Id
              * @description 挂载的学习记录，自由聊天为空

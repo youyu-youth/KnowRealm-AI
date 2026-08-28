@@ -46,6 +46,7 @@ function chatSession(
     title: null,
     record_id: null,
     course_id: null,
+    record_deleted: false,
     created_at: "2026-08-27T08:00:00.000000Z",
     updated_at: "2026-08-27T08:00:00.000000Z",
     ...overrides,
@@ -587,5 +588,117 @@ describe("自由聊天流式", () => {
       screen.getByText("上一条提问的回答被中断，没有保留半截内容。"),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "重新生成回答" })).toBeEnabled();
+  });
+});
+
+describe("挂载对话引用", () => {
+  const RECORD_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const QUOTE = "MVCC 依赖 undo 日志实现多版本读";
+
+  function assistantRowWithCitations() {
+    return {
+      id: "assistant-row",
+      role: "ASSISTANT",
+      content: "MVCC 依赖 undo 日志[1]。",
+      model: "stub-chat-model",
+      citations: [{ index: 1, record_id: RECORD_ID, quote: QUOTE }],
+      created_at: "2026-08-27T08:00:00.000000Z",
+    };
+  }
+
+  function renderMountedSession() {
+    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "MVCC 怎么实现？"),
+            assistantRowWithCitations(),
+          ]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+  }
+
+  it("回答展示角标与引用区，点击跳转记录转写页并携带定位摘录", async () => {
+    renderMountedSession();
+
+    // 角标渲染为子元素，正文按 textContent 整体断言。
+    expect(
+      await screen.findByText(
+        (_, element) =>
+          element?.tagName === "P" &&
+          element.textContent === "MVCC 依赖 undo 日志[1]。",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("list", { name: "引用来源" })).toBeVisible();
+    expect(screen.getByRole("button", { name: `[1] ${QUOTE}` })).toBeVisible();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "查看引用 1 的转写原文" }),
+    );
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/records/${RECORD_ID}`),
+    );
+    const search = new URLSearchParams(window.location.search);
+    expect(search.get("tab")).toBe("transcript");
+    expect(search.get("highlight")).toBe(QUOTE);
+  });
+
+  it("引用区条目同样可点击跳转", async () => {
+    renderMountedSession();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: `[1] ${QUOTE}` }),
+    );
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/records/${RECORD_ID}`),
+    );
+  });
+
+  it("角标无对应引用时保持纯文本，不出现可点击项", async () => {
+    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "再问"),
+            {
+              id: "assistant-row",
+              role: "ASSISTANT",
+              content: "转写里没有对应角标来源[2]。",
+              model: "stub-chat-model",
+              citations: [],
+              created_at: "2026-08-27T08:00:00.000000Z",
+            },
+          ]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    expect(
+      await screen.findByText("转写里没有对应角标来源[2]。"),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /查看引用/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "引用来源" })).toBeNull();
   });
 });

@@ -369,6 +369,8 @@
         "cancelEdit": "取消编辑",
         "conflict": "正文已在其他操作中更新。你的修改尚未覆盖服务端内容。",
         "reload": "载入最新版本",
+        "highlightMissing": "原文已变动，未能定位引用内容。",
+        "highlightLabel": "引用定位",
         "errors": {
           "AUDIO_TRANSCODE_FAILED": "音频规范化或切片失败，请确认原文件可读取后重试。",
           "ASR_AUTH_FAILED": "腾讯云凭据无效，请修正 Provider 配置后重试。",
@@ -769,6 +771,12 @@
     "emptyConversation": "向 AI 提出第一个问题吧",
     "interruptedDescription": "上一条提问的回答被中断，没有保留半截内容。",
     "retryAnswer": "重新生成回答",
+    "recordDeleted": "原记录已删除",
+    "composer.recordDeletedHint": "原记录已删除，对话已失效，无法继续发送。",
+    "citation": {
+      "listLabel": "引用来源",
+      "jump": "查看引用 {{index}} 的转写原文"
+    },
     "provider": {
       "title": "未配置 AI 服务",
       "description": "自由聊天需要先配置一个 OpenAI 兼容的服务商（地址、模型与密钥）；配置保存在本机数据目录，只用于生成回答。",

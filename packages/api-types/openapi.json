@@ -186,6 +186,35 @@
         "title": "CaptureType",
         "type": "string"
       },
+      "ChatCitationOut": {
+        "description": "回答引用：正文 [n] 角标对应的一条转写摘录。",
+        "properties": {
+          "index": {
+            "description": "正文角标序号",
+            "minimum": 1.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "quote": {
+            "description": "转写原文摘录，不超过 80 字",
+            "maxLength": 80,
+            "title": "Quote",
+            "type": "string"
+          },
+          "record_id": {
+            "description": "被引用的学习记录 ID",
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "record_id",
+          "quote"
+        ],
+        "title": "ChatCitationOut",
+        "type": "object"
+      },
       "ChatMessageCreate": {
         "properties": {
           "content": {
@@ -204,6 +233,14 @@
       },
       "ChatMessageOut": {
         "properties": {
+          "citations": {
+            "description": "回答引用，无引用为空",
+            "items": {
+              "$ref": "#/components/schemas/ChatCitationOut"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
           "content": {
             "title": "Content",
             "type": "string"
@@ -351,6 +388,12 @@
           },
           "mode": {
             "$ref": "#/components/schemas/ChatMode"
+          },
+          "record_deleted": {
+            "default": false,
+            "description": "挂载记录已软删（运行时推导，无失效列），会话只读",
+            "title": "Record Deleted",
+            "type": "boolean"
           },
           "record_id": {
             "anyOf": [

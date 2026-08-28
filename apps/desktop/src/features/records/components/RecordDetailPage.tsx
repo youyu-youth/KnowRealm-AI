@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, Pencil } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -41,6 +41,8 @@ export type RecordDetailTab =
 type RecordDetailPageProps = {
   recordId: string;
   tab: RecordDetailTab;
+  /** 引用跳转带来的转写定位摘录；在转写中找不到时提示“原文已变动”。 */
+  highlight?: string;
   onTabChange: (tab: RecordDetailTab) => void;
   onDeleted: (courseId: string | null) => void | Promise<void>;
 };
@@ -58,6 +60,7 @@ const processingStatuses = new Set([
 export function RecordDetailPage({
   recordId,
   tab,
+  highlight,
   onTabChange,
   onDeleted,
 }: RecordDetailPageProps) {
@@ -448,9 +451,10 @@ export function RecordDetailPage({
                   ) : null}
                 </div>
               ) : (
-                <pre className="text-body text-ink font-body mt-4 min-w-0 font-sans break-words whitespace-pre-wrap">
-                  {readyTranscript.content}
-                </pre>
+                <TranscriptView
+                  content={readyTranscript.content}
+                  highlight={tab === "transcript" ? highlight : undefined}
+                />
               )}
             </section>
           ) : jobs.isError || transcript.isError ? (
@@ -515,6 +519,52 @@ export function RecordDetailPage({
         </TabsContent>
       </Tabs>
     </section>
+  );
+}
+
+/** 转写只读视图：带 highlight 时定位首个匹配并滚动高亮；找不到则提示“原文已变动”。 */
+function TranscriptView({
+  content,
+  highlight,
+}: {
+  content: string;
+  highlight?: string;
+}) {
+  const { t } = useTranslation();
+  const markRef = useRef<HTMLElement | null>(null);
+  const position = highlight ? content.indexOf(highlight) : -1;
+
+  useEffect(() => {
+    if (position >= 0) {
+      markRef.current?.scrollIntoView({ block: "center" });
+    }
+  }, [position, highlight]);
+
+  return (
+    <>
+      {highlight && position < 0 ? (
+        <p role="status" className="text-label text-muted-foreground mt-4">
+          {t("record.detail.transcript.highlightMissing")}
+        </p>
+      ) : null}
+      <pre className="text-body text-ink font-body mt-4 min-w-0 font-sans break-words whitespace-pre-wrap">
+        {position >= 0 && highlight ? (
+          <>
+            {content.slice(0, position)}
+            <mark
+              ref={markRef}
+              className="bg-learning-soft text-ink rounded-xs"
+              aria-label={t("record.detail.transcript.highlightLabel")}
+            >
+              {highlight}
+            </mark>
+            {content.slice(position + highlight.length)}
+          </>
+        ) : (
+          content
+        )}
+      </pre>
+    </>
   );
 }
 
