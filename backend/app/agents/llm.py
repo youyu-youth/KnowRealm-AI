@@ -167,11 +167,65 @@ class OpenAiCompatibleTodoModel(_OpenAiCompatibleStructuredModel):
         super().__init__(TodoBatch)
 
 
+def build_chat_model(
+    provider: LlmProviderConfig,
+    http_client: openai.DefaultAsyncHttpxClient,
+) -> ChatOpenAI:
+    """自由聊天流式模型：供应商卡自选 OpenAI 兼容端点，stream_usage 让末块带用量。"""
+    return ChatOpenAI(
+        model=provider.model,
+        base_url=provider.base_url,
+        api_key=SecretStr(provider.api_key),
+        timeout=90,
+        max_retries=0,
+        http_async_client=http_client,
+        stream_usage=True,
+    )
+
+
 @dataclass(frozen=True)
 class _StructuredCallResult:
     content: BaseModel
     token_usage: dict[str, object]
     latency_ms: int
+
+
+async def write_llm_call_log(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    graph_name: str,
+    graph_node: str,
+    model: str,
+    prompt_version: str,
+    token_usage: dict[str, object],
+    latency_ms: int,
+    error_code: str | None = None,
+) -> None:
+    """llm_call_logs 统一埋点（只记元数据，不落 prompt 与输出正文）。
+
+    埋点失败不得影响主流程：吞掉并记 error code。
+    """
+    try:
+        async with session_factory() as session, session.begin():
+            session.add(
+                LlmCallLog(
+                    request_id=str(uuid4()),
+                    graph_name=graph_name,
+                    graph_node=graph_node,
+                    model=model,
+                    prompt_version=prompt_version,
+                    embedding_model=None,
+                    token_usage_json=json.dumps(token_usage, separators=(",", ":")),
+                    latency_ms=latency_ms,
+                    retrieval_count=None,
+                    evidence_count=None,
+                    interrupt_count=0,
+                    error_code=error_code,
+                    created_at=utcnow(),
+                )
+            )
+    except Exception:
+        logger.error("llm_call_log_failed", error_code="LLM_CALL_LOG_FAILED")
 
 
 async def _call_structured_model(
@@ -186,7 +240,6 @@ async def _call_structured_model(
     output_schema: type[BaseModel],
     invalid_output_code: str,
 ) -> _StructuredCallResult:
-    request_id = str(uuid4())
     started = perf_counter()
     token_usage: dict[str, object] = {}
     error_code: str | None = None
@@ -210,27 +263,16 @@ async def _call_structured_model(
         failure = StructuredGenerationError(error_code)
         failure.__cause__ = exc
     latency_ms = max(0, round((perf_counter() - started) * 1000))
-    try:
-        async with session_factory() as session, session.begin():
-            session.add(
-                LlmCallLog(
-                    request_id=request_id,
-                    graph_name=graph_name,
-                    graph_node=graph_node,
-                    model=provider.model,
-                    prompt_version=prompt_version,
-                    embedding_model=None,
-                    token_usage_json=json.dumps(token_usage, separators=(",", ":")),
-                    latency_ms=latency_ms,
-                    retrieval_count=None,
-                    evidence_count=None,
-                    interrupt_count=0,
-                    error_code=error_code,
-                    created_at=utcnow(),
-                )
-            )
-    except Exception:
-        logger.error("llm_call_log_failed", error_code="LLM_CALL_LOG_FAILED")
+    await write_llm_call_log(
+        session_factory=session_factory,
+        graph_name=graph_name,
+        graph_node=graph_node,
+        model=provider.model,
+        prompt_version=prompt_version,
+        token_usage=token_usage,
+        latency_ms=latency_ms,
+        error_code=error_code,
+    )
     if failure is not None:
         raise failure
     if content is None:

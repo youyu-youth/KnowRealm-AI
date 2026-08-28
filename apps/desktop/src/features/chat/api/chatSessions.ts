@@ -1,5 +1,107 @@
-import { apiFetch, apiFetchNoContent } from "@/services/http/client";
-import type { ChatSession } from "@/features/chat/api/types";
+import { createParser } from "eventsource-parser";
+import {
+  apiFetch,
+  apiFetchNoContent,
+  apiRequest,
+} from "@/services/http/client";
+import type { ChatMessage, ChatSession } from "@/features/chat/api/types";
+
+export type ChatStreamHandlers = {
+  onStatus: () => void;
+  onToken: (text: string) => void;
+  onDone: (payload: { messageId: string; content: string }) => void;
+  onError: (payload: { code: string; detail: string }) => void;
+};
+
+/**
+ * 发送消息并消费 SSE 回答流（POST 流 + eventsource-parser + AbortController）。
+ * 非 2xx 由 apiRequest 统一抛 ApiError（如 409 在途 / 未配置供应商）。
+ * 停止信号经 reader.cancel() 传导并在读结束时转抛 AbortError（不把 signal 交给
+ * fetch：jsdom 测试环境的 AbortSignal 与 Node fetch 存在跨 realm 类型冲突）。
+ */
+async function streamMessage(
+  sessionId: string,
+  content: string,
+  handlers: ChatStreamHandlers,
+  signal: AbortSignal | undefined,
+): Promise<void> {
+  if (signal?.aborted) throw abortError();
+  const response = await apiRequest(
+    `/api/chat-sessions/${sessionId}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ content }),
+      headers: { Accept: "text/event-stream" },
+    },
+  );
+  if (!response.body) throw new Error("对话事件流没有响应正文");
+  const reader = response.body.getReader();
+  const onAbort = () => {
+    void reader.cancel().catch(() => undefined);
+  };
+  signal?.addEventListener("abort", onAbort, { once: true });
+  const parser = createParser({
+    onEvent: (event) => {
+      if (!event.event || !event.data) return;
+      let payload: unknown;
+      try {
+        payload = JSON.parse(event.data);
+      } catch {
+        return;
+      }
+      const data: Record<string, unknown> =
+        typeof payload === "object" && payload !== null
+          ? (payload as Record<string, unknown>)
+          : {};
+      switch (event.event) {
+        case "status":
+          handlers.onStatus();
+          break;
+        case "token":
+          if (typeof data.text === "string") handlers.onToken(data.text);
+          break;
+        case "done":
+          if (
+            typeof data.message_id === "string" &&
+            typeof data.content === "string"
+          ) {
+            handlers.onDone({
+              messageId: data.message_id,
+              content: data.content,
+            });
+          }
+          break;
+        case "error":
+          if (
+            typeof data.code === "string" &&
+            typeof data.detail === "string"
+          ) {
+            handlers.onError({ code: data.code, detail: data.detail });
+          }
+          break;
+      }
+    },
+  });
+  const decoder = new TextDecoder();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        if (signal?.aborted) throw abortError();
+        break;
+      }
+      parser.feed(decoder.decode(value, { stream: true }));
+    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
 
 export const chatApi = {
   list: () => apiFetch<ChatSession[]>("/api/chat-sessions"),
@@ -17,4 +119,7 @@ export const chatApi = {
     }),
   delete: (sessionId: string) =>
     apiFetchNoContent(`/api/chat-sessions/${sessionId}`, { method: "DELETE" }),
+  getMessages: (sessionId: string) =>
+    apiFetch<ChatMessage[]>(`/api/chat-sessions/${sessionId}/messages`),
+  streamMessage,
 };

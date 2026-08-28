@@ -1,20 +1,21 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Construction } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-} from "@/components/ui/empty";
+import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import type { ChatMessage } from "@/features/chat/api/types";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
+import { ChatComposer } from "@/features/chat/ChatComposer";
+import { ChatMessageList } from "@/features/chat/ChatMessageList";
+import { ChatProviderSetup } from "@/features/chat/ChatProviderSetup";
 import { ChatSessionList } from "@/features/chat/ChatSessionList";
 import { NewChatButton } from "@/features/chat/NewChatButton";
+import { settingsKeys } from "@/features/settings/api/keys";
+import { settingsApi } from "@/features/settings/api/settings";
+import { useChatStream } from "@/features/chat/useChatStream";
 import { ApiError } from "@/services/http/client";
 
 export function ChatSessionPage() {
@@ -28,6 +29,18 @@ export function ChatSessionPage() {
     queryKey: chatKeys.list(),
     queryFn: () => chatApi.list(),
   });
+  const messages = useQuery({
+    queryKey: chatKeys.messages(sessionId),
+    queryFn: () => chatApi.getMessages(sessionId),
+  });
+  const provider = useQuery({
+    queryKey: settingsKeys.llmProvider,
+    queryFn: () => settingsApi.getLlmProvider(),
+  });
+  const { isStreaming, streamedText, streamError, send, stop } =
+    useChatStream(sessionId);
+  const providerReady =
+    provider.data?.provider != null && provider.data.provider.has_api_key;
 
   return (
     <section className="work-surface-enter max-w-workbench px-content mx-auto flex h-full min-w-0 py-8">
@@ -62,7 +75,7 @@ export function ChatSessionPage() {
         )}
       </aside>
 
-      <div className="min-w-0 flex-1 pl-6">
+      <div className="min-h-0 min-w-0 flex-1 pl-6">
         {detail.isPending ? (
           <p
             role="status"
@@ -111,8 +124,9 @@ export function ChatSessionPage() {
             aria-label={t("chat.detailLabel", {
               title: detail.data.title ?? t("chat.untitled"),
             })}
+            className="flex h-full min-h-0 flex-col"
           >
-            <header>
+            <header className="shrink-0">
               <h1
                 className="text-headline font-headline text-ink-strong break-words"
                 title={detail.data.title ?? t("chat.untitled")}
@@ -120,25 +134,86 @@ export function ChatSessionPage() {
                 {detail.data.title ?? t("chat.untitled")}
               </h1>
             </header>
-            <Empty className="border-border mt-8 items-start rounded-none border-t p-0 pt-8 text-start">
-              <EmptyHeader className="items-start text-start">
-                <EmptyMedia className="justify-start">
-                  <Construction
-                    aria-hidden="true"
-                    className="text-muted-foreground size-8"
-                  />
-                </EmptyMedia>
-                <h2 className="text-section font-section text-ink">
-                  {t("chat.messagesUnavailableTitle")}
-                </h2>
-                <EmptyDescription className="max-w-reading text-body text-start">
-                  {t("chat.messagesUnavailableDescription")}
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
+            <div className="mt-6 flex min-h-0 flex-1 flex-col">
+              {provider.isPending ? null : (
+                <ChatConversation
+                  providerReady={providerReady}
+                  providerHasApiKey={
+                    provider.data?.provider?.has_api_key ?? false
+                  }
+                  messages={messages}
+                  stream={{
+                    isStreaming,
+                    streamedText,
+                    streamError,
+                    send,
+                    stop,
+                  }}
+                />
+              )}
+            </div>
           </article>
         )}
       </div>
+      <span className="sr-only" aria-live="polite">
+        {isStreaming ? t("chat.streamingStatus") : ""}
+      </span>
     </section>
+  );
+}
+
+type ChatConversationProps = {
+  providerReady: boolean;
+  providerHasApiKey: boolean;
+  messages: UseQueryResult<ChatMessage[], Error>;
+  stream: ReturnType<typeof useChatStream>;
+};
+
+/** 会话内容区：未配置供应商时显示就地配置卡，否则显示消息历史 + 输入区。 */
+function ChatConversation({
+  providerReady,
+  providerHasApiKey,
+  messages,
+  stream,
+}: ChatConversationProps) {
+  const { t } = useTranslation();
+  const { isStreaming, streamedText, streamError, send, stop } = stream;
+  if (!providerReady) {
+    return (
+      <div className="flex min-h-0 flex-1 items-start overflow-y-auto pt-8">
+        <ChatProviderSetup hasApiKey={providerHasApiKey} />
+      </div>
+    );
+  }
+  return (
+    <>
+      {messages.isPending ? (
+        <p
+          role="status"
+          className="text-body text-muted-foreground flex items-center gap-2"
+        >
+          <Spinner aria-hidden="true" />
+          {t("chat.loading")}
+        </p>
+      ) : messages.isError ? (
+        <Alert variant="destructive">
+          <AlertDescription>{messages.error.message}</AlertDescription>
+        </Alert>
+      ) : (
+        <ChatMessageList
+          messages={messages.data}
+          streamingText={streamedText}
+          isStreaming={isStreaming}
+          streamError={streamError}
+          onRetry={send}
+        />
+      )}
+      <ChatComposer
+        disabled={messages.isPending}
+        isStreaming={isStreaming}
+        onSend={send}
+        onStop={stop}
+      />
+    </>
   );
 }

@@ -47,6 +47,7 @@ from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
 from app.services.audio_worker import AudioWorker
 from app.services.cache_lifecycle_service import CacheLifecycleService
+from app.services.chat_message_service import ChatStreamRegistry
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import DocumentWorker
 from app.services.knowledge_point_worker import KnowledgePointWorker
@@ -76,6 +77,7 @@ def create_app(
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
     record_notifier = RecordInvalidationNotifier()
+    chat_stream_registry = ChatStreamRegistry()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -140,6 +142,7 @@ def create_app(
                     await checkpointer.setup()
                 summary_graph = build_summary_graph(checkpointer)
                 app.state.summary_graph = summary_graph
+                app.state.chat_checkpointer = checkpointer
                 summary_worker = SummaryWorker(
                     session_factory,
                     resolved_data_dir,
@@ -221,6 +224,7 @@ def create_app(
     )
     app.state.launch_token = launch_token
     app.state.record_notifier = record_notifier
+    app.state.chat_stream_registry = chat_stream_registry
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(cors_origins),

@@ -29,6 +29,7 @@ vi.mock("@/services/tauri/recording", () => ({
 }));
 
 vi.stubGlobal("scrollTo", vi.fn());
+window.Element.prototype.scrollIntoView = vi.fn();
 
 const FIRST_SESSION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const SECOND_SESSION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -56,6 +57,66 @@ function renderAt(path = "/") {
   return render(<App />);
 }
 
+function messageRow(
+  id: string,
+  role: string,
+  content: string,
+  model: string | null = null,
+) {
+  return {
+    id,
+    role,
+    content,
+    model,
+    created_at: "2026-08-27T08:00:00.000000Z",
+  };
+}
+
+const SYSTEM_ROW = {
+  id: "system-row",
+  role: "SYSTEM",
+  content: "你是 KnowRealm 学习助手。",
+  model: null,
+  created_at: "2026-08-27T08:00:00.000000Z",
+};
+
+function sseChunks(events: string[]): string[] {
+  return events.map((event) => `${event}\n\n`);
+}
+
+function sseResponse(chunks: string[], onClose?: () => void) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+      onClose?.();
+    },
+  });
+  return new HttpResponse(stream, {
+    headers: { "Content-Type": "text/event-stream" },
+  });
+}
+
+/** 保持打开的流：推完初始块后不关闭，返回关闭器供“停止”场景收尾。 */
+function openSseResponse(initialChunks: string[]) {
+  const encoder = new TextEncoder();
+  let closeStream = () => {};
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of initialChunks)
+        controller.enqueue(encoder.encode(chunk));
+      closeStream = () => controller.close();
+    },
+  });
+  return {
+    response: new HttpResponse(stream, {
+      headers: { "Content-Type": "text/event-stream" },
+    }),
+    closeStream: () => closeStream(),
+  };
+}
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
@@ -73,7 +134,7 @@ describe("AI 对话", () => {
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  it("新建自由对话后立即进入会话页，并明确展示消息功能未接入", async () => {
+  it("新建自由对话后立即进入会话页，显示提问输入区", async () => {
     const created = chatSession(FIRST_SESSION_ID, {});
     server.use(
       http.post(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
@@ -95,14 +156,14 @@ describe("AI 对话", () => {
       expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
     );
     expect(
-      await screen.findByRole("heading", { name: "消息功能未接入" }),
+      await screen.findByRole("heading", { name: "新对话" }),
     ).toBeVisible();
-    expect(screen.getByRole("heading", { name: "新对话" })).toBeVisible();
-    // 无死按钮、无假输入框：当前版本没有发送入口。
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "发送" }),
-    ).not.toBeInTheDocument();
+      await screen.findByRole("textbox", { name: "提问输入框" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+    // 空会话只有 SYSTEM 快照（不渲染），给出引导文案。
+    expect(await screen.findByText("向 AI 提出第一个问题吧")).toBeVisible();
   });
 
   it("列表按最近更新排序，重命名即时生效且不改变排序", async () => {
@@ -213,5 +274,245 @@ describe("AI 对话", () => {
     ).toBeVisible();
     const back = screen.getByRole("link", { name: "返回对话列表" });
     expect(back).toHaveAttribute("href", "/chat");
+  });
+});
+
+describe("自由聊天流式", () => {
+  function useSessionPage() {
+    const created = chatSession(FIRST_SESSION_ID, {});
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+  }
+
+  it("发送后流式逐字渲染，完成后历史重取展示双方消息", async () => {
+    let answered = false;
+    server.use(
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json(
+            answered
+              ? [
+                  SYSTEM_ROW,
+                  messageRow("user-row", "USER", "什么是 MVCC"),
+                  messageRow(
+                    "assistant-row",
+                    "ASSISTANT",
+                    "回答完成",
+                    "stub-chat-model",
+                  ),
+                ]
+              : [SYSTEM_ROW],
+          ),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          sseResponse(
+            sseChunks([
+              'event: status\ndata: {"phase":"generating"}',
+              'event: token\ndata: {"text":"回答"}',
+              'event: token\ndata: {"text":"完成"}',
+              'event: done\ndata: {"message_id":"assistant-row","content":"回答完成"}',
+            ]),
+            () => {
+              answered = true;
+            },
+          ),
+      ),
+    );
+    useSessionPage();
+
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "什么是 MVCC" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    // token 逐字到达：先出现首片，再聚合为完整文本。
+    expect(await screen.findByText("回答完成")).toBeVisible();
+    expect(screen.getByText("什么是 MVCC")).toBeVisible();
+    // done 后发送入口恢复，输入框清空。
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "发送" })).toBeEnabled(),
+    );
+    expect(input).toHaveValue("");
+  });
+
+  it("流式期间出现停止按钮且不可连发，停止后展示重新生成入口", async () => {
+    const opened = openSseResponse(
+      sseChunks(['event: status\ndata: {"phase":"generating"}']),
+    );
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => opened.response,
+      ),
+    );
+    useSessionPage();
+
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "长问题" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    // 受理后发送入口切换为停止。
+    expect(await screen.findByRole("button", { name: "停止" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "发送" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "停止" }));
+    // 停止丢弃半截文本：流式气泡消失、发送恢复；末尾未回复提问露出重试入口。
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "发送" })).toBeEnabled(),
+    );
+    opened.closeStream();
+  });
+
+  it("在途冲突返回 409 并展示可读错误，之后仍可发送", async () => {
+    let conflict = true;
+    let answered = false;
+    server.use(
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json(
+            answered
+              ? [
+                  SYSTEM_ROW,
+                  messageRow(
+                    "assistant-row",
+                    "ASSISTANT",
+                    "好",
+                    "stub-chat-model",
+                  ),
+                ]
+              : [SYSTEM_ROW],
+          ),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => {
+          if (conflict) {
+            conflict = false;
+            return HttpResponse.json(
+              { detail: "CHAT_STREAM_IN_PROGRESS：该对话正在生成回答，请稍候" },
+              { status: 409 },
+            );
+          }
+          return sseResponse(
+            sseChunks([
+              'event: status\ndata: {"phase":"generating"}',
+              'event: token\ndata: {"text":"好"}',
+              'event: done\ndata: {"message_id":"assistant-row","content":"好"}',
+            ]),
+            () => {
+              answered = true;
+            },
+          );
+        },
+      ),
+    );
+    useSessionPage();
+
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "第一条" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    expect(
+      await screen.findByText(/CHAT_STREAM_IN_PROGRESS：该对话正在生成回答/),
+    ).toBeVisible();
+
+    // 错误后可继续发问。
+    fireEvent.change(screen.getByRole("textbox", { name: "提问输入框" }), {
+      target: { value: "第二条" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    expect(await screen.findByText("好")).toBeVisible();
+  });
+
+  it("未配置 AI 服务时展示空态配置卡，配置完成即可发送", async () => {
+    let configured = false;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/settings/providers/llm`, () =>
+        HttpResponse.json(
+          configured
+            ? {
+                provider: {
+                  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                  model: "qwen-plus",
+                  has_api_key: true,
+                  api_key_hint: null,
+                },
+              }
+            : { provider: null },
+        ),
+      ),
+      http.put(`${TEST_SIDECAR_URL}/api/settings/providers/llm`, () => {
+        configured = true;
+        return HttpResponse.json({
+          provider: {
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model: "qwen-plus",
+            has_api_key: true,
+            api_key_hint: "sk-…test",
+          },
+        });
+      }),
+    );
+    useSessionPage();
+
+    expect(
+      await screen.findByRole("heading", { name: "未配置 AI 服务" }),
+    ).toBeVisible();
+    // 未配置时没有发送入口。
+    expect(
+      screen.queryByRole("textbox", { name: "提问输入框" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(await screen.findByLabelText("服务地址"), {
+      target: { value: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+    });
+    fireEvent.change(await screen.findByLabelText("模型"), {
+      target: { value: "qwen-plus" },
+    });
+    fireEvent.change(await screen.findByLabelText("API 密钥"), {
+      target: { value: "sk-test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    // 配置完成后查询失效重取，输入区出现。
+    expect(
+      await screen.findByRole("textbox", { name: "提问输入框" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "未配置 AI 服务" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("历史末尾存在未回复提问时展示中断说明与重新生成按钮", async () => {
+    server.use(
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            SYSTEM_ROW,
+            messageRow("user-row", "USER", "被中断的问题"),
+          ]),
+      ),
+    );
+    useSessionPage();
+
+    expect(await screen.findByText("被中断的问题")).toBeVisible();
+    expect(
+      screen.getByText("上一条提问的回答被中断，没有保留半截内容。"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "重新生成回答" })).toBeEnabled();
   });
 });

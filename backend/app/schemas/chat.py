@@ -36,6 +36,23 @@ class ChatSessionRename(BaseModel):
         return cleaned
 
 
+class ChatMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=8000, description="用户消息文本")
+
+    @field_validator("content")
+    @classmethod
+    def clean_content(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("消息内容不能为空白")
+        return cleaned
+
+
+def _iso_utc(value: datetime) -> str:
+    utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
 class ChatSessionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,5 +66,18 @@ class ChatSessionOut(BaseModel):
 
     @field_serializer("created_at", "updated_at")
     def serialize_utc(self, value: datetime) -> str:
-        utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-        return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
+        return _iso_utc(value)
+
+
+class ChatMessageOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    role: ChatRole
+    content: str
+    model: str | None = Field(default=None, description="生成该条回答的模型，user/system 行为空")
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def serialize_utc(self, value: datetime) -> str:
+        return _iso_utc(value)
