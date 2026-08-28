@@ -26,6 +26,7 @@ from app.agents.chat import (
     ContextRow,
     RecordContext,
     build_context_messages,
+    parse_citation_reply,
 )
 from app.main import create_app
 from app.models.chat import ChatMessage
@@ -197,6 +198,48 @@ class TestBuildContextMessages:
 
     def test_default_budget_constant(self) -> None:
         assert CHAT_CONTEXT_CHAR_BUDGET == 60000
+
+
+class TestParseCitationReply:
+    TRANSCRIPT = "MVCC 依赖 undo 日志实现多版本读，写入时保留旧版本。"
+
+    def test_trailing_block_stripped_and_validated(self) -> None:
+        parsed = parse_citation_reply(
+            "MVCC 依赖 undo 日志[1]。\n\n"
+            "[1] MVCC 依赖 undo 日志实现多版本读\n[2] 转写中不存在的摘录",
+            transcript=self.TRANSCRIPT,
+            record_id="rec-1",
+        )
+        assert parsed.content == "MVCC 依赖 undo 日志[1]。"
+        assert parsed.citations == [
+            {"index": 1, "record_id": "rec-1", "quote": "MVCC 依赖 undo 日志实现多版本读"}
+        ]
+
+    def test_quote_over_80_chars_dropped(self) -> None:
+        long_quote = "长" * 81
+        parsed = parse_citation_reply(
+            f"正文[1]\n[1] {long_quote}",
+            transcript=f"开头{long_quote}结尾",
+            record_id="rec-1",
+        )
+        assert parsed.citations == []
+        # 引用块被识别即剥离，即使全部条目未通过校验。
+        assert parsed.content == "正文[1]"
+
+    def test_without_trailing_block_content_untouched(self) -> None:
+        text = "第一步[1] 做事\n第二步 继续做"  # 角标在正文中间、文末不是引用行
+        parsed = parse_citation_reply(text, transcript=self.TRANSCRIPT, record_id="rec-1")
+        assert parsed.content == text
+        assert parsed.citations == []
+
+    def test_block_only_reply_leaves_empty_content(self) -> None:
+        parsed = parse_citation_reply(
+            "[1] MVCC 依赖 undo 日志实现多版本读",
+            transcript=self.TRANSCRIPT,
+            record_id="rec-1",
+        )
+        assert parsed.content == ""
+        assert len(parsed.citations) == 1
 
 
 class StubChatModel(BaseChatModel):
@@ -724,3 +767,78 @@ async def test_send_validates_payload_and_missing_session(
             "/api/chat-sessions/00000000-0000-4000-8000-000000000002/messages"
         )
         assert history_missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_mounted_reply_citations_validated_stripped_and_streamed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transcript = "数据库的 MVCC 依赖 undo 日志实现多版本读，写入时保留旧版本。"
+    reply = [
+        "MVCC 依赖 undo 日志[1]。",
+        "\n[1] 数据库的 MVCC 依赖 undo 日志实现多版本读",
+        "\n[2] 转写中不存在的摘录",
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[reply]) as (
+        _app,
+        client,
+        captured,
+    ):
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": transcript}
+        )
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "MVCC 怎么实现？")
+
+        # 挂载提示词带引用约定。
+        assert "角标" in str(captured[0][0].content)
+        names = [name for name, _payload in events]
+        assert names == ["status", "token", "token", "token", "citation", "done"]
+        # 子串校验：转写中不存在的摘录整条丢弃，不下发、不落库。
+        assert [payload for name, payload in events if name == "citation"] == [
+            {
+                "index": 1,
+                "record_id": record_id,
+                "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
+            }
+        ]
+        assert events[-1][1]["content"] == "MVCC 依赖 undo 日志[1]。"
+
+        history = await client.get(f"/api/chat-sessions/{session_id}/messages")
+        assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
+        assert assistant["content"] == "MVCC 依赖 undo 日志[1]。"
+        assert assistant["citations"] == [
+            {
+                "index": 1,
+                "record_id": record_id,
+                "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
+            }
+        ]
+        assert "citations_json" not in assistant
+
+
+@pytest.mark.anyio
+async def test_free_chat_reply_produces_no_citations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reply = ["普通回答[1]。\n[1] 看起来像引用的一行"]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[reply]) as (
+        _app,
+        client,
+        captured,
+    ):
+        session_id = await create_session(client)
+        events = await send_message(client, session_id, "自由聊天")
+
+        # 自由聊天提示词不带引用约定，回复原文保留、不产出引用。
+        assert "角标" not in str(captured[0][0].content)
+        assert not any(name == "citation" for name, _payload in events)
+        assert events[-1][1]["content"] == "普通回答[1]。\n[1] 看起来像引用的一行"
+
+        history = await client.get(f"/api/chat-sessions/{session_id}/messages")
+        assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
+        assert assistant["citations"] == []
+        assert assistant["content"] == "普通回答[1]。\n[1] 看起来像引用的一行"

@@ -1,9 +1,18 @@
+import json
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 
 class ChatMode(StrEnum):
@@ -81,6 +90,35 @@ class ChatSessionOut(BaseModel):
         return _iso_utc(value)
 
 
+class ChatCitationOut(BaseModel):
+    """回答引用：正文 [n] 角标对应的一条转写摘录。"""
+
+    index: int = Field(ge=1, description="正文角标序号")
+    record_id: str = Field(description="被引用的学习记录 ID")
+    quote: str = Field(max_length=80, description="转写原文摘录，不超过 80 字")
+
+
+def parse_citations(raw: str | None) -> list[ChatCitationOut]:
+    """citations_json → 引用列表；坏数据容忍，返回已通过落库前校验的条目。"""
+    if raw is None:
+        return []
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        return []
+    if not isinstance(value, list):
+        return []
+    citations: list[ChatCitationOut] = []
+    for entry in cast(list[object], value):
+        if not isinstance(entry, dict):
+            continue
+        try:
+            citations.append(ChatCitationOut.model_validate(entry))
+        except ValidationError:
+            continue
+    return citations
+
+
 class ChatMessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -88,7 +126,16 @@ class ChatMessageOut(BaseModel):
     role: ChatRole
     content: str
     model: str | None = Field(default=None, description="生成该条回答的模型，user/system 行为空")
+    citations_json: str | None = Field(default=None, exclude=True)
+    citations: list[ChatCitationOut] = Field(
+        default_factory=list[ChatCitationOut], description="回答引用，无引用为空"
+    )
     created_at: datetime
+
+    @model_validator(mode="after")
+    def load_citations(self) -> "ChatMessageOut":
+        self.citations = parse_citations(self.citations_json)
+        return self
 
     @field_serializer("created_at")
     def serialize_utc(self, value: datetime) -> str:

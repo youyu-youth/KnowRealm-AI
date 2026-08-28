@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -23,6 +23,7 @@ from app.agents.chat import (
     ContextRow,
     RecordContext,
     build_context_messages,
+    parse_citation_reply,
     stream_chat_reply,
 )
 from app.models.base import utcnow
@@ -72,7 +73,16 @@ class AcceptedMessage:
     provider: LlmProviderConfig
 
 
-def _sse(event: str, payload: dict[str, object]) -> ServerSentEvent:
+@dataclass(frozen=True)
+class SessionPromptContext:
+    """喂入 LLM 的上下文与挂载会话的引用校验材料。"""
+
+    messages: list[AnyMessage]
+    transcript: str | None = None  # 挂载会话的当前转写全文；自由聊天为 None
+    record_id: str | None = None
+
+
+def _sse(event: str, payload: Mapping[str, object]) -> ServerSentEvent:
     return ServerSentEvent(event=event, data=json.dumps(payload, separators=(",", ":")))
 
 
@@ -87,7 +97,7 @@ async def _last_message(session: AsyncSession, session_id: str) -> ChatMessage |
 
 async def _session_context(
     session_factory: async_sessionmaker[AsyncSession], session_id: str
-) -> list[AnyMessage]:
+) -> SessionPromptContext:
     async with session_factory() as session:
         chat = await ChatSessionService.get(session, session_id)
         if chat is None:
@@ -100,6 +110,8 @@ async def _session_context(
             )
         ).all()
         record_context = None
+        transcript_text: str | None = None
+        record_id: str | None = None
         if chat.record_id is not None:
             record = await RecordService.get(session, chat.record_id)
             if record is None:
@@ -108,6 +120,8 @@ async def _session_context(
             if transcript is None:
                 raise HTTPException(status_code=409, detail="TRANSCRIPT_NOT_READY：转写尚未生成")
             record_context = RecordContext(transcript=transcript.content)
+            transcript_text = transcript.content
+            record_id = record.id
             if len(transcript.content) > CHAT_TRANSCRIPT_MAX_CHARS:
                 summary = await session.scalar(
                     select(AiSummary)
@@ -144,17 +158,21 @@ async def _session_context(
                         f"{point.name}\n{point.detail}" for point in points
                     ),
                 )
-        return build_context_messages(
-            [
-                ContextRow(
-                    id=row.id,
-                    role=row.role,
-                    content=row.content,
-                    cited_excerpts=_cited_excerpts(row.citations_json, chat.record_id),
-                )
-                for row in rows
-            ],
-            record=record_context,
+        return SessionPromptContext(
+            messages=build_context_messages(
+                [
+                    ContextRow(
+                        id=row.id,
+                        role=row.role,
+                        content=row.content,
+                        cited_excerpts=_cited_excerpts(row.citations_json, chat.record_id),
+                    )
+                    for row in rows
+                ],
+                record=record_context,
+            ),
+            transcript=transcript_text,
+            record_id=record_id,
         )
 
 
@@ -270,12 +288,12 @@ class ChatMessageService:
             outcome = ChatStreamOutcome()
             parts: list[str] = []
             try:
-                context = await _session_context(session_factory, session_id)
+                prompt_context = await _session_context(session_factory, session_id)
                 async for text in stream_chat_reply(
                     session_factory=session_factory,
                     checkpointer=checkpointer,
                     provider=accepted.provider,
-                    context_messages=context,
+                    context_messages=prompt_context.messages,
                     session_id=session_id,
                     outcome=outcome,
                 ):
@@ -303,6 +321,21 @@ class ChatMessageService:
             if not content:
                 yield _sse("error", {"code": "EMPTY_REPLY", "detail": "回答为空，请重试"})
                 return
+            # 挂载对话：流结束后解析文末引用块——正文剥离、摘录子串校验、citation 事件下发。
+            citations: list[dict[str, int | str]] = []
+            if prompt_context.transcript is not None and prompt_context.record_id is not None:
+                parsed = parse_citation_reply(
+                    content,
+                    transcript=prompt_context.transcript,
+                    record_id=prompt_context.record_id,
+                )
+                content = parsed.content
+                citations = parsed.citations
+            if not content:
+                yield _sse("error", {"code": "EMPTY_REPLY", "detail": "回答为空，请重试"})
+                return
+            for citation in citations:
+                yield _sse("citation", citation)
             assistant_id = str(uuid4())
             async with session_factory() as session, session.begin():
                 session.add(
@@ -311,7 +344,9 @@ class ChatMessageService:
                         session_id=session_id,
                         role=ChatRole.ASSISTANT,
                         content=content,
-                        citations_json=None,
+                        citations_json=json.dumps(citations, separators=(",", ":"))
+                        if citations
+                        else None,
                         model=accepted.provider.model,
                         token_usage_json=json.dumps(outcome.token_usage, separators=(",", ":"))
                         if outcome.token_usage
