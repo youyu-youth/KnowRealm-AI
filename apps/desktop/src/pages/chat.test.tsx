@@ -130,13 +130,16 @@ describe("AI 对话", () => {
     expect(
       await screen.findByRole("heading", { name: "开始第一场对话" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "新建自由对话" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "开始对话" })).toBeEnabled();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
   it("新建自由对话后立即进入会话页，显示提问输入区", async () => {
     const created = chatSession(FIRST_SESSION_ID, {});
     server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([]),
+      ),
       http.post(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json(created, { status: 201 }),
       ),
@@ -151,6 +154,7 @@ describe("AI 对话", () => {
 
     renderAt("/chat");
     fireEvent.click(await screen.findByRole("button", { name: "新建对话" }));
+    fireEvent.click(await screen.findByRole("button", { name: "创建对话" }));
 
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
@@ -164,6 +168,75 @@ describe("AI 对话", () => {
     expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
     // 空会话只有 SYSTEM 快照（不渲染），给出引导文案。
     expect(await screen.findByText("向 AI 提出第一个问题吧")).toBeVisible();
+  });
+
+  it("新建时可挂载收件箱记录，无转写记录置灰并说明原因", async () => {
+    const recordId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const created = chatSession(FIRST_SESSION_ID, { record_id: recordId });
+    let body: unknown;
+    let attempts = 0;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([
+          {
+            id: recordId,
+            title: "公式速记",
+            course_id: null,
+            has_transcript: true,
+          },
+          {
+            id: "pending",
+            title: "导入处理中",
+            course_id: null,
+            has_transcript: false,
+          },
+        ]),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions`,
+        async ({ request }) => {
+          body = await request.json();
+          if (++attempts === 1)
+            return HttpResponse.json(
+              { detail: "暂时无法挂载，请重试" },
+              { status: 409 },
+            );
+          return HttpResponse.json(created, { status: 201 });
+        },
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+    );
+    renderAt("/chat");
+    fireEvent.click(await screen.findByRole("button", { name: "新建对话" }));
+    fireEvent.click(
+      await screen.findByRole("combobox", { name: "挂载学习记录（可选）" }),
+    );
+    const unavailable = await screen.findByRole("option", {
+      name: /导入处理中.*转写尚未生成/,
+    });
+    expect(unavailable).toHaveAttribute("aria-disabled", "true");
+    const option = screen.getByRole("option", { name: /公式速记.*收件箱/ });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(screen.getByRole("combobox")).toHaveTextContent("公式速记"),
+    );
+    expect(
+      screen.getByText("创建后不能更换或取消挂载。未挂载时使用自由聊天。"),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "创建对话" }));
+    expect(await screen.findByText("暂时无法挂载，请重试")).toBeVisible();
+    expect(screen.getByRole("combobox")).toHaveTextContent("公式速记");
+    fireEvent.click(screen.getByRole("button", { name: "创建对话" }));
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
+    );
+    expect(body).toEqual({ mode: "ASK", record_id: recordId });
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   it("列表按最近更新排序，重命名即时生效且不改变排序", async () => {

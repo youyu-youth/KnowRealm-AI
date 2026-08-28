@@ -8,8 +8,11 @@ import aiosqlite
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import update
 
 from app.main import create_app
+from app.models.base import utcnow
+from app.models.document import Transcript
 from app.services.chat_session_service import NEUTRAL_PROFILE_SNAPSHOT
 
 TOKEN = "test-launch-token"
@@ -119,6 +122,79 @@ async def test_create_free_chat_without_profile_snapshots_neutral_system_message
 
         rows = await message_rows(tmp_path, body["id"])
         assert rows == [("SYSTEM", NEUTRAL_PROFILE_SNAPSHOT)]
+
+
+@pytest.mark.anyio
+async def test_create_mounted_chat_keeps_record_course_without_profile_snapshot(
+    tmp_path: Path,
+) -> None:
+    async with running_chat_app(tmp_path) as (_app, client):
+        course = await client.post(
+            "/api/courses",
+            json={"name": "数学", "learning_context": "INTEREST", "depth": "BEGINNER"},
+        )
+        assert course.status_code == 201
+        for course_id in (None, course.json()["id"]):
+            capture = await client.post(
+                "/api/text-captures",
+                json={"capture_type": "PASTE", "content": "公式 x+y", "course_id": course_id},
+            )
+            assert capture.status_code == 201
+            record_id = capture.json()["record_id"]
+            created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+            assert created.status_code == 201
+            assert created.json()["record_id"] == record_id
+            assert created.json()["course_id"] == course_id
+            assert await message_rows(tmp_path, created.json()["id"]) == []
+
+        invalid = await client.post("/api/chat-sessions", json={"record_id": "invalid"})
+        assert invalid.status_code == 422
+        missing = await client.post(
+            "/api/chat-sessions", json={"record_id": "00000000-0000-4000-8000-000000000000"}
+        )
+        assert missing.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_mount_options_include_inbox_disable_missing_transcript_and_hide_deleted(
+    tmp_path: Path,
+) -> None:
+    async with running_chat_app(tmp_path) as (app, client):
+        record_ids: list[str] = []
+        for title in ("收件箱速记", "还没有转写", "已删除记录"):
+            response = await client.post(
+                "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": title}
+            )
+            record_ids.append(response.json()["record_id"])
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                update(Transcript)
+                .where(Transcript.record_id == record_ids[1])
+                .values(deleted_at=utcnow())
+            )
+        await client.delete(f"/api/records/{record_ids[2]}")
+
+        options = await client.get("/api/chat-sessions/record-options")
+        assert options.status_code == 200
+        by_id = {item["id"]: item for item in options.json()}
+        assert set(by_id) == set(record_ids[:2])
+        assert by_id[record_ids[0]]["has_transcript"] is True
+        assert by_id[record_ids[0]]["course_id"] is None
+        assert by_id[record_ids[1]]["has_transcript"] is False
+        rejected = await client.post("/api/chat-sessions", json={"record_id": record_ids[1]})
+        assert rejected.status_code == 409 and "TRANSCRIPT_NOT_READY" in rejected.json()["detail"]
+        deleted = await client.post("/api/chat-sessions", json={"record_id": record_ids[2]})
+        assert deleted.status_code == 404
+
+        created = await client.post("/api/chat-sessions", json={"record_id": record_ids[0]})
+        session_id = created.json()["id"]
+        changed = await client.patch(
+            f"/api/chat-sessions/{session_id}", json={"title": "新标题", "record_id": None}
+        )
+        assert changed.status_code == 422
+        assert (await client.get(f"/api/chat-sessions/{session_id}")).json()[
+            "record_id"
+        ] == record_ids[0]
 
 
 @pytest.mark.anyio

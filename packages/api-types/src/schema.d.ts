@@ -56,6 +56,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat-sessions/record-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Chat Record Options */
+        get: operations["list_chat_record_options_api_chat_sessions_record_options_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat-sessions/{session_id}": {
         parameters: {
             query?: never;
@@ -1014,6 +1031,29 @@ export interface components {
          * @enum {string}
          */
         ChatMode: "ASK" | "COURSE_QA" | "SOCRATIC_TUTOR" | "TEACH_BACK";
+        /** ChatRecordOption */
+        ChatRecordOption: {
+            /**
+             * Course Id
+             * @description 课程 ID，收件箱记录为空
+             */
+            course_id: string | null;
+            /**
+             * Has Transcript
+             * @description 存在可用转写时可挂载
+             */
+            has_transcript: boolean;
+            /**
+             * Id
+             * @description 学习记录 ID
+             */
+            id: string;
+            /**
+             * Title
+             * @description 学习记录标题
+             */
+            title: string;
+        };
         /**
          * ChatRole
          * @enum {string}
@@ -1028,6 +1068,11 @@ export interface components {
              * @constant
              */
             mode: "ASK";
+            /**
+             * Record Id
+             * @description 挂载的学习记录，空为自由聊天
+             */
+            record_id?: string | null;
         };
         /** ChatSessionOut */
         ChatSessionOut: {
@@ -2159,6 +2204,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatSessionOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_chat_record_options_api_chat_sessions_record_options_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatRecordOption"][];
                 };
             };
             /** @description Forbidden */

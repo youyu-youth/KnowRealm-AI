@@ -1,29 +1,39 @@
-"""自由聊天发消息：受理（校验 / 补答 / user 落库）与 SSE 流式事件生成。"""
+"""对话发消息：受理（校验 / 补答 / user 落库）与 SSE 流式事件生成。"""
 
 import asyncio
 import json
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from fastapi import HTTPException
+from langchain_core.messages import AnyMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette import ServerSentEvent
 
 from app.agents.chat import (
+    CHAT_TRANSCRIPT_MAX_CHARS,
+    ChatContextTooLargeError,
     ChatStreamOutcome,
     ContextRow,
+    RecordContext,
     build_context_messages,
     stream_chat_reply,
 )
 from app.models.base import utcnow
 from app.models.chat import ChatMessage
+from app.models.document import AiSummary, KnowledgePoint
 from app.schemas.chat import ChatRole
+from app.schemas.document import AiSummaryStatus
+from app.schemas.knowledge_point import KnowledgePointGenerationStatus
 from app.services.chat_session_service import ChatSessionService
 from app.services.local_config import LlmProviderConfig, load_llm_provider
+from app.services.record_service import RecordService
 
 # 会话标题默认取首条用户消息的截断长度。
 CHAT_TITLE_MAX_CHARS = 30
@@ -75,10 +85,13 @@ async def _last_message(session: AsyncSession, session_id: str) -> ChatMessage |
     )
 
 
-async def _session_rows(
+async def _session_context(
     session_factory: async_sessionmaker[AsyncSession], session_id: str
-) -> list[ContextRow]:
+) -> list[AnyMessage]:
     async with session_factory() as session:
+        chat = await ChatSessionService.get(session, session_id)
+        if chat is None:
+            raise HTTPException(status_code=404, detail="对话不存在或已删除")
         rows = (
             await session.scalars(
                 select(ChatMessage)
@@ -86,7 +99,84 @@ async def _session_rows(
                 .order_by(ChatMessage.created_at, ChatMessage.id)
             )
         ).all()
-    return [ContextRow(id=row.id, role=row.role, content=row.content) for row in rows]
+        record_context = None
+        if chat.record_id is not None:
+            record = await RecordService.get(session, chat.record_id)
+            if record is None:
+                raise HTTPException(status_code=409, detail="CHAT_RECORD_UNAVAILABLE：原记录已删除")
+            transcript = await RecordService.get_transcript(session, record.id)
+            if transcript is None:
+                raise HTTPException(status_code=409, detail="TRANSCRIPT_NOT_READY：转写尚未生成")
+            record_context = RecordContext(transcript=transcript.content)
+            if len(transcript.content) > CHAT_TRANSCRIPT_MAX_CHARS:
+                summary = await session.scalar(
+                    select(AiSummary)
+                    .where(
+                        AiSummary.record_id == record.id,
+                        AiSummary.deleted_at.is_(None),
+                        AiSummary.status == AiSummaryStatus.CONFIRMED,
+                        AiSummary.transcript_source_version == transcript.source_version,
+                    )
+                    .order_by(AiSummary.version_no.desc())
+                    .limit(1)
+                )
+                points = (
+                    await session.scalars(
+                        select(KnowledgePoint)
+                        .where(
+                            KnowledgePoint.record_id == record.id,
+                            KnowledgePoint.deleted_at.is_(None),
+                            KnowledgePoint.generation_status
+                            == KnowledgePointGenerationStatus.ACTIVE,
+                        )
+                        .order_by(KnowledgePoint.created_at, KnowledgePoint.id)
+                    )
+                ).all()
+                record_context = RecordContext(
+                    transcript=transcript.content,
+                    summary=(
+                        f"{summary.topic}\n{summary.abstract}\n"
+                        + json.dumps(json.loads(summary.summary_json), ensure_ascii=False)
+                    )
+                    if summary is not None
+                    else "",
+                    knowledge_points="\n\n".join(
+                        f"{point.name}\n{point.detail}" for point in points
+                    ),
+                )
+        return build_context_messages(
+            [
+                ContextRow(
+                    id=row.id,
+                    role=row.role,
+                    content=row.content,
+                    cited_excerpts=_cited_excerpts(row.citations_json, chat.record_id),
+                )
+                for row in rows
+            ],
+            record=record_context,
+        )
+
+
+def _cited_excerpts(raw: str | None, record_id: str | None) -> tuple[str, ...]:
+    """消费 citations_json 的 record_id/quote；引用生成与展示由 Issue 04 接入。"""
+    if raw is None or record_id is None:
+        return ()
+    try:
+        value = cast(object, json.loads(raw))
+    except ValueError:
+        return ()
+    if not isinstance(value, list):
+        return ()
+    excerpts: list[str] = []
+    for entry in cast(list[object], value):
+        if not isinstance(entry, dict):
+            continue
+        item = cast(dict[str, object], entry)
+        quote = item.get("quote")
+        if item.get("record_id") == record_id and isinstance(quote, str) and 0 < len(quote) <= 80:
+            excerpts.append(quote)
+    return tuple(excerpts)
 
 
 class ChatMessageService:
@@ -177,10 +267,10 @@ class ChatMessageService:
         session_id = accepted.session_id
         try:
             yield _sse("status", {"phase": STREAM_STATUS_GENERATING})
-            context = build_context_messages(await _session_rows(session_factory, session_id))
             outcome = ChatStreamOutcome()
             parts: list[str] = []
             try:
+                context = await _session_context(session_factory, session_id)
                 async for text in stream_chat_reply(
                     session_factory=session_factory,
                     checkpointer=checkpointer,
@@ -191,7 +281,19 @@ class ChatMessageService:
                 ):
                     parts.append(text)
                     yield _sse("token", {"text": text})
+            except ChatContextTooLargeError:
+                yield _sse(
+                    "error",
+                    {
+                        "code": "CHAT_CONTEXT_TOO_LARGE",
+                        "detail": "摘要与知识点仍超过上下文预算，请精简材料后重试",
+                    },
+                )
+                return
             except Exception:
+                logger.error(
+                    "chat_generation_failed", session_id=session_id, error_code="CHAT_STREAM_FAILED"
+                )
                 yield _sse(
                     "error",
                     {"code": "CHAT_STREAM_FAILED", "detail": "回答生成失败，请稍后重试"},

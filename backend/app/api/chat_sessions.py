@@ -8,6 +8,7 @@ from app.api.deps import get_db, require_launch_token
 from app.schemas.chat import (
     ChatMessageCreate,
     ChatMessageOut,
+    ChatRecordOption,
     ChatSessionCreate,
     ChatSessionOut,
     ChatSessionRename,
@@ -35,7 +36,9 @@ async def create_chat_session(
     payload: ChatSessionCreate,
     session: AsyncSession = Depends(get_db),
 ) -> ChatSessionOut:
-    chat = await ChatSessionService.create_free(session)
+    chat = await ChatSessionService.create(
+        session, record_id=str(payload.record_id) if payload.record_id is not None else None
+    )
     return ChatSessionOut.model_validate(chat)
 
 
@@ -45,6 +48,13 @@ async def list_chat_sessions(
 ) -> list[ChatSessionOut]:
     chats = await ChatSessionService.list(session)
     return [ChatSessionOut.model_validate(chat) for chat in chats]
+
+
+@router.get("/record-options", response_model=list[ChatRecordOption])
+async def list_chat_record_options(
+    session: AsyncSession = Depends(get_db),
+) -> list[ChatRecordOption]:
+    return await ChatSessionService.record_options(session)
 
 
 @router.get("/{session_id}", response_model=ChatSessionOut)

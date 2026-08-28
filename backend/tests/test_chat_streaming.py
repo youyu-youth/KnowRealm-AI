@@ -18,13 +18,18 @@ from langchain_core.messages import (
     UsageMetadata,
 )
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
+from sqlalchemy import update
 
 from app.agents.chat import (
     CHAT_CONTEXT_CHAR_BUDGET,
+    ChatContextTooLargeError,
     ContextRow,
+    RecordContext,
     build_context_messages,
 )
 from app.main import create_app
+from app.models.chat import ChatMessage
+from app.models.document import AiSummary, KnowledgePoint
 from app.schemas.chat import ChatRole
 from app.services.chat_message_service import ChatMessageService
 from app.services.local_config import save_llm_provider
@@ -51,6 +56,55 @@ def chat_rows(count: int, *, prefix: str = "") -> list[ContextRow]:
 
 
 class TestBuildContextMessages:
+    def test_oversize_assets_are_not_silently_truncated_or_sent_over_budget(self) -> None:
+        with pytest.raises(ChatContextTooLargeError):
+            build_context_messages(
+                [row("current", ChatRole.USER, "追问")],
+                record=RecordContext(transcript="长" * 30001, knowledge_points="知" * 60000),
+            )
+
+    def test_mounted_transcript_stays_when_oldest_turn_is_trimmed(self) -> None:
+        rows = [*chat_rows(2), row("current", ChatRole.USER, "追问")]
+        mounted = RecordContext(transcript="原文🧠" * 7500)
+        messages = build_context_messages(rows, record=mounted)
+        assert mounted.transcript in str(messages[0].content)
+        # 上限恰好容纳一轮和当前提问，下一字符才触发裁剪。
+        required = len(str(messages[0].content)) + 8
+        trimmed = build_context_messages(rows, record=mounted, budget=required)
+        assert [message.content for message in trimmed[1:]] == ["问题2", "回答2", "追问"]
+        assert trimmed[0].content == messages[0].content
+        under = build_context_messages(rows, record=mounted, budget=required - 1)
+        assert [message.content for message in under[1:]] == ["追问"]
+
+    def test_long_transcript_uses_assets_and_only_last_three_completed_turns_excerpts(self) -> None:
+        rows = [
+            item
+            for index in range(1, 5)
+            for item in (
+                row(f"u{index}", ChatRole.USER, f"问题{index}"),
+                ContextRow(
+                    id=f"a{index}",
+                    role=ChatRole.ASSISTANT,
+                    content=f"回答{index}",
+                    cited_excerpts=(f"摘录{index}",),
+                ),
+            )
+        ]
+        rows.append(row("pending", ChatRole.USER, "尚未回复"))
+        transcript = "长" * 30001 + "摘录1 摘录2 摘录3 摘录4"
+        messages = build_context_messages(
+            rows,
+            record=RecordContext(
+                transcript=transcript, summary="已确认摘要", knowledge_points="知识点全文"
+            ),
+        )
+        source = str(messages[0].content)
+        assert transcript not in source
+        assert "已确认摘要" in source and "知识点全文" in source
+        assert "摘录1" not in source
+        assert all(f"摘录{index}" in source for index in (2, 3, 4))
+        assert messages[-1].content == "尚未回复"
+
     def test_keeps_system_snapshot_first_with_stable_row_id(self) -> None:
         messages = build_context_messages(
             [
@@ -293,6 +347,132 @@ async def create_session(client: httpx.AsyncClient) -> str:
     created = await client.post("/api/chat-sessions", json={})
     assert created.status_code == 201
     return cast(str, created.json()["id"])
+
+
+@pytest.mark.anyio
+async def test_mounted_stream_reads_current_transcript_without_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[list(STUB_REPLY)] * 2) as (
+        _app,
+        client,
+        captured,
+    ):
+        await client.put(
+            "/api/profile", json={"primary_role": "DEVELOPER", "about_me": "角色专用文本"}
+        )
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "原始公式 x+y"}
+        )
+        assert capture.status_code == 201
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+        assert (await send_message(client, session_id, "后面那个公式？"))[-1][0] == "done"
+        prompt = str(captured[0][0].content)
+        assert "原始公式 x+y" in prompt
+        assert "角色专用文本" not in prompt and "程序员" not in prompt
+
+        edited = await client.patch(
+            f"/api/records/{record_id}/transcript",
+            json={"content": "修订公式 x-y", "expected_source_version": 1},
+        )
+        assert edited.status_code == 200
+        assert (await send_message(client, session_id, "现在的公式？"))[-1][0] == "done"
+        assert "修订公式 x-y" in str(captured[1][0].content)
+        assert "原始公式 x+y" not in str(captured[1][0].content)
+        assert "后面那个公式？" in [message.content for message in captured[1]]
+
+
+@pytest.mark.anyio
+async def test_long_mounted_stream_reads_confirmed_assets_and_valid_citations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[list(STUB_REPLY)] * 2) as (
+        app,
+        client,
+        captured,
+    ):
+        transcript = "长" * 30001 + "可核实摘录"
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": transcript}
+        )
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+        await send_message(client, session_id, "先提问")
+        async with app.state.session_factory() as session, session.begin():
+            for index, status in enumerate(("CONFIRMED", "GENERATED", "SUPERSEDED"), 1):
+                session.add(
+                    AiSummary(
+                        record_id=record_id,
+                        version_no=index,
+                        transcript_source_version=1,
+                        topic=f"主题{status}",
+                        abstract=f"摘要{status}",
+                        summary_json=json.dumps(
+                            {"sections": [{"heading": "细节", "points": [f"要点{status}"]}]}
+                        ),
+                        status=status,
+                        model="stub",
+                        prompt_version="stub",
+                        token_usage_json="{}",
+                        latency_ms=0,
+                    )
+                )
+            for status in ("ACTIVE", "DRAFT", "SUPERSEDED"):
+                session.add(
+                    KnowledgePoint(
+                        record_id=record_id,
+                        name=f"知识点{status}",
+                        detail=f"完整详情{status}",
+                        tags="[]",
+                        importance=3,
+                        generation_status=status,
+                    )
+                )
+            await session.execute(
+                update(ChatMessage)
+                .where(
+                    ChatMessage.session_id == session_id,
+                    ChatMessage.role == ChatRole.ASSISTANT,
+                )
+                .values(
+                    citations_json=json.dumps(
+                        [
+                            {"record_id": record_id, "quote": "可核实摘录"},
+                            {"record_id": record_id, "quote": "不存在的摘录"},
+                            {"record_id": "other-record", "quote": "长"},
+                        ]
+                    )
+                )
+            )
+        assert (await send_message(client, session_id, "再问细节"))[-1][0] == "done"
+        prompt = str(captured[1][0].content)
+        assert transcript not in prompt
+        assert "摘要CONFIRMED" in prompt and "要点CONFIRMED" in prompt
+        assert "知识点ACTIVE" in prompt and "完整详情ACTIVE" in prompt
+        assert "可核实摘录" in prompt and "不存在的摘录" not in prompt
+        assert "GENERATED" not in prompt and "SUPERSEDED" not in prompt and "DRAFT" not in prompt
+        async with app.state.session_factory() as session, session.begin():
+            session.add_all(
+                [
+                    KnowledgePoint(
+                        record_id=record_id,
+                        name=f"补充知识点{index}",
+                        detail="长" * 2000,
+                        tags="[]",
+                        importance=3,
+                        generation_status="ACTIVE",
+                    )
+                    for index in range(31)
+                ]
+            )
+        oversized = await send_message(client, session_id, "材料过长时不发送给模型")
+        assert [event for event, _ in oversized] == ["status", "error"]
+        assert oversized[-1][1]["code"] == "CHAT_CONTEXT_TOO_LARGE"
+        assert len(captured) == 2
 
 
 @pytest.mark.anyio

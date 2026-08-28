@@ -251,6 +251,45 @@
         "title": "ChatMode",
         "type": "string"
       },
+      "ChatRecordOption": {
+        "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "课程 ID，收件箱记录为空",
+            "title": "Course Id"
+          },
+          "has_transcript": {
+            "description": "存在可用转写时可挂载",
+            "title": "Has Transcript",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "学习记录 ID",
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "description": "学习记录标题",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "course_id",
+          "has_transcript"
+        ],
+        "title": "ChatRecordOption",
+        "type": "object"
+      },
       "ChatRole": {
         "enum": [
           "USER",
@@ -262,6 +301,7 @@
         "type": "string"
       },
       "ChatSessionCreate": {
+        "additionalProperties": false,
         "properties": {
           "mode": {
             "const": "ASK",
@@ -269,6 +309,19 @@
             "description": "会话模式",
             "title": "Mode",
             "type": "string"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "挂载的学习记录，空为自由聊天",
+            "title": "Record Id"
           }
         },
         "title": "ChatSessionCreate",
@@ -338,6 +391,7 @@
         "type": "object"
       },
       "ChatSessionRename": {
+        "additionalProperties": false,
         "properties": {
           "title": {
             "description": "会话标题",
@@ -3156,6 +3210,99 @@
           }
         },
         "summary": "Create Chat Session",
+        "tags": [
+          "chat-sessions"
+        ]
+      }
+    },
+    "/api/chat-sessions/record-options": {
+      "get": {
+        "operationId": "list_chat_record_options_api_chat_sessions_record_options_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ChatRecordOption"
+                  },
+                  "title": "Response List Chat Record Options Api Chat Sessions Record Options Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Chat Record Options",
         "tags": [
           "chat-sessions"
         ]

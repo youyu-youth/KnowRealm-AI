@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -20,11 +21,15 @@ class ChatRole(StrEnum):
 
 
 class ChatSessionCreate(BaseModel):
-    # 本阶段仅自由聊天（无挂载的 ASK）；挂载对话随后续工单扩展。
+    model_config = ConfigDict(extra="forbid")
+
     mode: Literal[ChatMode.ASK] = Field(default=ChatMode.ASK, description="会话模式")
+    record_id: UUID | None = Field(default=None, description="挂载的学习记录，空为自由聊天")
 
 
 class ChatSessionRename(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(min_length=1, max_length=100, description="会话标题")
 
     @field_validator("title")
@@ -34,6 +39,13 @@ class ChatSessionRename(BaseModel):
         if not cleaned:
             raise ValueError("会话标题不能为空白")
         return cleaned
+
+
+class ChatRecordOption(BaseModel):
+    id: str = Field(description="学习记录 ID")
+    title: str = Field(description="学习记录标题")
+    course_id: str | None = Field(description="课程 ID，收件箱记录为空")
+    has_transcript: bool = Field(description="存在可用转写时可挂载")
 
 
 class ChatMessageCreate(BaseModel):

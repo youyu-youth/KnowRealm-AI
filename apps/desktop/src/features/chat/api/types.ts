@@ -2,6 +2,8 @@ import type { components } from "@knowrealm/api-types";
 
 export type ChatSession = components["schemas"]["ChatSessionOut"];
 export type ChatMessage = components["schemas"]["ChatMessageOut"];
+export type ChatSessionCreate = components["schemas"]["ChatSessionCreate"];
+export type ChatRecordOption = components["schemas"]["ChatRecordOption"];
 
 /**
  * SSE 流事件载荷（POST /chat-sessions/{id}/messages，事件名在 event: 行）。

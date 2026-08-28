@@ -1,13 +1,18 @@
 from uuid import uuid4
 
-from sqlalchemy import select
+from fastapi import HTTPException
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
 from app.models.chat import ChatMessage, ChatSession
+from app.models.course import Course
+from app.models.document import Transcript
 from app.models.profile import PROFILE_ID, Profile
-from app.schemas.chat import ChatMode, ChatRole
+from app.models.record import Record
+from app.schemas.chat import ChatMode, ChatRecordOption, ChatRole
 from app.schemas.profile import PrimaryRole
+from app.services.record_service import RecordService
 
 ROLE_LABELS: dict[PrimaryRole, str] = {
     PrimaryRole.STUDENT: "学生",
@@ -31,14 +36,50 @@ def build_profile_snapshot(profile: Profile | None) -> str:
 
 class ChatSessionService:
     @staticmethod
-    async def create_free(session: AsyncSession) -> ChatSession:
+    async def record_options(session: AsyncSession) -> list[ChatRecordOption]:
+        rows = await session.execute(
+            select(
+                Record.id,
+                Record.title,
+                Record.course_id,
+                Transcript.id.is_not(None).label("has_transcript"),
+            )
+            .outerjoin(Course, Course.id == Record.course_id)
+            .outerjoin(
+                Transcript,
+                and_(
+                    Transcript.record_id == Record.id,
+                    Transcript.deleted_at.is_(None),
+                ),
+            )
+            .where(
+                Record.deleted_at.is_(None),
+                or_(
+                    Record.course_id.is_(None),
+                    and_(Course.id.is_not(None), Course.deleted_at.is_(None)),
+                ),
+            )
+            .order_by(Record.created_at.desc(), Record.id.desc())
+        )
+        return [ChatRecordOption.model_validate(row) for row in rows.mappings()]
+
+    @staticmethod
+    async def create(session: AsyncSession, *, record_id: str | None = None) -> ChatSession:
         async with session.begin():
-            profile = await session.get(Profile, PROFILE_ID)
+            record = None
+            if record_id is not None:
+                record = await RecordService.get(session, record_id)
+                if record is None:
+                    raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+                if await RecordService.get_transcript(session, record_id) is None:
+                    raise HTTPException(
+                        status_code=409, detail="TRANSCRIPT_NOT_READY：转写尚未生成，暂不可挂载"
+                    )
             now = utcnow()
             chat = ChatSession(
                 id=str(uuid4()),
-                course_id=None,
-                record_id=None,
+                course_id=record.course_id if record is not None else None,
+                record_id=record_id,
                 concept_id=None,
                 mode=ChatMode.ASK,
                 title=None,
@@ -48,18 +89,20 @@ class ChatSessionService:
             )
             session.add(chat)
             await session.flush()
-            session.add(
-                ChatMessage(
-                    id=str(uuid4()),
-                    session_id=chat.id,
-                    role=ChatRole.SYSTEM,
-                    content=build_profile_snapshot(profile),
-                    citations_json=None,
-                    model=None,
-                    token_usage_json=None,
-                    created_at=now,
+            if record is None:
+                profile = await session.get(Profile, PROFILE_ID)
+                session.add(
+                    ChatMessage(
+                        id=str(uuid4()),
+                        session_id=chat.id,
+                        role=ChatRole.SYSTEM,
+                        content=build_profile_snapshot(profile),
+                        citations_json=None,
+                        model=None,
+                        token_usage_json=None,
+                        created_at=now,
+                    )
                 )
-            )
             await session.flush()
             return chat
 

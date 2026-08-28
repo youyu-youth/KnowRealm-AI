@@ -4,7 +4,12 @@ import {
   apiFetchNoContent,
   apiRequest,
 } from "@/services/http/client";
-import type { ChatMessage, ChatSession } from "@/features/chat/api/types";
+import type {
+  ChatMessage,
+  ChatRecordOption,
+  ChatSession,
+  ChatSessionCreate,
+} from "@/features/chat/api/types";
 
 export type ChatStreamHandlers = {
   onStatus: () => void;
@@ -105,10 +110,12 @@ function abortError(): Error {
 
 export const chatApi = {
   list: () => apiFetch<ChatSession[]>("/api/chat-sessions"),
-  create: () =>
+  recordOptions: () =>
+    apiFetch<ChatRecordOption[]>("/api/chat-sessions/record-options"),
+  create: (payload: ChatSessionCreate = { mode: "ASK" }) =>
     apiFetch<ChatSession>("/api/chat-sessions", {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify(payload),
     }),
   get: (sessionId: string) =>
     apiFetch<ChatSession>(`/api/chat-sessions/${sessionId}`),
