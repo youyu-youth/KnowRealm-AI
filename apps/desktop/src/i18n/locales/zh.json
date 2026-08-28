@@ -22,6 +22,18 @@
     "paste": "粘贴文本",
     "savedFeedback": "已保存到本地收件箱"
   },
+  "desktopLifecycle": {
+    "shortcutUnavailable": "Ctrl+Alt+N 已被其他应用占用或无法注册；仍可使用应用内的新建速记入口。",
+    "initFailed": "桌面快捷入口暂时不可用；应用内功能仍可继续使用。",
+    "exitCheckFailed": "暂时无法确认录音状态，已取消退出以保护数据；请重试。",
+    "exitFailed": "应用暂时无法退出，请重试。",
+    "exitTitle": "退出 KnowRealm？",
+    "exitDescription": "确认后将停止本地服务并退出应用。",
+    "recordingRisk": "存在活动录音：最新尚未提交的内存分片可能丢失，已提交分片可在重启后恢复。",
+    "textRisk": "未保存的速记或粘贴正文将丢失。",
+    "cancelExit": "取消退出",
+    "confirmExit": "确认退出"
+  },
   "recording": {
     "startTitle": "开始录音",
     "startDescription": "使用默认麦克风录制。测试阶段每 20 秒安全保存一个独立分片。",

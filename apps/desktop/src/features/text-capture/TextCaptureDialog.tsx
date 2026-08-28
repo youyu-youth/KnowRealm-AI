@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,8 @@ type TextCaptureDialogProps = {
   onOpenChange: (open: boolean) => void;
   captureType: TextCaptureMode;
   onAccepted: (result: TextCaptureAccepted, courseSelected: boolean) => void;
+  focusRequest?: number;
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 export function TextCaptureDialog({
@@ -45,10 +47,13 @@ export function TextCaptureDialog({
   onOpenChange,
   captureType,
   onAccepted,
+  focusRequest = 0,
+  onDirtyChange,
 }: TextCaptureDialogProps) {
   const { t } = useTranslation();
   const [content, setContent] = useState("");
   const [courseId, setCourseId] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
   const showCourse = captureType === "PASTE";
   const courses = useQuery({
     queryKey: courseKeys.list(),
@@ -61,6 +66,10 @@ export function TextCaptureDialog({
   const byteLength = new TextEncoder().encode(content).length;
   const oversized = byteLength > MAX_TEXT_BYTES;
   const canSubmit = content.trim().length > 0 && !oversized;
+
+  useEffect(() => {
+    if (open) bodyRef.current?.focus();
+  }, [focusRequest, open]);
 
   const submitCapture = useMutation({
     mutationFn: () =>
@@ -80,6 +89,7 @@ export function TextCaptureDialog({
   function resetForm() {
     setContent("");
     setCourseId(null);
+    onDirtyChange?.(false);
     submitCapture.reset();
   }
 
@@ -121,9 +131,13 @@ export function TextCaptureDialog({
               {t("textCapture.body")}
             </FieldLabel>
             <Textarea
+              ref={bodyRef}
               id="text-capture-body"
               value={content}
-              onChange={(event) => setContent(event.target.value)}
+              onChange={(event) => {
+                setContent(event.target.value);
+                onDirtyChange?.(event.target.value.trim().length > 0);
+              }}
               rows={10}
               autoFocus
               // field-sizing-content 会让超长单行粘贴把 Dialog 撑宽、撑高，恢复固定尺寸后在框内滚动。

@@ -13,15 +13,26 @@ import {
   UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
 import {
   blocksNewRecording,
   useRecordingSessions,
 } from "@/features/recording/api/queries";
+import { recordingKeys } from "@/features/recording/api/keys";
+import { recordingApi } from "@/features/recording/api/recordings";
 import { useRecordingUiStore } from "@/features/recording/store";
 import { recordKeys } from "@/features/records/api/keys";
 import type {
@@ -30,6 +41,13 @@ import type {
 } from "@/features/text-capture/api/textCaptures";
 import { TextCaptureDialog } from "@/features/text-capture/TextCaptureDialog";
 import { cn } from "@/lib/utils";
+import {
+  exitApplication,
+  getDesktopLifecycleStatus,
+  isDesktopLifecycleAvailable,
+  listenExitRequested,
+  listenOpenQuickNote,
+} from "@/services/tauri/lifecycle";
 
 const navigationItems = [
   { labelKey: "nav.today", icon: CalendarDays, to: "/" },
@@ -52,21 +70,110 @@ const activeNavClass =
 const inactiveNavClass =
   "flex h-9 items-center gap-3 rounded-md px-3 text-body font-medium text-muted-foreground transition-colors hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-3 focus-visible:ring-ring/40 max-compact:justify-center max-compact:px-0";
 
+type ExitRisks = {
+  recording: boolean;
+  unsavedText: boolean;
+};
+
 export function AppShell() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [importOpen, setImportOpen] = useState(false);
   const [textCapture, setTextCapture] = useState<TextCaptureMode | null>(null);
+  const [textCaptureFocusRequest, setTextCaptureFocusRequest] = useState(0);
   const [captureFeedback, setCaptureFeedback] = useState("");
+  const [shortcutUnavailable, setShortcutUnavailable] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState("");
+  const [exitRisks, setExitRisks] = useState<ExitRisks | null>(null);
+  const [exitPending, setExitPending] = useState(false);
+  const textCaptureDirtyRef = useRef(false);
+  const exitCheckPendingRef = useRef(false);
   const setRecordingOpen = useRecordingUiStore((state) => state.setStartOpen);
   const recordingSessions = useRecordingSessions();
   const recordingActive = (recordingSessions.data ?? []).some(
     blocksNewRecording,
   );
 
+  const openQuickNote = useCallback(() => {
+    setTextCapture((current) => current ?? "QUICK_NOTE");
+    setTextCaptureFocusRequest((current) => current + 1);
+  }, []);
+
+  const requestSafeExit = useCallback(async () => {
+    if (exitCheckPendingRef.current) return;
+    exitCheckPendingRef.current = true;
+    setLifecycleError("");
+    try {
+      const sessions = await queryClient.fetchQuery({
+        queryKey: recordingKeys.unfinished(),
+        queryFn: recordingApi.list,
+        staleTime: 0,
+      });
+      const risks = {
+        recording: sessions.some(blocksNewRecording),
+        unsavedText: textCaptureDirtyRef.current,
+      };
+      if (risks.recording || risks.unsavedText) {
+        setExitRisks(risks);
+      } else {
+        await exitApplication();
+      }
+    } catch {
+      setLifecycleError(t("desktopLifecycle.exitCheckFailed"));
+    } finally {
+      exitCheckPendingRef.current = false;
+    }
+  }, [queryClient, t]);
+
+  useEffect(() => {
+    if (!isDesktopLifecycleAvailable()) return;
+    let disposed = false;
+    const unlisteners: Array<() => void> = [];
+
+    void getDesktopLifecycleStatus()
+      .then((status) => {
+        if (!disposed && !status.shortcutAvailable)
+          setShortcutUnavailable(true);
+      })
+      .catch(() => {
+        if (!disposed) setLifecycleError(t("desktopLifecycle.initFailed"));
+      });
+
+    void Promise.allSettled([
+      listenOpenQuickNote(openQuickNote),
+      listenExitRequested(() => void requestSafeExit()),
+    ]).then((results) => {
+      const registered = results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      if (disposed) registered.forEach((unlisten) => unlisten());
+      else unlisteners.push(...registered);
+      if (!disposed && results.some((result) => result.status === "rejected"))
+        setLifecycleError(t("desktopLifecycle.initFailed"));
+    });
+
+    return () => {
+      disposed = true;
+      unlisteners.forEach((unlisten) => unlisten());
+    };
+  }, [openQuickNote, requestSafeExit, t]);
+
+  const confirmExit = useCallback(async () => {
+    if (exitPending) return;
+    setExitPending(true);
+    setLifecycleError("");
+    try {
+      await exitApplication();
+    } catch {
+      setLifecycleError(t("desktopLifecycle.exitFailed"));
+      setExitPending(false);
+      setExitRisks(null);
+    }
+  }, [exitPending, t]);
+
   const openCapture = (labelKey: (typeof captureItems)[number]["labelKey"]) => {
-    if (labelKey === "capture.note") setTextCapture("QUICK_NOTE");
+    if (labelKey === "capture.note") openQuickNote();
     if (labelKey === "capture.paste") setTextCapture("PASTE");
     if (labelKey === "capture.import") setImportOpen(true);
     if (labelKey === "capture.record") setRecordingOpen(true);
@@ -209,6 +316,18 @@ export function AppShell() {
             {captureFeedback}
           </p>
         ) : null}
+        {shortcutUnavailable ? (
+          <Alert className="mx-content mb-2 w-auto">
+            <AlertDescription>
+              {t("desktopLifecycle.shortcutUnavailable")}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+        {lifecycleError ? (
+          <Alert variant="destructive" className="mx-content mb-2 w-auto">
+            <AlertDescription>{lifecycleError}</AlertDescription>
+          </Alert>
+        ) : null}
         <main className="bg-paper min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
@@ -225,9 +344,52 @@ export function AppShell() {
             if (!open) setTextCapture(null);
           }}
           captureType={textCapture}
+          focusRequest={textCaptureFocusRequest}
+          onDirtyChange={(dirty) => {
+            textCaptureDirtyRef.current = dirty;
+          }}
           onAccepted={handleTextAccepted}
         />
       ) : null}
+      <Dialog
+        open={exitRisks !== null}
+        onOpenChange={(open) => {
+          if (!open && !exitPending) setExitRisks(null);
+        }}
+      >
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>{t("desktopLifecycle.exitTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("desktopLifecycle.exitDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-body text-foreground flex flex-col gap-2">
+            {exitRisks?.recording ? (
+              <p>{t("desktopLifecycle.recordingRisk")}</p>
+            ) : null}
+            {exitRisks?.unsavedText ? (
+              <p>{t("desktopLifecycle.textRisk")}</p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={exitPending}
+              onClick={() => setExitRisks(null)}
+            >
+              {t("desktopLifecycle.cancelExit")}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={exitPending}
+              onClick={() => void confirmExit()}
+            >
+              {t("desktopLifecycle.confirmExit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
