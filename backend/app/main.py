@@ -49,7 +49,7 @@ from app.services.audio_worker import AudioWorker
 from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.chat_message_service import ChatStreamRegistry
 from app.services.document_cleanup_service import DocumentCleanupService
-from app.services.document_worker import DocumentWorker
+from app.services.document_worker import document_spec
 from app.services.job_runner import JobRunner
 from app.services.knowledge_point_worker import knowledge_point_spec
 from app.services.quiz_worker import quiz_spec
@@ -116,7 +116,11 @@ def create_app(
             app.state.course_tombstone_cleanup_task = cleanup_task
             await cleanup_task
             await CacheLifecycleService.cleanup_orphans(session_factory, resolved_data_dir)
-            document_worker = DocumentWorker(session_factory, resolved_data_dir, record_notifier)
+            document_worker = JobRunner(
+                document_spec(session_factory, resolved_data_dir, record_notifier),
+                session_factory,
+                record_notifier,
+            )
             await document_worker.recover_interrupted()
             document_worker_task = asyncio.create_task(document_worker.run())
             app.state.document_worker_task = document_worker_task

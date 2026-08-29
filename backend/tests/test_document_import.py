@@ -1,7 +1,7 @@
 import asyncio
 import errno
 import threading
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from io import BytesIO, StringIO
@@ -19,11 +19,13 @@ from docx import Document
 from fastapi import FastAPI
 from loguru import logger
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
 from app.models.document import ProcessingJob
-from app.services.document_worker import DocumentWorker
+from app.services import document_worker
+from app.services.job_runner import ClaimedJob, JobRunner
 from app.services.processing_job_service import ProcessingJobService
 
 TOKEN = "test-launch-token"
@@ -914,10 +916,16 @@ async def test_deleted_job_is_rechecked_after_claim_before_parsing(
     claimed = asyncio.Event()
     continue_after_delete = asyncio.Event()
     parser_calls = 0
-    original_claim = DocumentWorker._claim_one  # pyright: ignore[reportPrivateUsage]
+    # runner 正式接缝：领取后、执行前挂闸（类访问泛型方法需显式定型）
+    original_claim = cast(
+        "Callable[[JobRunner[None, ClaimedJob, object]], Awaitable[ClaimedJob | None]]",
+        JobRunner.claim_one,  # pyright: ignore[reportUnknownMemberType]
+    )
 
-    async def gated_claim(worker: DocumentWorker) -> tuple[str, str, Path] | None:
-        result = await original_claim(worker)
+    async def gated_claim(
+        runner: JobRunner[None, ClaimedJob, object],
+    ) -> ClaimedJob | None:
+        result = await original_claim(runner)
         if result is not None:
             claimed.set()
             await continue_after_delete.wait()
@@ -928,7 +936,7 @@ async def test_deleted_job_is_rechecked_after_claim_before_parsing(
         parser_calls += 1
         return path.read_text(encoding="utf-8")
 
-    monkeypatch.setattr(DocumentWorker, "_claim_one", gated_claim)
+    monkeypatch.setattr(JobRunner, "claim_one", gated_claim)
     monkeypatch.setattr(
         "app.services.document_worker.extract_document_text",
         observe_parse,
@@ -984,19 +992,19 @@ async def test_delete_after_parse_before_commit_discards_result(
 ) -> None:
     parsed = asyncio.Event()
     continue_commit = asyncio.Event()
-    original_succeed = DocumentWorker._succeed  # pyright: ignore[reportPrivateUsage]
+    original_writeback = document_worker.writeback  # 执行体公开写回钩子
 
-    async def gated_succeed(
-        worker: DocumentWorker,
-        job_id: str,
-        record_id: str,
+    async def gated_writeback(
+        ctx: document_worker.ClaimedDocument,
         content: str,
-    ) -> None:
-        parsed.set()
+        session_factory: async_sessionmaker[AsyncSession],
+        data_dir: Path,
+    ) -> bool:
+        parsed.set()  # 仅在写回事务提交前挂闸
         await continue_commit.wait()
-        await original_succeed(worker, job_id, record_id, content)
+        return await original_writeback(ctx, content, session_factory, data_dir)
 
-    monkeypatch.setattr(DocumentWorker, "_succeed", gated_succeed)
+    monkeypatch.setattr(document_worker, "writeback", gated_writeback)
 
     data_dir = tmp_path / "KnowRealm"
     async with running_document_app(data_dir) as (_app, client):

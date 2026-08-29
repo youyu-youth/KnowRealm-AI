@@ -189,6 +189,7 @@ class WorkerSpec[PreflightT, CtxT: ClaimedJob, ResultT]:
     on_loop_failure: Callable[[str], Awaitable[None]] | None = None
     finalize_cycle: Callable[[CtxT], Awaitable[None]] | None = None
     clear_waiting_on_claim: bool = False
+    clock: Callable[[], datetime] = utcnow  # 时钟为正式接缝：测试可冻结推进
 
 
 class ManagedWorker(Protocol):
@@ -209,12 +210,10 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
         spec: WorkerSpec[PreflightT, CtxT, ResultT],
         session_factory: async_sessionmaker[AsyncSession],
         record_notifier: RecordInvalidationNotifier,
-        clock: Callable[[], datetime] = utcnow,
     ) -> None:
         self._spec = spec
         self._session_factory = session_factory
         self._notifier = record_notifier
-        self._clock = clock
         self._stopped = asyncio.Event()
 
     def stop(self) -> None:
@@ -247,13 +246,15 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
         landed = False
         try:
             result = await self._spec.execute(ctx)
-            if result is not None:
-                landed = await self._spec.writeback(ctx, result)
         except Exception as exc:
             code = self._spec.failure_code(ctx, exc)
             if code is None:
                 raise
             landed = await self._apply_failure(ctx, code)
+        else:
+            # 写回异常不属执行失败：按现状契约直抛 run 循环走恢复路径
+            if result is not None:
+                landed = await self._spec.writeback(ctx, result)
         finally:
             if self._spec.finalize_cycle is not None:
                 await self._spec.finalize_cycle(ctx)
@@ -268,7 +269,7 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
             payload = await self._spec.preflight()
             if payload is None:
                 return None
-        now = self._clock()
+        now = self._spec.clock()
         ctx: CtxT | None = None
         waiting_record: str | None = None
         async with self._session_factory() as session, session.begin():
@@ -295,7 +296,7 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
 
     async def _apply_failure(self, ctx: CtxT, code: str) -> bool:
         """失败记账事务外壳；job 已被他方终结时静默（返回 False 不 notify）。"""
-        now = self._clock()
+        now = self._spec.clock()
         async with self._session_factory() as session, session.begin():
             job = await session.get(ProcessingJob, ctx.job_id)
             if job is None or job.status != ProcessingJobStatus.RUNNING:
