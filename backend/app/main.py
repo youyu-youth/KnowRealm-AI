@@ -51,8 +51,8 @@ from app.services.chat_message_service import ChatStreamRegistry
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import DocumentWorker
 from app.services.job_runner import JobRunner
-from app.services.knowledge_point_worker import KnowledgePointWorker
-from app.services.quiz_worker import QuizWorker
+from app.services.knowledge_point_worker import knowledge_point_spec
+from app.services.quiz_worker import quiz_spec
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_worker import SummaryWorker
 from app.services.tencent_asr_client import TencentAsrClient
@@ -154,19 +154,27 @@ def create_app(
                 await summary_worker.recover_interrupted()
                 summary_worker_task = asyncio.create_task(summary_worker.run())
                 app.state.summary_worker_task = summary_worker_task
-                knowledge_point_worker = KnowledgePointWorker(
+                knowledge_point_worker = JobRunner(
+                    knowledge_point_spec(
+                        session_factory,
+                        resolved_data_dir,
+                        app.state.knowledge_point_model,
+                        record_notifier,
+                    ),
                     session_factory,
-                    resolved_data_dir,
-                    app.state.knowledge_point_model,
                     record_notifier,
                 )
                 await knowledge_point_worker.recover_interrupted()
                 knowledge_point_worker_task = asyncio.create_task(knowledge_point_worker.run())
                 app.state.knowledge_point_worker_task = knowledge_point_worker_task
-                quiz_worker = QuizWorker(
+                quiz_worker = JobRunner(
+                    quiz_spec(
+                        session_factory,
+                        resolved_data_dir,
+                        app.state.quiz_model,
+                        record_notifier,
+                    ),
                     session_factory,
-                    resolved_data_dir,
-                    app.state.quiz_model,
                     record_notifier,
                 )
                 await quiz_worker.recover_interrupted()

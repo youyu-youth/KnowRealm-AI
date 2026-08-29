@@ -1,14 +1,15 @@
+"""习题生成执行体描述（任务循环骨架见 job_runner.py，ADR-0012）。"""
+
 import asyncio
 import json
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from loguru import logger
-from sqlalchemy import select, update
-from sqlalchemy.engine import CursorResult
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.agents.llm import (
@@ -20,14 +21,23 @@ from app.models.base import utcnow
 from app.models.course import Course
 from app.models.document import AiSummary, ProcessingJob, Quiz
 from app.models.record import Record
-from app.schemas.course import CourseStatus
-from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
+from app.schemas.document import ProcessingJobStatus, ProcessingJobType
 from app.schemas.quiz import (
     QuizBatch,
     QuizGenerationStatus,
     QuizQuestionType,
 )
 from app.schemas.summary import SummaryContent
+from app.services.job_runner import (
+    CancelClaim,
+    ClaimCheck,
+    ClaimedJob,
+    LoopFailure,
+    Ready,
+    WorkerSpec,
+    mark_failed,
+    recover_running_to_failed,
+)
 from app.services.local_config import (
     LlmProviderConfig,
     llm_consent,
@@ -35,6 +45,11 @@ from app.services.local_config import (
     load_llm_provider,
 )
 from app.services.record_invalidation import RecordInvalidationNotifier
+from app.services.summary_derivation import (
+    PREREQUISITE_CHANGED,
+    summary_content,
+    summary_source_is_current,
+)
 
 PROMPT_VERSION = "quiz_v1"
 
@@ -46,26 +61,13 @@ _QUESTION_TYPE_LABELS = {
 
 
 @dataclass(frozen=True)
-class _ClaimedQuizJob:
-    job_id: str
-    record_id: str
+class _ClaimedQuizJob(ClaimedJob):
     summary_id: str
     question_types: tuple[QuizQuestionType, ...]
     total_count: int
     summary: SummaryContent
     course: Course
     provider: LlmProviderConfig
-
-
-def _summary_content(summary: AiSummary) -> SummaryContent:
-    payload = cast(dict[str, object], json.loads(summary.summary_json))
-    return SummaryContent.model_validate(
-        {
-            "topic": summary.topic,
-            "abstract": summary.abstract,
-            "sections": payload.get("sections"),
-        }
-    )
 
 
 def build_quiz_prompt(claimed: _ClaimedQuizJob) -> str:
@@ -110,273 +112,207 @@ def validate_quiz_composition(
         raise StructuredGenerationError("LLM_OUTPUT_INVALID")
 
 
-def _source_is_current(
-    record: Record | None,
-    course: Course | None,
-    summary: AiSummary | None,
-    *,
+async def preflight(data_dir: Path) -> LlmProviderConfig | None:
+    provider = await asyncio.to_thread(load_llm_provider, data_dir)
+    consent_at, consent_current = await asyncio.to_thread(llm_consent, data_dir)
+    if provider is None or not provider.api_key or not consent_current or consent_at is None:
+        return None
+    return provider
+
+
+async def find_candidate(session: AsyncSession, now: datetime) -> ProcessingJob | None:
+    return (
+        await session.scalars(
+            select(ProcessingJob)
+            .join(Record, ProcessingJob.record_id == Record.id)
+            .where(
+                ProcessingJob.job_type == ProcessingJobType.QUIZ_GENERATION,
+                ProcessingJob.status == ProcessingJobStatus.PENDING,
+                Record.deleted_at.is_(None),
+            )
+            .order_by(ProcessingJob.created_at)
+            .limit(1)
+        )
+    ).one_or_none()
+
+
+async def validate_claim(
+    session: AsyncSession,
+    job: ProcessingJob,
     record_id: str,
-) -> bool:
-    return bool(
-        record is not None
-        and record.deleted_at is None
-        and course is not None
-        and course.deleted_at is None
-        and course.status == CourseStatus.ACTIVE
-        and summary is not None
-        and summary.record_id == record_id
-        and summary.deleted_at is None
-        and summary.status == AiSummaryStatus.CONFIRMED
+    provider: LlmProviderConfig | None,
+) -> ClaimCheck[_ClaimedQuizJob]:
+    current_provider = cast(LlmProviderConfig, provider)  # preflight 通过时必非 None
+    record = await session.get(Record, record_id)
+    input_data = cast(dict[str, object], json.loads(job.input_json))
+    summary_id = input_data.get("generated_from_summary_id")
+    raw_total_count = input_data.get("total_count")
+    summary = await session.get(AiSummary, summary_id) if isinstance(summary_id, str) else None
+    course = await session.get(Course, record.course_id) if record and record.course_id else None
+    try:
+        question_types = tuple(
+            QuizQuestionType(value)
+            for value in cast(list[object], input_data.get("question_types"))
+        )
+    except ValueError:
+        question_types = ()
+    if (
+        not question_types
+        or not isinstance(raw_total_count, int)
+        or not summary_source_is_current(record, course, summary, record_id=record_id)
+        or input_data.get("provider_fingerprint") != llm_provider_fingerprint(current_provider)
+    ):
+        return CancelClaim(PREREQUISITE_CHANGED)
+    current_summary = cast(AiSummary, summary)
+    return Ready(
+        _ClaimedQuizJob(
+            job_id=job.id,
+            record_id=record_id,
+            summary_id=current_summary.id,
+            question_types=question_types,
+            total_count=raw_total_count,
+            summary=summary_content(current_summary),
+            course=cast(Course, course),
+            provider=current_provider,
+        )
     )
 
 
-class QuizWorker:
-    def __init__(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        data_dir: Path,
-        model: QuizModel,
-        record_notifier: RecordInvalidationNotifier,
-    ) -> None:
-        self._session_factory = session_factory
-        self._data_dir = data_dir
-        self._model = model
-        self._record_notifier = record_notifier
-        self._stopped = asyncio.Event()
+async def execute(
+    ctx: _ClaimedQuizJob,
+    session_factory: async_sessionmaker[AsyncSession],
+    model: QuizModel,
+) -> QuizBatch:
+    call_result = await call_quiz_model(
+        session_factory=session_factory,
+        quiz_model=model,
+        provider=ctx.provider,
+        prompt=build_quiz_prompt(ctx),
+        prompt_version=PROMPT_VERSION,
+    )
+    validate_quiz_composition(
+        call_result.content,
+        question_types=ctx.question_types,
+        total_count=ctx.total_count,
+    )
+    return call_result.content
 
-    def stop(self) -> None:
-        self._stopped.set()
 
-    async def recover_interrupted(self) -> None:
-        now = utcnow()
-        record_ids: list[str] = []
-        async with self._session_factory() as session, session.begin():
-            jobs = list(
-                (
-                    await session.scalars(
-                        select(ProcessingJob).where(
-                            ProcessingJob.job_type == ProcessingJobType.QUIZ_GENERATION,
-                            ProcessingJob.status == ProcessingJobStatus.RUNNING,
-                        )
-                    )
-                ).all()
-            )
-            for job in jobs:
-                job.status = ProcessingJobStatus.FAILED
-                job.error_code = "WORKER_INTERRUPTED"
-                job.error_message = "习题生成被意外中断"
-                job.finished_at = now
-                job.updated_at = now
-                if job.record_id is not None:
-                    record_ids.append(job.record_id)
-        for record_id in record_ids:
-            await self._record_notifier.notify(record_id)
-
-    async def run(self) -> None:
-        while not self._stopped.is_set():
-            try:
-                if await self._process_one():
-                    continue
-            except Exception:
-                logger.error(
-                    "quiz_worker_unexpected_failure",
-                    error_code="INTERNAL_ERROR",
-                )
-                await self.recover_interrupted()
-            try:
-                await asyncio.wait_for(self._stopped.wait(), timeout=0.25)
-            except TimeoutError:
-                pass
-
-    async def _process_one(self) -> bool:
-        claimed = await self._claim_one()
-        if claimed is None:
+async def writeback(
+    ctx: _ClaimedQuizJob,
+    content: QuizBatch,
+    session_factory: async_sessionmaker[AsyncSession],
+) -> bool:
+    now = utcnow()
+    async with session_factory() as session, session.begin():
+        job = await session.get(ProcessingJob, ctx.job_id)
+        record = await session.get(Record, ctx.record_id)
+        summary = await session.get(AiSummary, ctx.summary_id)
+        course = (
+            await session.get(Course, record.course_id) if record and record.course_id else None
+        )
+        if job is None or job.status != ProcessingJobStatus.RUNNING:
             return False
-        await self._record_notifier.notify(claimed.record_id)
-        try:
-            call_result = await call_quiz_model(
-                session_factory=self._session_factory,
-                quiz_model=self._model,
-                provider=claimed.provider,
-                prompt=build_quiz_prompt(claimed),
-                prompt_version=PROMPT_VERSION,
-            )
-            validate_quiz_composition(
-                call_result.content,
-                question_types=claimed.question_types,
-                total_count=claimed.total_count,
-            )
-        except StructuredGenerationError as exc:
-            await self._fail(claimed, exc.code)
-        except Exception:
-            await self._fail(claimed, "INTERNAL_ERROR")
-        else:
-            await self._publish(claimed, call_result.content)
-        return True
-
-    async def _claim_one(self) -> _ClaimedQuizJob | None:
-        provider = await asyncio.to_thread(load_llm_provider, self._data_dir)
-        consent_at, consent_current = await asyncio.to_thread(llm_consent, self._data_dir)
-        if provider is None or not provider.api_key or not consent_current or consent_at is None:
-            return None
-        now = utcnow()
-        async with self._session_factory() as session, session.begin():
-            job = (
-                await session.scalars(
-                    select(ProcessingJob)
-                    .join(Record, ProcessingJob.record_id == Record.id)
-                    .where(
-                        ProcessingJob.job_type == ProcessingJobType.QUIZ_GENERATION,
-                        ProcessingJob.status == ProcessingJobStatus.PENDING,
-                        Record.deleted_at.is_(None),
-                    )
-                    .order_by(ProcessingJob.created_at)
-                    .limit(1)
+        if not summary_source_is_current(record, course, summary, record_id=ctx.record_id):
+            job.status = ProcessingJobStatus.CANCELLED
+            job.result_json = json.dumps({"reason": PREREQUISITE_CHANGED})
+            job.finished_at = now
+            job.updated_at = now
+            return False
+        for candidate in content.items:
+            session.add(
+                Quiz(
+                    id=str(uuid4()),
+                    record_id=ctx.record_id,
+                    batch_id=ctx.job_id,
+                    generated_from_summary_id=ctx.summary_id,
+                    generation_status=QuizGenerationStatus.DRAFT,
+                    question_type=candidate.question_type,
+                    stem=candidate.stem,
+                    options_json=json.dumps(
+                        candidate.options, ensure_ascii=False, separators=(",", ":")
+                    ),
+                    correct_answer_json=json.dumps(
+                        candidate.correct_answer, ensure_ascii=False, separators=(",", ":")
+                    ),
+                    explanation=candidate.explanation,
+                    difficulty=candidate.difficulty,
+                    user_answer_json=None,
+                    answer_result=None,
+                    answered_at=None,
+                    created_at=now,
+                    updated_at=now,
+                    deleted_at=None,
                 )
-            ).one_or_none()
-            if job is None or job.record_id is None:
-                return None
-            record = await session.get(Record, job.record_id)
-            input_data = cast(dict[str, object], json.loads(job.input_json))
-            summary_id = input_data.get("generated_from_summary_id")
-            raw_total_count = input_data.get("total_count")
-            summary = (
-                await session.get(AiSummary, summary_id) if isinstance(summary_id, str) else None
             )
-            course = (
-                await session.get(Course, record.course_id) if record and record.course_id else None
-            )
-            try:
-                question_types = tuple(
-                    QuizQuestionType(value)
-                    for value in cast(list[object], input_data.get("question_types"))
-                )
-            except ValueError:
-                question_types = ()
-            if (
-                not question_types
-                or not isinstance(raw_total_count, int)
-                or not _source_is_current(
-                    record,
-                    course,
-                    summary,
-                    record_id=job.record_id,
-                )
-                or input_data.get("provider_fingerprint") != llm_provider_fingerprint(provider)
-            ):
-                job.status = ProcessingJobStatus.CANCELLED
-                job.result_json = json.dumps({"reason": "PREREQUISITE_CHANGED"})
-                job.finished_at = now
-                job.updated_at = now
-                return None
-            current_summary = cast(AiSummary, summary)
-            current_course = cast(Course, course)
-            claimed = cast(
-                CursorResult[tuple[()]],
-                await session.execute(
-                    update(ProcessingJob)
-                    .where(
-                        ProcessingJob.id == job.id,
-                        ProcessingJob.status == ProcessingJobStatus.PENDING,
-                    )
-                    .values(
-                        status=ProcessingJobStatus.RUNNING,
-                        attempts=ProcessingJob.attempts + 1,
-                        started_at=now,
-                        updated_at=now,
-                    )
-                ),
-            )
-            if claimed.rowcount != 1:
-                return None
-            return _ClaimedQuizJob(
-                job_id=job.id,
-                record_id=job.record_id,
-                summary_id=current_summary.id,
-                question_types=question_types,
-                total_count=raw_total_count,
-                summary=_summary_content(current_summary),
-                course=current_course,
-                provider=provider,
-            )
-
-    async def _publish(self, claimed: _ClaimedQuizJob, content: QuizBatch) -> None:
-        now = utcnow()
-        async with self._session_factory() as session, session.begin():
-            job = await session.get(ProcessingJob, claimed.job_id)
-            record = await session.get(Record, claimed.record_id)
-            summary = await session.get(AiSummary, claimed.summary_id)
-            course = (
-                await session.get(Course, record.course_id) if record and record.course_id else None
-            )
-            if job is None or job.status != ProcessingJobStatus.RUNNING:
-                return
-            if not _source_is_current(
-                record,
-                course,
-                summary,
-                record_id=claimed.record_id,
-            ):
-                job.status = ProcessingJobStatus.CANCELLED
-                job.result_json = json.dumps({"reason": "PREREQUISITE_CHANGED"})
-                job.finished_at = now
-                job.updated_at = now
-                return
-            for candidate in content.items:
-                session.add(
-                    Quiz(
-                        id=str(uuid4()),
-                        record_id=claimed.record_id,
-                        batch_id=claimed.job_id,
-                        generated_from_summary_id=claimed.summary_id,
-                        generation_status=QuizGenerationStatus.DRAFT,
-                        question_type=candidate.question_type,
-                        stem=candidate.stem,
-                        options_json=json.dumps(
-                            candidate.options, ensure_ascii=False, separators=(",", ":")
-                        ),
-                        correct_answer_json=json.dumps(
-                            candidate.correct_answer, ensure_ascii=False, separators=(",", ":")
-                        ),
-                        explanation=candidate.explanation,
-                        difficulty=candidate.difficulty,
-                        user_answer_json=None,
-                        answer_result=None,
-                        answered_at=None,
-                        created_at=now,
-                        updated_at=now,
-                        deleted_at=None,
-                    )
-                )
-            type_counts = Counter(item.question_type for item in content.items)
-            job.status = ProcessingJobStatus.SUCCEEDED
-            job.progress = 1
-            job.result_json = json.dumps(
-                {
-                    "model": claimed.provider.model,
-                    "prompt_version": PROMPT_VERSION,
-                    "question_count": len(content.items),
-                    "question_types": {
-                        item.value: type_counts.get(item, 0) for item in claimed.question_types
-                    },
+        type_counts = Counter(item.question_type for item in content.items)
+        job.status = ProcessingJobStatus.SUCCEEDED
+        job.progress = 1
+        job.result_json = json.dumps(
+            {
+                "model": ctx.provider.model,
+                "prompt_version": PROMPT_VERSION,
+                "question_count": len(content.items),
+                "question_types": {
+                    item.value: type_counts.get(item, 0) for item in ctx.question_types
                 },
-                separators=(",", ":"),
-            )
-            job.error_code = None
-            job.error_message = None
-            job.finished_at = now
-            job.updated_at = now
-        await self._record_notifier.notify(claimed.record_id)
+            },
+            separators=(",", ":"),
+        )
+        job.error_code = None
+        job.error_message = None
+        job.finished_at = now
+        job.updated_at = now
+    return True
 
-    async def _fail(self, claimed: _ClaimedQuizJob, error_code: str) -> None:
-        now = utcnow()
-        async with self._session_factory() as session, session.begin():
-            job = await session.get(ProcessingJob, claimed.job_id)
-            if job is None or job.status != ProcessingJobStatus.RUNNING:
-                return
-            job.status = ProcessingJobStatus.FAILED
-            job.error_code = error_code
-            job.error_message = "习题生成失败，请重试"
-            job.finished_at = now
-            job.updated_at = now
-        await self._record_notifier.notify(claimed.record_id)
+
+def failure_code(ctx: _ClaimedQuizJob, exc: Exception) -> str | None:
+    if isinstance(exc, StructuredGenerationError):
+        return exc.code
+    return "INTERNAL_ERROR"
+
+
+async def apply_failure(
+    session: AsyncSession,
+    job: ProcessingJob,
+    record: Record | None,
+    error_code: str,
+    now: datetime,
+) -> bool:
+    del record, session  # quiz 域失败不触碰记录状态
+    mark_failed(job, code=error_code, message="习题生成失败，请重试", now=now)
+    return True
+
+
+def quiz_spec(
+    session_factory: async_sessionmaker[AsyncSession],
+    data_dir: Path,
+    model: QuizModel,
+    record_notifier: RecordInvalidationNotifier,
+) -> WorkerSpec[LlmProviderConfig, _ClaimedQuizJob, QuizBatch]:
+    async def recover() -> None:
+        await recover_running_to_failed(
+            session_factory,
+            record_notifier,
+            ProcessingJobType.QUIZ_GENERATION,
+            "习题生成被意外中断",
+        )
+
+    def classify(_exc: Exception) -> LoopFailure:
+        return LoopFailure(event="quiz_worker_unexpected_failure")
+
+    return WorkerSpec(
+        name="quiz_worker",
+        job_type=ProcessingJobType.QUIZ_GENERATION,
+        interrupted_error_message="习题生成被意外中断",
+        poll_interval=0.25,
+        find_candidate=find_candidate,
+        validate_claim=validate_claim,
+        execute=lambda ctx: execute(ctx, session_factory, model),
+        writeback=lambda ctx, content: writeback(ctx, content, session_factory),
+        failure_code=failure_code,
+        apply_failure=apply_failure,
+        recover_interrupted=recover,
+        classify_loop_error=classify,
+        preflight=lambda: preflight(data_dir),
+    )
