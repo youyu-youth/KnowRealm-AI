@@ -278,13 +278,14 @@ def failure_code(ctx: _ClaimedKnowledgePointJob, exc: Exception) -> str | None:
 
 
 async def apply_failure(
+    ctx: _ClaimedKnowledgePointJob,
     session: AsyncSession,
     job: ProcessingJob,
     record: Record | None,
     error_code: str,
     now: datetime,
 ) -> bool:
-    del record, session  # 知识点域失败不触碰记录状态
+    del ctx, record, session  # 知识点域失败不触碰记录状态
     mark_failed(job, code=error_code, message="知识点生成失败，请检查 Provider 后重试", now=now)
     return True
 

@@ -54,7 +54,7 @@ from app.services.job_runner import JobRunner
 from app.services.knowledge_point_worker import knowledge_point_spec
 from app.services.quiz_worker import quiz_spec
 from app.services.record_invalidation import RecordInvalidationNotifier
-from app.services.summary_worker import SummaryWorker
+from app.services.summary_worker import summary_spec
 from app.services.tencent_asr_client import TencentAsrClient
 from app.services.todo_worker import todo_spec
 
@@ -144,11 +144,15 @@ def create_app(
                 summary_graph = build_summary_graph(checkpointer)
                 app.state.summary_graph = summary_graph
                 app.state.chat_checkpointer = checkpointer
-                summary_worker = SummaryWorker(
+                summary_worker = JobRunner(
+                    summary_spec(
+                        session_factory,
+                        resolved_data_dir,
+                        summary_graph,
+                        app.state.summary_model,
+                        record_notifier,
+                    ),
                     session_factory,
-                    resolved_data_dir,
-                    summary_graph,
-                    app.state.summary_model,
                     record_notifier,
                 )
                 await summary_worker.recover_interrupted()

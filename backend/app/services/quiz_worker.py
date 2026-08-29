@@ -273,13 +273,14 @@ def failure_code(ctx: _ClaimedQuizJob, exc: Exception) -> str | None:
 
 
 async def apply_failure(
+    ctx: _ClaimedQuizJob,
     session: AsyncSession,
     job: ProcessingJob,
     record: Record | None,
     error_code: str,
     now: datetime,
 ) -> bool:
-    del record, session  # quiz 域失败不触碰记录状态
+    del ctx, record, session  # quiz 域失败不触碰记录状态
     mark_failed(job, code=error_code, message="习题生成失败，请重试", now=now)
     return True
 

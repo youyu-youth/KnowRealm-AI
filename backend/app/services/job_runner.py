@@ -178,7 +178,7 @@ class WorkerSpec[PreflightT, CtxT: ClaimedJob, ResultT]:
     writeback: Callable[[CtxT, ResultT], Awaitable[bool]]
     failure_code: Callable[[CtxT, Exception], str | None]
     apply_failure: Callable[
-        [AsyncSession, ProcessingJob, Record | None, str, datetime], Awaitable[bool]
+        [CtxT, AsyncSession, ProcessingJob, Record | None, str, datetime], Awaitable[bool]
     ]
     recover_interrupted: Callable[[], Awaitable[None]]
     classify_loop_error: Callable[[Exception], LoopFailure]
@@ -293,7 +293,7 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
             await self._notifier.notify(waiting_record)  # 协议点：waiting reason 真变化
         return ctx
 
-    async def _apply_failure(self, ctx: ClaimedJob, code: str) -> bool:
+    async def _apply_failure(self, ctx: CtxT, code: str) -> bool:
         """失败记账事务外壳；job 已被他方终结时静默（返回 False 不 notify）。"""
         now = self._clock()
         async with self._session_factory() as session, session.begin():
@@ -301,7 +301,7 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
             if job is None or job.status != ProcessingJobStatus.RUNNING:
                 return False
             record = await session.get(Record, ctx.record_id)
-            return await self._spec.apply_failure(session, job, record, code, now)
+            return await self._spec.apply_failure(ctx, session, job, record, code, now)
 
     async def _handle_loop_error(self, exc: Exception) -> float | None:
         failure = self._spec.classify_loop_error(exc)
