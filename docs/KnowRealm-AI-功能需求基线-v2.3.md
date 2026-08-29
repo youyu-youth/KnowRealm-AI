@@ -3,7 +3,7 @@
 > **文档定位**：KnowRealm-AI 第一版产品需求文档（PRD），覆盖产品定位、功能需求、架构约束、阶段规划与产品决策记录。
 >
 > 配套文档：
-> - 技术选型：`docs/技术栈设计与审查-v4.3.md`
+> - 技术选型：`docs/技术栈设计与审查-v4.4.md`
 > - 数据库设计：`docs/KnowRealm-AI-数据模型-v2.2.md`
 > - Learning Brain 扩展设计（F1~F18 机制与交互参考）：`docs/AI课堂助手-功能升级与创新扩展设计.md`
 > - 存储范式决策：`docs/adr/0001-local-first-storage.md`
@@ -109,7 +109,7 @@ Agent 运行态  = LangGraph Checkpoint（langgraph.db，独立文件，非业�
 
 ## 3. 技术基线与架构红线
 
-技术栈详见 `docs/技术栈设计与审查-v4.3.md`，此处仅列结论：Tauri 2 + React/TS + TanStack Router/Query + Zustand；FastAPI **sidecar**（PyInstaller 打包随 `.msi` 分发，UI 走 localhost）+ LangChain/LangGraph + **自研 SQLite 任务队列（processing_jobs 即队列，无任何中间件）**；SQLite（WAL）+ **sqlite-vec**；LLM 默认 DashScope qwen-plus（**可自选任意 OpenAI 兼容端点**）+ text-embedding-v3（V1 固定）；腾讯云 ASR + 随包 ffmpeg（本地执行）；迁移统一 `backend/migrations/*.sql`（user_version 编号）。
+技术栈详见 `docs/技术栈设计与审查-v4.4.md`，此处仅列结论：Tauri 2 + React/TS + TanStack Router/Query + Zustand；FastAPI **sidecar**（PyInstaller 打包随 `.msi` 分发，UI 走 localhost）+ LangChain/LangGraph + **自研 SQLite 任务队列（processing_jobs 即队列，无任何中间件）**；SQLite（WAL）+ **sqlite-vec**；LLM 默认 DashScope qwen-plus（**可自选任意 OpenAI 兼容端点**）+ text-embedding-v3（V1 固定）；腾讯云 ASR + 随包 ffmpeg（本地执行）；迁移统一 `backend/migrations/*.sql`（user_version 编号）。
 
 ### 3.1 十二条架构与数据红线
 

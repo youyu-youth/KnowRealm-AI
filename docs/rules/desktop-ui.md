@@ -136,7 +136,7 @@ AI 对话答案、总结、复习资料都是 Markdown，统一经 `components/c
 | 图片/插画/字体 | `assets/`（大文件放 `public/`） |
 
 - 组件样式就近写在 className（Tailwind 之道），**不新建散装 `.css` 文件**；确需复杂选择器时集中到上述四个样式文件里。
-- **偏好单一本地配置**（功能需求基线 v2.3 M1，决策 #51）：主题/字号/语言/时区/关窗行为/开机自启/速记快捷键/窗口记忆等全部存数据目录 `config/settings.json`（单一事实源，经 sidecar API 读写）——深色模式切换 = 改 `settings.theme` + 挂/摘 `<html>` 的 `.dark` class，不落第三处状态。
+- **偏好单一本地配置**（功能需求基线 v2.3 M1，决策 #51；2026-08-29 plan 13 定稿修订）：主题/字号/时区/关窗行为/开机自启/速记快捷键/上次界面恢复/默认习题数量存数据目录 `config/settings.json`（单一事实源，经 sidecar API 读写，缺键=默认、未知键保留），不落第三处状态——深色模式切换 = 改 `settings.theme` + 挂/摘 `<html>` 的 `.dark`/`.light` class（SYSTEM=双摘，由 `prefers-color-scheme` 自动跟随）。**唯一豁免：窗口几何（窗口记忆）**由官方 `tauri-plugin-window-state` 存自身配置文件（机器本地，不随全量导出迁移）。偏好的桌面行为消费优先用 Tauri 官方件、不自写轮子：快捷键注册/注销=global-shortcut JS API（前端）、关窗分流=`onCloseRequested`、开机自启=autostart 插件，Rust 侧不新增偏好命令。
 
 ## 6. 可访问性（a11y）
 

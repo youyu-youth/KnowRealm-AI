@@ -12,7 +12,7 @@
 |------|--------|
 | `docs/KnowRealm-AI-功能需求基线-v2.3.md` | 需求与决策表（#1~#58） |
 | `docs/KnowRealm-AI-数据模型-v2.2.md` | 数据模型（42 张表） |
-| `docs/技术栈设计与审查-v4.3.md` | 技术选型与项目结构（§7.1 桌面端 / §7.2 后端） |
+| `docs/技术栈设计与审查-v4.4.md` | 技术选型与项目结构（§7.1 桌面端 / §7.2 后端） |
 | `CONTEXT.md` | 领域术语表（角色≠学习场景、KP≠Concept 等） |
 
 > 文档惯例：评审定稿即升版并**重命名文件**；改版本号须同步全部交叉引用（PRD / 技术栈 / CONTEXT.md / 扩展设计文档头部），历史"变更记录"行是史实、不改动。
@@ -52,11 +52,16 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 遵循 DESIGN.md 文件 的ui产品风格设计
 
 
+
+## 约束
+- 有关前端的操作必须放到前端来实现，即tauri原生已经支持的实现，不要重复造轮子
+
+
 ## 工具(tools)使用习惯，重要原则
 
 - 在探索或检索代码库时，优先使用 codegraph 相关工具来探索或检索代码
 - 当需要爬取网页数据的时候，你可以使用firecrawl 相关工具来进行爬取
-- 技术文档查询时，适用context7 tools 即可 (在LLM知识库对该技术文档的掌握低于90%时即可使用 context7 实时查询)
+- 技术文档查询时，使用 context7 tools ！
 - 如果使用 lsp 工具更为高效，如 pyright-lsp，则使用它
 - 涉及到浏览器交互的操作，优先使用 browser-use mcp 工具.或者 playwright 插件
 
@@ -94,3 +99,8 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - LangChain 文档： https://python.langchain.com/docs/
 - FastAPI 文档： https://fastapi.tiangolo.com/
 - shadcn ui 文档：https://ui.shadcn.com/docs
+- tauri 文档参考：https://v2.tauri.app/reference/cli/
+- tauri 能力：https://tauri.app/zh-cn/reference/acl/capability/
+- tauri配置：https://tauri.app/zh-cn/reference/config/
+- tauri快捷键配置：https://tauri.app/zh-cn/reference/javascript/global-shortcut/
+- tauri触觉反馈:https://tauri.app/zh-cn/reference/javascript/haptics/
