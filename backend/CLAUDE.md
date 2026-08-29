@@ -38,7 +38,7 @@ app/
 ```
 
 - api 路由前缀：`/api/courses`、`/api/records…`（含 `GET /records/{id}/events` SSE、`/{id}/summary*` 总结读/生成/调整/确认/版本、`/{id}/transcript`、`/{id}/jobs`）、`/api/audio-imports`、`/api/capture-batches`、`/api/chat-sessions`、`/api/document-imports`、`/api/processing-jobs`、`/api/profile`、`/api/recording-sessions`、`/api/settings…`（providers/llm 与 external-processing-consents）、`/api/today/pending-summaries`、`/api/health`。
-- services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation）；双 worker（document_worker / audio_worker）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service / summary_worker）；今日待办（today_service）；AI 对话（chat_session_service）；档案（profile_service）。
+- services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（job_runner 骨架 + 六个 worker 执行体、processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation、summary_derivation）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service）；今日待办（today_service）；AI 对话（chat_session_service）；档案（profile_service）。
 
 ## 关键机制
 
@@ -60,7 +60,7 @@ app/
 
 ### 进程内 worker（processing_jobs 即队列，无独立 worker 进程）
 
-`document_worker` / `audio_worker` 均为 lifespan 内 `asyncio.create_task` 的循环：`UPDATE ... WHERE status=PENDING` 抢占（rowcount=1 才算抢到）→ 处理 → 终态或指数退避（`2**attempts`）；启动时 `recover_interrupted()` 把 RUNNING 复位为 PENDING/FAILED。音频链：ffmpeg 转码（16k 单声道 libopus、300s 切片，经 `asyncio.create_subprocess_exec` 调随包 ffmpeg）→ 腾讯云 ASR（TC3-HMAC-SHA256 自签、httpx `trust_env=False`；consent / 密钥 / 离线三种 waiting_reason 不消耗 attempts；task_id 断点存 input_json，重启续轮询不重提交）。
+任务循环骨架单一归属 `services/job_runner.py`（ADR-0012）：六个 worker（document / audio / summary / knowledge_point / quiz / todo）各是一份声明式 `WorkerSpec`（候选查询 + 领取校验三态 + 执行体 + 写回 + 失败结局）注入 JobRunner，每 worker 一个 asyncio 任务，lifespan 内经显式工厂表启动。**新生成域一律写执行体描述，禁止复制骨架**；测试挂闸走公开接缝（模块级钩子函数 / `JobRunner.claim_one`），禁止 patch 私有方法。音频链：ffmpeg 转码（16k 单声道 libopus、300s 切片，经 `asyncio.create_subprocess_exec` 调随包 ffmpeg）→ 腾讯云 ASR（TC3-HMAC-SHA256 自签、httpx `trust_env=False`；consent / 密钥 / 离线三种 waiting_reason 不消耗 attempts；task_id 断点存 input_json，重启续轮询不重提交）。
 
 ### SSE（ADR-0008 按流语义拆分）
 
@@ -79,5 +79,7 @@ app/
 
 - **无 conftest.py**：各测试文件自带 async contextmanager fixture——`create_app(data_dir=临时目录, launch_token="test-launch-token")` → `async with app.router.lifespan_context(app)`（完整重放生产迁移链，绝不用 create_all）→ `httpx.AsyncClient(transport=ASGITransport(app))` + 固定令牌头。
 - 异步标记 `@pytest.mark.anyio`（anyio 插件，**非 pytest-asyncio**；pyproject 无 asyncio_mode 配置）。
+- `--basetemp` 前须确保 `.tmp` 父目录存在：此 pytest 在 Windows 不建父目录，删掉 `.tmp` 本体会让全量测试以 FileNotFoundError 批量假失败。
 - `tests/test_server_process.py`：真实子进程集成（本机无 ffmpeg 自动 skip；从 stdout 解析端口；覆盖二次 sidecar 拿锁失败 `DATA_DIRECTORY_IN_USE` 等）；ASR 场景用 `tests/sidecar_asr_fixture.py` 的假腾讯 HTTP 传输（control JSON 切换 success/pending/503 等）。
 - 数据库断言直接 `aiosqlite.connect` 查 `PRAGMA user_version` / 表结构 / 外键。
+- 已知基线：`app/core/logging.py:46` 有一个 loguru 类型 stub 的既有 pyright 错误（非新代码引入）；全量 pyright 门禁以"无新增错误"为准。
