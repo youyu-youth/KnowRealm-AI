@@ -50,12 +50,13 @@ from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.chat_message_service import ChatStreamRegistry
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import DocumentWorker
+from app.services.job_runner import JobRunner
 from app.services.knowledge_point_worker import KnowledgePointWorker
 from app.services.quiz_worker import QuizWorker
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_worker import SummaryWorker
 from app.services.tencent_asr_client import TencentAsrClient
-from app.services.todo_worker import TodoWorker
+from app.services.todo_worker import todo_spec
 
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:1420",
@@ -171,10 +172,14 @@ def create_app(
                 await quiz_worker.recover_interrupted()
                 quiz_worker_task = asyncio.create_task(quiz_worker.run())
                 app.state.quiz_worker_task = quiz_worker_task
-                todo_worker = TodoWorker(
+                todo_worker = JobRunner(
+                    todo_spec(
+                        session_factory,
+                        resolved_data_dir,
+                        app.state.todo_model,
+                        record_notifier,
+                    ),
                     session_factory,
-                    resolved_data_dir,
-                    app.state.todo_model,
                     record_notifier,
                 )
                 await todo_worker.recover_interrupted()
