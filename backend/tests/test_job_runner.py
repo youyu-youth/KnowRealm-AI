@@ -127,7 +127,6 @@ async def runner_env(
         spec = WorkerSpec[None, _ProbeClaim, str](
             name="probe_worker",
             job_type=ProcessingJobType.ASR,
-            interrupted_error_message="探针被意外中断",
             poll_interval=0.01,
             find_candidate=find_candidate,
             validate_claim=validate_claim,
