@@ -2,7 +2,7 @@
 
 **What to build:** 把 audio / summary / quiz / knowledge_point / todo / document 六个 worker 逐字复制的任务循环骨架（run 主循环 ×6、条件抢占 UPDATE ×7、recover_interrupted ×4、_fail ×4，约 900 行复制品）收敛为 `backend/app/services/job_runner.py` 的一个 JobRunner 深模块。每个 worker 缩成一份**声明式执行体描述**（候选查询 + 实体装载 + 领取校验 + 执行体 + 写回 + 失败结局 + 变体字段），组合式注入，不用模板子类。纯重构、行为冻结：现有 HTTP 级行为测试保持绿色且不改断言。政策依据 ADR-0012（已落盘）。
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## 协议（grilling 共识，实现须逐条保真）
 
@@ -35,10 +35,10 @@
 
 ## 验收
 
-- [ ] 六个 worker 迁移完成，`job_runner.py` 是任务循环骨架唯一归属；run/抢占/recover/fail/stop 同构代码在 worker 文件中不复存在
-- [ ] 每步迁移后：后端全量测试、ruff check、ruff format --check、pyright 全绿；HTTP 级行为测试断言零修改
-- [ ] 领取三态（claimed / cancelled 静默 / waiting 不耗 attempts）与通知协议点（提交后时机、CANCELLED 静默）有测试覆盖
-- [ ] `_summary_content` / `_source_is_current` / PREREQUISITE_CHANGED 取消段收敛到共享模块，三处漂移风险消除
-- [ ] main.py 退出金字塔消失，worker 注册为显式表
-- [ ] document 两处 2^n 退避公式不一致以代码注释记录（不在本次修复）
-- [ ] `_claim_one` monkeypatch 测试迁到 runner 正式接缝，`# pyright: ignore[reportPrivateUsage]` 移除
+- [x] 六个 worker 迁移完成，`job_runner.py` 是任务循环骨架唯一归属；run/抢占/recover/fail/stop 同构代码在 worker 文件中不复存在
+- [x] 每步迁移后：后端全量测试、ruff check、ruff format --check、pyright 全绿；HTTP 级行为测试断言零修改
+- [x] 领取三态（claimed / cancelled 静默 / waiting 不耗 attempts）与通知协议点（提交后时机、CANCELLED 静默）有测试覆盖
+- [x] `_summary_content` / `_source_is_current` / PREREQUISITE_CHANGED 取消段收敛到共享模块，三处漂移风险消除
+- [x] main.py 退出金字塔消失，worker 注册为显式表
+- [x] document 两处 2^n 退避公式不一致以代码注释记录（不在本次修复）
+- [x] `_claim_one` monkeypatch 测试迁到 runner 正式接缝，`# pyright: ignore[reportPrivateUsage]` 移除
