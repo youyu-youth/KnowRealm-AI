@@ -1,7 +1,8 @@
 import asyncio
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Request
@@ -50,7 +51,7 @@ from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.chat_message_service import ChatStreamRegistry
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import document_spec
-from app.services.job_runner import JobRunner
+from app.services.job_runner import JobRunner, ManagedWorker
 from app.services.knowledge_point_worker import knowledge_point_spec
 from app.services.quiz_worker import quiz_spec
 from app.services.record_invalidation import RecordInvalidationNotifier
@@ -116,34 +117,6 @@ def create_app(
             app.state.course_tombstone_cleanup_task = cleanup_task
             await cleanup_task
             await CacheLifecycleService.cleanup_orphans(session_factory, resolved_data_dir)
-            document_worker = JobRunner(
-                document_spec(session_factory, resolved_data_dir, record_notifier),
-                session_factory,
-                record_notifier,
-            )
-            await document_worker.recover_interrupted()
-            document_worker_task = asyncio.create_task(document_worker.run())
-            app.state.document_worker_task = document_worker_task
-            audio_worker = (
-                JobRunner(
-                    audio_spec(
-                        session_factory,
-                        resolved_data_dir,
-                        ffmpeg_path.resolve(),
-                        asr_client or TencentAsrClient(),
-                        record_notifier,
-                    ),
-                    session_factory,
-                    record_notifier,
-                )
-                if ffmpeg_path is not None
-                else None
-            )
-            audio_worker_task = None
-            if audio_worker is not None:
-                await audio_worker.recover_interrupted()
-                audio_worker_task = asyncio.create_task(audio_worker.run())
-                app.state.audio_worker_task = audio_worker_task
             checkpoint_path = resolved_data_dir / "langgraph.db"
             initialize_checkpointer = not checkpoint_path.exists()
             async with AsyncSqliteSaver.from_conn_string(str(checkpoint_path)) as checkpointer:
@@ -152,92 +125,103 @@ def create_app(
                 summary_graph = build_summary_graph(checkpointer)
                 app.state.summary_graph = summary_graph
                 app.state.chat_checkpointer = checkpointer
-                summary_worker = JobRunner(
-                    summary_spec(
+
+                def audio_factory() -> ManagedWorker:
+                    return JobRunner(
+                        audio_spec(
+                            session_factory,
+                            resolved_data_dir,
+                            cast("Path", ffmpeg_path).resolve(),
+                            asr_client or TencentAsrClient(),
+                            record_notifier,
+                        ),
                         session_factory,
-                        resolved_data_dir,
-                        summary_graph,
-                        app.state.summary_model,
                         record_notifier,
+                    )
+
+                # 显式 worker 工厂表：启动顺序即表序（document → audio → LLM 四域）
+                worker_factories: list[tuple[str, Callable[[], ManagedWorker]]] = [
+                    (
+                        "document",
+                        lambda: JobRunner(
+                            document_spec(session_factory, resolved_data_dir, record_notifier),
+                            session_factory,
+                            record_notifier,
+                        ),
                     ),
-                    session_factory,
-                    record_notifier,
-                )
-                await summary_worker.recover_interrupted()
-                summary_worker_task = asyncio.create_task(summary_worker.run())
-                app.state.summary_worker_task = summary_worker_task
-                knowledge_point_worker = JobRunner(
-                    knowledge_point_spec(
-                        session_factory,
-                        resolved_data_dir,
-                        app.state.knowledge_point_model,
-                        record_notifier,
+                    (
+                        "summary",
+                        lambda: JobRunner(
+                            summary_spec(
+                                session_factory,
+                                resolved_data_dir,
+                                summary_graph,
+                                app.state.summary_model,
+                                record_notifier,
+                            ),
+                            session_factory,
+                            record_notifier,
+                        ),
                     ),
-                    session_factory,
-                    record_notifier,
-                )
-                await knowledge_point_worker.recover_interrupted()
-                knowledge_point_worker_task = asyncio.create_task(knowledge_point_worker.run())
-                app.state.knowledge_point_worker_task = knowledge_point_worker_task
-                quiz_worker = JobRunner(
-                    quiz_spec(
-                        session_factory,
-                        resolved_data_dir,
-                        app.state.quiz_model,
-                        record_notifier,
+                    (
+                        "knowledge_point",
+                        lambda: JobRunner(
+                            knowledge_point_spec(
+                                session_factory,
+                                resolved_data_dir,
+                                app.state.knowledge_point_model,
+                                record_notifier,
+                            ),
+                            session_factory,
+                            record_notifier,
+                        ),
                     ),
-                    session_factory,
-                    record_notifier,
-                )
-                await quiz_worker.recover_interrupted()
-                quiz_worker_task = asyncio.create_task(quiz_worker.run())
-                app.state.quiz_worker_task = quiz_worker_task
-                todo_worker = JobRunner(
-                    todo_spec(
-                        session_factory,
-                        resolved_data_dir,
-                        app.state.todo_model,
-                        record_notifier,
+                    (
+                        "quiz",
+                        lambda: JobRunner(
+                            quiz_spec(
+                                session_factory,
+                                resolved_data_dir,
+                                app.state.quiz_model,
+                                record_notifier,
+                            ),
+                            session_factory,
+                            record_notifier,
+                        ),
                     ),
-                    session_factory,
-                    record_notifier,
-                )
-                await todo_worker.recover_interrupted()
-                todo_worker_task = asyncio.create_task(todo_worker.run())
-                app.state.todo_worker_task = todo_worker_task
+                    (
+                        "todo",
+                        lambda: JobRunner(
+                            todo_spec(
+                                session_factory,
+                                resolved_data_dir,
+                                app.state.todo_model,
+                                record_notifier,
+                            ),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
+                ]
+                if ffmpeg_path is not None:
+                    worker_factories.insert(1, ("audio", audio_factory))
+
+                workers = [(name, factory()) for name, factory in worker_factories]
+                worker_tasks: list[asyncio.Task[None]] = []
+                for _name, worker in workers:
+                    await worker.recover_interrupted()
+                    worker_tasks.append(asyncio.create_task(worker.run()))
+                app.state.worker_tasks = worker_tasks
                 try:
                     yield
                 finally:
-                    todo_worker.stop()
-                    quiz_worker.stop()
-                    knowledge_point_worker.stop()
-                    summary_worker.stop()
-                    if audio_worker is not None:
-                        audio_worker.stop()
-                    document_worker.stop()
-                    try:
-                        await todo_worker_task
-                    finally:
-                        try:
-                            await quiz_worker_task
-                        finally:
-                            try:
-                                await summary_worker_task
-                            finally:
-                                try:
-                                    await knowledge_point_worker_task
-                                finally:
-                                    try:
-                                        if audio_worker_task is not None:
-                                            await audio_worker_task
-                                    finally:
-                                        try:
-                                            await document_worker_task
-                                        finally:
-                                            try:
-                                                await cleanup_task
-                                            finally:
-                                                await engine.dispose()
+                    # 逆序停止并等待（与启动相反）；engine.dispose 为唯一收尾 finally
+                    for _name, worker in reversed(workers):
+                        worker.stop()
+                    for task in reversed(worker_tasks):
+                        await task
+                    await cleanup_task
+                    await engine.dispose()
         finally:
             data_directory_lock.release()
 
