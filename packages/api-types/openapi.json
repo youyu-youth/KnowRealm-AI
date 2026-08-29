@@ -340,6 +340,19 @@
       "ChatSessionCreate": {
         "additionalProperties": false,
         "properties": {
+          "knowledge_point_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "知识点解释入口的知识点快照来源",
+            "title": "Knowledge Point Id"
+          },
           "mode": {
             "const": "ASK",
             "default": "ASK",

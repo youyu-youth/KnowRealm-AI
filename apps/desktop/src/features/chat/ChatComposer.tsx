@@ -9,6 +9,7 @@ type ChatComposerProps = {
   /** 禁用的用户可读原因（如挂载记录已删除），展示在输入区下方。 */
   disabledHint?: string;
   isStreaming: boolean;
+  initialValue?: string;
   onSend: (content: string) => void;
   onStop: () => void;
 };
@@ -19,11 +20,12 @@ export function ChatComposer({
   disabled,
   disabledHint,
   isStreaming,
+  initialValue = "",
   onSend,
   onStop,
 }: ChatComposerProps) {
   const { t } = useTranslation();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialValue);
 
   function submit() {
     const content = value.trim();

@@ -1,5 +1,5 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
+import { Link, useParams, useSearch } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { ApiError } from "@/services/http/client";
 export function ChatSessionPage() {
   const { t } = useTranslation();
   const { sessionId } = useParams({ from: "/chat/$sessionId" });
+  const { prompt } = useSearch({ from: "/chat/$sessionId" });
   const detail = useQuery({
     queryKey: chatKeys.detail(sessionId),
     queryFn: () => chatApi.get(sessionId),
@@ -142,6 +143,8 @@ export function ChatSessionPage() {
             <div className="mt-6 flex min-h-0 flex-1 flex-col">
               {provider.isPending ? null : (
                 <ChatConversation
+                  key={sessionId}
+                  initialComposerValue={prompt}
                   providerReady={providerReady}
                   providerHasApiKey={
                     provider.data?.provider?.has_api_key ?? false
@@ -169,6 +172,7 @@ export function ChatSessionPage() {
 }
 
 type ChatConversationProps = {
+  initialComposerValue?: string;
   providerReady: boolean;
   providerHasApiKey: boolean;
   recordDeleted: boolean;
@@ -178,6 +182,7 @@ type ChatConversationProps = {
 
 /** 会话内容区：未配置供应商时显示就地配置卡，否则显示消息历史 + 输入区。 */
 function ChatConversation({
+  initialComposerValue,
   providerReady,
   providerHasApiKey,
   recordDeleted,
@@ -222,6 +227,7 @@ function ChatConversation({
           recordDeleted ? t("chat.composer.recordDeletedHint") : undefined
         }
         isStreaming={isStreaming}
+        initialValue={initialComposerValue}
         onSend={send}
         onStop={stop}
       />

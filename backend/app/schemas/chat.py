@@ -34,6 +34,15 @@ class ChatSessionCreate(BaseModel):
 
     mode: Literal[ChatMode.ASK] = Field(default=ChatMode.ASK, description="会话模式")
     record_id: UUID | None = Field(default=None, description="挂载的学习记录，空为自由聊天")
+    knowledge_point_id: UUID | None = Field(
+        default=None, description="知识点解释入口的知识点快照来源"
+    )
+
+    @model_validator(mode="after")
+    def require_record_for_knowledge_point(self) -> "ChatSessionCreate":
+        if self.knowledge_point_id is not None and self.record_id is None:
+            raise ValueError("知识点解释必须挂载学习记录")
+        return self
 
 
 class ChatSessionRename(BaseModel):

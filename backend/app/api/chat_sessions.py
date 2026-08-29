@@ -37,7 +37,11 @@ async def create_chat_session(
     session: AsyncSession = Depends(get_db),
 ) -> ChatSessionOut:
     chat = await ChatSessionService.create(
-        session, record_id=str(payload.record_id) if payload.record_id is not None else None
+        session,
+        record_id=str(payload.record_id) if payload.record_id is not None else None,
+        knowledge_point_id=(
+            str(payload.knowledge_point_id) if payload.knowledge_point_id is not None else None
+        ),
     )
     # 创建时挂载记录已校验存活，失效态恒为 False。
     return ChatSessionService.to_out(chat)

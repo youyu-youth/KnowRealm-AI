@@ -470,6 +470,8 @@
         "cancel": "取消",
         "edit": "编辑 {{name}}",
         "delete": "删除 {{name}}",
+        "explain": "讲解 {{name}}",
+        "suggestedQuestion": "给我讲讲「{{name}}」",
         "confirmBatch": "确认保存",
         "discardBatch": "丢弃整批",
         "batchActionsHint": "确认后候选转为正式知识点，旧 AI 批次自动过时；手工补充的内容不受影响。",

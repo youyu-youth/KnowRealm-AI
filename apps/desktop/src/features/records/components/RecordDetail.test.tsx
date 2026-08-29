@@ -116,6 +116,7 @@ vi.mock("@/services/tauri/sidecar", () => ({
 }));
 
 vi.stubGlobal("scrollTo", vi.fn());
+window.Element.prototype.scrollIntoView = vi.fn();
 
 beforeEach(() => {
   server.use(
@@ -1092,6 +1093,79 @@ describe("学习记录详情", () => {
     expect(
       await screen.findByRole("heading", { name: "确认后的补充" }),
     ).toBeVisible();
+  });
+
+  it("点击知识点创建挂载对话并预填建议问题", async () => {
+    const sessionId = "88888888-8888-4888-8888-888888888888";
+    let createBody: unknown;
+    const item = draftKnowledgePoint({ generation_status: "ACTIVE" });
+    const chatSession = {
+      id: sessionId,
+      mode: "ASK" as const,
+      title: null,
+      record_id: RECORD_ID,
+      course_id: COURSE_ID,
+      record_deleted: false,
+      created_at: "2026-08-29T08:00:00.000000Z",
+      updated_at: "2026-08-29T08:00:00.000000Z",
+    };
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...record, status: "COMPLETED" }),
+      ),
+      http.get(KNOWLEDGE_POINTS_URL, () =>
+        HttpResponse.json({
+          items: [item],
+          action_required: "NONE",
+          active_job_id: null,
+          blocked_reason: null,
+          input_mode: null,
+        }),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions`,
+        async ({ request }) => {
+          createBody = await request.json();
+          return HttpResponse.json(chatSession, { status: 201 });
+        },
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([chatSession]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/${sessionId}`, () =>
+        HttpResponse.json(chatSession),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${sessionId}/messages`,
+        () => HttpResponse.json([]),
+      ),
+      http.get(LLM_PROVIDER_URL, () =>
+        HttpResponse.json({
+          provider: {
+            base_url: "https://stub.example.com/v1",
+            model: "stub-chat-model",
+            has_api_key: true,
+            api_key_hint: "sk-…test",
+          },
+        }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=knowledge-points`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "进程调度" }));
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/chat/${sessionId}`),
+    );
+    expect(createBody).toEqual({
+      mode: "ASK",
+      record_id: RECORD_ID,
+      knowledge_point_id: item.id,
+    });
+    expect(
+      await screen.findByRole("textbox", { name: "提问输入框" }),
+    ).toHaveValue("给我讲讲「进程调度」");
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
   });
 
   it("单独同意后可明确生成，错过 Worker 事件仍通过条件轮询恢复", async () => {

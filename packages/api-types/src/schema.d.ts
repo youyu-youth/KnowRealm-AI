@@ -1088,6 +1088,11 @@ export interface components {
         /** ChatSessionCreate */
         ChatSessionCreate: {
             /**
+             * Knowledge Point Id
+             * @description 知识点解释入口的知识点快照来源
+             */
+            knowledge_point_id?: string | null;
+            /**
              * Mode
              * @description 会话模式
              * @default ASK

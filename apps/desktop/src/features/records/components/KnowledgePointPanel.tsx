@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { Pencil, Star, Trash2 } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,6 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { chatApi } from "@/features/chat/api/chatSessions";
+import { chatKeys } from "@/features/chat/api/keys";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { KnowledgePointOut } from "@/features/records/api/types";
@@ -317,6 +320,7 @@ function KnowledgePointRow({
   recordId: string;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const invalidate = () =>
@@ -335,6 +339,26 @@ function KnowledgePointRow({
     mutationFn: () => recordApi.deleteKnowledgePoint(recordId, item.id),
     onSuccess: () => void invalidate(),
   });
+  const explain = useMutation({
+    mutationFn: () =>
+      chatApi.create({
+        mode: "ASK",
+        record_id: recordId,
+        knowledge_point_id: item.id,
+      }),
+    onSuccess: async (session) => {
+      await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      await navigate({
+        to: "/chat/$sessionId",
+        params: { sessionId: session.id },
+        search: {
+          prompt: t("record.detail.knowledgePoints.suggestedQuestion", {
+            name: item.name,
+          }),
+        },
+      });
+    },
+  });
   const setImportance = (importance: number) =>
     update.mutate({
       name: item.name,
@@ -342,7 +366,9 @@ function KnowledgePointRow({
       tags: item.tags,
       importance,
     });
-  const mutationError = update.error ?? remove.error ?? null;
+  const actionsPending =
+    explain.isPending || update.isPending || remove.isPending;
+  const mutationError = explain.error ?? update.error ?? remove.error ?? null;
 
   if (editing) {
     return (
@@ -371,8 +397,21 @@ function KnowledgePointRow({
     <li className="border-border border-t py-5 first:border-t-0">
       <article>
         <div className="flex min-w-0 items-start justify-between gap-4">
-          <h3 className="text-section font-section text-ink min-w-0 break-words">
-            {item.name}
+          <h3 className="min-w-0 break-words">
+            <Button
+              variant="link"
+              className="text-section font-section text-ink hover:text-primary h-auto cursor-pointer p-0 text-start whitespace-normal"
+              title={t("record.detail.knowledgePoints.explain", {
+                name: item.name,
+              })}
+              disabled={actionsPending}
+              onClick={() => explain.mutate()}
+            >
+              {item.name}
+              {explain.isPending ? (
+                <Spinner data-icon="inline-end" aria-hidden="true" />
+              ) : null}
+            </Button>
           </h3>
           <div className="flex shrink-0 items-center gap-1">
             <Button
@@ -381,7 +420,7 @@ function KnowledgePointRow({
               aria-label={t("record.detail.knowledgePoints.edit", {
                 name: item.name,
               })}
-              disabled={update.isPending || remove.isPending}
+              disabled={actionsPending}
               onClick={() => {
                 setEditing(true);
                 update.reset();
@@ -396,7 +435,7 @@ function KnowledgePointRow({
               aria-label={t("record.detail.knowledgePoints.delete", {
                 name: item.name,
               })}
-              disabled={update.isPending || remove.isPending}
+              disabled={actionsPending}
               onClick={() => remove.mutate()}
             >
               {remove.isPending ? (

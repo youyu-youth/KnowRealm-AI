@@ -429,6 +429,64 @@ async def test_mounted_stream_reads_current_transcript_without_profile(
 
 
 @pytest.mark.anyio
+async def test_knowledge_point_entry_snapshots_focus_context_and_keeps_multiturn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[list(STUB_REPLY)] * 2) as (
+        _app,
+        client,
+        captured,
+    ):
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "调度器原文"}
+        )
+        record_id = capture.json()["record_id"]
+        point = await client.post(
+            f"/api/records/{record_id}/knowledge-points",
+            json={
+                "name": "进程调度",
+                "detail": "调度器从就绪队列选择下一个运行的进程。",
+                "tags": ["操作系统"],
+                "importance": 5,
+            },
+        )
+        assert point.status_code == 201
+
+        created = await client.post(
+            "/api/chat-sessions",
+            json={"record_id": record_id, "knowledge_point_id": point.json()["id"]},
+        )
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+
+        updated = await client.patch(
+            f"/api/records/{record_id}/knowledge-points/{point.json()['id']}",
+            json={
+                "name": "已修改名称",
+                "detail": "已修改详情",
+                "tags": [],
+                "importance": 1,
+            },
+        )
+        assert updated.status_code == 200
+
+        assert (await send_message(client, session_id, "给我讲讲它"))[-1][0] == "done"
+        assert (await send_message(client, session_id, "再举个例子"))[-1][0] == "done"
+
+        prompt = str(captured[0][0].content)
+        assert "进程调度" in prompt
+        assert "调度器从就绪队列选择下一个运行的进程。" in prompt
+        assert "重要度：5 / 5" in prompt
+        assert "已修改名称" not in prompt
+        assert "给我讲讲它" in [message.content for message in captured[1]]
+        assert "再举个例子" in [message.content for message in captured[1]]
+
+        listed = await client.get("/api/chat-sessions")
+        assert listed.status_code == 200
+        assert session_id in [item["id"] for item in listed.json()]
+
+
+@pytest.mark.anyio
 async def test_long_mounted_stream_reads_confirmed_assets_and_valid_citations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
