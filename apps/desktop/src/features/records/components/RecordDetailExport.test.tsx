@@ -193,7 +193,14 @@ beforeEach(() => {
     http.get(QUIZZES_URL, () => quizzesResponse([])),
     http.get(TODOS_URL, () => todosResponse([])),
     http.get(LLM_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
-    http.get(PREFERENCES_URL, () => HttpResponse.json({ quiz_last_count: 3 })),
+    http.get(PREFERENCES_URL, () =>
+      HttpResponse.json({
+        theme: "SYSTEM",
+        font_scale: "M",
+        timezone: null,
+        quiz_last_count: 3,
+      }),
+    ),
   );
 });
 

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
+import { AppearanceSync } from "@/features/settings/AppearanceSync";
 import {
   blocksNewRecording,
   useRecordingSessions,
@@ -214,6 +215,7 @@ export function AppShell() {
 
   return (
     <div className="bg-canvas text-foreground flex h-screen min-w-0 overflow-hidden">
+      <AppearanceSync />
       <aside
         aria-label={t("nav.label")}
         className="w-sidebar bg-canvas max-compact:w-16 max-compact:px-2 flex h-screen shrink-0 flex-col px-3 py-4 transition-[width] duration-150"

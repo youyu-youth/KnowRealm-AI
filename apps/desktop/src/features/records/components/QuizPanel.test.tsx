@@ -117,6 +117,18 @@ function quizReadOut(
   };
 }
 
+function preferencesOut(
+  overrides: Partial<components["schemas"]["PreferencesOut"]> = {},
+): components["schemas"]["PreferencesOut"] {
+  return {
+    theme: "SYSTEM",
+    font_scale: "M",
+    timezone: null,
+    quiz_last_count: 5,
+    ...overrides,
+  };
+}
+
 function activateQuiz(
   item: components["schemas"]["QuizOut"],
 ): components["schemas"]["QuizOut"] {
@@ -212,11 +224,11 @@ describe("习题页签", () => {
         ),
       ),
       http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 3 }),
+        HttpResponse.json(preferencesOut({ quiz_last_count: 3 })),
       ),
       http.put(PREFERENCES_URL, async ({ request }) => {
         preferenceBodies.push(await request.json());
-        return HttpResponse.json({ quiz_last_count: 3 });
+        return HttpResponse.json(preferencesOut({ quiz_last_count: 3 }));
       }),
       http.post(QUIZ_JOBS_URL, async ({ request }) => {
         submittedBodies.push(await request.json());
@@ -287,9 +299,7 @@ describe("习题页签", () => {
         discarded = true;
         return HttpResponse.json(quizReadOut());
       }),
-      http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 5 }),
-      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 
@@ -374,9 +384,7 @@ describe("习题页签", () => {
           }),
         );
       }),
-      http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 5 }),
-      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 
@@ -423,9 +431,7 @@ describe("习题页签", () => {
           { status: 409 },
         );
       }),
-      http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 5 }),
-      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 
@@ -490,9 +496,7 @@ describe("习题页签", () => {
           return HttpResponse.json(answered);
         },
       ),
-      http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 5 }),
-      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 
@@ -597,9 +601,7 @@ describe("习题页签", () => {
           return HttpResponse.json(short);
         },
       ),
-      http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 5 }),
-      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 
@@ -662,9 +664,7 @@ describe("习题页签", () => {
         };
         return HttpResponse.json(active);
       }),
-      http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 5 }),
-      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 
@@ -696,9 +696,7 @@ describe("习题页签", () => {
           quizReadOut({ action_required: "GENERATE", items: [answered] }),
         ),
       ),
-      http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 5 }),
-      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 
@@ -723,9 +721,7 @@ describe("习题页签", () => {
       http.get(QUIZZES_URL, () =>
         HttpResponse.json(quizReadOut({ action_required: "RETRY" })),
       ),
-      http.get(PREFERENCES_URL, () =>
-        HttpResponse.json({ quiz_last_count: 5 }),
-      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
     );
     renderAt(`${ROUTE_PATH}?tab=quiz`);
 

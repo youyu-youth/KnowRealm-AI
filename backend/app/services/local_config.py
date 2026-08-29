@@ -1,5 +1,6 @@
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -7,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from app.schemas.quiz import QUIZ_COUNT_CHOICES
+from app.schemas.settings import is_valid_timezone
 
 
 @dataclass(frozen=True)
@@ -125,22 +127,52 @@ def llm_consent(data_dir: Path) -> tuple[str | None, bool]:
     return (granted_at if isinstance(granted_at, str) else None), current
 
 
+THEME_CHOICES = ("LIGHT", "DARK", "SYSTEM")
+FONT_SCALE_CHOICES = ("S", "M", "L")
+DEFAULT_THEME = "SYSTEM"
+DEFAULT_FONT_SCALE = "M"
 DEFAULT_QUIZ_LAST_COUNT = 5
 
+# 偏好键与其默认值的唯一对照：缺键即默认；写入值等于默认值时按键删除，
+# settings.json 只保留用户的偏离项，consent 等未知键经读改写天然保留。
+PREFERENCE_DEFAULTS: dict[str, object] = {
+    "theme": DEFAULT_THEME,
+    "font_scale": DEFAULT_FONT_SCALE,
+    "timezone": None,
+    "quiz_last_count": DEFAULT_QUIZ_LAST_COUNT,
+}
 
-def load_quiz_last_count(data_dir: Path) -> int:
-    value = _read_json(data_dir / "config" / "settings.json").get("quiz_last_count")
-    return (
-        value if isinstance(value, int) and value in QUIZ_COUNT_CHOICES else DEFAULT_QUIZ_LAST_COUNT
-    )
+
+def load_preferences(data_dir: Path) -> dict[str, object]:
+    settings = _read_json(data_dir / "config" / "settings.json")
+    theme = settings.get("theme")
+    font_scale = settings.get("font_scale")
+    timezone = settings.get("timezone")
+    quiz_last_count = settings.get("quiz_last_count")
+    return {
+        "theme": theme if theme in THEME_CHOICES else DEFAULT_THEME,
+        "font_scale": font_scale if font_scale in FONT_SCALE_CHOICES else DEFAULT_FONT_SCALE,
+        "timezone": (
+            timezone if isinstance(timezone, str) and is_valid_timezone(timezone) else None
+        ),
+        "quiz_last_count": (
+            quiz_last_count if quiz_last_count in QUIZ_COUNT_CHOICES else DEFAULT_QUIZ_LAST_COUNT
+        ),
+    }
 
 
-def save_quiz_last_count(data_dir: Path, count: int) -> int:
+def save_preferences(data_dir: Path, updates: Mapping[str, object]) -> dict[str, object]:
+    if not updates:
+        return load_preferences(data_dir)
     path = data_dir / "config" / "settings.json"
     settings = _read_json(path)
-    settings["quiz_last_count"] = count
+    for key, value in updates.items():
+        if key in PREFERENCE_DEFAULTS and value == PREFERENCE_DEFAULTS[key]:
+            settings.pop(key, None)
+        else:
+            settings[key] = value
     _write_json(path, settings)
-    return count
+    return load_preferences(data_dir)
 
 
 def grant_llm_consent(data_dir: Path) -> str | None:

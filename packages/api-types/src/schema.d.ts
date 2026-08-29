@@ -1410,17 +1410,46 @@ export interface components {
         };
         /** PreferencesOut */
         PreferencesOut: {
+            /**
+             * Font Scale
+             * @enum {string}
+             */
+            font_scale: "S" | "M" | "L";
             /** Quiz Last Count */
             quiz_last_count: number;
+            /**
+             * Theme
+             * @enum {string}
+             */
+            theme: "LIGHT" | "DARK" | "SYSTEM";
+            /** Timezone */
+            timezone: string | null;
         };
-        /** PreferencesUpdate */
+        /**
+         * PreferencesUpdate
+         * @description 全字段 optional 的部分更新：未提供的键保持原值；timezone 显式 null 表示跟随系统。
+         */
         PreferencesUpdate: {
+            /**
+             * Font Scale
+             * @description 字号档位
+             */
+            font_scale?: ("S" | "M" | "L") | null;
             /**
              * Quiz Last Count
              * @description 习题生成档位偏好
-             * @enum {integer}
              */
-            quiz_last_count: 3 | 5 | 10;
+            quiz_last_count?: (3 | 5 | 10) | null;
+            /**
+             * Theme
+             * @description 外观主题
+             */
+            theme?: ("LIGHT" | "DARK" | "SYSTEM") | null;
+            /**
+             * Timezone
+             * @description IANA 时区名；null 表示跟随系统
+             */
+            timezone?: string | null;
         };
         /**
          * PrimaryRole

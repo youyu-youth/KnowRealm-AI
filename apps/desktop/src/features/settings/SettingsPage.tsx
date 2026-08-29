@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { profileApi } from "@/features/settings/api/profile";
 import type { ProfileOut } from "@/features/settings/api/profile";
+import { PreferencesSection } from "@/features/settings/PreferencesSection";
 
 const ROLE_KEYS = ["STUDENT", "DEVELOPER", "OFFICE_WORKER", "OTHER"] as const;
 type RoleKey = (typeof ROLE_KEYS)[number];
@@ -91,6 +92,7 @@ export function SettingsPage() {
           initial={profile.data}
         />
       </div>
+      <PreferencesSection />
     </section>
   );
 }

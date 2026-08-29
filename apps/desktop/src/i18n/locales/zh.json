@@ -814,6 +814,34 @@
       "loading": "正在读取档案",
       "errorTitle": "档案暂时无法读取",
       "retry": "重试"
+    },
+    "preferences": {
+      "sectionTitle": "偏好",
+      "sectionDescription": "以下选项改动后立即保存，无需点保存按钮；保存失败会提示，控件停留在当前生效的值。",
+      "loading": "正在读取偏好",
+      "retry": "重试",
+      "appearanceTitle": "外观",
+      "themeLegend": "深色模式",
+      "theme": {
+        "LIGHT": "浅色",
+        "DARK": "深色",
+        "SYSTEM": "跟随系统"
+      },
+      "fontScaleLegend": "字体大小",
+      "fontScale": {
+        "S": "小",
+        "M": "中",
+        "L": "大"
+      },
+      "generalTitle": "通用",
+      "timezoneLabel": "时区",
+      "timezone": {
+        "followSystem": "跟随系统",
+        "searchLabel": "搜索时区",
+        "searchPlaceholder": "输入时区名筛选，如 Asia/Shanghai",
+        "noMatch": "没有匹配的时区"
+      },
+      "quizCountLegend": "默认习题数量"
     }
   }
 }

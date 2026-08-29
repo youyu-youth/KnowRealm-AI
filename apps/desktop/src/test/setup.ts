@@ -5,6 +5,21 @@ import { server } from "@/mocks/server";
 
 vi.stubGlobal("scrollTo", vi.fn());
 
+// jsdom 未实现 matchMedia；外观偏好按 SYSTEM 解析系统深浅色时依赖它。
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = (query: string): MediaQueryList =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();

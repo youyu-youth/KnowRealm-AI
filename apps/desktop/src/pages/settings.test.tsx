@@ -133,3 +133,171 @@ describe("设置页档案区块", () => {
     expect(screen.getByRole("radio", { name: "其他" })).toBeChecked();
   });
 });
+
+type PreferencesOut = components["schemas"]["PreferencesOut"];
+
+const PREFERENCES_URL = `${TEST_SIDECAR_URL}/api/settings/preferences`;
+const DEFAULT_PREFERENCES: PreferencesOut = {
+  theme: "SYSTEM",
+  font_scale: "M",
+  timezone: null,
+  quiz_last_count: 5,
+};
+
+describe("设置页偏好分区", () => {
+  afterEach(() => {
+    document.documentElement.classList.remove("dark", "light");
+    document.documentElement.style.removeProperty("font-size");
+  });
+
+  it("渲染外观与通用小节并回显已存偏好", async () => {
+    server.use(
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({
+          theme: "DARK",
+          font_scale: "L",
+          timezone: "Asia/Shanghai",
+          quiz_last_count: 10,
+        }),
+      ),
+    );
+
+    renderAt("/settings");
+
+    expect(await screen.findByRole("heading", { name: "偏好" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "外观" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "通用" })).toBeVisible();
+    expect(screen.getByRole("radio", { name: "深色" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "大" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "10" })).toBeChecked();
+    expect(screen.getByRole("combobox")).toHaveTextContent("Asia/Shanghai");
+  });
+
+  it("控件即改即存：每次只提交被改字段", async () => {
+    let current = { ...DEFAULT_PREFERENCES };
+    const bodies: object[] = [];
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(current)),
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        const body = (await request.json()) as object;
+        bodies.push(body);
+        current = { ...current, ...body };
+        return HttpResponse.json(current);
+      }),
+    );
+
+    renderAt("/settings");
+    await screen.findByRole("heading", { name: "偏好" });
+
+    fireEvent.click(screen.getByRole("radio", { name: "浅色" }));
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "浅色" })).toBeChecked(),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "小" }));
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "小" })).toBeChecked(),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "3" }));
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "3" })).toBeChecked(),
+    );
+
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.change(screen.getByLabelText("搜索时区"), {
+      target: { value: "Tokyo" },
+    });
+    fireEvent.click(screen.getByRole("option", { name: "Asia/Tokyo" }));
+    await waitFor(() =>
+      expect(screen.getByRole("combobox")).toHaveTextContent("Asia/Tokyo"),
+    );
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "跟随系统" }));
+    await waitFor(() =>
+      expect(screen.getByRole("combobox")).toHaveTextContent("跟随系统"),
+    );
+
+    expect(bodies).toEqual([
+      { theme: "LIGHT" },
+      { font_scale: "S" },
+      { quiz_last_count: 3 },
+      { timezone: "Asia/Tokyo" },
+      { timezone: null },
+    ]);
+  }, 15_000);
+
+  it("保存失败行内报错并回显服务端事实", async () => {
+    server.use(
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({ ...DEFAULT_PREFERENCES, theme: "DARK" }),
+      ),
+      http.put(PREFERENCES_URL, () =>
+        HttpResponse.json({ detail: "偏好保存失败" }, { status: 500 }),
+      ),
+    );
+
+    renderAt("/settings");
+
+    fireEvent.click(await screen.findByRole("radio", { name: "浅色" }));
+
+    expect(
+      await screen.findByRole("alert", undefined, { timeout: 8_000 }),
+    ).toHaveTextContent("偏好保存失败");
+    expect(screen.getByRole("radio", { name: "深色" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "浅色" })).not.toBeChecked();
+  });
+
+  it("主题与字号偏好应用到根元素并即时切换", async () => {
+    server.use(
+      http.get(PREFERENCES_URL, () =>
+        HttpResponse.json({
+          ...DEFAULT_PREFERENCES,
+          theme: "DARK",
+          font_scale: "L",
+        }),
+      ),
+    );
+
+    renderAt("/settings");
+
+    await screen.findByRole("heading", { name: "偏好" });
+    await waitFor(() => expect(document.documentElement).toHaveClass("dark"));
+    expect(document.documentElement.style.fontSize).toBe("18px");
+
+    let current: PreferencesOut = {
+      ...DEFAULT_PREFERENCES,
+      theme: "DARK",
+      font_scale: "L",
+    };
+    server.use(
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        current = { ...current, ...((await request.json()) as object) };
+        return HttpResponse.json(current);
+      }),
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "浅色" }));
+    await waitFor(() => expect(document.documentElement).toHaveClass("light"));
+    expect(document.documentElement).not.toHaveClass("dark");
+
+    fireEvent.click(screen.getByRole("radio", { name: "跟随系统" }));
+    await waitFor(() =>
+      expect(document.documentElement).not.toHaveClass("light"),
+    );
+    expect(document.documentElement).not.toHaveClass("dark");
+
+    // 系统深色时 SYSTEM 同样落到 .dark
+    const systemDarkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    Object.defineProperty(systemDarkQuery, "matches", { value: true });
+    const matchMediaSpy = vi
+      .spyOn(window, "matchMedia")
+      .mockReturnValue(systemDarkQuery);
+    try {
+      fireEvent.click(screen.getByRole("radio", { name: "深色" }));
+      await waitFor(() => expect(document.documentElement).toHaveClass("dark"));
+      fireEvent.click(screen.getByRole("radio", { name: "跟随系统" }));
+      await waitFor(() => expect(document.documentElement).toHaveClass("dark"));
+      expect(document.documentElement).not.toHaveClass("light");
+    } finally {
+      matchMediaSpy.mockRestore();
+    }
+  }, 15_000);
+});

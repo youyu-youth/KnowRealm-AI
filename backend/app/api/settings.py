@@ -21,9 +21,9 @@ from app.services.local_config import (
     grant_llm_consent,
     llm_consent,
     load_llm_provider,
-    load_quiz_last_count,
+    load_preferences,
     save_llm_provider,
-    save_quiz_last_count,
+    save_preferences,
 )
 
 router = APIRouter(
@@ -114,16 +114,15 @@ async def post_llm_consent(request: Request) -> LlmConsentOut:
 
 @router.get("/preferences", response_model=PreferencesOut)
 async def get_preferences(request: Request) -> PreferencesOut:
-    quiz_last_count = await asyncio.to_thread(load_quiz_last_count, request.app.state.data_dir)
-    return PreferencesOut(quiz_last_count=quiz_last_count)
+    preferences = await asyncio.to_thread(load_preferences, request.app.state.data_dir)
+    return PreferencesOut.model_validate(preferences)
 
 
 @router.put("/preferences", response_model=PreferencesOut)
 async def put_preferences(body: PreferencesUpdate, request: Request) -> PreferencesOut:
-    quiz_last_count = await asyncio.to_thread(
-        save_quiz_last_count, request.app.state.data_dir, body.quiz_last_count
-    )
-    return PreferencesOut(quiz_last_count=quiz_last_count)
+    updates = body.model_dump(exclude_unset=True)
+    preferences = await asyncio.to_thread(save_preferences, request.app.state.data_dir, updates)
+    return PreferencesOut.model_validate(preferences)
 
 
 @router.post("/providers/llm/tests", response_model=LlmProviderTestOut)

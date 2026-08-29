@@ -30,6 +30,14 @@ export const handlers = [
       },
     }),
   ),
+  http.get(`${TEST_SIDECAR_URL}/api/settings/preferences`, () =>
+    HttpResponse.json({
+      theme: "SYSTEM",
+      font_scale: "M",
+      timezone: null,
+      quiz_last_count: 5,
+    }),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/profile`, () =>
     HttpResponse.json({
       primary_role: null,

@@ -1247,33 +1247,116 @@
       },
       "PreferencesOut": {
         "properties": {
+          "font_scale": {
+            "enum": [
+              "S",
+              "M",
+              "L"
+            ],
+            "title": "Font Scale",
+            "type": "string"
+          },
           "quiz_last_count": {
             "title": "Quiz Last Count",
             "type": "integer"
+          },
+          "theme": {
+            "enum": [
+              "LIGHT",
+              "DARK",
+              "SYSTEM"
+            ],
+            "title": "Theme",
+            "type": "string"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
           }
         },
         "required": [
+          "theme",
+          "font_scale",
+          "timezone",
           "quiz_last_count"
         ],
         "title": "PreferencesOut",
         "type": "object"
       },
       "PreferencesUpdate": {
+        "description": "全字段 optional 的部分更新：未提供的键保持原值；timezone 显式 null 表示跟随系统。",
         "properties": {
-          "quiz_last_count": {
-            "description": "习题生成档位偏好",
-            "enum": [
-              3,
-              5,
-              10
+          "font_scale": {
+            "anyOf": [
+              {
+                "enum": [
+                  "S",
+                  "M",
+                  "L"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
             ],
-            "title": "Quiz Last Count",
-            "type": "integer"
+            "description": "字号档位",
+            "title": "Font Scale"
+          },
+          "quiz_last_count": {
+            "anyOf": [
+              {
+                "enum": [
+                  3,
+                  5,
+                  10
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "习题生成档位偏好",
+            "title": "Quiz Last Count"
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "enum": [
+                  "LIGHT",
+                  "DARK",
+                  "SYSTEM"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "外观主题",
+            "title": "Theme"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IANA 时区名；null 表示跟随系统",
+            "title": "Timezone"
           }
         },
-        "required": [
-          "quiz_last_count"
-        ],
         "title": "PreferencesUpdate",
         "type": "object"
       },
