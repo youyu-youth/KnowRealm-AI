@@ -174,7 +174,7 @@ class WorkerSpec[PreflightT, CtxT: ClaimedJob, ResultT]:
     validate_claim: Callable[
         [AsyncSession, ProcessingJob, str, PreflightT | None], Awaitable[ClaimCheck[CtxT]]
     ]
-    execute: Callable[[CtxT], Awaitable[ResultT | None]]
+    execute: Callable[[CtxT, RunnerContext], Awaitable[ResultT | None]]
     writeback: Callable[[CtxT, ResultT], Awaitable[bool]]
     failure_code: Callable[[CtxT, Exception], str | None]
     apply_failure: Callable[
@@ -202,6 +202,14 @@ class ManagedWorker(Protocol):
     async def recover_interrupted(self) -> None: ...
 
 
+@dataclass(frozen=True)
+class RunnerContext:
+    """执行体运行上下文：中途事件 notifier 与停止旗标（audio 域中途事件用）。"""
+
+    record_notifier: RecordInvalidationNotifier
+    stopped: asyncio.Event
+
+
 class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
     """一个 worker 一个 runner 实例、一个 asyncio 任务；禁止合并单循环。"""
 
@@ -215,6 +223,7 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
         self._session_factory = session_factory
         self._notifier = record_notifier
         self._stopped = asyncio.Event()
+        self._runtime = RunnerContext(record_notifier, self._stopped)
 
     def stop(self) -> None:
         self._stopped.set()
@@ -245,7 +254,7 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
         await self._notifier.notify(ctx.record_id)  # 协议点：领取成功后
         landed = False
         try:
-            result = await self._spec.execute(ctx)
+            result = await self._spec.execute(ctx, self._runtime)
         except Exception as exc:
             code = self._spec.failure_code(ctx, exc)
             if code is None:

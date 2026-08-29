@@ -39,6 +39,7 @@ from app.services.job_runner import (
     ClaimedJob,
     LoopFailure,
     Ready,
+    RunnerContext,
     WorkerSpec,
     mark_failed,
     recover_running_to_failed,
@@ -221,6 +222,7 @@ async def on_preempted(
 
 async def execute(
     ctx: _ClaimedSummary,
+    _runtime: RunnerContext,
     session_factory: async_sessionmaker[AsyncSession],
     graph: CompiledStateGraph[SummaryState, SummaryRuntime, SummaryState, SummaryState],
     summary_model: SummaryModel,
@@ -500,7 +502,7 @@ def summary_spec(
         find_candidate=find_candidate,
         validate_claim=validate_claim,
         on_preempted=on_preempted,
-        execute=lambda ctx: execute(ctx, session_factory, graph, summary_model),
+        execute=lambda ctx, runtime: execute(ctx, runtime, session_factory, graph, summary_model),
         writeback=lambda ctx, result: writeback(ctx, result, session_factory),
         failure_code=failure_code,
         apply_failure=apply_failure,

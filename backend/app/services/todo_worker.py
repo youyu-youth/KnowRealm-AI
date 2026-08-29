@@ -25,6 +25,7 @@ from app.services.job_runner import (
     ClaimedJob,
     LoopFailure,
     Ready,
+    RunnerContext,
     WorkerSpec,
     mark_failed,
     recover_running_to_failed,
@@ -125,6 +126,7 @@ async def validate_claim(
 
 async def execute(
     ctx: _ClaimedTodoJob,
+    _runtime: RunnerContext,
     session_factory: async_sessionmaker[AsyncSession],
     model: TodoModel,
 ) -> TodoBatch:
@@ -240,7 +242,7 @@ def todo_spec(
         poll_interval=0.25,
         find_candidate=find_candidate,
         validate_claim=validate_claim,
-        execute=lambda ctx: execute(ctx, session_factory, model),
+        execute=lambda ctx, runtime: execute(ctx, runtime, session_factory, model),
         writeback=lambda ctx, content: writeback(ctx, content, session_factory),
         failure_code=failure_code,
         apply_failure=apply_failure,

@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
-from app.services.audio_worker import AudioWorker
+from app.services import audio_worker
 from app.services.tencent_asr_client import (
     TencentAsrApiError,
     TencentAsrClient,
@@ -706,17 +706,19 @@ async def test_delete_during_transcode_cleans_late_cache(
     data_dir = tmp_path / "KnowRealm"
     transcode_finished = asyncio.Event()
     allow_completion = asyncio.Event()
-    original_transcode = AudioWorker._transcode  # pyright: ignore[reportPrivateUsage]
+    original_transcode = audio_worker.transcode_audio  # 执行体公开转码钩子
 
     async def delayed_transcode(
-        self: AudioWorker,
+        data_dir_arg: Path,
+        ffmpeg_path: Path,
         record_id: str,
         record_file_id: str,
         source_path: Path,
         duration_ms: int,
     ) -> list[dict[str, object]]:
         await original_transcode(
-            self,
+            data_dir_arg,
+            ffmpeg_path,
             record_id,
             record_file_id,
             source_path,
@@ -729,7 +731,7 @@ async def test_delete_during_transcode_cleans_late_cache(
         (late_cache / "late.ogg").write_bytes(b"late")
         raise RuntimeError("ffmpeg failed after delete")
 
-    monkeypatch.setattr(AudioWorker, "_transcode", delayed_transcode)
+    monkeypatch.setattr(audio_worker, "transcode_audio", delayed_transcode)
     async with running_audio_app(data_dir) as (_app, client):
         accepted = await client.post(
             "/api/audio-imports",

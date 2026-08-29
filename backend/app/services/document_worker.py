@@ -29,6 +29,7 @@ from app.services.job_runner import (
     ClaimedJob,
     LoopFailure,
     Ready,
+    RunnerContext,
     WorkerSpec,
     mark_failed,
     mark_retry_backoff,
@@ -119,6 +120,7 @@ async def validate_claim(
 
 async def execute(
     ctx: ClaimedDocument,
+    _runtime: RunnerContext,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> str | None:
     """领取后二次确认仍 RUNNING 且记录未删，才执行解析（删除竞态防线）。"""
@@ -304,7 +306,7 @@ def document_spec(
         validate_claim=lambda session, job, record_id, _payload: validate_claim(
             session, job, record_id, data_dir
         ),
-        execute=lambda ctx: execute(ctx, session_factory),
+        execute=lambda ctx, runtime: execute(ctx, runtime, session_factory),
         writeback=lambda ctx, content: writeback(ctx, content, session_factory, data_dir),
         failure_code=failure_code,
         apply_failure=apply_failure,

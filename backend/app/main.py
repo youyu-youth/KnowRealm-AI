@@ -45,7 +45,7 @@ from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
-from app.services.audio_worker import AudioWorker
+from app.services.audio_worker import audio_spec
 from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.chat_message_service import ChatStreamRegistry
 from app.services.document_cleanup_service import DocumentCleanupService
@@ -125,11 +125,15 @@ def create_app(
             document_worker_task = asyncio.create_task(document_worker.run())
             app.state.document_worker_task = document_worker_task
             audio_worker = (
-                AudioWorker(
+                JobRunner(
+                    audio_spec(
+                        session_factory,
+                        resolved_data_dir,
+                        ffmpeg_path.resolve(),
+                        asr_client or TencentAsrClient(),
+                        record_notifier,
+                    ),
                     session_factory,
-                    resolved_data_dir,
-                    ffmpeg_path.resolve(),
-                    asr_client or TencentAsrClient(),
                     record_notifier,
                 )
                 if ffmpeg_path is not None
