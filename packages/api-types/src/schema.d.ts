@@ -1410,6 +1410,13 @@ export interface components {
         };
         /** PreferencesOut */
         PreferencesOut: {
+            /** Autostart */
+            autostart: boolean;
+            /**
+             * Close Behavior
+             * @enum {string}
+             */
+            close_behavior: "TRAY" | "EXIT";
             /**
              * Font Scale
              * @enum {string}
@@ -1430,6 +1437,16 @@ export interface components {
          * @description 全字段 optional 的部分更新：未提供的键保持原值；timezone 显式 null 表示跟随系统。
          */
         PreferencesUpdate: {
+            /**
+             * Autostart
+             * @description 开机自启
+             */
+            autostart?: boolean | null;
+            /**
+             * Close Behavior
+             * @description 关窗行为
+             */
+            close_behavior?: ("TRAY" | "EXIT") | null;
             /**
              * Font Scale
              * @description 字号档位

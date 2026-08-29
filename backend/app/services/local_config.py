@@ -129,8 +129,11 @@ def llm_consent(data_dir: Path) -> tuple[str | None, bool]:
 
 THEME_CHOICES = ("LIGHT", "DARK", "SYSTEM")
 FONT_SCALE_CHOICES = ("S", "M", "L")
+CLOSE_BEHAVIOR_CHOICES = ("TRAY", "EXIT")
 DEFAULT_THEME = "SYSTEM"
 DEFAULT_FONT_SCALE = "M"
+DEFAULT_CLOSE_BEHAVIOR = "TRAY"
+DEFAULT_AUTOSTART = False
 DEFAULT_QUIZ_LAST_COUNT = 5
 
 # 偏好键与其默认值的唯一对照：缺键即默认；写入值等于默认值时按键删除，
@@ -139,6 +142,8 @@ PREFERENCE_DEFAULTS: dict[str, object] = {
     "theme": DEFAULT_THEME,
     "font_scale": DEFAULT_FONT_SCALE,
     "timezone": None,
+    "close_behavior": DEFAULT_CLOSE_BEHAVIOR,
+    "autostart": DEFAULT_AUTOSTART,
     "quiz_last_count": DEFAULT_QUIZ_LAST_COUNT,
 }
 
@@ -148,6 +153,8 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
     theme = settings.get("theme")
     font_scale = settings.get("font_scale")
     timezone = settings.get("timezone")
+    close_behavior = settings.get("close_behavior")
+    autostart = settings.get("autostart")
     quiz_last_count = settings.get("quiz_last_count")
     return {
         "theme": theme if theme in THEME_CHOICES else DEFAULT_THEME,
@@ -155,6 +162,12 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
         "timezone": (
             timezone if isinstance(timezone, str) and is_valid_timezone(timezone) else None
         ),
+        "close_behavior": (
+            close_behavior
+            if close_behavior in CLOSE_BEHAVIOR_CHOICES
+            else DEFAULT_CLOSE_BEHAVIOR
+        ),
+        "autostart": autostart if isinstance(autostart, bool) else DEFAULT_AUTOSTART,
         "quiz_last_count": (
             quiz_last_count if quiz_last_count in QUIZ_COUNT_CHOICES else DEFAULT_QUIZ_LAST_COUNT
         ),

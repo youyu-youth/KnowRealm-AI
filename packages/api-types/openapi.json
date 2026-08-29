@@ -1247,6 +1247,18 @@
       },
       "PreferencesOut": {
         "properties": {
+          "autostart": {
+            "title": "Autostart",
+            "type": "boolean"
+          },
+          "close_behavior": {
+            "enum": [
+              "TRAY",
+              "EXIT"
+            ],
+            "title": "Close Behavior",
+            "type": "string"
+          },
           "font_scale": {
             "enum": [
               "S",
@@ -1285,6 +1297,8 @@
           "theme",
           "font_scale",
           "timezone",
+          "close_behavior",
+          "autostart",
           "quiz_last_count"
         ],
         "title": "PreferencesOut",
@@ -1293,6 +1307,34 @@
       "PreferencesUpdate": {
         "description": "全字段 optional 的部分更新：未提供的键保持原值；timezone 显式 null 表示跟随系统。",
         "properties": {
+          "autostart": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "开机自启",
+            "title": "Autostart"
+          },
+          "close_behavior": {
+            "anyOf": [
+              {
+                "enum": [
+                  "TRAY",
+                  "EXIT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "关窗行为",
+            "title": "Close Behavior"
+          },
           "font_scale": {
             "anyOf": [
               {

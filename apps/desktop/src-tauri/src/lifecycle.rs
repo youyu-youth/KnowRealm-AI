@@ -2,7 +2,7 @@ use std::error::Error;
 
 use serde::Serialize;
 use tauri::{
-    App, AppHandle, Emitter, Manager, Window, WindowEvent,
+    App, AppHandle, Emitter, Manager,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
 };
@@ -61,17 +61,6 @@ pub fn handle_shortcut(app: &AppHandle) {
     }
 }
 
-pub fn handle_window_event(window: &Window, event: &WindowEvent) {
-    if let WindowEvent::CloseRequested { api, .. } = event
-        && should_hide_on_close(window.label())
-    {
-        api.prevent_close();
-        if let Err(error) = window.hide() {
-            eprintln!("main window hide failed: {error}");
-        }
-    }
-}
-
 fn show_main_window(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         eprintln!("main window is unavailable");
@@ -80,10 +69,6 @@ fn show_main_window(app: &AppHandle) {
     if let Err(error) = show_and_focus(|| window.show(), || window.set_focus()) {
         eprintln!("main window show or focus failed: {error}");
     }
-}
-
-fn should_hide_on_close(label: &str) -> bool {
-    label == "main"
 }
 
 fn show_and_focus<E>(
@@ -111,13 +96,7 @@ pub fn exit_application(app: AppHandle) -> Result<(), String> {
 mod tests {
     use std::cell::Cell;
 
-    use super::{should_hide_on_close, show_and_focus};
-
-    #[test]
-    fn close_policy_only_hides_main_window() {
-        assert!(should_hide_on_close("main"));
-        assert!(!should_hide_on_close("settings"));
-    }
+    use super::show_and_focus;
 
     #[test]
     fn restore_policy_shows_before_focusing() {

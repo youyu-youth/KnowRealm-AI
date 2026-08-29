@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +29,8 @@ import {
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
+import { settingsKeys } from "@/features/settings/api/keys";
+import { settingsApi } from "@/features/settings/api/settings";
 import {
   blocksNewRecording,
   useRecordingSessions,
@@ -50,6 +52,10 @@ import {
   listenExitRequested,
   listenOpenQuickNote,
 } from "@/services/tauri/lifecycle";
+import {
+  mountCloseBehavior,
+  type CloseBehaviorPreference,
+} from "@/services/tauri/preferences";
 
 const navigationItems = [
   { labelKey: "nav.today", icon: CalendarDays, to: "/" },
@@ -92,6 +98,13 @@ export function AppShell() {
   const [exitPending, setExitPending] = useState(false);
   const textCaptureDirtyRef = useRef(false);
   const exitCheckPendingRef = useRef(false);
+  const preferences = useQuery({
+    queryKey: settingsKeys.preferences,
+    queryFn: settingsApi.getPreferences,
+  });
+  // 关窗分流每次关窗时读取的最新偏好；偏好未载入时为 null = 不拦截直接退出。
+  const closeBehaviorRef = useRef<CloseBehaviorPreference | null>(null);
+  closeBehaviorRef.current = preferences.data?.close_behavior ?? null;
   const setRecordingOpen = useRecordingUiStore((state) => state.setStartOpen);
   const recordingSessions = useRecordingSessions();
   const recordingActive = (recordingSessions.data ?? []).some(
@@ -146,6 +159,10 @@ export function AppShell() {
     void Promise.allSettled([
       listenOpenQuickNote(openQuickNote),
       listenExitRequested(() => void requestSafeExit()),
+      mountCloseBehavior({
+        getBehavior: () => closeBehaviorRef.current,
+        onExitRequested: () => void requestSafeExit(),
+      }),
     ]).then((results) => {
       const registered = results.flatMap((result) =>
         result.status === "fulfilled" ? [result.value] : [],

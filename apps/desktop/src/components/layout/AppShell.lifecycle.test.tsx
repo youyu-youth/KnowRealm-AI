@@ -20,6 +20,13 @@ const lifecycle = vi.hoisted(() => ({
   shortcutAvailable: true,
 }));
 
+const closeBehaviorRuntime = vi.hoisted(() => ({
+  mounted: null as {
+    getBehavior: () => string | null;
+    onExitRequested: () => void;
+  } | null,
+}));
+
 vi.mock("@/services/tauri/sidecar", () => ({
   getSidecarConfig: vi.fn().mockResolvedValue({
     baseUrl: "http://127.0.0.1:43127",
@@ -48,6 +55,18 @@ vi.mock("@/services/tauri/lifecycle", () => ({
   exitApplication: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/services/tauri/preferences", () => ({
+  mountCloseBehavior: vi.fn(
+    async (options: {
+      getBehavior: () => string | null;
+      onExitRequested: () => void;
+    }) => {
+      closeBehaviorRuntime.mounted = options;
+      return () => undefined;
+    },
+  ),
+}));
+
 function renderApp() {
   window.history.replaceState(null, "", "/");
   return render(<App />);
@@ -64,6 +83,7 @@ afterEach(() => {
   lifecycle.openQuickNote = undefined;
   lifecycle.exitRequested = undefined;
   lifecycle.shortcutAvailable = true;
+  closeBehaviorRuntime.mounted = null;
   vi.mocked(exitApplication).mockClear();
 });
 
@@ -154,5 +174,17 @@ describe("桌面生命周期", () => {
     await screen.findByRole("heading", { name: "退出 KnowRealm？" });
     fireEvent.click(screen.getByRole("button", { name: "确认退出" }));
     expect(exitApplication).toHaveBeenCalledOnce();
+  });
+
+  it("桌面环境挂载关窗分流：偏好贯通且退出请求收敛到安全退出", async () => {
+    renderApp();
+    await waitForLifecycleListeners();
+
+    await waitFor(() => expect(closeBehaviorRuntime.mounted).not.toBeNull());
+    expect(closeBehaviorRuntime.mounted?.getBehavior()).toBe("TRAY");
+
+    act(() => closeBehaviorRuntime.mounted?.onExitRequested());
+
+    await waitFor(() => expect(exitApplication).toHaveBeenCalledOnce());
   });
 });

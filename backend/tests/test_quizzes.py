@@ -951,12 +951,16 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
         "theme": "SYSTEM",
         "font_scale": "M",
         "timezone": None,
+        "close_behavior": "TRAY",
+        "autostart": False,
         "quiz_last_count": 5,
     }
     assert updated.json() == {
         "theme": "SYSTEM",
         "font_scale": "M",
         "timezone": None,
+        "close_behavior": "TRAY",
+        "autostart": False,
         "quiz_last_count": 10,
     }
     assert reread.json() == updated.json()

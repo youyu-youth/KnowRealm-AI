@@ -5,6 +5,10 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:window:allow-hide",
+    "core:window:allow-destroy",
+    "autostart:allow-enable",
+    "autostart:allow-disable",
     "dialog:allow-save",
     "shell:allow-open",
     {

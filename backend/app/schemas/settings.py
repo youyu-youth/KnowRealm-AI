@@ -55,6 +55,8 @@ class PreferencesOut(BaseModel):
     theme: Literal["LIGHT", "DARK", "SYSTEM"]
     font_scale: Literal["S", "M", "L"]
     timezone: str | None
+    close_behavior: Literal["TRAY", "EXIT"]
+    autostart: bool
     quiz_last_count: int
 
 
@@ -72,6 +74,8 @@ class PreferencesUpdate(BaseModel):
     theme: Literal["LIGHT", "DARK", "SYSTEM"] | None = Field(default=None, description="外观主题")
     font_scale: Literal["S", "M", "L"] | None = Field(default=None, description="字号档位")
     timezone: str | None = Field(default=None, description="IANA 时区名；null 表示跟随系统")
+    close_behavior: Literal["TRAY", "EXIT"] | None = Field(default=None, description="关窗行为")
+    autostart: bool | None = Field(default=None, description="开机自启")
     quiz_last_count: Literal[3, 5, 10] | None = Field(default=None, description="习题生成档位偏好")
 
     @field_validator("timezone")
@@ -85,7 +89,7 @@ class PreferencesUpdate(BaseModel):
 
     @model_validator(mode="after")
     def reject_explicit_null(self) -> Self:
-        for field in ("theme", "font_scale", "quiz_last_count"):
+        for field in ("theme", "font_scale", "close_behavior", "autostart", "quiz_last_count"):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} 不接受 null")
         return self

@@ -19,7 +19,10 @@ pub fn run() {
                 })
                 .build(),
         )
-        .on_window_event(lifecycle::handle_window_event)
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
         .setup(|app| {
             let lifecycle_state = lifecycle::setup(app)?;
             app.manage(lifecycle_state);

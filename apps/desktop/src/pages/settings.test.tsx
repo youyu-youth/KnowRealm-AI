@@ -141,6 +141,8 @@ const DEFAULT_PREFERENCES: PreferencesOut = {
   theme: "SYSTEM",
   font_scale: "M",
   timezone: null,
+  close_behavior: "TRAY",
+  autostart: false,
   quiz_last_count: 5,
 };
 
@@ -150,13 +152,15 @@ describe("设置页偏好分区", () => {
     document.documentElement.style.removeProperty("font-size");
   });
 
-  it("渲染外观与通用小节并回显已存偏好", async () => {
+  it("渲染外观、桌面行为与通用小节并回显已存偏好", async () => {
     server.use(
       http.get(PREFERENCES_URL, () =>
         HttpResponse.json({
           theme: "DARK",
           font_scale: "L",
           timezone: "Asia/Shanghai",
+          close_behavior: "EXIT",
+          autostart: true,
           quiz_last_count: 10,
         }),
       ),
@@ -166,9 +170,12 @@ describe("设置页偏好分区", () => {
 
     expect(await screen.findByRole("heading", { name: "偏好" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "外观" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "桌面行为" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "通用" })).toBeVisible();
     expect(screen.getByRole("radio", { name: "深色" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "大" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "直接退出" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "开机自启" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "10" })).toBeChecked();
     expect(screen.getByRole("combobox")).toHaveTextContent("Asia/Shanghai");
   });
@@ -244,6 +251,54 @@ describe("设置页偏好分区", () => {
     ).toHaveTextContent("偏好保存失败");
     expect(screen.getByRole("radio", { name: "深色" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "浅色" })).not.toBeChecked();
+  });
+
+  it("桌面行为控件即改即存：关窗行为与自启开关只提交被改字段", async () => {
+    let current = { ...DEFAULT_PREFERENCES };
+    const bodies: object[] = [];
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(current)),
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        const body = (await request.json()) as object;
+        bodies.push(body);
+        current = { ...current, ...body };
+        return HttpResponse.json(current);
+      }),
+    );
+
+    renderAt("/settings");
+    await screen.findByRole("heading", { name: "偏好" });
+
+    fireEvent.click(screen.getByRole("radio", { name: "直接退出" }));
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "直接退出" })).toBeChecked(),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "开机自启" }));
+    await waitFor(() =>
+      expect(screen.getByRole("checkbox", { name: "开机自启" })).toBeChecked(),
+    );
+
+    expect(bodies).toEqual([{ close_behavior: "EXIT" }, { autostart: true }]);
+  }, 15_000);
+
+  it("自启保存失败行内报错并回显服务端事实", async () => {
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(DEFAULT_PREFERENCES)),
+      http.put(PREFERENCES_URL, () =>
+        HttpResponse.json({ detail: "偏好保存失败" }, { status: 500 }),
+      ),
+    );
+
+    renderAt("/settings");
+
+    fireEvent.click(await screen.findByRole("checkbox", { name: "开机自启" }));
+
+    expect(
+      await screen.findByRole("alert", undefined, { timeout: 8_000 }),
+    ).toHaveTextContent("偏好保存失败");
+    expect(
+      screen.getByRole("checkbox", { name: "开机自启" }),
+    ).not.toBeChecked();
   });
 
   it("主题与字号偏好应用到根元素并即时切换", async () => {

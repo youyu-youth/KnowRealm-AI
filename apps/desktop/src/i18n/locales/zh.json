@@ -833,6 +833,14 @@
         "M": "中",
         "L": "大"
       },
+      "desktopTitle": "桌面行为",
+      "closeBehaviorLegend": "关闭窗口时",
+      "closeBehavior": {
+        "TRAY": "驻留托盘",
+        "EXIT": "直接退出"
+      },
+      "autostartLabel": "开机自启",
+      "autostartOsFailed": "开机自启写入系统启动项失败，请重试。",
       "generalTitle": "通用",
       "timezoneLabel": "时区",
       "timezone": {

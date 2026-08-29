@@ -124,6 +124,8 @@ function preferencesOut(
     theme: "SYSTEM",
     font_scale: "M",
     timezone: null,
+    close_behavior: "TRAY",
+    autostart: false,
     quiz_last_count: 5,
     ...overrides,
   };

@@ -16,6 +16,8 @@ DEFAULTS = {
     "theme": "SYSTEM",
     "font_scale": "M",
     "timezone": None,
+    "close_behavior": "TRAY",
+    "autostart": False,
     "quiz_last_count": 5,
 }
 
@@ -79,6 +81,10 @@ async def test_put_merges_partial_updates_and_keeps_unknown_keys(tmp_path: Path)
     )
     async with running_app(tmp_path) as (_app, client):
         theme_update = await client.put("/api/settings/preferences", json={"theme": "DARK"})
+        desktop_update = await client.put(
+            "/api/settings/preferences",
+            json={"close_behavior": "EXIT", "autostart": True},
+        )
         timezone_update = await client.put(
             "/api/settings/preferences", json={"timezone": "Asia/Shanghai"}
         )
@@ -89,10 +95,19 @@ async def test_put_merges_partial_updates_and_keeps_unknown_keys(tmp_path: Path)
         "theme": "DARK",
         "quiz_last_count": 10,
     }
+    assert desktop_update.json() == {
+        **DEFAULTS,
+        "theme": "DARK",
+        "close_behavior": "EXIT",
+        "autostart": True,
+        "quiz_last_count": 10,
+    }
     assert timezone_update.json() == {
         **DEFAULTS,
         "theme": "DARK",
         "timezone": "Asia/Shanghai",
+        "close_behavior": "EXIT",
+        "autostart": True,
         "quiz_last_count": 10,
     }
     assert reread.json() == timezone_update.json()
@@ -100,6 +115,8 @@ async def test_put_merges_partial_updates_and_keeps_unknown_keys(tmp_path: Path)
     assert stored == {
         "theme": "DARK",
         "timezone": "Asia/Shanghai",
+        "close_behavior": "EXIT",
+        "autostart": True,
         "quiz_last_count": 10,
         "tencent_asr_consent_granted_at": "2026-08-29T00:00:00Z",
         "custom_key": {"kept": True},
@@ -114,6 +131,8 @@ async def test_put_default_values_remove_preference_keys(tmp_path: Path) -> None
             "theme": "LIGHT",
             "font_scale": "L",
             "timezone": "Asia/Shanghai",
+            "close_behavior": "EXIT",
+            "autostart": True,
             "quiz_last_count": 10,
             "custom_key": {"kept": True},
         },
@@ -123,6 +142,8 @@ async def test_put_default_values_remove_preference_keys(tmp_path: Path) -> None
             {"font_scale": "M"},
             {"theme": "SYSTEM"},
             {"timezone": None},
+            {"close_behavior": "TRAY"},
+            {"autostart": False},
             {"quiz_last_count": 5},
         ):
             response = await client.put("/api/settings/preferences", json=payload)
@@ -148,9 +169,13 @@ async def test_put_empty_body_keeps_everything_unchanged(tmp_path: Path) -> None
         {"theme": "BLUE"},
         {"font_scale": "XL"},
         {"timezone": "Mars/Olympus"},
+        {"close_behavior": "ASK"},
+        {"autostart": "maybe"},
         {"quiz_last_count": 7},
         {"theme": None},
         {"font_scale": None},
+        {"close_behavior": None},
+        {"autostart": None},
         {"quiz_last_count": None},
     ],
 )
@@ -193,6 +218,8 @@ async def test_get_falls_back_to_defaults_for_corrupted_stored_values(
             "theme": "BLUE",
             "font_scale": "XL",
             "timezone": "Mars/Olympus",
+            "close_behavior": "ASK",
+            "autostart": "maybe",
             "quiz_last_count": 7,
         },
     )
