@@ -307,7 +307,6 @@ def quiz_spec(
     return WorkerSpec(
         name="quiz_worker",
         job_type=ProcessingJobType.QUIZ_GENERATION,
-        interrupted_error_message="习题生成被意外中断",
         poll_interval=0.25,
         find_candidate=find_candidate,
         validate_claim=validate_claim,

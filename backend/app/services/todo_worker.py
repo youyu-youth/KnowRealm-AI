@@ -238,7 +238,6 @@ def todo_spec(
     return WorkerSpec(
         name="todo_worker",
         job_type=ProcessingJobType.TODO_GENERATION,
-        interrupted_error_message="Todo 生成被意外中断",
         poll_interval=0.25,
         find_candidate=find_candidate,
         validate_claim=validate_claim,

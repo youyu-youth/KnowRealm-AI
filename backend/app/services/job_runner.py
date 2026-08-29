@@ -168,7 +168,6 @@ class WorkerSpec[PreflightT, CtxT: ClaimedJob, ResultT]:
 
     name: str
     job_type: ProcessingJobType
-    interrupted_error_message: str
     poll_interval: float
     find_candidate: Callable[[AsyncSession, datetime], Awaitable[ProcessingJob | None]]
     validate_claim: Callable[
@@ -189,7 +188,7 @@ class WorkerSpec[PreflightT, CtxT: ClaimedJob, ResultT]:
     on_loop_failure: Callable[[str], Awaitable[None]] | None = None
     finalize_cycle: Callable[[CtxT], Awaitable[None]] | None = None
     clear_waiting_on_claim: bool = False
-    clock: Callable[[], datetime] = utcnow  # 时钟为正式接缝：测试可冻结推进
+    clock: Callable[[], datetime] = utcnow  # runner 外壳时钟接缝：领取/失败记账用，测试可冻结推进
 
 
 class ManagedWorker(Protocol):

@@ -191,7 +191,8 @@ async def apply_failure(
     now: datetime,
 ) -> bool:
     del ctx, session
-    if record is None:
+    # 旧行为：记录已软删则静默不动 job（select 恒带 deleted_at IS NULL 过滤）
+    if record is None or record.deleted_at is not None:
         return False
     code = ProcessingJobErrorCode(error_code)
     if code in RETRYABLE_PROCESSING_JOB_ERROR_CODES and job.attempts < job.max_attempts:
@@ -300,7 +301,6 @@ def document_spec(
     return WorkerSpec(
         name="document_worker",
         job_type=ProcessingJobType.DOCUMENT_PARSE,
-        interrupted_error_message=ERROR_MESSAGES[ProcessingJobErrorCode.WORKER_INTERRUPTED],
         poll_interval=1,
         find_candidate=find_candidate,
         validate_claim=lambda session, job, record_id, _payload: validate_claim(

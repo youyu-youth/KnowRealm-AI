@@ -804,7 +804,6 @@ def audio_spec(
     return WorkerSpec(
         name="audio_worker",
         job_type=ProcessingJobType.ASR,
-        interrupted_error_message="音频处理被意外中断",
         poll_interval=1,
         find_candidate=find_candidate,
         validate_claim=lambda session, job, record_id, _payload: validate_claim(

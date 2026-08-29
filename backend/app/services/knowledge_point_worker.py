@@ -312,7 +312,6 @@ def knowledge_point_spec(
     return WorkerSpec(
         name="knowledge_point_worker",
         job_type=ProcessingJobType.KNOWLEDGE_EXTRACTION,
-        interrupted_error_message="知识点生成被意外中断",
         poll_interval=0.25,
         find_candidate=find_candidate,
         validate_claim=validate_claim,
