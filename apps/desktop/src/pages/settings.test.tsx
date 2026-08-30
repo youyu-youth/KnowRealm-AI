@@ -9,6 +9,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -42,9 +43,28 @@ vi.stubGlobal("scrollTo", vi.fn());
 
 type ProfileOut = components["schemas"]["ProfileOut"];
 
+const AVATAR_URL = `${TEST_SIDECAR_URL}/api/profile/avatar`;
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
+]);
+
 function renderAt(path = "/") {
   window.history.replaceState(null, "", path);
   return render(<App />);
+}
+
+/** 设置页主区（排除侧边栏同名元素）。 */
+function mainArea() {
+  return within(screen.getByRole("main"));
+}
+
+/** 档案表单里隐藏的选图 input（display:none，无法走可访问查询）。 */
+function avatarFileInput(): HTMLInputElement {
+  const input = screen.getByRole("main").querySelector("input[type=file]");
+  if (!(input instanceof HTMLInputElement)) {
+    throw new Error("未找到选图 input");
+  }
+  return input;
 }
 
 afterEach(() => {
@@ -73,8 +93,9 @@ describe("设置页档案区块", () => {
     await waitFor(() => expect(save).toBeEnabled());
   });
 
-  it("已建档时回显角色与自我介绍，保存提交最新值并给出反馈", async () => {
+  it("已建档时回显昵称、角色与自我介绍，保存提交最新值并给出反馈", async () => {
     const stored: ProfileOut = {
+      nickname: "阿邹",
       primary_role: "DEVELOPER",
       about_me: "三年后端，正在补操作系统基础",
     };
@@ -86,6 +107,7 @@ describe("设置页档案区块", () => {
       http.put(`${TEST_SIDECAR_URL}/api/profile`, async ({ request }) => {
         bodies.push((await request.json()) as object);
         return HttpResponse.json({
+          nickname: "邹同学",
           primary_role: "STUDENT",
           about_me: "正在学 Rust",
         });
@@ -97,20 +119,35 @@ describe("设置页档案区块", () => {
     await waitFor(() =>
       expect(screen.getByRole("radio", { name: "程序员" })).toBeChecked(),
     );
+    expect(screen.getByLabelText("昵称")).toHaveValue("阿邹");
     expect(screen.getByLabelText("自我介绍")).toHaveValue(
       "三年后端，正在补操作系统基础",
     );
 
+    fireEvent.change(screen.getByLabelText("昵称"), {
+      target: { value: "邹同学" },
+    });
     fireEvent.click(screen.getByRole("radio", { name: "学生" }));
     fireEvent.change(screen.getByLabelText("自我介绍"), {
       target: { value: "正在学 Rust" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存档案" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("档案已保存");
+    expect(await screen.findByText("档案已保存")).toBeInTheDocument();
     expect(bodies).toEqual([
-      { primary_role: "STUDENT", about_me: "正在学 Rust" },
+      {
+        nickname: "邹同学",
+        primary_role: "STUDENT",
+        about_me: "正在学 Rust",
+      },
     ]);
+  });
+
+  it("昵称限制 20 字", async () => {
+    renderAt("/settings");
+
+    const nickname = await screen.findByLabelText("昵称");
+    expect(nickname).toHaveAttribute("maxlength", "20");
   });
 
   it("自我介绍限制 200 字并显示字数计数", async () => {
@@ -141,6 +178,95 @@ describe("设置页档案区块", () => {
     ).toHaveTextContent("档案保存失败");
     expect(aboutMe).toHaveValue("不会成功的介绍");
     expect(screen.getByRole("radio", { name: "其他" })).toBeChecked();
+  });
+
+  it("选择图片后上传头像并回显", async () => {
+    const uploaded: Uint8Array[] = [];
+    let hasAvatar = false;
+    server.use(
+      http.get(AVATAR_URL, () =>
+        hasAvatar
+          ? HttpResponse.arrayBuffer(PNG_BYTES, {
+              headers: { "Content-Type": "image/png" },
+            })
+          : HttpResponse.json({ detail: "未设置头像" }, { status: 404 }),
+      ),
+      http.put(AVATAR_URL, async ({ request }) => {
+        uploaded.push(new Uint8Array(await request.arrayBuffer()));
+        hasAvatar = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    renderAt("/settings");
+
+    await screen.findByRole("button", { name: "选择图片" });
+    expect(mainArea().queryByAltText("头像")).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.change(avatarFileInput(), {
+        target: { files: [new File([PNG_BYTES], "avatar.png")] },
+      });
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "删除头像" }),
+    ).toBeEnabled();
+    expect(mainArea().getByAltText("头像")).toBeInTheDocument();
+    expect(uploaded).toEqual([PNG_BYTES]);
+  });
+
+  it("删除头像后回到占位图标", async () => {
+    let hasAvatar = true;
+    server.use(
+      http.get(AVATAR_URL, () =>
+        hasAvatar
+          ? HttpResponse.arrayBuffer(PNG_BYTES, {
+              headers: { "Content-Type": "image/png" },
+            })
+          : HttpResponse.json({ detail: "未设置头像" }, { status: 404 }),
+      ),
+      http.delete(AVATAR_URL, () => {
+        hasAvatar = false;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    renderAt("/settings");
+
+    expect(
+      await screen.findByRole("button", { name: "删除头像" }),
+    ).toBeEnabled();
+    expect(mainArea().getByAltText("头像")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "删除头像" }));
+
+    await waitFor(() =>
+      expect(mainArea().queryByAltText("头像")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("上传失败行内报错且可重试", async () => {
+    server.use(
+      http.put(AVATAR_URL, () =>
+        HttpResponse.json(
+          { detail: "头像仅支持 PNG/JPG/WebP 格式" },
+          { status: 422 },
+        ),
+      ),
+    );
+
+    renderAt("/settings");
+
+    await screen.findByRole("button", { name: "选择图片" });
+    await act(async () => {
+      fireEvent.change(avatarFileInput(), {
+        target: { files: [new File([PNG_BYTES], "avatar.png")] },
+      });
+    });
+
+    expect(
+      await screen.findByRole("alert", undefined, { timeout: 8_000 }),
+    ).toHaveTextContent("头像仅支持 PNG/JPG/WebP 格式");
+    expect(screen.getByRole("button", { name: "选择图片" })).toBeEnabled();
   });
 });
 
@@ -535,5 +661,130 @@ describe("速记快捷键录制控件", () => {
       await screen.findByRole("alert", undefined, { timeout: 8_000 }),
     ).toHaveTextContent("已保留原快捷键");
     expect(screen.getByText("Ctrl+Alt+N")).toBeVisible();
+  }, 15_000);
+});
+
+const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
+const ASR_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/tencent-asr`;
+
+describe("设置页供应商分区", () => {
+  async function sectionOf(headingName: string) {
+    const heading = await screen.findByRole("heading", { name: headingName });
+    const section = heading.closest("section");
+    expect(section).not.toBeNull();
+    return section as HTMLElement;
+  }
+
+  it("AI 服务卡：DashScope 预设一键填充，保存后可测试连接", async () => {
+    const bodies: object[] = [];
+    server.use(
+      http.get(LLM_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
+      http.put(LLM_PROVIDER_URL, async ({ request }) => {
+        bodies.push((await request.json()) as object);
+        return HttpResponse.json({
+          provider: {
+            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            model: "qwen-plus",
+            has_api_key: true,
+            api_key_hint: "••••5678",
+          },
+        });
+      }),
+      http.post(`${LLM_PROVIDER_URL}/tests`, () =>
+        HttpResponse.json({ ok: true, model: "qwen-plus" }),
+      ),
+    );
+    renderAt("/settings");
+
+    const section = await sectionOf("AI 服务");
+    // 未配置（无已保存密钥）时不显示测试按钮。
+    expect(
+      within(section).queryByRole("button", { name: "测试连接" }),
+    ).toBeNull();
+
+    fireEvent.click(
+      within(section).getByRole("button", { name: "填入 DashScope 预设" }),
+    );
+    expect(within(section).getByLabelText("服务地址")).toHaveValue(
+      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    );
+    expect(within(section).getByLabelText("模型")).toHaveValue("qwen-plus");
+
+    fireEvent.change(within(section).getByLabelText("API 密钥"), {
+      target: { value: "sk-abc" },
+    });
+    fireEvent.click(within(section).getByRole("button", { name: "保存配置" }));
+
+    expect(await within(section).findByRole("status")).toHaveTextContent(
+      "AI 服务配置已保存",
+    );
+    expect(bodies).toEqual([
+      {
+        base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        model: "qwen-plus",
+        api_key: "sk-abc",
+        clear_api_key: false,
+      },
+    ]);
+
+    fireEvent.click(
+      await within(section).findByRole("button", { name: "测试连接" }),
+    );
+    expect(
+      await within(section).findByText("连接测试成功（qwen-plus）"),
+    ).toBeVisible();
+  }, 15_000);
+
+  it("语音转写卡：保存腾讯密钥并测试连接，展示配置不等于同意文案", async () => {
+    const bodies: object[] = [];
+    server.use(
+      http.get(ASR_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
+      http.put(ASR_PROVIDER_URL, async ({ request }) => {
+        bodies.push((await request.json()) as object);
+        return HttpResponse.json({
+          provider: {
+            region: "ap-shanghai",
+            has_credentials: true,
+            secret_id_hint: "••••1234",
+          },
+        });
+      }),
+      http.post(`${ASR_PROVIDER_URL}/tests`, () =>
+        HttpResponse.json({ ok: true, region: "ap-shanghai" }),
+      ),
+    );
+    renderAt("/settings");
+
+    const section = await sectionOf("语音转写");
+    fireEvent.change(within(section).getByLabelText("SecretId"), {
+      target: { value: "AKIDexample1234" },
+    });
+    fireEvent.change(within(section).getByLabelText("SecretKey"), {
+      target: { value: "tencent-secret" },
+    });
+    fireEvent.change(within(section).getByLabelText("地域（region）"), {
+      target: { value: "ap-shanghai" },
+    });
+    fireEvent.click(within(section).getByRole("button", { name: "保存配置" }));
+
+    expect(await within(section).findByRole("status")).toHaveTextContent(
+      "语音转写配置已保存",
+    );
+    expect(bodies).toEqual([
+      {
+        region: "ap-shanghai",
+        secret_id: "AKIDexample1234",
+        secret_key: "tencent-secret",
+        clear_secret_key: false,
+      },
+    ]);
+
+    fireEvent.click(
+      await within(section).findByRole("button", { name: "测试连接" }),
+    );
+    expect(
+      await within(section).findByText("连接测试成功（ap-shanghai）"),
+    ).toBeVisible();
+    expect(screen.getByText(/保存密钥不等于同意外发/)).toBeVisible();
   }, 15_000);
 });

@@ -4,10 +4,13 @@ import type {
   LearningContext,
   LearningDepth,
 } from "@/features/courses/api/types";
+import type { ProfileOut } from "@/features/settings/api/profile";
+
+type PrimaryRole = NonNullable<ProfileOut["primary_role"]>;
 
 export type CourseFormValues = {
   name: string;
-  learningContext: LearningContext;
+  learningContext: LearningContext | "";
   educationStage: EducationStage | "";
   depth: LearningDepth | "";
   courseType: CourseType | "";
@@ -18,12 +21,38 @@ export type CourseFieldId = keyof CourseFormValues;
 
 export const emptyCourseFormValues: CourseFormValues = {
   name: "",
-  learningContext: "SCHOOL",
+  learningContext: "",
   educationStage: "",
   depth: "",
   courseType: "",
   description: "",
 };
+
+// 建课按角色预选默认学习场景（STUDENT→学业、职场角色→职业）；无档案/OTHER 不预选。
+const ROLE_PRESET_CONTEXT: Record<
+  Exclude<PrimaryRole, "OTHER">,
+  LearningContext
+> = {
+  STUDENT: "SCHOOL",
+  DEVELOPER: "CAREER",
+  OFFICE_WORKER: "CAREER",
+};
+
+/** 角色对应的预选学习场景；无档案/OTHER 返回空（由用户自选）。 */
+export function presetLearningContext(
+  role: PrimaryRole | null,
+): LearningContext | "" {
+  return role !== null && role !== "OTHER" ? ROLE_PRESET_CONTEXT[role] : "";
+}
+
+export function initialCourseFormValues(
+  role: PrimaryRole | null,
+): CourseFormValues {
+  return {
+    ...emptyCourseFormValues,
+    learningContext: presetLearningContext(role),
+  };
+}
 
 export function courseFormValuesFromCourse(course: {
   name: string;
@@ -47,10 +76,10 @@ export function courseFieldId(field: CourseFieldId): string {
   return `course-field-${field}`;
 }
 
-/** 客户端可校验的必填字段（学习场景切换后互斥字段随之必填）。 */
+/** 客户端可校验的必填字段（学习场景未选或切换后互斥字段随之必填）。 */
 export type CourseRequiredField = Exclude<
   CourseFieldId,
-  "learningContext" | "courseType" | "description"
+  "courseType" | "description"
 >;
 
 /** 返回违反必填或跨字段约束的字段；null 表示表单值可提交。 */
@@ -59,6 +88,9 @@ export function invalidCourseFormField(
 ): CourseRequiredField | null {
   if (values.name.trim().length === 0) {
     return "name";
+  }
+  if (values.learningContext === "") {
+    return "learningContext";
   }
   if (values.learningContext === "SCHOOL" && values.educationStage === "") {
     return "educationStage";
@@ -81,6 +113,10 @@ export type CourseFormPayload = {
 export function courseFormPayloadFromValues(
   values: CourseFormValues,
 ): CourseFormPayload {
+  // 提交按钮由 invalidCourseFormField 把关，此处仅收窄"场景已选"的类型。
+  if (values.learningContext === "") {
+    throw new Error("学习场景未选择");
+  }
   return {
     name: values.name,
     learning_context: values.learningContext,

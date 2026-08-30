@@ -1,0 +1,91 @@
+// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import App from "@/App";
+import { TEST_SIDECAR_URL } from "@/mocks/handlers";
+import { server } from "@/mocks/server";
+
+vi.mock("@/services/tauri/sidecar", () => ({
+  getSidecarConfig: vi.fn().mockResolvedValue({
+    baseUrl: "http://127.0.0.1:43127",
+    token: "test-launch-token",
+  }),
+}));
+
+vi.mock("@/services/tauri/recording", () => ({
+  setRecordingKeepAwake: vi.fn().mockResolvedValue(undefined),
+  hideWindowTemporarily: vi.fn().mockResolvedValue(undefined),
+}));
+
+const AVATAR_URL = `${TEST_SIDECAR_URL}/api/profile/avatar`;
+const PNG_BYTES = new Uint8Array([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
+]);
+
+function renderAt(path = "/") {
+  window.history.replaceState(null, "", path);
+  return render(<App />);
+}
+
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
+
+describe("侧边栏底部用户区", () => {
+  it("无昵称与头像时显示占位，点击跳设置页档案区", async () => {
+    renderAt("/");
+
+    const userArea = await screen.findByRole("link", {
+      name: "打开档案设置",
+    });
+    expect(userArea).toHaveTextContent("未设置昵称");
+
+    fireEvent.click(userArea);
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "档案" })).toBeVisible(),
+    );
+    // "学习画像"仍是禁用的未接入导航项，用户区不激活它。
+    expect(
+      screen.getByRole("button", { name: "学习画像（未接入）" }),
+    ).toBeDisabled();
+  });
+
+  it("有昵称与头像时同步展示", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/profile`, () =>
+        HttpResponse.json({
+          nickname: "阿邹",
+          primary_role: "DEVELOPER",
+          about_me: null,
+        }),
+      ),
+      http.get(AVATAR_URL, () =>
+        HttpResponse.arrayBuffer(PNG_BYTES, {
+          headers: { "Content-Type": "image/png" },
+        }),
+      ),
+    );
+
+    renderAt("/");
+
+    const userArea = await screen.findByRole("link", {
+      name: "打开档案设置",
+    });
+    await waitFor(() => expect(userArea).toHaveTextContent("阿邹"));
+    const sidebar = within(screen.getByRole("complementary"));
+    await waitFor(() =>
+      expect(sidebar.getByAltText("头像")).toBeInTheDocument(),
+    );
+  });
+});

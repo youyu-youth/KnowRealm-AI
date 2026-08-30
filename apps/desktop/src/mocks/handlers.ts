@@ -30,6 +30,9 @@ export const handlers = [
       },
     }),
   ),
+  http.get(`${TEST_SIDECAR_URL}/api/settings/providers/tencent-asr`, () =>
+    HttpResponse.json({ provider: null }),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/settings/preferences`, () =>
     HttpResponse.json({
       theme: "SYSTEM",
@@ -43,9 +46,14 @@ export const handlers = [
   ),
   http.get(`${TEST_SIDECAR_URL}/api/profile`, () =>
     HttpResponse.json({
+      nickname: null,
       primary_role: null,
       about_me: null,
     }),
+  ),
+  // 默认无头像；用例按需覆盖为图片响应。
+  http.get(`${TEST_SIDECAR_URL}/api/profile/avatar`, () =>
+    HttpResponse.json({ detail: "未设置头像" }, { status: 404 }),
   ),
   http.get(`${TEST_SIDECAR_URL}/api/recording-sessions`, () =>
     HttpResponse.json([]),

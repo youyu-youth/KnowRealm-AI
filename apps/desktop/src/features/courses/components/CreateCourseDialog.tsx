@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -20,8 +20,11 @@ import {
   courseFormPayloadFromValues,
   emptyCourseFormValues,
   invalidCourseFormField,
+  presetLearningContext,
 } from "@/features/courses/courseFormValues";
 import { CourseFormFields } from "@/features/courses/components/CourseFormFields";
+import { settingsKeys } from "@/features/settings/api/keys";
+import { profileApi } from "@/features/settings/api/profile";
 
 type CreateCourseDialogProps = {
   open: boolean;
@@ -35,6 +38,10 @@ export function CreateCourseDialog({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [values, setValues] = useState<CourseFormValues>(emptyCourseFormValues);
+  const profile = useQuery({
+    queryKey: settingsKeys.profile,
+    queryFn: () => profileApi.get(),
+  });
   const createCourse = useMutation({
     mutationFn: courseApi.create,
     onSuccess: async () => {
@@ -44,7 +51,17 @@ export function CreateCourseDialog({
     },
   });
 
-  const canSubmit = invalidCourseFormField(values) === null;
+  // 学习场景初值随档案派生（可改）：用户未选定（空）且对话框打开时取角色预选；
+  // 用户一旦选定即以用户值为准——档案晚到不覆盖选择，也不抹掉其它已输入字段。
+  const presetContext = presetLearningContext(
+    profile.data?.primary_role ?? null,
+  );
+  const formValues: CourseFormValues =
+    open && values.learningContext === ""
+      ? { ...values, learningContext: presetContext }
+      : values;
+
+  const canSubmit = invalidCourseFormField(formValues) === null;
 
   function resetForm() {
     setValues(emptyCourseFormValues);
@@ -59,7 +76,7 @@ export function CreateCourseDialog({
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canSubmit) return;
-    createCourse.mutate(courseFormPayloadFromValues(values));
+    createCourse.mutate(courseFormPayloadFromValues(formValues));
   }
 
   return (
@@ -74,7 +91,7 @@ export function CreateCourseDialog({
           </DialogHeader>
 
           <CourseFormFields
-            values={values}
+            values={formValues}
             onChange={(patch) => setValues((prev) => ({ ...prev, ...patch }))}
           />
 

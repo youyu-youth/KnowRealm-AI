@@ -20,7 +20,13 @@ export async function apiRequest(
 ): Promise<Response> {
   const { baseUrl, token } = await getSidecarConfig();
   const headers = new Headers(init?.headers);
-  if (!(init?.body instanceof FormData)) {
+  // FormData 自带分隔符 Content-Type；二进制体（头像字节）不是 JSON，均不强加 JSON 头。
+  const isRawBody =
+    init?.body instanceof FormData ||
+    init?.body instanceof Blob ||
+    init?.body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(init?.body);
+  if (!isRawBody) {
     headers.set("Content-Type", "application/json");
   }
   headers.set("X-KnowRealm-Token", token);

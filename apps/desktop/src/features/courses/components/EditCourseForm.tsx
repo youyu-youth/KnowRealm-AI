@@ -71,6 +71,7 @@ export function EditCourseForm({
 
   const fieldErrorMessages: Record<CourseRequiredField, string> = {
     name: t("spaces.editForm.nameRequired"),
+    learningContext: t("spaces.editForm.contextRequired"),
     educationStage: t("spaces.editForm.stageRequired"),
     depth: t("spaces.editForm.depthRequired"),
   };

@@ -20,6 +20,16 @@ vi.mock("@/services/tauri/sidecar", () => ({
   }),
 }));
 
+async function selectLearningContext(optionName: string) {
+  const trigger = screen.getByRole("combobox", { name: "学习场景" });
+  fireEvent.click(trigger);
+  const option = await screen.findByRole("option", { name: optionName });
+  fireEvent.pointerDown(option);
+  fireEvent.pointerUp(option);
+  fireEvent.click(option);
+  await waitFor(() => expect(trigger).toHaveTextContent(optionName));
+}
+
 describe("首门课程持久化入口", () => {
   function CourseDiscoveryHarness({
     initialFilters = {},
@@ -70,6 +80,7 @@ describe("首门课程持久化入口", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "课程名称" }), {
       target: { value: "操作系统" },
     });
+    await selectLearningContext("学业学习");
     await selectEducationStage();
     const submit = screen.getByRole("button", { name: "创建课程" });
     expect(submit).toBeEnabled();
@@ -118,6 +129,7 @@ describe("首门课程持久化入口", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "课程名称" }), {
       target: { value: "操作系统" },
     });
+    await selectLearningContext("学业学习");
     await selectEducationStage();
     const submit = screen.getByRole("button", { name: "创建课程" });
     expect(submit).toBeEnabled();
@@ -272,5 +284,80 @@ describe("首门课程持久化入口", () => {
 
     expect(await screen.findByText("操作系统")).toBeInTheDocument();
     expect(screen.queryByText("课程暂时无法读取")).not.toBeInTheDocument();
+  });
+});
+
+describe("建课按角色预选学习场景", () => {
+  function CourseDiscoveryHarness() {
+    return (
+      <CoursesPage
+        filters={{}}
+        onFiltersChange={vi.fn()}
+        onOpenCourse={vi.fn()}
+      />
+    );
+  }
+
+  function mockProfileRole(role: string | null) {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/profile`, () =>
+        HttpResponse.json({
+          nickname: null,
+          primary_role: role,
+          about_me: null,
+        }),
+      ),
+    );
+  }
+
+  async function openDialog() {
+    fireEvent.click(
+      await screen.findByRole("button", { name: "新建知识空间" }),
+    );
+    return screen.findByRole("combobox", { name: "学习场景" });
+  }
+
+  it("学生档案预选学业学习", async () => {
+    mockProfileRole("STUDENT");
+    renderWithQuery(<CourseDiscoveryHarness />);
+
+    const trigger = await openDialog();
+    await waitFor(() => expect(trigger).toHaveTextContent("学业学习"));
+  });
+
+  it("程序员与职场人档案预选职业技能", async () => {
+    mockProfileRole("OFFICE_WORKER");
+    renderWithQuery(<CourseDiscoveryHarness />);
+
+    const trigger = await openDialog();
+    await waitFor(() => expect(trigger).toHaveTextContent("职业技能"));
+  });
+
+  it("无档案或其他角色不预选，未选场景不能提交", async () => {
+    renderWithQuery(<CourseDiscoveryHarness />);
+
+    const trigger = await openDialog();
+    await waitFor(() => expect(trigger).toHaveTextContent("选择学习场景"));
+    fireEvent.change(screen.getByRole("textbox", { name: "课程名称" }), {
+      target: { value: "操作系统" },
+    });
+    expect(screen.getByRole("button", { name: "创建课程" })).toBeDisabled();
+
+    await selectLearningContext("兴趣自学");
+    // 兴趣场景还需学习深度。
+    expect(screen.getByRole("button", { name: "创建课程" })).toBeDisabled();
+    const depth = screen.getByRole("combobox", { name: "学习深度" });
+    fireEvent.click(depth);
+    fireEvent.click(await screen.findByRole("option", { name: "入门" }));
+    await waitFor(() => expect(depth).toHaveTextContent("入门"));
+    expect(screen.getByRole("button", { name: "创建课程" })).toBeEnabled();
+  });
+
+  it("其他角色同样不预选", async () => {
+    mockProfileRole("OTHER");
+    renderWithQuery(<CourseDiscoveryHarness />);
+
+    const trigger = await openDialog();
+    await waitFor(() => expect(trigger).toHaveTextContent("选择学习场景"));
   });
 });

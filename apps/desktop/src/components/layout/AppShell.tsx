@@ -29,6 +29,7 @@ import {
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
+import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
 import {
@@ -302,6 +303,8 @@ export function AppShell() {
             );
           })}
         </nav>
+
+        <SidebarUserArea />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

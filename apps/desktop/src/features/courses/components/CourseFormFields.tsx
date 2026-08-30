@@ -105,21 +105,27 @@ export function CourseFormFields({
         {errors.name ? <FieldError>{errors.name}</FieldError> : null}
       </Field>
 
-      <Field>
+      <Field data-invalid={errors.learningContext ? true : undefined}>
         <FieldLabel htmlFor={courseFieldId("learningContext")}>
           {t("spaces.form.learningContext")}
         </FieldLabel>
         <Select
           items={learningContextItems}
-          value={values.learningContext}
+          value={values.learningContext || null}
           onValueChange={handleLearningContext}
         >
           <SelectTrigger
             id={courseFieldId("learningContext")}
             className="w-full"
+            aria-required="true"
+            aria-invalid={errors.learningContext ? true : undefined}
           >
-            <SelectValue>
-              {t(learningContextLabelKeys[values.learningContext])}
+            <SelectValue
+              placeholder={t("spaces.form.learningContextPlaceholder")}
+            >
+              {values.learningContext
+                ? t(learningContextLabelKeys[values.learningContext])
+                : null}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
@@ -132,6 +138,9 @@ export function CourseFormFields({
             </SelectGroup>
           </SelectContent>
         </Select>
+        {errors.learningContext ? (
+          <FieldError>{errors.learningContext}</FieldError>
+        ) : null}
         <FieldDescription>
           {t("spaces.form.learningContextHint")}
         </FieldDescription>

@@ -13,7 +13,12 @@
     "profile": "学习画像",
     "settings": "设置",
     "unavailable": "未接入",
-    "unavailableLabel": "{{label}}（未接入）"
+    "unavailableLabel": "{{label}}（未接入）",
+    "userArea": {
+      "openSettings": "打开档案设置",
+      "nicknamePlaceholder": "未设置昵称",
+      "avatarAlt": "头像"
+    }
   },
   "capture": {
     "label": "快速捕获",
@@ -158,6 +163,7 @@
       "description": "先确定这门课程的学习场景，后续 AI 输出会沿用这里的深度设定。",
       "name": "课程名称",
       "learningContext": "学习场景",
+      "learningContextPlaceholder": "选择学习场景",
       "learningContextHint": "每门课程独立设置，不会改变你的个人角色。",
       "educationStage": "教育阶段",
       "educationStagePlaceholder": "选择教育阶段",
@@ -204,6 +210,7 @@
       "submit": "保存修改",
       "saving": "正在保存",
       "nameRequired": "请填写课程名称",
+      "contextRequired": "请选择学习场景",
       "stageRequired": "学业场景必须选择教育阶段",
       "depthRequired": "请选择学习深度",
       "hotWords": "手动热词",
@@ -412,19 +419,8 @@
         "upgrading": "正在升级",
         "classifyAndUpgrade": "归类并升级",
         "providerTitle": "配置 AI Provider",
-        "providerDescription": "配置 OpenAI-compatible 端点、模型和本机密钥；密钥不会展示或发送到前端日志。",
         "configuredProvider": "当前 Provider：{{model}} · {{baseUrl}}",
         "changeProvider": "更改 Provider",
-        "cancelProviderEdit": "取消更改",
-        "baseUrl": "Base URL",
-        "model": "模型",
-        "apiKey": "API Key",
-        "apiKeyPlaceholder": "输入本机 API Key",
-        "clearApiKey": "清除已保存的 API Key",
-        "saveProvider": "保存 Provider",
-        "testProvider": "测试连接",
-        "continue": "继续",
-        "testSucceeded": "连接测试成功（{{model}}）",
         "consentTitle": "同意外部 AI 处理",
         "consentDisclosure": "生成总结会把当前 Transcript 正文发送到你配置的第三方 AI Provider；原始音视频不会发送。",
         "grantConsent": "同意发送 Transcript",
@@ -778,19 +774,6 @@
     "citation": {
       "listLabel": "引用来源",
       "jump": "查看引用 {{index}} 的转写原文"
-    },
-    "provider": {
-      "title": "未配置 AI 服务",
-      "description": "自由聊天需要先配置一个 OpenAI 兼容的服务商（地址、模型与密钥）；配置保存在本机数据目录，只用于生成回答。",
-      "baseUrl": "服务地址",
-      "model": "模型",
-      "modelHint": "任意 OpenAI 兼容端点的模型名，默认预设 qwen-plus。",
-      "apiKey": "API 密钥",
-      "apiKeyPlaceholder": "粘贴服务商提供的密钥",
-      "apiKeyKept": "已保存密钥，留空则沿用",
-      "save": "保存配置",
-      "saving": "正在保存",
-      "savedFeedback": "配置完成，现在可以开始提问了"
     }
   },
   "settings": {
@@ -807,6 +790,14 @@
       },
       "aboutMeLabel": "自我介绍",
       "aboutMePlaceholder": "用一两句话介绍你的背景和学习目标，例如：三年后端，正在补操作系统基础。",
+      "nicknameLabel": "昵称",
+      "nicknamePlaceholder": "不超过 20 字",
+      "avatarLabel": "头像",
+      "avatarSelect": "选择图片",
+      "avatarRemove": "删除头像",
+      "avatarHint": "支持 PNG/JPG/WebP，不超过 2MB",
+      "avatarUploading": "正在上传头像",
+      "avatarRemoving": "正在删除头像",
       "charCount": "{{count}}/200",
       "save": "保存档案",
       "saving": "正在保存",
@@ -858,6 +849,53 @@
         "noMatch": "没有匹配的时区"
       },
       "quizCountLegend": "默认习题数量"
+    },
+    "providers": {
+      "sectionTitle": "供应商",
+      "sectionDescription": "AI 服务与语音转写的密钥以明文保存在本机数据目录（config/providers.json），不会上传到任何 KnowRealm 服务器。",
+      "loading": "正在读取供应商配置",
+      "retry": "重试",
+      "llm": {
+        "title": "AI 服务",
+        "description": "自由聊天、总结、知识点与习题生成共用的 OpenAI 兼容端点；同一时间只有一个生效配置。",
+        "dashscopePreset": "填入 DashScope 预设",
+        "baseUrl": "服务地址",
+        "model": "模型",
+        "modelHint": "任意 OpenAI 兼容端点的模型名；DashScope 预设填入 qwen-plus，可修改。",
+        "apiKey": "API 密钥",
+        "apiKeyPlaceholder": "粘贴服务商提供的密钥",
+        "apiKeyKept": "已保存密钥，留空则沿用",
+        "clearApiKey": "清除已保存的密钥",
+        "save": "保存配置",
+        "saving": "正在保存",
+        "savedFeedback": "AI 服务配置已保存",
+        "test": "测试连接",
+        "testing": "正在测试",
+        "testSucceeded": "连接测试成功（{{model}}）",
+        "embeddingNote": "向量检索服务在当前版本为内置固定，暂无单独配置项。"
+      },
+      "asr": {
+        "title": "语音转写",
+        "description": "腾讯云语音识别的访问密钥，用于录音与导入音频的转文字。",
+        "secretIdPlaceholder": "粘贴腾讯云 SecretId",
+        "secretKeyPlaceholder": "粘贴腾讯云 SecretKey",
+        "kept": "已保存，留空则沿用",
+        "region": "地域（region）",
+        "regionPlaceholder": "如 ap-shanghai",
+        "clear": "清除已保存的密钥",
+        "save": "保存配置",
+        "saving": "正在保存",
+        "savedFeedback": "语音转写配置已保存",
+        "test": "测试连接",
+        "testing": "正在测试",
+        "testSucceeded": "连接测试成功（{{region}}）",
+        "consentNote": "保存密钥不等于同意外发：首次转写前会单独征得你的同意，之后才会把音频发送到腾讯云。"
+      }
     }
+  },
+  "providerGuide": {
+    "title": "未配置 AI 服务",
+    "description": "自由聊天、总结等能力需要一个 OpenAI 兼容的 AI 服务（地址、模型与密钥）。请先在设置页完成配置，配置只保存在本机数据目录。",
+    "action": "前往设置"
   }
 }
