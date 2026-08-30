@@ -213,3 +213,4 @@ opencode.jsonc
 img
 
 docs/improve-codebase-architecture
+.pytest-tmp
