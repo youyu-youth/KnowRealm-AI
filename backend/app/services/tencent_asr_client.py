@@ -64,6 +64,13 @@ class TencentAsrClient:
             return False
         return True
 
+    async def test_credentials(
+        self,
+        credentials: TencentAsrCredentials,
+    ) -> None:
+        """GetAsrVocabList 只读轻调用：验证 TC3 凭据可用，不创建任何资源。"""
+        await self._request("GetAsrVocabList", {"Limit": 1}, credentials)
+
     async def submit(
         self,
         path: Path,

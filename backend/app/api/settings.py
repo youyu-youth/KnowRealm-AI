@@ -1,5 +1,7 @@
 import asyncio
+from typing import cast
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.agents.llm import SummaryGenerationError, call_summary_model
@@ -13,8 +15,11 @@ from app.schemas.settings import (
     LlmProviderUpdate,
     PreferencesOut,
     PreferencesUpdate,
+    TencentAsrProviderOut,
+    TencentAsrProviderStateOut,
+    TencentAsrProviderUpdate,
 )
-from app.schemas.summary import LlmProviderTestOut
+from app.schemas.summary import LlmProviderTestOut, TencentAsrTestOut
 from app.services.local_config import (
     external_processing_consent_at,
     grant_external_processing_consent,
@@ -22,8 +27,16 @@ from app.services.local_config import (
     llm_consent,
     load_llm_provider,
     load_preferences,
+    load_tencent_asr_config,
+    load_tencent_asr_provider,
     save_llm_provider,
     save_preferences,
+    save_tencent_asr_provider,
+)
+from app.services.tencent_asr_client import (
+    TencentAsrApiError,
+    TencentAsrClient,
+    TencentAsrCredentials,
 )
 
 router = APIRouter(
@@ -46,6 +59,28 @@ def _provider_out(base_url: str, api_key: str, model: str) -> LlmProviderOut:
         has_api_key=bool(api_key),
         api_key_hint=f"••••{api_key[-4:]}" if api_key else None,
     )
+
+
+def _tencent_asr_out(
+    secret_id: str,
+    secret_key: str,
+    region: str,
+) -> TencentAsrProviderOut:
+    return TencentAsrProviderOut(
+        region=region,
+        has_credentials=bool(secret_id and secret_key),
+        secret_id_hint=f"••••{secret_id[-4:]}" if secret_id else None,
+    )
+
+
+def _asr_test_error_detail(code: str) -> str:
+    if code.startswith("AuthFailure"):
+        return "腾讯云凭据校验未通过，请检查 SecretId / SecretKey"
+    if code == "FailedOperation.UserNotRegistered":
+        return "凭据有效，但该账号尚未开通语音识别服务"
+    if code == "FailedOperation.ServiceIsolate":
+        return "凭据有效，但账号已欠费停服，请检查腾讯云余额"
+    return f"腾讯云语音识别服务返回错误：{code}"
 
 
 @router.get(
@@ -96,6 +131,61 @@ async def put_llm_provider(
     return LlmProviderStateOut(
         provider=_provider_out(provider.base_url, provider.api_key, provider.model)
     )
+
+
+@router.get("/providers/tencent-asr", response_model=TencentAsrProviderStateOut)
+async def get_tencent_asr_provider(request: Request) -> TencentAsrProviderStateOut:
+    provider = await asyncio.to_thread(load_tencent_asr_provider, request.app.state.data_dir)
+    return TencentAsrProviderStateOut(
+        provider=(
+            _tencent_asr_out(provider.secret_id, provider.secret_key, provider.region)
+            if provider is not None
+            else None
+        )
+    )
+
+
+@router.put("/providers/tencent-asr", response_model=TencentAsrProviderStateOut)
+async def put_tencent_asr_provider(
+    body: TencentAsrProviderUpdate,
+    request: Request,
+) -> TencentAsrProviderStateOut:
+    provider = await asyncio.to_thread(
+        save_tencent_asr_provider,
+        request.app.state.data_dir,
+        secret_id=body.secret_id,
+        secret_key=body.secret_key,
+        region=body.region,
+        clear_secret_key=body.clear_secret_key,
+    )
+    return TencentAsrProviderStateOut(
+        provider=_tencent_asr_out(provider.secret_id, provider.secret_key, provider.region)
+    )
+
+
+@router.post("/providers/tencent-asr/tests", response_model=TencentAsrTestOut)
+async def test_tencent_asr_provider(request: Request) -> TencentAsrTestOut:
+    config = await asyncio.to_thread(load_tencent_asr_config, request.app.state.data_dir)
+    if config is None:
+        raise HTTPException(status_code=409, detail="请先配置腾讯云语音识别密钥")
+    client = cast(TencentAsrClient, request.app.state.asr_client)
+    try:
+        await client.test_credentials(
+            TencentAsrCredentials(
+                secret_id=config.secret_id,
+                secret_key=config.secret_key,
+                region=config.region,
+            )
+        )
+    except TencentAsrApiError as exc:
+        raise HTTPException(
+            status_code=502, detail=_asr_test_error_detail(exc.code)
+        ) from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(
+            status_code=502, detail="无法连接腾讯云语音识别服务，请检查网络"
+        ) from exc
+    return TencentAsrTestOut(ok=True, region=config.region)
 
 
 @router.get("/external-processing-consents/llm", response_model=LlmConsentOut)

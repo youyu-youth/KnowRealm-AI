@@ -59,7 +59,8 @@ def grant_external_processing_consent(data_dir: Path) -> str:
     return granted_at
 
 
-def load_tencent_asr_config(data_dir: Path) -> TencentAsrConfig | None:
+def load_tencent_asr_provider(data_dir: Path) -> TencentAsrConfig | None:
+    """按 providers.json 事实返回（允许空密钥），供设置页读写使用。"""
     raw = _read_json(data_dir / "config" / "providers.json").get("tencent_asr")
     if not isinstance(raw, dict):
         return None
@@ -67,13 +68,47 @@ def load_tencent_asr_config(data_dir: Path) -> TencentAsrConfig | None:
     secret_id = provider.get("secret_id")
     secret_key = provider.get("secret_key")
     region = provider.get("region")
-    if not all(isinstance(value, str) and value for value in (secret_id, secret_key, region)):
+    if not all(isinstance(value, str) for value in (secret_id, secret_key, region)):
         return None
     return TencentAsrConfig(
         secret_id=cast(str, secret_id),
         secret_key=cast(str, secret_key),
         region=cast(str, region),
     )
+
+
+def load_tencent_asr_config(data_dir: Path) -> TencentAsrConfig | None:
+    provider = load_tencent_asr_provider(data_dir)
+    if provider is None or not (provider.secret_id and provider.secret_key and provider.region):
+        return None
+    return provider
+
+
+def save_tencent_asr_provider(
+    data_dir: Path,
+    *,
+    secret_id: str,
+    secret_key: str,
+    region: str,
+    clear_secret_key: bool,
+) -> TencentAsrConfig:
+    current = load_tencent_asr_provider(data_dir)
+    # clear 语义为清除整对凭据（SecretId 单独残留无意义）；空字段则保留旧值。
+    if clear_secret_key:
+        saved_id = ""
+        saved_key = ""
+    else:
+        saved_id = secret_id or (current.secret_id if current else "")
+        saved_key = secret_key or (current.secret_key if current else "")
+    path = data_dir / "config" / "providers.json"
+    providers = _read_json(path)
+    providers["tencent_asr"] = {
+        "secret_id": saved_id,
+        "secret_key": saved_key,
+        "region": region,
+    }
+    _write_json(path, providers)
+    return TencentAsrConfig(saved_id, saved_key, region)
 
 
 def load_llm_provider(data_dir: Path) -> LlmProviderConfig | None:

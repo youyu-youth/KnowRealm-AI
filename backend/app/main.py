@@ -100,6 +100,7 @@ def create_app(
             )
             app.state.quiz_model = quiz_model or OpenAiCompatibleQuizModel()
             app.state.todo_model = todo_model or OpenAiCompatibleTodoModel()
+            app.state.asr_client = asr_client or TencentAsrClient()
 
             async def cleanup_course_tombstones() -> None:
                 try:
@@ -132,7 +133,7 @@ def create_app(
                             session_factory,
                             resolved_data_dir,
                             cast("Path", ffmpeg_path).resolve(),
-                            asr_client or TencentAsrClient(),
+                            app.state.asr_client,
                             record_notifier,
                         ),
                         session_factory,

@@ -98,3 +98,8 @@ class SummaryConfirmOut(BaseModel):
 class LlmProviderTestOut(BaseModel):
     ok: bool
     model: str
+
+
+class TencentAsrTestOut(BaseModel):
+    ok: bool
+    region: str

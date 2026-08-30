@@ -46,6 +46,31 @@ class LlmProviderStateOut(BaseModel):
     provider: LlmProviderOut | None
 
 
+class TencentAsrProviderUpdate(BaseModel):
+    region: str = Field(min_length=1, max_length=32)
+    secret_id: str = Field(default="", max_length=128)
+    secret_key: str = Field(default="", max_length=128)
+    clear_secret_key: bool = False
+
+    @field_validator("region")
+    @classmethod
+    def normalize_region(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("region 不能为空")
+        return normalized
+
+
+class TencentAsrProviderOut(BaseModel):
+    region: str
+    has_credentials: bool
+    secret_id_hint: str | None
+
+
+class TencentAsrProviderStateOut(BaseModel):
+    provider: TencentAsrProviderOut | None
+
+
 class LlmConsentOut(BaseModel):
     granted_at: str | None
     current: bool
