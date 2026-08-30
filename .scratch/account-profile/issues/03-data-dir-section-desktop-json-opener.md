@@ -11,7 +11,7 @@
 - [x] opener 插件引入（注册+capabilities 权限）+ `learningAssetExport` open 迁移 + shell 插件与对应权限卸除
 - [x] 设置页数据目录分区骨架：路径只读展示+打开按钮；前端获取当前路径的方式（后端只读端点或壳 command）实施时定夺并落注记
 - [x] cargo test（desktop.json 解析/回退）+ 前端测试；pyright/tsc/prettier 全绿
-- [ ] 真机人工验收（用户执行）：打开按钮在资源管理器打开数据目录；手改 desktop.json 指向新空目录后重启、sidecar 使用该目录
+- [x] 真机人工验收（用户执行）：打开按钮在资源管理器打开数据目录；手改 desktop.json 指向新空目录后重启、sidecar 使用该目录
 
 > **实现注记（2026-08-30）**：
 > - 前端获取路径走壳 command `get_data_directory`——desktop.json 只经壳 command 暴露当前路径，不进入 sidecar HTTP 契约（注记同见 `services/tauri/dataDirectory.ts`）。

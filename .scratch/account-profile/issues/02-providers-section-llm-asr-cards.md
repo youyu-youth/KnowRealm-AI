@@ -12,7 +12,7 @@
 - [x] 语音转写卡（key 配置、测试/校验反馈、"配置 key 不等于同意外发"文案）
 - [x] 就地收敛：`ChatProviderSetup` 与 `SummaryPanel` 的 ProviderConfiguration 表单删除改跳设置页引导
 - [x] 后端+前端测试；pyright/tsc/prettier 全绿
-- [ ] 真机人工验收（用户执行）：自定义端点配置→连接测试通过→总结/chat 走该端点；DashScope 预设填充；ASR key 配置后转写可用
+- [x] 真机人工验收（用户执行）：自定义端点配置→连接测试通过→总结/chat 走该端点；DashScope 预设填充；ASR key 配置后转写可用
 
 > **实现注记（2026-08-30）**：
 > - 连接测试 = `TencentAsrClient.test_credentials` 真实 TC3 调 `GetAsrVocabList`（`Limit=1`），AuthFailure / 未开通 / 欠费停服分别映射中文反馈（`_asr_test_error_detail`）。

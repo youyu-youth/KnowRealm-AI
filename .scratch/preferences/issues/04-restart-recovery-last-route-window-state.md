@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — 部分更新契约（`last_route` 键）
 
-**Status:** ready-for-agent
+**Status:** deferred
 
 - [ ] `last_route` 键入契约（路由串或 null）；api-types 重生成
 - [ ] 路由变化时写 `last_route`，设置页路由不参与记忆；启动时恢复，目标不存在由现有 NotFound/错误态兜底回首页
