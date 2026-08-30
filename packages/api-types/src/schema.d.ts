@@ -1422,6 +1422,8 @@ export interface components {
              * @enum {string}
              */
             font_scale: "S" | "M" | "L";
+            /** Quick Note Shortcut */
+            quick_note_shortcut: string;
             /** Quiz Last Count */
             quiz_last_count: number;
             /**
@@ -1452,6 +1454,11 @@ export interface components {
              * @description 字号档位
              */
             font_scale?: ("S" | "M" | "L") | null;
+            /**
+             * Quick Note Shortcut
+             * @description 速记快捷键 accelerator
+             */
+            quick_note_shortcut?: string | null;
             /**
              * Quiz Last Count
              * @description 习题生成档位偏好

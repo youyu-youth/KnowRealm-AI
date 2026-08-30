@@ -1,7 +1,8 @@
 import type { components } from "@knowrealm/api-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRecordHotkeys } from "react-hotkeys-hook";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -10,8 +11,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
+import { normalizeRecordedKeys } from "@/features/settings/shortcutAccelerator";
 import { TimezoneCombobox } from "@/features/settings/TimezoneCombobox";
-import { setAutostart } from "@/services/tauri/preferences";
+import {
+  rebindQuickNoteShortcut,
+  setAutostart,
+} from "@/services/tauri/preferences";
 
 type PreferencesOut = components["schemas"]["PreferencesOut"];
 type PreferencesUpdate = components["schemas"]["PreferencesUpdate"];
@@ -245,8 +250,126 @@ function DesktopBehaviorPreferences({
             <SaveError error={autostart.error} />
           )}
         </Field>
+
+        <QuickNoteShortcutField preferences={preferences} />
       </div>
     </section>
+  );
+}
+
+type ShortcutFieldError =
+  | "conflict"
+  | "persist-failed"
+  | "failed"
+  | "missing-modifier"
+  | "unsupported-key";
+
+const SHORTCUT_ERROR_KEYS: Record<ShortcutFieldError, string> = {
+  conflict: "settings.preferences.shortcutConflict",
+  "persist-failed": "settings.preferences.shortcutRebindFailed",
+  failed: "settings.preferences.shortcutRebindFailed",
+  "missing-modifier": "settings.preferences.shortcutMissingModifier",
+  "unsupported-key": "settings.preferences.shortcutUnsupportedKey",
+};
+
+function QuickNoteShortcutField({
+  preferences,
+}: {
+  preferences: PreferencesOut;
+}) {
+  const { t } = useTranslation();
+  const save = useSavePreference();
+  const [shortcutError, setShortcutError] = useState<ShortcutFieldError | null>(
+    null,
+  );
+  const [keys, { start, stop, resetKeys, isRecording }] = useRecordHotkeys();
+
+  const stopRecording = useCallback(() => {
+    stop();
+    resetKeys();
+  }, [stop, resetKeys]);
+
+  // 输入法组合输入防呆与 Esc 取消：capture 阶段拦截，
+  // 让 document 冒泡阶段的 useRecordHotkeys 监听收不到这些按键。
+  useEffect(() => {
+    if (!isRecording) return;
+    const guard = (event: KeyboardEvent) => {
+      if (!event.isComposing && event.code !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.code === "Escape") stopRecording();
+    };
+    window.addEventListener("keydown", guard, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", guard, { capture: true });
+  }, [isRecording, stopRecording]);
+
+  // 按下即录：修饰键先按、主键收尾即组合完成，立即进入改键时序。
+  // 收尾放进微任务，避免 effect 内同步 setState 触发级联渲染。
+  useEffect(() => {
+    if (!isRecording) return;
+    const result = normalizeRecordedKeys(keys);
+    if (result.status === "waiting") return;
+    queueMicrotask(() => {
+      stopRecording();
+      if (result.status === "invalid") {
+        setShortcutError(result.reason);
+        return;
+      }
+      setShortcutError(null);
+      void rebindQuickNoteShortcut(result.accelerator, () =>
+        save.mutateAsync({ quick_note_shortcut: result.accelerator }),
+      ).then((rebind) => {
+        if (!rebind.ok) setShortcutError(rebind.reason);
+      });
+    });
+  }, [keys, isRecording, save, stopRecording]);
+
+  return (
+    <Field>
+      <FieldLabel htmlFor="preference-quick-note-shortcut">
+        {t("settings.preferences.shortcutLabel")}
+      </FieldLabel>
+      <div className="flex flex-wrap items-center gap-3">
+        {isRecording ? (
+          <>
+            <p role="status" className="text-body text-muted-foreground">
+              {t("settings.preferences.shortcutRecording")}
+            </p>
+            <Button variant="ghost" size="sm" onClick={stopRecording}>
+              {t("settings.preferences.shortcutCancel")}
+            </Button>
+          </>
+        ) : (
+          <>
+            <code
+              id="preference-quick-note-shortcut"
+              className="bg-surface-subtle text-body rounded-md px-2 py-1"
+            >
+              {preferences.quick_note_shortcut}
+            </code>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={save.isPending}
+              onClick={() => {
+                setShortcutError(null);
+                start();
+              }}
+            >
+              {t("settings.preferences.shortcutChange")}
+            </Button>
+          </>
+        )}
+      </div>
+      {shortcutError ? (
+        <Alert variant="destructive" className="w-auto">
+          <AlertDescription>
+            {t(SHORTCUT_ERROR_KEYS[shortcutError])}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+    </Field>
   );
 }
 

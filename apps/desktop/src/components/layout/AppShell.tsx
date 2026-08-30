@@ -47,13 +47,12 @@ import { TextCaptureDialog } from "@/features/text-capture/TextCaptureDialog";
 import { cn } from "@/lib/utils";
 import {
   exitApplication,
-  getDesktopLifecycleStatus,
   isDesktopLifecycleAvailable,
   listenExitRequested,
-  listenOpenQuickNote,
 } from "@/services/tauri/lifecycle";
 import {
   mountCloseBehavior,
+  mountQuickNoteShortcut,
   type CloseBehaviorPreference,
 } from "@/services/tauri/preferences";
 
@@ -92,7 +91,9 @@ export function AppShell() {
   const [textCapture, setTextCapture] = useState<TextCaptureMode | null>(null);
   const [textCaptureFocusRequest, setTextCaptureFocusRequest] = useState(0);
   const [captureFeedback, setCaptureFeedback] = useState("");
-  const [shortcutUnavailable, setShortcutUnavailable] = useState(false);
+  const [shortcutUnavailable, setShortcutUnavailable] = useState<string | null>(
+    null,
+  );
   const [lifecycleError, setLifecycleError] = useState("");
   const [exitRisks, setExitRisks] = useState<ExitRisks | null>(null);
   const [exitPending, setExitPending] = useState(false);
@@ -104,7 +105,10 @@ export function AppShell() {
   });
   // 关窗分流每次关窗时读取的最新偏好；偏好未载入时为 null = 不拦截直接退出。
   const closeBehaviorRef = useRef<CloseBehaviorPreference | null>(null);
-  closeBehaviorRef.current = preferences.data?.close_behavior ?? null;
+  const closeBehavior = preferences.data?.close_behavior ?? null;
+  useEffect(() => {
+    closeBehaviorRef.current = closeBehavior;
+  }, [closeBehavior]);
   const setRecordingOpen = useRecordingUiStore((state) => state.setStartOpen);
   const recordingSessions = useRecordingSessions();
   const recordingActive = (recordingSessions.data ?? []).some(
@@ -147,17 +151,7 @@ export function AppShell() {
     let disposed = false;
     const unlisteners: Array<() => void> = [];
 
-    void getDesktopLifecycleStatus()
-      .then((status) => {
-        if (!disposed && !status.shortcutAvailable)
-          setShortcutUnavailable(true);
-      })
-      .catch(() => {
-        if (!disposed) setLifecycleError(t("desktopLifecycle.initFailed"));
-      });
-
     void Promise.allSettled([
-      listenOpenQuickNote(openQuickNote),
       listenExitRequested(() => void requestSafeExit()),
       mountCloseBehavior({
         getBehavior: () => closeBehaviorRef.current,
@@ -177,7 +171,24 @@ export function AppShell() {
       disposed = true;
       unlisteners.forEach((unlisten) => unlisten());
     };
-  }, [openQuickNote, requestSafeExit, t]);
+  }, [requestSafeExit, t]);
+
+  // 速记快捷键注册点在前端：偏好到达后按其值注册，回调直开速记框；
+  // 启动间隙（偏好未载入）快捷键不可用；改键成功后缓存刷新重挂由包装按键去重。
+  const quickNoteShortcut = preferences.data?.quick_note_shortcut ?? null;
+  useEffect(() => {
+    if (!isDesktopLifecycleAvailable() || !quickNoteShortcut) return;
+    let disposed = false;
+    void mountQuickNoteShortcut(quickNoteShortcut, openQuickNote).then(
+      (registered) => {
+        if (disposed) return;
+        setShortcutUnavailable(registered ? null : quickNoteShortcut);
+      },
+    );
+    return () => {
+      disposed = true;
+    };
+  }, [quickNoteShortcut, openQuickNote]);
 
   const confirmExit = useCallback(async () => {
     if (exitPending) return;
@@ -340,7 +351,9 @@ export function AppShell() {
         {shortcutUnavailable ? (
           <Alert className="mx-content mb-2 w-auto">
             <AlertDescription>
-              {t("desktopLifecycle.shortcutUnavailable")}
+              {t("desktopLifecycle.shortcutUnavailable", {
+                shortcut: shortcutUnavailable,
+              })}
             </AlertDescription>
           </Alert>
         ) : null}

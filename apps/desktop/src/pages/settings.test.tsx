@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import type { components } from "@knowrealm/api-types";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -27,6 +28,15 @@ vi.mock("@/services/tauri/recording", () => ({
   setRecordingKeepAwake: vi.fn().mockResolvedValue(undefined),
   hideWindowTemporarily: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock("@/services/tauri/preferences", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/services/tauri/preferences")>();
+  return {
+    ...actual,
+    rebindQuickNoteShortcut: vi.fn(actual.rebindQuickNoteShortcut),
+  };
+});
 
 vi.stubGlobal("scrollTo", vi.fn());
 
@@ -142,6 +152,7 @@ const DEFAULT_PREFERENCES: PreferencesOut = {
   font_scale: "M",
   timezone: null,
   close_behavior: "TRAY",
+  quick_note_shortcut: "Ctrl+Alt+N",
   autostart: false,
   quiz_last_count: 5,
 };
@@ -160,6 +171,7 @@ describe("设置页偏好分区", () => {
           font_scale: "L",
           timezone: "Asia/Shanghai",
           close_behavior: "EXIT",
+          quick_note_shortcut: "Ctrl+Alt+P",
           autostart: true,
           quiz_last_count: 10,
         }),
@@ -178,6 +190,7 @@ describe("设置页偏好分区", () => {
     expect(screen.getByRole("checkbox", { name: "开机自启" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "10" })).toBeChecked();
     expect(screen.getByRole("combobox")).toHaveTextContent("Asia/Shanghai");
+    expect(screen.getByText("Ctrl+Alt+P")).toBeVisible();
   });
 
   it("控件即改即存：每次只提交被改字段", async () => {
@@ -354,5 +367,173 @@ describe("设置页偏好分区", () => {
     } finally {
       matchMediaSpy.mockRestore();
     }
+  }, 15_000);
+});
+
+describe("速记快捷键录制控件", () => {
+  function pressRecordingKey(code: string, isComposing = false) {
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        code,
+        isComposing,
+      }),
+    );
+  }
+
+  it("按下即录：修饰键先按主键收尾，立即提交改键并回显新值", async () => {
+    const bodies: object[] = [];
+    let current = { ...DEFAULT_PREFERENCES };
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(current)),
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        const body = (await request.json()) as object;
+        bodies.push(body);
+        current = { ...current, ...body };
+        return HttpResponse.json(current);
+      }),
+    );
+
+    renderAt("/settings");
+    fireEvent.click(await screen.findByRole("button", { name: "更改" }));
+
+    expect(
+      await screen.findByText("请按下新的组合键（Esc 取消）"),
+    ).toBeVisible();
+
+    act(() => {
+      pressRecordingKey("ControlLeft");
+      pressRecordingKey("AltLeft");
+      pressRecordingKey("KeyP");
+    });
+
+    await waitFor(() => expect(screen.getByText("Ctrl+Alt+P")).toBeVisible());
+    expect(bodies).toEqual([{ quick_note_shortcut: "Ctrl+Alt+P" }]);
+    expect(
+      screen.queryByText("请按下新的组合键（Esc 取消）"),
+    ).not.toBeInTheDocument();
+  }, 15_000);
+
+  it("缺修饰键的组合行内报错且不改键", async () => {
+    const bodies: object[] = [];
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(DEFAULT_PREFERENCES)),
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        bodies.push((await request.json()) as object);
+        return HttpResponse.json(DEFAULT_PREFERENCES);
+      }),
+    );
+
+    renderAt("/settings");
+    fireEvent.click(await screen.findByRole("button", { name: "更改" }));
+
+    act(() => pressRecordingKey("KeyP"));
+
+    expect(
+      await screen.findByRole("alert", undefined, { timeout: 8_000 }),
+    ).toHaveTextContent("组合需包含至少一个修饰键");
+    expect(bodies).toEqual([]);
+    expect(screen.getByText("Ctrl+Alt+N")).toBeVisible();
+  }, 15_000);
+
+  it("中文输入法组合输入不进入录制结果", async () => {
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(DEFAULT_PREFERENCES)),
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        const body = (await request.json()) as {
+          quick_note_shortcut?: string;
+        };
+        return HttpResponse.json({
+          ...DEFAULT_PREFERENCES,
+          quick_note_shortcut: body.quick_note_shortcut,
+        });
+      }),
+    );
+    renderAt("/settings");
+    fireEvent.click(await screen.findByRole("button", { name: "更改" }));
+
+    act(() => {
+      pressRecordingKey("KeyX", true);
+      pressRecordingKey("ControlLeft");
+      pressRecordingKey("AltLeft");
+      pressRecordingKey("KeyJ");
+    });
+
+    await waitFor(() => expect(screen.getByText("Ctrl+Alt+J")).toBeVisible());
+  }, 15_000);
+
+  it("Esc 取消录制，不提交任何改动", async () => {
+    const bodies: object[] = [];
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(DEFAULT_PREFERENCES)),
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        bodies.push((await request.json()) as object);
+        return HttpResponse.json(DEFAULT_PREFERENCES);
+      }),
+    );
+
+    renderAt("/settings");
+    fireEvent.click(await screen.findByRole("button", { name: "更改" }));
+
+    act(() => pressRecordingKey("Escape"));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByText("请按下新的组合键（Esc 取消）"),
+      ).not.toBeInTheDocument(),
+    );
+    expect(screen.getByText("Ctrl+Alt+N")).toBeVisible();
+    expect(bodies).toEqual([]);
+    expect(await screen.findByRole("button", { name: "更改" })).toBeEnabled();
+  }, 15_000);
+
+  it("系统级冲突提示并保持旧键", async () => {
+    const { rebindQuickNoteShortcut } =
+      await import("@/services/tauri/preferences");
+    vi.mocked(rebindQuickNoteShortcut).mockResolvedValueOnce({
+      ok: false,
+      reason: "conflict",
+    });
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(DEFAULT_PREFERENCES)),
+    );
+
+    renderAt("/settings");
+    fireEvent.click(await screen.findByRole("button", { name: "更改" }));
+
+    act(() => {
+      pressRecordingKey("ControlLeft");
+      pressRecordingKey("AltLeft");
+      pressRecordingKey("KeyP");
+    });
+
+    expect(
+      await screen.findByRole("alert", undefined, { timeout: 8_000 }),
+    ).toHaveTextContent("该组合已被其他应用占用");
+    expect(screen.getByText("Ctrl+Alt+N")).toBeVisible();
+  }, 15_000);
+
+  it("改键持久化失败回滚并提示已保留原快捷键", async () => {
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(DEFAULT_PREFERENCES)),
+      http.put(PREFERENCES_URL, () =>
+        HttpResponse.json({ detail: "偏好保存失败" }, { status: 500 }),
+      ),
+    );
+
+    renderAt("/settings");
+    fireEvent.click(await screen.findByRole("button", { name: "更改" }));
+
+    act(() => {
+      pressRecordingKey("ControlLeft");
+      pressRecordingKey("AltLeft");
+      pressRecordingKey("KeyP");
+    });
+
+    expect(
+      await screen.findByRole("alert", undefined, { timeout: 8_000 }),
+    ).toHaveTextContent("已保留原快捷键");
+    expect(screen.getByText("Ctrl+Alt+N")).toBeVisible();
   }, 15_000);
 });

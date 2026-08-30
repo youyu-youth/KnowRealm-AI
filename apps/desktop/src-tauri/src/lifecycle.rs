@@ -1,34 +1,16 @@
 use std::error::Error;
 
-use serde::Serialize;
 use tauri::{
     App, AppHandle, Emitter, Manager,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
 };
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
-const SHORTCUT: &str = "Ctrl+Alt+N";
-const OPEN_QUICK_NOTE_EVENT: &str = "desktop://open-quick-note";
 const EXIT_REQUESTED_EVENT: &str = "desktop://exit-requested";
 const SHOW_MENU_ID: &str = "show";
 const EXIT_MENU_ID: &str = "exit";
 
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DesktopLifecycleStatus {
-    shortcut_available: bool,
-}
-
-pub fn setup(app: &mut App) -> Result<DesktopLifecycleStatus, Box<dyn Error>> {
-    let shortcut_available = match app.global_shortcut().register(SHORTCUT) {
-        Ok(()) => true,
-        Err(error) => {
-            eprintln!("global shortcut registration failed: {error}");
-            false
-        }
-    };
-
+pub fn setup(app: &mut App) -> Result<(), Box<dyn Error>> {
     let show = MenuItem::with_id(app, SHOW_MENU_ID, "显示", true, None::<&str>)?;
     let exit = MenuItem::with_id(app, EXIT_MENU_ID, "退出", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show, &exit])?;
@@ -51,14 +33,7 @@ pub fn setup(app: &mut App) -> Result<DesktopLifecycleStatus, Box<dyn Error>> {
     }
     tray.build(app)?;
 
-    Ok(DesktopLifecycleStatus { shortcut_available })
-}
-
-pub fn handle_shortcut(app: &AppHandle) {
-    show_main_window(app);
-    if let Err(error) = app.emit(OPEN_QUICK_NOTE_EVENT, ()) {
-        eprintln!("quick note event failed: {error}");
-    }
+    Ok(())
 }
 
 fn show_main_window(app: &AppHandle) {
@@ -77,13 +52,6 @@ fn show_and_focus<E>(
 ) -> Result<(), E> {
     show()?;
     focus()
-}
-
-#[tauri::command]
-pub fn get_desktop_lifecycle_status(
-    state: tauri::State<'_, DesktopLifecycleStatus>,
-) -> Result<DesktopLifecycleStatus, String> {
-    Ok(state.inner().clone())
 }
 
 #[tauri::command]

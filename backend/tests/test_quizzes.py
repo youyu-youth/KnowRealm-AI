@@ -952,6 +952,7 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
         "font_scale": "M",
         "timezone": None,
         "close_behavior": "TRAY",
+        "quick_note_shortcut": "Ctrl+Alt+N",
         "autostart": False,
         "quiz_last_count": 5,
     }
@@ -960,6 +961,7 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
         "font_scale": "M",
         "timezone": None,
         "close_behavior": "TRAY",
+        "quick_note_shortcut": "Ctrl+Alt+N",
         "autostart": False,
         "quiz_last_count": 10,
     }

@@ -24,7 +24,7 @@
     "savedFeedback": "已保存到本地收件箱"
   },
   "desktopLifecycle": {
-    "shortcutUnavailable": "Ctrl+Alt+N 已被其他应用占用或无法注册；仍可使用应用内的新建速记入口。",
+    "shortcutUnavailable": "{{shortcut}} 已被其他应用占用或无法注册；仍可使用应用内的新建速记入口。",
     "initFailed": "桌面快捷入口暂时不可用；应用内功能仍可继续使用。",
     "exitCheckFailed": "暂时无法确认录音状态，已取消退出以保护数据；请重试。",
     "exitFailed": "应用暂时无法退出，请重试。",
@@ -841,6 +841,14 @@
       },
       "autostartLabel": "开机自启",
       "autostartOsFailed": "开机自启写入系统启动项失败，请重试。",
+      "shortcutLabel": "速记快捷键",
+      "shortcutChange": "更改",
+      "shortcutRecording": "请按下新的组合键（Esc 取消）",
+      "shortcutCancel": "取消",
+      "shortcutConflict": "该组合已被其他应用占用，已保留原快捷键。",
+      "shortcutRebindFailed": "改键未完成，已保留原快捷键，请重试。",
+      "shortcutMissingModifier": "组合需包含至少一个修饰键（Ctrl / Alt / Shift / Win），请重新按下。",
+      "shortcutUnsupportedKey": "暂不支持该按键，请换一组组合。",
       "generalTitle": "通用",
       "timezoneLabel": "时区",
       "timezone": {

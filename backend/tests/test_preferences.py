@@ -17,6 +17,7 @@ DEFAULTS = {
     "font_scale": "M",
     "timezone": None,
     "close_behavior": "TRAY",
+    "quick_note_shortcut": "Ctrl+Alt+N",
     "autostart": False,
     "quiz_last_count": 5,
 }
@@ -88,6 +89,9 @@ async def test_put_merges_partial_updates_and_keeps_unknown_keys(tmp_path: Path)
         timezone_update = await client.put(
             "/api/settings/preferences", json={"timezone": "Asia/Shanghai"}
         )
+        shortcut_update = await client.put(
+            "/api/settings/preferences", json={"quick_note_shortcut": "Ctrl+Alt+P"}
+        )
         reread = await client.get("/api/settings/preferences")
 
     assert theme_update.json() == {
@@ -110,12 +114,22 @@ async def test_put_merges_partial_updates_and_keeps_unknown_keys(tmp_path: Path)
         "autostart": True,
         "quiz_last_count": 10,
     }
-    assert reread.json() == timezone_update.json()
+    assert shortcut_update.json() == {
+        **DEFAULTS,
+        "theme": "DARK",
+        "timezone": "Asia/Shanghai",
+        "close_behavior": "EXIT",
+        "quick_note_shortcut": "Ctrl+Alt+P",
+        "autostart": True,
+        "quiz_last_count": 10,
+    }
+    assert reread.json() == shortcut_update.json()
     stored = read_settings(tmp_path)
     assert stored == {
         "theme": "DARK",
         "timezone": "Asia/Shanghai",
         "close_behavior": "EXIT",
+        "quick_note_shortcut": "Ctrl+Alt+P",
         "autostart": True,
         "quiz_last_count": 10,
         "tencent_asr_consent_granted_at": "2026-08-29T00:00:00Z",
@@ -132,6 +146,7 @@ async def test_put_default_values_remove_preference_keys(tmp_path: Path) -> None
             "font_scale": "L",
             "timezone": "Asia/Shanghai",
             "close_behavior": "EXIT",
+            "quick_note_shortcut": "Ctrl+Alt+P",
             "autostart": True,
             "quiz_last_count": 10,
             "custom_key": {"kept": True},
@@ -143,6 +158,7 @@ async def test_put_default_values_remove_preference_keys(tmp_path: Path) -> None
             {"theme": "SYSTEM"},
             {"timezone": None},
             {"close_behavior": "TRAY"},
+            {"quick_note_shortcut": "Ctrl+Alt+N"},
             {"autostart": False},
             {"quiz_last_count": 5},
         ):
@@ -170,6 +186,17 @@ async def test_put_empty_body_keeps_everything_unchanged(tmp_path: Path) -> None
         {"font_scale": "XL"},
         {"timezone": "Mars/Olympus"},
         {"close_behavior": "ASK"},
+        {"quick_note_shortcut": "N"},
+        {"quick_note_shortcut": "Ctrl"},
+        {"quick_note_shortcut": "Ctrl+Alt"},
+        {"quick_note_shortcut": "Ctrl+N+Shift"},
+        {"quick_note_shortcut": "N+Ctrl"},
+        {"quick_note_shortcut": "Ctrl+Meta+X"},
+        {"quick_note_shortcut": "Ctrl+Escape"},
+        {"quick_note_shortcut": "Ctrl+Numpad1"},
+        {"quick_note_shortcut": "Ctrl+"},
+        {"quick_note_shortcut": 42},
+        {"quick_note_shortcut": None},
         {"autostart": "maybe"},
         {"quiz_last_count": 7},
         {"theme": None},
@@ -184,6 +211,38 @@ async def test_put_rejects_invalid_values(tmp_path: Path, payload: dict[str, obj
         response = await client.put("/api/settings/preferences", json=payload)
 
     assert response.status_code == 422
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "shortcut",
+    [
+        "Ctrl+Alt+P",
+        "ctrl+alt+p",
+        "Shift+F2",
+        "Super+X",
+        "CmdOrCtrl+Space",
+        "Ctrl+Shift+4",
+        "Alt+ArrowLeft",
+    ],
+)
+async def test_put_accepts_valid_shortcuts(tmp_path: Path, shortcut: str) -> None:
+    async with running_app(tmp_path) as (_app, client):
+        response = await client.put(
+            "/api/settings/preferences", json={"quick_note_shortcut": shortcut}
+        )
+
+    assert response.status_code == 200
+    assert response.json()["quick_note_shortcut"] == shortcut
+
+
+@pytest.mark.anyio
+async def test_put_shortcut_rejection_message_names_the_rule(tmp_path: Path) -> None:
+    async with running_app(tmp_path) as (_app, client):
+        response = await client.put("/api/settings/preferences", json={"quick_note_shortcut": "N"})
+
+    assert response.status_code == 422
+    assert "quick_note_shortcut" in response.json()["detail"]
 
 
 @pytest.mark.anyio
@@ -219,6 +278,7 @@ async def test_get_falls_back_to_defaults_for_corrupted_stored_values(
             "font_scale": "XL",
             "timezone": "Mars/Olympus",
             "close_behavior": "ASK",
+            "quick_note_shortcut": "NotAHotkey",
             "autostart": "maybe",
             "quiz_last_count": 7,
         },

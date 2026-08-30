@@ -1268,6 +1268,10 @@
             "title": "Font Scale",
             "type": "string"
           },
+          "quick_note_shortcut": {
+            "title": "Quick Note Shortcut",
+            "type": "string"
+          },
           "quiz_last_count": {
             "title": "Quiz Last Count",
             "type": "integer"
@@ -1298,6 +1302,7 @@
           "font_scale",
           "timezone",
           "close_behavior",
+          "quick_note_shortcut",
           "autostart",
           "quiz_last_count"
         ],
@@ -1351,6 +1356,18 @@
             ],
             "description": "字号档位",
             "title": "Font Scale"
+          },
+          "quick_note_shortcut": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "速记快捷键 accelerator",
+            "title": "Quick Note Shortcut"
           },
           "quiz_last_count": {
             "anyOf": [

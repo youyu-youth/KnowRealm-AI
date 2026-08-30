@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from app.schemas.quiz import QUIZ_COUNT_CHOICES
-from app.schemas.settings import is_valid_timezone
+from app.schemas.settings import is_valid_shortcut, is_valid_timezone
 
 
 @dataclass(frozen=True)
@@ -133,6 +133,7 @@ CLOSE_BEHAVIOR_CHOICES = ("TRAY", "EXIT")
 DEFAULT_THEME = "SYSTEM"
 DEFAULT_FONT_SCALE = "M"
 DEFAULT_CLOSE_BEHAVIOR = "TRAY"
+DEFAULT_QUICK_NOTE_SHORTCUT = "Ctrl+Alt+N"
 DEFAULT_AUTOSTART = False
 DEFAULT_QUIZ_LAST_COUNT = 5
 
@@ -143,6 +144,7 @@ PREFERENCE_DEFAULTS: dict[str, object] = {
     "font_scale": DEFAULT_FONT_SCALE,
     "timezone": None,
     "close_behavior": DEFAULT_CLOSE_BEHAVIOR,
+    "quick_note_shortcut": DEFAULT_QUICK_NOTE_SHORTCUT,
     "autostart": DEFAULT_AUTOSTART,
     "quiz_last_count": DEFAULT_QUIZ_LAST_COUNT,
 }
@@ -154,6 +156,7 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
     font_scale = settings.get("font_scale")
     timezone = settings.get("timezone")
     close_behavior = settings.get("close_behavior")
+    quick_note_shortcut = settings.get("quick_note_shortcut")
     autostart = settings.get("autostart")
     quiz_last_count = settings.get("quiz_last_count")
     return {
@@ -163,9 +166,12 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
             timezone if isinstance(timezone, str) and is_valid_timezone(timezone) else None
         ),
         "close_behavior": (
-            close_behavior
-            if close_behavior in CLOSE_BEHAVIOR_CHOICES
-            else DEFAULT_CLOSE_BEHAVIOR
+            close_behavior if close_behavior in CLOSE_BEHAVIOR_CHOICES else DEFAULT_CLOSE_BEHAVIOR
+        ),
+        "quick_note_shortcut": (
+            quick_note_shortcut
+            if isinstance(quick_note_shortcut, str) and is_valid_shortcut(quick_note_shortcut)
+            else DEFAULT_QUICK_NOTE_SHORTCUT
         ),
         "autostart": autostart if isinstance(autostart, bool) else DEFAULT_AUTOSTART,
         "quiz_last_count": (

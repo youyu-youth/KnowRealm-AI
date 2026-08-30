@@ -36,6 +36,7 @@ export const handlers = [
       font_scale: "M",
       timezone: null,
       close_behavior: "TRAY",
+      quick_note_shortcut: "Ctrl+Alt+N",
       autostart: false,
       quiz_last_count: 5,
     }),

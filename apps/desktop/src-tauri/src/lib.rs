@@ -10,22 +10,13 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(
-            tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(|app, _shortcut, event| {
-                    if event.state == tauri_plugin_global_shortcut::ShortcutState::Pressed {
-                        lifecycle::handle_shortcut(app);
-                    }
-                })
-                .build(),
-        )
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![]),
         ))
         .setup(|app| {
-            let lifecycle_state = lifecycle::setup(app)?;
-            app.manage(lifecycle_state);
+            lifecycle::setup(app)?;
             let state = sidecar::start(app.handle())?;
             app.manage(state);
             app.manage(power::PowerState::start());
@@ -35,7 +26,6 @@ pub fn run() {
             sidecar::get_sidecar_config,
             power::set_recording_keep_awake,
             hide_window_temporarily,
-            lifecycle::get_desktop_lifecycle_status,
             lifecycle::exit_application,
         ])
         .build(tauri::generate_context!())

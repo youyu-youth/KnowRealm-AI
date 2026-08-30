@@ -15,9 +15,12 @@ import { server } from "@/mocks/server";
 import { exitApplication } from "@/services/tauri/lifecycle";
 
 const lifecycle = vi.hoisted(() => ({
-  openQuickNote: undefined as (() => void) | undefined,
   exitRequested: undefined as (() => void) | undefined,
-  shortcutAvailable: true,
+}));
+
+const shortcutRuntime = vi.hoisted(() => ({
+  mounted: null as { shortcut: string; onTriggered: () => void } | null,
+  available: true,
 }));
 
 const closeBehaviorRuntime = vi.hoisted(() => ({
@@ -41,13 +44,6 @@ vi.mock("@/services/tauri/recording", () => ({
 
 vi.mock("@/services/tauri/lifecycle", () => ({
   isDesktopLifecycleAvailable: () => true,
-  getDesktopLifecycleStatus: vi.fn(async () => ({
-    shortcutAvailable: lifecycle.shortcutAvailable,
-  })),
-  listenOpenQuickNote: vi.fn(async (handler: () => void) => {
-    lifecycle.openQuickNote = handler;
-    return () => undefined;
-  }),
   listenExitRequested: vi.fn(async (handler: () => void) => {
     lifecycle.exitRequested = handler;
     return () => undefined;
@@ -65,6 +61,12 @@ vi.mock("@/services/tauri/preferences", () => ({
       return () => undefined;
     },
   ),
+  mountQuickNoteShortcut: vi.fn(
+    async (shortcut: string, onTriggered: () => void) => {
+      shortcutRuntime.mounted = { shortcut, onTriggered };
+      return shortcutRuntime.available;
+    },
+  ),
 }));
 
 function renderApp() {
@@ -72,32 +74,38 @@ function renderApp() {
   return render(<App />);
 }
 
-async function waitForLifecycleListeners() {
+async function waitForLifecycleMounts() {
   await waitFor(() => {
-    expect(lifecycle.openQuickNote).toBeTypeOf("function");
     expect(lifecycle.exitRequested).toBeTypeOf("function");
+    expect(shortcutRuntime.mounted).not.toBeNull();
   });
 }
 
+function triggerQuickNoteShortcut() {
+  act(() => shortcutRuntime.mounted?.onTriggered());
+}
+
 afterEach(() => {
-  lifecycle.openQuickNote = undefined;
   lifecycle.exitRequested = undefined;
-  lifecycle.shortcutAvailable = true;
+  shortcutRuntime.mounted = null;
+  shortcutRuntime.available = true;
   closeBehaviorRuntime.mounted = null;
   vi.mocked(exitApplication).mockClear();
 });
 
 describe("桌面生命周期", () => {
-  it("重复快捷键复用同一个速记框、保留正文并恢复正文焦点", async () => {
+  it("按偏好注册速记快捷键，重复触发复用同一个速记框、保留正文并恢复正文焦点", async () => {
     renderApp();
-    await waitForLifecycleListeners();
+    await waitForLifecycleMounts();
 
-    act(() => lifecycle.openQuickNote?.());
+    expect(shortcutRuntime.mounted?.shortcut).toBe("Ctrl+Alt+N");
+
+    triggerQuickNoteShortcut();
     const body = await screen.findByLabelText("正文");
     fireEvent.change(body, { target: { value: "不能丢失的速记" } });
     screen.getByRole("button", { name: "保存" }).focus();
 
-    act(() => lifecycle.openQuickNote?.());
+    triggerQuickNoteShortcut();
 
     expect(screen.getAllByRole("dialog")).toHaveLength(1);
     expect(body).toHaveValue("不能丢失的速记");
@@ -105,7 +113,7 @@ describe("桌面生命周期", () => {
   });
 
   it("快捷键注册失败时只显示一次可理解提示且应用内入口仍可用", async () => {
-    lifecycle.shortcutAvailable = false;
+    shortcutRuntime.available = false;
     renderApp();
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -121,7 +129,7 @@ describe("桌面生命周期", () => {
 
   it("没有活动录音和未保存正文时直接退出", async () => {
     renderApp();
-    await waitForLifecycleListeners();
+    await waitForLifecycleMounts();
 
     act(() => lifecycle.exitRequested?.());
 
@@ -149,8 +157,8 @@ describe("桌面生命周期", () => {
       ),
     );
     renderApp();
-    await waitForLifecycleListeners();
-    act(() => lifecycle.openQuickNote?.());
+    await waitForLifecycleMounts();
+    triggerQuickNoteShortcut();
     const body = await screen.findByLabelText("正文");
     fireEvent.change(body, { target: { value: "尚未保存的正文" } });
 
@@ -178,7 +186,7 @@ describe("桌面生命周期", () => {
 
   it("桌面环境挂载关窗分流：偏好贯通且退出请求收敛到安全退出", async () => {
     renderApp();
-    await waitForLifecycleListeners();
+    await waitForLifecycleMounts();
 
     await waitFor(() => expect(closeBehaviorRuntime.mounted).not.toBeNull());
     expect(closeBehaviorRuntime.mounted?.getBehavior()).toBe("TRAY");
