@@ -1,3 +1,4 @@
+mod data_migration;
 mod desktop_config;
 mod lifecycle;
 mod power;
@@ -9,6 +10,7 @@ use tauri::Manager;
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -27,6 +29,7 @@ pub fn run() {
             sidecar::get_sidecar_config,
             sidecar::get_data_directory,
             sidecar::open_data_directory,
+            sidecar::change_data_directory,
             power::set_recording_keep_awake,
             hide_window_temporarily,
             lifecycle::exit_application,

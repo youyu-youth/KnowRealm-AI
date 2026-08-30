@@ -1,5 +1,6 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { FolderOpen } from "lucide-react";
+import { FolderInput, FolderOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -8,9 +9,22 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { settingsKeys } from "@/features/settings/api/keys";
 import {
+  DataDirectoryChangeDialog,
+  type ChangeDialogState,
+} from "./DataDirectoryChangeDialog";
+import { migrationErrorCopy } from "./migrationErrorCopy";
+import {
+  changeDataDirectory,
+  chooseDataDirectory,
   getDataDirectory,
+  listenMigrationProgress,
   openDataDirectory,
+  type MigrationProgress,
 } from "@/services/tauri/dataDirectory";
+import {
+  isDesktopLifecycleAvailable,
+  relaunchApplication,
+} from "@/services/tauri/lifecycle";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -25,6 +39,67 @@ export function DataDirectorySection() {
   const openDirectory = useMutation({
     mutationFn: () => openDataDirectory(),
   });
+  const [changeState, setChangeState] = useState<ChangeDialogState | null>(
+    null,
+  );
+  const [pickError, setPickError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<MigrationProgress | null>(null);
+
+  useEffect(() => {
+    if (!isDesktopLifecycleAvailable()) return;
+    let active = true;
+    let unlisten: (() => void) | undefined;
+    listenMigrationProgress((payload) => setProgress(payload)).then((fn) => {
+      if (active) {
+        unlisten = fn;
+      } else {
+        fn();
+      }
+    });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
+  }, []);
+
+  const pickTarget = async () => {
+    setPickError(null);
+    try {
+      const target = await chooseDataDirectory(
+        t("settings.dataDirectory.dialogTitle"),
+      );
+      if (target) {
+        setChangeState({ phase: "confirm", target });
+      }
+    } catch (error) {
+      setPickError(errorMessage(error));
+    }
+  };
+
+  const startMigration = async (target: string) => {
+    setProgress(null);
+    setChangeState({ phase: "migrating", target });
+    try {
+      await changeDataDirectory(target);
+    } catch (error) {
+      setChangeState({
+        phase: "failed",
+        target,
+        error: migrationErrorCopy(error, t),
+      });
+      return;
+    }
+    setChangeState({ phase: "relaunching", target });
+    try {
+      await relaunchApplication();
+    } catch (error) {
+      setChangeState({
+        phase: "failed",
+        target,
+        error: migrationErrorCopy(error, t),
+      });
+    }
+  };
 
   return (
     <div className="border-border max-w-reading mt-8 border-t pt-8">
@@ -78,7 +153,12 @@ export function DataDirectorySection() {
               </AlertDescription>
             </Alert>
           ) : null}
-          <div>
+          {pickError ? (
+            <Alert variant="destructive" className="w-auto">
+              <AlertDescription>{pickError}</AlertDescription>
+            </Alert>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
             <Button
               variant="outline"
               disabled={openDirectory.isPending}
@@ -94,9 +174,26 @@ export function DataDirectorySection() {
               )}
               {t("settings.dataDirectory.open")}
             </Button>
+            <Button
+              variant="outline"
+              disabled={changeState !== null}
+              onClick={() => void pickTarget()}
+            >
+              <FolderInput data-icon="inline-start" aria-hidden="true" />
+              {t("settings.dataDirectory.change")}
+            </Button>
           </div>
         </div>
       )}
+
+      {changeState !== null ? (
+        <DataDirectoryChangeDialog
+          state={changeState}
+          progress={progress}
+          onConfirm={(target) => void startMigration(target)}
+          onDismiss={() => setChangeState(null)}
+        />
+      ) : null}
     </div>
   );
 }

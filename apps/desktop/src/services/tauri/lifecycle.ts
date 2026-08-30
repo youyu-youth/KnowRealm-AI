@@ -1,5 +1,6 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 export const isDesktopLifecycleAvailable = isTauri;
 
@@ -9,4 +10,8 @@ export function listenExitRequested(handler: () => void): Promise<UnlistenFn> {
 
 export function exitApplication() {
   return invoke<void>("exit_application");
+}
+
+export function relaunchApplication() {
+  return relaunch();
 }

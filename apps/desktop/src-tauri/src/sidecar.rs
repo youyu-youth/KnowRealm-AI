@@ -10,12 +10,13 @@ use std::time::{Duration, Instant};
 
 use getrandom::fill;
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+use crate::data_migration;
 use crate::desktop_config;
 
 const LOOPBACK: &str = "127.0.0.1";
@@ -46,10 +47,7 @@ pub fn launch_token() -> io::Result<String> {
 
 pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
     let token = launch_token()?;
-    let default_data_dir = app.path().home_dir()?.join("KnowRealm");
-    let desktop_config =
-        desktop_config::load_or_repair(&app.path().app_config_dir()?, &default_data_dir);
-    let data_dir = desktop_config.data_dir;
+    let data_dir = resolve_desktop_config(app)?.1.data_dir;
     let ffmpeg = ffmpeg_program()?;
     if !ffmpeg.is_file() {
         return Err(Box::new(io::Error::new(
@@ -263,6 +261,76 @@ pub fn open_data_directory(app: AppHandle, state: State<'_, SidecarState>) -> Re
     app.opener()
         .open_path(state.data_dir.to_string_lossy(), None::<&str>)
         .map_err(|error| error.to_string())
+}
+
+/// 停止 sidecar → 同盘 rename / 跨盘 copy+删源（进度事件）→ 写回 desktop.json。
+/// 顺序要点：copy 路径在删源之前写配置——任一环节失败都能靠重启恢复到一致状态。
+/// 重启由前端在成功返回后触发（tauri-plugin-process relaunch）。
+#[tauri::command]
+pub async fn change_data_directory(
+    app: AppHandle,
+    state: State<'_, SidecarState>,
+    new_dir: PathBuf,
+) -> Result<(), data_migration::MigrationError> {
+    let old_dir = state.data_dir.clone();
+    let created_target = data_migration::prepare_target(&old_dir, &new_dir)?;
+
+    // 校验通过才停 sidecar：目录无效时应用照常可用
+    state.stop();
+
+    let progress_app = app.clone();
+    let migration_source = old_dir.clone();
+    let migration_target = new_dir.clone();
+    let moved = tauri::async_runtime::spawn_blocking(move || {
+        data_migration::move_data(&migration_source, &migration_target, &mut |copied, total| {
+            let _ = progress_app.emit(
+                data_migration::MIGRATION_PROGRESS_EVENT,
+                data_migration::MigrationProgress {
+                    copied_bytes: copied,
+                    total_bytes: total,
+                },
+            );
+        })
+    })
+    .await
+    .unwrap_or_else(|error| {
+        Err(data_migration::MigrationError::Migration(std::io::Error::other(
+            error.to_string(),
+        )))
+    });
+
+    // 移动阶段失败：原目录仍完好（copy 失败不动源、rename 原子），清理目标半成品
+    let outcome = match moved {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            data_migration::cleanup_target(&new_dir, created_target);
+            return Err(error);
+        }
+    };
+
+    let (config_dir, mut config) = resolve_desktop_config(&app).map_err(|error| {
+        data_migration::MigrationError::ConfigWrite(std::io::Error::other(error.to_string()))
+    })?;
+    config.data_dir = new_dir.clone();
+    if let Err(error) = desktop_config::write(&config_dir, &config) {
+        // copy 路径此刻源目录未删：回退清理后重启即可恢复旧目录
+        if outcome == data_migration::MoveOutcome::Copied {
+            data_migration::cleanup_target(&new_dir, created_target);
+        }
+        return Err(data_migration::MigrationError::ConfigWrite(error));
+    }
+
+    data_migration::remove_source(&old_dir, outcome)?;
+    Ok(())
+}
+
+fn resolve_desktop_config(
+    app: &AppHandle,
+) -> Result<(PathBuf, desktop_config::DesktopConfig), tauri::Error> {
+    let default_data_dir = app.path().home_dir()?.join("KnowRealm");
+    let config_dir = app.path().app_config_dir()?;
+    let config = desktop_config::load_or_repair(&config_dir, &default_data_dir);
+    Ok((config_dir, config))
 }
 
 impl SidecarState {
