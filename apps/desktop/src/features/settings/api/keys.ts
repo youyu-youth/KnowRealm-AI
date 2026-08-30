@@ -1,4 +1,5 @@
 export const settingsKeys = {
+  dataDirectory: ["settings", "data-directory"] as const,
   llmProvider: ["settings", "llm-provider"] as const,
   tencentAsrProvider: ["settings", "tencent-asr-provider"] as const,
   preferences: ["settings", "preferences"] as const,

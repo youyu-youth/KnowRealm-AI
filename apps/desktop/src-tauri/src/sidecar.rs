@@ -1,8 +1,9 @@
 use std::error::Error;
 use std::ffi::OsString;
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddrV4, TcpStream};
 use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -10,15 +11,11 @@ use std::time::{Duration, Instant};
 use getrandom::fill;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_shell::{
-    ShellExt,
-    process::{CommandChild, CommandEvent},
-};
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
-#[cfg(target_os = "windows")]
-use std::process::{Command, Stdio};
+
+use crate::desktop_config;
 
 const LOOPBACK: &str = "127.0.0.1";
 const PORT_MARKER: &str = "KNOWREALM_SIDECAR_PORT=";
@@ -36,7 +33,8 @@ pub struct SidecarConfig {
 
 pub struct SidecarState {
     config: SidecarConfig,
-    child: Mutex<Option<CommandChild>>,
+    data_dir: PathBuf,
+    child: Mutex<Option<Child>>,
 }
 
 pub fn launch_token() -> io::Result<String> {
@@ -47,7 +45,10 @@ pub fn launch_token() -> io::Result<String> {
 
 pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
     let token = launch_token()?;
-    let data_dir = app.path().home_dir()?.join("KnowRealm");
+    let default_data_dir = app.path().home_dir()?.join("KnowRealm");
+    let desktop_config =
+        desktop_config::load_or_repair(&app.path().app_config_dir()?, &default_data_dir);
+    let data_dir = desktop_config.data_dir;
     let ffmpeg = ffmpeg_program()?;
     if !ffmpeg.is_file() {
         return Err(Box::new(io::Error::new(
@@ -64,23 +65,39 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         OsString::from("--token"),
         OsString::from(&token),
         OsString::from("--data-dir"),
-        data_dir.into_os_string(),
+        data_dir.clone().into_os_string(),
         OsString::from("--ffmpeg"),
         ffmpeg.into_os_string(),
     ];
-    let (mut events, child) = app
-        .shell()
-        .command(program)
+    let mut command = Command::new(program);
+    command
         .current_dir(working_dir)
         .args(args)
-        .spawn()?;
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x0800_0000);
+    let mut child = command.spawn()?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| io::Error::other("sidecar stdout is unavailable"))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| io::Error::other("sidecar stderr is unavailable"))?;
     let (event_tx, event_rx) = mpsc::channel();
-    tauri::async_runtime::spawn(async move {
-        while let Some(event) = events.recv().await {
-            if event_tx.send(event).is_err() {
+    thread::spawn(move || {
+        for line in BufReader::new(stdout).split(b'\n') {
+            let Ok(line) = line else { break };
+            if event_tx.send(line).is_err() {
                 break;
             }
         }
+    });
+    thread::spawn(move || {
+        let _ = io::copy(&mut stderr, &mut io::stderr());
     });
 
     let port = match wait_for_bound_port(&event_rx) {
@@ -90,14 +107,6 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
             return Err(Box::new(error));
         }
     };
-    thread::spawn(move || {
-        while let Ok(event) = event_rx.recv() {
-            if let CommandEvent::Stderr(bytes) = event {
-                let _ = io::stderr().write_all(&bytes);
-            }
-        }
-    });
-
     if let Err(error) = wait_until_ready(port, &token) {
         stop_process(child);
         return Err(Box::new(error));
@@ -107,11 +116,12 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
             base_url: format!("http://{LOOPBACK}:{port}"),
             token,
         },
+        data_dir,
         child: Mutex::new(Some(child)),
     })
 }
 
-fn wait_for_bound_port(events: &mpsc::Receiver<CommandEvent>) -> io::Result<u16> {
+fn wait_for_bound_port(events: &mpsc::Receiver<Vec<u8>>) -> io::Result<u16> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     loop {
         let remaining = deadline.saturating_duration_since(Instant::now());
@@ -122,7 +132,7 @@ fn wait_for_bound_port(events: &mpsc::Receiver<CommandEvent>) -> io::Result<u16>
             ));
         }
         match events.recv_timeout(remaining) {
-            Ok(CommandEvent::Stdout(bytes)) => {
+            Ok(bytes) => {
                 let Ok(line) = std::str::from_utf8(&bytes) else {
                     continue;
                 };
@@ -141,17 +151,6 @@ fn wait_for_bound_port(events: &mpsc::Receiver<CommandEvent>) -> io::Result<u16>
                 }
                 return Ok(port);
             }
-            Ok(CommandEvent::Error(error)) => return Err(io::Error::other(error)),
-            Ok(CommandEvent::Stderr(bytes)) => {
-                let _ = io::stderr().write_all(&bytes);
-            }
-            Ok(CommandEvent::Terminated(payload)) => {
-                return Err(io::Error::other(format!(
-                    "sidecar terminated before startup: {:?}",
-                    payload.code
-                )));
-            }
-            Ok(_) => {}
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
@@ -253,6 +252,11 @@ pub fn get_sidecar_config(state: State<'_, SidecarState>) -> Result<SidecarConfi
     Ok(state.config.clone())
 }
 
+#[tauri::command]
+pub fn get_data_directory(state: State<'_, SidecarState>) -> Result<PathBuf, &'static str> {
+    Ok(state.data_dir.clone())
+}
+
 impl SidecarState {
     pub fn stop(&self) {
         if let Ok(mut child) = self.child.lock()
@@ -264,8 +268,8 @@ impl SidecarState {
 }
 
 #[cfg(target_os = "windows")]
-fn stop_process(child: CommandChild) {
-    let pid = child.pid().to_string();
+fn stop_process(mut child: Child) {
+    let pid = child.id().to_string();
     let mut command = Command::new("taskkill");
     command
         .args(["/PID", &pid, "/T", "/F"])
@@ -278,7 +282,7 @@ fn stop_process(child: CommandChild) {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn stop_process(child: CommandChild) {
+fn stop_process(mut child: Child) {
     let _ = child.kill();
 }
 
@@ -288,8 +292,6 @@ mod tests {
     use std::net::TcpListener;
     use std::sync::mpsc;
     use std::thread;
-
-    use tauri_plugin_shell::process::CommandEvent;
 
     use super::{health_is_ready, launch_token, wait_for_bound_port, wait_until_ready};
 
@@ -306,9 +308,7 @@ mod tests {
     fn reads_the_newline_terminated_port_reported_by_the_spawned_sidecar() {
         let (sender, receiver) = mpsc::channel();
         sender
-            .send(CommandEvent::Stdout(
-                b"KNOWREALM_SIDECAR_PORT=43127\r\n".to_vec(),
-            ))
+            .send(b"KNOWREALM_SIDECAR_PORT=43127\r".to_vec())
             .expect("port event");
 
         assert_eq!(

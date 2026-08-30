@@ -1,6 +1,6 @@
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { open } from "@tauri-apps/plugin-shell";
+import { openPath } from "@tauri-apps/plugin-opener";
 
 /**
  * 学习资产 Markdown 导出的 Tauri 边界封装：系统保存对话框、UTF-8 文本写入与按需打开。
@@ -23,5 +23,5 @@ export function writeMarkdownFile(
 }
 
 export function openExportedFile(path: string): Promise<void> {
-  return open(path);
+  return openPath(path);
 }

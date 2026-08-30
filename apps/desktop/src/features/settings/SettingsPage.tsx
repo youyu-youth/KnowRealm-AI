@@ -22,6 +22,7 @@ import { profileApi } from "@/features/settings/api/profile";
 import type { ProfileOut } from "@/features/settings/api/profile";
 import { PreferencesSection } from "@/features/settings/PreferencesSection";
 import { ProvidersSection } from "@/features/settings/ProvidersSection";
+import { DataDirectorySection } from "@/features/settings/DataDirectorySection";
 
 const ROLE_KEYS = ["STUDENT", "DEVELOPER", "OFFICE_WORKER", "OTHER"] as const;
 type RoleKey = (typeof ROLE_KEYS)[number];
@@ -99,6 +100,7 @@ export function SettingsPage() {
         />
       </div>
       <ProvidersSection />
+      <DataDirectorySection />
       <PreferencesSection />
     </section>
   );

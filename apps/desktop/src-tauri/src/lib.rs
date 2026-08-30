@@ -1,3 +1,4 @@
+mod desktop_config;
 mod lifecycle;
 mod power;
 mod sidecar;
@@ -7,7 +8,7 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
@@ -24,6 +25,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             sidecar::get_sidecar_config,
+            sidecar::get_data_directory,
             power::set_recording_keep_awake,
             hide_window_temporarily,
             lifecycle::exit_application,

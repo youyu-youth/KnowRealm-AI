@@ -3,11 +3,6 @@
   "productName": "KnowRealm",
   "version": "0.1.0",
   "identifier": "ai.knowrealm.desktop",
-  "plugins": {
-    "shell": {
-      "open": "(https?://\\w+.+|mailto:\\w+|tel:\\w+|[a-zA-Z]:\\\\.+)"
-    }
-  },
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",

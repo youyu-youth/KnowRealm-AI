@@ -806,6 +806,15 @@
       "errorTitle": "档案暂时无法读取",
       "retry": "重试"
     },
+    "dataDirectory": {
+      "sectionTitle": "数据目录",
+      "sectionDescription": "数据库、原始文件、配置与导出物都保存在这里。",
+      "pathLabel": "当前位置",
+      "loading": "正在读取数据目录",
+      "retry": "重试",
+      "open": "打开数据目录",
+      "opening": "正在打开"
+    },
     "preferences": {
       "sectionTitle": "偏好",
       "sectionDescription": "以下选项改动后立即保存，无需点保存按钮；保存失败会提示，控件停留在当前生效的值。",
