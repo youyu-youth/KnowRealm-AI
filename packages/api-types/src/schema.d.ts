@@ -1535,6 +1535,8 @@ export interface components {
              * @enum {string}
              */
             font_scale: "S" | "M" | "L";
+            /** Last Route */
+            last_route: string | null;
             /** Quick Note Shortcut */
             quick_note_shortcut: string;
             /** Quiz Last Count */
@@ -1549,7 +1551,7 @@ export interface components {
         };
         /**
          * PreferencesUpdate
-         * @description 全字段 optional 的部分更新：未提供的键保持原值；timezone 显式 null 表示跟随系统。
+         * @description 全字段 optional 的部分更新：未提供的键保持原值；timezone/last_route 显式 null 各表跟随系统/默认页。
          */
         PreferencesUpdate: {
             /**
@@ -1567,6 +1569,11 @@ export interface components {
              * @description 字号档位
              */
             font_scale?: ("S" | "M" | "L") | null;
+            /**
+             * Last Route
+             * @description 上次界面路由；null 表示默认页
+             */
+            last_route?: string | null;
             /**
              * Quick Note Shortcut
              * @description 速记快捷键 accelerator

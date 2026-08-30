@@ -20,6 +20,7 @@ DEFAULTS = {
     "quick_note_shortcut": "Ctrl+Alt+N",
     "autostart": False,
     "quiz_last_count": 5,
+    "last_route": None,
 }
 
 
@@ -204,6 +205,7 @@ async def test_put_empty_body_keeps_everything_unchanged(tmp_path: Path) -> None
         {"close_behavior": None},
         {"autostart": None},
         {"quiz_last_count": None},
+        {"last_route": 42},
     ],
 )
 async def test_put_rejects_invalid_values(tmp_path: Path, payload: dict[str, object]) -> None:
@@ -268,6 +270,21 @@ async def test_put_accepts_explicit_null_timezone_and_valid_values(tmp_path: Pat
 
 
 @pytest.mark.anyio
+async def test_put_last_route_roundtrip_and_explicit_null_clears(tmp_path: Path) -> None:
+    async with running_app(tmp_path) as (_app, client):
+        saved = await client.put("/api/settings/preferences", json={"last_route": "/inbox"})
+        assert saved.status_code == 200
+        assert saved.json() == {**DEFAULTS, "last_route": "/inbox"}
+        assert read_settings(tmp_path) == {"last_route": "/inbox"}
+
+        cleared = await client.put("/api/settings/preferences", json={"last_route": None})
+
+    assert cleared.status_code == 200
+    assert cleared.json() == DEFAULTS
+    assert read_settings(tmp_path) == {}
+
+
+@pytest.mark.anyio
 async def test_get_falls_back_to_defaults_for_corrupted_stored_values(
     tmp_path: Path,
 ) -> None:
@@ -281,6 +298,7 @@ async def test_get_falls_back_to_defaults_for_corrupted_stored_values(
             "quick_note_shortcut": "NotAHotkey",
             "autostart": "maybe",
             "quiz_last_count": 7,
+            "last_route": 42,
         },
     )
     async with running_app(tmp_path) as (_app, client):

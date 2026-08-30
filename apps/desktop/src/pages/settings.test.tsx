@@ -281,6 +281,7 @@ const DEFAULT_PREFERENCES: PreferencesOut = {
   quick_note_shortcut: "Ctrl+Alt+N",
   autostart: false,
   quiz_last_count: 5,
+  last_route: null,
 };
 
 describe("设置页偏好分区", () => {

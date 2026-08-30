@@ -84,6 +84,7 @@ class PreferencesOut(BaseModel):
     quick_note_shortcut: str
     autostart: bool
     quiz_last_count: int
+    last_route: str | None
 
 
 class DataDirectoryExportRequest(BaseModel):
@@ -179,7 +180,7 @@ def is_valid_shortcut(value: str) -> bool:
 
 
 class PreferencesUpdate(BaseModel):
-    """全字段 optional 的部分更新：未提供的键保持原值；timezone 显式 null 表示跟随系统。"""
+    """全字段 optional 的部分更新：未提供的键保持原值；timezone/last_route 显式 null 各表跟随系统/默认页。"""
 
     theme: Literal["LIGHT", "DARK", "SYSTEM"] | None = Field(default=None, description="外观主题")
     font_scale: Literal["S", "M", "L"] | None = Field(default=None, description="字号档位")
@@ -188,6 +189,7 @@ class PreferencesUpdate(BaseModel):
     quick_note_shortcut: str | None = Field(default=None, description="速记快捷键 accelerator")
     autostart: bool | None = Field(default=None, description="开机自启")
     quiz_last_count: Literal[3, 5, 10] | None = Field(default=None, description="习题生成档位偏好")
+    last_route: str | None = Field(default=None, description="上次界面路由；null 表示默认页")
 
     @field_validator("timezone")
     @classmethod

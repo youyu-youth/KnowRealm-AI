@@ -182,6 +182,7 @@ PREFERENCE_DEFAULTS: dict[str, object] = {
     "quick_note_shortcut": DEFAULT_QUICK_NOTE_SHORTCUT,
     "autostart": DEFAULT_AUTOSTART,
     "quiz_last_count": DEFAULT_QUIZ_LAST_COUNT,
+    "last_route": None,
 }
 
 
@@ -194,6 +195,7 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
     quick_note_shortcut = settings.get("quick_note_shortcut")
     autostart = settings.get("autostart")
     quiz_last_count = settings.get("quiz_last_count")
+    last_route = settings.get("last_route")
     return {
         "theme": theme if theme in THEME_CHOICES else DEFAULT_THEME,
         "font_scale": font_scale if font_scale in FONT_SCALE_CHOICES else DEFAULT_FONT_SCALE,
@@ -212,6 +214,8 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
         "quiz_last_count": (
             quiz_last_count if quiz_last_count in QUIZ_COUNT_CHOICES else DEFAULT_QUIZ_LAST_COUNT
         ),
+        # 上次界面路由只要求是字符串；路径是否存在由前端 NotFound 兜底。
+        "last_route": last_route if isinstance(last_route, str) else None,
     }
 
 

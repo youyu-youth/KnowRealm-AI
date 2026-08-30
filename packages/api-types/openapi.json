@@ -1308,6 +1308,17 @@
             "title": "Font Scale",
             "type": "string"
           },
+          "last_route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Route"
+          },
           "quick_note_shortcut": {
             "title": "Quick Note Shortcut",
             "type": "string"
@@ -1344,13 +1355,14 @@
           "close_behavior",
           "quick_note_shortcut",
           "autostart",
-          "quiz_last_count"
+          "quiz_last_count",
+          "last_route"
         ],
         "title": "PreferencesOut",
         "type": "object"
       },
       "PreferencesUpdate": {
-        "description": "全字段 optional 的部分更新：未提供的键保持原值；timezone 显式 null 表示跟随系统。",
+        "description": "全字段 optional 的部分更新：未提供的键保持原值；timezone/last_route 显式 null 各表跟随系统/默认页。",
         "properties": {
           "autostart": {
             "anyOf": [
@@ -1396,6 +1408,18 @@
             ],
             "description": "字号档位",
             "title": "Font Scale"
+          },
+          "last_route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "上次界面路由；null 表示默认页",
+            "title": "Last Route"
           },
           "quick_note_shortcut": {
             "anyOf": [

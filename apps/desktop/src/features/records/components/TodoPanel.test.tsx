@@ -65,6 +65,24 @@ beforeEach(() => {
       }),
     ),
     http.get(LLM_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
+    // 详情页渲染会写路由记忆偏好；回显请求键模拟部分更新的合并语义。
+    http.put(
+      `${TEST_SIDECAR_URL}/api/settings/preferences`,
+      async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({
+          theme: "SYSTEM",
+          font_scale: "M",
+          timezone: null,
+          close_behavior: "TRAY",
+          quick_note_shortcut: "Ctrl+Alt+N",
+          autostart: false,
+          quiz_last_count: 5,
+          last_route: null,
+          ...body,
+        });
+      },
+    ),
   );
 });
 

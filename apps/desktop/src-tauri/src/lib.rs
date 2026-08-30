@@ -19,6 +19,9 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![]),
         ))
+        // 窗口几何（尺寸/位置/最大化/显示器夹回）全权交由 window-state 插件，
+        // 按决策 #51 豁免：存插件自身配置文件，不进 settings.json。
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .setup(|app| {
             lifecycle::setup(app)?;
             let state = sidecar::start(app.handle())?;

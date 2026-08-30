@@ -128,6 +128,7 @@ function preferencesOut(
     quick_note_shortcut: "Ctrl+Alt+N",
     autostart: false,
     quiz_last_count: 5,
+    last_route: null,
     ...overrides,
   };
 }
@@ -216,7 +217,12 @@ describe("习题页签", () => {
   it("生成对话框默认读取偏好档位，取消题型阻止提交，成功后写回偏好并进入进行中态", async () => {
     let generating = false;
     const submittedBodies: unknown[] = [];
-    const preferenceBodies: unknown[] = [];
+    const preferenceBodies: Array<Record<string, unknown>> = [];
+    // 有状态的偏好存储仿真：GET/PUT 都读写同一份，保证部分更新后全量快照一致。
+    let storedPreferences: Record<string, unknown> = {
+      quiz_last_count: 3,
+      last_route: null,
+    };
     server.use(
       http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
       http.get(QUIZZES_URL, () =>
@@ -227,11 +233,13 @@ describe("习题页签", () => {
         ),
       ),
       http.get(PREFERENCES_URL, () =>
-        HttpResponse.json(preferencesOut({ quiz_last_count: 3 })),
+        HttpResponse.json(preferencesOut(storedPreferences)),
       ),
       http.put(PREFERENCES_URL, async ({ request }) => {
-        preferenceBodies.push(await request.json());
-        return HttpResponse.json(preferencesOut({ quiz_last_count: 3 }));
+        const body = (await request.json()) as Record<string, unknown>;
+        preferenceBodies.push(body);
+        storedPreferences = { ...storedPreferences, ...body };
+        return HttpResponse.json(preferencesOut(storedPreferences));
       }),
       http.post(QUIZ_JOBS_URL, async ({ request }) => {
         submittedBodies.push(await request.json());
@@ -267,7 +275,10 @@ describe("习题页签", () => {
         total_count: 10,
       },
     ]);
-    expect(preferenceBodies).toEqual([{ quiz_last_count: 10 }]);
+    // 只断言本模块的偏好写入；AppShell 的路由记忆写入不属本页签契约。
+    expect(
+      preferenceBodies.filter((body) => "quiz_last_count" in body),
+    ).toEqual([{ quiz_last_count: 10 }]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 

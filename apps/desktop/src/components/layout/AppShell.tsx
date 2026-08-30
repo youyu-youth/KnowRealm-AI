@@ -1,4 +1,4 @@
-import { Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Archive,
   BookOpenText,
@@ -29,6 +29,7 @@ import {
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
+import { useSavePreference } from "@/features/settings/PreferencesSection";
 import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
@@ -105,6 +106,38 @@ export function AppShell() {
     queryKey: settingsKeys.preferences,
     queryFn: settingsApi.getPreferences,
   });
+  // 上次界面恢复：偏好首次到达且仍停在默认页时回上次路由（桌面启动总落默认页；
+  // 该前提同时保证显式打开的路径不被恢复覆盖）。设置页路由不参与记忆，目标不存在
+  // 由现有 NotFound 兜底。恢复导航造成的路径变化由 in-flight 标记挡住，不触发写入；
+  // 恢复只尝试一次，之后的路径变化都按普通导航记忆。偏好载入前的导航不记忆（启动
+  // 间隙极短，同快捷键的间隙取舍）。写入走 useMutation 但不消费 error：路由记忆
+  // 非用户发起的编辑，失败只损失一次恢复，不值得一处全局打扰。
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const { mutate: savePreference } = useSavePreference();
+  const restoreAttemptedRef = useRef(false);
+  const restoreNavigationInFlightRef = useRef(false);
+  useEffect(() => {
+    if (restoreAttemptedRef.current) return;
+    const lastRoute = preferences.data?.last_route;
+    if (lastRoute === undefined) return;
+    restoreAttemptedRef.current = true;
+    if (lastRoute && lastRoute !== pathname && pathname === "/") {
+      restoreNavigationInFlightRef.current = true;
+      void navigate({ to: lastRoute, replace: true });
+    }
+  }, [navigate, pathname, preferences.data]);
+  useEffect(() => {
+    const saved = preferences.data;
+    if (!saved) return;
+    if (restoreNavigationInFlightRef.current) {
+      restoreNavigationInFlightRef.current = false;
+      return;
+    }
+    if (pathname.startsWith("/settings")) return;
+    const next = pathname === "/" ? null : pathname;
+    if (next === saved.last_route) return;
+    savePreference({ last_route: next });
+  }, [pathname, preferences.data, savePreference]);
   // 关窗分流每次关窗时读取的最新偏好；偏好未载入时为 null = 不拦截直接退出。
   const closeBehaviorRef = useRef<CloseBehaviorPreference | null>(null);
   const closeBehavior = preferences.data?.close_behavior ?? null;

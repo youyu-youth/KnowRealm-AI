@@ -16,6 +16,7 @@
     "dialog:allow-open",
     "opener:allow-open-path",
     "process:allow-restart",
+    "window-state:default",
     {
       "identifier": "fs:allow-write-text-file",
       "allow": [{ "path": "**" }]

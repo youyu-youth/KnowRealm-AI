@@ -955,6 +955,7 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
         "quick_note_shortcut": "Ctrl+Alt+N",
         "autostart": False,
         "quiz_last_count": 5,
+        "last_route": None,
     }
     assert updated.json() == {
         "theme": "SYSTEM",
@@ -964,6 +965,7 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
         "quick_note_shortcut": "Ctrl+Alt+N",
         "autostart": False,
         "quiz_last_count": 10,
+        "last_route": None,
     }
     assert reread.json() == updated.json()
     assert invalid.status_code == 422
