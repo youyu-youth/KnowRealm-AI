@@ -12,6 +12,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
+import {
+  markRestartPending,
+  resetRestartPending,
+} from "@/services/restartPending";
 import { exitApplication } from "@/services/tauri/lifecycle";
 
 const lifecycle = vi.hoisted(() => ({
@@ -91,6 +95,7 @@ afterEach(() => {
   shortcutRuntime.available = true;
   closeBehaviorRuntime.mounted = null;
   vi.mocked(exitApplication).mockClear();
+  resetRestartPending();
 });
 
 describe("桌面生命周期", () => {
@@ -182,6 +187,22 @@ describe("桌面生命周期", () => {
     await screen.findByRole("heading", { name: "退出 KnowRealm？" });
     fireEvent.click(screen.getByRole("button", { name: "确认退出" }));
     expect(exitApplication).toHaveBeenCalledOnce();
+  });
+
+  it("数据目录迁移后：录音状态查询失败也直接退出，不被保护提示卡死", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/recording-sessions`, () =>
+        HttpResponse.error(),
+      ),
+    );
+    markRestartPending();
+    renderApp();
+    await waitForLifecycleMounts();
+
+    act(() => lifecycle.exitRequested?.());
+
+    await waitFor(() => expect(exitApplication).toHaveBeenCalledOnce());
+    expect(screen.queryByText(/暂时无法确认录音状态/)).not.toBeInTheDocument();
   });
 
   it("桌面环境挂载关窗分流：偏好贯通且退出请求收敛到安全退出", async () => {

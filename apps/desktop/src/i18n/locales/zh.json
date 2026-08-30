@@ -828,6 +828,7 @@
       "migratingProgress": "正在迁移数据（{{percent}}%）",
       "relaunching": "迁移完成，正在重启应用…",
       "manualRestart": "迁移完成。当前为开发模式，已跳过自动重启——请停止 tauri dev 后重新启动应用，即可使用新数据目录。",
+      "quitApp": "退出应用",
       "close": "关闭",
       "errorSameDirectory": "所选目录与当前数据目录相同，请另选位置。",
       "errorNestedDirectory": "所选目录位于当前数据目录内部（或包含它），请另选位置。",

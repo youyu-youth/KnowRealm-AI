@@ -12,7 +12,10 @@ import {
   DataDirectoryChangeDialog,
   type ChangeDialogState,
 } from "./DataDirectoryChangeDialog";
-import { migrationErrorCopy } from "./migrationErrorCopy";
+import {
+  migrationErrorCopy,
+  migrationStoppedSidecar,
+} from "./migrationErrorCopy";
 import {
   changeDataDirectory,
   chooseDataDirectory,
@@ -22,9 +25,11 @@ import {
   type MigrationProgress,
 } from "@/services/tauri/dataDirectory";
 import {
+  exitApplication,
   isDesktopLifecycleAvailable,
   relaunchApplication,
 } from "@/services/tauri/lifecycle";
+import { markRestartPending } from "@/services/restartPending";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -82,6 +87,8 @@ export function DataDirectorySection() {
     try {
       await changeDataDirectory(target);
     } catch (error) {
+      // prepare 校验错误之外，失败同样发生在 sidecar 已停止之后：应用只能重启恢复。
+      if (migrationStoppedSidecar(error)) markRestartPending();
       setChangeState({
         phase: "failed",
         target,
@@ -89,6 +96,8 @@ export function DataDirectorySection() {
       });
       return;
     }
+    // 迁移成功：sidecar 已停止且不再拉起，直到重启后端都不可用。
+    markRestartPending();
     // 开发构建不自动 relaunch：relaunch 出的进程会脱离 tauri CLI，
     // CLI 退出连带杀掉 vite dev server，WebView 加载 devUrl 失败将一直白屏。
     if (import.meta.env.DEV) {
@@ -197,6 +206,7 @@ export function DataDirectorySection() {
           state={changeState}
           progress={progress}
           onConfirm={(target) => void startMigration(target)}
+          onQuit={() => void exitApplication()}
           onDismiss={() => setChangeState(null)}
         />
       ) : null}

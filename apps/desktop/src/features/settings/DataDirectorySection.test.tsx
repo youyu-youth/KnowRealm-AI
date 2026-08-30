@@ -13,6 +13,7 @@ const {
   chooseDataDirectory,
   listenMigrationProgress,
   relaunchApplication,
+  exitApplication,
 } = vi.hoisted(() => ({
   getDataDirectory: vi.fn(),
   openDataDirectory: vi.fn(),
@@ -20,6 +21,7 @@ const {
   chooseDataDirectory: vi.fn(),
   listenMigrationProgress: vi.fn(),
   relaunchApplication: vi.fn(),
+  exitApplication: vi.fn(),
 }));
 
 vi.mock("@/services/tauri/dataDirectory", () => ({
@@ -33,6 +35,7 @@ vi.mock("@/services/tauri/dataDirectory", () => ({
 vi.mock("@/services/tauri/lifecycle", () => ({
   isDesktopLifecycleAvailable: () => true,
   relaunchApplication,
+  exitApplication,
 }));
 
 function renderSection() {
@@ -64,6 +67,7 @@ describe("DataDirectorySection", () => {
     chooseDataDirectory.mockReset();
     listenMigrationProgress.mockReset();
     relaunchApplication.mockReset();
+    exitApplication.mockReset();
     listenMigrationProgress.mockResolvedValue(() => {});
     getDataDirectory.mockResolvedValue("C:\\Users\\tester\\KnowRealm");
   });
@@ -134,8 +138,9 @@ describe("DataDirectorySection", () => {
     ).toBeInTheDocument();
   });
 
-  it("开发构建不自动重启，提示手动重启后可关闭弹窗", async () => {
+  it("开发构建不自动重启：弹窗不可关闭，唯一按钮退出应用", async () => {
     changeDataDirectory.mockResolvedValue(undefined);
+    exitApplication.mockResolvedValue(undefined);
 
     renderSection();
     await openConfirmDialog();
@@ -147,13 +152,12 @@ describe("DataDirectorySection", () => {
       ),
     ).toBeInTheDocument();
     expect(relaunchApplication).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "关闭" }),
+    ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
-    await waitFor(() =>
-      expect(
-        screen.queryByRole("button", { name: "关闭" }),
-      ).not.toBeInTheDocument(),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "退出应用" }));
+    await waitFor(() => expect(exitApplication).toHaveBeenCalledOnce());
   });
 
   it("迁移中展示进度事件百分比且无法重复确认", async () => {

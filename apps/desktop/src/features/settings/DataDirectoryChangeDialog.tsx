@@ -26,6 +26,7 @@ type Props = {
   state: ChangeDialogState;
   progress: MigrationProgress | null;
   onConfirm: (target: string) => void;
+  onQuit: () => void;
   onDismiss: () => void;
 };
 
@@ -33,13 +34,13 @@ export function DataDirectoryChangeDialog({
   state,
   progress,
   onConfirm,
+  onQuit,
   onDismiss,
 }: Props) {
   const { t } = useTranslation();
-  const dismissible =
-    state.phase === "confirm" ||
-    state.phase === "failed" ||
-    state.phase === "manualRestart";
+  // manualRestart 不可关闭：sidecar 已停、后端不可用，唯一正确动作是退出应用重启，
+  // 放任关闭弹窗只会让用户走进各页面 Failed to fetch 的僵尸态。
+  const dismissible = state.phase === "confirm" || state.phase === "failed";
   const percent =
     progress !== null && progress.totalBytes > 0
       ? Math.min(
@@ -125,8 +126,8 @@ export function DataDirectoryChangeDialog({
               {t("settings.dataDirectory.manualRestart")}
             </p>
             <DialogFooter>
-              <Button variant="outline" onClick={onDismiss}>
-                {t("settings.dataDirectory.close")}
+              <Button onClick={onQuit}>
+                {t("settings.dataDirectory.quitApp")}
               </Button>
             </DialogFooter>
           </>

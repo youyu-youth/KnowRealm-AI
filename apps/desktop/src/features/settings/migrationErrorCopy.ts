@@ -15,6 +15,21 @@ const MIGRATION_ERROR_KEYS: Record<string, string> = {
 
 export type MigrationErrorCopy = { summary: string; detail?: string };
 
+// Rust 端 prepare_target 的三个校验错误在 state.stop() 之前返回，sidecar 仍存活；
+// 其余错误码都发生在 sidecar 停止之后——应用只能重启恢复。
+const ERRORS_AFTER_SIDECAR_STOP = new Set([
+  "DATA_DIRECTORY_MIGRATION_FAILED",
+  "DATA_DIRECTORY_CONFIG_WRITE_FAILED",
+  "DATA_DIRECTORY_SOURCE_CLEANUP_FAILED",
+]);
+
+export function migrationStoppedSidecar(error: unknown): boolean {
+  const raw = error instanceof Error ? error.message : String(error);
+  const separator = raw.indexOf(": ");
+  const code = separator === -1 ? raw : raw.slice(0, separator);
+  return ERRORS_AFTER_SIDECAR_STOP.has(code);
+}
+
 export function migrationErrorCopy(
   error: unknown,
   t: TFunction,

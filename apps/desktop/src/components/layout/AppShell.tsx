@@ -46,6 +46,7 @@ import type {
 } from "@/features/text-capture/api/textCaptures";
 import { TextCaptureDialog } from "@/features/text-capture/TextCaptureDialog";
 import { cn } from "@/lib/utils";
+import { isRestartPending } from "@/services/restartPending";
 import {
   exitApplication,
   isDesktopLifecycleAvailable,
@@ -126,11 +127,15 @@ export function AppShell() {
     exitCheckPendingRef.current = true;
     setLifecycleError("");
     try {
-      const sessions = await queryClient.fetchQuery({
-        queryKey: recordingKeys.unfinished(),
-        queryFn: recordingApi.list,
-        staleTime: 0,
-      });
+      // 数据目录迁移已停止 sidecar：后端不存在、无录音可保护，跳过状态检查，
+      // 否则查询失败会让"取消退出以保护数据"把退出永久卡死。
+      const sessions = isRestartPending()
+        ? []
+        : await queryClient.fetchQuery({
+            queryKey: recordingKeys.unfinished(),
+            queryFn: recordingApi.list,
+            staleTime: 0,
+          });
       const risks = {
         recording: sessions.some(blocksNewRecording),
         unsavedText: textCaptureDirtyRef.current,
