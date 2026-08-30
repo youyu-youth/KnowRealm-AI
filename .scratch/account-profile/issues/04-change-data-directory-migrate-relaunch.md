@@ -18,3 +18,4 @@
 > - 错误协议：`MigrationError`（thiserror）Display = `CODE` 或 `CODE: io 明细`，经 command 的 `serde::Serialize` 以字符串传回，前端 `migrationErrorCopy.ts` 按 `": "` 切分映射文案；错误码全集 `DATA_DIRECTORY_{SAME,NESTED,NOT_EMPTY,MIGRATION_FAILED,CONFIG_WRITE_FAILED,SOURCE_CLEANUP_FAILED}`。
 > - 权限：capabilities 仅新增 `dialog:allow-open` 与 `process:allow-restart`；relaunch 走 `services/tauri/lifecycle.ts` 封装（desktop-tauri.md §1）。
 > - 门禁实测（2026-08-30）：cargo test 19 例全过、clippy -D warnings 零告警；前端相关 30 例过、tsc 双配置零错、prettier/eslint 净；pyright 仅剩既有 `logging.py` 报错（与本工单无关）。TodoPanel 全量跑的既有抖动经 stash 基线对照确认与本工单无关（单跑通过）。
+> - **真机验收发现并已修（2026-08-30）**：tauri dev 下迁移成功但重启后一直白屏——relaunch 出的新进程脱离 tauri CLI，CLI 退出连带杀掉 vite dev server，新进程 WebView 加载 devUrl 失败（sidecar 本身拉起正常，新目录 db shm/wal 有活动为证）。修法：`import.meta.env.DEV` 构建不自动 relaunch，弹窗提示手动重启；生产构建（前端资源内嵌）保持自动 relaunch。
