@@ -1595,7 +1595,7 @@
         "type": "string"
       },
       "ProfileOut": {
-        "description": "档案读取/保存结果，只暴露角色与自我介绍；未建档时字段均为 None（空档案语义）。",
+        "description": "档案读取/保存结果，只暴露昵称、角色与自我介绍；未建档时字段均为 None（空档案语义）。",
         "properties": {
           "about_me": {
             "anyOf": [
@@ -1608,6 +1608,18 @@
             ],
             "description": "自我介绍，未建档为空",
             "title": "About Me"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "昵称，未设置为空",
+            "title": "Nickname"
           },
           "primary_role": {
             "anyOf": [
@@ -1638,6 +1650,19 @@
             ],
             "description": "自我介绍，≤200 字，空白视为未填写",
             "title": "About Me"
+          },
+          "nickname": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "昵称，≤20 字，空白视为未填写",
+            "title": "Nickname"
           },
           "primary_role": {
             "$ref": "#/components/schemas/PrimaryRole",
@@ -2544,6 +2569,105 @@
           "points"
         ],
         "title": "SummarySection",
+        "type": "object"
+      },
+      "TencentAsrProviderOut": {
+        "properties": {
+          "has_credentials": {
+            "title": "Has Credentials",
+            "type": "boolean"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          },
+          "secret_id_hint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Id Hint"
+          }
+        },
+        "required": [
+          "region",
+          "has_credentials",
+          "secret_id_hint"
+        ],
+        "title": "TencentAsrProviderOut",
+        "type": "object"
+      },
+      "TencentAsrProviderStateOut": {
+        "properties": {
+          "provider": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TencentAsrProviderOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "provider"
+        ],
+        "title": "TencentAsrProviderStateOut",
+        "type": "object"
+      },
+      "TencentAsrProviderUpdate": {
+        "properties": {
+          "clear_secret_key": {
+            "default": false,
+            "title": "Clear Secret Key",
+            "type": "boolean"
+          },
+          "region": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Region",
+            "type": "string"
+          },
+          "secret_id": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Secret Id",
+            "type": "string"
+          },
+          "secret_key": {
+            "default": "",
+            "maxLength": 128,
+            "title": "Secret Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "region"
+        ],
+        "title": "TencentAsrProviderUpdate",
+        "type": "object"
+      },
+      "TencentAsrTestOut": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "region": {
+            "title": "Region",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "region"
+        ],
+        "title": "TencentAsrTestOut",
         "type": "object"
       },
       "TextCaptureAccepted": {
@@ -5208,6 +5332,213 @@
           }
         },
         "summary": "Update Profile",
+        "tags": [
+          "profile"
+        ]
+      }
+    },
+    "/api/profile/avatar": {
+      "delete": {
+        "operationId": "delete_avatar_api_profile_avatar_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Delete Avatar",
+        "tags": [
+          "profile"
+        ]
+      },
+      "get": {
+        "operationId": "read_avatar_api_profile_avatar_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "未设置头像"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Read Avatar",
+        "tags": [
+          "profile"
+        ]
+      },
+      "put": {
+        "operationId": "put_avatar_api_profile_avatar_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "头像超过 2MB"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Put Avatar",
         "tags": [
           "profile"
         ]
@@ -10157,6 +10488,251 @@
           }
         },
         "summary": "Test Llm Provider",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/providers/tencent-asr": {
+      "get": {
+        "operationId": "get_tencent_asr_provider_api_settings_providers_tencent_asr_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TencentAsrProviderStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Tencent Asr Provider",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "put_tencent_asr_provider_api_settings_providers_tencent_asr_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TencentAsrProviderUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TencentAsrProviderStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Put Tencent Asr Provider",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/providers/tencent-asr/tests": {
+      "post": {
+        "operationId": "test_tencent_asr_provider_api_settings_providers_tencent_asr_tests_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TencentAsrTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Test Tencent Asr Provider",
         "tags": [
           "settings"
         ]

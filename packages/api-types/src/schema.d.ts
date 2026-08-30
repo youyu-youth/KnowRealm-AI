@@ -270,6 +270,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Avatar */
+        get: operations["read_avatar_api_profile_avatar_get"];
+        /** Put Avatar */
+        put: operations["put_avatar_api_profile_avatar_put"];
+        post?: never;
+        /** Delete Avatar */
+        delete: operations["delete_avatar_api_profile_avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recording-sessions": {
         parameters: {
             query?: never;
@@ -911,6 +930,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/providers/tencent-asr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Tencent Asr Provider */
+        get: operations["get_tencent_asr_provider_api_settings_providers_tencent_asr_get"];
+        /** Put Tencent Asr Provider */
+        put: operations["put_tencent_asr_provider_api_settings_providers_tencent_asr_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/providers/tencent-asr/tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Tencent Asr Provider */
+        post: operations["test_tencent_asr_provider_api_settings_providers_tencent_asr_tests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/text-captures": {
         parameters: {
             query?: never;
@@ -1536,7 +1590,7 @@ export interface components {
         ProcessingJobWaitingReason: "CONSENT_REQUIRED" | "ASR_KEY_REQUIRED" | "OFFLINE";
         /**
          * ProfileOut
-         * @description 档案读取/保存结果，只暴露角色与自我介绍；未建档时字段均为 None（空档案语义）。
+         * @description 档案读取/保存结果，只暴露昵称、角色与自我介绍；未建档时字段均为 None（空档案语义）。
          */
         ProfileOut: {
             /**
@@ -1544,6 +1598,11 @@ export interface components {
              * @description 自我介绍，未建档为空
              */
             about_me?: string | null;
+            /**
+             * Nickname
+             * @description 昵称，未设置为空
+             */
+            nickname?: string | null;
             /** @description 用户角色，未建档为空 */
             primary_role?: components["schemas"]["PrimaryRole"] | null;
         };
@@ -1554,6 +1613,11 @@ export interface components {
              * @description 自我介绍，≤200 字，空白视为未填写
              */
             about_me?: string | null;
+            /**
+             * Nickname
+             * @description 昵称，≤20 字，空白视为未填写
+             */
+            nickname?: string | null;
             /** @description 角色四选一 */
             primary_role: components["schemas"]["PrimaryRole"];
         };
@@ -1862,6 +1926,46 @@ export interface components {
              * @description 章节分点
              */
             points: string[];
+        };
+        /** TencentAsrProviderOut */
+        TencentAsrProviderOut: {
+            /** Has Credentials */
+            has_credentials: boolean;
+            /** Region */
+            region: string;
+            /** Secret Id Hint */
+            secret_id_hint: string | null;
+        };
+        /** TencentAsrProviderStateOut */
+        TencentAsrProviderStateOut: {
+            provider: components["schemas"]["TencentAsrProviderOut"] | null;
+        };
+        /** TencentAsrProviderUpdate */
+        TencentAsrProviderUpdate: {
+            /**
+             * Clear Secret Key
+             * @default false
+             */
+            clear_secret_key: boolean;
+            /** Region */
+            region: string;
+            /**
+             * Secret Id
+             * @default
+             */
+            secret_id: string;
+            /**
+             * Secret Key
+             * @default
+             */
+            secret_key: string;
+        };
+        /** TencentAsrTestOut */
+        TencentAsrTestOut: {
+            /** Ok */
+            ok: boolean;
+            /** Region */
+            region: string;
         };
         /** TextCaptureAccepted */
         TextCaptureAccepted: {
@@ -3540,6 +3644,167 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ProfileOut"];
                 };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_avatar_api_profile_avatar_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未设置头像 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_avatar_api_profile_avatar_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 头像超过 2MB */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_avatar_api_profile_avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Forbidden */
             403: {
@@ -6863,6 +7128,184 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmProviderTestOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_tencent_asr_provider_api_settings_providers_tencent_asr_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TencentAsrProviderStateOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_tencent_asr_provider_api_settings_providers_tencent_asr_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TencentAsrProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TencentAsrProviderStateOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_tencent_asr_provider_api_settings_providers_tencent_asr_tests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TencentAsrTestOut"];
                 };
             };
             /** @description Forbidden */

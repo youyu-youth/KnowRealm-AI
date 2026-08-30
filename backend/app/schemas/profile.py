@@ -11,21 +11,34 @@ class PrimaryRole(StrEnum):
 
 
 class ProfileOut(BaseModel):
-    """档案读取/保存结果，只暴露角色与自我介绍；未建档时字段均为 None（空档案语义）。"""
+    """档案读取/保存结果，只暴露昵称、角色与自我介绍；未建档时字段均为 None（空档案语义）。"""
 
     model_config = ConfigDict(from_attributes=True)
 
+    nickname: str | None = Field(default=None, description="昵称，未设置为空")
     primary_role: PrimaryRole | None = Field(default=None, description="用户角色，未建档为空")
     about_me: str | None = Field(default=None, description="自我介绍，未建档为空")
 
 
 class ProfileUpdate(BaseModel):
     primary_role: PrimaryRole = Field(description="角色四选一")
+    nickname: str | None = Field(
+        default=None,
+        max_length=20,
+        description="昵称，≤20 字，空白视为未填写",
+    )
     about_me: str | None = Field(
         default=None,
         max_length=200,
         description="自我介绍，≤200 字，空白视为未填写",
     )
+
+    @field_validator("nickname")
+    @classmethod
+    def clean_nickname(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
     @field_validator("about_me")
     @classmethod
