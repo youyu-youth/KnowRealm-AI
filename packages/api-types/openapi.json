@@ -808,6 +808,46 @@
         "title": "CourseUpdate",
         "type": "object"
       },
+      "DataDirectoryExportOut": {
+        "properties": {
+          "file_name": {
+            "title": "File Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_name"
+        ],
+        "title": "DataDirectoryExportOut",
+        "type": "object"
+      },
+      "DataDirectoryExportRequest": {
+        "description": "全量导出请求；include_secrets=true 时 providers.json 明文随包。",
+        "properties": {
+          "include_secrets": {
+            "default": false,
+            "description": "是否包含 config/providers.json",
+            "title": "Include Secrets",
+            "type": "boolean"
+          }
+        },
+        "title": "DataDirectoryExportRequest",
+        "type": "object"
+      },
+      "DataDirectoryLibraryStateOut": {
+        "description": "空库判定（无课程+无记录+无档案）：空库时设置页可见导入兜底入口。",
+        "properties": {
+          "empty_library": {
+            "title": "Empty Library",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "empty_library"
+        ],
+        "title": "DataDirectoryLibraryStateOut",
+        "type": "object"
+      },
       "DocumentImportAccepted": {
         "properties": {
           "job_id": {
@@ -9767,6 +9807,174 @@
         "summary": "Upgrade Record",
         "tags": [
           "records"
+        ]
+      }
+    },
+    "/api/settings/data-directory/export": {
+      "post": {
+        "operationId": "export_data_directory_api_settings_data_directory_export_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataDirectoryExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataDirectoryExportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Export Data Directory",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/data-directory/library-state": {
+      "get": {
+        "operationId": "get_data_directory_library_state_api_settings_data_directory_library_state_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataDirectoryLibraryStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Data Directory Library State",
+        "tags": [
+          "settings"
         ]
       }
     },

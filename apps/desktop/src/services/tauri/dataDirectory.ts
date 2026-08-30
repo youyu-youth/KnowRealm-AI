@@ -19,6 +19,19 @@ export function chooseDataDirectory(title: string): Promise<string | null> {
   return open({ directory: true, multiple: false, title });
 }
 
+export function chooseImportArchive(title: string): Promise<string | null> {
+  return open({
+    multiple: false,
+    title,
+    filters: [{ name: "KnowRealm 导出包", extensions: ["zip"] }],
+  });
+}
+
+// 记录导入意图并停 sidecar；重启（dev 手动 / 生产 relaunch）后壳带 --import-archive 拉起。
+export function importFromArchive(archivePath: string): Promise<void> {
+  return invoke("import_from_archive", { archivePath });
+}
+
 export type MigrationProgress = {
   copiedBytes: number;
   totalBytes: number;

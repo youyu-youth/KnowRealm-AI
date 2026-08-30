@@ -72,7 +72,10 @@ class DocumentImportService:
         record_id, file_id, job_id = (str(uuid4()) for _ in range(3))
         target_dir = data_dir / "files" / record_id
         target_dir.mkdir(parents=True)
-        temporary_path = target_dir / f".{file_id}.tmp"
+        # 临时文件落 cache/（与音频导入同约定）：files/ 只接收 os.replace 的完整文件，
+        # 全量导出遍历 files/ 时无部分写入竞态。
+        temporary_path = data_dir / "cache" / "imports" / f"{file_id}.tmp"
+        temporary_path.parent.mkdir(parents=True, exist_ok=True)
         final_path = target_dir / f"{file_id}{extension}"
         try:
             file_size, content_hash = await asyncio.to_thread(

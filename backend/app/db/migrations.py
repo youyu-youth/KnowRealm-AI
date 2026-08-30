@@ -7,7 +7,7 @@ import aiosqlite
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
 
 
-async def run_migrations(db_path: Path) -> None:
+def _discover_migrations() -> list[tuple[int, Path]]:
     migrations: list[tuple[int, Path]] = []
     for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
         match = fullmatch(r"(\d{4})_[a-z0-9_]+\.sql", path.name)
@@ -18,6 +18,16 @@ async def run_migrations(db_path: Path) -> None:
     expected_versions = list(range(1, len(migrations) + 1))
     if [version for version, _ in migrations] != expected_versions:
         raise RuntimeError("迁移编号必须从 0001 连续递增")
+    return migrations
+
+
+def supported_user_version() -> int:
+    """当前 sidecar 支持的最高 db user_version；导入校验与 run_migrations 共用发现逻辑。"""
+    return len(_discover_migrations())
+
+
+async def run_migrations(db_path: Path) -> None:
+    migrations = _discover_migrations()
 
     async with aiosqlite.connect(db_path) as connection:
         await connection.execute("PRAGMA foreign_keys=ON")

@@ -1,5 +1,7 @@
 import asyncio
+import os
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,7 +62,11 @@ class ProfileService:
             for other in AVATAR_EXTENSIONS:
                 if other != ext:
                     (files_dir / f"avatar.{other}").unlink(missing_ok=True)
-            (files_dir / f"avatar.{ext}").write_bytes(content)
+            # 先写 cache/ 临时文件再原子替换：files/ 不出现部分写入（导出遍历无竞态）。
+            temporary = data_dir / "cache" / "imports" / f"avatar-{uuid4().hex}.tmp"
+            temporary.parent.mkdir(parents=True, exist_ok=True)
+            temporary.write_bytes(content)
+            os.replace(temporary, files_dir / f"avatar.{ext}")
 
         await asyncio.to_thread(_write_file)
         relative = f"files/avatar.{ext}"

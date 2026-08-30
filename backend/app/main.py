@@ -43,9 +43,11 @@ from app.api import (
 )
 from app.api.deps import require_launch_token
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
+from app.core.version import APP_VERSION
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.schemas.course import ErrorResponse
+from app.services.archive_service import create_rolling_backup, restore_archive
 from app.services.audio_worker import audio_spec
 from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.chat_message_service import ChatStreamRegistry
@@ -76,6 +78,7 @@ def create_app(
     knowledge_point_model: KnowledgePointModel | None = None,
     quiz_model: QuizModel | None = None,
     todo_model: TodoModel | None = None,
+    import_archive: Path | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
     record_notifier = RecordInvalidationNotifier()
@@ -84,12 +87,18 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         resolved_data_dir = data_dir.expanduser().resolve()
-        resolved_data_dir.mkdir(parents=True, exist_ok=True)
+        ensure_data_dir(resolved_data_dir)
+        # 导入落位必须在目录锁与开库之前：校验拒绝时数据目录仍是原样。
+        if import_archive is not None:
+            await restore_archive(resolved_data_dir, import_archive)
         data_directory_lock = DataDirectoryLock.acquire(resolved_data_dir)
         try:
-            ensure_data_dir(resolved_data_dir)
             db_path = resolved_data_dir / "knowrealm.db"
             await run_migrations(db_path)
+            try:
+                await create_rolling_backup(db_path, resolved_data_dir / "backups")
+            except Exception:
+                logger.error("rolling_backup_failed", error_code="ROLLING_BACKUP_FAILED")
             engine, session_factory = create_database(db_path)
             app.state.session_factory = session_factory
             app.state.data_dir = resolved_data_dir
@@ -228,7 +237,7 @@ def create_app(
 
     app = FastAPI(
         title="KnowRealm API",
-        version="0.1.0",
+        version=APP_VERSION,
         openapi_url="/api/openapi.json",
         lifespan=lifespan,
     )

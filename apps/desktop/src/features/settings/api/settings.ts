@@ -55,4 +55,16 @@ export const settingsApi = {
       "/api/settings/preferences",
       { method: "PUT", body: JSON.stringify(body) },
     ),
+  getLibraryState: () =>
+    apiFetch<components["schemas"]["DataDirectoryLibraryStateOut"]>(
+      "/api/settings/data-directory/library-state",
+    ),
+  exportDataDirectory: (includeSecrets: boolean) =>
+    apiFetch<components["schemas"]["DataDirectoryExportOut"]>(
+      "/api/settings/data-directory/export",
+      {
+        method: "POST",
+        body: JSON.stringify({ include_secrets: includeSecrets }),
+      },
+    ),
 };

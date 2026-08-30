@@ -18,6 +18,7 @@ use std::os::windows::process::CommandExt;
 
 use crate::data_migration;
 use crate::desktop_config;
+use crate::pending_import;
 
 const LOOPBACK: &str = "127.0.0.1";
 const PORT_MARKER: &str = "KNOWREALM_SIDECAR_PORT=";
@@ -47,7 +48,19 @@ pub fn launch_token() -> io::Result<String> {
 
 pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
     let token = launch_token()?;
-    let data_dir = resolve_desktop_config(app)?.1.data_dir;
+    let (config_dir, config) = resolve_desktop_config(app)?;
+    let data_dir = config.data_dir;
+    // 一次性消费待导入意图：文件删除先于 sidecar 拉起，导入失败不会循环重试。
+    let mut import_archive = pending_import::take(&config_dir).map(|pending| pending.archive);
+    if let Some(archive) = &import_archive
+        && !archive.is_file()
+    {
+        eprintln!(
+            "pending import archive is missing, starting normally: {}",
+            archive.display()
+        );
+        import_archive = None;
+    }
     let ffmpeg = ffmpeg_program()?;
     if !ffmpeg.is_file() {
         return Err(Box::new(io::Error::new(
@@ -56,7 +69,7 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         )));
     }
     let (program, working_dir) = sidecar_program()?;
-    let args = [
+    let mut args = vec![
         OsString::from("-m"),
         OsString::from("app.server"),
         OsString::from("--port"),
@@ -68,6 +81,10 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         OsString::from("--ffmpeg"),
         ffmpeg.into_os_string(),
     ];
+    if let Some(archive) = import_archive {
+        args.push(OsString::from("--import-archive"));
+        args.push(archive.into_os_string());
+    }
     let mut command = Command::new(program);
     command
         .current_dir(working_dir)
@@ -261,6 +278,26 @@ pub fn open_data_directory(app: AppHandle, state: State<'_, SidecarState>) -> Re
     app.opener()
         .open_path(state.data_dir.to_string_lossy(), None::<&str>)
         .map_err(|error| error.to_string())
+}
+
+/// 记录导入意图并停 sidecar（释放数据目录锁）；重启由前端触发（同迁移流程）。
+/// 新进程启动时 sidecar::start 消费 pending-import.json 并带 --import-archive 拉起。
+#[tauri::command]
+pub fn import_from_archive(
+    app: AppHandle,
+    state: State<'_, SidecarState>,
+    archive_path: PathBuf,
+) -> Result<(), String> {
+    if !archive_path.is_file() {
+        return Err(format!("导出包不存在：{}", archive_path.display()));
+    }
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())?;
+    pending_import::write(&config_dir, &archive_path).map_err(|error| error.to_string())?;
+    state.stop();
+    Ok(())
 }
 
 /// 停止 sidecar → 同盘 rename / 跨盘 copy+删源（进度事件）→ 写回 desktop.json。

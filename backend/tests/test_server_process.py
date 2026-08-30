@@ -28,6 +28,7 @@ def start_sidecar(
     empty_path: bool = False,
     asr_control: Path | None = None,
     fake_summary: bool = False,
+    import_archive: Path | None = None,
 ) -> subprocess.Popen[bytes]:
     if asr_control is not None and ffmpeg_path is None:
         ffmpeg_path = (
@@ -61,6 +62,8 @@ def start_sidecar(
         "--ffmpeg",
         resolved_ffmpeg,
     ]
+    if import_archive is not None:
+        command.extend(["--import-archive", str(import_archive)])
     if asr_control is not None:
         command.extend(["--asr-control", str(asr_control)])
     if fake_summary:
@@ -1058,3 +1061,82 @@ def test_real_process_inbox_classify_and_upgrade_over_real_socket(tmp_path: Path
             assert doc_id not in inbox_ids
     finally:
         stop_process_tree(process)
+
+
+def test_real_process_export_then_import_archive_restores_data(tmp_path: Path) -> None:
+    source = tmp_path / "Source"
+    config = source / "config"
+    config.mkdir(parents=True)
+    provider = {
+        "llm": {"base_url": "https://example.com/v1", "api_key": "sk-x", "model": "qwen-plus"}
+    }
+    (config / "providers.json").write_text(json.dumps(provider), encoding="utf-8")
+    token = secrets.token_urlsafe(32)
+    process = start_sidecar(source, token)
+    course_id = ""
+    archive = source / "exports" / "missing.zip"
+    try:
+        base_url, _ = wait_for_sidecar(process, token)
+        with httpx.Client(
+            base_url=base_url,
+            headers={"X-KnowRealm-Token": token},
+            trust_env=False,
+        ) as client:
+            course_id = client.post(
+                "/api/courses",
+                json={
+                    "name": "真实导出导入课程",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+            ).json()["id"]
+            exported = client.post(
+                "/api/settings/data-directory/export",
+                json={"include_secrets": True},
+            )
+            assert exported.status_code == 200, exported.text
+            archive = source / "exports" / exported.json()["file_name"]
+    finally:
+        stop_process_tree(process)
+
+    assert archive.is_file()
+    target = tmp_path / "Target"
+    import_token = secrets.token_urlsafe(32)
+    imported = start_sidecar(target, import_token, import_archive=archive)
+    try:
+        import_url, _ = wait_for_sidecar(imported, import_token)
+        with httpx.Client(
+            base_url=import_url,
+            headers={"X-KnowRealm-Token": import_token},
+            trust_env=False,
+        ) as client:
+            restored = client.get(f"/api/courses/{course_id}")
+            assert restored.status_code == 200, restored.text
+            assert restored.json()["name"] == "真实导出导入课程"
+            assert client.get("/api/settings/data-directory/library-state").json() == {
+                "empty_library": False
+            }
+    finally:
+        stop_process_tree(imported)
+
+    assert json.loads((target / "config" / "providers.json").read_text(encoding="utf-8"))[
+        "llm"
+    ]["api_key"] == "sk-x"
+
+
+def test_real_process_import_archive_rejection_exits_without_residue(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    bad = tmp_path / "bad.zip"
+    bad.write_text("not a zip", encoding="utf-8")
+    token = secrets.token_urlsafe(32)
+    process = start_sidecar(data_dir, token, import_archive=bad)
+    try:
+        _, stderr = process.communicate(timeout=20)
+        assert process.returncode != 0
+        assert "IMPORT_ARCHIVE_INVALID" in stderr.decode(errors="replace")
+    finally:
+        if process.poll() is None:
+            stop_process_tree(process)
+
+    assert not (data_dir / "knowrealm.db").exists()
+    assert not (data_dir / "cache" / "import-archive").exists()

@@ -11,17 +11,25 @@ const {
   openDataDirectory,
   changeDataDirectory,
   chooseDataDirectory,
+  chooseImportArchive,
+  importFromArchive,
   listenMigrationProgress,
   relaunchApplication,
   exitApplication,
+  getLibraryState,
+  exportDataDirectory,
 } = vi.hoisted(() => ({
   getDataDirectory: vi.fn(),
   openDataDirectory: vi.fn(),
   changeDataDirectory: vi.fn(),
   chooseDataDirectory: vi.fn(),
+  chooseImportArchive: vi.fn(),
+  importFromArchive: vi.fn(),
   listenMigrationProgress: vi.fn(),
   relaunchApplication: vi.fn(),
   exitApplication: vi.fn(),
+  getLibraryState: vi.fn(),
+  exportDataDirectory: vi.fn(),
 }));
 
 vi.mock("@/services/tauri/dataDirectory", () => ({
@@ -29,7 +37,16 @@ vi.mock("@/services/tauri/dataDirectory", () => ({
   openDataDirectory,
   changeDataDirectory,
   chooseDataDirectory,
+  chooseImportArchive,
+  importFromArchive,
   listenMigrationProgress,
+}));
+
+vi.mock("@/features/settings/api/settings", () => ({
+  settingsApi: {
+    getLibraryState,
+    exportDataDirectory,
+  },
 }));
 
 vi.mock("@/services/tauri/lifecycle", () => ({
@@ -65,11 +82,16 @@ describe("DataDirectorySection", () => {
     openDataDirectory.mockReset();
     changeDataDirectory.mockReset();
     chooseDataDirectory.mockReset();
+    chooseImportArchive.mockReset();
+    importFromArchive.mockReset();
     listenMigrationProgress.mockReset();
     relaunchApplication.mockReset();
     exitApplication.mockReset();
+    getLibraryState.mockReset();
+    exportDataDirectory.mockReset();
     listenMigrationProgress.mockResolvedValue(() => {});
     getDataDirectory.mockResolvedValue("C:\\Users\\tester\\KnowRealm");
+    getLibraryState.mockResolvedValue({ empty_library: false });
   });
 
   it("展示当前数据目录并通过系统资源管理器打开", async () => {
@@ -214,5 +236,160 @@ describe("DataDirectorySection", () => {
     expect(alerts[0]).toHaveTextContent("数据迁移失败，原数据未受影响");
     expect(alerts[0]).toHaveTextContent("os error 5");
     expect(relaunchApplication).not.toHaveBeenCalled();
+  });
+
+  it("全量导出默认不含密钥，成功后展示导出文件名", async () => {
+    exportDataDirectory.mockResolvedValue({
+      file_name: "knowrealm-export-20260830-120000.zip",
+    });
+
+    renderSection();
+    fireEvent.click(await screen.findByRole("button", { name: "全量导出" }));
+    expect(exportDataDirectory).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "开始导出" }));
+
+    await waitFor(() =>
+      expect(exportDataDirectory).toHaveBeenCalledWith(false),
+    );
+    expect(
+      await screen.findByText(
+        "已导出：knowrealm-export-20260830-120000.zip（位于数据目录的 exports 文件夹，可通过“打开数据目录”找到）",
+      ),
+    ).toBeInTheDocument();
+    expect(getLibraryState).toHaveBeenCalled();
+  });
+
+  it("勾选包含密钥时明示明文风险并按勾选导出", async () => {
+    exportDataDirectory.mockResolvedValue({
+      file_name: "knowrealm-export-20260830-120001.zip",
+    });
+
+    renderSection();
+    fireEvent.click(await screen.findByRole("button", { name: "全量导出" }));
+    expect(screen.queryByText(/明文写入导出包/)).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "包含供应商密钥（providers.json）",
+      }),
+    );
+    expect(screen.getByText(/明文写入导出包/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "开始导出" }));
+
+    await waitFor(() => expect(exportDataDirectory).toHaveBeenCalledWith(true));
+  });
+
+  it("导出进行中弹窗遮罩防重复触发", async () => {
+    exportDataDirectory.mockReturnValue(new Promise(() => {}));
+
+    renderSection();
+    fireEvent.click(await screen.findByRole("button", { name: "全量导出" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始导出" }));
+
+    expect(await screen.findByText("正在导出…")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "开始导出" }),
+    ).not.toBeInTheDocument();
+    expect(exportDataDirectory).toHaveBeenCalledOnce();
+  });
+
+  it("导出失败展示错误可关闭", async () => {
+    exportDataDirectory.mockRejectedValue(new Error("磁盘已满"));
+
+    renderSection();
+    fireEvent.click(await screen.findByRole("button", { name: "全量导出" }));
+    fireEvent.click(screen.getByRole("button", { name: "开始导出" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("磁盘已满");
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("非空库隐藏导入入口", async () => {
+    getLibraryState.mockResolvedValue({ empty_library: false });
+
+    renderSection();
+    await screen.findByDisplayValue("C:\\Users\\tester\\KnowRealm");
+
+    expect(
+      screen.queryByRole("button", { name: "从导出包导入" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("空库展示导入入口：确认后触发导入并重启（生产构建）", async () => {
+    vi.stubEnv("DEV", false);
+    getLibraryState.mockResolvedValue({ empty_library: true });
+    chooseImportArchive.mockResolvedValue("D:\\backup\\knowrealm-export.zip");
+    importFromArchive.mockResolvedValue(undefined);
+    relaunchApplication.mockResolvedValue(undefined);
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "从导出包导入" }),
+    );
+    expect(
+      await screen.findByText(
+        "导入在应用重启后执行；进行中的任务会自动继续，无需手动处理。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("D:\\backup\\knowrealm-export.zip"),
+    ).toHaveAttribute("readonly");
+
+    fireEvent.click(screen.getByRole("button", { name: "导入并重启" }));
+
+    await waitFor(() =>
+      expect(importFromArchive).toHaveBeenCalledWith(
+        "D:\\backup\\knowrealm-export.zip",
+      ),
+    );
+    await waitFor(() => expect(relaunchApplication).toHaveBeenCalledOnce());
+  });
+
+  it("导入命令失败（校验在停 sidecar 之前）展示错误且不重启，可重试", async () => {
+    getLibraryState.mockResolvedValue({ empty_library: true });
+    chooseImportArchive.mockResolvedValue("D:\\gone.zip");
+    importFromArchive.mockRejectedValue("导出包不存在：D:\\gone.zip");
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "从导出包导入" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "导入并重启" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("导出包不存在");
+    expect(alert).toHaveTextContent("导入未执行，应用仍在运行");
+    expect(relaunchApplication).not.toHaveBeenCalled();
+  });
+
+  it("开发构建导入就绪后不自动重启：弹窗唯一按钮退出应用", async () => {
+    getLibraryState.mockResolvedValue({ empty_library: true });
+    chooseImportArchive.mockResolvedValue("D:\\backup\\export.zip");
+    importFromArchive.mockResolvedValue(undefined);
+    exitApplication.mockResolvedValue(undefined);
+
+    renderSection();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "从导出包导入" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "导入并重启" }));
+
+    expect(
+      await screen.findByText(
+        "导入已就绪。当前为开发模式，已跳过自动重启——请停止 tauri dev 后重新启动应用，导入将在启动时自动完成。",
+      ),
+    ).toBeInTheDocument();
+    expect(relaunchApplication).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "关闭" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "退出应用" }));
+    await waitFor(() => expect(exitApplication).toHaveBeenCalledOnce());
   });
 });

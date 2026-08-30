@@ -841,6 +841,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/data-directory/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Export Data Directory */
+        post: operations["export_data_directory_api_settings_data_directory_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/data-directory/library-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Data Directory Library State */
+        get: operations["get_data_directory_library_state_api_settings_data_directory_library_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/external-processing-consents/llm": {
         parameters: {
             query?: never;
@@ -1295,6 +1329,31 @@ export interface components {
              * @description 课程名称
              */
             name?: string | null;
+        };
+        /** DataDirectoryExportOut */
+        DataDirectoryExportOut: {
+            /** File Name */
+            file_name: string;
+        };
+        /**
+         * DataDirectoryExportRequest
+         * @description 全量导出请求；include_secrets=true 时 providers.json 明文随包。
+         */
+        DataDirectoryExportRequest: {
+            /**
+             * Include Secrets
+             * @description 是否包含 config/providers.json
+             * @default false
+             */
+            include_secrets: boolean;
+        };
+        /**
+         * DataDirectoryLibraryStateOut
+         * @description 空库判定（无课程+无记录+无档案）：空库时设置页可见导入兜底入口。
+         */
+        DataDirectoryLibraryStateOut: {
+            /** Empty Library */
+            empty_library: boolean;
         };
         /** DocumentImportAccepted */
         DocumentImportAccepted: {
@@ -6602,6 +6661,126 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    export_data_directory_api_settings_data_directory_export_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataDirectoryExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataDirectoryExportOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_data_directory_library_state_api_settings_data_directory_library_state_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataDirectoryLibraryStateOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
