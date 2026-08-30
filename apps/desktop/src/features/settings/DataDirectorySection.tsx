@@ -89,6 +89,12 @@ export function DataDirectorySection() {
       });
       return;
     }
+    // 开发构建不自动 relaunch：relaunch 出的进程会脱离 tauri CLI，
+    // CLI 退出连带杀掉 vite dev server，WebView 加载 devUrl 失败将一直白屏。
+    if (import.meta.env.DEV) {
+      setChangeState({ phase: "manualRestart", target });
+      return;
+    }
     setChangeState({ phase: "relaunching", target });
     try {
       await relaunchApplication();

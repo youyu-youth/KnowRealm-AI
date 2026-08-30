@@ -57,6 +57,7 @@ async function confirmAndFailWith(rejection: string) {
 
 describe("DataDirectorySection", () => {
   beforeEach(() => {
+    vi.unstubAllEnvs();
     getDataDirectory.mockReset();
     openDataDirectory.mockReset();
     changeDataDirectory.mockReset();
@@ -115,7 +116,8 @@ describe("DataDirectorySection", () => {
     expect(changeDataDirectory).not.toHaveBeenCalled();
   });
 
-  it("确认后调用迁移命令，成功后触发应用重启", async () => {
+  it("确认后调用迁移命令，生产构建自动重启应用", async () => {
+    vi.stubEnv("DEV", false);
     changeDataDirectory.mockResolvedValue(undefined);
     relaunchApplication.mockResolvedValue(undefined);
 
@@ -130,6 +132,28 @@ describe("DataDirectorySection", () => {
     expect(
       await screen.findByText("迁移完成，正在重启应用…"),
     ).toBeInTheDocument();
+  });
+
+  it("开发构建不自动重启，提示手动重启后可关闭弹窗", async () => {
+    changeDataDirectory.mockResolvedValue(undefined);
+
+    renderSection();
+    await openConfirmDialog();
+    fireEvent.click(screen.getByRole("button", { name: "确认并迁移" }));
+
+    expect(
+      await screen.findByText(
+        "迁移完成。当前为开发模式，已跳过自动重启——请停止 tauri dev 后重新启动应用，即可使用新数据目录。",
+      ),
+    ).toBeInTheDocument();
+    expect(relaunchApplication).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "关闭" }),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("迁移中展示进度事件百分比且无法重复确认", async () => {

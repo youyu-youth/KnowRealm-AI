@@ -18,6 +18,7 @@ import type { MigrationErrorCopy } from "./migrationErrorCopy";
 export type ChangeDialogState =
   | { phase: "confirm"; target: string }
   | { phase: "migrating"; target: string }
+  | { phase: "manualRestart"; target: string }
   | { phase: "relaunching"; target: string }
   | { phase: "failed"; target: string; error: MigrationErrorCopy };
 
@@ -35,7 +36,10 @@ export function DataDirectoryChangeDialog({
   onDismiss,
 }: Props) {
   const { t } = useTranslation();
-  const dismissible = state.phase === "confirm" || state.phase === "failed";
+  const dismissible =
+    state.phase === "confirm" ||
+    state.phase === "failed" ||
+    state.phase === "manualRestart";
   const percent =
     progress !== null && progress.totalBytes > 0
       ? Math.min(
@@ -108,6 +112,23 @@ export function DataDirectoryChangeDialog({
                   ? t("settings.dataDirectory.migratingProgress", { percent })
                   : t("settings.dataDirectory.migrating")}
             </p>
+          </>
+        ) : null}
+        {state.phase === "manualRestart" ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {t("settings.dataDirectory.changeTitle")}
+              </DialogTitle>
+            </DialogHeader>
+            <p role="status" className="text-body text-muted-foreground">
+              {t("settings.dataDirectory.manualRestart")}
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={onDismiss}>
+                {t("settings.dataDirectory.close")}
+              </Button>
+            </DialogFooter>
           </>
         ) : null}
         {state.phase === "failed" ? (
