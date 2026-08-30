@@ -62,7 +62,7 @@
 - 用户级供应商密钥存于数据目录 `config/providers.json`，偏好存于 `config/settings.json`，均由 sidecar 运行时读写；数据目录、端口和启动令牌由 Tauri 壳通过启动参数注入，不进入 `.env`。
 - 取值有限的配置使用 `Literal` 等类型约束。
 - engine/session factory、LangGraph checkpointer、迁移和 worker 的创建与销毁统一放在 FastAPI `lifespan`；不得新增 `@app.on_event`。
-- lifespan 启动顺序：解析数据目录 → 获取进程生命周期 OS 排他锁 → 执行迁移 → 创建共享资源 → 启动 worker。拿锁失败必须在迁移、备份和 worker 前退出；退出时先停止 worker、释放 engine 等资源，再释放目录锁。不得只用可能残留的 sentinel 文件判断占用。
+- lifespan 启动顺序：解析数据目录 → 获取进程生命周期 OS 排他锁 → 执行迁移 → 创建共享资源 → 启动 worker。拿锁失败必须在迁移、备份和 worker 前退出；退出时先停止 worker、释放 engine 等资源，再释放目录锁。不得只用可能残留的 sentinel 文件判断占用。唯一例外：`--import-archive` 导入落位在 ensure_data_dir 之后、目录锁与开库之前执行（工单 05/ADR-0013），校验拒绝时数据目录保持原样。
 
 ## 8. 测试与质量门禁
 
