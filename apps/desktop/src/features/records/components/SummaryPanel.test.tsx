@@ -21,7 +21,6 @@ const SUMMARY_JOBS_URL = `${DETAIL_URL}/summary-jobs`;
 const SUMMARY_ADJUST_URL = `${DETAIL_URL}/summary-adjustments`;
 const SUMMARY_CONFIRM_URL = `${DETAIL_URL}/summary-confirmations`;
 const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
-const LLM_TEST_URL = `${LLM_PROVIDER_URL}/tests`;
 const LLM_CONSENT_URL = `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/llm`;
 
 const record: RecordOut = {
@@ -59,86 +58,25 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("SummaryPanel", () => {
-  it("配置 Provider 时不回显密钥，保存后可测试连接再继续", async () => {
-    let savedProvider: components["schemas"]["LlmProviderOut"] | null = null;
-    let savedBody: components["schemas"]["LlmProviderUpdate"] | null = null;
+  it("未配置 Provider 时展示跳设置页的引导卡，无就地配置表单", async () => {
     server.use(
       http.get(SUMMARY_URL, () =>
         HttpResponse.json({
-          action_required: savedProvider
-            ? "GRANT_CONSENT"
-            : "CONFIGURE_PROVIDER",
+          action_required: "CONFIGURE_PROVIDER",
           active_job_id: null,
           blocked_reason: null,
           summary: null,
         }),
       ),
-      http.get(LLM_PROVIDER_URL, () =>
-        HttpResponse.json({ provider: savedProvider }),
-      ),
-      http.put(LLM_PROVIDER_URL, async ({ request }) => {
-        const body: unknown = await request.json();
-        if (
-          typeof body !== "object" ||
-          body === null ||
-          !("base_url" in body) ||
-          typeof body.base_url !== "string" ||
-          !("model" in body) ||
-          typeof body.model !== "string" ||
-          !("api_key" in body) ||
-          typeof body.api_key !== "string" ||
-          !("clear_api_key" in body) ||
-          typeof body.clear_api_key !== "boolean"
-        ) {
-          throw new Error("Provider 请求体不符合契约");
-        }
-        savedBody = {
-          base_url: body.base_url,
-          model: body.model,
-          api_key: body.api_key,
-          clear_api_key: body.clear_api_key,
-        };
-        savedProvider = {
-          base_url: savedBody.base_url,
-          model: savedBody.model,
-          has_api_key: true,
-          api_key_hint: "sk-…1234",
-        };
-        return HttpResponse.json({ provider: savedProvider });
-      }),
-      http.post(LLM_TEST_URL, () =>
-        HttpResponse.json({ ok: true, model: "qwen-plus" }),
-      ),
     );
     renderSummary();
 
     expect(
-      await screen.findByRole("heading", { name: "配置 AI Provider" }),
+      await screen.findByRole("heading", { name: "未配置 AI 服务" }),
     ).toBeVisible();
-    expect(screen.queryByDisplayValue(/sk-/)).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("API Key"), {
-      target: { value: "sk-secret-1234" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存 Provider" }));
-    await waitFor(() => expect(savedBody?.api_key).toBe("sk-secret-1234"));
-    expect(screen.getByLabelText("API Key")).toHaveValue("");
-    fireEvent.click(await screen.findByRole("button", { name: "测试连接" }));
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "连接测试成功（qwen-plus）",
-    );
-    fireEvent.change(screen.getByLabelText("模型"), {
-      target: { value: "qwen-max" },
-    });
-    await waitFor(() =>
-      expect(screen.queryByText(/连接测试成功/)).not.toBeInTheDocument(),
-    );
-    expect(screen.queryByRole("button", { name: "继续" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "保存 Provider" }));
-    await waitFor(() => expect(savedBody?.model).toBe("qwen-max"));
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
-    expect(
-      await screen.findByRole("heading", { name: "同意外部 AI 处理" }),
-    ).toBeVisible();
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存 Provider" })).toBeNull();
+    expect(screen.getByRole("button", { name: "前往设置" })).toBeVisible();
   });
 
   it("单独同意后生成，并通过 active Job 条件轮询恢复总结", async () => {

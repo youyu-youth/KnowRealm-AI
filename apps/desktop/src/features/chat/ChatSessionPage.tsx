@@ -5,12 +5,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
+import { ProviderSetupGuide } from "@/components/common/ProviderSetupGuide";
 import type { ChatMessage } from "@/features/chat/api/types";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
 import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ChatMessageList } from "@/features/chat/ChatMessageList";
-import { ChatProviderSetup } from "@/features/chat/ChatProviderSetup";
 import { ChatSessionList } from "@/features/chat/ChatSessionList";
 import { NewChatButton } from "@/features/chat/NewChatButton";
 import { settingsKeys } from "@/features/settings/api/keys";
@@ -146,9 +146,6 @@ export function ChatSessionPage() {
                   key={sessionId}
                   initialComposerValue={prompt}
                   providerReady={providerReady}
-                  providerHasApiKey={
-                    provider.data?.provider?.has_api_key ?? false
-                  }
                   recordDeleted={detail.data.record_deleted}
                   messages={messages}
                   stream={{
@@ -174,17 +171,15 @@ export function ChatSessionPage() {
 type ChatConversationProps = {
   initialComposerValue?: string;
   providerReady: boolean;
-  providerHasApiKey: boolean;
   recordDeleted: boolean;
   messages: UseQueryResult<ChatMessage[], Error>;
   stream: ReturnType<typeof useChatStream>;
 };
 
-/** 会话内容区：未配置供应商时显示就地配置卡，否则显示消息历史 + 输入区。 */
+/** 会话内容区：未配置供应商时显示跳设置页的引导卡，否则显示消息历史 + 输入区。 */
 function ChatConversation({
   initialComposerValue,
   providerReady,
-  providerHasApiKey,
   recordDeleted,
   messages,
   stream,
@@ -194,7 +189,7 @@ function ChatConversation({
   if (!providerReady) {
     return (
       <div className="flex min-h-0 flex-1 items-start overflow-y-auto pt-8">
-        <ChatProviderSetup hasApiKey={providerHasApiKey} />
+        <ProviderSetupGuide />
       </div>
     );
   }

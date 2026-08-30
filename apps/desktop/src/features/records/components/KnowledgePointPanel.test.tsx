@@ -194,8 +194,9 @@ describe("KnowledgePointPanel", () => {
       await screen.findByRole("button", { name: "前往 Summary" }),
     );
     expect(
-      await screen.findByRole("heading", { name: "配置 AI Provider" }),
+      await screen.findByRole("heading", { name: "未配置 AI 服务" }),
     ).toBeVisible();
+    expect(screen.getByRole("button", { name: "前往设置" })).toBeVisible();
   });
 
   it("知识点同意失效时可原地授权并恢复生成入口", async () => {

@@ -511,63 +511,24 @@ describe("自由聊天流式", () => {
     expect(await screen.findByText("好")).toBeVisible();
   });
 
-  it("未配置 AI 服务时展示空态配置卡，配置完成即可发送", async () => {
-    let configured = false;
+  it("未配置 AI 服务时展示跳设置页的引导卡，无就地配置表单", async () => {
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/settings/providers/llm`, () =>
-        HttpResponse.json(
-          configured
-            ? {
-                provider: {
-                  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                  model: "qwen-plus",
-                  has_api_key: true,
-                  api_key_hint: null,
-                },
-              }
-            : { provider: null },
-        ),
+        HttpResponse.json({ provider: null }),
       ),
-      http.put(`${TEST_SIDECAR_URL}/api/settings/providers/llm`, () => {
-        configured = true;
-        return HttpResponse.json({
-          provider: {
-            base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            model: "qwen-plus",
-            has_api_key: true,
-            api_key_hint: "sk-…test",
-          },
-        });
-      }),
     );
     useSessionPage();
 
     expect(
       await screen.findByRole("heading", { name: "未配置 AI 服务" }),
     ).toBeVisible();
-    // 未配置时没有发送入口。
+    // 未配置时没有发送入口，也没有就地配置表单。
     expect(
       screen.queryByRole("textbox", { name: "提问输入框" }),
     ).not.toBeInTheDocument();
-
-    fireEvent.change(await screen.findByLabelText("服务地址"), {
-      target: { value: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
-    });
-    fireEvent.change(await screen.findByLabelText("模型"), {
-      target: { value: "qwen-plus" },
-    });
-    fireEvent.change(await screen.findByLabelText("API 密钥"), {
-      target: { value: "sk-test" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存配置" }));
-
-    // 配置完成后查询失效重取，输入区出现。
-    expect(
-      await screen.findByRole("textbox", { name: "提问输入框" }),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("heading", { name: "未配置 AI 服务" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("服务地址")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API 密钥")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "前往设置" })).toBeVisible();
   });
 
   it("历史末尾存在未回复提问时展示中断说明与重新生成按钮", async () => {

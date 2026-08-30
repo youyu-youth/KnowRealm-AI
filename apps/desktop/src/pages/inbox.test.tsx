@@ -563,7 +563,7 @@ describe("收件箱归类与升级", () => {
     expect(window.location.search).toBe("");
     expect(bodies).toEqual([{ course_id: COURSE_ID }]);
     expect(
-      await screen.findByRole("heading", { name: "配置 AI Provider" }),
+      await screen.findByRole("heading", { name: "未配置 AI 服务" }),
     ).toBeVisible();
   });
 
@@ -626,7 +626,7 @@ describe("收件箱归类与升级", () => {
     fireEvent.click(screen.getByRole("button", { name: "归类并升级" }));
 
     expect(
-      await screen.findByRole("heading", { name: "配置 AI Provider" }),
+      await screen.findByRole("heading", { name: "未配置 AI 服务" }),
     ).toBeVisible();
     expect(bodies).toEqual([{ course_id: COURSE_ID }]);
     expect(screen.getByText("等待生成总结")).toBeVisible();

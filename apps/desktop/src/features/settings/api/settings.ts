@@ -21,6 +21,22 @@ export const settingsApi = {
       "/api/settings/providers/llm/tests",
       { method: "POST" },
     ),
+  getTencentAsrProvider: () =>
+    apiFetch<components["schemas"]["TencentAsrProviderStateOut"]>(
+      "/api/settings/providers/tencent-asr",
+    ),
+  updateTencentAsrProvider: (
+    body: components["schemas"]["TencentAsrProviderUpdate"],
+  ) =>
+    apiFetch<components["schemas"]["TencentAsrProviderStateOut"]>(
+      "/api/settings/providers/tencent-asr",
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  testTencentAsrProvider: () =>
+    apiFetch<components["schemas"]["TencentAsrTestOut"]>(
+      "/api/settings/providers/tencent-asr/tests",
+      { method: "POST" },
+    ),
   getLlmConsent: () =>
     apiFetch<components["schemas"]["LlmConsentOut"]>(
       "/api/settings/external-processing-consents/llm",

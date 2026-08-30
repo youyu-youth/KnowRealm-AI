@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
+import { ProviderSetupGuide } from "@/components/common/ProviderSetupGuide";
 import { ActiveCourseSelect } from "@/features/courses/components/ActiveCourseSelect";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
@@ -27,7 +28,6 @@ export function SummaryPanel({
     <>
       <SummaryProviderSettings
         showWhenMissing={record.status === "COMPLETED"}
-        onChanged={onRecordAssetsChanged}
       />
       <SummaryContent
         record={record}
@@ -39,13 +39,11 @@ export function SummaryPanel({
 
 function SummaryProviderSettings({
   showWhenMissing,
-  onChanged,
 }: {
   showWhenMissing: boolean;
-  onChanged: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
-  const [editing, setEditing] = useState(false);
+  const navigate = useNavigate();
   const provider = useQuery({
     queryKey: settingsKeys.llmProvider,
     queryFn: settingsApi.getLlmProvider,
@@ -53,22 +51,7 @@ function SummaryProviderSettings({
   const configured = provider.data?.provider;
 
   if (!configured?.has_api_key) {
-    return showWhenMissing ? (
-      <ProviderConfiguration onSaved={onChanged} />
-    ) : null;
-  }
-  if (editing) {
-    return (
-      <div className="border-border mb-8 border-b pb-8">
-        <ProviderConfiguration
-          onSaved={() => {
-            setEditing(false);
-            void onChanged();
-          }}
-          onCancel={() => setEditing(false)}
-        />
-      </div>
-    );
+    return showWhenMissing ? <ProviderSetupGuide /> : null;
   }
   return (
     <div className="border-border max-w-reading mb-8 flex flex-wrap items-center justify-between gap-3 border-b pb-5">
@@ -78,7 +61,11 @@ function SummaryProviderSettings({
           baseUrl: configured.base_url,
         })}
       </p>
-      <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => void navigate({ to: "/settings" })}
+      >
         {t("record.detail.summary.changeProvider")}
       </Button>
     </div>
@@ -230,7 +217,7 @@ function SummaryContent({ record, onRecordAssetsChanged }: SummaryPanelProps) {
     );
   }
   if (summary.data.action_required === "CONFIGURE_PROVIDER") {
-    return <ProviderConfiguration onSaved={() => void refresh()} />;
+    return <ProviderSetupGuide />;
   }
   if (summary.data.action_required === "GRANT_CONSENT") {
     if (provider.isPending) {
@@ -253,7 +240,7 @@ function SummaryContent({ record, onRecordAssetsChanged }: SummaryPanelProps) {
       );
     }
     if (!provider.data.provider?.has_api_key) {
-      return <ProviderConfiguration onSaved={() => void refresh()} />;
+      return <ProviderSetupGuide />;
     }
     return (
       <SummaryActionState
@@ -512,154 +499,5 @@ function SummaryActionState({
         </p>
       ) : null}
     </section>
-  );
-}
-
-function ProviderConfiguration({
-  onSaved,
-  onCancel,
-}: {
-  onSaved: () => void | Promise<void>;
-  onCancel?: () => void;
-}) {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const provider = useQuery({
-    queryKey: settingsKeys.llmProvider,
-    queryFn: settingsApi.getLlmProvider,
-  });
-  const save = useMutation({
-    mutationFn: (form: HTMLFormElement) => {
-      const data = new FormData(form);
-      return settingsApi.updateLlmProvider({
-        base_url: String(data.get("base_url") ?? ""),
-        model: String(data.get("model") ?? ""),
-        api_key: String(data.get("api_key") ?? ""),
-        clear_api_key: data.get("clear_api_key") === "on",
-      });
-    },
-    onSuccess: (updated, form) => {
-      const apiKey = form.elements.namedItem("api_key");
-      const clearApiKey = form.elements.namedItem("clear_api_key");
-      if (apiKey instanceof HTMLInputElement) apiKey.value = "";
-      if (clearApiKey instanceof HTMLInputElement) clearApiKey.checked = false;
-      queryClient.setQueryData(settingsKeys.llmProvider, updated);
-    },
-  });
-  const test = useMutation({ mutationFn: settingsApi.testLlmProvider });
-
-  if (provider.isPending) {
-    return (
-      <SummaryActionState
-        title={t("record.detail.summary.providerTitle")}
-        description={t("record.detail.summary.loading")}
-        pending
-      />
-    );
-  }
-
-  return (
-    <form
-      className="max-w-reading"
-      onChange={() => {
-        save.reset();
-        test.reset();
-      }}
-      onSubmit={(event) => {
-        event.preventDefault();
-        save.mutate(event.currentTarget);
-      }}
-    >
-      <h2 className="text-section font-section text-ink">
-        {t("record.detail.summary.providerTitle")}
-      </h2>
-      <p className="text-body text-muted-foreground mt-2">
-        {t("record.detail.summary.providerDescription")}
-      </p>
-      <div className="mt-6 grid gap-5">
-        <div className="grid gap-2">
-          <Label htmlFor="llm-base-url">
-            {t("record.detail.summary.baseUrl")}
-          </Label>
-          <Input
-            id="llm-base-url"
-            name="base_url"
-            type="url"
-            required
-            defaultValue={
-              provider.data?.provider?.base_url ??
-              "https://dashscope.aliyuncs.com/compatible-mode/v1"
-            }
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="llm-model">{t("record.detail.summary.model")}</Label>
-          <Input
-            id="llm-model"
-            name="model"
-            required
-            defaultValue={provider.data?.provider?.model ?? "qwen-plus"}
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="llm-api-key">
-            {t("record.detail.summary.apiKey")}
-          </Label>
-          <Input
-            id="llm-api-key"
-            name="api_key"
-            type="password"
-            placeholder={
-              provider.data?.provider?.api_key_hint ??
-              t("record.detail.summary.apiKeyPlaceholder")
-            }
-          />
-        </div>
-        {provider.data?.provider?.has_api_key ? (
-          <Label>
-            <input type="checkbox" name="clear_api_key" />
-            {t("record.detail.summary.clearApiKey")}
-          </Label>
-        ) : null}
-      </div>
-      <div className="mt-6 flex flex-wrap gap-2">
-        <Button type="submit" disabled={save.isPending}>
-          {save.isPending ? <Spinner aria-hidden="true" /> : null}
-          {t("record.detail.summary.saveProvider")}
-        </Button>
-        {save.data?.provider?.has_api_key ||
-        provider.data?.provider?.has_api_key ? (
-          <Button
-            variant="outline"
-            type="button"
-            disabled={test.isPending}
-            onClick={() => test.mutate()}
-          >
-            {test.isPending ? <Spinner aria-hidden="true" /> : null}
-            {t("record.detail.summary.testProvider")}
-          </Button>
-        ) : null}
-        {save.isSuccess ? (
-          <Button type="button" variant="ghost" onClick={() => void onSaved()}>
-            {t("record.detail.summary.continue")}
-          </Button>
-        ) : null}
-        {onCancel ? (
-          <Button type="button" variant="outline" onClick={onCancel}>
-            {t("record.detail.summary.cancelProviderEdit")}
-          </Button>
-        ) : null}
-      </div>
-      {test.isSuccess ? (
-        <p role="status" className="text-body text-muted-foreground mt-3">
-          {t("record.detail.summary.testSucceeded", { model: test.data.model })}
-        </p>
-      ) : null}
-      {provider.isError || save.isError || test.isError ? (
-        <p role="alert" className="text-body text-destructive mt-3">
-          {(provider.error ?? save.error ?? test.error)?.message}
-        </p>
-      ) : null}
-    </form>
   );
 }
