@@ -12,6 +12,10 @@ import {
   openDataDirectory,
 } from "@/services/tauri/dataDirectory";
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function DataDirectorySection() {
   const { t } = useTranslation();
   const dataDirectory = useQuery({
@@ -19,7 +23,7 @@ export function DataDirectorySection() {
     queryFn: getDataDirectory,
   });
   const openDirectory = useMutation({
-    mutationFn: (path: string) => openDataDirectory(path),
+    mutationFn: () => openDataDirectory(),
   });
 
   return (
@@ -42,7 +46,9 @@ export function DataDirectorySection() {
       ) : dataDirectory.isError ? (
         <div className="mt-6">
           <Alert variant="destructive" className="w-auto">
-            <AlertDescription>{dataDirectory.error.message}</AlertDescription>
+            <AlertDescription>
+              {errorMessage(dataDirectory.error)}
+            </AlertDescription>
           </Alert>
           <Button
             variant="outline"
@@ -67,14 +73,16 @@ export function DataDirectorySection() {
           </Field>
           {openDirectory.isError ? (
             <Alert variant="destructive" className="w-auto">
-              <AlertDescription>{openDirectory.error.message}</AlertDescription>
+              <AlertDescription>
+                {errorMessage(openDirectory.error)}
+              </AlertDescription>
             </Alert>
           ) : null}
           <div>
             <Button
               variant="outline"
               disabled={openDirectory.isPending}
-              onClick={() => openDirectory.mutate(dataDirectory.data)}
+              onClick={() => openDirectory.mutate()}
             >
               {openDirectory.isPending ? (
                 <Spinner

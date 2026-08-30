@@ -33,10 +33,23 @@ describe("DataDirectorySection", () => {
     ).toHaveAttribute("readonly");
     fireEvent.click(screen.getByRole("button", { name: "打开数据目录" }));
 
-    await waitFor(() =>
-      expect(openDataDirectory).toHaveBeenCalledWith(
-        "C:\\Users\\tester\\KnowRealm",
-      ),
+    await waitFor(() => expect(openDataDirectory).toHaveBeenCalledWith());
+  });
+
+  it("打开失败时展示 Tauri 返回的字符串错误", async () => {
+    getDataDirectory.mockResolvedValue("C:\\Users\\tester\\KnowRealm");
+    openDataDirectory.mockRejectedValue(
+      "Not allowed to open path C:\\Users\\tester\\KnowRealm",
+    );
+
+    renderWithQuery(<DataDirectorySection />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开数据目录" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not allowed to open path C:\\Users\\tester\\KnowRealm",
     );
   });
 });

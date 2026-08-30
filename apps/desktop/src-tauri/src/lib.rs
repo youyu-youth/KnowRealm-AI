@@ -26,6 +26,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             sidecar::get_sidecar_config,
             sidecar::get_data_directory,
+            sidecar::open_data_directory,
             power::set_recording_keep_awake,
             hide_window_temporarily,
             lifecycle::exit_application,

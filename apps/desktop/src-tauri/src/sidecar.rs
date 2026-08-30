@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use getrandom::fill;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -255,6 +256,13 @@ pub fn get_sidecar_config(state: State<'_, SidecarState>) -> Result<SidecarConfi
 #[tauri::command]
 pub fn get_data_directory(state: State<'_, SidecarState>) -> Result<PathBuf, &'static str> {
     Ok(state.data_dir.clone())
+}
+
+#[tauri::command]
+pub fn open_data_directory(app: AppHandle, state: State<'_, SidecarState>) -> Result<(), String> {
+    app.opener()
+        .open_path(state.data_dir.to_string_lossy(), None::<&str>)
+        .map_err(|error| error.to_string())
 }
 
 impl SidecarState {
