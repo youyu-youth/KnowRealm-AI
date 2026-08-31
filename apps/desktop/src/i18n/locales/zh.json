@@ -298,11 +298,52 @@
       },
       "paper": {
         "title": "模拟测试",
-        "description": "本卷共 {{count}} 题；当前仅供查看，作答将在下一阶段开放。",
+        "description": "本卷共 {{count}} 题，逐题提交后锁定，不可修改。",
         "loading": "正在读取试卷",
         "errorTitle": "试卷暂时无法读取",
         "back": "返回模拟测试",
-        "shortage": "题库中只有 {{count}} 道符合条件的习题，已全部选入。"
+        "shortage": "题库中只有 {{count}} 道符合条件的习题，已全部选入。",
+        "viewLabel": "展示形式",
+        "viewSingle": "单题",
+        "viewSectioned": "分段",
+        "viewFull": "整卷",
+        "sectionTitle": "{{index}}、{{type}}",
+        "position": "{{section}} · 第 {{index}} / {{total}} 题",
+        "keyboardHint": "（键盘 ← → 可翻题）",
+        "prev": "上一题",
+        "next": "下一题",
+        "prevSection": "上一段",
+        "nextSection": "下一段",
+        "sectionProgress": "本段 {{answered}} / {{total}}",
+        "answerCard": "答题卡",
+        "progress": "已答 {{answered}} / {{total}}",
+        "jumpTo": "跳到第 {{index}} 题（{{type}}）",
+        "submitAnswer": "提交作答",
+        "shortPlaceholder": "对照题目自由作答，提交后锁定",
+        "answerAria": "第 {{index}} 题作答",
+        "submitted": "已提交 · 一题一答，不可修改",
+        "shortPending": "已提交 · 待 AI 评分",
+        "verdict": {
+          "CORRECT": "答对",
+          "WRONG": "答错",
+          "PARTIAL": "半对"
+        },
+        "allAnswered": "全部作答后方可交卷",
+        "submitButton": "交卷",
+        "abandonButton": "放弃测试",
+        "abandonDialog": {
+          "title": "放弃这次模拟测试？",
+          "description": "放弃后本次测试即结束，已作答内容不会生成成绩，也不计入学习事件。",
+          "cancel": "继续作答",
+          "confirm": "确认放弃",
+          "abandoning": "正在放弃"
+        },
+        "banner": {
+          "GRADING": "本卷正在评分，评分完成后可查看成绩。",
+          "GRADING_FAILED": "本卷评分未完成，可稍后重新评分。",
+          "COMPLETED": "本卷已完成作答与评分。",
+          "ABANDONED": "本卷已放弃，仅供查看。"
+        }
       }
     }
   },

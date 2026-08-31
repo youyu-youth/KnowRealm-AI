@@ -221,7 +221,7 @@ describe("模拟测试创建与只读卷面", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("只读卷面按大题分组，ARCHIVED 课程读闸门禁止开始", async () => {
+  it("进行中卷面可作答，ARCHIVED 课程读闸门禁止开始", async () => {
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/quiz-tests/${TEST_ID}`, () =>
         HttpResponse.json(detail),
@@ -232,12 +232,11 @@ describe("模拟测试创建与只读卷面", () => {
     expect(
       await screen.findByRole("heading", { name: "模拟测试" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "单选题" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "简答题" })).toBeInTheDocument();
     expect(screen.getByText("进程调度的核心职责是什么？")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /提交|作答/ }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("radio", { name: "A. 选择就绪进程" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("已答 0 / 2")).toBeInTheDocument();
 
     cleanup();
     server.use(

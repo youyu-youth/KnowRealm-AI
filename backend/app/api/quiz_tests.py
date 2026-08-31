@@ -7,11 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, require_launch_token
 from app.schemas.course import ErrorResponse
 from app.schemas.quiz_test import (
+    QuizTestAnswerRequest,
     QuizTestConflictOut,
     QuizTestCreateOut,
     QuizTestCreateRequest,
     QuizTestDetailOut,
     QuizTestListOut,
+    QuizTestSummaryOut,
 )
 from app.services.quiz_test_service import QuizTestBlocked, QuizTestService
 
@@ -80,3 +82,28 @@ async def get_quiz_test(
     if result is None:
         raise HTTPException(status_code=404, detail="模拟测试不存在")
     return result
+
+
+@router.post(
+    "/quiz-tests/{test_id}/answers",
+    response_model=QuizTestDetailOut,
+    responses={400: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+)
+async def answer_quiz_test_item(
+    test_id: UUID,
+    body: QuizTestAnswerRequest,
+    session: AsyncSession = Depends(get_db),
+) -> QuizTestDetailOut:
+    return await QuizTestService.answer_item(session, str(test_id), body)
+
+
+@router.post(
+    "/quiz-tests/{test_id}/abandon",
+    response_model=QuizTestSummaryOut,
+    responses={409: {"model": ErrorResponse}},
+)
+async def abandon_quiz_test(
+    test_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> QuizTestSummaryOut:
+    return await QuizTestService.abandon(session, str(test_id))

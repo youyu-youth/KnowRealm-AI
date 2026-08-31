@@ -52,6 +52,30 @@ class QuizTestCreateRequest(BaseModel):
         return value
 
 
+class QuizTestAnswerRequest(BaseModel):
+    item_id: str = Field(min_length=1)
+    answer: int | str | list[int] | list[str] = Field(
+        description="单选 / 判断题为一个下标，多选题为下标数组，填空题为逐空答案数组，简答题为文本"
+    )
+
+    @field_validator("answer")
+    @classmethod
+    def validate_answer(
+        cls, value: int | str | list[int] | list[str]
+    ) -> int | str | list[int] | list[str]:
+        if isinstance(value, int):
+            if value < 0:
+                raise ValueError("选项下标不能为负数")
+            return value
+        if isinstance(value, str):
+            if not value.strip():
+                raise ValueError("简答作答不能为空")
+            return value
+        if not value:
+            raise ValueError("作答内容不能为空")
+        return value
+
+
 class QuizTestSummaryOut(BaseModel):
     id: str
     course_id: str
