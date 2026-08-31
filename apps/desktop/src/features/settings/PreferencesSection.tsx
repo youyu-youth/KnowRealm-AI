@@ -42,6 +42,7 @@ function isFontScale(value: string): value is (typeof FONT_SCALES)[number] {
 
 // 控件值一律绑定服务端事实：改动即 PUT，成功后以全量响应写回缓存；
 // 失败不改缓存，控件自然停留在当前生效值，配合行内报错即「回显服务端事实」。
+// eslint-disable-next-line react-refresh/only-export-components -- 既有导出结构（HMR 提示非缺陷，门禁解锁）
 export function useSavePreference() {
   const queryClient = useQueryClient();
   return useMutation({

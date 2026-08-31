@@ -199,25 +199,35 @@ async def test_restore_rejects_invalid_archives_without_residue(tmp_path: Path) 
     # 结构不符：包内多出清单未声明的文件
     mismatch = tmp_path / "mismatch.zip"
     with zipfile.ZipFile(mismatch, "w") as archive:
-        archive.writestr("manifest.json", json.dumps({
-            "app_version": APP_VERSION,
-            "db_user_version": 1,
-            "created_at": "2026-08-30T00:00:00+08:00",
-            "include_secrets": False,
-            "files": ["knowrealm.db"],
-        }))
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "app_version": APP_VERSION,
+                    "db_user_version": 1,
+                    "created_at": "2026-08-30T00:00:00+08:00",
+                    "include_secrets": False,
+                    "files": ["knowrealm.db"],
+                }
+            ),
+        )
         archive.writestr("knowrealm.db", b"db")
         archive.writestr("files/extra.txt", b"stowaway")
     # 清单声明了包内不存在的文件
     ghost = tmp_path / "ghost.zip"
     with zipfile.ZipFile(ghost, "w") as archive:
-        archive.writestr("manifest.json", json.dumps({
-            "app_version": APP_VERSION,
-            "db_user_version": 1,
-            "created_at": "2026-08-30T00:00:00+08:00",
-            "include_secrets": False,
-            "files": ["knowrealm.db", "files/ghost.txt"],
-        }))
+        archive.writestr(
+            "manifest.json",
+            json.dumps(
+                {
+                    "app_version": APP_VERSION,
+                    "db_user_version": 1,
+                    "created_at": "2026-08-30T00:00:00+08:00",
+                    "include_secrets": False,
+                    "files": ["knowrealm.db", "files/ghost.txt"],
+                }
+            ),
+        )
         archive.writestr("knowrealm.db", b"db")
     for path, expected in (
         (no_manifest, "IMPORT_ARCHIVE_INVALID"),
@@ -238,9 +248,10 @@ async def test_restore_rejects_archive_from_newer_app_version(tmp_path: Path) ->
     source = await seed_data_dir(tmp_path / "A")
     file_name = await export_archive(source, include_secrets=False)
     newer = tmp_path / "newer-export.zip"
-    with zipfile.ZipFile(source / "exports" / file_name) as original, zipfile.ZipFile(
-        newer, "w"
-    ) as rewritten:
+    with (
+        zipfile.ZipFile(source / "exports" / file_name) as original,
+        zipfile.ZipFile(newer, "w") as rewritten,
+    ):
         manifest = json.loads(original.read("manifest.json"))
         manifest["db_user_version"] = supported_user_version() + 5
         for name in original.namelist():

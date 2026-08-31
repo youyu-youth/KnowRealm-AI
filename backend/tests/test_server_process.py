@@ -1119,9 +1119,12 @@ def test_real_process_export_then_import_archive_restores_data(tmp_path: Path) -
     finally:
         stop_process_tree(imported)
 
-    assert json.loads((target / "config" / "providers.json").read_text(encoding="utf-8"))[
-        "llm"
-    ]["api_key"] == "sk-x"
+    assert (
+        json.loads((target / "config" / "providers.json").read_text(encoding="utf-8"))["llm"][
+            "api_key"
+        ]
+        == "sk-x"
+    )
 
 
 def test_real_process_import_archive_rejection_exits_without_residue(tmp_path: Path) -> None:

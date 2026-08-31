@@ -40,11 +40,7 @@ async def running_app(
     data_dir: Path,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> AsyncGenerator[tuple[FastAPI, httpx.AsyncClient, RecordingTransport | None]]:
-    recording = (
-        transport
-        if isinstance(transport, RecordingTransport)
-        else None
-    )
+    recording = transport if isinstance(transport, RecordingTransport) else None
     app = create_app(
         data_dir=data_dir,
         launch_token=TOKEN,
@@ -137,7 +133,9 @@ async def test_asr_provider_rejects_blank_region(tmp_path: Path) -> None:
 async def test_asr_connection_test_uses_readonly_vocab_list_call(
     tmp_path: Path,
 ) -> None:
-    transport = RecordingTransport([vocab_response({"VocabList": [], "TotalCount": 0, "RequestId": "t"})])
+    transport = RecordingTransport(
+        [vocab_response({"VocabList": [], "TotalCount": 0, "RequestId": "t"})]
+    )
     data_dir = tmp_path / "KnowRealm"
     async with running_app(data_dir, transport) as (_app, client, _recording):
         unconfigured = await client.post(f"{ASR_URL}/tests")
@@ -201,10 +199,6 @@ async def test_asr_connection_test_maps_auth_and_network_errors(
         not_registered = await client.post(f"{ASR_URL}/tests")
 
     assert auth_failure.status_code == 502
-    assert auth_failure.json()["detail"] == (
-        "腾讯云凭据校验未通过，请检查 SecretId / SecretKey"
-    )
+    assert auth_failure.json()["detail"] == ("腾讯云凭据校验未通过，请检查 SecretId / SecretKey")
     assert not_registered.status_code == 502
-    assert not_registered.json()["detail"] == (
-        "凭据有效，但该账号尚未开通语音识别服务"
-    )
+    assert not_registered.json()["detail"] == ("凭据有效，但该账号尚未开通语音识别服务")

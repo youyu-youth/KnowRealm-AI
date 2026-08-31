@@ -180,7 +180,8 @@ def is_valid_shortcut(value: str) -> bool:
 
 
 class PreferencesUpdate(BaseModel):
-    """全字段 optional 的部分更新：未提供的键保持原值；timezone/last_route 显式 null 各表跟随系统/默认页。"""
+    """全字段 optional 的部分更新：未提供的键保持原值；
+    timezone/last_route 显式 null 各表跟随系统/默认页。"""
 
     theme: Literal["LIGHT", "DARK", "SYSTEM"] | None = Field(default=None, description="外观主题")
     font_scale: Literal["S", "M", "L"] | None = Field(default=None, description="字号档位")

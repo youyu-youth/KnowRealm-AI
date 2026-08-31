@@ -182,9 +182,7 @@ async def test_tencent_asr_provider(request: Request) -> TencentAsrTestOut:
             )
         )
     except TencentAsrApiError as exc:
-        raise HTTPException(
-            status_code=502, detail=_asr_test_error_detail(exc.code)
-        ) from exc
+        raise HTTPException(status_code=502, detail=_asr_test_error_detail(exc.code)) from exc
     except httpx.RequestError as exc:
         raise HTTPException(
             status_code=502, detail="无法连接腾讯云语音识别服务，请检查网络"
