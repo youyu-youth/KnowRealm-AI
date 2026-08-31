@@ -1,6 +1,6 @@
 """任务循环骨架唯一归属（ADR-0012）。
 
-六个 worker（audio / summary / quiz / knowledge_point / todo / document）的执行体
+七个 worker（audio / summary / quiz / quiz_grading / knowledge_point / todo / document）的执行体
 以 ``WorkerSpec``（声明式钩子描述）注入 ``JobRunner``；轮询、条件抢占、恢复、
 失败记账、停止与协议点通知（recover / 领取成功后 / 写回尾 / 失败尾）全部归本
 模块，执行体不得自带横切副本。领取协议三态与 CANCELLED 静默为显式契约。
@@ -282,8 +282,15 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
         waiting_record: str | None = None
         async with self._session_factory() as session, session.begin():
             job = await self._spec.find_candidate(session, now)
-            if job is not None and job.record_id is not None:
-                decision = await self._spec.validate_claim(session, job, job.record_id, payload)
+            if job is not None:
+                # 课程级任务（QUIZ_GRADING）无 record 主体：record 坐标传空串，
+                # 执行体从 input_json 取自己的坐标；record 域候选恒有 record_id。
+                decision = await self._spec.validate_claim(
+                    session,
+                    job,
+                    job.record_id if job.record_id is not None else "",
+                    payload,
+                )
                 if isinstance(decision, CancelClaim):
                     # 现状契约：前置失效取消，事务提交后静默（不 notify）
                     job.status = ProcessingJobStatus.CANCELLED

@@ -326,10 +326,18 @@
         "verdict": {
           "CORRECT": "答对",
           "WRONG": "答错",
-          "PARTIAL": "半对"
+          "PARTIAL": "半对",
+          "UNSCORED": "未计分"
         },
         "allAnswered": "全部作答后方可交卷",
         "submitButton": "交卷",
+        "submitDialog": {
+          "title": "确认交卷？",
+          "description": "共 {{total}} 题，已答 {{answered}} 题。客观题立即判分，简答题由 AI 评分；交卷后作答不可再修改。",
+          "cancel": "继续作答",
+          "confirm": "确认交卷",
+          "submitting": "正在交卷"
+        },
         "abandonButton": "放弃测试",
         "abandonDialog": {
           "title": "放弃这次模拟测试？",
@@ -343,6 +351,30 @@
           "GRADING_FAILED": "本卷评分未完成，可稍后重新评分。",
           "COMPLETED": "本卷已完成作答与评分。",
           "ABANDONED": "本卷已放弃，仅供查看。"
+        },
+        "result": {
+          "scoreLabel": "得分",
+          "scoreSuffix": "/ 100",
+          "counts": "答对 {{correct}} · 答错 {{wrong}} · 半对 {{partial}}",
+          "unscored": "未计分 {{unscored}}（成绩为已计分 {{counted}} 题的平均）",
+          "reviewCount": "建议人工复核 {{count}} 题",
+          "regradeButton": "重新评分",
+          "retakeButton": "再考一张"
+        },
+        "review": {
+          "yourAnswer": "你的作答：{{answer}}",
+          "correctAnswer": "正确答案：{{answer}}",
+          "referenceAnswer": "参考答案：{{answer}}",
+          "rationale": "评分依据：{{text}}",
+          "explanation": "解析：{{text}}",
+          "gradeScore": "得分 {{score}}",
+          "confidence": "置信度 {{value}}",
+          "reviewFlag": "建议人工复核",
+          "gradeFailed": "评分失败（{{code}}）· 未计分",
+          "gradeFailedNote": "作答已保存；本次成绩不含此题，可再考一张新卷。",
+          "blankLine": "第 {{index}} 空：",
+          "blankShould": "（应为 {{answer}}）",
+          "blankEmpty": "（空）"
         }
       }
     }

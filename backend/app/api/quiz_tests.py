@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -95,6 +95,32 @@ async def answer_quiz_test_item(
     session: AsyncSession = Depends(get_db),
 ) -> QuizTestDetailOut:
     return await QuizTestService.answer_item(session, str(test_id), body)
+
+
+@router.post(
+    "/quiz-tests/{test_id}/submit",
+    response_model=QuizTestDetailOut,
+    responses={409: {"model": ErrorResponse}},
+)
+async def submit_quiz_test(
+    test_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> QuizTestDetailOut:
+    return await QuizTestService.submit(session, request.app.state.data_dir, str(test_id))
+
+
+@router.post(
+    "/quiz-tests/{test_id}/regrade",
+    response_model=QuizTestDetailOut,
+    responses={409: {"model": ErrorResponse}},
+)
+async def regrade_quiz_test(
+    test_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> QuizTestDetailOut:
+    return await QuizTestService.regrade(session, request.app.state.data_dir, str(test_id))
 
 
 @router.post(

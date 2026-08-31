@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.models.base import utcnow
 from app.models.document import LlmCallLog
 from app.schemas.knowledge_point import KnowledgePointBatch
-from app.schemas.quiz import QuizBatch
+from app.schemas.quiz import QuizBatch, ShortAnswerGrade
 from app.schemas.summary import SummaryContent
 from app.schemas.todo import TodoBatch
 from app.services.local_config import LlmProviderConfig
@@ -50,6 +50,13 @@ class QuizCallResult:
 
 
 @dataclass(frozen=True)
+class QuizGradingCallResult:
+    content: ShortAnswerGrade
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
+@dataclass(frozen=True)
 class TodoCallResult:
     content: TodoBatch
     token_usage: dict[str, object]
@@ -70,6 +77,7 @@ class StructuredModel(Protocol):
 SummaryModel = StructuredModel
 KnowledgePointModel = StructuredModel
 QuizModel = StructuredModel
+QuizGradingModel = StructuredModel
 TodoModel = StructuredModel
 
 
@@ -160,6 +168,11 @@ class OpenAiCompatibleKnowledgePointModel(_OpenAiCompatibleStructuredModel):
 class OpenAiCompatibleQuizModel(_OpenAiCompatibleStructuredModel):
     def __init__(self) -> None:
         super().__init__(QuizBatch)
+
+
+class OpenAiCompatibleQuizGradingModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self) -> None:
+        super().__init__(ShortAnswerGrade)
 
 
 class OpenAiCompatibleTodoModel(_OpenAiCompatibleStructuredModel):
@@ -355,6 +368,32 @@ async def call_quiz_model(
     )
     return QuizCallResult(
         content=cast(QuizBatch, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )
+
+
+async def call_quiz_grading_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    quiz_grading_model: QuizGradingModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> QuizGradingCallResult:
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=quiz_grading_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="quiz",
+        graph_node="grade",
+        prompt_version=prompt_version,
+        output_schema=ShortAnswerGrade,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+    )
+    return QuizGradingCallResult(
+        content=cast(ShortAnswerGrade, result.content),
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
     )

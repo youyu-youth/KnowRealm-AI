@@ -111,6 +111,17 @@ class QuizTestListOut(BaseModel):
     blocked_reason: QuizTestBlockedReason | None = None
 
 
+class QuizTestAiGradeOut(BaseModel):
+    """简答题 AI 评分结果（成功含 verdict/score/confidence/rationale；失败仅 error_code）。"""
+
+    verdict: QuizTestItemResult | None = None
+    score: float | None = None
+    confidence: float | None = None
+    rationale: str | None = None
+    error_code: str | None = None
+    needs_review: bool = False
+
+
 class QuizTestItemOut(BaseModel):
     id: str
     quiz_id: str
@@ -122,6 +133,9 @@ class QuizTestItemOut(BaseModel):
     user_answer: int | str | list[int] | list[str] | None
     result: QuizTestItemResult | None
     score: float | None
+    correct_answer: int | str | list[int] | list[list[str]] | None = None
+    explanation: str | None = None
+    ai_grade: QuizTestAiGradeOut | None = None
     answered_at: datetime | None
 
     @field_serializer("answered_at")

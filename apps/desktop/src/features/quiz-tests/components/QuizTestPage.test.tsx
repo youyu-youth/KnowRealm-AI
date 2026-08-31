@@ -325,3 +325,222 @@ describe("模拟测试卷面作答", () => {
     expect(window.location.pathname).toBe(`/spaces/${COURSE_ID}`);
   });
 });
+
+const ANSWERED_AT = "2026-08-31T08:01:00.000000Z";
+
+function answeredAllDetail(): QuizTestDetail {
+  return {
+    ...detail,
+    answered_count: 3,
+    items: [
+      {
+        ...mcItem,
+        user_answer: 1,
+        result: "WRONG",
+        score: 0,
+        answered_at: ANSWERED_AT,
+      },
+      {
+        ...fillBlankItem,
+        user_answer: ["16", "0.5"],
+        result: "CORRECT",
+        score: 1,
+        answered_at: ANSWERED_AT,
+      },
+      {
+        ...shortItem,
+        user_answer: "按时间片轮转调度。",
+        answered_at: ANSWERED_AT,
+      },
+    ],
+  };
+}
+
+function completedDetail(): QuizTestDetail {
+  return {
+    ...summary,
+    status: "COMPLETED",
+    score: 0.37,
+    total_count: 4,
+    answered_count: 4,
+    completed_at: "2026-08-31T08:10:00.000000Z",
+    items: [
+      {
+        ...mcItem,
+        user_answer: 0,
+        result: "WRONG",
+        score: 0,
+        correct_answer: 1,
+        explanation: "调度器职责解析。",
+        answered_at: ANSWERED_AT,
+      },
+      {
+        ...fillBlankItem,
+        user_answer: ["16", "2"],
+        result: "PARTIAL",
+        score: 0.5,
+        correct_answer: [["16"], ["1/2", "0.5"]],
+        explanation: "第二空应为二分之一。",
+        answered_at: ANSWERED_AT,
+      },
+      {
+        ...shortItem,
+        user_answer: "按时间片轮转调度。",
+        result: "PARTIAL",
+        score: 0.6,
+        correct_answer: "参考答案文本",
+        explanation: null,
+        ai_grade: {
+          verdict: "PARTIAL",
+          score: 0.6,
+          confidence: 0.4,
+          rationale: "只答到一半。",
+          error_code: null,
+          needs_review: true,
+        },
+        answered_at: ANSWERED_AT,
+      },
+      {
+        id: "item-4",
+        quiz_id: "quiz-4",
+        sequence_no: 4,
+        question_type: "SHORT_ANSWER",
+        stem: "简述死锁的四个必要条件。",
+        options: [],
+        difficulty: "HARD",
+        user_answer: "互斥、持有等待。",
+        result: null,
+        score: null,
+        correct_answer: "互斥、持有等待、不可剥夺、循环等待。",
+        explanation: null,
+        ai_grade: {
+          verdict: null,
+          score: null,
+          confidence: null,
+          rationale: null,
+          error_code: "LLM_OUTPUT_INVALID",
+          needs_review: false,
+        },
+        answered_at: ANSWERED_AT,
+      },
+    ],
+  };
+}
+
+describe("交卷评分与结果页", () => {
+  const SUBMIT_URL = `${TEST_URL}/submit`;
+  const REGRADE_URL = `${TEST_URL}/regrade`;
+
+  it("交卷需确认，提交后进入评分中状态", async () => {
+    let submitCalled = false;
+    mockPaper(answeredAllDetail());
+    server.use(
+      http.post(SUBMIT_URL, ({ request }) => {
+        submitCalled = true;
+        expect(request.headers.get("X-KnowRealm-Token")).toBe(
+          TEST_LAUNCH_TOKEN,
+        );
+        return HttpResponse.json({ ...answeredAllDetail(), status: "GRADING" });
+      }),
+    );
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=single`);
+
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "交卷" }))[0],
+    );
+    const dialog = screen.getByRole("dialog", { name: "确认交卷？" });
+    expect(
+      within(dialog).getByText(/共 3 题，已答 3 题。客观题立即判分/),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认交卷" }));
+
+    expect(
+      await screen.findByText("本卷正在评分，评分完成后可查看成绩。"),
+    ).toBeInTheDocument();
+    expect(submitCalled).toBe(true);
+  });
+
+  it("结果页展示批改与成绩摘要：得分、对错、低置信标记、未计分", async () => {
+    mockPaper(completedDetail());
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=full`);
+
+    expect(
+      await screen.findByText("本卷已完成作答与评分。"),
+    ).toBeInTheDocument();
+    // 成绩摘要侧栏：得分 ×100 与对/错/半对/未计分/待复核计数
+    expect(screen.getByText("37")).toBeInTheDocument();
+    expect(screen.getByText("/ 100")).toBeInTheDocument();
+    expect(screen.getByText("答对 0 · 答错 1 · 半对 2")).toBeInTheDocument();
+    expect(
+      screen.getByText("未计分 1（成绩为已计分 3 题的平均）"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("建议人工复核 1 题")).toBeInTheDocument();
+
+    // 客观题批改：你的作答 / 正确答案 / 解析
+    expect(screen.getByText("你的作答：A. 选择就绪进程")).toBeInTheDocument();
+    expect(screen.getByText("正确答案：B. 分配内存")).toBeInTheDocument();
+    expect(screen.getByText("解析：调度器职责解析。")).toBeInTheDocument();
+    // 填空逐空对错（文本跨 span 拆分，按分段断言）
+    expect(screen.getByText(/第 1 空：/)).toBeInTheDocument();
+    expect(screen.getByText(/✗（应为 1\/2）/)).toBeInTheDocument();
+    // 简答评分依据、置信度、低置信标记与参考答案
+    expect(screen.getByText("评分依据：只答到一半。")).toBeInTheDocument();
+    expect(screen.getByText("得分 0.60")).toBeInTheDocument();
+    expect(screen.getByText("置信度 0.40")).toBeInTheDocument();
+    expect(screen.getByText("建议人工复核")).toBeInTheDocument();
+    expect(screen.getByText("参考答案：参考答案文本")).toBeInTheDocument();
+    // 评分失败题：未计分标注
+    expect(
+      screen.getByText("评分失败（LLM_OUTPUT_INVALID）· 未计分"),
+    ).toBeInTheDocument();
+
+    // 批改展示随三档形式走：切分段档仍渲染批改块（首段为单选题）
+    fireEvent.click(screen.getByRole("tab", { name: "分段" }));
+    // 分段档默认停首段：单选批改块仍在、简答段不渲染（证明切换生效且批改随档渲染）
+    await screen.findByText("你的作答：A. 选择就绪进程");
+    expect(screen.queryByText("简述死锁的四个必要条件。")).not.toBeTruthy();
+  });
+
+  it("评分失败态提供重新评分，成功后回到评分中", async () => {
+    let regradeCalled = false;
+    const failed: QuizTestDetail = {
+      ...completedDetail(),
+      status: "GRADING_FAILED",
+      score: null,
+    };
+    mockPaper(failed);
+    server.use(
+      http.post(REGRADE_URL, ({ request }) => {
+        regradeCalled = true;
+        expect(request.headers.get("X-KnowRealm-Token")).toBe(
+          TEST_LAUNCH_TOKEN,
+        );
+        return HttpResponse.json({ ...failed, status: "GRADING" });
+      }),
+    );
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=single`);
+
+    fireEvent.click(await screen.findByRole("button", { name: "重新评分" }));
+    expect(
+      await screen.findByText("本卷正在评分，评分完成后可查看成绩。"),
+    ).toBeInTheDocument();
+    expect(regradeCalled).toBe(true);
+    // 已是评分中：重新评分入口消失
+    expect(screen.queryByRole("button", { name: "重新评分" })).not.toBeTruthy();
+  });
+
+  it("已放弃的测试灰显横幅且不渲染批改块", async () => {
+    mockPaper({
+      ...answeredAllDetail(),
+      status: "ABANDONED",
+    });
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=full`);
+
+    expect(
+      await screen.findByText("本卷已放弃，仅供查看。"),
+    ).toBeInTheDocument();
+    // 放弃态不揭示答案：无正确答案批改行、无成绩摘要侧栏
+    expect(screen.queryByText(/正确答案：/)).not.toBeTruthy();
+    expect(screen.queryByText(/得分/)).not.toBeTruthy();
+  });
+});

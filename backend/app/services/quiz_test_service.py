@@ -1,5 +1,8 @@
+import asyncio
 import json
-from datetime import datetime
+from collections import Counter
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
@@ -10,9 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import utcnow
 from app.models.course import Course
-from app.models.document import LearningEvent, Quiz, QuizTest, QuizTestItem
+from app.models.document import LearningEvent, ProcessingJob, Quiz, QuizTest, QuizTestItem
 from app.models.record import Record
 from app.schemas.course import CourseStatus
+from app.schemas.document import ProcessingJobStatus, ProcessingJobType
 from app.schemas.quiz import (
     QuizDifficulty,
     QuizGenerationStatus,
@@ -21,6 +25,7 @@ from app.schemas.quiz import (
     QuizQuestionType,
 )
 from app.schemas.quiz_test import (
+    QuizTestAiGradeOut,
     QuizTestAnswerRequest,
     QuizTestBlockedReason,
     QuizTestCreateOut,
@@ -33,10 +38,25 @@ from app.schemas.quiz_test import (
     QuizTestStatus,
     QuizTestSummaryOut,
 )
+from app.services.local_config import (
+    LlmProviderConfig,
+    llm_consent,
+    llm_provider_fingerprint,
+    load_llm_provider,
+)
+
+# 低置信复核阈值：confidence 低于此值的结果页标记「建议人工复核」（只读，不参与任何计算）。
+# #51 待配置体系统一后迁移至 .env（chat.py 模块常量先例）。
+SHORT_ANSWER_REVIEW_THRESHOLD = 0.7
 
 
 def _decode_json(value: str | None) -> object | None:
     return json.loads(value) if value is not None else None
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite 读出的 naive UTC 时间补时区，与 aware 的 utcnow() 可比。"""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
 
 
 def _summary_out(test: QuizTest, total_count: int, answered_count: int) -> QuizTestSummaryOut:
@@ -238,6 +258,56 @@ class QuizTestService:
             total, answered = await _item_counts(session, test_id)
             return _summary_out(test, total, answered)
 
+    @staticmethod
+    async def submit(
+        session: AsyncSession,
+        data_dir: Path,
+        test_id: str,
+    ) -> QuizTestDetailOut:
+        """交卷：客观题已在作答时判分；无简答题同步落终态，有简答题转 GRADING 建评分 job。"""
+        async with session.begin():
+            test = await _test(session, test_id)
+            await _ensure_course_active(session, test, "已归档课程的模拟测试不能交卷")
+            if test.status != QuizTestStatus.IN_PROGRESS:
+                raise HTTPException(status_code=409, detail="该测试已交卷或已放弃，不能再交卷")
+            total, answered = await _item_counts(session, test_id)
+            if answered < total:
+                raise HTTPException(status_code=409, detail="还有题目未作答，全部作答后方可交卷")
+            if await _short_answer_count(session, test_id) == 0:
+                await finalize_completed_test(session, test, utcnow())
+                return await _detail_out(session, test)
+
+        provider = await _require_grading_provider(data_dir)
+        return await _transition_to_grading(
+            session,
+            test_id,
+            expected_status=QuizTestStatus.IN_PROGRESS,
+            stale_detail="该测试已交卷或已放弃，不能再交卷",
+            provider_fingerprint=llm_provider_fingerprint(provider),
+        )
+
+    @staticmethod
+    async def regrade(
+        session: AsyncSession,
+        data_dir: Path,
+        test_id: str,
+    ) -> QuizTestDetailOut:
+        """重新评分：重建评分 job；已评成功的题（result 已落）由执行体跳过。"""
+        async with session.begin():
+            test = await _test(session, test_id)
+            await _ensure_course_active(session, test, "已归档课程的模拟测试不能重新评分")
+            if test.status != QuizTestStatus.GRADING_FAILED:
+                raise HTTPException(status_code=409, detail="只有评分失败的测试可以重新评分")
+
+        provider = await _require_grading_provider(data_dir)
+        return await _transition_to_grading(
+            session,
+            test_id,
+            expected_status=QuizTestStatus.GRADING_FAILED,
+            stale_detail="只有评分失败的测试可以重新评分",
+            provider_fingerprint=llm_provider_fingerprint(provider),
+        )
+
 
 class QuizTestBlocked(Exception):
     def __init__(self, detail: str, blocked_reason: QuizTestBlockedReason) -> None:
@@ -287,6 +357,128 @@ async def _item_counts(session: AsyncSession, test_id: str) -> tuple[int, int]:
     return cast(int, row[0]), cast(int, row[1])
 
 
+async def _short_answer_count(session: AsyncSession, test_id: str) -> int:
+    return cast(
+        int,
+        await session.scalar(
+            select(func.count(QuizTestItem.id))
+            .join(Quiz, Quiz.id == QuizTestItem.quiz_id)
+            .where(
+                QuizTestItem.test_id == test_id,
+                QuizTestItem.deleted_at.is_(None),
+                Quiz.question_type == QuizQuestionType.SHORT_ANSWER,
+            )
+        ),
+    )
+
+
+async def _require_grading_provider(data_dir: Path) -> LlmProviderConfig:
+    """简答评分的 LLM 前置（与习题生成同口径）：未配置供应商或未同意外发一律 409。"""
+    provider, consent = await asyncio.gather(
+        asyncio.to_thread(load_llm_provider, data_dir),
+        asyncio.to_thread(llm_consent, data_dir),
+    )
+    if provider is None or not provider.api_key:
+        raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+    if not consent[1]:
+        raise HTTPException(status_code=409, detail="请先同意外部 AI 处理")
+    return provider
+
+
+async def _transition_to_grading(
+    session: AsyncSession,
+    test_id: str,
+    *,
+    expected_status: QuizTestStatus,
+    stale_detail: str,
+    provider_fingerprint: str,
+) -> QuizTestDetailOut:
+    """GRADING 落账事务（供应商文件 IO 在事务外完成后进入）：状态复核 + 建评分 job。"""
+    async with session.begin():
+        test = await _test(session, test_id)
+        if test.status != expected_status:
+            raise HTTPException(status_code=409, detail=stale_detail)
+        now = utcnow()
+        test.status = QuizTestStatus.GRADING
+        test.updated_at = now
+        session.add(_grading_job(test_id, provider_fingerprint=provider_fingerprint, now=now))
+        await session.flush()
+        return await _detail_out(session, test)
+
+
+def _grading_job(test_id: str, *, provider_fingerprint: str, now: datetime) -> ProcessingJob:
+    return ProcessingJob(
+        id=str(uuid4()),
+        record_id=None,
+        job_type=ProcessingJobType.QUIZ_GRADING,
+        status=ProcessingJobStatus.PENDING,
+        input_json=json.dumps(
+            {"test_id": test_id, "provider_fingerprint": provider_fingerprint},
+            separators=(",", ":"),
+        ),
+        created_at=now,
+        updated_at=now,
+    )
+
+
+async def finalize_completed_test(session: AsyncSession, test: QuizTest, now: datetime) -> None:
+    """整卷完成落账：score=已计分题等权平均（失败题排除出分母）、COMPLETED、
+    QUIZ_TEST_COMPLETED 事件（幂等键，重评完成不重复落）——须在 COMPLETED 事务内调用。"""
+    rows = (
+        await session.execute(
+            select(QuizTestItem.score, Quiz.question_type)
+            .join(Quiz, Quiz.id == QuizTestItem.quiz_id)
+            .where(
+                QuizTestItem.test_id == test.id,
+                QuizTestItem.deleted_at.is_(None),
+            )
+        )
+    ).all()
+    counted = [score for score, _ in rows if score is not None]
+    test.score = sum(counted) / len(counted) if counted else None
+    test.status = QuizTestStatus.COMPLETED
+    test.completed_at = now
+    test.updated_at = now
+    type_counts = Counter(question_type for _, question_type in rows)
+    existing = await session.scalar(
+        select(LearningEvent.id).where(
+            LearningEvent.idempotency_key == f"quiz-test-completed:{test.id}"
+        )
+    )
+    if existing is None:
+        session.add(
+            LearningEvent(
+                id=str(uuid4()),
+                course_id=test.course_id,
+                record_id=None,
+                concept_id=None,
+                event_type=QuizLearningEventType.TEST_COMPLETED,
+                source_type=QuizLearningEventSourceType.TEST,
+                source_id=test.id,
+                result=None,
+                score=test.score,
+                difficulty=None,
+                duration_ms=max(
+                    0,
+                    int((now - _as_utc(test.started_at)).total_seconds() * 1000),
+                ),
+                metadata_json=json.dumps(
+                    {
+                        "question_count": len(rows),
+                        "question_types": dict(type_counts),
+                        "unscored_count": len(rows) - len(counted),
+                    },
+                    separators=(",", ":"),
+                ),
+                idempotency_key=f"quiz-test-completed:{test.id}",
+                schema_version=1,
+                occurred_at=now,
+                created_at=now,
+            )
+        )
+    await session.flush()
+
+
 async def _detail_out(session: AsyncSession, test: QuizTest) -> QuizTestDetailOut:
     rows = (
         await session.execute(
@@ -299,12 +491,14 @@ async def _detail_out(session: AsyncSession, test: QuizTest) -> QuizTestDetailOu
             .order_by(QuizTestItem.sequence_no)
         )
     ).all()
-    items = [_item_out(item, quiz) for item, quiz in rows]
+    # 正确答案与解析仅在终态（COMPLETED / GRADING_FAILED）揭示：作答期泄漏即泄漏未来卷
+    reveal = test.status in (QuizTestStatus.COMPLETED, QuizTestStatus.GRADING_FAILED)
+    items = [_item_out(item, quiz, reveal=reveal) for item, quiz in rows]
     summary = _summary_out(test, len(items), sum(item.answered_at is not None for item in items))
     return QuizTestDetailOut(**summary.model_dump(), items=items)
 
 
-def _item_out(item: QuizTestItem, quiz: Quiz) -> QuizTestItemOut:
+def _item_out(item: QuizTestItem, quiz: Quiz, *, reveal: bool) -> QuizTestItemOut:
     return QuizTestItemOut(
         id=item.id,
         quiz_id=item.quiz_id,
@@ -319,7 +513,28 @@ def _item_out(item: QuizTestItem, quiz: Quiz) -> QuizTestItemOut:
         ),
         result=QuizTestItemResult(item.result) if item.result is not None else None,
         score=item.score,
+        correct_answer=cast(
+            int | str | list[int] | list[list[str]] | None,
+            _decode_json(quiz.correct_answer_json) if reveal else None,
+        ),
+        explanation=quiz.explanation if reveal else None,
+        ai_grade=_ai_grade_out(item),
         answered_at=item.answered_at,
+    )
+
+
+def _ai_grade_out(item: QuizTestItem) -> QuizTestAiGradeOut | None:
+    data = cast(dict[str, object], _decode_json(item.ai_grade_json) or {})
+    if not data:
+        return None
+    confidence = cast(float | None, data.get("confidence"))
+    return QuizTestAiGradeOut(
+        verdict=QuizTestItemResult(cast(str, data["verdict"])) if "verdict" in data else None,
+        score=cast(float, data["score"]) if "score" in data else None,
+        confidence=confidence,
+        rationale=cast(str, data["rationale"]) if "rationale" in data else None,
+        error_code=cast(str, data["error_code"]) if "error_code" in data else None,
+        needs_review=confidence is not None and confidence < SHORT_ANSWER_REVIEW_THRESHOLD,
     )
 
 
@@ -379,7 +594,7 @@ def _grade_objective(
     return result, score, stripped
 
 
-def _test_answer_event(
+def build_test_answer_event(
     test: QuizTest,
     item: QuizTestItem,
     quiz: Quiz,
@@ -452,5 +667,5 @@ async def _grade_and_record(
         await session.refresh(item)
         return
     if result is not None:
-        session.add(_test_answer_event(test, item, quiz, result, cast(float, score), now))
+        session.add(build_test_answer_event(test, item, quiz, result, cast(float, score), now))
     await session.flush()

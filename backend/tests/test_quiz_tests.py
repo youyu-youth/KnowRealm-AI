@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -10,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.agents.llm import StructuredModelResult
 from app.db.migrations import run_migrations
 from app.main import create_app
 
@@ -160,7 +162,13 @@ async def test_create_list_and_detail_quiz_test_use_only_active_selected_questio
         items = detail.json()["items"]
         assert [item["sequence_no"] for item in items] == [1, 2]
         assert {item["question_type"] for item in items} == {"TRUE_FALSE"}
-        assert all("correct_answer" not in item and "explanation" not in item for item in items)
+        # 作答期不泄漏答案：字段存在但恒为 null（终态才揭示）
+        assert all(
+            item["correct_answer"] is None
+            and item["explanation"] is None
+            and item["ai_grade"] is None
+            for item in items
+        )
 
         async with app.state.session_factory() as session, session.begin():
             await session.execute(
@@ -601,3 +609,497 @@ async def test_resume_after_interrupt_keeps_answers_without_duplicate_events(
         )
         assert continue_second.json()["answered_count"] == 2
         assert len(await fetch_test_answer_events(app)) == 2
+
+
+# ---------- 04 交卷评分链路（简答 AI 评分 / 失败语义 / 事件 / 重评） ----------
+
+
+class FakeGradingModel:
+    """逐题顺序吐出预置输出；输出不合规由 pydantic 校验转为 LLM_OUTPUT_INVALID。"""
+
+    def __init__(self, outputs: list[object]) -> None:
+        self.outputs = list(outputs)
+        self.prompts: list[str] = []
+
+    async def generate(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        prompt: str,
+    ) -> StructuredModelResult:
+        assert base_url == "https://example.com/v1"
+        assert api_key == "sk-test"
+        assert model == "qwen-plus"
+        self.prompts.append(prompt)
+        return StructuredModelResult(output=self.outputs.pop(0), token_usage={"total_tokens": 31})
+
+
+@asynccontextmanager
+async def running_grading_app(
+    data_dir: Path,
+    model: FakeGradingModel,
+) -> AsyncGenerator[tuple[FastAPI, httpx.AsyncClient]]:
+    app = create_app(data_dir=data_dir, launch_token=TOKEN, quiz_grading_model=model)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://testserver",
+            headers={"X-KnowRealm-Token": TOKEN},
+        ) as client:
+            yield app, client
+
+
+async def configure_llm_provider(client: httpx.AsyncClient) -> None:
+    provider = await client.put(
+        "/api/settings/providers/llm",
+        json={
+            "base_url": "https://example.com/v1",
+            "api_key": "sk-test",
+            "model": "qwen-plus",
+        },
+    )
+    assert provider.status_code == 200
+    consent = await client.post("/api/settings/external-processing-consents/llm")
+    assert consent.status_code == 200
+
+
+async def answer_all(client: httpx.AsyncClient, test_id: str, items: list[QuizItem]) -> None:
+    for item in items:
+        answer: object = "我的简答作答"
+        if item["question_type"] == "FILL_BLANK":
+            answer = ["16", "0.5"]
+        elif item["question_type"] != "SHORT_ANSWER":
+            answer = 2 if item["question_type"] == "MULTIPLE_CHOICE" else 0
+        response = await client.post(
+            f"/api/quiz-tests/{test_id}/answers",
+            json={"item_id": item["id"], "answer": answer},
+        )
+        assert response.status_code == 200
+
+
+async def wait_for_test_status(
+    client: httpx.AsyncClient,
+    test_id: str,
+    status: str,
+) -> dict[str, object]:
+    for _ in range(200):
+        detail = await client.get(f"/api/quiz-tests/{test_id}")
+        assert detail.status_code == 200
+        if detail.json()["status"] == status:
+            return cast(dict[str, object], detail.json())
+        await asyncio.sleep(0.02)
+    pytest.fail(f"测试状态未进入 {status}")
+
+
+async def fetch_learning_events(app: FastAPI, key_pattern: str) -> list[dict[str, object]]:
+    async with app.state.session_factory() as session:
+        rows = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT idempotency_key, event_type, source_type, source_id, "
+                        "result, score, duration_ms, metadata_json FROM learning_events "
+                        "WHERE idempotency_key LIKE :pattern"
+                    ),
+                    {"pattern": key_pattern},
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return [dict(row) for row in rows]
+
+
+def ai_grade_of(item: QuizItem) -> dict[str, object]:
+    return cast(dict[str, object], item["ai_grade"])
+
+
+@pytest.mark.anyio
+async def test_submit_requires_all_answers_and_objective_only_completes_synchronously(
+    tmp_path: Path,
+) -> None:
+    async with running_app(tmp_path) as (app, client):
+        await seed_quiz_bank(app, [("MULTIPLE_CHOICE", 2), ("TRUE_FALSE", 0)])
+        test_id, items = await create_test_from_bank(client, ["MULTIPLE_CHOICE", "TRUE_FALSE"])
+        mc = next(item for item in items if item["question_type"] == "MULTIPLE_CHOICE")
+        tf = next(item for item in items if item["question_type"] == "TRUE_FALSE")
+
+        unanswered = await client.post(f"/api/quiz-tests/{test_id}/submit")
+        assert unanswered.status_code == 409
+        assert unanswered.json()["detail"] == "还有题目未作答，全部作答后方可交卷"
+
+        # MC 答对（correct=2）、判断答错（correct=0 提交 1）
+        for item, answer in ((mc, 2), (tf, 1)):
+            response = await client.post(
+                f"/api/quiz-tests/{test_id}/answers",
+                json={"item_id": item["id"], "answer": answer},
+            )
+            assert response.status_code == 200
+
+        submitted = await client.post(f"/api/quiz-tests/{test_id}/submit")
+        assert submitted.status_code == 200
+        body = cast(dict[str, object], submitted.json())
+        # 无简答题：同步判分直达 COMPLETED，score=已计分题等权平均（0.5）
+        assert body["status"] == "COMPLETED"
+        assert body["score"] == 0.5
+        assert body["completed_at"] is not None
+
+        # 终态揭示正确答案与解析；重复交卷 409
+        mc_row = item_of(cast(list[QuizItem], body["items"]), mc["id"])
+        assert mc_row["correct_answer"] == 2
+        assert mc_row["explanation"] == "解析"
+        again = await client.post(f"/api/quiz-tests/{test_id}/submit")
+        assert again.status_code == 409
+
+        events = await fetch_learning_events(app, "quiz-test-completed:%")
+        assert len(events) == 1
+        completed = events[0]
+        assert completed["event_type"] == "QUIZ_TEST_COMPLETED"
+        assert completed["source_type"] == "QUIZ_TEST"
+        assert completed["source_id"] == test_id
+        assert completed["score"] == 0.5
+        assert cast(int, completed["duration_ms"]) >= 0
+        metadata = json.loads(cast(str, completed["metadata_json"]))
+        assert metadata["question_count"] == 2
+        assert metadata["unscored_count"] == 0
+        assert metadata["question_types"] == {"MULTIPLE_CHOICE": 1, "TRUE_FALSE": 1}
+
+        async with app.state.session_factory() as session:
+            jobs = cast(
+                int,
+                await session.scalar(text("SELECT count(*) FROM processing_jobs")),
+            )
+        assert jobs == 0
+
+
+@pytest.mark.anyio
+async def test_short_answer_grading_job_completes_test_with_events_and_telemetry(
+    tmp_path: Path,
+) -> None:
+    model = FakeGradingModel(
+        [
+            {
+                "verdict": "PARTIAL",
+                "score": 0.6,
+                "confidence": 0.9,
+                "rationale": "覆盖了部分核心要点。",
+            }
+        ]
+    )
+    async with running_grading_app(tmp_path, model) as (app, client):
+        await seed_quiz_bank(app, [("MULTIPLE_CHOICE", 2), ("SHORT_ANSWER", "参考答案文本")])
+        test_id, items = await create_test_from_bank(client, ["MULTIPLE_CHOICE", "SHORT_ANSWER"])
+        mc = next(item for item in items if item["question_type"] == "MULTIPLE_CHOICE")
+        short = next(item for item in items if item["question_type"] == "SHORT_ANSWER")
+
+        right = await client.post(
+            f"/api/quiz-tests/{test_id}/answers",
+            json={"item_id": mc["id"], "answer": 2},
+        )
+        assert right.status_code == 200
+        short_answered = await client.post(
+            f"/api/quiz-tests/{test_id}/answers",
+            json={"item_id": short["id"], "answer": "我的简答作答"},
+        )
+        assert short_answered.status_code == 200
+
+        # 未配置供应商：交卷被 409 拦截
+        unconfigured = await client.post(f"/api/quiz-tests/{test_id}/submit")
+        assert unconfigured.status_code == 409
+        assert unconfigured.json()["detail"] == "请先配置 LLM Provider"
+        await configure_llm_provider(client)
+
+        submitted = await client.post(f"/api/quiz-tests/{test_id}/submit")
+        assert submitted.status_code == 200
+        assert submitted.json()["status"] == "GRADING"
+        grading_item = item_of(cast(list[QuizItem], submitted.json()["items"]), short["id"])
+        # 评分中不揭示正确答案
+        assert grading_item["correct_answer"] is None
+
+        completed = await wait_for_test_status(client, test_id, "COMPLETED")
+        assert completed["score"] == 0.8  # (1.0 + 0.6) / 2
+
+        short_row = item_of(cast(list[QuizItem], completed["items"]), short["id"])
+        assert short_row["result"] == "PARTIAL"
+        assert short_row["score"] == 0.6
+        assert short_row["correct_answer"] == "参考答案文本"
+        ai_grade = ai_grade_of(short_row)
+        assert ai_grade["verdict"] == "PARTIAL"
+        assert ai_grade["confidence"] == 0.9
+        assert ai_grade["rationale"] == "覆盖了部分核心要点。"
+        assert ai_grade["needs_review"] is False
+
+        # 简答评分成功才落 QUIZ_ANSWERED；整卷完成事件同事务落
+        answered = await fetch_learning_events(app, "quiz-answered:test:%")
+        assert {event["idempotency_key"] for event in answered} == {
+            f"quiz-answered:test:{mc['id']}",
+            f"quiz-answered:test:{short['id']}",
+        }
+        short_event = next(
+            event
+            for event in answered
+            if event["idempotency_key"] == f"quiz-answered:test:{short['id']}"
+        )
+        assert short_event["result"] == "PARTIAL"
+        assert short_event["score"] == 0.6
+        completed_events = await fetch_learning_events(app, "quiz-test-completed:%")
+        assert len(completed_events) == 1
+        metadata = json.loads(cast(str, completed_events[0]["metadata_json"]))
+        assert metadata["unscored_count"] == 0
+
+        # 埋点链路：token/latency/model 照记（prompt 与输出全文不落）
+        async with app.state.session_factory() as session:
+            logs = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT graph_name, graph_node, model, token_usage_json "
+                            "FROM llm_call_logs"
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        assert len(logs) == 1
+        assert logs[0]["graph_name"] == "quiz"
+        assert logs[0]["graph_node"] == "grade"
+        assert logs[0]["model"] == "qwen-plus"
+        assert "31" in cast(str, logs[0]["token_usage_json"])
+
+
+@pytest.mark.anyio
+async def test_failed_item_is_unscored_excluded_and_low_confidence_flagged(
+    tmp_path: Path,
+) -> None:
+    # 首题输出违反松一致性（WRONG 但 score=0.5）→ LLM_OUTPUT_INVALID；
+    # 次题低置信（0.4 < 0.7）→ needs_review 标记
+    model = FakeGradingModel(
+        [
+            {"verdict": "WRONG", "score": 0.5, "confidence": 0.9, "rationale": "矛盾输出"},
+            {"verdict": "PARTIAL", "score": 0.5, "confidence": 0.4, "rationale": "只答到一半。"},
+        ]
+    )
+    async with running_grading_app(tmp_path, model) as (app, client):
+        await seed_quiz_bank(
+            app,
+            [
+                ("MULTIPLE_CHOICE", 2),
+                ("SHORT_ANSWER", "参考答案一"),
+                ("SHORT_ANSWER", "参考答案二"),
+            ],
+        )
+        await configure_llm_provider(client)
+        test_id, items = await create_test_from_bank(client, ["MULTIPLE_CHOICE", "SHORT_ANSWER"])
+        await answer_all(client, test_id, items)
+        shorts = [item for item in items if item["question_type"] == "SHORT_ANSWER"]
+
+        submitted = await client.post(f"/api/quiz-tests/{test_id}/submit")
+        assert submitted.status_code == 200
+
+        completed = await wait_for_test_status(client, test_id, "COMPLETED")
+        # 失败题排除出分母：score = (1.0 + 0.5) / 2，整卷照常 COMPLETED
+        assert completed["score"] == 0.75
+        rows = {cast(str, item["id"]): item for item in cast(list[QuizItem], completed["items"])}
+
+        failed = next(
+            rows[cast(str, short["id"])]
+            for short in shorts
+            if ai_grade_of(rows[cast(str, short["id"])]).get("error_code") is not None
+        )
+        assert failed["result"] is None
+        assert failed["score"] is None
+        assert ai_grade_of(failed)["error_code"] == "LLM_OUTPUT_INVALID"
+
+        graded = next(
+            rows[cast(str, short["id"])] for short in shorts if short["id"] != failed["id"]
+        )
+        assert ai_grade_of(graded)["needs_review"] is True
+
+        # 失败题不落 QUIZ_ANSWERED；未计分数入完成事件 metadata
+        answered_keys = {
+            event["idempotency_key"]
+            for event in await fetch_learning_events(app, "quiz-answered:test:%")
+        }
+        assert f"quiz-answered:test:{failed['id']}" not in answered_keys
+        assert f"quiz-answered:test:{graded['id']}" in answered_keys
+        metadata = json.loads(
+            cast(
+                str,
+                (await fetch_learning_events(app, "quiz-test-completed:%"))[0]["metadata_json"],
+            )
+        )
+        assert metadata["unscored_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_crash_recovery_flips_grading_failed_and_regrade_skips_graded(
+    tmp_path: Path,
+) -> None:
+    model = FakeGradingModel(
+        [
+            {
+                "verdict": "CORRECT",
+                "score": 0.9,
+                "confidence": 0.95,
+                "rationale": "要点齐全。",
+            }
+        ]
+    )
+    async with running_grading_app(tmp_path, model) as (app, client):
+        await seed_quiz_bank(
+            app,
+            [("SHORT_ANSWER", "参考答案一"), ("SHORT_ANSWER", "参考答案二")],
+        )
+        await configure_llm_provider(client)
+        test_id, items = await create_test_from_bank(client, ["SHORT_ANSWER"])
+        await answer_all(client, test_id, items)
+
+    # 壳外模拟崩溃残留：RUNNING 评分 job + GRADING 卷面 + 其中一题已评成功
+    first, second = items[0], items[1]
+    now = "2026-08-31T09:00:00.000000Z"
+    async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+        await connection.execute(
+            "UPDATE quiz_tests SET status = 'GRADING' WHERE id = :test_id",
+            {"test_id": test_id},
+        )
+        await connection.execute(
+            "UPDATE quiz_test_items SET result = 'CORRECT', score = 0.9, "
+            "ai_grade_json = :grade WHERE id = :item_id",
+            {
+                "item_id": first["id"],
+                "grade": json.dumps(
+                    {
+                        "verdict": "CORRECT",
+                        "score": 0.9,
+                        "confidence": 0.95,
+                        "rationale": "要点齐全。",
+                    }
+                ),
+            },
+        )
+        await connection.execute(
+            "INSERT INTO learning_events (id, course_id, record_id, concept_id, event_type, "
+            "source_type, source_id, result, score, difficulty, duration_ms, metadata_json, "
+            "idempotency_key, schema_version, occurred_at, created_at) VALUES "
+            "('66666666-6666-4666-8666-666666666666', :course_id, NULL, NULL, 'QUIZ_ANSWERED', "
+            "'QUIZ_QUESTION', :quiz_id, 'CORRECT', 0.9, 'MEDIUM', NULL, '{}', :key, 1, :now, :now)",
+            {
+                "course_id": COURSE_ID,
+                "quiz_id": first["quiz_id"],
+                "key": f"quiz-answered:test:{first['id']}",
+                "now": now,
+            },
+        )
+        await connection.execute(
+            "INSERT INTO processing_jobs (id, record_id, job_type, status, progress, attempts, "
+            "max_attempts, next_run_at, input_json, result_json, error_code, error_message, "
+            "started_at, finished_at, created_at, updated_at, waiting_reason) VALUES "
+            "('77777777-7777-4777-8777-777777777777', NULL, 'QUIZ_GRADING', 'RUNNING', 0, 1, 3, "
+            "NULL, :input_json, NULL, NULL, NULL, :now, NULL, :now, :now, NULL)",
+            {"input_json": json.dumps({"test_id": test_id}), "now": now},
+        )
+        await connection.commit()
+
+    # 重启 sidecar：恢复钩子把 RUNNING job 收编为 FAILED、卷面翻 GRADING_FAILED
+    async with running_grading_app(tmp_path, model) as (app, client):
+        detail = await client.get(f"/api/quiz-tests/{test_id}")
+        assert detail.status_code == 200
+        assert detail.json()["status"] == "GRADING_FAILED"
+
+        # 非 GRADING_FAILED 态重评被拒
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE quiz_tests SET status = 'COMPLETED' WHERE id = :test_id"),
+                {"test_id": test_id},
+            )
+        not_failed = await client.post(f"/api/quiz-tests/{test_id}/regrade")
+        assert not_failed.status_code == 409
+        assert not_failed.json()["detail"] == "只有评分失败的测试可以重新评分"
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE quiz_tests SET status = 'GRADING_FAILED' WHERE id = :test_id"),
+                {"test_id": test_id},
+            )
+
+        regraded = await client.post(f"/api/quiz-tests/{test_id}/regrade")
+        assert regraded.status_code == 200
+        assert regraded.json()["status"] == "GRADING"
+
+        completed = await wait_for_test_status(client, test_id, "COMPLETED")
+        # 已评成功题跳过：模型只被调一次（评第二题），首题分数原样保留
+        assert len(model.prompts) == 1
+        assert completed["score"] == 0.9
+        rows = {cast(str, item["id"]): item for item in cast(list[QuizItem], completed["items"])}
+        assert rows[cast(str, first["id"])]["score"] == 0.9
+        assert rows[cast(str, second["id"])]["result"] == "CORRECT"
+
+        # 事件键保证不重复：每题一条 + 完成事件一条
+        answered_keys = {
+            event["idempotency_key"]
+            for event in await fetch_learning_events(app, "quiz-answered:test:%")
+        }
+        assert answered_keys == {
+            f"quiz-answered:test:{first['id']}",
+            f"quiz-answered:test:{second['id']}",
+        }
+        assert len(await fetch_learning_events(app, "quiz-test-completed:%")) == 1
+
+
+@pytest.mark.anyio
+async def test_archived_course_cancels_grading_job_at_claim(tmp_path: Path) -> None:
+    model = FakeGradingModel([])
+    async with running_grading_app(tmp_path, model) as (app, client):
+        await seed_quiz_bank(app, [("SHORT_ANSWER", "参考答案文本")])
+        await configure_llm_provider(client)
+        test_id, items = await create_test_from_bank(client, ["SHORT_ANSWER"])
+        await answer_all(client, test_id, items)
+
+    # 第三道闸门：归档后残留的评分 job 在领取时静默取消，卷面翻 GRADING_FAILED
+    now = "2026-08-31T09:30:00.000000Z"
+    async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+        await connection.execute(
+            "UPDATE courses SET status = 'ARCHIVED' WHERE id = :course_id",
+            {"course_id": COURSE_ID},
+        )
+        await connection.execute(
+            "UPDATE quiz_tests SET status = 'GRADING' WHERE id = :test_id",
+            {"test_id": test_id},
+        )
+        await connection.execute(
+            "INSERT INTO processing_jobs (id, record_id, job_type, status, progress, attempts, "
+            "max_attempts, next_run_at, input_json, result_json, error_code, error_message, "
+            "started_at, finished_at, created_at, updated_at, waiting_reason) VALUES "
+            "('88888888-8888-4888-8888-888888888888', NULL, 'QUIZ_GRADING', 'PENDING', 0, 0, 3, "
+            "NULL, :input_json, NULL, NULL, NULL, NULL, NULL, :now, :now, NULL)",
+            {"input_json": json.dumps({"test_id": test_id}), "now": now},
+        )
+        await connection.commit()
+
+    async with running_grading_app(tmp_path, model) as (app, client):
+        job_status = ""
+        test_status = ""
+        for _ in range(100):
+            async with app.state.session_factory() as session:
+                job_status = cast(
+                    str,
+                    await session.scalar(
+                        text("SELECT status FROM processing_jobs WHERE job_type = 'QUIZ_GRADING'")
+                    ),
+                )
+                test_status = cast(
+                    str,
+                    await session.scalar(
+                        text("SELECT status FROM quiz_tests WHERE id = :test_id"),
+                        {"test_id": test_id},
+                    ),
+                )
+            if job_status == "CANCELLED" and test_status == "GRADING_FAILED":
+                break
+            await asyncio.sleep(0.05)
+        assert job_status == "CANCELLED"
+        assert test_status == "GRADING_FAILED"
+        # 未发生任何 LLM 调用
+        assert model.prompts == []

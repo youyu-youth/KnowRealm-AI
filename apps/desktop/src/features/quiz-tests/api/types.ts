@@ -9,6 +9,7 @@ export type QuizTestSummary = components["schemas"]["QuizTestSummaryOut"];
 export type QuizTestStatus = components["schemas"]["QuizTestStatus"];
 export type QuizTestItem = components["schemas"]["QuizTestItemOut"];
 export type QuizTestItemResult = NonNullable<QuizTestItem["result"]>;
+export type QuizTestAiGrade = NonNullable<QuizTestItem["ai_grade"]>;
 export type QuizTestAnswerRequest =
   components["schemas"]["QuizTestAnswerRequest"];
 export type QuizTestAnswer = QuizTestAnswerRequest["answer"];

@@ -7,7 +7,11 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { optionLabel } from "@/features/quiz-tests/components/optionLabel";
+import {
+  TestGradingBlock,
+  VerdictTag,
+} from "@/features/quiz-tests/components/TestGradingBlock";
 import type {
   QuizTestAnswer,
   QuizTestItem,
@@ -19,6 +23,8 @@ type TestQuestionCardProps = {
   locked: boolean;
   /** 本题提交请求在途 */
   pending: boolean;
+  /** 终态批改展示（COMPLETED / GRADING_FAILED） */
+  reviewing: boolean;
   onSubmit: (itemId: string, answer: QuizTestAnswer) => void;
 };
 
@@ -26,6 +32,7 @@ export function TestQuestionCard({
   item,
   locked,
   pending,
+  reviewing,
   onSubmit,
 }: TestQuestionCardProps) {
   const { t } = useTranslation();
@@ -44,7 +51,7 @@ export function TestQuestionCard({
               {t(`record.detail.quiz.type.${item.question_type}`)}
             </span>
             <span>{t(`record.detail.quiz.difficulty.${item.difficulty}`)}</span>
-            {item.result ? <AnswerVerdictTag item={item} /> : null}
+            {item.result ? <VerdictTag result={item.result} /> : null}
           </div>
           {item.question_type === "FILL_BLANK" ? null : (
             <p className="text-body text-ink mt-2 break-words">{item.stem}</p>
@@ -78,13 +85,14 @@ export function TestQuestionCard({
               onSubmit={(answer) => onSubmit(item.id, answer)}
             />
           )}
-          {answered ? (
+          {answered && !reviewing ? (
             <p className="text-label text-muted-foreground mt-2">
               {item.result
                 ? t("spaces.simulations.paper.submitted")
                 : t("spaces.simulations.paper.shortPending")}
             </p>
           ) : null}
+          {reviewing && answered ? <TestGradingBlock item={item} /> : null}
           {pending ? (
             <p
               role="status"
@@ -98,28 +106,6 @@ export function TestQuestionCard({
       </div>
     </article>
   );
-}
-
-function AnswerVerdictTag({ item }: { item: QuizTestItem }) {
-  const { t } = useTranslation();
-  const tone =
-    item.result === "CORRECT"
-      ? "bg-success-soft text-success-foreground"
-      : item.result === "WRONG"
-        ? "bg-destructive/10 text-destructive"
-        : "bg-warning-soft text-warning-foreground";
-  return (
-    <span className={cn("text-label rounded-xs px-1.5 py-0.5", tone)}>
-      {t(`spaces.simulations.paper.verdict.${item.result}`)}
-    </span>
-  );
-}
-
-function optionLabel(item: QuizTestItem, index: number): string {
-  const option = item.options[index] ?? "";
-  return item.question_type === "TRUE_FALSE"
-    ? option
-    : `${String.fromCharCode(65 + index)}. ${option}`;
 }
 
 function SingleChoiceControl({

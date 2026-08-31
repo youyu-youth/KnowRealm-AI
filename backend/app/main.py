@@ -15,9 +15,11 @@ from loguru import logger
 from app.agents.llm import (
     KnowledgePointModel,
     OpenAiCompatibleKnowledgePointModel,
+    OpenAiCompatibleQuizGradingModel,
     OpenAiCompatibleQuizModel,
     OpenAiCompatibleSummaryModel,
     OpenAiCompatibleTodoModel,
+    QuizGradingModel,
     QuizModel,
     SummaryModel,
     TodoModel,
@@ -56,6 +58,7 @@ from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import document_spec
 from app.services.job_runner import JobRunner, ManagedWorker
 from app.services.knowledge_point_worker import knowledge_point_spec
+from app.services.quiz_grading_worker import quiz_grading_spec
 from app.services.quiz_worker import quiz_spec
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_worker import summary_spec
@@ -78,6 +81,7 @@ def create_app(
     summary_model: SummaryModel | None = None,
     knowledge_point_model: KnowledgePointModel | None = None,
     quiz_model: QuizModel | None = None,
+    quiz_grading_model: QuizGradingModel | None = None,
     todo_model: TodoModel | None = None,
     import_archive: Path | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
@@ -109,6 +113,7 @@ def create_app(
                 knowledge_point_model or OpenAiCompatibleKnowledgePointModel()
             )
             app.state.quiz_model = quiz_model or OpenAiCompatibleQuizModel()
+            app.state.quiz_grading_model = quiz_grading_model or OpenAiCompatibleQuizGradingModel()
             app.state.todo_model = todo_model or OpenAiCompatibleTodoModel()
             app.state.asr_client = asr_client or TencentAsrClient()
 
@@ -150,7 +155,7 @@ def create_app(
                         record_notifier,
                     )
 
-                # 显式 worker 工厂表：启动顺序即表序（document → audio → LLM 四域）
+                # 显式 worker 工厂表：启动顺序即表序（document → audio → LLM 五域）
                 worker_factories: list[tuple[str, Callable[[], ManagedWorker]]] = [
                     (
                         "document",
@@ -194,6 +199,19 @@ def create_app(
                                 session_factory,
                                 resolved_data_dir,
                                 app.state.quiz_model,
+                                record_notifier,
+                            ),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
+                    (
+                        "quiz_grading",
+                        lambda: JobRunner(
+                            quiz_grading_spec(
+                                session_factory,
+                                resolved_data_dir,
+                                app.state.quiz_grading_model,
                                 record_notifier,
                             ),
                             session_factory,

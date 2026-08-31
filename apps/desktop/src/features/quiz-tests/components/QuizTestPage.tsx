@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { quizTestKeys } from "@/features/quiz-tests/api/keys";
@@ -56,6 +57,9 @@ export function QuizTestPage({
   const test = useQuery({
     queryKey: quizTestKeys.detail(testId),
     queryFn: () => quizTestApi.get(testId),
+    // 评分中轮询：GRADING 态每 1.5s 拉一次，其余状态停轮
+    refetchInterval: (query) =>
+      query.state.data?.status === "GRADING" ? 1500 : false,
   });
 
   const patchView = (next: TestView) => {
@@ -125,6 +129,17 @@ function ExamPaper({
   const navigate = useNavigate();
   const items = data.items;
   const answering = data.status === "IN_PROGRESS";
+  const reviewing =
+    data.status === "COMPLETED" || data.status === "GRADING_FAILED";
+
+  /* 离开作答态（交卷 / 放弃）即同步课程页列表（列表缓存默认 60s 不自动刷新） */
+  useEffect(() => {
+    if (data.status !== "IN_PROGRESS") {
+      void queryClient.invalidateQueries({
+        queryKey: quizTestKeys.list(data.course_id),
+      });
+    }
+  }, [data.status, data.course_id, queryClient]);
 
   const answer = useMutation({
     mutationFn: ({
@@ -138,6 +153,20 @@ function ExamPaper({
       queryClient.setQueryData(quizTestKeys.detail(data.id), result),
     onError: () =>
       queryClient.invalidateQueries({ queryKey: quizTestKeys.detail(data.id) }),
+  });
+  const submit = useMutation({
+    mutationFn: () => quizTestApi.submit(data.id),
+    onSuccess: (result) => {
+      queryClient.setQueryData(quizTestKeys.detail(data.id), result);
+      void queryClient.invalidateQueries({
+        queryKey: quizTestKeys.list(data.course_id),
+      });
+    },
+  });
+  const regrade = useMutation({
+    mutationFn: () => quizTestApi.regrade(data.id),
+    onSuccess: (result) =>
+      queryClient.setQueryData(quizTestKeys.detail(data.id), result),
   });
   const abandon = useMutation({
     mutationFn: () => quizTestApi.abandon(data.id),
@@ -167,6 +196,7 @@ function ExamPaper({
     firstUnansweredSection(sections, items),
   );
   const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
 
   const answeredCount = data.answered_count;
   const answeredAll = items.length > 0 && answeredCount === items.length;
@@ -218,9 +248,13 @@ function ExamPaper({
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  /* 交卷确认与提交 API 属评分票（04），此处仅承载禁用态与提示 */
+  /* 交卷确认后触发评分；无简答题时后端同步落 COMPLETED */
   const submitButton = (className?: string) => (
-    <Button className={className} disabled={!answeredAll}>
+    <Button
+      className={className}
+      disabled={!answeredAll}
+      onClick={() => setConfirmSubmit(true)}
+    >
       {t("spaces.simulations.paper.submitButton")}
     </Button>
   );
@@ -231,6 +265,7 @@ function ExamPaper({
       item={item}
       locked={!answering}
       pending={pendingItemId === item.id}
+      reviewing={reviewing}
       onSubmit={(itemId, value) => answer.mutate({ itemId, answer: value })}
     />
   );
@@ -252,8 +287,9 @@ function ExamPaper({
       {!answering ? (
         <p
           role="status"
-          className="bg-surface-subtle text-body text-muted-foreground mt-5 px-3 py-2"
+          className="bg-surface-subtle text-body text-muted-foreground mt-5 flex items-center gap-2 px-3 py-2"
         >
+          {data.status === "GRADING" ? <Spinner aria-hidden="true" /> : null}
           {t(`spaces.simulations.paper.banner.${data.status}`)}
         </p>
       ) : null}
@@ -269,6 +305,7 @@ function ExamPaper({
       <div className="mt-5 flex gap-10">
         {answering ? (
           <aside className="sticky top-6 w-56 shrink-0 self-start">
+            {" "}
             <p className="text-section font-section text-ink">
               {t("spaces.simulations.paper.answerCard")}
             </p>
@@ -329,6 +366,20 @@ function ExamPaper({
               {t("spaces.simulations.paper.abandonButton")}
             </Button>
           </aside>
+        ) : reviewing ? (
+          <ResultSummary
+            data={data}
+            regradePending={regrade.isPending}
+            regradeError={regrade.isError ? regrade.error.message : null}
+            onRegrade={() => regrade.mutate()}
+            onRetake={() =>
+              void navigate({
+                to: "/spaces/$courseId",
+                params: { courseId },
+                search: { tab: "tests" },
+              })
+            }
+          />
         ) : null}
 
         <div className="min-w-0 flex-1">
@@ -568,7 +619,125 @@ function ExamPaper({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog open={confirmSubmit} onOpenChange={setConfirmSubmit}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {t("spaces.simulations.paper.submitDialog.title")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("spaces.simulations.paper.submitDialog.description", {
+                total: items.length,
+                answered: answeredCount,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={submit.isPending}
+              onClick={() => setConfirmSubmit(false)}
+            >
+              {t("spaces.simulations.paper.submitDialog.cancel")}
+            </Button>
+            <Button disabled={submit.isPending} onClick={() => submit.mutate()}>
+              {submit.isPending ? <Spinner aria-hidden="true" /> : null}
+              {t("spaces.simulations.paper.submitDialog.confirm")}
+            </Button>
+          </DialogFooter>
+          {submit.isError ? (
+            <p role="alert" className="text-body text-destructive">
+              {submit.error.message}
+            </p>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </section>
+  );
+}
+
+/** 终态成绩摘要侧栏：得分（×100）、对/错/半对/未计分/待复核计数、重新评分与再考一张 */
+function ResultSummary({
+  data,
+  regradePending,
+  regradeError,
+  onRegrade,
+  onRetake,
+}: {
+  data: QuizTestDetail;
+  regradePending: boolean;
+  regradeError: string | null;
+  onRegrade: () => void;
+  onRetake: () => void;
+}) {
+  const { t } = useTranslation();
+  const counts = { correct: 0, wrong: 0, partial: 0, unscored: 0, review: 0 };
+  for (const item of data.items) {
+    if (item.result === "CORRECT") counts.correct += 1;
+    else if (item.result === "WRONG") counts.wrong += 1;
+    else if (item.result === "PARTIAL") counts.partial += 1;
+    else counts.unscored += 1;
+    if (item.ai_grade?.needs_review) counts.review += 1;
+  }
+  const counted = counts.correct + counts.wrong + counts.partial;
+  return (
+    <aside className="sticky top-6 w-56 shrink-0 self-start">
+      <p className="text-label text-muted-foreground">
+        {t("spaces.simulations.paper.result.scoreLabel")}
+      </p>
+      <p className="text-headline font-headline text-ink-strong mt-1 tabular-nums">
+        {data.score != null ? Math.round(data.score * 100) : "—"}
+        <span className="text-body text-muted-foreground">
+          {" "}
+          {t("spaces.simulations.paper.result.scoreSuffix")}
+        </span>
+      </p>
+      <Separator className="my-4" />
+      <div className="space-y-2">
+        <p className="text-label text-muted-foreground tabular-nums">
+          {t("spaces.simulations.paper.result.counts", {
+            correct: counts.correct,
+            wrong: counts.wrong,
+            partial: counts.partial,
+          })}
+        </p>
+        {counts.unscored > 0 ? (
+          <p className="text-label text-muted-foreground tabular-nums">
+            {t("spaces.simulations.paper.result.unscored", {
+              unscored: counts.unscored,
+              counted,
+            })}
+          </p>
+        ) : null}
+        {counts.review > 0 ? (
+          <p className="text-label text-warning-foreground tabular-nums">
+            {t("spaces.simulations.paper.result.reviewCount", {
+              count: counts.review,
+            })}
+          </p>
+        ) : null}
+      </div>
+      {data.status === "GRADING_FAILED" ? (
+        <Button
+          variant="outline"
+          className="mt-5 w-full"
+          disabled={regradePending}
+          onClick={onRegrade}
+        >
+          {regradePending ? <Spinner aria-hidden="true" /> : null}
+          {t("spaces.simulations.paper.result.regradeButton")}
+        </Button>
+      ) : null}
+      {regradeError ? (
+        <p role="alert" className="text-label text-destructive mt-2">
+          {regradeError}
+        </p>
+      ) : null}
+      <Button variant="outline" className="mt-2 w-full" onClick={onRetake}>
+        {t("spaces.simulations.paper.result.retakeButton")}
+      </Button>
+    </aside>
   );
 }
 

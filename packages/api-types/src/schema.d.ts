@@ -358,6 +358,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/quiz-tests/{test_id}/regrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Regrade Quiz Test */
+        post: operations["regrade_quiz_test_api_quiz_tests__test_id__regrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quiz-tests/{test_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Quiz Test */
+        post: operations["submit_quiz_test_api_quiz_tests__test_id__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/recording-sessions": {
         parameters: {
             query?: never;
@@ -1620,7 +1654,8 @@ export interface components {
         };
         /**
          * PreferencesUpdate
-         * @description 全字段 optional 的部分更新：未提供的键保持原值；timezone/last_route 显式 null 各表跟随系统/默认页。
+         * @description 全字段 optional 的部分更新：未提供的键保持原值；
+         *     timezone/last_route 显式 null 各表跟随系统/默认页。
          */
         PreferencesUpdate: {
             /**
@@ -1868,6 +1903,26 @@ export interface components {
              */
             answer: string;
         };
+        /**
+         * QuizTestAiGradeOut
+         * @description 简答题 AI 评分结果（成功含 verdict/score/confidence/rationale；失败仅 error_code）。
+         */
+        QuizTestAiGradeOut: {
+            /** Confidence */
+            confidence?: number | null;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Needs Review
+             * @default false
+             */
+            needs_review: boolean;
+            /** Rationale */
+            rationale?: string | null;
+            /** Score */
+            score?: number | null;
+            verdict?: components["schemas"]["QuizTestItemResult"] | null;
+        };
         /** QuizTestAnswerRequest */
         QuizTestAnswerRequest: {
             /**
@@ -1938,9 +1993,14 @@ export interface components {
         };
         /** QuizTestItemOut */
         QuizTestItemOut: {
+            ai_grade?: components["schemas"]["QuizTestAiGradeOut"] | null;
             /** Answered At */
             answered_at: string | null;
+            /** Correct Answer */
+            correct_answer?: number | string | number[] | string[][] | null;
             difficulty: components["schemas"]["QuizDifficulty"];
+            /** Explanation */
+            explanation?: string | null;
             /** Id */
             id: string;
             /** Options */
@@ -4348,6 +4408,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Unprocessable Content */
             422: {
                 headers: {
@@ -4394,6 +4463,15 @@ export interface operations {
                     "application/json": components["schemas"]["QuizTestDetailOut"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Forbidden */
             403: {
                 headers: {
@@ -4405,6 +4483,153 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    regrade_quiz_test_api_quiz_tests__test_id__regrade_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizTestDetailOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_quiz_test_api_quiz_tests__test_id__submit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizTestDetailOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

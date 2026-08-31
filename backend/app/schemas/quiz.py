@@ -25,10 +25,12 @@ class QuizQuestionType(StrEnum):
 
 class QuizLearningEventType(StrEnum):
     ANSWERED = "QUIZ_ANSWERED"
+    TEST_COMPLETED = "QUIZ_TEST_COMPLETED"
 
 
 class QuizLearningEventSourceType(StrEnum):
     QUESTION = "QUIZ_QUESTION"
+    TEST = "QUIZ_TEST"
 
 
 class QuizQuestionCandidate(BaseModel):
@@ -128,6 +130,27 @@ class QuizBatch(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     items: list[QuizQuestionCandidate] = Field(min_length=1, max_length=10)
+
+
+class ShortAnswerGrade(BaseModel):
+    """简答题单次 LLM 评分输出；verdict 与 score 的松一致性在 Schema 层就地校验。"""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    verdict: Literal["CORRECT", "PARTIAL", "WRONG"] = Field(description="评阅结论")
+    score: float = Field(ge=0, le=1, description="得分（0 到 1）")
+    confidence: float = Field(ge=0, le=1, description="评分把握（0 到 1）")
+    rationale: str = Field(min_length=1, max_length=500, description="中文评分依据")
+
+    @model_validator(mode="after")
+    def validate_verdict_score_consistency(self) -> Self:
+        if self.verdict == "WRONG" and self.score != 0:
+            raise ValueError("WRONG 的 score 必须为 0")
+        if self.verdict == "PARTIAL" and not 0 < self.score < 1:
+            raise ValueError("PARTIAL 的 score 必须在 0 与 1 之间（开区间）")
+        if self.verdict == "CORRECT" and self.score <= 0:
+            raise ValueError("CORRECT 的 score 必须大于 0")
+        return self
 
 
 class QuizGenerationStatus(StrEnum):

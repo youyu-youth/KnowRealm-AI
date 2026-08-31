@@ -23,6 +23,14 @@ export const quizTestApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  submit: (testId: string) =>
+    apiFetch<QuizTestDetail>(`/api/quiz-tests/${testId}/submit`, {
+      method: "POST",
+    }),
+  regrade: (testId: string) =>
+    apiFetch<QuizTestDetail>(`/api/quiz-tests/${testId}/regrade`, {
+      method: "POST",
+    }),
   abandon: (testId: string) =>
     apiFetch<QuizTestSummary>(`/api/quiz-tests/${testId}/abandon`, {
       method: "POST",
