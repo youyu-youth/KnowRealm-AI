@@ -4,15 +4,28 @@
 
 **Blocked by:** 01（五题型作答控件）、02（表/API/卷面路由）。
 
-**Status:** ready-for-agent
+**Status:** done
 
 **深度参考:** `.scratch/function-plans-introduction/15-mock-test.md`（卷面结构定稿段、关键业务规则）；原型 `apps/desktop/src/pages/prototype-mock-test.tsx`（三档形式/答题卡/控件形态的验证基线，实现时按定稿语义重写）
 
-- [ ] 三档展示形式随切且 `?view=` URL 同步；单题档键盘 ←→ 翻题（输入框聚焦时不拦截）
-- [ ] 答题卡：格子跳题、已答/当前态、进度条、交卷按钮（未答完禁用 + 提示）
-- [ ] 一题一答锁定不可改；客观题提交即判（多选/填空全对制，复用 01 判分规则），简答提交锁定待评
-- [ ] 逐题作答 API + `QUIZ_ANSWERED` 事件（键 `quiz-answered:test:{item_id}`）客观题提交即落、重放幂等不重复
-- [ ] 中断重进：进行中测试可恢复继续作答，已答不丢、不产生重复事件
-- [ ] 放弃 → ABANDONED，不落任何事件
-- [ ] 测试作答只写 `quiz_test_items`，`quizzes.user_answer_json / answer_result / answered_at` 三列零触碰（测试守护）
-- [ ] pytest（判分/事件/幂等/放弃）与前端 MSW（三档切换/锁定/答题卡/恢复）双侧绿
+- [x] 三档展示形式随切且 `?view=` URL 同步；单题档键盘 ←→ 翻题（输入框聚焦时不拦截）
+- [x] 答题卡：格子跳题、已答/当前态、进度条、交卷按钮（未答完禁用 + 提示）
+- [x] 一题一答锁定不可改；客观题提交即判（多选全对 1.0/0.0、填空逐空判分部分空对=PARTIAL 按空比例，见下方备注），简答提交锁定待评
+- [x] 逐题作答 API + `QUIZ_ANSWERED` 事件（键 `quiz-answered:test:{item_id}`）客观题提交即落、重放幂等不重复
+- [x] 中断重进：进行中测试可恢复继续作答，已答不丢、不产生重复事件
+- [x] 放弃 → ABANDONED，不落任何事件
+- [x] 测试作答只写 `quiz_test_items`，`quizzes.user_answer_json / answer_result / answered_at` 三列零触碰（测试守护）
+- [x] pytest（判分/事件/幂等/放弃）与前端 MSW（三档切换/锁定/答题卡/恢复）双侧绿
+
+## 实现备注（2026-08-31 关票）
+
+- **填空判分语义**：工单摘要行原写"多选/填空全对制"，实现按 15 号功能计划定稿执行——多选全对才得分（1.0/0.0），填空逐空判分（部分空对=PARTIAL、score=对空比例）。依据：02 迁移 `result` CHECK 含 PARTIAL、04 成绩摘要含"半对"、原型同语义。
+- **边界归属**：交卷确认对话框与 `POST /submit` 评分 API 属 04；答题卡交卷按钮在 03 仅承载禁用态与提示。评分中/结果页批改展示亦属 04，非进行中测试当前以状态横幅 + 只读卷呈现。
+- **归档护栏**：`answers`/`abandon` 端点同样拦在课程 ACTIVE 之外（409），与读闸门一致（code-review 补强）。
+- **事件字段**：QUIZ_ANSWERED 记 result/score（填空比例）/difficulty，metadata 记 test_id/question_type/sequence_no；`record_id` 恒 NULL。
+
+## 用户真机验收（不代勾）
+
+- [ ] 三档形式切换与键盘 ←→ 翻题手感（输入框聚焦时翻题不拦截）
+- [ ] 答题卡跳题、单选/判断点击即提交的误触风险是否可接受（原型验证过的交互）
+- [ ] 放弃测试确认流程与跳回课程页
