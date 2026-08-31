@@ -70,7 +70,7 @@
 
 ## 原型参考（throwaway）
 
-- `apps/desktop/src/pages/prototype-mock-test.tsx`：卷面二轮原型（三档展示形式 + 五题型作答/批改 + 答题卡 + 入口/组卷对话框），经用户两轮反馈验证后定稿上述结构；实现时按定稿语义重写为正式代码，原型本身不进 main（按 prototype 流程移至 throwaway 分支留档）
+- 卷面二轮原型（三档展示形式 + 五题型作答/批改 + 答题卡 + 入口/组卷对话框），经用户两轮反馈验证后定稿上述结构；实现时已按定稿语义重写为正式代码（03 卷面作答），原型本体已于 2026-08-31 归档至分支 **`prototype/mock-test`**（文件 `apps/desktop/src/pages/prototype-mock-test.tsx`），开发线不再保留
 - 卷面视觉基调：连续纸面 + 基线分隔（DESIGN.md Zero Card Chrome），答题卡/成绩摘要=左侧常驻栏，批改块用 `*-soft`/`*-foreground` 语义色
 
 ## 验收标准（出口线）
