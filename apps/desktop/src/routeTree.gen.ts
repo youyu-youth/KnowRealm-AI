@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from "./pages/__root";
 import { Route as IndexRouteImport } from "./pages/index";
 import { Route as InboxRouteImport } from "./pages/inbox";
 import { Route as OnboardingRouteImport } from "./pages/onboarding";
+import { Route as PrototypeMockTestRouteImport } from "./pages/prototype-mock-test";
 import { Route as SettingsRouteImport } from "./pages/settings";
 import { Route as SpacesRouteImport } from "./pages/spaces";
 import { Route as ChatIndexRouteImport } from "./pages/chat.index";
@@ -33,6 +34,11 @@ const InboxRoute = InboxRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: "/onboarding",
   path: "/onboarding",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const PrototypeMockTestRoute = PrototypeMockTestRouteImport.update({
+  id: "/prototype-mock-test",
+  path: "/prototype-mock-test",
   getParentRoute: () => rootRouteImport,
 } as any);
 const SettingsRoute = SettingsRouteImport.update({
@@ -75,6 +81,7 @@ export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
   "/onboarding": typeof OnboardingRoute;
+  "/prototype-mock-test": typeof PrototypeMockTestRoute;
   "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
   "/chat/$sessionId": typeof ChatSessionIdRoute;
@@ -87,6 +94,7 @@ export interface FileRoutesByTo {
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
   "/onboarding": typeof OnboardingRoute;
+  "/prototype-mock-test": typeof PrototypeMockTestRoute;
   "/settings": typeof SettingsRoute;
   "/chat/$sessionId": typeof ChatSessionIdRoute;
   "/records/$recordId": typeof RecordsRecordIdRoute;
@@ -99,6 +107,7 @@ export interface FileRoutesById {
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
   "/onboarding": typeof OnboardingRoute;
+  "/prototype-mock-test": typeof PrototypeMockTestRoute;
   "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
   "/chat/$sessionId": typeof ChatSessionIdRoute;
@@ -113,6 +122,7 @@ export interface FileRouteTypes {
     | "/"
     | "/inbox"
     | "/onboarding"
+    | "/prototype-mock-test"
     | "/settings"
     | "/spaces"
     | "/chat/$sessionId"
@@ -125,6 +135,7 @@ export interface FileRouteTypes {
     | "/"
     | "/inbox"
     | "/onboarding"
+    | "/prototype-mock-test"
     | "/settings"
     | "/chat/$sessionId"
     | "/records/$recordId"
@@ -136,6 +147,7 @@ export interface FileRouteTypes {
     | "/"
     | "/inbox"
     | "/onboarding"
+    | "/prototype-mock-test"
     | "/settings"
     | "/spaces"
     | "/chat/$sessionId"
@@ -149,6 +161,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   InboxRoute: typeof InboxRoute;
   OnboardingRoute: typeof OnboardingRoute;
+  PrototypeMockTestRoute: typeof PrototypeMockTestRoute;
   SettingsRoute: typeof SettingsRoute;
   SpacesRoute: typeof SpacesRouteWithChildren;
   ChatSessionIdRoute: typeof ChatSessionIdRoute;
@@ -177,6 +190,13 @@ declare module "@tanstack/react-router" {
       path: "/onboarding";
       fullPath: "/onboarding";
       preLoaderRoute: typeof OnboardingRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/prototype-mock-test": {
+      id: "/prototype-mock-test";
+      path: "/prototype-mock-test";
+      fullPath: "/prototype-mock-test";
+      preLoaderRoute: typeof PrototypeMockTestRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/settings": {
@@ -248,6 +268,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InboxRoute: InboxRoute,
   OnboardingRoute: OnboardingRoute,
+  PrototypeMockTestRoute: PrototypeMockTestRoute,
   SettingsRoute: SettingsRoute,
   SpacesRoute: SpacesRouteWithChildren,
   ChatSessionIdRoute: ChatSessionIdRoute,
