@@ -1644,7 +1644,8 @@
           "SUMMARY",
           "KNOWLEDGE_EXTRACTION",
           "QUIZ_GENERATION",
-          "TODO_GENERATION"
+          "TODO_GENERATION",
+          "QUIZ_GRADING"
         ],
         "title": "ProcessingJobType",
         "type": "string"
@@ -2133,6 +2134,414 @@
           "answer"
         ],
         "title": "QuizShortAnswerRequest",
+        "type": "object"
+      },
+      "QuizTestBlockedReason": {
+        "enum": [
+          "COURSE_ARCHIVED",
+          "NO_AVAILABLE_QUIZZES"
+        ],
+        "title": "QuizTestBlockedReason",
+        "type": "string"
+      },
+      "QuizTestConflictOut": {
+        "properties": {
+          "blocked_reason": {
+            "$ref": "#/components/schemas/QuizTestBlockedReason"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "blocked_reason"
+        ],
+        "title": "QuizTestConflictOut",
+        "type": "object"
+      },
+      "QuizTestCreateOut": {
+        "properties": {
+          "requested_count": {
+            "title": "Requested Count",
+            "type": "integer"
+          },
+          "selected_count": {
+            "title": "Selected Count",
+            "type": "integer"
+          },
+          "shortage": {
+            "title": "Shortage",
+            "type": "boolean"
+          },
+          "test": {
+            "$ref": "#/components/schemas/QuizTestSummaryOut"
+          }
+        },
+        "required": [
+          "test",
+          "requested_count",
+          "selected_count",
+          "shortage"
+        ],
+        "title": "QuizTestCreateOut",
+        "type": "object"
+      },
+      "QuizTestCreateRequest": {
+        "properties": {
+          "question_types": {
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestionType"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Question Types",
+            "type": "array"
+          },
+          "total_count": {
+            "enum": [
+              5,
+              10,
+              20
+            ],
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "question_types",
+          "total_count"
+        ],
+        "title": "QuizTestCreateRequest",
+        "type": "object"
+      },
+      "QuizTestDetailOut": {
+        "properties": {
+          "answered_count": {
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuizTestItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/QuizTestMode"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "null"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/QuizTestStatus"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "record_id",
+          "mode",
+          "status",
+          "score",
+          "total_count",
+          "answered_count",
+          "started_at",
+          "completed_at",
+          "created_at",
+          "updated_at",
+          "items"
+        ],
+        "title": "QuizTestDetailOut",
+        "type": "object"
+      },
+      "QuizTestItemOut": {
+        "properties": {
+          "answered_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered At"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/QuizDifficulty"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "options": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "question_type": {
+            "$ref": "#/components/schemas/QuizQuestionType"
+          },
+          "quiz_id": {
+            "title": "Quiz Id",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuizTestItemResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "sequence_no": {
+            "title": "Sequence No",
+            "type": "integer"
+          },
+          "stem": {
+            "title": "Stem",
+            "type": "string"
+          },
+          "user_answer": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Answer"
+          }
+        },
+        "required": [
+          "id",
+          "quiz_id",
+          "sequence_no",
+          "question_type",
+          "stem",
+          "options",
+          "difficulty",
+          "user_answer",
+          "result",
+          "score",
+          "answered_at"
+        ],
+        "title": "QuizTestItemOut",
+        "type": "object"
+      },
+      "QuizTestItemResult": {
+        "enum": [
+          "CORRECT",
+          "WRONG",
+          "PARTIAL"
+        ],
+        "title": "QuizTestItemResult",
+        "type": "string"
+      },
+      "QuizTestListOut": {
+        "properties": {
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuizTestBlockedReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/QuizTestSummaryOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "QuizTestListOut",
+        "type": "object"
+      },
+      "QuizTestMode": {
+        "enum": [
+          "MOCK",
+          "ADAPTIVE"
+        ],
+        "title": "QuizTestMode",
+        "type": "string"
+      },
+      "QuizTestStatus": {
+        "enum": [
+          "IN_PROGRESS",
+          "GRADING",
+          "GRADING_FAILED",
+          "COMPLETED",
+          "ABANDONED"
+        ],
+        "title": "QuizTestStatus",
+        "type": "string"
+      },
+      "QuizTestSummaryOut": {
+        "properties": {
+          "answered_count": {
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/QuizTestMode"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "null"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/QuizTestStatus"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "record_id",
+          "mode",
+          "status",
+          "score",
+          "total_count",
+          "answered_count",
+          "started_at",
+          "completed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "QuizTestSummaryOut",
         "type": "object"
       },
       "RecordClassificationRequest": {
@@ -4726,6 +5135,210 @@
         ]
       }
     },
+    "/api/courses/{course_id}/quiz-tests": {
+      "get": {
+        "operationId": "list_quiz_tests_api_courses__course_id__quiz_tests_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizTestListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Quiz Tests",
+        "tags": [
+          "quiz-tests"
+        ]
+      },
+      "post": {
+        "operationId": "create_quiz_test_api_courses__course_id__quiz_tests_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizTestCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizTestCreateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/QuizTestConflictOut"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ErrorResponse"
+                    }
+                  ],
+                  "title": "Response 409 Create Quiz Test Api Courses  Course Id  Quiz Tests Post"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Quiz Test",
+        "tags": [
+          "quiz-tests"
+        ]
+      }
+    },
     "/api/courses/{course_id}/records": {
       "get": {
         "operationId": "list_course_records_api_courses__course_id__records_get",
@@ -5649,6 +6262,105 @@
         "summary": "Put Avatar",
         "tags": [
           "profile"
+        ]
+      }
+    },
+    "/api/quiz-tests/{test_id}": {
+      "get": {
+        "operationId": "get_quiz_test_api_quiz_tests__test_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Test Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizTestDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizTestConflictOut"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Quiz Test",
+        "tags": [
+          "quiz-tests"
         ]
       }
     },

@@ -20,6 +20,7 @@ import { Route as ChatSessionIdRouteImport } from "./pages/chat.$sessionId";
 import { Route as RecordsRecordIdRouteImport } from "./pages/records.$recordId";
 import { Route as SpacesIndexRouteImport } from "./pages/spaces.index";
 import { Route as SpacesCourseIdRouteImport } from "./pages/spaces.$courseId";
+import { Route as SpacesCourseIdTestsTestIdRouteImport } from "./pages/spaces.$courseId_.tests.$testId";
 
 const IndexRoute = IndexRouteImport.update({
   id: "/",
@@ -76,6 +77,12 @@ const SpacesCourseIdRoute = SpacesCourseIdRouteImport.update({
   path: "/$courseId",
   getParentRoute: () => SpacesRoute,
 } as any);
+const SpacesCourseIdTestsTestIdRoute =
+  SpacesCourseIdTestsTestIdRouteImport.update({
+    id: "/$courseId_/tests/$testId",
+    path: "/$courseId/tests/$testId",
+    getParentRoute: () => SpacesRoute,
+  } as any);
 
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
@@ -89,6 +96,7 @@ export interface FileRoutesByFullPath {
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
   "/chat/": typeof ChatIndexRoute;
   "/spaces/": typeof SpacesIndexRoute;
+  "/spaces/$courseId/tests/$testId": typeof SpacesCourseIdTestsTestIdRoute;
 }
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
@@ -101,6 +109,7 @@ export interface FileRoutesByTo {
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
   "/chat": typeof ChatIndexRoute;
   "/spaces": typeof SpacesIndexRoute;
+  "/spaces/$courseId/tests/$testId": typeof SpacesCourseIdTestsTestIdRoute;
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport;
@@ -115,6 +124,7 @@ export interface FileRoutesById {
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
   "/chat/": typeof ChatIndexRoute;
   "/spaces/": typeof SpacesIndexRoute;
+  "/spaces/$courseId_/tests/$testId": typeof SpacesCourseIdTestsTestIdRoute;
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath;
@@ -129,7 +139,8 @@ export interface FileRouteTypes {
     | "/records/$recordId"
     | "/spaces/$courseId"
     | "/chat/"
-    | "/spaces/";
+    | "/spaces/"
+    | "/spaces/$courseId/tests/$testId";
   fileRoutesByTo: FileRoutesByTo;
   to:
     | "/"
@@ -141,7 +152,8 @@ export interface FileRouteTypes {
     | "/records/$recordId"
     | "/spaces/$courseId"
     | "/chat"
-    | "/spaces";
+    | "/spaces"
+    | "/spaces/$courseId/tests/$testId";
   id:
     | "__root__"
     | "/"
@@ -154,7 +166,8 @@ export interface FileRouteTypes {
     | "/records/$recordId"
     | "/spaces/$courseId"
     | "/chat/"
-    | "/spaces/";
+    | "/spaces/"
+    | "/spaces/$courseId_/tests/$testId";
   fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
@@ -248,17 +261,26 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof SpacesCourseIdRouteImport;
       parentRoute: typeof SpacesRoute;
     };
+    "/spaces/$courseId_/tests/$testId": {
+      id: "/spaces/$courseId_/tests/$testId";
+      path: "/$courseId/tests/$testId";
+      fullPath: "/spaces/$courseId/tests/$testId";
+      preLoaderRoute: typeof SpacesCourseIdTestsTestIdRouteImport;
+      parentRoute: typeof SpacesRoute;
+    };
   }
 }
 
 interface SpacesRouteChildren {
   SpacesCourseIdRoute: typeof SpacesCourseIdRoute;
   SpacesIndexRoute: typeof SpacesIndexRoute;
+  SpacesCourseIdTestsTestIdRoute: typeof SpacesCourseIdTestsTestIdRoute;
 }
 
 const SpacesRouteChildren: SpacesRouteChildren = {
   SpacesCourseIdRoute: SpacesCourseIdRoute,
   SpacesIndexRoute: SpacesIndexRoute,
+  SpacesCourseIdTestsTestIdRoute: SpacesCourseIdTestsTestIdRoute,
 };
 
 const SpacesRouteWithChildren =

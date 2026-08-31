@@ -152,6 +152,43 @@ class Quiz(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
 
 
+class QuizTest(Base):
+    __tablename__ = "quiz_tests"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(String(36), ForeignKey("courses.id"))
+    record_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("records.id"), default=None
+    )
+    mode: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(20))
+    score: Mapped[float | None] = mapped_column(Float, default=None)
+    started_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+
+
+class QuizTestItem(Base):
+    __tablename__ = "quiz_test_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    test_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("quiz_tests.id", ondelete="CASCADE")
+    )
+    quiz_id: Mapped[str] = mapped_column(String(36), ForeignKey("quizzes.id"))
+    sequence_no: Mapped[int] = mapped_column(Integer)
+    user_answer_json: Mapped[str | None] = mapped_column(Text, default=None)
+    result: Mapped[str | None] = mapped_column(String(10), default=None)
+    score: Mapped[float | None] = mapped_column(Float, default=None)
+    ai_grade_json: Mapped[str | None] = mapped_column(Text, default=None)
+    answered_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+
+
 class TodoItem(Base):
     __tablename__ = "todo_items"
 

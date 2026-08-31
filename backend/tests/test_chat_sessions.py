@@ -89,7 +89,7 @@ async def test_migration_0014_creates_chat_tables_and_advances_user_version(
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
             version = await (await connection.execute("PRAGMA user_version")).fetchone()
 
-        assert version == (15,)
+        assert version == (16,)
 
         tables = await table_names(tmp_path)
         assert {"profile", "chat_sessions", "chat_messages"} <= tables

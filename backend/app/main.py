@@ -32,6 +32,7 @@ from app.api import (
     knowledge_points,
     processing_jobs,
     profile,
+    quiz_tests,
     quizzes,
     recording_sessions,
     records,
@@ -258,6 +259,7 @@ def create_app(
     app.include_router(summaries.router)
     app.include_router(knowledge_points.router)
     app.include_router(quizzes.router)
+    app.include_router(quiz_tests.router)
     app.include_router(todos.router)
     app.include_router(today.router)
     app.include_router(document_imports.router)

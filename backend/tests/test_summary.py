@@ -194,7 +194,7 @@ async def assert_summary_schema(db_path: Path) -> None:
             ).fetchall()
         }
 
-    assert version == (15,)
+    assert version == (16,)
     assert {"ai_summaries", "llm_call_logs", "learning_events"} <= tables
     assert "idx_processing_jobs_one_active_summary" in indexes
 

@@ -1,5 +1,5 @@
-export type CourseTab = "overview" | "records";
+export type CourseTab = "overview" | "records" | "tests";
 
 export function asCourseTab(value: unknown): CourseTab {
-  return value === "records" ? "records" : "overview";
+  return value === "records" || value === "tests" ? value : "overview";
 }

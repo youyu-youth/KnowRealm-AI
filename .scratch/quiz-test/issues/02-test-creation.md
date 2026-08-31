@@ -4,14 +4,14 @@
 
 **Blocked by:** 01（组卷按题型抽题依赖五型题库）。
 
-**Status:** ready-for-agent
+**Status:** completed
 
 **深度参考:** `.scratch/function-plans-introduction/15-mock-test.md`（数据与迁移节、API 草案、ARCHIVED 闸门）
 
-- [ ] 新迁移建 `quiz_tests`（course_id 必填、record_id 恒 NULL、mode=MOCK、status/score/时间列）与 `quiz_test_items`（(test_id, sequence_no) 唯一、result 含 PARTIAL、ai_grade_json），扩 job_type 枚举并同步 0010 CHECK 与顶 6 处断言
-- [ ] 组卷 API：课程级随机抽 `generation_status=ACTIVE` 习题，DRAFT/SUPERSEDED 不进卷；题量不足抽全部并提示，零题库空态；`quiz_tests.record_id` 恒 NULL
-- [ ] ARCHIVED 三道闸门第一、二道生效：read blocked → 开始测试 409
-- [ ] 课程页第三 tab（courseTabs 联合类型 + search 校验 + zh.json 文案），历史列表抄记录列表骨架显示三态
-- [ ] 组卷对话框 → 创建成功跳转卷面页（独立路由），按大题分组只读展示卷子结构
-- [ ] 列表/详情 API（进行中测试可见已抽题目与已答状态）
-- [ ] pytest 与 MSW 双侧绿；api-types 重新生成
+- [x] 新迁移建 `quiz_tests`（course_id 必填、record_id 恒 NULL、mode=MOCK、status/score/时间列）与 `quiz_test_items`（(test_id, sequence_no) 唯一、result 含 PARTIAL、ai_grade_json），扩 job_type 枚举并同步 0010 CHECK 与顶 6 处断言
+- [x] 组卷 API：课程级随机抽 `generation_status=ACTIVE` 习题，DRAFT/SUPERSEDED 不进卷；题量不足抽全部并提示，零题库空态；`quiz_tests.record_id` 恒 NULL
+- [x] ARCHIVED 三道闸门第一、二道生效：read blocked → 开始测试 409
+- [x] 课程页第三 tab（courseTabs 联合类型 + search 校验 + zh.json 文案），历史列表抄记录列表骨架显示三态
+- [x] 组卷对话框 → 创建成功跳转卷面页（独立路由），按大题分组只读展示卷子结构
+- [x] 列表/详情 API（进行中测试可见已抽题目与已答状态）
+- [x] pytest 与 MSW 双侧绿；api-types 重新生成

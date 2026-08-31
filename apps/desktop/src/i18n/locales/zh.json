@@ -188,7 +188,8 @@
       "edit": "编辑课程",
       "tabs": {
         "overview": "概览",
-        "records": "学习记录"
+        "records": "学习记录",
+        "tests": "模拟测试"
       },
       "label": {
         "name": "课程名称",
@@ -260,6 +261,48 @@
         "hours": "{{count}} 小时",
         "minutes": "{{count}} 分",
         "seconds": "{{count}} 秒"
+      }
+    },
+    "simulations": {
+      "title": "模拟测试",
+      "description": "从本课程已采纳的习题中随机组卷。",
+      "loading": "正在读取模拟测试",
+      "errorTitle": "模拟测试暂时无法读取",
+      "errorDescription": "本地服务可能仍在启动，请稍后重试。",
+      "retry": "重新读取",
+      "start": "开始模拟测试",
+      "archived": "已归档课程不能开始模拟测试",
+      "emptyTitle": "还没有模拟测试",
+      "emptyDescription": "开始一次模拟测试后，试卷与进度会显示在这里。",
+      "noQuestionsTitle": "课程题库还是空的",
+      "noQuestionsDescription": "请先从学习记录生成习题并采纳，再开始模拟测试。",
+      "listLabel": "模拟测试历史",
+      "testTitle": "{{count}} 题模拟测试",
+      "progress": "已答 {{answered}} / {{total}}",
+      "status": {
+        "IN_PROGRESS": "进行中",
+        "GRADING": "评分中",
+        "GRADING_FAILED": "评分失败",
+        "COMPLETED": "已完成",
+        "ABANDONED": "已放弃"
+      },
+      "dialog": {
+        "title": "组建模拟测试",
+        "description": "选择题型与题量，系统会从当前课程题库随机抽题。",
+        "types": "题型",
+        "count": "题量",
+        "countOption": "{{count}} 题",
+        "submit": "创建并查看试卷",
+        "creating": "正在组卷",
+        "error": "组卷失败，请稍后重试"
+      },
+      "paper": {
+        "title": "模拟测试",
+        "description": "本卷共 {{count}} 题；当前仅供查看，作答将在下一阶段开放。",
+        "loading": "正在读取试卷",
+        "errorTitle": "试卷暂时无法读取",
+        "back": "返回模拟测试",
+        "shortage": "题库中只有 {{count}} 道符合条件的习题，已全部选入。"
       }
     }
   },

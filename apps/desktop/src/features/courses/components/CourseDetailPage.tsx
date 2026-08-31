@@ -15,6 +15,7 @@ import {
 import { asCourseTab, type CourseTab } from "@/features/courses/courseTabs";
 import { CourseOverview } from "@/features/courses/components/CourseOverview";
 import { CourseRecordsPanel } from "@/features/courses/components/CourseRecordsPanel";
+import { QuizTestsPanel } from "@/features/quiz-tests/components/QuizTestsPanel";
 import { ApiError } from "@/services/http/client";
 
 type CourseDetailPageProps = {
@@ -130,12 +131,18 @@ export function CourseDetailPage({
           <TabsTrigger value="records">
             {t("spaces.detail.tabs.records")}
           </TabsTrigger>
+          <TabsTrigger value="tests">
+            {t("spaces.detail.tabs.tests")}
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-6">
           <CourseOverview course={detail} onDeleted={onDeleted} />
         </TabsContent>
         <TabsContent value="records" className="mt-6">
           <CourseRecordsPanel courseId={courseId} />
+        </TabsContent>
+        <TabsContent value="tests" className="mt-6">
+          <QuizTestsPanel courseId={courseId} />
         </TabsContent>
       </Tabs>
     </section>

@@ -150,6 +150,24 @@ export interface paths {
         patch: operations["update_course_api_courses__course_id__patch"];
         trace?: never;
     };
+    "/api/courses/{course_id}/quiz-tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Quiz Tests */
+        get: operations["list_quiz_tests_api_courses__course_id__quiz_tests_get"];
+        put?: never;
+        /** Create Quiz Test */
+        post: operations["create_quiz_test_api_courses__course_id__quiz_tests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/records": {
         parameters: {
             query?: never;
@@ -284,6 +302,23 @@ export interface paths {
         post?: never;
         /** Delete Avatar */
         delete: operations["delete_avatar_api_profile_avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/quiz-tests/{test_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Quiz Test */
+        get: operations["get_quiz_test_api_quiz_tests__test_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1648,7 +1683,7 @@ export interface components {
          * ProcessingJobType
          * @enum {string}
          */
-        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION";
+        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING";
         /**
          * ProcessingJobWaitingReason
          * @enum {string}
@@ -1798,6 +1833,132 @@ export interface components {
              * @description 用户提交的简答作答
              */
             answer: string;
+        };
+        /**
+         * QuizTestBlockedReason
+         * @enum {string}
+         */
+        QuizTestBlockedReason: "COURSE_ARCHIVED" | "NO_AVAILABLE_QUIZZES";
+        /** QuizTestConflictOut */
+        QuizTestConflictOut: {
+            blocked_reason: components["schemas"]["QuizTestBlockedReason"];
+            /** Detail */
+            detail: string;
+        };
+        /** QuizTestCreateOut */
+        QuizTestCreateOut: {
+            /** Requested Count */
+            requested_count: number;
+            /** Selected Count */
+            selected_count: number;
+            /** Shortage */
+            shortage: boolean;
+            test: components["schemas"]["QuizTestSummaryOut"];
+        };
+        /** QuizTestCreateRequest */
+        QuizTestCreateRequest: {
+            /** Question Types */
+            question_types: components["schemas"]["QuizQuestionType"][];
+            /**
+             * Total Count
+             * @enum {integer}
+             */
+            total_count: 5 | 10 | 20;
+        };
+        /** QuizTestDetailOut */
+        QuizTestDetailOut: {
+            /** Answered Count */
+            answered_count: number;
+            /** Completed At */
+            completed_at: string | null;
+            /** Course Id */
+            course_id: string;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            /** Items */
+            items: components["schemas"]["QuizTestItemOut"][];
+            mode: components["schemas"]["QuizTestMode"];
+            /** Record Id */
+            record_id: null;
+            /** Score */
+            score: number | null;
+            /** Started At */
+            started_at: string;
+            status: components["schemas"]["QuizTestStatus"];
+            /** Total Count */
+            total_count: number;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** QuizTestItemOut */
+        QuizTestItemOut: {
+            /** Answered At */
+            answered_at: string | null;
+            difficulty: components["schemas"]["QuizDifficulty"];
+            /** Id */
+            id: string;
+            /** Options */
+            options: string[];
+            question_type: components["schemas"]["QuizQuestionType"];
+            /** Quiz Id */
+            quiz_id: string;
+            result: components["schemas"]["QuizTestItemResult"] | null;
+            /** Score */
+            score: number | null;
+            /** Sequence No */
+            sequence_no: number;
+            /** Stem */
+            stem: string;
+            /** User Answer */
+            user_answer: number | string | number[] | string[] | null;
+        };
+        /**
+         * QuizTestItemResult
+         * @enum {string}
+         */
+        QuizTestItemResult: "CORRECT" | "WRONG" | "PARTIAL";
+        /** QuizTestListOut */
+        QuizTestListOut: {
+            blocked_reason?: components["schemas"]["QuizTestBlockedReason"] | null;
+            /** Items */
+            items: components["schemas"]["QuizTestSummaryOut"][];
+        };
+        /**
+         * QuizTestMode
+         * @enum {string}
+         */
+        QuizTestMode: "MOCK" | "ADAPTIVE";
+        /**
+         * QuizTestStatus
+         * @enum {string}
+         */
+        QuizTestStatus: "IN_PROGRESS" | "GRADING" | "GRADING_FAILED" | "COMPLETED" | "ABANDONED";
+        /** QuizTestSummaryOut */
+        QuizTestSummaryOut: {
+            /** Answered Count */
+            answered_count: number;
+            /** Completed At */
+            completed_at: string | null;
+            /** Course Id */
+            course_id: string;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: string;
+            mode: components["schemas"]["QuizTestMode"];
+            /** Record Id */
+            record_id: null;
+            /** Score */
+            score: number | null;
+            /** Started At */
+            started_at: string;
+            status: components["schemas"]["QuizTestStatus"];
+            /** Total Count */
+            total_count: number;
+            /** Updated At */
+            updated_at: string;
         };
         /** RecordClassificationRequest */
         RecordClassificationRequest: {
@@ -3238,6 +3399,139 @@ export interface operations {
             };
         };
     };
+    list_quiz_tests_api_courses__course_id__quiz_tests_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizTestListOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_quiz_test_api_courses__course_id__quiz_tests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizTestCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizTestCreateOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizTestConflictOut"] | components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_course_records_api_courses__course_id__records_get: {
         parameters: {
             query?: never;
@@ -3879,6 +4173,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_quiz_test_api_quiz_tests__test_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizTestDetailOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizTestConflictOut"];
                 };
             };
             /** @description Unprocessable Content */
