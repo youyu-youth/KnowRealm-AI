@@ -41,6 +41,12 @@ vi.mock("@/services/tauri/sidecar", () => ({
   }),
 }));
 
+// 桌面环境下根路由会先做首启分流：生命周期测试只覆盖完成首启之后的行为。
+vi.mock("@/services/tauri/onboarding", () => ({
+  isOnboardingRequired: vi.fn(async () => false),
+  completeOnboarding: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/services/tauri/recording", () => ({
   setRecordingKeepAwake: vi.fn().mockResolvedValue(undefined),
   hideWindowTemporarily: vi.fn().mockResolvedValue(undefined),

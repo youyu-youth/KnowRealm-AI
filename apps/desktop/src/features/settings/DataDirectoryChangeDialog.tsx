@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,8 @@ export type ChangeDialogState =
 type Props = {
   state: ChangeDialogState;
   progress: MigrationProgress | null;
+  /** 可选警示（如 OneDrive 检测），仅在 confirm 阶段随目标路径展示。 */
+  warning?: ReactNode;
   onConfirm: (target: string) => void;
   onQuit: () => void;
   onDismiss: () => void;
@@ -33,6 +36,7 @@ type Props = {
 export function DataDirectoryChangeDialog({
   state,
   progress,
+  warning,
   onConfirm,
   onQuit,
   onDismiss,
@@ -85,6 +89,7 @@ export function DataDirectoryChangeDialog({
                 readOnly
               />
             </Field>
+            {warning}
             <DialogFooter>
               <Button variant="outline" onClick={onDismiss}>
                 {t("settings.dataDirectory.cancel")}

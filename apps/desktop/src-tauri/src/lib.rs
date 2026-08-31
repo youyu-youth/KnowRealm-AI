@@ -1,6 +1,7 @@
 mod data_migration;
 mod desktop_config;
 mod lifecycle;
+mod onboarding;
 mod pending_import;
 mod power;
 mod sidecar;
@@ -35,6 +36,8 @@ pub fn run() {
             sidecar::open_data_directory,
             sidecar::change_data_directory,
             sidecar::import_from_archive,
+            onboarding::get_onboarding_state,
+            onboarding::complete_onboarding,
             power::set_recording_keep_awake,
             hide_window_temporarily,
             lifecycle::exit_application,

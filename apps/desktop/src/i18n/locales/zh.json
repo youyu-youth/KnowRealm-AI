@@ -946,5 +946,36 @@
     "title": "未配置 AI 服务",
     "description": "自由聊天、总结等能力需要一个 OpenAI 兼容的 AI 服务（地址、模型与密钥）。请先在设置页完成配置，配置只保存在本机数据目录。",
     "action": "前往设置"
+  },
+  "onboarding": {
+    "stepOf": "第 {{current}} 步，共 {{total}} 步",
+    "directory": {
+      "title": "选择数据存放位置",
+      "description": "数据库、原始文件与配置都保存在这里。之后可随时在设置页更改或整体迁移。",
+      "pathLabel": "数据目录",
+      "useDefault": "使用默认目录开始",
+      "change": "更改位置",
+      "import": "从导出包导入",
+      "oneDriveWarning": "该位置位于 OneDrive 同步范围内，可能出现文件锁与同步冲突。建议改用本地磁盘位置；也可以继续使用。"
+    },
+    "providers": {
+      "title": "配置 AI 服务",
+      "description": "总结、知识点、习题与对话需要一个 OpenAI 兼容服务，语音转写使用腾讯云 ASR。密钥只保存在本机数据目录，都可以稍后在设置页填写。",
+      "skip": "稍后在设置中配置"
+    },
+    "profile": {
+      "title": "认识一下（可选）",
+      "description": "选择你的角色并简单介绍自己，AI 会据此调整回答方式。跳过则不创建档案，对话使用中性默认。",
+      "save": "保存并继续",
+      "skip": "跳过",
+      "saving": "正在保存",
+      "existing": "检测到已有档案，以下内容可直接修改或继续使用。"
+    },
+    "done": {
+      "title": "一切就绪",
+      "description": "所有设置可稍后在设置页修改。",
+      "enter": "进入 KnowRealm",
+      "entering": "正在进入"
+    }
   }
 }

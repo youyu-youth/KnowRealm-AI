@@ -28,6 +28,9 @@
   --ring: var(--focus);
   --learning: #4772d9;
   --learning-soft: #e8eefc;
+  --warning-foreground: #844500;
+  --warning-soft: #f8ebd9;
+  --success-foreground: #286a4e;
   --sidebar: var(--canvas);
   --sidebar-foreground: var(--ink);
   --sidebar-primary: var(--ink-strong);
@@ -67,6 +70,9 @@
   --ring: var(--focus);
   --learning: #96b2f5;
   --learning-soft: #26324d;
+  --warning-foreground: #f3b467;
+  --warning-soft: #3d3021;
+  --success-foreground: #82c9a8;
   --sidebar: var(--canvas);
   --sidebar-foreground: var(--ink);
   --sidebar-primary: var(--ink-strong);
@@ -107,6 +113,9 @@
     --ring: var(--focus);
     --learning: #96b2f5;
     --learning-soft: #26324d;
+    --warning-foreground: #f3b467;
+    --warning-soft: #3d3021;
+    --success-foreground: #82c9a8;
     --sidebar: var(--canvas);
     --sidebar-foreground: var(--ink);
     --sidebar-primary: var(--ink-strong);

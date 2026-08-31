@@ -23,16 +23,10 @@ import type { ProfileOut } from "@/features/settings/api/profile";
 import { PreferencesSection } from "@/features/settings/PreferencesSection";
 import { ProvidersSection } from "@/features/settings/ProvidersSection";
 import { DataDirectorySection } from "@/features/settings/DataDirectorySection";
-
-const ROLE_KEYS = ["STUDENT", "DEVELOPER", "OFFICE_WORKER", "OTHER"] as const;
-type RoleKey = (typeof ROLE_KEYS)[number];
+import { ROLE_KEYS, isRoleKey, type RoleKey } from "@/features/settings/roles";
 
 const ABOUT_ME_MAX = 200;
 const NICKNAME_MAX = 20;
-
-function isRoleKey(value: string): value is RoleKey {
-  return (ROLE_KEYS as readonly string[]).includes(value);
-}
 
 export function SettingsPage() {
   const { t } = useTranslation();

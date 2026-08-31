@@ -361,7 +361,7 @@ pub async fn change_data_directory(
     Ok(())
 }
 
-fn resolve_desktop_config(
+pub(crate) fn resolve_desktop_config(
     app: &AppHandle,
 ) -> Result<(PathBuf, desktop_config::DesktopConfig), tauri::Error> {
     let default_data_dir = app.path().home_dir()?.join("KnowRealm");

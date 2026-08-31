@@ -30,6 +30,9 @@
   --color-focus: var(--focus);
   --color-learning: var(--learning);
   --color-learning-soft: var(--learning-soft);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-success-foreground: var(--success-foreground);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

@@ -58,7 +58,8 @@ function SectionError({
   );
 }
 
-function LlmProviderCard() {
+// 导出供首启向导（06）复用：卡片自带查询与保存，设置页与向导共用同一份配置体验。
+export function LlmProviderCard() {
   const { t } = useTranslation();
   const provider = useQuery({
     queryKey: settingsKeys.llmProvider,
@@ -284,7 +285,7 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
   );
 }
 
-function TencentAsrCard() {
+export function TencentAsrCard() {
   const { t } = useTranslation();
   const provider = useQuery({
     queryKey: settingsKeys.tencentAsrProvider,
