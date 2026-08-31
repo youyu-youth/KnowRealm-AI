@@ -37,7 +37,9 @@ const quizLabels = {
   pendingSelfAssessment: "待自评",
   questionTypes: {
     MULTIPLE_CHOICE: "选择题",
+    MULTIPLE_SELECT: "多选题",
     TRUE_FALSE: "判断题",
+    FILL_BLANK: "填空题",
     SHORT_ANSWER: "简答题",
   },
   difficulties: { EASY: "简单", MEDIUM: "中等", HARD: "困难" },
@@ -271,6 +273,42 @@ describe("serializeQuizMarkdown", () => {
     expect(markdown).toContain("**解析**\n\nLRU 近似利用局部性原理。");
     expect(markdown).not.toContain("\n\n0\n");
     expect(markdown).not.toContain("\n\n1\n");
+  });
+
+  it("多选与填空按可读数组格式输出作答和正确答案", () => {
+    const markdown = serializeQuizMarkdown(
+      "记录",
+      [
+        quiz({
+          id: "multiple-select",
+          question_type: "MULTIPLE_SELECT",
+          user_answer: [0, 2],
+          correct_answer: [0, 2],
+          answer_result: "CORRECT",
+          answered_at: "2026-08-31T01:00:00Z",
+          explanation: "A 与 C 正确。",
+        }),
+        quiz({
+          id: "fill-blank",
+          question_type: "FILL_BLANK",
+          stem: "____器负责分配____。",
+          options: [],
+          user_answer: ["调度", "CPU"],
+          correct_answer: [["调度"], ["处理器", "CPU"]],
+          answer_result: "CORRECT",
+          answered_at: "2026-08-31T01:01:00Z",
+          explanation: "调度器负责分配处理器。",
+        }),
+      ],
+      quizLabels,
+    );
+
+    expect(markdown).toContain("**用户答案**\n\nA. FIFO、C. Clock");
+    expect(markdown).toContain("**正确答案**\n\nA. FIFO、C. Clock");
+    expect(markdown).toContain("**用户答案**\n\n第 1 空：调度；第 2 空：CPU");
+    expect(markdown).toContain(
+      "**正确答案**\n\n第 1 空：调度；第 2 空：处理器 / CPU",
+    );
   });
 
   it.each([

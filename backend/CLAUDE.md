@@ -52,7 +52,7 @@ app/
 
 ### 迁移纪律
 
-`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0014**（chat_sessions / chat_messages / profile 三表）；`tests/test_records.py` 等断言 `user_version == 14`，**新增迁移需同步这些断言**。
+`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0015**（习题五型题型约束）；`tests/test_records.py` 等断言 `user_version == 15`，**新增迁移需同步这些断言**。
 
 ### 令牌校验
 

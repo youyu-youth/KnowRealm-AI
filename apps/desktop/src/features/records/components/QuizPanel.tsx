@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
@@ -42,11 +43,15 @@ type QuizCount = (typeof QUIZ_COUNTS)[number];
 
 const ALL_QUESTION_TYPES = [
   "MULTIPLE_CHOICE",
+  "MULTIPLE_SELECT",
   "TRUE_FALSE",
+  "FILL_BLANK",
   "SHORT_ANSWER",
 ] as const;
 
 type QuizQuestionType = components["schemas"]["QuizQuestionType"];
+type QuizObjectiveAnswer =
+  components["schemas"]["QuizObjectiveAnswerRequest"]["answer"];
 
 type QuizPanelProps = {
   recordId: string;
@@ -417,8 +422,13 @@ function ActiveQuizList({
       queryKey: recordKeys.quizzes(recordId),
     });
   const submitAnswer = useMutation({
-    mutationFn: ({ quizId, answer }: { quizId: string; answer: number }) =>
-      recordApi.answerObjectiveQuiz(recordId, quizId, { answer }),
+    mutationFn: ({
+      quizId,
+      answer,
+    }: {
+      quizId: string;
+      answer: QuizObjectiveAnswer;
+    }) => recordApi.answerObjectiveQuiz(recordId, quizId, { answer }),
     onSuccess: updateAnsweredItem,
     onError: refreshQuizzes,
   });
@@ -472,7 +482,7 @@ function ActiveQuizList({
       ) : null}
       <ol className="mt-4">
         {items.map((item, index) => {
-          const objective =
+          const singleChoice =
             item.question_type === "MULTIPLE_CHOICE" ||
             item.question_type === "TRUE_FALSE";
           const answered = item.answered_at !== null;
@@ -513,10 +523,12 @@ function ActiveQuizList({
                     {t(`record.detail.quiz.difficulty.${item.difficulty}`)}
                   </span>
                 </div>
-                <h3 className="text-section font-section text-ink mt-2 break-words">
-                  {item.stem}
-                </h3>
-                {objective ? (
+                {item.question_type !== "FILL_BLANK" ? (
+                  <h3 className="text-section font-section text-ink mt-2 break-words">
+                    {item.stem}
+                  </h3>
+                ) : null}
+                {singleChoice ? (
                   <>
                     <RadioGroup
                       value={selected === undefined ? "" : String(selected)}
@@ -595,6 +607,36 @@ function ActiveQuizList({
                       </p>
                     ) : null}
                   </>
+                ) : item.question_type === "MULTIPLE_SELECT" ? (
+                  <MultipleSelectAnswer
+                    item={item}
+                    pending={submitAnswer.isPending}
+                    submitting={submitting}
+                    error={
+                      submitAnswer.isError &&
+                      submitAnswer.variables.quizId === item.id
+                        ? submitAnswer.error.message
+                        : null
+                    }
+                    onSubmit={(answer) =>
+                      submitAnswer.mutate({ quizId: item.id, answer })
+                    }
+                  />
+                ) : item.question_type === "FILL_BLANK" ? (
+                  <FillBlankAnswer
+                    item={item}
+                    pending={submitAnswer.isPending}
+                    submitting={submitting}
+                    error={
+                      submitAnswer.isError &&
+                      submitAnswer.variables.quizId === item.id
+                        ? submitAnswer.error.message
+                        : null
+                    }
+                    onSubmit={(answer) =>
+                      submitAnswer.mutate({ quizId: item.id, answer })
+                    }
+                  />
                 ) : (
                   <>
                     <Field className="mt-4">
@@ -731,6 +773,228 @@ function ActiveQuizList({
   );
 }
 
+function isNumberArray(
+  value: QuizOut["user_answer"] | QuizOut["correct_answer"],
+): value is number[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "number")
+  );
+}
+
+function isStringArray(value: QuizOut["user_answer"]): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
+function isStringMatrix(value: QuizOut["correct_answer"]): value is string[][] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (answers) =>
+        Array.isArray(answers) &&
+        answers.every((answer) => typeof answer === "string"),
+    )
+  );
+}
+
+function MultipleSelectAnswer({
+  item,
+  pending,
+  submitting,
+  error,
+  onSubmit,
+}: {
+  item: QuizOut;
+  pending: boolean;
+  submitting: boolean;
+  error: string | null;
+  onSubmit: (answer: number[]) => void;
+}) {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState<number[]>([]);
+  const answered = item.answered_at !== null;
+  const selected = isNumberArray(item.user_answer) ? item.user_answer : draft;
+  const correct = isNumberArray(item.correct_answer) ? item.correct_answer : [];
+
+  return (
+    <>
+      <div className="mt-4 grid gap-2">
+        {item.options.map((_option, optionIndex) => {
+          const id = `quiz-${item.id}-option-${optionIndex}`;
+          return (
+            <Field key={id} orientation="horizontal">
+              <Checkbox
+                id={id}
+                checked={selected.includes(optionIndex)}
+                disabled={answered || pending}
+                onCheckedChange={(checked) =>
+                  setDraft((current) =>
+                    checked
+                      ? [...current, optionIndex].sort((a, b) => a - b)
+                      : current.filter((value) => value !== optionIndex),
+                  )
+                }
+              />
+              <FieldLabel htmlFor={id}>
+                {objectiveAnswerLabel(item, optionIndex)}
+              </FieldLabel>
+            </Field>
+          );
+        })}
+      </div>
+      {answered ? (
+        <div className="mt-4">
+          <p
+            role="status"
+            className={cn(
+              "text-body font-medium",
+              item.answer_result === "CORRECT"
+                ? "text-success-foreground"
+                : "text-destructive",
+            )}
+          >
+            {t(`record.detail.quiz.result.${item.answer_result}`)}
+          </p>
+          <p className="text-label text-ink mt-2">
+            {t("record.detail.quiz.correctAnswer", {
+              answer: correct
+                .map((index) => objectiveAnswerLabel(item, index))
+                .join("、"),
+            })}
+          </p>
+          <p className="text-body text-muted-foreground mt-2 whitespace-pre-wrap">
+            {t("record.detail.quiz.explanation", { detail: item.explanation })}
+          </p>
+        </div>
+      ) : (
+        <Button
+          className="mt-4"
+          disabled={selected.length === 0 || pending}
+          onClick={() => onSubmit(selected)}
+        >
+          {submitting ? <Spinner aria-hidden="true" /> : null}
+          {t("record.detail.quiz.submitAnswer")}
+        </Button>
+      )}
+      {error ? (
+        <p role="alert" className="text-body text-destructive mt-3">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function FillBlankAnswer({
+  item,
+  pending,
+  submitting,
+  error,
+  onSubmit,
+}: {
+  item: QuizOut;
+  pending: boolean;
+  submitting: boolean;
+  error: string | null;
+  onSubmit: (answer: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  const parts = item.stem.split("____");
+  const [draft, setDraft] = useState<string[]>(() =>
+    parts.slice(1).map(() => ""),
+  );
+  const answered = item.answered_at !== null;
+  const values = isStringArray(item.user_answer) ? item.user_answer : draft;
+  const correct = isStringMatrix(item.correct_answer)
+    ? item.correct_answer
+    : [];
+
+  return (
+    <>
+      <h3 className="text-section font-section text-ink mt-2 leading-9 break-words">
+        {parts.map((part, index) => (
+          <span key={`${item.id}-${index}`}>
+            {part}
+            {index < parts.length - 1 ? (
+              <Input
+                aria-label={t("record.detail.quiz.fillBlank.blankLabel", {
+                  index: index + 1,
+                })}
+                className="text-body font-body text-ink-strong border-ink/40 disabled:border-border disabled:text-muted-foreground mx-2 inline-block h-8 w-28 rounded-none border-0 border-b bg-transparent px-1 py-0.5 text-center shadow-none"
+                value={values[index] ?? ""}
+                maxLength={100}
+                disabled={answered || pending}
+                onChange={(event) =>
+                  setDraft((current) =>
+                    current.map((value, blankIndex) =>
+                      blankIndex === index ? event.target.value : value,
+                    ),
+                  )
+                }
+              />
+            ) : null}
+          </span>
+        ))}
+      </h3>
+      {answered ? (
+        <div className="mt-4">
+          <p
+            role="status"
+            className={cn(
+              "text-body font-medium",
+              item.answer_result === "CORRECT"
+                ? "text-success-foreground"
+                : "text-destructive",
+            )}
+          >
+            {t(`record.detail.quiz.result.${item.answer_result}`)}
+          </p>
+          <div className="mt-2 space-y-1">
+            {values.map((value, index) => {
+              const accepted = correct[index] ?? [];
+              const isCorrect = accepted.includes(value.trim());
+              return (
+                <p
+                  key={`${item.id}-result-${index}`}
+                  className={cn(
+                    "text-label",
+                    isCorrect ? "text-success-foreground" : "text-destructive",
+                  )}
+                >
+                  {t(
+                    isCorrect
+                      ? "record.detail.quiz.fillBlank.correct"
+                      : "record.detail.quiz.fillBlank.wrong",
+                    { index: index + 1, answer: accepted[0] },
+                  )}
+                </p>
+              );
+            })}
+          </div>
+          <p className="text-body text-muted-foreground mt-2 whitespace-pre-wrap">
+            {t("record.detail.quiz.explanation", { detail: item.explanation })}
+          </p>
+        </div>
+      ) : (
+        <Button
+          className="mt-4"
+          disabled={values.some((value) => !value.trim()) || pending}
+          onClick={() => onSubmit(values)}
+        >
+          {submitting ? <Spinner aria-hidden="true" /> : null}
+          {t("record.detail.quiz.submitAnswer")}
+        </Button>
+      )}
+      {error ? (
+        <p role="alert" className="text-body text-destructive mt-3">
+          {error}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 function objectiveAnswerLabel(item: QuizOut, optionIndex: number): string {
   const option = item.options[optionIndex];
   return item.question_type === "TRUE_FALSE"
@@ -740,12 +1004,24 @@ function objectiveAnswerLabel(item: QuizOut, optionIndex: number): string {
 
 function QuizQuestionCard({ item, index }: { item: QuizOut; index: number }) {
   const { t } = useTranslation();
-  const correctIndex =
-    typeof item.correct_answer === "number" ? item.correct_answer : null;
+  const correctIndexes = isNumberArray(item.correct_answer)
+    ? item.correct_answer
+    : typeof item.correct_answer === "number"
+      ? [item.correct_answer]
+      : [];
   const correctAnswerText =
-    correctIndex !== null
-      ? `${String.fromCharCode(65 + correctIndex)}. ${item.options[correctIndex]}`
-      : item.correct_answer;
+    typeof item.correct_answer === "string"
+      ? item.correct_answer
+      : isStringMatrix(item.correct_answer)
+        ? item.correct_answer
+            .map(
+              (answers, blankIndex) =>
+                `${t("record.detail.quiz.fillBlank.blankLabel", { index: blankIndex + 1 })}：${answers.join(" / ")}`,
+            )
+            .join("；")
+        : correctIndexes
+            .map((answerIndex) => objectiveAnswerLabel(item, answerIndex))
+            .join("、");
 
   return (
     <li className="border-border border-t py-5 first:border-t-0">
@@ -765,7 +1041,9 @@ function QuizQuestionCard({ item, index }: { item: QuizOut; index: number }) {
               <li
                 key={option}
                 className={
-                  optionIndex === correctIndex ? "font-medium" : undefined
+                  correctIndexes.includes(optionIndex)
+                    ? "font-medium"
+                    : undefined
                 }
               >
                 {String.fromCharCode(65 + optionIndex)}. {option}
@@ -838,13 +1116,15 @@ function GenerateQuizDialog({
     (count) => count === preferences.data?.quiz_last_count,
   );
   const totalCount = selectedCount ?? savedCount ?? 5;
+  const tooManyTypes = selectedTypes.length > totalCount;
 
   const toggleType = (type: QuizQuestionType, checked: boolean) => {
     setSelectedTypes((previous) =>
       checked ? [...previous, type] : previous.filter((item) => item !== type),
     );
   };
-  const submittable = selectedTypes.length > 0 && !submit.isPending;
+  const submittable =
+    selectedTypes.length > 0 && !tooManyTypes && !submit.isPending;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -876,6 +1156,11 @@ function GenerateQuizDialog({
           {selectedTypes.length === 0 ? (
             <p role="alert" className="text-label text-destructive">
               {t("record.detail.quiz.dialog.typeRequired")}
+            </p>
+          ) : null}
+          {tooManyTypes ? (
+            <p role="alert" className="text-label text-destructive">
+              {t("record.detail.quiz.dialog.tooManyTypes")}
             </p>
           ) : null}
           <FieldLegend variant="label">

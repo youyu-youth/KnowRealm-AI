@@ -558,8 +558,10 @@
           }
         },
         "type": {
-          "MULTIPLE_CHOICE": "选择题",
+          "MULTIPLE_CHOICE": "单选题",
+          "MULTIPLE_SELECT": "多选题",
           "TRUE_FALSE": "判断题",
+          "FILL_BLANK": "填空题",
           "SHORT_ANSWER": "简答题"
         },
         "difficulty": {
@@ -571,6 +573,11 @@
         "referenceAnswer": "参考答案：{{answer}}",
         "explanation": "解析：{{detail}}",
         "submitAnswer": "提交答案",
+        "fillBlank": {
+          "blankLabel": "第 {{index}} 空",
+          "correct": "第 {{index}} 空：回答正确",
+          "wrong": "第 {{index}} 空：回答错误，正确答案：{{answer}}"
+        },
         "shortAnswer": {
           "label": "你的作答",
           "submit": "提交作答",
@@ -592,6 +599,7 @@
           "questionTypes": "题型（可多选）",
           "totalCount": "总题数",
           "typeRequired": "至少选择一种题型",
+          "tooManyTypes": "题型数量不能超过总题数",
           "submit": "开始生成",
           "cancel": "取消"
         }

@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from app.agents.llm import StructuredModelResult, SummaryModel
 from app.db.migrations import run_migrations
 from app.main import create_app
-from app.schemas.quiz import QuizBatch
+from app.schemas.quiz import QuizBatch, QuizGenerateRequest
 
 TOKEN = "test-launch-token"
 
@@ -44,6 +44,24 @@ def candidate(
             "explanation": "时间片过小会导致上下文切换开销过大。",
             "difficulty": "MEDIUM",
         }
+    if question_type == "MULTIPLE_SELECT":
+        return {
+            "question_type": "MULTIPLE_SELECT",
+            "stem": f"第 {index} 题：进程调度涉及哪些操作？",
+            "options": ["选择就绪进程", "释放全部内存", "分配处理器", "删除文件"],
+            "correct_answer": [0, 2],
+            "explanation": "调度器选择就绪进程并为其分配处理器。",
+            "difficulty": "MEDIUM",
+        }
+    if question_type == "FILL_BLANK":
+        return {
+            "question_type": "FILL_BLANK",
+            "stem": f"第 {index} 题：____器负责分配____。",
+            "options": [],
+            "correct_answer": [["调度"], ["处理器", "CPU"]],
+            "explanation": "调度器负责为就绪进程分配处理器。",
+            "difficulty": "EASY",
+        }
     return {
         "question_type": "SHORT_ANSWER",
         "stem": f"第 {index} 题：简述进程调度器的职责。",
@@ -66,6 +84,8 @@ DEFAULT_OUTPUT = batch_output(ALL_TYPES)
 
 
 def test_candidate_schema_rejects_invalid_question_shapes() -> None:
+    QuizBatch.model_validate(batch_output(["MULTIPLE_SELECT", "FILL_BLANK"]))
+
     wrong_true_false = batch_output(["TRUE_FALSE"])
     cast(list[dict[str, object]], wrong_true_false["items"])[0]["options"] = ["正确", "错误"]
     with pytest.raises(ValueError):
@@ -80,6 +100,31 @@ def test_candidate_schema_rejects_invalid_question_shapes() -> None:
     cast(list[dict[str, object]], float_answer["items"])[0]["correct_answer"] = 0.5
     with pytest.raises(ValueError):
         QuizBatch.model_validate(float_answer)
+
+    duplicate_multiple_select = batch_output(["MULTIPLE_SELECT"])
+    cast(list[dict[str, object]], duplicate_multiple_select["items"])[0]["correct_answer"] = [0, 0]
+    with pytest.raises(ValueError):
+        QuizBatch.model_validate(duplicate_multiple_select)
+
+    mismatched_fill_blank = batch_output(["FILL_BLANK"])
+    cast(list[dict[str, object]], mismatched_fill_blank["items"])[0]["correct_answer"] = [["调度"]]
+    with pytest.raises(ValueError):
+        QuizBatch.model_validate(mismatched_fill_blank)
+
+
+def test_generate_request_rejects_more_types_than_questions() -> None:
+    with pytest.raises(ValueError):
+        QuizGenerateRequest.model_validate(
+            {
+                "question_types": [
+                    "MULTIPLE_CHOICE",
+                    "MULTIPLE_SELECT",
+                    "TRUE_FALSE",
+                    "FILL_BLANK",
+                ],
+                "total_count": 3,
+            }
+        )
 
 
 class FakeQuizModel:
@@ -277,8 +322,21 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
                 await connection.execute("PRAGMA index_list(processing_jobs)")
             ).fetchall()
         }
+        quiz_row = await (
+            await connection.execute(
+                "SELECT sql FROM sqlite_master WHERE type='table' AND name='quizzes'"
+            )
+        ).fetchone()
+        assert quiz_row is not None
+        quiz_sql = cast(str, quiz_row[0])
+        quiz_triggers = {
+            cast(str, row[0])
+            for row in await connection.execute_fetchall(
+                "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='quizzes'"
+            )
+        }
 
-    assert version == (14,)
+    assert version == (15,)
     assert {
         "id",
         "record_id",
@@ -299,6 +357,12 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
         "deleted_at",
     } == columns
     assert "idx_processing_jobs_one_active_quiz_generation" in job_indexes
+    assert "MULTIPLE_SELECT" in quiz_sql
+    assert "FILL_BLANK" in quiz_sql
+    assert quiz_triggers == {
+        "quizzes_one_active_batch_insert",
+        "quizzes_one_active_batch_update",
+    }
 
 
 @pytest.mark.anyio
@@ -776,7 +840,7 @@ async def test_generate_five_questions_with_two_selected_types(tmp_path: Path) -
     assert {item["question_type"] for item in items} == {"MULTIPLE_CHOICE", "TRUE_FALSE"}
     assert json.loads(result_json)["question_types"] == {"MULTIPLE_CHOICE": 3, "TRUE_FALSE": 2}
     assert "恰好出 5 题" in model.prompts[0]
-    assert "选择题、判断题" in model.prompts[0]
+    assert "单选题、判断题" in model.prompts[0]
 
 
 @pytest.mark.anyio
@@ -1058,6 +1122,82 @@ async def test_answer_objective_quizzes_scores_once_and_persists_events(tmp_path
         "generated_from_summary_id": summary_id,
     }
     assert "answer" not in wrong_event["metadata_json"]
+
+
+@pytest.mark.anyio
+async def test_answer_multiple_select_and_fill_blank_scores_all_or_wrong_once(
+    tmp_path: Path,
+) -> None:
+    composition = ["MULTIPLE_SELECT"] * 3 + ["FILL_BLANK"] * 2
+    model = FakeQuizModel(output=batch_output(composition))
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        batch_id, draft = await generate_draft_batch(
+            client,
+            record_id,
+            question_types=["MULTIPLE_SELECT", "FILL_BLANK"],
+            total_count=5,
+        )
+        adopted = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations"
+        )
+        assert adopted.status_code == 200, adopted.text
+        items = cast(list[dict[str, object]], draft["items"])
+        multiple_select = [item for item in items if item["question_type"] == "MULTIPLE_SELECT"]
+        fill_blank = [item for item in items if item["question_type"] == "FILL_BLANK"]
+
+        responses = [
+            await client.post(
+                f"/api/records/{record_id}/quizzes/{multiple_select[0]['id']}/answers",
+                json={"answer": [0]},
+            ),
+            await client.post(
+                f"/api/records/{record_id}/quizzes/{multiple_select[1]['id']}/answers",
+                json={"answer": [0, 1, 2]},
+            ),
+            await client.post(
+                f"/api/records/{record_id}/quizzes/{multiple_select[2]['id']}/answers",
+                json={"answer": [2, 0]},
+            ),
+            await client.post(
+                f"/api/records/{record_id}/quizzes/{fill_blank[0]['id']}/answers",
+                json={"answer": ["调度", "内存"]},
+            ),
+            await client.post(
+                f"/api/records/{record_id}/quizzes/{fill_blank[1]['id']}/answers",
+                json={"answer": [" 调度 ", "CPU"]},
+            ),
+        ]
+        repeated = await client.post(
+            f"/api/records/{record_id}/quizzes/{fill_blank[1]['id']}/answers",
+            json={"answer": ["错误", "错误"]},
+        )
+        async with app.state.session_factory() as session:
+            event_count = await session.scalar(
+                text(
+                    "SELECT count(*) FROM learning_events "
+                    "WHERE event_type='QUIZ_ANSWERED' AND record_id=:record_id"
+                ),
+                {"record_id": record_id},
+            )
+
+    assert [response.status_code for response in responses] == [200] * 5
+    assert [response.json()["answer_result"] for response in responses] == [
+        "WRONG",
+        "WRONG",
+        "CORRECT",
+        "WRONG",
+        "CORRECT",
+    ]
+    assert responses[2].json()["user_answer"] == [0, 2]
+    assert responses[4].json()["user_answer"] == ["调度", "CPU"]
+    assert responses[4].json()["correct_answer"] == [["调度"], ["处理器", "CPU"]]
+    assert repeated.json()["user_answer"] == ["调度", "CPU"]
+    assert repeated.json()["answer_result"] == "CORRECT"
+    assert event_count == 5
+    assert "多选题、填空题" in model.prompts[0]
 
 
 @pytest.mark.anyio

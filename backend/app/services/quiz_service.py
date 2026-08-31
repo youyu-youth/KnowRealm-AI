@@ -42,10 +42,17 @@ from app.services.local_config import (
 
 
 def _quiz_out(item: Quiz) -> QuizOut:
-    user_answer: int | str | None = None
+    user_answer: int | str | list[int] | list[str] | None = None
     if item.user_answer_json is not None:
         raw_answer = cast(object, json.loads(item.user_answer_json))
-        user_answer = raw_answer if isinstance(raw_answer, (int, str)) else None
+        if isinstance(raw_answer, (int, str)):
+            user_answer = raw_answer
+        elif isinstance(raw_answer, list):
+            values = cast(list[object], raw_answer)
+            if all(isinstance(value, int) for value in values):
+                user_answer = cast(list[int], values)
+            elif all(isinstance(value, str) for value in values):
+                user_answer = cast(list[str], values)
     answer_visible = (
         item.generation_status == QuizGenerationStatus.DRAFT or item.answered_at is not None
     )
@@ -59,7 +66,9 @@ def _quiz_out(item: Quiz) -> QuizOut:
         stem=item.stem,
         options=cast(list[str], json.loads(item.options_json)),
         correct_answer=(
-            cast(int | str, json.loads(item.correct_answer_json)) if answer_visible else None
+            cast(int | str | list[int] | list[list[str]], json.loads(item.correct_answer_json))
+            if answer_visible
+            else None
         ),
         explanation=item.explanation if answer_visible else None,
         difficulty=QuizDifficulty(item.difficulty),
@@ -490,24 +499,73 @@ class QuizService:
             quiz = await _answerable_quiz(session, record_id, quiz_id)
             if quiz.question_type not in (
                 QuizQuestionType.MULTIPLE_CHOICE,
+                QuizQuestionType.MULTIPLE_SELECT,
                 QuizQuestionType.TRUE_FALSE,
+                QuizQuestionType.FILL_BLANK,
             ):
                 raise HTTPException(status_code=409, detail="该题不是客观题")
             options = cast(list[str], json.loads(quiz.options_json))
-            if body.answer >= len(options):
-                raise HTTPException(status_code=400, detail="所选答案下标超出选项范围")
+            answer = body.answer
+            correct_answer = cast(object, json.loads(quiz.correct_answer_json))
+            if quiz.question_type in (
+                QuizQuestionType.MULTIPLE_CHOICE,
+                QuizQuestionType.TRUE_FALSE,
+            ):
+                if not isinstance(answer, int) or not isinstance(correct_answer, int):
+                    raise HTTPException(status_code=409, detail="该题需要提交一个选项")
+                if answer >= len(options):
+                    raise HTTPException(status_code=400, detail="所选答案下标超出选项范围")
+                answer_result = (
+                    QuizAnswerResult.CORRECT if answer == correct_answer else QuizAnswerResult.WRONG
+                )
+            elif quiz.question_type == QuizQuestionType.MULTIPLE_SELECT:
+                correct_values = (
+                    cast(list[object], correct_answer) if isinstance(correct_answer, list) else []
+                )
+                if (
+                    not isinstance(answer, list)
+                    or not all(isinstance(value, int) for value in answer)
+                    or not correct_values
+                    or not all(isinstance(value, int) for value in correct_values)
+                ):
+                    raise HTTPException(status_code=409, detail="该题需要提交选项组合")
+                selected = cast(list[int], answer)
+                expected = cast(list[int], correct_values)
+                if any(value >= len(options) for value in selected):
+                    raise HTTPException(status_code=400, detail="所选答案下标超出选项范围")
+                answer = sorted(selected)
+                answer_result = (
+                    QuizAnswerResult.CORRECT
+                    if answer == sorted(expected)
+                    else QuizAnswerResult.WRONG
+                )
+            else:
+                correct_values = (
+                    cast(list[object], correct_answer) if isinstance(correct_answer, list) else []
+                )
+                if (
+                    not isinstance(answer, list)
+                    or not all(isinstance(value, str) for value in answer)
+                    or not correct_values
+                    or not all(isinstance(value, list) for value in correct_values)
+                ):
+                    raise HTTPException(status_code=409, detail="该题需要提交逐空答案")
+                filled = cast(list[str], answer)
+                expected_blanks = cast(list[list[str]], correct_values)
+                if len(filled) != len(expected_blanks):
+                    raise HTTPException(status_code=400, detail="填空题作答数量与空位不一致")
+                answer = [value.strip() for value in filled]
+                answer_result = (
+                    QuizAnswerResult.CORRECT
+                    if all(value in expected_blanks[index] for index, value in enumerate(answer))
+                    else QuizAnswerResult.WRONG
+                )
             if quiz.answered_at is not None:
                 return _quiz_out(quiz), False
             if record.course_id is None:
                 raise HTTPException(status_code=409, detail="学习记录缺少课程归属，不能作答")
 
             now = utcnow()
-            correct_answer = cast(int, json.loads(quiz.correct_answer_json))
-            answer_result = (
-                QuizAnswerResult.CORRECT
-                if body.answer == correct_answer
-                else QuizAnswerResult.WRONG
-            )
             updated = await session.execute(
                 update(Quiz)
                 .where(
@@ -516,7 +574,7 @@ class QuizService:
                     Quiz.answered_at.is_(None),
                 )
                 .values(
-                    user_answer_json=json.dumps(body.answer),
+                    user_answer_json=json.dumps(answer, ensure_ascii=False, separators=(",", ":")),
                     answer_result=answer_result,
                     answered_at=now,
                     updated_at=now,

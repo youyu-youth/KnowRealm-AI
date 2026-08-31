@@ -1800,7 +1800,7 @@
             "items": {
               "$ref": "#/components/schemas/QuizQuestionType"
             },
-            "maxItems": 3,
+            "maxItems": 5,
             "minItems": 1,
             "title": "Question Types",
             "type": "array"
@@ -1848,10 +1848,25 @@
       "QuizObjectiveAnswerRequest": {
         "properties": {
           "answer": {
-            "description": "用户所选选项的下标（从 0 开始）",
-            "minimum": 0.0,
-            "title": "Answer",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "description": "单选 / 判断题为一个下标，多选题为下标数组，填空题为逐空答案数组",
+            "title": "Answer"
           }
         },
         "required": [
@@ -1901,6 +1916,21 @@
               },
               {
                 "type": "string"
+              },
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "array"
               },
               {
                 "type": "null"
@@ -1989,6 +2019,18 @@
                 "type": "string"
               },
               {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
                 "type": "null"
               }
             ],
@@ -2016,7 +2058,9 @@
       "QuizQuestionType": {
         "enum": [
           "MULTIPLE_CHOICE",
+          "MULTIPLE_SELECT",
           "TRUE_FALSE",
+          "FILL_BLANK",
           "SHORT_ANSWER"
         ],
         "title": "QuizQuestionType",

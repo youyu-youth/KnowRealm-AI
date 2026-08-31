@@ -142,6 +142,35 @@ function objectiveAnswerText(item: QuizOut, index: number): string {
     : `${String.fromCharCode(65 + index)}. ${option}`;
 }
 
+function quizAnswerText(
+  item: QuizOut,
+  answer: QuizOut["user_answer"] | QuizOut["correct_answer"],
+): string | null {
+  if (typeof answer === "number") return objectiveAnswerText(item, answer);
+  if (typeof answer === "string") return answer;
+  if (!Array.isArray(answer)) return null;
+  if (answer.every((value) => typeof value === "number")) {
+    return answer.map((value) => objectiveAnswerText(item, value)).join("、");
+  }
+  if (answer.every((value) => typeof value === "string")) {
+    return answer
+      .map((value, index) => `第 ${index + 1} 空：${value}`)
+      .join("；");
+  }
+  if (
+    answer.every(
+      (value) =>
+        Array.isArray(value) &&
+        value.every((alternative) => typeof alternative === "string"),
+    )
+  ) {
+    return answer
+      .map((value, index) => `第 ${index + 1} 空：${value.join(" / ")}`)
+      .join("；");
+  }
+  return null;
+}
+
 function labeledText(label: string, text: string): string[] {
   return [`**${escapePlainText(label)}**`, escapePlainText(text)];
 }
@@ -199,9 +228,11 @@ export function serializeQuizMarkdown(
       return;
     }
 
+    const userAnswer = quizAnswerText(item, item.user_answer);
+    const correctAnswer = quizAnswerText(item, item.correct_answer);
     if (
-      typeof item.user_answer !== "number" ||
-      typeof item.correct_answer !== "number" ||
+      !userAnswer ||
+      !correctAnswer ||
       !item.answer_result ||
       item.explanation === null
     ) {
@@ -209,15 +240,9 @@ export function serializeQuizMarkdown(
     }
 
     blocks.push(
-      ...labeledText(
-        labels.userAnswerLabel,
-        objectiveAnswerText(item, item.user_answer),
-      ),
+      ...labeledText(labels.userAnswerLabel, userAnswer),
       ...labeledText(labels.resultLabel, labels.results[item.answer_result]),
-      ...labeledText(
-        labels.correctAnswerLabel,
-        objectiveAnswerText(item, item.correct_answer),
-      ),
+      ...labeledText(labels.correctAnswerLabel, correctAnswer),
       ...labeledText(labels.explanationLabel, item.explanation),
     );
   });

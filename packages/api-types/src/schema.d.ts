@@ -1738,9 +1738,9 @@ export interface components {
         QuizObjectiveAnswerRequest: {
             /**
              * Answer
-             * @description 用户所选选项的下标（从 0 开始）
+             * @description 单选 / 判断题为一个下标，多选题为下标数组，填空题为逐空答案数组
              */
-            answer: number;
+            answer: number | number[] | string[];
         };
         /** QuizOut */
         QuizOut: {
@@ -1750,7 +1750,7 @@ export interface components {
             /** Batch Id */
             batch_id: string | null;
             /** Correct Answer */
-            correct_answer: number | string | null;
+            correct_answer: number | string | number[] | string[][] | null;
             /** Created At */
             created_at: string | null;
             difficulty: components["schemas"]["QuizDifficulty"];
@@ -1771,13 +1771,13 @@ export interface components {
             /** Updated At */
             updated_at: string | null;
             /** User Answer */
-            user_answer?: number | string | null;
+            user_answer?: number | string | number[] | string[] | null;
         };
         /**
          * QuizQuestionType
          * @enum {string}
          */
-        QuizQuestionType: "MULTIPLE_CHOICE" | "TRUE_FALSE" | "SHORT_ANSWER";
+        QuizQuestionType: "MULTIPLE_CHOICE" | "MULTIPLE_SELECT" | "TRUE_FALSE" | "FILL_BLANK" | "SHORT_ANSWER";
         /** QuizReadOut */
         QuizReadOut: {
             action_required: components["schemas"]["QuizAction"];

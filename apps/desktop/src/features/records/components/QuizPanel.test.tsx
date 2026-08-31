@@ -253,12 +253,16 @@ describe("习题页签", () => {
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeVisible();
     expect(
-      screen.getByRole("checkbox", { name: "选择题", checked: true }),
+      screen.getByRole("checkbox", { name: "单选题", checked: true }),
     ).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "多选题" })).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: "填空题" })).toBeVisible();
     expect(screen.getByRole("checkbox", { name: "简答题" })).toBeVisible();
     expect(
       screen.getByRole("radio", { name: "3", checked: true }),
     ).toBeVisible();
+    expect(screen.getByRole("button", { name: "开始生成" })).toBeDisabled();
+    expect(screen.getByText("题型数量不能超过总题数")).toBeVisible();
 
     fireEvent.click(screen.getByRole("radio", { name: "10" }));
     expect(
@@ -271,7 +275,12 @@ describe("习题页签", () => {
     expect(await screen.findByText("正在生成习题候选")).toBeVisible();
     expect(submittedBodies).toEqual([
       {
-        question_types: ["MULTIPLE_CHOICE", "TRUE_FALSE"],
+        question_types: [
+          "MULTIPLE_CHOICE",
+          "MULTIPLE_SELECT",
+          "TRUE_FALSE",
+          "FILL_BLANK",
+        ],
         total_count: 10,
       },
     ]);
@@ -464,7 +473,7 @@ describe("习题页签", () => {
     expect(screen.getByRole("button", { name: "丢弃本批候选" })).toBeVisible();
   });
 
-  it("选择题与判断题提交后即时判分并锁定展示答案解析", async () => {
+  it("单选题与判断题提交后即时判分并锁定展示答案解析", async () => {
     const submitted: Array<{ quizId: string; body: object }> = [];
     let quizReads = 0;
     const choice = quizItem({ generation_status: "ACTIVE" });
@@ -549,6 +558,95 @@ describe("习题页签", () => {
     expect(submitted).toEqual([
       { quizId: choice.id, body: { answer: 2 } },
       { quizId: trueFalse.id, body: { answer: 1 } },
+    ]);
+  });
+
+  it("多选与填空提交后按全对制判分并锁定，填空逐空展示结果", async () => {
+    const multipleCorrect = [0, 2];
+    const fillCorrect = [["调度"], ["处理器", "CPU"]];
+    let multiple = quizItem({
+      id: "99999999-9999-4999-8999-999999999999",
+      generation_status: "ACTIVE",
+      question_type: "MULTIPLE_SELECT",
+      stem: "进程调度涉及哪些操作？",
+      options: ["选择就绪进程", "释放全部内存", "分配处理器", "删除文件"],
+      correct_answer: null,
+      explanation: null,
+    });
+    let fill = quizItem({
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      generation_status: "ACTIVE",
+      question_type: "FILL_BLANK",
+      stem: "____器负责分配____。",
+      options: [],
+      correct_answer: null,
+      explanation: null,
+    });
+    let items = [multiple, fill];
+    const submitted: unknown[] = [];
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(quizReadOut({ action_required: "GENERATE", items })),
+      ),
+      http.post(
+        `${QUIZZES_URL}/:quizId/answers`,
+        async ({ params, request }) => {
+          const body = (await request.json()) as { answer: unknown };
+          submitted.push(body);
+          if (params.quizId === multiple.id) {
+            multiple = {
+              ...multiple,
+              correct_answer: multipleCorrect,
+              explanation: "调度器选择就绪进程并为其分配处理器。",
+              user_answer: body.answer as number[],
+              answer_result: "CORRECT",
+              answered_at: "2026-08-31T05:00:00.000000Z",
+            };
+            items = [multiple, fill];
+            return HttpResponse.json(multiple);
+          }
+          fill = {
+            ...fill,
+            correct_answer: fillCorrect,
+            explanation: "调度器负责为就绪进程分配处理器。",
+            user_answer: body.answer as string[],
+            answer_result: "WRONG",
+            answered_at: "2026-08-31T05:01:00.000000Z",
+          };
+          items = [multiple, fill];
+          return HttpResponse.json(fill);
+        },
+      ),
+      http.get(PREFERENCES_URL, () => HttpResponse.json(preferencesOut())),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "A. 选择就绪进程" }),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "C. 分配处理器" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "提交答案" })[0]);
+
+    expect(await screen.findByText("回答正确")).toBeVisible();
+    expect(
+      screen.getByRole("checkbox", { name: "A. 选择就绪进程" }),
+    ).toHaveAttribute("aria-disabled", "true");
+
+    const firstBlank = screen.getByRole("textbox", { name: "第 1 空" });
+    const secondBlank = screen.getByRole("textbox", { name: "第 2 空" });
+    fireEvent.change(firstBlank, { target: { value: "调度" } });
+    fireEvent.change(secondBlank, { target: { value: "内存" } });
+    fireEvent.click(screen.getByRole("button", { name: "提交答案" }));
+
+    expect(await screen.findByText("第 1 空：回答正确")).toBeVisible();
+    expect(
+      screen.getByText("第 2 空：回答错误，正确答案：处理器"),
+    ).toBeVisible();
+    expect(screen.getByRole("textbox", { name: "第 1 空" })).toBeDisabled();
+    expect(submitted).toEqual([
+      { answer: [0, 2] },
+      { answer: ["调度", "内存"] },
     ]);
   });
 

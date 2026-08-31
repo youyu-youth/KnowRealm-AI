@@ -55,8 +55,10 @@ from app.services.summary_derivation import (
 PROMPT_VERSION = "quiz_v1"
 
 _QUESTION_TYPE_LABELS = {
-    QuizQuestionType.MULTIPLE_CHOICE: "选择题",
+    QuizQuestionType.MULTIPLE_CHOICE: "单选题",
+    QuizQuestionType.MULTIPLE_SELECT: "多选题",
     QuizQuestionType.TRUE_FALSE: "判断题",
+    QuizQuestionType.FILL_BLANK: "填空题",
     QuizQuestionType.SHORT_ANSWER: "简答题",
 }
 
@@ -89,9 +91,13 @@ def build_quiz_prompt(claimed: _ClaimedQuizJob) -> str:
         "出题要求：\n"
         f"- 恰好出 {claimed.total_count} 题，题型限定：{type_names}，每种所选题型至少 1 道，"
         "各题型数量构成由你按内容决定\n"
-        "- 选择题为单选题：options 为 3 至 5 个选项文本，"
+        "- 单选题：options 为 3 至 5 个选项文本，"
         "correct_answer 为正确选项的下标（从 0 开始）\n"
+        "- 多选题：options 为 3 至 5 个选项文本，"
+        "correct_answer 为全部正确选项的下标数组（从 0 开始，不重复）\n"
         '- 判断题：options 固定为 ["对", "错"]，correct_answer 为 0（对）或 1（错）\n'
+        '- 填空题：stem 用 "____" 标记每个空位，options 为空数组，'
+        "correct_answer 按空位顺序给出可接受答案数组\n"
         "- 简答题：options 为空数组，correct_answer 为参考答案文本\n"
         "- 每题给出 difficulty（EASY / MEDIUM / HARD）与 explanation 解析\n"
         "- 题目与解析只能基于已确认总结的内容，不得引入总结之外的知识"

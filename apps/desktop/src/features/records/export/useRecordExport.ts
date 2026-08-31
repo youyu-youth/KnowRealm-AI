@@ -49,7 +49,9 @@ function quizExportLabels(t: TFunction): QuizExportLabels {
     pendingSelfAssessment: t("record.detail.quiz.shortAnswer.pending"),
     questionTypes: {
       MULTIPLE_CHOICE: t("record.detail.quiz.type.MULTIPLE_CHOICE"),
+      MULTIPLE_SELECT: t("record.detail.quiz.type.MULTIPLE_SELECT"),
       TRUE_FALSE: t("record.detail.quiz.type.TRUE_FALSE"),
+      FILL_BLANK: t("record.detail.quiz.type.FILL_BLANK"),
       SHORT_ANSWER: t("record.detail.quiz.type.SHORT_ANSWER"),
     },
     difficulties: {

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Literal, Self, cast
 
 from pydantic import (
     BaseModel,
@@ -17,7 +17,9 @@ TRUE_FALSE_OPTIONS = ("对", "错")
 
 class QuizQuestionType(StrEnum):
     MULTIPLE_CHOICE = "MULTIPLE_CHOICE"
+    MULTIPLE_SELECT = "MULTIPLE_SELECT"
     TRUE_FALSE = "TRUE_FALSE"
+    FILL_BLANK = "FILL_BLANK"
     SHORT_ANSWER = "SHORT_ANSWER"
 
 
@@ -34,15 +36,19 @@ class QuizQuestionCandidate(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    question_type: Literal["MULTIPLE_CHOICE", "TRUE_FALSE", "SHORT_ANSWER"] = Field(
-        description="题型：单选选择题 / 判断题 / 简答题"
-    )
+    question_type: Literal[
+        "MULTIPLE_CHOICE", "MULTIPLE_SELECT", "TRUE_FALSE", "FILL_BLANK", "SHORT_ANSWER"
+    ] = Field(description="题型：单选题 / 多选题 / 判断题 / 填空题 / 简答题")
     stem: str = Field(min_length=1, max_length=500, description="题干")
     options: list[str] = Field(
-        max_length=5, description="选项文本；判断题固定两项「对 / 错」，简答题为空数组"
+        max_length=5,
+        description="选项文本；判断题固定两项「对 / 错」，填空题与简答题为空数组",
     )
-    correct_answer: int | str = Field(
-        description="选择题 / 判断题为正确项下标（从 0 开始），简答题为参考答案文本"
+    correct_answer: int | str | list[int] | list[list[str]] = Field(
+        description=(
+            "单选题 / 判断题为正确项下标；多选题为正确项下标数组；"
+            "填空题为逐空可接受答案数组；简答题为参考答案文本"
+        )
     )
     explanation: str = Field(min_length=1, max_length=2000, description="解析")
     difficulty: Literal["EASY", "MEDIUM", "HARD"] = Field(description="难度三档")
@@ -65,11 +71,46 @@ class QuizQuestionCandidate(BaseModel):
                 self.options
             ):
                 raise ValueError("选择题正确答案必须是选项下标")
+        elif self.question_type == "MULTIPLE_SELECT":
+            if not 3 <= len(self.options) <= 5:
+                raise ValueError("多选题必须有 3 至 5 个选项")
+            if (
+                not isinstance(self.correct_answer, list)
+                or not self.correct_answer
+                or not all(isinstance(item, int) for item in self.correct_answer)
+            ):
+                raise ValueError("多选题正确答案必须是非空选项下标数组")
+            answer_indexes = cast(list[int], self.correct_answer)
+            if len(set(answer_indexes)) != len(answer_indexes) or any(
+                item < 0 or item >= len(self.options) for item in answer_indexes
+            ):
+                raise ValueError("多选题正确答案下标必须唯一且位于选项范围内")
         elif self.question_type == "TRUE_FALSE":
             if tuple(self.options) != TRUE_FALSE_OPTIONS:
                 raise ValueError("判断题选项固定为「对 / 错」两项")
             if not isinstance(self.correct_answer, int) or self.correct_answer not in (0, 1):
                 raise ValueError("判断题正确答案必须是 0 或 1")
+        elif self.question_type == "FILL_BLANK":
+            if self.options:
+                raise ValueError("填空题选项必须为空数组")
+            if (
+                not isinstance(self.correct_answer, list)
+                or not self.correct_answer
+                or not all(isinstance(item, list) for item in self.correct_answer)
+            ):
+                raise ValueError("填空题正确答案必须是逐空可接受答案数组")
+            blank_answers = cast(list[list[str]], self.correct_answer)
+            if len(blank_answers) != self.stem.count("____"):
+                raise ValueError("填空题空位数量必须与正确答案数量一致")
+            if any(
+                not answers
+                or len(set(answers)) != len(answers)
+                or any(
+                    answer != answer.strip() or not 1 <= len(answer) <= 100 for answer in answers
+                )
+                for answers in blank_answers
+            ):
+                raise ValueError("填空题每空必须有唯一且不含首尾空白的可接受答案")
         else:
             if self.options:
                 raise ValueError("简答题选项必须为空数组")
@@ -122,7 +163,7 @@ class QuizBlockedReason(StrEnum):
 
 
 class QuizGenerateRequest(BaseModel):
-    question_types: list[QuizQuestionType] = Field(min_length=1, max_length=3)
+    question_types: list[QuizQuestionType] = Field(min_length=1, max_length=5)
     total_count: Literal[3, 5, 10] = Field(description="总题数档位")
 
     @field_validator("question_types")
@@ -132,9 +173,36 @@ class QuizGenerateRequest(BaseModel):
             raise ValueError("题型不能重复")
         return value
 
+    @model_validator(mode="after")
+    def reject_more_types_than_questions(self) -> Self:
+        if len(self.question_types) > self.total_count:
+            raise ValueError("题型数量不能超过总题数")
+        return self
+
 
 class QuizObjectiveAnswerRequest(BaseModel):
-    answer: int = Field(ge=0, description="用户所选选项的下标（从 0 开始）")
+    answer: int | list[int] | list[str] = Field(
+        description="单选 / 判断题为一个下标，多选题为下标数组，填空题为逐空答案数组"
+    )
+
+    @field_validator("answer")
+    @classmethod
+    def validate_answer(cls, value: int | list[int] | list[str]) -> int | list[int] | list[str]:
+        if isinstance(value, int):
+            if value < 0:
+                raise ValueError("选项下标不能为负数")
+            return value
+        if not value:
+            raise ValueError("客观题作答不能为空")
+        if all(isinstance(item, int) for item in value):
+            indexes = cast(list[int], value)
+            if any(item < 0 for item in indexes) or len(set(indexes)) != len(indexes):
+                raise ValueError("多选题下标必须非负且不能重复")
+            return sorted(indexes)
+        answers = cast(list[str], value)
+        if any(not answer.strip() or len(answer) > 100 for answer in answers):
+            raise ValueError("填空题每个空位都必须作答且不超过 100 字")
+        return [answer.strip() for answer in answers]
 
 
 class QuizShortAnswerRequest(BaseModel):
@@ -161,10 +229,10 @@ class QuizOut(BaseModel):
     question_type: QuizQuestionType
     stem: str
     options: list[str]
-    correct_answer: int | str | None
+    correct_answer: int | str | list[int] | list[list[str]] | None
     explanation: str | None
     difficulty: QuizDifficulty
-    user_answer: int | str | None = None
+    user_answer: int | str | list[int] | list[str] | None = None
     answer_result: QuizAnswerResult | None = None
     answered_at: datetime | None = None
     created_at: datetime
