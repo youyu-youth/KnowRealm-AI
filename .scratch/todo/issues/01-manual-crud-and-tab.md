@@ -4,7 +4,7 @@
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] 迁移新建 `todo_items` 表（数据模型 v2.2 全列）：batch_id（可空）、content、status（TODO / DONE）、source（AI / MANUAL）、generated_from_summary_id（可空）、generation_status（可空 DRAFT / ACTIVE / SUPERSEDED）、sort_order、软删列；Record 软删同事务级联 todo
 - [x] 手动 CRUD 端点：新增（source=MANUAL、sort_order 取最大值 +1 追加尾部）、编辑 content、删除（软删）、勾选切换（TODO↔DONE 幂等，重复置同态返回现状）

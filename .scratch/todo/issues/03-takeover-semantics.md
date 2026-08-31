@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — AI 生成候选、修剪与批次生命周期
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] 接管谓词落进 01 的勾选与编辑端点：`generation_status = ACTIVE` 且 `source = AI` 的行被编辑 content 或勾选 DONE（任一方向）即置 `generation_status = NULL`；`generated_from_summary_id` 溯源保留、`source` 不翻转；取消勾选不回退（NULL 幂等）；删除 ACTIVE 的 AI 项 = 直接软删，不涉接管
 - [x] 完整接管场景验证：生成 → 采纳 → 部分条目勾 DONE / 编辑 → 换代重新生成并采纳新批 → 被接管项与手工项保留可见，仅仍 ACTIVE 的旧批行置 SUPERSEDED

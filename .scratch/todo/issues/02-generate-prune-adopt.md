@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — 手动 Todo 闭环与页签挂载
 
-**Status:** ready-for-agent
+**Status:** done
 
 - [x] `processing_jobs.job_type` 新增 TODO_GENERATION；每 Record 至多一个 PENDING/RUNNING Todo 任务的部分唯一索引；应用工厂提供 Todo 生成模型注入缝（镜像 FakeQuizModel 缝，支持序列输出与阻塞控制）
 - [x] worker 单次结构化生成（无 LangGraph）：prompt 仅课程上下文 + 已确认 Summary、prompt 版本化自 todo_v1 起、90 秒超时、llm_call_logs 埋点且 prompt 与输出不进日志；严格 Pydantic 校验（每条 content 非空带字数上限、总数 3~8）——违规 Job FAILED（LLM_OUTPUT_INVALID）不自动修正；成功单事务落整批 DRAFT 行（batch_id = Job id、绑定 generated_from_summary_id、批内按输出顺序分配 sort_order 追加尾部）
