@@ -11,7 +11,7 @@
 - [x] 向导②③：复用供应商卡与角色表单；跳过语义落地（接受默认/不建档）
 - [x] 完成：写 `onboarded`（经壳）→ 进首页；向导路由不写 last_route
 - [x] 前端测试（三步跳过/导入失败重试/完成态/last_route 豁免/非首启不出现）；pyright/tsc/prettier 全绿
-- [ ] 真机人工验收（用户执行）：全新数据目录首启走完三步（含全跳过）后永不再现；OneDrive 路径出警告；导入恢复后②③显示已配置/已建档
+- [x] 真机人工验收（用户执行）：全新数据目录首启走完三步（含全跳过）后永不再现；OneDrive 路径出警告；导入恢复后②③显示已配置/已建档
 
 > **实现注记（2026-08-31）**：
 > - **首启分流**：根路由 `beforeLoad` 每次导航询问壳 command `get_onboarding_state`（desktop.json 缺失/损坏经 `load_or_repair` 回退即 `onboarded=false`）；结果在 `services/tauri/onboarding.ts` 会话内缓存（onboarded 只 false→true 翻转），`complete_onboarding` 写盘并同步翻转缓存。`/onboarding` 路由反向守卫：已完成者直达一律回首页（无重跑入口）。向导期间 AppShell 不挂载（`RootLayout` 按路径条件渲染），侧栏/捕获入口/速记快捷键/last_route 写入结构性不存在——托盘"显示"只能看到向导本身。

@@ -40,11 +40,25 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 ## 编码规范（重要）
 
 1. 写任何代码前必须遵循 `.claude/rules/` 下的编码规范（**正本**；`docs/rules/` 为发布镜像，改动须同步保持一致）。任何时候不要更改rules下的文件。
+
 2. 设计或创建对应的桌面端ui时，需要遵循 impeccable skill 的规范要求，以及调用它来设计。
    - 不要重复造轮子，需要搞清楚当前的ui组件是否 可以用 shadcn ui 来实现。并保持设计规范。
+
 3. **git commit  的提交信息使用中文描述**
+
 4. 在测试中产生的任何临时文件，在测试完毕之后都要进行删除
+
 5. **执行编写任务之前，如果该功能是现有代码可以实现的则复用它，复用优先，禁止重复造轮子，保持代码简洁，且职责分明(适用于前端和后端)**
+
+6. 前端样式设计体系遵循如下分层结构和对应职责：
+
+   | 内容                       | 位置                            |
+   | -------------------------- | ------------------------------- |
+   | 设计令牌（颜色/圆角/间距） | `styles/tokens.css`（`@theme`） |
+   | 主题切换（亮/暗语义变量）  | `styles/theme.css`              |
+   | 全局 reset / 基础样式      | `styles/globals.css`            |
+   | 动画 keyframes             | `styles/animations.css`         |
+
 
 
 ## DESIGN.md

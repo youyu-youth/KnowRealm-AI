@@ -45,7 +45,14 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 3. **git commit  的提交信息使用中文描述**
 4. 在测试中产生的任何临时文件，在测试完毕之后都要进行删除
 5. **执行编写任务之前，如果该功能是现有代码可以实现的则复用它，复用优先，禁止重复造轮子，保持代码简洁，且职责分明(适用于前端和后端)**
+6. 前端样式设计体系遵循如下分层结构和对应职责：
 
+   | 内容                       | 位置                            |
+   | -------------------------- | ------------------------------- |
+   | 设计令牌（颜色/圆角/间距） | `styles/tokens.css`（`@theme`） |
+   | 主题切换（亮/暗语义变量）  | `styles/theme.css`              |
+   | 全局 reset / 基础样式      | `styles/globals.css`            |
+   | 动画 keyframes             | `styles/animations.css`         |
 
 ## DESIGN.md
 
