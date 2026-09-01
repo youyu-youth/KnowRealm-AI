@@ -141,6 +141,11 @@ function ExamPaper({
     }
   }, [data.status, data.course_id, queryClient]);
 
+  const [confirmAbandon, setConfirmAbandon] = useState(false);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  /* 未提交草稿按题持有：切题/切段卸载控件后回看仍在 */
+  const [drafts, setDrafts] = useState<Record<string, QuizTestAnswer>>({});
+
   const answer = useMutation({
     mutationFn: ({
       itemId,
@@ -149,8 +154,16 @@ function ExamPaper({
       itemId: string;
       answer: QuizTestAnswer;
     }) => quizTestApi.answer(data.id, { item_id: itemId, answer: value }),
-    onSuccess: (result) =>
-      queryClient.setQueryData(quizTestKeys.detail(data.id), result),
+    onSuccess: (result, variables) => {
+      // 已提交题不再需要草稿
+      setDrafts((current) => {
+        if (!(variables.itemId in current)) return current;
+        const next = { ...current };
+        delete next[variables.itemId];
+        return next;
+      });
+      queryClient.setQueryData(quizTestKeys.detail(data.id), result);
+    },
     onError: () =>
       queryClient.invalidateQueries({ queryKey: quizTestKeys.detail(data.id) }),
   });
@@ -162,6 +175,8 @@ function ExamPaper({
         queryKey: quizTestKeys.list(data.course_id),
       });
     },
+    // 弹窗已在确认时关闭；失败重开承载错误提示
+    onError: () => setConfirmSubmit(true),
   });
   const regrade = useMutation({
     mutationFn: () => quizTestApi.regrade(data.id),
@@ -195,8 +210,6 @@ function ExamPaper({
   const [activeSection, setActiveSection] = useState(() =>
     firstUnansweredSection(sections, items),
   );
-  const [confirmAbandon, setConfirmAbandon] = useState(false);
-  const [confirmSubmit, setConfirmSubmit] = useState(false);
 
   const answeredCount = data.answered_count;
   const answeredAll = items.length > 0 && answeredCount === items.length;
@@ -252,7 +265,7 @@ function ExamPaper({
   const submitButton = (className?: string) => (
     <Button
       className={className}
-      disabled={!answeredAll}
+      disabled={!answeredAll || submit.isPending}
       onClick={() => setConfirmSubmit(true)}
     >
       {t("spaces.simulations.paper.submitButton")}
@@ -266,6 +279,10 @@ function ExamPaper({
       locked={!answering}
       pending={pendingItemId === item.id}
       reviewing={reviewing}
+      draft={drafts[item.id]}
+      onDraftChange={(itemId, value) =>
+        setDrafts((current) => ({ ...current, [itemId]: value }))
+      }
       onSubmit={(itemId, value) => answer.mutate({ itemId, answer: value })}
     />
   );
@@ -641,8 +658,13 @@ function ExamPaper({
             >
               {t("spaces.simulations.paper.submitDialog.cancel")}
             </Button>
-            <Button disabled={submit.isPending} onClick={() => submit.mutate()}>
-              {submit.isPending ? <Spinner aria-hidden="true" /> : null}
+            <Button
+              onClick={() => {
+                // 立即关窗反馈交卷动作；请求在后台继续，失败时重开承载错误
+                setConfirmSubmit(false);
+                submit.mutate();
+              }}
+            >
               {t("spaces.simulations.paper.submitDialog.confirm")}
             </Button>
           </DialogFooter>

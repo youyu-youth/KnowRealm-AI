@@ -454,10 +454,48 @@ describe("交卷评分与结果页", () => {
     ).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "确认交卷" }));
 
+    // 确认交卷后弹窗立即关闭（不等请求返回），评分中状态随后到达
+    expect(
+      screen.queryByRole("dialog", { name: "确认交卷？" }),
+    ).not.toBeInTheDocument();
     expect(
       await screen.findByText("本卷正在评分，评分完成后可查看成绩。"),
     ).toBeInTheDocument();
     expect(submitCalled).toBe(true);
+  });
+
+  it("未提交草稿切题后保留：填空与简答回看仍在", async () => {
+    mockPaper();
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=single`);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "跳到第 2 题（填空题）" }),
+    );
+    const blankInput = await screen.findByRole("textbox", { name: "第 1 空" });
+    fireEvent.change(blankInput, { target: { value: "就绪队列" } });
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    const textarea = await screen.findByRole("textbox", {
+      name: "第 3 题作答",
+    });
+    fireEvent.change(textarea, { target: { value: "按时间片轮转调度。" } });
+
+    // 翻回填空题：草稿仍在；再跳到简答题：草稿同样保留
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(
+      (screen.getByRole("textbox", { name: "第 1 空" }) as HTMLInputElement)
+        .value,
+    ).toBe("就绪队列");
+    fireEvent.click(
+      screen.getByRole("button", { name: "跳到第 3 题（简答题）" }),
+    );
+    expect(
+      (
+        screen.getByRole("textbox", {
+          name: "第 3 题作答",
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe("按时间片轮转调度。");
   });
 
   it("结果页展示批改与成绩摘要：得分、对错、低置信标记、未计分", async () => {

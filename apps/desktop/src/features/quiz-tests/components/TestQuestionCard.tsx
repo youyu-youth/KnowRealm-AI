@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,6 +24,9 @@ type TestQuestionCardProps = {
   pending: boolean;
   /** 终态批改展示（COMPLETED / GRADING_FAILED） */
   reviewing: boolean;
+  /** 未提交草稿（由卷面按题持有，切题回看不丢） */
+  draft?: QuizTestAnswer;
+  onDraftChange: (itemId: string, value: QuizTestAnswer) => void;
   onSubmit: (itemId: string, answer: QuizTestAnswer) => void;
 };
 
@@ -33,6 +35,8 @@ export function TestQuestionCard({
   locked,
   pending,
   reviewing,
+  draft,
+  onDraftChange,
   onSubmit,
 }: TestQuestionCardProps) {
   const { t } = useTranslation();
@@ -68,6 +72,8 @@ export function TestQuestionCard({
               item={item}
               disabled={disabled}
               pending={pending}
+              draft={draft}
+              onDraftChange={onDraftChange}
               onSubmit={(answer) => onSubmit(item.id, answer)}
             />
           ) : item.question_type === "FILL_BLANK" ? (
@@ -75,6 +81,8 @@ export function TestQuestionCard({
               item={item}
               disabled={disabled}
               pending={pending}
+              draft={draft}
+              onDraftChange={onDraftChange}
               onSubmit={(answer) => onSubmit(item.id, answer)}
             />
           ) : (
@@ -82,6 +90,8 @@ export function TestQuestionCard({
               item={item}
               disabled={disabled}
               pending={pending}
+              draft={draft}
+              onDraftChange={onDraftChange}
               onSubmit={(answer) => onSubmit(item.id, answer)}
             />
           )}
@@ -143,13 +153,13 @@ function SingleChoiceControl({
   );
 }
 
-function isNumberArray(value: QuizTestItem["user_answer"]): value is number[] {
+function isNumberArray(value: unknown): value is number[] {
   return (
     Array.isArray(value) && value.every((entry) => typeof entry === "number")
   );
 }
 
-function isStringArray(value: QuizTestItem["user_answer"]): value is string[] {
+function isStringArray(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((entry) => typeof entry === "string")
   );
@@ -179,27 +189,38 @@ function SubmitButton({
   );
 }
 
+type DraftControlProps = {
+  item: QuizTestItem;
+  disabled: boolean;
+  pending: boolean;
+  draft?: QuizTestAnswer;
+  onDraftChange: (itemId: string, value: QuizTestAnswer) => void;
+};
+
 function MultipleSelectControl({
   item,
   disabled,
   pending,
+  draft,
+  onDraftChange,
   onSubmit,
-}: {
-  item: QuizTestItem;
-  disabled: boolean;
-  pending: boolean;
+}: DraftControlProps & {
   onSubmit: (answer: number[]) => void;
 }) {
-  const [draft, setDraft] = useState<number[]>([]);
   const answered = item.answered_at !== null;
   const selected =
-    answered && isNumberArray(item.user_answer) ? item.user_answer : draft;
+    answered && isNumberArray(item.user_answer)
+      ? item.user_answer
+      : isNumberArray(draft)
+        ? draft
+        : [];
 
   const toggle = (index: number, checked: boolean) =>
-    setDraft((current) =>
+    onDraftChange(
+      item.id,
       checked
-        ? [...current, index].sort((a, b) => a - b)
-        : current.filter((value) => value !== index),
+        ? [...selected, index].sort((a, b) => a - b)
+        : selected.filter((value) => value !== index),
     );
 
   return (
@@ -240,21 +261,21 @@ function FillBlankControl({
   item,
   disabled,
   pending,
+  draft,
+  onDraftChange,
   onSubmit,
-}: {
-  item: QuizTestItem;
-  disabled: boolean;
-  pending: boolean;
+}: DraftControlProps & {
   onSubmit: (answer: string[]) => void;
 }) {
   const { t } = useTranslation();
   const parts = item.stem.split("____");
-  const [draft, setDraft] = useState<string[]>(() =>
-    parts.slice(1).map(() => ""),
-  );
   const answered = item.answered_at !== null;
   const values =
-    answered && isStringArray(item.user_answer) ? item.user_answer : draft;
+    answered && isStringArray(item.user_answer)
+      ? item.user_answer
+      : isStringArray(draft)
+        ? draft
+        : [];
   const complete =
     values.length === parts.length - 1 &&
     values.every((value) => value.trim() !== "");
@@ -275,10 +296,15 @@ function FillBlankControl({
                 maxLength={100}
                 disabled={disabled}
                 onChange={(event) =>
-                  setDraft((current) =>
-                    current.map((value, blankIndex) =>
-                      blankIndex === index ? event.target.value : value,
-                    ),
+                  onDraftChange(
+                    item.id,
+                    parts
+                      .slice(1)
+                      .map((_blank, blankIndex) =>
+                        blankIndex === index
+                          ? event.target.value
+                          : (values[blankIndex] ?? ""),
+                      ),
                   )
                 }
               />
@@ -301,18 +327,19 @@ function ShortAnswerControl({
   item,
   disabled,
   pending,
+  draft,
+  onDraftChange,
   onSubmit,
-}: {
-  item: QuizTestItem;
-  disabled: boolean;
-  pending: boolean;
+}: DraftControlProps & {
   onSubmit: (answer: string) => void;
 }) {
   const { t } = useTranslation();
-  const [draft, setDraft] = useState("");
   const answered = item.answered_at !== null;
+  const draftText = typeof draft === "string" ? draft : "";
   const value =
-    answered && typeof item.user_answer === "string" ? item.user_answer : draft;
+    answered && typeof item.user_answer === "string"
+      ? item.user_answer
+      : draftText;
 
   return (
     <>
@@ -326,7 +353,7 @@ function ShortAnswerControl({
         aria-label={t("spaces.simulations.paper.answerAria", {
           index: item.sequence_no,
         })}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => onDraftChange(item.id, event.target.value)}
       />
       {answered ? null : (
         <SubmitButton
