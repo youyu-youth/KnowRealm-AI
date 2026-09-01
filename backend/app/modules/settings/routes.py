@@ -5,24 +5,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.modules.llm import SummaryGenerationError, call_summary_model
-from app.schemas.settings import (
-    DataDirectoryExportOut,
-    DataDirectoryExportRequest,
-    DataDirectoryLibraryStateOut,
-    ExternalProcessingConsentOut,
-    LlmConsentOut,
-    LlmProviderOut,
-    LlmProviderStateOut,
-    LlmProviderUpdate,
-    PreferencesOut,
-    PreferencesUpdate,
-    TencentAsrProviderOut,
-    TencentAsrProviderStateOut,
-    TencentAsrProviderUpdate,
-)
-from app.schemas.summary import LlmProviderTestOut, TencentAsrTestOut
-from app.services.archive_service import export_archive, library_is_empty
-from app.services.local_config import (
+from app.modules.settings.config import (
     external_processing_consent_at,
     grant_external_processing_consent,
     grant_llm_consent,
@@ -34,6 +17,20 @@ from app.services.local_config import (
     save_llm_provider,
     save_preferences,
     save_tencent_asr_provider,
+)
+from app.modules.settings.schemas import (
+    ExternalProcessingConsentOut,
+    LlmConsentOut,
+    LlmProviderOut,
+    LlmProviderStateOut,
+    LlmProviderTestOut,
+    LlmProviderUpdate,
+    PreferencesOut,
+    PreferencesUpdate,
+    TencentAsrProviderOut,
+    TencentAsrProviderStateOut,
+    TencentAsrProviderUpdate,
+    TencentAsrTestOut,
 )
 from app.services.tencent_asr_client import (
     TencentAsrApiError,
@@ -215,26 +212,6 @@ async def put_preferences(body: PreferencesUpdate, request: Request) -> Preferen
     updates = body.model_dump(exclude_unset=True)
     preferences = await asyncio.to_thread(save_preferences, request.app.state.data_dir, updates)
     return PreferencesOut.model_validate(preferences)
-
-
-@router.get(
-    "/data-directory/library-state",
-    response_model=DataDirectoryLibraryStateOut,
-)
-async def get_data_directory_library_state(request: Request) -> DataDirectoryLibraryStateOut:
-    empty = await library_is_empty(request.app.state.session_factory)
-    return DataDirectoryLibraryStateOut(empty_library=empty)
-
-
-@router.post("/data-directory/export", response_model=DataDirectoryExportOut)
-async def export_data_directory(
-    body: DataDirectoryExportRequest,
-    request: Request,
-) -> DataDirectoryExportOut:
-    file_name = await export_archive(
-        request.app.state.data_dir, include_secrets=body.include_secrets
-    )
-    return DataDirectoryExportOut(file_name=file_name)
 
 
 @router.post("/providers/llm/tests", response_model=LlmProviderTestOut)

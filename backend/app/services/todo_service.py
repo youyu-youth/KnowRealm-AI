@@ -14,6 +14,12 @@ from app.models.document import AiSummary, TodoItem
 from app.models.record import Record
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.settings import (
+    LlmProviderConfig,
+    llm_consent,
+    llm_provider_fingerprint,
+    load_llm_provider,
+)
 from app.schemas.course import CourseStatus
 from app.schemas.document import AiSummaryStatus
 from app.schemas.todo import (
@@ -26,12 +32,6 @@ from app.schemas.todo import (
     TodoStatus,
     TodoToggleRequest,
     TodoWriteRequest,
-)
-from app.services.local_config import (
-    LlmProviderConfig,
-    llm_consent,
-    llm_provider_fingerprint,
-    load_llm_provider,
 )
 
 

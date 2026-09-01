@@ -31,8 +31,8 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.llm import build_chat_model, write_llm_call_log
+from app.modules.settings import LlmProviderConfig
 from app.schemas.chat import ChatRole
-from app.services.local_config import LlmProviderConfig
 
 # 部署级语义常量（当前后端不读 .env、无 pydantic-settings；配置体系统一后迁移）。
 CHAT_CONTEXT_CHAR_BUDGET = 60000

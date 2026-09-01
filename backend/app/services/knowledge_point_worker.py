@@ -34,17 +34,17 @@ from app.modules.llm import (
     StructuredGenerationError,
     call_knowledge_point_model,
 )
-from app.schemas.knowledge_point import (
-    KnowledgePointGenerationStatus,
-    KnowledgePointInputMode,
-)
-from app.schemas.summary import SummaryContent
-from app.services.local_config import (
+from app.modules.settings import (
     LlmProviderConfig,
     llm_consent,
     llm_provider_fingerprint,
     load_llm_provider,
 )
+from app.schemas.knowledge_point import (
+    KnowledgePointGenerationStatus,
+    KnowledgePointInputMode,
+)
+from app.schemas.summary import SummaryContent
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_derivation import (
     PREREQUISITE_CHANGED,

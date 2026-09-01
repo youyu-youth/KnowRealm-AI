@@ -12,11 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.modules.llm.models import LlmCallLog
+from app.modules.settings import LlmProviderConfig
 from app.schemas.knowledge_point import KnowledgePointBatch
 from app.schemas.quiz import QuizBatch, ShortAnswerGrade
 from app.schemas.summary import SummaryContent
 from app.schemas.todo import TodoBatch
-from app.services.local_config import LlmProviderConfig
 
 
 @dataclass(frozen=True)

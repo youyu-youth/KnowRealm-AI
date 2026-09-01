@@ -17,7 +17,7 @@ from app.core.data_dir import ensure_data_dir
 from app.core.version import APP_VERSION
 from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
 from app.main import create_app
-from app.services.archive_service import (
+from app.modules.data import (
     KEEP_BACKUPS,
     MANIFEST_NAME,
     ImportArchiveError,
@@ -392,7 +392,7 @@ async def test_export_manifest_stays_consistent_when_file_vanishes_mid_export(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """导出期间不停写：并发删除的文件被跳过时，清单必须同步剔除，产物仍可导入。"""
-    from app.services import archive_service
+    from app.modules.data import archive as archive_service
 
     data_dir = await seed_data_dir(tmp_path / "KnowRealm")
     real_collect = archive_service._collect_entries  # pyright: ignore[reportPrivateUsage]

@@ -31,9 +31,9 @@ from app.agents.chat import (
 from app.main import create_app
 from app.models.chat import ChatMessage
 from app.models.document import AiSummary, KnowledgePoint
+from app.modules.settings import save_llm_provider
 from app.schemas.chat import ChatRole
 from app.services.chat_message_service import ChatMessageService
-from app.services.local_config import save_llm_provider
 
 TOKEN = "test-launch-token"
 

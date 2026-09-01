@@ -39,12 +39,12 @@ from app.modules.jobs.schemas import (
     ProcessingJobType,
     ProcessingJobWaitingReason,
 )
-from app.schemas.document import AsrChunkStatus
-from app.schemas.record import RecordStatus
-from app.services.local_config import (
+from app.modules.settings import (
     external_processing_consent_at,
     load_tencent_asr_config,
 )
+from app.schemas.document import AsrChunkStatus
+from app.schemas.record import RecordStatus
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.tencent_asr_client import (
     TencentAsrApiError,

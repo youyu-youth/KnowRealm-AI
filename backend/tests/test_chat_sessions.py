@@ -13,8 +13,8 @@ from sqlalchemy import update
 from app.db.base import utcnow
 from app.main import create_app
 from app.models.document import Transcript
+from app.modules.settings import save_llm_provider
 from app.services.chat_session_service import NEUTRAL_PROFILE_SNAPSHOT
-from app.services.local_config import save_llm_provider
 
 TOKEN = "test-launch-token"
 

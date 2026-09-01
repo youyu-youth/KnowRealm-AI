@@ -93,13 +93,3 @@ class SummaryConfirmRequest(BaseModel):
 class SummaryConfirmOut(BaseModel):
     summary: SummaryOut
     record_status: str
-
-
-class LlmProviderTestOut(BaseModel):
-    ok: bool
-    model: str
-
-
-class TencentAsrTestOut(BaseModel):
-    ok: bool
-    region: str

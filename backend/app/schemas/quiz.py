@@ -11,7 +11,6 @@ from pydantic import (
     model_validator,
 )
 
-QUIZ_COUNT_CHOICES = (3, 5, 10)
 TRUE_FALSE_OPTIONS = ("对", "错")
 
 

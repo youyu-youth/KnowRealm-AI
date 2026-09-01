@@ -7,8 +7,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
-from app.schemas.quiz import QUIZ_COUNT_CHOICES
-from app.schemas.settings import is_valid_shortcut, is_valid_timezone
+from app.modules.settings.schemas import QUIZ_COUNT_CHOICES, is_valid_shortcut, is_valid_timezone
 
 
 @dataclass(frozen=True)

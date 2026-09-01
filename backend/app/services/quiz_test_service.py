@@ -17,6 +17,12 @@ from app.models.document import LearningEvent, Quiz, QuizTest, QuizTestItem
 from app.models.record import Record
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.settings import (
+    LlmProviderConfig,
+    llm_consent,
+    llm_provider_fingerprint,
+    load_llm_provider,
+)
 from app.schemas.course import CourseStatus
 from app.schemas.quiz import (
     QuizDifficulty,
@@ -38,12 +44,6 @@ from app.schemas.quiz_test import (
     QuizTestMode,
     QuizTestStatus,
     QuizTestSummaryOut,
-)
-from app.services.local_config import (
-    LlmProviderConfig,
-    llm_consent,
-    llm_provider_fingerprint,
-    load_llm_provider,
 )
 
 # 低置信复核阈值：confidence 低于此值的结果页标记「建议人工复核」（只读，不参与任何计算）。

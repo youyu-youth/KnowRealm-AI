@@ -17,7 +17,7 @@ import httpx
 import pytest
 
 from app.db.migrations import run_migrations
-from app.services.local_config import LlmProviderConfig, llm_provider_fingerprint
+from app.modules.settings import LlmProviderConfig, llm_provider_fingerprint
 
 
 def start_sidecar(

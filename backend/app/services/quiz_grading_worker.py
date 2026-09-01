@@ -35,10 +35,10 @@ from app.modules.llm import (
     StructuredGenerationError,
     call_quiz_grading_model,
 )
+from app.modules.settings import LlmProviderConfig, llm_provider_fingerprint
 from app.schemas.course import CourseStatus
 from app.schemas.quiz import QuizQuestionType, ShortAnswerGrade
 from app.schemas.quiz_test import QuizTestItemResult, QuizTestStatus
-from app.services.local_config import LlmProviderConfig, llm_provider_fingerprint
 from app.services.quiz_test_service import build_test_answer_event, finalize_completed_test
 from app.services.quiz_worker import preflight
 from app.services.record_invalidation import RecordInvalidationNotifier

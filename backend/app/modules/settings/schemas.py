@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+QUIZ_COUNT_CHOICES = (3, 5, 10)
+
 
 class ExternalProcessingConsentOut(BaseModel):
     granted_at: str | None
@@ -71,6 +73,16 @@ class TencentAsrProviderStateOut(BaseModel):
     provider: TencentAsrProviderOut | None
 
 
+class LlmProviderTestOut(BaseModel):
+    ok: bool
+    model: str
+
+
+class TencentAsrTestOut(BaseModel):
+    ok: bool
+    region: str
+
+
 class LlmConsentOut(BaseModel):
     granted_at: str | None
     current: bool
@@ -85,22 +97,6 @@ class PreferencesOut(BaseModel):
     autostart: bool
     quiz_last_count: int
     last_route: str | None
-
-
-class DataDirectoryExportRequest(BaseModel):
-    """全量导出请求；include_secrets=true 时 providers.json 明文随包。"""
-
-    include_secrets: bool = Field(default=False, description="是否包含 config/providers.json")
-
-
-class DataDirectoryExportOut(BaseModel):
-    file_name: str
-
-
-class DataDirectoryLibraryStateOut(BaseModel):
-    """空库判定（无课程+无记录+无档案）：空库时设置页可见导入兜底入口。"""
-
-    empty_library: bool
 
 
 def is_valid_timezone(value: str) -> bool:

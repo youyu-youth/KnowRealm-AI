@@ -25,7 +25,6 @@ from app.api import (
     quizzes,
     recording_sessions,
     records,
-    settings,
     summaries,
     text_captures,
     today,
@@ -35,6 +34,8 @@ from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.core.version import APP_VERSION
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
+from app.modules.data import create_rolling_backup, restore_archive
+from app.modules.data import routes as data_routes
 from app.modules.jobs import JobRunner, ManagedWorker, processing_jobs
 from app.modules.llm import (
     KnowledgePointModel,
@@ -48,7 +49,7 @@ from app.modules.llm import (
     SummaryModel,
     TodoModel,
 )
-from app.services.archive_service import create_rolling_backup, restore_archive
+from app.modules.settings import routes as settings_routes
 from app.services.audio_worker import audio_spec
 from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.chat_message_service import ChatStreamRegistry
@@ -272,7 +273,8 @@ def create_app(
     app.include_router(courses.router)
     app.include_router(audio_imports.router)
     app.include_router(capture_batches.router)
-    app.include_router(settings.router)
+    app.include_router(settings_routes.router)
+    app.include_router(data_routes.router)
     app.include_router(summaries.router)
     app.include_router(knowledge_points.router)
     app.include_router(quizzes.router)

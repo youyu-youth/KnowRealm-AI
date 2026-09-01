@@ -29,14 +29,14 @@ from app.modules.jobs import (
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.llm import StructuredGenerationError, TodoModel, call_todo_model
-from app.schemas.summary import SummaryContent
-from app.schemas.todo import TodoBatch, TodoGenerationStatus, TodoSource, TodoStatus
-from app.services.local_config import (
+from app.modules.settings import (
     LlmProviderConfig,
     llm_consent,
     llm_provider_fingerprint,
     load_llm_provider,
 )
+from app.schemas.summary import SummaryContent
+from app.schemas.todo import TodoBatch, TodoGenerationStatus, TodoSource, TodoStatus
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_derivation import (
     PREREQUISITE_CHANGED,
