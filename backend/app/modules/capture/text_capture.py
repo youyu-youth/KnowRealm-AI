@@ -6,10 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.models.document import Transcript
-from app.models.record import Record
-from app.schemas.course import CourseStatus
-from app.schemas.record import RecordStatus, TextCaptureAccepted, TextCaptureCreate
-from app.services.course_service import CourseService
+from app.modules.capture.schemas import TextCaptureAccepted, TextCaptureCreate
+from app.modules.course import CourseService
+from app.modules.course.schemas import CourseStatus
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 from app.services.summary_service import SummaryService
 
 MAX_TEXT_BYTES = 1024 * 1024

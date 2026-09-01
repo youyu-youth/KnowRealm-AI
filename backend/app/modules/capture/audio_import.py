@@ -13,14 +13,19 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import RecordFile
-from app.models.record import Record
+from app.modules.capture.models import RecordFile
+from app.modules.capture.schemas import (
+    AudioImportAccepted,
+    CaptureType,
+    RecordFileSourceType,
+    RecordFileType,
+)
+from app.modules.course import CourseService
+from app.modules.course.schemas import CourseDetailOut, CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.schemas.course import CourseDetailOut, CourseStatus
-from app.schemas.document import AudioImportAccepted, RecordFileSourceType, RecordFileType
-from app.schemas.record import CaptureType, RecordStatus
-from app.services.course_service import CourseService
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 
 SUPPORTED_AUDIO = {
     ".mp3": "audio/mpeg",

@@ -13,27 +13,28 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import RecordFile, RecordingSession
-from app.models.record import Record
-from app.modules.jobs.models import ProcessingJob
-from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.schemas.course import CourseDetailOut, CourseStatus
-from app.schemas.document import (
-    CaptureBatchAccepted,
-    RecordFileSourceType,
-    RecordFileType,
-    RecordingSessionState,
-)
-from app.schemas.record import CaptureType, RecordStatus
-from app.services.audio_import_service import (
+from app.modules.capture.audio_import import (
     MAX_AUDIO_DURATION_MS,
     SUPPORTED_AUDIO,
     copy_upload,
     matches_audio_extension,
     probe_audio_duration_ms,
 )
-from app.services.course_service import CourseService
-from app.services.document_import_service import SUPPORTED_DOCUMENTS
+from app.modules.capture.document_import import SUPPORTED_DOCUMENTS
+from app.modules.capture.models import RecordFile, RecordingSession
+from app.modules.capture.schemas import (
+    CaptureBatchAccepted,
+    CaptureType,
+    RecordFileSourceType,
+    RecordFileType,
+    RecordingSessionState,
+)
+from app.modules.course import CourseService
+from app.modules.course.schemas import CourseDetailOut, CourseStatus
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 
 
 @dataclass(frozen=True)

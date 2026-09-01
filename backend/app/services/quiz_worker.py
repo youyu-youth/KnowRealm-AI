@@ -13,9 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.course import Course
 from app.models.document import AiSummary, Quiz
-from app.models.record import Record
+from app.modules.course.models import Course
 from app.modules.jobs import (
     CancelClaim,
     ClaimCheck,
@@ -34,6 +33,8 @@ from app.modules.llm import (
     StructuredGenerationError,
     call_quiz_model,
 )
+from app.modules.record.events import RecordInvalidationNotifier
+from app.modules.record.models import Record
 from app.modules.settings import (
     LlmProviderConfig,
     llm_consent,
@@ -46,7 +47,6 @@ from app.schemas.quiz import (
     QuizQuestionType,
 )
 from app.schemas.summary import SummaryContent
-from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_derivation import (
     PREREQUISITE_CHANGED,
     summary_content,

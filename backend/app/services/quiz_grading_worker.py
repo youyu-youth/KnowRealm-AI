@@ -14,9 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.course import Course
 from app.models.document import Quiz, QuizTest, QuizTestItem
-from app.models.record import Record
+from app.modules.course.models import Course
+from app.modules.course.schemas import CourseStatus
 from app.modules.jobs import (
     CancelClaim,
     ClaimCheck,
@@ -35,13 +35,13 @@ from app.modules.llm import (
     StructuredGenerationError,
     call_quiz_grading_model,
 )
+from app.modules.record.events import RecordInvalidationNotifier
+from app.modules.record.models import Record
 from app.modules.settings import LlmProviderConfig, llm_provider_fingerprint
-from app.schemas.course import CourseStatus
 from app.schemas.quiz import QuizQuestionType, ShortAnswerGrade
 from app.schemas.quiz_test import QuizTestItemResult, QuizTestStatus
 from app.services.quiz_test_service import build_test_answer_event, finalize_completed_test
 from app.services.quiz_worker import preflight
-from app.services.record_invalidation import RecordInvalidationNotifier
 
 PROMPT_VERSION = "quiz_grading_v1"
 PREREQUISITE_CHANGED = "PREREQUISITE_CHANGED"

@@ -9,18 +9,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.course import Course
 from app.models.document import AiSummary, TodoItem
-from app.models.record import Record
+from app.modules.course.models import Course
+from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.record.models import Record
 from app.modules.settings import (
     LlmProviderConfig,
     llm_consent,
     llm_provider_fingerprint,
     load_llm_provider,
 )
-from app.schemas.course import CourseStatus
 from app.schemas.document import AiSummaryStatus
 from app.schemas.todo import (
     TodoAction,

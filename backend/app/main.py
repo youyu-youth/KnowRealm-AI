@@ -14,19 +14,12 @@ from loguru import logger
 
 from app.agents.summary import build_summary_graph
 from app.api import (
-    audio_imports,
-    capture_batches,
     chat_sessions,
-    courses,
-    document_imports,
     knowledge_points,
     profile,
     quiz_tests,
     quizzes,
-    recording_sessions,
-    records,
     summaries,
-    text_captures,
     today,
     todos,
 )
@@ -34,6 +27,14 @@ from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.core.version import APP_VERSION
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
+from app.modules.capture import (
+    audio_imports,
+    capture_batches,
+    document_imports,
+    recording_sessions,
+    text_captures,
+)
+from app.modules.course import DocumentCleanupService, courses
 from app.modules.data import create_rolling_backup, restore_archive
 from app.modules.data import routes as data_routes
 from app.modules.jobs import JobRunner, ManagedWorker, processing_jobs
@@ -49,16 +50,16 @@ from app.modules.llm import (
     SummaryModel,
     TodoModel,
 )
+from app.modules.record import records
+from app.modules.record.events import RecordInvalidationNotifier
 from app.modules.settings import routes as settings_routes
 from app.services.audio_worker import audio_spec
 from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.chat_message_service import ChatStreamRegistry
-from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import document_spec
 from app.services.knowledge_point_worker import knowledge_point_spec
 from app.services.quiz_grading_worker import quiz_grading_spec
 from app.services.quiz_worker import quiz_spec
-from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_worker import summary_spec
 from app.services.tencent_asr_client import TencentAsrClient
 from app.services.todo_worker import todo_spec

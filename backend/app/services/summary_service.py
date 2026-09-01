@@ -12,11 +12,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.course import Course
-from app.models.document import AiSummary, LearningEvent, Transcript
-from app.models.record import Record
+from app.models.document import AiSummary, Transcript
+from app.modules.course.models import Course
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.record.models import LearningEvent, Record
+from app.modules.record.schemas import RecordStatus
 from app.modules.settings import (
     LlmProviderConfig,
     llm_consent,
@@ -24,7 +25,6 @@ from app.modules.settings import (
     load_llm_provider,
 )
 from app.schemas.document import AiSummaryStatus
-from app.schemas.record import RecordStatus
 from app.schemas.summary import (
     SummaryAction,
     SummaryAdjustRequest,

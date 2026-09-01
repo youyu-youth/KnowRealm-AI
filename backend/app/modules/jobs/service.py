@@ -7,7 +7,6 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.record import Record
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
 from app.modules.jobs.schemas import (
@@ -18,8 +17,9 @@ from app.modules.jobs.schemas import (
     ProcessingJobWaitingReason,
     RecordJobsOut,
 )
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 from app.schemas.document import AsrChunkStatus
-from app.schemas.record import RecordStatus
 
 
 def _reset_failed_asr_chunk(value: object) -> object:

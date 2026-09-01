@@ -3,14 +3,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.course import (
+from app.modules.course.schemas import (
     CourseCreate,
     CourseDetailOut,
     CourseListQuery,
     CourseOut,
     CourseUpdate,
 )
-from app.services.course_service import CourseService
+from app.modules.course.service import CourseService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

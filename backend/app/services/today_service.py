@@ -3,9 +3,9 @@ from typing import cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.course import Course
-from app.models.record import Record
-from app.schemas.record import RecordStatus
+from app.modules.course.models import Course
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 from app.schemas.today import TodaySummaryTodoOut
 
 

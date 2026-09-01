@@ -12,7 +12,7 @@ from sqlalchemy import text
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
-from app.models.record import Record
+from app.modules.record.models import Record
 
 TOKEN = "test-launch-token"
 STATUSES = (

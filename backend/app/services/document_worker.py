@@ -15,8 +15,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import RecordFile
-from app.models.record import Record
+from app.modules.capture.models import RecordFile
 from app.modules.jobs import (
     RETRYABLE_PROCESSING_JOB_ERROR_CODES,
     ClaimCheck,
@@ -31,9 +30,10 @@ from app.modules.jobs import (
 )
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobErrorCode, ProcessingJobStatus, ProcessingJobType
-from app.schemas.record import RecordStatus
+from app.modules.record.events import RecordInvalidationNotifier
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 from app.services.document_parser import DocumentParseError, extract_document_text
-from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.transcript_finalizer import complete_source_job, finalize_record_if_ready
 
 ERROR_MESSAGES = {

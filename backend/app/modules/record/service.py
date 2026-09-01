@@ -4,12 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.models.document import AiSummary, TodoItem, Transcript
-from app.models.record import Record
+from app.modules.course import CourseService
 from app.modules.jobs import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 from app.schemas.document import AiSummaryStatus, TranscriptUpdateRequest
-from app.schemas.record import RecordStatus
-from app.services.course_service import CourseService
 
 
 class RecordService:

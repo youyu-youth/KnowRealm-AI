@@ -14,18 +14,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
 
 from app.db.base import utcnow
-from app.models.document import RecordingSession
-from app.schemas.course import CourseStatus
-from app.schemas.document import RecordingSessionState
-from app.schemas.recording import (
+from app.modules.capture.audio_import import copy_upload
+from app.modules.capture.models import RecordingSession
+from app.modules.capture.recording import (
     RecordingChunkAccepted,
     RecordingChunkTargetState,
     RecordingSessionCreate,
     RecordingSessionOut,
     RecordingSessionTargetState,
 )
-from app.services.audio_import_service import copy_upload
-from app.services.course_service import CourseService
+from app.modules.capture.schemas import RecordingSessionState
+from app.modules.course import CourseService
+from app.modules.course.schemas import CourseStatus
 
 RECORDING_BITRATE_BPS = 128_000
 MAX_RECORDING_DURATION_MS = 3 * 60 * 60 * 1000

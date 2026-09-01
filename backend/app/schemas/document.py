@@ -18,39 +18,6 @@ class AsrChunkStatus(StrEnum):
     EXPIRED = "EXPIRED"
 
 
-class RecordFileType(StrEnum):
-    AUDIO = "AUDIO"
-    DOCUMENT = "DOCUMENT"
-
-
-class RecordFileSourceType(StrEnum):
-    RECORDED = "RECORDED"
-    UPLOADED = "UPLOADED"
-
-
-class RecordingSessionState(StrEnum):
-    RECORDING = "RECORDING"
-    PAUSED = "PAUSED"
-    FINALIZING = "FINALIZING"
-    DONE = "DONE"
-
-
-class DocumentImportAccepted(BaseModel):
-    record_id: str
-    job_id: str
-
-
-class AudioImportAccepted(BaseModel):
-    record_id: str
-    transcode_job_id: str
-    asr_job_id: str
-
-
-class CaptureBatchAccepted(BaseModel):
-    record_id: str
-    job_ids: list[str]
-
-
 class TranscriptAvailability(StrEnum):
     NOT_READY = "NOT_READY"
     READY = "READY"

@@ -21,9 +21,8 @@ from app.agents.summary import (
     SummaryState,
 )
 from app.db.base import utcnow
-from app.models.course import Course
 from app.models.document import AiSummary, Transcript
-from app.models.record import Record
+from app.modules.course.models import Course
 from app.modules.jobs import (
     CancelClaim,
     ClaimCheck,
@@ -43,6 +42,9 @@ from app.modules.llm import (
     SummaryModel,
     call_summary_model,
 )
+from app.modules.record.events import RecordInvalidationNotifier
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 from app.modules.settings import (
     LlmProviderConfig,
     llm_consent,
@@ -50,9 +52,7 @@ from app.modules.settings import (
     load_llm_provider,
 )
 from app.schemas.document import AiSummaryStatus
-from app.schemas.record import RecordStatus
 from app.schemas.summary import SummaryContent
-from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_derivation import PREREQUISITE_CHANGED, summary_content
 
 PROMPT_VERSION = "summary-v1"

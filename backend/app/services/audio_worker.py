@@ -19,8 +19,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import RecordFile
-from app.models.record import Record
+from app.modules.capture.models import RecordFile
 from app.modules.jobs import (
     ClaimCheck,
     ClaimedJob,
@@ -39,13 +38,14 @@ from app.modules.jobs.schemas import (
     ProcessingJobType,
     ProcessingJobWaitingReason,
 )
+from app.modules.record.events import RecordInvalidationNotifier
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 from app.modules.settings import (
     external_processing_consent_at,
     load_tencent_asr_config,
 )
 from app.schemas.document import AsrChunkStatus
-from app.schemas.record import RecordStatus
-from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.tencent_asr_client import (
     TencentAsrApiError,
     TencentAsrClient,

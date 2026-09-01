@@ -10,10 +10,10 @@ from __future__ import annotations
 import json
 from typing import cast
 
-from app.models.course import Course
 from app.models.document import AiSummary
-from app.models.record import Record
-from app.schemas.course import CourseStatus
+from app.modules.course.models import Course
+from app.modules.course.schemas import CourseStatus
+from app.modules.record.models import Record
 from app.schemas.document import AiSummaryStatus
 from app.schemas.summary import SummaryContent
 

@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
-from app.services.document_cleanup_service import DocumentCleanupService
+from app.modules.course import DocumentCleanupService
 
 TOKEN = "test-launch-token"
 

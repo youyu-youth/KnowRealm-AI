@@ -5,19 +5,19 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.course import Course
-from app.models.document import RecordingSession
-from app.models.record import Record
-from app.modules.jobs import cancel_nonterminal_jobs
-from app.modules.jobs.models import ProcessingJob
-from app.schemas.course import (
+from app.modules.capture.models import RecordingSession
+from app.modules.capture.schemas import RecordingSessionState
+from app.modules.course.models import Course
+from app.modules.course.schemas import (
     CourseCreate,
     CourseType,
     CourseUpdate,
     EducationStage,
     LearningContext,
 )
-from app.schemas.document import RecordingSessionState
+from app.modules.jobs import cancel_nonterminal_jobs
+from app.modules.jobs.models import ProcessingJob
+from app.modules.record.models import Record
 
 
 class CourseService:

@@ -5,8 +5,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.document import CaptureBatchAccepted
-from app.services.capture_batch_service import CaptureBatchService
+from app.modules.capture.capture_batch import CaptureBatchService
+from app.modules.capture.schemas import CaptureBatchAccepted
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

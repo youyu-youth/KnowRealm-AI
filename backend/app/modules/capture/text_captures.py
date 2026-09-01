@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 
-from app.schemas.record import TextCaptureAccepted, TextCaptureCreate
-from app.services.text_capture_service import TextCaptureService
+from app.modules.capture.schemas import TextCaptureAccepted, TextCaptureCreate
+from app.modules.capture.text_capture import TextCaptureService
 from app.shared.deps import require_launch_token
 from app.shared.schemas import ErrorResponse
 

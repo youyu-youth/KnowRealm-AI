@@ -6,14 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.models.chat import ChatMessage, ChatSession
-from app.models.course import Course
 from app.models.document import KnowledgePoint, Transcript
 from app.models.profile import PROFILE_ID, Profile
-from app.models.record import Record
+from app.modules.course.models import Course
+from app.modules.record import RecordService
+from app.modules.record.models import Record
 from app.schemas.chat import ChatMode, ChatRecordOption, ChatRole, ChatSessionOut
 from app.schemas.knowledge_point import KnowledgePointGenerationStatus
 from app.schemas.profile import PrimaryRole
-from app.services.record_service import RecordService
 
 ROLE_LABELS: dict[PrimaryRole, str] = {
     PrimaryRole.STUDENT: "学生",

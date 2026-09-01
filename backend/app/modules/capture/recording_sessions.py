@@ -4,14 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.recording import (
+from app.modules.capture.recording import (
     RecordingChunkAccepted,
     RecordingChunkTargetState,
     RecordingSessionCreate,
     RecordingSessionOut,
     RecordingSessionUpdate,
 )
-from app.services.recording_session_service import RecordingSessionService
+from app.modules.capture.recording_session import RecordingSessionService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

@@ -823,7 +823,7 @@ async def test_import_rejects_invalid_boundaries_before_business_creation(
         def disk_full(_path: object) -> SimpleNamespace:
             return SimpleNamespace(total=10, used=10, free=0)
 
-        monkeypatch.setattr("app.services.document_import_service.shutil.disk_usage", disk_full)
+        monkeypatch.setattr("app.modules.capture.document_import.shutil.disk_usage", disk_full)
         no_space = await client.post(
             "/api/document-imports",
             data={"course_id": active.json()["id"]},

@@ -20,10 +20,10 @@ from sqlalchemy import CursorResult, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.record import Record
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.services.record_invalidation import RecordInvalidationNotifier
+from app.modules.record.events import RecordInvalidationNotifier
+from app.modules.record.models import Record
 
 PreflightT = TypeVar("PreflightT")
 ResultT = TypeVar("ResultT")

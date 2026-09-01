@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.jobs.schemas import ProcessingJobOut, ProcessingJobRetryRequest
 from app.modules.jobs.service import ProcessingJobService
-from app.services.record_service import RecordService
+from app.modules.record import RecordService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

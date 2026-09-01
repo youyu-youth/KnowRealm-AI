@@ -11,21 +11,21 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.modules.jobs import ProcessingJobService
 from app.modules.jobs.schemas import RecordJobsOut
-from app.schemas.document import (
-    TranscriptAvailability,
-    TranscriptOut,
-    TranscriptReadOut,
-    TranscriptUpdateRequest,
-)
-from app.schemas.record import (
+from app.modules.record.classification import RecordClassificationService
+from app.modules.record.schemas import (
     RecordClassificationRequest,
     RecordOut,
     RecordStatus,
     RecordUpgradeAccepted,
     RecordUpgradeRequest,
 )
-from app.services.record_classification_service import RecordClassificationService
-from app.services.record_service import RecordService
+from app.modules.record.service import RecordService
+from app.schemas.document import (
+    TranscriptAvailability,
+    TranscriptOut,
+    TranscriptReadOut,
+    TranscriptUpdateRequest,
+)
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

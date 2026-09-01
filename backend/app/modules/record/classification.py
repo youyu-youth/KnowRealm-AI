@@ -5,13 +5,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.record import Record
+from app.modules.course import CourseService
+from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.schemas.course import CourseStatus
-from app.schemas.record import RecordStatus
-from app.services.course_service import CourseService
-from app.services.record_service import RecordService
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
+from app.modules.record.service import RecordService
 
 CLASSIFIABLE_STATUSES = frozenset({RecordStatus.NOTE, RecordStatus.SUMMARY_PENDING})
 # 这些状态的重复升级只返回当前事实，不倒退状态、不创建 Job。

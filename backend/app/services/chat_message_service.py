@@ -29,12 +29,12 @@ from app.agents.chat import (
 from app.db.base import utcnow
 from app.models.chat import ChatMessage
 from app.models.document import AiSummary, KnowledgePoint
+from app.modules.record import RecordService
 from app.modules.settings import LlmProviderConfig, load_llm_provider
 from app.schemas.chat import ChatRole
 from app.schemas.document import AiSummaryStatus
 from app.schemas.knowledge_point import KnowledgePointGenerationStatus
 from app.services.chat_session_service import ChatSessionService
-from app.services.record_service import RecordService
 
 # 会话标题默认取首条用户消息的截断长度。
 CHAT_TITLE_MAX_CHARS = 30

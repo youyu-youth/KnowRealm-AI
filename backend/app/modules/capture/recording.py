@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from app.schemas.document import RecordingSessionState
+from app.modules.capture.schemas import RecordingSessionState
 
 
 class RecordingSessionCreate(BaseModel):

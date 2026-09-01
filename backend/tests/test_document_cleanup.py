@@ -16,7 +16,7 @@ from loguru import logger
 from sqlalchemy import text
 
 from app.main import create_app
-from app.services.document_cleanup_service import DocumentCleanupService
+from app.modules.course import DocumentCleanupService
 
 TOKEN = "test-launch-token"
 
@@ -238,7 +238,7 @@ async def test_cleanup_rejects_unsafe_or_active_paths_and_retries_file_failure(
                 raise PermissionError("forced file failure")
             original_replace(source, target)
 
-        monkeypatch.setattr("app.services.document_cleanup_service.os.replace", fail_one_move)
+        monkeypatch.setattr("app.modules.course.tombstone_cleanup.os.replace", fail_one_move)
         await DocumentCleanupService.purge_expired(
             app.state.session_factory,
             data_dir,
@@ -258,7 +258,7 @@ async def test_cleanup_rejects_unsafe_or_active_paths_and_retries_file_failure(
         assert reverse_path.exists()
         assert failure_dir.exists()
 
-        monkeypatch.setattr("app.services.document_cleanup_service.os.replace", original_replace)
+        monkeypatch.setattr("app.modules.course.tombstone_cleanup.os.replace", original_replace)
         await DocumentCleanupService.purge_expired(
             app.state.session_factory,
             data_dir,
@@ -486,7 +486,7 @@ async def test_compensation_failure_logs_and_leaves_a_proven_cleanup_orphan(
                 raise PermissionError("forced compensation failure")
 
             monkeypatch.setattr(
-                "app.services.document_import_service._remove_import_file",
+                "app.modules.capture.document_import._remove_import_file",
                 fail_compensation,
             )
             failed = await client.post(
