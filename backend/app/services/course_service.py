@@ -6,8 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.models.course import Course
-from app.models.document import ProcessingJob, RecordingSession
+from app.models.document import RecordingSession
 from app.models.record import Record
+from app.modules.jobs import cancel_nonterminal_jobs
+from app.modules.jobs.models import ProcessingJob
 from app.schemas.course import (
     CourseCreate,
     CourseType,
@@ -16,7 +18,6 @@ from app.schemas.course import (
     LearningContext,
 )
 from app.schemas.document import RecordingSessionState
-from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
 
 
 class CourseService:

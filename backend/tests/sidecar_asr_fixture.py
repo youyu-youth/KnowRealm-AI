@@ -9,9 +9,9 @@ import uvicorn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.agents.llm import SummaryModelResult  # noqa: E402
 from app.core.logging import setup_logging  # noqa: E402
 from app.main import create_app  # noqa: E402
+from app.modules.llm import SummaryModelResult  # noqa: E402
 from app.schemas.summary import SummaryContent, SummarySection  # noqa: E402
 from app.services.tencent_asr_client import TencentAsrClient  # noqa: E402
 

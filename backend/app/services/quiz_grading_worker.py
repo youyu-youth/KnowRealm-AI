@@ -13,20 +13,11 @@ from typing import cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agents.llm import (
-    QuizGradingModel,
-    StructuredGenerationError,
-    call_quiz_grading_model,
-)
 from app.db.base import utcnow
 from app.models.course import Course
-from app.models.document import ProcessingJob, Quiz, QuizTest, QuizTestItem
+from app.models.document import Quiz, QuizTest, QuizTestItem
 from app.models.record import Record
-from app.schemas.course import CourseStatus
-from app.schemas.document import ProcessingJobStatus, ProcessingJobType
-from app.schemas.quiz import QuizQuestionType, ShortAnswerGrade
-from app.schemas.quiz_test import QuizTestItemResult, QuizTestStatus
-from app.services.job_runner import (
+from app.modules.jobs import (
     CancelClaim,
     ClaimCheck,
     ClaimedJob,
@@ -37,6 +28,16 @@ from app.services.job_runner import (
     mark_failed,
     recover_running_to_failed,
 )
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.llm import (
+    QuizGradingModel,
+    StructuredGenerationError,
+    call_quiz_grading_model,
+)
+from app.schemas.course import CourseStatus
+from app.schemas.quiz import QuizQuestionType, ShortAnswerGrade
+from app.schemas.quiz_test import QuizTestItemResult, QuizTestStatus
 from app.services.local_config import LlmProviderConfig, llm_provider_fingerprint
 from app.services.quiz_test_service import build_test_answer_event, finalize_completed_test
 from app.services.quiz_worker import preflight

@@ -15,10 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
-from app.models.document import ProcessingJob
 from app.models.record import Record
-from app.schemas.document import ProcessingJobStatus, ProcessingJobType
-from app.services.job_runner import (
+from app.modules.jobs import (
     CancelClaim,
     ClaimCheck,
     ClaimedJob,
@@ -30,6 +28,8 @@ from app.services.job_runner import (
     WorkerSpec,
     mark_failed,
 )
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.services.record_invalidation import RecordInvalidationNotifier
 
 RECORD_ID = "aaaa1111-1111-4111-8111-111111111111"

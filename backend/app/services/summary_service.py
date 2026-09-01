@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.models.course import Course
-from app.models.document import AiSummary, LearningEvent, ProcessingJob, Transcript
+from app.models.document import AiSummary, LearningEvent, Transcript
 from app.models.record import Record
-from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.schemas.document import AiSummaryStatus
 from app.schemas.record import RecordStatus
 from app.schemas.summary import (
     SummaryAction,

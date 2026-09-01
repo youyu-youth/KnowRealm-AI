@@ -12,18 +12,6 @@ from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from loguru import logger
 
-from app.agents.llm import (
-    KnowledgePointModel,
-    OpenAiCompatibleKnowledgePointModel,
-    OpenAiCompatibleQuizGradingModel,
-    OpenAiCompatibleQuizModel,
-    OpenAiCompatibleSummaryModel,
-    OpenAiCompatibleTodoModel,
-    QuizGradingModel,
-    QuizModel,
-    SummaryModel,
-    TodoModel,
-)
 from app.agents.summary import build_summary_graph
 from app.api import (
     audio_imports,
@@ -32,7 +20,6 @@ from app.api import (
     courses,
     document_imports,
     knowledge_points,
-    processing_jobs,
     profile,
     quiz_tests,
     quizzes,
@@ -48,13 +35,25 @@ from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.core.version import APP_VERSION
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
+from app.modules.jobs import JobRunner, ManagedWorker, processing_jobs
+from app.modules.llm import (
+    KnowledgePointModel,
+    OpenAiCompatibleKnowledgePointModel,
+    OpenAiCompatibleQuizGradingModel,
+    OpenAiCompatibleQuizModel,
+    OpenAiCompatibleSummaryModel,
+    OpenAiCompatibleTodoModel,
+    QuizGradingModel,
+    QuizModel,
+    SummaryModel,
+    TodoModel,
+)
 from app.services.archive_service import create_rolling_backup, restore_archive
 from app.services.audio_worker import audio_spec
 from app.services.cache_lifecycle_service import CacheLifecycleService
 from app.services.chat_message_service import ChatStreamRegistry
 from app.services.document_cleanup_service import DocumentCleanupService
 from app.services.document_worker import document_spec
-from app.services.job_runner import JobRunner, ManagedWorker
 from app.services.knowledge_point_worker import knowledge_point_spec
 from app.services.quiz_grading_worker import quiz_grading_spec
 from app.services.quiz_worker import quiz_spec

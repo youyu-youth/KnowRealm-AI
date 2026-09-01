@@ -15,12 +15,6 @@ from langgraph.types import Command  # pyright: ignore[reportMissingTypeStubs]
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agents.llm import (
-    SummaryCallResult,
-    SummaryGenerationError,
-    SummaryModel,
-    call_summary_model,
-)
 from app.agents.summary import (
     REVIEW_DECISION_ADJUST,
     SummaryRuntime,
@@ -28,12 +22,9 @@ from app.agents.summary import (
 )
 from app.db.base import utcnow
 from app.models.course import Course
-from app.models.document import AiSummary, ProcessingJob, Transcript
+from app.models.document import AiSummary, Transcript
 from app.models.record import Record
-from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
-from app.schemas.record import RecordStatus
-from app.schemas.summary import SummaryContent
-from app.services.job_runner import (
+from app.modules.jobs import (
     CancelClaim,
     ClaimCheck,
     ClaimedJob,
@@ -44,6 +35,17 @@ from app.services.job_runner import (
     mark_failed,
     recover_running_to_failed,
 )
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.llm import (
+    SummaryCallResult,
+    SummaryGenerationError,
+    SummaryModel,
+    call_summary_model,
+)
+from app.schemas.document import AiSummaryStatus
+from app.schemas.record import RecordStatus
+from app.schemas.summary import SummaryContent
 from app.services.local_config import (
     LlmProviderConfig,
     llm_consent,

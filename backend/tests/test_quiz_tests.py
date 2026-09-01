@@ -11,9 +11,9 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.agents.llm import StructuredModelResult
 from app.db.migrations import run_migrations
 from app.main import create_app
+from app.modules.llm import StructuredModelResult
 
 TOKEN = "test-launch-token"
 COURSE_ID = "11111111-1111-4111-8111-111111111111"

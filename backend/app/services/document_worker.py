@@ -15,27 +15,24 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import ProcessingJob, RecordFile
+from app.models.document import RecordFile
 from app.models.record import Record
-from app.schemas.document import (
-    ProcessingJobErrorCode,
-    ProcessingJobStatus,
-    ProcessingJobType,
-)
-from app.schemas.record import RecordStatus
-from app.services.document_parser import DocumentParseError, extract_document_text
-from app.services.job_runner import (
+from app.modules.jobs import (
+    RETRYABLE_PROCESSING_JOB_ERROR_CODES,
     ClaimCheck,
     ClaimedJob,
     LoopFailure,
     Ready,
     RunnerContext,
     WorkerSpec,
+    cancel_nonterminal_jobs,
     mark_failed,
     mark_retry_backoff,
 )
-from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
-from app.services.processing_job_policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobErrorCode, ProcessingJobStatus, ProcessingJobType
+from app.schemas.record import RecordStatus
+from app.services.document_parser import DocumentParseError, extract_document_text
 from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.transcript_finalizer import complete_source_job, finalize_record_if_ready
 

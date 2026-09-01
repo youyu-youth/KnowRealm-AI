@@ -311,7 +311,7 @@ async def streaming_chat_app(
 
     _StubChatOpenAI.captured = captured
     _StubChatOpenAI.replies = queue
-    monkeypatch.setattr("app.agents.llm.ChatOpenAI", _StubChatOpenAI)
+    monkeypatch.setattr("app.modules.llm.service.ChatOpenAI", _StubChatOpenAI)
 
     save_llm_provider(
         tmp_path,
@@ -785,7 +785,7 @@ async def test_llm_call_logs_records_metadata_only(
 async def test_send_without_provider_returns_semantic_409(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("app.agents.llm.ChatOpenAI", StubChatModel)
+    monkeypatch.setattr("app.modules.llm.service.ChatOpenAI", StubChatModel)
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(

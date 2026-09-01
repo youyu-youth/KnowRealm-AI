@@ -58,30 +58,6 @@ class Transcript(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
 
 
-class ProcessingJob(Base):
-    __tablename__ = "processing_jobs"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    record_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("records.id", ondelete="CASCADE"), default=None
-    )
-    job_type: Mapped[str] = mapped_column(String(30))
-    status: Mapped[str] = mapped_column(String(20))
-    progress: Mapped[float] = mapped_column(Float, default=0)
-    attempts: Mapped[int] = mapped_column(Integer, default=0)
-    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
-    next_run_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
-    waiting_reason: Mapped[str | None] = mapped_column(String(30), default=None)
-    input_json: Mapped[str] = mapped_column(Text)
-    result_json: Mapped[str | None] = mapped_column(Text, default=None)
-    error_code: Mapped[str | None] = mapped_column(String(50), default=None)
-    error_message: Mapped[str | None] = mapped_column(Text, default=None)
-    started_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
-    finished_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
-    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
-
-
 class AiSummary(Base):
     __tablename__ = "ai_summaries"
 
@@ -208,25 +184,6 @@ class TodoItem(Base):
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
-
-
-class LlmCallLog(Base):
-    __tablename__ = "llm_call_logs"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    request_id: Mapped[str] = mapped_column(String(36))
-    graph_name: Mapped[str] = mapped_column(String(50))
-    graph_node: Mapped[str] = mapped_column(String(50))
-    model: Mapped[str] = mapped_column(Text)
-    prompt_version: Mapped[str] = mapped_column(Text)
-    embedding_model: Mapped[str | None] = mapped_column(Text, default=None)
-    token_usage_json: Mapped[str] = mapped_column(Text)
-    latency_ms: Mapped[int] = mapped_column(Integer)
-    retrieval_count: Mapped[int | None] = mapped_column(Integer, default=None)
-    evidence_count: Mapped[int | None] = mapped_column(Integer, default=None)
-    interrupt_count: Mapped[int] = mapped_column(Integer, default=0)
-    error_code: Mapped[str | None] = mapped_column(String(50), default=None)
-    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
 
 
 class LearningEvent(Base):

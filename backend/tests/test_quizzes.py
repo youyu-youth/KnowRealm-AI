@@ -12,9 +12,9 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.agents.llm import StructuredModelResult, SummaryModel
 from app.db.migrations import run_migrations
 from app.main import create_app
+from app.modules.llm import StructuredModelResult, SummaryModel
 from app.schemas.quiz import QuizBatch, QuizGenerateRequest
 
 TOKEN = "test-launch-token"

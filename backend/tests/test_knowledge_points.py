@@ -14,11 +14,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agents.llm import StructuredModelResult, SummaryModel
 from app.db.base import utcnow
 from app.db.migrations import run_migrations
 from app.main import create_app
 from app.models.document import LearningEvent
+from app.modules.llm import StructuredModelResult, SummaryModel
 from app.schemas.knowledge_point import KnowledgePointBatch
 from app.schemas.summary import SummaryContent, SummarySection
 

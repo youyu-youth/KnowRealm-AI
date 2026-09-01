@@ -8,7 +8,7 @@ from docx.opc.exceptions import PackageNotFoundError
 from docx.text.paragraph import Paragraph
 from lxml.etree import XMLSyntaxError  # pyright: ignore[reportUnknownVariableType]
 
-from app.schemas.document import ProcessingJobErrorCode
+from app.modules.jobs.schemas import ProcessingJobErrorCode
 
 
 class DocumentParseError(Exception):

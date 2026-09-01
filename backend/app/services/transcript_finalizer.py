@@ -8,9 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import ProcessingJob, RecordFile, Transcript
+from app.models.document import RecordFile, Transcript
 from app.models.record import Record
-from app.schemas.document import ProcessingJobStatus, ProcessingJobType, RecordFileType
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.schemas.document import RecordFileType
 from app.schemas.record import RecordStatus
 
 _FINALIZE_LOCK = asyncio.Lock()

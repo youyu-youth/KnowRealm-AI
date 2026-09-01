@@ -7,10 +7,10 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import ProcessingJob
 from app.models.record import Record
-from app.schemas.document import (
-    AsrChunkStatus,
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
+from app.modules.jobs.schemas import (
     ProcessingJobErrorCode,
     ProcessingJobOut,
     ProcessingJobStatus,
@@ -18,9 +18,8 @@ from app.schemas.document import (
     ProcessingJobWaitingReason,
     RecordJobsOut,
 )
+from app.schemas.document import AsrChunkStatus
 from app.schemas.record import RecordStatus
-from app.services.processing_job_policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
-from app.services.record_service import RecordService
 
 
 def _reset_failed_asr_chunk(value: object) -> object:
@@ -39,8 +38,6 @@ class ProcessingJobService:
             await session.scalars(select(ProcessingJob).where(ProcessingJob.id == job_id))
         ).one_or_none()
         if job is None or job.record_id is None:
-            return None
-        if await RecordService.get(session, job.record_id) is None:
             return None
         return job
 
@@ -77,8 +74,6 @@ class ProcessingJobService:
 
     @staticmethod
     async def list_for_record(session: AsyncSession, record_id: str) -> RecordJobsOut:
-        if await RecordService.get(session, record_id) is None:
-            raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
         jobs = list(
             (
                 await session.scalars(

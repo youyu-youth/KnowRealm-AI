@@ -5,10 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import ProcessingJob
 from app.models.record import Record
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.schemas.course import CourseStatus
-from app.schemas.document import ProcessingJobStatus, ProcessingJobType
 from app.schemas.record import RecordStatus
 from app.services.course_service import CourseService
 from app.services.record_service import RecordService

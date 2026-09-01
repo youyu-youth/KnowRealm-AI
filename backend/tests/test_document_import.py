@@ -23,10 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
-from app.models.document import ProcessingJob
+from app.modules.jobs import ClaimedJob, JobRunner, ProcessingJobService
+from app.modules.jobs.models import ProcessingJob
 from app.services import document_worker
-from app.services.job_runner import ClaimedJob, JobRunner
-from app.services.processing_job_service import ProcessingJobService
 
 TOKEN = "test-launch-token"
 

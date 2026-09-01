@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
+from app.modules.jobs import ProcessingJobService
+from app.modules.jobs.schemas import RecordJobsOut
 from app.schemas.document import (
-    RecordJobsOut,
     TranscriptAvailability,
     TranscriptOut,
     TranscriptReadOut,
@@ -23,7 +24,6 @@ from app.schemas.record import (
     RecordUpgradeAccepted,
     RecordUpgradeRequest,
 )
-from app.services.processing_job_service import ProcessingJobService
 from app.services.record_classification_service import RecordClassificationService
 from app.services.record_service import RecordService
 from app.shared.deps import get_db, require_launch_token
@@ -71,6 +71,8 @@ async def get_record_jobs(
     record_id: UUID,
     session: AsyncSession = Depends(get_db),
 ) -> RecordJobsOut:
+    if await RecordService.get(session, str(record_id)) is None:
+        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
     return await ProcessingJobService.list_for_record(session, str(record_id))
 
 

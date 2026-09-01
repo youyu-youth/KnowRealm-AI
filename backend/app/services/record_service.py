@@ -3,12 +3,13 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import AiSummary, ProcessingJob, TodoItem, Transcript
+from app.models.document import AiSummary, TodoItem, Transcript
 from app.models.record import Record
+from app.modules.jobs import cancel_nonterminal_jobs
+from app.modules.jobs.models import ProcessingJob
 from app.schemas.document import AiSummaryStatus, TranscriptUpdateRequest
 from app.schemas.record import RecordStatus
 from app.services.course_service import CourseService
-from app.services.processing_job_lifecycle import cancel_nonterminal_jobs
 
 
 class RecordService:

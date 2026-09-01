@@ -30,7 +30,7 @@ from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agents.llm import build_chat_model, write_llm_call_log
+from app.modules.llm import build_chat_model, write_llm_call_log
 from app.schemas.chat import ChatRole
 from app.services.local_config import LlmProviderConfig
 

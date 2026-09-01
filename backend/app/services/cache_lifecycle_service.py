@@ -8,9 +8,11 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models.document import ProcessingJob, RecordingSession
+from app.models.document import RecordingSession
 from app.models.record import Record
-from app.schemas.document import ProcessingJobStatus, RecordingSessionState
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus
+from app.schemas.document import RecordingSessionState
 
 
 class CacheLifecycleService:

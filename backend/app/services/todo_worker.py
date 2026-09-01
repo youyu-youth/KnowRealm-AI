@@ -11,15 +11,11 @@ from uuid import uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agents.llm import StructuredGenerationError, TodoModel, call_todo_model
 from app.db.base import utcnow
 from app.models.course import Course
-from app.models.document import AiSummary, ProcessingJob, TodoItem
+from app.models.document import AiSummary, TodoItem
 from app.models.record import Record
-from app.schemas.document import ProcessingJobStatus, ProcessingJobType
-from app.schemas.summary import SummaryContent
-from app.schemas.todo import TodoBatch, TodoGenerationStatus, TodoSource, TodoStatus
-from app.services.job_runner import (
+from app.modules.jobs import (
     CancelClaim,
     ClaimCheck,
     ClaimedJob,
@@ -30,6 +26,11 @@ from app.services.job_runner import (
     mark_failed,
     recover_running_to_failed,
 )
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.llm import StructuredGenerationError, TodoModel, call_todo_model
+from app.schemas.summary import SummaryContent
+from app.schemas.todo import TodoBatch, TodoGenerationStatus, TodoSource, TodoStatus
 from app.services.local_config import (
     LlmProviderConfig,
     llm_consent,

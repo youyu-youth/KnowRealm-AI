@@ -12,9 +12,9 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.agents.llm import OpenAiCompatibleSummaryModel, SummaryModel, SummaryModelResult
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
+from app.modules.llm import OpenAiCompatibleSummaryModel, SummaryModel, SummaryModelResult
 from app.schemas.summary import SummaryContent, SummarySection
 
 TOKEN = "test-launch-token"
@@ -859,7 +859,7 @@ async def test_json_schema_rejection_falls_back_to_json_object(
             assert kwargs.get("max_tokens") == 8192
             return JsonModeRunnable()
 
-    monkeypatch.setattr("app.agents.llm.ChatOpenAI", StubChatOpenAI)
+    monkeypatch.setattr("app.modules.llm.service.ChatOpenAI", StubChatOpenAI)
     result = await OpenAiCompatibleSummaryModel().generate(
         base_url="https://api.deepseek.com",
         api_key="sk-test",
@@ -906,7 +906,7 @@ async def test_provider_auth_error_does_not_fall_back(monkeypatch: pytest.Monkey
             assert include_raw is True
             return AuthErrorRunnable()
 
-    monkeypatch.setattr("app.agents.llm.ChatOpenAI", StubChatOpenAI)
+    monkeypatch.setattr("app.modules.llm.service.ChatOpenAI", StubChatOpenAI)
     with pytest.raises(Exception, match="401"):
         await OpenAiCompatibleSummaryModel().generate(
             base_url="https://api.deepseek.com",

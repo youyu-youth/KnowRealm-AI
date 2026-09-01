@@ -19,17 +19,9 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import ProcessingJob, RecordFile
+from app.models.document import RecordFile
 from app.models.record import Record
-from app.schemas.document import (
-    AsrChunkStatus,
-    ProcessingJobErrorCode,
-    ProcessingJobStatus,
-    ProcessingJobType,
-    ProcessingJobWaitingReason,
-)
-from app.schemas.record import RecordStatus
-from app.services.job_runner import (
+from app.modules.jobs import (
     ClaimCheck,
     ClaimedJob,
     LoopFailure,
@@ -40,6 +32,15 @@ from app.services.job_runner import (
     mark_failed,
     mark_retry_fixed,
 )
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import (
+    ProcessingJobErrorCode,
+    ProcessingJobStatus,
+    ProcessingJobType,
+    ProcessingJobWaitingReason,
+)
+from app.schemas.document import AsrChunkStatus
+from app.schemas.record import RecordStatus
 from app.services.local_config import (
     external_processing_consent_at,
     load_tencent_asr_config,

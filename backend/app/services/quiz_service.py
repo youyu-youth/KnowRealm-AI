@@ -13,10 +13,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.models.course import Course
-from app.models.document import AiSummary, LearningEvent, ProcessingJob, Quiz
+from app.models.document import AiSummary, LearningEvent, Quiz
 from app.models.record import Record
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.schemas.course import CourseStatus
-from app.schemas.document import AiSummaryStatus, ProcessingJobStatus, ProcessingJobType
+from app.schemas.document import AiSummaryStatus
 from app.schemas.quiz import (
     QuizAction,
     QuizAnswerResult,

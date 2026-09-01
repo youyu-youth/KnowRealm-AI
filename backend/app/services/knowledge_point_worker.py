@@ -11,23 +11,11 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.agents.llm import (
-    KnowledgePointCallResult,
-    KnowledgePointModel,
-    StructuredGenerationError,
-    call_knowledge_point_model,
-)
 from app.db.base import utcnow
 from app.models.course import Course
-from app.models.document import AiSummary, KnowledgePoint, ProcessingJob, Transcript
+from app.models.document import AiSummary, KnowledgePoint, Transcript
 from app.models.record import Record
-from app.schemas.document import ProcessingJobStatus, ProcessingJobType
-from app.schemas.knowledge_point import (
-    KnowledgePointGenerationStatus,
-    KnowledgePointInputMode,
-)
-from app.schemas.summary import SummaryContent
-from app.services.job_runner import (
+from app.modules.jobs import (
     CancelClaim,
     ClaimCheck,
     ClaimedJob,
@@ -38,6 +26,19 @@ from app.services.job_runner import (
     mark_failed,
     recover_running_to_failed,
 )
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.llm import (
+    KnowledgePointCallResult,
+    KnowledgePointModel,
+    StructuredGenerationError,
+    call_knowledge_point_model,
+)
+from app.schemas.knowledge_point import (
+    KnowledgePointGenerationStatus,
+    KnowledgePointInputMode,
+)
+from app.schemas.summary import SummaryContent
 from app.services.local_config import (
     LlmProviderConfig,
     llm_consent,

@@ -13,13 +13,13 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import ProcessingJob, RecordFile, RecordingSession
+from app.models.document import RecordFile, RecordingSession
 from app.models.record import Record
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.schemas.course import CourseDetailOut, CourseStatus
 from app.schemas.document import (
     CaptureBatchAccepted,
-    ProcessingJobStatus,
-    ProcessingJobType,
     RecordFileSourceType,
     RecordFileType,
     RecordingSessionState,

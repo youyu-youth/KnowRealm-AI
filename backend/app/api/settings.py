@@ -4,7 +4,7 @@ from typing import cast
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.agents.llm import SummaryGenerationError, call_summary_model
+from app.modules.llm import SummaryGenerationError, call_summary_model
 from app.schemas.settings import (
     DataDirectoryExportOut,
     DataDirectoryExportRequest,

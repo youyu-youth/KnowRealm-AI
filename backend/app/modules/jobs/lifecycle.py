@@ -4,8 +4,8 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.models.document import ProcessingJob
-from app.schemas.document import ProcessingJobStatus
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus
 
 
 async def cancel_nonterminal_jobs(

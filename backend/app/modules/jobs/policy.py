@@ -1,4 +1,4 @@
-from app.schemas.document import ProcessingJobErrorCode
+from app.modules.jobs.schemas import ProcessingJobErrorCode
 
 RETRYABLE_PROCESSING_JOB_ERROR_CODES = frozenset(
     {

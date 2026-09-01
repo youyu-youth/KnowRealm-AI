@@ -13,8 +13,8 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.agents.llm import SummaryModel, SummaryModelResult
 from app.main import create_app
+from app.modules.llm import SummaryModel, SummaryModelResult
 from app.schemas.summary import SummaryContent, SummarySection
 from app.services.tencent_asr_client import (
     TencentAsrClient,
