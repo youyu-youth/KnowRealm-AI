@@ -26,7 +26,7 @@ from app.agents.summary import (
     SummaryRuntime,
     SummaryState,
 )
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.course import Course
 from app.models.document import AiSummary, ProcessingJob, Transcript
 from app.models.record import Record

@@ -4,7 +4,7 @@ from uuid import uuid4
 from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, ISODateTime, utcnow
+from app.db.base import Base, ISODateTime, utcnow
 from app.schemas.document import RecordingSessionState
 
 

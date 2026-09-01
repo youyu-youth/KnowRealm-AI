@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.document import AiSummary, ProcessingJob, TodoItem, Transcript
 from app.models.record import Record
 from app.schemas.document import AiSummaryStatus, TranscriptUpdateRequest

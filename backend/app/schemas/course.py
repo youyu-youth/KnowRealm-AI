@@ -45,10 +45,6 @@ class CourseStatus(StrEnum):
     ARCHIVED = "ARCHIVED"
 
 
-class ErrorResponse(BaseModel):
-    detail: str = Field(description="可直接展示的错误说明")
-
-
 class CourseListQuery(BaseModel):
     q: str | None = Field(default=None, max_length=100, description="课程名称子串")
     education_stage: EducationStage | None = Field(default=None, description="教育阶段筛选")

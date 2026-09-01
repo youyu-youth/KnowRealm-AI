@@ -8,7 +8,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.course import Course
 from app.models.document import AiSummary, ProcessingJob, TodoItem
 from app.models.record import Record

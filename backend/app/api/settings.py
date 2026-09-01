@@ -5,8 +5,6 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.agents.llm import SummaryGenerationError, call_summary_model
-from app.api.deps import require_launch_token
-from app.schemas.course import ErrorResponse
 from app.schemas.settings import (
     DataDirectoryExportOut,
     DataDirectoryExportRequest,
@@ -42,6 +40,8 @@ from app.services.tencent_asr_client import (
     TencentAsrClient,
     TencentAsrCredentials,
 )
+from app.shared.deps import require_launch_token
+from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
     prefix="/api/settings",

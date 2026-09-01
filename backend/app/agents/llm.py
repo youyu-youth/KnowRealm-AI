@@ -10,7 +10,7 @@ from loguru import logger
 from pydantic import BaseModel, SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.document import LlmCallLog
 from app.schemas.knowledge_point import KnowledgePointBatch
 from app.schemas.quiz import QuizBatch, ShortAnswerGrade

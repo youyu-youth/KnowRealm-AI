@@ -5,8 +5,6 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_launch_token
-from app.schemas.course import ErrorResponse
 from app.schemas.todo import (
     TodoConflictResponse,
     TodoJobAccepted,
@@ -16,6 +14,8 @@ from app.schemas.todo import (
     TodoWriteRequest,
 )
 from app.services.todo_service import TodoAdoptionBlocked, TodoService
+from app.shared.deps import get_db, require_launch_token
+from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
     prefix="/api/records",

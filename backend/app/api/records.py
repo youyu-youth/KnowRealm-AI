@@ -9,8 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from app.api.deps import get_db, require_launch_token
-from app.schemas.course import ErrorResponse
 from app.schemas.document import (
     RecordJobsOut,
     TranscriptAvailability,
@@ -28,6 +26,8 @@ from app.schemas.record import (
 from app.services.processing_job_service import ProcessingJobService
 from app.services.record_classification_service import RecordClassificationService
 from app.services.record_service import RecordService
+from app.shared.deps import get_db, require_launch_token
+from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
     prefix="/api",

@@ -44,12 +44,10 @@ from app.api import (
     today,
     todos,
 )
-from app.api.deps import require_launch_token
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.core.version import APP_VERSION
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
-from app.schemas.course import ErrorResponse
 from app.services.archive_service import create_rolling_backup, restore_archive
 from app.services.audio_worker import audio_spec
 from app.services.cache_lifecycle_service import CacheLifecycleService
@@ -64,6 +62,8 @@ from app.services.record_invalidation import RecordInvalidationNotifier
 from app.services.summary_worker import summary_spec
 from app.services.tencent_asr_client import TencentAsrClient
 from app.services.todo_worker import todo_spec
+from app.shared.deps import require_launch_token
+from app.shared.schemas import ErrorResponse
 
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:1420",

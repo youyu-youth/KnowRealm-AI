@@ -4,8 +4,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_launch_token
-from app.schemas.course import ErrorResponse
 from app.schemas.knowledge_point import (
     KnowledgePointJobAccepted,
     KnowledgePointOut,
@@ -13,6 +11,8 @@ from app.schemas.knowledge_point import (
     KnowledgePointWriteRequest,
 )
 from app.services.knowledge_point_service import KnowledgePointService
+from app.shared.deps import get_db, require_launch_token
+from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
     prefix="/api/records",

@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, ISODateTime, utcnow
+from app.db.base import Base, ISODateTime, utcnow
 from app.schemas.profile import PrimaryRole
 
 PROFILE_ID = "me"

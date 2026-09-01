@@ -26,7 +26,7 @@ from app.agents.chat import (
     parse_citation_reply,
     stream_chat_reply,
 )
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.chat import ChatMessage
 from app.models.document import AiSummary, KnowledgePoint
 from app.schemas.chat import ChatRole

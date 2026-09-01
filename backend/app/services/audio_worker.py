@@ -18,7 +18,7 @@ from loguru import logger
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.document import ProcessingJob, RecordFile
 from app.models.record import Record
 from app.schemas.document import (

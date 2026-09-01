@@ -6,7 +6,7 @@ from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.document import ProcessingJob
 from app.models.record import Record
 from app.schemas.document import (

@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.course import Course
 from app.models.document import ProcessingJob, RecordingSession
 from app.models.record import Record

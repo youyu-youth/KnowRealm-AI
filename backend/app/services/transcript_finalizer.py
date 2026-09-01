@@ -7,7 +7,7 @@ from typing import cast
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.document import ProcessingJob, RecordFile, Transcript
 from app.models.record import Record
 from app.schemas.document import ProcessingJobStatus, ProcessingJobType, RecordFileType

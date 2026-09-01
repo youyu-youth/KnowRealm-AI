@@ -12,7 +12,7 @@ from fastapi import HTTPException, UploadFile
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.document import ProcessingJob, RecordFile
 from app.models.record import Record
 from app.schemas.course import CourseDetailOut, CourseStatus

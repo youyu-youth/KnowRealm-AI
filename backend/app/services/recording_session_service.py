@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.document import RecordingSession
 from app.schemas.course import CourseStatus
 from app.schemas.document import RecordingSessionState

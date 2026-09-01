@@ -3,8 +3,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_launch_token
-from app.schemas.course import ErrorResponse
 from app.schemas.summary import (
     SummaryAdjustRequest,
     SummaryConfirmOut,
@@ -14,6 +12,8 @@ from app.schemas.summary import (
     SummaryReadOut,
 )
 from app.services.summary_service import SummaryService
+from app.shared.deps import get_db, require_launch_token
+from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
     prefix="/api/records",

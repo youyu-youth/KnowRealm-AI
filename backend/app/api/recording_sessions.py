@@ -4,8 +4,6 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_launch_token
-from app.schemas.course import ErrorResponse
 from app.schemas.recording import (
     RecordingChunkAccepted,
     RecordingChunkTargetState,
@@ -14,6 +12,8 @@ from app.schemas.recording import (
     RecordingSessionUpdate,
 )
 from app.services.recording_session_service import RecordingSessionService
+from app.shared.deps import get_db, require_launch_token
+from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
     prefix="/api/recording-sessions",

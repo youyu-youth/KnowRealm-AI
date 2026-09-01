@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, Request
 
-from app.api.deps import require_launch_token
-from app.schemas.course import ErrorResponse
 from app.schemas.record import TextCaptureAccepted, TextCaptureCreate
 from app.services.text_capture_service import TextCaptureService
+from app.shared.deps import require_launch_token
+from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
     prefix="/api/text-captures",

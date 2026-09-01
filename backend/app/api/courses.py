@@ -3,16 +3,16 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_db, require_launch_token
 from app.schemas.course import (
     CourseCreate,
     CourseDetailOut,
     CourseListQuery,
     CourseOut,
     CourseUpdate,
-    ErrorResponse,
 )
 from app.services.course_service import CourseService
+from app.shared.deps import get_db, require_launch_token
+from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
     prefix="/api/courses",

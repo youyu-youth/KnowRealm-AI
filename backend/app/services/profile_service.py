@@ -6,7 +6,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.profile import PROFILE_ID, Profile
 from app.schemas.profile import ProfileUpdate
 

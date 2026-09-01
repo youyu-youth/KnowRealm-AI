@@ -4,7 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.chat import ChatMessage, ChatSession
 from app.models.course import Course
 from app.models.document import KnowledgePoint, Transcript

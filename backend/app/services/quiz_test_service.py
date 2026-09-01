@@ -11,7 +11,7 @@ from sqlalchemy import and_, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.course import Course
 from app.models.document import LearningEvent, ProcessingJob, Quiz, QuizTest, QuizTestItem
 from app.models.record import Record

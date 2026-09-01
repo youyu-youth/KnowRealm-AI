@@ -17,7 +17,7 @@ from app.agents.llm import (
     StructuredGenerationError,
     call_quiz_model,
 )
-from app.models.base import utcnow
+from app.db.base import utcnow
 from app.models.course import Course
 from app.models.document import AiSummary, ProcessingJob, Quiz
 from app.models.record import Record
