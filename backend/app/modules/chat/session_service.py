@@ -5,16 +5,16 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.chat import ChatMessage, ChatSession
-from app.models.profile import PROFILE_ID, Profile
+from app.modules.chat.models import ChatMessage, ChatSession
+from app.modules.chat.schemas import ChatMode, ChatRecordOption, ChatRole, ChatSessionOut
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
+from app.modules.profile.models import PROFILE_ID, Profile
+from app.modules.profile.schemas import PrimaryRole
 from app.modules.record.models import Record
 from app.modules.record.service import RecordService
 from app.modules.transcript.models import Transcript
-from app.schemas.chat import ChatMode, ChatRecordOption, ChatRole, ChatSessionOut
-from app.schemas.profile import PrimaryRole
 
 ROLE_LABELS: dict[PrimaryRole, str] = {
     PrimaryRole.STUDENT: "学生",

@@ -4,7 +4,7 @@ from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ISODateTime, utcnow
-from app.schemas.profile import PrimaryRole
+from app.modules.profile.schemas import PrimaryRole
 
 PROFILE_ID = "me"
 

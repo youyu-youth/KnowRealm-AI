@@ -3,7 +3,6 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import TodoItem
 from app.modules.course.service import CourseService
 from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
@@ -11,6 +10,7 @@ from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
+from app.modules.todo.models import TodoItem
 from app.modules.transcript.models import Transcript
 from app.modules.transcript.schemas import TranscriptUpdateRequest
 

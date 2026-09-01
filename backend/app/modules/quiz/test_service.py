@@ -12,26 +12,19 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import Quiz, QuizTest, QuizTestItem
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.modules.record.models import LearningEvent, Record
-from app.modules.settings.config import (
-    LlmProviderConfig,
-    llm_consent,
-    llm_provider_fingerprint,
-    load_llm_provider,
-)
-from app.schemas.quiz import (
+from app.modules.quiz.models import Quiz, QuizTest, QuizTestItem
+from app.modules.quiz.schemas import (
     QuizDifficulty,
     QuizGenerationStatus,
     QuizLearningEventSourceType,
     QuizLearningEventType,
     QuizQuestionType,
 )
-from app.schemas.quiz_test import (
+from app.modules.quiz.test_schemas import (
     QuizTestAiGradeOut,
     QuizTestAnswerRequest,
     QuizTestBlockedReason,
@@ -44,6 +37,13 @@ from app.schemas.quiz_test import (
     QuizTestMode,
     QuizTestStatus,
     QuizTestSummaryOut,
+)
+from app.modules.record.models import LearningEvent, Record
+from app.modules.settings.config import (
+    LlmProviderConfig,
+    llm_consent,
+    llm_provider_fingerprint,
+    load_llm_provider,
 )
 
 # 低置信复核阈值：confidence 低于此值的结果页标记「建议人工复核」（只读，不参与任何计算）。

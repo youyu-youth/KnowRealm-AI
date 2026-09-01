@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.todo import (
+from app.modules.todo.schemas import (
     TodoConflictResponse,
     TodoJobAccepted,
     TodoOut,
@@ -13,7 +13,7 @@ from app.schemas.todo import (
     TodoToggleRequest,
     TodoWriteRequest,
 )
-from app.services.todo_service import TodoAdoptionBlocked, TodoService
+from app.modules.todo.service import TodoAdoptionBlocked, TodoService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

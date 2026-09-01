@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette import EventSourceResponse
 
-from app.schemas.chat import (
+from app.modules.chat.message_service import ChatMessageService
+from app.modules.chat.schemas import (
     ChatMessageCreate,
     ChatMessageOut,
     ChatRecordOption,
@@ -12,8 +13,7 @@ from app.schemas.chat import (
     ChatSessionOut,
     ChatSessionRename,
 )
-from app.services.chat_message_service import ChatMessageService
-from app.services.chat_session_service import ChatSessionService
+from app.modules.chat.session_service import ChatSessionService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

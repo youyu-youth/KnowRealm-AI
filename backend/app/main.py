@@ -12,14 +12,6 @@ from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from loguru import logger
 
-from app.api import (
-    chat_sessions,
-    profile,
-    quiz_tests,
-    quizzes,
-    today,
-    todos,
-)
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.core.version import APP_VERSION
 from app.db.engine import create_database
@@ -31,6 +23,8 @@ from app.modules.capture import (
     recording_sessions,
     text_captures,
 )
+from app.modules.chat import chat_sessions
+from app.modules.chat.message_service import ChatStreamRegistry
 from app.modules.course import courses
 from app.modules.course.tombstone_cleanup import DocumentCleanupService
 from app.modules.data import routes as data_routes
@@ -51,19 +45,22 @@ from app.modules.llm.service import (
     SummaryModel,
     TodoModel,
 )
+from app.modules.profile import profile
+from app.modules.quiz import quiz_tests, quizzes
+from app.modules.quiz.grading_worker import quiz_grading_spec
+from app.modules.quiz.worker import quiz_spec
 from app.modules.record import records
 from app.modules.settings import routes as settings_routes
 from app.modules.summary import summaries
 from app.modules.summary.graph import build_summary_graph
 from app.modules.summary.worker import summary_spec
+from app.modules.today import today
+from app.modules.todo import todos
+from app.modules.todo.worker import todo_spec
 from app.modules.transcript.audio_worker import audio_spec
 from app.modules.transcript.cache_lifecycle import CacheLifecycleService
 from app.modules.transcript.document_worker import document_spec
 from app.modules.transcript.integrations.tencent import TencentAsrClient
-from app.services.chat_message_service import ChatStreamRegistry
-from app.services.quiz_grading_worker import quiz_grading_spec
-from app.services.quiz_worker import quiz_spec
-from app.services.todo_worker import todo_spec
 from app.shared.deps import require_launch_token
 from app.shared.events import RecordInvalidationNotifier
 from app.shared.schemas import ErrorResponse

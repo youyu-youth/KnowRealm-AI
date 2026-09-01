@@ -13,7 +13,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import Quiz
 from app.modules.course.models import Course
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import (
@@ -29,6 +28,12 @@ from app.modules.jobs.runner import (
 )
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.llm.service import QuizModel, StructuredGenerationError, call_quiz_model
+from app.modules.quiz.models import Quiz
+from app.modules.quiz.schemas import (
+    QuizBatch,
+    QuizGenerationStatus,
+    QuizQuestionType,
+)
 from app.modules.record.models import Record
 from app.modules.settings.config import (
     LlmProviderConfig,
@@ -43,11 +48,6 @@ from app.modules.summary.derivation import (
 )
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import SummaryContent
-from app.schemas.quiz import (
-    QuizBatch,
-    QuizGenerationStatus,
-    QuizQuestionType,
-)
 from app.shared.events import RecordInvalidationNotifier
 
 PROMPT_VERSION = "quiz_v1"

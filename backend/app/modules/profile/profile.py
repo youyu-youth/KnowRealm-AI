@@ -3,8 +3,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.profile import ProfileOut, ProfileUpdate
-from app.services.profile_service import ProfileService
+from app.modules.profile.schemas import ProfileOut, ProfileUpdate
+from app.modules.profile.service import ProfileService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-from app.schemas.quiz import QuizDifficulty, QuizQuestionType
+from app.modules.quiz.schemas import QuizDifficulty, QuizQuestionType
 
 
 class QuizTestMode(StrEnum):

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.course.models import Course
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
-from app.schemas.today import TodaySummaryTodoOut
+from app.modules.today.schemas import TodaySummaryTodoOut
 
 
 class TodayService:

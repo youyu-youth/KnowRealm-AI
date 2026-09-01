@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import Quiz, QuizTest, QuizTestItem
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
@@ -35,12 +34,13 @@ from app.modules.llm.service import (
     StructuredGenerationError,
     call_quiz_grading_model,
 )
+from app.modules.quiz.models import Quiz, QuizTest, QuizTestItem
+from app.modules.quiz.schemas import QuizQuestionType, ShortAnswerGrade
+from app.modules.quiz.test_schemas import QuizTestItemResult, QuizTestStatus
+from app.modules.quiz.test_service import build_test_answer_event, finalize_completed_test
+from app.modules.quiz.worker import preflight
 from app.modules.record.models import Record
 from app.modules.settings.config import LlmProviderConfig, llm_provider_fingerprint
-from app.schemas.quiz import QuizQuestionType, ShortAnswerGrade
-from app.schemas.quiz_test import QuizTestItemResult, QuizTestStatus
-from app.services.quiz_test_service import build_test_answer_event, finalize_completed_test
-from app.services.quiz_worker import preflight
 from app.shared.events import RecordInvalidationNotifier
 
 PROMPT_VERSION = "quiz_grading_v1"

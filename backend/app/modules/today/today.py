@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.today import TodaySummaryTodoOut
-from app.services.today_service import TodayService
+from app.modules.today.schemas import TodaySummaryTodoOut
+from app.modules.today.service import TodayService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

@@ -12,7 +12,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import TodoItem
 from app.modules.course.models import Course
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import (
@@ -42,7 +41,8 @@ from app.modules.summary.derivation import (
 )
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import SummaryContent
-from app.schemas.todo import TodoBatch, TodoGenerationStatus, TodoSource, TodoStatus
+from app.modules.todo.models import TodoItem
+from app.modules.todo.schemas import TodoBatch, TodoGenerationStatus, TodoSource, TodoStatus
 from app.shared.events import RecordInvalidationNotifier
 
 PROMPT_VERSION = "todo_v1"

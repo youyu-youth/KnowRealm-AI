@@ -9,7 +9,6 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import TodoItem
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
@@ -23,7 +22,8 @@ from app.modules.settings.config import (
 )
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
-from app.schemas.todo import (
+from app.modules.todo.models import TodoItem
+from app.modules.todo.schemas import (
     TodoAction,
     TodoBlockedReason,
     TodoGenerationStatus,

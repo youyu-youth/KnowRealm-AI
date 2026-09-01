@@ -7,8 +7,8 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.profile import PROFILE_ID, Profile
-from app.schemas.profile import ProfileUpdate
+from app.modules.profile.models import PROFILE_ID, Profile
+from app.modules.profile.schemas import ProfileUpdate
 
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
 

@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.quiz import (
+from app.modules.quiz.schemas import (
     QuizConflictResponse,
     QuizGenerateRequest,
     QuizJobAccepted,
@@ -15,7 +15,7 @@ from app.schemas.quiz import (
     QuizSelfAssessmentRequest,
     QuizShortAnswerRequest,
 )
-from app.services.quiz_service import QuizAdoptionBlocked, QuizService
+from app.modules.quiz.service import QuizAdoptionBlocked, QuizService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

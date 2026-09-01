@@ -20,7 +20,8 @@ from langchain_core.messages import (
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from sqlalchemy import update
 
-from app.agents.chat import (
+from app.main import create_app
+from app.modules.chat.graph import (
     CHAT_CONTEXT_CHAR_BUDGET,
     ChatContextTooLargeError,
     ContextRow,
@@ -28,13 +29,12 @@ from app.agents.chat import (
     build_context_messages,
     parse_citation_reply,
 )
-from app.main import create_app
-from app.models.chat import ChatMessage
+from app.modules.chat.message_service import ChatMessageService
+from app.modules.chat.models import ChatMessage
+from app.modules.chat.schemas import ChatRole
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.settings.config import save_llm_provider
 from app.modules.summary.models import AiSummary
-from app.schemas.chat import ChatRole
-from app.services.chat_message_service import ChatMessageService
 
 TOKEN = "test-launch-token"
 
