@@ -17,10 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.base import utcnow
 from app.db.migrations import run_migrations
 from app.main import create_app
-from app.modules.llm import StructuredModelResult, SummaryModel
+from app.modules.knowledge_point.schemas import KnowledgePointBatch
+from app.modules.llm.service import StructuredModelResult, SummaryModel
 from app.modules.record.models import LearningEvent
-from app.schemas.knowledge_point import KnowledgePointBatch
-from app.schemas.summary import SummaryContent, SummarySection
+from app.modules.summary.schemas import SummaryContent, SummarySection
 
 TOKEN = "test-launch-token"
 

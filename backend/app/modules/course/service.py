@@ -15,7 +15,7 @@ from app.modules.course.schemas import (
     EducationStage,
     LearningContext,
 )
-from app.modules.jobs import cancel_nonterminal_jobs
+from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
 from app.modules.record.models import Record
 

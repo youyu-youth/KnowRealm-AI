@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
-from app.modules.jobs import ProcessingJobService
 from app.modules.jobs.schemas import RecordJobsOut
+from app.modules.jobs.service import ProcessingJobService
 from app.modules.record.classification import RecordClassificationService
 from app.modules.record.schemas import (
     RecordClassificationRequest,
@@ -20,7 +20,7 @@ from app.modules.record.schemas import (
     RecordUpgradeRequest,
 )
 from app.modules.record.service import RecordService
-from app.schemas.document import (
+from app.modules.transcript.schemas import (
     TranscriptAvailability,
     TranscriptOut,
     TranscriptReadOut,

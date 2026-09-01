@@ -14,9 +14,9 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
-from app.modules.llm import SummaryModel, SummaryModelResult
-from app.schemas.summary import SummaryContent, SummarySection
-from app.services.tencent_asr_client import (
+from app.modules.llm.service import SummaryModel, SummaryModelResult
+from app.modules.summary.schemas import SummaryContent, SummarySection
+from app.modules.transcript.integrations.tencent import (
     TencentAsrClient,
     TencentAsrCredentials,
     TencentAsrTask,

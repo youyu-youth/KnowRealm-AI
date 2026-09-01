@@ -17,7 +17,8 @@ from app.db.base import utcnow
 from app.models.document import Quiz, QuizTest, QuizTestItem
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
-from app.modules.jobs import (
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.runner import (
     CancelClaim,
     ClaimCheck,
     ClaimedJob,
@@ -28,20 +29,19 @@ from app.modules.jobs import (
     mark_failed,
     recover_running_to_failed,
 )
-from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.modules.llm import (
+from app.modules.llm.service import (
     QuizGradingModel,
     StructuredGenerationError,
     call_quiz_grading_model,
 )
-from app.modules.record.events import RecordInvalidationNotifier
 from app.modules.record.models import Record
-from app.modules.settings import LlmProviderConfig, llm_provider_fingerprint
+from app.modules.settings.config import LlmProviderConfig, llm_provider_fingerprint
 from app.schemas.quiz import QuizQuestionType, ShortAnswerGrade
 from app.schemas.quiz_test import QuizTestItemResult, QuizTestStatus
 from app.services.quiz_test_service import build_test_answer_event, finalize_completed_test
 from app.services.quiz_worker import preflight
+from app.shared.events import RecordInvalidationNotifier
 
 PROMPT_VERSION = "quiz_grading_v1"
 PREREQUISITE_CHANGED = "PREREQUISITE_CHANGED"

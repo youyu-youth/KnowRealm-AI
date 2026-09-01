@@ -5,6 +5,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
+class AiSummaryStatus(StrEnum):
+    GENERATED = "GENERATED"
+    CONFIRMED = "CONFIRMED"
+    SUPERSEDED = "SUPERSEDED"
+
+
 class SummarySection(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

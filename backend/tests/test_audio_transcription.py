@@ -17,8 +17,8 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
-from app.services import audio_worker
-from app.services.tencent_asr_client import (
+from app.modules.transcript import audio_worker
+from app.modules.transcript.integrations.tencent import (
     TencentAsrApiError,
     TencentAsrClient,
     TencentAsrCredentials,

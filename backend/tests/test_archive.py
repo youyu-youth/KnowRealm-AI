@@ -17,7 +17,7 @@ from app.core.data_dir import ensure_data_dir
 from app.core.version import APP_VERSION
 from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
 from app.main import create_app
-from app.modules.data import (
+from app.modules.data.archive import (
     KEEP_BACKUPS,
     MANIFEST_NAME,
     ImportArchiveError,

@@ -19,7 +19,7 @@ from app.modules.jobs.schemas import (
 )
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
-from app.schemas.document import AsrChunkStatus
+from app.modules.transcript.schemas import AsrChunkStatus
 
 
 def _reset_failed_asr_chunk(value: object) -> object:

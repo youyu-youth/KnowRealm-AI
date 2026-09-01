@@ -23,9 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
-from app.modules.jobs import ClaimedJob, JobRunner, ProcessingJobService
 from app.modules.jobs.models import ProcessingJob
-from app.services import document_worker
+from app.modules.jobs.runner import ClaimedJob, JobRunner
+from app.modules.jobs.service import ProcessingJobService
+from app.modules.transcript import document_worker
 
 TOKEN = "test-launch-token"
 
@@ -310,10 +311,10 @@ async def test_temporary_io_retries_twice_then_succeeds(
         return path.read_text(encoding="utf-8")
 
     monkeypatch.setattr(
-        "app.services.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document_text",
         fail_twice,
     )
-    monkeypatch.setattr("app.services.document_worker.utcnow", lambda: clock[0])
+    monkeypatch.setattr("app.modules.transcript.document_worker.utcnow", lambda: clock[0])
     async with running_document_app(tmp_path / "KnowRealm") as (app, client):
         course = await client.post(
             "/api/courses",
@@ -386,7 +387,7 @@ async def test_exhausted_temporary_failure_can_retry_same_job_and_record(
         return path.read_text(encoding="utf-8")
 
     monkeypatch.setattr(
-        "app.services.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document_text",
         fail_first_round,
     )
     data_dir = tmp_path / "KnowRealm"
@@ -438,7 +439,7 @@ async def test_restart_recovers_running_jobs_and_keeps_archived_course_transcrip
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = [datetime(2026, 8, 21, tzinfo=UTC)]
-    monkeypatch.setattr("app.services.document_worker.utcnow", lambda: clock[0])
+    monkeypatch.setattr("app.modules.transcript.document_worker.utcnow", lambda: clock[0])
     data_dir = tmp_path / "KnowRealm"
     async with running_document_app(data_dir) as (_, client):
         course = await client.post(
@@ -541,7 +542,7 @@ async def test_sqlite_busy_requeues_running_job_without_stopping_worker(
         return path.read_text(encoding="utf-8")
 
     monkeypatch.setattr(
-        "app.services.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document_text",
         gated_parse,
     )
     data_dir = tmp_path / "KnowRealm"
@@ -653,7 +654,7 @@ async def test_manual_retry_rejects_invalid_jobs_without_partial_updates(
             return "retried once"
 
         monkeypatch.setattr(
-            "app.services.document_worker.extract_document_text",
+            "app.modules.transcript.document_worker.extract_document_text",
             gated_retry,
         )
         concurrent_retries = await asyncio.gather(
@@ -714,7 +715,7 @@ async def test_unexpected_io_and_parser_errors_are_not_retryable_or_logged(
         raise RuntimeError("private-document-content")
 
     monkeypatch.setattr(
-        "app.services.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document_text",
         fail_unexpected,
     )
     try:
@@ -937,7 +938,7 @@ async def test_deleted_job_is_rechecked_after_claim_before_parsing(
 
     monkeypatch.setattr(JobRunner, "claim_one", gated_claim)
     monkeypatch.setattr(
-        "app.services.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document_text",
         observe_parse,
     )
 

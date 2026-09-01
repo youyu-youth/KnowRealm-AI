@@ -12,19 +12,20 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import AiSummary, Quiz
+from app.models.document import Quiz
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import LearningEvent, Record
-from app.modules.settings import (
+from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
     llm_provider_fingerprint,
     load_llm_provider,
 )
-from app.schemas.document import AiSummaryStatus
+from app.modules.summary.models import AiSummary
+from app.modules.summary.schemas import AiSummaryStatus
 from app.schemas.quiz import (
     QuizAction,
     QuizAnswerResult,

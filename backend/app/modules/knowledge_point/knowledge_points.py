@@ -4,13 +4,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.knowledge_point import (
+from app.modules.knowledge_point.schemas import (
     KnowledgePointJobAccepted,
     KnowledgePointOut,
     KnowledgePointReadOut,
     KnowledgePointWriteRequest,
 )
-from app.services.knowledge_point_service import KnowledgePointService
+from app.modules.knowledge_point.service import KnowledgePointService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 

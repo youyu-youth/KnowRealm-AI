@@ -9,7 +9,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import interrupt
 from typing_extensions import TypedDict
 
-from app.schemas.summary import SummaryContent
+from app.modules.summary.schemas import SummaryContent
 
 REVIEW_DECISION_ADJUST = "ADJUST"
 

@@ -12,20 +12,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import AiSummary, Transcript
 from app.modules.course.models import Course
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import LearningEvent, Record
 from app.modules.record.schemas import RecordStatus
-from app.modules.settings import (
+from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
     llm_provider_fingerprint,
     load_llm_provider,
 )
-from app.schemas.document import AiSummaryStatus
-from app.schemas.summary import (
+from app.modules.summary.models import AiSummary
+from app.modules.summary.schemas import (
+    AiSummaryStatus,
     SummaryAction,
     SummaryAdjustRequest,
     SummaryBlockedReason,
@@ -35,6 +35,7 @@ from app.schemas.summary import (
     SummaryReadOut,
     SummarySection,
 )
+from app.modules.transcript.models import Transcript
 
 
 @dataclass(frozen=True)

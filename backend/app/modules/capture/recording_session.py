@@ -24,8 +24,8 @@ from app.modules.capture.recording import (
     RecordingSessionTargetState,
 )
 from app.modules.capture.schemas import RecordingSessionState
-from app.modules.course import CourseService
 from app.modules.course.schemas import CourseStatus
+from app.modules.course.service import CourseService
 
 RECORDING_BITRATE_BPS = 128_000
 MAX_RECORDING_DURATION_MS = 3 * 60 * 60 * 1000

@@ -16,7 +16,7 @@ from loguru import logger
 from sqlalchemy import text
 
 from app.main import create_app
-from app.modules.course import DocumentCleanupService
+from app.modules.course.tombstone_cleanup import DocumentCleanupService
 
 TOKEN = "test-launch-token"
 

@@ -19,9 +19,9 @@ from app.modules.capture.schemas import (
     RecordFileSourceType,
     RecordFileType,
 )
-from app.modules.course import CourseService
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
+from app.modules.course.service import CourseService
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record

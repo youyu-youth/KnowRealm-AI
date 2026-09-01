@@ -10,8 +10,8 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
-from app.modules.llm import SummaryModel, SummaryModelResult
-from app.schemas.summary import SummaryContent, SummarySection
+from app.modules.llm.service import SummaryModel, SummaryModelResult
+from app.modules.summary.schemas import SummaryContent, SummarySection
 
 TOKEN = "test-launch-token"
 
@@ -562,7 +562,7 @@ async def test_upgrade_enqueue_failure_keeps_local_commit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from app.services.summary_service import SummaryService
+    from app.modules.summary.service import SummaryService
 
     async def broken_enqueue(*args: object, **kwargs: object) -> None:
         raise RuntimeError("forced enqueue failure")

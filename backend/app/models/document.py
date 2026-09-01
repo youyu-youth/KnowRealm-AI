@@ -1,70 +1,10 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ISODateTime, utcnow
-
-
-class Transcript(Base):
-    __tablename__ = "transcripts"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    record_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("records.id", ondelete="CASCADE"), unique=True
-    )
-    language: Mapped[str] = mapped_column(String(35))
-    content: Mapped[str] = mapped_column(Text)
-    source_version: Mapped[int] = mapped_column(Integer, default=1)
-    edited_by_user: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
-    deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
-
-
-class AiSummary(Base):
-    __tablename__ = "ai_summaries"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    record_id: Mapped[str] = mapped_column(String(36), ForeignKey("records.id", ondelete="CASCADE"))
-    version_no: Mapped[int] = mapped_column(Integer)
-    transcript_source_version: Mapped[int] = mapped_column(Integer)
-    topic: Mapped[str] = mapped_column(Text)
-    abstract: Mapped[str] = mapped_column(Text)
-    summary_json: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(20))
-    model: Mapped[str] = mapped_column(Text)
-    prompt_version: Mapped[str] = mapped_column(Text)
-    token_usage_json: Mapped[str] = mapped_column(Text)
-    latency_ms: Mapped[int] = mapped_column(Integer)
-    user_feedback: Mapped[str | None] = mapped_column(Text, default=None)
-    confirmed_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
-    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
-    deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
-
-
-class KnowledgePoint(Base):
-    __tablename__ = "knowledge_points"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    record_id: Mapped[str] = mapped_column(String(36), ForeignKey("records.id", ondelete="CASCADE"))
-    batch_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("processing_jobs.id", ondelete="SET NULL"), default=None
-    )
-    name: Mapped[str] = mapped_column(String(100))
-    detail: Mapped[str] = mapped_column(Text)
-    tags: Mapped[str] = mapped_column(Text)
-    importance: Mapped[float] = mapped_column(Float)
-    generated_from_summary_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("ai_summaries.id", ondelete="SET NULL"), default=None
-    )
-    generation_status: Mapped[str] = mapped_column(String(20))
-    source_anchor_id: Mapped[str | None] = mapped_column(String(36), default=None)
-    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
-    deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
 
 
 class Quiz(Base):

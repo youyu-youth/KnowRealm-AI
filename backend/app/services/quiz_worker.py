@@ -13,9 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import AiSummary, Quiz
+from app.models.document import Quiz
 from app.modules.course.models import Course
-from app.modules.jobs import (
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.runner import (
     CancelClaim,
     ClaimCheck,
     ClaimedJob,
@@ -26,32 +27,28 @@ from app.modules.jobs import (
     mark_failed,
     recover_running_to_failed,
 )
-from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.modules.llm import (
-    QuizModel,
-    StructuredGenerationError,
-    call_quiz_model,
-)
-from app.modules.record.events import RecordInvalidationNotifier
+from app.modules.llm.service import QuizModel, StructuredGenerationError, call_quiz_model
 from app.modules.record.models import Record
-from app.modules.settings import (
+from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
     llm_provider_fingerprint,
     load_llm_provider,
 )
+from app.modules.summary.derivation import (
+    PREREQUISITE_CHANGED,
+    summary_content,
+    summary_source_is_current,
+)
+from app.modules.summary.models import AiSummary
+from app.modules.summary.schemas import SummaryContent
 from app.schemas.quiz import (
     QuizBatch,
     QuizGenerationStatus,
     QuizQuestionType,
 )
-from app.schemas.summary import SummaryContent
-from app.services.summary_derivation import (
-    PREREQUISITE_CHANGED,
-    summary_content,
-    summary_source_is_current,
-)
+from app.shared.events import RecordInvalidationNotifier
 
 PROMPT_VERSION = "quiz_v1"
 

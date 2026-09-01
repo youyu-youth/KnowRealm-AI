@@ -17,14 +17,14 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
-from app.services.cache_lifecycle_service import CacheLifecycleService
-from app.services.tencent_asr_client import (
+from app.modules.transcript.cache_lifecycle import CacheLifecycleService
+from app.modules.transcript.finalizer import complete_source_job
+from app.modules.transcript.integrations.tencent import (
     TencentAsrClient,
     TencentAsrCredentials,
     TencentAsrTask,
     TencentAsrTaskStatus,
 )
-from app.services.transcript_finalizer import complete_source_job
 
 TOKEN = "test-launch-token"
 

@@ -11,20 +11,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.models.document import AiSummary, KnowledgePoint, Transcript
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.modules.record.models import LearningEvent, Record
-from app.modules.settings import (
-    LlmProviderConfig,
-    llm_consent,
-    llm_provider_fingerprint,
-    load_llm_provider,
-)
-from app.schemas.document import AiSummaryStatus
-from app.schemas.knowledge_point import (
+from app.modules.knowledge_point.models import KnowledgePoint
+from app.modules.knowledge_point.schemas import (
     KnowledgePointAction,
     KnowledgePointBlockedReason,
     KnowledgePointGenerationStatus,
@@ -33,6 +25,16 @@ from app.schemas.knowledge_point import (
     KnowledgePointReadOut,
     KnowledgePointWriteRequest,
 )
+from app.modules.record.models import LearningEvent, Record
+from app.modules.settings.config import (
+    LlmProviderConfig,
+    llm_consent,
+    llm_provider_fingerprint,
+    load_llm_provider,
+)
+from app.modules.summary.models import AiSummary
+from app.modules.summary.schemas import AiSummaryStatus
+from app.modules.transcript.models import Transcript
 
 TRANSCRIPT_LIMIT = 30_000
 

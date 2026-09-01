@@ -5,8 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.modules.course import CourseService
 from app.modules.course.schemas import CourseStatus
+from app.modules.course.service import CourseService
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
@@ -135,7 +135,7 @@ class RecordClassificationService:
         # 本地 Record/Transcript/课程归属已提交；Provider、同意或入队异常都不回滚整理结果。
         summary_job_id = active_job_id
         if not repeat_only and summary_job_id is None:
-            from app.services.summary_service import SummaryService
+            from app.modules.summary.service import SummaryService
 
             summary_job_id = await SummaryService.enqueue_if_eligible_best_effort(
                 session_factory,

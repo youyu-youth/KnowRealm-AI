@@ -8,7 +8,7 @@ import pytest
 from fastapi import FastAPI
 
 from app.main import create_app
-from app.services.tencent_asr_client import TencentAsrClient
+from app.modules.transcript.integrations.tencent import TencentAsrClient
 
 TOKEN = "test-launch-token"
 ASR_URL = "/api/settings/providers/tencent-asr"

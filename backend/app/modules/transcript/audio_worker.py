@@ -20,7 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.modules.capture.models import RecordFile
-from app.modules.jobs import (
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.runner import (
     ClaimCheck,
     ClaimedJob,
     LoopFailure,
@@ -31,28 +32,24 @@ from app.modules.jobs import (
     mark_failed,
     mark_retry_fixed,
 )
-from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import (
     ProcessingJobErrorCode,
     ProcessingJobStatus,
     ProcessingJobType,
     ProcessingJobWaitingReason,
 )
-from app.modules.record.events import RecordInvalidationNotifier
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
-from app.modules.settings import (
-    external_processing_consent_at,
-    load_tencent_asr_config,
-)
-from app.schemas.document import AsrChunkStatus
-from app.services.tencent_asr_client import (
+from app.modules.settings.config import external_processing_consent_at, load_tencent_asr_config
+from app.modules.transcript.finalizer import complete_source_job, finalize_record_if_ready
+from app.modules.transcript.integrations.tencent import (
     TencentAsrApiError,
     TencentAsrClient,
     TencentAsrCredentials,
     TencentAsrTaskStatus,
 )
-from app.services.transcript_finalizer import complete_source_job, finalize_record_if_ready
+from app.modules.transcript.schemas import AsrChunkStatus
+from app.shared.events import RecordInvalidationNotifier
 
 MAX_CHUNK_BYTES = 5 * 1024 * 1024
 CHUNK_DURATION_MS = 5 * 60 * 1000

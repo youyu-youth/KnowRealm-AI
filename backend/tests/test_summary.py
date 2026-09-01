@@ -14,8 +14,8 @@ from sqlalchemy import text
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
-from app.modules.llm import OpenAiCompatibleSummaryModel, SummaryModel, SummaryModelResult
-from app.schemas.summary import SummaryContent, SummarySection
+from app.modules.llm.service import OpenAiCompatibleSummaryModel, SummaryModel, SummaryModelResult
+from app.modules.summary.schemas import SummaryContent, SummarySection
 
 TOKEN = "test-launch-token"
 

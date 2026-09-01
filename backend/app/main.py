@@ -12,14 +12,11 @@ from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from loguru import logger
 
-from app.agents.summary import build_summary_graph
 from app.api import (
     chat_sessions,
-    knowledge_points,
     profile,
     quiz_tests,
     quizzes,
-    summaries,
     today,
     todos,
 )
@@ -34,11 +31,15 @@ from app.modules.capture import (
     recording_sessions,
     text_captures,
 )
-from app.modules.course import DocumentCleanupService, courses
-from app.modules.data import create_rolling_backup, restore_archive
+from app.modules.course import courses
+from app.modules.course.tombstone_cleanup import DocumentCleanupService
 from app.modules.data import routes as data_routes
-from app.modules.jobs import JobRunner, ManagedWorker, processing_jobs
-from app.modules.llm import (
+from app.modules.data.archive import create_rolling_backup, restore_archive
+from app.modules.jobs import processing_jobs
+from app.modules.jobs.runner import JobRunner, ManagedWorker
+from app.modules.knowledge_point import knowledge_points
+from app.modules.knowledge_point.worker import knowledge_point_spec
+from app.modules.llm.service import (
     KnowledgePointModel,
     OpenAiCompatibleKnowledgePointModel,
     OpenAiCompatibleQuizGradingModel,
@@ -51,19 +52,20 @@ from app.modules.llm import (
     TodoModel,
 )
 from app.modules.record import records
-from app.modules.record.events import RecordInvalidationNotifier
 from app.modules.settings import routes as settings_routes
-from app.services.audio_worker import audio_spec
-from app.services.cache_lifecycle_service import CacheLifecycleService
+from app.modules.summary import summaries
+from app.modules.summary.graph import build_summary_graph
+from app.modules.summary.worker import summary_spec
+from app.modules.transcript.audio_worker import audio_spec
+from app.modules.transcript.cache_lifecycle import CacheLifecycleService
+from app.modules.transcript.document_worker import document_spec
+from app.modules.transcript.integrations.tencent import TencentAsrClient
 from app.services.chat_message_service import ChatStreamRegistry
-from app.services.document_worker import document_spec
-from app.services.knowledge_point_worker import knowledge_point_spec
 from app.services.quiz_grading_worker import quiz_grading_spec
 from app.services.quiz_worker import quiz_spec
-from app.services.summary_worker import summary_spec
-from app.services.tencent_asr_client import TencentAsrClient
 from app.services.todo_worker import todo_spec
 from app.shared.deps import require_launch_token
+from app.shared.events import RecordInvalidationNotifier
 from app.shared.schemas import ErrorResponse
 
 DEFAULT_CORS_ORIGINS = (

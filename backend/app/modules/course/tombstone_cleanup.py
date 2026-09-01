@@ -10,11 +10,11 @@ from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import Transcript
 from app.modules.capture.models import RecordFile
 from app.modules.course.models import Course
 from app.modules.jobs.models import ProcessingJob
 from app.modules.record.models import Record
+from app.modules.transcript.models import Transcript
 
 
 class DocumentCleanupService:

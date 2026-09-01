@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 from app.db.migrations import run_migrations
 from app.main import create_app
-from app.modules.llm import StructuredModelResult
+from app.modules.llm.service import StructuredModelResult
 
 TOKEN = "test-launch-token"
 

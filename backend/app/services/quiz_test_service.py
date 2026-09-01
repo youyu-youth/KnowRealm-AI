@@ -18,7 +18,7 @@ from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import LearningEvent, Record
-from app.modules.settings import (
+from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
     llm_provider_fingerprint,

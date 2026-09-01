@@ -4,7 +4,7 @@ from typing import cast
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from app.modules.llm import SummaryGenerationError, call_summary_model
+from app.modules.llm.service import SummaryGenerationError, call_summary_model
 from app.modules.settings.config import (
     external_processing_consent_at,
     grant_external_processing_consent,
@@ -32,7 +32,7 @@ from app.modules.settings.schemas import (
     TencentAsrProviderUpdate,
     TencentAsrTestOut,
 )
-from app.services.tencent_asr_client import (
+from app.modules.transcript.integrations.tencent import (
     TencentAsrApiError,
     TencentAsrClient,
     TencentAsrCredentials,

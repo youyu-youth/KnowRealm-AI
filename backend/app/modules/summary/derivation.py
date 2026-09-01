@@ -10,12 +10,11 @@ from __future__ import annotations
 import json
 from typing import cast
 
-from app.models.document import AiSummary
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.record.models import Record
-from app.schemas.document import AiSummaryStatus
-from app.schemas.summary import SummaryContent
+from app.modules.summary.models import AiSummary
+from app.modules.summary.schemas import AiSummaryStatus, SummaryContent
 
 PREREQUISITE_CHANGED = "PREREQUISITE_CHANGED"
 

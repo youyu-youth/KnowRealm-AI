@@ -8,13 +8,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import Transcript
 from app.modules.capture.models import RecordFile
 from app.modules.capture.schemas import RecordFileType
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
+from app.modules.transcript.models import Transcript
 
 _FINALIZE_LOCK = asyncio.Lock()
 
@@ -154,7 +154,7 @@ async def _finalize_record_if_ready(
         data_dir / "cache" / "sources" / record_id,
     ):
         await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
-    from app.services.summary_service import SummaryService
+    from app.modules.summary.service import SummaryService
 
     await SummaryService.enqueue_if_eligible(session_factory, data_dir, record_id)
     return True
@@ -282,7 +282,7 @@ async def complete_source_job(
                 data_dir / "cache" / "sources" / record_id,
             ):
                 await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
-            from app.services.summary_service import SummaryService
+            from app.modules.summary.service import SummaryService
 
             await SummaryService.enqueue_if_eligible(session_factory, data_dir, record_id)
         return True

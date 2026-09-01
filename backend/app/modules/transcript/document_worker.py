@@ -16,25 +16,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.modules.capture.models import RecordFile
-from app.modules.jobs import (
-    RETRYABLE_PROCESSING_JOB_ERROR_CODES,
+from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.policy import RETRYABLE_PROCESSING_JOB_ERROR_CODES
+from app.modules.jobs.runner import (
     ClaimCheck,
     ClaimedJob,
     LoopFailure,
     Ready,
     RunnerContext,
     WorkerSpec,
-    cancel_nonterminal_jobs,
     mark_failed,
     mark_retry_backoff,
 )
-from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobErrorCode, ProcessingJobStatus, ProcessingJobType
-from app.modules.record.events import RecordInvalidationNotifier
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
-from app.services.document_parser import DocumentParseError, extract_document_text
-from app.services.transcript_finalizer import complete_source_job, finalize_record_if_ready
+from app.modules.transcript.document_parser import DocumentParseError, extract_document_text
+from app.modules.transcript.finalizer import complete_source_job, finalize_record_if_ready
+from app.shared.events import RecordInvalidationNotifier
 
 ERROR_MESSAGES = {
     ProcessingJobErrorCode.NON_UTF8_TEXT: "文本文件不是 UTF-8 编码",

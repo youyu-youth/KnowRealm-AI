@@ -5,13 +5,13 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.models.document import Transcript
 from app.modules.capture.schemas import TextCaptureAccepted, TextCaptureCreate
-from app.modules.course import CourseService
 from app.modules.course.schemas import CourseStatus
+from app.modules.course.service import CourseService
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
-from app.services.summary_service import SummaryService
+from app.modules.summary.service import SummaryService
+from app.modules.transcript.models import Transcript
 
 MAX_TEXT_BYTES = 1024 * 1024
 TITLE_MAX_CHARS = 100

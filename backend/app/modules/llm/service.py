@@ -11,11 +11,11 @@ from pydantic import BaseModel, SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
+from app.modules.knowledge_point.schemas import KnowledgePointBatch
 from app.modules.llm.models import LlmCallLog
-from app.modules.settings import LlmProviderConfig
-from app.schemas.knowledge_point import KnowledgePointBatch
+from app.modules.settings.config import LlmProviderConfig
+from app.modules.summary.schemas import SummaryContent
 from app.schemas.quiz import QuizBatch, ShortAnswerGrade
-from app.schemas.summary import SummaryContent
 from app.schemas.todo import TodoBatch
 
 
