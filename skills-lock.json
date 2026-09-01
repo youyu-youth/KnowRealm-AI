@@ -95,7 +95,7 @@
       "source": "langchain-ai/langchain-skills",
       "sourceType": "github",
       "skillPath": "config/skills/eval-engineering/SKILL.md",
-      "computedHash": "a744dbb793a610ba2bc203fbd6a74ca99895b2bf4fcf68d431893f04b3de8d6e"
+      "computedHash": "f16c54616690a803e7fd6398d153320fd3aed71f6b98f5d6fcae992eef51e907"
     },
     "grill-me": {
       "source": "mattpocock/skills",

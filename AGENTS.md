@@ -59,6 +59,10 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
    | 全局 reset / 基础样式      | `styles/globals.css`            |
    | 动画 keyframes             | `styles/animations.css`         |
 
+7. 在涉及到 `langchain `, `langGraph `, `Deep Agents` 编写，设计，搭建时，请参考 `.agents/skills/`  或 `.zcode/skills/` 或  `.claude/skills/ `下有关的skills来进行编写！如有歧义则提出
+
+
+
 
 
 ## DESIGN.md
@@ -111,6 +115,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 ## 参考
 - LangGraph 文档： https://langchain-ai.github.io/langgraph/
 - LangChain 文档： https://python.langchain.com/docs/
+- DeepAgents 文档：https://docs.langchain.com/oss/python/deepagents
 - FastAPI 文档： https://fastapi.tiangolo.com/
 - shadcn ui 文档：https://ui.shadcn.com/docs
 - tauri 文档参考：https://v2.tauri.app/reference/cli/
