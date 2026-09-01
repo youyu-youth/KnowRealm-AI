@@ -4,16 +4,17 @@
 
 ## 1. 架构与职责
 
-| 目录 | 唯一职责 |
-|---|---|
-| `api/` | 解析参数、调用 service、返回响应 |
-| `services/` | 业务逻辑与事务边界 |
-| `models/` | SQLAlchemy ORM 模型 |
-| `schemas/` | Pydantic 请求、响应和结构化输出 |
-| `agents/` | LangGraph 编排 |
-| `db/` | engine 与 `user_version` 迁移执行器 |
-| `core/` | 配置、日志、事件循环和依赖 |
+Feature-first 模块化单体（ADR-0015）：
 
+| 位置 | 唯一职责 |
+|---|---|
+| `modules/<域>/` | 一个业务域的完整闭环：路由（薄层）+ service（业务逻辑与事务边界）+ worker + models（该域 ORM 表）+ schemas（该域 Pydantic）；包 `__init__.py` 仅写 docstring，禁止再导出 |
+| `core/` | 进程机制：日志、事件循环、数据目录锁；无业务无状态 |
+| `db/` | engine、`user_version` 迁移执行器、Declarative Base（`db/base.py`） |
+| `shared/` | 跨域无业务契约：deps（会话/令牌依赖）、全局错误 Schema、失效通知总线 |
+
+- 模块划分：平台四件套 `llm`/`jobs`/`settings`/`data`（被单向依赖，不引用业务模块）+ 业务域 `course`/`record`/`capture`/`transcript`/`summary`/`knowledge_point`/`quiz`/`todo`/`chat`/`profile`/`today`；供应商集成落域内 `integrations/` 子包。
+- 跨模块引用（行为与数据契约同规则）一律**直达具体文件**（如 `from app.modules.quiz.service import QuizService`）；模块间方向必须无环，法定方向 = `capture → transcript → summary → {knowledge_point, quiz, todo}`，chat/today 下游，course/record 上游聚合。
 - 路由必须保持薄层，不得直接写 SQL、调用 LLM 或组装业务流程。
 - service 层集中承载事务、worker 复用逻辑和唯一写入口等领域约束。
 - 后台任务不设独立 worker 进程：`processing_jobs` 表作为队列，由 sidecar 进程内 asyncio 任务池消费。

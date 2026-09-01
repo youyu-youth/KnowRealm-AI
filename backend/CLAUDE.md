@@ -26,16 +26,21 @@ python -m app.server --port 0 --token <32字节hex> --data-dir %USERPROFILE%\Kno
 
 ```
 app/
-├── main.py          # create_app 工厂 + lifespan（顺序见下）；CORS 限 tauri 来源；全局异常处理器
+├── main.py          # create_app 工厂 + lifespan（顺序见下）；CORS 限 tauri 来源；全局异常处理器；唯一组合根
 ├── server.py        # CLI 入口：bind_socket → stdout 打 KNOWREALM_SIDECAR_PORT=<port> → uvicorn 运行
-├── api/             # 薄路由层：16 个 router + deps.py（令牌与会话依赖），全部挂 require_launch_token
-├── agents/          # LangGraph 编排：summary（固定 StateGraph + HITL interrupt）、llm（结构化调用与 llm_call_logs 埋点）
-├── services/        # 业务逻辑与事务边界（23 个文件）
-├── models/          # SQLAlchemy ORM：base（ISODateTime/utcnow）/ course / record / document / chat / profile
-├── schemas/         # Pydantic v2：course / record / document / recording / settings / summary / today / knowledge_point / quiz / todo / chat / profile（业务枚举集中地）
+├── modules/         # Feature-first 模块化单体（ADR-0015）：一域一模块（路由+service+worker+models+schemas），包 __init__ 仅 docstring
+│   ├── llm/         # 平台：OpenAI 兼容结构化调用 + llm_call_logs 埋点
+│   ├── jobs/        # 平台：processing_jobs 队列 + JobRunner（ADR-0012）+ 控制面 API
+│   ├── settings/    # 平台：providers/consents/preferences（config.py 读写 settings.json、providers.json）
+│   ├── data/        # 平台：数据目录导出/导入/滚动备份
+│   ├── course/ record/ capture/ transcript/ summary/ knowledge_point/ quiz/ todo/ chat/ profile/ today/
+│   └── transcript/integrations/tencent.py  # 腾讯 ASR 客户端（供应商集成样板）
+├── shared/          # deps（令牌与会话依赖）/ schemas（ErrorResponse）/ events（Record 失效通知总线）
 ├── core/            # data_dir（OS 排他锁）/ logging（loguru InterceptHandler）/ loop；无 config.py
-└── db/              # engine（WAL + PRAGMA foreign_keys=ON）/ migrations（迁移执行器）
+└── db/              # engine（WAL + PRAGMA foreign_keys=ON）/ migrations（迁移执行器）/ base（Declarative Base + utcnow）
 ```
+
+- 跨模块引用（行为与契约同规则）直达具体文件（`from app.modules.quiz.service import QuizService`）；模块间方向无环：`capture → transcript → summary → {kp, quiz, todo}`，chat/today 下游，平台四件套被单向依赖。
 
 - api 路由前缀：`/api/courses`、`/api/records…`（含 `GET /records/{id}/events` SSE、`/{id}/summary*` 总结读/生成/调整/确认/版本、`/{id}/transcript`、`/{id}/jobs`）、`/api/audio-imports`、`/api/capture-batches`、`/api/chat-sessions`、`/api/document-imports`、`/api/processing-jobs`、`/api/profile`、`/api/recording-sessions`、`/api/settings…`（providers/llm 与 external-processing-consents）、`/api/today/pending-summaries`、`/api/health`。
 - services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（job_runner 骨架 + 六个 worker 执行体、processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation、summary_derivation）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service）；今日待办（today_service）；AI 对话（chat_session_service）；档案（profile_service）。
