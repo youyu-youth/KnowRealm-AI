@@ -7,7 +7,7 @@
 | 依赖 | 基线 |
 |---|---|
 | Tauri | **2.x**（2024-10 GA，2026 主流） |
-| tauri-plugin-dialog / global-shortcut / autostart / opener | 2.x 配套版（opener 只管打开文件/目录；sidecar 用 `std::process::Command` 拉起与看护） |
+| tauri-plugin-dialog / global-shortcut / autostart / opener / fs / process / window-state | 2.x 配套版，以 `Cargo.toml` 锁文件为准（opener 只管打开文件/目录；fs 仅壳写 desktop.json；process 仅 relaunch；sidecar 用 `std::process::Command` 拉起与看护） |
 | Rust | stable 工具链，`clippy` 零警告 |
 
 ## 1. 前后端分工：什么才进 Rust
@@ -119,11 +119,11 @@ pub fn keep_awake(on: bool) -> anyhow::Result<()> { /* SetThreadExecutionState *
 pub fn keep_awake(_on: bool) -> anyhow::Result<()> { Ok(()) }
 ```
 
-## 5. 数据目录访问边界（无本地 SQLite）
+## 5. 数据目录访问边界（SQLite 唯一事实源在 sidecar）
 
 - **UI 不直连数据库**（不引入 tauri-plugin-sql）：一切业务读写经 localhost sidecar API——sidecar 是 `knowrealm.db` 与数据目录业务文件的唯一协调者。同一数据目录的第二个 sidecar 必须在迁移或 worker 启动前因 OS 排他锁失败而退出；壳把“数据目录正在使用”作为可理解的启动错误展示，不能自动换目录或绕过锁。
 - React/Tauri 不直接写数据目录。录音 WebM 分片通过受启动令牌保护的 sidecar 接口写入 `cache/staging/`；sidecar 同时维护 `recording_sessions` 的会话与有序分片清单，前端不维护第二份。
-- sidecar 二进制与可审计 LGPL-compatible ffmpeg 经 `externalBin` 随包打进 `.msi`；生产禁止读取系统 PATH。壳用 `std::process::Command` 拉起/看护 sidecar（随机端口经启动参数注入，UI 从壳读取——技术栈 v4.3 §十）。不装 shell 插件：打开文件/目录用 opener，拉进程只留在 Rust 侧。
+- sidecar 二进制与可审计 LGPL-compatible ffmpeg 经 `externalBin` 随包打进 `.msi`；生产禁止读取系统 PATH。壳用 `std::process::Command` 拉起/看护 sidecar（随机端口经启动参数注入，UI 从壳读取——技术栈 v4.5 §十）。不装 shell 插件：打开文件/目录用 opener，拉进程只留在 Rust 侧。
 
 ## 6. 录音链路（项目最关键的原生协同）
 
