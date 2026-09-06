@@ -120,28 +120,24 @@ def _base_prompt(ctx: _ClaimedReviewMaterial, transcript: str) -> str:
         head = (
             "请基于全部原文、上一版复习资料与用户反馈，生成修订后的中文复习资料，"
             "严格返回指定结构，不添加结构外字段。\n"
-            "考前速记使用 Markdown；重点清单条数按内容密度决定；大纲只能使用 Markdown "
-            "标题与列表行，不得使用代码块或表格。\n"
-            f"学习场景：{ctx.course.learning_context}\n"
-            f"教育阶段：{ctx.course.education_stage or '未设置'}\n"
-            f"内容深度：{ctx.course.depth or '未设置'}\n"
-            "已确认总结（仅作辅助）：\n"
-            f"{_summary_text(ctx.summary)}\n"
-            "上一版复习资料：\n"
-            f"{_previous_text(ctx.previous)}\n"
-            f"用户反馈：{ctx.feedback or ''}\n"
-            f"原文（主要依据，必须完整覆盖）：\n{transcript}"
         )
-        return head
+        revision = (
+            f"上一版复习资料：\n{_previous_text(ctx.previous)}\n"
+            f"用户反馈：{ctx.feedback or ''}\n"
+        )
+    else:
+        head = "请基于全部原文生成中文复习资料，严格返回指定结构，不添加结构外字段。\n"
+        revision = ""
     return (
-        "请基于全部原文生成中文复习资料，严格返回指定结构，不添加结构外字段。\n"
-        "考前速记使用 Markdown；重点清单条数按内容密度决定；大纲只能使用 Markdown "
+        head
+        + "考前速记使用 Markdown；重点清单条数按内容密度决定；大纲只能使用 Markdown "
         "标题与列表行，不得使用代码块或表格。\n"
         f"学习场景：{ctx.course.learning_context}\n"
         f"教育阶段：{ctx.course.education_stage or '未设置'}\n"
         f"内容深度：{ctx.course.depth or '未设置'}\n"
         f"已确认总结（仅作辅助）：\n{_summary_text(ctx.summary)}\n"
-        f"原文（主要依据，必须完整覆盖）：\n{transcript}"
+        + revision
+        + f"原文（主要依据，必须完整覆盖）：\n{transcript}"
     )
 
 
