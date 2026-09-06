@@ -19,3 +19,4 @@ export type TodoReadOut = components["schemas"]["TodoReadOut"];
 export type TodoOut = components["schemas"]["TodoOut"];
 export type ReviewMaterialReadOut =
   components["schemas"]["ReviewMaterialReadOut"];
+export type ReviewMaterialOut = components["schemas"]["ReviewMaterialOut"];

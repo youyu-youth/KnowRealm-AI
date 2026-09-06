@@ -471,6 +471,37 @@
           "title": "当前无法生成复习资料",
           "COURSE_ARCHIVED": "所属课程已归档，不能发起新的复习资料生成。",
           "TRANSCRIPT_NOT_READY": "Transcript 尚未准备好。"
+        },
+        "workbench": {
+          "title": "复习资料工作台",
+          "description": "预览三段内容，可确认定版、反馈调整重生成或手动编辑；历史版本仅回看。",
+          "open": "确认与调整",
+          "confirm": "确认定版",
+          "confirmed": "已定版",
+          "adjust": "反馈调整",
+          "edit": "手动编辑",
+          "adjusting": "正在按反馈调整复习资料",
+          "adjustingHint": "可以关闭弹窗，完成后页签会自动更新。",
+          "adjustFeedbackLabel": "调整反馈",
+          "adjustFeedbackPlaceholder": "例如：更简洁一些，侧重调度算法的对比。",
+          "submitAdjustment": "提交调整",
+          "cancelAdjustment": "取消",
+          "editQuickReviewLabel": "考前速记（Markdown 源码）",
+          "editKeyListLabel": "重点清单",
+          "editItemLabel": "重点清单第 {{index}} 条",
+          "editRemoveItem": "移除第 {{index}} 条",
+          "editAddItem": "添加条目",
+          "editOutlineLabel": "大纲（Markdown 源码，仅标题与列表行）",
+          "save": "保存修改",
+          "cancelEdit": "取消",
+          "versionLabel": "历史版本",
+          "historicalNotice": "正在回看历史版本；仅当前版本可确认、调整或编辑。",
+          "staleNotice": "转写已更新，当前复习资料基于旧转写；可通过反馈调整基于新转写重新生成，旧内容不会被覆盖。",
+          "versionStatus": {
+            "GENERATED": "待确认",
+            "CONFIRMED": "已定版",
+            "SUPERSEDED": "已退场"
+          }
         }
       },
       "jobs": {

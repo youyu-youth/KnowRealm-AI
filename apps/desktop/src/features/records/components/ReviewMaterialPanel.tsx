@@ -1,25 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { MarkdownContent } from "@/components/common/MarkdownContent";
 import { ProviderSetupGuide } from "@/components/common/ProviderSetupGuide";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
+import { ReviewMaterialSections } from "@/features/records/components/ReviewMaterialSections";
+import { ReviewMaterialWorkbench } from "@/features/records/components/ReviewMaterialWorkbench";
 import { settingsApi } from "@/features/settings/api/settings";
 
 type ReviewMaterialPanelProps = {
   recordId: string;
   enabled: boolean;
   onOpenSummary: () => void;
-};
-
-type OutlineNode = {
-  title: string;
-  children: OutlineNode[];
-  items: string[];
 };
 
 export function ReviewMaterialPanel({
@@ -29,6 +24,8 @@ export function ReviewMaterialPanel({
 }: ReviewMaterialPanelProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [workbenchOpen, setWorkbenchOpen] = useState(false);
+  const sawActiveJobRef = useRef(false);
   const review = useQuery({
     queryKey: recordKeys.reviewMaterial(recordId),
     queryFn: () => recordApi.getReviewMaterial(recordId),
@@ -48,6 +45,20 @@ export function ReviewMaterialPanel({
     mutationFn: settingsApi.grantLlmConsent,
     onSuccess: () => void refresh(),
   });
+
+  // 首次生成完成（active job → v1 落地）自动打开 HITL 工作台；调整完成仅刷新预览
+  useEffect(() => {
+    if (!enabled || !review.data) return;
+    if (review.data.active_job_id) {
+      sawActiveJobRef.current = true;
+      return;
+    }
+    const material = review.data.review_material;
+    if (sawActiveJobRef.current && material && material.version_no <= 1) {
+      setWorkbenchOpen(true);
+    }
+    sawActiveJobRef.current = false;
+  }, [enabled, review.data]);
 
   if (!enabled) return null;
   if (review.isPending)
@@ -71,8 +82,9 @@ export function ReviewMaterialPanel({
       </section>
     );
   }
+  let content: ReactNode;
   if (review.data.active_job_id) {
-    return (
+    content = (
       <section className="max-w-reading">
         <Status text={t("record.detail.review.processingTitle")} />
         <p className="text-body text-muted-foreground mt-2">
@@ -80,46 +92,45 @@ export function ReviewMaterialPanel({
         </p>
       </section>
     );
-  }
-  if (review.data.review_material) {
+  } else if (review.data.review_material) {
     const material = review.data.review_material;
-    return (
-      <div className="max-w-reading min-w-0 space-y-10">
-        <section>
-          <h2 className="text-section font-section text-ink-strong">
-            {t("record.detail.review.quickReviewTitle")}
-          </h2>
-          <MarkdownContent markdown={material.quick_review} />
-        </section>
-        <section className="border-border border-t pt-8">
-          <h2 className="text-section font-section text-ink-strong">
-            {t("record.detail.review.keyListTitle")}
-          </h2>
-          <ol className="mt-4 space-y-3">
-            {material.key_list.map((item, index) => (
-              <li
-                key={`${index}-${item}`}
-                className="text-body text-ink flex gap-3"
-              >
-                <span className="text-label text-muted-foreground mt-0.5 tabular-nums">
-                  {index + 1}.
-                </span>
-                <span>{item}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
-        <section className="border-border border-t pt-8">
-          <h2 className="text-section font-section text-ink-strong">
-            {t("record.detail.review.outlineTitle")}
-          </h2>
-          <OutlineTree markdown={material.mind_map_markdown} />
-        </section>
-      </div>
+    const confirmed = material.status === "CONFIRMED";
+    content = (
+      <>
+        <div className="max-w-reading mb-6 flex flex-wrap items-center justify-between gap-3">
+          <span
+            className={`${
+              confirmed
+                ? "bg-success/15 text-success"
+                : "bg-warning/15 text-warning"
+            } text-label font-label rounded-xs px-2 py-1`}
+          >
+            {t(
+              confirmed
+                ? "record.detail.review.workbench.versionStatus.CONFIRMED"
+                : "record.detail.review.workbench.versionStatus.GENERATED",
+            )}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setWorkbenchOpen(true)}
+          >
+            {t("record.detail.review.workbench.open")}
+          </Button>
+        </div>
+        {review.data.transcript_stale ? (
+          <p className="bg-warning/10 text-body text-warning max-w-reading mb-6 rounded-lg px-3 py-2">
+            {t("record.detail.review.workbench.staleNotice")}
+          </p>
+        ) : null}
+        <div className="max-w-reading min-w-0">
+          <ReviewMaterialSections material={material} />
+        </div>
+      </>
     );
-  }
-  if (review.data.blocked_reason === "SUMMARY_NOT_CONFIRMED") {
-    return (
+  } else if (review.data.blocked_reason === "SUMMARY_NOT_CONFIRMED") {
+    content = (
       <EmptyState
         title={t("record.detail.review.blocked.summaryTitle")}
         description={t("record.detail.review.blocked.summaryDescription")}
@@ -130,9 +141,8 @@ export function ReviewMaterialPanel({
         }
       />
     );
-  }
-  if (review.data.blocked_reason) {
-    return (
+  } else if (review.data.blocked_reason) {
+    content = (
       <EmptyState
         title={t("record.detail.review.blocked.title")}
         description={t(
@@ -140,11 +150,10 @@ export function ReviewMaterialPanel({
         )}
       />
     );
-  }
-  if (review.data.action_required === "CONFIGURE_PROVIDER")
-    return <ProviderSetupGuide />;
-  if (review.data.action_required === "GRANT_CONSENT") {
-    return (
+  } else if (review.data.action_required === "CONFIGURE_PROVIDER") {
+    content = <ProviderSetupGuide />;
+  } else if (review.data.action_required === "GRANT_CONSENT") {
+    content = (
       <EmptyState
         title={t("record.detail.review.consentTitle")}
         description={t("record.detail.review.consentDescription")}
@@ -156,31 +165,44 @@ export function ReviewMaterialPanel({
         error={consent.error?.message}
       />
     );
+  } else {
+    const retry = review.data.action_required === "RETRY";
+    content = (
+      <EmptyState
+        title={t(
+          retry
+            ? "record.detail.review.failedTitle"
+            : "record.detail.review.emptyTitle",
+        )}
+        description={t(
+          retry
+            ? "record.detail.review.failedDescription"
+            : "record.detail.review.emptyDescription",
+        )}
+        action={
+          <Button disabled={submit.isPending} onClick={() => submit.mutate()}>
+            {t(
+              retry
+                ? "record.detail.review.retry"
+                : "record.detail.review.generate",
+            )}
+          </Button>
+        }
+        error={submit.error?.message}
+      />
+    );
   }
-  const retry = review.data.action_required === "RETRY";
   return (
-    <EmptyState
-      title={t(
-        retry
-          ? "record.detail.review.failedTitle"
-          : "record.detail.review.emptyTitle",
-      )}
-      description={t(
-        retry
-          ? "record.detail.review.failedDescription"
-          : "record.detail.review.emptyDescription",
-      )}
-      action={
-        <Button disabled={submit.isPending} onClick={() => submit.mutate()}>
-          {t(
-            retry
-              ? "record.detail.review.retry"
-              : "record.detail.review.generate",
-          )}
-        </Button>
-      }
-      error={submit.error?.message}
-    />
+    <>
+      {content}
+      {/* 弹窗挂在稳定位置：生成/调整进行中与阅读态之间切换时不重挂载 */}
+      <ReviewMaterialWorkbench
+        recordId={recordId}
+        open={workbenchOpen}
+        onOpenChange={setWorkbenchOpen}
+        read={review.data}
+      />
+    </>
   );
 }
 
@@ -218,64 +240,5 @@ function EmptyState({
         </p>
       ) : null}
     </section>
-  );
-}
-
-function parseOutline(markdown: string): OutlineNode[] {
-  const roots: OutlineNode[] = [];
-  const stack: Array<{ level: number; node: OutlineNode }> = [];
-  for (const rawLine of markdown.split("\n")) {
-    const line = rawLine.trim();
-    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
-    if (heading) {
-      const level = heading[1].length;
-      const node: OutlineNode = { title: heading[2], children: [], items: [] };
-      while (stack.length && stack[stack.length - 1].level >= level)
-        stack.pop();
-      if (stack.length) stack[stack.length - 1].node.children.push(node);
-      else roots.push(node);
-      stack.push({ level, node });
-      continue;
-    }
-    const item = /^(?:[-*+]|\d+[.)])\s+(.+)$/.exec(line)?.[1];
-    if (item && stack.length) stack[stack.length - 1].node.items.push(item);
-    else if (item) roots.push({ title: item, children: [], items: [] });
-  }
-  return roots;
-}
-
-function OutlineTree({ markdown }: { markdown: string }) {
-  return (
-    <div className="mt-4 space-y-2">
-      {parseOutline(markdown).map((node) => (
-        <OutlineBranch key={node.title} node={node} />
-      ))}
-    </div>
-  );
-}
-
-function OutlineBranch({ node }: { node: OutlineNode }) {
-  return (
-    <details open className="group">
-      <summary className="text-body text-ink-strong focus-visible:ring-ring/40 flex cursor-pointer list-none items-center gap-2 rounded-sm py-1 font-medium focus-visible:ring-3">
-        <ChevronRight
-          className="text-muted-foreground size-4 shrink-0 transition-transform group-open:rotate-90"
-          aria-hidden="true"
-        />
-        {node.title}
-      </summary>
-      <div className="border-border ml-2 border-l pl-5">
-        {node.items.length ? (
-          <ul className="text-body text-ink list-disc space-y-1 py-2 pl-4">
-            {node.items.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        ) : null}
-        {node.children.map((child) => (
-          <OutlineBranch key={child.title} node={child} />
-        ))}
-      </div>
-    </details>
   );
 }

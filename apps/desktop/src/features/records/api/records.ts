@@ -144,6 +144,34 @@ export const recordApi = {
       `/api/records/${recordId}/review-material-jobs`,
       { method: "POST" },
     ),
+  getReviewMaterials: (recordId: string) =>
+    apiFetch<components["schemas"]["ReviewMaterialOut"][]>(
+      `/api/records/${recordId}/review-materials`,
+    ),
+  adjustReviewMaterial(
+    recordId: string,
+    body: components["schemas"]["ReviewMaterialAdjustRequest"],
+  ) {
+    return apiFetch<components["schemas"]["ReviewMaterialJobAccepted"]>(
+      `/api/records/${recordId}/review-material-adjustments`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+  },
+  confirmReviewMaterial(recordId: string) {
+    return apiFetch<components["schemas"]["ReviewMaterialOut"]>(
+      `/api/records/${recordId}/review-material-confirmations`,
+      { method: "POST" },
+    );
+  },
+  editReviewMaterial(
+    recordId: string,
+    body: components["schemas"]["ReviewMaterialContent"],
+  ) {
+    return apiFetch<components["schemas"]["ReviewMaterialOut"]>(
+      `/api/records/${recordId}/review-material`,
+      { method: "PATCH", body: JSON.stringify(body) },
+    );
+  },
   submitTodoGeneration(recordId: string) {
     return apiFetch<components["schemas"]["TodoJobAccepted"]>(
       `/api/records/${recordId}/todo-jobs`,
