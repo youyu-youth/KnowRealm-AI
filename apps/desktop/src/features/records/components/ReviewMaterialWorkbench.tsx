@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +33,12 @@ import { ReviewMaterialSections } from "@/features/records/components/ReviewMate
 
 type WorkbenchMode = "preview" | "adjust" | "edit";
 
+type EditDraft = {
+  quickReview: string;
+  mindMap: string;
+  keyList: string[];
+};
+
 type ReviewMaterialWorkbenchProps = {
   recordId: string;
   open: boolean;
@@ -41,7 +47,7 @@ type ReviewMaterialWorkbenchProps = {
   read: ReviewMaterialReadOut | undefined;
 };
 
-const statusChipClassNames: Record<string, string> = {
+const statusChipClassNames: Record<ReviewMaterialOut["status"], string> = {
   GENERATED: "bg-warning/15 text-warning",
   CONFIRMED: "bg-success/15 text-success",
   SUPERSEDED: "bg-muted text-muted-foreground",
@@ -61,9 +67,11 @@ export function ReviewMaterialWorkbench({
     atVersion: number;
   } | null>(null);
   const [feedback, setFeedback] = useState("");
-  const [quickReview, setQuickReview] = useState("");
-  const [mindMap, setMindMap] = useState("");
-  const [keyList, setKeyList] = useState<string[]>([]);
+  const [draft, setDraft] = useState<EditDraft>({
+    quickReview: "",
+    mindMap: "",
+    keyList: [],
+  });
 
   const versions = useQuery({
     queryKey: recordKeys.reviewMaterials(recordId),
@@ -94,9 +102,9 @@ export function ReviewMaterialWorkbench({
   const saveEdit = useMutation({
     mutationFn: () =>
       recordApi.editReviewMaterial(recordId, {
-        quick_review: quickReview,
-        key_list: keyList.map((item) => item.trim()).filter(Boolean),
-        mind_map_markdown: mindMap,
+        quick_review: draft.quickReview,
+        key_list: draft.keyList.map((item) => item.trim()).filter(Boolean),
+        mind_map_markdown: draft.mindMap,
       }),
     onSuccess: () => {
       setMode("preview");
@@ -120,6 +128,15 @@ export function ReviewMaterialWorkbench({
     current != null && viewing != null && viewing.id !== current.id;
   const mutationError = confirm.error ?? adjust.error ?? saveEdit.error ?? null;
 
+  // 新版本可能经页签轮询落地（不经过本组件的 mutation）：版本号变化即失效版本列表
+  const currentVersionNo = current?.version_no;
+  useEffect(() => {
+    if (currentVersionNo === undefined) return;
+    void queryClient.invalidateQueries({
+      queryKey: recordKeys.reviewMaterials(recordId),
+    });
+  }, [currentVersionNo, queryClient, recordId]);
+
   function handleOpenChange(nextOpen: boolean) {
     if (confirm.isPending || saveEdit.isPending) return;
     if (!nextOpen) {
@@ -134,9 +151,11 @@ export function ReviewMaterialWorkbench({
   }
 
   function enterEdit(material: ReviewMaterialOut) {
-    setQuickReview(material.quick_review);
-    setMindMap(material.mind_map_markdown);
-    setKeyList(material.key_list);
+    setDraft({
+      quickReview: material.quick_review,
+      mindMap: material.mind_map_markdown,
+      keyList: material.key_list,
+    });
     setMode("edit");
   }
 
@@ -200,7 +219,7 @@ export function ReviewMaterialWorkbench({
                   </Select>
                 ) : null}
                 <span
-                  className={`${statusChipClassNames[viewing.status] ?? ""} text-label font-label rounded-xs px-2 py-1`}
+                  className={`${statusChipClassNames[viewing.status]} text-label font-label rounded-xs px-2 py-1`}
                 >
                   {t(
                     `record.detail.review.workbench.versionStatus.${viewing.status}`,
@@ -266,8 +285,10 @@ export function ReviewMaterialWorkbench({
                 </Label>
                 <Textarea
                   id="review-edit-quick-review"
-                  value={quickReview}
-                  onChange={(event) => setQuickReview(event.target.value)}
+                  value={draft.quickReview}
+                  onChange={(event) =>
+                    setDraft({ ...draft, quickReview: event.target.value })
+                  }
                   rows={8}
                   maxLength={5000}
                   className="field-sizing-fixed font-mono text-xs"
@@ -278,7 +299,7 @@ export function ReviewMaterialWorkbench({
                   {t("record.detail.review.workbench.editKeyListLabel")}
                 </Label>
                 <div className="space-y-2">
-                  {keyList.map((item, index) => (
+                  {draft.keyList.map((item, index) => (
                     <div key={index} className="flex items-center gap-2">
                       <Input
                         value={item}
@@ -288,24 +309,30 @@ export function ReviewMaterialWorkbench({
                           { index: index + 1 },
                         )}
                         onChange={(event) =>
-                          setKeyList(
-                            keyList.map((entry, entryIndex) =>
+                          setDraft({
+                            ...draft,
+                            keyList: draft.keyList.map((entry, entryIndex) =>
                               entryIndex === index ? event.target.value : entry,
                             ),
-                          )
+                          })
                         }
                       />
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        disabled={keyList.length <= 1}
+                        disabled={draft.keyList.length <= 1}
                         aria-label={t(
                           "record.detail.review.workbench.editRemoveItem",
                           { index: index + 1 },
                         )}
                         onClick={() =>
-                          setKeyList(keyList.filter((_, i) => i !== index))
+                          setDraft({
+                            ...draft,
+                            keyList: draft.keyList.filter(
+                              (_, i) => i !== index,
+                            ),
+                          })
                         }
                       >
                         <X />
@@ -317,8 +344,10 @@ export function ReviewMaterialWorkbench({
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={keyList.length >= 50}
-                  onClick={() => setKeyList([...keyList, ""])}
+                  disabled={draft.keyList.length >= 50}
+                  onClick={() =>
+                    setDraft({ ...draft, keyList: [...draft.keyList, ""] })
+                  }
                 >
                   <Plus data-icon="inline-start" aria-hidden="true" />
                   {t("record.detail.review.workbench.editAddItem")}
@@ -330,8 +359,10 @@ export function ReviewMaterialWorkbench({
                 </Label>
                 <Textarea
                   id="review-edit-outline"
-                  value={mindMap}
-                  onChange={(event) => setMindMap(event.target.value)}
+                  value={draft.mindMap}
+                  onChange={(event) =>
+                    setDraft({ ...draft, mindMap: event.target.value })
+                  }
                   rows={8}
                   maxLength={5000}
                   className="field-sizing-fixed font-mono text-xs"
@@ -384,9 +415,9 @@ export function ReviewMaterialWorkbench({
             <Button
               disabled={
                 saveEdit.isPending ||
-                !quickReview.trim() ||
-                !mindMap.trim() ||
-                keyList.every((item) => !item.trim())
+                !draft.quickReview.trim() ||
+                !draft.mindMap.trim() ||
+                draft.keyList.every((item) => !item.trim())
               }
               onClick={() => saveEdit.mutate()}
             >
