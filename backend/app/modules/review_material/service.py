@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -18,7 +19,9 @@ from app.modules.record.schemas import RecordStatus
 from app.modules.review_material.models import ReviewMaterial
 from app.modules.review_material.schemas import (
     ReviewMaterialAction,
+    ReviewMaterialAdjustRequest,
     ReviewMaterialBlockedReason,
+    ReviewMaterialContent,
     ReviewMaterialOut,
     ReviewMaterialReadOut,
     ReviewMaterialStatus,
@@ -118,6 +121,39 @@ async def _current_material(session: AsyncSession, record_id: str) -> ReviewMate
     ).one_or_none()
 
 
+async def _current_transcript(session: AsyncSession, record_id: str) -> Transcript | None:
+    return (
+        await session.scalars(
+            select(Transcript).where(
+                Transcript.record_id == record_id,
+                Transcript.deleted_at.is_(None),
+            )
+        )
+    ).one_or_none()
+
+
+def _new_job(record_id: str, input_data: dict[str, object], now: datetime) -> ProcessingJob:
+    return ProcessingJob(
+        id=str(uuid4()),
+        record_id=record_id,
+        job_type=ProcessingJobType.REVIEW_MATERIAL_GENERATION,
+        status=ProcessingJobStatus.PENDING,
+        progress=0,
+        attempts=0,
+        max_attempts=1,
+        next_run_at=None,
+        waiting_reason=None,
+        input_json=json.dumps(input_data, separators=(",", ":")),
+        result_json=None,
+        error_code=None,
+        error_message=None,
+        started_at=None,
+        finished_at=None,
+        created_at=now,
+        updated_at=now,
+    )
+
+
 class ReviewMaterialService:
     @staticmethod
     async def read(
@@ -135,9 +171,14 @@ class ReviewMaterialService:
             )
         material = await _current_material(session, record_id)
         if material is not None:
+            transcript = await _current_transcript(session, record_id)
             return ReviewMaterialReadOut(
                 review_material=_material_out(material),
                 action_required=ReviewMaterialAction.NONE,
+                transcript_stale=(
+                    transcript is not None
+                    and transcript.source_version > material.transcript_source_version
+                ),
             )
         summary = await _confirmed_summary(session, record_id)
         if record.status != RecordStatus.COMPLETED or summary is None:
@@ -230,35 +271,131 @@ class ReviewMaterialService:
                     raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
                 if not consent:
                     raise HTTPException(status_code=409, detail="请先同意发送学习内容")
-                now = utcnow()
-                job = ProcessingJob(
-                    id=str(uuid4()),
-                    record_id=record_id,
-                    job_type=ProcessingJobType.REVIEW_MATERIAL_GENERATION,
-                    status=ProcessingJobStatus.PENDING,
-                    progress=0,
-                    attempts=0,
-                    max_attempts=1,
-                    next_run_at=None,
-                    waiting_reason=None,
-                    input_json=json.dumps(
-                        {
-                            "transcript_source_version": transcript.source_version,
-                            "provider_fingerprint": llm_provider_fingerprint(provider),
-                            "generated_from_summary_id": summary.id,
-                        },
-                        separators=(",", ":"),
-                    ),
-                    result_json=None,
-                    error_code=None,
-                    error_message=None,
-                    started_at=None,
-                    finished_at=None,
-                    created_at=now,
-                    updated_at=now,
+                job = _new_job(
+                    record_id,
+                    {
+                        "transcript_source_version": transcript.source_version,
+                        "provider_fingerprint": llm_provider_fingerprint(provider),
+                        "generated_from_summary_id": summary.id,
+                    },
+                    utcnow(),
                 )
                 session.add(job)
                 await session.flush()
                 return job.id
         except IntegrityError as exc:
             raise HTTPException(status_code=409, detail="已有进行中的复习资料任务") from exc
+
+    @staticmethod
+    async def adjust(
+        session: AsyncSession,
+        data_dir: Path,
+        record_id: str,
+        body: ReviewMaterialAdjustRequest,
+    ) -> str:
+        provider, consent = await _provider_state(data_dir)
+        try:
+            async with session.begin():
+                record = await _record(session, record_id)
+                if record.status != RecordStatus.COMPLETED:
+                    raise HTTPException(status_code=409, detail="请先确认总结")
+                active = await _active_job(session, record_id)
+                if active is not None:
+                    raise HTTPException(status_code=409, detail="已有进行中的复习资料任务")
+                current = await _current_material(session, record_id)
+                if current is None:
+                    raise HTTPException(status_code=404, detail="复习资料不存在")
+                if current.status == ReviewMaterialStatus.SUPERSEDED:
+                    raise HTTPException(status_code=409, detail="复习资料已是旧版本，请刷新后重试")
+                summary = await _confirmed_summary(session, record_id)
+                if summary is None:
+                    raise HTTPException(status_code=409, detail="请先确认总结")
+                course = await session.get(Course, record.course_id) if record.course_id else None
+                if course is None or course.deleted_at is not None or course.status != "ACTIVE":
+                    raise HTTPException(status_code=409, detail="归档课程不能生成复习资料")
+                transcript = await _current_transcript(session, record_id)
+                if transcript is None:
+                    raise HTTPException(status_code=409, detail="Transcript 尚未生成")
+                if provider is None or not provider.api_key:
+                    raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+                if not consent:
+                    raise HTTPException(status_code=409, detail="请先同意发送学习内容")
+                # 绑定当前转写版本：转写更新后的「重新生成」也走本端点（新版本、旧版退场）
+                job = _new_job(
+                    record_id,
+                    {
+                        "transcript_source_version": transcript.source_version,
+                        "provider_fingerprint": llm_provider_fingerprint(provider),
+                        "generated_from_summary_id": summary.id,
+                        "base_material_id": current.id,
+                        "feedback": body.feedback,
+                    },
+                    utcnow(),
+                )
+                session.add(job)
+                await session.flush()
+                return job.id
+        except IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="已有进行中的复习资料任务") from exc
+
+    @staticmethod
+    async def confirm(session: AsyncSession, record_id: str) -> ReviewMaterialOut:
+        async with session.begin():
+            await _record(session, record_id)
+            active = await _active_job(session, record_id)
+            if active is not None:
+                raise HTTPException(status_code=409, detail="已有进行中的复习资料任务")
+            material = await _current_material(session, record_id)
+            if material is None:
+                raise HTTPException(status_code=404, detail="复习资料不存在")
+            if material.status == ReviewMaterialStatus.CONFIRMED:
+                return _material_out(material)
+            if material.status != ReviewMaterialStatus.GENERATED:
+                raise HTTPException(status_code=409, detail="复习资料已是旧版本，不能确认")
+            now = utcnow()
+            material.status = ReviewMaterialStatus.CONFIRMED
+            material.confirmed_at = now
+            material.updated_at = now
+            return _material_out(material)
+
+    @staticmethod
+    async def edit(
+        session: AsyncSession,
+        record_id: str,
+        body: ReviewMaterialContent,
+    ) -> ReviewMaterialOut:
+        async with session.begin():
+            await _record(session, record_id)
+            active = await _active_job(session, record_id)
+            if active is not None:
+                raise HTTPException(status_code=409, detail="已有进行中的复习资料任务")
+            material = await _current_material(session, record_id)
+            if material is None:
+                raise HTTPException(status_code=404, detail="复习资料不存在")
+            if material.status == ReviewMaterialStatus.SUPERSEDED:
+                raise HTTPException(status_code=409, detail="复习资料已是旧版本，请刷新后重试")
+            # 手动编辑就地生效：不换代、不迁移状态，仅刷新内容与 updated_at
+            material.quick_review = body.quick_review
+            material.key_list_json = json.dumps(
+                body.key_list, ensure_ascii=False, separators=(",", ":")
+            )
+            material.mind_map_markdown = body.mind_map_markdown
+            material.updated_at = utcnow()
+            return _material_out(material)
+
+    @staticmethod
+    async def list_versions(session: AsyncSession, record_id: str) -> list[ReviewMaterialOut]:
+        await _record(session, record_id)
+        materials = list(
+            (
+                await session.scalars(
+                    select(ReviewMaterial)
+                    .where(
+                        ReviewMaterial.record_id == record_id,
+                        ReviewMaterial.deleted_at.is_(None),
+                    )
+                    .order_by(ReviewMaterial.version_no.desc())
+                )
+            ).all()
+        )
+        return [_material_out(material) for material in materials]

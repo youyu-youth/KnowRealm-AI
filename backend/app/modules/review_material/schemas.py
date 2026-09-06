@@ -85,6 +85,13 @@ class ReviewMaterialReadOut(BaseModel):
     action_required: ReviewMaterialAction
     blocked_reason: ReviewMaterialBlockedReason | None = None
     active_job_id: str | None = None
+    transcript_stale: bool = False
+
+
+class ReviewMaterialAdjustRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    feedback: str = Field(min_length=1, max_length=1000, description="调整反馈")
 
 
 class ReviewMaterialJobAccepted(BaseModel):

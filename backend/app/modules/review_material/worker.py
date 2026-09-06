@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -10,7 +11,8 @@ from uuid import uuid4
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.graph.state import CompiledStateGraph  # pyright: ignore[reportMissingTypeStubs]
-from sqlalchemy import select
+from langgraph.types import Command  # pyright: ignore[reportMissingTypeStubs]
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
@@ -36,7 +38,11 @@ from app.modules.llm.service import (
 )
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
-from app.modules.review_material.graph import ReviewMaterialRuntime, ReviewMaterialState
+from app.modules.review_material.graph import (
+    REVIEW_DECISION_ADJUST,
+    ReviewMaterialRuntime,
+    ReviewMaterialState,
+)
 from app.modules.review_material.models import ReviewMaterial
 from app.modules.review_material.schemas import ReviewMaterialContent, ReviewMaterialStatus
 from app.modules.settings.config import (
@@ -51,6 +57,7 @@ from app.modules.transcript.models import Transcript
 from app.shared.events import RecordInvalidationNotifier
 
 PROMPT_VERSION = "review_v1"
+ADJUST_PROMPT_VERSION = "review_adjust_v1"
 MAP_PROMPT_VERSION = "review_map_v1"
 REDUCE_PROMPT_VERSION = "review_reduce_v1"
 MODEL_CONTEXT_TOKENS = 128_000
@@ -79,6 +86,10 @@ class _ClaimedReviewMaterial(ClaimedJob):
     summary: AiSummary
     course: Course
     provider: LlmProviderConfig
+    prompt_version: str
+    base_material_id: str | None = None
+    previous: ReviewMaterialContent | None = None
+    feedback: str | None = None
 
 
 def _summary_text(summary: AiSummary) -> str:
@@ -95,7 +106,33 @@ def _summary_text(summary: AiSummary) -> str:
     return f"主题：{summary.topic}\n摘要：{summary.abstract}\n{section_text}".strip()
 
 
+def _previous_text(previous: ReviewMaterialContent) -> str:
+    key_list = "\n".join(f"- {item}" for item in previous.key_list)
+    return (
+        f"考前速记：\n{previous.quick_review}\n"
+        f"重点清单：\n{key_list}\n"
+        f"大纲：\n{previous.mind_map_markdown}"
+    )
+
+
 def _base_prompt(ctx: _ClaimedReviewMaterial, transcript: str) -> str:
+    if ctx.previous is not None:
+        head = (
+            "请基于全部原文、上一版复习资料与用户反馈，生成修订后的中文复习资料，"
+            "严格返回指定结构，不添加结构外字段。\n"
+            "考前速记使用 Markdown；重点清单条数按内容密度决定；大纲只能使用 Markdown "
+            "标题与列表行，不得使用代码块或表格。\n"
+            f"学习场景：{ctx.course.learning_context}\n"
+            f"教育阶段：{ctx.course.education_stage or '未设置'}\n"
+            f"内容深度：{ctx.course.depth or '未设置'}\n"
+            "已确认总结（仅作辅助）：\n"
+            f"{_summary_text(ctx.summary)}\n"
+            "上一版复习资料：\n"
+            f"{_previous_text(ctx.previous)}\n"
+            f"用户反馈：{ctx.feedback or ''}\n"
+            f"原文（主要依据，必须完整覆盖）：\n{transcript}"
+        )
+        return head
     return (
         "请基于全部原文生成中文复习资料，严格返回指定结构，不添加结构外字段。\n"
         "考前速记使用 Markdown；重点清单条数按内容密度决定；大纲只能使用 Markdown "
@@ -174,6 +211,12 @@ async def validate_claim(
     input_data = cast(dict[str, object], json.loads(job.input_json))
     source_version = input_data.get("transcript_source_version")
     summary_id = input_data.get("generated_from_summary_id")
+    base_material_id = input_data.get("base_material_id")
+    feedback = input_data.get("feedback")
+    is_adjust = isinstance(base_material_id, str) and bool(base_material_id)
+    base_material: ReviewMaterial | None = None
+    if is_adjust:
+        base_material = await session.get(ReviewMaterial, cast(str, base_material_id))
     summary = await session.get(AiSummary, summary_id) if isinstance(summary_id, str) else None
     if (
         record is None
@@ -190,8 +233,26 @@ async def validate_claim(
         or summary.deleted_at is not None
         or summary.status != AiSummaryStatus.CONFIRMED
         or input_data.get("provider_fingerprint") != llm_provider_fingerprint(current_provider)
+        or (
+            is_adjust
+            and not (
+                isinstance(feedback, str)
+                and bool(feedback.strip())
+                and base_material is not None
+                and base_material.record_id == record_id
+                and base_material.deleted_at is None
+                and base_material.status != ReviewMaterialStatus.SUPERSEDED
+            )
+        )
     ):
         return CancelClaim(PREREQUISITE_CHANGED)
+    previous: ReviewMaterialContent | None = None
+    if base_material is not None:
+        previous = ReviewMaterialContent(
+            quick_review=base_material.quick_review,
+            key_list=cast(list[str], json.loads(base_material.key_list_json)),
+            mind_map_markdown=base_material.mind_map_markdown,
+        )
     return Ready(
         _ClaimedReviewMaterial(
             job_id=job.id,
@@ -201,6 +262,10 @@ async def validate_claim(
             summary=summary,
             course=course,
             provider=current_provider,
+            prompt_version=ADJUST_PROMPT_VERSION if is_adjust else PROMPT_VERSION,
+            base_material_id=cast(str, base_material_id) if is_adjust else None,
+            previous=previous,
+            feedback=cast(str, feedback) if is_adjust else None,
         )
     )
 
@@ -228,7 +293,7 @@ async def _generate_content(
 ) -> tuple[ReviewMaterialContent, dict[str, object], int]:
     full_prompt = _base_prompt(ctx, ctx.transcript)
     if choose_generation_mode(full_prompt, token_budget=MODEL_INPUT_TOKEN_BUDGET) == "single":
-        result = await _call(ctx, session_factory, model, full_prompt, PROMPT_VERSION)
+        result = await _call(ctx, session_factory, model, full_prompt, ctx.prompt_version)
         return result.content, result.token_usage, result.latency_ms
 
     calls: list[ReviewMaterialCallResult] = []
@@ -295,21 +360,58 @@ async def execute(
         call_data = await _generate_content(ctx, session_factory, model)
         return call_data[0]
 
-    config = RunnableConfig(
-        configurable={"thread_id": f"review-material-{ctx.record_id}-source-{ctx.source_version}"}
-    )
-    result = cast(
-        ReviewMaterialState,
-        await graph.ainvoke(  # pyright: ignore[reportUnknownMemberType]
-            {"record_id": ctx.record_id, "source_version": ctx.source_version},
-            config,
-            context=ReviewMaterialRuntime(generate=generate),
-        ),
-    )
+    result = await _invoke_graph(ctx, generate, graph)
     content = ReviewMaterialContent.model_validate(result.get("review_material"))
     if call_data is None:
         raise StructuredGenerationError("INTERNAL_ERROR")
     return content, call_data[1], call_data[2]
+
+
+async def _invoke_graph(
+    ctx: _ClaimedReviewMaterial,
+    generate: "Callable[[], Awaitable[ReviewMaterialContent]]",
+    graph: CompiledStateGraph[
+        ReviewMaterialState,
+        ReviewMaterialRuntime,
+        ReviewMaterialState,
+        ReviewMaterialState,
+    ],
+) -> ReviewMaterialState:
+    config = RunnableConfig(
+        configurable={"thread_id": f"review-material-{ctx.record_id}-source-{ctx.source_version}"}
+    )
+    context = ReviewMaterialRuntime(generate=generate)
+    state_input: ReviewMaterialState = {
+        "record_id": ctx.record_id,
+        "source_version": ctx.source_version,
+    }
+    if ctx.base_material_id is None:
+        return cast(
+            ReviewMaterialState,
+            await graph.ainvoke(  # pyright: ignore[reportUnknownMemberType]
+                state_input,
+                config,
+                context=context,
+            ),
+        )
+    snapshot = await graph.aget_state(config)
+    if any(task.interrupts for task in snapshot.tasks):
+        return cast(
+            ReviewMaterialState,
+            await graph.ainvoke(  # pyright: ignore[reportUnknownMemberType, reportArgumentType]
+                Command(resume=REVIEW_DECISION_ADJUST),
+                config,
+                context=context,
+            ),
+        )
+    return cast(
+        ReviewMaterialState,
+        await graph.ainvoke(  # pyright: ignore[reportUnknownMemberType]
+            state_input,
+            config,
+            context=context,
+        ),
+    )
 
 
 async def writeback(
@@ -334,6 +436,11 @@ async def writeback(
             await session.get(Course, record.course_id) if record and record.course_id else None
         )
         summary = await session.get(AiSummary, ctx.summary.id)
+        base_material = (
+            await session.get(ReviewMaterial, ctx.base_material_id)
+            if ctx.base_material_id is not None
+            else None
+        )
         if job is None or job.status != ProcessingJobStatus.RUNNING:
             return False
         if (
@@ -348,18 +455,32 @@ async def writeback(
             or summary is None
             or summary.deleted_at is not None
             or summary.status != AiSummaryStatus.CONFIRMED
+            or (
+                ctx.base_material_id is not None
+                and (
+                    base_material is None
+                    or base_material.deleted_at is not None
+                    or base_material.status == ReviewMaterialStatus.SUPERSEDED
+                )
+            )
         ):
             job.status = ProcessingJobStatus.CANCELLED
             job.result_json = json.dumps({"reason": PREREQUISITE_CHANGED})
             job.finished_at = now
             job.updated_at = now
             return True
+        latest_version = await session.scalar(
+            select(func.coalesce(func.max(ReviewMaterial.version_no), 0)).where(
+                ReviewMaterial.record_id == ctx.record_id
+            )
+        )
+        version_no = cast(int, latest_version) + 1
         material_id = str(uuid4())
         session.add(
             ReviewMaterial(
                 id=material_id,
                 record_id=ctx.record_id,
-                version_no=1,
+                version_no=version_no,
                 transcript_source_version=ctx.source_version,
                 generated_from_summary_id=ctx.summary.id,
                 quick_review=content.quick_review,
@@ -369,8 +490,8 @@ async def writeback(
                 mind_map_markdown=content.mind_map_markdown,
                 status=ReviewMaterialStatus.GENERATED,
                 model=ctx.provider.model,
-                prompt_version=PROMPT_VERSION,
-                user_feedback=None,
+                prompt_version=ctx.prompt_version,
+                user_feedback=ctx.feedback,
                 token_usage_json=json.dumps(token_usage, separators=(",", ":")),
                 latency_ms=latency_ms,
                 confirmed_at=None,
@@ -379,6 +500,10 @@ async def writeback(
                 deleted_at=None,
             )
         )
+        if base_material is not None:
+            # 反馈调整产生新版本：旧版退场但数据保留
+            base_material.status = ReviewMaterialStatus.SUPERSEDED
+            base_material.updated_at = now
         job.status = ProcessingJobStatus.SUCCEEDED
         job.progress = 1
         job.result_json = json.dumps({"review_material_id": material_id})
@@ -402,13 +527,17 @@ async def apply_failure(
     error_code: str,
     now: datetime,
 ) -> bool:
-    del ctx, session
+    del session
     if record is None:
         return False
     mark_failed(
         job,
         code=error_code,
-        message="复习资料生成失败，请检查 Provider 后重试",
+        message=(
+            "复习资料调整失败，上一版仍可查看"
+            if ctx.base_material_id is not None
+            else "复习资料生成失败，请检查 Provider 后重试"
+        ),
         now=now,
     )
     return True

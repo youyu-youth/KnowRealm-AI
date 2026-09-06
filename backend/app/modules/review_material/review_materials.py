@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.review_material.schemas import (
+    ReviewMaterialAdjustRequest,
+    ReviewMaterialContent,
     ReviewMaterialJobAccepted,
+    ReviewMaterialOut,
     ReviewMaterialReadOut,
 )
 from app.modules.review_material.service import ReviewMaterialService
@@ -50,3 +53,57 @@ async def submit_review_material(
         str(record_id),
     )
     return ReviewMaterialJobAccepted(job_id=job_id)
+
+
+@router.post(
+    "/{record_id}/review-material-adjustments",
+    response_model=ReviewMaterialJobAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def adjust_review_material(
+    record_id: UUID,
+    body: ReviewMaterialAdjustRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> ReviewMaterialJobAccepted:
+    job_id = await ReviewMaterialService.adjust(
+        session,
+        request.app.state.data_dir,
+        str(record_id),
+        body,
+    )
+    return ReviewMaterialJobAccepted(job_id=job_id)
+
+
+@router.post(
+    "/{record_id}/review-material-confirmations",
+    response_model=ReviewMaterialOut,
+)
+async def confirm_review_material(
+    record_id: UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> ReviewMaterialOut:
+    material = await ReviewMaterialService.confirm(session, str(record_id))
+    await request.app.state.record_notifier.notify(str(record_id))
+    return material
+
+
+@router.patch("/{record_id}/review-material", response_model=ReviewMaterialOut)
+async def edit_review_material(
+    record_id: UUID,
+    body: ReviewMaterialContent,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> ReviewMaterialOut:
+    material = await ReviewMaterialService.edit(session, str(record_id), body)
+    await request.app.state.record_notifier.notify(str(record_id))
+    return material
+
+
+@router.get("/{record_id}/review-materials", response_model=list[ReviewMaterialOut])
+async def list_review_materials(
+    record_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> list[ReviewMaterialOut]:
+    return await ReviewMaterialService.list_versions(session, str(record_id))

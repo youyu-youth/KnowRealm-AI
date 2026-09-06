@@ -517,3 +517,271 @@ async def test_record_soft_delete_cascades_review_material(tmp_path: Path) -> No
                 )
             ).fetchone()
         assert row is not None and row[0] is not None
+
+
+async def list_review_versions(
+    client: httpx.AsyncClient, record_id: str
+) -> list[dict[str, object]]:
+    return cast(
+        list[dict[str, object]],
+        (await client.get(f"/api/records/{record_id}/review-materials")).json(),
+    )
+
+
+@pytest.mark.anyio
+async def test_adjust_creates_new_version_and_supersedes_previous(tmp_path: Path) -> None:
+    model = FakeReviewMaterialModel(valid_review_material())
+    async with running_review_app(tmp_path / "KnowRealm", model) as (app, client):
+        await configure_llm(client)
+        record_id = await create_completed_record(app, client)
+        assert (
+            await client.post(f"/api/records/{record_id}/review-material-jobs")
+        ).status_code == 202
+        await wait_for_review_material(client, record_id)
+
+        accepted = await client.post(
+            f"/api/records/{record_id}/review-material-adjustments",
+            json={"feedback": "更简洁"},
+        )
+        assert accepted.status_code == 202
+        # one-active：调整任务存在期间再次提交被拒
+        duplicate = await client.post(
+            f"/api/records/{record_id}/review-material-adjustments",
+            json={"feedback": "再改一版"},
+        )
+        assert duplicate.status_code == 409
+
+        v2 = await wait_for_review_material(client, record_id)
+        assert v2["version_no"] == 2
+        assert v2["status"] == "GENERATED"
+        assert v2["user_feedback"] == "更简洁"
+        assert v2["prompt_version"] == "review_adjust_v1"
+
+        versions = await list_review_versions(client, record_id)
+        assert [version["version_no"] for version in versions] == [2, 1]
+        assert [version["status"] for version in versions] == ["GENERATED", "SUPERSEDED"]
+
+        # 调整 prompt 携带上一版内容与用户反馈，且仍以原文为主要依据
+        adjust_prompt = model.prompts[-1]
+        assert "更简洁" in adjust_prompt
+        assert "上一版复习资料" in adjust_prompt
+        assert valid_review_material().quick_review in adjust_prompt
+        assert "原文唯一标记" in adjust_prompt
+
+        # 对 CONFIRMED 版本再调整走同一流程
+        confirmed = await client.post(f"/api/records/{record_id}/review-material-confirmations")
+        assert confirmed.status_code == 200
+        assert (
+            await client.post(
+                f"/api/records/{record_id}/review-material-adjustments",
+                json={"feedback": "再聚焦调度算法"},
+            )
+        ).status_code == 202
+        v3 = await wait_for_review_material(client, record_id)
+        assert v3["version_no"] == 3
+        assert v3["status"] == "GENERATED"
+        versions = await list_review_versions(client, record_id)
+        assert [version["status"] for version in versions] == [
+            "GENERATED",
+            "SUPERSEDED",
+            "SUPERSEDED",
+        ]
+
+
+@pytest.mark.anyio
+async def test_confirm_idempotent_and_edit_updates_in_place(tmp_path: Path) -> None:
+    model = FakeReviewMaterialModel(valid_review_material())
+    async with running_review_app(tmp_path / "KnowRealm", model) as (app, client):
+        await configure_llm(client)
+        record_id = await create_completed_record(app, client)
+        assert (
+            await client.post(f"/api/records/{record_id}/review-material-jobs")
+        ).status_code == 202
+        await wait_for_review_material(client, record_id)
+
+        # 手动编辑 GENERATED 版本：就地生效、不换代、不迁移状态
+        patched = await client.patch(
+            f"/api/records/{record_id}/review-material",
+            json={
+                "quick_review": "## 手改速记\n- 我自己写的",
+                "key_list": ["手改重点一", "手改重点二"],
+                "mind_map_markdown": "# 手改大纲\n- 新条目",
+            },
+        )
+        assert patched.status_code == 200
+        edited = cast(dict[str, object], patched.json())
+        assert edited["version_no"] == 1
+        assert edited["status"] == "GENERATED"
+        assert edited["quick_review"] == "## 手改速记\n- 我自己写的"
+        assert edited["key_list"] == ["手改重点一", "手改重点二"]
+
+        # 违规内容（大纲带代码块）整体拒绝，内容不变
+        invalid = await client.patch(
+            f"/api/records/{record_id}/review-material",
+            json={
+                "quick_review": "合法速记",
+                "key_list": ["合法重点"],
+                "mind_map_markdown": "```text\n禁止代码块\n```",
+            },
+        )
+        assert invalid.status_code == 422
+
+        first = await client.post(f"/api/records/{record_id}/review-material-confirmations")
+        assert first.status_code == 200
+        confirmed = cast(dict[str, object], first.json())
+        assert confirmed["status"] == "CONFIRMED"
+        # 幂等：重复确认返回现状
+        second = await client.post(f"/api/records/{record_id}/review-material-confirmations")
+        assert second.status_code == 200
+        assert cast(dict[str, object], second.json())["id"] == confirmed["id"]
+
+        # 编辑 CONFIRMED 版本无需重新确认：状态与 confirmed_at 不变（导出前置语义不变）
+        patched_again = await client.patch(
+            f"/api/records/{record_id}/review-material",
+            json={
+                "quick_review": "## 定版后微调",
+                "key_list": ["定版重点"],
+                "mind_map_markdown": "# 定版大纲\n- 微调",
+            },
+        )
+        assert patched_again.status_code == 200
+        final = cast(dict[str, object], patched_again.json())
+        assert final["status"] == "CONFIRMED"
+        assert final["version_no"] == 1
+        assert final["quick_review"] == "## 定版后微调"
+        async with aiosqlite.connect(tmp_path / "KnowRealm" / "knowrealm.db") as connection:
+            row = await (
+                await connection.execute(
+                    "SELECT confirmed_at, updated_at, created_at FROM review_materials "
+                    "WHERE record_id=?",
+                    (record_id,),
+                )
+            ).fetchone()
+        assert row is not None and row[0] is not None
+        assert row[1] > row[2]
+        versions = await list_review_versions(client, record_id)
+        assert len(versions) == 1
+
+
+@pytest.mark.anyio
+async def test_adjust_rejects_invalid_feedback_and_superseded_current(tmp_path: Path) -> None:
+    model = FakeReviewMaterialModel(valid_review_material())
+    async with running_review_app(tmp_path / "KnowRealm", model) as (app, client):
+        await configure_llm(client)
+        record_id = await create_completed_record(app, client)
+
+        missing = await client.post(
+            f"/api/records/{record_id}/review-material-adjustments",
+            json={"feedback": "更简洁"},
+        )
+        assert missing.status_code == 404
+        assert (
+            await client.post(
+                f"/api/records/{record_id}/review-material-adjustments",
+                json={"feedback": "  "},
+            )
+        ).status_code == 422
+        assert (
+            await client.post(
+                f"/api/records/{record_id}/review-material-adjustments",
+                json={"feedback": "长" * 1001},
+            )
+        ).status_code == 422
+
+        assert (
+            await client.post(f"/api/records/{record_id}/review-material-jobs")
+        ).status_code == 202
+        await wait_for_review_material(client, record_id)
+        # 当前版本已退场（模拟换代竞态后的提交）
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE review_materials SET status='SUPERSEDED' WHERE record_id=:record_id"),
+                {"record_id": record_id},
+            )
+        superseded = await client.post(
+            f"/api/records/{record_id}/review-material-adjustments",
+            json={"feedback": "更简洁"},
+        )
+        assert superseded.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_adjust_job_cancelled_when_transcript_changes_after_submit(tmp_path: Path) -> None:
+    model = FakeReviewMaterialModel(valid_review_material())
+    async with running_review_app(tmp_path / "KnowRealm", model) as (app, client):
+        await configure_llm(client)
+        record_id = await create_completed_record(app, client)
+        assert (
+            await client.post(f"/api/records/{record_id}/review-material-jobs")
+        ).status_code == 202
+        await wait_for_review_material(client, record_id)
+
+        assert (
+            await client.post(
+                f"/api/records/{record_id}/review-material-adjustments",
+                json={"feedback": "更简洁"},
+            )
+        ).status_code == 202
+        # 提交后转写变更：任务被两阶段复核拒绝，旧资料保持现状
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE transcripts SET source_version=2 WHERE record_id=:record_id"),
+                {"record_id": record_id},
+            )
+
+        await wait_for_review_job(client, record_id, "CANCELLED")
+        payload = cast(
+            dict[str, object],
+            (await client.get(f"/api/records/{record_id}/review-material")).json(),
+        )
+        current = cast(dict[str, object], payload["review_material"])
+        assert current["version_no"] == 1
+        assert payload["transcript_stale"] is True
+
+
+@pytest.mark.anyio
+async def test_transcript_update_marks_stale_and_regenerates_via_adjust(tmp_path: Path) -> None:
+    model = FakeReviewMaterialModel(valid_review_material())
+    async with running_review_app(tmp_path / "KnowRealm", model) as (app, client):
+        await configure_llm(client)
+        record_id = await create_completed_record(app, client)
+        assert (
+            await client.post(f"/api/records/{record_id}/review-material-jobs")
+        ).status_code == 202
+        await wait_for_review_material(client, record_id)
+
+        payload = cast(
+            dict[str, object],
+            (await client.get(f"/api/records/{record_id}/review-material")).json(),
+        )
+        assert payload["transcript_stale"] is False
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE transcripts SET source_version=2 WHERE record_id=:record_id"),
+                {"record_id": record_id},
+            )
+        payload = cast(
+            dict[str, object],
+            (await client.get(f"/api/records/{record_id}/review-material")).json(),
+        )
+        assert payload["transcript_stale"] is True
+        # 旧内容不删不覆盖
+        current = cast(dict[str, object], payload["review_material"])
+        assert current["quick_review"] == valid_review_material().quick_review
+
+        # 转写更新后的重新生成走反馈调整：新版本绑定新转写，过时标记解除
+        assert (
+            await client.post(
+                f"/api/records/{record_id}/review-material-adjustments",
+                json={"feedback": "基于更新后的转写重新生成"},
+            )
+        ).status_code == 202
+        regenerated = await wait_for_review_material(client, record_id)
+        assert regenerated["version_no"] == 2
+        assert regenerated["transcript_source_version"] == 2
+        payload = cast(
+            dict[str, object],
+            (await client.get(f"/api/records/{record_id}/review-material")).json(),
+        )
+        assert payload["transcript_stale"] is False
