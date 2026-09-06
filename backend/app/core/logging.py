@@ -1,8 +1,12 @@
 import logging
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from loguru import HandlerConfig
 
 
 class InterceptHandler(logging.Handler):
@@ -21,7 +25,7 @@ def setup_logging(data_dir: Path | None = None) -> None:
         named = logging.getLogger(name)
         named.handlers = [handler]
         named.propagate = False
-    sinks = [
+    sinks: list[HandlerConfig] = [
         {
             "sink": sys.stderr,
             "level": "INFO",
