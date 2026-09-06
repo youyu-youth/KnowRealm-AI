@@ -30,7 +30,7 @@
 | D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | Tauri sidecar（Python 进程内）FastAPI + LangChain/LangGraph + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4.3） |
 | D7 | 异步与缓存 | Redis/Redisson + RabbitMQ（§27.4/§27.5） | 自研 processing_jobs 队列（SQLite 表即队列 + sidecar 进程内 asyncio worker），无 Redis / RabbitMQ / procrastinate（决策 #1） |
 | D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | sqlite-vec（vec0 虚拟表）+ semantic_embeddings 统一表；明确不做 Qdrant / pgvector（技术栈 v4.3） |
-| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.2（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
+| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.3（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
 | D10 | shares 表 | §25.1 保留 t_share | 不建 shares 表（决策 #15） |
 | D11 | F15 落地 | 不新增表（仅 action_type=PREVIEW） | 依赖 course_materials 课程级资料表（决策 #12） |
 | D12 | Teach-back 输入 | 语音解释 → ASR（§18.1） | V1 文本先行，语音后补（决策 #19） |
@@ -39,7 +39,7 @@
 | D15 | 优先级与阶段 | §6 S+/A+ 评级、§32 Phase 1~7、§37 P0~P3 | 基线 §4.7 阶段映射（F1=P2 … F16=P6）与 §5.1 阶段规划 |
 | D16 | 产品定位语境 | 毕业设计 / 项目展示 / 比赛（§33） | 开源、面向个人使用（基线头部） |
 
-> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.1》《技术栈设计与审查-v4》《KnowRealm-AI-数据模型-v2.0》。
+> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.4》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.3》。
 
 ---
 

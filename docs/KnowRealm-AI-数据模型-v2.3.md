@@ -1,4 +1,4 @@
-# KnowRealm-AI 数据模型 v2.2
+# KnowRealm-AI 数据模型 v2.3
 
 > **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.4》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.5.md`。
 > **核心原则（v2.0 范式，ADR-0001 / 决策 #55）**：
@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：v2.3（2026-09-06）**复习资料定稿（16 plan grill）**——review_materials 由 6 字段草案补齐完整形态：status（GENERATED / CONFIRMED / SUPERSEDED，确认必选）、version_no（(record_id, version_no) 唯一；仅 AI 重生成换代，手动编辑就地生效不换代）、transcript_source_version（过期锚点：转写已改则拒绝新提交）、generated_from_summary_id（可空，仅溯源不阻塞）、user_feedback / token_usage_json / latency_ms / confirmed_at / 软删列。生成上下文定为**转写/文档解析全文为主 + 已确认总结辅助**（KP 不进，弃"总结+KP"草案）；生成走 LangGraph interrupt/resume（复用 langgraph.db，thread_id 前缀隔离，与总结同构）；超长按模型窗口自适应（装得下单次调用、超限语义分块 map-reduce，禁静默截断）；Top 重点清单条数不固定（LLM 按内容密度决定）。
 > **变更记录**：2026-08-25 **习题生成与作答定稿（08 plan grill）**——quizzes 增作答三列（user_answer_json / answer_result 可空 CORRECT·WRONG，NULL=简答待自评 / answered_at，与 QUIZ_ANSWERED 同事务写）并补软删标注；不建 model / prompt_version / quality_score / cognitive_level / concept_id / source_anchor_id 列（溯源记 processing_jobs.result_json——07 先例，P3 / P5 / 评测域后补）；选择题单选、判断题 options 固定「对/错」两项与选择题同构；逐题模式一题一答、简答二态自评；learning_events 幂等键构造定为 `{event-slug}:{source-id}`（quiz-answered:{quiz_id}）；习题批次采纳不发学习事件；Wave B 测验模式同题再答键位另立（quiz-answered:test:{item_id} 风格）。
 > **变更记录**：2026-08-24 **知识点提取定稿（07 plan grill）**——knowledge_points 取消独立 status 列（generation_status 单列承载，对齐 quizzes）；importance 定标 1~5、tags ≤5；AI 候选生成即落 DRAFT 行、每 Record 至多一个在途 DRAFT 批次；确认时绑定的 Summary 须仍为 CONFIRMED；批次溯源（model / prompt_version / 候选条数）记入 processing_jobs.result_json，表不加列。
 > **变更记录**：v2.2（2026-08-22）**多来源音频与版本绑定定稿**——records.capture_type 增加 MULTI_SOURCE；Capture Batch 明确为非持久化命令边界；Transcript source_version 同时作为内容版本与显式保存前置条件；ai_summaries 绑定 transcript_source_version；KP/Quiz/Todo 的 AI 结果绑定 summary_id 且可标记 SUPERSEDED；processing_jobs 定义 ASR 顺序切片检查点、等待态与差异化手动重试。
@@ -223,8 +224,21 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | ai_grade_json | TEXT | 简答题 AI 评分依据（必存，不裸给分） |
 | answered_at | TEXT | |
 
-**review_materials** — 复习资料（P1）
-quick_review（考前速记）、key_list_json（Top 重点清单）、mind_map_markdown（Markdown 大纲思维导图）、model、prompt_version、record_id。
+**review_materials** — 复习资料（P1，v2.3 定稿，〔软删〕）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id / record_id | TEXT | record_id FK→records ON DELETE CASCADE |
+| version_no | INTEGER ≥1 | (record_id, version_no) 唯一；仅 AI 重生成递增，手动编辑不换代 |
+| transcript_source_version | INTEGER ≥1 | 过期锚点：转写已改则拒绝新提交（照 ai_summaries 绑定语义）；旧内容不删不覆盖 |
+| generated_from_summary_id | TEXT | 可空；生成上下文含已确认总结时绑定，仅溯源、总结换代不阻塞 |
+| quick_review | TEXT | 考前速记（Markdown，可含代码块；程序员场景默认含代码速查块） |
+| key_list_json | TEXT | Top 重点清单（条数由 LLM 按内容密度决定，不固定） |
+| mind_map_markdown | TEXT | Markdown 大纲（纯标题层级树 + 叶子短语，禁代码块/表格；前端树形渲染） |
+| status | TEXT | GENERATED / CONFIRMED / SUPERSEDED（确认必选，确认不锁编辑） |
+| model / prompt_version | TEXT | 随版本留痕 |
+| user_feedback | TEXT | 可空；调整反馈 |
+| token_usage_json / latency_ms | TEXT / INTEGER ≥0 | 同 ai_summaries 行上留痕 |
+| confirmed_at | TEXT | 可空 |
 
 **todo_items** — Record 级任务（P1，〔软删〕）
 | 字段 | 类型 | 说明 |
