@@ -5,6 +5,7 @@ import type {
   QuizReadOut,
   RecordJobsOut,
   RecordOut,
+  ReviewMaterialReadOut,
   SummaryReadOut,
   TodoOut,
   TodoReadOut,
@@ -136,6 +137,13 @@ export const recordApi = {
   },
   getTodos: (recordId: string) =>
     apiFetch<TodoReadOut>(`/api/records/${recordId}/todos`),
+  getReviewMaterial: (recordId: string) =>
+    apiFetch<ReviewMaterialReadOut>(`/api/records/${recordId}/review-material`),
+  submitReviewMaterial: (recordId: string) =>
+    apiFetch<components["schemas"]["ReviewMaterialJobAccepted"]>(
+      `/api/records/${recordId}/review-material-jobs`,
+      { method: "POST" },
+    ),
   submitTodoGeneration(recordId: string) {
     return apiFetch<components["schemas"]["TodoJobAccepted"]>(
       `/api/records/${recordId}/todo-jobs`,

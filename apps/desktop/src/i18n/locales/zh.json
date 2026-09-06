@@ -407,8 +407,8 @@
         "todo": "Todo",
         "askAi": "Ask AI"
       },
-      "assetsUnavailable": "确认总结后解锁习题与 Todo；复习与 Ask AI 尚未接入",
-      "assetsCompleted": "复习与 Ask AI 尚未接入",
+      "assetsUnavailable": "确认总结后解锁习题、复习与 Todo；Ask AI 尚未接入",
+      "assetsCompleted": "复习资料已解锁；Ask AI 尚未接入",
       "export": {
         "menuLabel": "导出 Markdown",
         "allAssets": "导出全部学习资产",
@@ -447,6 +447,32 @@
         "invalidResponse": "学习资产响应格式无效",
         "writeFailed": "文件写入失败，未保存"
       },
+      "review": {
+        "loading": "正在读取复习资料",
+        "errorTitle": "复习资料暂时无法读取",
+        "processingTitle": "正在生成复习资料",
+        "processingDescription": "正在覆盖全文并整理三段内容；可以离开页面，完成后会自动显示。",
+        "quickReviewTitle": "考前速记",
+        "keyListTitle": "重点清单",
+        "outlineTitle": "大纲树",
+        "emptyTitle": "生成这条记录的复习资料",
+        "emptyDescription": "以完整原文为主、已确认总结为辅助，生成考前速记、重点清单和大纲树。",
+        "generate": "生成复习资料",
+        "failedTitle": "复习资料生成失败",
+        "failedDescription": "原文和已确认总结仍保留，可以明确重试。",
+        "retry": "重新生成复习资料",
+        "consentTitle": "同意外部 AI 处理",
+        "consentDescription": "生成复习资料会把完整原文和已确认总结发送到你配置的第三方 AI Provider。",
+        "grantConsent": "同意并继续生成",
+        "openSummary": "前往 Summary",
+        "blocked": {
+          "summaryTitle": "请先确认总结",
+          "summaryDescription": "返回 Summary 完成确认后即可生成复习资料。",
+          "title": "当前无法生成复习资料",
+          "COURSE_ARCHIVED": "所属课程已归档，不能发起新的复习资料生成。",
+          "TRANSCRIPT_NOT_READY": "Transcript 尚未准备好。"
+        }
+      },
       "jobs": {
         "title": "处理进度",
         "progress": "{{value}}%",
@@ -458,7 +484,8 @@
           "DOCUMENT_PARSE": "本地文档正文提取",
           "SUMMARY": "AI 总结",
           "KNOWLEDGE_EXTRACTION": "知识点提取",
-          "QUIZ_GENERATION": "习题生成"
+          "QUIZ_GENERATION": "习题生成",
+          "REVIEW_MATERIAL_GENERATION": "复习资料生成"
         },
         "status": {
           "PENDING": "等待中",

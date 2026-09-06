@@ -41,6 +41,14 @@
   --sidebar-ring: var(--ring);
 }
 
+.markdown-code-token {
+  color: var(--shiki-light);
+}
+
+.dark .markdown-code-token {
+  color: var(--shiki-dark);
+}
+
 .dark {
   color-scheme: dark;
   --canvas: #191918;
@@ -124,5 +132,9 @@
     --sidebar-accent-foreground: var(--ink-strong);
     --sidebar-border: var(--border);
     --sidebar-ring: var(--ring);
+  }
+
+  :root:not(.light) .markdown-code-token {
+    color: var(--shiki-dark);
   }
 }

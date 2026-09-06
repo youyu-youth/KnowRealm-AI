@@ -27,7 +27,9 @@ const ROUTE_PATH = `/records/${RECORD_ID}`;
 const JOB_ID = "33333333-3333-4333-8333-333333333333";
 const JOBS_URL = `${DETAIL_URL}/jobs`;
 const SUMMARY_URL = `${DETAIL_URL}/summary`;
+const REVIEW_MATERIAL_URL = `${DETAIL_URL}/review-material`;
 const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
+const LLM_CONSENT_URL = `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/llm`;
 
 function jobsResponse(
   job: Partial<components["schemas"]["ProcessingJobOut"]> = {},
@@ -224,11 +226,137 @@ describe("学习记录详情", () => {
       );
     }
     expect(
-      screen.getByText("确认总结后解锁习题与 Todo；复习与 Ask AI 尚未接入"),
+      screen.getByText("确认总结后解锁习题、复习与 Todo；Ask AI 尚未接入"),
     ).toBeInTheDocument();
     expect(screen.queryByText(/示例总结/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Transcript" }));
     expect(await screen.findByText("正文尚未生成")).toBeVisible();
+  });
+
+  it("完成记录可从 review 路由生成并轮询进行中态", async () => {
+    let active = false;
+    let submits = 0;
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          status: "COMPLETED",
+          summary_confirmed_at: "2026-09-06T12:00:00.000000Z",
+        }),
+      ),
+      http.get(REVIEW_MATERIAL_URL, () =>
+        HttpResponse.json({
+          review_material: null,
+          action_required: active ? "NONE" : "GENERATE",
+          blocked_reason: null,
+          active_job_id: active ? JOB_ID : null,
+        }),
+      ),
+      http.post(`${DETAIL_URL}/review-material-jobs`, () => {
+        submits += 1;
+        if (submits === 1) {
+          return HttpResponse.json(
+            { detail: "Provider 暂时不可用" },
+            { status: 500 },
+          );
+        }
+        active = true;
+        return HttpResponse.json({ job_id: JOB_ID }, { status: 202 });
+      }),
+    );
+
+    renderAt(`${ROUTE_PATH}?tab=review`);
+    expect(await screen.findByRole("tab", { name: "复习" })).toBeEnabled();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "生成复习资料" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Provider 暂时不可用",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "生成复习资料" }));
+    expect(await screen.findByText("正在生成复习资料")).toBeVisible();
+    expect(submits).toBe(2);
+  });
+
+  it("review 路由按考前速记、重点清单和大纲树显示生成结果", async () => {
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          status: "COMPLETED",
+          summary_confirmed_at: "2026-09-06T12:00:00.000000Z",
+        }),
+      ),
+      http.get(REVIEW_MATERIAL_URL, () =>
+        HttpResponse.json({
+          review_material: {
+            id: "55555555-5555-4555-8555-555555555555",
+            record_id: RECORD_ID,
+            version_no: 1,
+            transcript_source_version: 1,
+            generated_from_summary_id: "66666666-6666-4666-8666-666666666666",
+            quick_review: "## 调度速记\n\n时间片轮转兼顾公平性。",
+            key_list: ["理解调度目标", "比较调度算法"],
+            mind_map_markdown:
+              "- 根级重点\n# 进程调度\n## 基础\n- 调度目标\n## 算法\n- 时间片轮转",
+            status: "GENERATED",
+            model: "qwen-plus",
+            prompt_version: "review_v1",
+            user_feedback: null,
+            created_at: "2026-09-06T12:00:00.000000Z",
+          },
+          action_required: "NONE",
+          blocked_reason: null,
+          active_job_id: null,
+        }),
+      ),
+    );
+
+    renderAt(`${ROUTE_PATH}?tab=review`);
+
+    expect(
+      await screen.findByRole("heading", { name: "考前速记" }),
+    ).toBeVisible();
+    expect(screen.getByText("时间片轮转兼顾公平性。")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "重点清单" })).toBeVisible();
+    expect(screen.getByText("比较调度算法")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "大纲树" })).toBeVisible();
+    expect(screen.getByText("根级重点")).toBeVisible();
+    const branches = screen.getAllByRole("group");
+    expect(branches.every((branch) => branch.hasAttribute("open"))).toBe(true);
+  });
+
+  it("复习资料授权失败时保留操作入口并显示服务端错误", async () => {
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({
+          ...record,
+          status: "COMPLETED",
+          summary_confirmed_at: "2026-09-06T12:00:00.000000Z",
+        }),
+      ),
+      http.get(REVIEW_MATERIAL_URL, () =>
+        HttpResponse.json({
+          review_material: null,
+          action_required: "GRANT_CONSENT",
+          blocked_reason: null,
+          active_job_id: null,
+        }),
+      ),
+      http.post(LLM_CONSENT_URL, () =>
+        HttpResponse.json({ detail: "授权写入失败" }, { status: 500 }),
+      ),
+    );
+
+    renderAt(`${ROUTE_PATH}?tab=review`);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "同意并继续生成" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("授权写入失败");
+    expect(
+      screen.getByRole("button", { name: "同意并继续生成" }),
+    ).toBeEnabled();
   });
 });
 

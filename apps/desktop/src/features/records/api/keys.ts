@@ -11,8 +11,9 @@ export const recordKeys = {
     [...recordKeys.all, "knowledge-points", recordId] as const,
   quizzes: (recordId: string) =>
     [...recordKeys.all, "quizzes", recordId] as const,
-  todos: (recordId: string) =>
-    [...recordKeys.all, "todos", recordId] as const,
+  todos: (recordId: string) => [...recordKeys.all, "todos", recordId] as const,
+  reviewMaterial: (recordId: string) =>
+    [...recordKeys.all, "review-material", recordId] as const,
   courseList: (courseId: string) =>
     [...recordKeys.all, "course", courseId] as const,
   inbox: () => [...recordKeys.all, "inbox"] as const,

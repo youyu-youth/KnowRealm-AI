@@ -14,7 +14,8 @@ export type KnowledgePointReadOut =
 export type KnowledgePointOut = components["schemas"]["KnowledgePointOut"];
 export type QuizReadOut = components["schemas"]["QuizReadOut"];
 export type QuizOut = components["schemas"]["QuizOut"];
-export type QuizGenerateRequest =
-  components["schemas"]["QuizGenerateRequest"];
+export type QuizGenerateRequest = components["schemas"]["QuizGenerateRequest"];
 export type TodoReadOut = components["schemas"]["TodoReadOut"];
 export type TodoOut = components["schemas"]["TodoOut"];
+export type ReviewMaterialReadOut =
+  components["schemas"]["ReviewMaterialReadOut"];

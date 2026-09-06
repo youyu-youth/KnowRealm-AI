@@ -16,6 +16,7 @@ import {
   RecordExportStatus,
 } from "@/features/records/components/RecordExportMenu";
 import { QuizPanel } from "@/features/records/components/QuizPanel";
+import { ReviewMaterialPanel } from "@/features/records/components/ReviewMaterialPanel";
 import { SummaryPanel } from "@/features/records/components/SummaryPanel";
 import { TodoPanel } from "@/features/records/components/TodoPanel";
 import { TranscriptPanel } from "@/features/records/components/TranscriptPanel";
@@ -30,7 +31,7 @@ import {
 import { ApiError } from "@/services/http/client";
 
 export type RecordDetailTab =
-  "summary" | "transcript" | "knowledge-points" | "quiz" | "todo";
+  "summary" | "transcript" | "knowledge-points" | "quiz" | "review" | "todo";
 
 type RecordDetailPageProps = {
   recordId: string;
@@ -42,7 +43,6 @@ type RecordDetailPageProps = {
 };
 
 const unavailableTabs = [
-  { value: "review", labelKey: "record.detail.tabs.review" },
   { value: "ask-ai", labelKey: "record.detail.tabs.askAi" },
 ] as const;
 
@@ -98,6 +98,9 @@ export function RecordDetailPage({
         }),
         queryClient.invalidateQueries({
           queryKey: recordKeys.transcript(recordId),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: recordKeys.reviewMaterial(recordId),
         }),
       ]);
     },
@@ -226,6 +229,7 @@ export function RecordDetailPage({
             value === "transcript" ||
             value === "knowledge-points" ||
             value === "quiz" ||
+            value === "review" ||
             value === "todo"
           ) {
             onTabChange(value);
@@ -256,6 +260,17 @@ export function RecordDetailPage({
             }
           >
             {t("record.detail.tabs.quiz")}
+          </TabsTrigger>
+          <TabsTrigger
+            value="review"
+            disabled={detail.status !== "COMPLETED"}
+            aria-describedby={
+              detail.status === "COMPLETED"
+                ? undefined
+                : "record-assets-unavailable"
+            }
+          >
+            {t("record.detail.tabs.review")}
           </TabsTrigger>
           <TabsTrigger
             value="todo"
@@ -329,6 +344,19 @@ export function RecordDetailPage({
         >
           <QuizPanel
             recordId={recordId}
+            onOpenSummary={() => onTabChange("summary")}
+          />
+        </TabsContent>
+
+        <TabsContent
+          value="review"
+          className="border-border mt-6 min-w-0 border-t pt-8"
+        >
+          <ReviewMaterialPanel
+            recordId={recordId}
+            enabled={
+              tab === "review" && !isDeleting && detail.status === "COMPLETED"
+            }
             onOpenSummary={() => onTabChange("summary")}
           />
         </TabsContent>
