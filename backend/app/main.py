@@ -38,10 +38,12 @@ from app.modules.llm.service import (
     OpenAiCompatibleKnowledgePointModel,
     OpenAiCompatibleQuizGradingModel,
     OpenAiCompatibleQuizModel,
+    OpenAiCompatibleReviewMaterialModel,
     OpenAiCompatibleSummaryModel,
     OpenAiCompatibleTodoModel,
     QuizGradingModel,
     QuizModel,
+    ReviewMaterialModel,
     SummaryModel,
     TodoModel,
 )
@@ -50,6 +52,9 @@ from app.modules.quiz import quiz_tests, quizzes
 from app.modules.quiz.grading_worker import quiz_grading_spec
 from app.modules.quiz.worker import quiz_spec
 from app.modules.record import records
+from app.modules.review_material import review_materials
+from app.modules.review_material.graph import build_review_material_graph
+from app.modules.review_material.worker import review_material_spec
 from app.modules.settings import routes as settings_routes
 from app.modules.summary import summaries
 from app.modules.summary.graph import build_summary_graph
@@ -83,6 +88,7 @@ def create_app(
     quiz_model: QuizModel | None = None,
     quiz_grading_model: QuizGradingModel | None = None,
     todo_model: TodoModel | None = None,
+    review_material_model: ReviewMaterialModel | None = None,
     import_archive: Path | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
@@ -115,6 +121,9 @@ def create_app(
             app.state.quiz_model = quiz_model or OpenAiCompatibleQuizModel()
             app.state.quiz_grading_model = quiz_grading_model or OpenAiCompatibleQuizGradingModel()
             app.state.todo_model = todo_model or OpenAiCompatibleTodoModel()
+            app.state.review_material_model = (
+                review_material_model or OpenAiCompatibleReviewMaterialModel()
+            )
             app.state.asr_client = asr_client or TencentAsrClient()
 
             async def cleanup_course_tombstones() -> None:
@@ -139,6 +148,7 @@ def create_app(
                 if initialize_checkpointer:
                     await checkpointer.setup()
                 summary_graph = build_summary_graph(checkpointer)
+                review_material_graph = build_review_material_graph(checkpointer)
                 app.state.summary_graph = summary_graph
                 app.state.chat_checkpointer = checkpointer
 
@@ -173,6 +183,20 @@ def create_app(
                                 resolved_data_dir,
                                 summary_graph,
                                 app.state.summary_model,
+                                record_notifier,
+                            ),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
+                    (
+                        "review_material",
+                        lambda: JobRunner(
+                            review_material_spec(
+                                session_factory,
+                                resolved_data_dir,
+                                review_material_graph,
+                                app.state.review_material_model,
                                 record_notifier,
                             ),
                             session_factory,
@@ -276,6 +300,7 @@ def create_app(
     app.include_router(settings_routes.router)
     app.include_router(data_routes.router)
     app.include_router(summaries.router)
+    app.include_router(review_materials.router)
     app.include_router(knowledge_points.router)
     app.include_router(quizzes.router)
     app.include_router(quiz_tests.router)

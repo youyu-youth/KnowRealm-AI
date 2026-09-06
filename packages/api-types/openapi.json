@@ -1645,7 +1645,8 @@
           "KNOWLEDGE_EXTRACTION",
           "QUIZ_GENERATION",
           "TODO_GENERATION",
-          "QUIZ_GRADING"
+          "QUIZ_GRADING",
+          "REVIEW_MATERIAL_GENERATION"
         ],
         "title": "ProcessingJobType",
         "type": "string"
@@ -3007,6 +3008,180 @@
         ],
         "title": "RecordingSessionUpdate",
         "type": "object"
+      },
+      "ReviewMaterialAction": {
+        "enum": [
+          "NONE",
+          "CONFIGURE_PROVIDER",
+          "GRANT_CONSENT",
+          "GENERATE",
+          "RETRY"
+        ],
+        "title": "ReviewMaterialAction",
+        "type": "string"
+      },
+      "ReviewMaterialBlockedReason": {
+        "enum": [
+          "SUMMARY_NOT_CONFIRMED",
+          "COURSE_ARCHIVED",
+          "TRANSCRIPT_NOT_READY"
+        ],
+        "title": "ReviewMaterialBlockedReason",
+        "type": "string"
+      },
+      "ReviewMaterialJobAccepted": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "ReviewMaterialJobAccepted",
+        "type": "object"
+      },
+      "ReviewMaterialOut": {
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "generated_from_summary_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated From Summary Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key_list": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Key List",
+            "type": "array"
+          },
+          "mind_map_markdown": {
+            "title": "Mind Map Markdown",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "quick_review": {
+            "title": "Quick Review",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewMaterialStatus"
+          },
+          "transcript_source_version": {
+            "title": "Transcript Source Version",
+            "type": "integer"
+          },
+          "user_feedback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Feedback"
+          },
+          "version_no": {
+            "title": "Version No",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "record_id",
+          "version_no",
+          "transcript_source_version",
+          "generated_from_summary_id",
+          "quick_review",
+          "key_list",
+          "mind_map_markdown",
+          "status",
+          "model",
+          "prompt_version",
+          "created_at"
+        ],
+        "title": "ReviewMaterialOut",
+        "type": "object"
+      },
+      "ReviewMaterialReadOut": {
+        "properties": {
+          "action_required": {
+            "$ref": "#/components/schemas/ReviewMaterialAction"
+          },
+          "active_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Job Id"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewMaterialBlockedReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review_material": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewMaterialOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "review_material",
+          "action_required"
+        ],
+        "title": "ReviewMaterialReadOut",
+        "type": "object"
+      },
+      "ReviewMaterialStatus": {
+        "enum": [
+          "GENERATED",
+          "CONFIRMED",
+          "SUPERSEDED"
+        ],
+        "title": "ReviewMaterialStatus",
+        "type": "string"
       },
       "SummaryAction": {
         "enum": [
@@ -9427,6 +9602,204 @@
         "summary": "Self Assess Short Quiz",
         "tags": [
           "quizzes"
+        ]
+      }
+    },
+    "/api/records/{record_id}/review-material": {
+      "get": {
+        "operationId": "get_review_material_api_records__record_id__review_material_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMaterialReadOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Review Material",
+        "tags": [
+          "review-materials"
+        ]
+      }
+    },
+    "/api/records/{record_id}/review-material-jobs": {
+      "post": {
+        "operationId": "submit_review_material_api_records__record_id__review_material_jobs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewMaterialJobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Submit Review Material",
+        "tags": [
+          "review-materials"
         ]
       }
     },

@@ -8,6 +8,7 @@ from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
+from app.modules.review_material.models import ReviewMaterial
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.todo.models import TodoItem
@@ -82,6 +83,14 @@ class RecordService:
                 session,
                 record_filter=ProcessingJob.record_id == record_id,
                 now=deleted_at,
+            )
+            await session.execute(
+                update(ReviewMaterial)
+                .where(
+                    ReviewMaterial.record_id == record_id,
+                    ReviewMaterial.deleted_at.is_(None),
+                )
+                .values(deleted_at=deleted_at, updated_at=deleted_at)
             )
             await session.execute(
                 update(TodoItem)

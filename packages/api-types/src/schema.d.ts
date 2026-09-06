@@ -703,6 +703,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/review-material": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Review Material */
+        get: operations["get_review_material_api_records__record_id__review_material_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/records/{record_id}/review-material-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Review Material */
+        post: operations["submit_review_material_api_records__record_id__review_material_jobs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/summaries": {
         parameters: {
             query?: never;
@@ -1752,7 +1786,7 @@ export interface components {
          * ProcessingJobType
          * @enum {string}
          */
-        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING";
+        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING" | "REVIEW_MATERIAL_GENERATION";
         /**
          * ProcessingJobWaitingReason
          * @enum {string}
@@ -2168,6 +2202,62 @@ export interface components {
         RecordingSessionUpdate: {
             target_state: components["schemas"]["RecordingSessionTargetState"];
         };
+        /**
+         * ReviewMaterialAction
+         * @enum {string}
+         */
+        ReviewMaterialAction: "NONE" | "CONFIGURE_PROVIDER" | "GRANT_CONSENT" | "GENERATE" | "RETRY";
+        /**
+         * ReviewMaterialBlockedReason
+         * @enum {string}
+         */
+        ReviewMaterialBlockedReason: "SUMMARY_NOT_CONFIRMED" | "COURSE_ARCHIVED" | "TRANSCRIPT_NOT_READY";
+        /** ReviewMaterialJobAccepted */
+        ReviewMaterialJobAccepted: {
+            /** Job Id */
+            job_id: string;
+        };
+        /** ReviewMaterialOut */
+        ReviewMaterialOut: {
+            /** Created At */
+            created_at: string;
+            /** Generated From Summary Id */
+            generated_from_summary_id: string | null;
+            /** Id */
+            id: string;
+            /** Key List */
+            key_list: string[];
+            /** Mind Map Markdown */
+            mind_map_markdown: string;
+            /** Model */
+            model: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Quick Review */
+            quick_review: string;
+            /** Record Id */
+            record_id: string;
+            status: components["schemas"]["ReviewMaterialStatus"];
+            /** Transcript Source Version */
+            transcript_source_version: number;
+            /** User Feedback */
+            user_feedback?: string | null;
+            /** Version No */
+            version_no: number;
+        };
+        /** ReviewMaterialReadOut */
+        ReviewMaterialReadOut: {
+            action_required: components["schemas"]["ReviewMaterialAction"];
+            /** Active Job Id */
+            active_job_id?: string | null;
+            blocked_reason?: components["schemas"]["ReviewMaterialBlockedReason"] | null;
+            review_material: components["schemas"]["ReviewMaterialOut"] | null;
+        };
+        /**
+         * ReviewMaterialStatus
+         * @enum {string}
+         */
+        ReviewMaterialStatus: "GENERATED" | "CONFIRMED" | "SUPERSEDED";
         /**
          * SummaryAction
          * @enum {string}
@@ -6285,6 +6375,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QuizOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_review_material_api_records__record_id__review_material_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewMaterialReadOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_review_material_api_records__record_id__review_material_jobs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewMaterialJobAccepted"];
                 };
             };
             /** @description Forbidden */

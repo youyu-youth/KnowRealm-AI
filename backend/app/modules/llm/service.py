@@ -14,6 +14,7 @@ from app.db.base import utcnow
 from app.modules.knowledge_point.schemas import KnowledgePointBatch
 from app.modules.llm.models import LlmCallLog
 from app.modules.quiz.schemas import QuizBatch, ShortAnswerGrade
+from app.modules.review_material.schemas import ReviewMaterialContent
 from app.modules.settings.config import LlmProviderConfig
 from app.modules.summary.schemas import SummaryContent
 from app.modules.todo.schemas import TodoBatch
@@ -63,6 +64,13 @@ class TodoCallResult:
     latency_ms: int
 
 
+@dataclass(frozen=True)
+class ReviewMaterialCallResult:
+    content: ReviewMaterialContent
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
 class StructuredModel(Protocol):
     async def generate(
         self,
@@ -79,6 +87,8 @@ KnowledgePointModel = StructuredModel
 QuizModel = StructuredModel
 QuizGradingModel = StructuredModel
 TodoModel = StructuredModel
+ReviewMaterialModel = StructuredModel
+ReviewMaterialModelResult = StructuredModelResult
 
 
 class StructuredGenerationError(Exception):
@@ -178,6 +188,11 @@ class OpenAiCompatibleQuizGradingModel(_OpenAiCompatibleStructuredModel):
 class OpenAiCompatibleTodoModel(_OpenAiCompatibleStructuredModel):
     def __init__(self) -> None:
         super().__init__(TodoBatch)
+
+
+class OpenAiCompatibleReviewMaterialModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self) -> None:
+        super().__init__(ReviewMaterialContent)
 
 
 def build_chat_model(
@@ -420,6 +435,32 @@ async def call_todo_model(
     )
     return TodoCallResult(
         content=cast(TodoBatch, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )
+
+
+async def call_review_material_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    review_material_model: ReviewMaterialModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> ReviewMaterialCallResult:
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=review_material_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="review-material",
+        graph_node="generate",
+        prompt_version=prompt_version,
+        output_schema=ReviewMaterialContent,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+    )
+    return ReviewMaterialCallResult(
+        content=cast(ReviewMaterialContent, result.content),
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
     )
