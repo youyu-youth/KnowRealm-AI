@@ -3240,6 +3240,154 @@
         "title": "ReviewMaterialStatus",
         "type": "string"
       },
+      "SearchCourseItem": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "snippet",
+          "updated_at"
+        ],
+        "title": "SearchCourseItem",
+        "type": "object"
+      },
+      "SearchKnowledgePointItem": {
+        "properties": {
+          "course_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "所属课程名；记录未归类时为 null",
+            "title": "Course Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "record_id": {
+            "description": "所属学习记录 id（跳转宿主）",
+            "title": "Record Id",
+            "type": "string"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "snippet",
+          "course_name",
+          "record_id",
+          "updated_at"
+        ],
+        "title": "SearchKnowledgePointItem",
+        "type": "object"
+      },
+      "SearchOut": {
+        "properties": {
+          "courses": {
+            "items": {
+              "$ref": "#/components/schemas/SearchCourseItem"
+            },
+            "title": "Courses",
+            "type": "array"
+          },
+          "knowledge_points": {
+            "items": {
+              "$ref": "#/components/schemas/SearchKnowledgePointItem"
+            },
+            "title": "Knowledge Points",
+            "type": "array"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/SearchRecordItem"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "courses",
+          "records",
+          "knowledge_points"
+        ],
+        "title": "SearchOut",
+        "type": "object"
+      },
+      "SearchRecordItem": {
+        "properties": {
+          "course_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "所属课程名；未归类记录为 null",
+            "title": "Course Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "snippet": {
+            "title": "Snippet",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "snippet",
+          "course_name",
+          "updated_at"
+        ],
+        "title": "SearchRecordItem",
+        "type": "object"
+      },
       "SummaryAction": {
         "enum": [
           "NONE",
@@ -12076,6 +12224,102 @@
         "summary": "Upgrade Record",
         "tags": [
           "records"
+        ]
+      }
+    },
+    "/api/search": {
+      "get": {
+        "operationId": "search_api_search_get",
+        "parameters": [
+          {
+            "description": "检索关键词",
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "description": "检索关键词",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "description": "每类结果上限",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "description": "每类结果上限",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Search",
+        "tags": [
+          "search"
         ]
       }
     },

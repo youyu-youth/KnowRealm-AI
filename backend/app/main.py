@@ -55,6 +55,9 @@ from app.modules.record import records
 from app.modules.review_material import review_materials
 from app.modules.review_material.graph import build_review_material_graph
 from app.modules.review_material.worker import review_material_spec
+from app.modules.search import search as search_routes
+from app.modules.search.service import SearchService
+from app.modules.search.tokenizer import warmup as warmup_jieba
 from app.modules.settings import routes as settings_routes
 from app.modules.summary import summaries
 from app.modules.summary.graph import build_summary_graph
@@ -113,6 +116,13 @@ def create_app(
             engine, session_factory = create_database(db_path)
             app.state.session_factory = session_factory
             app.state.data_dir = resolved_data_dir
+            # 索引是可再生衍生数据：回填失败不阻断启动，下次启动重试（与滚动备份同容错级）。
+            try:
+                # jieba 词典首载约 0.5~1s，放线程池预热避免阻塞事件循环（ADR-0016）。
+                await asyncio.to_thread(warmup_jieba)
+                await SearchService.backfill_missing(session_factory)
+            except Exception:
+                logger.error("search_index_backfill_failed", error_code="SEARCH_BACKFILL_FAILED")
             app.state.ffmpeg_path = ffmpeg_path.resolve() if ffmpeg_path is not None else None
             app.state.summary_model = summary_model or OpenAiCompatibleSummaryModel()
             app.state.knowledge_point_model = (
@@ -311,6 +321,7 @@ def create_app(
     app.include_router(recording_sessions.router)
     app.include_router(records.router)
     app.include_router(text_captures.router)
+    app.include_router(search_routes.router)
     app.include_router(chat_sessions.router)
     app.include_router(profile.router)
 

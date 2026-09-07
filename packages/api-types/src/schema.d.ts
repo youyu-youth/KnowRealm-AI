@@ -1030,6 +1030,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search */
+        get: operations["search_api_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/data-directory/export": {
         parameters: {
             query?: never;
@@ -2375,6 +2392,63 @@ export interface components {
          * @enum {string}
          */
         ReviewMaterialStatus: "GENERATED" | "CONFIRMED" | "SUPERSEDED";
+        /** SearchCourseItem */
+        SearchCourseItem: {
+            /** Id */
+            id: string;
+            /** Snippet */
+            snippet: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** SearchKnowledgePointItem */
+        SearchKnowledgePointItem: {
+            /**
+             * Course Name
+             * @description 所属课程名；记录未归类时为 null
+             */
+            course_name: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Record Id
+             * @description 所属学习记录 id（跳转宿主）
+             */
+            record_id: string;
+            /** Snippet */
+            snippet: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** SearchOut */
+        SearchOut: {
+            /** Courses */
+            courses: components["schemas"]["SearchCourseItem"][];
+            /** Knowledge Points */
+            knowledge_points: components["schemas"]["SearchKnowledgePointItem"][];
+            /** Records */
+            records: components["schemas"]["SearchRecordItem"][];
+        };
+        /** SearchRecordItem */
+        SearchRecordItem: {
+            /**
+             * Course Name
+             * @description 所属课程名；未归类记录为 null
+             */
+            course_name: string | null;
+            /** Id */
+            id: string;
+            /** Snippet */
+            snippet: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
         /**
          * SummaryAction
          * @enum {string}
@@ -8113,6 +8187,60 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    search_api_search_get: {
+        parameters: {
+            query: {
+                /** @description 检索关键词 */
+                q: string;
+                /** @description 每类结果上限 */
+                limit?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
