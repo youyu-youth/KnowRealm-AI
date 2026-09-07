@@ -9,6 +9,7 @@ from app.modules.jobs.models import ProcessingJob
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.review_material.models import ReviewMaterial
+from app.modules.search.service import SearchService
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.todo.models import TodoItem
@@ -157,4 +158,5 @@ class RecordService:
                 record.status = RecordStatus.SUMMARY_PENDING
                 record.updated_at = now
             await session.flush()
+            await SearchService.upsert_record_index(session, record_id)
         return transcript

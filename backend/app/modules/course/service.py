@@ -18,6 +18,7 @@ from app.modules.course.schemas import (
 from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
 from app.modules.record.models import Record
+from app.modules.search.service import SearchService
 
 
 class CourseService:
@@ -27,6 +28,7 @@ class CourseService:
         async with session.begin():
             session.add(course)
             await session.flush()
+            await SearchService.upsert_course_index(session, course.id)
         return course
 
     @staticmethod
@@ -78,6 +80,7 @@ class CourseService:
                     setattr(course, field, value)
                 course.updated_at = utcnow()
             await session.flush()
+            await SearchService.upsert_course_index(session, course_id)
         return course
 
     @staticmethod

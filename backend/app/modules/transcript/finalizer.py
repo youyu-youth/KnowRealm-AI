@@ -14,6 +14,7 @@ from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
+from app.modules.search.service import SearchService
 from app.modules.transcript.models import Transcript
 
 _FINALIZE_LOCK = asyncio.Lock()
@@ -148,6 +149,7 @@ async def _finalize_record_if_ready(
         record.status = RecordStatus.SUMMARY_PENDING
         record.updated_at = now
         await session.flush()
+        await SearchService.upsert_record_index(session, record_id)
 
     for cache_dir in (
         data_dir / "cache" / "audio" / record_id,
@@ -276,6 +278,7 @@ async def complete_source_job(
                 record.updated_at = now
                 finalized = True
             await session.flush()
+            await SearchService.upsert_record_index(session, record_id)
         if finalized:
             for cache_dir in (
                 data_dir / "cache" / "audio" / record_id,

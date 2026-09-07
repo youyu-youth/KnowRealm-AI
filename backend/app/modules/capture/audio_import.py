@@ -26,6 +26,7 @@ from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
+from app.modules.search.service import SearchService
 
 SUPPORTED_AUDIO = {
     ".mp3": "audio/mpeg",
@@ -214,6 +215,7 @@ class AudioImportService:
                     ]
                 )
                 await session.flush()
+                await SearchService.upsert_record_index(session, record_id)
         except BaseException:
             for path in (final_path, temporary_path):
                 try:

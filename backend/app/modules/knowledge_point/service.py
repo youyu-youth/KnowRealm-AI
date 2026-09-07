@@ -26,6 +26,7 @@ from app.modules.knowledge_point.schemas import (
     KnowledgePointWriteRequest,
 )
 from app.modules.record.models import LearningEvent, Record
+from app.modules.search.service import SearchService
 from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
@@ -353,6 +354,7 @@ class KnowledgePointService:
             )
             session.add(item)
             await session.flush()
+            await SearchService.upsert_knowledge_point_index(session, item.id)
             return _knowledge_point_out(item)
 
     @staticmethod
@@ -371,6 +373,7 @@ class KnowledgePointService:
             item.importance = body.importance
             item.updated_at = utcnow()
             await session.flush()
+            await SearchService.upsert_knowledge_point_index(session, item.id)
             return _knowledge_point_out(item)
 
     @staticmethod
@@ -462,6 +465,9 @@ class KnowledgePointService:
                         created_at=now,
                     )
                 )
+                # 确认不改检索内容，但显式补齐索引行：候选期间缺行的旧数据确认后同样可搜。
+                for row in draft_rows:
+                    await SearchService.upsert_knowledge_point_index(session, row.id)
         except IntegrityError:
             # 并发确认时由幂等键唯一约束兜底：另一事务已提交，读取现状返回。
             pass

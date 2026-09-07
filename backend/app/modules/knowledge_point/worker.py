@@ -38,6 +38,7 @@ from app.modules.llm.service import (
     call_knowledge_point_model,
 )
 from app.modules.record.models import Record
+from app.modules.search.service import SearchService
 from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
@@ -210,6 +211,7 @@ async def writeback(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> bool:
     now = utcnow()
+    new_item_ids: list[str] = []
     async with session_factory() as session, session.begin():
         job = await session.get(ProcessingJob, ctx.job_id)
         record = await session.get(Record, ctx.record_id)
@@ -241,9 +243,11 @@ async def writeback(
             job.updated_at = now
             return False
         for candidate in call_result.content.items:
+            item_id = str(uuid4())
+            new_item_ids.append(item_id)
             session.add(
                 KnowledgePoint(
-                    id=str(uuid4()),
+                    id=item_id,
                     record_id=ctx.record_id,
                     batch_id=ctx.job_id,
                     name=candidate.name,
@@ -273,6 +277,9 @@ async def writeback(
         job.error_message = None
         job.finished_at = now
         job.updated_at = now
+        await session.flush()
+        for item_id in new_item_ids:
+            await SearchService.upsert_knowledge_point_index(session, item_id)
     return True
 
 

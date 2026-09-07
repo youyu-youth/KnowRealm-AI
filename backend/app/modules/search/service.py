@@ -4,8 +4,11 @@
 真表取显示数据并过滤 `deleted_at` 与 ARCHIVED 课程（含其记录与知识点）。
 实体映射：记录（title=标题、body=转写正文）、知识点（title=名称、body=详情、
 keywords=tags）、课程（title=课程名、keywords=hot_words）。
+索引正文只取前 30,000 字符（`_INDEX_BODY_LIMIT`）：切词开销与正文长度线性，
+限长保证写路径同步索引的时延有界。
 """
 
+import asyncio
 import json
 from datetime import datetime
 from typing import cast
@@ -25,6 +28,10 @@ from app.modules.search.tokenizer import match_expression, tokenize
 ENTITY_COURSE = "course"
 ENTITY_RECORD = "record"
 ENTITY_KNOWLEDGE_POINT = "knowledge_point"
+
+# 索引正文限长（对齐 LLM 侧 TRANSCRIPT_LIMIT 量级）：jieba 是纯 Python CPU 密集，
+# 4 MiB 文档全文切词约 9 秒且同步阻塞事件循环；限长 + 线程池保证写路径毫秒级抖动。
+_INDEX_BODY_LIMIT = 30_000
 
 # bm25 列权重（title/body/keywords）：标题命中显著优先于正文命中。
 _FTS_MATCH_SQL = text(
@@ -134,6 +141,10 @@ def _json_words(raw: str | None) -> str:
     return tokenize(" ".join(cast("list[str]", words)))
 
 
+async def _tokenize_body(text: str) -> str:
+    return await asyncio.to_thread(tokenize, text[:_INDEX_BODY_LIMIT])
+
+
 class SearchService:
     """唯一搜索入口：HTTP 路由与未来 AI 对话检索工具共用。"""
 
@@ -159,7 +170,7 @@ class SearchService:
             ENTITY_RECORD,
             record_id,
             title=tokenize(cast(str, row.title)),
-            body=tokenize(cast("str | None", row.content) or ""),
+            body=await _tokenize_body(cast("str | None", row.content) or ""),
             keywords="",
         )
 
@@ -179,7 +190,7 @@ class SearchService:
             ENTITY_KNOWLEDGE_POINT,
             knowledge_point_id,
             title=tokenize(cast(str, row.name)),
-            body=tokenize(cast(str, row.detail)),
+            body=await _tokenize_body(cast(str, row.detail)),
             keywords=_json_words(cast(str, row.tags)),
         )
 
