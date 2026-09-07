@@ -25,6 +25,7 @@ type SummaryOut = components["schemas"]["SummaryOut"];
 type KnowledgePointOut = components["schemas"]["KnowledgePointOut"];
 type QuizOut = components["schemas"]["QuizOut"];
 type TodoOut = components["schemas"]["TodoOut"];
+type ReviewMaterialOut = components["schemas"]["ReviewMaterialOut"];
 
 const RECORD_ID = "22222222-2222-4222-8222-222222222222";
 const COURSE_ID = "11111111-1111-4111-8111-111111111111";
@@ -33,6 +34,7 @@ const SUMMARY_URL = `${DETAIL_URL}/summary`;
 const KNOWLEDGE_POINTS_URL = `${DETAIL_URL}/knowledge-points`;
 const QUIZZES_URL = `${DETAIL_URL}/quizzes`;
 const TODOS_URL = `${DETAIL_URL}/todos`;
+const REVIEW_URL = `${DETAIL_URL}/review-material`;
 const JOBS_URL = `${DETAIL_URL}/jobs`;
 const TRANSCRIPT_URL = `${DETAIL_URL}/transcript`;
 const LLM_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/llm`;
@@ -161,6 +163,32 @@ function todosResponse(items: TodoOut[]) {
   });
 }
 
+const confirmedReviewMaterial: ReviewMaterialOut = {
+  id: "aaaaaaa8-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  record_id: RECORD_ID,
+  version_no: 1,
+  transcript_source_version: 1,
+  generated_from_summary_id: confirmedSummary.id,
+  quick_review: "先把页表机制过一遍。",
+  key_list: ["页表完成虚拟地址翻译", "TLB 未命中才走多级页表"],
+  mind_map_markdown: "## 虚拟内存\n### 分页\n- 页表\n- TLB",
+  status: "CONFIRMED",
+  model: "qwen-plus",
+  prompt_version: "review_v1",
+  user_feedback: null,
+  created_at: "2026-08-25T12:00:00.000000Z",
+};
+
+function reviewMaterialResponse(material: ReviewMaterialOut | null) {
+  return HttpResponse.json({
+    action_required: "NONE",
+    active_job_id: null,
+    blocked_reason: null,
+    review_material: material,
+    transcript_stale: false,
+  });
+}
+
 const saveMock = vi.mocked(chooseMarkdownSavePath);
 const writeTextFileMock = vi.mocked(writeMarkdownFile);
 const openMock = vi.mocked(openExportedFile);
@@ -192,6 +220,7 @@ beforeEach(() => {
     http.get(KNOWLEDGE_POINTS_URL, () => knowledgePointsResponse([])),
     http.get(QUIZZES_URL, () => quizzesResponse([])),
     http.get(TODOS_URL, () => todosResponse([])),
+    http.get(REVIEW_URL, () => reviewMaterialResponse(null)),
     http.get(LLM_PROVIDER_URL, () => HttpResponse.json({ provider: null })),
     http.get(PREFERENCES_URL, () =>
       HttpResponse.json({
@@ -227,8 +256,14 @@ async function openAggregateExportMenu() {
 const SAVED_PATH = "C:\\学习资料\\操作系统第一讲-总结.md";
 
 describe("学习资产 Markdown 导出", () => {
-  it("聚合导出并行读取四类最新事实，按固定顺序保存不可变快照", async () => {
-    const reads = { summary: 0, knowledgePoints: 0, quizzes: 0, todos: 0 };
+  it("聚合导出并行读取五类最新事实，按固定顺序保存不可变快照", async () => {
+    const reads = {
+      summary: 0,
+      knowledgePoints: 0,
+      quizzes: 0,
+      todos: 0,
+      reviewMaterial: 0,
+    };
     server.use(
       http.get(SUMMARY_URL, () => {
         reads.summary += 1;
@@ -246,6 +281,10 @@ describe("学习资产 Markdown 导出", () => {
         reads.todos += 1;
         return todosResponse([todo()]);
       }),
+      http.get(REVIEW_URL, () => {
+        reads.reviewMaterial += 1;
+        return reviewMaterialResponse(confirmedReviewMaterial);
+      }),
     );
     saveMock.mockResolvedValue("C:\\学习资料\\操作系统第一讲-学习资产.md");
     writeTextFileMock.mockResolvedValue(undefined);
@@ -262,10 +301,13 @@ describe("学习资产 Markdown 导出", () => {
     );
     expect(reads.quizzes).toBeGreaterThan(readsBeforeExport.quizzes);
     expect(reads.todos).toBeGreaterThan(readsBeforeExport.todos);
+    expect(reads.reviewMaterial).toBeGreaterThan(
+      readsBeforeExport.reviewMaterial,
+    );
     expect(saveMock).toHaveBeenCalledWith("操作系统第一讲-学习资产.md");
     const markdown = writeTextFileMock.mock.calls[0][1];
     expect(markdown).toMatch(
-      /## 总结[\s\S]*## 知识点[\s\S]*## 习题[\s\S]*## Todo/,
+      /## 总结[\s\S]*## 知识点[\s\S]*## 习题[\s\S]*## 复习资料[\s\S]*## Todo/,
     );
     expect(markdown.match(/^# /gm)).toHaveLength(1);
     expect(markdown).not.toMatch(/正确答案|解析/);
@@ -287,7 +329,29 @@ describe("学习资产 Markdown 导出", () => {
     await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
     const markdown = writeTextFileMock.mock.calls[0][1];
     expect(markdown).toContain("## 习题");
-    expect(markdown).not.toMatch(/## 总结|## 知识点|## Todo/);
+    expect(markdown).not.toMatch(/## 总结|## 知识点|## 复习资料|## Todo/);
+  });
+
+  it("复习资料未定版时聚合导出省略复习资料章节，不影响其他资产", async () => {
+    server.use(
+      http.get(SUMMARY_URL, () => summaryResponse(confirmedSummary)),
+      http.get(REVIEW_URL, () =>
+        reviewMaterialResponse({
+          ...confirmedReviewMaterial,
+          status: "GENERATED",
+        }),
+      ),
+    );
+    saveMock.mockResolvedValue("D:\\资料\\操作系统第一讲-学习资产.md");
+    writeTextFileMock.mockResolvedValue(undefined);
+    renderAt();
+
+    fireEvent.click(await openAggregateExportMenu());
+
+    await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
+    const markdown = writeTextFileMock.mock.calls[0][1];
+    expect(markdown).toContain("## 总结");
+    expect(markdown).not.toMatch(/## 复习资料/);
   });
 
   it("聚合最新读取确认全部为空时提示暂无内容且不打开保存对话框", async () => {
@@ -371,8 +435,13 @@ describe("学习资产 Markdown 导出", () => {
     },
   );
 
-  it("四类缓存事实均已知且全部为空时禁用聚合导出", async () => {
-    const reads = { knowledgePoints: 0, quizzes: 0, todos: 0 };
+  it("五类缓存事实均已知且全部为空时禁用聚合导出", async () => {
+    const reads = {
+      knowledgePoints: 0,
+      quizzes: 0,
+      todos: 0,
+      reviewMaterial: 0,
+    };
     server.use(
       http.get(SUMMARY_URL, () => summaryResponse(null)),
       http.get(KNOWLEDGE_POINTS_URL, () => {
@@ -387,6 +456,10 @@ describe("学习资产 Markdown 导出", () => {
         reads.todos += 1;
         return todosResponse([]);
       }),
+      http.get(REVIEW_URL, () => {
+        reads.reviewMaterial += 1;
+        return reviewMaterialResponse(null);
+      }),
     );
     renderAt();
 
@@ -396,6 +469,8 @@ describe("学习资产 Markdown 导出", () => {
     await waitFor(() => expect(reads.quizzes).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole("tab", { name: "Todo" }));
     await waitFor(() => expect(reads.todos).toBeGreaterThan(0));
+    fireEvent.click(screen.getByRole("tab", { name: "复习" }));
+    await waitFor(() => expect(reads.reviewMaterial).toBeGreaterThan(0));
 
     const item = await openAggregateExportMenu();
     expect(item).toHaveAttribute("aria-disabled", "true");
@@ -750,6 +825,75 @@ describe("学习资产 Markdown 导出", () => {
     expect(item).toHaveTextContent("还没有正式 Todo");
     fireEvent.click(item);
     expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it("复习资料导出：已定版材料经保存对话框写入，默认名以复习资料结尾", async () => {
+    server.use(
+      http.get(REVIEW_URL, () =>
+        reviewMaterialResponse(confirmedReviewMaterial),
+      ),
+    );
+    saveMock.mockResolvedValue("D:\\资料\\操作系统第一讲-复习资料.md");
+    writeTextFileMock.mockResolvedValue(undefined);
+    renderAt(`${ROUTE_PATH}?tab=review`);
+
+    const item = await openExportMenu();
+    expect(item).not.toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(item);
+
+    await waitFor(() => expect(writeTextFileMock).toHaveBeenCalledTimes(1));
+    expect(saveMock).toHaveBeenCalledWith("操作系统第一讲-复习资料.md");
+    const [, markdown] = writeTextFileMock.mock.calls[0];
+    expect(markdown).toBe(
+      [
+        "# 操作系统第一讲",
+        "",
+        "## 复习资料",
+        "",
+        "### 考前速记",
+        "",
+        "先把页表机制过一遍。",
+        "",
+        "### 重点清单",
+        "",
+        "- 页表完成虚拟地址翻译",
+        "- TLB 未命中才走多级页表",
+        "",
+        "### 大纲树",
+        "",
+        "## 虚拟内存",
+        "### 分页",
+        "- 页表",
+        "- TLB",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("复习资料未定版时导出禁用并说明原因", async () => {
+    server.use(
+      http.get(REVIEW_URL, () =>
+        reviewMaterialResponse({
+          ...confirmedReviewMaterial,
+          status: "GENERATED",
+        }),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=review`);
+
+    const item = await openExportMenu();
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveTextContent("复习资料尚未确认，不能导出");
+    fireEvent.click(item);
+    await waitFor(() => expect(saveMock).not.toHaveBeenCalled());
+  });
+
+  it("还没有复习资料时导出禁用并说明原因", async () => {
+    renderAt(`${ROUTE_PATH}?tab=review`);
+
+    const item = await openExportMenu();
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveTextContent("还没有复习资料");
   });
 
   it("习题最新读取失败时显示错误，不伪装成空内容", async () => {

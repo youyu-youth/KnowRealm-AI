@@ -49,6 +49,19 @@ export type QuizExportLabels = {
   results: Record<NonNullable<QuizOut["answer_result"]>, string>;
 };
 
+export type ReviewMaterialExportSnapshot = {
+  quickReview: string;
+  keyList: readonly string[];
+  mindMapMarkdown: string;
+};
+
+export type ReviewMaterialExportLabels = {
+  assetTitle: string;
+  quickReviewTitle: string;
+  keyListTitle: string;
+  outlineTitle: string;
+};
+
 /**
  * 纯文本字段转义：井号、星号、下划线、反引号、方括号与原始 HTML 不改变文档结构，
  * 反斜杠先行转义保证用户输入的反斜杠不会吞掉后续转义；渲染后的可见文本不变。
@@ -247,6 +260,32 @@ export function serializeQuizMarkdown(
     );
   });
   return assembleDocument(blocks);
+}
+
+/** 复习资料三段保留自身 Markdown 与代码块语义原样输出，仅换行统一为 LF。 */
+export function serializeReviewMaterialMarkdown(
+  recordTitle: string,
+  snapshot: ReviewMaterialExportSnapshot,
+  labels: ReviewMaterialExportLabels,
+): string {
+  const keyList =
+    snapshot.keyList.length > 0
+      ? [snapshot.keyList.map((item) => `- ${item}`).join("\n")]
+      : [];
+  return assembleDocument([
+    `# ${escapePlainText(recordTitle)}`,
+    `## ${escapePlainText(labels.assetTitle)}`,
+    `### ${escapePlainText(labels.quickReviewTitle)}`,
+    toUnixNewlines(snapshot.quickReview),
+    `### ${escapePlainText(labels.keyListTitle)}`,
+    ...keyList,
+    `### ${escapePlainText(labels.outlineTitle)}`,
+    toUnixNewlines(snapshot.mindMapMarkdown),
+  ]);
+}
+
+function toUnixNewlines(text: string): string {
+  return text.replace(/\r\n?/g, "\n");
 }
 
 /** 正式 Todo 是 ACTIVE AI 项，以及 generation_status 为 null 的手工/被接管项。 */

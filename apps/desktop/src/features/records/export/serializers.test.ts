@@ -6,6 +6,7 @@ import {
   serializeAggregateMarkdown,
   serializeKnowledgePointsMarkdown,
   serializeQuizMarkdown,
+  serializeReviewMaterialMarkdown,
   serializeSummaryMarkdown,
   serializeTodoMarkdown,
 } from "@/features/records/export/serializers";
@@ -44,6 +45,13 @@ const quizLabels = {
   },
   difficulties: { EASY: "简单", MEDIUM: "中等", HARD: "困难" },
   results: { CORRECT: "正确", WRONG: "错误" },
+};
+
+const reviewMaterialLabels = {
+  assetTitle: "复习资料",
+  quickReviewTitle: "考前速记",
+  keyListTitle: "重点清单",
+  outlineTitle: "大纲树",
 };
 
 const quiz = (overrides: Partial<QuizOut> & Pick<QuizOut, "id">): QuizOut => {
@@ -421,6 +429,91 @@ describe("serializeTodoMarkdown", () => {
   });
 });
 
+describe("serializeReviewMaterialMarkdown", () => {
+  it("按速记、重点清单、大纲顺序拼装，重点清单转 Markdown 列表", () => {
+    const markdown = serializeReviewMaterialMarkdown(
+      "操作系统第一讲",
+      {
+        quickReview: "先把页表机制过一遍。\n\n记住：缺页 → 调页 → 更新页表。",
+        keyList: ["页表完成虚拟地址翻译", "TLB 未命中才走多级页表"],
+        mindMapMarkdown: "## 虚拟内存\n### 分页\n- 页表\n- TLB",
+      },
+      reviewMaterialLabels,
+    );
+
+    expect(markdown).toBe(
+      [
+        "# 操作系统第一讲",
+        "",
+        "## 复习资料",
+        "",
+        "### 考前速记",
+        "",
+        "先把页表机制过一遍。",
+        "",
+        "记住：缺页 → 调页 → 更新页表。",
+        "",
+        "### 重点清单",
+        "",
+        "- 页表完成虚拟地址翻译",
+        "- TLB 未命中才走多级页表",
+        "",
+        "### 大纲树",
+        "",
+        "## 虚拟内存",
+        "### 分页",
+        "- 页表",
+        "- TLB",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("速记与大纲原样保留 Markdown 与代码块语义，不套纯文本转义", () => {
+    const markdown = serializeReviewMaterialMarkdown(
+      "记录",
+      {
+        quickReview: [
+          "**LRU** 是 #1 常考考点：",
+          "",
+          "```python",
+          "def evict():",
+          "    return lru.pop()",
+          "```",
+        ].join("\n"),
+        keyList: ["保留 [链接](https://a.b) 与 <b>HTML</b> 字面文本"],
+        mindMapMarkdown: "# 顶级标题保持原样",
+      },
+      reviewMaterialLabels,
+    );
+
+    expect(markdown).toContain(
+      "```python\ndef evict():\n    return lru.pop()\n```",
+    );
+    expect(markdown).toContain("**LRU** 是 #1 常考考点：");
+    expect(markdown).toContain(
+      "- 保留 [链接](https://a.b) 与 <b>HTML</b> 字面文本",
+    );
+    expect(markdown).toContain("### 大纲树\n\n# 顶级标题保持原样");
+  });
+
+  it("速记与大纲的 CR LF 统一为 LF", () => {
+    const markdown = serializeReviewMaterialMarkdown(
+      "记录",
+      {
+        quickReview: "第一行\r\n第二行",
+        keyList: [],
+        mindMapMarkdown: "## 大纲\r\n### 子题",
+      },
+      reviewMaterialLabels,
+    );
+
+    expect(markdown).toContain("第一行\n第二行");
+    expect(markdown).toContain("## 大纲\n### 子题");
+    expect(markdown).not.toContain("\r");
+  });
+});
+
 describe("serializeAggregateMarkdown", () => {
   const summary = serializeSummaryMarkdown(
     "操作系统第一讲",
@@ -444,26 +537,39 @@ describe("serializeAggregateMarkdown", () => {
     [quiz({ id: "quiz-1" })],
     quizLabels,
   );
+  const reviewMaterial = serializeReviewMaterialMarkdown(
+    "操作系统第一讲",
+    {
+      quickReview: "先把页表机制过一遍。",
+      keyList: ["页表完成虚拟地址翻译"],
+      mindMapMarkdown: "## 虚拟内存\n### 分页",
+    },
+    reviewMaterialLabels,
+  );
   const todos = serializeTodoMarkdown(
     "操作系统第一讲",
     [todo({ id: "todo-1", sort_order: 0 })],
     "Todo",
   );
 
-  it("按 Summary、知识点、习题、Todo 固定顺序合并且只保留一个一级标题", () => {
+  it("按 Summary、知识点、习题、复习资料、Todo 固定顺序合并且只保留一个一级标题", () => {
     const markdown = serializeAggregateMarkdown("操作系统第一讲", [
       summary,
       knowledgePoints,
       quizzes,
+      reviewMaterial,
       todos,
     ]);
 
     expect(markdown).not.toBeNull();
     expect(markdown?.match(/^# /gm)).toHaveLength(1);
     expect(markdown).toMatch(
-      /## 总结[\s\S]*## 知识点[\s\S]*## 习题[\s\S]*## Todo/,
+      /## 总结[\s\S]*## 知识点[\s\S]*## 习题[\s\S]*## 复习资料[\s\S]*## Todo/,
     );
     expect(markdown).toMatch(/## 总结\n\n[\s\S]*\n\n## 知识点/);
+    expect(markdown).toMatch(
+      /## 习题\n\n[\s\S]*\n\n## 复习资料\n\n[\s\S]*\n\n## Todo/,
+    );
     expect(markdown?.endsWith("\n")).toBe(true);
     expect(markdown).not.toContain("\r");
   });
@@ -473,17 +579,25 @@ describe("serializeAggregateMarkdown", () => {
       summary,
       null,
       null,
+      reviewMaterial,
       todos,
     ]);
 
     expect(markdown).toContain("## 总结");
+    expect(markdown).toContain("## 复习资料");
     expect(markdown).toContain("## Todo");
-    expect(markdown).not.toMatch(/## 知识点|## 习题|## 复习资料/);
+    expect(markdown).not.toMatch(/## 知识点|## 习题/);
   });
 
   it("全部资产为空时返回 null，相同输入输出完全一致", () => {
     expect(
-      serializeAggregateMarkdown("操作系统第一讲", [null, null, null, null]),
+      serializeAggregateMarkdown("操作系统第一讲", [
+        null,
+        null,
+        null,
+        null,
+        null,
+      ]),
     ).toBeNull();
     expect(serializeAggregateMarkdown("操作系统第一讲", [summary, todos])).toBe(
       serializeAggregateMarkdown("操作系统第一讲", [summary, todos]),

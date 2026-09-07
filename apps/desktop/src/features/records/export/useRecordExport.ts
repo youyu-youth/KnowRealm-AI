@@ -1,6 +1,7 @@
 import type { TFunction } from "i18next";
 import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { ReviewMaterialOut } from "@/features/records/api/types";
 import { recordApi } from "@/features/records/api/records";
 import {
   buildExportFileName,
@@ -10,10 +11,14 @@ import {
   serializeAggregateMarkdown,
   serializeKnowledgePointsMarkdown,
   serializeQuizMarkdown,
+  serializeReviewMaterialMarkdown,
   serializeSummaryMarkdown,
   serializeTodoMarkdown,
 } from "@/features/records/export/serializers";
-import type { QuizExportLabels } from "@/features/records/export/serializers";
+import type {
+  QuizExportLabels,
+  ReviewMaterialExportLabels,
+} from "@/features/records/export/serializers";
 import {
   chooseMarkdownSavePath,
   openExportedFile,
@@ -27,7 +32,8 @@ export type RecordExportState =
   | { phase: "saved"; path: string; openError: string | null }
   | { phase: "failed"; stage: "read" | "write"; message: string };
 
-export type ExportableAsset = "summary" | "knowledge-points" | "quiz" | "todo";
+export type ExportableAsset =
+  "summary" | "knowledge-points" | "quiz" | "review" | "todo";
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -66,6 +72,15 @@ function quizExportLabels(t: TFunction): QuizExportLabels {
   };
 }
 
+function reviewMaterialExportLabels(t: TFunction): ReviewMaterialExportLabels {
+  return {
+    assetTitle: t("record.detail.export.reviewAsset"),
+    quickReviewTitle: t("record.detail.review.quickReviewTitle"),
+    keyListTitle: t("record.detail.review.keyListTitle"),
+    outlineTitle: t("record.detail.review.outlineTitle"),
+  };
+}
+
 function isReadableSummaryResponse(
   read: Awaited<ReturnType<typeof recordApi.getSummary>>,
 ): boolean {
@@ -95,6 +110,38 @@ function isReadableSummaryResponse(
         section.points.every((point) => typeof point === "string"),
     )
   );
+}
+
+/**
+ * 聚合导出对复习资料响应的最低可解释性校验：缺少 review_material 字段，
+ * 或已定版材料的三段内容类型不对时按读取失败处理，不伪装成无内容。
+ */
+function isReadableReviewMaterialResponse(
+  read: Awaited<ReturnType<typeof recordApi.getReviewMaterial>>,
+): boolean {
+  if (!Object.prototype.hasOwnProperty.call(read, "review_material")) {
+    return false;
+  }
+  const material = read.review_material;
+  if (material === null) return true;
+  if (typeof material !== "object" || Array.isArray(material)) {
+    return false;
+  }
+  if (material.status !== "CONFIRMED") return true;
+  return (
+    typeof material.quick_review === "string" &&
+    Array.isArray(material.key_list) &&
+    material.key_list.every((item) => typeof item === "string") &&
+    typeof material.mind_map_markdown === "string"
+  );
+}
+
+function toReviewMaterialSnapshot(material: ReviewMaterialOut) {
+  return {
+    quickReview: material.quick_review,
+    keyList: material.key_list,
+    mindMapMarkdown: material.mind_map_markdown,
+  };
 }
 
 /**
@@ -251,6 +298,39 @@ export function useRecordExport() {
           return;
         }
 
+        if (asset === "review") {
+          const read = await readAsset(() =>
+            recordApi.getReviewMaterial(recordId),
+          );
+          if (!read) return;
+          const material = read.review_material;
+          if (!material) {
+            setState({
+              phase: "unavailable",
+              message: t("record.detail.export.reviewMissing"),
+            });
+            return;
+          }
+          if (material.status !== "CONFIRMED") {
+            setState({
+              phase: "unavailable",
+              message: t("record.detail.export.reviewNotConfirmed"),
+            });
+            return;
+          }
+          const labels = reviewMaterialExportLabels(t);
+          await persist(
+            serializeReviewMaterialMarkdown(
+              recordTitle,
+              toReviewMaterialSnapshot(material),
+              labels,
+            ),
+            recordTitle,
+            labels.assetTitle,
+          );
+          return;
+        }
+
         const read = await readAsset(() => recordApi.getTodos(recordId));
         if (!read) return;
         const items = selectFormalTodos(read.items);
@@ -280,14 +360,23 @@ export function useRecordExport() {
       runningRef.current = true;
       setState({ phase: "exporting" });
       try {
-        const [summaryRead, knowledgePointRead, quizRead, todoRead] =
-          await Promise.all([
-            recordApi.getSummary(recordId),
-            recordApi.getKnowledgePoints(recordId),
-            recordApi.getQuizzes(recordId),
-            recordApi.getTodos(recordId),
-          ]);
+        const [
+          summaryRead,
+          knowledgePointRead,
+          quizRead,
+          todoRead,
+          reviewRead,
+        ] = await Promise.all([
+          recordApi.getSummary(recordId),
+          recordApi.getKnowledgePoints(recordId),
+          recordApi.getQuizzes(recordId),
+          recordApi.getTodos(recordId),
+          recordApi.getReviewMaterial(recordId),
+        ]);
         if (!isReadableSummaryResponse(summaryRead)) {
+          throw new Error(t("record.detail.export.invalidResponse"));
+        }
+        if (!isReadableReviewMaterialResponse(reviewRead)) {
           throw new Error(t("record.detail.export.invalidResponse"));
         }
         const summary = summaryRead.summary;
@@ -296,6 +385,7 @@ export function useRecordExport() {
         );
         const quizzes = selectActiveQuizzes(quizRead.items);
         const todos = selectFormalTodos(todoRead.items);
+        const reviewMaterial = reviewRead.review_material;
         const markdown = serializeAggregateMarkdown(recordTitle, [
           summary?.status === "CONFIRMED"
             ? serializeSummaryMarkdown(
@@ -324,6 +414,13 @@ export function useRecordExport() {
             : null,
           quizzes.length
             ? serializeQuizMarkdown(recordTitle, quizzes, quizExportLabels(t))
+            : null,
+          reviewMaterial?.status === "CONFIRMED"
+            ? serializeReviewMaterialMarkdown(
+                recordTitle,
+                toReviewMaterialSnapshot(reviewMaterial),
+                reviewMaterialExportLabels(t),
+              )
             : null,
           todos.length
             ? serializeTodoMarkdown(

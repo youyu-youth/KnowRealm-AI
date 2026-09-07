@@ -68,11 +68,21 @@ export function RecordExportMenu({
     queryFn: () => recordApi.getTodos(recordId),
     enabled: (query) => tab === "todo" || query.state.data !== undefined,
   });
+  const reviewMaterial = useQuery({
+    queryKey: recordKeys.reviewMaterial(recordId),
+    queryFn: () => recordApi.getReviewMaterial(recordId),
+    enabled: (query) => tab === "review" || query.state.data !== undefined,
+  });
+  const reviewNotExportable =
+    reviewMaterial.isSuccess &&
+    !reviewMaterial.isStale &&
+    reviewMaterial.data.review_material?.status !== "CONFIRMED";
   const allKnownEmpty =
     summary.isSuccess &&
     knowledgePoints.isSuccess &&
     quizzes.isSuccess &&
     todos.isSuccess &&
+    reviewNotExportable &&
     !summary.isStale &&
     !knowledgePoints.isStale &&
     !quizzes.isStale &&
@@ -150,11 +160,33 @@ export function RecordExportMenu({
           : t("record.detail.export.todoEmpty"),
       };
     }
+    if (tab === "review") {
+      if (reviewMaterial.isPending || reviewMaterial.isError) {
+        return {
+          asset: "review",
+          disabledReason: t("record.detail.export.contentUnavailable"),
+        };
+      }
+      const material = reviewMaterial.data?.review_material;
+      if (!material) {
+        return {
+          asset: "review",
+          disabledReason: t("record.detail.export.reviewMissing"),
+        };
+      }
+      if (material.status !== "CONFIRMED") {
+        return {
+          asset: "review",
+          disabledReason: t("record.detail.export.reviewNotConfirmed"),
+        };
+      }
+      return { asset: "review", disabledReason: null };
+    }
     return {
       asset: null,
       disabledReason: t("record.detail.export.unsupportedTab"),
     };
-  }, [knowledgePoints, quizzes, summary, t, tab, todos]);
+  }, [knowledgePoints, quizzes, reviewMaterial, summary, t, tab, todos]);
 
   return (
     <DropdownMenu>
