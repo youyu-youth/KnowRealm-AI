@@ -9,6 +9,7 @@ import {
   Library,
   Mic,
   NotebookPen,
+  Search,
   Settings,
   Upload,
   UserRound,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
+import { CommandPalette } from "@/features/search/components/CommandPalette";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
 import { useSavePreference } from "@/features/settings/PreferencesSection";
 import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
@@ -92,6 +94,7 @@ export function AppShell() {
   const queryClient = useQueryClient();
   const [importOpen, setImportOpen] = useState(false);
   const [textCapture, setTextCapture] = useState<TextCaptureMode | null>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [textCaptureFocusRequest, setTextCaptureFocusRequest] = useState(0);
   const [captureFeedback, setCaptureFeedback] = useState("");
   const [shortcutUnavailable, setShortcutUnavailable] = useState<string | null>(
@@ -354,6 +357,18 @@ export function AppShell() {
             {t("capture.label")}
           </p>
           <div className="flex min-w-0 items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPaletteOpen(true)}
+              aria-label={t("commandPalette.openButton")}
+              aria-keyshortcuts="Control+K"
+            >
+              <Search data-icon="inline-start" aria-hidden="true" />
+              <span className="text-label text-muted-foreground max-compact:sr-only font-label">
+                {t("commandPalette.shortcutBadge")}
+              </span>
+            </Button>
             <RecordingExperience onAccepted={openRecord} />
             {captureItems.map(({ labelKey, icon: Icon }) => {
               const label = t(labelKey);
@@ -407,6 +422,11 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onCaptureCommand={openCapture}
+      />
       <DocumentImportDialog
         open={importOpen}
         onOpenChange={setImportOpen}

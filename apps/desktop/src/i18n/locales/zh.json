@@ -1228,5 +1228,17 @@
       "enter": "进入 KnowRealm",
       "entering": "正在进入"
     }
+  },
+  "commandPalette": {
+    "title": "命令面板",
+    "description": "搜索学习资产或执行命令",
+    "placeholder": "搜索课程、学习记录、知识点…",
+    "commandsGroup": "命令",
+    "coursesGroup": "课程",
+    "recordsGroup": "学习记录",
+    "knowledgePointsGroup": "知识点",
+    "noResults": "没有找到相关内容",
+    "openButton": "搜索",
+    "shortcutBadge": "Ctrl K"
   }
 }

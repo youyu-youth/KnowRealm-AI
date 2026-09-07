@@ -3,6 +3,16 @@ import { http, HttpResponse } from "msw";
 export const TEST_SIDECAR_URL = "http://127.0.0.1:43127";
 export const TEST_LAUNCH_TOKEN = "test-launch-token";
 
+const preferencesPayload = {
+  theme: "SYSTEM",
+  font_scale: "M",
+  timezone: null,
+  close_behavior: "TRAY",
+  quick_note_shortcut: "Ctrl+Alt+N",
+  autostart: false,
+  quiz_last_count: 5,
+};
+
 export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
   http.get(`${TEST_SIDECAR_URL}/api/inbox`, () => HttpResponse.json([])),
@@ -34,15 +44,11 @@ export const handlers = [
     HttpResponse.json({ provider: null }),
   ),
   http.get(`${TEST_SIDECAR_URL}/api/settings/preferences`, () =>
-    HttpResponse.json({
-      theme: "SYSTEM",
-      font_scale: "M",
-      timezone: null,
-      close_behavior: "TRAY",
-      quick_note_shortcut: "Ctrl+Alt+N",
-      autostart: false,
-      quiz_last_count: 5,
-    }),
+    HttpResponse.json(preferencesPayload),
+  ),
+  // AppShell 的 last_route 记忆会 PUT 偏好；避免全 App 测试误报未拦截请求。
+  http.put(`${TEST_SIDECAR_URL}/api/settings/preferences`, () =>
+    HttpResponse.json(preferencesPayload),
   ),
   http.get(`${TEST_SIDECAR_URL}/api/profile`, () =>
     HttpResponse.json({

@@ -29,6 +29,26 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
     }) as MediaQueryList;
 }
 
+// jsdom 未实现 ResizeObserver；cmdk-base（命令面板列表高度同步）依赖它。
+if (
+  typeof window !== "undefined" &&
+  typeof window.ResizeObserver !== "function"
+) {
+  window.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
+// jsdom 未实现 scrollIntoView；cmdk-base 选中项滚动定位依赖它。
+if (
+  typeof Element !== "undefined" &&
+  Element.prototype.scrollIntoView === undefined
+) {
+  Element.prototype.scrollIntoView = () => undefined;
+}
+
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   cleanup();
