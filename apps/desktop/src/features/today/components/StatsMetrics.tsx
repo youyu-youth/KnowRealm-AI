@@ -86,7 +86,7 @@ export function StatsMetrics({ stats }: StatsMetricsProps) {
   ];
 
   return (
-    <div className="wide:grid-cols-6 mt-6 grid grid-cols-3 gap-y-6">
+    <div className="wide:grid-cols-6 grid grid-cols-3 gap-y-6">
       {cells.map((cell) => (
         <div
           key={cell.labelKey}

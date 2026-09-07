@@ -132,6 +132,37 @@
         "aiSummaryCount": "AI 总结次数",
         "quiz": "习题（已作答 / 生成）",
         "chatTurnCount": "问答轮次"
+      },
+      "weekOverWeek": "较上周",
+      "insights": {
+        "unitH": "h",
+        "sampleTag": "示意",
+        "legendLabel": "图例",
+        "radarTitle": "学科能力雷达图",
+        "distributionTitle": "学习时间分布",
+        "focusTitle": "学习专注度",
+        "progressTitle": "学习进步趋势",
+        "thisWeek": "本周",
+        "lastWeek": "上周",
+        "distributionTotal": "本周总时长",
+        "radarChartLabel": "学科能力雷达图",
+        "distributionChartLabel": "学习时间分布环形图",
+        "focusChartLabel": "学习专注度分布图",
+        "progressChartLabel": "学习进步趋势图",
+        "series": {
+          "knowledgePoints": "知识点掌握量",
+          "reviewAccuracy": "复习正确率",
+          "ability": "综合能力"
+        },
+        "subjects": {
+          "math": "高等数学",
+          "linearAlgebra": "线性代数",
+          "dataStructure": "数据结构",
+          "probability": "概率统计",
+          "english": "英语",
+          "csBasics": "计算机基础",
+          "other": "其他"
+        }
       }
     }
   },

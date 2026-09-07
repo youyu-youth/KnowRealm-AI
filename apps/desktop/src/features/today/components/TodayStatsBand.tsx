@@ -5,10 +5,30 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { todayApi, type TrendDays } from "@/features/today/api/today";
+import {
+  todayApi,
+  type TodayTrendPoint,
+  type TrendDays,
+} from "@/features/today/api/today";
 import { todayKeys } from "@/features/today/api/keys";
+import { StatsFocusChart } from "@/features/today/components/StatsFocusChart";
+import { StatsDistributionChart } from "@/features/today/components/StatsDistributionChart";
+import { StatsInsightCard } from "@/features/today/components/StatsInsightCard";
 import { StatsMetrics } from "@/features/today/components/StatsMetrics";
+import { StatsProgressChart } from "@/features/today/components/StatsProgressChart";
+import { StatsRadarChart } from "@/features/today/components/StatsRadarChart";
 import { StatsTrendChart } from "@/features/today/components/StatsTrendChart";
+
+const MS_PER_HOUR = 3_600_000;
+
+function sumMs(points: TodayTrendPoint[]): number {
+  return points.reduce((total, point) => total + point.total_ms, 0);
+}
+
+// 大数字照参考稿用一位小数小时（28.6 h）；六格指标带维持两档中文格式。
+function formatHoursBig(ms: number): string {
+  return (ms / MS_PER_HOUR).toFixed(1);
+}
 
 export function TodayStatsBand() {
   const { t } = useTranslation();
@@ -17,57 +37,128 @@ export function TodayStatsBand() {
     queryKey: todayKeys.stats,
     queryFn: todayApi.stats,
   });
+  // 趋势固定取 30 天序列：7 天档 = 尾部切片，30 天档 = 全量；切档纯前端切片零请求，
+  // 「较上周」由同序列前后两段计算（对比仅 7 天档有意义）。
   const trend = useQuery({
-    queryKey: todayKeys.trend(days),
-    queryFn: () => todayApi.trend(days),
-    // 切换即重取（工单契约）：不沿用全局 staleTime，回切缓存档位也发新请求。
-    staleTime: 0,
-    // 切换时保留旧曲线直到新序列到达，避免整带闪回加载态。
+    queryKey: todayKeys.trend(30),
+    queryFn: () => todayApi.trend(30),
     placeholderData: keepPreviousData,
   });
 
+  const points = trend.data ?? [];
+  const windowPoints = days === 7 ? points.slice(-7) : points;
+  const windowTotalMs = sumMs(windowPoints);
+  const comparison = buildWeekComparison(points, days);
+
   return (
-    <section className="border-border mt-8 border-t pt-8">
-      <StatsBandHeader days={days} onDaysChange={setDays} />
-      {stats.isPending || trend.isPending ? (
-        <p
-          role="status"
-          className="text-body text-muted-foreground mt-6 flex items-center gap-2"
-        >
-          <Spinner aria-hidden="true" />
-          {t("today.stats.loading")}
-        </p>
-      ) : stats.isError || trend.isError ? (
-        <div role="alert" className="border-border mt-6 border-t pt-6">
-          <h3 className="text-section font-section text-ink">
-            {t("today.stats.errorTitle")}
-          </h3>
-          <p className="text-body text-muted-foreground mt-2">
-            {t("today.stats.errorDescription")}
-          </p>
-          <Button
-            variant="outline"
-            className="mt-5"
-            onClick={() => {
-              void stats.refetch();
-              void trend.refetch();
-            }}
+    <section className="mt-10">
+      <div
+        aria-label={t("today.stats.title")}
+        role="region"
+        className="bg-card border-border/60 rounded-lg border p-6"
+      >
+        <StatsBandHeader days={days} onDaysChange={setDays} />
+        {stats.isPending || trend.isPending ? (
+          <p
+            role="status"
+            className="text-body text-muted-foreground mt-6 flex items-center gap-2"
           >
-            {t("today.stats.retry")}
-          </Button>
-        </div>
-      ) : (
-        <>
-          <StatsTrendChart
-            points={trend.data ?? []}
-            ariaLabel={t("today.stats.trendChartLabel")}
-            className="mt-4 h-64 w-full"
+            <Spinner aria-hidden="true" />
+            {t("today.stats.loading")}
+          </p>
+        ) : stats.isError || trend.isError ? (
+          <div role="alert" className="border-border mt-6 border-t pt-6">
+            <h3 className="text-section font-section text-ink">
+              {t("today.stats.errorTitle")}
+            </h3>
+            <p className="text-body text-muted-foreground mt-2">
+              {t("today.stats.errorDescription")}
+            </p>
+            <Button
+              variant="outline"
+              className="mt-5"
+              onClick={() => {
+                void stats.refetch();
+                void trend.refetch();
+              }}
+            >
+              {t("today.stats.retry")}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <div className="mt-4 flex items-end justify-between gap-x-8 gap-y-4">
+              <div className="shrink-0">
+                <p className="text-stat font-headline text-ink-strong tabular-nums">
+                  {formatHoursBig(windowTotalMs)}
+                  <span className="text-label font-label text-muted-foreground">
+                    {" "}
+                    {t("today.stats.insights.unitH")}
+                  </span>
+                </p>
+                {comparison ? (
+                  <p className="text-label text-muted-foreground mt-1">
+                    {t("today.stats.weekOverWeek")}{" "}
+                    <span className="text-ink font-medium">{comparison}</span>
+                  </p>
+                ) : null}
+              </div>
+              <StatsTrendChart
+                points={windowPoints}
+                showSymbol={days === 7}
+                ariaLabel={t("today.stats.trendChartLabel")}
+                className="h-56 min-w-0 flex-1"
+              />
+            </div>
+            <div className="border-border mt-6 border-t pt-4">
+              <StatsMetrics stats={stats.data} />
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* 洞察小图卡为示意数据，不依赖统计查询，加载/失败不影响渲染。 */}
+      <div className="compact:grid-cols-2 wide:grid-cols-4 mt-6 grid grid-cols-1 gap-6">
+        <StatsInsightCard title={t("today.stats.insights.radarTitle")}>
+          <StatsRadarChart
+            ariaLabel={t("today.stats.insights.radarChartLabel")}
           />
-          <StatsMetrics stats={stats.data} />
-        </>
-      )}
+        </StatsInsightCard>
+        <StatsInsightCard title={t("today.stats.insights.distributionTitle")}>
+          <StatsDistributionChart
+            ariaLabel={t("today.stats.insights.distributionChartLabel")}
+          />
+        </StatsInsightCard>
+        <StatsInsightCard title={t("today.stats.insights.focusTitle")}>
+          <StatsFocusChart
+            ariaLabel={t("today.stats.insights.focusChartLabel")}
+          />
+        </StatsInsightCard>
+        <StatsInsightCard title={t("today.stats.insights.progressTitle")}>
+          <StatsProgressChart
+            ariaLabel={t("today.stats.insights.progressChartLabel")}
+          />
+        </StatsInsightCard>
+      </div>
     </section>
   );
+}
+
+// 近 7 天 vs 前 7 天（同一 30 天序列切片）：仅 7 天档提供对比；
+// 前一周期全 0 时显示绝对增量，两段皆 0 则不显示。
+function buildWeekComparison(
+  points: TodayTrendPoint[],
+  days: TrendDays,
+): string | null {
+  if (days !== 7 || points.length < 14) return null;
+  const currentMs = sumMs(points.slice(-7));
+  const previousMs = sumMs(points.slice(-14, -7));
+  if (currentMs === 0 && previousMs === 0) return null;
+  if (previousMs === 0) return `+${formatHoursBig(currentMs)}`;
+  const percent = Math.round(((currentMs - previousMs) / previousMs) * 100);
+  if (percent === 0) return "–";
+  const arrow = percent > 0 ? "↑" : "↓";
+  return `${arrow} ${Math.abs(percent)}%`;
 }
 
 type StatsBandHeaderProps = {
@@ -88,8 +179,18 @@ function StatsBandHeader({ days, onDaysChange }: StatsBandHeaderProps) {
         onValueChange={(value) => onDaysChange(value === "30" ? 30 : 7)}
       >
         <TabsList>
-          <TabsTrigger value="7">{t("today.stats.last7Days")}</TabsTrigger>
-          <TabsTrigger value="30">{t("today.stats.last30Days")}</TabsTrigger>
+          <TabsTrigger
+            value="7"
+            className="data-active:bg-primary data-active:text-primary-foreground"
+          >
+            {t("today.stats.last7Days")}
+          </TabsTrigger>
+          <TabsTrigger
+            value="30"
+            className="data-active:bg-primary data-active:text-primary-foreground"
+          >
+            {t("today.stats.last30Days")}
+          </TabsTrigger>
         </TabsList>
       </Tabs>
     </div>

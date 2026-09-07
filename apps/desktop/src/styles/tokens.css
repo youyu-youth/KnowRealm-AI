@@ -61,6 +61,9 @@
   --text-body--line-height: 1.55;
   --text-label: 0.75rem;
   --text-label--line-height: 1.4;
+  --text-stat: 2.25rem;
+  --text-stat--line-height: 1.15;
+  --text-stat--letter-spacing: -0.02em;
 
   --font-weight-headline: 650;
   --font-weight-section: 600;

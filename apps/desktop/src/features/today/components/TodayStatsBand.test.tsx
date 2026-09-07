@@ -43,10 +43,11 @@ const zeroStats: TodayStats = {
   chat_turn_count: 0,
 };
 
-// 与后端一致：按捕获日补零的连续序列。
+// 与后端一致：按捕获日补零的连续序列。index = 距最早一天的天序号：
+// 26 → 3 天前（近 7 天内），19 → 10 天前（前一周期内）。
 function trendResponse(
   days: number,
-  msByOffset: Record<number, number> = {},
+  msByIndex: Record<number, number> = {},
 ): TodayTrendPoint[] {
   const today = new Date();
   return Array.from({ length: days }, (_, index) => {
@@ -54,31 +55,44 @@ function trendResponse(
     day.setUTCDate(day.getUTCDate() - (days - 1 - index));
     return {
       date: day.toISOString().slice(0, 10),
-      total_ms: msByOffset[index] ?? 0,
+      total_ms: msByIndex[index] ?? 0,
     };
   });
 }
 
-// 数值把单位拆在小号 span 里（textContent 连续，但不是单一文本节点），
-// 因此按标签定位相邻的数值容器断言完整文本；作用域锁统计带分节，
-// 避免与侧栏「知识空间」等导航文案及图表 SVG 数字碰撞。
-function statsSection(): HTMLElement {
-  const heading = screen.getByRole("heading", { name: "学习趋势" });
-  const section = heading.closest("section");
-  expect(section).not.toBeNull();
-  return section as HTMLElement;
+const fullTrend = trendResponse(30, { 26: 5_400_000, 19: 3_600_000 });
+
+// 统计带主卡为 region（aria-label=学习趋势），数值把单位拆在小号 span 里
+// （textContent 连续但非单一文本节点），故按标签定位相邻容器断言完整文本，
+// 同时与侧栏导航文案、图表 SVG 内的数字隔离。
+function statsRegion(): HTMLElement {
+  return screen.getByRole("region", { name: "学习趋势" });
+}
+
+function insightRegion(name: string): HTMLElement {
+  return screen.getByRole("region", { name });
 }
 
 async function cellValueText(label: string): Promise<string> {
   return waitFor(
     () => {
       const value =
-        within(statsSection()).getByText(label).nextElementSibling?.textContent;
+        within(statsRegion()).getByText(label).nextElementSibling?.textContent;
       expect(value).toBeTruthy();
       return value ?? "";
     },
     { timeout: 2_000 },
   );
+}
+
+// 大数字形如「1.5 h」（数值 + 小号单位 span），用 P 元素整文本匹配。
+function expectBigNumber(text: string) {
+  expect(
+    within(statsRegion()).getByText(
+      (_content, element) =>
+        element?.tagName === "P" && element.textContent === text,
+    ),
+  ).toBeInTheDocument();
 }
 
 vi.mock("@/services/tauri/sidecar", () => ({
@@ -102,12 +116,10 @@ afterEach(() => {
 });
 
 describe("今日页统计带", () => {
-  it("渲染六格指标带与趋势图，习题格显示已作答/生成双数", async () => {
+  it("趋势主卡渲染大数字、较上周对比、六格指标与趋势图", async () => {
     server.use(
       http.get(STATS_URL, () => HttpResponse.json(fullStats)),
-      http.get(TREND_URL, () =>
-        HttpResponse.json(trendResponse(7, { 3: 5_400_000 })),
-      ),
+      http.get(TREND_URL, () => HttpResponse.json(fullTrend)),
     );
 
     render(<App />);
@@ -115,17 +127,72 @@ describe("今日页统计带", () => {
     expect(
       await screen.findByRole("heading", { name: "学习趋势" }),
     ).toBeInTheDocument();
+    // 近 7 天窗口：总时长 1.5h，前一周期 1h → ↑ 50%。
+    await waitFor(() => expectBigNumber("1.5 h"));
+    expect(statsRegion().textContent).toContain("较上周");
+    expect(statsRegion().textContent).toContain("↑ 50%");
     expect(await cellValueText("累计学习时长")).toBe("1 小时 30 分");
     expect(await cellValueText("学习记录")).toBe("42");
     expect(await cellValueText("知识空间")).toBe("5");
     expect(await cellValueText("AI 总结次数")).toBe("30");
     expect(await cellValueText("习题（已作答 / 生成）")).toBe("80 / 120");
     expect(await cellValueText("问答轮次")).toBe("200");
-    expect(screen.getByRole("img", { name: "学习趋势图" })).toBeInTheDocument();
+    expect(
+      within(statsRegion()).getByRole("img", { name: "学习趋势图" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "近 7 天" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
+  });
+
+  it("洞察小图卡（示意数据）渲染四张卡与图例，不依赖统计查询", async () => {
+    server.use(
+      http.get(STATS_URL, () => HttpResponse.json(fullStats)),
+      http.get(TREND_URL, () => HttpResponse.json(fullTrend)),
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole("region", { name: "学科能力雷达图" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "学习时间分布" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "学习专注度" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "学习进步趋势" }),
+    ).toBeInTheDocument();
+
+    expect(
+      within(insightRegion("学科能力雷达图")).getByText("本周"),
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion("学科能力雷达图")).getByText("上周"),
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion("学科能力雷达图")).getAllByText("高等数学").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(insightRegion("学习时间分布")).getByText("36%"),
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion("学习时间分布")).getByText("28.6"),
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion("学习进步趋势")).getByText("知识点掌握量"),
+    ).toBeInTheDocument();
+    for (const name of [
+      "学科能力雷达图",
+      "学习时间分布",
+      "学习专注度",
+      "学习进步趋势",
+    ]) {
+      expect(within(insightRegion(name)).getAllByText("示意").length).toBe(1);
+    }
   });
 
   it("不足一小时的时长按分钟呈现", async () => {
@@ -133,7 +200,7 @@ describe("今日页统计带", () => {
       http.get(STATS_URL, () =>
         HttpResponse.json({ ...zeroStats, total_learning_ms: 5 * 60_000 }),
       ),
-      http.get(TREND_URL, () => HttpResponse.json(trendResponse(7))),
+      http.get(TREND_URL, () => HttpResponse.json(trendResponse(30))),
     );
 
     render(<App />);
@@ -146,7 +213,7 @@ describe("今日页统计带", () => {
       http.get(STATS_URL, () =>
         HttpResponse.json({ ...zeroStats, total_learning_ms: 7_200_000 }),
       ),
-      http.get(TREND_URL, () => HttpResponse.json(trendResponse(7))),
+      http.get(TREND_URL, () => HttpResponse.json(trendResponse(30))),
     );
 
     render(<App />);
@@ -154,47 +221,38 @@ describe("今日页统计带", () => {
     expect(await cellValueText("累计学习时长")).toBe("2 小时");
   });
 
-  it("近 7 / 30 天切换即按对应 days 重取趋势", async () => {
+  it("趋势固定请求 days=30，7/30 档切换为前端切片不发新请求", async () => {
     const trendUrls: URL[] = [];
     server.use(
       http.get(STATS_URL, () => HttpResponse.json(fullStats)),
       http.get(TREND_URL, ({ request }) => {
         trendUrls.push(new URL(request.url));
-        return HttpResponse.json(trendResponse(7, { 3: 5_400_000 }));
+        return HttpResponse.json(fullTrend);
       }),
     );
 
     render(<App />);
 
-    expect(await cellValueText("累计学习时长")).toBe("1 小时 30 分");
-    expect(trendUrls[0]?.searchParams.get("days")).toBe("7");
+    await waitFor(() => expectBigNumber("1.5 h"));
+    expect(trendUrls).toHaveLength(1);
+    expect(trendUrls[0]?.searchParams.get("days")).toBe("30");
 
     fireEvent.click(screen.getByRole("tab", { name: "近 30 天" }));
 
-    await waitFor(() =>
-      expect(
-        trendUrls.some((url) => url.searchParams.get("days") === "30"),
-      ).toBe(true),
-    );
+    expectBigNumber("2.5 h");
     expect(screen.getByRole("tab", { name: "近 30 天" })).toHaveAttribute(
       "aria-selected",
       "true",
     );
+    expect(trendUrls).toHaveLength(1);
 
     fireEvent.click(screen.getByRole("tab", { name: "近 7 天" }));
 
-    await waitFor(() =>
-      expect(
-        trendUrls.filter((url) => url.searchParams.get("days") === "7"),
-      ).toHaveLength(2),
-    );
-    expect(screen.getByRole("tab", { name: "近 7 天" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expectBigNumber("1.5 h");
+    expect(trendUrls).toHaveLength(1);
   });
 
-  it("统计加载不阻塞待办区", async () => {
+  it("统计加载不阻塞待办区，洞察卡照常渲染", async () => {
     server.use(
       http.get(STATS_URL, async () => {
         await delay(200);
@@ -202,7 +260,7 @@ describe("今日页统计带", () => {
       }),
       http.get(TREND_URL, async () => {
         await delay(200);
-        return HttpResponse.json(trendResponse(7));
+        return HttpResponse.json(trendResponse(30));
       }),
     );
 
@@ -211,6 +269,9 @@ describe("今日页统计带", () => {
     const loading = await screen.findByRole("status");
     expect(loading).toHaveTextContent("正在读取学习统计");
     expect(screen.getByText("今天没有待处理事项")).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "学习专注度" }),
+    ).toBeInTheDocument();
 
     expect(await cellValueText("累计学习时长")).toBe("0 分钟");
   });
@@ -223,7 +284,7 @@ describe("今日页统计带", () => {
           ? HttpResponse.json({ detail: "sidecar 抖动" }, { status: 500 })
           : HttpResponse.json(zeroStats),
       ),
-      http.get(TREND_URL, () => HttpResponse.json(trendResponse(7))),
+      http.get(TREND_URL, () => HttpResponse.json(trendResponse(30))),
     );
 
     render(<App />);
@@ -237,14 +298,14 @@ describe("今日页统计带", () => {
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
 
-    expect(await cellValueText("累计学习时长")).toBe("0 分钟");
+    await waitFor(() => expectBigNumber("0.0 h"));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   }, 20_000);
 
-  it("空库显示全 0 与图表容器", async () => {
+  it("空库显示全 0、平线与示意卡，且无较上周对比", async () => {
     server.use(
       http.get(STATS_URL, () => HttpResponse.json(zeroStats)),
-      http.get(TREND_URL, () => HttpResponse.json(trendResponse(7))),
+      http.get(TREND_URL, () => HttpResponse.json(trendResponse(30))),
     );
 
     render(<App />);
@@ -255,6 +316,13 @@ describe("今日页统计带", () => {
     expect(await cellValueText("AI 总结次数")).toBe("0");
     expect(await cellValueText("习题（已作答 / 生成）")).toBe("0 / 0");
     expect(await cellValueText("问答轮次")).toBe("0");
-    expect(screen.getByRole("img", { name: "学习趋势图" })).toBeInTheDocument();
+    expectBigNumber("0.0 h");
+    expect(within(statsRegion()).queryByText("较上周")).not.toBeInTheDocument();
+    expect(
+      within(statsRegion()).getByRole("img", { name: "学习趋势图" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("region", { name: "学习进步趋势" }),
+    ).toBeInTheDocument();
   });
 });

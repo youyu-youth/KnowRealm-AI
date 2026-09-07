@@ -3,38 +3,24 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
+import { chartPalette, darkTooltipStyle, hexWithAlpha } from "@/charts/token";
 import type { TodayTrendPoint } from "@/features/today/api/today";
 import { formatLearningDurationText } from "@/features/today/duration";
 
 const MS_PER_HOUR = 3_600_000;
 
-// 图表配色读语义 token 的计算值，亮暗主题（.dark 类）随之生效。
-// 主题切换只发生在设置页，返回今日页即重挂载并重读 token，故无需监听类翻转；
-// 取不到值（如 jsdom 无样式表）时交由 echarts 默认色兜底，不阻塞渲染。
-function cssVar(name: string): string | undefined {
-  const value = getComputedStyle(document.documentElement)
-    .getPropertyValue(name)
-    .trim();
-  return value === "" ? undefined : value;
-}
-
-function hexWithAlpha(color: string | undefined, alpha: string) {
-  if (!color) return undefined;
-  return /^#[0-9a-f]{6}$/i.test(color) ? `${color}${alpha}` : color;
-}
-
-function buildTrendOption(points: TodayTrendPoint[], t: TFunction) {
-  const foreground = cssVar("--foreground");
-  const primary = cssVar("--primary");
-  const mutedForeground = cssVar("--muted-foreground");
-  const border = cssVar("--border");
-  const axisLabelColor = { color: mutedForeground };
+function buildTrendOption(
+  points: TodayTrendPoint[],
+  showSymbol: boolean,
+  t: TFunction,
+) {
+  const palette = chartPalette();
 
   return {
-    // echarts 6 起坐标标签防溢出为默认行为（containLabel 已废弃）。
     grid: { left: 8, right: 8, top: 28, bottom: 0 },
     tooltip: {
       trigger: "axis",
+      ...darkTooltipStyle(),
       valueFormatter: (value: unknown) =>
         formatLearningDurationText(Number(value) * MS_PER_HOUR, t),
     },
@@ -43,31 +29,38 @@ function buildTrendOption(points: TodayTrendPoint[], t: TFunction) {
       data: points.map((point) => point.date),
       boundaryGap: false,
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: border } },
+      axisLine: { lineStyle: { color: palette.border } },
       axisLabel: {
-        ...axisLabelColor,
+        color: palette.mutedForeground,
         formatter: (value: string) => value.slice(5).replace("-", "/"),
       },
     },
     yAxis: {
       type: "value",
       name: t("today.stats.trendUnit"),
-      nameTextStyle: { color: mutedForeground },
-      axisLabel: axisLabelColor,
-      splitLine: { lineStyle: { color: border } },
+      nameTextStyle: { color: palette.mutedForeground },
+      axisLabel: { color: palette.mutedForeground },
+      splitLine: { lineStyle: { color: palette.border } },
     },
     series: [
       {
         type: "line",
         name: t("today.stats.title"),
-        // y 轴以小时计；smooth 关闭，无学习的日子如实平线。
+        // y 轴以小时计；7 天档显示空心圆点，30 天档点距过密仅保留 tooltip。
         data: points.map((point) =>
           Number((point.total_ms / MS_PER_HOUR).toFixed(2)),
         ),
         smooth: false,
-        showSymbol: false,
-        lineStyle: { width: 2, color: foreground },
-        areaStyle: primary
+        showSymbol,
+        symbol: "circle",
+        symbolSize: 7,
+        itemStyle: {
+          color: palette.card,
+          borderColor: palette.foreground,
+          borderWidth: 2,
+        },
+        lineStyle: { width: 2, color: palette.foreground },
+        areaStyle: palette.primary
           ? {
               color: {
                 type: "linear",
@@ -76,8 +69,8 @@ function buildTrendOption(points: TodayTrendPoint[], t: TFunction) {
                 x2: 0,
                 y2: 1,
                 colorStops: [
-                  { offset: 0, color: hexWithAlpha(primary, "33") },
-                  { offset: 1, color: hexWithAlpha(primary, "05") },
+                  { offset: 0, color: hexWithAlpha(palette.primary, "24") },
+                  { offset: 1, color: hexWithAlpha(palette.primary, "05") },
                 ],
               },
             }
@@ -89,17 +82,22 @@ function buildTrendOption(points: TodayTrendPoint[], t: TFunction) {
 
 type StatsTrendChartProps = {
   points: TodayTrendPoint[];
+  showSymbol: boolean;
   ariaLabel: string;
   className?: string;
 };
 
 export function StatsTrendChart({
   points,
+  showSymbol,
   ariaLabel,
   className,
 }: StatsTrendChartProps) {
   const { t } = useTranslation();
-  const option = useMemo(() => buildTrendOption(points, t), [points, t]);
+  const option = useMemo(
+    () => buildTrendOption(points, showSymbol, t),
+    [points, showSymbol, t],
+  );
   return (
     <BaseChart option={option} ariaLabel={ariaLabel} className={className} />
   );

@@ -403,7 +403,7 @@ export function AppShell() {
             <AlertDescription>{lifecycleError}</AlertDescription>
           </Alert>
         ) : null}
-        <main className="bg-paper min-h-0 flex-1 overflow-y-auto">
+        <main className="bg-canvas min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
       </div>
