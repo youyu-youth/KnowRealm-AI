@@ -98,7 +98,7 @@ describe("首启三步向导", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "今日" }),
+      await screen.findByRole("heading", { name: "学习趋势" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("选择数据存放位置")).not.toBeInTheDocument();
   });
@@ -161,7 +161,7 @@ describe("首启三步向导", () => {
     fireEvent.click(screen.getByRole("button", { name: "进入 KnowRealm" }));
 
     expect(
-      await screen.findByRole("heading", { name: "今日" }),
+      await screen.findByRole("heading", { name: "学习趋势" }),
     ).toBeInTheDocument();
     expect(runtime.completeOnboarding).toHaveBeenCalledOnce();
     expect(runtime.completeOnboarding).toHaveBeenCalledWith();

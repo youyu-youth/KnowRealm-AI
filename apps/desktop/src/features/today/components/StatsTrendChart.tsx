@@ -17,7 +17,7 @@ function buildTrendOption(
   const palette = chartPalette();
 
   return {
-    grid: { left: 8, right: 8, top: 28, bottom: 0 },
+    grid: { left: 36, right: 4, top: 8, bottom: 20 },
     tooltip: {
       trigger: "axis",
       ...darkTooltipStyle(),
@@ -50,17 +50,17 @@ function buildTrendOption(
         data: points.map((point) =>
           Number((point.total_ms / MS_PER_HOUR).toFixed(2)),
         ),
-        smooth: false,
+        smooth: true,
         showSymbol,
         symbol: "circle",
-        symbolSize: 7,
+        symbolSize: 6,
         itemStyle: {
           color: palette.card,
           borderColor: palette.foreground,
           borderWidth: 2,
         },
         lineStyle: { width: 2, color: palette.foreground },
-        areaStyle: palette.primary
+        areaStyle: palette.foreground
           ? {
               color: {
                 type: "linear",
@@ -69,8 +69,8 @@ function buildTrendOption(
                 x2: 0,
                 y2: 1,
                 colorStops: [
-                  { offset: 0, color: hexWithAlpha(palette.primary, "24") },
-                  { offset: 1, color: hexWithAlpha(palette.primary, "05") },
+                  { offset: 0, color: hexWithAlpha(palette.foreground, "18") },
+                  { offset: 1, color: hexWithAlpha(palette.foreground, "03") },
                 ],
               },
             }

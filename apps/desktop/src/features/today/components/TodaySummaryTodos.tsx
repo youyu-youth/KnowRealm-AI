@@ -1,15 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { CalendarCheck2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
 import { todayKeys } from "@/features/today/api/keys";
 import { todayApi } from "@/features/today/api/today";
@@ -54,21 +46,7 @@ export function TodaySummaryTodos() {
   }
 
   if (todos.data.length === 0) {
-    return (
-      <Empty className="mt-12 flex-1 items-start justify-start gap-6 rounded-none border-x-0 border-t border-b-0 border-solid bg-transparent px-0 py-8 text-left">
-        <EmptyHeader className="max-w-reading items-start text-left">
-          <EmptyMedia className="text-muted-foreground">
-            <CalendarCheck2 className="size-5" aria-hidden="true" />
-          </EmptyMedia>
-          <EmptyTitle className="text-section font-section text-ink">
-            {t("today.emptyTitle")}
-          </EmptyTitle>
-          <EmptyDescription className="max-w-reading text-body text-left">
-            {t("today.emptyDescription")}
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    );
+    return null;
   }
 
   return (

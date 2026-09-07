@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { StatsMetrics } from "@/features/today/components/StatsMetrics";
 import { StatsProgressChart } from "@/features/today/components/StatsProgressChart";
 import { StatsRadarChart } from "@/features/today/components/StatsRadarChart";
 import { StatsTrendChart } from "@/features/today/components/StatsTrendChart";
+import { TodayRightRail } from "@/features/today/components/TodayRightRail";
 
 const MS_PER_HOUR = 3_600_000;
 
@@ -33,6 +34,20 @@ function formatHoursBig(ms: number): string {
 export function TodayStatsBand() {
   const { t } = useTranslation();
   const [days, setDays] = useState<TrendDays>(7);
+  const [themeRevision, setThemeRevision] = useState(0);
+
+  useEffect(() => {
+    const observer = new MutationObserver(() =>
+      setThemeRevision((revision) => revision + 1),
+    );
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    queueMicrotask(() => setThemeRevision((revision) => revision + 1));
+    return () => observer.disconnect();
+  }, []);
+
   const stats = useQuery({
     queryKey: todayKeys.stats,
     queryFn: todayApi.stats,
@@ -50,96 +65,113 @@ export function TodayStatsBand() {
   const windowTotalMs = sumMs(windowPoints);
   const comparison = buildWeekComparison(points, days);
 
-  return (
-    <section className="mt-10">
-      <div
-        aria-label={t("today.stats.title")}
-        role="region"
-        className="bg-card border-border/60 rounded-lg border p-6"
-      >
-        <StatsBandHeader days={days} onDaysChange={setDays} />
-        {stats.isPending || trend.isPending ? (
-          <p
-            role="status"
-            className="text-body text-muted-foreground mt-6 flex items-center gap-2"
-          >
-            <Spinner aria-hidden="true" />
-            {t("today.stats.loading")}
-          </p>
-        ) : stats.isError || trend.isError ? (
-          <div role="alert" className="border-border mt-6 border-t pt-6">
-            <h3 className="text-section font-section text-ink">
-              {t("today.stats.errorTitle")}
-            </h3>
-            <p className="text-body text-muted-foreground mt-2">
-              {t("today.stats.errorDescription")}
-            </p>
-            <Button
-              variant="outline"
-              className="mt-5"
-              onClick={() => {
-                void stats.refetch();
-                void trend.refetch();
-              }}
-            >
-              {t("today.stats.retry")}
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="mt-4 flex items-end justify-between gap-x-8 gap-y-4">
-              <div className="shrink-0">
-                <p className="text-stat font-headline text-ink-strong tabular-nums">
-                  {formatHoursBig(windowTotalMs)}
-                  <span className="text-label font-label text-muted-foreground">
-                    {" "}
-                    {t("today.stats.insights.unitH")}
-                  </span>
-                </p>
-                {comparison ? (
-                  <p className="text-label text-muted-foreground mt-1">
-                    {t("today.stats.weekOverWeek")}{" "}
-                    <span className="text-ink font-medium">{comparison}</span>
-                  </p>
-                ) : null}
-              </div>
-              <StatsTrendChart
-                points={windowPoints}
-                showSymbol={days === 7}
-                ariaLabel={t("today.stats.trendChartLabel")}
-                className="h-56 min-w-0 flex-1"
-              />
-            </div>
-            <div className="border-border mt-6 border-t pt-4">
-              <StatsMetrics stats={stats.data} />
-            </div>
-          </>
-        )}
-      </div>
+  if (themeRevision === 0) return null;
 
-      {/* 洞察小图卡为示意数据，不依赖统计查询，加载/失败不影响渲染。 */}
-      <div className="compact:grid-cols-2 wide:grid-cols-4 mt-6 grid grid-cols-1 gap-6">
-        <StatsInsightCard title={t("today.stats.insights.radarTitle")}>
-          <StatsRadarChart
-            ariaLabel={t("today.stats.insights.radarChartLabel")}
-          />
-        </StatsInsightCard>
-        <StatsInsightCard title={t("today.stats.insights.distributionTitle")}>
-          <StatsDistributionChart
-            ariaLabel={t("today.stats.insights.distributionChartLabel")}
-          />
-        </StatsInsightCard>
-        <StatsInsightCard title={t("today.stats.insights.focusTitle")}>
-          <StatsFocusChart
-            ariaLabel={t("today.stats.insights.focusChartLabel")}
-          />
-        </StatsInsightCard>
-        <StatsInsightCard title={t("today.stats.insights.progressTitle")}>
-          <StatsProgressChart
-            ariaLabel={t("today.stats.insights.progressChartLabel")}
-          />
-        </StatsInsightCard>
+  return (
+    <section
+      key={themeRevision}
+      className="wide:grid-cols-[minmax(0,2fr)_minmax(20rem,0.82fr)] grid gap-4"
+    >
+      <div className="min-w-0">
+        <div
+          aria-label={t("today.stats.title")}
+          role="region"
+          className="bg-card border-border/60 rounded-lg border p-5"
+        >
+          <StatsBandHeader days={days} onDaysChange={setDays} />
+          {stats.isPending || trend.isPending ? (
+            <p
+              role="status"
+              className="text-body text-muted-foreground mt-6 flex items-center gap-2"
+            >
+              <Spinner aria-hidden="true" />
+              {t("today.stats.loading")}
+            </p>
+          ) : stats.isError || trend.isError ? (
+            <div role="alert" className="border-border mt-6 border-t pt-6">
+              <h3 className="text-section font-section text-ink">
+                {t("today.stats.errorTitle")}
+              </h3>
+              <p className="text-body text-muted-foreground mt-2">
+                {t("today.stats.errorDescription")}
+              </p>
+              <Button
+                variant="outline"
+                className="mt-5"
+                onClick={() => {
+                  void stats.refetch();
+                  void trend.refetch();
+                }}
+              >
+                {t("today.stats.retry")}
+              </Button>
+            </div>
+          ) : (
+            <>
+              <div className="compact:flex-row compact:items-end compact:gap-8 mt-3 flex min-w-0 flex-col gap-4">
+                <div className="compact:w-32 compact:pb-5 shrink-0">
+                  <p className="text-stat font-headline text-ink-strong tabular-nums">
+                    {formatHoursBig(windowTotalMs)}
+                    <span className="text-label font-label text-muted-foreground">
+                      {" "}
+                      {t("today.stats.insights.unitH")}
+                    </span>
+                  </p>
+                  {comparison ? (
+                    <p className="text-label text-muted-foreground mt-1">
+                      {t("today.stats.weekOverWeek")}{" "}
+                      <span className="text-ink font-medium">{comparison}</span>
+                    </p>
+                  ) : null}
+                </div>
+                <StatsTrendChart
+                  points={windowPoints}
+                  showSymbol={days === 7}
+                  ariaLabel={t("today.stats.trendChartLabel")}
+                  className="h-44 min-w-0 flex-1"
+                />
+              </div>
+              <div className="border-border mt-4 border-t pt-3">
+                <StatsMetrics stats={stats.data} />
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 洞察小图卡为示意数据，不依赖统计查询，加载/失败不影响渲染。 */}
+        <div className="compact:grid-cols-2 wide:grid-cols-3 mt-4 grid grid-cols-1 gap-4">
+          <StatsInsightCard
+            title={t("today.stats.insights.radarTitle")}
+            className="wide:row-span-2"
+          >
+            <StatsRadarChart
+              ariaLabel={t("today.stats.insights.radarChartLabel")}
+              className="h-72 w-full"
+            />
+          </StatsInsightCard>
+          <StatsInsightCard
+            title={t("today.stats.insights.distributionTitle")}
+            className="wide:col-span-2"
+          >
+            <StatsDistributionChart
+              ariaLabel={t("today.stats.insights.distributionChartLabel")}
+            />
+          </StatsInsightCard>
+          <StatsInsightCard title={t("today.stats.insights.focusTitle")}>
+            <StatsFocusChart
+              ariaLabel={t("today.stats.insights.focusChartLabel")}
+              className="h-28 w-full"
+            />
+          </StatsInsightCard>
+          <StatsInsightCard title={t("today.stats.insights.progressTitle")}>
+            <StatsProgressChart
+              ariaLabel={t("today.stats.insights.progressChartLabel")}
+              className="h-28 w-full"
+            />
+          </StatsInsightCard>
+        </div>
       </div>
+      <TodayRightRail />
     </section>
   );
 }

@@ -49,8 +49,8 @@ function buildFocusOption(t: TFunction) {
                 x2: 0,
                 y2: 1,
                 colorStops: [
-                  { offset: 0, color: hexWithAlpha(palette.foreground, "2E") },
-                  { offset: 1, color: hexWithAlpha(palette.foreground, "05") },
+                  { offset: 0, color: hexWithAlpha(palette.foreground, "4D") },
+                  { offset: 1, color: hexWithAlpha(palette.foreground, "0D") },
                 ],
               },
             }

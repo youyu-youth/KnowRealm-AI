@@ -41,7 +41,7 @@ describe("工作台骨架", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "今日" }),
+      await screen.findByRole("heading", { name: "学习趋势" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "收件箱" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "开始录音" })).toBeEnabled();

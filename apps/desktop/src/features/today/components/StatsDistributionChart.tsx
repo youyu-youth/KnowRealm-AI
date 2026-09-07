@@ -2,28 +2,24 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
-import { chartPalette, darkTooltipStyle, hexWithAlpha } from "@/charts/token";
+import { chartPalette, darkTooltipStyle } from "@/charts/token";
 import {
   distributionSlices,
   distributionTotalHours,
 } from "@/features/today/mockInsights";
 
-// 单色层次（learning 蓝 → 灰）对应分类占比从大到小，与右侧图例共用色值。
-function sliceColors() {
-  const palette = chartPalette();
-  return [
-    palette.learning,
-    hexWithAlpha(palette.learning, "B3"),
-    hexWithAlpha(palette.learning, "73"),
-    hexWithAlpha(palette.learning, "40"),
-    hexWithAlpha(palette.mutedForeground, "80"),
-    hexWithAlpha(palette.mutedForeground, "4D"),
-  ];
-}
+// 用户指定的冷色主阶，末两档延续同色系以覆盖六个学习分类。
+const DISTRIBUTION_COLORS = [
+  "#1a2f44",
+  "#41607f",
+  "#5b7c9d",
+  "#a1a8ad",
+  "#c2c8cc",
+  "#d7dbde",
+] as const;
 
 function buildDistributionOption(t: (key: string) => string) {
   const palette = chartPalette();
-  const colors = sliceColors();
 
   return {
     tooltip: {
@@ -45,7 +41,7 @@ function buildDistributionOption(t: (key: string) => string) {
         data: distributionSlices.map((slice, index) => ({
           name: t(slice.nameKey),
           value: slice.percent,
-          itemStyle: { color: colors[index] },
+          itemStyle: { color: DISTRIBUTION_COLORS[index] },
         })),
       },
     ],
@@ -61,7 +57,6 @@ export function StatsDistributionChart({
 }: StatsDistributionChartProps) {
   const { t } = useTranslation();
   const option = useMemo(() => buildDistributionOption(t), [t]);
-  const colors = sliceColors();
 
   return (
     <div className="flex min-w-0 items-center gap-4">
@@ -89,7 +84,7 @@ export function StatsDistributionChart({
       </div>
       <ul
         aria-label={t("today.stats.insights.legendLabel")}
-        className="flex min-w-0 flex-1 flex-col gap-1.5"
+        className="flex max-w-64 min-w-0 flex-1 flex-col gap-1.5"
       >
         {distributionSlices.map((slice, index) => (
           <li
@@ -99,7 +94,7 @@ export function StatsDistributionChart({
             <span
               aria-hidden="true"
               className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: colors[index] }}
+              style={{ backgroundColor: DISTRIBUTION_COLORS[index] }}
             />
             <span className="min-w-0 truncate">{t(slice.nameKey)}</span>
             <span className="ml-auto tabular-nums">{slice.percent}%</span>

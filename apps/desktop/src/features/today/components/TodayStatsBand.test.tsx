@@ -166,6 +166,9 @@ describe("今日页统计带", () => {
     expect(
       screen.getByRole("region", { name: "学习进步趋势" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("今日焦点")).toBeInTheDocument();
+    expect(screen.getByText("AI 助手")).toBeInTheDocument();
+    expect(screen.getByText("学习成就")).toBeInTheDocument();
 
     expect(
       within(insightRegion("学科能力雷达图")).getByText("本周"),
@@ -266,9 +269,8 @@ describe("今日页统计带", () => {
 
     render(<App />);
 
-    const loading = await screen.findByRole("status");
-    expect(loading).toHaveTextContent("正在读取学习统计");
-    expect(screen.getByText("今天没有待处理事项")).toBeInTheDocument();
+    expect(await screen.findByText("正在读取学习统计")).toBeInTheDocument();
+    expect(screen.queryByText("今天没有待处理事项")).not.toBeInTheDocument();
     expect(
       screen.getByRole("region", { name: "学习专注度" }),
     ).toBeInTheDocument();

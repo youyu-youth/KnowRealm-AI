@@ -98,9 +98,10 @@ describe("今日页", () => {
     expect(screen.queryByText("今天没有待处理事项")).not.toBeInTheDocument();
   });
 
-  it("无待办时保持空态，读取失败可重试", async () => {
+  it("无待办时不显示空态文案，读取失败可重试", async () => {
     renderAt();
-    expect(await screen.findByText("今天没有待处理事项")).toBeInTheDocument();
+    expect(await screen.findByText("学习趋势")).toBeInTheDocument();
+    expect(screen.queryByText("今天没有待处理事项")).not.toBeInTheDocument();
 
     cleanup();
     let calls = 0;
@@ -190,6 +191,6 @@ describe("今日页", () => {
         screen.queryByRole("link", { name: /操作系统第一讲/ }),
       ).not.toBeInTheDocument(),
     );
-    expect(await screen.findByText("今天没有待处理事项")).toBeInTheDocument();
+    expect(screen.queryByText("今天没有待处理事项")).not.toBeInTheDocument();
   });
 });

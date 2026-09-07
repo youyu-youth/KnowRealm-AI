@@ -97,15 +97,15 @@ export function StatsMetrics({ stats }: StatsMetricsProps) {
         >
           <span
             aria-hidden="true"
-            className="bg-surface-subtle text-muted-foreground flex size-9 shrink-0 items-center justify-center rounded-md"
+            className="text-ink flex size-8 shrink-0 items-center justify-center"
           >
-            <cell.icon className="size-5" />
+            <cell.icon className="size-6 stroke-[1.6]" />
           </span>
           <div className="min-w-0">
             <p className="text-label text-muted-foreground truncate">
               {t(cell.labelKey)}
             </p>
-            <p className="text-headline font-headline text-ink-strong mt-0.5 tabular-nums">
+            <p className="text-ink-strong mt-0.5 text-xl font-semibold tabular-nums">
               {cell.parts.map((part, partIndex) => (
                 <Fragment key={partIndex}>
                   {partIndex > 0 ? " " : null}

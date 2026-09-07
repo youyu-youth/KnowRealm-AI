@@ -24,11 +24,11 @@ export type ChartPalette = {
 
 export function chartPalette(): ChartPalette {
   return {
-    foreground: cssVar("--foreground"),
-    primary: cssVar("--primary"),
+    foreground: cssVar("--ink"),
+    primary: cssVar("--ink-strong"),
     mutedForeground: cssVar("--muted-foreground"),
     border: cssVar("--border"),
-    card: cssVar("--card"),
+    card: cssVar("--paper"),
     learning: cssVar("--learning"),
   };
 }

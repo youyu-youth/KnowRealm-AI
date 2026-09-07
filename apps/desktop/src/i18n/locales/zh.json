@@ -164,6 +164,17 @@
           "other": "其他"
         }
       }
+    },
+    "rightRail": {
+      "label": "今日学习助手",
+      "focusTitle": "今日焦点",
+      "viewAll": "查看全部",
+      "addTodo": "添加待办",
+      "assistantTitle": "AI 助手",
+      "assistantDescription": "有什么可以帮你解决学习中的问题？",
+      "askPlaceholder": "输入问题，或 @ 课程 / 资料",
+      "achievementTitle": "学习成就",
+      "reviewProgress": "查看学习进度"
     }
   },
   "spaces": {

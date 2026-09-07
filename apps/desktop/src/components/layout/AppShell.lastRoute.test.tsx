@@ -55,7 +55,7 @@ function renderApp() {
 }
 
 async function waitForTodayPage() {
-  await screen.findByRole("heading", { name: "今日" });
+  await screen.findByRole("heading", { name: "学习趋势" });
 }
 
 function clickNav(name: string) {
