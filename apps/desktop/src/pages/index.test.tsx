@@ -81,7 +81,10 @@ describe("今日页", () => {
     server.use(
       http.get(TODAY_URL, () => HttpResponse.json([todo])),
       http.get(DETAIL_URL, () =>
-        HttpResponse.json({ detail: "学习记录不存在或已删除" }, { status: 404 }),
+        HttpResponse.json(
+          { detail: "学习记录不存在或已删除" },
+          { status: 404 },
+        ),
       ),
     );
     renderAt();
@@ -92,16 +95,12 @@ describe("今日页", () => {
     expect(
       screen.getByRole("list", { name: "待确认总结列表" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText("今天没有待处理事项"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("今天没有待处理事项")).not.toBeInTheDocument();
   });
 
   it("无待办时保持空态，读取失败可重试", async () => {
     renderAt();
-    expect(
-      await screen.findByText("今天没有待处理事项"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("今天没有待处理事项")).toBeInTheDocument();
 
     cleanup();
     let calls = 0;
@@ -115,23 +114,26 @@ describe("今日页", () => {
     );
     renderAt();
     expect(
-      await screen.findByRole("heading", { name: "今日待办暂时无法读取" }, {
-        timeout: 6_000,
-      }),
+      await screen.findByRole(
+        "heading",
+        { name: "今日待办暂时无法读取" },
+        {
+          timeout: 6_000,
+        },
+      ),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
     expect(
       await screen.findByRole("link", { name: /操作系统第一讲/ }),
     ).toBeInTheDocument();
-  });
+    // 统计带并入今日页后，本用例叠加了图表渲染与重试退避，超出默认 5s。
+  }, 20_000);
 
   it("确认总结后返回今日页，待办立即移除", async () => {
     let confirmed = false;
     let confirmCalls = 0;
     server.use(
-      http.get(TODAY_URL, () =>
-        HttpResponse.json(confirmed ? [] : [todo]),
-      ),
+      http.get(TODAY_URL, () => HttpResponse.json(confirmed ? [] : [todo])),
       http.get(DETAIL_URL, () =>
         HttpResponse.json({
           id: RECORD_ID,
@@ -152,7 +154,10 @@ describe("今日页", () => {
           action_required: "NONE",
           active_job_id: null,
           blocked_reason: null,
-          summary: { ...generatedSummary, status: confirmed ? "CONFIRMED" : "GENERATED" },
+          summary: {
+            ...generatedSummary,
+            status: confirmed ? "CONFIRMED" : "GENERATED",
+          },
         }),
       ),
       http.post(CONFIRM_URL, async ({ request }) => {
@@ -176,9 +181,7 @@ describe("今日页", () => {
       await screen.findByRole("link", { name: /操作系统第一讲/ }),
     );
     fireEvent.click(await screen.findByRole("button", { name: "确认总结" }));
-    expect(
-      await screen.findByText("AI 总结 · 已确认"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("AI 总结 · 已确认")).toBeInTheDocument();
     expect(confirmCalls).toBe(1);
 
     window.history.back();
@@ -187,8 +190,6 @@ describe("今日页", () => {
         screen.queryByRole("link", { name: /操作系统第一讲/ }),
       ).not.toBeInTheDocument(),
     );
-    expect(
-      await screen.findByText("今天没有待处理事项"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("今天没有待处理事项")).toBeInTheDocument();
   });
 });

@@ -61,4 +61,18 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/today/pending-summaries`, () =>
     HttpResponse.json([]),
   ),
+  http.get(`${TEST_SIDECAR_URL}/api/today/stats`, () =>
+    HttpResponse.json({
+      total_learning_ms: 0,
+      record_count: 0,
+      course_count: 0,
+      ai_summary_count: 0,
+      quiz_generated_count: 0,
+      quiz_answered_count: 0,
+      chat_turn_count: 0,
+    }),
+  ),
+  http.get(`${TEST_SIDECAR_URL}/api/today/stats/trend`, () =>
+    HttpResponse.json([]),
+  ),
 ];

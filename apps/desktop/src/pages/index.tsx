@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { TodayStatsBand } from "@/features/today/components/TodayStatsBand";
 import { TodaySummaryTodos } from "@/features/today/components/TodaySummaryTodos";
 
 export const Route = createFileRoute("/")({ component: TodayPage });
@@ -18,6 +19,7 @@ export function TodayPage() {
         </p>
       </header>
       <TodaySummaryTodos />
+      <TodayStatsBand />
     </section>
   );
 }

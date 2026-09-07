@@ -109,7 +109,31 @@
     "emptyDescription": "当学习记录进入处理或确认阶段时，它们会出现在这里。",
     "todoTitle": "等待确认的总结",
     "todoListLabel": "待确认总结列表",
-    "todoAction": "去确认"
+    "todoAction": "去确认",
+    "stats": {
+      "title": "学习趋势",
+      "loading": "正在读取学习统计",
+      "errorTitle": "学习统计暂时无法读取",
+      "errorDescription": "本地服务可能仍在启动，请稍后重试。",
+      "retry": "重新读取",
+      "last7Days": "近 7 天",
+      "last30Days": "近 30 天",
+      "trendUnit": "小时",
+      "trendChartLabel": "学习趋势图",
+      "duration": {
+        "minutesUnit": "分钟",
+        "hoursUnit": "小时",
+        "minutesShortUnit": "分"
+      },
+      "metrics": {
+        "learningDuration": "累计学习时长",
+        "recordCount": "学习记录",
+        "courseCount": "知识空间",
+        "aiSummaryCount": "AI 总结次数",
+        "quiz": "习题（已作答 / 生成）",
+        "chatTurnCount": "问答轮次"
+      }
+    }
   },
   "spaces": {
     "title": "知识空间",

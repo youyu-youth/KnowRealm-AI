@@ -50,6 +50,7 @@
   --container-reading: 70ch;
   --container-workbench: 92.5rem;
   --breakpoint-compact: 68.75rem;
+  --breakpoint-wide: 87.5rem;
 
   --text-headline: 1.625rem;
   --text-headline--line-height: 1.28;
