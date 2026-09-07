@@ -1222,6 +1222,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/today/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Stats */
+        get: operations["get_stats_api_today_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/today/stats/trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Stats Trend */
+        get: operations["get_stats_trend_api_today_stats_trend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2486,6 +2520,44 @@ export interface components {
             /** Course Id */
             course_id?: string | null;
         };
+        /** TodayStatsOut */
+        TodayStatsOut: {
+            /**
+             * Ai Summary Count
+             * @description AI 总结次数（含重新生成版本）
+             */
+            ai_summary_count: number;
+            /**
+             * Chat Turn Count
+             * @description 问答轮次（用户提问消息数）
+             */
+            chat_turn_count: number;
+            /**
+             * Course Count
+             * @description 课程总数（含已归档）
+             */
+            course_count: number;
+            /**
+             * Quiz Answered Count
+             * @description 习题完成次数（逐题作答口径）
+             */
+            quiz_answered_count: number;
+            /**
+             * Quiz Generated Count
+             * @description 习题生成次数（含历史批次）
+             */
+            quiz_generated_count: number;
+            /**
+             * Record Count
+             * @description 学习记录总数（含失败、速记、收件箱未归类）
+             */
+            record_count: number;
+            /**
+             * Total Learning Ms
+             * @description 累计学习时长（毫秒），仅音频类记录贡献
+             */
+            total_learning_ms: number;
+        };
         /** TodaySummaryTodoOut */
         TodaySummaryTodoOut: {
             /** Course Id */
@@ -2498,6 +2570,19 @@ export interface components {
             record_id: string;
             /** Title */
             title: string;
+        };
+        /** TodayTrendPointOut */
+        TodayTrendPointOut: {
+            /**
+             * Date
+             * @description 捕获日（ISO 日期）
+             */
+            date: string;
+            /**
+             * Total Ms
+             * @description 当日学习时长（毫秒），无学习为 0
+             */
+            total_ms: number;
         };
         /**
          * TodoAction
@@ -8972,6 +9057,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodaySummaryTodoOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_stats_api_today_stats_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayStatsOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_stats_trend_api_today_stats_trend_get: {
+        parameters: {
+            query: {
+                days: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayTrendPointOut"][];
                 };
             };
             /** @description Forbidden */
