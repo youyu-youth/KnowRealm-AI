@@ -11,7 +11,7 @@ type Props = {
   onNext: () => void;
 };
 
-/** 向导②供应商：直接复用设置页卡片（自带查询与保存），跳过由空态引导兜底（#38）。 */
+/** 向导③供应商：直接复用设置页卡片（自带查询与保存），跳过由空态引导兜底（#38）。 */
 export function ProvidersStep({ current, onNext }: Props) {
   const { t } = useTranslation();
   return (

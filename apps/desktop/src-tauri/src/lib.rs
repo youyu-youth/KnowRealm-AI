@@ -41,6 +41,7 @@ pub fn run() {
             power::set_recording_keep_awake,
             hide_window_temporarily,
             lifecycle::exit_application,
+            lifecycle::rebuild_tray_menu,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

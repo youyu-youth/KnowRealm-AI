@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel, FieldLegend } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
+import { isUiLanguage, UI_LANGUAGES } from "@/i18n/language";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
 import { normalizeRecordedKeys } from "@/features/settings/shortcutAccelerator";
@@ -108,6 +109,7 @@ function AppearancePreferences({
   const { t } = useTranslation();
   const theme = useSavePreference();
   const fontScale = useSavePreference();
+  const language = useSavePreference();
 
   return (
     <section aria-labelledby="preferences-appearance-title">
@@ -118,6 +120,32 @@ function AppearancePreferences({
         {t("settings.preferences.appearanceTitle")}
       </h3>
       <div className="mt-4 flex flex-col gap-5">
+        <Field>
+          <FieldLegend variant="label">
+            {t("settings.preferences.languageLegend")}
+          </FieldLegend>
+          <RadioGroup
+            value={preferences.language}
+            onValueChange={(value) => {
+              if (isUiLanguage(value)) language.mutate({ language: value });
+            }}
+            disabled={language.isPending}
+          >
+            {UI_LANGUAGES.map((item) => {
+              const id = `preference-language-${item}`;
+              return (
+                <Field key={id} orientation="horizontal">
+                  <RadioGroupItem id={id} value={item} />
+                  <FieldLabel htmlFor={id}>
+                    {t(`settings.preferences.language.${item}`)}
+                  </FieldLabel>
+                </Field>
+              );
+            })}
+          </RadioGroup>
+          <SaveError error={language.error} />
+        </Field>
+
         <Field>
           <FieldLegend variant="label">
             {t("settings.preferences.themeLegend")}

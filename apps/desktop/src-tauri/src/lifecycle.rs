@@ -7,14 +7,29 @@ use tauri::{
 };
 
 const EXIT_REQUESTED_EVENT: &str = "desktop://exit-requested";
+const TRAY_ID: &str = "main-tray";
 const SHOW_MENU_ID: &str = "show";
 const EXIT_MENU_ID: &str = "exit";
 
+// 菜单项 id 恒定（show/exit），事件处理器随首次构建注册，换语言只换标签不换协议。
+fn tray_labels(language: &str) -> Option<(&'static str, &'static str)> {
+    match language {
+        "zh" => Some(("显示", "退出")),
+        "en" => Some(("Show", "Exit")),
+        _ => None,
+    }
+}
+
+fn build_tray_menu(app: &AppHandle, language: &str) -> Result<Menu<tauri::Wry>, tauri::Error> {
+    let (show_label, exit_label) = tray_labels(language).unwrap_or(("显示", "退出"));
+    let show = MenuItem::with_id(app, SHOW_MENU_ID, show_label, true, None::<&str>)?;
+    let exit = MenuItem::with_id(app, EXIT_MENU_ID, exit_label, true, None::<&str>)?;
+    Menu::with_items(app, &[&show, &exit])
+}
+
 pub fn setup(app: &mut App) -> Result<(), Box<dyn Error>> {
-    let show = MenuItem::with_id(app, SHOW_MENU_ID, "显示", true, None::<&str>)?;
-    let exit = MenuItem::with_id(app, EXIT_MENU_ID, "退出", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&show, &exit])?;
-    let mut tray = TrayIconBuilder::new()
+    let menu = build_tray_menu(app.handle(), "zh")?;
+    let mut tray = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
         .show_menu_on_left_click(true)
         .tooltip("KnowRealm")
@@ -34,6 +49,19 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn Error>> {
     tray.build(app)?;
 
     Ok(())
+}
+
+// 前端切换界面语言时调用：按菜单 id 原地换菜单，托盘本体与事件协议不动。
+#[tauri::command]
+pub fn rebuild_tray_menu(app: AppHandle, language: String) -> Result<(), String> {
+    if tray_labels(&language).is_none() {
+        return Err(format!("unsupported tray language: {language}"));
+    }
+    let tray = app
+        .tray_by_id(TRAY_ID)
+        .ok_or_else(|| "tray icon is unavailable".to_string())?;
+    let menu = build_tray_menu(&app, &language).map_err(|error| error.to_string())?;
+    tray.set_menu(Some(menu)).map_err(|error| error.to_string())
 }
 
 fn show_main_window(app: &AppHandle) {

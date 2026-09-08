@@ -6,6 +6,7 @@ export const TEST_LAUNCH_TOKEN = "test-launch-token";
 const preferencesPayload = {
   theme: "SYSTEM",
   font_scale: "M",
+  language: "zh",
   timezone: null,
   close_behavior: "TRAY",
   quick_note_shortcut: "Ctrl+Alt+N",

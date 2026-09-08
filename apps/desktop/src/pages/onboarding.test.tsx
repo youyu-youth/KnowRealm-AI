@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
+import { applyLanguage, default as i18n } from "@/i18n";
 import {
   cleanup,
   fireEvent,
@@ -74,23 +75,28 @@ afterEach(() => {
 });
 
 function usePreferenceWriteSpy() {
-  let writes = 0;
+  const bodies: object[] = [];
   server.use(
-    http.put(`${TEST_SIDECAR_URL}/api/settings/preferences`, () => {
-      writes += 1;
-      return HttpResponse.json({});
-    }),
+    http.put(
+      `${TEST_SIDECAR_URL}/api/settings/preferences`,
+      async ({ request }) => {
+        bodies.push((await request.json()) as object);
+        return HttpResponse.json({});
+      },
+    ),
   );
-  return () => writes;
+  return () => bodies;
 }
 
-// StepHeader 不依赖目录查询，先等路径就绪再交互。
+// 语言步标题不依赖任何查询；过语言步（继续=接受预选）后再等目录路径就绪。
 async function gotoDirectoryStep() {
+  await screen.findByRole("heading", { name: "选择界面语言" });
+  fireEvent.click(screen.getByRole("button", { name: "继续" }));
   await screen.findByRole("heading", { name: "选择数据存放位置" });
   await screen.findByDisplayValue("C:\\Users\\tester\\KnowRealm");
 }
 
-describe("首启三步向导", () => {
+describe("首启四步向导", () => {
   it("非首启直接进今日，直达 /onboarding 也被弹回", async () => {
     runtime.onboarded = true;
     window.history.replaceState(null, "", "/onboarding");
@@ -107,9 +113,10 @@ describe("首启三步向导", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "选择数据存放位置" }),
+      await screen.findByRole("heading", { name: "选择界面语言" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("第 1 步，共 3 步")).toBeInTheDocument();
+    expect(screen.getByText("第 1 步，共 4 步")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
     expect(
       await screen.findByDisplayValue("C:\\Users\\tester\\KnowRealm"),
     ).toHaveAttribute("readonly");
@@ -124,6 +131,9 @@ describe("首启三步向导", () => {
     );
 
     render(<App />);
+    await screen.findByRole("heading", { name: "选择界面语言" });
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    await screen.findByRole("heading", { name: "选择数据存放位置" });
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "OneDrive 同步范围",
@@ -133,8 +143,8 @@ describe("首启三步向导", () => {
     ).toBeEnabled();
   });
 
-  it("三步全部跳过：完成页写 onboarded 后进首页，向导全程不写 last_route", async () => {
-    const preferenceWrites = usePreferenceWriteSpy();
+  it("四步全部跳过：完成时把预选界面语言写入偏好，向导全程不写 last_route", async () => {
+    const preferenceBodies = usePreferenceWriteSpy();
 
     render(<App />);
     await gotoDirectoryStep();
@@ -156,7 +166,7 @@ describe("首启三步向导", () => {
     expect(
       screen.getByText("所有设置可稍后在设置页修改。"),
     ).toBeInTheDocument();
-    expect(preferenceWrites()).toBe(0);
+    expect(preferenceBodies()).toEqual([]);
 
     fireEvent.click(screen.getByRole("button", { name: "进入 KnowRealm" }));
 
@@ -165,9 +175,41 @@ describe("首启三步向导", () => {
     ).toBeInTheDocument();
     expect(runtime.completeOnboarding).toHaveBeenCalledOnce();
     expect(runtime.completeOnboarding).toHaveBeenCalledWith();
+    // 跳过=接受预选：完成时把当前选中项（首帧解析结果 zh）写入偏好。
+    expect(preferenceBodies()).toEqual([{ language: "zh" }]);
   });
 
-  it("③保存建档发出完整档案，跳过则不发任何档案请求", async () => {
+  it("语言步预选首帧语言，选择即时生效；完成时把选中项写入偏好", async () => {
+    await applyLanguage("en");
+    const preferenceBodies = usePreferenceWriteSpy();
+
+    render(<App />);
+    await screen.findByRole("heading", { name: "选择界面语言" });
+    expect(screen.getByRole("radio", { name: "English" })).toBeChecked();
+    // 选择即时生效：i18n 实例与 <html lang> 跟随，不等到完成。
+    fireEvent.click(screen.getByRole("radio", { name: "中文" }));
+    await waitFor(() => expect(i18n.language).toBe("zh"));
+    expect(document.documentElement.lang).toBe("zh-CN");
+    fireEvent.click(screen.getByRole("radio", { name: "English" }));
+    await waitFor(() => expect(i18n.language).toBe("en"));
+    expect(document.documentElement.lang).toBe("en-US");
+    fireEvent.click(screen.getByRole("button", { name: "继续" }));
+    await screen.findByRole("heading", { name: "选择数据存放位置" });
+    await screen.findByDisplayValue("C:\\Users\\tester\\KnowRealm");
+    fireEvent.click(screen.getByRole("button", { name: "使用默认目录开始" }));
+    await screen.findByRole("heading", { name: "配置 AI 服务" });
+    fireEvent.click(screen.getByRole("button", { name: "稍后在设置中配置" }));
+    await screen.findByRole("heading", { name: "认识一下（可选）" });
+    fireEvent.click(await screen.findByRole("button", { name: "跳过" }));
+    await screen.findByRole("heading", { name: "一切就绪" });
+
+    fireEvent.click(screen.getByRole("button", { name: "进入 KnowRealm" }));
+    await screen.findByRole("heading", { name: "学习趋势" });
+
+    expect(preferenceBodies()).toEqual([{ language: "en" }]);
+  });
+
+  it("④保存建档发出完整档案，跳过则不发任何档案请求", async () => {
     const savedProfiles: unknown[] = [];
     server.use(
       http.put(`${TEST_SIDECAR_URL}/api/profile`, async ({ request }) => {

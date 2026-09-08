@@ -1124,6 +1124,11 @@
         "M": "中",
         "L": "大"
       },
+      "languageLegend": "界面语言",
+      "language": {
+        "zh": "中文",
+        "en": "English"
+      },
       "desktopTitle": "桌面行为",
       "closeBehaviorLegend": "关闭窗口时",
       "closeBehavior": {
@@ -1220,6 +1225,11 @@
   },
   "onboarding": {
     "stepOf": "第 {{current}} 步，共 {{total}} 步",
+    "language": {
+      "title": "选择界面语言",
+      "description": "中文与 English 可随时在设置页切换；内容语言不受影响，AI 生成物跟随材料或提问的语言。",
+      "confirm": "继续"
+    },
     "directory": {
       "title": "选择数据存放位置",
       "description": "数据库、原始文件与配置都保存在这里。之后可随时在设置页更改或整体迁移。",

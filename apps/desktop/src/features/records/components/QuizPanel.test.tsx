@@ -123,6 +123,7 @@ function preferencesOut(
   return {
     theme: "SYSTEM",
     font_scale: "M",
+    language: "zh",
     timezone: null,
     close_behavior: "TRAY",
     quick_note_shortcut: "Ctrl+Alt+N",

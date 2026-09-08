@@ -23,7 +23,7 @@ type Props = {
   onNext: () => void;
 };
 
-/** 向导①数据目录：与设置页共用同一组壳 command、迁移/导入链路（04/05）与弹窗。
+/** 向导②数据目录：与设置页共用同一组壳 command、迁移/导入链路（04/05）与弹窗。
  * "使用默认目录开始"=跳过；更改与导入成功后应用都会重启，向导随重启回到本步。 */
 export function DirectoryStep({ current, onNext }: Props) {
   const { t } = useTranslation();

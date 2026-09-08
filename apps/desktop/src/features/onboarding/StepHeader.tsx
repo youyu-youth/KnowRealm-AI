@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-const TOTAL_STEPS = 3;
+const TOTAL_STEPS = 4;
 
 type Props = {
   current: number;

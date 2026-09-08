@@ -14,6 +14,8 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
+import i18n from "@/i18n";
+import { LANGUAGE_STORAGE_KEY } from "@/i18n/language";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 import { setRecordingKeepAwake } from "@/services/tauri/recording";
@@ -276,6 +278,7 @@ const PREFERENCES_URL = `${TEST_SIDECAR_URL}/api/settings/preferences`;
 const DEFAULT_PREFERENCES: PreferencesOut = {
   theme: "SYSTEM",
   font_scale: "M",
+  language: "zh",
   timezone: null,
   close_behavior: "TRAY",
   quick_note_shortcut: "Ctrl+Alt+N",
@@ -788,4 +791,51 @@ describe("设置页供应商分区", () => {
     ).toBeVisible();
     expect(screen.getByText(/保存密钥不等于同意外发/)).toBeVisible();
   }, 15_000);
+});
+
+describe("设置页界面语言", () => {
+  it("切到 English 发出 language PUT，界面语言实例与 <html lang> 即时跟随", async () => {
+    let current = { ...DEFAULT_PREFERENCES };
+    const bodies: object[] = [];
+    server.use(
+      http.get(PREFERENCES_URL, () => HttpResponse.json(current)),
+      http.put(PREFERENCES_URL, async ({ request }) => {
+        const body = (await request.json()) as object;
+        bodies.push(body);
+        current = { ...current, ...body };
+        return HttpResponse.json(current);
+      }),
+    );
+
+    renderAt("/settings");
+    await screen.findByRole("heading", { name: "偏好" });
+    expect(screen.getByRole("radio", { name: "中文" })).toBeChecked();
+
+    fireEvent.click(screen.getByRole("radio", { name: "English" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "English" })).toBeChecked(),
+    );
+    expect(bodies).toEqual([{ language: "en" }]);
+    await waitFor(() => expect(i18n.language).toBe("en"));
+    expect(document.documentElement.lang).toBe("en-US");
+    expect(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBe("en");
+  });
+
+  it("语言保存失败时行内报错，控件停留当前生效值", async () => {
+    server.use(
+      http.put(PREFERENCES_URL, () =>
+        HttpResponse.json({ detail: "服务器内部错误" }, { status: 500 }),
+      ),
+    );
+
+    renderAt("/settings");
+    await screen.findByRole("heading", { name: "偏好" });
+
+    fireEvent.click(screen.getByRole("radio", { name: "English" }));
+
+    expect(await screen.findByText("服务器内部错误")).toBeVisible();
+    expect(screen.getByRole("radio", { name: "中文" })).toBeChecked();
+    expect(i18n.language).toBe("zh");
+  }, 10_000);
 });

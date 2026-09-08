@@ -5,6 +5,12 @@ import { server } from "@/mocks/server";
 
 vi.stubGlobal("scrollTo", vi.fn());
 
+// CI 的系统语言是 en-US：固定 navigator.language 为 zh-CN，首帧解析才不随运行环境漂移；
+// 个别测试可自行改写此 stub。node 环境的纯逻辑测试无 window，跳过。
+if (typeof window !== "undefined") {
+  vi.spyOn(window.navigator, "language", "get").mockReturnValue("zh-CN");
+}
+
 // jsdom 未实现 URL.createObjectURL/revokeObjectURL；头像 blob 展示依赖它们。
 if (typeof URL.createObjectURL !== "function") {
   URL.createObjectURL = (() =>
@@ -50,8 +56,17 @@ if (
 }
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   server.resetHandlers();
+  // 语言切换测试会把实例拨到 en：恢复 zh 并清缓存，避免污染后续用例的首帧解析。
+  // i18n 初始化读 window，惰性导入以免 node 环境的纯逻辑测试炸 setup。
+  if (typeof window !== "undefined") {
+    const { default: i18n, applyLanguage } = await import("@/i18n");
+    const { LANGUAGE_STORAGE_KEY } = await import("@/i18n/language");
+    window.localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+    document.documentElement.lang = "zh-CN";
+    if (i18n.language !== "zh") await applyLanguage("zh");
+  }
 });
 afterAll(() => server.close());

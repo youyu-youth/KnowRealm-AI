@@ -24,7 +24,7 @@ type Props = {
   onNext: () => void;
 };
 
-/** 向导③角色：跳过=不建档（chat 走中性默认）；已有档案（如导入恢复）时回填并提示。 */
+/** 向导④角色：跳过=不建档（chat 走中性默认）；已有档案（如导入恢复）时回填并提示。 */
 export function ProfileStep({ current, onNext }: Props) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
