@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
@@ -27,6 +27,7 @@ from app.modules.transcript.schemas import (
     TranscriptUpdateRequest,
 )
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -62,7 +63,9 @@ async def get_record(
 ) -> RecordOut:
     record = await RecordService.get(session, str(record_id))
     if record is None:
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     return RecordOut.model_validate(record)
 
 
@@ -72,7 +75,9 @@ async def get_record_jobs(
     session: AsyncSession = Depends(get_db),
 ) -> RecordJobsOut:
     if await RecordService.get(session, str(record_id)) is None:
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     return await ProcessingJobService.list_for_record(session, str(record_id))
 
 
@@ -83,7 +88,9 @@ async def get_record_transcript(
 ) -> TranscriptReadOut:
     record = await RecordService.get(session, str(record_id))
     if record is None:
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     transcript = await RecordService.get_transcript(session, str(record_id))
     if transcript is None:
         return TranscriptReadOut(status=TranscriptAvailability.NOT_READY, transcript=None)
@@ -117,7 +124,9 @@ async def delete_record(
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     if not await RecordService.soft_delete(session, str(record_id)):
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     for cache_dir in (
         Path(request.app.state.data_dir) / "cache" / "audio" / str(record_id),
         Path(request.app.state.data_dir) / "cache" / "sources" / str(record_id),
@@ -176,7 +185,9 @@ async def stream_record_events(
     async with request.app.state.session_factory() as session:
         record = await RecordService.get(session, value)
         if record is None:
-            raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+            raise CodedHTTPException(
+                code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+            )
         initially_streaming = record.status in STREAMING_RECORD_STATUSES
 
     async def still_streaming() -> bool:
@@ -218,5 +229,7 @@ async def list_course_records(
 ) -> list[RecordOut]:
     records = await RecordService.list_for_course(session, str(course_id))
     if records is None:
-        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+        raise CodedHTTPException(
+            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+        )
     return [RecordOut.model_validate(record) for record in records]

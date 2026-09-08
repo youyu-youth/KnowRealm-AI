@@ -1,4 +1,3 @@
-from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +14,7 @@ from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.todo.models import TodoItem
 from app.modules.transcript.models import Transcript
 from app.modules.transcript.schemas import TranscriptUpdateRequest
+from app.shared.errors import CodedHTTPException
 
 
 class RecordService:
@@ -111,17 +111,25 @@ class RecordService:
         body: TranscriptUpdateRequest,
     ) -> Transcript:
         if not body.content.strip():
-            raise HTTPException(status_code=422, detail="Transcript 正文不能为空")
+            raise CodedHTTPException(
+                code="TRANSCRIPT_EMPTY", status_code=422, detail="Transcript 正文不能为空"
+            )
         now = utcnow()
         async with session.begin():
             record = await RecordService.get(session, record_id)
             if record is None:
-                raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+                raise CodedHTTPException(
+                    code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+                )
             if record.status in (
                 RecordStatus.CONTENT_PROCESSING,
                 RecordStatus.SUMMARY_PROCESSING,
             ):
-                raise HTTPException(status_code=409, detail="当前状态不允许编辑 Transcript")
+                raise CodedHTTPException(
+                    code="TRANSCRIPT_NOT_EDITABLE",
+                    status_code=409,
+                    detail="当前状态不允许编辑 Transcript",
+                )
             transcript = (
                 await session.scalars(
                     update(Transcript)
@@ -142,8 +150,14 @@ class RecordService:
             if transcript is None:
                 current = await RecordService.get_transcript(session, record_id)
                 if current is None:
-                    raise HTTPException(status_code=404, detail="Transcript 尚未生成")
-                raise HTTPException(status_code=409, detail="Transcript 已被其他操作更新")
+                    raise CodedHTTPException(
+                        code="TRANSCRIPT_NOT_READY", status_code=404, detail="Transcript 尚未生成"
+                    )
+                raise CodedHTTPException(
+                    code="TRANSCRIPT_VERSION_CONFLICT",
+                    status_code=409,
+                    detail="Transcript 已被其他操作更新",
+                )
             await session.execute(
                 update(AiSummary)
                 .where(

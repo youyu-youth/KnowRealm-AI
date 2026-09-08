@@ -1,12 +1,13 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.jobs.schemas import ProcessingJobOut, ProcessingJobRetryRequest
 from app.modules.jobs.service import ProcessingJobService
 from app.modules.record.service import RecordService
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -30,7 +31,7 @@ async def get_processing_job(
 ) -> ProcessingJobOut:
     job = await ProcessingJobService.get(session, str(job_id))
     if job is None or await RecordService.get(session, str(job.record_id)) is None:
-        raise HTTPException(status_code=404, detail="处理任务不存在")
+        raise CodedHTTPException(code="JOB_NOT_FOUND", status_code=404, detail="处理任务不存在")
     return ProcessingJobService.to_out(job)
 
 

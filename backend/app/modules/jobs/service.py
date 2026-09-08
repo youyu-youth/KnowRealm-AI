@@ -1,7 +1,6 @@
 import json
 from typing import cast
 
-from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +19,7 @@ from app.modules.jobs.schemas import (
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.transcript.schemas import AsrChunkStatus
+from app.shared.errors import CodedHTTPException
 
 
 def _reset_failed_asr_chunk(value: object) -> object:
@@ -116,16 +116,20 @@ class ProcessingJobService:
             await session.execute(select(ProcessingJob.record_id).where(ProcessingJob.id == job_id))
         ).scalar_one_or_none()
         if job_link is None:
-            raise HTTPException(status_code=404, detail="处理任务不存在")
+            raise CodedHTTPException(code="JOB_NOT_FOUND", status_code=404, detail="处理任务不存在")
         if job_link != record_id:
-            raise HTTPException(status_code=409, detail="处理任务与学习记录不匹配")
+            raise CodedHTTPException(
+                code="JOB_RECORD_MISMATCH", status_code=409, detail="处理任务与学习记录不匹配"
+            )
         record_exists = (
             await session.execute(
                 select(Record.id).where(Record.id == record_id, Record.deleted_at.is_(None))
             )
         ).scalar_one_or_none()
         if record_exists is None:
-            raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+            raise CodedHTTPException(
+                code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+            )
         now = utcnow()
         job = await session.get(ProcessingJob, job_id)
         if (
@@ -133,7 +137,9 @@ class ProcessingJobService:
             or job.status != ProcessingJobStatus.FAILED
             or job.error_code not in {code.value for code in RETRYABLE_PROCESSING_JOB_ERROR_CODES}
         ):
-            raise HTTPException(status_code=409, detail="当前处理任务不能重试")
+            raise CodedHTTPException(
+                code="JOB_NOT_RETRYABLE", status_code=409, detail="当前处理任务不能重试"
+            )
 
         if job.job_type == ProcessingJobType.ASR and job.result_json:
             raw_checkpoint: object = json.loads(job.result_json)
@@ -152,7 +158,9 @@ class ProcessingJobService:
             ProcessingJobType.AUDIO_TRANSCODE,
             ProcessingJobType.ASR,
         ):
-            raise HTTPException(status_code=409, detail="当前处理任务不能重试")
+            raise CodedHTTPException(
+                code="JOB_NOT_RETRYABLE", status_code=409, detail="当前处理任务不能重试"
+            )
 
         job_result = await session.execute(
             update(ProcessingJob)
@@ -179,14 +187,18 @@ class ProcessingJobService:
             )
         )
         if not isinstance(job_result, CursorResult) or job_result.rowcount != 1:
-            raise HTTPException(status_code=409, detail="当前处理任务不能重试")
+            raise CodedHTTPException(
+                code="JOB_NOT_RETRYABLE", status_code=409, detail="当前处理任务不能重试"
+            )
         record_result = await session.execute(
             update(Record)
             .where(Record.id == record_id, Record.deleted_at.is_(None))
             .values(status=RecordStatus.CONTENT_PROCESSING, updated_at=now)
         )
         if not isinstance(record_result, CursorResult) or record_result.rowcount != 1:
-            raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+            raise CodedHTTPException(
+                code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+            )
         await session.commit()
         await session.refresh(job)
         return ProcessingJobService.to_out(job)
