@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from fastapi import HTTPException
 from langchain_core.messages import AnyMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
 from loguru import logger
@@ -36,6 +35,7 @@ from app.modules.record.service import RecordService
 from app.modules.settings.config import LlmProviderConfig, load_llm_provider
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
+from app.shared.errors import CodedHTTPException
 
 # 会话标题默认取首条用户消息的截断长度。
 CHAT_TITLE_MAX_CHARS = 30
@@ -102,7 +102,9 @@ async def _session_context(
     async with session_factory() as session:
         chat = await ChatSessionService.get(session, session_id)
         if chat is None:
-            raise HTTPException(status_code=404, detail="对话不存在或已删除")
+            raise CodedHTTPException(
+                code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+            )
         rows = (
             await session.scalars(
                 select(ChatMessage)
@@ -116,10 +118,18 @@ async def _session_context(
         if chat.record_id is not None:
             record = await RecordService.get(session, chat.record_id)
             if record is None:
-                raise HTTPException(status_code=409, detail="CHAT_RECORD_UNAVAILABLE：原记录已删除")
+                raise CodedHTTPException(
+                    code="CHAT_RECORD_UNAVAILABLE",
+                    status_code=409,
+                    detail="CHAT_RECORD_UNAVAILABLE：原记录已删除",
+                )
             transcript = await RecordService.get_transcript(session, record.id)
             if transcript is None:
-                raise HTTPException(status_code=409, detail="TRANSCRIPT_NOT_READY：转写尚未生成")
+                raise CodedHTTPException(
+                    code="TRANSCRIPT_NOT_READY",
+                    status_code=409,
+                    detail="TRANSCRIPT_NOT_READY：转写尚未生成",
+                )
             record_context = RecordContext(transcript=transcript.content)
             transcript_text = transcript.content
             record_id = record.id
@@ -227,12 +237,14 @@ class ChatMessageService:
         """受理发送：校验供应商与在途状态，落库 user 行（补答复用原行）。"""
         provider = await asyncio.to_thread(load_llm_provider, data_dir)
         if provider is None or not provider.api_key:
-            raise HTTPException(
+            raise CodedHTTPException(
+                code="LLM_PROVIDER_UNCONFIGURED",
                 status_code=409,
                 detail="LLM_PROVIDER_UNCONFIGURED：未配置 AI 服务，请先完成供应商配置",
             )
         if not registry.acquire(session_id):
-            raise HTTPException(
+            raise CodedHTTPException(
+                code="CHAT_STREAM_IN_PROGRESS",
                 status_code=409,
                 detail="CHAT_STREAM_IN_PROGRESS：该对话正在生成回答，请稍候",
             )
@@ -240,13 +252,16 @@ class ChatMessageService:
             async with session_factory() as session, session.begin():
                 chat = await ChatSessionService.get(session, session_id)
                 if chat is None:
-                    raise HTTPException(status_code=404, detail="对话不存在或已删除")
+                    raise CodedHTTPException(
+                        code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+                    )
                 if (
                     chat.record_id is not None
                     and (await RecordService.get(session, chat.record_id)) is None
                 ):
                     # 失效态运行时推导：挂载记录软删后发送被拒，会话只读。
-                    raise HTTPException(
+                    raise CodedHTTPException(
+                        code="CHAT_RECORD_UNAVAILABLE",
                         status_code=409,
                         detail="CHAT_RECORD_UNAVAILABLE：原记录已删除，对话已失效",
                     )

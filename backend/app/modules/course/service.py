@@ -1,6 +1,5 @@
 import json
 
-from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +18,7 @@ from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
 from app.modules.record.models import Record
 from app.modules.search.service import SearchService
+from app.shared.errors import CodedHTTPException
 
 
 class CourseService:
@@ -65,14 +65,20 @@ class CourseService:
                 if final_context == LearningContext.SCHOOL:
                     final_stage = changes.get("education_stage", course.education_stage)
                     if final_stage is None:
-                        raise HTTPException(status_code=422, detail="学业场景必须选择教育阶段")
+                        raise CodedHTTPException(
+                            code="COURSE_EDUCATION_STAGE_REQUIRED",
+                            status_code=422,
+                            detail="学业场景必须选择教育阶段",
+                        )
                     changes["education_stage"] = final_stage
                     changes["depth"] = None
                 else:
                     final_depth = changes.get("depth", course.depth)
                     if final_depth is None:
-                        raise HTTPException(
-                            status_code=422, detail="职业或兴趣场景必须选择学习深度"
+                        raise CodedHTTPException(
+                            code="COURSE_LEARNING_DEPTH_REQUIRED",
+                            status_code=422,
+                            detail="职业或兴趣场景必须选择学习深度",
                         )
                     changes["depth"] = final_depth
                     changes["education_stage"] = None

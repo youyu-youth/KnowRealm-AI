@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.course.schemas import (
@@ -12,6 +12,7 @@ from app.modules.course.schemas import (
 )
 from app.modules.course.service import CourseService
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -57,7 +58,9 @@ async def get_course(
 ) -> CourseDetailOut:
     course = await CourseService.get(session, course_id)
     if course is None:
-        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+        raise CodedHTTPException(
+            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+        )
     return CourseDetailOut.model_validate(course)
 
 
@@ -69,7 +72,9 @@ async def update_course(
 ) -> CourseOut:
     course = await CourseService.update(session, course_id, payload)
     if course is None:
-        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+        raise CodedHTTPException(
+            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+        )
     return CourseOut.model_validate(course)
 
 
@@ -79,5 +84,7 @@ async def delete_course(
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     if not await CourseService.soft_delete(session, course_id):
-        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+        raise CodedHTTPException(
+            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+        )
     return Response(status_code=204)

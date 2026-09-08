@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette import EventSourceResponse
 
@@ -15,6 +15,7 @@ from app.modules.chat.schemas import (
 )
 from app.modules.chat.session_service import ChatSessionService
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -68,7 +69,9 @@ async def get_chat_session(
 ) -> ChatSessionOut:
     chat = await ChatSessionService.get_out(session, str(session_id))
     if chat is None:
-        raise HTTPException(status_code=404, detail="对话不存在或已删除")
+        raise CodedHTTPException(
+            code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+        )
     return chat
 
 
@@ -80,10 +83,14 @@ async def rename_chat_session(
 ) -> ChatSessionOut:
     renamed = await ChatSessionService.rename(session, str(session_id), payload.title)
     if renamed is None:
-        raise HTTPException(status_code=404, detail="对话不存在或已删除")
+        raise CodedHTTPException(
+            code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+        )
     out = await ChatSessionService.get_out(session, str(session_id))
     if out is None:
-        raise HTTPException(status_code=404, detail="对话不存在或已删除")
+        raise CodedHTTPException(
+            code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+        )
     return out
 
 
@@ -93,7 +100,9 @@ async def delete_chat_session(
     session: AsyncSession = Depends(get_db),
 ) -> Response:
     if not await ChatSessionService.soft_delete(session, str(session_id)):
-        raise HTTPException(status_code=404, detail="对话不存在或已删除")
+        raise CodedHTTPException(
+            code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+        )
     return Response(status_code=204)
 
 
@@ -104,7 +113,9 @@ async def list_chat_messages(
 ) -> list[ChatMessageOut]:
     messages = await ChatMessageService.list_messages(session, str(session_id))
     if messages is None:
-        raise HTTPException(status_code=404, detail="对话不存在或已删除")
+        raise CodedHTTPException(
+            code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+        )
     return [ChatMessageOut.model_validate(message) for message in messages]
 
 

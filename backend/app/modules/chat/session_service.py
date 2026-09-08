@@ -1,6 +1,5 @@
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +14,7 @@ from app.modules.profile.schemas import PrimaryRole
 from app.modules.record.models import Record
 from app.modules.record.service import RecordService
 from app.modules.transcript.models import Transcript
+from app.shared.errors import CodedHTTPException
 
 ROLE_LABELS: dict[PrimaryRole, str] = {
     PrimaryRole.STUDENT: "学生",
@@ -94,16 +94,28 @@ class ChatSessionService:
                     or knowledge_point.generation_status
                     == KnowledgePointGenerationStatus.SUPERSEDED
                 ):
-                    raise HTTPException(status_code=404, detail="知识点不存在或已删除")
+                    raise CodedHTTPException(
+                        code="KNOWLEDGE_POINT_NOT_FOUND",
+                        status_code=404,
+                        detail="知识点不存在或已删除",
+                    )
                 if knowledge_point.record_id != record_id:
-                    raise HTTPException(status_code=409, detail="知识点不属于挂载的学习记录")
+                    raise CodedHTTPException(
+                        code="KNOWLEDGE_POINT_RECORD_MISMATCH",
+                        status_code=409,
+                        detail="知识点不属于挂载的学习记录",
+                    )
             if record_id is not None:
                 record = await RecordService.get(session, record_id)
                 if record is None:
-                    raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+                    raise CodedHTTPException(
+                        code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+                    )
                 if await RecordService.get_transcript(session, record_id) is None:
-                    raise HTTPException(
-                        status_code=409, detail="TRANSCRIPT_NOT_READY：转写尚未生成，暂不可挂载"
+                    raise CodedHTTPException(
+                        code="TRANSCRIPT_NOT_READY",
+                        status_code=409,
+                        detail="TRANSCRIPT_NOT_READY：转写尚未生成，暂不可挂载",
                     )
             now = utcnow()
             chat = ChatSession(

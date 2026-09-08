@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.today.schemas import TodayStatsOut, TodaySummaryTodoOut, TodayTrendPointOut
 from app.modules.today.service import TodayService
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -37,5 +38,9 @@ async def get_stats_trend(
 ) -> list[TodayTrendPointOut]:
     # 查询参数白名单校验：pydantic Literal 不做查询串的 str→int 强转，走业务 422。
     if days not in (7, 30):
-        raise HTTPException(status_code=422, detail="INVALID_TREND_DAYS：days 仅支持 7 或 30")
+        raise CodedHTTPException(
+            code="INVALID_TREND_DAYS",
+            status_code=422,
+            detail="INVALID_TREND_DAYS：days 仅支持 7 或 30",
+        )
     return await TodayService.stats_trend(session, days)
