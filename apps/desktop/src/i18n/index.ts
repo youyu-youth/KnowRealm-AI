@@ -11,7 +11,7 @@ import { syncTrayLanguage } from "@/services/tauri/lifecycle";
 import en from "./locales/en.json";
 import zh from "./locales/zh.json";
 
-// en 现为 zh 结构占位副本（真实翻译归工单 02）；fallbackLng=zh 兜底漏翻 key。
+// fallbackLng=zh 兜底后续新增 key 的漏翻。
 void i18n.use(initReactI18next).init({
   lng: resolveInitialLanguage(),
   fallbackLng: "zh",

@@ -184,7 +184,8 @@ describe("首启四步向导", () => {
     const preferenceBodies = usePreferenceWriteSpy();
 
     render(<App />);
-    await screen.findByRole("heading", { name: "选择界面语言" });
+    // en 路径断言真实英文文案（en.json 自工单 02 起为全量翻译）。
+    await screen.findByRole("heading", { name: "Choose the UI language" });
     expect(screen.getByRole("radio", { name: "English" })).toBeChecked();
     // 选择即时生效：i18n 实例与 <html lang> 跟随，不等到完成。
     fireEvent.click(screen.getByRole("radio", { name: "中文" }));
@@ -193,18 +194,26 @@ describe("首启四步向导", () => {
     fireEvent.click(screen.getByRole("radio", { name: "English" }));
     await waitFor(() => expect(i18n.language).toBe("en"));
     expect(document.documentElement.lang).toBe("en-US");
-    fireEvent.click(screen.getByRole("button", { name: "继续" }));
-    await screen.findByRole("heading", { name: "选择数据存放位置" });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await screen.findByRole("heading", {
+      name: "Choose where your data lives",
+    });
     await screen.findByDisplayValue("C:\\Users\\tester\\KnowRealm");
-    fireEvent.click(screen.getByRole("button", { name: "使用默认目录开始" }));
-    await screen.findByRole("heading", { name: "配置 AI 服务" });
-    fireEvent.click(screen.getByRole("button", { name: "稍后在设置中配置" }));
-    await screen.findByRole("heading", { name: "认识一下（可选）" });
-    fireEvent.click(await screen.findByRole("button", { name: "跳过" }));
-    await screen.findByRole("heading", { name: "一切就绪" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Use the default directory" }),
+    );
+    await screen.findByRole("heading", { name: "Configure AI services" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Configure later in Settings" }),
+    );
+    await screen.findByRole("heading", {
+      name: "Tell us about you (optional)",
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Skip" }));
+    await screen.findByRole("heading", { name: "All set" });
 
-    fireEvent.click(screen.getByRole("button", { name: "进入 KnowRealm" }));
-    await screen.findByRole("heading", { name: "学习趋势" });
+    fireEvent.click(screen.getByRole("button", { name: "Enter KnowRealm" }));
+    await screen.findByRole("heading", { name: "Learning trends" });
 
     expect(preferenceBodies()).toEqual([{ language: "en" }]);
   });
