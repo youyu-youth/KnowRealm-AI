@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import type { components } from "@knowrealm/api-types";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
+import { LlmUsageCard } from "@/features/settings/LlmUsageCard";
 
 // DashScope OpenAI 兼容模式端点与默认模型：一键填充后仍可修改（plan 14 定稿预设）。
 const DASHSCOPE_PRESET_BASE_URL =
@@ -32,8 +33,28 @@ export function ProvidersSection() {
       <div className="mt-6 flex flex-col gap-8">
         <LlmProviderCard />
         <TencentAsrCard />
+        <LlmUsageCard />
       </div>
     </div>
+  );
+}
+
+// 健康检查徽章（#38）：key 配置状态即时展示；连通性探测由卡上「测试连接」按需触发，不做启动/打开期自动探测。
+function StatusBadge({
+  ok,
+  okLabel,
+  missingLabel,
+}: {
+  ok: boolean;
+  okLabel: string;
+  missingLabel: string;
+}) {
+  return (
+    <span
+      className={`${ok ? "bg-success-soft text-success-foreground" : "bg-danger/10 text-danger"} text-label rounded-xs px-2 py-1`}
+    >
+      {ok ? okLabel : missingLabel}
+    </span>
   );
 }
 
@@ -88,14 +109,27 @@ export function LlmProviderCard() {
   }
 
   const data = provider.data.provider;
+  const hasApiKey = data?.has_api_key ?? false;
   return (
     <section aria-labelledby="providers-llm-title">
-      <h3
-        id="providers-llm-title"
-        className="text-section font-section text-ink"
-      >
-        {t("settings.providers.llm.title")}
-      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3
+          id="providers-llm-title"
+          className="text-section font-section text-ink"
+        >
+          {t("settings.providers.llm.title")}
+        </h3>
+        <StatusBadge
+          ok={hasApiKey}
+          okLabel={t("settings.providers.llm.configured")}
+          missingLabel={t("settings.providers.llm.missingKey")}
+        />
+      </div>
+      {hasApiKey ? null : (
+        <p className="text-body text-danger mt-1">
+          {t("settings.providers.llm.missingKeyHint")}
+        </p>
+      )}
       <p className="text-body text-muted-foreground mt-1">
         {t("settings.providers.llm.description")}
       </p>
@@ -314,14 +348,27 @@ export function TencentAsrCard() {
   }
 
   const data = provider.data.provider;
+  const hasCredentials = data?.has_credentials ?? false;
   return (
     <section aria-labelledby="providers-asr-title">
-      <h3
-        id="providers-asr-title"
-        className="text-section font-section text-ink"
-      >
-        {t("settings.providers.asr.title")}
-      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3
+          id="providers-asr-title"
+          className="text-section font-section text-ink"
+        >
+          {t("settings.providers.asr.title")}
+        </h3>
+        <StatusBadge
+          ok={hasCredentials}
+          okLabel={t("settings.providers.asr.configured")}
+          missingLabel={t("settings.providers.asr.missingCredentials")}
+        />
+      </div>
+      {hasCredentials ? null : (
+        <p className="text-body text-danger mt-1">
+          {t("settings.providers.asr.missingCredentialsHint")}
+        </p>
+      )}
       <p className="text-body text-muted-foreground mt-1">
         {t("settings.providers.asr.description")}
       </p>

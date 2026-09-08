@@ -46,6 +46,17 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/settings/preferences`, () =>
     HttpResponse.json(preferencesPayload),
   ),
+  // 设置页服务与用量分区会拉取近 30 天用量；默认空用量避免全 App 测试误报未拦截请求。
+  http.get(`${TEST_SIDECAR_URL}/api/settings/usage/llm`, () =>
+    HttpResponse.json({
+      items: [],
+      daily: Array.from({ length: 30 }, (_, index) => ({
+        date: `2026-08-${String(1 + index).padStart(2, "0")}`,
+        total_tokens: 0,
+        call_count: 0,
+      })),
+    }),
+  ),
   // AppShell 的 last_route 记忆会 PUT 偏好；避免全 App 测试误报未拦截请求。
   http.put(`${TEST_SIDECAR_URL}/api/settings/preferences`, () =>
     HttpResponse.json(preferencesPayload),

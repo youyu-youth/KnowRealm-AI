@@ -1151,12 +1151,15 @@
       "quizCountLegend": "默认习题数量"
     },
     "providers": {
-      "sectionTitle": "供应商",
+      "sectionTitle": "服务与用量",
       "sectionDescription": "AI 服务与语音转写的密钥以明文保存在本机数据目录（config/providers.json），不会上传到任何 KnowRealm 服务器。",
       "loading": "正在读取供应商配置",
       "retry": "重试",
       "llm": {
         "title": "AI 服务",
+        "configured": "已配置",
+        "missingKey": "未配置密钥",
+        "missingKeyHint": "未配置 API 密钥，总结、知识点、习题、复习资料与 AI 问答暂不可用；在下方填写并保存后即可恢复。",
         "description": "自由聊天、总结、知识点与习题生成共用的 OpenAI 兼容端点；同一时间只有一个生效配置。",
         "dashscopePreset": "填入 DashScope 预设",
         "baseUrl": "服务地址",
@@ -1176,6 +1179,9 @@
       },
       "asr": {
         "title": "语音转写",
+        "configured": "已配置",
+        "missingCredentials": "未配置密钥",
+        "missingCredentialsHint": "未配置腾讯云密钥，录音与音频导入的转写暂不可用；在下方填写并保存后即可恢复。",
         "description": "腾讯云语音识别的访问密钥，用于录音与导入音频的转文字。",
         "secretIdPlaceholder": "粘贴腾讯云 SecretId",
         "secretKeyPlaceholder": "粘贴腾讯云 SecretKey",
@@ -1190,6 +1196,20 @@
         "testing": "正在测试",
         "testSucceeded": "连接测试成功（{{region}}）",
         "consentNote": "保存密钥不等于同意外发：首次转写前会单独征得你的同意，之后才会把音频发送到腾讯云。"
+      },
+      "usage": {
+        "title": "近 30 天 AI 用量",
+        "description": "全部 AI 功能（含 AI 问答）的调用量与 token 消耗，按模型汇总；不做计价展示。",
+        "loading": "正在读取用量",
+        "empty": "近 30 天暂无 AI 调用",
+        "chartLabel": "近 30 天每日 token 用量趋势图",
+        "chartTooltip": "{{date}} · {{tokens}} tokens · {{calls}} 次",
+        "model": "模型",
+        "calls": "调用次数",
+        "input": "输入 tokens",
+        "output": "输出 tokens",
+        "total": "总 tokens",
+        "errors": "失败"
       }
     }
   },

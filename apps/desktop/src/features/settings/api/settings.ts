@@ -37,6 +37,8 @@ export const settingsApi = {
       "/api/settings/providers/tencent-asr/tests",
       { method: "POST" },
     ),
+  getLlmUsage: () =>
+    apiFetch<components["schemas"]["LlmUsageOut"]>("/api/settings/usage/llm"),
   getLlmConsent: () =>
     apiFetch<components["schemas"]["LlmConsentOut"]>(
       "/api/settings/external-processing-consents/llm",
