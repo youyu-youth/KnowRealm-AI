@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
@@ -42,6 +41,7 @@ from app.modules.settings.config import (
 )
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
+from app.shared.errors import CodedHTTPException
 
 
 def _quiz_out(item: Quiz) -> QuizOut:
@@ -98,7 +98,9 @@ async def _get_record(session: AsyncSession, record_id: str) -> Record:
         )
     ).one_or_none()
     if record is None:
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     return record
 
 
@@ -204,9 +206,13 @@ async def _answerable_quiz(session: AsyncSession, record_id: str, quiz_id: str) 
         )
     ).one_or_none()
     if quiz is None:
-        raise HTTPException(status_code=404, detail="习题不存在或已删除")
+        raise CodedHTTPException(
+            code="QUIZ_NOT_FOUND", status_code=404, detail="习题不存在或已删除"
+        )
     if quiz.generation_status != QuizGenerationStatus.ACTIVE:
-        raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+        raise CodedHTTPException(
+            code="QUIZ_NOT_ADOPTED", status_code=409, detail="只有已采用批次的题可以作答"
+        )
     return quiz
 
 
@@ -331,9 +337,13 @@ class QuizService:
     ) -> str:
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
-            raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+            raise CodedHTTPException(
+                code="LLM_PROVIDER_UNCONFIGURED", status_code=409, detail="请先配置 LLM Provider"
+            )
         if not consent_current:
-            raise HTTPException(status_code=409, detail="请先同意外部 AI 处理")
+            raise CodedHTTPException(
+                code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意外部 AI 处理"
+            )
         try:
             async with session.begin():
                 record = await _get_record(session, record_id)
@@ -343,17 +353,29 @@ class QuizService:
                     or course.deleted_at is not None
                     or course.status != CourseStatus.ACTIVE
                 ):
-                    raise HTTPException(status_code=409, detail="归档课程不能生成习题")
+                    raise CodedHTTPException(
+                        code="COURSE_ARCHIVED", status_code=409, detail="归档课程不能生成习题"
+                    )
                 summary = await _confirmed_summary(session, record_id)
                 if summary is None:
-                    raise HTTPException(status_code=409, detail="请先确认当前总结")
+                    raise CodedHTTPException(
+                        code="SUMMARY_NOT_CONFIRMED", status_code=409, detail="请先确认当前总结"
+                    )
                 if await _active_job(session, record_id) is not None:
-                    raise HTTPException(status_code=409, detail="已有进行中的习题生成任务")
+                    raise CodedHTTPException(
+                        code="GENERATION_IN_PROGRESS",
+                        status_code=409,
+                        detail="已有进行中的习题生成任务",
+                    )
                 if any(
                     item.generation_status == QuizGenerationStatus.DRAFT
                     for item in await _visible_items(session, record_id)
                 ):
-                    raise HTTPException(status_code=409, detail="已有待审阅的习题候选")
+                    raise CodedHTTPException(
+                        code="CANDIDATE_PENDING_REVIEW",
+                        status_code=409,
+                        detail="已有待审阅的习题候选",
+                    )
 
                 input_json = _job_input_json(provider, summary, body)
                 failed = await _failed_job(session, record_id)
@@ -369,7 +391,8 @@ class QuizService:
                 await session.flush()
                 return job.id
         except IntegrityError:
-            raise HTTPException(
+            raise CodedHTTPException(
+                code="GENERATION_IN_PROGRESS",
                 status_code=409,
                 detail="已有进行中的习题生成任务",
             ) from None
@@ -389,8 +412,14 @@ class QuizService:
                     session, record_id, batch_id, QuizGenerationStatus.ACTIVE
                 )
                 if adopted:
-                    raise HTTPException(status_code=409, detail="批次已采用，不能丢弃")
-                raise HTTPException(status_code=404, detail="习题批次不存在")
+                    raise CodedHTTPException(
+                        code="QUIZ_BATCH_ALREADY_ADOPTED",
+                        status_code=409,
+                        detail="批次已采用，不能丢弃",
+                    )
+                raise CodedHTTPException(
+                    code="QUIZ_BATCH_NOT_FOUND", status_code=404, detail="习题批次不存在"
+                )
             now = utcnow()
             for row in rows:
                 row.deleted_at = now
@@ -427,8 +456,14 @@ class QuizService:
                         batch_id,
                         QuizGenerationStatus.SUPERSEDED,
                     ):
-                        raise HTTPException(status_code=409, detail="习题批次已被新批次替代")
-                    raise HTTPException(status_code=404, detail="习题批次不存在")
+                        raise CodedHTTPException(
+                            code="QUIZ_BATCH_SUPERSEDED",
+                            status_code=409,
+                            detail="习题批次已被新批次替代",
+                        )
+                    raise CodedHTTPException(
+                        code="QUIZ_BATCH_NOT_FOUND", status_code=404, detail="习题批次不存在"
+                    )
 
                 summary_id = draft_rows[0].generated_from_summary_id
                 summary = await session.get(AiSummary, summary_id) if summary_id else None
@@ -506,7 +541,9 @@ class QuizService:
                 QuizQuestionType.TRUE_FALSE,
                 QuizQuestionType.FILL_BLANK,
             ):
-                raise HTTPException(status_code=409, detail="该题不是客观题")
+                raise CodedHTTPException(
+                    code="QUIZ_NOT_OBJECTIVE", status_code=409, detail="该题不是客观题"
+                )
             options = cast(list[str], json.loads(quiz.options_json))
             answer = body.answer
             correct_answer = cast(object, json.loads(quiz.correct_answer_json))
@@ -515,9 +552,17 @@ class QuizService:
                 QuizQuestionType.TRUE_FALSE,
             ):
                 if not isinstance(answer, int) or not isinstance(correct_answer, int):
-                    raise HTTPException(status_code=409, detail="该题需要提交一个选项")
+                    raise CodedHTTPException(
+                        code="QUIZ_ANSWER_SINGLE_CHOICE_REQUIRED",
+                        status_code=409,
+                        detail="该题需要提交一个选项",
+                    )
                 if answer >= len(options):
-                    raise HTTPException(status_code=400, detail="所选答案下标超出选项范围")
+                    raise CodedHTTPException(
+                        code="QUIZ_ANSWER_INDEX_OUT_OF_RANGE",
+                        status_code=400,
+                        detail="所选答案下标超出选项范围",
+                    )
                 answer_result = (
                     QuizAnswerResult.CORRECT if answer == correct_answer else QuizAnswerResult.WRONG
                 )
@@ -531,11 +576,19 @@ class QuizService:
                     or not correct_values
                     or not all(isinstance(value, int) for value in correct_values)
                 ):
-                    raise HTTPException(status_code=409, detail="该题需要提交选项组合")
+                    raise CodedHTTPException(
+                        code="QUIZ_ANSWER_MULTIPLE_CHOICE_REQUIRED",
+                        status_code=409,
+                        detail="该题需要提交选项组合",
+                    )
                 selected = cast(list[int], answer)
                 expected = cast(list[int], correct_values)
                 if any(value >= len(options) for value in selected):
-                    raise HTTPException(status_code=400, detail="所选答案下标超出选项范围")
+                    raise CodedHTTPException(
+                        code="QUIZ_ANSWER_INDEX_OUT_OF_RANGE",
+                        status_code=400,
+                        detail="所选答案下标超出选项范围",
+                    )
                 answer = sorted(selected)
                 answer_result = (
                     QuizAnswerResult.CORRECT
@@ -552,11 +605,19 @@ class QuizService:
                     or not correct_values
                     or not all(isinstance(value, list) for value in correct_values)
                 ):
-                    raise HTTPException(status_code=409, detail="该题需要提交逐空答案")
+                    raise CodedHTTPException(
+                        code="QUIZ_ANSWER_GAP_FILL_REQUIRED",
+                        status_code=409,
+                        detail="该题需要提交逐空答案",
+                    )
                 filled = cast(list[str], answer)
                 expected_blanks = cast(list[list[str]], correct_values)
                 if len(filled) != len(expected_blanks):
-                    raise HTTPException(status_code=400, detail="填空题作答数量与空位不一致")
+                    raise CodedHTTPException(
+                        code="QUIZ_ANSWER_GAP_COUNT_MISMATCH",
+                        status_code=400,
+                        detail="填空题作答数量与空位不一致",
+                    )
                 answer = [value.strip() for value in filled]
                 answer_result = (
                     QuizAnswerResult.CORRECT
@@ -566,7 +627,11 @@ class QuizService:
             if quiz.answered_at is not None:
                 return _quiz_out(quiz), False
             if record.course_id is None:
-                raise HTTPException(status_code=409, detail="学习记录缺少课程归属，不能作答")
+                raise CodedHTTPException(
+                    code="RECORD_COURSE_MISSING",
+                    status_code=409,
+                    detail="学习记录缺少课程归属，不能作答",
+                )
 
             now = utcnow()
             updated = await session.execute(
@@ -586,7 +651,11 @@ class QuizService:
             if not isinstance(updated, CursorResult) or updated.rowcount != 1:
                 await session.refresh(quiz)
                 if quiz.generation_status != QuizGenerationStatus.ACTIVE:
-                    raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+                    raise CodedHTTPException(
+                        code="QUIZ_NOT_ADOPTED",
+                        status_code=409,
+                        detail="只有已采用批次的题可以作答",
+                    )
                 return _quiz_out(quiz), False
 
             session.add(_answer_event(record, quiz, answer_result, now))
@@ -604,7 +673,9 @@ class QuizService:
             await _get_record(session, record_id)
             quiz = await _answerable_quiz(session, record_id, quiz_id)
             if quiz.question_type != QuizQuestionType.SHORT_ANSWER:
-                raise HTTPException(status_code=409, detail="该题不是简答题")
+                raise CodedHTTPException(
+                    code="QUIZ_NOT_SHORT_ANSWER", status_code=409, detail="该题不是简答题"
+                )
             if quiz.answered_at is not None:
                 return _quiz_out(quiz), False
 
@@ -625,7 +696,11 @@ class QuizService:
             if not isinstance(updated, CursorResult) or updated.rowcount != 1:
                 await session.refresh(quiz)
                 if quiz.generation_status != QuizGenerationStatus.ACTIVE:
-                    raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+                    raise CodedHTTPException(
+                        code="QUIZ_NOT_ADOPTED",
+                        status_code=409,
+                        detail="只有已采用批次的题可以作答",
+                    )
                 return _quiz_out(quiz), False
 
             await session.refresh(quiz)
@@ -642,13 +717,23 @@ class QuizService:
             record = await _get_record(session, record_id)
             quiz = await _answerable_quiz(session, record_id, quiz_id)
             if quiz.question_type != QuizQuestionType.SHORT_ANSWER:
-                raise HTTPException(status_code=409, detail="该题不是简答题")
+                raise CodedHTTPException(
+                    code="QUIZ_NOT_SHORT_ANSWER", status_code=409, detail="该题不是简答题"
+                )
             if quiz.answered_at is None:
-                raise HTTPException(status_code=409, detail="请先提交简答作答")
+                raise CodedHTTPException(
+                    code="QUIZ_SHORT_ANSWER_NOT_SUBMITTED",
+                    status_code=409,
+                    detail="请先提交简答作答",
+                )
             if quiz.answer_result is not None:
                 return _quiz_out(quiz), False
             if record.course_id is None:
-                raise HTTPException(status_code=409, detail="学习记录缺少课程归属，不能作答")
+                raise CodedHTTPException(
+                    code="RECORD_COURSE_MISSING",
+                    status_code=409,
+                    detail="学习记录缺少课程归属，不能作答",
+                )
 
             now = utcnow()
             updated = await session.execute(
@@ -664,7 +749,11 @@ class QuizService:
             if not isinstance(updated, CursorResult) or updated.rowcount != 1:
                 await session.refresh(quiz)
                 if quiz.generation_status != QuizGenerationStatus.ACTIVE:
-                    raise HTTPException(status_code=409, detail="只有已采用批次的题可以作答")
+                    raise CodedHTTPException(
+                        code="QUIZ_NOT_ADOPTED",
+                        status_code=409,
+                        detail="只有已采用批次的题可以作答",
+                    )
                 return _quiz_out(quiz), False
 
             session.add(_answer_event(record, quiz, body.result, now))

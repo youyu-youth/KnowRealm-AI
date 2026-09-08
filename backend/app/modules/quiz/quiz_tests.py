@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from app.modules.quiz.test_schemas import (
 )
 from app.modules.quiz.test_service import QuizTestBlocked, QuizTestService
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -80,7 +81,9 @@ async def get_quiz_test(
         )
         return JSONResponse(status_code=409, content=conflict.model_dump(mode="json"))
     if result is None:
-        raise HTTPException(status_code=404, detail="模拟测试不存在")
+        raise CodedHTTPException(
+            code="QUIZ_TEST_NOT_FOUND", status_code=404, detail="模拟测试不存在"
+        )
     return result
 
 

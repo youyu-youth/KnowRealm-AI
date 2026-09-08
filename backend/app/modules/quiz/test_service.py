@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +44,7 @@ from app.modules.settings.config import (
     llm_provider_fingerprint,
     load_llm_provider,
 )
+from app.shared.errors import CodedHTTPException
 
 # 低置信复核阈值：confidence 低于此值的结果页标记「建议人工复核」（只读，不参与任何计算）。
 # #51 待配置体系统一后迁移至 .env（chat.py 模块常量先例）。
@@ -84,7 +84,9 @@ async def _course(session: AsyncSession, course_id: str) -> Course:
         )
     ).one_or_none()
     if course is None:
-        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+        raise CodedHTTPException(
+            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+        )
     return course
 
 
@@ -120,7 +122,9 @@ class QuizTestService:
                 ).all()
             )
             if not quizzes:
-                raise HTTPException(status_code=409, detail="课程题库暂无可用习题")
+                raise CodedHTTPException(
+                    code="QUIZ_POOL_EMPTY", status_code=409, detail="课程题库暂无可用习题"
+                )
 
             test = QuizTest(
                 id=str(uuid4()),
@@ -228,7 +232,11 @@ class QuizTestService:
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能再作答")
             if test.status != QuizTestStatus.IN_PROGRESS:
-                raise HTTPException(status_code=409, detail="该测试已交卷或已放弃，不能再作答")
+                raise CodedHTTPException(
+                    code="QUIZ_TEST_CLOSED",
+                    status_code=409,
+                    detail="该测试已交卷或已放弃，不能再作答",
+                )
             item = (
                 await session.scalars(
                     select(QuizTestItem).where(
@@ -239,7 +247,9 @@ class QuizTestService:
                 )
             ).one_or_none()
             if item is None:
-                raise HTTPException(status_code=404, detail="试卷题目不存在")
+                raise CodedHTTPException(
+                    code="QUIZ_TEST_QUESTION_NOT_FOUND", status_code=404, detail="试卷题目不存在"
+                )
             quiz = await _item_quiz(session, item)
             if item.answered_at is None:
                 await _grade_and_record(session, test, item, quiz, body.answer)
@@ -251,7 +261,11 @@ class QuizTestService:
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能再放弃")
             if test.status != QuizTestStatus.IN_PROGRESS:
-                raise HTTPException(status_code=409, detail="只有进行中的测试可以放弃")
+                raise CodedHTTPException(
+                    code="QUIZ_TEST_NOT_IN_PROGRESS",
+                    status_code=409,
+                    detail="只有进行中的测试可以放弃",
+                )
             now = utcnow()
             test.status = QuizTestStatus.ABANDONED
             test.updated_at = now
@@ -270,10 +284,18 @@ class QuizTestService:
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能交卷")
             if test.status != QuizTestStatus.IN_PROGRESS:
-                raise HTTPException(status_code=409, detail="该测试已交卷或已放弃，不能再交卷")
+                raise CodedHTTPException(
+                    code="QUIZ_TEST_CLOSED",
+                    status_code=409,
+                    detail="该测试已交卷或已放弃，不能再交卷",
+                )
             total, answered = await _item_counts(session, test_id)
             if answered < total:
-                raise HTTPException(status_code=409, detail="还有题目未作答，全部作答后方可交卷")
+                raise CodedHTTPException(
+                    code="QUIZ_TEST_UNANSWERED_QUESTIONS",
+                    status_code=409,
+                    detail="还有题目未作答，全部作答后方可交卷",
+                )
             if await _short_answer_count(session, test_id) == 0:
                 await finalize_completed_test(session, test, utcnow())
                 return await _detail_out(session, test)
@@ -283,6 +305,7 @@ class QuizTestService:
             session,
             test_id,
             expected_status=QuizTestStatus.IN_PROGRESS,
+            stale_code="QUIZ_TEST_CLOSED",
             stale_detail="该测试已交卷或已放弃，不能再交卷",
             provider_fingerprint=llm_provider_fingerprint(provider),
         )
@@ -298,13 +321,18 @@ class QuizTestService:
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能重新评分")
             if test.status != QuizTestStatus.GRADING_FAILED:
-                raise HTTPException(status_code=409, detail="只有评分失败的测试可以重新评分")
+                raise CodedHTTPException(
+                    code="QUIZ_TEST_NOT_REGRADABLE",
+                    status_code=409,
+                    detail="只有评分失败的测试可以重新评分",
+                )
 
         provider = await _require_grading_provider(data_dir)
         return await _transition_to_grading(
             session,
             test_id,
             expected_status=QuizTestStatus.GRADING_FAILED,
+            stale_code="QUIZ_TEST_NOT_REGRADABLE",
             stale_detail="只有评分失败的测试可以重新评分",
             provider_fingerprint=llm_provider_fingerprint(provider),
         )
@@ -324,7 +352,9 @@ async def _test(session: AsyncSession, test_id: str) -> QuizTest:
         )
     ).one_or_none()
     if test is None:
-        raise HTTPException(status_code=404, detail="模拟测试不存在")
+        raise CodedHTTPException(
+            code="QUIZ_TEST_NOT_FOUND", status_code=404, detail="模拟测试不存在"
+        )
     return test
 
 
@@ -336,13 +366,15 @@ async def _ensure_course_active(
     """归档课程护栏：作答/放弃与读卷面同样拦在 ACTIVE 之外。"""
     status = await session.scalar(select(Course.status).where(Course.id == test.course_id))
     if status != CourseStatus.ACTIVE:
-        raise HTTPException(status_code=409, detail=detail)
+        raise CodedHTTPException(status_code=409, code="COURSE_ARCHIVED", detail=detail)
 
 
 async def _item_quiz(session: AsyncSession, item: QuizTestItem) -> Quiz:
     quiz = await session.get(Quiz, item.quiz_id)
     if quiz is None or quiz.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="试卷题目不存在")
+        raise CodedHTTPException(
+            code="QUIZ_TEST_QUESTION_NOT_FOUND", status_code=404, detail="试卷题目不存在"
+        )
     return quiz
 
 
@@ -380,9 +412,13 @@ async def _require_grading_provider(data_dir: Path) -> LlmProviderConfig:
         asyncio.to_thread(llm_consent, data_dir),
     )
     if provider is None or not provider.api_key:
-        raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+        raise CodedHTTPException(
+            code="LLM_PROVIDER_UNCONFIGURED", status_code=409, detail="请先配置 LLM Provider"
+        )
     if not consent[1]:
-        raise HTTPException(status_code=409, detail="请先同意外部 AI 处理")
+        raise CodedHTTPException(
+            code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意外部 AI 处理"
+        )
     return provider
 
 
@@ -391,6 +427,7 @@ async def _transition_to_grading(
     test_id: str,
     *,
     expected_status: QuizTestStatus,
+    stale_code: str,
     stale_detail: str,
     provider_fingerprint: str,
 ) -> QuizTestDetailOut:
@@ -398,7 +435,7 @@ async def _transition_to_grading(
     async with session.begin():
         test = await _test(session, test_id)
         if test.status != expected_status:
-            raise HTTPException(status_code=409, detail=stale_detail)
+            raise CodedHTTPException(status_code=409, code=stale_code, detail=stale_detail)
         now = utcnow()
         test.status = QuizTestStatus.GRADING
         test.updated_at = now
@@ -552,9 +589,17 @@ def _grade_objective(
     correct = cast(object, json.loads(quiz.correct_answer_json))
     if question_type in (QuizQuestionType.MULTIPLE_CHOICE, QuizQuestionType.TRUE_FALSE):
         if not isinstance(answer, int) or not isinstance(correct, int):
-            raise HTTPException(status_code=409, detail="该题需要提交一个选项")
+            raise CodedHTTPException(
+                code="QUIZ_ANSWER_SINGLE_CHOICE_REQUIRED",
+                status_code=409,
+                detail="该题需要提交一个选项",
+            )
         if answer >= len(options):
-            raise HTTPException(status_code=400, detail="所选答案下标超出选项范围")
+            raise CodedHTTPException(
+                code="QUIZ_ANSWER_INDEX_OUT_OF_RANGE",
+                status_code=400,
+                detail="所选答案下标超出选项范围",
+            )
         result = QuizTestItemResult.CORRECT if answer == correct else QuizTestItemResult.WRONG
         return result, 1.0 if result is QuizTestItemResult.CORRECT else 0.0, answer
     if question_type is QuizQuestionType.MULTIPLE_SELECT:
@@ -565,11 +610,19 @@ def _grade_objective(
             or not expected
             or not all(isinstance(value, int) for value in expected)
         ):
-            raise HTTPException(status_code=409, detail="该题需要提交选项组合")
+            raise CodedHTTPException(
+                code="QUIZ_ANSWER_MULTIPLE_CHOICE_REQUIRED",
+                status_code=409,
+                detail="该题需要提交选项组合",
+            )
         chosen = sorted(cast(list[int], selected))
         wanted = sorted(cast(list[int], expected))
         if any(value >= len(options) for value in chosen):
-            raise HTTPException(status_code=400, detail="所选答案下标超出选项范围")
+            raise CodedHTTPException(
+                code="QUIZ_ANSWER_INDEX_OUT_OF_RANGE",
+                status_code=400,
+                detail="所选答案下标超出选项范围",
+            )
         result = QuizTestItemResult.CORRECT if chosen == wanted else QuizTestItemResult.WRONG
         return result, 1.0 if result is QuizTestItemResult.CORRECT else 0.0, chosen
     filled = cast("list[object]", answer if isinstance(answer, list) else [])
@@ -579,11 +632,17 @@ def _grade_objective(
         or not expected_blanks
         or not all(isinstance(value, list) for value in expected_blanks)
     ):
-        raise HTTPException(status_code=409, detail="该题需要提交逐空答案")
+        raise CodedHTTPException(
+            code="QUIZ_ANSWER_GAP_FILL_REQUIRED", status_code=409, detail="该题需要提交逐空答案"
+        )
     stripped = [value.strip() for value in cast(list[str], filled)]
     accepted = [cast(list[str], blank) for blank in expected_blanks]
     if len(stripped) != len(accepted):
-        raise HTTPException(status_code=400, detail="填空题作答数量与空位不一致")
+        raise CodedHTTPException(
+            code="QUIZ_ANSWER_GAP_COUNT_MISMATCH",
+            status_code=400,
+            detail="填空题作答数量与空位不一致",
+        )
     hit = sum(1 for index, value in enumerate(stripped) if value in accepted[index])
     score = hit / len(accepted)
     if hit == len(accepted):
@@ -643,7 +702,9 @@ async def _grade_and_record(
     stored: int | str | list[int] | list[str] = answer
     if question_type is QuizQuestionType.SHORT_ANSWER:
         if not isinstance(answer, str):
-            raise HTTPException(status_code=409, detail="该题需要提交文本作答")
+            raise CodedHTTPException(
+                code="QUIZ_ANSWER_TEXT_REQUIRED", status_code=409, detail="该题需要提交文本作答"
+            )
         result = None
         score = None
     else:
