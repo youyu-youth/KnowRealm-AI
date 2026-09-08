@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +34,7 @@ from app.modules.settings.config import (
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.transcript.models import Transcript
+from app.shared.errors import CodedHTTPException
 
 
 def _material_out(material: ReviewMaterial) -> ReviewMaterialOut:
@@ -71,7 +71,9 @@ async def _record(session: AsyncSession, record_id: str) -> Record:
         )
     ).one_or_none()
     if record is None:
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     return record
 
 
@@ -245,18 +247,32 @@ class ReviewMaterialService:
             async with session.begin():
                 record = await _record(session, record_id)
                 if record.status != RecordStatus.COMPLETED:
-                    raise HTTPException(status_code=409, detail="请先确认总结")
+                    raise CodedHTTPException(
+                        code="SUMMARY_NOT_CONFIRMED", status_code=409, detail="请先确认总结"
+                    )
                 active = await _active_job(session, record_id)
                 if active is not None:
-                    raise HTTPException(status_code=409, detail="已有进行中的复习资料任务")
+                    raise CodedHTTPException(
+                        code="GENERATION_IN_PROGRESS",
+                        status_code=409,
+                        detail="已有进行中的复习资料任务",
+                    )
                 if await _current_material(session, record_id) is not None:
-                    raise HTTPException(status_code=409, detail="复习资料已生成")
+                    raise CodedHTTPException(
+                        code="REVIEW_MATERIAL_ALREADY_EXISTS",
+                        status_code=409,
+                        detail="复习资料已生成",
+                    )
                 summary = await _confirmed_summary(session, record_id)
                 if summary is None:
-                    raise HTTPException(status_code=409, detail="请先确认总结")
+                    raise CodedHTTPException(
+                        code="SUMMARY_NOT_CONFIRMED", status_code=409, detail="请先确认总结"
+                    )
                 course = await session.get(Course, record.course_id) if record.course_id else None
                 if course is None or course.deleted_at is not None or course.status != "ACTIVE":
-                    raise HTTPException(status_code=409, detail="归档课程不能生成复习资料")
+                    raise CodedHTTPException(
+                        code="COURSE_ARCHIVED", status_code=409, detail="归档课程不能生成复习资料"
+                    )
                 transcript = (
                     await session.scalars(
                         select(Transcript).where(
@@ -266,11 +282,19 @@ class ReviewMaterialService:
                     )
                 ).one_or_none()
                 if transcript is None:
-                    raise HTTPException(status_code=409, detail="Transcript 尚未生成")
+                    raise CodedHTTPException(
+                        code="TRANSCRIPT_NOT_READY", status_code=409, detail="Transcript 尚未生成"
+                    )
                 if provider is None or not provider.api_key:
-                    raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+                    raise CodedHTTPException(
+                        code="LLM_PROVIDER_UNCONFIGURED",
+                        status_code=409,
+                        detail="请先配置 LLM Provider",
+                    )
                 if not consent:
-                    raise HTTPException(status_code=409, detail="请先同意发送学习内容")
+                    raise CodedHTTPException(
+                        code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意发送学习内容"
+                    )
                 job = _new_job(
                     record_id,
                     {
@@ -284,7 +308,9 @@ class ReviewMaterialService:
                 await session.flush()
                 return job.id
         except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="已有进行中的复习资料任务") from exc
+            raise CodedHTTPException(
+                code="GENERATION_IN_PROGRESS", status_code=409, detail="已有进行中的复习资料任务"
+            ) from exc
 
     @staticmethod
     async def adjust(
@@ -298,28 +324,52 @@ class ReviewMaterialService:
             async with session.begin():
                 record = await _record(session, record_id)
                 if record.status != RecordStatus.COMPLETED:
-                    raise HTTPException(status_code=409, detail="请先确认总结")
+                    raise CodedHTTPException(
+                        code="SUMMARY_NOT_CONFIRMED", status_code=409, detail="请先确认总结"
+                    )
                 active = await _active_job(session, record_id)
                 if active is not None:
-                    raise HTTPException(status_code=409, detail="已有进行中的复习资料任务")
+                    raise CodedHTTPException(
+                        code="GENERATION_IN_PROGRESS",
+                        status_code=409,
+                        detail="已有进行中的复习资料任务",
+                    )
                 current = await _current_material(session, record_id)
                 if current is None:
-                    raise HTTPException(status_code=404, detail="复习资料不存在")
+                    raise CodedHTTPException(
+                        code="REVIEW_MATERIAL_NOT_FOUND", status_code=404, detail="复习资料不存在"
+                    )
                 if current.status == ReviewMaterialStatus.SUPERSEDED:
-                    raise HTTPException(status_code=409, detail="复习资料已是旧版本，请刷新后重试")
+                    raise CodedHTTPException(
+                        code="REVIEW_MATERIAL_STALE",
+                        status_code=409,
+                        detail="复习资料已是旧版本，请刷新后重试",
+                    )
                 summary = await _confirmed_summary(session, record_id)
                 if summary is None:
-                    raise HTTPException(status_code=409, detail="请先确认总结")
+                    raise CodedHTTPException(
+                        code="SUMMARY_NOT_CONFIRMED", status_code=409, detail="请先确认总结"
+                    )
                 course = await session.get(Course, record.course_id) if record.course_id else None
                 if course is None or course.deleted_at is not None or course.status != "ACTIVE":
-                    raise HTTPException(status_code=409, detail="归档课程不能生成复习资料")
+                    raise CodedHTTPException(
+                        code="COURSE_ARCHIVED", status_code=409, detail="归档课程不能生成复习资料"
+                    )
                 transcript = await _current_transcript(session, record_id)
                 if transcript is None:
-                    raise HTTPException(status_code=409, detail="Transcript 尚未生成")
+                    raise CodedHTTPException(
+                        code="TRANSCRIPT_NOT_READY", status_code=409, detail="Transcript 尚未生成"
+                    )
                 if provider is None or not provider.api_key:
-                    raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+                    raise CodedHTTPException(
+                        code="LLM_PROVIDER_UNCONFIGURED",
+                        status_code=409,
+                        detail="请先配置 LLM Provider",
+                    )
                 if not consent:
-                    raise HTTPException(status_code=409, detail="请先同意发送学习内容")
+                    raise CodedHTTPException(
+                        code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意发送学习内容"
+                    )
                 # 绑定当前转写版本：转写更新后的「重新生成」也走本端点（新版本、旧版退场）
                 job = _new_job(
                     record_id,
@@ -336,7 +386,9 @@ class ReviewMaterialService:
                 await session.flush()
                 return job.id
         except IntegrityError as exc:
-            raise HTTPException(status_code=409, detail="已有进行中的复习资料任务") from exc
+            raise CodedHTTPException(
+                code="GENERATION_IN_PROGRESS", status_code=409, detail="已有进行中的复习资料任务"
+            ) from exc
 
     @staticmethod
     async def confirm(session: AsyncSession, record_id: str) -> ReviewMaterialOut:
@@ -344,14 +396,24 @@ class ReviewMaterialService:
             await _record(session, record_id)
             active = await _active_job(session, record_id)
             if active is not None:
-                raise HTTPException(status_code=409, detail="已有进行中的复习资料任务")
+                raise CodedHTTPException(
+                    code="GENERATION_IN_PROGRESS",
+                    status_code=409,
+                    detail="已有进行中的复习资料任务",
+                )
             material = await _current_material(session, record_id)
             if material is None:
-                raise HTTPException(status_code=404, detail="复习资料不存在")
+                raise CodedHTTPException(
+                    code="REVIEW_MATERIAL_NOT_FOUND", status_code=404, detail="复习资料不存在"
+                )
             if material.status == ReviewMaterialStatus.CONFIRMED:
                 return _material_out(material)
             if material.status != ReviewMaterialStatus.GENERATED:
-                raise HTTPException(status_code=409, detail="复习资料已是旧版本，不能确认")
+                raise CodedHTTPException(
+                    code="REVIEW_MATERIAL_STALE",
+                    status_code=409,
+                    detail="复习资料已是旧版本，不能确认",
+                )
             now = utcnow()
             material.status = ReviewMaterialStatus.CONFIRMED
             material.confirmed_at = now
@@ -368,12 +430,22 @@ class ReviewMaterialService:
             await _record(session, record_id)
             active = await _active_job(session, record_id)
             if active is not None:
-                raise HTTPException(status_code=409, detail="已有进行中的复习资料任务")
+                raise CodedHTTPException(
+                    code="GENERATION_IN_PROGRESS",
+                    status_code=409,
+                    detail="已有进行中的复习资料任务",
+                )
             material = await _current_material(session, record_id)
             if material is None:
-                raise HTTPException(status_code=404, detail="复习资料不存在")
+                raise CodedHTTPException(
+                    code="REVIEW_MATERIAL_NOT_FOUND", status_code=404, detail="复习资料不存在"
+                )
             if material.status == ReviewMaterialStatus.SUPERSEDED:
-                raise HTTPException(status_code=409, detail="复习资料已是旧版本，请刷新后重试")
+                raise CodedHTTPException(
+                    code="REVIEW_MATERIAL_STALE",
+                    status_code=409,
+                    detail="复习资料已是旧版本，请刷新后重试",
+                )
             # 手动编辑就地生效：不换代、不迁移状态，仅刷新内容与 updated_at
             material.quick_review = body.quick_review
             material.key_list_json = json.dumps(

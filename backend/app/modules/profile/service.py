@@ -3,12 +3,12 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.modules.profile.models import PROFILE_ID, Profile
 from app.modules.profile.schemas import ProfileUpdate
+from app.shared.errors import CodedHTTPException
 
 AVATAR_MAX_BYTES = 2 * 1024 * 1024
 
@@ -30,7 +30,9 @@ def _sniff_avatar(content: bytes) -> tuple[str, str]:
             return kind
     if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
         return ("webp", "image/webp")
-    raise HTTPException(status_code=422, detail="头像仅支持 PNG/JPG/WebP 格式")
+    raise CodedHTTPException(
+        code="AVATAR_FORMAT_UNSUPPORTED", status_code=422, detail="头像仅支持 PNG/JPG/WebP 格式"
+    )
 
 
 class ProfileService:
@@ -52,7 +54,9 @@ class ProfileService:
     @staticmethod
     async def save_avatar(session: AsyncSession, data_dir: Path, content: bytes) -> None:
         if len(content) > AVATAR_MAX_BYTES:
-            raise HTTPException(status_code=413, detail="头像文件不能超过 2MB")
+            raise CodedHTTPException(
+                code="AVATAR_TOO_LARGE", status_code=413, detail="头像文件不能超过 2MB"
+            )
         ext, _ = _sniff_avatar(content)
         files_dir = data_dir / "files"
 
@@ -81,15 +85,17 @@ class ProfileService:
         profile = await session.get(Profile, PROFILE_ID)
         relative = profile.avatar_file if profile is not None else None
         if relative is None:
-            raise HTTPException(status_code=404, detail="未设置头像")
+            raise CodedHTTPException(code="AVATAR_NOT_SET", status_code=404, detail="未设置头像")
         path = data_dir / relative
         ext = path.suffix.lstrip(".")
         if ext not in AVATAR_MEDIA_TYPES:
-            raise HTTPException(status_code=404, detail="未设置头像")
+            raise CodedHTTPException(code="AVATAR_NOT_SET", status_code=404, detail="未设置头像")
         try:
             content = await asyncio.to_thread(path.read_bytes)
         except OSError:
-            raise HTTPException(status_code=404, detail="未设置头像") from None
+            raise CodedHTTPException(
+                code="AVATAR_NOT_SET", status_code=404, detail="未设置头像"
+            ) from None
         return content, AVATAR_MEDIA_TYPES[ext]
 
     @staticmethod

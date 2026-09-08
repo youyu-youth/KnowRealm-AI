@@ -3,7 +3,6 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +33,7 @@ from app.modules.todo.schemas import (
     TodoToggleRequest,
     TodoWriteRequest,
 )
+from app.shared.errors import CodedHTTPException
 
 
 def _todo_out(item: TodoItem) -> TodoOut:
@@ -71,7 +71,9 @@ async def _get_record(session: AsyncSession, record_id: str) -> Record:
         )
     ).one_or_none()
     if record is None:
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     return record
 
 
@@ -192,7 +194,9 @@ async def _editable_item(session: AsyncSession, record_id: str, todo_id: str) ->
         )
     ).one_or_none()
     if item is None:
-        raise HTTPException(status_code=404, detail="待办不存在或已删除")
+        raise CodedHTTPException(
+            code="TODO_NOT_FOUND", status_code=404, detail="待办不存在或已删除"
+        )
     return item
 
 
@@ -270,9 +274,13 @@ class TodoService:
     async def submit(session: AsyncSession, data_dir: Path, record_id: str) -> str:
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
-            raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+            raise CodedHTTPException(
+                code="LLM_PROVIDER_UNCONFIGURED", status_code=409, detail="请先配置 LLM Provider"
+            )
         if not consent_current:
-            raise HTTPException(status_code=409, detail="请先同意外部 AI 处理")
+            raise CodedHTTPException(
+                code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意外部 AI 处理"
+            )
         try:
             async with session.begin():
                 record = await _get_record(session, record_id)
@@ -282,17 +290,29 @@ class TodoService:
                     or course.deleted_at is not None
                     or course.status != CourseStatus.ACTIVE
                 ):
-                    raise HTTPException(status_code=409, detail="归档课程不能生成 Todo")
+                    raise CodedHTTPException(
+                        code="COURSE_ARCHIVED", status_code=409, detail="归档课程不能生成 Todo"
+                    )
                 summary = await _confirmed_summary(session, record_id)
                 if summary is None:
-                    raise HTTPException(status_code=409, detail="请先确认当前总结")
+                    raise CodedHTTPException(
+                        code="SUMMARY_NOT_CONFIRMED", status_code=409, detail="请先确认当前总结"
+                    )
                 if await _active_job(session, record_id) is not None:
-                    raise HTTPException(status_code=409, detail="已有进行中的 Todo 生成任务")
+                    raise CodedHTTPException(
+                        code="GENERATION_IN_PROGRESS",
+                        status_code=409,
+                        detail="已有进行中的 Todo 生成任务",
+                    )
                 if any(
                     item.generation_status == TodoGenerationStatus.DRAFT
                     for item in await _visible_items(session, record_id)
                 ):
-                    raise HTTPException(status_code=409, detail="已有待审阅的 Todo 候选")
+                    raise CodedHTTPException(
+                        code="CANDIDATE_PENDING_REVIEW",
+                        status_code=409,
+                        detail="已有待审阅的 Todo 候选",
+                    )
                 input_json = json.dumps(
                     {
                         "provider_fingerprint": llm_provider_fingerprint(provider),
@@ -328,7 +348,9 @@ class TodoService:
                 await session.flush()
                 return job.id
         except IntegrityError:
-            raise HTTPException(status_code=409, detail="已有进行中的 Todo 生成任务") from None
+            raise CodedHTTPException(
+                code="GENERATION_IN_PROGRESS", status_code=409, detail="已有进行中的 Todo 生成任务"
+            ) from None
 
     @staticmethod
     async def create(session: AsyncSession, record_id: str, body: TodoWriteRequest) -> TodoOut:
@@ -397,7 +419,11 @@ class TodoService:
             await _get_record(session, record_id)
             item = await _editable_item(session, record_id, todo_id)
             if item.generation_status == TodoGenerationStatus.DRAFT:
-                raise HTTPException(status_code=409, detail="候选待办不能勾选完成")
+                raise CodedHTTPException(
+                    code="TODO_CANDIDATE_NOT_COMPLETABLE",
+                    status_code=409,
+                    detail="候选待办不能勾选完成",
+                )
             # 重复置同态直接返回现状（幂等）；状态变化才写 updated_at。
             if TodoStatus(item.status) != body.status:
                 item.status = body.status
@@ -419,8 +445,14 @@ class TodoService:
             rows = await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.DRAFT)
             if not rows:
                 if await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.ACTIVE):
-                    raise HTTPException(status_code=409, detail="批次已采纳，不能丢弃")
-                raise HTTPException(status_code=404, detail="Todo 批次不存在")
+                    raise CodedHTTPException(
+                        code="TODO_BATCH_ALREADY_ADOPTED",
+                        status_code=409,
+                        detail="批次已采纳，不能丢弃",
+                    )
+                raise CodedHTTPException(
+                    code="TODO_BATCH_NOT_FOUND", status_code=404, detail="Todo 批次不存在"
+                )
             now = utcnow()
             for row in rows:
                 row.deleted_at = now
@@ -438,8 +470,14 @@ class TodoService:
                 if await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.ACTIVE):
                     return await TodoService.read(session, data_dir, record_id)
                 if await _batch_rows(session, record_id, batch_id, TodoGenerationStatus.SUPERSEDED):
-                    raise HTTPException(status_code=409, detail="Todo 批次已被新批次替代")
-                raise HTTPException(status_code=404, detail="Todo 批次不存在")
+                    raise CodedHTTPException(
+                        code="TODO_BATCH_SUPERSEDED",
+                        status_code=409,
+                        detail="Todo 批次已被新批次替代",
+                    )
+                raise CodedHTTPException(
+                    code="TODO_BATCH_NOT_FOUND", status_code=404, detail="Todo 批次不存在"
+                )
             summary = await session.get(AiSummary, rows[0].generated_from_summary_id)
             if (
                 summary is None

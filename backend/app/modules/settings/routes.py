@@ -2,7 +2,7 @@ import asyncio
 from typing import cast
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 
 from app.modules.llm.service import SummaryGenerationError, call_summary_model
 from app.modules.settings.config import (
@@ -40,6 +40,7 @@ from app.modules.transcript.integrations.tencent import (
     TencentAsrCredentials,
 )
 from app.shared.deps import require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -170,7 +171,9 @@ async def put_tencent_asr_provider(
 async def test_tencent_asr_provider(request: Request) -> TencentAsrTestOut:
     config = await asyncio.to_thread(load_tencent_asr_config, request.app.state.data_dir)
     if config is None:
-        raise HTTPException(status_code=409, detail="请先配置腾讯云语音识别密钥")
+        raise CodedHTTPException(
+            code="ASR_KEY_NOT_CONFIGURED", status_code=409, detail="请先配置腾讯云语音识别密钥"
+        )
     client = cast(TencentAsrClient, request.app.state.asr_client)
     try:
         await client.test_credentials(
@@ -181,10 +184,12 @@ async def test_tencent_asr_provider(request: Request) -> TencentAsrTestOut:
             )
         )
     except TencentAsrApiError as exc:
-        raise HTTPException(status_code=502, detail=_asr_test_error_detail(exc.code)) from exc
+        raise CodedHTTPException(
+            status_code=502, code="ASR_TEST_FAILED", detail=_asr_test_error_detail(exc.code)
+        ) from exc
     except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=502, detail="无法连接腾讯云语音识别服务，请检查网络"
+        raise CodedHTTPException(
+            code="ASR_UNREACHABLE", status_code=502, detail="无法连接腾讯云语音识别服务，请检查网络"
         ) from exc
     return TencentAsrTestOut(ok=True, region=config.region)
 
@@ -199,7 +204,11 @@ async def get_llm_consent(request: Request) -> LlmConsentOut:
 async def post_llm_consent(request: Request) -> LlmConsentOut:
     granted_at = await asyncio.to_thread(grant_llm_consent, request.app.state.data_dir)
     if granted_at is None:
-        raise HTTPException(status_code=409, detail="请先配置包含密钥的 LLM Provider")
+        raise CodedHTTPException(
+            code="LLM_PROVIDER_UNCONFIGURED",
+            status_code=409,
+            detail="请先配置包含密钥的 LLM Provider",
+        )
     return LlmConsentOut(granted_at=granted_at, current=True)
 
 
@@ -220,7 +229,11 @@ async def put_preferences(body: PreferencesUpdate, request: Request) -> Preferen
 async def test_llm_provider(request: Request) -> LlmProviderTestOut:
     provider = await asyncio.to_thread(load_llm_provider, request.app.state.data_dir)
     if provider is None or not provider.api_key:
-        raise HTTPException(status_code=409, detail="请先配置包含密钥的 LLM Provider")
+        raise CodedHTTPException(
+            code="LLM_PROVIDER_UNCONFIGURED",
+            status_code=409,
+            detail="请先配置包含密钥的 LLM Provider",
+        )
     prompt = (
         "这是连接测试使用的合成 Transcript，不包含用户资料。"
         "请按正式 Summary Schema 返回主题、500 至 1000 字摘要和至少一个章节。"
@@ -236,7 +249,9 @@ async def test_llm_provider(request: Request) -> LlmProviderTestOut:
             prompt_version="summary-v1",
         )
     except SummaryGenerationError as exc:
-        raise HTTPException(status_code=502, detail="Provider 未返回有效的 Summary 结构") from exc
+        raise CodedHTTPException(
+            code="LLM_OUTPUT_INVALID", status_code=502, detail="Provider 未返回有效的 Summary 结构"
+        ) from exc
     return LlmProviderTestOut(ok=True, model=provider.model)
 
 
