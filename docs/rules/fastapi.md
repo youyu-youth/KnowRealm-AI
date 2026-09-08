@@ -51,8 +51,8 @@ Feature-first 模块化单体（ADR-0015）：
 
 ## 6. 错误与日志
 
-- 业务错误使用 `HTTPException` 和语义化状态码：400 参数错误、404 资源不存在、409 业务状态冲突；错误响应统一为 `{"detail": "..."}`。
-- 未预期异常由全局处理器记录后返回 500 和 request_id；不得向前端暴露堆栈或内部异常。
+- 业务错误使用 `CodedHTTPException`（`shared/errors.py`）携带稳定错误码与语义化状态码：400 参数错误、404 资源不存在、409 业务状态冲突；禁止直接 raise 裸 `HTTPException`（防线测试强制）。错误响应统一为 `{"detail": "中文说明", "code": "STABLE_CODE", "params"?: {...}}`，`detail` 中文原文保留；码名规范与全量清单见 `docs/后端错误码清单.md`（ADR-0017）。
+- 参数校验失败（422）统一返回 `REQUEST_VALIDATION_FAILED`；未预期异常由全局处理器记录后返回 500 `INTERNAL_ERROR` 和 `params.request_id`；不得向前端暴露堆栈或内部异常。
 - 日志统一使用 loguru；`InterceptHandler` 接管 uvicorn、SQLAlchemy 标准 logging，附加字段通过 kwargs 写入。
 - 日志只记录最小元数据：`record_id`、`segment_id`、`session_id`、token 数量、latency、model、prompt_version、error code。
 - 禁止记录完整转写、Teach-back、敏感对话、prompt/输出正文、密钥或能力令牌。
