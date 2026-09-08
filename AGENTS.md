@@ -61,7 +61,8 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 7. 在涉及到 `langchain `, `langGraph `, `Deep Agents` 编写，设计，搭建时，请参考 `.agents/skills/`  或 `.zcode/skills/` 或  `.claude/skills/ `下有关的skills来进行编写！如有歧义则提出
 
-
+8. 编码时必要时遵循 SOLID、KISS、DRY、YAGNI，保持高内聚、低耦合，避免过度设计与无意义抽象。
+9. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
 
 
 
