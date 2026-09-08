@@ -1240,5 +1240,31 @@
     "noResults": "没有找到相关内容",
     "openButton": "搜索",
     "shortcutBadge": "Ctrl K"
+  },
+  "library": {
+    "title": "资产库",
+    "description": "跨课程检索你的学习记录、知识点与课程",
+    "searchLabel": "搜索资产",
+    "placeholder": "搜索学习记录、知识点、课程…",
+    "tabs": {
+      "all": "全部",
+      "records": "学习记录",
+      "knowledgePoints": "知识点",
+      "courses": "课程"
+    },
+    "groups": {
+      "records": "学习记录",
+      "knowledgePoints": "知识点",
+      "courses": "课程"
+    },
+    "loading": "正在搜索…",
+    "emptyTitle": "资产库还是空的",
+    "emptyDescription": "捕获的学习记录、知识点与课程都会汇聚在这里。先从顶栏录音、速记或导入资料开始，之后就能在这里跨课程检索。",
+    "noResultsTitle": "没有找到相关内容",
+    "noResultsDescription": "换个关键词试试，或检查拼写是否正确",
+    "noResultsInFilter": "该类型下没有匹配结果，可切换到「全部」查看其他结果",
+    "errorTitle": "搜索失败",
+    "errorDescription": "检索服务暂时不可用，请稍后重试",
+    "retry": "重试"
   }
 }

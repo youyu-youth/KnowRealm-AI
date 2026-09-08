@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from "./pages/__root";
 import { Route as IndexRouteImport } from "./pages/index";
 import { Route as InboxRouteImport } from "./pages/inbox";
+import { Route as LibraryRouteImport } from "./pages/library";
 import { Route as OnboardingRouteImport } from "./pages/onboarding";
 import { Route as SettingsRouteImport } from "./pages/settings";
 import { Route as SpacesRouteImport } from "./pages/spaces";
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const InboxRoute = InboxRouteImport.update({
   id: "/inbox",
   path: "/inbox",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const LibraryRoute = LibraryRouteImport.update({
+  id: "/library",
+  path: "/library",
   getParentRoute: () => rootRouteImport,
 } as any);
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -81,6 +87,7 @@ const SpacesCourseIdTestsTestIdRoute =
 export interface FileRoutesByFullPath {
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
+  "/library": typeof LibraryRoute;
   "/onboarding": typeof OnboardingRoute;
   "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
@@ -94,6 +101,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
+  "/library": typeof LibraryRoute;
   "/onboarding": typeof OnboardingRoute;
   "/settings": typeof SettingsRoute;
   "/chat/$sessionId": typeof ChatSessionIdRoute;
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport;
   "/": typeof IndexRoute;
   "/inbox": typeof InboxRoute;
+  "/library": typeof LibraryRoute;
   "/onboarding": typeof OnboardingRoute;
   "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | "/"
     | "/inbox"
+    | "/library"
     | "/onboarding"
     | "/settings"
     | "/spaces"
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | "/"
     | "/inbox"
+    | "/library"
     | "/onboarding"
     | "/settings"
     | "/chat/$sessionId"
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | "__root__"
     | "/"
     | "/inbox"
+    | "/library"
     | "/onboarding"
     | "/settings"
     | "/spaces"
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute;
   InboxRoute: typeof InboxRoute;
+  LibraryRoute: typeof LibraryRoute;
   OnboardingRoute: typeof OnboardingRoute;
   SettingsRoute: typeof SettingsRoute;
   SpacesRoute: typeof SpacesRouteWithChildren;
@@ -183,6 +196,13 @@ declare module "@tanstack/react-router" {
       path: "/inbox";
       fullPath: "/inbox";
       preLoaderRoute: typeof InboxRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/library": {
+      id: "/library";
+      path: "/library";
+      fullPath: "/library";
+      preLoaderRoute: typeof LibraryRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/onboarding": {
@@ -269,6 +289,7 @@ const SpacesRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   InboxRoute: InboxRoute,
+  LibraryRoute: LibraryRoute,
   OnboardingRoute: OnboardingRoute,
   SettingsRoute: SettingsRoute,
   SpacesRoute: SpacesRouteWithChildren,

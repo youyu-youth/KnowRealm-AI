@@ -66,7 +66,7 @@ const navigationItems = [
   { labelKey: "nav.inbox", icon: Inbox, to: "/inbox" },
   { labelKey: "nav.spaces", icon: Archive, to: "/spaces" },
   { labelKey: "nav.chat", icon: Bot, to: "/chat" },
-  { labelKey: "nav.library", icon: Library },
+  { labelKey: "nav.library", icon: Library, to: "/library" },
   { labelKey: "nav.profile", icon: UserRound },
   { labelKey: "nav.settings", icon: Settings, to: "/settings" },
 ] as const;
