@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +35,7 @@ from app.modules.settings.config import (
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.transcript.models import Transcript
+from app.shared.errors import CodedHTTPException
 
 TRANSCRIPT_LIMIT = 30_000
 
@@ -74,7 +74,9 @@ async def _get_record(session: AsyncSession, record_id: str) -> Record:
         )
     ).one_or_none()
     if record is None:
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     return record
 
 
@@ -284,9 +286,13 @@ class KnowledgePointService:
     ) -> str:
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
-            raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+            raise CodedHTTPException(
+                code="LLM_PROVIDER_UNCONFIGURED", status_code=409, detail="请先配置 LLM Provider"
+            )
         if not consent_current:
-            raise HTTPException(status_code=409, detail="请先同意外部 AI 处理")
+            raise CodedHTTPException(
+                code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意外部 AI 处理"
+            )
         try:
             async with session.begin():
                 record = await _get_record(session, record_id)
@@ -296,10 +302,14 @@ class KnowledgePointService:
                     or course.deleted_at is not None
                     or course.status != CourseStatus.ACTIVE
                 ):
-                    raise HTTPException(status_code=409, detail="归档课程不能生成知识点")
+                    raise CodedHTTPException(
+                        code="COURSE_ARCHIVED", status_code=409, detail="归档课程不能生成知识点"
+                    )
                 summary = await _confirmed_summary(session, record_id)
                 if summary is None:
-                    raise HTTPException(status_code=409, detail="请先确认当前总结")
+                    raise CodedHTTPException(
+                        code="SUMMARY_NOT_CONFIRMED", status_code=409, detail="请先确认当前总结"
+                    )
                 transcript = (
                     await session.scalars(
                         select(Transcript).where(
@@ -309,14 +319,24 @@ class KnowledgePointService:
                     )
                 ).one_or_none()
                 if transcript is None:
-                    raise HTTPException(status_code=409, detail="Transcript 尚未生成")
+                    raise CodedHTTPException(
+                        code="TRANSCRIPT_NOT_READY", status_code=409, detail="Transcript 尚未生成"
+                    )
                 if await _active_job(session, record_id) is not None:
-                    raise HTTPException(status_code=409, detail="已有进行中的知识点生成任务")
+                    raise CodedHTTPException(
+                        code="GENERATION_IN_PROGRESS",
+                        status_code=409,
+                        detail="已有进行中的知识点生成任务",
+                    )
                 if any(
                     item.generation_status == KnowledgePointGenerationStatus.DRAFT
                     for item in await _visible_items(session, record_id)
                 ):
-                    raise HTTPException(status_code=409, detail="已有待确认的知识点候选")
+                    raise CodedHTTPException(
+                        code="CANDIDATE_PENDING_REVIEW",
+                        status_code=409,
+                        detail="已有待确认的知识点候选",
+                    )
 
                 input_json = _job_input_json(provider, summary, transcript)
                 failed = await _failed_job(session, record_id)
@@ -332,7 +352,8 @@ class KnowledgePointService:
                 await session.flush()
                 return job.id
         except IntegrityError:
-            raise HTTPException(
+            raise CodedHTTPException(
+                code="GENERATION_IN_PROGRESS",
                 status_code=409,
                 detail="已有进行中的知识点生成任务",
             ) from None
@@ -400,7 +421,9 @@ class KnowledgePointService:
                 )
                 if not draft_rows:
                     if await _confirm_event(session, batch_id) is None:
-                        raise HTTPException(status_code=404, detail="知识点批次不存在")
+                        raise CodedHTTPException(
+                            code="KP_BATCH_NOT_FOUND", status_code=404, detail="知识点批次不存在"
+                        )
                     return await KnowledgePointService.read(session, data_dir, record_id)
                 summary_id = draft_rows[0].generated_from_summary_id
                 summary = await session.get(AiSummary, summary_id) if summary_id else None
@@ -413,7 +436,8 @@ class KnowledgePointService:
                     or course.deleted_at is not None
                     or course.status != CourseStatus.ACTIVE
                 ):
-                    raise HTTPException(
+                    raise CodedHTTPException(
+                        code="KP_BATCH_STALE",
                         status_code=409,
                         detail="总结已换代或课程已归档，请丢弃当前候选后重新生成",
                     )
@@ -487,8 +511,14 @@ class KnowledgePointService:
             )
             if not draft_rows:
                 if await _confirm_event(session, batch_id) is not None:
-                    raise HTTPException(status_code=409, detail="批次已确认，不能丢弃")
-                raise HTTPException(status_code=404, detail="知识点批次不存在")
+                    raise CodedHTTPException(
+                        code="KP_BATCH_ALREADY_CONFIRMED",
+                        status_code=409,
+                        detail="批次已确认，不能丢弃",
+                    )
+                raise CodedHTTPException(
+                    code="KP_BATCH_NOT_FOUND", status_code=404, detail="知识点批次不存在"
+                )
             now = utcnow()
             for row in draft_rows:
                 row.deleted_at = now
@@ -540,9 +570,13 @@ async def _editable_item(
         )
     ).one_or_none()
     if item is None:
-        raise HTTPException(status_code=404, detail="知识点不存在或已删除")
+        raise CodedHTTPException(
+            code="KNOWLEDGE_POINT_NOT_FOUND", status_code=404, detail="知识点不存在或已删除"
+        )
     if item.generation_status == KnowledgePointGenerationStatus.SUPERSEDED:
-        raise HTTPException(status_code=409, detail="过时批次的知识点不能编辑或删除")
+        raise CodedHTTPException(
+            code="KP_BATCH_STALE", status_code=409, detail="过时批次的知识点不能编辑或删除"
+        )
     return item
 
 

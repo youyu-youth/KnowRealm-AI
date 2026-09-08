@@ -36,6 +36,7 @@ from app.modules.summary.schemas import (
     SummarySection,
 )
 from app.modules.transcript.models import Transcript
+from app.shared.errors import CodedHTTPException
 
 
 @dataclass(frozen=True)
@@ -80,7 +81,9 @@ async def _get_record(session: AsyncSession, record_id: str) -> Record:
         )
     ).one_or_none()
     if record is None:
-        raise HTTPException(status_code=404, detail="学习记录不存在或已删除")
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
     return record
 
 
@@ -211,9 +214,13 @@ class SummaryService:
     ) -> SubmittedSummaryJob:
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
-            raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+            raise CodedHTTPException(
+                code="LLM_PROVIDER_UNCONFIGURED", status_code=409, detail="请先配置 LLM Provider"
+            )
         if not consent_current:
-            raise HTTPException(status_code=409, detail="请先同意发送 Transcript")
+            raise CodedHTTPException(
+                code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意发送 Transcript"
+            )
         async with session.begin():
             return await SummaryService._enqueue(
                 session,
@@ -231,19 +238,29 @@ class SummaryService:
     ) -> SubmittedSummaryJob:
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
-            raise HTTPException(status_code=409, detail="请先配置 LLM Provider")
+            raise CodedHTTPException(
+                code="LLM_PROVIDER_UNCONFIGURED", status_code=409, detail="请先配置 LLM Provider"
+            )
         if not consent_current:
-            raise HTTPException(status_code=409, detail="请先同意发送 Transcript")
+            raise CodedHTTPException(
+                code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意发送 Transcript"
+            )
         async with session.begin():
             record = await _get_record(session, record_id)
             if record.status != RecordStatus.SUMMARY_READY:
-                raise HTTPException(status_code=409, detail="当前状态不能调整总结")
+                raise CodedHTTPException(
+                    code="SUMMARY_NOT_ADJUSTABLE", status_code=409, detail="当前状态不能调整总结"
+                )
             active = await _active_summary_job(session, record_id)
             if active is not None:
-                raise HTTPException(status_code=409, detail="已有进行中的总结任务")
+                raise CodedHTTPException(
+                    code="GENERATION_IN_PROGRESS", status_code=409, detail="已有进行中的总结任务"
+                )
             course = await session.get(Course, record.course_id) if record.course_id else None
             if course is None or course.deleted_at is not None or course.status != "ACTIVE":
-                raise HTTPException(status_code=409, detail="归档课程不能生成总结")
+                raise CodedHTTPException(
+                    code="COURSE_ARCHIVED", status_code=409, detail="归档课程不能生成总结"
+                )
             transcript = (
                 await session.scalars(
                     select(Transcript).where(
@@ -253,12 +270,18 @@ class SummaryService:
                 )
             ).one_or_none()
             if transcript is None:
-                raise HTTPException(status_code=409, detail="Transcript 尚未生成")
+                raise CodedHTTPException(
+                    code="TRANSCRIPT_NOT_READY", status_code=409, detail="Transcript 尚未生成"
+                )
             current = await _current_summary(session, record_id, AiSummaryStatus.GENERATED)
             if current is None:
-                raise HTTPException(status_code=409, detail="没有可调整的总结")
+                raise CodedHTTPException(
+                    code="SUMMARY_NOTHING_TO_ADJUST", status_code=409, detail="没有可调整的总结"
+                )
             if current.id != str(body.summary_id):
-                raise HTTPException(status_code=409, detail="总结已是旧版本，请刷新后重试")
+                raise CodedHTTPException(
+                    code="SUMMARY_STALE", status_code=409, detail="总结已是旧版本，请刷新后重试"
+                )
             failed_jobs = list(
                 (
                     await session.scalars(
@@ -308,18 +331,28 @@ class SummaryService:
             record = await _get_record(session, record_id)
             summary = await session.get(AiSummary, str(body.summary_id))
             if summary is None or summary.record_id != record_id or summary.deleted_at is not None:
-                raise HTTPException(status_code=404, detail="总结不存在")
+                raise CodedHTTPException(
+                    code="SUMMARY_NOT_FOUND", status_code=404, detail="总结不存在"
+                )
             if summary.status == AiSummaryStatus.CONFIRMED:
                 return SummaryConfirmOut(
                     summary=_summary_out(summary),
                     record_status=record.status,
                 )
             if summary.status != AiSummaryStatus.GENERATED:
-                raise HTTPException(status_code=409, detail="总结已是旧版本，不能确认")
+                raise CodedHTTPException(
+                    code="SUMMARY_STALE", status_code=409, detail="总结已是旧版本，不能确认"
+                )
             if record.status != RecordStatus.SUMMARY_READY:
-                raise HTTPException(status_code=409, detail="当前状态不能确认总结")
+                raise CodedHTTPException(
+                    code="SUMMARY_NOT_CONFIRMABLE", status_code=409, detail="当前状态不能确认总结"
+                )
             if record.course_id is None:
-                raise HTTPException(status_code=409, detail="学习记录缺少课程归属，不能确认")
+                raise CodedHTTPException(
+                    code="RECORD_COURSE_MISSING",
+                    status_code=409,
+                    detail="学习记录缺少课程归属，不能确认",
+                )
             now = utcnow()
             summary.status = AiSummaryStatus.CONFIRMED
             summary.confirmed_at = now
@@ -392,7 +425,7 @@ class SummaryService:
             )
         ).one_or_none()
         if summary is None:
-            raise HTTPException(status_code=404, detail="总结不存在")
+            raise CodedHTTPException(code="SUMMARY_NOT_FOUND", status_code=404, detail="总结不存在")
         return _summary_out(summary)
 
     @staticmethod
@@ -448,7 +481,9 @@ class SummaryService:
             return SubmittedSummaryJob(active.id, False)
         course = await session.get(Course, record.course_id) if record.course_id else None
         if course is None or course.deleted_at is not None or course.status != "ACTIVE":
-            raise HTTPException(status_code=409, detail="归档课程不能生成总结")
+            raise CodedHTTPException(
+                code="COURSE_ARCHIVED", status_code=409, detail="归档课程不能生成总结"
+            )
         transcript = (
             await session.scalars(
                 select(Transcript).where(
@@ -458,7 +493,9 @@ class SummaryService:
             )
         ).one_or_none()
         if transcript is None:
-            raise HTTPException(status_code=409, detail="Transcript 尚未生成")
+            raise CodedHTTPException(
+                code="TRANSCRIPT_NOT_READY", status_code=409, detail="Transcript 尚未生成"
+            )
         if record.status == RecordStatus.FAILED and allow_retry:
             failed = (
                 await session.scalars(
@@ -478,7 +515,9 @@ class SummaryService:
                 record.updated_at = utcnow()
                 return SubmittedSummaryJob(failed.id, False)
         if record.status != RecordStatus.SUMMARY_PENDING:
-            raise HTTPException(status_code=409, detail="当前状态不能生成总结")
+            raise CodedHTTPException(
+                code="SUMMARY_NOT_GENERABLE", status_code=409, detail="当前状态不能生成总结"
+            )
         now = utcnow()
         job = _new_summary_job(
             record_id,
