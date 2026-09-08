@@ -73,6 +73,22 @@ async def test_validation_error_returns_generic_422_code(tmp_path: Path) -> None
 
 
 @pytest.mark.anyio
+async def test_chat_message_without_provider_returns_coded_409(tmp_path: Path) -> None:
+    async with running_app(tmp_path) as (_app, client):
+        created = await client.post("/api/chat-sessions", json={})
+        session_id = created.json()["id"]
+        response = await client.post(
+            f"/api/chat-sessions/{session_id}/messages", json={"content": "你好"}
+        )
+
+    assert response.status_code == 409
+    body = response.json()
+    assert body["code"] == "LLM_PROVIDER_UNCONFIGURED"
+    assert body["detail"] == "LLM_PROVIDER_UNCONFIGURED：未配置 AI 服务，请先完成供应商配置"
+    assert "params" not in body
+
+
+@pytest.mark.anyio
 async def test_unhandled_error_returns_500_code_with_request_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
