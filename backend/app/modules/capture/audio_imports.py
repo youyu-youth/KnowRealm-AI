@@ -2,12 +2,13 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.capture.audio_import import AudioImportService
 from app.modules.capture.schemas import AudioImportAccepted
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -36,7 +37,11 @@ async def import_audio(
 ) -> AudioImportAccepted:
     ffmpeg_path: Path | None = request.app.state.ffmpeg_path
     if ffmpeg_path is None:
-        raise HTTPException(status_code=503, detail="FFMPEG_UNAVAILABLE：音频处理组件不可用")
+        raise CodedHTTPException(
+            code="FFMPEG_UNAVAILABLE",
+            status_code=503,
+            detail="FFMPEG_UNAVAILABLE：音频处理组件不可用",
+        )
     return await AudioImportService.create(
         session,
         request.app.state.data_dir,

@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.datastructures import UploadFile
@@ -26,6 +25,7 @@ from app.modules.capture.recording import (
 from app.modules.capture.schemas import RecordingSessionState
 from app.modules.course.schemas import CourseStatus
 from app.modules.course.service import CourseService
+from app.shared.errors import CodedHTTPException
 
 RECORDING_BITRATE_BPS = 128_000
 MAX_RECORDING_DURATION_MS = 3 * 60 * 60 * 1000
@@ -41,10 +41,18 @@ _APPEND_LOCK = asyncio.Lock()
 def _chunk_paths(recording: RecordingSession) -> list[str]:
     raw: object = json.loads(recording.chunk_paths)
     if not isinstance(raw, list):
-        raise HTTPException(status_code=500, detail="INVALID_RECORDING_SESSION：录音清单损坏")
+        raise CodedHTTPException(
+            code="INVALID_RECORDING_SESSION",
+            status_code=500,
+            detail="INVALID_RECORDING_SESSION：录音清单损坏",
+        )
     values = cast(list[object], raw)
     if not all(isinstance(value, str) for value in values):
-        raise HTTPException(status_code=500, detail="INVALID_RECORDING_SESSION：录音清单损坏")
+        raise CodedHTTPException(
+            code="INVALID_RECORDING_SESSION",
+            status_code=500,
+            detail="INVALID_RECORDING_SESSION：录音清单损坏",
+        )
     return cast(list[str], values)
 
 
@@ -91,19 +99,31 @@ class RecordingSessionService:
                 )
             )
             if active is not None:
-                raise HTTPException(status_code=409, detail="RECORDING_ACTIVE：已有录音会话")
+                raise CodedHTTPException(
+                    code="RECORDING_ACTIVE",
+                    status_code=409,
+                    detail="RECORDING_ACTIVE：已有录音会话",
+                )
 
             course_id = str(payload.course_id) if payload.course_id is not None else None
             course = await CourseService.get(session, course_id) if course_id is not None else None
             if course_id is not None and course is None:
-                raise HTTPException(status_code=404, detail="课程不存在或已删除")
+                raise CodedHTTPException(
+                    code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+                )
             if course is not None and course.status != CourseStatus.ACTIVE:
-                raise HTTPException(status_code=409, detail="已归档课程不能接受新录音")
+                raise CodedHTTPException(
+                    code="COURSE_ARCHIVED", status_code=409, detail="已归档课程不能接受新录音"
+                )
             await session.rollback()
 
             free = (await asyncio.to_thread(shutil.disk_usage, data_dir)).free
             if free < INITIAL_DISK_RESERVE_BYTES:
-                raise HTTPException(status_code=507, detail="INSUFFICIENT_DISK：数据目录空间不足")
+                raise CodedHTTPException(
+                    code="INSUFFICIENT_DISK",
+                    status_code=507,
+                    detail="INSUFFICIENT_DISK：数据目录空间不足",
+                )
 
             started_at = utcnow()
             recording = RecordingSession(
@@ -148,30 +168,48 @@ class RecordingSessionService:
         async with _APPEND_LOCK:
             recording = await session.get(RecordingSession, recording_session_id)
             if recording is None:
-                raise HTTPException(status_code=404, detail="RECORDING_NOT_FOUND：录音会话不存在")
+                raise CodedHTTPException(
+                    code="RECORDING_NOT_FOUND",
+                    status_code=404,
+                    detail="RECORDING_NOT_FOUND：录音会话不存在",
+                )
             paths = _chunk_paths(recording)
             if sequence_no > len(paths):
-                raise HTTPException(status_code=409, detail="RECORDING_CHUNK_ORDER：录音分片乱序")
+                raise CodedHTTPException(
+                    code="RECORDING_CHUNK_ORDER",
+                    status_code=409,
+                    detail="RECORDING_CHUNK_ORDER：录音分片乱序",
+                )
             if sequence_no == len(paths) and recording.state != RecordingSessionState.RECORDING:
-                raise HTTPException(
-                    status_code=409, detail="RECORDING_NOT_ACTIVE：录音会话不可追加"
+                raise CodedHTTPException(
+                    code="RECORDING_NOT_ACTIVE",
+                    status_code=409,
+                    detail="RECORDING_NOT_ACTIVE：录音会话不可追加",
                 )
             if (
                 sequence_no == len(paths)
                 and recording.recorded_duration_ms + duration_ms > MAX_RECORDING_DURATION_MS
             ):
-                raise HTTPException(status_code=409, detail="RECORDING_TOO_LONG：录音超过 3 小时")
+                raise CodedHTTPException(
+                    code="RECORDING_TOO_LONG",
+                    status_code=409,
+                    detail="RECORDING_TOO_LONG：录音超过 3 小时",
+                )
             await session.rollback()
 
             staging_root = (data_dir / "cache" / "staging").resolve()
             session_dir = staging_root / recording_session_id
             if not session_dir.is_relative_to(staging_root):
-                raise HTTPException(
-                    status_code=400, detail="INVALID_RECORDING_STAGING：暂存路径无效"
+                raise CodedHTTPException(
+                    code="INVALID_RECORDING_STAGING",
+                    status_code=400,
+                    detail="INVALID_RECORDING_STAGING：暂存路径无效",
                 )
             if session_dir.exists() and (session_dir.is_symlink() or session_dir.is_junction()):
-                raise HTTPException(
-                    status_code=400, detail="INVALID_RECORDING_STAGING：暂存路径不安全"
+                raise CodedHTTPException(
+                    code="INVALID_RECORDING_STAGING",
+                    status_code=400,
+                    detail="INVALID_RECORDING_STAGING：暂存路径不安全",
                 )
             session_dir.mkdir(parents=True, exist_ok=True)
             temporary_path = session_dir / f".{uuid4()}.part"
@@ -180,15 +218,23 @@ class RecordingSessionService:
                     copy_upload, upload.file, temporary_path
                 )
                 if size == 0:
-                    raise HTTPException(
-                        status_code=400, detail="EMPTY_RECORDING_CHUNK：录音分片为空"
+                    raise CodedHTTPException(
+                        code="EMPTY_RECORDING_CHUNK",
+                        status_code=400,
+                        detail="EMPTY_RECORDING_CHUNK：录音分片为空",
                     )
                 if size > MAX_WEBM_CHUNK_BYTES:
-                    raise HTTPException(
-                        status_code=400, detail="RECORDING_CHUNK_TOO_LARGE：录音分片过大"
+                    raise CodedHTTPException(
+                        code="RECORDING_CHUNK_TOO_LARGE",
+                        status_code=400,
+                        detail="RECORDING_CHUNK_TOO_LARGE：录音分片过大",
                     )
                 if not await asyncio.to_thread(_is_webm, temporary_path):
-                    raise HTTPException(status_code=400, detail="INVALID_WEBM：录音分片不是 WebM")
+                    raise CodedHTTPException(
+                        code="INVALID_WEBM",
+                        status_code=400,
+                        detail="INVALID_WEBM：录音分片不是 WebM",
+                    )
 
                 if sequence_no < len(paths):
                     existing = (data_dir / paths[sequence_no]).resolve()
@@ -197,14 +243,17 @@ class RecordingSessionService:
                         or not existing.is_file()
                         or await asyncio.to_thread(_sha256_file, existing) != content_hash
                     ):
-                        raise HTTPException(
+                        raise CodedHTTPException(
+                            code="RECORDING_CHUNK_CONFLICT",
                             status_code=409,
                             detail="RECORDING_CHUNK_CONFLICT：同序号分片内容不同",
                         )
                     current = await session.get(RecordingSession, recording_session_id)
                     if current is None:
-                        raise HTTPException(
-                            status_code=404, detail="RECORDING_NOT_FOUND：录音会话不存在"
+                        raise CodedHTTPException(
+                            code="RECORDING_NOT_FOUND",
+                            status_code=404,
+                            detail="RECORDING_NOT_FOUND：录音会话不存在",
                         )
                     return RecordingChunkAccepted(
                         session=_to_out(current),
@@ -227,7 +276,8 @@ class RecordingSessionService:
                     async with session.begin():
                         current = await session.get(RecordingSession, recording_session_id)
                         if current is None:
-                            raise HTTPException(
+                            raise CodedHTTPException(
+                                code="RECORDING_NOT_FOUND",
                                 status_code=404,
                                 detail="RECORDING_NOT_FOUND：录音会话不存在",
                             )
@@ -236,7 +286,8 @@ class RecordingSessionService:
                             current.state != RecordingSessionState.RECORDING
                             or len(current_paths) != sequence_no
                         ):
-                            raise HTTPException(
+                            raise CodedHTTPException(
+                                code="RECORDING_CHUNK_ORDER",
                                 status_code=409,
                                 detail="RECORDING_CHUNK_ORDER：录音分片状态已改变",
                             )
@@ -268,18 +319,28 @@ class RecordingSessionService:
         if target_state == RecordingSessionTargetState.RECORDING:
             free = (await asyncio.to_thread(shutil.disk_usage, data_dir)).free
             if free < NEXT_CHUNK_RESERVE_BYTES:
-                raise HTTPException(status_code=507, detail="INSUFFICIENT_DISK：数据目录空间不足")
+                raise CodedHTTPException(
+                    code="INSUFFICIENT_DISK",
+                    status_code=507,
+                    detail="INSUFFICIENT_DISK：数据目录空间不足",
+                )
         async with session.begin():
             recording = await session.get(RecordingSession, recording_session_id)
             if recording is None:
-                raise HTTPException(status_code=404, detail="RECORDING_NOT_FOUND：录音会话不存在")
+                raise CodedHTTPException(
+                    code="RECORDING_NOT_FOUND",
+                    status_code=404,
+                    detail="RECORDING_NOT_FOUND：录音会话不存在",
+                )
             if target_state == RecordingSessionTargetState.RECORDING:
                 if recording.state not in (
                     RecordingSessionState.PAUSED,
                     RecordingSessionState.RECORDING,
                 ):
-                    raise HTTPException(
-                        status_code=409, detail="RECORDING_NOT_PAUSED：录音会话不可继续"
+                    raise CodedHTTPException(
+                        code="RECORDING_NOT_PAUSED",
+                        status_code=409,
+                        detail="RECORDING_NOT_PAUSED：录音会话不可继续",
                     )
                 recording.state = RecordingSessionState.RECORDING
             else:
@@ -288,11 +349,17 @@ class RecordingSessionService:
                     RecordingSessionState.PAUSED,
                     RecordingSessionState.FINALIZING,
                 ):
-                    raise HTTPException(
-                        status_code=409, detail="RECORDING_NOT_PAUSED：请先保存当前录音分片"
+                    raise CodedHTTPException(
+                        code="RECORDING_NOT_PAUSED",
+                        status_code=409,
+                        detail="RECORDING_NOT_PAUSED：请先保存当前录音分片",
                     )
                 if not _chunk_paths(recording):
-                    raise HTTPException(status_code=400, detail="EMPTY_RECORDING：录音没有分片")
+                    raise CodedHTTPException(
+                        code="EMPTY_RECORDING",
+                        status_code=400,
+                        detail="EMPTY_RECORDING：录音没有分片",
+                    )
                 recording.state = RecordingSessionState.FINALIZING
             recording.updated_at = utcnow()
             await session.flush()
@@ -306,9 +373,17 @@ class RecordingSessionService:
     ) -> None:
         recording = await session.get(RecordingSession, recording_session_id)
         if recording is None:
-            raise HTTPException(status_code=404, detail="RECORDING_NOT_FOUND：录音会话不存在")
+            raise CodedHTTPException(
+                code="RECORDING_NOT_FOUND",
+                status_code=404,
+                detail="RECORDING_NOT_FOUND：录音会话不存在",
+            )
         if recording.state not in (RecordingSessionState.RECORDING, RecordingSessionState.PAUSED):
-            raise HTTPException(status_code=409, detail="RECORDING_SEALED：已封口录音不能放弃")
+            raise CodedHTTPException(
+                code="RECORDING_SEALED",
+                status_code=409,
+                detail="RECORDING_SEALED：已封口录音不能放弃",
+            )
         await session.rollback()
 
         staging_root = (data_dir / "cache" / "staging").resolve()
@@ -320,8 +395,10 @@ class RecordingSessionService:
             async with session.begin():
                 current = await session.get(RecordingSession, recording_session_id)
                 if current is None:
-                    raise HTTPException(
-                        status_code=404, detail="RECORDING_NOT_FOUND：录音会话不存在"
+                    raise CodedHTTPException(
+                        code="RECORDING_NOT_FOUND",
+                        status_code=404,
+                        detail="RECORDING_NOT_FOUND：录音会话不存在",
                     )
                 await session.delete(current)
         except BaseException:

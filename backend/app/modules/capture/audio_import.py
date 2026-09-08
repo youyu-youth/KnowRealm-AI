@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
 
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +27,7 @@ from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.search.service import SearchService
+from app.shared.errors import CodedHTTPException
 
 SUPPORTED_AUDIO = {
     ".mp3": "audio/mpeg",
@@ -86,7 +87,9 @@ async def probe_audio_duration_ms(ffmpeg_path: Path, path: Path) -> int:
     _, stderr = await process.communicate()
     match = _DURATION.search(stderr)
     if process.returncode != 0 or match is None:
-        raise HTTPException(status_code=400, detail="CORRUPT_AUDIO：音频已损坏")
+        raise CodedHTTPException(
+            code="CORRUPT_AUDIO", status_code=400, detail="CORRUPT_AUDIO：音频已损坏"
+        )
     hours, minutes, seconds = match.groups()
     return round((int(hours) * 3600 + int(minutes) * 60 + float(seconds)) * 1000)
 
@@ -111,7 +114,11 @@ class AudioImportService:
         original_name = (upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
         extension = Path(original_name).suffix.lower()
         if not original_name or extension not in SUPPORTED_AUDIO:
-            raise HTTPException(status_code=400, detail="UNSUPPORTED_AUDIO：不支持的音频格式")
+            raise CodedHTTPException(
+                code="UNSUPPORTED_AUDIO",
+                status_code=400,
+                detail="UNSUPPORTED_AUDIO：不支持的音频格式",
+            )
 
         record_id, file_id, transcode_job_id, asr_job_id = (str(uuid4()) for _ in range(4))
         import_dir = data_dir / "cache" / "imports"
@@ -124,15 +131,29 @@ class AudioImportService:
                 copy_upload, upload.file, temporary_path
             )
             if file_size == 0:
-                raise HTTPException(status_code=400, detail="CORRUPT_AUDIO：音频不能为空")
+                raise CodedHTTPException(
+                    code="CORRUPT_AUDIO", status_code=400, detail="CORRUPT_AUDIO：音频不能为空"
+                )
             if not await asyncio.to_thread(matches_audio_extension, temporary_path, extension):
-                raise HTTPException(status_code=400, detail="UNSUPPORTED_AUDIO：格式与内容不匹配")
+                raise CodedHTTPException(
+                    code="UNSUPPORTED_AUDIO",
+                    status_code=400,
+                    detail="UNSUPPORTED_AUDIO：格式与内容不匹配",
+                )
             duration_ms = await probe_audio_duration_ms(ffmpeg_path, temporary_path)
             if duration_ms > MAX_AUDIO_DURATION_MS:
-                raise HTTPException(status_code=400, detail="AUDIO_TOO_LONG：音频时长超过 5 小时")
+                raise CodedHTTPException(
+                    code="AUDIO_TOO_LONG",
+                    status_code=400,
+                    detail="AUDIO_TOO_LONG：音频时长超过 5 小时",
+                )
             free_after_write = (await asyncio.to_thread(shutil.disk_usage, import_dir)).free
             if free_after_write < file_size * 2:
-                raise HTTPException(status_code=507, detail="INSUFFICIENT_DISK：数据目录空间不足")
+                raise CodedHTTPException(
+                    code="INSUFFICIENT_DISK",
+                    status_code=507,
+                    detail="INSUFFICIENT_DISK：数据目录空间不足",
+                )
             final_dir.mkdir(parents=True)
             await asyncio.to_thread(os.replace, temporary_path, final_path)
 
@@ -142,9 +163,15 @@ class AudioImportService:
                 if course_id is not None:
                     course = await CourseService.get(session, course_id)
                     if course is None:
-                        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+                        raise CodedHTTPException(
+                            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+                        )
                     if course.status != CourseStatus.ACTIVE:
-                        raise HTTPException(status_code=409, detail="已归档课程不能接受新音频")
+                        raise CodedHTTPException(
+                            code="COURSE_ARCHIVED",
+                            status_code=409,
+                            detail="已归档课程不能接受新音频",
+                        )
                     words = CourseDetailOut.model_validate(course).hot_words
                     hot_words = ",".join(f"{word}|5" for word in words) or None
                 session.add(

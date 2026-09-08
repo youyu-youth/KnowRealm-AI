@@ -2,12 +2,13 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.capture.capture_batch import CaptureBatchService
 from app.modules.capture.schemas import CaptureBatchAccepted
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
 
 router = APIRouter(
@@ -29,11 +30,17 @@ async def create_capture_batch(
     ffmpeg_path: Path | None = request.app.state.ffmpeg_path
     if recording_session_id is not None:
         if files:
-            raise HTTPException(
-                status_code=400, detail="MIXED_INPUT_MODE：录音交接不能附加上传文件"
+            raise CodedHTTPException(
+                code="MIXED_INPUT_MODE",
+                status_code=400,
+                detail="MIXED_INPUT_MODE：录音交接不能附加上传文件",
             )
         if ffmpeg_path is None:
-            raise HTTPException(status_code=503, detail="FFMPEG_UNAVAILABLE：音频处理组件不可用")
+            raise CodedHTTPException(
+                code="FFMPEG_UNAVAILABLE",
+                status_code=503,
+                detail="FFMPEG_UNAVAILABLE：音频处理组件不可用",
+            )
         return await CaptureBatchService.create_recording(
             session,
             request.app.state.data_dir,
@@ -48,7 +55,11 @@ async def create_capture_batch(
         )
         and ffmpeg_path is None
     ):
-        raise HTTPException(status_code=503, detail="FFMPEG_UNAVAILABLE：音频处理组件不可用")
+        raise CodedHTTPException(
+            code="FFMPEG_UNAVAILABLE",
+            status_code=503,
+            detail="FFMPEG_UNAVAILABLE：音频处理组件不可用",
+        )
     return await CaptureBatchService.create(
         session,
         request.app.state.data_dir,

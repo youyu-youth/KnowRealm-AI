@@ -1,7 +1,6 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
@@ -13,6 +12,7 @@ from app.modules.record.schemas import RecordStatus
 from app.modules.search.service import SearchService
 from app.modules.summary.service import SummaryService
 from app.modules.transcript.models import Transcript
+from app.shared.errors import CodedHTTPException
 
 MAX_TEXT_BYTES = 1024 * 1024
 TITLE_MAX_CHARS = 100
@@ -40,16 +40,25 @@ class TextCaptureService:
         body: TextCaptureCreate,
     ) -> TextCaptureAccepted:
         if body.capture_type not in TEXT_CAPTURE_TYPES:
-            raise HTTPException(
-                status_code=422, detail="UNSUPPORTED_TEXT_CAPTURE：仅支持速记或粘贴文本"
+            raise CodedHTTPException(
+                code="UNSUPPORTED_TEXT_CAPTURE",
+                status_code=422,
+                detail="UNSUPPORTED_TEXT_CAPTURE：仅支持速记或粘贴文本",
             )
         if body.course_id is not None and body.capture_type != "PASTE":
-            raise HTTPException(status_code=422, detail="QUICK_NOTE_NO_COURSE：速记不能选择课程")
+            raise CodedHTTPException(
+                code="QUICK_NOTE_NO_COURSE",
+                status_code=422,
+                detail="QUICK_NOTE_NO_COURSE：速记不能选择课程",
+            )
         content = normalize_content(body.content)
         if not content.strip():
-            raise HTTPException(status_code=422, detail="EMPTY_TEXT：正文不能为空")
+            raise CodedHTTPException(
+                code="EMPTY_TEXT", status_code=422, detail="EMPTY_TEXT：正文不能为空"
+            )
         if len(content.encode("utf-8")) > MAX_TEXT_BYTES:
-            raise HTTPException(
+            raise CodedHTTPException(
+                code="TEXT_TOO_LARGE",
                 status_code=422,
                 detail="TEXT_TOO_LARGE：正文超过 1 MiB，请改用 TXT 或 MD 文档导入",
             )
@@ -61,9 +70,13 @@ class TextCaptureService:
             if course_selected:
                 course = await CourseService.get(session, str(body.course_id))
                 if course is None:
-                    raise HTTPException(status_code=404, detail="课程不存在或已删除")
+                    raise CodedHTTPException(
+                        code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+                    )
                 if course.status != CourseStatus.ACTIVE:
-                    raise HTTPException(status_code=409, detail="已归档课程不能接受新资料")
+                    raise CodedHTTPException(
+                        code="COURSE_ARCHIVED", status_code=409, detail="已归档课程不能接受新资料"
+                    )
             session.add(
                 Record(
                     id=record_id,

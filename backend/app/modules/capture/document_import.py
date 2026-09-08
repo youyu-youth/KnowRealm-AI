@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
 
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +27,7 @@ from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.search.service import SearchService
+from app.shared.errors import CodedHTTPException
 
 SUPPORTED_DOCUMENTS = {
     ".txt": "text/plain",
@@ -69,7 +70,11 @@ class DocumentImportService:
         original_name = (upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
         extension = Path(original_name).suffix.lower()
         if not original_name or extension not in SUPPORTED_DOCUMENTS:
-            raise HTTPException(status_code=400, detail="仅支持 TXT、MD、PDF 或 DOCX 文件")
+            raise CodedHTTPException(
+                code="DOCUMENT_FORMAT_UNSUPPORTED",
+                status_code=400,
+                detail="仅支持 TXT、MD、PDF 或 DOCX 文件",
+            )
 
         record_id, file_id, job_id = (str(uuid4()) for _ in range(3))
         target_dir = data_dir / "files" / record_id
@@ -84,10 +89,14 @@ class DocumentImportService:
                 _copy_upload, upload.file, temporary_path
             )
             if file_size == 0:
-                raise HTTPException(status_code=400, detail="文件不能为空")
+                raise CodedHTTPException(
+                    code="DOCUMENT_EMPTY", status_code=400, detail="文件不能为空"
+                )
             free_after_write = (await asyncio.to_thread(shutil.disk_usage, target_dir)).free
             if free_after_write + file_size < file_size * 2:
-                raise HTTPException(status_code=507, detail="数据目录可用空间不足")
+                raise CodedHTTPException(
+                    code="INSUFFICIENT_DISK", status_code=507, detail="数据目录可用空间不足"
+                )
             await asyncio.to_thread(os.replace, temporary_path, final_path)
 
             now = utcnow()
@@ -95,9 +104,15 @@ class DocumentImportService:
                 if course_id is not None:
                     course: Course | None = await CourseService.get(session, course_id)
                     if course is None:
-                        raise HTTPException(status_code=404, detail="课程不存在或已删除")
+                        raise CodedHTTPException(
+                            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+                        )
                     if course.status != CourseStatus.ACTIVE:
-                        raise HTTPException(status_code=409, detail="已归档课程不能接受新文档")
+                        raise CodedHTTPException(
+                            code="COURSE_ARCHIVED",
+                            status_code=409,
+                            detail="已归档课程不能接受新文档",
+                        )
                 session.add(
                     Record(
                         id=record_id,

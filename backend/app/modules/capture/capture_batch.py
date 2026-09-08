@@ -8,7 +8,7 @@ from pathlib import Path, PurePosixPath
 from typing import cast
 from uuid import uuid4
 
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +36,7 @@ from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.search.service import SearchService
+from app.shared.errors import CodedHTTPException
 
 
 @dataclass(frozen=True)
@@ -79,19 +80,33 @@ class CaptureBatchService:
     ) -> CaptureBatchAccepted:
         recording = await session.get(RecordingSession, recording_session_id)
         if recording is None:
-            raise HTTPException(status_code=404, detail="RECORDING_NOT_FOUND：录音会话不存在")
+            raise CodedHTTPException(
+                code="RECORDING_NOT_FOUND",
+                status_code=404,
+                detail="RECORDING_NOT_FOUND：录音会话不存在",
+            )
         if recording.state != RecordingSessionState.FINALIZING:
-            raise HTTPException(status_code=409, detail="RECORDING_NOT_SEALED：录音清单尚未封口")
+            raise CodedHTTPException(
+                code="RECORDING_NOT_SEALED",
+                status_code=409,
+                detail="RECORDING_NOT_SEALED：录音清单尚未封口",
+            )
         raw_paths: object = json.loads(recording.chunk_paths)
         if not isinstance(raw_paths, list) or not raw_paths:
-            raise HTTPException(status_code=400, detail="EMPTY_RECORDING：录音没有可处理分片")
+            raise CodedHTTPException(
+                code="EMPTY_RECORDING",
+                status_code=400,
+                detail="EMPTY_RECORDING：录音没有可处理分片",
+            )
         cache_root = (data_dir / "cache").resolve()
         staging_root = (data_dir / "cache" / "staging").resolve()
         chunk_paths: list[Path] = []
         for raw in cast(list[object], raw_paths):
             if not isinstance(raw, str):
-                raise HTTPException(
-                    status_code=400, detail="INVALID_RECORDING_STAGING：分片清单无效"
+                raise CodedHTTPException(
+                    code="INVALID_RECORDING_STAGING",
+                    status_code=400,
+                    detail="INVALID_RECORDING_STAGING：分片清单无效",
                 )
             pure = PurePosixPath(raw)
             path = (data_dir / Path(*pure.parts)).resolve()
@@ -101,7 +116,8 @@ class CaptureBatchService:
                 or not path.is_relative_to(staging_root)
                 or not path.is_file()
             ):
-                raise HTTPException(
+                raise CodedHTTPException(
+                    code="INVALID_RECORDING_STAGING",
                     status_code=400,
                     detail="INVALID_RECORDING_STAGING：录音分片不安全或不存在",
                 )
@@ -113,7 +129,11 @@ class CaptureBatchService:
         file_id, transcode_id, asr_id = (str(uuid4()) for _ in range(3))
         work_dir = (data_dir / "cache" / "imports" / recording_session_id).resolve()
         if not work_dir.is_relative_to(cache_root):
-            raise HTTPException(status_code=400, detail="INVALID_RECORDING_STAGING：缓存路径无效")
+            raise CodedHTTPException(
+                code="INVALID_RECORDING_STAGING",
+                status_code=400,
+                detail="INVALID_RECORDING_STAGING：缓存路径无效",
+            )
         final_dir = data_dir / "files" / recording_session_id
         final_path = final_dir / f"{file_id}.ogg"
         work_dir.mkdir(parents=True, exist_ok=True)
@@ -127,7 +147,11 @@ class CaptureBatchService:
             total_size = sum(path.stat().st_size for path in chunk_paths)
             free = (await asyncio.to_thread(shutil.disk_usage, work_dir)).free
             if free < total_size * 2:
-                raise HTTPException(status_code=507, detail="INSUFFICIENT_DISK：数据目录空间不足")
+                raise CodedHTTPException(
+                    code="INSUFFICIENT_DISK",
+                    status_code=507,
+                    detail="INSUFFICIENT_DISK：数据目录空间不足",
+                )
             final_dir.mkdir(parents=True, exist_ok=True)
             process = await asyncio.create_subprocess_exec(
                 str(ffmpeg_path),
@@ -156,17 +180,25 @@ class CaptureBatchService:
                 stderr=asyncio.subprocess.DEVNULL,
             )
             if await process.wait() != 0:
-                raise HTTPException(status_code=400, detail="CORRUPT_AUDIO：录音分片无法合并")
+                raise CodedHTTPException(
+                    code="CORRUPT_AUDIO", status_code=400, detail="CORRUPT_AUDIO：录音分片无法合并"
+                )
             duration_ms = await probe_audio_duration_ms(ffmpeg_path, final_path)
             if duration_ms > 3 * 60 * 60 * 1000:
-                raise HTTPException(status_code=400, detail="RECORDING_TOO_LONG：录音超过 3 小时")
+                raise CodedHTTPException(
+                    code="RECORDING_TOO_LONG",
+                    status_code=400,
+                    detail="RECORDING_TOO_LONG：录音超过 3 小时",
+                )
             content = await asyncio.to_thread(final_path.read_bytes)
             now = utcnow()
             async with session.begin():
                 current = await session.get(RecordingSession, recording_session_id)
                 if current is None or current.state != RecordingSessionState.FINALIZING:
-                    raise HTTPException(
-                        status_code=409, detail="RECORDING_NOT_SEALED：录音交接状态已改变"
+                    raise CodedHTTPException(
+                        code="RECORDING_NOT_SEALED",
+                        status_code=409,
+                        detail="RECORDING_NOT_SEALED：录音交接状态已改变",
                     )
                 course = await CourseService.get(session, course_id) if course_id else None
                 if course_id and course is None:
@@ -288,7 +320,9 @@ class CaptureBatchService:
         course_id: str | None,
     ) -> CaptureBatchAccepted:
         if not uploads:
-            raise HTTPException(status_code=400, detail="EMPTY_BATCH：至少选择一个来源")
+            raise CodedHTTPException(
+                code="EMPTY_BATCH", status_code=400, detail="EMPTY_BATCH：至少选择一个来源"
+            )
 
         record_id = str(uuid4())
         temporary_dir = data_dir / "cache" / "imports" / record_id
@@ -300,8 +334,10 @@ class CaptureBatchService:
                 name = (upload.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
                 extension = Path(name).suffix.lower()
                 if not name or extension not in SUPPORTED_AUDIO | SUPPORTED_DOCUMENTS:
-                    raise HTTPException(
-                        status_code=400, detail="UNSUPPORTED_SOURCE：不支持的来源格式"
+                    raise CodedHTTPException(
+                        code="UNSUPPORTED_SOURCE",
+                        status_code=400,
+                        detail="UNSUPPORTED_SOURCE：不支持的来源格式",
                     )
                 file_id = str(uuid4())
                 temporary_path = temporary_dir / f"{file_id}.tmp"
@@ -309,18 +345,22 @@ class CaptureBatchService:
                     copy_upload, upload.file, temporary_path
                 )
                 if size == 0:
-                    raise HTTPException(status_code=400, detail="EMPTY_SOURCE：来源不能为空")
+                    raise CodedHTTPException(
+                        code="EMPTY_SOURCE", status_code=400, detail="EMPTY_SOURCE：来源不能为空"
+                    )
                 duration_ms: int | None = None
                 if extension in SUPPORTED_AUDIO:
                     if ffmpeg_path is None:
-                        raise HTTPException(
+                        raise CodedHTTPException(
+                            code="FFMPEG_UNAVAILABLE",
                             status_code=503,
                             detail="FFMPEG_UNAVAILABLE：音频处理组件不可用",
                         )
                     if not await asyncio.to_thread(
                         matches_audio_extension, temporary_path, extension
                     ):
-                        raise HTTPException(
+                        raise CodedHTTPException(
+                            code="UNSUPPORTED_AUDIO",
                             status_code=400,
                             detail="UNSUPPORTED_AUDIO：格式与内容不匹配",
                         )
@@ -339,9 +379,13 @@ class CaptureBatchService:
 
             course = await CourseService.get(session, course_id) if course_id is not None else None
             if course_id is not None and course is None:
-                raise HTTPException(status_code=404, detail="课程不存在或已删除")
+                raise CodedHTTPException(
+                    code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+                )
             if course is not None and course.status != CourseStatus.ACTIVE:
-                raise HTTPException(status_code=409, detail="已归档课程不能接受新资料")
+                raise CodedHTTPException(
+                    code="COURSE_ARCHIVED", status_code=409, detail="已归档课程不能接受新资料"
+                )
             hot_words = (
                 ",".join(f"{word}|5" for word in CourseDetailOut.model_validate(course).hot_words)
                 if course is not None
@@ -351,11 +395,19 @@ class CaptureBatchService:
 
             total_audio_ms = sum(source.duration_ms or 0 for source in prepared)
             if total_audio_ms > MAX_AUDIO_DURATION_MS:
-                raise HTTPException(status_code=400, detail="AUDIO_TOO_LONG：批次音频超过 5 小时")
+                raise CodedHTTPException(
+                    code="AUDIO_TOO_LONG",
+                    status_code=400,
+                    detail="AUDIO_TOO_LONG：批次音频超过 5 小时",
+                )
             total_size = sum(source.size for source in prepared)
             free_after_write = (await asyncio.to_thread(shutil.disk_usage, temporary_dir)).free
             if free_after_write < total_size * 2:
-                raise HTTPException(status_code=507, detail="INSUFFICIENT_DISK：数据目录空间不足")
+                raise CodedHTTPException(
+                    code="INSUFFICIENT_DISK",
+                    status_code=507,
+                    detail="INSUFFICIENT_DISK：数据目录空间不足",
+                )
 
             final_dir.mkdir(parents=True)
             for source in prepared:
