@@ -42,6 +42,7 @@ from app.modules.quiz.worker import preflight
 from app.modules.record.models import Record
 from app.modules.settings.config import LlmProviderConfig, llm_provider_fingerprint
 from app.shared.events import RecordInvalidationNotifier
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 PROMPT_VERSION = "quiz_grading_v1"
 PREREQUISITE_CHANGED = "PREREQUISITE_CHANGED"
@@ -66,8 +67,9 @@ def build_grading_prompt(*, stem: str, reference: str, answer: str) -> str:
         "- score：0 到 1 的小数，与 verdict 一致（WRONG 为 0，PARTIAL 介于 0 与 1，"
         "CORRECT 大于 0）\n"
         "- confidence：0 到 1 的小数，表示对本题评分的把握\n"
-        "- rationale：一到两句中文评分依据，说明覆盖或缺失的要点\n"
-        "- 只依据参考答案评阅，不引入题目之外的知识"
+        "- rationale：一到两句评分依据，说明覆盖或缺失的要点\n"
+        "- 只依据参考答案评阅，不引入题目之外的知识\n"
+        f"{CONTENT_LANGUAGE_INSTRUCTION}"
     )
 
 

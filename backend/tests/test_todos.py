@@ -14,6 +14,7 @@ from sqlalchemy import text
 from app.db.migrations import run_migrations
 from app.main import create_app
 from app.modules.llm.service import StructuredModelResult
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 TOKEN = "test-launch-token"
 
@@ -206,6 +207,7 @@ async def test_generate_todo_candidates_persists_one_draft_batch(tmp_path: Path)
     assert payload["action_required"] == "ADOPT"
     assert json.loads(cast(str, result_json))["prompt_version"] == "todo_v1"
     assert "已确认总结" in model.prompt and "总结介绍了调度策略" in model.prompt
+    assert CONTENT_LANGUAGE_INSTRUCTION in model.prompt
 
 
 @pytest.mark.anyio

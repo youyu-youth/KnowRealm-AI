@@ -38,6 +38,9 @@ from app.modules.settings.config import LlmProviderConfig
 CHAT_CONTEXT_CHAR_BUDGET = 60000
 CHAT_CONTEXT_MAX_TURNS = 10
 CHAT_TRANSCRIPT_MAX_CHARS = 30000
+# 对话内容语言指令：逐条跟随当前用户提问的语言，与界面语言正交（决策 #59）。
+# 组装上下文时统一追加到有效 SYSTEM 消息末尾（自由聊天的角色快照与挂载指令都覆盖）。
+CHAT_LANGUAGE_INSTRUCTION = "回答使用与用户最新提问相同的语言。"
 CHAT_PROMPT_VERSION = "chat-mount-cite-v1"
 CHAT_RECURSION_LIMIT = 25
 
@@ -192,6 +195,14 @@ def build_context_messages(
             id="record-context",
             role=ChatRole.SYSTEM,
             content=instructions + focus + source,
+        )
+    # 对话内容语言指令统一附加在有效 SYSTEM 末尾（挂载指令与自由聊天的角色快照都覆盖），
+    # 且在窗口裁剪 / 预算计量之前，保证预算与实际喂入一致。
+    if system_row is not None:
+        system_row = ContextRow(
+            id=system_row.id,
+            role=ChatRole.SYSTEM,
+            content=f"{system_row.content}\n{CHAT_LANGUAGE_INSTRUCTION}",
         )
     turns = turns[-CHAT_CONTEXT_MAX_TURNS:]
     while turns and _turns_chars(system_row, turns, trailing_user) > budget:

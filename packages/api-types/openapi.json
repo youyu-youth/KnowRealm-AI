@@ -879,14 +879,35 @@
       },
       "ErrorResponse": {
         "properties": {
+          "code": {
+            "description": "稳定错误码，供前端按码翻译",
+            "title": "Code",
+            "type": "string"
+          },
           "detail": {
             "description": "可直接展示的错误说明",
             "title": "Detail",
             "type": "string"
+          },
+          "params": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "错误码插值参数",
+            "title": "Params"
           }
         },
         "required": [
-          "detail"
+          "detail",
+          "code"
         ],
         "title": "ErrorResponse",
         "type": "object"
@@ -1393,6 +1414,14 @@
             "title": "Font Scale",
             "type": "string"
           },
+          "language": {
+            "enum": [
+              "zh",
+              "en"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
           "last_route": {
             "anyOf": [
               {
@@ -1436,6 +1465,7 @@
         "required": [
           "theme",
           "font_scale",
+          "language",
           "timezone",
           "close_behavior",
           "quick_note_shortcut",
@@ -1493,6 +1523,22 @@
             ],
             "description": "字号档位",
             "title": "Font Scale"
+          },
+          "language": {
+            "anyOf": [
+              {
+                "enum": [
+                  "zh",
+                  "en"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "界面语言",
+            "title": "Language"
           },
           "last_route": {
             "anyOf": [

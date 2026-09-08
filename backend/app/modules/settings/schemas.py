@@ -111,6 +111,7 @@ class LlmConsentOut(BaseModel):
 class PreferencesOut(BaseModel):
     theme: Literal["LIGHT", "DARK", "SYSTEM"]
     font_scale: Literal["S", "M", "L"]
+    language: Literal["zh", "en"]
     timezone: str | None
     close_behavior: Literal["TRAY", "EXIT"]
     quick_note_shortcut: str
@@ -201,6 +202,7 @@ class PreferencesUpdate(BaseModel):
 
     theme: Literal["LIGHT", "DARK", "SYSTEM"] | None = Field(default=None, description="外观主题")
     font_scale: Literal["S", "M", "L"] | None = Field(default=None, description="字号档位")
+    language: Literal["zh", "en"] | None = Field(default=None, description="界面语言")
     timezone: str | None = Field(default=None, description="IANA 时区名；null 表示跟随系统")
     close_behavior: Literal["TRAY", "EXIT"] | None = Field(default=None, description="关窗行为")
     quick_note_shortcut: str | None = Field(default=None, description="速记快捷键 accelerator")
@@ -232,6 +234,7 @@ class PreferencesUpdate(BaseModel):
         for field in (
             "theme",
             "font_scale",
+            "language",
             "close_behavior",
             "quick_note_shortcut",
             "autostart",

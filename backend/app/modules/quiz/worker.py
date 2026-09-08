@@ -49,6 +49,7 @@ from app.modules.summary.derivation import (
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import SummaryContent
 from app.shared.events import RecordInvalidationNotifier
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 PROMPT_VERSION = "quiz_v1"
 
@@ -77,7 +78,7 @@ def build_quiz_prompt(claimed: _ClaimedQuizJob) -> str:
     )
     type_names = "、".join(_QUESTION_TYPE_LABELS[item] for item in claimed.question_types)
     return (
-        "请根据以下课程上下文和已确认总结出中文练习题。"
+        "请根据以下课程上下文和已确认总结出练习题。"
         "严格返回指定结构，不添加结构外字段。\n"
         f"学习场景：{claimed.course.learning_context}\n"
         f"教育阶段：{claimed.course.education_stage or '未设置'}\n"
@@ -93,12 +94,15 @@ def build_quiz_prompt(claimed: _ClaimedQuizJob) -> str:
         "correct_answer 为正确选项的下标（从 0 开始）\n"
         "- 多选题：options 为 3 至 5 个选项文本，"
         "correct_answer 为全部正确选项的下标数组（从 0 开始，不重复）\n"
-        '- 判断题：options 固定为 ["对", "错"]，correct_answer 为 0（对）或 1（错）\n'
+        # 判断题选项是数据契约（schemas 校验恒为「对/错」），是唯一不随输出语言变化的例外。
+        '- 判断题：options 固定为字面量 ["对", "错"] 两项（此项不随题目语言变化），'
+        "correct_answer 为 0（对）或 1（错）\n"
         '- 填空题：stem 用 "____" 标记每个空位，options 为空数组，'
         "correct_answer 按空位顺序给出可接受答案数组\n"
         "- 简答题：options 为空数组，correct_answer 为参考答案文本\n"
         "- 每题给出 difficulty（EASY / MEDIUM / HARD）与 explanation 解析\n"
-        "- 题目与解析只能基于已确认总结的内容，不得引入总结之外的知识"
+        "- 题目与解析只能基于已确认总结的内容，不得引入总结之外的知识\n"
+        f"{CONTENT_LANGUAGE_INSTRUCTION}"
     )
 
 

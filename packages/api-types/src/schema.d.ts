@@ -1627,10 +1627,22 @@ export interface components {
         /** ErrorResponse */
         ErrorResponse: {
             /**
+             * Code
+             * @description 稳定错误码，供前端按码翻译
+             */
+            code: string;
+            /**
              * Detail
              * @description 可直接展示的错误说明
              */
             detail: string;
+            /**
+             * Params
+             * @description 错误码插值参数
+             */
+            params?: {
+                [key: string]: string;
+            } | null;
         };
         /** ExternalProcessingConsentOut */
         ExternalProcessingConsentOut: {
@@ -1823,6 +1835,11 @@ export interface components {
              * @enum {string}
              */
             font_scale: "S" | "M" | "L";
+            /**
+             * Language
+             * @enum {string}
+             */
+            language: "zh" | "en";
             /** Last Route */
             last_route: string | null;
             /** Quick Note Shortcut */
@@ -1858,6 +1875,11 @@ export interface components {
              * @description 字号档位
              */
             font_scale?: ("S" | "M" | "L") | null;
+            /**
+             * Language
+             * @description 界面语言
+             */
+            language?: ("zh" | "en") | null;
             /**
              * Last Route
              * @description 上次界面路由；null 表示默认页

@@ -16,6 +16,7 @@ from app.db.migrations import MIGRATIONS_DIR, run_migrations
 from app.main import create_app
 from app.modules.llm.service import OpenAiCompatibleSummaryModel, SummaryModel, SummaryModelResult
 from app.modules.summary.schemas import SummaryContent, SummarySection
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 TOKEN = "test-launch-token"
 
@@ -374,6 +375,7 @@ async def test_summary_actions_submit_once_and_publish_first_immutable_version(
     assert duplicate.status_code == 202
     assert first.json()["job_id"] == duplicate.json()["job_id"]
     assert len(fake.prompts) == 1
+    assert CONTENT_LANGUAGE_INSTRUCTION in fake.prompts[0]
     assert current.json()["action_required"] == "NONE"
     assert current.json()["summary"]["topic"] == "操作系统中的进程调度"
     assert current.json()["summary"]["version_no"] == 1

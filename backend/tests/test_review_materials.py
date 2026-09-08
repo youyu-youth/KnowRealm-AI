@@ -20,6 +20,7 @@ from app.modules.review_material.worker import (
     choose_generation_mode,
     estimate_tokens,
 )
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 TOKEN = "test-launch-token"
 
@@ -316,6 +317,7 @@ async def test_first_generation_is_single_active_and_readable(tmp_path: Path) ->
         assert "原文唯一标记" in model.prompts[0]
         assert "已确认总结唯一标记" in model.prompts[0]
         assert "绝不能进入复习资料上下文" not in model.prompts[0]
+        assert CONTENT_LANGUAGE_INSTRUCTION in model.prompts[0]
 
         async with aiosqlite.connect(tmp_path / "KnowRealm" / "knowrealm.db") as connection:
             row = await (
@@ -464,6 +466,7 @@ async def test_long_source_uses_map_reduce_without_omitting_tail(tmp_path: Path)
         assert any("开头标记" in prompt for prompt in model.prompts)
         assert any("尾段标记" in prompt for prompt in model.prompts)
         assert "归并" in model.prompts[-1]
+        assert all(CONTENT_LANGUAGE_INSTRUCTION in prompt for prompt in model.prompts)
         assert all(estimate_tokens(prompt) <= MODEL_INPUT_TOKEN_BUDGET for prompt in model.prompts)
 
 

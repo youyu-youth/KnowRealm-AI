@@ -163,9 +163,11 @@ def llm_consent(data_dir: Path) -> tuple[str | None, bool]:
 
 THEME_CHOICES = ("LIGHT", "DARK", "SYSTEM")
 FONT_SCALE_CHOICES = ("S", "M", "L")
+LANGUAGE_CHOICES = ("zh", "en")
 CLOSE_BEHAVIOR_CHOICES = ("TRAY", "EXIT")
 DEFAULT_THEME = "SYSTEM"
 DEFAULT_FONT_SCALE = "M"
+DEFAULT_LANGUAGE = "zh"
 DEFAULT_CLOSE_BEHAVIOR = "TRAY"
 DEFAULT_QUICK_NOTE_SHORTCUT = "Ctrl+Alt+N"
 DEFAULT_AUTOSTART = False
@@ -176,6 +178,7 @@ DEFAULT_QUIZ_LAST_COUNT = 5
 PREFERENCE_DEFAULTS: dict[str, object] = {
     "theme": DEFAULT_THEME,
     "font_scale": DEFAULT_FONT_SCALE,
+    "language": DEFAULT_LANGUAGE,
     "timezone": None,
     "close_behavior": DEFAULT_CLOSE_BEHAVIOR,
     "quick_note_shortcut": DEFAULT_QUICK_NOTE_SHORTCUT,
@@ -189,6 +192,7 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
     settings = _read_json(data_dir / "config" / "settings.json")
     theme = settings.get("theme")
     font_scale = settings.get("font_scale")
+    language = settings.get("language")
     timezone = settings.get("timezone")
     close_behavior = settings.get("close_behavior")
     quick_note_shortcut = settings.get("quick_note_shortcut")
@@ -198,6 +202,7 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
     return {
         "theme": theme if theme in THEME_CHOICES else DEFAULT_THEME,
         "font_scale": font_scale if font_scale in FONT_SCALE_CHOICES else DEFAULT_FONT_SCALE,
+        "language": language if language in LANGUAGE_CHOICES else DEFAULT_LANGUAGE,
         "timezone": (
             timezone if isinstance(timezone, str) and is_valid_timezone(timezone) else None
         ),

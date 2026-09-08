@@ -14,6 +14,7 @@ from sqlalchemy import text
 from app.db.migrations import run_migrations
 from app.main import create_app
 from app.modules.llm.service import StructuredModelResult
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 TOKEN = "test-launch-token"
 COURSE_ID = "11111111-1111-4111-8111-111111111111"
@@ -1031,6 +1032,7 @@ async def test_crash_recovery_flips_grading_failed_and_regrade_skips_graded(
         completed = await wait_for_test_status(client, test_id, "COMPLETED")
         # 已评成功题跳过：模型只被调一次（评第二题），首题分数原样保留
         assert len(model.prompts) == 1
+        assert CONTENT_LANGUAGE_INSTRUCTION in model.prompts[0]
         assert completed["score"] == 0.9
         rows = {cast(str, item["id"]): item for item in cast(list[QuizItem], completed["items"])}
         assert rows[cast(str, first["id"])]["score"] == 0.9

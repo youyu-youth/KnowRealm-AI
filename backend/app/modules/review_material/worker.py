@@ -55,6 +55,7 @@ from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.transcript.models import Transcript
 from app.shared.events import RecordInvalidationNotifier
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 PROMPT_VERSION = "review_v1"
 ADJUST_PROMPT_VERSION = "review_adjust_v1"
@@ -118,7 +119,7 @@ def _previous_text(previous: ReviewMaterialContent) -> str:
 def _base_prompt(ctx: _ClaimedReviewMaterial, transcript: str) -> str:
     if ctx.previous is not None:
         head = (
-            "请基于全部原文、上一版复习资料与用户反馈，生成修订后的中文复习资料，"
+            "请基于全部原文、上一版复习资料与用户反馈，生成修订后的复习资料，"
             "严格返回指定结构，不添加结构外字段。\n"
         )
         revision = (
@@ -126,7 +127,7 @@ def _base_prompt(ctx: _ClaimedReviewMaterial, transcript: str) -> str:
             f"用户反馈：{ctx.feedback or ''}\n"
         )
     else:
-        head = "请基于全部原文生成中文复习资料，严格返回指定结构，不添加结构外字段。\n"
+        head = "请基于全部原文生成复习资料，严格返回指定结构，不添加结构外字段。\n"
         revision = ""
     return (
         head
@@ -137,7 +138,8 @@ def _base_prompt(ctx: _ClaimedReviewMaterial, transcript: str) -> str:
         f"内容深度：{ctx.course.depth or '未设置'}\n"
         f"已确认总结（仅作辅助）：\n{_summary_text(ctx.summary)}\n"
         + revision
-        + f"原文（主要依据，必须完整覆盖）：\n{transcript}"
+        + f"原文（主要依据，必须完整覆盖）：\n{transcript}\n"
+        + CONTENT_LANGUAGE_INSTRUCTION
     )
 
 
@@ -310,8 +312,9 @@ async def _generate_content(
     while len(partials) > 1:
         next_level: list[str] = []
         reduce_instruction = (
-            "请把以下分块复习资料无遗漏地归并为一份中文三段式复习资料，"
+            "请把以下分块复习资料无遗漏地归并为一份三段式复习资料，"
             "严格返回指定结构；不得静默丢弃任何分块。\n"
+            f"{CONTENT_LANGUAGE_INSTRUCTION}"
         )
         reduce_budget = max(
             1,

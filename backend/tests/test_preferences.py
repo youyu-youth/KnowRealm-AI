@@ -15,6 +15,7 @@ TOKEN = "test-launch-token"
 DEFAULTS = {
     "theme": "SYSTEM",
     "font_scale": "M",
+    "language": "zh",
     "timezone": None,
     "close_behavior": "TRAY",
     "quick_note_shortcut": "Ctrl+Alt+N",
@@ -145,6 +146,7 @@ async def test_put_default_values_remove_preference_keys(tmp_path: Path) -> None
         {
             "theme": "LIGHT",
             "font_scale": "L",
+            "language": "en",
             "timezone": "Asia/Shanghai",
             "close_behavior": "EXIT",
             "quick_note_shortcut": "Ctrl+Alt+P",
@@ -157,6 +159,7 @@ async def test_put_default_values_remove_preference_keys(tmp_path: Path) -> None
         for payload in (
             {"font_scale": "M"},
             {"theme": "SYSTEM"},
+            {"language": "zh"},
             {"timezone": None},
             {"close_behavior": "TRAY"},
             {"quick_note_shortcut": "Ctrl+Alt+N"},
@@ -185,6 +188,8 @@ async def test_put_empty_body_keeps_everything_unchanged(tmp_path: Path) -> None
     [
         {"theme": "BLUE"},
         {"font_scale": "XL"},
+        {"language": "fr"},
+        {"language": None},
         {"timezone": "Mars/Olympus"},
         {"close_behavior": "ASK"},
         {"quick_note_shortcut": "N"},
@@ -293,6 +298,7 @@ async def test_get_falls_back_to_defaults_for_corrupted_stored_values(
         {
             "theme": "BLUE",
             "font_scale": "XL",
+            "language": "fr",
             "timezone": "Mars/Olympus",
             "close_behavior": "ASK",
             "quick_note_shortcut": "NotAHotkey",

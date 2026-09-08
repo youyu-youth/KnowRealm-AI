@@ -118,7 +118,11 @@ class TestBuildContextMessages:
 
         assert len(messages) == 3
         assert isinstance(messages[0], SystemMessage)
-        assert messages[0].content == "你是学习助手"
+        # 有效 SYSTEM 消息末尾统一携带对话内容语言指令（决策 #59）。
+        assert (
+            messages[0].content
+            == "你是学习助手\n回答使用与用户最新提问相同的语言。"
+        )
         assert messages[0].id == "sys"
         assert isinstance(messages[1], HumanMessage)
         assert isinstance(messages[2], AIMessage)
@@ -161,10 +165,10 @@ class TestBuildContextMessages:
         assert "中断的问题" in contents
 
     def test_budget_drops_oldest_turns_until_within_budget(self) -> None:
-        # 每轮 6 字符（"问题N"+"回答N"），SYSTEM 1 字符：budget=19 恰容 3 轮。
+        # 每轮 6 字符（"问题N"+"回答N"），SYSTEM 快照含语言指令 19 字符：budget=37 恰容 3 轮。
         messages = build_context_messages(
             [row("sys", ChatRole.SYSTEM, "S"), *chat_rows(5)],
-            budget=19,
+            budget=37,
         )
 
         contents = [message.content for message in messages]
@@ -195,7 +199,11 @@ class TestBuildContextMessages:
             ]
         )
 
-        assert [message.content for message in messages] == ["S", "问题", "回答"]
+        assert [message.content for message in messages] == [
+            "S\n回答使用与用户最新提问相同的语言。",
+            "问题",
+            "回答",
+        ]
 
     def test_default_budget_constant(self) -> None:
         assert CHAT_CONTEXT_CHAR_BUDGET == 60000

@@ -54,6 +54,7 @@ from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import SummaryContent
 from app.modules.transcript.models import Transcript
 from app.shared.events import RecordInvalidationNotifier
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 PROMPT_VERSION = "kp_v1"
 
@@ -79,7 +80,7 @@ def build_knowledge_point_prompt(claimed: _ClaimedKnowledgePointJob) -> str:
         else ""
     )
     return (
-        "请从以下课程上下文和已确认总结中提取中文知识点候选。"
+        "请从以下课程上下文和已确认总结中提取知识点候选。"
         "候选数量按内容密度决定，严格返回指定结构，不添加结构外字段。\n"
         f"学习场景：{claimed.course.learning_context}\n"
         f"教育阶段：{claimed.course.education_stage or '未设置'}\n"
@@ -88,7 +89,8 @@ def build_knowledge_point_prompt(claimed: _ClaimedKnowledgePointJob) -> str:
         f"主题：{claimed.summary.topic}\n"
         f"摘要：{claimed.summary.abstract}\n"
         f"{sections}"
-        f"{transcript}"
+        f"{transcript}\n"
+        f"{CONTENT_LANGUAGE_INSTRUCTION}"
     )
 
 

@@ -16,6 +16,7 @@ from app.db.migrations import run_migrations
 from app.main import create_app
 from app.modules.llm.service import StructuredModelResult, SummaryModel
 from app.modules.quiz.schemas import QuizBatch, QuizGenerateRequest
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 TOKEN = "test-launch-token"
 
@@ -544,6 +545,7 @@ async def test_generate_candidates_persists_draft_batch_and_provenance(tmp_path:
     assert tuple(answer_row) == (None, None, None)
     assert len(model.prompts) == 1
     assert "学习场景：SCHOOL" in model.prompts[0]
+    assert CONTENT_LANGUAGE_INSTRUCTION in model.prompts[0]
     assert "恰好出 3 题" in model.prompts[0]
     assert "已确认总结" in model.prompts[0]
     result = json.loads(cast(str, job_row.result_json))
@@ -1014,6 +1016,7 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
     assert default.json() == {
         "theme": "SYSTEM",
         "font_scale": "M",
+        "language": "zh",
         "timezone": None,
         "close_behavior": "TRAY",
         "quick_note_shortcut": "Ctrl+Alt+N",
@@ -1024,6 +1027,7 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
     assert updated.json() == {
         "theme": "SYSTEM",
         "font_scale": "M",
+        "language": "zh",
         "timezone": None,
         "close_behavior": "TRAY",
         "quick_note_shortcut": "Ctrl+Alt+N",

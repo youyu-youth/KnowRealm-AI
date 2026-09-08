@@ -44,6 +44,7 @@ from app.modules.summary.schemas import SummaryContent
 from app.modules.todo.models import TodoItem
 from app.modules.todo.schemas import TodoBatch, TodoGenerationStatus, TodoSource, TodoStatus
 from app.shared.events import RecordInvalidationNotifier
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 PROMPT_VERSION = "todo_v1"
 
@@ -61,7 +62,7 @@ def build_todo_prompt(claimed: _ClaimedTodoJob) -> str:
         f"{section.heading}：" + "；".join(section.points) for section in claimed.summary.sections
     )
     return (
-        "请根据以下课程上下文和已确认总结生成中文 Todo 建议。"
+        "请根据以下课程上下文和已确认总结生成 Todo 建议。"
         "严格返回指定结构，不添加结构外字段。\n"
         f"学习场景：{claimed.course.learning_context}\n"
         f"教育阶段：{claimed.course.education_stage or '未设置'}\n"
@@ -69,7 +70,8 @@ def build_todo_prompt(claimed: _ClaimedTodoJob) -> str:
         "已确认总结：\n"
         f"主题：{claimed.summary.topic}\n"
         f"摘要：{claimed.summary.abstract}\n{sections}\n"
-        "生成 3 至 8 条具体、可执行且只基于总结内容的待办建议。"
+        "生成 3 至 8 条具体、可执行且只基于总结内容的待办建议。\n"
+        f"{CONTENT_LANGUAGE_INSTRUCTION}"
     )
 
 

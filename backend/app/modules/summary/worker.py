@@ -54,6 +54,7 @@ from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus, SummaryContent
 from app.modules.transcript.models import Transcript
 from app.shared.events import RecordInvalidationNotifier
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 PROMPT_VERSION = "summary-v1"
 ADJUST_PROMPT_VERSION = "summary-adjust-v1"
@@ -79,12 +80,13 @@ def build_summary_prompt(
     depth: str | None,
 ) -> str:
     return (
-        "请根据以下 Transcript 生成中文学习总结。严格返回指定结构，不添加结构外字段。\n"
+        "请根据以下 Transcript 生成学习总结。严格返回指定结构，不添加结构外字段。\n"
         f"学习场景：{learning_context}\n"
         f"教育阶段：{education_stage or '未设置'}\n"
         f"内容深度：{depth or '未设置'}\n"
         "Transcript：\n"
-        f"{transcript}"
+        f"{transcript}\n"
+        f"{CONTENT_LANGUAGE_INSTRUCTION}"
     )
 
 
@@ -101,7 +103,7 @@ def build_adjust_prompt(
         f"{section.heading}：" + "；".join(section.points) for section in previous.sections
     )
     return (
-        "请根据以下 Transcript、上一版总结与用户反馈，生成修订后的中文学习总结。"
+        "请根据以下 Transcript、上一版总结与用户反馈，生成修订后的学习总结。"
         "严格返回指定结构，不添加结构外字段。\n"
         f"学习场景：{learning_context}\n"
         f"教育阶段：{education_stage or '未设置'}\n"
@@ -113,7 +115,8 @@ def build_adjust_prompt(
         "用户反馈：\n"
         f"{feedback}\n"
         "Transcript：\n"
-        f"{transcript}"
+        f"{transcript}\n"
+        f"{CONTENT_LANGUAGE_INSTRUCTION}"
     )
 
 

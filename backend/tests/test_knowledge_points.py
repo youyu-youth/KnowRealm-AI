@@ -21,6 +21,7 @@ from app.modules.knowledge_point.schemas import KnowledgePointBatch
 from app.modules.llm.service import StructuredModelResult, SummaryModel
 from app.modules.record.models import LearningEvent
 from app.modules.summary.schemas import SummaryContent, SummarySection
+from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
 TOKEN = "test-launch-token"
 
@@ -333,6 +334,7 @@ async def test_generate_candidates_persists_draft_batch_and_provenance(tmp_path:
     )
     assert len(model.prompts) == 1
     assert "学习场景：SCHOOL" in model.prompts[0]
+    assert CONTENT_LANGUAGE_INSTRUCTION in model.prompts[0]
     assert "进程调度用于决定" in model.prompts[0]
     result = json.loads(cast(str, job_row.result_json))
     assert result == {
