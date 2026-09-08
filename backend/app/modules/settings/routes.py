@@ -25,6 +25,7 @@ from app.modules.settings.schemas import (
     LlmProviderStateOut,
     LlmProviderTestOut,
     LlmProviderUpdate,
+    LlmUsageOut,
     PreferencesOut,
     PreferencesUpdate,
     TencentAsrProviderOut,
@@ -32,6 +33,7 @@ from app.modules.settings.schemas import (
     TencentAsrProviderUpdate,
     TencentAsrTestOut,
 )
+from app.modules.settings.usage import llm_usage
 from app.modules.transcript.integrations.tencent import (
     TencentAsrApiError,
     TencentAsrClient,
@@ -236,3 +238,8 @@ async def test_llm_provider(request: Request) -> LlmProviderTestOut:
     except SummaryGenerationError as exc:
         raise HTTPException(status_code=502, detail="Provider 未返回有效的 Summary 结构") from exc
     return LlmProviderTestOut(ok=True, model=provider.model)
+
+
+@router.get("/usage/llm", response_model=LlmUsageOut)
+async def get_llm_usage(request: Request) -> LlmUsageOut:
+    return await llm_usage(request.app.state.session_factory)

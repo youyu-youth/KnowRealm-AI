@@ -1285,6 +1285,91 @@
         "title": "LlmProviderUpdate",
         "type": "object"
       },
+      "LlmUsageDailyPointOut": {
+        "properties": {
+          "call_count": {
+            "title": "Call Count",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "total_tokens",
+          "call_count"
+        ],
+        "title": "LlmUsageDailyPointOut",
+        "type": "object"
+      },
+      "LlmUsageItemOut": {
+        "properties": {
+          "call_count": {
+            "title": "Call Count",
+            "type": "integer"
+          },
+          "error_count": {
+            "title": "Error Count",
+            "type": "integer"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model",
+          "call_count",
+          "input_tokens",
+          "output_tokens",
+          "total_tokens",
+          "error_count"
+        ],
+        "title": "LlmUsageItemOut",
+        "type": "object"
+      },
+      "LlmUsageOut": {
+        "properties": {
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/LlmUsageDailyPointOut"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LlmUsageItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "daily"
+        ],
+        "title": "LlmUsageOut",
+        "type": "object"
+      },
       "PreferencesOut": {
         "properties": {
           "autostart": {
@@ -13454,6 +13539,85 @@
           }
         },
         "summary": "Test Tencent Asr Provider",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/settings/usage/llm": {
+      "get": {
+        "operationId": "get_llm_usage_api_settings_usage_llm_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmUsageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Llm Usage",
         "tags": [
           "settings"
         ]

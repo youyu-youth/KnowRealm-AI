@@ -1205,6 +1205,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/usage/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Llm Usage */
+        get: operations["get_llm_usage_api_settings_usage_llm_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/text-captures": {
         parameters: {
             query?: never;
@@ -1760,6 +1777,37 @@ export interface components {
             clear_api_key: boolean;
             /** Model */
             model: string;
+        };
+        /** LlmUsageDailyPointOut */
+        LlmUsageDailyPointOut: {
+            /** Call Count */
+            call_count: number;
+            /** Date */
+            date: string;
+            /** Total Tokens */
+            total_tokens: number;
+        };
+        /** LlmUsageItemOut */
+        LlmUsageItemOut: {
+            /** Call Count */
+            call_count: number;
+            /** Error Count */
+            error_count: number;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Model */
+            model: string;
+            /** Output Tokens */
+            output_tokens: number;
+            /** Total Tokens */
+            total_tokens: number;
+        };
+        /** LlmUsageOut */
+        LlmUsageOut: {
+            /** Daily */
+            daily: components["schemas"]["LlmUsageDailyPointOut"][];
+            /** Items */
+            items: components["schemas"]["LlmUsageItemOut"][];
         };
         /** PreferencesOut */
         PreferencesOut: {
@@ -9056,6 +9104,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TencentAsrTestOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_llm_usage_api_settings_usage_llm_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmUsageOut"];
                 };
             };
             /** @description Forbidden */

@@ -83,6 +83,26 @@ class TencentAsrTestOut(BaseModel):
     region: str
 
 
+class LlmUsageItemOut(BaseModel):
+    model: str
+    call_count: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    error_count: int
+
+
+class LlmUsageDailyPointOut(BaseModel):
+    date: str
+    total_tokens: int
+    call_count: int
+
+
+class LlmUsageOut(BaseModel):
+    items: list[LlmUsageItemOut]
+    daily: list[LlmUsageDailyPointOut]
+
+
 class LlmConsentOut(BaseModel):
     granted_at: str | None
     current: bool
