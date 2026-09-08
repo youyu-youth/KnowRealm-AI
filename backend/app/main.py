@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from loguru import logger
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.core.version import APP_VERSION
@@ -325,6 +326,22 @@ def create_app(
     app.include_router(chat_sessions.router)
     app.include_router(profile.router)
 
+    # 统一 HTTP 错误序列化：{detail, code, params?}（CodedHTTPException 携带码；
+    # 框架级 404/405 等裸星形异常回退 HTTP_ERROR，见 ADR-0017）。
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error_handler(  # pyright: ignore[reportUnusedFunction]
+        _request: Request,
+        exc: StarletteHTTPException,
+    ) -> JSONResponse:
+        content: dict[str, object] = {
+            "detail": exc.detail,
+            "code": getattr(exc, "code", None) or "HTTP_ERROR",
+        }
+        params = getattr(exc, "params", None)
+        if params:
+            content["params"] = params
+        return JSONResponse(status_code=exc.status_code, content=content, headers=exc.headers)
+
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(  # pyright: ignore[reportUnusedFunction]
         _request: Request,
@@ -333,7 +350,10 @@ def create_app(
         detail = "；".join(str(error["msg"]) for error in exc.errors())
         return JSONResponse(
             status_code=422,
-            content={"detail": detail or "请求参数无效"},
+            content={
+                "detail": detail or "请求参数无效",
+                "code": "REQUEST_VALIDATION_FAILED",
+            },
         )
 
     @app.exception_handler(Exception)
@@ -349,7 +369,11 @@ def create_app(
         )
         return JSONResponse(
             status_code=500,
-            content={"detail": f"服务器内部错误（请求编号：{request_id}）"},
+            content={
+                "detail": f"服务器内部错误（请求编号：{request_id}）",
+                "code": "INTERNAL_ERROR",
+                "params": {"request_id": request_id},
+            },
         )
 
     @app.get(

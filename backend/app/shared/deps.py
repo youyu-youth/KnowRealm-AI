@@ -1,8 +1,10 @@
 from collections.abc import AsyncIterator
 from hmac import compare_digest
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.shared.errors import CodedHTTPException
 
 
 async def require_launch_token(
@@ -11,7 +13,9 @@ async def require_launch_token(
 ) -> None:
     expected = request.app.state.launch_token
     if x_knowrealm_token is None or not compare_digest(x_knowrealm_token, expected):
-        raise HTTPException(status_code=403, detail="无权访问本地服务")
+        raise CodedHTTPException(
+            status_code=403, code="LAUNCH_TOKEN_INVALID", detail="无权访问本地服务"
+        )
 
 
 async def get_db(request: Request) -> AsyncIterator[AsyncSession]:
