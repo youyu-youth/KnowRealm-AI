@@ -289,7 +289,10 @@ pub fn import_from_archive(
     archive_path: PathBuf,
 ) -> Result<(), String> {
     if !archive_path.is_file() {
-        return Err(format!("导出包不存在：{}", archive_path.display()));
+        return Err(format!(
+            "EXPORT_ARCHIVE_MISSING: {}",
+            archive_path.display()
+        ));
     }
     let config_dir = app
         .path()

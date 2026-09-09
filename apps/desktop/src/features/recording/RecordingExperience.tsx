@@ -40,6 +40,7 @@ import {
   useRecordingSessions,
 } from "@/features/recording/api/queries";
 import { useRecordingUiStore } from "@/features/recording/store";
+import { commandErrorCopy } from "@/services/tauri/commandErrorCopy";
 import {
   hideWindowTemporarily,
   setRecordingKeepAwake,
@@ -247,9 +248,11 @@ export function RecordingExperience({ onAccepted }: Props) {
       } catch (releaseError) {
         if (reportReleaseError) {
           setError(
-            releaseError instanceof Error
-              ? releaseError.message
-              : t("recording.errors.releaseKeepAwake"),
+            commandErrorCopy(
+              releaseError,
+              t,
+              t("recording.errors.releaseKeepAwake"),
+            ),
           );
         }
       }
@@ -483,7 +486,7 @@ export function RecordingExperience({ onAccepted }: Props) {
       setError(
         startError instanceof Error
           ? startError.message
-          : t("recording.errors.start"),
+          : commandErrorCopy(startError, t, t("recording.errors.start")),
       );
     } finally {
       setBusy(false);

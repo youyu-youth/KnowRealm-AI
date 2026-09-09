@@ -13,6 +13,7 @@ import {
   isDesktopLifecycleAvailable,
   relaunchApplication,
 } from "@/services/tauri/lifecycle";
+import { commandErrorCopy } from "@/services/tauri/commandErrorCopy";
 import type { ChangeDialogState } from "./DataDirectoryChangeDialog";
 import type { ImportDialogState } from "./DataDirectoryImportDialog";
 import {
@@ -137,7 +138,11 @@ export function useArchiveImport() {
       await importFromArchive(archive);
     } catch (error) {
       // 校验失败发生在停 sidecar 之前，应用仍可正常使用，可重新选择导出包重试。
-      setImportState({ phase: "failed", error: errorMessage(error) });
+      // EXPORT_ARCHIVE_MISSING 走壳层码表翻译；未知错误保持原文回显。
+      setImportState({
+        phase: "failed",
+        error: commandErrorCopy(error, t, errorMessage(error)),
+      });
       return;
     }
     markRestartPending();

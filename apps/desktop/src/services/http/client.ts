@@ -1,17 +1,22 @@
+import { apiErrorMessage } from "@/services/http/apiErrorMessage";
 import { getSidecarConfig } from "@/services/tauri/sidecar";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
 
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     public readonly detail: unknown,
+    public readonly code?: string,
+    public readonly params?: Record<string, unknown>,
   ) {
-    super(formatApiDetail(detail) || `HTTP ${status}`);
+    super(
+      apiErrorMessage(code, typeof detail === "string" ? detail : "", params) ||
+        `HTTP ${status}`,
+    );
   }
-}
-
-function formatApiDetail(detail: unknown): string {
-  if (typeof detail === "string") return detail;
-  return "";
 }
 
 export async function apiRequest(
@@ -34,11 +39,12 @@ export async function apiRequest(
 
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
+    const record = isRecord(body) ? body : undefined;
     const detail =
-      typeof body === "object" && body !== null && "detail" in body
-        ? body.detail
-        : response.statusText;
-    throw new ApiError(response.status, detail);
+      record && "detail" in record ? record.detail : response.statusText;
+    const code = typeof record?.code === "string" ? record.code : undefined;
+    const params = isRecord(record?.params) ? record.params : undefined;
+    throw new ApiError(response.status, detail, code, params);
   }
 
   return response;

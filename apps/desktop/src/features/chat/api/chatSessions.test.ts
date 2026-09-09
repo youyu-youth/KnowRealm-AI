@@ -1,5 +1,8 @@
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import i18next from "i18next";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import en from "@/i18n/locales/en.json";
+import zh from "@/i18n/locales/zh.json";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
@@ -159,5 +162,76 @@ describe("chatApi.streamMessage", () => {
     );
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     close();
+  });
+
+  // SSE 错误载荷经同一翻译入口（spec 缝隙 4）：node 环境无 window 不能导入 @/i18n，
+  // 用真实资源直接初始化同一 i18next 单例验证生产码表。
+  describe("SSE 错误载荷按码翻译", () => {
+    beforeAll(async () => {
+      await i18next.init({
+        lng: "zh",
+        fallbackLng: "zh",
+        resources: { zh: { translation: zh }, en: { translation: en } },
+        interpolation: { escapeValue: false },
+      });
+    });
+
+    afterEach(async () => {
+      if (i18next.language !== "zh") await i18next.changeLanguage("zh");
+    });
+
+    async function collectErrors(
+      errorEvent: string,
+    ): Promise<{ code: string; detail: string }[]> {
+      const { stream } = sseBody([errorEvent]);
+      server.use(
+        http.post(
+          `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
+          () =>
+            new HttpResponse(stream, {
+              headers: { "Content-Type": "text/event-stream" },
+            }),
+        ),
+      );
+      const errors: { code: string; detail: string }[] = [];
+      await chatApi.streamMessage(
+        SESSION_ID,
+        "提问",
+        {
+          onStatus: () => undefined,
+          onToken: () => undefined,
+          onDone: () => undefined,
+          onError: (payload) => errors.push(payload),
+        },
+        undefined,
+      );
+      return errors;
+    }
+
+    it("英文界面下按码取英文译文", async () => {
+      await i18next.changeLanguage("en");
+      const errors = await collectErrors(
+        'event: error\ndata: {"code":"CHAT_STREAM_FAILED","detail":"回答生成失败，请稍后重试"}\n\n',
+      );
+      expect(errors).toEqual([
+        {
+          code: "CHAT_STREAM_FAILED",
+          detail: "The answer failed to generate. Please try again later.",
+        },
+      ]);
+    });
+
+    it("中文界面按码取中文文案；未命中的码回显原文", async () => {
+      expect(
+        await collectErrors(
+          'event: error\ndata: {"code":"EMPTY_REPLY","detail":"回答为空，请重试"}\n\n',
+        ),
+      ).toEqual([{ code: "EMPTY_REPLY", detail: "回答为空，请重试" }]);
+      expect(
+        await collectErrors(
+          'event: error\ndata: {"code":"FUTURE_SSE_CODE","detail":"未来错误原文"}\n\n',
+        ),
+      ).toEqual([{ code: "FUTURE_SSE_CODE", detail: "未来错误原文" }]);
+    });
   });
 });

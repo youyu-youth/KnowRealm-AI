@@ -1,15 +1,16 @@
 import { createParser } from "eventsource-parser";
-import {
-  apiFetch,
-  apiFetchNoContent,
-  apiRequest,
-} from "@/services/http/client";
 import type {
   ChatMessage,
   ChatRecordOption,
   ChatSession,
   ChatSessionCreate,
 } from "@/features/chat/api/types";
+import { apiErrorMessage } from "@/services/http/apiErrorMessage";
+import {
+  apiFetch,
+  apiFetchNoContent,
+  apiRequest,
+} from "@/services/http/client";
 
 export type ChatStreamHandlers = {
   onStatus: () => void;
@@ -39,7 +40,8 @@ async function streamMessage(
       headers: { Accept: "text/event-stream" },
     },
   );
-  if (!response.body) throw new Error("对话事件流没有响应正文");
+  // 传输层防御分支（FastAPI 流式 2xx 必有正文），与 abortError 同类：技术串、不走码表。
+  if (!response.body) throw new Error("chat stream response has no body");
   const reader = response.body.getReader();
   const onAbort = () => {
     void reader.cancel().catch(() => undefined);
@@ -81,7 +83,16 @@ async function streamMessage(
             typeof data.code === "string" &&
             typeof data.detail === "string"
           ) {
-            handlers.onError({ code: data.code, detail: data.detail });
+            // SSE 错误载荷经同一翻译入口（工单 04）：按码取译文，未命中回显中文原文；
+            // params 按 ADR-0017 契约透传插值。
+            const params =
+              typeof data.params === "object" && data.params !== null
+                ? (data.params as Record<string, unknown>)
+                : undefined;
+            handlers.onError({
+              code: data.code,
+              detail: apiErrorMessage(data.code, data.detail, params),
+            });
           }
           break;
       }

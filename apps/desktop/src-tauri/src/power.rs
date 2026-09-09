@@ -23,12 +23,13 @@ impl PowerState {
 
     fn set(&self, enabled: bool) -> Result<(), String> {
         let (reply, result) = mpsc::sync_channel(1);
+        // 用户可见错误走 `CODE` Display 协议（仿 MigrationError），前端按码表翻译。
         self.sender
             .send(Command::Set(enabled, reply))
-            .map_err(|_| "录音电源管理线程不可用".to_owned())?;
+            .map_err(|_| "RECORDING_POWER_THREAD_UNAVAILABLE".to_owned())?;
         result
             .recv()
-            .map_err(|_| "未收到录音电源管理结果".to_owned())?
+            .map_err(|_| "RECORDING_POWER_RESULT_MISSING".to_owned())?
     }
 }
 
@@ -53,7 +54,10 @@ fn set_thread_awake(enabled: bool) -> Result<(), String> {
     };
     // SAFETY: SetThreadExecutionState has no pointer arguments; flags are documented constants.
     if unsafe { SetThreadExecutionState(flags) } == 0 {
-        Err(std::io::Error::last_os_error().to_string())
+        Err(format!(
+            "RECORDING_POWER_SYSTEM_CALL_FAILED: {}",
+            std::io::Error::last_os_error()
+        ))
     } else {
         Ok(())
     }

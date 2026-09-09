@@ -94,6 +94,61 @@ describe("首门课程持久化入口", () => {
     );
   });
 
+  it("英文界面下带码错误显示英文译文（工单 04 端到端）", async () => {
+    const { applyLanguage } = await import("@/i18n");
+    await applyLanguage("en");
+    server.use(
+      http.post(`${TEST_SIDECAR_URL}/api/courses`, () =>
+        HttpResponse.json(
+          {
+            detail: "学业场景必须选择教育阶段",
+            code: "COURSE_EDUCATION_STAGE_REQUIRED",
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    renderWithQuery(<CourseDiscoveryHarness />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "New Knowledge Space" }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Course name" }), {
+      target: { value: "Operating Systems" },
+    });
+    const contextTrigger = screen.getByRole("combobox", {
+      name: "Learning context",
+    });
+    fireEvent.click(contextTrigger);
+    const contextOption = await screen.findByRole("option", {
+      name: "School",
+    });
+    fireEvent.pointerDown(contextOption);
+    fireEvent.pointerUp(contextOption);
+    fireEvent.click(contextOption);
+    await waitFor(() => expect(contextTrigger).toHaveTextContent("School"));
+    const stageTrigger = screen.getByRole("combobox", {
+      name: "Education stage",
+    });
+    fireEvent.click(stageTrigger);
+    const stageOption = await screen.findByRole("option", {
+      name: "Undergraduate",
+    });
+    fireEvent.pointerDown(stageOption);
+    fireEvent.pointerUp(stageOption);
+    fireEvent.click(stageOption);
+    await waitFor(() =>
+      expect(stageTrigger).toHaveTextContent("Undergraduate"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create course" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "A school context requires an education stage.",
+    );
+    expect(alert).not.toHaveTextContent("学业场景必须选择教育阶段");
+  });
+
   it("携带启动令牌创建课程并立即刷新真实列表", async () => {
     const created: Course = {
       id: "11111111-1111-4111-8111-111111111111",
