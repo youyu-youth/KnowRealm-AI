@@ -1,13 +1,13 @@
 # AI课堂助手：功能升级与创新扩展设计（最终版）
 
-> **文档定位**：Learning Brain（F1~F18）的**功能机制与交互设计参考**。⚠️ **历史文档**：编写于 2026-06 旧技术栈时期，正文中的技术实现与"现有系统"描述已过时，阅读前必读下方 §0 对齐声明；需求边界以《KnowRealm-AI-功能需求基线 v2.5》为准。
+> **文档定位**：Learning Brain（F1~F18）的**功能机制与交互设计参考**。⚠️ **历史文档**：编写于 2026-06 旧技术栈时期，正文中的技术实现与"现有系统"描述已过时，阅读前必读下方 §0 对齐声明；需求边界以《KnowRealm-AI-功能需求基线 v2.7》为准。
 > **目标**：不推翻现有“课堂记录 → AI 总结 → HITL → 知识点/习题/Todo/复习 → AI 问答”主流程，而是在其上增加长期学习状态建模能力，将产品从 **AI课堂助手** 逐步升级为 **AI Personal Learning Brain / AI Learning OS**。  
 > **适用端**：Tauri Desktop（Windows 为 V1 唯一首发平台）；微信小程序形态已废弃。  
 > **设计原则**：现有能力优先复用；扩展能力按阶段引入；所有 AI 判断尽可能可追溯、可验证、可被用户纠正。
 
 ---
 
-# 0. 与基线 v2.5 的对齐声明（必读）
+# 0. 与基线 v2.7 的对齐声明（必读）
 
 > 本文档编写于 2026-06 旧技术栈时期（微信小程序 + Spring Boot + MySQL + MinIO + Qdrant 设想）。产品与架构此后经基线 v1.1~v1.6 多轮演进，本文正文**未随之改写**。阅读规则如下。
 
@@ -110,7 +110,7 @@ Tutor / Review / Quiz / Teach-back / Challenge
 
 # 2. 现有 PRD 能力：保持不变的基线
 
-> ⚠️ **历史快照（见 §0 对齐声明 D2）**：本章描述的是本文写作时点的旧项目形态（微信小程序 / Spring Boot / MinIO 等）。现行产品形态与功能范围以《功能需求基线 v2.5》§4 为准，**不得把本章当作现行功能清单**。本章的现存价值仅在于说明"M1~M6 模块边界被 Learning Brain 扩展复用"这一结构关系。
+> ⚠️ **历史快照（见 §0 对齐声明 D2）**：本章描述的是本文写作时点的旧项目形态（微信小程序 / Spring Boot / MinIO 等）。现行产品形态与功能范围以《功能需求基线 v2.7》§4 为准，**不得把本章当作现行功能清单**。本章的现存价值仅在于说明"M1~M6 模块边界被 Learning Brain 扩展复用"这一结构关系。
 
 以下能力视为已经实现，扩展设计必须建立在这些能力上，不重复建设。
 
@@ -3462,3 +3462,102 @@ Mastery Update
   - 新增 Classroom vs Courseware Diff；
   - 新增 Personalized Pre-class Preview。
 - 本文涉及的新增表、字段与服务属于下一阶段设计建议，不代表当前 PRD 已实现。
+
+---
+
+# 39. 技术评估结论（2026-09-08）
+
+> **评估性质**：基于《功能需求基线 v2.7》决策 #1~#59、代码库实现现状（backend 17 个 feature-first 模块、18 张迁移、Summary / ReviewMaterial / Chat 三个 LangGraph graph 在产、`learning_events` 四事件已落地）与《chatgpt根据需求文档和扩展功能文档给出的结论.md》，对扩展方向、Agent 架构演进、新业务方向与技术栈的核验裁定。本章为评审记录：**优先级 / 技术选型 / 表结构的权威仍在三份权威文档**，本章结论与之冲突时以权威文档为准（目前零冲突）。
+
+## 39.1 ChatGPT 方案核验
+
+**总体：采纳，与现行基线零冲突。** 其"开发优先级重排"（第一阶段 = Segment / Source Anchor / Learning Event / Evidence / Concept / Mastery）实质是基线 §5.1 阶段规划 P2+P3+P4 数据主链的复述，属第三方确认而非新信息。S 级判断（Evidence+Mastery 为核心、KP≠Concept 分离、Autopilot 勿早做）与红线 #2/#3/#7/#9 一致；过度设计提醒（Digital Twin 前端改称学习画像、Study Pod 降级）与基线 P8 排期一致。
+
+其三个"新增方向"逐项核验：
+
+| 建议 | 核验结果 | 处置 |
+|---|---|---|
+| Learning Memory Layer（长期学习习惯记忆） | 部分新增——F10.4 已有 `observed_learning_preference`，缺"容易忘什么/惯常混淆什么"的沉淀 | 并入 P4 LearnerProfileService（视图 + 一张轻表）；禁止演化为第二套 Evidence |
+| Knowledge Transfer Detection（知识迁移检测） | **设计已有，ChatGPT 漏看**：mastery 表 `transfer_score`、`TRANSFER` evidence 类型、F13 Transfer Challenge 三处已覆盖 | 无需新增，按 P4/P5 既定设计实施 |
+| Learning Journey Timeline（学习成长时间线） | 好主意且低成本——本质是 `learning_events` 的时间轴回放 UI | 排 P6/P7，与 Passport 同期产出，不提前 |
+
+对其文档两个盲区的补充：
+
+1. 其建议未做本地优先约束核对——已补核：全部建议兼容本地优先与十二条红线，不要求任何云依赖；
+2. 其未讨论闭环真实风险——**风险不是架构而是数据稀疏与算法验收**（个人单用户冷启动期证据量小）：P4 开工须先建 Mastery/遗忘公式黄金样本与 REPL 验证脚本（#46 按阶段评测纪律的延伸），先验算法再接 Graph。
+
+定位建议："Open-source Local-first AI Learning Brain" 可采纳为对外传播语；产品文档定位（基线 §1.1 三阶段演进）不改版。
+
+## 39.2 Agent 架构演进判定
+
+**前置结论：当前架构已具备 Agent 化结构条件，无需提前调整模块划分。** 判据：①interrupt/HITL 已在生产验证跨重启恢复；②"确定性 Service 与 Graph 分离"已是红线 #2；③Graph 间共享状态走业务表（Event / Evidence / Learner Profile）而非运行时编排（§29 定稿）。缺的是 P2 数据层，不是架构改造。
+
+九项 Agent 能力逐项裁定：
+
+| 能力 | 裁定 | 理由与落位 |
+|---|---|---|
+| ReAct Agent | ✅ 已有 | chat 即 `create_agent` agent 循环（#53，Wave A 定稿避免 P2 重构） |
+| Agent Tools | ✅ 立即做（P2） | 第一工具=检索（`tools=[]` 位已预留）→ 第二工具=web_search（Tavily，#53）；工具=普通 Python 函数 + Pydantic 同源 schema；按域隔离遵守红线 #11（工具仅聊天域，Summary/Tutor/TeachBack 禁联网） |
+| RAG | ✅ 已规划 | FTS5+jieba 已交付；sqlite-vec + 混合检索 P2；课程级 RAG P3；不引新框架 |
+| Memory | ✅ 分层落地 | 三层：chat memory（已有，逐轮重建）→ learner state（P4 业务表）→ 学习习惯记忆（39.1 并入 LearnerProfileService）；不引 mem0/letta 类记忆框架（单用户场景 SQLite 业务表即记忆） |
+| Plan-and-Execute | ✅ 域内实现（P6） | Autopilot Graph 本质即此模式 + HITL；候选动作打分是确定性规则（红线 #8），自制域逻辑不套库模板 |
+| Reflection | ⚠️ 域内轻量已有，通用机制延后 | 域内反思已设计：Misconception 验证环、Summary 反馈循环、评分低置信复核（#20）；通用反思循环 token 成本翻倍，BYO-key 用户敏感，仅在评测证明必要处引入 |
+| Skills 技能系统 | ❌ 不做通用框架 | YAGNI——七类 prompt + 结构化输出 + prompt_version 已是轻量形态；用户自定义学习模式以"场景包"承载（39.3），不做开发者级 skill 框架 |
+| MCP | ⚠️ 延后评估（P3+） | 分两向：MCP client（用户接入外部工具服务器）在 chat 内部工具体系稳定后评估，受红线 #11 约束只能进聊天域；MCP server（对外暴露本产品能力）不符合单机个人数据定位，不做 |
+| Multi-Agent | ❌ 否决 | 红线 #2 明令禁止超级 Graph；多 Graph 经 DB 共享状态优于运行时 agent 间通信；DeepAgents（子 agent + 虚拟文件系统规划）适配开放式研究任务，不适配结构化学习管线 |
+
+需提前建设的基础设施（便宜且 P2 全要用）：
+
+1. **事件消费框架**：`learning_events` 写入 → 进程内异步 dispatch → Evidence Builder 的最小模式（复用 JobRunner 或 asyncio 任务，幂等键已具备）——闭环 `Event → Evidence → Mastery` 的管道件，P2 定型；
+2. **评测资产按阶段扩**：Mastery/遗忘公式黄金样本、agent 工具调用轨迹断言；
+3. **卫生项**：prompt_version bump 纪律补齐、`.claude/rules` 镜像同步。
+
+## 39.3 新增业务方向扩展分析（场景包机制）
+
+五个候选方向（AI 面试助手 / 项目总结分析 / 简历智能修改 / 职业能力分析 / 学习成长规划）共享同一基质：**捕获 → 结构化理解 → 个性化状态 → 推荐**。它们是 Learning Brain 引擎之上的**消费者**，不是五个并列新引擎。落地方案 = **场景包**（prompt 模板资产化 + 会话模式 + goal_type 扩展 + UI 入口），禁止为每个方向建独立领域模块。
+
+| 方向 | 判定 | 依赖与形态 |
+|---|---|---|
+| 学习成长规划 | 完全融入 | = F14 动态规划 + Autopilot（P6）；CAREER 场景已是 `learning_context` 一等公民，零新增 |
+| 项目总结分析 | 完全融入 | 走现有捕获管线（P2 剪藏起自然获得）；增量仅 CAREER 场景 prompt 基调与导出模板 |
+| AI 面试助手 | 拆两义 | **面试模拟/练习**：契合度高——Tutor Graph 变体 + 自适应测验 + Transfer Challenge，面试表现天然是 TRANSFER 证据，P5 后以场景包进入；**实时面试外挂（听题喂答案）：明确否决**——违背学习产品价值观，法律/平台风险损毁开源声誉 |
+| 职业能力分析 | 契合但依赖地基 | = Knowledge GPS 的 CAREER 技能空间视图（掌握度地图 + 缺口分析）；P3 Concept / P4 Mastery 之前是空壳 |
+| 简历智能修改 | 半契合，降级为对话形态 | 简历 = 特殊资料类型 + AI 对话挂载 + 结构化修改建议（对话产物可导出）；"修改简历"是文档编辑工作流、与 Record 学习资产模型不同构，**不建独立简历编辑器** |
+
+架构影响仅三处轻扩展：`goal_type` 枚举扩（INTERVIEW/CAREER 类）、场景包 prompt 资产、CAREER 主题 UI 入口——不触碰模块划分与数据模型主干。
+
+定位风险管理：五方向一次全上会从"学习大脑"漂移成"求职工具箱"，稀释 Evidence/Mastery 壁垒。渐进顺序：**项目总结分析（P2 顺手）→ 职业能力分析（P4 后）→ 面试模拟（P5 后）→ 简历建议（对话形态）**。商业化按 ADR-0014 纪律（运营云服务那天才动账号体系）。
+
+## 39.4 技术栈裁定
+
+| 候选 | 裁定 | 理由 |
+|---|---|---|
+| FastAPI | 保留 | OpenAPI codegen 契约链在产（#56：40+ 端点单一事实源 + UniApp 未来复用） |
+| LangChain / LangGraph | 保留并深耕 | interrupt/HITL 是核心差异化、无等价替代（#56 否决全 Rust 重写的理由）；1.3/1.2 版本组合已核实 |
+| LlamaIndex | 不引 | 需求面 = 课程级/全局 RAG，LangChain retriever + sqlite-vec 完全覆盖；两框架 = 两套抽象重复造轮子。重评触发：复杂多格式文档索引管道且 LangChain 侧明显吃力 |
+| DeepAgents | 不引 | 子 agent + 虚拟文件系统规划不适配结构化学习管线，与红线 #2 冲突 |
+| Pydantic AI | 不引 | 双 agent 框架违反单栈纪律；其类型安全优势已由 Pydantic 同源 Schema 覆盖；保持观察 |
+| 向量数据库 | sqlite-vec（已定案） | Qdrant/pgvector 在不做清单；个人学习数据量远达不到 SQLite 不适区 |
+| 工作流引擎（Temporal 等） | 否决 | processing_jobs 自研队列已过后端轮子审计（单人单进程下分布式编排是负资产） |
+| 消息队列（Redis/RabbitMQ/Celery） | 否决 | 不做清单明列；事件传播 = SQLite 表 + 进程内 asyncio（#1） |
+| 独立搜索引擎（ES） | 否决 | FTS5+jieba 已交付；trigram → sqlite-vec 演进路线已定 |
+| Langfuse / OTel | 否决 | 不做清单明列；`llm_call_logs` 一张表已满足个人量级（#2） |
+| fsrs（py-fsrs） | P4 引入 | 遗忘引擎 V2（V1 规则公式先行，勿倒置） |
+| Tavily API | P2 引入 | chat web_search（#53，SearchProvider 抽象预留博查/智谱） |
+
+重复造轮子核查：沿用 2026-08-29 后端轮子审计定稿——无高优先级替换项；JobRunner / ASR 客户端 / 迁移系统维持自研的论据仍然成立。
+
+## 39.5 开发规划（短 / 中 / 长期）
+
+- **短期（~1-2 月）**：plan 20 收尾（i18n 错误码前端）+ prompt_version 遗留清理；P2 详细设计评审（#48 门槛：Segment/Anchor 表结构、Evidence Builder 管道、sqlite-vec 索引与混合排序、chat 工具契约）；P2 按序实施——Segment+Anchor → Evidence Builder → sqlite-vec/RAG → chat 工具层+web_search → 剪藏/英文。
+- **中期（3-6 月）**：P3 Course Brain（Concept 抽取消歧、课程级 RAG、Knowledge GPS v1、课件 Diff）；P4 Learner Brain（Mastery 确定性算法黄金样本先行、遗忘 V1 规则、Misconception 状态机、Digital Twin 视图）；职业场景包第一弹（项目总结分析）。
+- **长期（6-12 月+）**：P5 Adaptive（Tutor / Teach-back / 自适应测验 + Transfer，面试模拟场景包在此进入）；P6 Planner+Autopilot（最小创新闭环跑通 = 产品分水岭）+ Learning Journey Timeline；P7 Outcome（Passport / Learning Profile 整合）；MCP client 评估（若 chat 工具生态需求成立）；商业化触发评估（ADR-0014）。
+
+## 39.6 必须新增或调整的关键能力（按重要性排序）
+
+1. **P2 数据地基**（Segment / Source Anchor / Evidence Builder）——一切 Agent 决策能力的前提，且 Evidence 不可再生（每晚一天上线，丢失一天不可补的积累），是唯一"越早越好"项；
+2. **chat 工具层落地**——从"带上下文的聊天"到"能行动的 Agent"的第一步，架构位已预留（`create_agent` + `tools=[]`）；
+3. **事件消费 / Evidence 异步管线**——闭环管道件，P2 定型，Mastery/Misconception 后续全部挂在它上面；
+4. **算法评测资产前置**——Mastery/遗忘公式黄金样本（数据稀疏是 P4 真实风险，先验算法再接线）；
+5. **场景包机制**——新业务方向的统一容器（goal_type 扩展 + prompt 模板资产化），避免每个新方向长出独立模块；
+6. **卫生项**——prompt_version bump 纪律、`.claude/rules` 镜像同步。

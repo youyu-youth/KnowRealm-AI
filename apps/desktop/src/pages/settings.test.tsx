@@ -12,7 +12,7 @@ import {
   within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import i18n from "@/i18n";
 import { LANGUAGE_STORAGE_KEY } from "@/i18n/language";
@@ -46,6 +46,7 @@ vi.stubGlobal("scrollTo", vi.fn());
 type ProfileOut = components["schemas"]["ProfileOut"];
 
 const AVATAR_URL = `${TEST_SIDECAR_URL}/api/profile/avatar`;
+const LIBRARY_STATE_URL = `${TEST_SIDECAR_URL}/api/settings/data-directory/library-state`;
 const PNG_BYTES = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
 ]);
@@ -69,17 +70,99 @@ function avatarFileInput(): HTMLInputElement {
   return input;
 }
 
+beforeEach(() => {
+  server.use(
+    http.get(LIBRARY_STATE_URL, () =>
+      HttpResponse.json({ empty_library: false }),
+    ),
+  );
+});
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
   vi.mocked(setRecordingKeepAwake).mockReset().mockResolvedValue(undefined);
 });
 
+describe("设置页分类导航", () => {
+  it("默认打开个人资料", async () => {
+    renderAt("/settings");
+    expect(
+      await screen.findByRole("tab", { name: "个人资料" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "个人资料" })).toBeVisible();
+  });
+
+  it("合法深链可直接定位", async () => {
+    renderAt("/settings?section=appearance");
+    expect(
+      await screen.findByRole("tab", { name: "外观与语言" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "外观与语言" })).toBeVisible();
+    expect(
+      screen.queryByText("管理个人资料、智能服务、应用偏好与本地数据。"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("调整界面语言、主题和文字显示大小。"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("非法分类值回退到个人资料", async () => {
+    renderAt("/settings?section=unknown");
+    expect(
+      await screen.findByRole("tab", { name: "个人资料" }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("鼠标和键盘切换分类时同步 URL", async () => {
+    renderAt("/settings");
+    const profileTab = await screen.findByRole("tab", { name: "个人资料" });
+
+    fireEvent.click(screen.getByRole("tab", { name: "AI 服务" }));
+    await waitFor(() => expect(window.location.search).toBe("?section=ai"));
+
+    fireEvent.click(profileTab);
+    await waitFor(() => expect(window.location.search).toBe(""));
+    profileTab.focus();
+    fireEvent.keyDown(profileTab, { key: "ArrowDown" });
+    await waitFor(() => expect(window.location.search).toBe("?section=ai"));
+  });
+
+  it("切换分类后保留尚未保存的档案草稿", async () => {
+    renderAt("/settings");
+    const nickname = await screen.findByLabelText("昵称");
+    fireEvent.change(nickname, { target: { value: "尚未保存的昵称" } });
+
+    fireEvent.click(screen.getByRole("tab", { name: "AI 服务" }));
+    fireEvent.click(screen.getByRole("tab", { name: "个人资料" }));
+
+    expect(screen.getByLabelText("昵称")).toHaveValue("尚未保存的昵称");
+  });
+
+  it("档案加载失败不阻断其他设置分类", async () => {
+    let profileRequests = 0;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/profile`, () => {
+        profileRequests += 1;
+        return HttpResponse.json({ detail: "档案加载失败" }, { status: 500 });
+      }),
+    );
+
+    renderAt("/settings?section=appearance");
+
+    expect(await screen.findByRole("radio", { name: "浅色" })).toBeVisible();
+    await waitFor(() => expect(profileRequests).toBeGreaterThan(0));
+  });
+});
+
 describe("设置页档案区块", () => {
   it("未建档时表单为空，未选角色不能保存", async () => {
     renderAt("/settings");
 
-    expect(await screen.findByRole("heading", { name: "档案" })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "个人资料" }),
+    ).toBeVisible();
+    await screen.findByRole("radio", { name: "学生" });
     for (const role of ["学生", "程序员", "职场人", "其他"]) {
       expect(screen.getByRole("radio", { name: role })).not.toBeChecked();
     }
@@ -293,7 +376,7 @@ describe("设置页偏好分区", () => {
     document.documentElement.style.removeProperty("font-size");
   });
 
-  it("渲染外观、桌面行为与通用小节并回显已存偏好", async () => {
+  it("分类切换后分别回显外观、桌面行为与通用偏好", async () => {
     server.use(
       http.get(PREFERENCES_URL, () =>
         HttpResponse.json({
@@ -308,19 +391,28 @@ describe("设置页偏好分区", () => {
       ),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=appearance");
 
-    expect(await screen.findByRole("heading", { name: "偏好" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "外观" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "桌面行为" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "通用" })).toBeVisible();
-    expect(screen.getByRole("radio", { name: "深色" })).toBeChecked();
+    expect(
+      await screen.findByRole("heading", { name: "外观与语言" }),
+    ).toBeVisible();
+    expect(await screen.findByRole("radio", { name: "深色" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "大" })).toBeChecked();
+
+    fireEvent.click(screen.getByRole("tab", { name: "桌面行为" }));
+    expect(
+      await screen.findByRole("heading", { name: "桌面行为" }),
+    ).toBeVisible();
     expect(screen.getByRole("radio", { name: "直接退出" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "开机自启" })).toBeChecked();
+    expect(screen.getByText("Ctrl+Alt+P")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("tab", { name: "通用偏好" }));
+    expect(
+      await screen.findByRole("heading", { name: "通用偏好" }),
+    ).toBeVisible();
     expect(screen.getByRole("radio", { name: "10" })).toBeChecked();
     expect(screen.getByRole("combobox")).toHaveTextContent("Asia/Shanghai");
-    expect(screen.getByText("Ctrl+Alt+P")).toBeVisible();
   });
 
   it("控件即改即存：每次只提交被改字段", async () => {
@@ -336,8 +428,8 @@ describe("设置页偏好分区", () => {
       }),
     );
 
-    renderAt("/settings");
-    await screen.findByRole("heading", { name: "偏好" });
+    renderAt("/settings?section=appearance");
+    await screen.findByRole("radio", { name: "浅色" });
 
     fireEvent.click(screen.getByRole("radio", { name: "浅色" }));
     await waitFor(() =>
@@ -347,7 +439,8 @@ describe("设置页偏好分区", () => {
     await waitFor(() =>
       expect(screen.getByRole("radio", { name: "小" })).toBeChecked(),
     );
-    fireEvent.click(screen.getByRole("radio", { name: "3" }));
+    fireEvent.click(screen.getByRole("tab", { name: "通用偏好" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "3" }));
     await waitFor(() =>
       expect(screen.getByRole("radio", { name: "3" })).toBeChecked(),
     );
@@ -385,7 +478,7 @@ describe("设置页偏好分区", () => {
       ),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=appearance");
 
     fireEvent.click(await screen.findByRole("radio", { name: "浅色" }));
 
@@ -409,8 +502,8 @@ describe("设置页偏好分区", () => {
       }),
     );
 
-    renderAt("/settings");
-    await screen.findByRole("heading", { name: "偏好" });
+    renderAt("/settings?section=desktop");
+    await screen.findByRole("radio", { name: "直接退出" });
 
     fireEvent.click(screen.getByRole("radio", { name: "直接退出" }));
     await waitFor(() =>
@@ -432,7 +525,7 @@ describe("设置页偏好分区", () => {
       ),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=desktop");
 
     fireEvent.click(await screen.findByRole("checkbox", { name: "开机自启" }));
 
@@ -455,9 +548,9 @@ describe("设置页偏好分区", () => {
       ),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=appearance");
 
-    await screen.findByRole("heading", { name: "偏好" });
+    await screen.findByRole("radio", { name: "浅色" });
     await waitFor(() => expect(document.documentElement).toHaveClass("dark"));
     expect(document.documentElement.style.fontSize).toBe("18px");
 
@@ -525,7 +618,7 @@ describe("速记快捷键录制控件", () => {
       }),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=desktop");
     fireEvent.click(await screen.findByRole("button", { name: "更改" }));
 
     expect(
@@ -555,7 +648,7 @@ describe("速记快捷键录制控件", () => {
       }),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=desktop");
     fireEvent.click(await screen.findByRole("button", { name: "更改" }));
 
     act(() => pressRecordingKey("KeyP"));
@@ -580,7 +673,7 @@ describe("速记快捷键录制控件", () => {
         });
       }),
     );
-    renderAt("/settings");
+    renderAt("/settings?section=desktop");
     fireEvent.click(await screen.findByRole("button", { name: "更改" }));
 
     act(() => {
@@ -603,7 +696,7 @@ describe("速记快捷键录制控件", () => {
       }),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=desktop");
     fireEvent.click(await screen.findByRole("button", { name: "更改" }));
 
     act(() => pressRecordingKey("Escape"));
@@ -629,7 +722,7 @@ describe("速记快捷键录制控件", () => {
       http.get(PREFERENCES_URL, () => HttpResponse.json(DEFAULT_PREFERENCES)),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=desktop");
     fireEvent.click(await screen.findByRole("button", { name: "更改" }));
 
     act(() => {
@@ -652,7 +745,7 @@ describe("速记快捷键录制控件", () => {
       ),
     );
 
-    renderAt("/settings");
+    renderAt("/settings?section=desktop");
     fireEvent.click(await screen.findByRole("button", { name: "更改" }));
 
     act(() => {
@@ -673,7 +766,10 @@ const ASR_PROVIDER_URL = `${TEST_SIDECAR_URL}/api/settings/providers/tencent-asr
 
 describe("设置页供应商分区", () => {
   async function sectionOf(headingName: string) {
-    const heading = await screen.findByRole("heading", { name: headingName });
+    const heading = await screen.findByRole("heading", {
+      name: headingName,
+      level: 3,
+    });
     const section = heading.closest("section");
     expect(section).not.toBeNull();
     return section as HTMLElement;
@@ -698,7 +794,7 @@ describe("设置页供应商分区", () => {
         HttpResponse.json({ ok: true, model: "qwen-plus" }),
       ),
     );
-    renderAt("/settings");
+    renderAt("/settings?section=ai");
 
     const section = await sectionOf("AI 服务");
     // 未配置（无已保存密钥）时不显示测试按钮。
@@ -757,7 +853,7 @@ describe("设置页供应商分区", () => {
         HttpResponse.json({ ok: true, region: "ap-shanghai" }),
       ),
     );
-    renderAt("/settings");
+    renderAt("/settings?section=ai");
 
     const section = await sectionOf("语音转写");
     fireEvent.change(within(section).getByLabelText("SecretId"), {
@@ -807,8 +903,8 @@ describe("设置页界面语言", () => {
       }),
     );
 
-    renderAt("/settings");
-    await screen.findByRole("heading", { name: "偏好" });
+    renderAt("/settings?section=appearance");
+    await screen.findByRole("radio", { name: "English" });
     expect(screen.getByRole("radio", { name: "中文" })).toBeChecked();
 
     fireEvent.click(screen.getByRole("radio", { name: "English" }));
@@ -829,8 +925,8 @@ describe("设置页界面语言", () => {
       ),
     );
 
-    renderAt("/settings");
-    await screen.findByRole("heading", { name: "偏好" });
+    renderAt("/settings?section=appearance");
+    await screen.findByRole("radio", { name: "English" });
 
     fireEvent.click(screen.getByRole("radio", { name: "English" }));
 

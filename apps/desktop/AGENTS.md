@@ -11,7 +11,7 @@ Tauri 2 壳 + React 19 + Vite 7 + TanStack Router（file-based）+ Tailwind CSS 
 | `pnpm dev`                            | Vite dev server，端口 1420（strictPort）。仓库根执行用 `pnpm --filter @knowrealm/desktop dev`（无根 package.json，workspace 由 `pnpm-workspace.yaml` 定义） |
 | `pnpm build`                          | **类型检查内嵌于此**（双 tsconfig `tsc --noEmit`）+ `vite build`；无独立 typecheck 脚本                                                                     |
 | `pnpm lint`                           | `eslint . --max-warnings 0`                                                                                                                                 |
-| `pnpm test`                           | `vitest run`（配置内嵌 `vite.config.ts`，无独立配置文件）                                                                                                   |
+| `pnpm test`                           | `vitest run --passWithNoTests`（配置内嵌 `vite.config.ts`，无独立配置文件）                                                                                 |
 | `pnpm format:check`                   | `prettier --check .`（覆盖 `.md`；无写入型 format 脚本）                                                                                                    |
 | `pnpm tauri dev` / `pnpm tauri build` | 拉起完整壳。`pretauri` 钩子自动跑 `scripts/prepare-ffmpeg.ps1`（固定版本 + SHA256 校验，幂等）；`src-tauri/binaries/` **不入库**，新克隆首次自动下载        |
 
@@ -21,25 +21,25 @@ Rust 侧（`src-tauri/` 内）：`cargo test`（测试内嵌在各文件 `#[cfg(
 
 ```
 src/
-├── pages/               # TanStack file-based 路由，扁平命名（spaces.index.tsx、records.$recordId.tsx）
-├── features/            # 业务功能内聚（组件 + api + 类型）
-│   ├── courses/           # 课程 CRUD 闭环（最完整：筛选走 searchParams、编辑、软删）
-│   ├── records/           # 记录详情：Summary/Transcript tab、SSE 订阅、转写编辑、删除
-│   ├── document-import/   # 「导入资料」对话框，走 POST /api/capture-batches（documentImports.ts 为旧单文档 API）
-│   ├── recording/         # 录音完整体验（扁平结构：api.ts + RecordingExperience.tsx）
-│   ├── audio-import/      # 仅单音频导入 API 封装，无 UI
-│   └── settings/          # 仅腾讯 ASR 外发同意 API
-├── components/          # ui/ = shadcn 生成物（勿手改）；common/ = 跨 feature；layout/AppShell.tsx 唯一布局
-├── services/http/       # client.ts：统一 base URL、X-KnowRealm-Token（强制覆盖）、ApiError、FormData 边界
-├── services/tauri/      # sidecar.ts（getSidecarConfig）、recording.ts（电源/窗口封装，名不副实）
+├── pages/               # TanStack file-based 路由，扁平命名（chat.$sessionId、spaces.$courseId_.tests.$testId 等）
+├── features/            # 业务功能内聚，惯例为 api/ + components/ 子目录
+│   ├── courses  records  recording  quiz-tests      # 课程 / 记录详情（含复习资料、导出）/ 录音 / 模拟测试
+│   ├── chat  search  library  inbox  today          # AI 问答 / 全局搜索（Ctrl+K 面板）/ 资产库 / 收件箱 / 今日+学习统计
+│   ├── text-capture  document-import  audio-import  # 速记 / 文档导入 / 音频导入
+│   └── onboarding  settings                         # 首启向导 / 设置页（偏好·供应商·用量·数据目录）
+├── charts/              # echarts 按需注册中枢 + BaseChart + 主题配色（页面不直接 import "echarts"）
+├── components/          # ui/ = shadcn 生成物（勿手改，command 来自 @9ui）；common/ = 跨 feature（MarkdownContent 等）；layout/ = AppShell + RootLayout + SidebarUserArea
+├── services/http/       # client.ts：统一 base URL、X-KnowRealm-Token、ApiError
+├── services/tauri/      # sidecar / recording / lifecycle（退出+托盘）/ onboarding / preferences（关闭行为+快捷键+自启）/ dataDirectory / learningAssetExport
+├── services/restartPending.ts  # 「数据目录迁移后必须重启」标记（安全退出据此跳过录音检查）
 ├── app/queryClient.ts   # staleTime 60s / retry 2 / refetchOnWindowFocus false
-├── i18n/locales/        # zh.json（V1 唯一语言文件）
+├── i18n/                # zh/en 双语（切换逻辑 + locales）
 ├── mocks/               # MSW（仅测试启用）
 ├── test/                # setup.ts + test-utils.tsx（renderWithQuery）
 └── styles/              # tokens / theme / globals / animations 四件套
 ```
 
-注意：`hooks/`、`stores/`、`charts/` 顶层目录**不存在**；`src/routes/` 是空目录残留；`src/routeTree.gen.ts` 由路由插件生成（勿手改），`.tanstack/` 仅插件缓存。
+注意：`hooks/`、`stores/` 顶层目录**不存在**；`src/routeTree.gen.ts` 由路由插件生成（勿手改）。
 
 ## 关键机制
 
@@ -59,12 +59,32 @@ API 类型一律 `import ... from "@knowrealm/api-types"`（禁止手写重复�
 
 ### SSE
 
-`recordApi.subscribe`（原生 fetch + eventsource-parser 解析）只处理 `invalidate` 事件 → `invalidateQueries` → REST 重取；断线时非终态 Record 每 2 秒条件轮询（ADR-0008）。
+`recordApi.subscribe`（原生 fetch + eventsource-parser 解析）只处理 `invalidate` 事件 → `invalidateQueries` → REST 重取；断线时非终态 Record 每 2 秒条件轮询（ADR-0008）。chat 流式回答走 `useChatStream`：流式文本是临时态，事实源始终是 chat_messages（REST），done 后失效重取。
+
+### 界面语言（zh/en）
+
+首帧 = localStorage 缓存 ?? 系统语言，后端偏好到达后校正（防闪变）；`applyLanguage` 同时更新 `<html lang>` 与托盘菜单；新增文案 zh/en 两份同交（有一致性测试防线）。
+
+### 首启向导分流
+
+`__root.tsx` beforeLoad 发现未完成向导，一律重定向 `/onboarding`，托盘和快捷键都没有绕过入口。
+
+### 关闭行为
+
+TRAY=隐藏到托盘、EXIT=确认后退出、偏好未载入=直接退出（`mountCloseBehavior`，挂载一次实时读）。
+
+### 图表（echarts）
+
+echarts 按需注册只在 `charts/echarts.ts`，新增图表类型只改这里；配色读语义 token，亮暗主题自动跟随。
+
+### 速记全局快捷键
+
+注册在前端（global-shortcut JS API），Rust 侧无注册逻辑。
 
 ## 测试约定
 
 - **无全局 jsdom**：需要 DOM 的测试文件首行写 `// @vitest-environment jsdom`；services 层测试走 node 环境。
-- MSW **仅测试启用**：`test/setup.ts` 全局 `server.listen({ onUnhandledRequest: "error" })`；`mocks/handlers.ts` 只有 3 个兜底 handler（courses、recording-sessions、today/pending-summaries 空列表），具体路由在测试内 `server.use(...)` 局部覆盖；无 mockServiceWorker.js，dev 运行不经 MSW。
-- 涉及 Tauri 的测试一律 `vi.mock("@/services/tauri/sidecar")`（及 `recording`）桩掉 invoke。
+- MSW **仅测试启用**：`test/setup.ts` 全局 `server.listen({ onUnhandledRequest: "error" })`；`mocks/handlers.ts` 有 14 个兜底 handler（courses、inbox、chat、providers、preferences、usage、profile、recording-sessions、today 等），具体路由在测试内 `server.use(...)` 局部覆盖；无 mockServiceWorker.js，dev 运行不经 MSW。
+- 涉及 Tauri 的测试按需 `vi.mock` 对应 `services/tauri/*` 模块（sidecar、recording、lifecycle、onboarding、preferences 等）。
 - 组件测试用 `renderWithQuery()`（`test/test-utils.tsx`：retry:false 临时 QueryClient + i18n）。
 - eslint 的 `react-refresh/only-export-components` 已豁免 `Route` 导出（file-based 路由必需）。

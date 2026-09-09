@@ -1,17 +1,24 @@
 import type { components } from "@knowrealm/api-types";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useRecordHotkeys } from "react-hotkeys-hook";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldLabel, FieldLegend } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
+import { TabsContent } from "@/components/ui/tabs";
 import { isUiLanguage, UI_LANGUAGES } from "@/i18n/language";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
+import {
+  SettingsChoiceRow,
+  SettingsPanelHeader,
+  SettingsRow,
+} from "@/features/settings/SettingsLayout";
 import { normalizeRecordedKeys } from "@/features/settings/shortcutAccelerator";
 import { TimezoneCombobox } from "@/features/settings/TimezoneCombobox";
 import {
@@ -61,14 +68,9 @@ export function PreferencesSection() {
     queryFn: settingsApi.getPreferences,
   });
 
-  return (
-    <div className="border-border max-w-reading mt-8 border-t pt-8">
-      <h2 className="text-section font-section text-ink">
-        {t("settings.preferences.sectionTitle")}
-      </h2>
-      <p className="max-w-reading text-body text-muted-foreground">
-        {t("settings.preferences.sectionDescription")}
-      </p>
+  const panel = (id: string, title: string, content: ReactNode) => (
+    <section aria-labelledby={id} className="max-w-5xl">
+      <SettingsPanelHeader id={id} title={title} />
       {preferences.isPending ? (
         <p
           role="status"
@@ -91,13 +93,41 @@ export function PreferencesSection() {
           </Button>
         </div>
       ) : (
-        <div className="mt-6 flex flex-col gap-8">
-          <AppearancePreferences preferences={preferences.data} />
-          <DesktopBehaviorPreferences preferences={preferences.data} />
-          <GeneralPreferences preferences={preferences.data} />
-        </div>
+        <div className="mt-8">{content}</div>
       )}
-    </div>
+    </section>
+  );
+
+  return (
+    <>
+      <TabsContent value="appearance" keepMounted className="min-w-0">
+        {panel(
+          "settings-appearance-title",
+          t("settings.navigation.appearance"),
+          preferences.data ? (
+            <AppearancePreferences preferences={preferences.data} />
+          ) : null,
+        )}
+      </TabsContent>
+      <TabsContent value="desktop" keepMounted className="min-w-0">
+        {panel(
+          "settings-desktop-title",
+          t("settings.preferences.desktopTitle"),
+          preferences.data ? (
+            <DesktopBehaviorPreferences preferences={preferences.data} />
+          ) : null,
+        )}
+      </TabsContent>
+      <TabsContent value="general" keepMounted className="min-w-0">
+        {panel(
+          "settings-general-title",
+          t("settings.navigation.general"),
+          preferences.data ? (
+            <GeneralPreferences preferences={preferences.data} />
+          ) : null,
+        )}
+      </TabsContent>
+    </>
   );
 }
 
@@ -112,93 +142,79 @@ function AppearancePreferences({
   const language = useSavePreference();
 
   return (
-    <section aria-labelledby="preferences-appearance-title">
-      <h3
-        id="preferences-appearance-title"
-        className="text-section font-section text-ink"
-      >
-        {t("settings.preferences.appearanceTitle")}
-      </h3>
-      <div className="mt-4 flex flex-col gap-5">
-        <Field>
-          <FieldLegend variant="label">
-            {t("settings.preferences.languageLegend")}
-          </FieldLegend>
-          <RadioGroup
-            value={preferences.language}
-            onValueChange={(value) => {
-              if (isUiLanguage(value)) language.mutate({ language: value });
-            }}
-            disabled={language.isPending}
-          >
-            {UI_LANGUAGES.map((item) => {
-              const id = `preference-language-${item}`;
-              return (
-                <Field key={id} orientation="horizontal">
-                  <RadioGroupItem id={id} value={item} />
-                  <FieldLabel htmlFor={id}>
-                    {t(`settings.preferences.language.${item}`)}
-                  </FieldLabel>
-                </Field>
-              );
-            })}
-          </RadioGroup>
-          <SaveError error={language.error} />
-        </Field>
+    <div className="flex flex-col gap-7">
+      <SettingsChoiceRow label={t("settings.preferences.languageLegend")}>
+        <RadioGroup
+          className="flex flex-wrap gap-x-5 gap-y-3"
+          value={preferences.language}
+          onValueChange={(value) => {
+            if (isUiLanguage(value)) language.mutate({ language: value });
+          }}
+          disabled={language.isPending}
+        >
+          {UI_LANGUAGES.map((item) => {
+            const id = `preference-language-${item}`;
+            return (
+              <Field key={id} orientation="horizontal" className="w-auto">
+                <RadioGroupItem id={id} value={item} />
+                <FieldLabel htmlFor={id}>
+                  {t(`settings.preferences.language.${item}`)}
+                </FieldLabel>
+              </Field>
+            );
+          })}
+        </RadioGroup>
+        <SaveError error={language.error} />
+      </SettingsChoiceRow>
 
-        <Field>
-          <FieldLegend variant="label">
-            {t("settings.preferences.themeLegend")}
-          </FieldLegend>
-          <RadioGroup
-            value={preferences.theme}
-            onValueChange={(value) => {
-              if (isTheme(value)) theme.mutate({ theme: value });
-            }}
-            disabled={theme.isPending}
-          >
-            {THEMES.map((item) => {
-              const id = `preference-theme-${item}`;
-              return (
-                <Field key={id} orientation="horizontal">
-                  <RadioGroupItem id={id} value={item} />
-                  <FieldLabel htmlFor={id}>
-                    {t(`settings.preferences.theme.${item}`)}
-                  </FieldLabel>
-                </Field>
-              );
-            })}
-          </RadioGroup>
-          <SaveError error={theme.error} />
-        </Field>
+      <SettingsChoiceRow label={t("settings.preferences.themeLegend")}>
+        <RadioGroup
+          className="flex flex-wrap gap-x-5 gap-y-3"
+          value={preferences.theme}
+          onValueChange={(value) => {
+            if (isTheme(value)) theme.mutate({ theme: value });
+          }}
+          disabled={theme.isPending}
+        >
+          {THEMES.map((item) => {
+            const id = `preference-theme-${item}`;
+            return (
+              <Field key={id} orientation="horizontal" className="w-auto">
+                <RadioGroupItem id={id} value={item} />
+                <FieldLabel htmlFor={id}>
+                  {t(`settings.preferences.theme.${item}`)}
+                </FieldLabel>
+              </Field>
+            );
+          })}
+        </RadioGroup>
+        <SaveError error={theme.error} />
+      </SettingsChoiceRow>
 
-        <Field>
-          <FieldLegend variant="label">
-            {t("settings.preferences.fontScaleLegend")}
-          </FieldLegend>
-          <RadioGroup
-            value={preferences.font_scale}
-            onValueChange={(value) => {
-              if (isFontScale(value)) fontScale.mutate({ font_scale: value });
-            }}
-            disabled={fontScale.isPending}
-          >
-            {FONT_SCALES.map((item) => {
-              const id = `preference-font-scale-${item}`;
-              return (
-                <Field key={id} orientation="horizontal">
-                  <RadioGroupItem id={id} value={item} />
-                  <FieldLabel htmlFor={id}>
-                    {t(`settings.preferences.fontScale.${item}`)}
-                  </FieldLabel>
-                </Field>
-              );
-            })}
-          </RadioGroup>
-          <SaveError error={fontScale.error} />
-        </Field>
-      </div>
-    </section>
+      <SettingsChoiceRow label={t("settings.preferences.fontScaleLegend")}>
+        <RadioGroup
+          className="flex flex-wrap gap-x-5 gap-y-3"
+          value={preferences.font_scale}
+          onValueChange={(value) => {
+            if (isFontScale(value)) fontScale.mutate({ font_scale: value });
+          }}
+          disabled={fontScale.isPending}
+        >
+          {FONT_SCALES.map((item) => {
+            const id = `preference-font-scale-${item}`;
+            return (
+              <Field key={id} orientation="horizontal" className="w-auto">
+                <RadioGroupItem id={id} value={item} />
+                <FieldLabel htmlFor={id}>
+                  {t(`settings.preferences.fontScale.${item}`)}
+                </FieldLabel>
+              </Field>
+            );
+          })}
+        </RadioGroup>
+        <SaveError error={fontScale.error} />
+      </SettingsChoiceRow>
+    </div>
   );
 }
 
@@ -222,67 +238,62 @@ function DesktopBehaviorPreferences({
   };
 
   return (
-    <section aria-labelledby="preferences-desktop-title">
-      <h3
-        id="preferences-desktop-title"
-        className="text-section font-section text-ink"
+    <div className="flex flex-col gap-7">
+      <SettingsChoiceRow label={t("settings.preferences.closeBehaviorLegend")}>
+        <RadioGroup
+          className="flex flex-wrap gap-x-5 gap-y-3"
+          value={preferences.close_behavior}
+          onValueChange={(value) => {
+            if (isCloseBehavior(value))
+              closeBehavior.mutate({ close_behavior: value });
+          }}
+          disabled={closeBehavior.isPending}
+        >
+          {CLOSE_BEHAVIORS.map((item) => {
+            const id = `preference-close-behavior-${item}`;
+            return (
+              <Field key={id} orientation="horizontal" className="w-auto">
+                <RadioGroupItem id={id} value={item} />
+                <FieldLabel htmlFor={id}>
+                  {t(`settings.preferences.closeBehavior.${item}`)}
+                </FieldLabel>
+              </Field>
+            );
+          })}
+        </RadioGroup>
+        <SaveError error={closeBehavior.error} />
+      </SettingsChoiceRow>
+
+      <SettingsRow
+        label={t("settings.preferences.autostartLabel")}
+        htmlFor="preference-autostart"
       >
-        {t("settings.preferences.desktopTitle")}
-      </h3>
-      <div className="mt-4 flex flex-col gap-5">
-        <Field>
-          <FieldLegend variant="label">
-            {t("settings.preferences.closeBehaviorLegend")}
-          </FieldLegend>
-          <RadioGroup
-            value={preferences.close_behavior}
-            onValueChange={(value) => {
-              if (isCloseBehavior(value))
-                closeBehavior.mutate({ close_behavior: value });
-            }}
-            disabled={closeBehavior.isPending}
-          >
-            {CLOSE_BEHAVIORS.map((item) => {
-              const id = `preference-close-behavior-${item}`;
-              return (
-                <Field key={id} orientation="horizontal">
-                  <RadioGroupItem id={id} value={item} />
-                  <FieldLabel htmlFor={id}>
-                    {t(`settings.preferences.closeBehavior.${item}`)}
-                  </FieldLabel>
-                </Field>
-              );
-            })}
-          </RadioGroup>
-          <SaveError error={closeBehavior.error} />
+        <Field orientation="horizontal" className="min-h-8">
+          <Checkbox
+            id="preference-autostart"
+            checked={preferences.autostart}
+            onCheckedChange={toggleAutostart}
+            disabled={autostart.isPending}
+          />
+          <p className="text-label text-muted-foreground">
+            {preferences.autostart
+              ? t("settings.preferences.enabled")
+              : t("settings.preferences.disabled")}
+          </p>
         </Field>
+        {autostartOsError ? (
+          <Alert variant="destructive" className="w-auto">
+            <AlertDescription>
+              {t("settings.preferences.autostartOsFailed")}
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <SaveError error={autostart.error} />
+        )}
+      </SettingsRow>
 
-        <Field>
-          <Field orientation="horizontal">
-            <Checkbox
-              id="preference-autostart"
-              checked={preferences.autostart}
-              onCheckedChange={toggleAutostart}
-              disabled={autostart.isPending}
-            />
-            <FieldLabel htmlFor="preference-autostart">
-              {t("settings.preferences.autostartLabel")}
-            </FieldLabel>
-          </Field>
-          {autostartOsError ? (
-            <Alert variant="destructive" className="w-auto">
-              <AlertDescription>
-                {t("settings.preferences.autostartOsFailed")}
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <SaveError error={autostart.error} />
-          )}
-        </Field>
-
-        <QuickNoteShortcutField preferences={preferences} />
-      </div>
-    </section>
+      <QuickNoteShortcutField preferences={preferences} />
+    </div>
   );
 }
 
@@ -355,10 +366,10 @@ function QuickNoteShortcutField({
   }, [keys, isRecording, save, stopRecording]);
 
   return (
-    <Field>
-      <FieldLabel htmlFor="preference-quick-note-shortcut">
-        {t("settings.preferences.shortcutLabel")}
-      </FieldLabel>
+    <SettingsRow
+      label={t("settings.preferences.shortcutLabel")}
+      htmlFor="preference-quick-note-shortcut"
+    >
       <div className="flex flex-wrap items-center gap-3">
         {isRecording ? (
           <>
@@ -398,7 +409,7 @@ function QuickNoteShortcutField({
           </AlertDescription>
         </Alert>
       ) : null}
-    </Field>
+    </SettingsRow>
   );
 }
 
@@ -408,55 +419,45 @@ function GeneralPreferences({ preferences }: { preferences: PreferencesOut }) {
   const quizCount = useSavePreference();
 
   return (
-    <section aria-labelledby="preferences-general-title">
-      <h3
-        id="preferences-general-title"
-        className="text-section font-section text-ink"
+    <div className="flex flex-col gap-7">
+      <SettingsRow
+        label={t("settings.preferences.timezoneLabel")}
+        htmlFor="preference-timezone"
       >
-        {t("settings.preferences.generalTitle")}
-      </h3>
-      <div className="mt-4 flex flex-col gap-5">
-        <Field>
-          <FieldLabel htmlFor="preference-timezone">
-            {t("settings.preferences.timezoneLabel")}
-          </FieldLabel>
-          <TimezoneCombobox
-            id="preference-timezone"
-            value={preferences.timezone}
-            onSelect={(value) => timezone.mutate({ timezone: value })}
-            disabled={timezone.isPending}
-          />
-          <SaveError error={timezone.error} />
-        </Field>
+        <TimezoneCombobox
+          id="preference-timezone"
+          value={preferences.timezone}
+          onSelect={(value) => timezone.mutate({ timezone: value })}
+          disabled={timezone.isPending}
+        />
+        <SaveError error={timezone.error} />
+      </SettingsRow>
 
-        <Field>
-          <FieldLegend variant="label">
-            {t("settings.preferences.quizCountLegend")}
-          </FieldLegend>
-          <RadioGroup
-            value={String(preferences.quiz_last_count)}
-            onValueChange={(value) => {
-              const next = Number(value);
-              if ((QUIZ_COUNT_CHOICES as readonly number[]).includes(next)) {
-                quizCount.mutate({ quiz_last_count: next as 3 | 5 | 10 });
-              }
-            }}
-            disabled={quizCount.isPending}
-          >
-            {QUIZ_COUNT_CHOICES.map((count) => {
-              const id = `preference-quiz-count-${count}`;
-              return (
-                <Field key={id} orientation="horizontal">
-                  <RadioGroupItem id={id} value={String(count)} />
-                  <FieldLabel htmlFor={id}>{count}</FieldLabel>
-                </Field>
-              );
-            })}
-          </RadioGroup>
-          <SaveError error={quizCount.error} />
-        </Field>
-      </div>
-    </section>
+      <SettingsChoiceRow label={t("settings.preferences.quizCountLegend")}>
+        <RadioGroup
+          className="flex flex-wrap gap-x-5 gap-y-3"
+          value={String(preferences.quiz_last_count)}
+          onValueChange={(value) => {
+            const next = Number(value);
+            if ((QUIZ_COUNT_CHOICES as readonly number[]).includes(next)) {
+              quizCount.mutate({ quiz_last_count: next as 3 | 5 | 10 });
+            }
+          }}
+          disabled={quizCount.isPending}
+        >
+          {QUIZ_COUNT_CHOICES.map((count) => {
+            const id = `preference-quiz-count-${count}`;
+            return (
+              <Field key={id} orientation="horizontal" className="w-auto">
+                <RadioGroupItem id={id} value={String(count)} />
+                <FieldLabel htmlFor={id}>{count}</FieldLabel>
+              </Field>
+            );
+          })}
+        </RadioGroup>
+        <SaveError error={quizCount.error} />
+      </SettingsChoiceRow>
+    </div>
   );
 }
 

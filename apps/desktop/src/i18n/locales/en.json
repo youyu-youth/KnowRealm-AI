@@ -1040,9 +1040,21 @@
   },
   "settings": {
     "title": "Settings",
+    "navigation": {
+      "label": "Settings categories",
+      "account": "Account",
+      "services": "Intelligent services",
+      "application": "Application",
+      "dataGroup": "Data",
+      "profile": "Profile",
+      "ai": "AI services",
+      "appearance": "Appearance & language",
+      "desktop": "Desktop behavior",
+      "general": "General preferences",
+      "data": "Data & storage"
+    },
     "profile": {
       "sectionTitle": "Profile",
-      "sectionDescription": "Your role and bio are injected into new free chats so answers fit your level; changes only affect future chats, never past ones.",
       "roleLegend": "My role",
       "role": {
         "STUDENT": "Student",
@@ -1070,8 +1082,9 @@
     },
     "dataDirectory": {
       "sectionTitle": "Data directory",
-      "sectionDescription": "The database, original files, configuration and exports all live here.",
       "pathLabel": "Current location",
+      "transferLabel": "Import and export",
+      "transferDescription": "Export all data, or restore an export into an empty library.",
       "loading": "Loading data directory",
       "retry": "Retry",
       "open": "Open data directory",
@@ -1157,6 +1170,8 @@
       "shortcutMissingModifier": "The combination needs at least one modifier (Ctrl / Alt / Shift / Win); press again.",
       "shortcutUnsupportedKey": "That key is not supported yet; try another combination.",
       "generalTitle": "General",
+      "enabled": "On",
+      "disabled": "Off",
       "timezoneLabel": "Time zone",
       "timezone": {
         "followSystem": "Follow system",
@@ -1168,7 +1183,6 @@
     },
     "providers": {
       "sectionTitle": "Services & usage",
-      "sectionDescription": "Keys for AI services and speech transcription are stored in plain text in the local data directory (config/providers.json) and never uploaded to any KnowRealm server.",
       "loading": "Loading provider configuration",
       "retry": "Retry",
       "llm": {

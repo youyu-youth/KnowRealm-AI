@@ -11,6 +11,11 @@ import type { components } from "@knowrealm/api-types";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
 import { LlmUsageCard } from "@/features/settings/LlmUsageCard";
+import {
+  SettingsActions,
+  SettingsPanelHeader,
+  SettingsRow,
+} from "@/features/settings/SettingsLayout";
 
 // DashScope OpenAI 兼容模式端点与默认模型：一键填充后仍可修改（plan 14 定稿预设）。
 const DASHSCOPE_PRESET_BASE_URL =
@@ -23,19 +28,17 @@ type TencentAsrProviderOut = components["schemas"]["TencentAsrProviderOut"];
 export function ProvidersSection() {
   const { t } = useTranslation();
   return (
-    <div className="border-border max-w-reading mt-8 border-t pt-8">
-      <h2 className="text-section font-section text-ink">
-        {t("settings.providers.sectionTitle")}
-      </h2>
-      <p className="max-w-reading text-body text-muted-foreground">
-        {t("settings.providers.sectionDescription")}
-      </p>
-      <div className="mt-6 flex flex-col gap-8">
+    <section aria-labelledby="settings-providers-title" className="max-w-5xl">
+      <SettingsPanelHeader
+        id="settings-providers-title"
+        title={t("settings.navigation.ai")}
+      />
+      <div className="mt-8 flex flex-col gap-12">
         <LlmProviderCard />
         <TencentAsrCard />
         <LlmUsageCard />
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -175,7 +178,7 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
 
   return (
     <form
-      className="mt-4 flex flex-col gap-5"
+      className="mt-6 flex flex-col gap-7"
       onChange={() => {
         save.reset();
         test.reset();
@@ -185,15 +188,23 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
         if (canSave && !save.isPending) save.mutate();
       }}
     >
-      <Field>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <FieldLabel htmlFor="provider-llm-base-url">
-            {t("settings.providers.llm.baseUrl")}
-          </FieldLabel>
+      <SettingsRow
+        label={t("settings.providers.llm.baseUrl")}
+        htmlFor="provider-llm-base-url"
+      >
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
+          <Input
+            id="provider-llm-base-url"
+            value={baseUrl}
+            placeholder={DASHSCOPE_PRESET_BASE_URL}
+            disabled={save.isPending}
+            onChange={(event) => setBaseUrl(event.target.value)}
+          />
           <Button
             type="button"
             variant="ghost"
             size="sm"
+            className="shrink-0"
             disabled={save.isPending}
             onClick={() => {
               setBaseUrl(DASHSCOPE_PRESET_BASE_URL);
@@ -203,18 +214,12 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
             {t("settings.providers.llm.dashscopePreset")}
           </Button>
         </div>
-        <Input
-          id="provider-llm-base-url"
-          value={baseUrl}
-          placeholder={DASHSCOPE_PRESET_BASE_URL}
-          disabled={save.isPending}
-          onChange={(event) => setBaseUrl(event.target.value)}
-        />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="provider-llm-model">
-          {t("settings.providers.llm.model")}
-        </FieldLabel>
+      </SettingsRow>
+      <SettingsRow
+        label={t("settings.providers.llm.model")}
+        description={t("settings.providers.llm.modelHint")}
+        htmlFor="provider-llm-model"
+      >
         <Input
           id="provider-llm-model"
           value={model}
@@ -222,14 +227,11 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
           disabled={save.isPending}
           onChange={(event) => setModel(event.target.value)}
         />
-        <FieldDescription>
-          {t("settings.providers.llm.modelHint")}
-        </FieldDescription>
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="provider-llm-api-key">
-          {t("settings.providers.llm.apiKey")}
-        </FieldLabel>
+      </SettingsRow>
+      <SettingsRow
+        label={t("settings.providers.llm.apiKey")}
+        htmlFor="provider-llm-api-key"
+      >
         <Input
           id="provider-llm-api-key"
           type="password"
@@ -243,78 +245,79 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
           disabled={save.isPending || clearApiKey}
           onChange={(event) => setApiKey(event.target.value)}
         />
-      </Field>
-      {hasApiKey ? (
-        <Field orientation="horizontal">
-          <Checkbox
-            id="provider-llm-clear-api-key"
-            checked={clearApiKey}
-            onCheckedChange={(checked) => {
-              setClearApiKey(checked === true);
-              save.reset();
-              test.reset();
-            }}
-            disabled={save.isPending}
-          />
-          <FieldLabel htmlFor="provider-llm-clear-api-key">
-            {t("settings.providers.llm.clearApiKey")}
-          </FieldLabel>
-        </Field>
-      ) : null}
-
-      {save.isError ? (
-        <Alert variant="destructive" className="w-auto">
-          <AlertDescription>{save.error.message}</AlertDescription>
-        </Alert>
-      ) : null}
-      {save.isSuccess ? (
-        <p role="status" className="text-body text-muted-foreground">
-          {t("settings.providers.llm.savedFeedback")}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={!canSave || save.isPending}>
-          {save.isPending ? (
-            <Spinner
-              data-icon="inline-start"
-              aria-label={t("settings.providers.llm.saving")}
+        {hasApiKey ? (
+          <Field orientation="horizontal" className="mt-3">
+            <Checkbox
+              id="provider-llm-clear-api-key"
+              checked={clearApiKey}
+              onCheckedChange={(checked) => {
+                setClearApiKey(checked === true);
+                save.reset();
+                test.reset();
+              }}
+              disabled={save.isPending}
             />
-          ) : null}
-          {t("settings.providers.llm.save")}
-        </Button>
-        {savedHasKey ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={test.isPending}
-            onClick={() => test.mutate()}
-          >
-            {test.isPending ? (
+            <FieldLabel htmlFor="provider-llm-clear-api-key">
+              {t("settings.providers.llm.clearApiKey")}
+            </FieldLabel>
+          </Field>
+        ) : null}
+      </SettingsRow>
+
+      <SettingsActions>
+        {save.isError ? (
+          <Alert variant="destructive" className="mb-3 w-auto">
+            <AlertDescription>{save.error.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        {save.isSuccess ? (
+          <p role="status" className="text-body text-muted-foreground mb-3">
+            {t("settings.providers.llm.savedFeedback")}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" disabled={!canSave || save.isPending}>
+            {save.isPending ? (
               <Spinner
                 data-icon="inline-start"
-                aria-label={t("settings.providers.llm.testing")}
+                aria-label={t("settings.providers.llm.saving")}
               />
             ) : null}
-            {t("settings.providers.llm.test")}
+            {t("settings.providers.llm.save")}
           </Button>
+          {savedHasKey ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={test.isPending}
+              onClick={() => test.mutate()}
+            >
+              {test.isPending ? (
+                <Spinner
+                  data-icon="inline-start"
+                  aria-label={t("settings.providers.llm.testing")}
+                />
+              ) : null}
+              {t("settings.providers.llm.test")}
+            </Button>
+          ) : null}
+        </div>
+        {test.isSuccess ? (
+          <p role="status" className="text-body text-muted-foreground mt-3">
+            {t("settings.providers.llm.testSucceeded", {
+              model: test.data.model,
+            })}
+          </p>
         ) : null}
-      </div>
-      {test.isSuccess ? (
-        <p role="status" className="text-body text-muted-foreground">
-          {t("settings.providers.llm.testSucceeded", {
-            model: test.data.model,
-          })}
-        </p>
-      ) : null}
-      {test.isError ? (
-        <Alert variant="destructive" className="w-auto">
-          <AlertDescription>{test.error.message}</AlertDescription>
-        </Alert>
-      ) : null}
-      <FieldDescription>
-        {t("settings.providers.llm.embeddingNote")}
-      </FieldDescription>
+        {test.isError ? (
+          <Alert variant="destructive" className="mt-3 w-auto">
+            <AlertDescription>{test.error.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        <FieldDescription className="mt-3">
+          {t("settings.providers.llm.embeddingNote")}
+        </FieldDescription>
+      </SettingsActions>
     </form>
   );
 }
@@ -419,7 +422,7 @@ function TencentAsrForm({
 
   return (
     <form
-      className="mt-4 flex flex-col gap-5"
+      className="mt-6 flex flex-col gap-7"
       onChange={() => {
         save.reset();
         test.reset();
@@ -429,8 +432,7 @@ function TencentAsrForm({
         if (canSave && !save.isPending) save.mutate();
       }}
     >
-      <Field>
-        <FieldLabel htmlFor="provider-asr-secret-id">SecretId</FieldLabel>
+      <SettingsRow label="SecretId" htmlFor="provider-asr-secret-id">
         <Input
           id="provider-asr-secret-id"
           type="password"
@@ -442,9 +444,8 @@ function TencentAsrForm({
           disabled={save.isPending || clearSecretKey}
           onChange={(event) => setSecretId(event.target.value)}
         />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="provider-asr-secret-key">SecretKey</FieldLabel>
+      </SettingsRow>
+      <SettingsRow label="SecretKey" htmlFor="provider-asr-secret-key">
         <Input
           id="provider-asr-secret-key"
           type="password"
@@ -457,11 +458,11 @@ function TencentAsrForm({
           disabled={save.isPending || clearSecretKey}
           onChange={(event) => setSecretKey(event.target.value)}
         />
-      </Field>
-      <Field>
-        <FieldLabel htmlFor="provider-asr-region">
-          {t("settings.providers.asr.region")}
-        </FieldLabel>
+      </SettingsRow>
+      <SettingsRow
+        label={t("settings.providers.asr.region")}
+        htmlFor="provider-asr-region"
+      >
         <Input
           id="provider-asr-region"
           value={region}
@@ -469,78 +470,79 @@ function TencentAsrForm({
           disabled={save.isPending}
           onChange={(event) => setRegion(event.target.value)}
         />
-      </Field>
-      {hasCredentials ? (
-        <Field orientation="horizontal">
-          <Checkbox
-            id="provider-asr-clear"
-            checked={clearSecretKey}
-            onCheckedChange={(checked) => {
-              setClearSecretKey(checked === true);
-              save.reset();
-              test.reset();
-            }}
-            disabled={save.isPending}
-          />
-          <FieldLabel htmlFor="provider-asr-clear">
-            {t("settings.providers.asr.clear")}
-          </FieldLabel>
-        </Field>
-      ) : null}
-
-      {save.isError ? (
-        <Alert variant="destructive" className="w-auto">
-          <AlertDescription>{save.error.message}</AlertDescription>
-        </Alert>
-      ) : null}
-      {save.isSuccess ? (
-        <p role="status" className="text-body text-muted-foreground">
-          {t("settings.providers.asr.savedFeedback")}
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Button type="submit" disabled={!canSave || save.isPending}>
-          {save.isPending ? (
-            <Spinner
-              data-icon="inline-start"
-              aria-label={t("settings.providers.asr.saving")}
+        {hasCredentials ? (
+          <Field orientation="horizontal" className="mt-3">
+            <Checkbox
+              id="provider-asr-clear"
+              checked={clearSecretKey}
+              onCheckedChange={(checked) => {
+                setClearSecretKey(checked === true);
+                save.reset();
+                test.reset();
+              }}
+              disabled={save.isPending}
             />
-          ) : null}
-          {t("settings.providers.asr.save")}
-        </Button>
-        {savedHasCredentials ? (
-          <Button
-            type="button"
-            variant="outline"
-            disabled={test.isPending}
-            onClick={() => test.mutate()}
-          >
-            {test.isPending ? (
+            <FieldLabel htmlFor="provider-asr-clear">
+              {t("settings.providers.asr.clear")}
+            </FieldLabel>
+          </Field>
+        ) : null}
+      </SettingsRow>
+
+      <SettingsActions>
+        {save.isError ? (
+          <Alert variant="destructive" className="mb-3 w-auto">
+            <AlertDescription>{save.error.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        {save.isSuccess ? (
+          <p role="status" className="text-body text-muted-foreground mb-3">
+            {t("settings.providers.asr.savedFeedback")}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" disabled={!canSave || save.isPending}>
+            {save.isPending ? (
               <Spinner
                 data-icon="inline-start"
-                aria-label={t("settings.providers.asr.testing")}
+                aria-label={t("settings.providers.asr.saving")}
               />
             ) : null}
-            {t("settings.providers.asr.test")}
+            {t("settings.providers.asr.save")}
           </Button>
+          {savedHasCredentials ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={test.isPending}
+              onClick={() => test.mutate()}
+            >
+              {test.isPending ? (
+                <Spinner
+                  data-icon="inline-start"
+                  aria-label={t("settings.providers.asr.testing")}
+                />
+              ) : null}
+              {t("settings.providers.asr.test")}
+            </Button>
+          ) : null}
+        </div>
+        {test.isSuccess ? (
+          <p role="status" className="text-body text-muted-foreground mt-3">
+            {t("settings.providers.asr.testSucceeded", {
+              region: test.data.region,
+            })}
+          </p>
         ) : null}
-      </div>
-      {test.isSuccess ? (
-        <p role="status" className="text-body text-muted-foreground">
-          {t("settings.providers.asr.testSucceeded", {
-            region: test.data.region,
-          })}
-        </p>
-      ) : null}
-      {test.isError ? (
-        <Alert variant="destructive" className="w-auto">
-          <AlertDescription>{test.error.message}</AlertDescription>
-        </Alert>
-      ) : null}
-      <FieldDescription>
-        {t("settings.providers.asr.consentNote")}
-      </FieldDescription>
+        {test.isError ? (
+          <Alert variant="destructive" className="mt-3 w-auto">
+            <AlertDescription>{test.error.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        <FieldDescription className="mt-3">
+          {t("settings.providers.asr.consentNote")}
+        </FieldDescription>
+      </SettingsActions>
     </form>
   );
 }

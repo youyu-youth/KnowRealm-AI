@@ -1029,9 +1029,21 @@
   },
   "settings": {
     "title": "设置",
+    "navigation": {
+      "label": "设置分类",
+      "account": "账户",
+      "services": "智能服务",
+      "application": "应用",
+      "dataGroup": "数据",
+      "profile": "个人资料",
+      "ai": "AI 服务",
+      "appearance": "外观与语言",
+      "desktop": "桌面行为",
+      "general": "通用偏好",
+      "data": "数据与存储"
+    },
     "profile": {
       "sectionTitle": "档案",
-      "sectionDescription": "角色与自我介绍会在新建自由对话时注入，让回答贴合你的水平；修改只影响之后的新对话，不追溯历史对话。",
       "roleLegend": "我的角色",
       "role": {
         "STUDENT": "学生",
@@ -1059,8 +1071,9 @@
     },
     "dataDirectory": {
       "sectionTitle": "数据目录",
-      "sectionDescription": "数据库、原始文件、配置与导出物都保存在这里。",
       "pathLabel": "当前位置",
+      "transferLabel": "导入与导出",
+      "transferDescription": "导出完整数据，或在空库中从导出包恢复。",
       "loading": "正在读取数据目录",
       "retry": "重试",
       "open": "打开数据目录",
@@ -1146,6 +1159,8 @@
       "shortcutMissingModifier": "组合需包含至少一个修饰键（Ctrl / Alt / Shift / Win），请重新按下。",
       "shortcutUnsupportedKey": "暂不支持该按键，请换一组组合。",
       "generalTitle": "通用",
+      "enabled": "已开启",
+      "disabled": "已关闭",
       "timezoneLabel": "时区",
       "timezone": {
         "followSystem": "跟随系统",
@@ -1157,7 +1172,6 @@
     },
     "providers": {
       "sectionTitle": "服务与用量",
-      "sectionDescription": "AI 服务与语音转写的密钥以明文保存在本机数据目录（config/providers.json），不会上传到任何 KnowRealm 服务器。",
       "loading": "正在读取供应商配置",
       "retry": "重试",
       "llm": {

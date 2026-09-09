@@ -28,6 +28,7 @@ vi.mock("@/services/tauri/recording", () => ({
 }));
 
 const AVATAR_URL = `${TEST_SIDECAR_URL}/api/profile/avatar`;
+const LIBRARY_STATE_URL = `${TEST_SIDECAR_URL}/api/settings/data-directory/library-state`;
 const PNG_BYTES = new Uint8Array([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3,
 ]);
@@ -43,7 +44,12 @@ afterEach(() => {
 });
 
 describe("侧边栏底部用户区", () => {
-  it("无昵称与头像时显示占位，点击跳设置页档案区", async () => {
+  it("无昵称与头像时显示占位，点击跳设置页个人资料区", async () => {
+    server.use(
+      http.get(LIBRARY_STATE_URL, () =>
+        HttpResponse.json({ empty_library: false }),
+      ),
+    );
     renderAt("/");
 
     const userArea = await screen.findByRole("link", {
@@ -53,7 +59,7 @@ describe("侧边栏底部用户区", () => {
 
     fireEvent.click(userArea);
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "档案" })).toBeVisible(),
+      expect(screen.getByRole("heading", { name: "个人资料" })).toBeVisible(),
     );
     // "学习画像"仍是禁用的未接入导航项，用户区不激活它。
     expect(
@@ -83,7 +89,9 @@ describe("侧边栏底部用户区", () => {
       name: "打开档案设置",
     });
     await waitFor(() => expect(userArea).toHaveTextContent("阿邹"));
-    const sidebar = within(screen.getByRole("complementary"));
+    const sidebar = within(
+      screen.getByRole("complementary", { name: "工作区导航" }),
+    );
     await waitFor(() =>
       expect(sidebar.getByAltText("头像")).toBeInTheDocument(),
     );

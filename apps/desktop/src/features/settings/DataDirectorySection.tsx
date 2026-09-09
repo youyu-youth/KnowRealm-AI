@@ -4,11 +4,15 @@ import { FileDown, FileUp, FolderInput, FolderOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { settingsApi } from "@/features/settings/api/settings";
 import { settingsKeys } from "@/features/settings/api/keys";
+import {
+  SettingsActions,
+  SettingsPanelHeader,
+  SettingsRow,
+} from "@/features/settings/SettingsLayout";
 import { DataDirectoryChangeDialog } from "./DataDirectoryChangeDialog";
 import {
   DataDirectoryExportDialog,
@@ -73,13 +77,11 @@ export function DataDirectorySection() {
   };
 
   return (
-    <div className="border-border max-w-reading mt-8 border-t pt-8">
-      <h2 className="text-section font-section text-ink">
-        {t("settings.dataDirectory.sectionTitle")}
-      </h2>
-      <p className="max-w-reading text-body text-muted-foreground">
-        {t("settings.dataDirectory.sectionDescription")}
-      </p>
+    <section aria-labelledby="settings-data-title" className="max-w-5xl">
+      <SettingsPanelHeader
+        id="settings-data-title"
+        title={t("settings.navigation.data")}
+      />
 
       {dataDirectory.isPending ? (
         <p
@@ -105,78 +107,91 @@ export function DataDirectorySection() {
           </Button>
         </div>
       ) : (
-        <div className="mt-6 flex flex-col gap-4">
-          <Field>
-            <FieldLabel htmlFor="data-directory-path">
-              {t("settings.dataDirectory.pathLabel")}
-            </FieldLabel>
+        <div className="mt-8 flex flex-col gap-7">
+          <SettingsRow
+            label={t("settings.dataDirectory.pathLabel")}
+            htmlFor="data-directory-path"
+          >
             <Input
               id="data-directory-path"
               value={dataDirectory.data}
               title={dataDirectory.data}
               readOnly
             />
-          </Field>
-          {openDirectory.isError ? (
-            <Alert variant="destructive" className="w-auto">
-              <AlertDescription>
-                {errorMessage(openDirectory.error)}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-          {pickError ? (
-            <Alert variant="destructive" className="w-auto">
-              <AlertDescription>{pickError}</AlertDescription>
-            </Alert>
-          ) : null}
-          {importPickError ? (
-            <Alert variant="destructive" className="w-auto">
-              <AlertDescription>{importPickError}</AlertDescription>
-            </Alert>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={openDirectory.isPending}
-              onClick={() => openDirectory.mutate()}
-            >
-              {openDirectory.isPending ? (
-                <Spinner
-                  data-icon="inline-start"
-                  aria-label={t("settings.dataDirectory.opening")}
-                />
-              ) : (
-                <FolderOpen data-icon="inline-start" aria-hidden="true" />
-              )}
-              {t("settings.dataDirectory.open")}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={changeState !== null}
-              onClick={() => void pickTarget()}
-            >
-              <FolderInput data-icon="inline-start" aria-hidden="true" />
-              {t("settings.dataDirectory.change")}
-            </Button>
-            <Button
-              variant="outline"
-              disabled={exportState !== null || changeState !== null}
-              onClick={() => setExportState({ phase: "confirm" })}
-            >
-              <FileDown data-icon="inline-start" aria-hidden="true" />
-              {t("settings.dataDirectory.export")}
-            </Button>
-            {libraryState.data?.empty_library ? (
+            <div className="mt-3 flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                disabled={changeState !== null || importState !== null}
-                onClick={() => void pickImportArchive()}
+                disabled={openDirectory.isPending}
+                onClick={() => openDirectory.mutate()}
               >
-                <FileUp data-icon="inline-start" aria-hidden="true" />
-                {t("settings.dataDirectory.import")}
+                {openDirectory.isPending ? (
+                  <Spinner
+                    data-icon="inline-start"
+                    aria-label={t("settings.dataDirectory.opening")}
+                  />
+                ) : (
+                  <FolderOpen data-icon="inline-start" aria-hidden="true" />
+                )}
+                {t("settings.dataDirectory.open")}
               </Button>
-            ) : null}
-          </div>
+              <Button
+                variant="outline"
+                disabled={changeState !== null}
+                onClick={() => void pickTarget()}
+              >
+                <FolderInput data-icon="inline-start" aria-hidden="true" />
+                {t("settings.dataDirectory.change")}
+              </Button>
+            </div>
+          </SettingsRow>
+          {openDirectory.isError ? (
+            <SettingsActions>
+              <Alert variant="destructive" className="w-auto">
+                <AlertDescription>
+                  {errorMessage(openDirectory.error)}
+                </AlertDescription>
+              </Alert>
+            </SettingsActions>
+          ) : null}
+          {pickError ? (
+            <SettingsActions>
+              <Alert variant="destructive" className="w-auto">
+                <AlertDescription>{pickError}</AlertDescription>
+              </Alert>
+            </SettingsActions>
+          ) : null}
+          {importPickError ? (
+            <SettingsActions>
+              <Alert variant="destructive" className="w-auto">
+                <AlertDescription>{importPickError}</AlertDescription>
+              </Alert>
+            </SettingsActions>
+          ) : null}
+          <SettingsRow
+            label={t("settings.dataDirectory.transferLabel")}
+            description={t("settings.dataDirectory.transferDescription")}
+          >
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                disabled={exportState !== null || changeState !== null}
+                onClick={() => setExportState({ phase: "confirm" })}
+              >
+                <FileDown data-icon="inline-start" aria-hidden="true" />
+                {t("settings.dataDirectory.export")}
+              </Button>
+              {libraryState.data?.empty_library ? (
+                <Button
+                  variant="outline"
+                  disabled={changeState !== null || importState !== null}
+                  onClick={() => void pickImportArchive()}
+                >
+                  <FileUp data-icon="inline-start" aria-hidden="true" />
+                  {t("settings.dataDirectory.import")}
+                </Button>
+              ) : null}
+            </div>
+          </SettingsRow>
         </div>
       )}
 
@@ -204,6 +219,6 @@ export function DataDirectorySection() {
           onDismiss={dismissImport}
         />
       ) : null}
-    </div>
+    </section>
   );
 }
