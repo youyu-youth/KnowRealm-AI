@@ -17,14 +17,20 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.main import create_app
+from app.modules.capture.models import RecordFile
+from app.modules.jobs.models import ProcessingJob
+from app.modules.record.models import Record
 from app.modules.transcript import audio_worker
+from app.modules.transcript.finalizer import finalize_record_if_ready
 from app.modules.transcript.integrations.tencent import (
     TencentAsrApiError,
     TencentAsrClient,
     TencentAsrCredentials,
+    TencentAsrSentence,
     TencentAsrTask,
     TencentAsrTaskStatus,
 )
+from app.modules.transcript.sentences import Sentence, write_sentences_jsonl
 
 TOKEN = "test-launch-token"
 type JsonObject = dict[str, object]
@@ -208,6 +214,26 @@ class ExpiredPollTencentAsrClient(FakeTencentAsrClient):
         if self.expired:
             raise TencentAsrApiError("FailedOperation.NoSuchTask")
         return await super().poll(task_id, credentials)
+
+
+class SegmentedTencentAsrClient(FakeTencentAsrClient):
+    """返回带句级时间戳的替身（F1 时间轴全链路用）。"""
+
+    def __init__(self, sentences: list[TencentAsrSentence]) -> None:
+        super().__init__()
+        self.online = True
+        self._sentences = sentences
+
+    async def poll(
+        self,
+        task_id: str,
+        credentials: TencentAsrCredentials,
+    ) -> TencentAsrTask:
+        return TencentAsrTask(
+            status=TencentAsrTaskStatus.SUCCEEDED,
+            text="\n".join(sentence.text for sentence in self._sentences),
+            sentences=tuple(self._sentences),
+        )
 
 
 def write_asr_prerequisites(data_dir: Path) -> None:
@@ -771,6 +797,345 @@ async def test_delete_during_asr_poll_rejects_late_text_and_cleans_cache(tmp_pat
             pytest.fail("删除后的迟到 ASR 结果遗留了 cache")
         assert not (data_dir / "cache" / "sources" / record_id).exists()
         assert (await client.get(f"/api/records/{record_id}/transcript")).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_transcription_publishes_timestamped_segments(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    write_asr_prerequisites(data_dir)
+    fake_asr = SegmentedTencentAsrClient(
+        [
+            TencentAsrSentence(text="今天讲 AOF 持久化。", start_ms=0, end_ms=1500),
+            TencentAsrSentence(text="先看写回策略。", start_ms=1500, end_ms=3000),
+        ]
+    )
+    async with running_audio_app(data_dir, asr_client=fake_asr) as (_app, client):
+        accepted = await client.post(
+            "/api/audio-imports",
+            files={"file": ("lesson.wav", wav_bytes(seconds=1), "audio/wav")},
+        )
+        record_id = accepted.json()["record_id"]
+        for _ in range(250):
+            transcript = (await client.get(f"/api/records/{record_id}/transcript")).json()
+            if transcript["status"] == "READY":
+                break
+            await asyncio.sleep(0.02)
+        else:
+            pytest.fail("ASR 未发布 Transcript")
+
+        segments = (await client.get(f"/api/records/{record_id}/transcript/segments")).json()
+
+    assert transcript["transcript"]["content"] == "今天讲 AOF 持久化。\n先看写回策略。"
+    assert [segment["sequence_no"] for segment in segments] == [0, 1]
+    assert [segment["content"] for segment in segments] == ["今天讲 AOF 持久化。", "先看写回策略。"]
+    assert [segment["file_start_ms"] for segment in segments] == [0, 1500]
+    assert [segment["file_end_ms"] for segment in segments] == [1500, 3000]
+    # 单文件：课堂拼接时间轴起点与文件内时间轴一致。
+    assert [segment["record_start_ms"] for segment in segments] == [0, 1500]
+    assert [segment["record_end_ms"] for segment in segments] == [1500, 3000]
+    assert all(segment["speaker"] is None for segment in segments)
+
+
+@pytest.mark.anyio
+async def test_segments_endpoint_empty_for_note_and_404_for_missing_record(
+    tmp_path: Path,
+) -> None:
+    async with running_audio_app(tmp_path / "KnowRealm") as (_app, client):
+        missing = await client.get(
+            "/api/records/c1000000-0000-4000-8000-000000000099/transcript/segments"
+        )
+        created = await client.post(
+            "/api/text-captures",
+            json={"capture_type": "QUICK_NOTE", "content": "闪念一条"},
+        )
+        assert created.status_code == 201
+        record_id = created.json()["record_id"]
+        empty = await client.get(f"/api/records/{record_id}/transcript/segments")
+
+    assert missing.status_code == 404
+    assert missing.json()["code"] == "RECORD_NOT_FOUND"
+    assert empty.status_code == 200
+    assert empty.json() == []
+
+
+@pytest.mark.anyio
+async def test_multi_file_timeline_accumulates_prior_durations(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_audio_app(data_dir) as (app, client):
+        del client
+        async with app.state.session_factory() as session, session.begin():
+            record = Record(
+                course_id=None,
+                capture_type="RECORDING",
+                title="双段录音",
+                status="CONTENT_PROCESSING",
+                duration_ms=0,
+            )
+            session.add(record)
+            await session.flush()
+            record_id = record.id
+            for sequence_no, (duration_ms, sentences) in enumerate(
+                (
+                    (
+                        60_000,
+                        [Sentence("第一段句一", 0, 1_000), Sentence("第一段句二", 5_000, 6_000)],
+                    ),
+                    (30_000, [Sentence("第二段句一", 0, 500)]),
+                )
+            ):
+                record_file = RecordFile(
+                    record_id=record_id,
+                    file_type="AUDIO",
+                    source_type="RECORDED",
+                    file_path=f"files/{record_id}/{sequence_no}.ogg",
+                    original_name=f"{sequence_no}.ogg",
+                    mime_type="audio/ogg",
+                    file_size=1,
+                    duration_ms=duration_ms,
+                    sequence_no=sequence_no,
+                    content_hash="hash",
+                )
+                session.add(record_file)
+                await session.flush()
+                job = ProcessingJob(
+                    record_id=record_id,
+                    job_type="ASR",
+                    status="SUCCEEDED",
+                    progress=1,
+                    input_json=json.dumps(
+                        {"record_file_id": record_file.id, "chunks": [], "region": "ap-shanghai"}
+                    ),
+                    finished_at=record.updated_at,
+                )
+                session.add(job)
+                await session.flush()
+                source_text = "\n".join(sentence.text for sentence in sentences)
+                source_dir = data_dir / "cache" / "sources" / record_id
+                source_dir.mkdir(parents=True, exist_ok=True)
+                (source_dir / f"{job.id}.txt").write_text(source_text, encoding="utf-8")
+                write_sentences_jsonl(source_dir / f"{job.id}.jsonl", sentences)
+                job.result_json = json.dumps(
+                    {
+                        "source_text_path": (source_dir / f"{job.id}.txt")
+                        .relative_to(data_dir)
+                        .as_posix(),
+                        "source_sentences_path": (source_dir / f"{job.id}.jsonl")
+                        .relative_to(data_dir)
+                        .as_posix(),
+                    }
+                )
+
+        finalized = await finalize_record_if_ready(app.state.session_factory, data_dir, record_id)
+        assert finalized
+        async with app.state.session_factory() as session:
+            rows = (
+                await session.execute(
+                    text(
+                        "SELECT sequence_no, content, file_start_ms, file_end_ms, "
+                        "record_start_ms, record_end_ms FROM transcript_segments "
+                        "WHERE record_id=:rid ORDER BY sequence_no"
+                    ),
+                    {"rid": record_id},
+                )
+            ).all()
+
+    assert [row.content for row in rows] == ["第一段句一", "第一段句二", "第二段句一"]
+    assert [row.sequence_no for row in rows] == [0, 1, 2]
+    # 课堂拼接时间轴：第二文件句子叠加前序 60000ms。
+    assert [row.record_start_ms for row in rows] == [0, 5_000, 60_000]
+    assert [row.record_end_ms for row in rows] == [1_000, 6_000, 60_500]
+    assert [row.file_start_ms for row in rows] == [0, 5_000, 0]
+
+
+@pytest.mark.anyio
+async def test_inflight_legacy_txt_checkpoint_degrades_to_null_timestamps(
+    tmp_path: Path,
+) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    write_asr_prerequisites(data_dir)
+    offline = FakeTencentAsrClient()
+    async with running_audio_app(data_dir, asr_client=offline) as (app, client):
+        accepted = await client.post(
+            "/api/audio-imports",
+            files={"file": ("lesson.wav", wav_bytes(seconds=1), "audio/wav")},
+        )
+        record_id = accepted.json()["record_id"]
+        asr_job_id = accepted.json()["asr_job_id"]
+        for _ in range(250):
+            jobs = (await client.get(f"/api/records/{record_id}/jobs")).json()
+            if jobs["jobs"][1]["waiting_reason"] == "OFFLINE":
+                break
+            await asyncio.sleep(0.02)
+        else:
+            pytest.fail("ASR 未进入离线等待态")
+
+        # 复刻升级瞬间的旧格式 checkpoint：chunk 已按旧版纯 txt 落盘。
+        async with app.state.session_factory() as session:
+            file_id = await session.scalar(
+                text("SELECT id FROM record_files WHERE record_id=:rid"), {"rid": record_id}
+            )
+        legacy_txt = (
+            data_dir / "cache" / "audio" / record_id / file_id / "texts" / "chunk-00000.txt"
+        )
+        legacy_txt.parent.mkdir(parents=True, exist_ok=True)
+        legacy_txt.write_text("旧版本落盘的句子。\n第二句无时间戳。", encoding="utf-8")
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE processing_jobs SET status='RUNNING', attempts=1, waiting_reason=NULL, "
+                    "result_json=:result WHERE id=:id"
+                ),
+                {
+                    "id": asr_job_id,
+                    "result": json.dumps(
+                        {
+                            "cursor": 0,
+                            "chunks": [
+                                {
+                                    "index": 0,
+                                    "status": "SUCCEEDED",
+                                    "task_id": "task-legacy",
+                                    "text_path": legacy_txt.relative_to(data_dir).as_posix(),
+                                }
+                            ],
+                        }
+                    ),
+                },
+            )
+
+    resumed = FakeTencentAsrClient()
+    resumed.online = True
+    async with running_audio_app(data_dir, asr_client=resumed) as (_app, client):
+        for _ in range(250):
+            transcript = (await client.get(f"/api/records/{record_id}/transcript")).json()
+            if transcript["status"] == "READY":
+                break
+            await asyncio.sleep(0.02)
+        else:
+            pytest.fail("升级在途任务未降级完成")
+        segments = (await client.get(f"/api/records/{record_id}/transcript/segments")).json()
+
+    # 不重跑、不报错、不重复腾讯计费。
+    assert resumed.submitted == []
+    assert transcript["transcript"]["content"] == "旧版本落盘的句子。\n第二句无时间戳。"
+    assert [segment["content"] for segment in segments] == [
+        "旧版本落盘的句子。",
+        "第二句无时间戳。",
+    ]
+    assert all(
+        segment[column] is None
+        for segment in segments
+        for column in ("record_start_ms", "record_end_ms", "file_start_ms", "file_end_ms")
+    )
+
+
+@pytest.mark.anyio
+async def test_legacy_succeeded_job_finalizes_with_null_timestamps(tmp_path: Path) -> None:
+    """升级前已 SUCCEEDED（result_json 仅纯 txt 路径）的任务重启后降级定稿。"""
+    data_dir = tmp_path / "KnowRealm"
+    async with running_audio_app(data_dir) as (app, client):
+        accepted = await client.post(
+            "/api/audio-imports",
+            files={"file": ("lesson.wav", wav_bytes(seconds=1), "audio/wav")},
+        )
+        record_id = accepted.json()["record_id"]
+        asr_job_id = accepted.json()["asr_job_id"]
+        for _ in range(250):
+            jobs = (await client.get(f"/api/records/{record_id}/jobs")).json()
+            if jobs["jobs"][0]["status"] == "SUCCEEDED":
+                break
+            await asyncio.sleep(0.02)
+        else:
+            pytest.fail("转码未完成")
+
+        # 复刻升级前已成功的旧版 job：result_json 仅 source_text_path（纯 txt 中转）。
+        source_dir = data_dir / "cache" / "sources" / record_id
+        source_dir.mkdir(parents=True, exist_ok=True)
+        legacy_content = "升级前完成的句子。\n第二句。"
+        (source_dir / f"{asr_job_id}.txt").write_text(legacy_content, encoding="utf-8")
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE processing_jobs SET status='SUCCEEDED', progress=1, "
+                    "finished_at='2026-09-09T00:00:00.000000Z', result_json=:result "
+                    "WHERE id=:id"
+                ),
+                {
+                    "id": asr_job_id,
+                    "result": json.dumps(
+                        {
+                            "cursor": 1,
+                            "chunks": [],
+                            "source_text_path": (source_dir / f"{asr_job_id}.txt")
+                            .relative_to(data_dir)
+                            .as_posix(),
+                        }
+                    ),
+                },
+            )
+
+        finalized = await finalize_record_if_ready(app.state.session_factory, data_dir, record_id)
+        assert finalized
+        transcript = (await client.get(f"/api/records/{record_id}/transcript")).json()
+        segments = (await client.get(f"/api/records/{record_id}/transcript/segments")).json()
+
+    assert transcript["status"] == "READY"
+    assert transcript["transcript"]["content"] == "升级前完成的句子。\n第二句。"
+    assert [segment["content"] for segment in segments] == ["升级前完成的句子。", "第二句。"]
+    assert all(
+        segment[column] is None
+        for segment in segments
+        for column in ("record_start_ms", "record_end_ms", "file_start_ms", "file_end_ms")
+    )
+
+
+@pytest.mark.anyio
+async def test_segments_endpoint_404_for_soft_deleted_record(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    async with running_audio_app(data_dir) as (_app, client):
+        created = await client.post(
+            "/api/text-captures",
+            json={"capture_type": "QUICK_NOTE", "content": "闪念一条"},
+        )
+        record_id = created.json()["record_id"]
+        assert (await client.delete(f"/api/records/{record_id}")).status_code == 204
+        response = await client.get(f"/api/records/{record_id}/transcript/segments")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "RECORD_NOT_FOUND"
+
+
+@pytest.mark.anyio
+async def test_tencent_client_parses_sentence_timestamps_from_result_detail() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            200,
+            json={
+                "Response": {
+                    "Data": {
+                        "Status": 2,
+                        "ResultDetail": [
+                            {"FinalSentence": "第一句。", "StartMs": 20, "EndMs": 2380},
+                            {"FinalSentence": "第二句缺时间戳。"},
+                        ],
+                    },
+                    "RequestId": "fixture",
+                }
+            },
+        )
+
+    client_under_test = TencentAsrClient(transport=httpx.MockTransport(handler))
+    task = await client_under_test.poll(
+        "1001", TencentAsrCredentials(secret_id="id", secret_key="key", region="ap-shanghai")
+    )
+
+    assert task.status == TencentAsrTaskStatus.SUCCEEDED
+    assert task.text == "第一句。\n第二句缺时间戳。"
+    assert task.sentences == (
+        TencentAsrSentence(text="第一句。", start_ms=20, end_ms=2380),
+        TencentAsrSentence(text="第二句缺时间戳。", start_ms=None, end_ms=None),
+    )
 
 
 @pytest.fixture

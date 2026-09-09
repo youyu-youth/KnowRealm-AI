@@ -1030,6 +1030,23 @@ export interface paths {
         patch: operations["update_record_transcript_api_records__record_id__transcript_patch"];
         trace?: never;
     };
+    "/api/records/{record_id}/transcript/segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Record Transcript Segments */
+        get: operations["get_record_transcript_segments_api_records__record_id__transcript_segments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/upgrade": {
         parameters: {
             query?: never;
@@ -2880,6 +2897,46 @@ export interface components {
         TranscriptReadOut: {
             status: components["schemas"]["TranscriptAvailability"];
             transcript: components["schemas"]["TranscriptOut"] | null;
+        };
+        /**
+         * TranscriptSegmentOut
+         * @description 句级转写分片：时间戳为 NULL 表示无时间轴来源（全库唯一退化态）。
+         */
+        TranscriptSegmentOut: {
+            /** Content */
+            content: string;
+            /**
+             * File End Ms
+             * @description 文件内时间轴终点
+             */
+            file_end_ms: number | null;
+            /**
+             * File Start Ms
+             * @description 文件内时间轴起点
+             */
+            file_start_ms: number | null;
+            /** Id */
+            id: string;
+            /**
+             * Record End Ms
+             * @description 课堂拼接时间轴终点
+             */
+            record_end_ms: number | null;
+            /**
+             * Record Start Ms
+             * @description 课堂拼接时间轴起点（前序文件时长累加）；无时间轴来源为 null
+             */
+            record_start_ms: number | null;
+            /**
+             * Sequence No
+             * @description 课堂全局连续序号（跨文件递增）
+             */
+            sequence_no: number;
+            /**
+             * Speaker
+             * @description 说话人；恒为 null（说话人分离预留）
+             */
+            speaker: string | null;
         };
         /** TranscriptUpdateRequest */
         TranscriptUpdateRequest: {
@@ -8282,6 +8339,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TranscriptOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_record_transcript_segments_api_records__record_id__transcript_segments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptSegmentOut"][];
                 };
             };
             /** @description Forbidden */

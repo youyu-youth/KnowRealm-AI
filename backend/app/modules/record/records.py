@@ -24,6 +24,7 @@ from app.modules.transcript.schemas import (
     TranscriptAvailability,
     TranscriptOut,
     TranscriptReadOut,
+    TranscriptSegmentOut,
     TranscriptUpdateRequest,
 )
 from app.shared.deps import get_db, require_launch_token
@@ -98,6 +99,19 @@ async def get_record_transcript(
         status=TranscriptAvailability.READY,
         transcript=TranscriptOut.model_validate(transcript),
     )
+
+
+@router.get("/records/{record_id}/transcript/segments", response_model=list[TranscriptSegmentOut])
+async def get_record_transcript_segments(
+    record_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> list[TranscriptSegmentOut]:
+    if await RecordService.get(session, str(record_id)) is None:
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
+    segments = await RecordService.get_transcript_segments(session, str(record_id))
+    return [TranscriptSegmentOut.model_validate(segment) for segment in segments]
 
 
 @router.patch("/records/{record_id}/transcript", response_model=TranscriptOut)

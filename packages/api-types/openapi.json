@@ -4449,6 +4449,96 @@
         "title": "TranscriptReadOut",
         "type": "object"
       },
+      "TranscriptSegmentOut": {
+        "description": "句级转写分片：时间戳为 NULL 表示无时间轴来源（全库唯一退化态）。",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "file_end_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文件内时间轴终点",
+            "title": "File End Ms"
+          },
+          "file_start_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文件内时间轴起点",
+            "title": "File Start Ms"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "record_end_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "课堂拼接时间轴终点",
+            "title": "Record End Ms"
+          },
+          "record_start_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "课堂拼接时间轴起点（前序文件时长累加）；无时间轴来源为 null",
+            "title": "Record Start Ms"
+          },
+          "sequence_no": {
+            "description": "课堂全局连续序号（跨文件递增）",
+            "title": "Sequence No",
+            "type": "integer"
+          },
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "说话人；恒为 null（说话人分离预留）",
+            "title": "Speaker"
+          }
+        },
+        "required": [
+          "id",
+          "sequence_no",
+          "record_start_ms",
+          "record_end_ms",
+          "file_start_ms",
+          "file_end_ms",
+          "speaker",
+          "content"
+        ],
+        "title": "TranscriptSegmentOut",
+        "type": "object"
+      },
       "TranscriptUpdateRequest": {
         "properties": {
           "content": {
@@ -12471,6 +12561,99 @@
           }
         },
         "summary": "Update Record Transcript",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/api/records/{record_id}/transcript/segments": {
+      "get": {
+        "operationId": "get_record_transcript_segments_api_records__record_id__transcript_segments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TranscriptSegmentOut"
+                  },
+                  "title": "Response Get Record Transcript Segments Api Records  Record Id  Transcript Segments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Record Transcript Segments",
         "tags": [
           "records"
         ]

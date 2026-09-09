@@ -15,9 +15,92 @@ from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.search.service import SearchService
-from app.modules.transcript.models import Transcript
+from app.modules.transcript.models import Transcript, TranscriptSegment
+from app.modules.transcript.sentences import (
+    Sentence,
+    content_hash,
+    read_sentences_jsonl,
+    sentences_from_plain_text,
+)
 
 _FINALIZE_LOCK = asyncio.Lock()
+
+
+async def _read_source(
+    data_dir: Path,
+    result_data: dict[str, object],
+    *,
+    is_audio: bool,
+) -> tuple[str, list[Sentence]] | None:
+    """读单文件 source 中转，返回 (全文, 句子流)；不可用返回 None。
+
+    句子流三来源：jsonl（本票起）、旧 txt 行拆降级（音频 in-flight，无时间戳）、
+    文档文件恒空（文档分片随票 03 落地）。
+    """
+    cache_root = (data_dir / "cache").resolve()
+    raw_path = result_data.get("source_text_path")
+    if not isinstance(raw_path, str):
+        return None
+    path = (data_dir / Path(*PurePosixPath(raw_path).parts)).resolve()
+    if not path.is_relative_to(cache_root):
+        return None
+    try:
+        text = (await asyncio.to_thread(path.read_text, encoding="utf-8")).strip()
+    except OSError:
+        return None
+    if not text:
+        return None
+    sentences: list[Sentence]
+    raw_sentences_path = result_data.get("source_sentences_path")
+    if isinstance(raw_sentences_path, str):
+        sentences_path = (
+            data_dir / Path(*PurePosixPath(raw_sentences_path).parts)
+        ).resolve()
+        if not sentences_path.is_relative_to(cache_root):
+            return None
+        try:
+            sentences = await asyncio.to_thread(read_sentences_jsonl, sentences_path)
+        except OSError:
+            return None
+    else:
+        sentences = sentences_from_plain_text(text) if is_audio else []
+    return text, sentences
+
+
+def _build_segments(
+    transcript_id: str,
+    record_id: str,
+    files_sentences: list[tuple[RecordFile, list[Sentence]]],
+) -> list[TranscriptSegment]:
+    """按文件 sequence_no 顺序建全记录连续分片；record_start_ms 为课堂拼接
+    时间轴（前序文件 duration_ms 累加，非真实墙钟）；无时间戳句子四列全 NULL。"""
+    segments: list[TranscriptSegment] = []
+    record_offset_ms = 0
+    for record_file, sentences in files_sentences:
+        for sentence in sentences:
+            if not sentence.text.strip():
+                continue
+            has_timeline = sentence.start_ms is not None and sentence.end_ms is not None
+            file_start = sentence.start_ms if has_timeline else None
+            file_end = sentence.end_ms if has_timeline else None
+            segments.append(
+                TranscriptSegment(
+                    transcript_id=transcript_id,
+                    record_id=record_id,
+                    file_id=record_file.id,
+                    sequence_no=len(segments),
+                    record_start_ms=record_offset_ms + file_start
+                    if file_start is not None
+                    else None,
+                    record_end_ms=record_offset_ms + file_end if file_end is not None else None,
+                    file_start_ms=file_start,
+                    file_end_ms=file_end,
+                    content=sentence.text,
+                    content_hash=content_hash(sentence.text),
+                )
+            )
+        record_offset_ms += record_file.duration_ms or 0
+    return segments
 
 
 async def finalize_record_if_ready(
@@ -84,7 +167,7 @@ async def _finalize_record_if_ready(
         jobs_by_file[record_file_id] = job
 
     texts: list[str] = []
-    cache_root = (data_dir / "cache").resolve()
+    files_sentences: list[tuple[RecordFile, list[Sentence]]] = []
     for record_file in files:
         job = jobs_by_file.get(record_file.id)
         result_data = (
@@ -92,19 +175,15 @@ async def _finalize_record_if_ready(
             if job is not None and job.result_json
             else {}
         )
-        raw_path = result_data.get("source_text_path")
-        if not isinstance(raw_path, str):
+        source = await _read_source(
+            data_dir,
+            result_data,
+            is_audio=record_file.file_type == RecordFileType.AUDIO,
+        )
+        if source is None:
             return False
-        path = (data_dir / Path(*PurePosixPath(raw_path).parts)).resolve()
-        if not path.is_relative_to(cache_root):
-            return False
-        try:
-            text = (await asyncio.to_thread(path.read_text, encoding="utf-8")).strip()
-        except OSError:
-            return False
-        if not text:
-            return False
-        texts.append(text)
+        texts.append(source[0])
+        files_sentences.append((record_file, source[1]))
 
     now = utcnow()
     async with session_factory() as session, session.begin():
@@ -131,20 +210,23 @@ async def _finalize_record_if_ready(
             await session.scalars(select(Transcript).where(Transcript.record_id == record_id))
         ).one_or_none()
         if transcript is None:
-            session.add(
-                Transcript(
-                    record_id=record_id,
-                    language=(
-                        "und"
-                        if any(file.file_type == RecordFileType.DOCUMENT for file in files)
-                        else "zh-CN"
-                    ),
-                    content="\n\n".join(texts),
-                    source_version=1,
-                    edited_by_user=False,
-                    created_at=now,
-                    updated_at=now,
-                )
+            new_transcript = Transcript(
+                record_id=record_id,
+                language=(
+                    "und"
+                    if any(file.file_type == RecordFileType.DOCUMENT for file in files)
+                    else "zh-CN"
+                ),
+                content="\n\n".join(texts),
+                source_version=1,
+                edited_by_user=False,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(new_transcript)
+            await session.flush()
+            session.add_all(
+                _build_segments(new_transcript.id, record_id, files_sentences)
             )
         record.status = RecordStatus.SUMMARY_PENDING
         record.updated_at = now
@@ -200,6 +282,7 @@ async def complete_source_job(
             job.id == job_id or job.status == ProcessingJobStatus.SUCCEEDED for job in jobs
         )
         texts: list[str] = []
+        files_sentences: list[tuple[RecordFile, list[Sentence]]] = []
         if ready:
             jobs_by_file: dict[str, ProcessingJob] = {}
             for job in jobs:
@@ -209,7 +292,6 @@ async def complete_source_job(
                     ready = False
                     break
                 jobs_by_file[record_file_id] = job
-            cache_root = (data_dir / "cache").resolve()
             for record_file in files if ready else ():
                 job = jobs_by_file.get(record_file.id)
                 raw_result = (
@@ -220,23 +302,16 @@ async def complete_source_job(
                     else None
                 )
                 result_data = cast(dict[str, object], json.loads(raw_result)) if raw_result else {}
-                raw_path = result_data.get("source_text_path")
-                if not isinstance(raw_path, str):
+                source = await _read_source(
+                    data_dir,
+                    result_data,
+                    is_audio=record_file.file_type == RecordFileType.AUDIO,
+                )
+                if source is None:
                     ready = False
                     break
-                path = (data_dir / Path(*PurePosixPath(raw_path).parts)).resolve()
-                if not path.is_relative_to(cache_root):
-                    ready = False
-                    break
-                try:
-                    text = (await asyncio.to_thread(path.read_text, encoding="utf-8")).strip()
-                except OSError:
-                    ready = False
-                    break
-                if not text:
-                    ready = False
-                    break
-                texts.append(text)
+                texts.append(source[0])
+                files_sentences.append((record_file, source[1]))
 
         now = utcnow()
         finalized = False
@@ -259,21 +334,22 @@ async def complete_source_job(
             job.finished_at = now
             job.updated_at = now
             if ready:
-                session.add(
-                    Transcript(
-                        record_id=record_id,
-                        language=(
-                            "und"
-                            if any(file.file_type == RecordFileType.DOCUMENT for file in files)
-                            else "zh-CN"
-                        ),
-                        content="\n\n".join(texts),
-                        source_version=1,
-                        edited_by_user=False,
-                        created_at=now,
-                        updated_at=now,
-                    )
+                new_transcript = Transcript(
+                    record_id=record_id,
+                    language=(
+                        "und"
+                        if any(file.file_type == RecordFileType.DOCUMENT for file in files)
+                        else "zh-CN"
+                    ),
+                    content="\n\n".join(texts),
+                    source_version=1,
+                    edited_by_user=False,
+                    created_at=now,
+                    updated_at=now,
                 )
+                session.add(new_transcript)
+                await session.flush()
+                session.add_all(_build_segments(new_transcript.id, record_id, files_sentences))
                 record.status = RecordStatus.SUMMARY_PENDING
                 record.updated_at = now
                 finalized = True

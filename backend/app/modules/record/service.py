@@ -12,7 +12,7 @@ from app.modules.search.service import SearchService
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.todo.models import TodoItem
-from app.modules.transcript.models import Transcript
+from app.modules.transcript.models import Transcript, TranscriptSegment
 from app.modules.transcript.schemas import TranscriptUpdateRequest
 from app.shared.errors import CodedHTTPException
 
@@ -70,6 +70,24 @@ class RecordService:
             Transcript.deleted_at.is_(None),
         )
         return (await session.scalars(statement)).one_or_none()
+
+    @staticmethod
+    async def get_transcript_segments(
+        session: AsyncSession, record_id: str
+    ) -> list[TranscriptSegment]:
+        """当前生效转写（未软删）的分片；转写不存在或已删时返回空。"""
+        transcript = await RecordService.get_transcript(session, record_id)
+        if transcript is None:
+            return []
+        return list(
+            (
+                await session.scalars(
+                    select(TranscriptSegment)
+                    .where(TranscriptSegment.record_id == record_id)
+                    .order_by(TranscriptSegment.sequence_no)
+                )
+            ).all()
+        )
 
     @staticmethod
     async def soft_delete(session: AsyncSession, record_id: str) -> bool:

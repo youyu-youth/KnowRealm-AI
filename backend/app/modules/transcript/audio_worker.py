@@ -49,6 +49,12 @@ from app.modules.transcript.integrations.tencent import (
     TencentAsrTaskStatus,
 )
 from app.modules.transcript.schemas import AsrChunkStatus
+from app.modules.transcript.sentences import (
+    Sentence,
+    read_sentences_jsonl,
+    sentences_from_plain_text,
+    write_sentences_jsonl,
+)
 from app.shared.events import RecordInvalidationNotifier
 
 MAX_CHUNK_BYTES = 5 * 1024 * 1024
@@ -572,10 +578,20 @@ async def _execute_asr(
                     "腾讯云识别失败",
                 )
                 return
-            text_path = path.parent.parent / "texts" / f"chunk-{index:05d}.txt"
+            sentences_path = path.parent.parent / "texts" / f"chunk-{index:05d}.jsonl"
             try:
-                text_path.parent.mkdir(exist_ok=True)
-                await asyncio.to_thread(text_path.write_text, task.text, encoding="utf-8")
+                sentences_path.parent.mkdir(exist_ok=True)
+                # 兜底：替身/异常返回只有纯文本时按行降级为无时间戳句子。真实客户端
+                # text 与 sentences 同源 ResultDetail，二者同时为空或同时非空。
+                sentences = (
+                    [
+                        Sentence(text=item.text, start_ms=item.start_ms, end_ms=item.end_ms)
+                        for item in task.sentences
+                    ]
+                    if task.sentences
+                    else sentences_from_plain_text(task.text)
+                )
+                await asyncio.to_thread(write_sentences_jsonl, sentences_path, sentences)
             except OSError:
                 if not await _asr_can_continue(session_factory, job_id, record_id):
                     return
@@ -583,7 +599,7 @@ async def _execute_asr(
             state.update(
                 {
                     "status": AsrChunkStatus.SUCCEEDED,
-                    "text_path": text_path.relative_to(data_dir).as_posix(),
+                    "sentences_path": sentences_path.relative_to(data_dir).as_posix(),
                 }
             )
             await _save_checkpoint(
@@ -661,15 +677,29 @@ async def _finalize_asr(
     by_index: dict[int, dict[str, object]],
 ) -> None:
     texts: list[str] = []
+    sentences: list[Sentence] = []
     for index in sorted(by_index):
-        raw_path = by_index[index].get("text_path")
-        if not isinstance(raw_path, str):
-            return
-        texts.append(
-            (
-                await asyncio.to_thread(_cache_path(data_dir, raw_path).read_text, encoding="utf-8")
+        state = by_index[index]
+        raw_sentences_path = state.get("sentences_path")
+        raw_text_path = state.get("text_path")
+        if isinstance(raw_sentences_path, str):
+            chunk_sentences = await asyncio.to_thread(
+                read_sentences_jsonl, _cache_path(data_dir, raw_sentences_path)
+            )
+            chunk_text = "\n".join(item.text for item in chunk_sentences).strip()
+        elif isinstance(raw_text_path, str):
+            # 升级瞬间的旧 checkpoint（纯 txt 缓存）：按行降级为无时间戳句子，
+            # 不重跑、不报错、不重复腾讯计费。
+            chunk_text = (
+                await asyncio.to_thread(
+                    _cache_path(data_dir, raw_text_path).read_text, encoding="utf-8"
+                )
             ).strip()
-        )
+            chunk_sentences = sentences_from_plain_text(chunk_text)
+        else:
+            return
+        texts.append(chunk_text)
+        sentences.extend(chunk_sentences)
     content = "\n".join(text for text in texts if text).strip()
     if not content:
         await _fail_asr(
@@ -687,7 +717,9 @@ async def _finalize_asr(
         return
     source_dir.mkdir(parents=True, exist_ok=True)
     source_path = source_dir / f"{job_id}.txt"
+    source_sentences_path = source_dir / f"{job_id}.jsonl"
     await asyncio.to_thread(source_path.write_text, content, encoding="utf-8")
+    await asyncio.to_thread(write_sentences_jsonl, source_sentences_path, sentences)
     accepted = await complete_source_job(
         session_factory,
         data_dir,
@@ -705,6 +737,7 @@ async def _finalize_asr(
                     for index in sorted(by_index)
                 ],
                 "source_text_path": source_path.relative_to(data_dir).as_posix(),
+                "source_sentences_path": source_sentences_path.relative_to(data_dir).as_posix(),
             },
             separators=(",", ":"),
         ),

@@ -32,9 +32,19 @@ class TencentAsrTaskStatus(StrEnum):
 
 
 @dataclass(frozen=True)
+class TencentAsrSentence:
+    """ResultDetail 句粒度结果：FinalSentence + 文件内毫秒起止时间。"""
+
+    text: str
+    start_ms: int | None
+    end_ms: int | None
+
+
+@dataclass(frozen=True)
 class TencentAsrTask:
     status: TencentAsrTaskStatus
     text: str = ""
+    sentences: tuple[TencentAsrSentence, ...] = ()
     error_code: str | None = None
 
 
@@ -123,17 +133,26 @@ class TencentAsrClient:
             result_detail = task.get("ResultDetail")
             if not isinstance(result_detail, list):
                 raise TencentAsrApiError("INVALID_STATUS_RESPONSE")
-            sentences: list[str] = []
+            sentences: list[TencentAsrSentence] = []
             for item in cast(list[object], result_detail):
                 if not isinstance(item, dict):
                     raise TencentAsrApiError("INVALID_STATUS_RESPONSE")
                 sentence = cast(dict[str, object], item).get("FinalSentence")
                 if not isinstance(sentence, str):
                     raise TencentAsrApiError("INVALID_STATUS_RESPONSE")
-                sentences.append(sentence)
+                start_ms = cast(dict[str, object], item).get("StartMs")
+                end_ms = cast(dict[str, object], item).get("EndMs")
+                sentences.append(
+                    TencentAsrSentence(
+                        text=sentence,
+                        start_ms=start_ms if isinstance(start_ms, int) else None,
+                        end_ms=end_ms if isinstance(end_ms, int) else None,
+                    )
+                )
             return TencentAsrTask(
                 status=TencentAsrTaskStatus.SUCCEEDED,
-                text="\n".join(sentences),
+                text="\n".join(sentence.text for sentence in sentences),
+                sentences=tuple(sentences),
             )
         error = task.get("ErrorMsg")
         return TencentAsrTask(
