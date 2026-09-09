@@ -3519,6 +3519,140 @@
         "title": "SearchRecordItem",
         "type": "object"
       },
+      "SourceAnchorOut": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "course_material_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Material Id"
+          },
+          "document_segment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Segment Id"
+          },
+          "end_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Offset"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "page_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page No"
+          },
+          "record_file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record File Id"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "关联学习记录 id；非记录类来源为 null",
+            "title": "Record Id"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceAnchorType"
+          },
+          "start_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Offset"
+          },
+          "transcript_segment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcript Segment Id"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "source_type",
+          "source_id",
+          "record_id",
+          "record_file_id",
+          "course_material_id",
+          "transcript_segment_id",
+          "document_segment_id",
+          "start_offset",
+          "end_offset",
+          "page_no"
+        ],
+        "title": "SourceAnchorOut",
+        "type": "object"
+      },
+      "SourceAnchorType": {
+        "enum": [
+          "AUDIO_SEGMENT",
+          "DOCUMENT_SEGMENT",
+          "USER_NOTE",
+          "CHAT_MESSAGE"
+        ],
+        "title": "SourceAnchorType",
+        "type": "string"
+      },
       "SummaryAction": {
         "enum": [
           "NONE",
@@ -10624,6 +10758,99 @@
         "summary": "List Review Materials",
         "tags": [
           "review-materials"
+        ]
+      }
+    },
+    "/api/records/{record_id}/source-anchors": {
+      "get": {
+        "operationId": "list_record_source_anchors_api_records__record_id__source_anchors_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourceAnchorOut"
+                  },
+                  "title": "Response List Record Source Anchors Api Records  Record Id  Source Anchors Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Record Source Anchors",
+        "tags": [
+          "source-anchors"
         ]
       }
     },

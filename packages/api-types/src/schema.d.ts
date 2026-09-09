@@ -789,6 +789,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/source-anchors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Record Source Anchors */
+        get: operations["list_record_source_anchors_api_records__record_id__source_anchors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/summaries": {
         parameters: {
             query?: never;
@@ -2519,6 +2536,40 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /** SourceAnchorOut */
+        SourceAnchorOut: {
+            /** Course Id */
+            course_id: string;
+            /** Course Material Id */
+            course_material_id: string | null;
+            /** Document Segment Id */
+            document_segment_id: string | null;
+            /** End Offset */
+            end_offset: number | null;
+            /** Id */
+            id: string;
+            /** Page No */
+            page_no: number | null;
+            /** Record File Id */
+            record_file_id: string | null;
+            /**
+             * Record Id
+             * @description 关联学习记录 id；非记录类来源为 null
+             */
+            record_id: string | null;
+            /** Source Id */
+            source_id: string;
+            source_type: components["schemas"]["SourceAnchorType"];
+            /** Start Offset */
+            start_offset: number | null;
+            /** Transcript Segment Id */
+            transcript_segment_id: string | null;
+        };
+        /**
+         * SourceAnchorType
+         * @enum {string}
+         */
+        SourceAnchorType: "AUDIO_SEGMENT" | "DOCUMENT_SEGMENT" | "USER_NOTE" | "CHAT_MESSAGE";
         /**
          * SummaryAction
          * @enum {string}
@@ -7131,6 +7182,66 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_record_source_anchors_api_records__record_id__source_anchors_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceAnchorOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -60,6 +60,7 @@ from app.modules.search import search as search_routes
 from app.modules.search.service import SearchService
 from app.modules.search.tokenizer import warmup as warmup_jieba
 from app.modules.settings import routes as settings_routes
+from app.modules.source_anchor import source_anchors
 from app.modules.summary import summaries
 from app.modules.summary.graph import build_summary_graph
 from app.modules.summary.worker import summary_spec
@@ -323,6 +324,7 @@ def create_app(
     app.include_router(records.router)
     app.include_router(text_captures.router)
     app.include_router(search_routes.router)
+    app.include_router(source_anchors.router)
     app.include_router(chat_sessions.router)
     app.include_router(profile.router)
 
