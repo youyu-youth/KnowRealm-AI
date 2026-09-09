@@ -71,6 +71,7 @@ from app.modules.transcript.audio_worker import audio_spec
 from app.modules.transcript.cache_lifecycle import CacheLifecycleService
 from app.modules.transcript.document_worker import document_spec
 from app.modules.transcript.integrations.tencent import TencentAsrClient
+from app.modules.transcript.segments import SegmentService
 from app.shared.deps import require_launch_token
 from app.shared.events import RecordInvalidationNotifier
 from app.shared.schemas import ErrorResponse
@@ -125,6 +126,13 @@ def create_app(
                 await SearchService.backfill_missing(session_factory)
             except Exception:
                 logger.error("search_index_backfill_failed", error_code="SEARCH_BACKFILL_FAILED")
+            # 分片同为可再生派生数据：回填失败不阻断启动，下次启动重试（同容错级）。
+            try:
+                await SegmentService.backfill_missing(session_factory)
+            except Exception:
+                logger.error(
+                    "transcript_segments_backfill_failed", error_code="SEGMENT_BACKFILL_FAILED"
+                )
             app.state.ffmpeg_path = ffmpeg_path.resolve() if ffmpeg_path is not None else None
             app.state.summary_model = summary_model or OpenAiCompatibleSummaryModel()
             app.state.knowledge_point_model = (

@@ -14,6 +14,7 @@ from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.todo.models import TodoItem
 from app.modules.transcript.models import DocumentSegment, Transcript, TranscriptSegment
 from app.modules.transcript.schemas import TranscriptUpdateRequest
+from app.modules.transcript.segments import SegmentService
 from app.shared.errors import CodedHTTPException
 
 
@@ -202,6 +203,7 @@ class RecordService:
             if record.status != RecordStatus.NOTE:
                 record.status = RecordStatus.SUMMARY_PENDING
                 record.updated_at = now
+            await SegmentService.realign_for_edit(session, transcript.id, record_id, body.content)
             await session.flush()
             await SearchService.upsert_record_index(session, record_id)
         return transcript
