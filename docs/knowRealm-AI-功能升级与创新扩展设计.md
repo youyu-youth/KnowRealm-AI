@@ -3561,3 +3561,97 @@ Mastery Update
 4. **算法评测资产前置**——Mastery/遗忘公式黄金样本（数据稀疏是 P4 真实风险，先验算法再接线）；
 5. **场景包机制**——新业务方向的统一容器（goal_type 扩展 + prompt 模板资产化），避免每个新方向长出独立模块；
 6. **卫生项**——prompt_version bump 纪律、`.claude/rules` 镜像同步。
+
+---
+
+# 40. Agent 能力建设评估与开发跟进清单（2026-09-09）
+
+> **评估性质**：基于代码库实际状态（`feat/extend-dev-05`，1df1f3f）对 Agent 化就绪度做的核验，与 §39 裁定及基线 §5.1 阶段规划零冲突。§40.3 的 A 档与 B1/B2/B5 属**基线 P2 已定项的就绪度核验与实施细化**；B3 与「课堂功能降后」为**排期增量建议（⚠️ 待决策）**。本章为评审记录，优先级 / 技术选型 / 表结构的权威仍在三份权威文档。文中代码引用以 1df1f3f 时点为准。
+
+## 40.1 架构 Agent 化适配度核验（代码证据）
+
+**结论：架构已具备 Agent 化条件，无需改造模块划分（独立复核确认 §39.2 前置结论）。**
+
+五项已就绪的结构条件：
+
+1. **ReAct Agent 循环已在产**：chat 用 `create_agent`（`backend/app/modules/chat/graph.py` 的 `build_chat_agent`），`tools=[]` 空置且注释明确"检索工具为后续工单"——Agent 化不是加框架，是往空位填工具；
+2. **HITL 已跨重启验证**：Summary / ReviewMaterial 两 graph 的 `interrupt()` 人工确认环（各自 `graph.py`）在生产多版本运行，断点恢复能力已被验证；
+3. **检索入口已统一**：`SearchService`（`backend/app/modules/search/service.py`）docstring 明确"唯一搜索入口：HTTP 路由与未来 AI 对话检索工具共用"；FTS5+jieba、BM25 列权重、写路径同事务 upsert、启动幂等回填全部就绪，工具化只是包一层 `@tool`；
+4. **引用契约前后端闭环**：`ChatCitationOut`（`chat/schemas.py`，`[n]` 角标 + 80 字摘录）→ 前端 `CitationBubble` 角标点击跳转转写页高亮（`ChatMessageList.tsx`）。**Agent 工具的检索结果可直接复用该契约，前端近乎零改**；
+5. **异步任务管道在产**：JobRunner 自研队列带崩溃恢复（`jobs/runner.py` 的 `recover_running_to_failed` / `recover_interrupted`），Evidence Builder 类异步管道有现成模式可循。
+
+三项真实缺口（按严重度）：
+
+1. **`learning_events` 零消费者**：表结构完备（幂等键、`schema_version`、score/difficulty/duration 字段，`record/models.py`），summary / quiz / knowledge_point 三处 service 已在写入，但无任何 dispatch 与 Evidence Builder——数据在攒、管道未接，是当前离"学习大脑"最远的一环；
+2. **chat 无工具层 + 长材料降级丢细节**：`build_context_messages` 在转写超过 30000 字符时降级为"已确认摘要 + 知识点全文 + 近三轮引用摘录"并告知模型"缺失细节不可推断"——这条降级路径即检索工具需求已真实发生的证据；
+3. **单记录挂载限制**：`ChatSessionCreate.record_id` 为单值，用户无法跨记录提问（基线 #24 已定 P2 以「@全部资料全局 RAG」解除）。
+
+架构洞察：chat 每轮发送前清空 checkpoint、以业务表为唯一记忆源（`stream_chat_reply` 轮初 `adelete_thread`）。这对工具化**有利**——工具循环中间态不跨轮持久，不存在 checkpoint 膨胀与跨轮工具状态泄漏问题。
+
+## 40.2 六大 Agent 能力应用细化（对 §39.2 的代码级补充）
+
+| 能力 | §39.2 裁定 | 代码级细化 |
+|---|---|---|
+| Agent Tools | ✅ 立即做 | 第一工具 `search_library` 直接包装 `SearchService.search`；工具引用结果落 `citations_json` 契约复用前端；挂载会话超 30k 转写从"降级塞摘要"改为"agent 主动检索" |
+| RAG | ✅ 已规划 | FTS5 已覆盖关键词检索，向量不急于上——BM25+jieba 对中文学习语料够用；sqlite-vec 等"同义改写问不出"成为真实抱怨再进（#24 `semantic_embeddings.course_id` 可空已预留） |
+| Memory | ✅ 分层，不引框架 | 现状 = 逐轮重放业务表（最近 N 轮 + 字符预算窗口），**跨会话零记忆**；最小可行增量：学习偏好沉淀进 profile（SQLite 业务表即记忆，否决 mem0/letta） |
+| Agent Workflow | ✅ 域内 graph | 现有 3 graph 的"确定性 Service 与 Graph 分离"模式正确；Autopilot 的 Plan-and-Execute 留 P6，勿提前 |
+| MCP | ⚠️ 延后 | 维持 §39.2 判断，触发条件具体化：**自研工具 ≥3 个且工具调用轨迹评测通过后**再评估 MCP client；MCP server 不做 |
+| Multi-Agent / Skills 框架 | ❌ 否决 | 多 graph 经 DB 共享状态优于运行时 agent 通信（红线 #2）；用户自定义学习模式走场景包机制（§39.3），不做开发者级 skill 框架 |
+
+## 40.3 功能分档清单（开发跟进用）
+
+价值图例：★★★ = 核心跃迁 / 长期壁垒；★★ = 显著增益；★ = 增益项。难度为相对工作量估计。
+
+### A 档：立即做（基建全备，P2 主体）
+
+| # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
+|---|---|---|---|---|---|
+| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.3 已定稿；P2 六表中 learning_events 已落地，learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
+| A1 | Chat 检索工具（Agent 第一工具） | 基线 §4.7"检索为第一工具"（#53） | ★★★ | 中低 | `@tool` 包装 `SearchService`；解决 >30k 转写丢细节痛点；检索入口与引用 UI 双复用，工作量集中在工具编排 |
+| A2 | 工具调用的前端呈现 | ——（基线未细化的实施项） | ★★★ | 中 | SSE 增加 `tool_call` / `tool_result` 事件类型；chat UI 展示"正在检索 → 命中 n 条"状态卡；AI Elements 评估预留的"chat 上工具调用"重启触发点在此落地（自定义组件为主体） |
+| A3 | 事件消费框架 + Evidence Builder 最小版 | Phase 2 Learning Evidence | ★★★ | 中 | §39.2 基础设施第 1 项；复用 JobRunner / asyncio 模式；幂等键已具备；**Evidence 不可再生，每晚一天上线丢一天积累** |
+
+### B 档：P2 后期 ~ P3（依赖 A 档）
+
+| # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
+|---|---|---|---|---|---|
+| B1 | Web search 工具 | #53 / Phase 2 | ★★ | 低 | SearchProvider 抽象，默认 Tavily，预留博查/智谱；无 key 按 #38 降级（搜索置灰，聊天照常）；搜索来源经 `citations_json` 引用 |
+| B2 | 跨记录 / 课程级问答 | #24「@全部资料全局 RAG」（P2 已定） | ★★★ | 中 | 检索工具天然跨库返回；产品层把挂载范围从"自由 / 单记录"扩为"单记录 / 课程 / 全部资料"（决策 #22/#24，见 §0 D5）；权限与软删过滤沿用 SearchService 查询期回表过滤 |
+| B3 | Tutor / Teach-back 场景包最小形态 | ⚠️ 增量建议（§29 的 Tutor / TeachBack Graph 留 P5） | ★★ | 低 | `ChatMode` 四模式枚举已预留但 `Literal[ChatMode.ASK]` 仅启用一种（`chat/schemas.py`）；**不建独立 Graph**，以 prompt 模板 + 模式开关先行，作为场景包机制（§39.3）首个验证实例；苏格拉底辅导是通用学习工作台最正交的 AI Native 功能 |
+| B5 | sqlite-vec 向量混合检索 | #24 / Phase 2 | ★ | 中 | 语义检索增益项，等 BM25 真实吃力再进（触发条件见未来候选库路线图） |
+
+> 2026-09-09 修正：原 B4（Segment + Source Anchor）即 F1 本体，是 A3 的**数据前置**而非其依赖项，已前移至 A 档 A0——与 §39.5 P2 顺序（Segment+Anchor → Evidence Builder → …）对齐，引用精度升级要点并入 A0 行。
+
+### C 档：P4+（地基依赖，维持既定排期）
+
+Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆（LearnerProfileService 轻表，§39.1 已并入 P4）、Autopilot（P6 产品分水岭）、MCP client 评估（触发条件见 40.2）、场景包第二弹（项目总结分析，剪藏落地后顺手）。
+
+### 明确不做 / 进一步降后
+
+- §39.4 技术栈裁定全部维持：Multi-Agent、通用 Skills 框架、mem0/letta、MCP server、LlamaIndex、DeepAgents；
+- ⚠️ **增量建议（待决策）**：从"通用 AI 学习工作台"定位出发，课堂专属功能（F2 课堂实时标记、F3 课件 Diff）进一步降后——§37 关键链路本就不含它们，通用主链 = 捕获 → 结构化理解 → 个性化状态 → 推荐。
+
+## 40.4 下一阶段开发路线（P2 统一序列，2026-09-09 修订）
+
+> 修订说明：本节原为"双轨并行"表述，未标明先后顺序、与 §39.5 短期规划的对齐关系不清，当日修订为统一序列。**起点已定：F1 先做**（2026-09-09 决定，与 §37 P0 第一项、§39.5 P2 顺序一致）。
+
+```text
+第 1 步   F1 Segment + Source Anchor（A0）   ← 先做（已定）
+第 2 步   A3 Evidence Builder 管道            ← 依赖 F1（learning_evidence.source_anchor_id）
+  ┆ 并行槽（不依赖 F1 / A3，可随时插入，单独成线）
+  ┆   A1 chat 检索工具 → A2 工具调用前端呈现
+第 3 步   B1 web_search（Tavily，#53）
+第 4 步   B2 跨记录 / 全局问答（#24 @全部资料）
+第 5 步   B5 sqlite-vec 混合检索（BM25 吃力时可提前）
+其后      B3 Tutor 场景包 / 网页剪藏 / 英文支持（§39.5 既有 P2 项）→ P3 Course Brain
+```
+
+与 §39.5 短期顺序（Segment+Anchor → Evidence Builder → sqlite-vec → chat 工具层+web_search → 剪藏/英文）的唯一差异：**chat 工具层（A1+A2）由串行第 4 位改为并行槽**——它不依赖任何数据层成果（检索入口与引用契约现成），提前插入使 Agent 感知线与数据资产线同时推进；sqlite-vec（B5）相应后移到真实需要时。此为并行化建议，按 §39.5 原序串行执行亦完全成立。
+
+排序理由：
+
+1. **F1 先行**——§37 P0 第一项与 §39.5 既定顺序；A3 与 Mastery 主链的数据地基（Evidence 挂 Segment / Anchor 才有可回跳的细粒度来源）；
+2. **A3 紧随 F1**——Evidence 是唯一"每晚一天就永久丢一天"的资产，且 Mastery / Misconception / 复习调度全部挂在它上面；
+3. **A1+A2 为并行槽内性价比最高步**——架构位（`tools=[]`）、检索入口（SearchService）、引用 UI（citations 契约）三样全备；F1 落地后检索粒度可从整篇升级为段落级（Segment 命中）；
+4. **评测资产同步前置**——工具调用轨迹断言 + 检索 groundedness 评测，复用 `docs/evaluation/` 样本集模式与回归触发纪律（prompt_version / 模型变更触发，见工单 20）。
