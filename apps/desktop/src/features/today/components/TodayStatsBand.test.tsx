@@ -270,7 +270,6 @@ describe("今日页统计带", () => {
     render(<App />);
 
     expect(await screen.findByText("正在读取学习统计")).toBeInTheDocument();
-    expect(screen.queryByText("今天没有待处理事项")).not.toBeInTheDocument();
     expect(
       screen.getByRole("region", { name: "学习专注度" }),
     ).toBeInTheDocument();

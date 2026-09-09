@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -17,7 +18,7 @@ export function TodaySummaryTodos() {
     return (
       <p
         role="status"
-        className="text-body text-muted-foreground mt-8 flex items-center gap-2"
+        className="text-body text-muted-foreground mb-6 flex items-center gap-2"
       >
         <Spinner aria-hidden="true" />
         {t("today.loading")}
@@ -27,7 +28,7 @@ export function TodaySummaryTodos() {
 
   if (todos.isError) {
     return (
-      <section role="alert" className="border-border mt-8 border-t pt-8">
+      <section role="alert" className="mb-6">
         <h2 className="text-section font-section text-ink">
           {t("today.errorTitle")}
         </h2>
@@ -50,7 +51,7 @@ export function TodaySummaryTodos() {
   }
 
   return (
-    <section className="border-border mt-8 border-t pt-8">
+    <section className="mb-6">
       <h2 className="text-section font-section text-ink">
         {t("today.todoTitle")}
       </h2>
@@ -63,7 +64,7 @@ export function TodaySummaryTodos() {
             <Link
               to="/records/$recordId"
               params={{ recordId: todo.record_id }}
-              className="hover:bg-surface-subtle focus-visible:ring-ring/40 -mx-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-sm px-2 py-4 transition-colors focus-visible:ring-3"
+              className="hover:bg-surface-subtle focus-visible:ring-ring/40 group -mx-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-sm px-2 py-4 transition-colors focus-visible:ring-3"
             >
               <div className="min-w-0">
                 <h3
@@ -76,8 +77,12 @@ export function TodaySummaryTodos() {
                   {todo.course_name}
                 </p>
               </div>
-              <span className="text-label text-muted-foreground whitespace-nowrap">
+              <span className="text-label text-muted-foreground group-hover:text-ink inline-flex items-center gap-1 whitespace-nowrap transition-colors">
                 {t("today.todoAction")}
+                <ArrowRight
+                  aria-hidden="true"
+                  className="size-3.5 transition-transform group-hover:translate-x-0.5"
+                />
               </span>
             </Link>
           </li>
