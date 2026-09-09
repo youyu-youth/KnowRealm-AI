@@ -6,14 +6,21 @@
 
 **Blocked by:** 01（四表结构与模型）。与 02 / 03 可并行。
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] 启动幂等回填：遍历无分片的存量转写，按 content 现有结构（换行）建无时间戳 transcript_segments（时间戳四列 NULL）；增量补新记录；重复启动零副作用；回填失败仅记日志不阻断启动（对齐搜索索引回填容错级）
-- [ ] PATCH 转写保存路径接入增量对齐重切：逐句 content_hash 命中的句子保留原时间戳（file 与 record 时间轴一并保留），未命中句时间戳 NULL；重切后 sequence_no 连续
-- [ ] 既有编辑链路行为不变：source_version 乐观锁递增、edited_by_user 置位、GENERATED/CONFIRMED 摘要置 SUPERSEDED、非 NOTE 记录回 SUMMARY_PENDING、搜索索引重建
-- [ ] 编辑对齐测试：改错别字 → 未动句时间戳保留；插入新句 → 新句 NULL；删除句 → 分片相应减少；大改 → 全量重切仍不报错
-- [ ] 回填幂等测试：升级模拟（存量数据 → 启动 → 分片可查 → 再启动 → 无重复）
-- [ ] 全套门禁绿（pytest --basetemp / ruff / pyright strict）
+- [x] 启动幂等回填：遍历无分片的存量转写，按 content 现有结构（换行）建无时间戳 transcript_segments（时间戳四列 NULL）；增量补新记录；重复启动零副作用；回填失败仅记日志不阻断启动（对齐搜索索引回填容错级）
+- [x] PATCH 转写保存路径接入增量对齐重切：逐句 content_hash 命中的句子保留原时间戳（file 与 record 时间轴一并保留），未命中句时间戳 NULL；重切后 sequence_no 连续
+- [x] 既有编辑链路行为不变：source_version 乐观锁递增、edited_by_user 置位、GENERATED/CONFIRMED 摘要置 SUPERSEDED、非 NOTE 记录回 SUMMARY_PENDING、搜索索引重建
+- [x] 编辑对齐测试：改错别字 → 未动句时间戳保留；插入新句 → 新句 NULL；删除句 → 分片相应减少；大改 → 全量重切仍不报错
+- [x] 回填幂等测试：升级模拟（存量数据 → 启动 → 分片可查 → 再启动 → 无重复）
+- [x] 全套门禁绿（pytest --basetemp / ruff / pyright strict）
+
+**实施备注（4e281b4）：**
+
+- 共用对齐器 = `transcript/segments.py::plan_alignment`：同哈希按队列顺序消费（重复句各归各）；命中行仅重排 sequence_no（**id 稳定**，未来锚点引用不失效），未命中行删除重建。
+- 未命中句 file 归属（spec 未细化、file_id 非空约束所迫的自定规则）：左最近命中句 → 前缀无命中回退右最近命中 → 全程无命中回退首文件；多文件测试覆盖左继承与前缀回退。file_id 不出 API（票 05 UI 不消费），影响面仅未来按文件查询。
+- 无文件记录（粘贴/速记）编辑时分片清零（防御性；正常本就无分片）；行按字节哈希对齐，行尾空格改动视为未命中。
+- 回填候选集含无文件转写时每次启动空扫一遍（continue 跳过，量级小，A1 检索票可顺手收敛）。
 
 **用户真机验收（用户执行，agent 不代勾）：**
 
