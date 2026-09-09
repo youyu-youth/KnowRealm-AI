@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { TodaySummaryTodos } from "@/features/today/components/TodaySummaryTodos";
 
 const focusItems = [
   ["高等数学（上）复习", "微分中值定理及其应用", "10:30"],
@@ -53,6 +54,7 @@ export function TodayRightRail() {
             <ArrowRight aria-hidden="true" className="size-3.5" />
           </Link>
         </div>
+        <TodaySummaryTodos />
         <ol className="mt-4 grid gap-4">
           {focusItems.map(([title, detail, time]) => (
             <li key={title} className="grid grid-cols-[auto_1fr_auto] gap-2.5">

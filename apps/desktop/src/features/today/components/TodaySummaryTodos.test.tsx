@@ -2,7 +2,13 @@
 
 import "@testing-library/jest-dom/vitest";
 import type { components } from "@knowrealm/api-types";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
@@ -42,18 +48,27 @@ afterEach(() => {
   vi.mocked(setRecordingKeepAwake).mockReset().mockResolvedValue(undefined);
 });
 
-describe("今日页待确认总结条带", () => {
-  it("有条目时渲染标题、记录行与去确认链接", async () => {
+// 待确认总结渲染在右栏「今日焦点」卡内，而非页面顶部独立条带。
+function focusCard(): HTMLElement {
+  const heading = screen.getByText("今日焦点");
+  const card = heading.closest("section");
+  expect(card).not.toBeNull();
+  return card as HTMLElement;
+}
+
+describe("今日焦点卡内待确认总结", () => {
+  it("有条目时渲染在今日焦点卡内，含记录行与去确认链接", async () => {
     server.use(http.get(PENDING_URL, () => HttpResponse.json([todo])));
 
     render(<App />);
 
+    await screen.findByText("今日焦点");
+    const card = focusCard();
     expect(
-      await screen.findByRole("heading", { name: "等待确认的总结" }),
+      await within(card).findByRole("heading", { name: "等待确认的总结" }),
     ).toBeInTheDocument();
-    const list = screen.getByRole("list", { name: "待确认总结列表" });
-    expect(list).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: /新录音 1/ });
+    const list = within(card).getByRole("list", { name: "待确认总结列表" });
+    const link = within(list).getByRole("link", { name: /新录音 1/ });
     expect(link).toHaveAttribute("href", `/records/${todo.record_id}`);
     expect(link).toHaveTextContent("langchain学习");
     expect(link).toHaveTextContent("去确认");
@@ -68,7 +83,7 @@ describe("今日页待确认总结条带", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("读取失败显示可重试的错误区", async () => {
+  it("读取失败显示行内错误与重试", async () => {
     let fail = true;
     server.use(
       http.get(PENDING_URL, () =>
@@ -86,7 +101,7 @@ describe("今日页待确认总结条带", () => {
     expect(alert).toHaveTextContent("今日待办暂时无法读取");
 
     fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
+    fireEvent.click(within(alert).getByRole("button", { name: "重新读取" }));
 
     expect(
       await screen.findByRole("heading", { name: "等待确认的总结" }),
