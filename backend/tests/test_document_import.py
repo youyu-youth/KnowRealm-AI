@@ -1,5 +1,7 @@
 import asyncio
 import errno
+import hashlib
+import json
 import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -18,7 +20,7 @@ import pytest
 from docx import Document
 from fastapi import FastAPI
 from loguru import logger
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations
@@ -27,6 +29,12 @@ from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import ClaimedJob, JobRunner
 from app.modules.jobs.service import ProcessingJobService
 from app.modules.transcript import document_worker
+from app.modules.transcript.document_parser import (
+    ParsedDocument,
+    blocks_from_plain_text,
+    extract_document,
+)
+from app.modules.transcript.models import DocumentSegment
 
 TOKEN = "test-launch-token"
 
@@ -303,15 +311,15 @@ async def test_temporary_io_retries_twice_then_succeeds(
     calls = 0
     clock = [datetime(2026, 8, 21, tzinfo=UTC)]
 
-    def fail_twice(path: Path) -> str:
+    def fail_twice(path: Path) -> ParsedDocument:
         nonlocal calls
         calls += 1
         if calls < 3:
             raise BlockingIOError(errno.EAGAIN, "temporary read failure")
-        return path.read_text(encoding="utf-8")
+        return extract_document(path)
 
     monkeypatch.setattr(
-        "app.modules.transcript.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document",
         fail_twice,
     )
     monkeypatch.setattr("app.modules.transcript.document_worker.utcnow", lambda: clock[0])
@@ -379,15 +387,15 @@ async def test_exhausted_temporary_failure_can_retry_same_job_and_record(
 ) -> None:
     calls = 0
 
-    def fail_first_round(path: Path) -> str:
+    def fail_first_round(path: Path) -> ParsedDocument:
         nonlocal calls
         calls += 1
         if calls <= 3:
             raise BlockingIOError(errno.EAGAIN, "temporary read failure")
-        return path.read_text(encoding="utf-8")
+        return extract_document(path)
 
     monkeypatch.setattr(
-        "app.modules.transcript.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document",
         fail_first_round,
     )
     data_dir = tmp_path / "KnowRealm"
@@ -533,16 +541,16 @@ async def test_sqlite_busy_requeues_running_job_without_stopping_worker(
     continue_parse = threading.Event()
     parse_calls = 0
 
-    def gated_parse(path: Path) -> str:
+    def gated_parse(path: Path) -> ParsedDocument:
         nonlocal parse_calls
         parse_calls += 1
         parser_started.set()
         if not continue_parse.wait(timeout=10):
             raise OSError("test parser gate timed out")
-        return path.read_text(encoding="utf-8")
+        return extract_document(path)
 
     monkeypatch.setattr(
-        "app.modules.transcript.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document",
         gated_parse,
     )
     data_dir = tmp_path / "KnowRealm"
@@ -648,13 +656,15 @@ async def test_manual_retry_rejects_invalid_jobs_without_partial_updates(
         busy_failure = await client.get(f"/api/processing-jobs/{failed[2]['job_id']}")
         release_parse = threading.Event()
 
-        def gated_retry(_path: Path) -> str:
+        def gated_retry(_path: Path) -> ParsedDocument:
             if not release_parse.wait(timeout=5):
                 raise TimeoutError("test retry parser gate timed out")
-            return "retried once"
+            return ParsedDocument(
+                text="retried once", blocks=blocks_from_plain_text("retried once")
+            )
 
         monkeypatch.setattr(
-            "app.modules.transcript.document_worker.extract_document_text",
+            "app.modules.transcript.document_worker.extract_document",
             gated_retry,
         )
         concurrent_retries = await asyncio.gather(
@@ -707,7 +717,7 @@ async def test_unexpected_io_and_parser_errors_are_not_retryable_or_logged(
     logs = StringIO()
     sink_id = logger.add(logs, format="{message} {extra}", level="ERROR")
 
-    def fail_unexpected(_path: Path) -> str:
+    def fail_unexpected(_path: Path) -> ParsedDocument:
         nonlocal calls
         calls += 1
         if calls == 1:
@@ -715,7 +725,7 @@ async def test_unexpected_io_and_parser_errors_are_not_retryable_or_logged(
         raise RuntimeError("private-document-content")
 
     monkeypatch.setattr(
-        "app.modules.transcript.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document",
         fail_unexpected,
     )
     try:
@@ -931,14 +941,14 @@ async def test_deleted_job_is_rechecked_after_claim_before_parsing(
             await continue_after_delete.wait()
         return result
 
-    def observe_parse(path: Path) -> str:
+    def observe_parse(path: Path) -> ParsedDocument:
         nonlocal parser_calls
         parser_calls += 1
-        return path.read_text(encoding="utf-8")
+        return extract_document(path)
 
     monkeypatch.setattr(JobRunner, "claim_one", gated_claim)
     monkeypatch.setattr(
-        "app.modules.transcript.document_worker.extract_document_text",
+        "app.modules.transcript.document_worker.extract_document",
         observe_parse,
     )
 
@@ -996,13 +1006,13 @@ async def test_delete_after_parse_before_commit_discards_result(
 
     async def gated_writeback(
         ctx: document_worker.ClaimedDocument,
-        content: str,
+        result: ParsedDocument,
         session_factory: async_sessionmaker[AsyncSession],
         data_dir: Path,
     ) -> bool:
         parsed.set()  # 仅在写回事务提交前挂闸
         await continue_commit.wait()
-        return await original_writeback(ctx, content, session_factory, data_dir)
+        return await original_writeback(ctx, result, session_factory, data_dir)
 
     monkeypatch.setattr(document_worker, "writeback", gated_writeback)
 
@@ -1143,6 +1153,214 @@ async def test_worker_claims_only_due_pending_job_from_persistent_queue(tmp_path
     assert terminal["attempts"] == 1
     assert transcript.json()["transcript"]["content"] == "persistent queue"
     assert skipped == ("PENDING", 1)
+
+
+async def _document_segment_rows(app: FastAPI, record_id: str) -> list[DocumentSegment]:
+    async with app.state.session_factory() as session:
+        return list(
+            (
+                await session.scalars(
+                    select(DocumentSegment)
+                    .where(DocumentSegment.record_id == record_id)
+                    .order_by(DocumentSegment.sequence_no)
+                )
+            ).all()
+        )
+
+
+@pytest.mark.anyio
+async def test_document_imports_produce_locatable_segments(tmp_path: Path) -> None:
+    cases = (
+        (
+            "slides.PDF",
+            pdf_bytes(),
+            "PDF page one\n\nPDF page three",
+            [("PDF page one", 1), ("PDF page three", 3)],
+        ),
+        (
+            "handout.DOCX",
+            docx_bytes(),
+            "DOCX first paragraph\nleft cell\tright cell\nDOCX last paragraph",
+            [
+                ("DOCX first paragraph", None),
+                ("left cell\tright cell", None),
+                ("DOCX last paragraph", None),
+            ],
+        ),
+        (
+            "notes.MD",
+            b"# Heading\r\n\r\n- item\r\n```py\r\nprint('ok')\r\n```",
+            "# Heading\n\n- item\n```py\nprint('ok')\n```",
+            [("# Heading", None), ("- item\n```py\nprint('ok')\n```", None)],
+        ),
+    )
+    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+        course = await client.post(
+            "/api/courses",
+            json={
+                "name": "分片定位",
+                "learning_context": "SCHOOL",
+                "education_stage": "UNDERGRADUATE",
+            },
+        )
+        course_id = course.json()["id"]
+        for filename, source, expected_text, expected_blocks in cases:
+            accepted = await client.post(
+                "/api/document-imports",
+                data={"course_id": course_id},
+                files={"file": (filename, source, "application/octet-stream")},
+            )
+            assert accepted.status_code == 202
+            body = accepted.json()
+            assert (await wait_for_terminal_job(client, body["job_id"]))["status"] == ("SUCCEEDED")
+            transcript = await client.get(f"/api/records/{body['record_id']}/transcript")
+            full_text = transcript.json()["transcript"]["content"]
+            assert full_text == expected_text
+
+            items = (await client.get(f"/api/records/{body['record_id']}/document-segments")).json()
+            assert [(item["content"], item["page_no"]) for item in items] == expected_blocks
+            assert [item["sequence_no"] for item in items] == list(range(len(expected_blocks)))
+            assert all(item["section_title"] is None for item in items)
+            for item in items:
+                assert full_text[item["start_offset"] : item["end_offset"]] == item["content"]
+
+            rows = await _document_segment_rows(app, body["record_id"])
+            assert [row.page_no for row in rows] == [page for _, page in expected_blocks]
+            assert all(row.record_file_id is not None for row in rows)
+            assert all(row.course_material_id is None for row in rows)
+            assert all(row.course_id == course_id for row in rows)
+            assert all(
+                row.content_hash == hashlib.sha256(row.content.encode("utf-8")).hexdigest()
+                for row in rows
+            )
+
+
+@pytest.mark.anyio
+async def test_inbox_document_import_writes_segments_without_course(tmp_path: Path) -> None:
+    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+        accepted = await client.post(
+            "/api/document-imports",
+            files={"file": ("inbox.txt", b"inbox paragraph\n\nsecond paragraph", "text/plain")},
+        )
+        assert accepted.status_code == 202
+        body = accepted.json()
+        assert (await wait_for_terminal_job(client, body["job_id"]))["status"] == ("SUCCEEDED")
+        transcript = await client.get(f"/api/records/{body['record_id']}/transcript")
+        full_text = transcript.json()["transcript"]["content"]
+        segments = await client.get(f"/api/records/{body['record_id']}/document-segments")
+        assert [item["content"] for item in segments.json()] == [
+            "inbox paragraph",
+            "second paragraph",
+        ]
+        for item in segments.json():
+            assert full_text[item["start_offset"] : item["end_offset"]] == item["content"]
+
+    rows = await _document_segment_rows(app, body["record_id"])
+    assert [row.course_id for row in rows] == [None, None]
+
+
+@pytest.mark.anyio
+async def test_multi_document_record_numbers_segments_across_files(tmp_path: Path) -> None:
+    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+        accepted = await client.post(
+            "/api/capture-batches",
+            files=[
+                ("files", ("first.txt", b"alpha body\n\nbeta body", "text/plain")),
+                ("files", ("second.txt", b"gamma body", "text/plain")),
+            ],
+        )
+        assert accepted.status_code == 202
+        body = accepted.json()
+        for job_id in body["job_ids"]:
+            assert (await wait_for_terminal_job(client, job_id))["status"] == ("SUCCEEDED")
+        segments = await client.get(f"/api/records/{body['record_id']}/document-segments")
+        assert [(item["content"], item["sequence_no"]) for item in segments.json()] == [
+            ("alpha body", 0),
+            ("beta body", 1),
+            ("gamma body", 2),
+        ]
+
+    rows = await _document_segment_rows(app, body["record_id"])
+    assert len({row.record_file_id for row in rows}) == 2
+    assert rows[0].record_file_id == rows[1].record_file_id
+
+
+@pytest.mark.anyio
+async def test_inflight_upgrade_finalizes_document_segments_from_plain_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """升级瞬间 in-flight：旧 writeback 只缓存 txt（无 blocks jsonl），
+    finalizer 按纯文本切段降级（无页码），不重跑解析。"""
+
+    async def legacy_writeback(
+        ctx: document_worker.ClaimedDocument,
+        parsed: ParsedDocument,
+        session_factory: async_sessionmaker[AsyncSession],
+        data_dir: Path,
+    ) -> bool:
+        cache_dir = (data_dir / "cache" / "sources" / ctx.record_id).resolve()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        source_path = cache_dir / f"{ctx.job_id}.txt"
+        await asyncio.to_thread(source_path.write_text, parsed.text, encoding="utf-8")
+        return await document_worker.complete_source_job(
+            session_factory,
+            data_dir,
+            ctx.record_id,
+            ctx.job_id,
+            json.dumps({"source_text_path": source_path.relative_to(data_dir).as_posix()}),
+        )
+
+    monkeypatch.setattr(document_worker, "writeback", legacy_writeback)
+    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+        accepted = await client.post(
+            "/api/document-imports",
+            files={"file": ("slides.PDF", pdf_bytes(), "application/pdf")},
+        )
+        assert accepted.status_code == 202
+        body = accepted.json()
+        assert (await wait_for_terminal_job(client, body["job_id"]))["status"] == ("SUCCEEDED")
+        transcript = await client.get(f"/api/records/{body['record_id']}/transcript")
+        full_text = transcript.json()["transcript"]["content"]
+        assert full_text == "PDF page one\n\nPDF page three"
+
+        segments = await client.get(f"/api/records/{body['record_id']}/document-segments")
+        assert [
+            (item["content"], item["page_no"], item["start_offset"], item["end_offset"])
+            for item in segments.json()
+        ] == [
+            ("PDF page one", None, 0, 12),
+            ("PDF page three", None, 14, 28),
+        ]
+
+    assert all(row.page_no is None for row in await _document_segment_rows(app, body["record_id"]))
+
+
+@pytest.mark.anyio
+async def test_document_segments_endpoint_rejects_invalid_records(tmp_path: Path) -> None:
+    async with running_document_app(tmp_path / "KnowRealm") as (app, client):
+        missing = await client.get(f"/api/records/{uuid4()}/document-segments")
+        assert missing.status_code == 404
+
+        note = await client.post(
+            "/api/text-captures",
+            json={"capture_type": "PASTE", "content": "pasted note"},
+        )
+        assert note.status_code == 201
+        empty = await client.get(f"/api/records/{note.json()['record_id']}/document-segments")
+        assert empty.status_code == 200
+        assert empty.json() == []
+
+        accepted = await client.post(
+            "/api/document-imports",
+            files={"file": ("gone.txt", b"deleted soon", "text/plain")},
+        )
+        body = accepted.json()
+        assert (await wait_for_terminal_job(client, body["job_id"]))["status"] == ("SUCCEEDED")
+        assert len(await _document_segment_rows(app, body["record_id"])) == 1
+        assert (await client.delete(f"/api/records/{body['record_id']}")).status_code == 204
+        deleted = await client.get(f"/api/records/{body['record_id']}/document-segments")
+        assert deleted.status_code == 404
 
 
 @pytest.fixture

@@ -32,7 +32,12 @@ from app.modules.jobs.runner import (
 from app.modules.jobs.schemas import ProcessingJobErrorCode, ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
-from app.modules.transcript.document_parser import DocumentParseError, extract_document_text
+from app.modules.transcript.document_parser import (
+    DocumentParseError,
+    ParsedDocument,
+    extract_document,
+    write_blocks_jsonl,
+)
 from app.modules.transcript.finalizer import complete_source_job, finalize_record_if_ready
 from app.shared.events import RecordInvalidationNotifier
 
@@ -119,7 +124,7 @@ async def execute(
     ctx: ClaimedDocument,
     _runtime: RunnerContext,
     session_factory: async_sessionmaker[AsyncSession],
-) -> str | None:
+) -> ParsedDocument | None:
     """领取后二次确认仍 RUNNING 且记录未删，才执行解析（删除竞态防线）。"""
     async with session_factory() as session:
         active_job = (
@@ -136,12 +141,12 @@ async def execute(
         ).scalar_one_or_none()
     if active_job is None:
         return None
-    return await asyncio.to_thread(extract_document_text, ctx.path)
+    return await asyncio.to_thread(extract_document, ctx.path)
 
 
 async def writeback(
     ctx: ClaimedDocument,
-    content: str,
+    parsed: ParsedDocument,
     session_factory: async_sessionmaker[AsyncSession],
     data_dir: Path,
 ) -> bool:
@@ -151,13 +156,20 @@ async def writeback(
         return False
     cache_dir.mkdir(parents=True, exist_ok=True)
     source_path = cache_dir / f"{ctx.job_id}.txt"
-    await asyncio.to_thread(source_path.write_text, content, encoding="utf-8")
+    await asyncio.to_thread(source_path.write_text, parsed.text, encoding="utf-8")
+    blocks_path = cache_dir / f"{ctx.job_id}.blocks.jsonl"
+    await asyncio.to_thread(write_blocks_jsonl, blocks_path, parsed.blocks)
     accepted = await complete_source_job(
         session_factory,
         data_dir,
         ctx.record_id,
         ctx.job_id,
-        json.dumps({"source_text_path": source_path.relative_to(data_dir).as_posix()}),
+        json.dumps(
+            {
+                "source_text_path": source_path.relative_to(data_dir).as_posix(),
+                "source_blocks_path": blocks_path.relative_to(data_dir).as_posix(),
+            }
+        ),
     )
     if not accepted:
         await asyncio.to_thread(shutil.rmtree, cache_dir, ignore_errors=True)
@@ -264,7 +276,7 @@ def document_spec(
     session_factory: async_sessionmaker[AsyncSession],
     data_dir: Path,
     record_notifier: RecordInvalidationNotifier,
-) -> WorkerSpec[None, ClaimedDocument, str]:
+) -> WorkerSpec[None, ClaimedDocument, ParsedDocument]:
     async def recover() -> None:
         async with session_factory() as session, session.begin():
             await cancel_nonterminal_jobs(
@@ -295,7 +307,7 @@ def document_spec(
             if record_id is not None:
                 await finalize_record_if_ready(session_factory, data_dir, record_id)
 
-    return WorkerSpec(
+    return WorkerSpec[None, ClaimedDocument, ParsedDocument](
         name="document_worker",
         job_type=ProcessingJobType.DOCUMENT_PARSE,
         poll_interval=1,

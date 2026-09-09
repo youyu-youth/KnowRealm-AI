@@ -54,6 +54,20 @@ class TranscriptSegmentOut(BaseModel):
     content: str
 
 
+class DocumentSegmentOut(BaseModel):
+    """文档分片：PDF 带页码，DOCX/txt/md 按内容块；offset 为该文档全文内的字符偏移。"""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    sequence_no: int = Field(description="记录内全局连续序号（跨文件递增）")
+    page_no: int | None = Field(description="PDF 页码（1 起）；无页码来源为 null")
+    section_title: str | None = Field(description="章节标题；本期恒为 null")
+    content: str
+    start_offset: int | None = Field(description="该文档全文 content 内的起始字符偏移")
+    end_offset: int | None = Field(description="该文档全文 content 内的结束字符偏移（不含）")
+
+
 class TranscriptUpdateRequest(BaseModel):
     content: str = Field(min_length=1)
     expected_source_version: int = Field(ge=1)

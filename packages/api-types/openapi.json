@@ -866,6 +866,83 @@
         "title": "DocumentImportAccepted",
         "type": "object"
       },
+      "DocumentSegmentOut": {
+        "description": "文档分片：PDF 带页码，DOCX/txt/md 按内容块；offset 为该文档全文内的字符偏移。",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "end_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "该文档全文 content 内的结束字符偏移（不含）",
+            "title": "End Offset"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "page_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "PDF 页码（1 起）；无页码来源为 null",
+            "title": "Page No"
+          },
+          "section_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "章节标题；本期恒为 null",
+            "title": "Section Title"
+          },
+          "sequence_no": {
+            "description": "记录内全局连续序号（跨文件递增）",
+            "title": "Sequence No",
+            "type": "integer"
+          },
+          "start_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "该文档全文 content 内的起始字符偏移",
+            "title": "Start Offset"
+          }
+        },
+        "required": [
+          "id",
+          "sequence_no",
+          "page_no",
+          "section_title",
+          "content",
+          "start_offset",
+          "end_offset"
+        ],
+        "title": "DocumentSegmentOut",
+        "type": "object"
+      },
       "EducationStage": {
         "enum": [
           "MIDDLE_SCHOOL",
@@ -8611,6 +8688,99 @@
           }
         },
         "summary": "Classify Record",
+        "tags": [
+          "records"
+        ]
+      }
+    },
+    "/api/records/{record_id}/document-segments": {
+      "get": {
+        "operationId": "get_record_document_segments_api_records__record_id__document_segments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentSegmentOut"
+                  },
+                  "title": "Response Get Record Document Segments Api Records  Record Id  Document Segments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Record Document Segments",
         "tags": [
           "records"
         ]

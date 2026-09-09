@@ -23,7 +23,8 @@ CREATE INDEX idx_transcript_segments_record_start
 
 CREATE TABLE document_segments (
     id TEXT PRIMARY KEY,
-    course_id TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    -- course_id 随挂靠记录所属课程；收件箱导入（未归类）为 NULL。
+    course_id TEXT REFERENCES courses(id) ON DELETE CASCADE,
     record_id TEXT REFERENCES records(id) ON DELETE CASCADE,
     record_file_id TEXT REFERENCES record_files(id) ON DELETE CASCADE,
     course_material_id TEXT,

@@ -56,14 +56,14 @@ class DocumentSegment(Base):
     """文档分片：record_file（导入文档）或未来 course_material 的内容切块。
 
     course_material_id 列预留（该表尚未存在，无外键）；本期 record_id 路径
-    之外的挂靠恒 NULL。
+    之外的挂靠恒 NULL。course_id 随挂靠记录所属课程（收件箱记录为 NULL）。
     """
 
     __tablename__ = "document_segments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    course_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("courses.id", ondelete="CASCADE")
+    course_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("courses.id", ondelete="CASCADE"), default=None
     )
     record_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("records.id", ondelete="CASCADE"), default=None

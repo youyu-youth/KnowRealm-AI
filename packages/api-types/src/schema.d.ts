@@ -480,6 +480,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/document-segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Record Document Segments */
+        get: operations["get_record_document_segments_api_records__record_id__document_segments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/events": {
         parameters: {
             query?: never;
@@ -1652,6 +1669,41 @@ export interface components {
             job_id: string;
             /** Record Id */
             record_id: string;
+        };
+        /**
+         * DocumentSegmentOut
+         * @description 文档分片：PDF 带页码，DOCX/txt/md 按内容块；offset 为该文档全文内的字符偏移。
+         */
+        DocumentSegmentOut: {
+            /** Content */
+            content: string;
+            /**
+             * End Offset
+             * @description 该文档全文 content 内的结束字符偏移（不含）
+             */
+            end_offset: number | null;
+            /** Id */
+            id: string;
+            /**
+             * Page No
+             * @description PDF 页码（1 起）；无页码来源为 null
+             */
+            page_no: number | null;
+            /**
+             * Section Title
+             * @description 章节标题；本期恒为 null
+             */
+            section_title: string | null;
+            /**
+             * Sequence No
+             * @description 记录内全局连续序号（跨文件递增）
+             */
+            sequence_no: number;
+            /**
+             * Start Offset
+             * @description 该文档全文 content 内的起始字符偏移
+             */
+            start_offset: number | null;
         };
         /**
          * EducationStage
@@ -5772,6 +5824,66 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_record_document_segments_api_records__record_id__document_segments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentSegmentOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

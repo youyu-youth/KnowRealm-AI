@@ -21,6 +21,7 @@ from app.modules.record.schemas import (
 )
 from app.modules.record.service import RecordService
 from app.modules.transcript.schemas import (
+    DocumentSegmentOut,
     TranscriptAvailability,
     TranscriptOut,
     TranscriptReadOut,
@@ -112,6 +113,19 @@ async def get_record_transcript_segments(
         )
     segments = await RecordService.get_transcript_segments(session, str(record_id))
     return [TranscriptSegmentOut.model_validate(segment) for segment in segments]
+
+
+@router.get("/records/{record_id}/document-segments", response_model=list[DocumentSegmentOut])
+async def get_record_document_segments(
+    record_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> list[DocumentSegmentOut]:
+    if await RecordService.get(session, str(record_id)) is None:
+        raise CodedHTTPException(
+            code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+        )
+    segments = await RecordService.get_document_segments(session, str(record_id))
+    return [DocumentSegmentOut.model_validate(segment) for segment in segments]
 
 
 @router.patch("/records/{record_id}/transcript", response_model=TranscriptOut)

@@ -12,7 +12,7 @@ from app.modules.search.service import SearchService
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.todo.models import TodoItem
-from app.modules.transcript.models import Transcript, TranscriptSegment
+from app.modules.transcript.models import DocumentSegment, Transcript, TranscriptSegment
 from app.modules.transcript.schemas import TranscriptUpdateRequest
 from app.shared.errors import CodedHTTPException
 
@@ -85,6 +85,19 @@ class RecordService:
                     select(TranscriptSegment)
                     .where(TranscriptSegment.record_id == record_id)
                     .order_by(TranscriptSegment.sequence_no)
+                )
+            ).all()
+        )
+
+    @staticmethod
+    async def get_document_segments(session: AsyncSession, record_id: str) -> list[DocumentSegment]:
+        """该记录文档分片（sequence_no 全局有序）；记录级软删过滤由端点前置校验承担。"""
+        return list(
+            (
+                await session.scalars(
+                    select(DocumentSegment)
+                    .where(DocumentSegment.record_id == record_id)
+                    .order_by(DocumentSegment.sequence_no)
                 )
             ).all()
         )

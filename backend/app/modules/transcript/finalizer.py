@@ -15,7 +15,12 @@ from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.search.service import SearchService
-from app.modules.transcript.models import Transcript, TranscriptSegment
+from app.modules.transcript.document_parser import (
+    DocumentBlock,
+    blocks_from_plain_text,
+    read_blocks_jsonl,
+)
+from app.modules.transcript.models import DocumentSegment, Transcript, TranscriptSegment
 from app.modules.transcript.sentences import (
     Sentence,
     content_hash,
@@ -31,11 +36,12 @@ async def _read_source(
     result_data: dict[str, object],
     *,
     is_audio: bool,
-) -> tuple[str, list[Sentence]] | None:
-    """读单文件 source 中转，返回 (全文, 句子流)；不可用返回 None。
+) -> tuple[str, list[Sentence], list[DocumentBlock]] | None:
+    """读单文件 source 中转，返回 (全文, 句子流, 文档内容块)；不可用返回 None。
 
-    句子流三来源：jsonl（本票起）、旧 txt 行拆降级（音频 in-flight，无时间戳）、
-    文档文件恒空（文档分片随票 03 落地）。
+    句子流两来源：jsonl（本票起）、旧 txt 行拆降级（音频 in-flight，无时间戳）；
+    内容块两来源：blocks jsonl（票 03 起）、旧缓存纯文本切段降级（文档
+    in-flight，无页码）。
     """
     cache_root = (data_dir / "cache").resolve()
     raw_path = result_data.get("source_text_path")
@@ -64,7 +70,20 @@ async def _read_source(
             return None
     else:
         sentences = sentences_from_plain_text(text) if is_audio else []
-    return text, sentences
+    blocks: list[DocumentBlock] = []
+    if not is_audio:
+        raw_blocks_path = result_data.get("source_blocks_path")
+        if isinstance(raw_blocks_path, str):
+            blocks_path = (data_dir / Path(*PurePosixPath(raw_blocks_path).parts)).resolve()
+            if not blocks_path.is_relative_to(cache_root):
+                return None
+            try:
+                blocks = await asyncio.to_thread(read_blocks_jsonl, blocks_path)
+            except OSError:
+                return None
+        else:
+            blocks = blocks_from_plain_text(text)
+    return text, sentences, blocks
 
 
 def _build_segments(
@@ -100,6 +119,33 @@ def _build_segments(
                 )
             )
         record_offset_ms += record_file.duration_ms or 0
+    return segments
+
+
+def _build_document_segments(
+    record: Record,
+    files_blocks: list[tuple[RecordFile, list[DocumentBlock]]],
+) -> list[DocumentSegment]:
+    """文档分片：逐块挂 record_file，sequence_no 记录内全局连续（跨文件递增）；
+    course_id 随记录（收件箱记录为 NULL），course_material 路径本期恒 NULL。"""
+    segments: list[DocumentSegment] = []
+    for record_file, blocks in files_blocks:
+        for block in blocks:
+            segments.append(
+                DocumentSegment(
+                    course_id=record.course_id,
+                    record_id=record.id,
+                    record_file_id=record_file.id,
+                    course_material_id=None,
+                    sequence_no=len(segments),
+                    page_no=block.page_no,
+                    section_title=None,
+                    content=block.content,
+                    start_offset=block.start_offset,
+                    end_offset=block.end_offset,
+                    content_hash=content_hash(block.content),
+                )
+            )
     return segments
 
 
@@ -168,6 +214,7 @@ async def _finalize_record_if_ready(
 
     texts: list[str] = []
     files_sentences: list[tuple[RecordFile, list[Sentence]]] = []
+    files_blocks: list[tuple[RecordFile, list[DocumentBlock]]] = []
     for record_file in files:
         job = jobs_by_file.get(record_file.id)
         result_data = (
@@ -184,6 +231,7 @@ async def _finalize_record_if_ready(
             return False
         texts.append(source[0])
         files_sentences.append((record_file, source[1]))
+        files_blocks.append((record_file, source[2]))
 
     now = utcnow()
     async with session_factory() as session, session.begin():
@@ -228,6 +276,7 @@ async def _finalize_record_if_ready(
             session.add_all(
                 _build_segments(new_transcript.id, record_id, files_sentences)
             )
+            session.add_all(_build_document_segments(record, files_blocks))
         record.status = RecordStatus.SUMMARY_PENDING
         record.updated_at = now
         await session.flush()
@@ -283,6 +332,7 @@ async def complete_source_job(
         )
         texts: list[str] = []
         files_sentences: list[tuple[RecordFile, list[Sentence]]] = []
+        files_blocks: list[tuple[RecordFile, list[DocumentBlock]]] = []
         if ready:
             jobs_by_file: dict[str, ProcessingJob] = {}
             for job in jobs:
@@ -312,6 +362,7 @@ async def complete_source_job(
                     break
                 texts.append(source[0])
                 files_sentences.append((record_file, source[1]))
+                files_blocks.append((record_file, source[2]))
 
         now = utcnow()
         finalized = False
@@ -350,6 +401,7 @@ async def complete_source_job(
                 session.add(new_transcript)
                 await session.flush()
                 session.add_all(_build_segments(new_transcript.id, record_id, files_sentences))
+                session.add_all(_build_document_segments(record, files_blocks))
                 record.status = RecordStatus.SUMMARY_PENDING
                 record.updated_at = now
                 finalized = True

@@ -115,10 +115,19 @@ async def assert_segment_tables_schema(db_path: Path) -> None:
         "end_offset",
         "content_hash",
     ]
-    assert all(document_columns[column] == 0 for column in ["record_id", "record_file_id",
-                                                            "course_material_id", "page_no",
-                                                            "section_title", "start_offset",
-                                                            "end_offset"])
+    assert all(
+        document_columns[column] == 0
+        for column in [
+            "course_id",
+            "record_id",
+            "record_file_id",
+            "course_material_id",
+            "page_no",
+            "section_title",
+            "start_offset",
+            "end_offset",
+        ]
+    )
 
     assert list(anchor_columns) == [
         "id",
