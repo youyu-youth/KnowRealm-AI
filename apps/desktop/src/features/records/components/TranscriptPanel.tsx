@@ -8,7 +8,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
-import type { ProcessingJobOut, RecordOut } from "@/features/records/api/types";
+import type {
+  ProcessingJobOut,
+  RecordOut,
+  TranscriptSegmentOut,
+} from "@/features/records/api/types";
 import { settingsApi } from "@/features/settings/api/settings";
 import { ApiError } from "@/services/http/client";
 
@@ -46,6 +50,11 @@ export function TranscriptPanel({
     queryFn: () => recordApi.getTranscript(recordId),
     enabled,
   });
+  const transcriptSegments = useQuery({
+    queryKey: recordKeys.transcriptSegments(recordId),
+    queryFn: () => recordApi.getTranscriptSegments(recordId),
+    enabled: enabled && transcript.data?.status === "READY",
+  });
   const retryJob = useMutation({
     mutationFn: (job: ProcessingJobOut) => recordApi.retryJob(job.id, recordId),
     onSuccess: () => void onRecordAssetsChanged(),
@@ -64,6 +73,10 @@ export function TranscriptPanel({
       queryClient.setQueryData(recordKeys.transcript(recordId), {
         status: "READY",
         transcript: updated,
+      });
+      // 编辑保存后服务端按句对齐重切了分片，重新拉取呈现对齐结果。
+      void queryClient.invalidateQueries({
+        queryKey: recordKeys.transcriptSegments(recordId),
       });
       setEditing(false);
       setEditBaseVersion(null);
@@ -87,6 +100,8 @@ export function TranscriptPanel({
       setDraft(result.data.transcript.content);
       setEditBaseVersion(result.data.transcript.source_version);
     }
+    // 冲突意味着服务端内容已被换掉，分片随之重切，一并重拉。
+    void transcriptSegments.refetch();
     saveTranscript.reset();
   }
 
@@ -189,7 +204,22 @@ export function TranscriptPanel({
                 </Alert>
               ) : null}
             </div>
+          ) : transcriptSegments.isPending ? (
+            <p
+              role="status"
+              className="text-body text-muted-foreground mt-4 flex items-center gap-2"
+            >
+              <Spinner aria-hidden="true" />
+              {t("record.detail.transcript.segmentsLoading")}
+            </p>
+          ) : transcriptSegments.data !== undefined &&
+            transcriptSegments.data.length > 0 ? (
+            <SourceTimeline
+              segments={transcriptSegments.data}
+              highlight={highlight}
+            />
           ) : (
+            // 无分片记录（粘贴/速记）回落纯文本；分片读取失败时同样回落，正文仍可读。
             <TranscriptView
               content={readyTranscript.content}
               highlight={highlight}
@@ -271,6 +301,106 @@ function TranscriptView({
           content
         )}
       </pre>
+    </>
+  );
+}
+
+/** 来源时间轴时间戳：不足 1 小时 mm:ss，超过则 h:mm:ss（对齐 DESIGN.md 时长规范）。 */
+function formatTimelineTimestamp(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/**
+ * 来源时间轴：句级分片行式排布（左时间戳、右句文本）。
+ * 无时间戳分片保留占位列以维持文本基线对齐；引用摘录在分片中匹配
+ * （多命中取首个）→ 滚动 + 摘录内联高亮 + 时间戳徽章，找不到提示「原文已变动」。
+ */
+function SourceTimeline({
+  segments,
+  highlight,
+}: {
+  segments: TranscriptSegmentOut[];
+  highlight?: string;
+}) {
+  const { t } = useTranslation();
+  const matchRowRef = useRef<HTMLLIElement | null>(null);
+  const matchIndex = highlight
+    ? segments.findIndex((segment) => segment.content.includes(highlight))
+    : -1;
+  const hasTimestamps = segments.some(
+    (segment) => segment.record_start_ms !== null,
+  );
+
+  useEffect(() => {
+    if (matchIndex >= 0) {
+      matchRowRef.current?.scrollIntoView({ block: "center" });
+    }
+  }, [matchIndex]);
+
+  return (
+    <>
+      {highlight && matchIndex < 0 ? (
+        <p role="status" className="text-label text-muted-foreground mt-4">
+          {t("record.detail.transcript.highlightMissing")}
+        </p>
+      ) : null}
+      <ul
+        aria-label={t("record.detail.transcript.timelineLabel")}
+        className="border-border text-body text-ink mt-4 divide-y font-sans"
+      >
+        {segments.map((segment, index) => {
+          const matched = index === matchIndex;
+          const timestamp =
+            segment.record_start_ms === null
+              ? null
+              : formatTimelineTimestamp(segment.record_start_ms);
+          const quoteOffset =
+            matched && highlight ? segment.content.indexOf(highlight) : -1;
+          return (
+            <li
+              key={segment.id}
+              ref={matched ? matchRowRef : undefined}
+              className="flex min-w-0 items-baseline gap-3 py-1.5"
+            >
+              {timestamp !== null ? (
+                matched ? (
+                  <span className="bg-primary text-primary-foreground font-label w-14 shrink-0 rounded-xs py-0.5 text-center tabular-nums">
+                    {timestamp}
+                  </span>
+                ) : (
+                  <span className="text-label text-muted-foreground w-14 shrink-0 tabular-nums">
+                    {timestamp}
+                  </span>
+                )
+              ) : hasTimestamps ? (
+                <span className="w-14 shrink-0" aria-hidden="true" />
+              ) : null}
+              <p className="min-w-0 break-words">
+                {quoteOffset >= 0 && highlight ? (
+                  <>
+                    {segment.content.slice(0, quoteOffset)}
+                    <mark
+                      className="bg-learning-soft text-ink rounded-xs"
+                      aria-label={t("record.detail.transcript.highlightLabel")}
+                    >
+                      {highlight}
+                    </mark>
+                    {segment.content.slice(quoteOffset + highlight.length)}
+                  </>
+                ) : (
+                  segment.content
+                )}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
     </>
   );
 }

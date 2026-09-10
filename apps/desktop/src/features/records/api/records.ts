@@ -11,6 +11,7 @@ import type {
   TodoReadOut,
   TranscriptOut,
   TranscriptReadOut,
+  TranscriptSegmentOut,
 } from "@/features/records/api/types";
 import { createParser } from "eventsource-parser";
 import {
@@ -35,6 +36,10 @@ export const recordApi = {
     ),
   getTranscript: (recordId: string) =>
     apiFetch<TranscriptReadOut>(`/api/records/${recordId}/transcript`),
+  getTranscriptSegments: (recordId: string) =>
+    apiFetch<TranscriptSegmentOut[]>(
+      `/api/records/${recordId}/transcript/segments`,
+    ),
   getJobs: (recordId: string) =>
     apiFetch<RecordJobsOut>(`/api/records/${recordId}/jobs`),
   getSummary: (recordId: string) =>

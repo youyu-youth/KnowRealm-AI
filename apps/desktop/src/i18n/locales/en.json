@@ -632,6 +632,8 @@
         "reload": "Load latest version",
         "highlightMissing": "The source text has changed; the referenced passage could not be located.",
         "highlightLabel": "Citation highlight",
+        "timelineLabel": "Source timeline",
+        "segmentsLoading": "Loading source segments",
         "errors": {
           "AUDIO_TRANSCODE_FAILED": "Audio normalization or chunking failed; make sure the original file is readable and retry.",
           "ASR_AUTH_FAILED": "Tencent Cloud credentials are invalid; fix the Provider configuration and retry.",

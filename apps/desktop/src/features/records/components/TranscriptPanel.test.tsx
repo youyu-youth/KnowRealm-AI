@@ -2,7 +2,13 @@
 
 import "@testing-library/jest-dom/vitest";
 import type { components } from "@knowrealm/api-types";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TranscriptPanel } from "@/features/records/components/TranscriptPanel";
@@ -18,6 +24,7 @@ const JOB_ID = "33333333-3333-4333-8333-333333333333";
 const DETAIL_URL = `${TEST_SIDECAR_URL}/api/records/${RECORD_ID}`;
 const JOBS_URL = `${DETAIL_URL}/jobs`;
 const TRANSCRIPT_URL = `${DETAIL_URL}/transcript`;
+const SEGMENTS_URL = `${TRANSCRIPT_URL}/segments`;
 const JOB_RETRY_URL = `${TEST_SIDECAR_URL}/api/processing-jobs/${JOB_ID}/retries`;
 const ASR_CONSENT_URL = `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/tencent-asr`;
 
@@ -41,6 +48,35 @@ vi.mock("@/services/tauri/sidecar", () => ({
 }));
 
 window.Element.prototype.scrollIntoView = vi.fn();
+
+function segment(
+  overrides: Partial<components["schemas"]["TranscriptSegmentOut"]> = {},
+): components["schemas"]["TranscriptSegmentOut"] {
+  return {
+    id: crypto.randomUUID(),
+    sequence_no: 0,
+    record_start_ms: null,
+    record_end_ms: null,
+    file_start_ms: null,
+    file_end_ms: null,
+    speaker: null,
+    content: "",
+    ...overrides,
+  };
+}
+
+function readyTranscript(content: string, sourceVersion = 1) {
+  return {
+    status: "READY" as const,
+    transcript: {
+      language: "zh-CN",
+      content,
+      source_version: sourceVersion,
+      edited_by_user: sourceVersion > 1,
+      updated_at: "2026-08-21T12:00:00.000000Z",
+    },
+  };
+}
 
 function jobsResponse(
   job: Partial<components["schemas"]["ProcessingJobOut"]> = {},
@@ -88,6 +124,7 @@ describe("TranscriptPanel", () => {
   it("只有显式启用时才查询 Jobs 与 Transcript", async () => {
     let jobsCalls = 0;
     let transcriptCalls = 0;
+    let segmentsCalls = 0;
     server.use(
       http.get(JOBS_URL, () => {
         jobsCalls += 1;
@@ -97,11 +134,16 @@ describe("TranscriptPanel", () => {
         transcriptCalls += 1;
         return HttpResponse.json({ status: "NOT_READY", transcript: null });
       }),
+      http.get(SEGMENTS_URL, () => {
+        segmentsCalls += 1;
+        return HttpResponse.json([]);
+      }),
     );
     renderTranscript({ enabled: false });
     await new Promise((resolve) => window.setTimeout(resolve, 50));
     expect(jobsCalls).toBe(0);
     expect(transcriptCalls).toBe(0);
+    expect(segmentsCalls).toBe(0);
 
     cleanup();
     renderTranscript({ enabled: true });
@@ -109,6 +151,8 @@ describe("TranscriptPanel", () => {
       expect(jobsCalls).toBe(1);
       expect(transcriptCalls).toBe(1);
     });
+    // 转写未就绪时不拉分片。
+    expect(segmentsCalls).toBe(0);
   });
 
   it("区分确定性与可恢复失败，并防止重试重复提交", async () => {
@@ -197,6 +241,7 @@ describe("TranscriptPanel", () => {
     let patchCalls = 0;
     server.use(
       http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(SEGMENTS_URL, () => HttpResponse.json([])),
       http.get(TRANSCRIPT_URL, () =>
         HttpResponse.json({
           status: "READY",
@@ -271,6 +316,7 @@ describe("TranscriptPanel", () => {
     const quote = "MVCC 依赖 undo 日志实现多版本读";
     server.use(
       http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(SEGMENTS_URL, () => HttpResponse.json([])),
       http.get(TRANSCRIPT_URL, () =>
         HttpResponse.json({
           status: "READY",
@@ -298,6 +344,7 @@ describe("TranscriptPanel", () => {
   it("引用已不在转写中时显示变动提示", async () => {
     server.use(
       http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(SEGMENTS_URL, () => HttpResponse.json([])),
       http.get(TRANSCRIPT_URL, () =>
         HttpResponse.json({
           status: "READY",
@@ -340,5 +387,190 @@ describe("TranscriptPanel", () => {
 
     expect(await screen.findByText("已完成")).toBeVisible();
     expect(screen.queryByText(/第 1 次尝试/)).toBeNull();
+  });
+
+  it("浏览态渲染句级时间轴，无时间戳分片无时间标记", async () => {
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(
+          readyTranscript("第一句在一点零五。第二句没有时间戳。"),
+        ),
+      ),
+      http.get(SEGMENTS_URL, () =>
+        HttpResponse.json([
+          segment({
+            sequence_no: 0,
+            record_start_ms: 65_000,
+            record_end_ms: 68_000,
+            content: "第一句在一点零五。",
+          }),
+          segment({ sequence_no: 1, content: "第二句没有时间戳。" }),
+          segment({
+            sequence_no: 2,
+            record_start_ms: 3_665_000,
+            record_end_ms: 3_668_000,
+            content: "第三句过了一小时。",
+          }),
+        ]),
+      ),
+    );
+    renderTranscript({ detail: { ...record, status: "COMPLETED" } });
+
+    const list = await screen.findByRole("list", { name: "来源时间轴" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    expect(within(list).getByText("01:05")).toBeVisible();
+    expect(within(list).getByText("1:01:05")).toBeVisible();
+    // 无时间戳分片不出现时间标记，只陈列句文本。
+    expect(rows[1].textContent).toBe("第二句没有时间戳。");
+  });
+
+  it("引用摘录定位到首个命中分片：滚动高亮并显示时间戳徽章", async () => {
+    const quote = "AOF 重写由阈值触发";
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(
+          readyTranscript(`今天讲 Redis 持久化。${quote}。${quote} 再提一次。`),
+        ),
+      ),
+      http.get(SEGMENTS_URL, () =>
+        HttpResponse.json([
+          segment({
+            sequence_no: 0,
+            record_start_ms: 0,
+            record_end_ms: 3_000,
+            content: "今天讲 Redis 持久化。",
+          }),
+          segment({
+            sequence_no: 1,
+            record_start_ms: 275_000,
+            record_end_ms: 278_000,
+            content: `${quote}，默认阈值是百分比。`,
+          }),
+          segment({
+            sequence_no: 2,
+            record_start_ms: 300_000,
+            record_end_ms: 303_000,
+            content: `${quote} 再提一次。`,
+          }),
+        ]),
+      ),
+    );
+    vi.mocked(window.Element.prototype.scrollIntoView).mockClear();
+    renderTranscript({
+      detail: { ...record, status: "COMPLETED" },
+      highlight: quote,
+    });
+
+    // 多命中取首个：唯一高亮落在第二行（04:35）并带时间戳徽章。
+    const mark = await screen.findByText(quote, { selector: "mark" });
+    const row = mark.closest("li");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("04:35")).toBeVisible();
+    expect(document.querySelectorAll("mark")).toHaveLength(1);
+    expect(window.Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("引用摘录不在任何分片时走原文已变动兜底", async () => {
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(readyTranscript("句子一。")),
+      ),
+      http.get(SEGMENTS_URL, () =>
+        HttpResponse.json([
+          segment({ record_start_ms: 0, content: "句子一。" }),
+        ]),
+      ),
+    );
+    renderTranscript({
+      detail: { ...record, status: "COMPLETED" },
+      highlight: "不存在的摘录",
+    });
+
+    expect(
+      await screen.findByText("原文已变动，未能定位引用内容。"),
+    ).toBeVisible();
+    expect(document.querySelector("mark")).toBeNull();
+  });
+
+  it("无分片记录浏览态回落纯文本", async () => {
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(readyTranscript("粘贴的整篇文本。")),
+      ),
+      http.get(SEGMENTS_URL, () => HttpResponse.json([])),
+    );
+    renderTranscript({
+      detail: { ...record, capture_type: "PASTE", status: "COMPLETED" },
+    });
+
+    expect(
+      await screen.findByText(
+        (_content, element) =>
+          element?.tagName === "PRE" &&
+          element.textContent === "粘贴的整篇文本。",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole("list", { name: "来源时间轴" })).toBeNull();
+  });
+
+  it("编辑保存后重新拉取分片呈现对齐结果", async () => {
+    let saved = false;
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(
+          readyTranscript(
+            saved ? "改写后的正文。" : "原始正文。",
+            saved ? 2 : 1,
+          ),
+        ),
+      ),
+      http.get(SEGMENTS_URL, () =>
+        HttpResponse.json(
+          saved
+            ? [
+                segment({
+                  sequence_no: 0,
+                  record_start_ms: 3_000,
+                  content: "改写后的句子。",
+                }),
+              ]
+            : [
+                segment({
+                  sequence_no: 0,
+                  record_start_ms: 1_000,
+                  content: "原始句子。",
+                }),
+              ],
+        ),
+      ),
+      http.patch(TRANSCRIPT_URL, async () => {
+        saved = true;
+        return HttpResponse.json({
+          language: "zh-CN",
+          content: "改写后的正文。",
+          source_version: 2,
+          edited_by_user: true,
+          updated_at: "2026-08-21T12:05:00.000000Z",
+        });
+      }),
+    );
+    renderTranscript({ detail: { ...record, status: "SUMMARY_PENDING" } });
+
+    expect(await screen.findByText("原始句子。")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "编辑正文" }));
+    const editor = screen.getByRole("textbox", {
+      name: "Transcript 正文编辑器",
+    });
+    fireEvent.change(editor, { target: { value: "改写后的正文。" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存正文" }));
+    // 保存成功后分片被重新拉取，时间轴呈现对齐后的新句子。
+    expect(await screen.findByText("改写后的句子。")).toBeVisible();
+    expect(screen.queryByText("原始句子。")).toBeNull();
   });
 });

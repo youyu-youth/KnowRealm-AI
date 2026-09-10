@@ -202,6 +202,11 @@ describe("工作台骨架", () => {
           },
         });
       }),
+      // 该记录走纯文本回落形态；时间轴形态由 TranscriptPanel 测试覆盖。
+      http.get(
+        `${TEST_SIDECAR_URL}/api/records/${recordId}/transcript/segments`,
+        () => HttpResponse.json([]),
+      ),
     );
 
     render(<App />);

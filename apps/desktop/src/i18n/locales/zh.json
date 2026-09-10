@@ -624,6 +624,8 @@
         "reload": "载入最新版本",
         "highlightMissing": "原文已变动，未能定位引用内容。",
         "highlightLabel": "引用定位",
+        "timelineLabel": "来源时间轴",
+        "segmentsLoading": "正在读取来源分片",
         "errors": {
           "AUDIO_TRANSCODE_FAILED": "音频规范化或切片失败，请确认原文件可读取后重试。",
           "ASR_AUTH_FAILED": "腾讯云凭据无效，请修正 Provider 配置后重试。",

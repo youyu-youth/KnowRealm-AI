@@ -100,6 +100,9 @@ export function RecordDetailPage({
           queryKey: recordKeys.transcript(recordId),
         }),
         queryClient.invalidateQueries({
+          queryKey: recordKeys.transcriptSegments(recordId),
+        }),
+        queryClient.invalidateQueries({
           queryKey: recordKeys.reviewMaterial(recordId),
         }),
       ]);
