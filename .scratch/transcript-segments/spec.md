@@ -90,7 +90,7 @@ Status: ready-for-agent
 **API 与前端（票 5）**
 
 - 新增 `GET /api/records/{record_id}/transcript/segments`：一次返回全部分片（不分页，2 小时课堂约 100-200KB 可接受）；现有 transcript 端点不内嵌分片（避免 content 双份传输）。
-- TranscriptPanel 双模式：**浏览态从纯文本升级为行式时间轴**（左时间戳 mm:ss、右句文本，密集排布）；**编辑态维持现有整篇 Textarea 不变**；无分片的记录浏览态回落纯文本。
+- TranscriptPanel 双模式：**浏览态从纯文本升级为行式时间轴**（左时间戳 mm:ss、超一小时进位 h:mm:ss，右句文本，密集排布）；**编辑态维持现有整篇 Textarea 不变**；无分片的记录浏览态回落纯文本。
 - chat 引用句级定位走**前端匹配**：跳转后在已加载的分片中找 content 包含 quote 的分片 → 滚动 + 高亮 + 时间戳徽章；找不到走现状"原文已变动"兜底。后端 citations 契约零改、api-types 不因 chat 变更。
 - 新 UI 文案 zh/en 同步（i18n 双语纪律）；UI 遵循 DESIGN.md 与现有设计令牌体系。
 

@@ -30,7 +30,7 @@
 | D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | Tauri sidecar（Python 进程内）FastAPI + LangChain/LangGraph + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4.3） |
 | D7 | 异步与缓存 | Redis/Redisson + RabbitMQ（§27.4/§27.5） | 自研 processing_jobs 队列（SQLite 表即队列 + sidecar 进程内 asyncio worker），无 Redis / RabbitMQ / procrastinate（决策 #1） |
 | D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | sqlite-vec（vec0 虚拟表）+ semantic_embeddings 统一表；明确不做 Qdrant / pgvector（技术栈 v4.3） |
-| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.3（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
+| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.4（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
 | D10 | shares 表 | §25.1 保留 t_share | 不建 shares 表（决策 #15） |
 | D11 | F15 落地 | 不新增表（仅 action_type=PREVIEW） | 依赖 course_materials 课程级资料表（决策 #12） |
 | D12 | Teach-back 输入 | 语音解释 → ASR（§18.1） | V1 文本先行，语音后补（决策 #19） |
@@ -39,7 +39,7 @@
 | D15 | 优先级与阶段 | §6 S+/A+ 评级、§32 Phase 1~7、§37 P0~P3 | 基线 §4.7 阶段映射（F1=P2 … F16=P6）与 §5.1 阶段规划 |
 | D16 | 产品定位语境 | 毕业设计 / 项目展示 / 比赛（§33） | 开源、面向个人使用（基线头部） |
 
-> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.3》。
+> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.4》。
 
 ---
 
@@ -618,6 +618,15 @@ Course Concept Graph                         Learning Evidence
 ---
 
 # 7. F1 — Transcript Segment + Evidence Timeline
+
+> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v2.4》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
+>
+> - **术语定名「来源时间轴」（Source Timeline）**：本章 "Evidence Timeline" 废弃——Evidence 一词专属「学习证据」（Learning Evidence）；
+> - **交付边界**：本期 = 数据地基（四表 + 切分管道 + 存量回填）+ 来源时间轴前端；不含音频回放、不含 AI 产物 graph prompt 引用改造、不动搜索索引；
+> - **锚点表空表就位**：source_anchors / source_anchor_links 仅结构 + service + 只读 API，零写入者（首个写入者随 A1 检索工具 / A3 Evidence Builder）；§7.4 草案 source_type 缺 CHAT_MESSAGE，定稿为四值；
+> - **PPTX 维持不支持**（未来支持导入时随做分片）；文档分片按页/内容块落地，已接入转写页时间轴（PDF 页码徽章，票 03 前旧文档回落行级）；
+> - **音频回放（§7.5「点击自动播放」）不在本期**：独立后续票，方向已锁 = Tauri asset protocol（`convertFileSrc`）+ `<audio>`，零后端端点；
+> - 已落地交互：浏览态行式时间轴（音频 mm:ss / h:mm:ss、无标记块序号列）+ chat 引用角标句级定位（前端 quote 匹配 → 滚动 + 高亮 + 时间戳徽章，找不到走「原文已变动」兜底）。
 
 ## 7.1 现有基础
 
@@ -3607,7 +3616,7 @@ Mastery Update
 
 | # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
 |---|---|---|---|---|---|
-| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.3 已定稿；P2 六表中 learning_events 已落地，learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
+| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.4 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
 | A1 | Chat 检索工具（Agent 第一工具） | 基线 §4.7"检索为第一工具"（#53） | ★★★ | 中低 | `@tool` 包装 `SearchService`；解决 >30k 转写丢细节痛点；检索入口与引用 UI 双复用，工作量集中在工具编排 |
 | A2 | 工具调用的前端呈现 | ——（基线未细化的实施项） | ★★★ | 中 | SSE 增加 `tool_call` / `tool_result` 事件类型；chat UI 展示"正在检索 → 命中 n 条"状态卡；AI Elements 评估预留的"chat 上工具调用"重启触发点在此落地（自定义组件为主体） |
 | A3 | 事件消费框架 + Evidence Builder 最小版 | Phase 2 Learning Evidence | ★★★ | 中 | §39.2 基础设施第 1 项；复用 JobRunner / asyncio 模式；幂等键已具备；**Evidence 不可再生，每晚一天上线丢一天积累** |
@@ -3637,7 +3646,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 > 修订说明：本节原为"双轨并行"表述，未标明先后顺序、与 §39.5 短期规划的对齐关系不清，当日修订为统一序列。**起点已定：F1 先做**（2026-09-09 决定，与 §37 P0 第一项、§39.5 P2 顺序一致）。
 
 ```text
-第 1 步   F1 Segment + Source Anchor（A0）   ← 先做（已定）
+第 1 步   F1 Segment + Source Anchor（A0）   ← ✅ 已完成（2026-09-10）
 第 2 步   A3 Evidence Builder 管道            ← 依赖 F1（learning_evidence.source_anchor_id）
   ┆ 并行槽（不依赖 F1 / A3，可随时插入，单独成线）
   ┆   A1 chat 检索工具 → A2 工具调用前端呈现

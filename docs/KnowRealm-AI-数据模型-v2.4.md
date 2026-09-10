@@ -1,4 +1,4 @@
-# KnowRealm-AI 数据模型 v2.3
+# KnowRealm-AI 数据模型 v2.4
 
 > **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.7》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.5.md`。
 > **核心原则（v2.0 范式，ADR-0001 / 决策 #55）**：
@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：v2.4（2026-09-10）**F1 转写分片与来源时间轴已实施（迁移 0019，transcript-segments plan）**——§4.5 前四表（transcript_segments / document_segments / source_anchors / source_anchor_links）标注**已实施**，表结构以此节为准。实施定案：transcript_segments 四个时间戳列允许 NULL（= 无时间轴来源，存量回填 / in-flight 降级 / 编辑未命中句三场景共用同一退化语义）；document_segments.course_id 可空（收件箱导入未归类为一等场景）、course_material_id 挂靠路径列预留（course_materials P5 未建，暂无外键，其落地时补约束）；source_anchors「至少关联一个分片」收紧为精确类型 CHECK（AUDIO_SEGMENT 必挂 transcript_segment_id、DOCUMENT_SEGMENT 必挂 document_segment_id，§10 同步）；四表为派生定位/引用结构，不带 created_at / 软删列（随父实体级联删除）；锚点两表空表就位、本期零写入者（首个写入者随 A1 检索工具 / A3 Evidence Builder）。
 > **变更记录**：v2.3（2026-09-06）**复习资料定稿（16 plan grill）**——review_materials 由 6 字段草案补齐完整形态：status（GENERATED / CONFIRMED / SUPERSEDED，确认必选）、version_no（(record_id, version_no) 唯一；仅 AI 重生成换代，手动编辑就地生效不换代）、transcript_source_version（过期锚点：转写已改则拒绝新提交）、generated_from_summary_id（可空，仅溯源不阻塞）、user_feedback / token_usage_json / latency_ms / confirmed_at / 软删列。生成上下文定为**转写/文档解析全文为主 + 已确认总结辅助**（KP 不进，弃"总结+KP"草案）；生成走 LangGraph interrupt/resume（复用 langgraph.db，thread_id 前缀隔离，与总结同构）；超长按模型窗口自适应（装得下单次调用、超限语义分块 map-reduce，禁静默截断）；Top 重点清单条数不固定（LLM 按内容密度决定）。
 > **变更记录**：2026-08-25 **习题生成与作答定稿（08 plan grill）**——quizzes 增作答三列（user_answer_json / answer_result 可空 CORRECT·WRONG，NULL=简答待自评 / answered_at，与 QUIZ_ANSWERED 同事务写）并补软删标注；不建 model / prompt_version / quality_score / cognitive_level / concept_id / source_anchor_id 列（溯源记 processing_jobs.result_json——07 先例，P3 / P5 / 评测域后补）；选择题单选、判断题 options 固定「对/错」两项与选择题同构；逐题模式一题一答、简答二态自评；learning_events 幂等键构造定为 `{event-slug}:{source-id}`（quiz-answered:{quiz_id}）；习题批次采纳不发学习事件；Wave B 测验模式同题再答键位另立（quiz-answered:test:{item_id} 风格）。
 > **变更记录**：2026-08-24 **知识点提取定稿（07 plan grill）**——knowledge_points 取消独立 status 列（generation_status 单列承载，对齐 quizzes）；importance 定标 1~5、tags ≤5；AI 候选生成即落 DRAFT 行、每 Record 至多一个在途 DRAFT 批次；确认时绑定的 Summary 须仍为 CONFIRMED；批次溯源（model / prompt_version / 候选条数）记入 processing_jobs.result_json，表不加列。
@@ -285,33 +286,46 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 
 ### 4.5 学习数据基础域（P2；learning_events P1）
 
-**transcript_segments** — 句子级转写分片
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| id / transcript_id / record_id / file_id | TEXT | |
-| sequence_no | INTEGER | 索引 (record_id, sequence_no) |
-| record_start_ms / record_end_ms | INTEGER | 课堂全局时间轴 |
-| file_start_ms / file_end_ms | INTEGER | 文件内时间轴 |
-| speaker | TEXT | 可空（说话人分离预留） |
-| content / content_hash | TEXT | 索引 (file_id, file_start_ms)、(record_id, record_start_ms) |
+> **v2.4 已实施标注**：本节前四表已随 F1 落地（迁移 0019，2026-09-10）。四表均为派生定位/引用结构（非可编辑实体）：不带 created_at / updated_at / deleted_at，生命周期随父实体 ON DELETE CASCADE。锚点两表空表就位，本期零写入者。
 
-**document_segments** — 文档分片
+**transcript_segments** — 句子级转写分片（已实施）
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id / course_id | TEXT | |
+| id / transcript_id / record_id / file_id | TEXT | FK 级联删除 |
+| sequence_no | INTEGER | 记录内全局连续；索引 (record_id, sequence_no) |
+| record_start_ms / record_end_ms | INTEGER | **可空**——课堂拼接时间轴（多文件按顺序累加，非真实墙钟） |
+| file_start_ms / file_end_ms | INTEGER | **可空**——文件内时间轴；索引 (file_id, file_start_ms)、(record_id, record_start_ms) |
+| speaker | TEXT | 可空，恒 NULL（说话人分离预留） |
+| content / content_hash | TEXT | content_hash 供编辑增量对齐重切 |
+
+四个时间戳列 NULL = **无时间轴来源**（全库唯一退化态）：存量回填 / in-flight 降级合并 / 编辑未命中句三场景共用同一语义（v2.4 修正——v2.3 按 NOT NULL 设计）。
+
+**document_segments** — 文档分片（已实施）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id / course_id | TEXT | course_id **可空**（收件箱导入未归类） |
 | record_id | TEXT | 可空 |
-| record_file_id / course_material_id | TEXT | 二者**必须且只能一个非空**（CHECK） |
-| sequence_no / page_no / section_title | INTEGER / INTEGER / TEXT | page_no 可空（PyMuPDF 提供页码） |
-| content / start_offset / end_offset / content_hash | TEXT / INTEGER / INTEGER / TEXT | |
+| record_file_id / course_material_id | TEXT | 二者**必须且只能一个非空**（CHECK）；course_material 路径列预留未启用——course_materials 表 P5 未建、本列暂无外键，其落地时补约束，本期恒走 record_file_id |
+| sequence_no / page_no / section_title | INTEGER / INTEGER / TEXT | sequence_no 记录内全局连续；page_no 可空（PDF 逐页提取、页码 1 起；DOCX/txt/md 为 NULL）；section_title 可空 |
+| content / start_offset / end_offset / content_hash | TEXT / INTEGER / INTEGER / TEXT | start_offset / end_offset 可空，为相对文档全文 content 的字符偏移 |
 
-**source_anchors** — 来源锚点
+**source_anchors** — 来源锚点（已实施，空表零写入者）
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id / course_id | TEXT | |
-| source_type | TEXT | AUDIO_SEGMENT / DOCUMENT_SEGMENT / USER_NOTE / CHAT_MESSAGE |
+| id / course_id | TEXT | course_id NOT NULL |
+| source_type | TEXT | AUDIO_SEGMENT / DOCUMENT_SEGMENT / USER_NOTE / CHAT_MESSAGE（CHECK） |
 | source_id | TEXT | |
-| record_id / record_file_id / course_material_id / transcript_segment_id / document_segment_id | TEXT | 可空，但 Audio/Document 来源至少关联一个具体 Segment |
+| record_id / record_file_id / course_material_id / transcript_segment_id / document_segment_id | TEXT | 可空；CHECK 精确类型匹配：AUDIO_SEGMENT 必挂 transcript_segment_id、DOCUMENT_SEGMENT 必挂 document_segment_id（比"至少关联一个 Segment"的字面更严，§10 同步） |
 | start_offset / end_offset / page_no | INTEGER | 可空 |
+
+**source_anchor_links** — 多来源关联（多态，已实施）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | TEXT | PK |
+| resource_type | TEXT | SUMMARY / KNOWLEDGE_POINT / QUIZ / MISCONCEPTION / CHAT_MESSAGE / RECORD_ANALYSIS（CHECK） |
+| resource_id | TEXT | |
+| source_anchor_id | TEXT | FK 级联删除 |
+| relation_type | TEXT | SUPPORTS / PRIMARY / CONTRADICTS / REFERENCES（CHECK） |
 
 **source_anchor_links** — 多来源关联（多态）
 | 字段 | 类型 | 说明 |
@@ -545,7 +559,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 0 ≤ priority ≤ 100        duration_ms ≥ 0        file_size ≥ 0
 sequence_no ≥ 0           evidence_count ≥ 0     attempts ≥ 0
 document_segments: (record_file_id IS NULL) ≠ (course_material_id IS NULL)
-source_anchors: AUDIO/DOCUMENT 来源至少一个 segment 引用非空
+source_anchors: AUDIO_SEGMENT 必挂 transcript_segment_id、DOCUMENT_SEGMENT 必挂 document_segment_id（精确类型匹配，v2.4 收紧）
 learning_events.idempotency_key 全表唯一
 record_id+version_no、concept_id（mastery/review）、goal_id+plan_version 等复合唯一（见各表）
 状态字段受控枚举（CHECK 或应用层 Enum 注册）
