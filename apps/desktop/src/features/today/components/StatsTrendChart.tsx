@@ -57,9 +57,9 @@ function buildTrendOption(
         itemStyle: {
           color: palette.card,
           borderColor: palette.foreground,
-          borderWidth: 2,
+          borderWidth: 1.5,
         },
-        lineStyle: { width: 2, color: palette.foreground },
+        lineStyle: { width: 1.5, color: palette.foreground },
         areaStyle: palette.foreground
           ? {
               color: {

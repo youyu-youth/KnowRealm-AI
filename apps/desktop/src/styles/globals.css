@@ -12,7 +12,8 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    scrollbar-color: var(--surface-strong) transparent;
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
   }
 
   html {
@@ -40,13 +41,36 @@
     cursor: not-allowed;
   }
 
-  a:focus-visible {
-    outline: 3px solid color-mix(in srgb, var(--focus) 36%, transparent);
+  :where(a, button, input, textarea, select, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus);
     outline-offset: 2px;
   }
 
   ::selection {
     color: var(--ink-strong);
     background: var(--learning-soft);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 10px;
+    background: var(--border-strong);
+    background-clip: padding-box;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }

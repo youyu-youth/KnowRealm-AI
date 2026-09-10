@@ -18,6 +18,12 @@
       "openSettings": "Open profile settings",
       "nicknamePlaceholder": "No nickname set",
       "avatarAlt": "Avatar"
+    },
+    "courses": {
+      "label": "Recent courses",
+      "loading": "Loading courses",
+      "unavailable": "Courses unavailable",
+      "viewAll": "View all"
     }
   },
   "capture": {
@@ -113,6 +119,61 @@
     "todoTitle": "Summaries awaiting confirmation",
     "todoListLabel": "List of summaries awaiting confirmation",
     "todoAction": "Confirm now",
+    "overview": {
+      "chainTitle": "Today's learning chain",
+      "chain": {
+        "capture": "Capture",
+        "captureHint": "Material entered the local workspace",
+        "processing": "Process",
+        "processingHint": "Transcribing and structuring",
+        "summary": "Confirm summary",
+        "summaryHint": "Waiting for your review",
+        "assets": "Learning assets",
+        "assetsHint": "Knowledge Points, questions, and Review Material"
+      },
+      "actionsTitle": "Action flow",
+      "assetsTitle": "Recent assets",
+      "openInbox": "Open Inbox",
+      "openLibrary": "Open Library",
+      "openCourses": "View courses",
+      "continueTitle": "Continue learning",
+      "continueItem": "Operating Systems · Processes and threads",
+      "achievementSample": "7-day streak · 6.5 focused hours this week",
+      "actions": {
+        "processing": {
+          "title": "Class recording is being transcribed",
+          "detail": "Computer Networks · about 8 minutes remaining",
+          "status": "Processing"
+        },
+        "review": {
+          "title": "Review weaker Knowledge Points",
+          "detail": "Linear Algebra · rank and linear dependence",
+          "status": "Review"
+        },
+        "classify": {
+          "title": "Organize unclassified Records",
+          "detail": "2 Quick Notes are waiting for a course",
+          "status": "Classify"
+        }
+      },
+      "assets": {
+        "summary": {
+          "title": "Core process scheduling mechanisms",
+          "source": "Operating Systems · class recording",
+          "type": "Summary"
+        },
+        "knowledgePoint": {
+          "title": "Equivalent definitions of matrix rank",
+          "source": "Linear Algebra · document",
+          "type": "Knowledge Point"
+        },
+        "reviewMaterial": {
+          "title": "TCP reliable delivery Review Material",
+          "source": "Computer Networks · pasted text",
+          "type": "Review Material"
+        }
+      }
+    },
     "stats": {
       "title": "Learning trends",
       "loading": "Loading learning statistics",

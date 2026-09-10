@@ -17,7 +17,10 @@ export type ChartPalette = {
   foreground?: string;
   primary?: string;
   mutedForeground?: string;
+  neutralForeground?: string;
+  faintForeground?: string;
   border?: string;
+  borderStrong?: string;
   card?: string;
   learning?: string;
 };
@@ -27,8 +30,11 @@ export function chartPalette(): ChartPalette {
     foreground: cssVar("--ink"),
     primary: cssVar("--ink-strong"),
     mutedForeground: cssVar("--muted-foreground"),
+    neutralForeground: cssVar("--ink-neutral"),
+    faintForeground: cssVar("--ink-faint"),
     border: cssVar("--border"),
-    card: cssVar("--paper"),
+    borderStrong: cssVar("--border-strong"),
+    card: cssVar("--surface-raised"),
     learning: cssVar("--learning"),
   };
 }

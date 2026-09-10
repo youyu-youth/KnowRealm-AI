@@ -9,14 +9,10 @@ import {
   progressSeries,
 } from "@/features/today/mockInsights";
 
-// 三层堆叠面积的透明度阶梯（learning 蓝 → 灰），与手写图例共用同一色值。
+// 三层堆叠面积使用主题灰阶与不同透明度，手写图例复用同一色值。
 function progressLayerColors() {
   const palette = chartPalette();
-  return [
-    palette.learning,
-    hexWithAlpha(palette.learning, "A6"),
-    hexWithAlpha(palette.mutedForeground, "99"),
-  ];
+  return [palette.primary, palette.foreground, palette.mutedForeground];
 }
 
 function buildProgressOption(t: (key: string) => string) {

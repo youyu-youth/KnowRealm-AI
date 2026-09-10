@@ -33,7 +33,7 @@ function buildRadarOption(t: (key: string) => string) {
           {
             name: t("today.stats.insights.thisWeek"),
             value: radarThisWeek,
-            lineStyle: { width: 2, color: palette.foreground },
+            lineStyle: { width: 1.5, color: palette.foreground },
             itemStyle: { color: palette.foreground },
             areaStyle: palette.foreground
               ? { color: palette.foreground, opacity: 0.14 }

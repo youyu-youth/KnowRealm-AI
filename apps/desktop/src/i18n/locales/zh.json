@@ -18,6 +18,12 @@
       "openSettings": "打开档案设置",
       "nicknamePlaceholder": "未设置昵称",
       "avatarAlt": "头像"
+    },
+    "courses": {
+      "label": "近期课程",
+      "loading": "正在读取课程",
+      "unavailable": "课程暂时不可用",
+      "viewAll": "查看全部"
     }
   },
   "capture": {
@@ -113,6 +119,61 @@
     "todoTitle": "等待确认的总结",
     "todoListLabel": "待确认总结列表",
     "todoAction": "去确认",
+    "overview": {
+      "chainTitle": "今日学习链",
+      "chain": {
+        "capture": "捕获",
+        "captureHint": "资料已进入本地工作台",
+        "processing": "处理",
+        "processingHint": "转写与结构化处理中",
+        "summary": "确认总结",
+        "summaryHint": "等待人工确认",
+        "assets": "学习资产",
+        "assetsHint": "知识点、习题与复习资料"
+      },
+      "actionsTitle": "行动流",
+      "assetsTitle": "最近资产",
+      "openInbox": "打开收件箱",
+      "openLibrary": "打开资产库",
+      "openCourses": "查看课程",
+      "continueTitle": "继续学习",
+      "continueItem": "操作系统 · 进程与线程",
+      "achievementSample": "连续学习 7 天 · 本周专注 6.5 小时",
+      "actions": {
+        "processing": {
+          "title": "课堂录音正在转写",
+          "detail": "计算机网络 · 约 8 分钟后完成",
+          "status": "处理中"
+        },
+        "review": {
+          "title": "复习薄弱知识点",
+          "detail": "线性代数 · 矩阵秩与线性相关",
+          "status": "待复习"
+        },
+        "classify": {
+          "title": "整理未归类记录",
+          "detail": "2 条速记等待归入课程",
+          "status": "待归类"
+        }
+      },
+      "assets": {
+        "summary": {
+          "title": "进程调度核心机制",
+          "source": "操作系统 · 课堂录音",
+          "type": "总结"
+        },
+        "knowledgePoint": {
+          "title": "矩阵秩的等价定义",
+          "source": "线性代数 · 文档",
+          "type": "知识点"
+        },
+        "reviewMaterial": {
+          "title": "TCP 可靠传输复习资料",
+          "source": "计算机网络 · 粘贴文本",
+          "type": "复习资料"
+        }
+      }
+    },
     "stats": {
       "title": "学习趋势",
       "loading": "正在读取学习统计",

@@ -8,18 +8,16 @@ import {
   distributionTotalHours,
 } from "@/features/today/mockInsights";
 
-// 用户指定的冷色主阶，末两档延续同色系以覆盖六个学习分类。
-const DISTRIBUTION_COLORS = [
-  "#1a2f44",
-  "#41607f",
-  "#5b7c9d",
-  "#a1a8ad",
-  "#c2c8cc",
-  "#d7dbde",
-] as const;
-
 function buildDistributionOption(t: (key: string) => string) {
   const palette = chartPalette();
+  const colors = [
+    palette.primary,
+    palette.foreground,
+    palette.neutralForeground,
+    palette.mutedForeground,
+    palette.faintForeground,
+    palette.borderStrong,
+  ];
 
   return {
     tooltip: {
@@ -41,7 +39,7 @@ function buildDistributionOption(t: (key: string) => string) {
         data: distributionSlices.map((slice, index) => ({
           name: t(slice.nameKey),
           value: slice.percent,
-          itemStyle: { color: DISTRIBUTION_COLORS[index] },
+          itemStyle: { color: colors[index] },
         })),
       },
     ],
@@ -57,6 +55,15 @@ export function StatsDistributionChart({
 }: StatsDistributionChartProps) {
   const { t } = useTranslation();
   const option = useMemo(() => buildDistributionOption(t), [t]);
+  const palette = chartPalette();
+  const colors = [
+    palette.primary,
+    palette.foreground,
+    palette.neutralForeground,
+    palette.mutedForeground,
+    palette.faintForeground,
+    palette.borderStrong,
+  ];
 
   return (
     <div className="flex min-w-0 items-center gap-4">
@@ -94,7 +101,7 @@ export function StatsDistributionChart({
             <span
               aria-hidden="true"
               className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: DISTRIBUTION_COLORS[index] }}
+              style={{ backgroundColor: colors[index] }}
             />
             <span className="min-w-0 truncate">{t(slice.nameKey)}</span>
             <span className="ml-auto tabular-nums">{slice.percent}%</span>

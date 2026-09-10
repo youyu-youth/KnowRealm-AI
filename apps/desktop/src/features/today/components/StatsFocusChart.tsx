@@ -39,7 +39,7 @@ function buildFocusOption(t: TFunction) {
         data: focusByHourMinutes,
         smooth: true,
         showSymbol: false,
-        lineStyle: { width: 2, color: palette.foreground },
+        lineStyle: { width: 1.5, color: palette.foreground },
         areaStyle: palette.foreground
           ? {
               color: {

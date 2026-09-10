@@ -48,22 +48,22 @@ afterEach(() => {
   vi.mocked(setRecordingKeepAwake).mockReset().mockResolvedValue(undefined);
 });
 
-// 待确认总结渲染在右栏「今日焦点」卡内，而非页面顶部独立条带。
-function focusCard(): HTMLElement {
-  const heading = screen.getByText("今日焦点");
+// 待确认总结渲染在行动流内，学习链复用同一真实查询。
+function actionFlow(): HTMLElement {
+  const heading = screen.getByText("行动流");
   const card = heading.closest("section");
   expect(card).not.toBeNull();
   return card as HTMLElement;
 }
 
-describe("今日焦点卡内待确认总结", () => {
-  it("有条目时渲染在今日焦点卡内，含记录行与去确认链接", async () => {
+describe("今日行动流待确认总结", () => {
+  it("有条目时渲染在行动流内，含记录行与去确认链接", async () => {
     server.use(http.get(PENDING_URL, () => HttpResponse.json([todo])));
 
     render(<App />);
 
-    await screen.findByText("今日焦点");
-    const card = focusCard();
+    await screen.findByText("行动流");
+    const card = actionFlow();
     expect(
       await within(card).findByRole("heading", { name: "等待确认的总结" }),
     ).toBeInTheDocument();

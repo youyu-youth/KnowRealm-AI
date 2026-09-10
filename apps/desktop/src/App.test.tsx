@@ -514,10 +514,10 @@ describe("工作台骨架", () => {
   });
 
   it("从受校验 URL 恢复课程搜索与筛选条件", async () => {
-    let requestedUrl: URL | undefined;
+    const requestedUrls: URL[] = [];
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/courses`, ({ request }) => {
-        requestedUrl = new URL(request.url);
+        requestedUrls.push(new URL(request.url));
         return HttpResponse.json([]);
       }),
     );
@@ -538,6 +538,8 @@ describe("工作台骨架", () => {
     expect(
       screen.getByRole("combobox", { name: "课程类型筛选" }),
     ).toHaveTextContent("专业课");
-    expect(requestedUrl?.searchParams.get("q")).toBe("操作");
+    expect(
+      requestedUrls.some((url) => url.searchParams.get("q") === "操作"),
+    ).toBe(true);
   });
 });

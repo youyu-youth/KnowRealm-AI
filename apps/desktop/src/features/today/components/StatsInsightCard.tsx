@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { StatusTag } from "@/components/common/StatusTag";
 
 type StatsInsightCardProps = {
   title: string;
@@ -21,7 +22,7 @@ export function StatsInsightCard({
     <section
       aria-label={title}
       className={cn(
-        "bg-card border-border/60 flex min-w-0 flex-col gap-3 rounded-lg border p-4",
+        "bg-surface-raised border-border-subtle flex min-w-0 flex-col gap-3 rounded-md border p-4",
         className,
       )}
     >
@@ -29,9 +30,7 @@ export function StatsInsightCard({
         <h3 className="text-section font-section text-ink min-w-0 truncate">
           {title}
         </h3>
-        <span className="bg-surface-subtle text-muted-foreground text-label shrink-0 rounded-xs px-1.5 py-0.5">
-          {t("today.stats.insights.sampleTag")}
-        </span>
+        <StatusTag>{t("today.stats.insights.sampleTag")}</StatusTag>
       </div>
       {children}
     </section>

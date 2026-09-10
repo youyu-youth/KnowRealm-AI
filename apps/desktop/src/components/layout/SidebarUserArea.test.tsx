@@ -12,6 +12,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
+import { selectSidebarCourses } from "@/components/layout/selectSidebarCourses";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 
@@ -44,6 +45,42 @@ afterEach(() => {
 });
 
 describe("侧边栏底部用户区", () => {
+  it("课程保持更新时间顺序、当前课程置顶并限制五门", () => {
+    const courses = Array.from({ length: 6 }, (_, index) => ({
+      id: `course-${index}`,
+      name: `课程 ${index}`,
+      learning_context: "SCHOOL" as const,
+      education_stage: "UNDERGRADUATE" as const,
+      depth: null,
+      course_type: "MAJOR" as const,
+      description: null,
+      status: "ACTIVE" as const,
+      created_at: "2026-09-01T00:00:00Z",
+      updated_at: `2026-09-0${6 - index}T00:00:00Z`,
+    }));
+
+    expect(
+      selectSidebarCourses(courses, "course-5").map((course) => course.id),
+    ).toEqual(["course-5", "course-0", "course-1", "course-2", "course-3"]);
+  });
+
+  it("课程区可折叠，查询失败时在侧栏内降级", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () =>
+        HttpResponse.json({ detail: "sidecar 抖动" }, { status: 500 }),
+      ),
+    );
+    renderAt();
+
+    const toggle = await screen.findByRole("button", { name: "近期课程" });
+    expect(
+      await screen.findByText("课程暂时不可用", undefined, { timeout: 8_000 }),
+    ).toBeInTheDocument();
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("课程暂时不可用")).not.toBeInTheDocument();
+  }, 20_000);
+
   it("无昵称与头像时显示占位，点击跳设置页个人资料区", async () => {
     server.use(
       http.get(LIBRARY_STATE_URL, () =>
@@ -95,5 +132,8 @@ describe("侧边栏底部用户区", () => {
     await waitFor(() =>
       expect(sidebar.getByAltText("头像")).toBeInTheDocument(),
     );
+
+    fireEvent.error(sidebar.getByAltText("头像"));
+    expect(sidebar.getByRole("img", { name: "头像" })).toHaveTextContent("头");
   });
 });

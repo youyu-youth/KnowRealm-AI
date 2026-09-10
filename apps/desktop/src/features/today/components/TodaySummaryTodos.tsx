@@ -1,32 +1,45 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { todayKeys } from "@/features/today/api/keys";
-import { todayApi } from "@/features/today/api/today";
+import type { TodaySummaryTodo } from "@/features/today/api/today";
 
 // 今日焦点卡内的真实区块：待确认总结有内容才出现（自带与示意清单的分隔线）；
 // 读取中不渲染，失败给行内重试。样式执行卡内零 chrome（DESIGN.md §148）。
-export function TodaySummaryTodos() {
-  const { t } = useTranslation();
-  const todos = useQuery({
-    queryKey: todayKeys.pendingSummaries,
-    queryFn: todayApi.pendingSummaries,
-  });
+type TodaySummaryTodosProps = {
+  data: TodaySummaryTodo[] | undefined;
+  isPending: boolean;
+  isError: boolean;
+  onRetry: () => void;
+};
 
-  if (todos.isPending) {
-    return null;
+export function TodaySummaryTodos({
+  data,
+  isPending,
+  isError,
+  onRetry,
+}: TodaySummaryTodosProps) {
+  const { t } = useTranslation();
+
+  if (isPending) {
+    return (
+      <p role="status" className="text-label text-ink-muted mt-4">
+        {t("today.loading")}
+      </p>
+    );
   }
 
-  if (todos.isError) {
+  if (isError) {
     return (
-      <div role="alert" className="border-border/60 mb-4 border-b pb-4">
-        <p className="text-label text-muted-foreground">
+      <div role="alert" className="border-border-subtle mt-4 border-t pt-4">
+        <h3 className="text-body-dense text-destructive font-medium">
           {t("today.errorTitle")}
+        </h3>
+        <p className="text-label text-ink-muted mt-1">
+          {t("today.errorDescription")}
           <button
             type="button"
             className="text-ink ml-2 underline-offset-2 hover:underline"
-            onClick={() => void todos.refetch()}
+            onClick={onRetry}
           >
             {t("today.retry")}
           </button>
@@ -35,17 +48,17 @@ export function TodaySummaryTodos() {
     );
   }
 
-  if (todos.data.length === 0) {
+  if (!data?.length) {
     return null;
   }
 
   return (
     <div className="border-border/60 mb-4 border-b pb-4">
-      <h3 className="text-label text-muted-foreground font-medium">
+      <h3 className="text-label text-ink-muted font-medium">
         {t("today.todoTitle")}
       </h3>
       <ul aria-label={t("today.todoListLabel")} className="mt-2 grid">
-        {todos.data.map((todo) => (
+        {data.map((todo) => (
           <li key={todo.record_id} className="min-w-0">
             <Link
               to="/records/$recordId"

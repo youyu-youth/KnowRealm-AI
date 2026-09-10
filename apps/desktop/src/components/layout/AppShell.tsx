@@ -4,6 +4,7 @@ import {
   BookOpenText,
   Bot,
   CalendarDays,
+  ChevronDown,
   ClipboardPaste,
   Inbox,
   Library,
@@ -19,6 +20,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { AppTooltip } from "@/components/common/AppTooltip";
+import { AppToasts } from "@/components/common/AppToast";
+import { appToast } from "@/components/common/appToastManager";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +37,8 @@ import { CommandPalette } from "@/features/search/components/CommandPalette";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
 import { useSavePreference } from "@/features/settings/PreferencesSection";
 import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
+import { selectSidebarCourses } from "@/components/layout/selectSidebarCourses";
+import { useActiveCourses } from "@/features/courses/api/queries";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
 import {
@@ -68,7 +74,6 @@ const navigationItems = [
   { labelKey: "nav.chat", icon: Bot, to: "/chat" },
   { labelKey: "nav.library", icon: Library, to: "/library" },
   { labelKey: "nav.profile", icon: UserRound },
-  { labelKey: "nav.settings", icon: Settings, to: "/settings" },
 ] as const;
 
 const captureItems = [
@@ -96,7 +101,7 @@ export function AppShell() {
   const [textCapture, setTextCapture] = useState<TextCaptureMode | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [textCaptureFocusRequest, setTextCaptureFocusRequest] = useState(0);
-  const [captureFeedback, setCaptureFeedback] = useState("");
+  const [coursesExpanded, setCoursesExpanded] = useState(true);
   const [shortcutUnavailable, setShortcutUnavailable] = useState<string | null>(
     null,
   );
@@ -116,6 +121,12 @@ export function AppShell() {
   // 间隙极短，同快捷键的间隙取舍）。写入走 useMutation 但不消费 error：路由记忆
   // 非用户发起的编辑，失败只损失一次恢复，不值得一处全局打扰。
   const pathname = useLocation({ select: (location) => location.pathname });
+  const activeCourses = useActiveCourses();
+  const activeCourseId = pathname.match(/^\/spaces\/([^/]+)/)?.[1];
+  const sidebarCourses = selectSidebarCourses(
+    activeCourses.courses,
+    activeCourseId,
+  );
   const { mutate: savePreference } = useSavePreference();
   const restoreAttemptedRef = useRef(false);
   const restoreNavigationInFlightRef = useRef(false);
@@ -272,23 +283,18 @@ export function AppShell() {
         return;
       }
       await queryClient.invalidateQueries({ queryKey: recordKeys.inbox() });
-      setCaptureFeedback(t("capture.savedFeedback"));
+      appToast.add({ description: t("capture.savedFeedback") });
     },
     [navigate, queryClient, t],
   );
 
-  useEffect(() => {
-    if (!captureFeedback) return;
-    const timer = window.setTimeout(() => setCaptureFeedback(""), 5_000);
-    return () => window.clearTimeout(timer);
-  }, [captureFeedback]);
-
   return (
-    <div className="bg-canvas text-foreground flex h-screen min-w-0 overflow-hidden">
+    <div className="bg-canvas text-foreground max-compact:p-0 flex h-screen min-w-0 overflow-hidden p-2">
       <AppearanceSync />
+      <AppToasts />
       <aside
         aria-label={t("nav.label")}
-        className="w-sidebar bg-canvas max-compact:w-16 max-compact:px-2 flex h-screen shrink-0 flex-col px-3 py-4 transition-[width] duration-150"
+        className="w-sidebar bg-sidebar max-compact:w-16 max-compact:px-2 flex h-full shrink-0 flex-col px-3 py-3 transition-[width] duration-150"
       >
         <div className="max-compact:justify-center max-compact:px-0 flex h-10 items-center gap-3 px-3">
           <BookOpenText
@@ -305,70 +311,131 @@ export function AppShell() {
           </div>
         </div>
 
-        <nav className="mt-7 flex flex-col gap-1">
+        <nav className="mt-5 flex flex-col gap-1">
           {navigationItems.map((item) => {
             const { labelKey, icon: Icon } = item;
             const label = t(labelKey);
 
             if ("to" in item) {
               return (
-                <Link
-                  key={labelKey}
-                  to={item.to}
-                  activeOptions={{ exact: item.to === "/" }}
-                  activeProps={{ className: activeNavClass }}
-                  inactiveProps={{ className: inactiveNavClass }}
-                  aria-label={label}
-                >
-                  <Icon className="size-4 shrink-0" aria-hidden="true" />
-                  <span className="max-compact:sr-only truncate">{label}</span>
-                </Link>
+                <AppTooltip key={labelKey} label={label}>
+                  <Link
+                    to={item.to}
+                    activeOptions={{ exact: item.to === "/" }}
+                    activeProps={{ className: activeNavClass }}
+                    inactiveProps={{ className: inactiveNavClass }}
+                    aria-label={label}
+                  >
+                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="max-compact:sr-only truncate">
+                      {label}
+                    </span>
+                  </Link>
+                </AppTooltip>
               );
             }
 
             return (
-              <Button
+              <AppTooltip
                 key={labelKey}
-                variant="ghost"
-                size="lg"
-                disabled
-                className="max-compact:justify-center max-compact:px-0 w-full justify-start gap-3 px-3 disabled:pointer-events-auto disabled:opacity-70 disabled:hover:bg-transparent"
-                aria-label={t("nav.unavailableLabel", { label })}
+                label={t("nav.unavailableLabel", { label })}
               >
-                <Icon data-icon="inline-start" aria-hidden="true" />
-                <span className="max-compact:sr-only truncate">{label}</span>
-                <span className="text-label max-compact:sr-only ml-auto">
-                  {t("nav.unavailable")}
-                </span>
-              </Button>
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  disabled
+                  className="max-compact:justify-center max-compact:px-0 w-full justify-start gap-3 px-3 disabled:pointer-events-auto disabled:opacity-70 disabled:hover:bg-transparent"
+                  aria-label={t("nav.unavailableLabel", { label })}
+                >
+                  <Icon data-icon="inline-start" aria-hidden="true" />
+                  <span className="max-compact:sr-only truncate">{label}</span>
+                  <span className="text-label max-compact:sr-only ml-auto">
+                    {t("nav.unavailable")}
+                  </span>
+                </Button>
+              </AppTooltip>
             );
           })}
         </nav>
 
+        <section
+          className="max-compact:hidden mt-6 min-h-0"
+          aria-label={t("nav.courses.label")}
+        >
+          <button
+            type="button"
+            className="text-label text-ink-muted flex h-8 w-full items-center justify-between px-3 font-medium"
+            aria-expanded={coursesExpanded}
+            onClick={() => setCoursesExpanded((expanded) => !expanded)}
+          >
+            {t("nav.courses.label")}
+            <ChevronDown
+              aria-hidden="true"
+              className={cn(
+                "size-3.5 transition-transform",
+                coursesExpanded && "rotate-180",
+              )}
+            />
+          </button>
+          {coursesExpanded ? (
+            activeCourses.isError ? (
+              <p className="text-label text-ink-faint px-3 py-2">
+                {t("nav.courses.unavailable")}
+              </p>
+            ) : (
+              <div className="mt-1 grid gap-0.5">
+                {sidebarCourses.map((course) => (
+                  <Link
+                    key={course.id}
+                    to="/spaces/$courseId"
+                    params={{ courseId: course.id }}
+                    search={{ tab: "overview" }}
+                    className="text-body-dense text-ink-muted hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-ring/40 flex h-8 items-center gap-2 rounded-sm px-3 focus-visible:ring-2"
+                    activeProps={{
+                      className:
+                        "bg-surface-subtle text-ink-strong font-medium",
+                    }}
+                    title={course.name}
+                  >
+                    <span className="bg-border-strong size-1.5 shrink-0 rounded-full" />
+                    <span className="truncate">{course.name}</span>
+                  </Link>
+                ))}
+                {activeCourses.isPending ? (
+                  <p className="text-label text-ink-faint px-3 py-2">
+                    {t("nav.courses.loading")}
+                  </p>
+                ) : null}
+                <Link
+                  to="/spaces"
+                  className="text-label text-ink-muted hover:text-ink-strong mt-1 px-3 py-1.5"
+                >
+                  {t("nav.courses.viewAll")}
+                </Link>
+              </div>
+            )
+          ) : null}
+        </section>
+
         <SidebarUserArea />
+        <AppTooltip label={t("nav.settings")}>
+          <Link
+            to="/settings"
+            className="hover:bg-surface-subtle focus-visible:ring-ring/40 max-compact:justify-center max-compact:px-0 text-body text-muted-foreground mt-1 flex h-9 items-center gap-3 rounded-md px-3 font-medium focus-visible:ring-3"
+            aria-label={t("nav.settings")}
+          >
+            <Settings className="size-4 shrink-0" aria-hidden="true" />
+            <span className="max-compact:sr-only">{t("nav.settings")}</span>
+          </Link>
+        </AppTooltip>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="bg-paper border-border-subtle max-compact:rounded-none max-compact:border-y-0 max-compact:border-r-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">
         <header
           aria-label={t("capture.label")}
-          className="h-topbar bg-paper px-content flex shrink-0 items-center justify-between gap-4"
+          className="h-topbar border-border-subtle px-content flex shrink-0 items-center justify-between gap-4 border-b"
         >
-          <p className="text-label text-muted-foreground font-label">
-            {t("capture.label")}
-          </p>
           <div className="flex min-w-0 items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setPaletteOpen(true)}
-              aria-label={t("commandPalette.openButton")}
-              aria-keyshortcuts="Control+K"
-            >
-              <Search data-icon="inline-start" aria-hidden="true" />
-              <span className="text-label text-muted-foreground max-compact:sr-only font-label">
-                {t("commandPalette.shortcutBadge")}
-              </span>
-            </Button>
             <RecordingExperience onAccepted={openRecord} />
             {captureItems.map(({ labelKey, icon: Icon }) => {
               const label = t(labelKey);
@@ -376,15 +443,13 @@ export function AppShell() {
               return (
                 <Button
                   key={labelKey}
-                  variant={isRecord ? "default" : "ghost"}
+                  variant="ghost"
                   size="sm"
                   disabled={isRecord && recordingActive}
                   onClick={() => openCapture(labelKey)}
                   className={cn(
                     "disabled:pointer-events-auto disabled:opacity-70",
-                    isRecord
-                      ? "hover:bg-primary-hover"
-                      : "disabled:hover:bg-transparent",
+                    "disabled:hover:bg-transparent",
                   )}
                   aria-label={label}
                 >
@@ -394,16 +459,20 @@ export function AppShell() {
               );
             })}
           </div>
-        </header>
-        {captureFeedback ? (
-          <p
-            role="status"
-            aria-live="polite"
-            className="bg-paper px-content text-label text-muted-foreground pt-2"
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPaletteOpen(true)}
+            aria-label={t("commandPalette.openButton")}
+            aria-keyshortcuts="Control+K"
+            className="text-ink-muted min-w-24 justify-between"
           >
-            {captureFeedback}
-          </p>
-        ) : null}
+            <Search data-icon="inline-start" aria-hidden="true" />
+            <span className="text-label font-label">
+              {t("commandPalette.shortcutBadge")}
+            </span>
+          </Button>
+        </header>
         {shortcutUnavailable ? (
           <Alert className="mx-content mb-2 w-auto">
             <AlertDescription>
@@ -418,7 +487,7 @@ export function AppShell() {
             <AlertDescription>{lifecycleError}</AlertDescription>
           </Alert>
         ) : null}
-        <main className="bg-canvas min-h-0 flex-1 overflow-y-auto">
+        <main className="bg-paper min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
           <Outlet />
         </main>
       </div>

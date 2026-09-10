@@ -4,7 +4,7 @@
 
 ## Platform
 
-desktop
+web
 
 ## Users
 
@@ -50,6 +50,7 @@ KnowRealm 不是只给答案的聊天工具，而是把原始学习材料、AI �
 - 模拟数据、真实数据和未实现行为必须清楚区分。
 
 ## Brand & UX Principles
+
 KnowRealm 的产品气质是：
 
 - 专业
@@ -61,6 +62,7 @@ KnowRealm 的产品气质是：
 AI 不应被包装成玩具、虚拟伙伴或过度拟人化角色。
 
 桌面体验以 ChatGPT Desktop、腾讯 WorkBuddy 等成熟 AI 桌面产品作为质量参考，但不复制其品牌资产、视觉语言或页面结构。
+
 ## Accessibility & Inclusion
 
 普通文字与背景对比度不低于 WCAG AA 4.5:1；键盘焦点始终可见；纯图标控件有可访问名称；状态不能只依赖颜色表达。

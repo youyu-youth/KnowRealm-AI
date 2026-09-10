@@ -77,6 +77,31 @@ function renderAt(path = "/") {
 }
 
 describe("今日页", () => {
+  it("按日期、学习链、行动与资产、统计顺序呈现，并保持示意条目只读", async () => {
+    renderAt();
+
+    const chain = await screen.findByRole("heading", { name: "今日学习链" });
+    const actions = screen.getByRole("heading", { name: "行动流" });
+    const assets = screen.getByRole("heading", { name: "最近资产" });
+    const stats = screen.getByRole("heading", { name: "学习趋势" });
+    expect(
+      chain.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      actions.compareDocumentPosition(assets) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      assets.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText("课堂录音正在转写").closest("a")).toBeNull();
+    expect(screen.getAllByText("示意").length).toBeGreaterThan(4);
+    expect(screen.getByRole("link", { name: /打开资产库/ })).toHaveAttribute(
+      "href",
+      "/library",
+    );
+  });
+
   it("列出待确认总结并直达对应记录", async () => {
     server.use(
       http.get(TODAY_URL, () => HttpResponse.json([todo])),

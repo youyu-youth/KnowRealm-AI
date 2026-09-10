@@ -584,11 +584,7 @@ export function RecordingExperience({ onAccepted }: Props) {
 
   useEffect(() => {
     if (!sessionsQuery.error) return;
-    setError(
-      sessionsQuery.error instanceof Error
-        ? sessionsQuery.error.message
-        : t("recording.errors.recovery"),
-    );
+    setError(t("recording.errors.recovery"));
   }, [sessionsQuery.error, setError, t]);
 
   useEffect(() => {

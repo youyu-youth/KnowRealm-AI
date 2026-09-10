@@ -166,7 +166,8 @@ describe("今日页统计带", () => {
     expect(
       screen.getByRole("region", { name: "学习进步趋势" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("今日焦点")).toBeInTheDocument();
+    expect(screen.getByText("行动流")).toBeInTheDocument();
+    expect(screen.getByText("最近资产")).toBeInTheDocument();
     expect(screen.getByText("AI 助手")).toBeInTheDocument();
     expect(screen.getByText("学习成就")).toBeInTheDocument();
 
