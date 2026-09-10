@@ -1,60 +1,77 @@
 ---
 version: beta
 name: KnowRealm-AI Desktop
-description: 连续、克制、有纸面秩序感的个人学习桌面工作台
+description: 冷静、精密、低对比分层的个人学习桌面工作台
 colors:
-  ink: "#242424"
-  ink-strong: "#171717"
-  paper: "#FCFCFB"
-  canvas: "#F6F6F4"
-  surface-subtle: "#EEEEEB"
-  surface-strong: "#E6E6E2"
-  border-control: "#D8D8D4"
-  text-muted: "#6B6B67"
-  neutral-foreground: "#5C5C58"
-  focus: "#70706B"
-  success: "#4D9C78"
-  success-foreground: "#286A4E"
-  success-soft: "#E5F2EB"
-  learning: "#4772D9"
-  learning-foreground: "#254FAF"
-  learning-soft: "#E8EEFC"
-  warning: "#D77B16"
-  warning-foreground: "#844500"
-  warning-soft: "#F8EBD9"
-  danger: "oklch(0.577 0.245 27.325)"
-  dark-canvas: "#191918"
-  dark-paper: "#20201F"
-  dark-surface-subtle: "#292927"
-  dark-surface-strong: "#32322F"
-  dark-border-control: "#41413D"
-  dark-muted: "#A7A7A1"
-  dark-success-foreground: "#82C9A8"
-  dark-success-soft: "#24372E"
-  dark-learning-foreground: "#96B2F5"
-  dark-learning-soft: "#26324D"
-  dark-warning-foreground: "#F3B467"
-  dark-warning-soft: "#3D3021"
-  dark-neutral-foreground: "#C2C2BC"
+  canvas: "#EFF1F4"
+  sidebar: "#F3F4F6"
+  paper: "#FAFAFB"
+  surface-subtle: "#F1F2F4"
+  surface-strong: "#E8EAF0"
+  surface-raised: "#FFFFFF"
+  surface-overlay: "#FFFFFF"
+  border-subtle: "#E3E5E9"
+  border-control: "#D5D8DE"
+  border-strong: "#BBC0C9"
+  ink: "#2F3239"
+  ink-strong: "#1A1C20"
+  neutral-foreground: "#4B4F58"
+  text-muted: "#666B75"
+  text-faint: "#858B96"
+  focus: "#2F3239"
+  learning: "#2F3239"
+  learning-foreground: "#1A1C20"
+  learning-soft: "#ECEDEF"
+  success-foreground: "#267653"
+  success-soft: "#E8F4ED"
+  warning-foreground: "#8A5700"
+  warning-soft: "#FFF2DC"
+  danger: "#C83C46"
+  danger-soft: "#FCECEE"
+  dark-canvas: "#0D0F12"
+  dark-sidebar: "#101216"
+  dark-paper: "#131519"
+  dark-surface-subtle: "#181B20"
+  dark-surface-strong: "#1D2026"
+  dark-surface-raised: "#20242A"
+  dark-surface-overlay: "#1A1D22"
+  dark-border-subtle: "#242831"
+  dark-border-control: "#303640"
+  dark-border-strong: "#464D59"
+  dark-ink: "#D5D8DE"
+  dark-ink-strong: "#F2F4F7"
+  dark-neutral-foreground: "#B4B8C0"
+  dark-muted: "#9196A1"
+  dark-faint: "#6F7580"
+  dark-focus: "#D5D8DE"
+  dark-learning: "#D5D8DE"
+  dark-learning-foreground: "#F2F4F7"
+  dark-learning-soft: "#24272C"
+  dark-success-foreground: "#78C7A0"
+  dark-success-soft: "#172820"
+  dark-warning-foreground: "#E8B26B"
+  dark-warning-soft: "#2B2116"
+  dark-danger: "#F3787F"
+  dark-danger-soft: "#30191D"
 typography:
   headline:
     fontFamily: "Noto Sans SC Variable, Geist Variable, sans-serif"
-    fontSize: "26px"
-    fontWeight: 650
-    lineHeight: 1.28
-    letterSpacing: "-0.02em"
+    fontSize: "24px"
+    fontWeight: 620
+    lineHeight: 1.3
+    letterSpacing: "0em"
   section:
     fontFamily: "Noto Sans SC Variable, Geist Variable, sans-serif"
-    fontSize: "15px"
+    fontSize: "14px"
     fontWeight: 600
     lineHeight: 1.4
-    letterSpacing: "-0.01em"
+    letterSpacing: "0em"
   body:
     fontFamily: "Noto Sans SC Variable, Geist Variable, sans-serif"
     fontSize: "14px"
     fontWeight: 450
-    lineHeight: 1.55
-    letterSpacing: "-0.005em"
+    lineHeight: 1.5
+    letterSpacing: "0em"
   body-dense:
     fontFamily: "Noto Sans SC Variable, Geist Variable, sans-serif"
     fontSize: "13px"
@@ -66,15 +83,15 @@ typography:
     fontSize: "12px"
     fontWeight: 520
     lineHeight: 1.4
-    letterSpacing: "0.01em"
+    letterSpacing: "0em"
 rounded:
-  panel: "0px"
-  xs: "3px"
-  sm: "5px"
+  xs: "4px"
+  sm: "6px"
   md: "8px"
   lg: "10px"
   full: "9999px"
 spacing:
+  xxs: "2px"
   xs: "4px"
   sm: "8px"
   md: "12px"
@@ -82,137 +99,392 @@ spacing:
   xl: "24px"
   2xl: "32px"
   sidebar: "224px"
-  topbar: "64px"
+  topbar: "52px"
   content-gutter: "28px"
+  control-height: "32px"
+  row-height: "40px"
+shadows:
+  panel: "none"
+  overlay-light: "0 16px 40px rgba(15, 18, 26, 0.14), 0 2px 8px rgba(15, 18, 26, 0.08)"
+  overlay-dark: "0 18px 48px rgba(0, 0, 0, 0.42), 0 2px 10px rgba(0, 0, 0, 0.28)"
 ---
 
 # Design System: KnowRealm-AI Desktop
 
 ## 1. Creative North Star
 
-**连续工作面（Continuous Work Surface）**
+**精密分层工作台（Precision Layered Workspace）**
 
-KnowRealm 是长期驻留的桌面学习工具。页面应像一张持续展开、被认真排版过的工作台：侧栏、捕获栏和内容区是稳定色面；任务、学习链和资产通过标题、基线、留白与行节奏自然分组，不装进独立卡片。2026-09-07 基线修订：**今日页统计图表区升级为卡片面板**（主内容区灰底、图表卡白底，见 §4/§5），这是全站唯一的卡片化分区，其余区域仍执行零卡片 chrome。
+KnowRealm 是长期驻留的桌面学习工具。界面应像一台安静、可靠的学习仪器：紧凑的信息密度、低对比度分层、精确的发丝线和黑白灰对比共同构成稳定工作空间。内容不依靠大标题、卡片墙或装饰争夺注意力；层级来自相邻色面的细微明度差、1px 边界、严格基线和一致交互状态。
 
-ChatGPT Desktop 提供“界面后退、内容前进”的克制；腾讯 WorkBuddy 提供中文桌面生产力工具的紧凑字体、稳定坐标和低装饰控制。KnowRealm 吸收这种成熟度，但保留自己的学习链和知识状态语义。
+参考 Linear 桌面端暗色界面时，只吸收其成熟的设计方法：冷中性色阶、紧凑控件、低对比边界、局部明度变化、浮层深度、键盘优先的工作流和命令面板。按钮、导航、选中态、焦点、学习链与数据图形沿用 shadcn/ui 式黑白灰基线，不引入品牌强调色。不得复制 Linear 的品牌色、图标、布局、命名或组件外观。KnowRealm 的识别仍来自学习链、知识状态、可追溯 AI 和本地优先的产品语义。
 
 ### 必须呈现的性格
 
-- 安静但不苍白：使用近白纸面与暖中性灰，不用刺眼纯白堆叠。
-- 连续而非卡片化：一个页面是一张工作面，模块不是漂浮盒子。
-- 精确但不机械：中文字体、行高、标点和数字对齐共同提供质感。
-- AI 状态可信：处理、确认、生成和复习阶段清楚，但彩色只服务状态。
+- 冷静但不死黑：暗色由多层冷黑灰构成，禁止用纯黑铺满界面。
+- 精密但不拥挤：控件紧凑，文字、图标和行基线准确，相关项靠近，不相关区域保留呼吸。
+- 分层但不漂浮：常驻区域主要依靠色面和发丝线；只有临时浮层使用阴影。
+- 克制但不苍白：当前选择和主动作使用黑白反差；彩色只作为必要语义状态的低面积例外。
+- 快而不躁：本地操作即时反馈，键盘可达一切主动作；等待只属于 AI 计算，且必须可见、可离开、可恢复。
+- 可信但不拟人：AI 的范围、处理状态和来源清楚，不使用玩具化形象与夸张反馈。
 
-## 2. Material & Color
+## 2. Theme Architecture
 
-界面由三层连续色面构成：`canvas` 是应用底色，`paper` 是主工作面，`surface-subtle` 是选中、hover、表头和聚焦区域。常驻内容区禁止依靠阴影或闭合边框制造层级。
+暗色主题是视觉层级的设计源，明亮主题从相同语义关系推导。两种主题必须保持相同的组件结构、边界强弱、信息层级和交互反馈；主题切换只改变材料明度与必要的语义色，不改变布局、尺寸或组件身份。
 
-- `ink-strong`：页面标题、关键数字和主动作。
-- `ink`：正文、导航和数据标题。
-- `text-muted`：时间、来源、说明；不承担关键正文。
-- `border-control`：只用于输入框、菜单、弹层和必要的行分隔，不用于卡片外框。
-- 学习蓝、掌握绿、提醒橙只回答状态问题；单视区彩色面积不超过 8%。
-- 小号语义文字使用 `*-foreground` + `*-soft`，普通文字对比度必须达到 4.5:1。
+### 2.1 暗色主题
 
-**禁止：** 大面积纯白卡片、玻璃、渐变、发光、重阴影、彩色图标底座和为“高级感”添加的噪点纹理。
+暗色界面使用五级常驻冷中性色面，并为侧栏与临时浮层设置独立语义：
+
+| Token | 色值 | 用途 |
+|---|---:|---|
+| `dark-canvas` | `#0D0F12` | 窗口最底层、侧栏之外的应用底色 |
+| `dark-sidebar` | `#101216` | 常驻导航、低优先级工具区 |
+| `dark-paper` | `#131519` | 主工作面、页面背景 |
+| `dark-surface-subtle` | `#181B20` | hover、选中行、分组表头、轻量输入区 |
+| `dark-surface-strong` | `#1D2026` | active、按下、强选中和强调控件 |
+| `dark-surface-raised` | `#20242A` | 有明确边界的数据面板、嵌入式编辑区 |
+| `dark-surface-overlay` | `#1A1D22` | Dialog、Popover、Command、菜单和临时检查器 |
+
+- 相邻常驻色面的明度差应保持细微，避免黑白切块；主工作面必须能与侧栏区分，但不能像一张亮卡浮在黑底上。
+- `dark-border-subtle` 用于布局边界和列表分隔；`dark-border-control` 用于输入框、按钮和可编辑面板；`dark-border-strong` 只用于 focus、拖拽边界或需要明确确认的结构。
+- `dark-ink-strong` 只用于页面标题、当前对象、关键数值和主动作；正文使用 `dark-ink`；元数据使用 `dark-muted`。
+- `dark-faint` 只用于装饰图标、禁用说明和非必要时间轴，不承担正文、占位符或可点击文字。
+- 暗色主题下禁止 `#000000` 大面积背景、纯白正文、发光边框和高饱和霓虹色。
+
+### 2.2 明亮主题
+
+明亮主题不是独立风格，而是暗色层级的等价映射：
+
+| 暗色关系 | 明亮主题对应 | 用途保持不变 |
+|---|---|---|
+| `dark-canvas` | `canvas` `#EFF1F4` | 窗口底层 |
+| `dark-sidebar` | `sidebar` `#F3F4F6` | 常驻导航 |
+| `dark-paper` | `paper` `#FAFAFB` | 主工作面 |
+| `dark-surface-subtle` | `surface-subtle` `#F1F2F4` | hover、选中、表头 |
+| `dark-surface-strong` | `surface-strong` `#E8EAF0` | active、强选中 |
+| `dark-surface-raised` | `surface-raised` `#FFFFFF` | 数据面板、编辑区 |
+| `dark-surface-overlay` | `surface-overlay` `#FFFFFF` | 临时浮层 |
+
+- 明亮主题使用冷中性灰，不回到暖纸色，也不使用纯白卡片堆叠。
+- 主工作面与面板主要依靠 1px 低对比边界区分；白色只用于最高常驻表面和临时浮层。
+- 普通正文和占位符必须达到 4.5:1；`text-faint` 不得用于关键信息或交互入口。
+
+### 2.3 Monochrome Emphasis & Semantic Color
+
+- 产品不设置彩色品牌强调色。按钮、导航、选中态、链接、focus、学习链和常规数据图形默认只使用 `ink-strong`、`ink`、中性表面与边界色。
+- `learning` 保留为现有语义 token 的兼容名称，但其值属于黑白灰阶；不得将它恢复为紫色、蓝色或其他品牌色。
+- Primary 在明亮主题使用深色背景与浅色文字，在暗色主题使用浅色背景与深色文字；主题切换时保持同等视觉重量。
+- 成功、提醒、危险只表达确有必要区分的结果或风险，不能替代主动作，也不能用于导航、普通按钮、选中态或装饰；单视区语义彩色面积不超过 2%。
+- 图表系列优先使用黑、白、灰的明度阶与线型差异；只有数据本身具有成功、提醒或危险语义时才允许使用对应颜色，不使用彩虹色板。
+- 状态不能只靠颜色表达，必须同时有文字、图标或形状差异。
+- 文本位于语义软色面时，必须使用对应 `*-foreground`，不得临时选取灰色。
+
+### 2.4 主题切换
+
+- 主题跟随系统设置，用户手动选择后以手动为准；两种主题的语义角色、层级数量与交互状态完全一致。
+- 切换在 120ms 内一次性完成，禁止逐元素错峰渐变与白闪。
+- 主题选择持久化在本地偏好中，启动时不允许出现错误主题闪帧。
 
 ## 3. Typography
 
-中文主字体为项目内打包的 **Noto Sans SC Variable**，英文与数字回退至 Geist Variable。禁止把中文交给系统默认字体临时兜底。
+中文主字体为项目内打包的 **Noto Sans SC Variable**，英文与数字回退至 **Geist Variable**。界面依靠紧凑尺度、稳定字重和清楚基线产生专业感，不使用夸张标题制造层级。
 
-- 页面标题：26px / 650，紧凑字距，用于当前工作上下文。
-- 统计大数字：36px / 650，等宽数字，紧凑字距；单位与对比说明降低一级（12px / 520）。
-- 分区标题：15px / 600；不通过更大的盒子或底色抢层级。
-- 正文：14px / 450，行高 1.55，兼顾桌面密度与中文辨识。
-- 密集信息：13px / 450；状态与元数据 12px / 520。
-- 统计数字启用等宽数字；数字权重 620–650，单位与说明降低一级。
-- 同一视区最多三个明显字号和三个字重。粗体只用于标题、当前状态和关键数字。
+- 页面标题：24px / 620，用于当前工作上下文；禁止超过 28px。
+- 分区标题：14px / 600，与工具动作保持同一基线。
+- 正文：14px / 450；高密度列表可使用 13px / 450。
+- 状态、元数据和快捷键：12px / 520；11px 只允许用于图表坐标等非关键辅助信息。
+- 统计数字：24–28px / 620，启用 tabular nums；禁止通用 Dashboard 式超大 KPI。
+- 中文正文、标签和按钮默认 `letter-spacing: 0`；负字距只用于经过验证的英文标题与大数字，最低不得小于 `-0.02em`。
+- 同一内容模块最多三个明显字号层级；应用品牌和统计数字不计入模块层级。
+- 不使用无意义的全大写、宽字距、超粗中文或等宽字体装饰普通 UI。
 
-字体质感来自真实字族、克制字重和稳定基线，不使用无意义的全大写、宽字距或超粗中文。
+## 4. Layout & Density
 
-## 4. Layout
+所有尺寸以 Tauri WebView 的 CSS client area 为准。视觉验收必须记录 viewport、device pixel ratio 和 Windows 缩放比例，不直接用 PNG 栅格像素反推 CSS 尺寸。
 
 - 左侧导航：224px；小于 1100px 压缩为 64px 图标栏。
-- 顶部捕获栏：64px；作为工具轨而不是第二张导航卡。
-- 主内容：28px 桌面外边距，最大宽度 1480px；模块间距 28–32px。
+- 顶部捕获工具轨：52px，不包含原生窗口标题栏；工具轨属于主工作面，不做第二层导航卡。
+- 主内容：28px 桌面外边距，最大宽度 1480px；紧密分组间距 8–12px，普通模块间距 20–24px，页面大分区间距 28–32px。
+- 标准按钮和输入框高度：32px；紧凑按钮 28px；纯图标按钮至少 32×32px。
+- 导航行：36px；标准列表行：40–44px；双行元数据列表最多 48px。
+- 图标默认 16px / 1.5px stroke；紧凑元数据图标可使用 14px。
 - 1440×900 首屏应完整显示今日标题、学习链、核心列表和统计摘要。
-- 页面整体禁止横向滚动；表格在窄屏优先隐藏低优先级列。
+- 页面整体禁止横向滚动；表格在窄屏隐藏低优先级列或进入明确的局部横向容器。
 
-今日页结构固定为：上下文标题 → 横向学习链焦点区 → 左侧行动流 / 右侧资产流 → 底部统计图表区。统计图表区是阅读路径的收束段：学习趋势主卡（含六格指标行）+ 一排洞察小图卡（学科能力 / 时间分布 / 专注度 / 进步趋势）。
+今日页保留“上下文标题 → 学习链 → 行动流 / 资产流 → 统计摘要”的阅读顺序。该顺序约束信息层级，不要求把每个区块包成卡片；页面级业务构成不扩散为其他页面的布局模板。
 
-## 5. Shape Language
+## 5. Shape, Border & Depth
 
-内容容器默认执行 **Zero Card Chrome**；今日页统计图表区按 2026-09-07 基线修订采用**统计图表卡**：
+界面采用 **Low-contrast Layered Surfaces**，不再以绝对的 Zero Card Chrome 限制所有常驻内容。边界服务于结构和可编辑性，不能成为装饰。
 
-- 默认（列表、表格、常规分区）：`border: 0`、`border-radius: 0`、`box-shadow: none`；分区通过留白、标题、非闭合基线或浅色面区分，不得补回闭合外框。
-- 统计图表卡（仅今日页统计区）：`bg-card` 底 + `radius-lg`（10px）圆角 + 低对比描边（`border` 色 60% 透明度）；**禁止阴影**；卡内元素仍执行零卡片（无内嵌小卡、无内嵌圆角面板）。
-- 主内容区底色为 `canvas`，图表卡以 `card` 色面浮出层次；暗色主题沿用同一关系。
-- 表格与列表允许使用低对比行分隔或 hover 色面，但不把每行做成卡片。
-- 静态信息行不得使用 hover 色面、指针光标或交互角色伪装成可点击项；只有存在真实动作或导航的行才呈现交互反馈。
-- 按钮、输入框、菜单保留 5–10px 功能性圆角；短状态标签使用 3–5px，不默认胶囊化。
-- 圆形只用于头像、通知点、进度节点和纯图标动作。
+- 常驻工作区、列表和普通分区优先使用相邻色面、留白和 `border-subtle`；不把每一行做成卡片。
+- 数据面板、嵌入式编辑器、AI 处理面板和需要独立比较的统计单元可使用闭合边界：`surface-raised` + 1px `border-subtle` + 8px 圆角，无阴影。
+- 面板内部禁止继续嵌套同等重量的卡片；二级内容使用分隔线、缩进或更低一级色面。
+- 按钮、输入框和导航选中项使用 6px 圆角；数据面板使用 8px；Dialog、Popover 和 Command 使用 10px。
+- `full` 圆角只用于头像、状态点、进度节点和确实需要胶囊轮廓的短筛选控件；普通状态标签使用 4px 圆角。
+- 常驻内容禁止阴影。Dialog、Popover、Command、菜单和临时检查器使用主题对应的 `overlay` 阴影，并同时保留 1px `border-control`。
+- 禁止玻璃、背景模糊、发光、渐变、噪点纹理、彩色图标底座和多层装饰性描边。
 
 ## 6. Components
 
 ### Application Shell
 
-- 侧栏与主工作面使用相邻中性色面，不用边框把两者包成独立卡片。
-- 当前导航使用浅色实面、较高字重和清楚图标；hover 只改变底色。
-- 捕获栏的主录音按钮保持深墨色；其余动作使用 ghost 语法。
-- 搜索与空间切换是输入/选择控件，可以使用边框和 8px 圆角。
+- `canvas` 是窗口底层，侧栏使用 `sidebar`，主工作面使用 `paper`；三者依靠微小明度差和 1px `border-subtle` 形成桌面空间。
+- 主工作面可使用 8px 外轮廓圆角与 1px 低对比边界，但不得产生悬浮卡片感；小窗口下圆角归零以减少空间浪费。
+- 当前导航使用 `surface-subtle`、`ink-strong` 和中性图标建立选中态；不得使用彩色状态点、高饱和整行填充或品牌色描边。
+- 非当前导航使用 `text-muted`；hover 提升至 `ink`，同时切换到 `surface-subtle`。
+- 侧栏图标统一来自 Lucide，默认 16px / 1.5px stroke；禁用 Emoji、彩色图标底座和不同粗细混搭。
+- 捕获工具轨中的次级动作使用 ghost 或 icon button；录音主动作可以使用 solid，但尺寸与其他工具保持同一高度。
+- 搜索入口表现为紧凑 Command trigger，可显示快捷键；不得使用占满顶栏的大型网页搜索框。
+- 侧栏自上而下分三段：工作区导航（今日、收件箱、课程、资产库、对话等）、课程列表（可折叠，当前激活课程置顶）、底部账户与设置；分组用 12px 弱标题与发丝线分隔，不新增第二套导航形态。
+- 每个视图是可寻址的 URL：Tab、筛选与关键上下文进入 search params，前进、后退与重启后位置可预期。
+- 当前位置恒可识别：侧栏选中态与页面标题共同指向当前对象；课程到记录的层级关系在标题区以弱化文字呈现。
 
-### Buttons & Pointer
+### Buttons
 
-- 所有 `button`、链接、`[role="button"]`、可点击表格行与菜单项，在可用状态必须显示 `cursor: pointer`。
-- disabled 控件使用 `cursor: not-allowed`，并保持标签可读。
-- 主按钮为深墨底、纸白字；hover 只做 4–6% 明度变化，active 下移 1px。
-- ghost 按钮无常驻边框；hover 使用 `surface-subtle`。
-- `focus-visible` 使用 3px 半透明焦点环，不能用 hover 替代焦点。
+- 默认高度 32px，紧凑按钮 28px，圆角 6px；图标按钮至少 32×32px。
+- Primary：明亮主题使用 `ink-strong` 背景与 `paper` 文字，暗色主题反转为 `dark-ink-strong` 背景与 `dark-canvas` 文字；只用于当前视区唯一主动作。hover 改变 4–6% 明度，active 继续使用中性色关系，不缩放、不弹跳。
+- Outline：透明或工作面背景 + `border-control`；hover 使用 `surface-subtle`，active 使用 `surface-strong`。
+- Ghost：无常驻边框；hover 才出现 `surface-subtle`，active 使用 `surface-strong`。
+- Destructive：默认使用低饱和软色面和危险文字；只有不可逆确认动作使用实色危险按钮。
+- disabled 不允许响应 hover，保持标签可读并使用 `cursor: not-allowed`。
+- 所有可用按钮、链接、菜单项和可点击行使用 `cursor: pointer`。
 
-### Workspace Sections
+### Inputs & Search
 
-- 标题、说明与操作排列在同一基线；内容紧随其后。
-- 常驻分区无外框、无圆角、无阴影；只有学习链焦点区可使用整块 `surface-subtle` 色面。
-- 分区之间至少有 28px 空间，内部标题到内容保持 12–16px。
+- 标准高度 32px，圆角 6px，背景使用 `paper` 或 `surface-subtle`，边界使用 `border-control`。
+- hover 只提高边界对比；focus 使用 `border-strong` + 2px 半透明 `focus` 外环，不能通过发光制造焦点。
+- placeholder 必须达到 4.5:1；禁用态仍应可读，不能只降低 opacity。
+- 搜索、Command 和筛选输入可使用左侧 16px 图标；清除、快捷键和加载状态必须对齐同一基线。
+- 输入区错误状态同时显示语义边界、文字说明和恢复动作。
 
-### Settings Surfaces
+### Navigation, Tabs & Segmented Controls
 
-- 设置与偏好页面使用分类导航 + 配置工作面的连续布局，不把分类导航、配置分组或设置项包进卡片。
-- 设置项禁止闭合描边、阴影和行分割线；层级只由留白、对齐、字重与选中态浅色面建立。输入框、按钮、菜单等真实控件仍保留功能性边框与 5–10px 圆角。
-- 桌面宽度保持左侧分类导航；窄窗口改为顶部横向分类栏。分类切换不得造成页面横向溢出或丢失未保存输入。
-- 本节限制只作用于设置类表单页面；数据表格及其他高密度列表仍按 Lists & Tables 规则使用必要的行分隔。
+- 导航行高 36px，圆角 6px，左右内边距 10–12px；图标与文字间距 8px。
+- Tabs 默认使用文字与底边或低对比选中面，不使用大型胶囊容器。
+- 紧凑筛选允许使用小型 segmented control；未选项保持中性，只有当前项获得较高表面对比。
+- hover、active、selected 和 keyboard focus 必须是四个可区分状态，不能只改变文字颜色。
+
+### Panels & Cards
+
+- 卡片不是页面骨架，只在内容确实需要独立边界、比较或编辑上下文时使用。
+- 默认面板：`surface-raised`、1px `border-subtle`、8px 圆角、无阴影。
+- 选中面板：边界提升到 `border-strong`，背景提升到 `surface-strong`；不得加入彩色内环、增加尺寸或阴影。
+- 可交互面板 hover 提升一个色面等级；静态面板无 hover、无指针光标。
+- 禁止“图标 + 标题 + 说明”同尺寸卡片矩阵、嵌套卡片和用于填空的空白卡片。
 
 ### Lists & Tables
 
-- 行高 42–48px，主标题与元数据共用稳定文本基线。
-- 可交互行的 hover 使用浅色整行背景，不改变尺寸、字重或列宽；静态行不使用 hover 反馈。
-- 长标题单行截断并保留 `title`；关键总结允许两行。
+- 行高 40–44px，主标题、状态和行尾动作共享稳定基线；双行元数据行最多 48px。
+- 使用 `border-subtle` 作为发丝线分隔；暗色下不得使用明亮完整外框包围整张表。
+- 可交互行 hover 使用 `surface-subtle`；selected 使用 `surface-strong` + 较高文字对比；active 不改变行高、字重或列宽。
+- 行尾次级动作默认降低对比，可在 hover 或 focus-within 时提高可见性，但键盘聚焦时不得隐藏。
+- 长标题单行截断并保留完整可访问名称；关键总结最多两行。
 - 数字右对齐并启用 tabular nums。
 
-### Status
+### Status & Progress
 
-- 状态标签采用 3–5px 小圆角，不使用大胶囊。
-- 色彩之外必须有文字；空间允许时加入 6px 状态点。
-- “待确认”是学习链的最高行动优先级，但不使用警示大色块。
+- 状态标签使用 4px 圆角、20–24px 高度，禁止默认胶囊化。
+- 色彩之外必须有文字；空间允许时加入 6px 状态点或统一线性图标。
+- 学习链表现为精密状态轨道：节点 6–8px、连线 1px；非当前阶段使用弱中性色，当前阶段使用 `ink-strong`、实心节点或线型变化，不依赖彩色强调。
+- “待确认”是学习链的最高行动优先级，但不使用警示大色块或脉冲动画。
+- 成就与连续学习反馈使用单色线性图标和克制数字，禁止 Emoji、火焰、奖杯等高饱和游戏化符号主导页面。
 
-## 7. Motion
+### Charts
 
-- 页面只允许一次 160–200ms 的轻微内容就位动画。
-- hover/active 过渡为 120–160ms；禁止悬浮、缩放和弹簧效果。
-- 完整支持 `prefers-reduced-motion`，关闭非必要动画。
+- 图表容器遵循默认面板材料，不建立另一套卡片风格。
+- 图表主线 1.5px；数据点默认隐藏，hover 或键盘聚焦时出现。
+- 网格线与坐标轴使用 `border-subtle`，对比度低于正文但必须可辨；图表标签使用 `text-muted`。
+- 统计数字使用 24–28px，不采用大号营销式 KPI。
+- 系列色使用黑、白、灰的明度阶，并通过实线、虚线、点线和标记形状辅助区分；成功、提醒、危险色只在数据本身具有对应语义时使用。
+- Tooltip 是临时浮层，使用 `surface-overlay` + `border-control` + 10px 圆角和 overlay 阴影。
 
-## 8. Responsive & Accessibility
+### Dialogs, Popovers & Context Panels
 
-- 1440×900、1280×800、1099×720 为主页必测尺寸。
-- 小于 1280px 时隐藏资产来源等低优先级列；小于 1100px 时压缩侧栏并将双栏改为单栏。
-- 统计带六格指标在 1280px 宽度保持三列，达到 1400px 后展开为六列；洞察小图卡 1280px 两列、1400px 四列，更窄折单列。
-- 纯图标按钮必须有可访问名称；键盘焦点可见；页面无整体横向溢出。
-- 深色主题沿用相同连续色面与图表卡规则，不重新引入亮边框卡片。
+- Dialog、Popover、Command 和菜单使用 `surface-overlay`、1px `border-control`、10px 圆角和主题 overlay 阴影。
+- 浮层与底层的明度差必须清楚，但禁止纯白/纯黑强切割和零偏移光晕。
+- 右侧上下文面板属于工作区结构，不是浮层时不得使用阴影；它使用 `paper` 或 `surface-subtle`，通过左侧发丝线与主内容分隔。
+- 临时检查器可以浮出，但必须可关闭、可键盘退出，并且不会遮住当前任务的唯一主动作。
 
-## 9. Acceptance Rules
+### Tooltips & Shortcut Hints
 
-- 移除文字后，页面仍应由连续色面、稳定网格和一条学习链识别，而不是靠圆角卡片识别。
-- 统计图表区之外，任何新增卡片外框、卡片圆角或卡片阴影都视为设计回退；统计图表卡自身禁止阴影。
-- 任何可点击控件没有指针光标都视为交互缺陷。
+- Tooltip 只用于补充说明与快捷键提示，不承载关键信息，也不作为唯一入口；正文、标签与占位符不得依赖 Tooltip 才能理解。
+- 出现延迟 350–500ms，指针移出立即消失；材料使用 `surface-overlay`、1px `border-control`、6px 圆角与 overlay 阴影，文字 12px。
+- 含键位的菜单项、工具轨动作与纯图标按钮在 Tooltip 中以 kbd 样式展示快捷键；纯图标按钮另有可访问名称。
+- kbd 样式：12px / 520、1px `border-control`、2px 圆角、`surface-subtle` 背景、内边距 1px 4px；多个键位之间留 4px 间隔。
+
+### Toasts & Job Notifications
+
+- 应用内通知使用右下角 Toast，同时在屏至多 3 条，超出按来源合并为计数；Toast 不遮挡当前任务的唯一主动作与输入焦点。
+- 单条 Toast 一行说明加至多两个动作（如“查看”“撤销”），默认 5 秒自动消失，hover 或键盘聚焦时暂停计时。
+- 后台任务（转写、总结、出题、复习资料）完成或失败时必须发出 Toast，点击直达产物或任务详情；完成不打断，不弹 Dialog 抢焦点。
+- Toast 材料与浮层一致（`surface-overlay` + 1px `border-control` + 10px 圆角 + overlay 阴影）；成功与失败用前置图标和语义文字表达，不整条染色。
+
+### Context Menus & Inline Actions
+
+- 行级动作以 hover 或 focus-within 时的行尾图标为主形态；右键菜单是同一动作集的超集，不得存在只能右键到达的动作。
+- 菜单项与对应按钮使用同一动词与同一图标；破坏性动作保持次级位置，不整行染红。
+
+## 7. Keyboard & Command System
+
+桌面效率以键盘为第一路径，鼠标是等价路径。任何主动作必须同时具备两条路径；键盘路径不允许退化为漫长的 Tab 链。
+
+### 全局键位
+
+- `Ctrl+K` 打开命令面板，是全局入口式快捷键；顶栏搜索 trigger 必须显示该键位。
+- 系统级录音热键由用户在设置中自定义与改键，冲突必须提示；应用内键位不得与其冲突。
+- `Esc` 逐层退出：浮层 → 选中项 → 页面；`?` 在非输入上下文打开快捷键一览。
+- 修改型动作（保存、删除、确认）的键位必须带修饰键；无修饰单键保留给列表导航与选择。
+
+### 列表与输入上下文
+
+- 列表获得焦点后：`↑/↓` 移动、`Enter` 打开、`Space` 原位预览、`E` 编辑、`X` 选择；单键只在列表上下文生效。
+- 文本输入区获得焦点时一切单键快捷键失效，不劫持用户输入。
+- Dialog 与浮层内 `Enter` 执行主动作、`Esc` 取消；破坏性确认不得绑定 `Enter`。
+
+### 命令面板
+
+- 面板承担导航、捕获与页面动作：分组为 捕获 / 导航 / 动作 / 设置，每组至多 5 条；命中不足时给出说明，不展示占位项。
+- 输入 250ms 去抖，支持中英文与模糊匹配；最近使用置于各组首位。
+- 动作执行后面板关闭并产生可感知结果（导航或 Toast）；全程可键盘操作，`↑/↓` 选择、`Enter` 执行、`Esc` 取消且不执行。
+- 页面中存在的每个动作都必须能在命令面板到达；面板是动作完备性的验收面。
+
+## 8. Feedback & Async Workflows
+
+反馈分四层：本地即时、后台处理、完成通知、失败恢复。等待只允许出现在 AI 与外部依赖上，且始终可见、可离开、可恢复。
+
+### 即时层
+
+- 本地操作（创建课程、编辑 Todo、标记完成）在 100ms 内呈现结果，不显示加载态；本地 SQLite 是事实源，本地写不需要“乐观更新”过渡形态。
+- 数据在本地时直接渲染，不出现整页加载与骨架屏；只有外部流（LLM、语音供应商）允许等待形态。
+
+### 后台处理层
+
+- 转写、总结、出题、复习资料生成是后台任务：发起后可离开页面，导航与窗口切换不中断任务。
+- 任务卡三要素：当前阶段名、已耗时、退出动作（取消或重试）；进度不可知时禁止假百分比与无限进度条，用阶段加已耗时表达。
+- 并行任务聚合到“处理中”区域按发起时间排序；失败任务置顶，保留错误说明与重试入口。
+- 等待形态只用 16px 行内 spinner 与阶段文字，不用骨架屏模拟不存在的加载。
+
+### 完成与通知层
+
+- 任务完成后进入对应队列（总结进入待确认，转写直接落库），同时右下 Toast 通知并点击直达。
+- 完成通知不弹 Dialog 抢夺焦点；长任务完成的 Toast 可停留至 8 秒。
+
+### 失败与恢复层
+
+- 失败就地呈现：错误说明加恢复动作（重试、修改后重试、放弃），用户输入与已生成的部分产物必须保留。
+- 部分成功时明确说明成功范围，不因尾部失败丢弃全部产物。
+
+### 破坏性操作与撤销
+
+- 可逆删除直接执行并用 Toast 提供 5 秒撤销窗口；不可逆操作（永久删除、清空数据）使用确认 Dialog，按钮写明具体后果，不用通用“确定”。
+- 破坏性确认不使用大面积红色恐吓；危险色只落在按钮与状态文字上。
+
+### 空态
+
+- 空态三件套：一个 20–24px 线性图标（图标尺寸的唯一放大例外）、一句现状说明、一个唯一主动作或下一步引导。
+- 禁止“暂无数据”式死胡同；捕获场景的空态必须给出对应捕获入口。
+- 空态与正常态同结构，只替换内容区，不居中漂浮成营销页。
+
+## 9. AI Surface & Trust
+
+AI 是工作台的处理引擎，不是角色。AI 产物必须状态清楚、来源可查、边界明确、始终可编辑。
+
+### 状态合同
+
+- AI 产物统一四态：处理中、待确认、已确认、失败；同一状态在今日焦点卡、列表、详情与学习链中使用同一词汇与同一视觉形态。
+- “待确认”是全局最高行动优先级：占据唯一 primary 位置，被弱化即视为缺陷；确认按钮写具体动作（如“确认总结”）。
+- 未经人工确认的产物不进入统计、复习与习题流转，界面不呈现“半生效”状态。
+
+### 来源与可追溯
+
+- AI 产物引用统一为行内编号标记，点击跳转到对应转写分片或文档块；无法溯源的内容明确标注“无来源”，不伪装引用。
+- 引用标记不破坏正文节奏：12px、`text-muted`，hover 提升对比并提示可跳转。
+
+### 可编辑与再生成
+
+- AI 产物默认只读呈现并提供明确编辑入口；编辑保留版本历史，可回看不丢数据。
+- 再生成是次级动作（菜单层级），不与“确认”并排成双主动作；执行前提示将产生新版本。
+
+### 流式输出
+
+- Chat 流式输出逐段渐入，无逐字打字机效果；生成中光标为 1px 闪烁竖线，发送按钮切换为“停止生成”，中断保留已生成内容。
+- 流式期间页面可滚动、已完成段落可复制；“停止”即时生效。
+
+### 成本与能力透明
+
+- 用量（token、请求数、错误数）集中在服务与用量分区呈现，图表遵守黑白灰规则；常规交互处不展示成本。
+- 供应商与模型使用真实名称，不翻译、不拟人；降级与超限以文字说明，不静默发生。
+
+### AI 不拟人
+
+- 不使用机器人形象、魔法特效与“让我帮你”式人格化文案；AI 输出区只以 12px“AI 生成”标签轻标记。
+- AI 输出与用户内容使用同一排版体系与表面材料，不另造容器风格。
+
+## 10. Content & Voice
+
+文案是界面的一部分，遵循同一克制标准：直接、具体、可行动。
+
+### 时间与数字
+
+- 列表时间：今天显示 `HH:mm`，昨天显示“昨天 HH:mm”，更早显示本地化日期（zh：M月D日，跨年加年份；en：MMM D）。
+- 详情页使用完整 `yyyy-MM-dd HH:mm`；学习记录不用“3 分钟前”式相对时间，需要确定时间。
+- 录音与音频时长用 `mm:ss` / `h:mm:ss`；学习时长用“X 小时 Y 分钟”，不足 1 分钟不计入。
+- 数字启用 tabular nums 与千分位；百分比固定整数或一位小数，同一指标在各处小数位数一致。
+
+### 文案规则
+
+- 主动作用具体动词开头（“导入文档”“重新转写”），禁止“确定”“提交”类空词。
+- 空态等于现状一句加出路一句；错误等于发生了什么加怎么办，不向用户裸露错误码（错误码只进日志与技术详情）。
+- 不使用感叹号、拟人语气与营销措辞；AI 能力如实表述（“生成草稿”而非“完美总结”）。
+
+### 术语与 i18n
+
+- 界面术语与 CONTEXT.md 词条一致，不自造同义词；新词条先进 CONTEXT.md 再进界面。
+- zh 与 en key 一一对应，整句进资源文件，禁止运行时拼接；单位与复数在 i18n 层处理。
+
+## 11. Interaction & Motion
+
+- hover 过渡：120ms ease-out；selected / active：140ms ease-out；浮层进入与退出：160–180ms ease-out。
+- hover 只改变色面、边界或文字对比，不悬浮、不缩放、不改变布局。
+- active 使用更强一级色面或边界；按钮和列表行不使用弹簧、回弹和明显位移。
+- 浮层允许 2px 以内位移配合 opacity；页面内容不编排逐项入场动画。
+- 视图切换使用 120–180ms 透明度与不超过 4px 的位移过渡，与工作面进入动画同限；主内容不逐项入场。
+- 主题切换在 120ms 内一次性完成，禁止逐元素错峰与长时间全局渐变。
+- Toast 与流式文本只做透明度变化；流式文本不做逐字动画。
+- `focus-visible` 使用 2px 半透明中性焦点环和 1px offset；颜色来自黑白灰 `focus` token，暗色与明亮主题保持同等可见度，不使用彩色光环。
+- 完整支持 `prefers-reduced-motion`，关闭位移并将非必要动画降为瞬时状态切换。
+- 滚动条、文字选择、插入光标、链接下划线、拖拽提示和数字字体必须从主题 token 派生，不能保留浏览器默认风格。
+
+## 12. Responsive & Accessibility
+
+- 1440×900、1280×800、1099×720 为主页必测尺寸；另测 Windows 125% 与 150% 缩放。
+- 小于 1280px 时隐藏资产来源等低优先级列；小于 1100px 时压缩侧栏，并将双栏内容切换为单栏。
+- 右侧上下文面板在空间不足时改为按需打开的 Sheet 或页面内折叠区，不持续挤压主工作面。
+- 图表指标在 1280px 保持三列，达到 1400px 后可展开为六列；洞察面板 1280px 两列、1400px 四列，更窄折单列。
+- 普通正文、placeholder 和交互文字对比度至少 4.5:1；大文字与关键图形至少 3:1。
+- 纯图标按钮必须有可访问名称；键盘焦点可见；Tab 顺序与视觉顺序一致。
+- 可点击目标至少 32×32px；密集表格中的文字链接可依靠整行或扩大后的命中区域满足要求。
+- 状态更新、处理中、成功和失败必须具备屏幕阅读器可感知的文字反馈。
+- 所有主动作可键盘完成；浮层内焦点受困，关闭后焦点返回触发元素。
+- AI 任务完成、失败与待确认状态变化通过 aria-live 播报；图表数据提供文字摘要。
+- 页面在 200% 缩放下不得丢失未保存输入、主要动作或完整键盘路径。
+
+## 13. Acceptance Rules
+
+- 移除文字后，页面仍应由低对比分层、224px 导航、紧凑工具轨、发丝线和学习链识别，而不是靠卡片墙或大面积品牌色识别。
+- 暗色主题必须至少能区分 canvas、sidebar、paper、surface 和 overlay 五个层级；不得退化成一种黑色背景加亮边框。
+- 明亮主题必须保持与暗色主题相同的层级数量、组件边界和交互状态；不得成为另一套暖白纸面风格。
+- 常驻面板无阴影；浮层阴影必须同时具有偏移与柔和模糊，不得使用发光。
+- 同一视区只能有一个高对比 primary action；其余动作进入 outline、ghost 或菜单层级。
+- 普通按钮、导航、选中态、focus、学习链和图表不得使用紫、蓝或其他品牌强调色；除必要语义状态外，界面必须保持黑白灰。
+- 任何可点击控件没有指针光标、keyboard focus 或可访问名称，都视为交互缺陷。
 - 中文若回退到系统默认字体，视为构建或字体装配缺陷。
-- 构建通过不等于视觉通过；必须检查实际 Tauri/浏览器渲染、hover、focus、暗色和响应式。
+- 构建通过不等于视觉通过；必须检查真实 Tauri 渲染、明暗主题、hover、active、focus、disabled、loading、error、响应式、200% 缩放和横向溢出。
+- 视觉验收截图必须记录 CSS viewport、DPR、系统缩放和主题，避免把栅格像素误认为 CSS 尺寸。
+- `tokens.css` 与 `theme.css` 必须与本文件 token 表逐项一致；`--learning` 等语义 token 出现彩色取值视为构建缺陷。
+- 任何页面动作必须同时具备鼠标路径与键盘路径，并可在命令面板到达；缺少任一即视为交互缺陷。
+- AI 产物四态与“待确认”优先级在每个呈现面一致；确认边界被视觉弱化视为缺陷。
+- 长任务离开页面不中断，完成有通知可直达；失败保留用户输入与部分产物。
+- 空态必须给出下一步动作，错误必须给出恢复动作；“暂无数据”式死胡同视为缺陷。

@@ -215,3 +215,4 @@ img
 docs/improve-codebase-architecture
 .pytest-tmp
 .pytest-tmp-*
+PROJECT_PROGRESS.md

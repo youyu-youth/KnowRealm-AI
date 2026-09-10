@@ -9,19 +9,20 @@
 
 **权威文档（一切问题先查这里，改动以此为准）**：
 
-| 文档                                          | 管什么                                        |
-| --------------------------------------------- | --------------------------------------------- |
-| `docs/KnowRealm-AI-功能需求基线-v2.7.md`      | 需求与决策表（#1~#59）                        |
-| `docs/knowRealm-AI-功能升级与创新扩展设计.md` | KnowRealm-AI 扩展功能文档                     |
-| `docs/KnowRealm-AI-数据模型-v2.3.md`          | 数据模型（42 张表）                           |
-| `docs/技术栈设计与审查-v4.5.md`               | 技术选型与项目结构（§7.1 桌面端 / §7.2 后端） |
-| `CONTEXT.md`                                  | 领域术语表（角色≠学习场景、KP≠Concept 等）    |
-| `docs/adr/`               | 架构决策记录（数据目录 / 登录 / 模块化 / 搜索选型 / 错误码等定稿决策） |
+| 文档                                          | 管什么                                                       |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| `docs/KnowRealm-AI-功能需求基线-v2.7.md`      | 需求与决策表（#1~#59）                                       |
+| `docs/knowRealm-AI-功能升级与创新扩展设计.md` | KnowRealm-AI 扩展功能文档                                    |
+| `docs/KnowRealm-AI-数据模型-v2.3.md`          | 数据模型（42 张表）                                          |
+| `PROJECT_PROGRESS.md`                         | 项目进度总览文档/交接文档                                    |
+| `docs/技术栈设计与审查-v4.5.md`               | 技术选型与项目结构（§7.1 桌面端 / §7.2 后端）                |
+| `CONTEXT.md`                                  | 领域术语表（角色≠学习场景、KP≠Concept 等）                   |
+| `docs/adr/`                                   | 架构决策记录（数据目录 / 登录 / 模块化 / 搜索选型 / 错误码等定稿决策） |
 
 > 文档惯例：评审定稿即升版并**重命名文件**；改版本号须同步全部交叉引用（PRD / 技术栈 / CONTEXT.md / 扩展设计文档头部），历史"变更记录"行是史实、不改动。重大技术决策落 ADR（编号递增）；与既有 ADR 冲突须显式提出，不得默默覆盖。
 
-
 <!-- CODEGRAPH_START -->
+
 ## CodeGraph
 
 In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
@@ -47,8 +48,6 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 2. 设计或创建对应的桌面端ui时，需要遵循 impeccable skill 的规范要求，以及调用它来设计。
    - 不要重复造轮子，需要搞清楚当前的ui组件是否 可以用 shadcn ui 来实现。并保持设计规范。
 
-3. **git commit  的提交信息使用中文描述**
-
 4. 在测试中产生的任何临时文件，在测试完毕之后都要进行删除
 
 5. **执行编写任务之前，如果该功能是现有代码可以实现的则复用它，复用优先，禁止重复造轮子，保持代码简洁，且职责分明(适用于前端和后端)**
@@ -64,9 +63,19 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 7. 在涉及到 `langchain `, `langGraph `, `Deep Agents` 编写，设计，搭建时，请参考 `.agents/skills/`  或 `.zcode/skills/` 或  `.claude/skills/ `下有关的skills来进行编写！如有歧义则提出
 
-8. 编码时必要时遵循 SOLID、KISS、DRY、YAGNI，保持高内聚、低耦合，避免过度设计与无意义抽象。
-9. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
+7. 编码时必要时遵循 SOLID、KISS、DRY、YAGNI，保持高内聚、低耦合，避免过度设计与无意义抽象。
+
+8. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
+
 10. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
+
+
+
+## 项目交接原则
+
+- Agent 开始任务前或完成功能必须先阅读 `PROJECT_PROGRESS.md`，了解当前项目进度、技术决策和已知问题。
+- 完成重要功能、架构调整或技术方案变更后，必须同步更新 `PROJECT_PROGRESS.md`。
+- 文档内容必须以当前代码实际状态为准，避免重复开发、状态失真或 Agent 之间的信息断层。
 
 
 
@@ -95,6 +104,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 1. 格式为 type(scope): subject，scope 可省略，但 type 和冒号后的一个空格不可省略。
    - feat：新功能;  fix: 缺陷修复;  refactor: 重构;  perf: 性能优化; docs: 文档变更; chore: 杂项 等。
 2. subject 用中文书写，以动词开头（实现、修复、完善、重构、移除……），描述“这个提交做了什么”，结尾不加句号。
+3. 中文描述
 
 
 ## 文档的更新
@@ -112,9 +122,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 使用五个默认规范角色标签：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。见 `docs/agents/triage-labels.md`。
 
 ### Domain docs
-
 单上下文布局：根目录 `CONTEXT.md` + `docs/adr/`。见 `docs/agents/domain.md`。
-
 
 
 ## 参考
