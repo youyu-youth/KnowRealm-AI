@@ -71,7 +71,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 
 
-## 项目交接原则
+## 项目交接原则(遵循)
 
 - Agent 开始任务前或完成功能必须先阅读 `PROJECT_PROGRESS.md`，了解当前项目进度、技术决策和已知问题。
 - 完成重要功能、架构调整或技术方案变更后，必须同步更新 `PROJECT_PROGRESS.md`。
