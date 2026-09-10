@@ -224,15 +224,74 @@ class TestParseCitationReply:
             {"index": 1, "record_id": "rec-1", "quote": "MVCC 依赖 undo 日志实现多版本读"}
         ]
 
-    def test_quote_over_80_chars_dropped(self) -> None:
-        long_quote = "长" * 81
+    def test_blockquote_and_list_prefix_lines_recognized(self) -> None:
         parsed = parse_citation_reply(
-            f"正文[1]\n[1] {long_quote}",
-            transcript=f"开头{long_quote}结尾",
+            "MVCC 依赖 undo 日志[1]。\n"
+            "> [1] MVCC 依赖 undo 日志实现多版本读\n"
+            "- [2] 写入时保留旧版本",
+            transcript=self.TRANSCRIPT,
+            record_id="rec-1",
+        )
+        assert parsed.content == "MVCC 依赖 undo 日志[1]。"
+        assert parsed.citations == [
+            {"index": 1, "record_id": "rec-1", "quote": "MVCC 依赖 undo 日志实现多版本读"},
+            {"index": 2, "record_id": "rec-1", "quote": "写入时保留旧版本"},
+        ]
+
+    def test_paraphrased_quote_aligned_to_real_transcript_line(self) -> None:
+        transcript = (
+            "Docker 是一个用于开发、交付和运行应用程序的开放平台。\n"
+            "容器共享宿主机内核，比虚拟机更轻量。"
+        )
+        parsed = parse_citation_reply(
+            "Docker 是容器化平台[1]。\n"
+            "[1] Docker是用于开发、交付和运行应用程序的开放平台，使应用与基础架构分离。",
+            transcript=transcript,
+            record_id="rec-1",
+        )
+        # 意译摘录不在原文中，但相似度达标：以真实原句替换展示，跳转定位天然命中。
+        assert parsed.citations == [
+            {
+                "index": 1,
+                "record_id": "rec-1",
+                "quote": "Docker 是一个用于开发、交付和运行应用程序的开放平台。",
+            }
+        ]
+
+    def test_unrelated_paraphrase_dropped(self) -> None:
+        parsed = parse_citation_reply(
+            "回答[1]。\n[1] 与材料毫无关系的另一句话",
+            transcript=self.TRANSCRIPT,
             record_id="rec-1",
         )
         assert parsed.citations == []
         # 引用块被识别即剥离，即使全部条目未通过校验。
+        assert parsed.content == "回答[1]。"
+
+    def test_index_zero_dropped(self) -> None:
+        parsed = parse_citation_reply(
+            "[0] MVCC 依赖 undo 日志实现多版本读",
+            transcript=self.TRANSCRIPT,
+            record_id="rec-1",
+        )
+        # index 与 API 侧 ChatCitationOut.ge=1 对齐：[0] 整条丢弃，引用块仍剥离。
+        assert parsed.citations == []
+        assert parsed.content == ""
+
+    def test_quote_over_80_chars_aligned_to_bounded_window(self) -> None:
+        long_quote = "长" * 81
+        transcript_line = f"开头{long_quote}结尾"
+        parsed = parse_citation_reply(
+            f"正文[1]\n[1] {long_quote}",
+            transcript=transcript_line,
+            record_id="rec-1",
+        )
+        # 超长摘录不再直接丢弃：对齐到真实原文并以 ≤80 字窗口替换。
+        assert len(parsed.citations) == 1
+        aligned = parsed.citations[0]["quote"]
+        assert isinstance(aligned, str)
+        assert len(aligned) <= 80
+        assert aligned in transcript_line
         assert parsed.content == "正文[1]"
 
     def test_without_trailing_block_content_untouched(self) -> None:
@@ -885,6 +944,58 @@ async def test_mounted_reply_citations_validated_stripped_and_streamed(
             }
         ]
         assert "citations_json" not in assistant
+
+
+@pytest.mark.anyio
+async def test_mounted_blockquote_paraphrase_citation_aligned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transcript = (
+        "Docker 是一个用于开发、交付和运行应用程序的开放平台。\n"
+        "Docker 使您能够将应用程序与基础架构分离。"
+    )
+    # 模型真实劣化形态：引用块带 markdown 前缀 + 摘录为意译改写。
+    reply = [
+        "Docker 是容器化平台[1]。",
+        "\n> [1] Docker是用于开发、交付和运行应用程序的开放平台，使应用与基础架构分离。",
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[reply]) as (
+        _app,
+        client,
+        captured,
+    ):
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": transcript}
+        )
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "Docker 是什么？")
+
+        # 提示词明确禁止 markdown 前缀（格式加固）。
+        assert "不要使用 >、- 等 markdown 前缀" in str(captured[0][0].content)
+        names = [name for name, _payload in events]
+        assert names == ["status", "token", "token", "citation", "done"]
+        # blockquote 引用块被识别剥离；意译摘录对齐为真实原句下发。
+        assert [payload for name, payload in events if name == "citation"] == [
+            {
+                "index": 1,
+                "record_id": record_id,
+                "quote": "Docker 是一个用于开发、交付和运行应用程序的开放平台。",
+            }
+        ]
+        assert events[-1][1]["content"] == "Docker 是容器化平台[1]。"
+
+        history = await client.get(f"/api/chat-sessions/{session_id}/messages")
+        assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
+        assert assistant["citations"] == [
+            {
+                "index": 1,
+                "record_id": record_id,
+                "quote": "Docker 是一个用于开发、交付和运行应用程序的开放平台。",
+            }
+        ]
 
 
 @pytest.mark.anyio
