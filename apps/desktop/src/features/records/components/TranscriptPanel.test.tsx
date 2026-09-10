@@ -25,19 +25,27 @@ const DETAIL_URL = `${TEST_SIDECAR_URL}/api/records/${RECORD_ID}`;
 const JOBS_URL = `${DETAIL_URL}/jobs`;
 const TRANSCRIPT_URL = `${DETAIL_URL}/transcript`;
 const SEGMENTS_URL = `${TRANSCRIPT_URL}/segments`;
+const DOC_SEGMENTS_URL = `${DETAIL_URL}/document-segments`;
 const JOB_RETRY_URL = `${TEST_SIDECAR_URL}/api/processing-jobs/${JOB_ID}/retries`;
 const ASR_CONSENT_URL = `${TEST_SIDECAR_URL}/api/settings/external-processing-consents/tencent-asr`;
 
 const record: RecordOut = {
   id: RECORD_ID,
   course_id: "11111111-1111-4111-8111-111111111111",
-  capture_type: "DOCUMENT_IMPORT",
+  capture_type: "AUDIO_IMPORT",
   title: "操作系统第一讲",
   status: "FAILED",
   duration_ms: 0,
   summary_confirmed_at: null,
   created_at: "2026-08-19T08:30:00.000000Z",
   updated_at: "2026-08-19T08:30:00.000000Z",
+};
+
+// 文档导入记录走 document-segments 块级数据源（票 07 集成）。
+const documentRecord: RecordOut = {
+  ...record,
+  capture_type: "DOCUMENT_IMPORT",
+  title: "docker",
 };
 
 vi.mock("@/services/tauri/sidecar", () => ({
@@ -61,6 +69,21 @@ function segment(
     file_end_ms: null,
     speaker: null,
     content: "",
+    ...overrides,
+  };
+}
+
+function documentSegment(
+  overrides: Partial<components["schemas"]["DocumentSegmentOut"]> = {},
+): components["schemas"]["DocumentSegmentOut"] {
+  return {
+    id: crypto.randomUUID(),
+    sequence_no: 0,
+    page_no: null,
+    section_title: null,
+    content: "",
+    start_offset: null,
+    end_offset: null,
     ...overrides,
   };
 }
@@ -125,6 +148,7 @@ describe("TranscriptPanel", () => {
     let jobsCalls = 0;
     let transcriptCalls = 0;
     let segmentsCalls = 0;
+    let documentSegmentsCalls = 0;
     server.use(
       http.get(JOBS_URL, () => {
         jobsCalls += 1;
@@ -136,6 +160,10 @@ describe("TranscriptPanel", () => {
       }),
       http.get(SEGMENTS_URL, () => {
         segmentsCalls += 1;
+        return HttpResponse.json([]);
+      }),
+      http.get(DOC_SEGMENTS_URL, () => {
+        documentSegmentsCalls += 1;
         return HttpResponse.json([]);
       }),
     );
@@ -151,8 +179,9 @@ describe("TranscriptPanel", () => {
       expect(jobsCalls).toBe(1);
       expect(transcriptCalls).toBe(1);
     });
-    // 转写未就绪时不拉分片。
+    // 转写未就绪时不拉分片；非文档记录永不拉文档块。
     expect(segmentsCalls).toBe(0);
+    expect(documentSegmentsCalls).toBe(0);
   });
 
   it("区分确定性与可恢复失败，并防止重试重复提交", async () => {
@@ -572,5 +601,162 @@ describe("TranscriptPanel", () => {
     // 保存成功后分片被重新拉取，时间轴呈现对齐后的新句子。
     expect(await screen.findByText("改写后的句子。")).toBeVisible();
     expect(screen.queryByText("原始句子。")).toBeNull();
+  });
+
+  it("文档导入渲染块级时间轴：无标记来源时左列退为块序号", async () => {
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(readyTranscript("# 标题\n\n第一段内容。")),
+      ),
+      // 新导入文档行级分片为空（依赖启动回填），时间轴走文档块。
+      http.get(SEGMENTS_URL, () => HttpResponse.json([])),
+      http.get(DOC_SEGMENTS_URL, () =>
+        HttpResponse.json([
+          documentSegment({
+            sequence_no: 0,
+            content: "# 标题",
+            start_offset: 0,
+            end_offset: 3,
+          }),
+          documentSegment({
+            sequence_no: 1,
+            content: "第一段内容。",
+            start_offset: 5,
+            end_offset: 10,
+          }),
+        ]),
+      ),
+    );
+    renderTranscript({ detail: { ...documentRecord, status: "COMPLETED" } });
+
+    const list = await screen.findByRole("list", { name: "来源时间轴" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    // 无时间/页码来源：左列退为块序号，时间轴结构可见。
+    expect(within(list).getByText("01")).toBeVisible();
+    expect(within(list).getByText("02")).toBeVisible();
+  });
+
+  it("PDF 文档块显示页码标记，引用定位命中行升级页码徽章", async () => {
+    const quote = "undo 日志实现多版本读";
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(readyTranscript(`第一章概念。数据库靠${quote}。`)),
+      ),
+      http.get(SEGMENTS_URL, () => HttpResponse.json([])),
+      http.get(DOC_SEGMENTS_URL, () =>
+        HttpResponse.json([
+          documentSegment({
+            sequence_no: 0,
+            page_no: 1,
+            content: "第一章概念。",
+            start_offset: 0,
+            end_offset: 6,
+          }),
+          documentSegment({
+            sequence_no: 1,
+            page_no: 2,
+            content: `数据库靠${quote}。`,
+            start_offset: 6,
+            end_offset: 24,
+          }),
+        ]),
+      ),
+    );
+    vi.mocked(window.Element.prototype.scrollIntoView).mockClear();
+    renderTranscript({
+      detail: { ...documentRecord, status: "COMPLETED" },
+      highlight: quote,
+    });
+
+    const mark = await screen.findByText(quote, { selector: "mark" });
+    const row = mark.closest("li");
+    expect(row).not.toBeNull();
+    // 命中行左列页码升级为徽章；未命中页保持普通页码。
+    expect(within(row as HTMLElement).getByText("第2页")).toBeVisible();
+    expect(screen.getByText("第1页")).toBeVisible();
+    expect(window.Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("旧文档无块分片时回落行级转写分片", async () => {
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(readyTranscript("行级句。")),
+      ),
+      http.get(SEGMENTS_URL, () =>
+        HttpResponse.json([
+          segment({ record_start_ms: 1_000, content: "行级句。" }),
+        ]),
+      ),
+      http.get(DOC_SEGMENTS_URL, () => HttpResponse.json([])),
+    );
+    renderTranscript({ detail: { ...documentRecord, status: "COMPLETED" } });
+
+    const list = await screen.findByRole("list", { name: "来源时间轴" });
+    expect(within(list).getByText("行级句。")).toBeVisible();
+    expect(within(list).getByText("00:01")).toBeVisible();
+  });
+
+  it("文档编辑保存后块分片清零，时间轴回落行级重切结果", async () => {
+    let saved = false;
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(
+          readyTranscript(
+            saved ? "改后的正文。" : "原始块正文。",
+            saved ? 2 : 1,
+          ),
+        ),
+      ),
+      http.get(SEGMENTS_URL, () =>
+        HttpResponse.json(
+          saved
+            ? [segment({ sequence_no: 0, content: "重切后的行级句。" })]
+            : [],
+        ),
+      ),
+      http.get(DOC_SEGMENTS_URL, () =>
+        HttpResponse.json(
+          saved
+            ? []
+            : [
+                documentSegment({
+                  sequence_no: 0,
+                  content: "原始块正文。",
+                  start_offset: 0,
+                  end_offset: 6,
+                }),
+              ],
+        ),
+      ),
+      http.patch(TRANSCRIPT_URL, async () => {
+        saved = true;
+        return HttpResponse.json({
+          language: "zh-CN",
+          content: "改后的正文。",
+          source_version: 2,
+          edited_by_user: true,
+          updated_at: "2026-08-21T12:05:00.000000Z",
+        });
+      }),
+    );
+    renderTranscript({
+      detail: { ...documentRecord, status: "SUMMARY_PENDING" },
+    });
+
+    expect(await screen.findByText("原始块正文。")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "编辑正文" }));
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Transcript 正文编辑器" }),
+      { target: { value: "改后的正文。" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存正文" }));
+    // 服务端编辑后清零文档块，前端双源失效重拉，回落行级分片。
+    expect(await screen.findByText("重切后的行级句。")).toBeVisible();
+    expect(screen.queryByText("原始块正文。")).toBeNull();
   });
 });

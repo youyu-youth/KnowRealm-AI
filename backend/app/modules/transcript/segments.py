@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.capture.models import RecordFile
 from app.modules.record.models import Record
-from app.modules.transcript.models import Transcript, TranscriptSegment
+from app.modules.transcript.models import (
+    DocumentSegment,
+    Transcript,
+    TranscriptSegment,
+)
 from app.modules.transcript.sentences import (
     Sentence,
     content_hash,
@@ -81,6 +85,11 @@ class SegmentService:
         content: str,
     ) -> None:
         """编辑保存同事务内的增量对齐重切：命中句仅重排 sequence_no，未命中删除重建。"""
+        # 编辑后 content 已变，文档块的块界与 offset 全部失效，同事务清零
+        # （前端时间轴随之回落到本次重切产出的行级 transcript_segments）。
+        await session.execute(
+            delete(DocumentSegment).where(DocumentSegment.record_id == record_id)
+        )
         file_ids = list(
             (
                 await session.scalars(

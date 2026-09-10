@@ -306,6 +306,50 @@ async def test_transcript_patch_realigns_segments_typo_insert_delete(tmp_path: P
 
 
 @pytest.mark.anyio
+async def test_transcript_patch_clears_stale_document_segments(tmp_path: Path) -> None:
+    """编辑保存后文档块的块界与 offset 全部失效：同事务清零，行级分片接管时间轴。"""
+    file_id = str(uuid4())
+    async with running_app(tmp_path / "KnowRealm") as (app, client):
+        record_id = await seed_segmented_record(
+            app,
+            file_ids=[file_id],
+            content="第一段\n第二段",
+            segments=[segment_row("seg-1", file_id, 0, "第一段")],
+        )
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO document_segments "
+                    "(id, course_id, record_id, record_file_id, course_material_id, "
+                    "sequence_no, page_no, section_title, content, start_offset, "
+                    "end_offset, content_hash) "
+                    "VALUES ('doc-seg-1', NULL, :rid, :fid, NULL, 0, NULL, NULL, "
+                    ":content, 0, :end, :chash)"
+                ),
+                {
+                    "rid": record_id,
+                    "fid": file_id,
+                    "content": "第一段",
+                    "end": len("第一段"),
+                    "chash": content_hash("第一段"),
+                },
+            )
+        updated = await client.patch(
+            f"/api/records/{record_id}/transcript",
+            json={"content": "第一段改\n第二段", "expected_source_version": 1},
+        )
+        document_segments = (
+            await client.get(f"/api/records/{record_id}/document-segments")
+        ).json()
+        segments = (await client.get(f"/api/records/{record_id}/transcript/segments")).json()
+
+    assert updated.status_code == 200
+    # 文档块随编辑清零；时间轴回落到本次重切的行级分片。
+    assert document_segments == []
+    assert [row["content"] for row in segments] == ["第一段改", "第二段"]
+
+
+@pytest.mark.anyio
 async def test_transcript_patch_new_sentence_inherits_neighbor_file(tmp_path: Path) -> None:
     """多文件记录：删除句移除；文件间新增句继承左侧最近命中句；前缀无命中回退右侧。"""
     file_one = str(uuid4())

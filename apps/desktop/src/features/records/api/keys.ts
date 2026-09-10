@@ -6,6 +6,8 @@ export const recordKeys = {
     [...recordKeys.all, "transcript", recordId] as const,
   transcriptSegments: (recordId: string) =>
     [...recordKeys.all, "transcript-segments", recordId] as const,
+  documentSegments: (recordId: string) =>
+    [...recordKeys.all, "document-segments", recordId] as const,
   jobs: (recordId: string) => [...recordKeys.all, "jobs", recordId] as const,
   summary: (recordId: string) =>
     [...recordKeys.all, "summary", recordId] as const,

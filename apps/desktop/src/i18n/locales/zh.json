@@ -626,6 +626,7 @@
         "highlightLabel": "引用定位",
         "timelineLabel": "来源时间轴",
         "segmentsLoading": "正在读取来源分片",
+        "pageLabel": "第{{page}}页",
         "errors": {
           "AUDIO_TRANSCODE_FAILED": "音频规范化或切片失败，请确认原文件可读取后重试。",
           "ASR_AUTH_FAILED": "腾讯云凭据无效，请修正 Provider 配置后重试。",

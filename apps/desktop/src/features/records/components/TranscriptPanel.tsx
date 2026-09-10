@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
-import type {
-  ProcessingJobOut,
-  RecordOut,
-  TranscriptSegmentOut,
-} from "@/features/records/api/types";
+import type { ProcessingJobOut, RecordOut } from "@/features/records/api/types";
 import { settingsApi } from "@/features/settings/api/settings";
 import { ApiError } from "@/services/http/client";
 
@@ -55,6 +51,14 @@ export function TranscriptPanel({
     queryFn: () => recordApi.getTranscriptSegments(recordId),
     enabled: enabled && transcript.data?.status === "READY",
   });
+  // 文档导入的分片在 document_segments（块级、导入即有）；行级 transcript_segments
+  // 对文档只有启动回填/编辑重切两个来源，作为旧文档（票 03 之前）的回落。
+  const isDocumentImport = record.capture_type === "DOCUMENT_IMPORT";
+  const documentSegments = useQuery({
+    queryKey: recordKeys.documentSegments(recordId),
+    queryFn: () => recordApi.getDocumentSegments(recordId),
+    enabled: enabled && transcript.data?.status === "READY" && isDocumentImport,
+  });
   const retryJob = useMutation({
     mutationFn: (job: ProcessingJobOut) => recordApi.retryJob(job.id, recordId),
     onSuccess: () => void onRecordAssetsChanged(),
@@ -74,9 +78,12 @@ export function TranscriptPanel({
         status: "READY",
         transcript: updated,
       });
-      // 编辑保存后服务端按句对齐重切了分片，重新拉取呈现对齐结果。
+      // 编辑保存后服务端重切了行级分片并清零了失效的文档块，两个分片源都重拉。
       void queryClient.invalidateQueries({
         queryKey: recordKeys.transcriptSegments(recordId),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: recordKeys.documentSegments(recordId),
       });
       setEditing(false);
       setEditBaseVersion(null);
@@ -93,6 +100,42 @@ export function TranscriptPanel({
     saveTranscript.error instanceof ApiError &&
     saveTranscript.error.status === 409;
   const isProcessing = processingStatuses.has(record.status);
+  const timelineRows = useMemo<TimelineRow[] | null>(() => {
+    // 优先级：文档块（文档记录导入即有、带页码）> 行级转写分片（音频句级 /
+    // 旧文档启动回填）> 纯文本回落。
+    if (
+      documentSegments.data !== undefined &&
+      documentSegments.data.length > 0
+    ) {
+      return documentSegments.data.map((segment) => ({
+        id: segment.id,
+        marker:
+          segment.page_no === null
+            ? null
+            : t("record.detail.transcript.pageLabel", {
+                page: segment.page_no,
+              }),
+        content: segment.content,
+      }));
+    }
+    if (
+      transcriptSegments.data !== undefined &&
+      transcriptSegments.data.length > 0
+    ) {
+      return transcriptSegments.data.map((segment) => ({
+        id: segment.id,
+        marker:
+          segment.record_start_ms === null
+            ? null
+            : formatTimelineTimestamp(segment.record_start_ms),
+        content: segment.content,
+      }));
+    }
+    return null;
+  }, [documentSegments.data, transcriptSegments.data, t]);
+  const timelinePending =
+    transcriptSegments.isPending ||
+    (isDocumentImport && documentSegments.isPending);
 
   async function reloadTranscript() {
     const result = await transcript.refetch();
@@ -102,6 +145,7 @@ export function TranscriptPanel({
     }
     // 冲突意味着服务端内容已被换掉，分片随之重切，一并重拉。
     void transcriptSegments.refetch();
+    if (isDocumentImport) void documentSegments.refetch();
     saveTranscript.reset();
   }
 
@@ -204,7 +248,7 @@ export function TranscriptPanel({
                 </Alert>
               ) : null}
             </div>
-          ) : transcriptSegments.isPending ? (
+          ) : timelinePending ? (
             <p
               role="status"
               className="text-body text-muted-foreground mt-4 flex items-center gap-2"
@@ -212,12 +256,8 @@ export function TranscriptPanel({
               <Spinner aria-hidden="true" />
               {t("record.detail.transcript.segmentsLoading")}
             </p>
-          ) : transcriptSegments.data !== undefined &&
-            transcriptSegments.data.length > 0 ? (
-            <SourceTimeline
-              segments={transcriptSegments.data}
-              highlight={highlight}
-            />
+          ) : timelineRows !== null ? (
+            <SourceTimeline rows={timelineRows} highlight={highlight} />
           ) : (
             // 无分片记录（粘贴/速记）回落纯文本；分片读取失败时同样回落，正文仍可读。
             <TranscriptView
@@ -316,26 +356,33 @@ function formatTimelineTimestamp(ms: number): string {
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+type TimelineRow = {
+  id: string;
+  /** 左列标记：音频时间戳（mm:ss / h:mm:ss）或 PDF 页码；null = 无标记来源。 */
+  marker: string | null;
+  content: string;
+};
+
 /**
- * 来源时间轴：句级分片行式排布（左时间戳、右句文本）。
- * 无时间戳分片保留占位列以维持文本基线对齐；引用摘录在分片中匹配
- * （多命中取首个）→ 滚动 + 摘录内联高亮 + 时间戳徽章，找不到提示「原文已变动」。
+ * 来源时间轴：行式排布（左标记列、右内容）。标记列三态——时间戳 / 页码 /
+ * 全表无任何标记时退为淡色块序号（保证时间轴结构可见；序号非时间标记，
+ * 不违「无时间轴来源不造时间」语义）。无标记行保留占位列维持文本基线对齐。
+ * 引用摘录在行内容中匹配（多命中取首个）→ 滚动 + 摘录内联高亮 + 标记升级
+ * 徽章，找不到提示「原文已变动」。
  */
 function SourceTimeline({
-  segments,
+  rows,
   highlight,
 }: {
-  segments: TranscriptSegmentOut[];
+  rows: TimelineRow[];
   highlight?: string;
 }) {
   const { t } = useTranslation();
   const matchRowRef = useRef<HTMLLIElement | null>(null);
   const matchIndex = highlight
-    ? segments.findIndex((segment) => segment.content.includes(highlight))
+    ? rows.findIndex((row) => row.content.includes(highlight))
     : -1;
-  const hasTimestamps = segments.some(
-    (segment) => segment.record_start_ms !== null,
-  );
+  const hasMarkers = rows.some((row) => row.marker !== null);
 
   useEffect(() => {
     if (matchIndex >= 0) {
@@ -354,47 +401,46 @@ function SourceTimeline({
         aria-label={t("record.detail.transcript.timelineLabel")}
         className="border-border text-body text-ink mt-4 divide-y font-sans"
       >
-        {segments.map((segment, index) => {
+        {rows.map((row, index) => {
           const matched = index === matchIndex;
-          const timestamp =
-            segment.record_start_ms === null
-              ? null
-              : formatTimelineTimestamp(segment.record_start_ms);
+          const marker =
+            row.marker ??
+            (hasMarkers ? null : String(index + 1).padStart(2, "0"));
           const quoteOffset =
-            matched && highlight ? segment.content.indexOf(highlight) : -1;
+            matched && highlight ? row.content.indexOf(highlight) : -1;
           return (
             <li
-              key={segment.id}
+              key={row.id}
               ref={matched ? matchRowRef : undefined}
               className="flex min-w-0 items-baseline gap-3 py-1.5"
             >
-              {timestamp !== null ? (
+              {marker !== null ? (
                 matched ? (
-                  <span className="bg-primary text-primary-foreground font-label w-14 shrink-0 rounded-xs py-0.5 text-center tabular-nums">
-                    {timestamp}
+                  <span className="bg-primary text-primary-foreground font-label w-16 shrink-0 rounded-xs py-0.5 text-center whitespace-nowrap tabular-nums">
+                    {marker}
                   </span>
                 ) : (
-                  <span className="text-label text-muted-foreground w-14 shrink-0 tabular-nums">
-                    {timestamp}
+                  <span className="text-label text-muted-foreground w-16 shrink-0 whitespace-nowrap tabular-nums">
+                    {marker}
                   </span>
                 )
-              ) : hasTimestamps ? (
-                <span className="w-14 shrink-0" aria-hidden="true" />
-              ) : null}
+              ) : (
+                <span className="w-16 shrink-0" aria-hidden="true" />
+              )}
               <p className="min-w-0 break-words">
                 {quoteOffset >= 0 && highlight ? (
                   <>
-                    {segment.content.slice(0, quoteOffset)}
+                    {row.content.slice(0, quoteOffset)}
                     <mark
                       className="bg-learning-soft text-ink rounded-xs"
                       aria-label={t("record.detail.transcript.highlightLabel")}
                     >
                       {highlight}
                     </mark>
-                    {segment.content.slice(quoteOffset + highlight.length)}
+                    {row.content.slice(quoteOffset + highlight.length)}
                   </>
                 ) : (
-                  segment.content
+                  row.content
                 )}
               </p>
             </li>

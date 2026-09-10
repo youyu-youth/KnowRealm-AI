@@ -12,6 +12,7 @@ import type {
   TranscriptOut,
   TranscriptReadOut,
   TranscriptSegmentOut,
+  DocumentSegmentOut,
 } from "@/features/records/api/types";
 import { createParser } from "eventsource-parser";
 import {
@@ -39,6 +40,10 @@ export const recordApi = {
   getTranscriptSegments: (recordId: string) =>
     apiFetch<TranscriptSegmentOut[]>(
       `/api/records/${recordId}/transcript/segments`,
+    ),
+  getDocumentSegments: (recordId: string) =>
+    apiFetch<DocumentSegmentOut[]>(
+      `/api/records/${recordId}/document-segments`,
     ),
   getJobs: (recordId: string) =>
     apiFetch<RecordJobsOut>(`/api/records/${recordId}/jobs`),
