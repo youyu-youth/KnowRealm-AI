@@ -274,7 +274,7 @@ export function CourseFormFields({
           />
           <span
             aria-hidden="true"
-            className="text-label text-ink-faint pointer-events-none absolute right-2.5 bottom-2 tabular-nums"
+            className="text-label text-ink-muted pointer-events-none absolute right-2.5 bottom-2 tabular-nums"
           >
             {values.description.length} / {COURSE_DESCRIPTION_MAX_LENGTH}
           </span>
@@ -319,7 +319,7 @@ function ContextOption({
       <span className="text-body-dense text-ink-strong font-medium">
         {label}
       </span>
-      <span className="text-label text-ink-faint">{hint}</span>
+      <span className="text-label text-ink-muted">{hint}</span>
     </RadioPrimitive.Root>
   );
 }

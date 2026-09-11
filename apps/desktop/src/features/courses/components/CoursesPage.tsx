@@ -91,7 +91,7 @@ export function CoursesPage({
                 variant="ghost"
                 aria-pressed={view === "grid"}
                 aria-label={t("spaces.grid.viewGrid")}
-                className={view === "grid" ? "bg-muted" : ""}
+                className={`transition-colors duration-[120ms] ease-out ${view === "grid" ? "bg-muted" : ""}`}
                 onClick={() => onSearchChange({ ...search, view: undefined })}
               >
                 <LayoutGrid aria-hidden="true" />
@@ -102,7 +102,7 @@ export function CoursesPage({
                 variant="ghost"
                 aria-pressed={view === "list"}
                 aria-label={t("spaces.grid.viewList")}
-                className={view === "list" ? "bg-muted" : ""}
+                className={`transition-colors duration-[120ms] ease-out ${view === "list" ? "bg-muted" : ""}`}
                 onClick={() => onSearchChange({ ...search, view: "list" })}
               >
                 <List aria-hidden="true" />
@@ -176,24 +176,28 @@ export function CoursesPage({
                 </Button>
               </EmptyContent>
             </Empty>
-          ) : view === "list" ? (
-            <CourseList
-              courses={visibleCourses}
-              onOpenCourse={onOpenCourse}
-              onEditCourse={onEditCourse}
-              onDeleteCourse={setDeletingCourse}
-            />
           ) : (
-            <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
-              {visibleCourses.map((course) => (
-                <CourseCard
-                  key={course.id}
-                  course={course}
-                  onOpen={() => onOpenCourse(course.id)}
-                  onEdit={() => onEditCourse(course.id)}
-                  onDelete={() => setDeletingCourse(course)}
+            <div key={view} className="view-switch-enter mt-4 min-w-0">
+              {view === "list" ? (
+                <CourseList
+                  courses={visibleCourses}
+                  onOpenCourse={onOpenCourse}
+                  onEditCourse={onEditCourse}
+                  onDeleteCourse={setDeletingCourse}
                 />
-              ))}
+              ) : (
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                  {visibleCourses.map((course) => (
+                    <CourseCard
+                      key={course.id}
+                      course={course}
+                      onOpen={() => onOpenCourse(course.id)}
+                      onEdit={() => onEditCourse(course.id)}
+                      onDelete={() => setDeletingCourse(course)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>

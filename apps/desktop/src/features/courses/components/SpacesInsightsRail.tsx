@@ -83,7 +83,7 @@ export function SpacesInsightsRail({ courses }: SpacesInsightsRailProps) {
                 <dd className="text-section font-section text-ink-strong tabular-nums">
                   {overview[key]}
                 </dd>
-                <dt className="text-label text-ink-faint truncate">
+                <dt className="text-label text-ink-muted truncate">
                   {t(`spaces.insights.stats.${key}`)}
                 </dt>
               </div>
@@ -104,7 +104,7 @@ export function SpacesInsightsRail({ courses }: SpacesInsightsRailProps) {
             ))}
           </ol>
         ) : (
-          <p className="text-label text-ink-faint mt-3">
+          <p className="text-label text-ink-muted mt-3">
             {t("spaces.insights.recent.empty")}
           </p>
         )}
@@ -150,7 +150,7 @@ export function SpacesInsightsRail({ courses }: SpacesInsightsRailProps) {
             ))}
           </ol>
         ) : (
-          <p className="text-label text-ink-faint mt-3">
+          <p className="text-label text-ink-muted mt-3">
             {t("spaces.insights.activity.empty")}
           </p>
         )}
@@ -170,7 +170,7 @@ function InsightsCard({
 }) {
   const { t } = useTranslation();
   return (
-    <section className="border-border bg-background rounded-xl border p-4 shadow-[0_1px_2px_rgb(15_23_42/0.035)]">
+    <section className="border-border bg-surface-raised rounded-xl border p-4">
       <header className="flex min-w-0 items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="text-section font-section text-ink-strong truncate">
@@ -206,7 +206,7 @@ function RecentCourseRow({
   );
   return (
     <li className="flex min-w-0 items-center gap-2.5">
-      <span className="text-label text-ink-faint w-3 shrink-0 tabular-nums">
+      <span className="text-label text-ink-muted w-3 shrink-0 tabular-nums">
         {index}
       </span>
       <CourseAvatar context={insight.course.learning_context} size="sm" />
@@ -217,7 +217,7 @@ function RecentCourseRow({
         >
           {insight.course.name}
         </p>
-        <p className="text-label text-ink-faint mt-0.5">
+        <p className="text-label text-ink-muted mt-0.5">
           {time}
           {" · "}
           {t(`spaces.insights.recent.${insight.activityKind}`, {
@@ -242,7 +242,7 @@ function ActivityRow({ activity }: { activity: SpacesActivity }) {
         aria-hidden="true"
         className="bg-border-strong absolute top-1.5 -left-[calc(1rem+3px)] size-1.5 rounded-full"
       />
-      <p className="text-label text-ink-faint tabular-nums">{time}</p>
+      <p className="text-label text-ink-muted tabular-nums">{time}</p>
       <p className="text-body-dense text-ink-muted mt-0.5">
         {t(`spaces.insights.activity.${activity.kind}`, {
           course: activity.course.name,

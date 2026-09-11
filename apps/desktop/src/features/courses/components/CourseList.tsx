@@ -56,7 +56,7 @@ export function CourseList({
         return (
           <li
             key={course.id}
-            className="group border-border bg-background hover:border-foreground/20 relative flex min-w-0 items-center rounded-xl border shadow-[0_1px_2px_rgb(15_23_42/0.035)] transition-[border-color,box-shadow] hover:shadow-[0_3px_10px_rgb(15_23_42/0.05)]"
+            className="group border-border bg-surface-raised hover:border-border-strong hover:bg-surface-subtle dark:hover:bg-surface-raised relative flex min-w-0 items-center rounded-xl border transition-[background-color,border-color] duration-[120ms] ease-out"
           >
             <button
               type="button"
@@ -75,7 +75,7 @@ export function CourseList({
                   </span>
                   <CourseStatusTag course={course} />
                 </span>
-                <span className="text-label text-ink-faint mt-0.5 block truncate">
+                <span className="text-label text-ink-muted mt-0.5 block truncate">
                   {meta}
                 </span>
               </span>
@@ -96,7 +96,7 @@ export function CourseList({
                 </time>
               </span>
             </button>
-            <div className="bg-background/95 absolute right-3 flex items-center gap-1 rounded-lg pl-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+            <div className="bg-surface-raised/95 absolute right-3 flex items-center gap-1 rounded-lg pl-2 opacity-0 transition-opacity duration-[120ms] ease-out group-focus-within:opacity-100 group-hover:opacity-100">
               <Button
                 size="sm"
                 variant="outline"

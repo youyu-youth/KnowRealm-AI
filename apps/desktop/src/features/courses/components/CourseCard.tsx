@@ -122,7 +122,7 @@ export function CourseCard({
     course.description?.trim() || t("spaces.card.noDescription");
 
   return (
-    <article className="group border-border bg-background hover:border-foreground/20 flex min-w-0 flex-col rounded-xl border p-4 shadow-[0_1px_2px_rgb(15_23_42/0.035)] transition-[border-color,box-shadow] hover:shadow-[0_3px_10px_rgb(15_23_42/0.05)]">
+    <article className="group border-border bg-surface-raised hover:border-border-strong hover:bg-surface-subtle dark:hover:bg-surface-raised flex min-w-0 flex-col rounded-xl border p-4 transition-[background-color,border-color] duration-[120ms] ease-out">
       <div className="flex min-w-0 items-start gap-3">
         <CourseAvatar context={course.learning_context} />
         <div className="min-w-0 flex-1">
@@ -150,7 +150,7 @@ export function CourseCard({
 
       <dl className="mt-3.5 grid grid-cols-3 gap-3">
         <div className="min-w-0">
-          <dt className="text-label text-ink-faint flex items-center gap-1">
+          <dt className="text-label text-ink-muted flex items-center gap-1">
             <FileText className="size-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">{t("spaces.card.records")}</span>
           </dt>
@@ -159,7 +159,7 @@ export function CourseCard({
           </dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-label text-ink-faint flex items-center gap-1">
+          <dt className="text-label text-ink-muted flex items-center gap-1">
             <Layers3 className="size-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">{t("spaces.card.knowledgePoints")}</span>
           </dt>
@@ -170,7 +170,7 @@ export function CourseCard({
           </dd>
         </div>
         <div className="min-w-0">
-          <dt className="text-label text-ink-faint flex items-center gap-1">
+          <dt className="text-label text-ink-muted flex items-center gap-1">
             <Clock className="size-3.5 shrink-0" aria-hidden="true" />
             <span className="truncate">{t("spaces.card.updatedAt")}</span>
           </dt>
@@ -201,7 +201,7 @@ export function CourseCard({
           className="bg-surface-strong mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
         >
           <div
-            className="bg-ink-strong h-full rounded-full"
+            className="bg-ink-strong progress-reveal h-full rounded-full"
             style={{ width: `${stats.progress}%` }}
           />
         </div>

@@ -44,7 +44,7 @@ import {
 const ALL_OPTION = "ALL";
 
 const filterPillClassName =
-  "h-7 rounded-md px-2.5 text-[13px] data-active:border-transparent data-active:bg-black data-active:text-white data-active:shadow-sm dark:data-active:bg-white dark:data-active:text-black";
+  "h-7 rounded-md px-2.5 text-[13px] transition-colors duration-[120ms] ease-out data-active:border-transparent data-active:bg-black data-active:text-white data-active:shadow-sm dark:data-active:bg-white dark:data-active:text-black";
 
 type CourseFiltersProps = {
   search: SpacesSearch;
@@ -130,7 +130,7 @@ export function CourseFilters({ search, onChange }: CourseFiltersProps) {
             variant="ghost"
             size="sm"
             aria-pressed={statusFilter === value}
-            className={`h-7 rounded-md px-2.5 text-[13px] ${statusFilter === value ? "bg-muted text-foreground shadow-sm" : "text-muted-foreground"}`}
+            className={`h-7 rounded-md px-2.5 text-[13px] transition-colors duration-[120ms] ease-out ${statusFilter === value ? "bg-muted text-foreground" : "text-muted-foreground"}`}
             onClick={() =>
               patch({ status: value === "ACTIVE" ? undefined : value })
             }
