@@ -12,12 +12,18 @@ import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDi
 
 type CourseOverviewProps = {
   course: CourseDetail;
+  initialEditing?: boolean;
   onDeleted: () => void | Promise<void>;
 };
 
-export function CourseOverview({ course, onDeleted }: CourseOverviewProps) {
+export function CourseOverview({
+  course,
+  initialEditing = false,
+  onDeleted,
+}: CourseOverviewProps) {
   const { t } = useTranslation();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditing);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   if (editing) {
     return (
@@ -70,12 +76,20 @@ export function CourseOverview({ course, onDeleted }: CourseOverviewProps) {
           {t("spaces.detail.infoTitle")}
         </h2>
         <div className="flex items-center gap-2">
-          <DeleteCourseDialog course={course} onDeleted={onDeleted} />
+          <Button variant="destructive" onClick={() => setDeleteOpen(true)}>
+            {t("spaces.delete.action")}
+          </Button>
           <Button onClick={() => setEditing(true)}>
             {t("spaces.detail.edit")}
           </Button>
         </div>
       </div>
+      <DeleteCourseDialog
+        course={course}
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onDeleted={onDeleted}
+      />
       <dl className="border-border mt-4 border-t">
         {rows.map((row) => (
           <div

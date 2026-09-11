@@ -51,7 +51,7 @@ describe("工作台骨架", () => {
     expect(
       await screen.findByRole("heading", { name: "知识空间" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "新建知识空间" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "新建课程" })).toBeEnabled();
   });
 
   it("FINALIZING 处理失败时仍允许开始新的录音", async () => {
@@ -532,14 +532,12 @@ describe("工作台骨架", () => {
     expect(
       await screen.findByRole("searchbox", { name: "搜索课程" }),
     ).toHaveValue("操作");
-    expect(
-      screen.getByRole("combobox", { name: "教育阶段筛选" }),
-    ).toHaveTextContent("本科");
-    expect(
-      screen.getByRole("combobox", { name: "课程类型筛选" }),
-    ).toHaveTextContent("专业课");
-    expect(
-      requestedUrls.some((url) => url.searchParams.get("q") === "操作"),
-    ).toBe(true);
+    // 教育阶段与课程类型收纳在「更多筛选」菜单，计数徽章反映 URL 解析结果。
+    expect(screen.getByRole("button", { name: /更多筛选/ })).toHaveTextContent(
+      "2",
+    );
+    // 筛选全部在客户端完成：后端只被请求一次全量列表，不带筛选参数。
+    expect(requestedUrls.length).toBeGreaterThan(0);
+    expect(requestedUrls.every((url) => url.search === "")).toBe(true);
   });
 });

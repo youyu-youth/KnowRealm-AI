@@ -243,10 +243,10 @@
   },
   "spaces": {
     "title": "知识空间",
-    "description": "课程是唯一的知识容器，用来组织学习记录与后续学习资产。",
+    "description": "在这里管理你的课程、技能主题与兴趣主题，构建属于自己的知识体系。",
     "emptyTitle": "还没有知识空间",
     "emptyDescription": "创建首门课程，为之后的学习记录设定清晰的场景与深度。",
-    "create": "新建知识空间",
+    "create": "新建课程",
     "createFirst": "创建第一门课程",
     "loading": "正在读取本地课程",
     "errorTitle": "课程暂时无法读取",
@@ -255,21 +255,93 @@
     "noResultsTitle": "没有匹配结果",
     "noResultsDescription": "调整搜索或筛选条件，或清除全部条件后查看最近更新的课程。",
     "listLabel": "课程列表",
-    "updatedAt": "更新于 {{date}}",
+    "status": {
+      "ACTIVE": "进行中",
+      "ARCHIVED": "已归档"
+    },
+    "time": {
+      "yesterdayAt": "昨天 {{time}}"
+    },
+    "grid": {
+      "allTitle": "全部知识空间（{{count}}）",
+      "viewLabel": "视图切换",
+      "viewGrid": "网格视图",
+      "viewList": "列表视图"
+    },
+    "card": {
+      "noDescription": "暂无课程说明",
+      "records": "学习记录",
+      "recordsValue": "{{count}} 条",
+      "knowledgePoints": "知识点",
+      "knowledgePointsValue": "{{count}} 个",
+      "updatedAt": "最近更新",
+      "progress": "学习进度",
+      "progressValue": "{{percent}}%",
+      "open": "打开课程 {{name}}",
+      "openAction": "打开",
+      "editAction": "编辑",
+      "moreActions": "更多操作：{{name}}"
+    },
     "filters": {
       "searchLabel": "搜索课程",
-      "searchPlaceholder": "输入课程名称",
-      "searchAction": "搜索",
-      "educationStage": "教育阶段筛选",
+      "searchPlaceholder": "搜索课程或知识空间...",
+      "contextLabel": "学习场景筛选",
+      "allContexts": "全部",
+      "statusLabel": "状态筛选",
+      "sortLabel": "排序方式",
+      "sort": {
+        "updated": "最新更新",
+        "created": "创建时间",
+        "name": "名称"
+      },
+      "more": "更多筛选",
+      "educationStage": "教育阶段",
       "allEducationStages": "全部教育阶段",
-      "courseType": "课程类型筛选",
+      "courseType": "课程类型",
       "allCourseTypes": "全部课程类型",
       "clear": "清除全部条件"
+    },
+    "insights": {
+      "label": "知识空间洞察",
+      "sample": "示意",
+      "viewAll": "查看全部",
+      "stats": {
+        "title": "知识空间统计",
+        "courseCount": "课程总数",
+        "knowledgePointCount": "知识点总数",
+        "recordCount": "学习记录",
+        "activeThisWeek": "本周活跃课程"
+      },
+      "recent": {
+        "title": "最近活跃课程",
+        "empty": "还没有活跃课程",
+        "records": "新增 {{count}} 条学习记录",
+        "knowledgePoints": "新增 {{count}} 个知识点"
+      },
+      "pending": {
+        "title": "待归类内容",
+        "notes": "未分类的笔记",
+        "knowledgePoints": "未归属的知识点",
+        "documents": "未整理的文档",
+        "recordings": "待处理的录音"
+      },
+      "activity": {
+        "title": "最近活动",
+        "empty": "还没有学习活动",
+        "records": "在“{{course}}”中新增了 {{count}} 条学习记录",
+        "knowledgePoints": "更新了“{{course}}”的知识点",
+        "progress": "更新了“{{course}}”的学习进度"
+      }
     },
     "learningContext": {
       "SCHOOL": "学业学习",
       "CAREER": "职业技能",
       "INTEREST": "兴趣自学"
+    },
+    "learningContextHint": {
+      "SCHOOL": "在校课程",
+      "CAREER": "职场技能",
+      "INTEREST": "兴趣主题"
     },
     "educationStage": {
       "MIDDLE_SCHOOL": "初中",
@@ -289,19 +361,19 @@
       "ELECTIVE": "选修课"
     },
     "form": {
-      "title": "创建课程",
-      "description": "先确定这门课程的学习场景，后续 AI 输出会沿用这里的深度设定。",
+      "title": "新建课程",
+      "description": "创建一个新的课程或知识空间，开始你的学习之旅。",
       "name": "课程名称",
       "learningContext": "学习场景",
-      "learningContextPlaceholder": "选择学习场景",
-      "learningContextHint": "每门课程独立设置，不会改变你的个人角色。",
       "educationStage": "教育阶段",
       "educationStagePlaceholder": "选择教育阶段",
       "depth": "学习深度",
       "depthPlaceholder": "选择学习深度",
       "courseType": "课程类型（可选）",
       "courseTypeNone": "暂不设置",
-      "courseDescription": "课程说明（可选）",
+      "initialStatus": "初始状态",
+      "initialStatusValue": "ACTIVE（进行中）",
+      "courseDescription": "简介（可选）",
       "cancel": "取消",
       "submit": "创建课程",
       "saving": "正在创建课程"

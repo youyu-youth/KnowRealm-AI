@@ -100,7 +100,9 @@ describe("课程详情与编辑", () => {
     );
     renderAt("/spaces");
 
-    fireEvent.click(await screen.findByRole("button", { name: "操作系统" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "打开课程 操作系统" }),
+    );
 
     expect(
       await screen.findByRole("heading", { name: "操作系统" }),
@@ -308,7 +310,7 @@ describe("课程详情与编辑", () => {
     renderAt(ROUTE_PATH);
 
     fireEvent.click(await screen.findByRole("button", { name: "编辑课程" }));
-    await selectOption("学习场景", "职业技能");
+    fireEvent.click(await screen.findByRole("radio", { name: /职业技能/ }));
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
     expect(await screen.findByText("请选择学习深度")).toBeVisible();

@@ -21,6 +21,7 @@ import { ApiError } from "@/services/http/client";
 type CourseDetailPageProps = {
   courseId: string;
   tab: CourseTab;
+  initialEditing?: boolean;
   onTabChange: (tab: CourseTab) => void;
   onDeleted: () => void | Promise<void>;
 };
@@ -28,6 +29,7 @@ type CourseDetailPageProps = {
 export function CourseDetailPage({
   courseId,
   tab,
+  initialEditing = false,
   onTabChange,
   onDeleted,
 }: CourseDetailPageProps) {
@@ -136,7 +138,11 @@ export function CourseDetailPage({
           </TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="mt-6">
-          <CourseOverview course={detail} onDeleted={onDeleted} />
+          <CourseOverview
+            course={detail}
+            initialEditing={initialEditing}
+            onDeleted={onDeleted}
+          />
         </TabsContent>
         <TabsContent value="records" className="mt-6">
           <CourseRecordsPanel courseId={courseId} />

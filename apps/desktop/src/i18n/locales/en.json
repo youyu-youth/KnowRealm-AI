@@ -243,10 +243,10 @@
   },
   "spaces": {
     "title": "Knowledge Spaces",
-    "description": "Courses are the only knowledge container, used to organize Records and future learning assets.",
+    "description": "Manage your courses, skill topics and interest topics here, and build your own knowledge system.",
     "emptyTitle": "No Knowledge Spaces yet",
     "emptyDescription": "Create your first course to set a clear context and depth for future Records.",
-    "create": "New Knowledge Space",
+    "create": "New Course",
     "createFirst": "Create your first course",
     "loading": "Loading courses",
     "errorTitle": "Courses could not be loaded",
@@ -255,21 +255,93 @@
     "noResultsTitle": "No matches",
     "noResultsDescription": "Adjust the search or filters, or clear them all to see recently updated courses.",
     "listLabel": "Course list",
-    "updatedAt": "Updated {{date}}",
+    "status": {
+      "ACTIVE": "In progress",
+      "ARCHIVED": "Archived"
+    },
+    "time": {
+      "yesterdayAt": "Yesterday {{time}}"
+    },
+    "grid": {
+      "allTitle": "All Knowledge Spaces ({{count}})",
+      "viewLabel": "View switch",
+      "viewGrid": "Grid view",
+      "viewList": "List view"
+    },
+    "card": {
+      "noDescription": "No course description yet",
+      "records": "Records",
+      "recordsValue": "{{count}}",
+      "knowledgePoints": "Knowledge points",
+      "knowledgePointsValue": "{{count}}",
+      "updatedAt": "Last updated",
+      "progress": "Learning progress",
+      "progressValue": "{{percent}}%",
+      "open": "Open course {{name}}",
+      "openAction": "Open",
+      "editAction": "Edit",
+      "moreActions": "More actions for {{name}}"
+    },
     "filters": {
       "searchLabel": "Search courses",
-      "searchPlaceholder": "Enter a course name",
-      "searchAction": "Search",
-      "educationStage": "Education stage filter",
+      "searchPlaceholder": "Search courses or knowledge spaces...",
+      "contextLabel": "Learning context filter",
+      "allContexts": "All",
+      "statusLabel": "Status filter",
+      "sortLabel": "Sort by",
+      "sort": {
+        "updated": "Last updated",
+        "created": "Created",
+        "name": "Name"
+      },
+      "more": "More filters",
+      "educationStage": "Education stage",
       "allEducationStages": "All education stages",
-      "courseType": "Course type filter",
+      "courseType": "Course type",
       "allCourseTypes": "All course types",
       "clear": "Clear all filters"
+    },
+    "insights": {
+      "label": "Knowledge space insights",
+      "sample": "Sample",
+      "viewAll": "View all",
+      "stats": {
+        "title": "Knowledge Space Stats",
+        "courseCount": "Courses",
+        "knowledgePointCount": "Knowledge points",
+        "recordCount": "Records",
+        "activeThisWeek": "Active this week"
+      },
+      "recent": {
+        "title": "Recently Active Courses",
+        "empty": "No active courses yet",
+        "records": "{{count}} new records",
+        "knowledgePoints": "{{count}} new knowledge points"
+      },
+      "pending": {
+        "title": "To Be Filed",
+        "notes": "Unfiled notes",
+        "knowledgePoints": "Unassigned knowledge points",
+        "documents": "Unfiled documents",
+        "recordings": "Unprocessed recordings"
+      },
+      "activity": {
+        "title": "Recent Activity",
+        "empty": "No learning activity yet",
+        "records": "Added {{count}} records in {{course}}",
+        "knowledgePoints": "Updated knowledge points in {{course}}",
+        "progress": "Updated learning progress in {{course}}"
+      }
     },
     "learningContext": {
       "SCHOOL": "School",
       "CAREER": "Career",
       "INTEREST": "Interest"
+    },
+    "learningContextHint": {
+      "SCHOOL": "In-school courses",
+      "CAREER": "Workplace skills",
+      "INTEREST": "Hobby topics"
     },
     "educationStage": {
       "MIDDLE_SCHOOL": "Middle school",
@@ -289,19 +361,19 @@
       "ELECTIVE": "Elective"
     },
     "form": {
-      "title": "Create course",
-      "description": "Pick the learning context first; later AI output follows the depth set here.",
+      "title": "New Course",
+      "description": "Create a new course or knowledge space to start your learning journey.",
       "name": "Course name",
       "learningContext": "Learning context",
-      "learningContextPlaceholder": "Select a learning context",
-      "learningContextHint": "Set per course; it never changes your personal profile.",
       "educationStage": "Education stage",
       "educationStagePlaceholder": "Select an education stage",
       "depth": "Learning depth",
       "depthPlaceholder": "Select a learning depth",
       "courseType": "Course type (optional)",
       "courseTypeNone": "Not set",
-      "courseDescription": "Course description (optional)",
+      "initialStatus": "Initial status",
+      "initialStatusValue": "ACTIVE (In progress)",
+      "courseDescription": "Description (optional)",
       "cancel": "Cancel",
       "submit": "Create course",
       "saving": "Creating course"

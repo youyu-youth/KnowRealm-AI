@@ -4,14 +4,15 @@ import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetBody,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
@@ -26,15 +27,15 @@ import { CourseFormFields } from "@/features/courses/components/CourseFormFields
 import { settingsKeys } from "@/features/settings/api/keys";
 import { profileApi } from "@/features/settings/api/profile";
 
-type CreateCourseDialogProps = {
+type CreateCourseSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
-export function CreateCourseDialog({
+export function CreateCourseSheet({
   open,
   onOpenChange,
-}: CreateCourseDialogProps) {
+}: CreateCourseSheetProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [values, setValues] = useState<CourseFormValues>(emptyCourseFormValues);
@@ -51,7 +52,7 @@ export function CreateCourseDialog({
     },
   });
 
-  // 学习场景初值随档案派生（可改）：用户未选定（空）且对话框打开时取角色预选；
+  // 学习场景初值随档案派生（可改）：用户未选定（空）且抽屉打开时取角色预选；
   // 用户一旦选定即以用户值为准——档案晚到不覆盖选择，也不抹掉其它已输入字段。
   const presetContext = presetLearningContext(
     profile.data?.primary_role ?? null,
@@ -80,31 +81,37 @@ export function CreateCourseDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-lg" showCloseButton={false}>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <DialogHeader>
-            <DialogTitle>{t("spaces.form.title")}</DialogTitle>
-            <DialogDescription>
-              {t("spaces.form.description")}
-            </DialogDescription>
-          </DialogHeader>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent className="sm:max-w-md" showCloseButton={false}>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <SheetHeader>
+            <SheetTitle>{t("spaces.form.title")}</SheetTitle>
+            <SheetDescription>{t("spaces.form.description")}</SheetDescription>
+          </SheetHeader>
 
-          <CourseFormFields
-            values={formValues}
-            onChange={(patch) => setValues((prev) => ({ ...prev, ...patch }))}
-          />
+          <SheetBody>
+            <CourseFormFields
+              values={formValues}
+              onChange={(patch) => setValues((prev) => ({ ...prev, ...patch }))}
+              showInitialStatus
+            />
 
-          {createCourse.isError ? (
-            <Alert variant="destructive">
-              <AlertDescription>{createCourse.error.message}</AlertDescription>
-            </Alert>
-          ) : null}
+            {createCourse.isError ? (
+              <Alert variant="destructive" className="mt-4">
+                <AlertDescription>
+                  {createCourse.error.message}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </SheetBody>
 
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" />}>
+          <SheetFooter>
+            <SheetClose
+              render={<Button variant="outline" type="button" />}
+              disabled={createCourse.isPending}
+            >
               {t("spaces.form.cancel")}
-            </DialogClose>
+            </SheetClose>
             <Button
               type="submit"
               disabled={!canSubmit || createCourse.isPending}
@@ -117,9 +124,9 @@ export function CreateCourseDialog({
               ) : null}
               {t("spaces.form.submit")}
             </Button>
-          </DialogFooter>
+          </SheetFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }

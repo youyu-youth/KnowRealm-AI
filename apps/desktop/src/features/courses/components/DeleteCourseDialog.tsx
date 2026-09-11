@@ -1,5 +1,4 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -11,25 +10,26 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
-import type { CourseDetail } from "@/features/courses/api/types";
 
 type DeleteCourseDialogProps = {
-  course: CourseDetail;
+  course: { id: string; name: string };
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onDeleted: () => void | Promise<void>;
 };
 
 export function DeleteCourseDialog({
   course,
+  open,
+  onOpenChange,
   onDeleted,
 }: DeleteCourseDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
   const deleteCourse = useMutation({
     mutationFn: () => courseApi.delete(course.id),
     onSuccess: async () => {
@@ -41,7 +41,7 @@ export function DeleteCourseDialog({
         }),
         queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
       ]);
-      setOpen(false);
+      onOpenChange(false);
       await onDeleted();
     },
   });
@@ -49,14 +49,11 @@ export function DeleteCourseDialog({
   function handleOpenChange(nextOpen: boolean) {
     if (deleteCourse.isPending) return;
     if (!nextOpen) deleteCourse.reset();
-    setOpen(nextOpen);
+    onOpenChange(nextOpen);
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={<Button variant="destructive" />}>
-        {t("spaces.delete.action")}
-      </DialogTrigger>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{t("spaces.delete.title")}</DialogTitle>

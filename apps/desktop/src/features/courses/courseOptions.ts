@@ -1,3 +1,4 @@
+import type { components } from "@knowrealm/api-types";
 import type {
   CourseType,
   EducationStage,
@@ -5,10 +6,19 @@ import type {
   LearningDepth,
 } from "@/features/courses/api/types";
 
+export type CourseStatus = components["schemas"]["CourseStatus"];
+
 export const learningContextLabelKeys = {
   SCHOOL: "spaces.learningContext.SCHOOL",
   CAREER: "spaces.learningContext.CAREER",
   INTEREST: "spaces.learningContext.INTEREST",
+} satisfies Record<LearningContext, string>;
+
+/** 学习场景选择卡片的补充说明（通俗短语，不替代术语）。 */
+export const learningContextHintKeys = {
+  SCHOOL: "spaces.learningContextHint.SCHOOL",
+  CAREER: "spaces.learningContextHint.CAREER",
+  INTEREST: "spaces.learningContextHint.INTEREST",
 } satisfies Record<LearningContext, string>;
 
 export const educationStageLabelKeys = {
@@ -31,6 +41,11 @@ export const courseTypeLabelKeys = {
   ELECTIVE: "spaces.courseType.ELECTIVE",
 } satisfies Record<CourseType, string>;
 
+export const courseStatusLabelKeys = {
+  ACTIVE: "spaces.status.ACTIVE",
+  ARCHIVED: "spaces.status.ARCHIVED",
+} satisfies Record<CourseStatus, string>;
+
 function keysOf<T extends string>(mapping: Record<T, string>): T[] {
   // Object.keys preserves this exhaustive Record's own string keys.
   return Object.keys(mapping) as T[];
@@ -40,6 +55,7 @@ export const learningContexts = keysOf(learningContextLabelKeys);
 export const educationStages = keysOf(educationStageLabelKeys);
 export const learningDepths = keysOf(learningDepthLabelKeys);
 export const courseTypes = keysOf(courseTypeLabelKeys);
+export const courseStatuses = keysOf(courseStatusLabelKeys);
 
 /** 教育阶段（SCHOOL）或学习深度（其余场景）的展示文案 key；均缺省时为 null。 */
 export function courseLevelLabelKey(course: {
@@ -72,5 +88,19 @@ export function isCourseType(value: unknown): value is CourseType {
   return (
     typeof value === "string" &&
     Object.prototype.hasOwnProperty.call(courseTypeLabelKeys, value)
+  );
+}
+
+export function isLearningContext(value: unknown): value is LearningContext {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(learningContextLabelKeys, value)
+  );
+}
+
+export function isCourseStatus(value: unknown): value is CourseStatus {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(courseStatusLabelKeys, value)
   );
 }
