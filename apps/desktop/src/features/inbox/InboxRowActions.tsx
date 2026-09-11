@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowUpRight, FolderInput } from "lucide-react";
+import { ArrowUpRight, FolderInput, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,25 +27,51 @@ const ORGANIZABLE_STATUSES = new Set(["NOTE", "SUMMARY_PENDING"]);
 export function InboxRowActions({
   record,
   onClassified,
+  compact = false,
+  disabled = false,
 }: {
   record: RecordOut;
   onClassified: (courseName: string) => void;
+  compact?: boolean;
+  disabled?: boolean;
 }) {
-  if (!ORGANIZABLE_STATUSES.has(record.status)) return null;
   return (
-    <>
-      <InboxClassifyButton record={record} onClassified={onClassified} />
-      <InboxUpgradeButton record={record} />
-    </>
+    <div className="flex items-center gap-1">
+      {ORGANIZABLE_STATUSES.has(record.status) ? (
+        <>
+          <InboxClassifyButton
+            record={record}
+            onClassified={onClassified}
+            compact={compact}
+            disabled={disabled}
+          />
+          <InboxUpgradeButton
+            record={record}
+            compact={compact}
+            disabled={disabled}
+          />
+        </>
+      ) : null}
+      <InboxDeleteButton
+        recordId={record.id}
+        title={record.title.trim() || undefined}
+        compact={compact}
+        disabled={disabled}
+      />
+    </div>
   );
 }
 
 function InboxClassifyButton({
   record,
   onClassified,
+  compact,
+  disabled,
 }: {
   record: RecordOut;
   onClassified: (courseName: string) => void;
+  compact: boolean;
+  disabled: boolean;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -88,13 +114,16 @@ function InboxClassifyButton({
         render={
           <Button
             variant="ghost"
-            size="sm"
+            size={compact ? "icon" : "sm"}
             aria-label={t("inbox.classify.action", { title })}
+            disabled={disabled}
           />
         }
       >
         <FolderInput aria-hidden="true" />
-        {t("inbox.classify.short")}
+        <span className={compact ? "sr-only" : undefined}>
+          {t("inbox.classify.short")}
+        </span>
       </DialogTrigger>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
@@ -138,7 +167,15 @@ function InboxClassifyButton({
   );
 }
 
-function InboxUpgradeButton({ record }: { record: RecordOut }) {
+function InboxUpgradeButton({
+  record,
+  compact,
+  disabled,
+}: {
+  record: RecordOut;
+  compact: boolean;
+  disabled: boolean;
+}) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -185,13 +222,16 @@ function InboxUpgradeButton({ record }: { record: RecordOut }) {
         render={
           <Button
             variant="ghost"
-            size="sm"
+            size={compact ? "icon" : "sm"}
             aria-label={t("inbox.upgrade.action", { title })}
+            disabled={disabled}
           />
         }
       >
         <ArrowUpRight aria-hidden="true" />
-        {t("inbox.upgrade.short")}
+        <span className={compact ? "sr-only" : undefined}>
+          {t("inbox.upgrade.short")}
+        </span>
       </DialogTrigger>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
@@ -228,6 +268,95 @@ function InboxUpgradeButton({ record }: { record: RecordOut }) {
               />
             ) : null}
             {t("inbox.upgrade.confirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function InboxDeleteButton({
+  recordId,
+  title,
+  compact,
+  disabled,
+}: {
+  recordId: string;
+  title?: string;
+  compact: boolean;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const displayTitle = title || t("spaces.records.untitled");
+  const deleteRecord = useMutation({
+    mutationFn: () => recordApi.delete(recordId),
+    onSuccess: async () => {
+      queryClient.removeQueries({
+        queryKey: recordKeys.detail(recordId),
+        exact: true,
+      });
+      queryClient.removeQueries({
+        queryKey: recordKeys.transcript(recordId),
+        exact: true,
+      });
+      await queryClient.invalidateQueries({ queryKey: recordKeys.inbox() });
+      setOpen(false);
+    },
+  });
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (deleteRecord.isPending) return;
+    if (!nextOpen) deleteRecord.reset();
+    setOpen(nextOpen);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger
+        render={
+          <Button
+            variant="ghost"
+            size={compact ? "icon" : "sm"}
+            aria-label={t("inbox.delete.action", { title: displayTitle })}
+            disabled={disabled}
+          />
+        }
+      >
+        <Trash2 aria-hidden="true" />
+        <span className={compact ? "sr-only" : undefined}>
+          {t("inbox.delete.confirm")}
+        </span>
+      </DialogTrigger>
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{t("inbox.delete.title")}</DialogTitle>
+          <DialogDescription className="break-words">
+            {t("inbox.delete.description", { title: displayTitle })}
+          </DialogDescription>
+        </DialogHeader>
+        {deleteRecord.isError ? (
+          <Alert variant="destructive">
+            <AlertDescription>{deleteRecord.error.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" />}>
+            {t("inbox.delete.cancel")}
+          </DialogClose>
+          <Button
+            variant="destructive"
+            onClick={() => deleteRecord.mutate()}
+            disabled={deleteRecord.isPending}
+          >
+            {deleteRecord.isPending ? (
+              <Spinner
+                data-icon="inline-start"
+                aria-label={t("inbox.delete.deleting")}
+              />
+            ) : null}
+            {t("inbox.delete.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -309,7 +309,7 @@ describe("收件箱", () => {
     renderAt("/inbox");
 
     const row = await screen.findByRole("link", { name: /速记标题/ });
-    expect(screen.getByText("速记")).toBeVisible();
+    expect(screen.getByRole("tab", { name: "速记" })).toBeVisible();
     expect(screen.getByText("仅保存")).toBeVisible();
     fireEvent.click(row);
 
@@ -379,6 +379,82 @@ describe("收件箱", () => {
       await screen.findByRole("heading", { name: "收件箱是空的" }),
     ).toBeVisible();
   });
+
+  it("空态可进入只读示意布局，筛选与搜索不会产生写请求", async () => {
+    let mutations = 0;
+    server.use(
+      http.all(`${TEST_SIDECAR_URL}/api/records/*`, ({ request }) => {
+        if (request.method !== "GET") mutations += 1;
+        return new HttpResponse(null, { status: 500 });
+      }),
+    );
+
+    renderAt("/inbox");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看示意布局" }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("只读示意数据");
+    expect(screen.getByText("线性代数 · 向量空间的定义与性质")).toBeVisible();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索收件箱" }), {
+      target: { value: "定积分" },
+    });
+    expect(await screen.findByText(/定积分的应用/)).toBeVisible();
+    await waitFor(() =>
+      expect(screen.queryByText(/向量空间的定义/)).not.toBeInTheDocument(),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "选择 高数上 第四章 定积分的应用 讲义.pdf",
+      }),
+    );
+    expect(screen.getByText("示意数据只读，整理操作不可用")).toBeVisible();
+    expect(mutations).toBe(0);
+  });
+
+  it("类型筛选写入 URL，行预览读取真实 Transcript", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json([
+          inboxRecord(NOTE_RECORD_ID, {}),
+          inboxRecord(PROCESSING_RECORD_ID, {
+            capture_type: "DOCUMENT_IMPORT",
+            title: "定积分讲义.pdf",
+            status: "SUMMARY_PENDING",
+          }),
+        ]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/records/${PROCESSING_RECORD_ID}/transcript`,
+        () =>
+          HttpResponse.json({
+            status: "READY",
+            transcript: {
+              language: "zh",
+              content: "定积分正文预览",
+              source_version: 1,
+              edited_by_user: false,
+              updated_at: "2026-08-23T10:00:01.000000Z",
+            },
+          }),
+      ),
+    );
+
+    renderAt("/inbox");
+    fireEvent.click(await screen.findByRole("tab", { name: "文档" }));
+    await waitFor(() =>
+      expect(window.location.search).toContain("type=document"),
+    );
+    expect(screen.queryByText("速记标题")).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "预览 定积分讲义.pdf" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "定积分讲义.pdf" }),
+    ).toBeVisible();
+    expect((await screen.findAllByText("定积分正文预览"))[0]).toBeVisible();
+  });
 });
 
 describe("收件箱归类与升级", () => {
@@ -405,6 +481,57 @@ describe("收件箱归类与升级", () => {
     fireEvent.click(option);
     return select;
   }
+
+  it("批量归类部分失败时只保留失败项的选择", async () => {
+    const failedId = PROCESSING_RECORD_ID;
+    let successfulRemoved = false;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () =>
+        HttpResponse.json([course]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json(
+          successfulRemoved
+            ? [inboxRecord(failedId, { title: "归类失败记录" })]
+            : [
+                inboxRecord(NOTE_RECORD_ID, {}),
+                inboxRecord(failedId, { title: "归类失败记录" }),
+              ],
+        ),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/records/:id/classification`,
+        ({ params }) => {
+          if (params.id === failedId) {
+            return HttpResponse.json({ detail: "归类冲突" }, { status: 409 });
+          }
+          successfulRemoved = true;
+          return HttpResponse.json(
+            inboxRecord(NOTE_RECORD_ID, { course_id: COURSE_ID }),
+          );
+        },
+      ),
+    );
+
+    renderAt("/inbox");
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "选择 速记标题" }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "选择 归类失败记录" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "归类课程" }));
+    await selectCourse("所属课程");
+    fireEvent.click(screen.getByRole("button", { name: "归类所选内容" }));
+
+    expect(await screen.findByText(/批量处理完成/)).toHaveTextContent(
+      "成功 1 项，失败 1 项",
+    );
+    expect(screen.queryByText("速记标题")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "选择 归类失败记录" }),
+    ).toHaveAttribute("aria-checked", "true");
+  });
 
   it("NOTE 行提供归类与升级，CONTENT_PROCESSING 行不显示不可执行动作", async () => {
     server.use(

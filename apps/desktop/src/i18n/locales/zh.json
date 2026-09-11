@@ -999,6 +999,110 @@
     "retry": "重试",
     "listLabel": "未归类记录列表",
     "classifiedFeedback": "已归类到 {{course}}",
+    "listCount": "共 {{count}} 条内容",
+    "noResultsTitle": "没有匹配的内容",
+    "noResultsDescription": "调整搜索词或筛选条件后再试。",
+    "openRecord": "打开 {{title}} 的详情",
+    "openRecordShort": "打开详情",
+    "stats": {
+      "today": "今日新增",
+      "unfiled": "待整理",
+      "upgradable": "可升级"
+    },
+    "filters": {
+      "typeLabel": "按来源类型筛选",
+      "statusLabel": "按处理状态筛选",
+      "searchLabel": "搜索收件箱",
+      "searchPlaceholder": "搜索收件箱内容…",
+      "clear": "清除筛选",
+      "type": {
+        "all": "全部",
+        "quick-note": "速记",
+        "paste": "粘贴",
+        "audio": "音频",
+        "document": "文档",
+        "other": "其他"
+      },
+      "status": {
+        "unfiled": "未归类",
+        "upgradable": "可升级",
+        "processing": "处理中",
+        "failed": "失败"
+      }
+    },
+    "selection": {
+      "page": "选择本页全部内容",
+      "record": "选择 {{title}}",
+      "count": "已选择 {{count}} 项",
+      "clear": "清除"
+    },
+    "pagination": {
+      "label": "收件箱分页",
+      "page": "第 {{page}} / {{count}} 页",
+      "previous": "上一页",
+      "next": "下一页"
+    },
+    "row": {
+      "unfiled": "尚未归类，可预览详情后继续整理"
+    },
+    "preview": {
+      "title": "内容预览",
+      "description": "预览所选收件箱内容及元数据。",
+      "action": "预览 {{title}}",
+      "close": "关闭预览",
+      "emptyTitle": "选择一条内容进行预览",
+      "emptyDescription": "正文、来源、状态和整理动作会显示在这里。",
+      "loading": "正在读取正文…",
+      "error": "正文暂时无法读取，可打开详情后重试。",
+      "source": "来源",
+      "status": "状态",
+      "createdAt": "创建时间",
+      "characters": "字符数",
+      "course": "归属课程",
+      "availability": {
+        "NOTE": "正文尚不可用于预览，可打开详情查看原始内容。",
+        "DRAFT": "内容仍在准备中，完成后可预览。",
+        "CONTENT_PROCESSING": "内容正在处理，完成后可预览。",
+        "SUMMARY_PENDING": "正文已保存，可打开详情继续生成总结。",
+        "SUMMARY_PROCESSING": "总结正在生成，原始正文可稍后查看。",
+        "SUMMARY_READY": "总结已生成，等待人工确认。",
+        "COMPLETED": "处理已完成，可打开详情查看完整内容。",
+        "FAILED": "内容处理失败，可打开详情查看原因并重试。"
+      }
+    },
+    "demo": {
+      "open": "查看示意布局",
+      "close": "退出示意",
+      "badge": "示意",
+      "description": "当前显示只读示意数据，用于体验收件箱布局；不会写入本地数据。",
+      "readOnly": "示意数据只读，整理操作不可用"
+    },
+    "bulk": {
+      "ready": "可对所选内容批量整理",
+      "classify": "归类课程",
+      "upgrade": "升级生成",
+      "delete": "删除",
+      "cancel": "取消",
+      "submitting": "正在批量处理",
+      "result": "批量处理完成：成功 {{success}} 项，失败 {{failed}} 项。",
+      "dialog": {
+        "classify": {
+          "title": "归类 {{count}} 项内容",
+          "description": "所选内容将归入同一门课程，不会触发 AI 总结。",
+          "confirm": "归类所选内容"
+        },
+        "upgrade": {
+          "title": "升级 {{count}} 项内容",
+          "description": "所选内容将归入同一门课程并分别进入总结流程。",
+          "confirm": "升级所选内容"
+        },
+        "delete": {
+          "title": "删除 {{count}} 项内容",
+          "description": "所选学习记录删除后不可恢复。处理中的任务也会随之取消。",
+          "confirm": "删除所选内容"
+        }
+      }
+    },
     "classify": {
       "action": "归类 {{title}}",
       "short": "归类",

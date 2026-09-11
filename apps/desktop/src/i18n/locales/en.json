@@ -1010,6 +1010,110 @@
     "retry": "Retry",
     "listLabel": "List of unfiled Records",
     "classifiedFeedback": "Filed to {{course}}",
+    "listCount": "{{count}} items",
+    "noResultsTitle": "No matching content",
+    "noResultsDescription": "Try a different search or filter.",
+    "openRecord": "Open details for {{title}}",
+    "openRecordShort": "Open details",
+    "stats": {
+      "today": "Added today",
+      "unfiled": "To organize",
+      "upgradable": "Upgradable"
+    },
+    "filters": {
+      "typeLabel": "Filter by source type",
+      "statusLabel": "Filter by processing status",
+      "searchLabel": "Search Inbox",
+      "searchPlaceholder": "Search Inbox…",
+      "clear": "Clear filters",
+      "type": {
+        "all": "All",
+        "quick-note": "Quick notes",
+        "paste": "Pastes",
+        "audio": "Audio",
+        "document": "Documents",
+        "other": "Other"
+      },
+      "status": {
+        "unfiled": "Unfiled",
+        "upgradable": "Upgradable",
+        "processing": "Processing",
+        "failed": "Failed"
+      }
+    },
+    "selection": {
+      "page": "Select all items on this page",
+      "record": "Select {{title}}",
+      "count": "{{count}} selected",
+      "clear": "Clear"
+    },
+    "pagination": {
+      "label": "Inbox pagination",
+      "page": "Page {{page}} of {{count}}",
+      "previous": "Previous page",
+      "next": "Next page"
+    },
+    "row": {
+      "unfiled": "Not filed yet; preview details before organizing"
+    },
+    "preview": {
+      "title": "Content preview",
+      "description": "Preview the selected Inbox content and metadata.",
+      "action": "Preview {{title}}",
+      "close": "Close preview",
+      "emptyTitle": "Select an item to preview",
+      "emptyDescription": "Its content, source, status, and actions appear here.",
+      "loading": "Loading content…",
+      "error": "Content is temporarily unavailable. Open details to retry.",
+      "source": "Source",
+      "status": "Status",
+      "createdAt": "Created",
+      "characters": "Characters",
+      "course": "Course",
+      "availability": {
+        "NOTE": "Content is not available for preview yet. Open details to view the source.",
+        "DRAFT": "Content is being prepared and will be available afterward.",
+        "CONTENT_PROCESSING": "Content is processing and will be available afterward.",
+        "SUMMARY_PENDING": "Content is saved. Open details to continue summarizing.",
+        "SUMMARY_PROCESSING": "The summary is being generated. Source content will remain available.",
+        "SUMMARY_READY": "The summary is ready for human confirmation.",
+        "COMPLETED": "Processing is complete. Open details to view everything.",
+        "FAILED": "Processing failed. Open details to review the error and retry."
+      }
+    },
+    "demo": {
+      "open": "View sample layout",
+      "close": "Exit sample",
+      "badge": "Sample",
+      "description": "Read-only sample data is shown to demonstrate the Inbox layout. Nothing is written locally.",
+      "readOnly": "Sample data is read-only; organize actions are unavailable"
+    },
+    "bulk": {
+      "ready": "Selected items can be organized in bulk",
+      "classify": "File to course",
+      "upgrade": "Upgrade",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "submitting": "Processing selected items",
+      "result": "Bulk operation complete: {{success}} succeeded, {{failed}} failed.",
+      "dialog": {
+        "classify": {
+          "title": "File {{count}} items",
+          "description": "The selected items will be filed to one course without starting AI summaries.",
+          "confirm": "File selected items"
+        },
+        "upgrade": {
+          "title": "Upgrade {{count}} items",
+          "description": "The selected items will be filed to one course and enter their summary flows.",
+          "confirm": "Upgrade selected items"
+        },
+        "delete": {
+          "title": "Delete {{count}} items",
+          "description": "The selected Records cannot be recovered. Active processing jobs will also be canceled.",
+          "confirm": "Delete selected items"
+        }
+      }
+    },
     "classify": {
       "action": "File {{title}}",
       "short": "File",
