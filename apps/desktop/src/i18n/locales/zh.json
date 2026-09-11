@@ -1007,13 +1007,15 @@
     "stats": {
       "today": "今日新增",
       "unfiled": "待整理",
-      "upgradable": "可升级"
+      "upgradable": "可升级",
+      "unit": "条内容"
     },
     "filters": {
       "typeLabel": "按来源类型筛选",
       "statusLabel": "按处理状态筛选",
       "searchLabel": "搜索收件箱",
       "searchPlaceholder": "搜索收件箱内容…",
+      "more": "更多筛选选项",
       "clear": "清除筛选",
       "type": {
         "all": "全部",
@@ -1036,6 +1038,13 @@
       "count": "已选择 {{count}} 项",
       "clear": "清除"
     },
+    "columns": {
+      "content": "内容",
+      "source": "来源",
+      "status": "状态",
+      "course": "课程归属",
+      "createdAt": "创建时间"
+    },
     "pagination": {
       "label": "收件箱分页",
       "page": "第 {{page}} / {{count}} 页",
@@ -1043,7 +1052,8 @@
       "next": "下一页"
     },
     "row": {
-      "unfiled": "尚未归类，可预览详情后继续整理"
+      "unfiled": "尚未归类，可预览详情后继续整理",
+      "unfiledShort": "未归类"
     },
     "preview": {
       "title": "内容预览",
@@ -1054,6 +1064,7 @@
       "emptyDescription": "正文、来源、状态和整理动作会显示在这里。",
       "loading": "正在读取正文…",
       "error": "正文暂时无法读取，可打开详情后重试。",
+      "metadata": "元数据",
       "source": "来源",
       "status": "状态",
       "createdAt": "创建时间",

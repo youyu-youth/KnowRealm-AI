@@ -2,7 +2,7 @@
 
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
-> **最后更新**：2026-09-11（Desktop「收件箱」高密度工作区重设计完成）
+> **最后更新**：2026-09-11（Desktop「收件箱」按视觉参考完成二次打磨）
 
 ## 1. 项目概述
 
@@ -22,9 +22,9 @@
 - 基线（PRD 决策表 #1~#59 绝大多数）代码完结，约 15 个功能波次仅剩**用户真机验收**（按惯例由用户执行，Agent 验证止于自动化门禁，不代勾）。
 - 扩展 F1「转写分片 / 来源时间轴」**六票 + 07 补票全部完结**（06 文档收尾：数据模型升 v2.4 重命名、扩展文档 §7 回写、全库交叉引用同步、backend/AGENTS.md 0019）；锚点两表空表就位，剩用户真机验收。
 - Desktop 全局框架与 `/`「今日」页已按新版 `DESIGN.md` 完成重设计：冷中性设计令牌、分层应用壳、课程侧栏、紧凑 Command 入口、Toast / Tooltip / 状态标签与今日页「学习链 → 行动/资产 → 统计」阅读顺序均已落地；范围外页面只继承主题基础，不改业务布局。
-- `/inbox` 已改为高密度桌面工作区：真实统计、来源/状态筛选、URL 可恢复搜索与分页、多选批量归类/升级/删除、Transcript 预览及宽屏常驻右栏/窄屏 Dialog 均已落地；真实空态可主动查看醒目标注且完全只读的本地示意数据，未新增后端接口。
+- `/inbox` 已改为高密度桌面工作区：真实统计、来源/状态筛选、URL 可恢复搜索与分页、多选批量归类/升级/删除、Transcript 预览及宽屏常驻右栏/窄屏 Dialog 均已落地；并按用户提供的视觉参考强化彩色统计图标、分组筛选按钮、列标题、独立圆角记录行、约 30% 宽右侧检查器及主次操作按钮。真实空态可主动查看醒目标注且完全只读的本地示意数据，未新增后端接口。
 - 本次前端门禁：`pnpm test -- --maxWorkers=4` 394/394、`pnpm lint`、`pnpm build`、Impeccable detector 与 `git diff --check` 均通过；独立 finish reviewer 最终结论为 `ship`。浏览器响应式/DPR 模拟与真实 Tauri 125%/DPI 120 证据边界见 `.impeccable/review/today-redesign-provenance.md`，不得将模拟 DPR 解释为 Windows 系统缩放验收。
-- 收件箱本次聚焦验收：Vitest 20/20、触及文件 ESLint/Prettier、生产构建、Impeccable detector 均通过；真实 Tauri sidecar 启动成功，并在 Windows 125%（DPI 120）环境中以 WebView CSS viewport 1440×900、1280×800、1099×720（CDP DPR=1）完成明暗主题与响应式截图检查。viewport/DPR 为调试模拟值，不等同于三个独立物理窗口或缩放档位。
+- 收件箱本次聚焦验收：Vitest 20/20、触及文件 ESLint/Prettier、生产构建、Impeccable detector 均通过；真实 Tauri sidecar 启动成功，并在 Windows 125%（DPI 120）环境中以 WebView CSS viewport 1680×950 与 1099×720（CDP DPR=1）完成亮色宽屏、暗色窄屏 Dialog 截图检查。viewport/DPR 为调试模拟值，不等同于独立物理窗口或缩放档位。
 - 下一扩展方向（扩展文档 §40.4「P2 统一序列」）：F1 ✅ → A1+A2 并行槽位；B3「Tutor 提前」尚待用户决策，**不要擅自开工**。
 
 ---
@@ -149,4 +149,3 @@ pnpm --filter @knowrealm/desktop tauri dev     # 完整壳（自动拉后端+ffm
 # 契约生成（后端 schema 变更后）
 pnpm --filter @knowrealm/api-types generate
 ```
-

@@ -36,7 +36,7 @@ export function InboxRowActions({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className={`flex items-center ${compact ? "gap-1" : "gap-2"}`}>
       {ORGANIZABLE_STATUSES.has(record.status) ? (
         <>
           <InboxClassifyButton
@@ -113,8 +113,9 @@ function InboxClassifyButton({
       <DialogTrigger
         render={
           <Button
-            variant="ghost"
+            variant={compact ? "ghost" : "default"}
             size={compact ? "icon" : "sm"}
+            className={compact ? "rounded-lg" : "rounded-lg px-4"}
             aria-label={t("inbox.classify.action", { title })}
             disabled={disabled}
           />
@@ -221,8 +222,9 @@ function InboxUpgradeButton({
       <DialogTrigger
         render={
           <Button
-            variant="ghost"
+            variant={compact ? "ghost" : "outline"}
             size={compact ? "icon" : "sm"}
+            className={compact ? "rounded-lg" : "rounded-lg px-4"}
             aria-label={t("inbox.upgrade.action", { title })}
             disabled={disabled}
           />
@@ -317,8 +319,13 @@ function InboxDeleteButton({
       <DialogTrigger
         render={
           <Button
-            variant="ghost"
+            variant={compact ? "ghost" : "outline"}
             size={compact ? "icon" : "sm"}
+            className={
+              compact
+                ? "rounded-lg"
+                : "text-destructive hover:bg-destructive/10 hover:text-destructive rounded-lg px-4"
+            }
             aria-label={t("inbox.delete.action", { title: displayTitle })}
             disabled={disabled}
           />

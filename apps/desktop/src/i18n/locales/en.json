@@ -1018,13 +1018,15 @@
     "stats": {
       "today": "Added today",
       "unfiled": "To organize",
-      "upgradable": "Upgradable"
+      "upgradable": "Upgradable",
+      "unit": "items"
     },
     "filters": {
       "typeLabel": "Filter by source type",
       "statusLabel": "Filter by processing status",
       "searchLabel": "Search Inbox",
       "searchPlaceholder": "Search Inbox…",
+      "more": "More filter options",
       "clear": "Clear filters",
       "type": {
         "all": "All",
@@ -1047,6 +1049,13 @@
       "count": "{{count}} selected",
       "clear": "Clear"
     },
+    "columns": {
+      "content": "Content",
+      "source": "Source",
+      "status": "Status",
+      "course": "Course",
+      "createdAt": "Created"
+    },
     "pagination": {
       "label": "Inbox pagination",
       "page": "Page {{page}} of {{count}}",
@@ -1054,7 +1063,8 @@
       "next": "Next page"
     },
     "row": {
-      "unfiled": "Not filed yet; preview details before organizing"
+      "unfiled": "Not filed yet; preview details before organizing",
+      "unfiledShort": "Unfiled"
     },
     "preview": {
       "title": "Content preview",
@@ -1065,6 +1075,7 @@
       "emptyDescription": "Its content, source, status, and actions appear here.",
       "loading": "Loading content…",
       "error": "Content is temporarily unavailable. Open details to retry.",
+      "metadata": "Metadata",
       "source": "Source",
       "status": "Status",
       "createdAt": "Created",
