@@ -1,24 +1,34 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { buttonVariants, Button } from "@/components/ui/button";
+import { useQuery } from "@tanstack/react-query";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetBody,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { courseApi } from "@/features/courses/api/courses";
-import { courseKeys } from "@/features/courses/api/keys";
 import { asCourseTab, type CourseTab } from "@/features/courses/courseTabs";
+import { courseKeys } from "@/features/courses/api/keys";
+import { courseApi } from "@/features/courses/api/courses";
+import { ApiError } from "@/services/http/client";
+import { recordKeys } from "@/features/records/api/keys";
+import { recordApi } from "@/features/records/api/records";
 import { CourseChatTab } from "@/features/courses/components/CourseChatTab";
-import { CourseCoreStatsCard } from "@/features/courses/components/CourseCoreStatsCard";
+import { CourseCoreOverview } from "@/features/courses/components/CourseCoreOverview";
 import { CourseEditSheet } from "@/features/courses/components/CourseEditSheet";
 import { CourseHero } from "@/features/courses/components/CourseHero";
 import { CourseInfoPanel } from "@/features/courses/components/CourseInfoPanel";
 import { CourseInsightCard } from "@/features/courses/components/CourseInsightCard";
 import { CourseKnowledgeGraph } from "@/features/courses/components/CourseKnowledgeGraph";
-import { CourseLearningContextCard } from "@/features/courses/components/CourseLearningContextCard";
+import { CourseLearningChainTab } from "@/features/courses/components/CourseLearningChainTab";
 import { CourseMasteryGpsCard } from "@/features/courses/components/CourseMasteryGpsCard";
-import { CourseQuoteCard } from "@/features/courses/components/CourseQuoteCard";
 import { CourseRecentRecordsCard } from "@/features/courses/components/CourseRecentRecordsCard";
 import { CourseRecommendedPointsCard } from "@/features/courses/components/CourseRecommendedPointsCard";
 import { CourseRecordsPanel } from "@/features/courses/components/CourseRecordsPanel";
@@ -26,9 +36,6 @@ import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDi
 import { KnowledgeGpsTab } from "@/features/courses/components/KnowledgeGpsTab";
 import { KnowledgeMapTab } from "@/features/courses/components/KnowledgeMapTab";
 import { QuizTestsPanel } from "@/features/quiz-tests/components/QuizTestsPanel";
-import { recordKeys } from "@/features/records/api/keys";
-import { recordApi } from "@/features/records/api/records";
-import { ApiError } from "@/services/http/client";
 
 type CourseDetailPageProps = {
   courseId: string;
@@ -49,6 +56,7 @@ export function CourseDetailPage({
   const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(initialEditing);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const course = useQuery({
     queryKey: courseKeys.detail(courseId),
     queryFn: () => courseApi.get(courseId),
@@ -120,123 +128,213 @@ export function CourseDetailPage({
   )[0]?.id;
 
   return (
-    <section className="work-surface-enter max-w-workbench px-content mx-auto flex min-h-full min-w-0 flex-col py-8">
-      <nav
-        aria-label={t("spaces.courseDetail.breadcrumb.label")}
-        className="text-label text-ink-muted flex min-w-0 items-center gap-1.5"
-      >
-        <Link to="/spaces" className="hover:text-ink-strong shrink-0">
-          {t("nav.spaces")}
-        </Link>
-        <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="shrink-0">
-          {t("spaces.courseDetail.breadcrumb.myCourses")}
-        </span>
-        <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
-        <span
-          aria-current="page"
-          className="text-ink-strong min-w-0 truncate font-medium"
-          title={detail.name}
-        >
-          {detail.name}
-        </span>
-      </nav>
+    <section className="work-surface-enter flex h-full min-h-0 min-w-0 flex-col">
+      <div className="px-content shrink-0 pt-6">
+        <div className="max-w-workbench mx-auto min-w-0">
+          <nav
+            aria-label={t("spaces.courseDetail.breadcrumb.label")}
+            className="text-label text-ink-muted flex min-w-0 items-center gap-1.5"
+          >
+            <Link to="/spaces" className="hover:text-ink-strong shrink-0">
+              {t("nav.spaces")}
+            </Link>
+            <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="shrink-0">
+              {t("spaces.courseDetail.breadcrumb.myCourses")}
+            </span>
+            <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+            <span
+              aria-current="page"
+              className="text-ink-strong min-w-0 truncate font-medium"
+              title={detail.name}
+            >
+              {detail.name}
+            </span>
+          </nav>
 
-      <CourseHero
-        course={detail}
-        latestRecordId={latestRecordId}
-        className="mt-4"
-      />
+          <CourseHero
+            course={detail}
+            latestRecordId={latestRecordId}
+            onOpenInfo={() => setInfoOpen(true)}
+            className="mt-4"
+          />
+        </div>
+      </div>
 
       <Tabs
         value={tab}
         onValueChange={(value) => onTabChange(asCourseTab(value))}
-        className="mt-6 min-w-0"
+        className="mt-5 min-h-0 flex-1"
       >
-        <TabsList
-          variant="line"
-          className="border-border [&_[data-slot=tabs-trigger][data-active]]:text-ink-strong gap-1 overflow-x-auto border-b pb-2 [&_[data-slot=tabs-trigger][data-active]::after]:opacity-100"
-        >
-          <TabsTrigger value="overview">
-            {t("spaces.detail.tabs.overview")}
-          </TabsTrigger>
-          <TabsTrigger value="records">
-            {t("spaces.detail.tabs.records")}
-          </TabsTrigger>
-          <TabsTrigger value="tests">
-            {t("spaces.detail.tabs.tests")}
-          </TabsTrigger>
-          <TabsTrigger value="map">{t("spaces.detail.tabs.map")}</TabsTrigger>
-          <TabsTrigger value="gps">{t("spaces.detail.tabs.gps")}</TabsTrigger>
-          <TabsTrigger value="chat">{t("spaces.detail.tabs.chat")}</TabsTrigger>
-        </TabsList>
+        <div className="px-content shrink-0">
+          <div className="max-w-workbench mx-auto min-w-0">
+            <TabsList
+              variant="line"
+              className="border-border [&_[data-slot=tabs-trigger][data-active]]:text-ink-strong gap-1 overflow-x-auto border-b pb-2 [&_[data-slot=tabs-trigger][data-active]::after]:opacity-100"
+            >
+              <TabsTrigger value="overview">
+                {t("spaces.detail.tabs.overview")}
+              </TabsTrigger>
+              <TabsTrigger value="chain">
+                {t("spaces.detail.tabs.chain")}
+              </TabsTrigger>
+              <TabsTrigger value="records">
+                {t("spaces.detail.tabs.records")}
+              </TabsTrigger>
+              <TabsTrigger value="tests">
+                {t("spaces.detail.tabs.tests")}
+              </TabsTrigger>
+              <TabsTrigger value="map">
+                {t("spaces.detail.tabs.map")}
+              </TabsTrigger>
+              <TabsTrigger value="gps">
+                {t("spaces.detail.tabs.gps")}
+              </TabsTrigger>
+              <TabsTrigger value="chat">
+                {t("spaces.detail.tabs.chat")}
+              </TabsTrigger>
+            </TabsList>
+          </div>
+        </div>
 
-        <TabsContent value="overview" className="view-switch-enter mt-5">
-          <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_clamp(16.5rem,21vw,19rem)]">
-            <div className="@container min-w-0">
-              <div className="grid min-w-0 gap-5 @2xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-                <div className="flex min-w-0 flex-col gap-5">
-                  <CourseCoreStatsCard course={detail} />
+        <TabsContent
+          value="overview"
+          className="view-switch-enter min-h-0 flex-1"
+        >
+          <div className="px-content h-full min-h-0 pt-5 pb-6">
+            <div className="max-w-workbench mx-auto grid h-full min-h-0 gap-6 xl:grid-cols-[minmax(0,1fr)_clamp(14rem,18vw,17rem)]">
+              <div className="@container min-h-0 min-w-0 overflow-y-auto pr-1 pb-2">
+                <div className="flex min-w-0 flex-col gap-6">
+                  <CourseCoreOverview course={detail} />
                   <CourseKnowledgeGraph course={detail} />
-                  <CourseRecentRecordsCard
-                    courseId={courseId}
-                    onViewAll={() => onTabChange("records")}
-                  />
-                </div>
-                <div className="flex min-w-0 flex-col gap-5">
-                  <CourseLearningContextCard course={detail} />
-                  <CourseMasteryGpsCard
-                    course={detail}
-                    onViewAll={() => onTabChange("gps")}
-                  />
-                  <CourseInsightCard
-                    course={detail}
-                    onOpenChat={() => void navigate({ to: "/chat" })}
-                  />
-                  <CourseRecommendedPointsCard course={detail} />
+                  <div className="grid min-w-0 gap-6 @2xl:grid-cols-2">
+                    <CourseRecentRecordsCard
+                      courseId={courseId}
+                      onViewAll={() => onTabChange("records")}
+                    />
+                    <CourseMasteryGpsCard
+                      course={detail}
+                      onViewAll={() => onTabChange("gps")}
+                    />
+                  </div>
+                  <div className="grid min-w-0 gap-6 @2xl:grid-cols-2">
+                    <CourseInsightCard
+                      course={detail}
+                      onOpenChat={() => void navigate({ to: "/chat" })}
+                    />
+                    <CourseRecommendedPointsCard course={detail} />
+                  </div>
                 </div>
               </div>
-            </div>
-            <aside
-              className="min-w-0"
-              aria-label={t("spaces.detail.infoTitle")}
-            >
-              <div className="flex flex-col gap-5 xl:sticky xl:top-6">
+              <aside
+                className="border-border-subtle hidden min-h-0 min-w-0 overflow-y-auto border-l pb-2 pl-5 xl:block"
+                aria-label={t("spaces.detail.infoTitle")}
+              >
                 <CourseInfoPanel
                   course={detail}
                   records={records.data ?? []}
                   onEdit={() => setEditOpen(true)}
                   onDelete={() => setDeleteOpen(true)}
                 />
-                <CourseQuoteCard />
-              </div>
-            </aside>
+              </aside>
+            </div>
           </div>
         </TabsContent>
 
-        <TabsContent value="records" className="view-switch-enter mt-5">
-          <CourseRecordsPanel courseId={courseId} />
+        <TabsContent
+          value="chain"
+          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-content">
+            <div className="max-w-workbench mx-auto pt-5 pb-8">
+              <CourseLearningChainTab course={detail} />
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="tests" className="view-switch-enter mt-5">
-          <QuizTestsPanel courseId={courseId} />
+        <TabsContent
+          value="records"
+          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-content">
+            <div className="max-w-workbench mx-auto pt-5 pb-8">
+              <CourseRecordsPanel courseId={courseId} />
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="map" className="view-switch-enter mt-5">
-          <KnowledgeMapTab course={detail} />
+        <TabsContent
+          value="tests"
+          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-content">
+            <div className="max-w-workbench mx-auto pt-5 pb-8">
+              <QuizTestsPanel courseId={courseId} />
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="gps" className="view-switch-enter mt-5">
-          <KnowledgeGpsTab course={detail} />
+        <TabsContent
+          value="map"
+          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-content">
+            <div className="max-w-workbench mx-auto pt-5 pb-8">
+              <KnowledgeMapTab course={detail} />
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="chat" className="view-switch-enter mt-5">
-          <CourseChatTab
-            course={detail}
-            onOpenChat={() => void navigate({ to: "/chat" })}
-          />
+        <TabsContent
+          value="gps"
+          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-content">
+            <div className="max-w-workbench mx-auto pt-5 pb-8">
+              <KnowledgeGpsTab course={detail} />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent
+          value="chat"
+          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-content">
+            <div className="max-w-workbench mx-auto pt-5 pb-8">
+              <CourseChatTab
+                course={detail}
+                onOpenChat={() => void navigate({ to: "/chat" })}
+              />
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
+
+      <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{t("spaces.detail.infoTitle")}</SheetTitle>
+            <SheetDescription>
+              {t("spaces.courseDetail.info.sheetDescription")}
+            </SheetDescription>
+          </SheetHeader>
+          <SheetBody>
+            <CourseInfoPanel
+              course={detail}
+              records={records.data ?? []}
+              onEdit={() => {
+                setInfoOpen(false);
+                setEditOpen(true);
+              }}
+              onDelete={() => {
+                setInfoOpen(false);
+                setDeleteOpen(true);
+              }}
+            />
+          </SheetBody>
+        </SheetContent>
+      </Sheet>
 
       <CourseEditSheet
         course={detail}

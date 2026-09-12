@@ -390,6 +390,7 @@
       "edit": "编辑课程",
       "tabs": {
         "overview": "概览",
+        "chain": "学习链",
         "records": "学习记录",
         "tests": "模拟测试",
         "map": "课程脑图",
@@ -420,19 +421,37 @@
         "openCourse": "打开课程",
         "noRecordsToast": "暂无学习记录，可用顶部「速记 / 录音」创建第一条。"
       },
+      "chain": {
+        "label": "学习链",
+        "flowTitle": "学习链流转",
+        "aria": "{{course}}学习链流转图",
+        "capture": "捕获",
+        "transcribe": "转写",
+        "summary": "总结",
+        "confirm": "确认",
+        "notStarted": "未开始处理",
+        "transcribing": "转写中",
+        "summarizing": "生成中",
+        "pendingConfirm": "待确认",
+        "failed": "处理失败",
+        "stagesTitle": "阶段与转化率",
+        "stageValue": "{{count}} 条 · {{percent}}%",
+        "dropsTitle": "停留分布",
+        "failedNote": "{{count}} 条失败；记录不保存失败阶段，未计入主链。",
+        "note": "数据来自本课程学习记录的真实状态，随记录变化更新。",
+        "emptyTitle": "还没有学习记录",
+        "emptyDescription": "用顶部「速记 / 录音」捕获第一条，学习链会随处理进度更新。"
+      },
       "coreStats": {
         "title": "课程核心概览",
         "chapters": "课程章节",
-        "chaptersValue": "{{count}} 章",
+        "chaptersUnit": "章",
         "knowledgePoints": "知识点",
-        "knowledgePointsValue": "{{count}} 个",
+        "knowledgePointsUnit": "个",
         "quizSets": "习题集",
-        "quizSetsValue": "{{count}} 个",
+        "quizSetsUnit": "个",
         "mastery": "掌握度",
-        "masteryValue": "{{count}} %"
-      },
-      "coreQuote": {
-        "text": "学习是连接现象与规律的桥梁，也是打开更高阶知识的钥匙。"
+        "masteryUnit": "%"
       },
       "context": {
         "title": "学习上下文",
@@ -485,6 +504,8 @@
         "fullscreen": "全屏",
         "fullscreenDescription": "放大查看知识概念与掌握状态（示意）。",
         "legendCore": "核心节点",
+        "masterySummary": "掌握状态",
+        "conceptCount": "概念（{{count}}）",
         "aria": "{{course}}知识概念图谱"
       },
       "map": {
@@ -503,10 +524,8 @@
         "createdAt": "创建时间",
         "recentLearning": "最近学习",
         "resources": "相关资源",
-        "addTag": "添加标签"
-      },
-      "quote": {
-        "text": "从具体到抽象，从已知到未知。学习让我们学会用理性的眼光理解这个世界。"
+        "addTag": "添加标签",
+        "sheetDescription": "查看课程字段、热词与相关资源。"
       },
       "mock": {
         "nodes": {

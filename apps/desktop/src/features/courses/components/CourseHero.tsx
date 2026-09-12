@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, FolderOpen, Star } from "lucide-react";
+import { ChevronRight, FolderOpen, Info, Star } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { appToast } from "@/components/common/appToastManager";
@@ -66,12 +66,15 @@ type CourseHeroProps = {
   course: CourseDetail;
   /** 最近一条学习记录；无记录时为空。 */
   latestRecordId?: string;
+  /** 窄窗口下打开课程信息 Sheet；宽窗口由页面右栏承担。 */
+  onOpenInfo?: () => void;
   className?: string;
 };
 
 export function CourseHero({
   course,
   latestRecordId,
+  onOpenInfo,
   className,
 }: CourseHeroProps) {
   const { t } = useTranslation();
@@ -96,9 +99,9 @@ export function CourseHero({
 
   return (
     <header
-      className={`border-border bg-surface-raised flex min-w-0 flex-col gap-4 rounded-xl border p-4 sm:flex-row sm:items-start sm:gap-5 ${className ?? ""}`}
+      className={`flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-5 ${className ?? ""}`}
     >
-      <div className="h-32 w-full shrink-0 overflow-hidden rounded-lg sm:h-36 sm:w-36">
+      <div className="size-24 shrink-0 overflow-hidden rounded-lg">
         <CourseCoverArt course={course} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -109,12 +112,26 @@ export function CourseHero({
             </h1>
             <CourseStatusTag course={course} />
           </div>
-          <CourseMetaTags course={course} className="mt-2.5" />
-          <p className="text-body text-muted-foreground max-w-reading mt-2.5">
+          <CourseMetaTags course={course} className="mt-2" />
+          <p
+            className="text-body text-muted-foreground max-w-reading mt-2 line-clamp-2"
+            title={description}
+          >
             {description}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {onOpenInfo ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="xl:hidden"
+              onClick={onOpenInfo}
+            >
+              <Info data-icon="inline-start" aria-hidden="true" />
+              {t("spaces.detail.infoTitle")}
+            </Button>
+          ) : null}
           <Button
             variant="outline"
             size="sm"

@@ -1,12 +1,12 @@
-import { ArrowRight, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { StatusTag } from "@/components/common/StatusTag";
+import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { Button } from "@/components/ui/button";
 import type { CourseDetail } from "@/features/courses/api/types";
 import { mockInsightSuggestions } from "@/features/courses/courseDetailInsights";
 
-/** AI 助手 · 课程洞察：深色卡，建议内容为示意。 */
+/** AI 助手 · 课程洞察：与普通内容同一表面材料，建议内容为示意。 */
 export function CourseInsightCard({
   course,
   onOpenChat,
@@ -18,21 +18,21 @@ export function CourseInsightCard({
   const suggestions = useMemo(() => mockInsightSuggestions(course), [course]);
 
   return (
-    <section className="bg-ink-strong text-paper dark:bg-surface-strong dark:text-ink-strong dark:border-border-subtle flex min-w-0 flex-col rounded-xl border border-transparent p-4">
-      <header className="flex min-w-0 items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <Sparkles className="size-4 shrink-0" aria-hidden="true" />
-          <h2 className="text-section font-section min-w-0 truncate">
+    <SurfaceCard
+      title={
+        <span className="flex min-w-0 items-center gap-1.5">
+          <Sparkles
+            className="text-ink-muted size-4 shrink-0"
+            aria-hidden="true"
+          />
+          <span className="min-w-0 truncate">
             {t("spaces.courseDetail.insight.title")}
-          </h2>
-        </div>
-        <StatusTag className="bg-paper/10 text-paper dark:bg-surface-subtle dark:text-ink-muted shrink-0">
-          {t("spaces.insights.sample")}
-        </StatusTag>
-      </header>
-      <p className="text-label text-paper/70 dark:text-ink-muted mt-2">
-        {t("spaces.courseDetail.insight.description")}
-      </p>
+          </span>
+        </span>
+      }
+      sample
+      className="bg-surface-subtle border-transparent"
+    >
       <ul className="mt-3 flex flex-col gap-2.5">
         {suggestions.map((suggestion) => (
           <li
@@ -41,7 +41,7 @@ export function CourseInsightCard({
           >
             <span
               aria-hidden="true"
-              className="bg-paper/40 dark:bg-border-strong mt-1.5 size-1 shrink-0 rounded-full"
+              className="bg-ink-faint mt-1.5 size-1 shrink-0 rounded-full"
             />
             <span>
               {t(`spaces.courseDetail.insight.${suggestion.key}`, {
@@ -55,13 +55,9 @@ export function CourseInsightCard({
           </li>
         ))}
       </ul>
-      <Button
-        className="bg-paper text-ink-strong hover:bg-paper/90 dark:bg-primary dark:text-primary-foreground dark:hover:bg-primary-hover mt-4 w-full justify-between"
-        onClick={onOpenChat}
-      >
+      <Button variant="outline" size="sm" className="mt-4" onClick={onOpenChat}>
         {t("spaces.courseDetail.insight.cta")}
-        <ArrowRight data-icon="inline-end" aria-hidden="true" />
       </Button>
-    </section>
+    </SurfaceCard>
   );
 }

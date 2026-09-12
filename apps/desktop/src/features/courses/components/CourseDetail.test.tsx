@@ -349,6 +349,44 @@ describe("课程详情与编辑", () => {
     await waitFor(() => expect(window.location.search).toBe("?tab=records"));
   });
 
+  it("学习链标签页展示真实记录状态派生的流转与文字摘要", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(RECORDS_URL, () => HttpResponse.json(records)),
+    );
+    renderAt(`${ROUTE_PATH}?tab=chain`);
+
+    expect(
+      await screen.findByRole("heading", { name: "学习链流转" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("8 条 · 100%")).toBeInTheDocument();
+    expect(screen.getByText("5 条 · 63%")).toBeInTheDocument();
+    expect(screen.getByText("4 条 · 50%")).toBeInTheDocument();
+    expect(screen.getByText("1 条 · 13%")).toBeInTheDocument();
+    expect(screen.getByText("未开始处理")).toBeInTheDocument();
+    expect(screen.getByText("待确认")).toBeInTheDocument();
+    expect(
+      screen.getByText("1 条失败；记录不保存失败阶段，未计入主链。"),
+    ).toBeInTheDocument();
+  });
+
+  it("学习链标签页写回 URL，空课程给出捕获引导", async () => {
+    server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
+    renderAt(ROUTE_PATH);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "学习链" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "还没有学习记录" }),
+    ).toBeInTheDocument();
+    expect(window.location.search).toBe("?tab=chain");
+    expect(
+      screen.getByText(
+        "用顶部「速记 / 录音」捕获第一条，学习链会随处理进度更新。",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("不存在或已软删课程显示未找到状态并提供返回知识空间路径", async () => {
     server.use(
       http.get(DETAIL_URL, () =>

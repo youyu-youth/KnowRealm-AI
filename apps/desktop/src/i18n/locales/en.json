@@ -390,6 +390,7 @@
       "edit": "Edit course",
       "tabs": {
         "overview": "Overview",
+        "chain": "Learning Chain",
         "records": "Records",
         "tests": "Mock Tests",
         "map": "Mind Map",
@@ -420,19 +421,37 @@
         "openCourse": "Open course",
         "noRecordsToast": "No records yet. Use Note or Record in the top bar to create the first one."
       },
+      "chain": {
+        "label": "Learning chain",
+        "flowTitle": "Learning flow",
+        "aria": "Learning flow of {{course}}",
+        "capture": "Capture",
+        "transcribe": "Transcribe",
+        "summary": "Summarize",
+        "confirm": "Confirm",
+        "notStarted": "Not started",
+        "transcribing": "Transcribing",
+        "summarizing": "Summarizing",
+        "pendingConfirm": "To confirm",
+        "failed": "Failed",
+        "stagesTitle": "Stages & conversion",
+        "stageValue": "{{count}} · {{percent}}%",
+        "dropsTitle": "Where records stop",
+        "failedNote": "{{count}} failed; the failing stage is not recorded, so they are excluded from the main flow.",
+        "note": "Derived from this course's real record statuses; updates as records change.",
+        "emptyTitle": "No Records yet",
+        "emptyDescription": "Capture the first one with Quick Note or Record in the top bar; the chain updates as processing progresses."
+      },
       "coreStats": {
         "title": "Course overview",
         "chapters": "Chapters",
-        "chaptersValue": "{{count}}",
+        "chaptersUnit": "ch",
         "knowledgePoints": "Knowledge points",
-        "knowledgePointsValue": "{{count}}",
+        "knowledgePointsUnit": "pts",
         "quizSets": "Quiz sets",
-        "quizSetsValue": "{{count}}",
+        "quizSetsUnit": "sets",
         "mastery": "Mastery",
-        "masteryValue": "{{count}}%"
-      },
-      "coreQuote": {
-        "text": "Learning is the bridge between phenomena and principles, and the key to higher knowledge."
+        "masteryUnit": "%"
       },
       "context": {
         "title": "Learning context",
@@ -485,6 +504,8 @@
         "fullscreen": "Fullscreen",
         "fullscreenDescription": "View the concept map and mastery in fullscreen (sample).",
         "legendCore": "Core node",
+        "masterySummary": "Mastery",
+        "conceptCount": "Concepts ({{count}})",
         "aria": "Knowledge concept map of {{course}}"
       },
       "map": {
@@ -503,10 +524,8 @@
         "createdAt": "Created",
         "recentLearning": "Last studied",
         "resources": "Resources",
-        "addTag": "Add tag"
-      },
-      "quote": {
-        "text": "From the concrete to the abstract, from the known to the unknown. Learning teaches us to see the world through reason."
+        "addTag": "Add tag",
+        "sheetDescription": "Review course fields, key terms, and resources."
       },
       "mock": {
         "nodes": {

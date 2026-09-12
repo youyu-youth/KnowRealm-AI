@@ -2,12 +2,12 @@ import { FileText, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { appToast } from "@/components/common/appToastManager";
-import { SurfaceCard } from "@/components/common/SurfaceCard";
+import { StatusTag } from "@/components/common/StatusTag";
 import { Button } from "@/components/ui/button";
 import type { CourseDetail } from "@/features/courses/api/types";
 import { mockRecommendedPoints } from "@/features/courses/courseDetailInsights";
 
-/** 重点知识点推荐：确定性示意数据，「换一批」本地轮转。 */
+/** 重点知识点推荐：确定性示意数据，「换一批」本地轮转。列表形态，不做卡片壳。 */
 export function CourseRecommendedPointsCard({
   course,
 }: {
@@ -21,29 +21,39 @@ export function CourseRecommendedPointsCard({
   );
 
   return (
-    <SurfaceCard
-      title={t("spaces.courseDetail.recommend.title")}
-      sample
-      action={
+    <section className="flex min-w-0 flex-col">
+      <header className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="text-section font-section text-ink-strong min-w-0 truncate">
+            {t("spaces.courseDetail.recommend.title")}
+          </h2>
+          <StatusTag className="shrink-0">
+            {t("spaces.insights.sample")}
+          </StatusTag>
+        </div>
         <Button
           variant="ghost"
           size="sm"
+          className="shrink-0"
           onClick={() => setBatch((current) => current + 1)}
         >
           <RefreshCw data-icon="inline-start" aria-hidden="true" />
           {t("spaces.courseDetail.recommend.refresh")}
         </Button>
-      }
-    >
-      <ul key={batch} className="view-switch-enter mt-1 flex flex-col gap-1">
+      </header>
+      <ul
+        key={batch}
+        className="view-switch-enter border-border-subtle divide-border-subtle mt-2 flex flex-col divide-y border-t"
+      >
         {points.map((point) => (
           <li
             key={point.id}
-            className="hover:bg-surface-subtle -mx-2 flex min-w-0 items-center gap-3 rounded-lg px-2 py-2.5 transition-colors duration-[120ms]"
+            className="hover:bg-surface-subtle flex min-w-0 items-center gap-3 rounded-md py-2.5 transition-colors duration-[120ms]"
           >
-            <span className="border-border-subtle bg-surface-subtle text-ink-muted flex size-8 shrink-0 items-center justify-center rounded-lg border">
-              <FileText className="size-4" aria-hidden="true" />
-            </span>
+            <FileText
+              className="text-ink-faint size-4 shrink-0"
+              aria-hidden="true"
+            />
             <div className="min-w-0 flex-1">
               <p
                 className="text-body-dense text-ink-strong truncate font-medium"
@@ -60,7 +70,7 @@ export function CourseRecommendedPointsCard({
               </p>
             </div>
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
               className="shrink-0"
               onClick={() =>
@@ -74,6 +84,6 @@ export function CourseRecommendedPointsCard({
           </li>
         ))}
       </ul>
-    </SurfaceCard>
+    </section>
   );
 }

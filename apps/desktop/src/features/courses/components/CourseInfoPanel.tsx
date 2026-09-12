@@ -23,7 +23,7 @@ type CourseInfoPanelProps = {
 
 const MAX_VISIBLE_TAGS = 4;
 
-/** 课程信息面板：真实字段为主，所属学科为示意。 */
+/** 课程信息面板：真实字段为主，所属学科为示意。结构列形态，通过发丝线与主内容分隔，不做卡片壳。 */
 export function CourseInfoPanel({
   course,
   records,
@@ -37,7 +37,7 @@ export function CourseInfoPanel({
   ).slice(0, 4);
 
   return (
-    <section className="border-border bg-surface-raised flex min-w-0 flex-col rounded-xl border p-4">
+    <section className="flex min-w-0 flex-col">
       <header className="flex min-w-0 items-center justify-between gap-3">
         <h2 className="text-section font-section text-ink-strong truncate">
           {t("spaces.detail.infoTitle")}

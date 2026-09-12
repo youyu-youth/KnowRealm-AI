@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
+import { prefersReducedMotion, rootFontSize } from "@/charts/dom";
 import { chartPalette, cssVar, darkTooltipStyle } from "@/charts/token";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   translateNodeName,
   type KnowledgeNode,
 } from "@/features/courses/courseDetailInsights";
+import { MasteryStateBadge } from "@/features/courses/components/MasteryStateBadge";
 import {
   masteryChartColors,
   masteryDotClassNames,
@@ -39,17 +41,8 @@ type CourseKnowledgeGraphProps = {
   className?: string;
 };
 
-function rootFontSize(): number {
-  const value = parseFloat(getComputedStyle(document.documentElement).fontSize);
-  return Number.isFinite(value) && value > 0 ? value : 16;
-}
-
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-function prefersReducedMotion(): boolean {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 type TooltipParams = {
@@ -75,6 +68,7 @@ function buildForceOption(
   stateLabels: Record<string, string>,
 ) {
   const palette = chartPalette();
+  const stateColors = masteryChartColors();
   const rem = rootFontSize();
   const fontSize = Math.round(rem * 0.75);
   const coreId = nodes.find((node) => node.core)?.id;
@@ -104,7 +98,11 @@ function buildForceOption(
           itemStyle: {
             color: node.core
               ? (palette.primary ?? "#1a1c20")
-              : masteryChartColors[node.state],
+              : node.state === "untouched"
+                ? palette.card
+                : stateColors[node.state],
+            borderColor: node.core ? palette.primary : stateColors[node.state],
+            borderWidth: node.core ? 0 : node.state === "untouched" ? 1 : 0,
           },
           label: node.core
             ? {
@@ -155,6 +153,7 @@ function buildTreeOption(
   stateLabels: Record<string, string>,
 ) {
   const palette = chartPalette();
+  const stateColors = masteryChartColors();
   const fontSize = Math.round(rootFontSize() * 0.75);
   const topics = nodes.filter((node) => !node.core);
 
@@ -188,8 +187,12 @@ function buildTreeOption(
               name: node.displayName,
               stateLabel: stateLabels[node.id],
               itemStyle: {
-                color: masteryChartColors[node.state],
-                borderColor: masteryChartColors[node.state],
+                color:
+                  node.state === "untouched"
+                    ? palette.card
+                    : stateColors[node.state],
+                borderColor: stateColors[node.state],
+                borderWidth: node.state === "untouched" ? 1 : 0,
               },
             })),
           },
@@ -251,12 +254,18 @@ export function CourseKnowledgeGraph({
   const ariaLabel = t("spaces.courseDetail.graph.aria", {
     course: course.name,
   });
+  const topics = useMemo(() => nodes.filter((node) => !node.core), [nodes]);
+  const stateCounts = useMemo(() => {
+    const counts = { mastered: 0, learning: 0, untouched: 0 };
+    for (const node of topics) counts[node.state] += 1;
+    return counts;
+  }, [topics]);
 
   return (
     <SurfaceCard
       title={t(titleKey)}
       sample
-      className={className}
+      className={cn("@container", className)}
       action={
         <div className="flex items-center gap-1">
           <div
@@ -312,31 +321,70 @@ export function CourseKnowledgeGraph({
         </div>
       }
     >
-      <div key={view} className={cn("view-switch-enter mt-2", heightClass)}>
-        <BaseChart
-          option={option}
-          ariaLabel={ariaLabel}
-          className="h-full w-full"
-        />
-      </div>
-      <ul className="text-label text-ink-muted mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        <li className="flex items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className="bg-ink-strong size-2 rounded-full"
-          />
-          {t("spaces.courseDetail.graph.legendCore")}
-        </li>
-        {(["mastered", "learning", "untouched"] as const).map((state) => (
-          <li key={state} className="flex items-center gap-1.5">
-            <span
-              aria-hidden="true"
-              className={cn("size-2 rounded-full", masteryDotClassNames[state])}
+      <div className="mt-2 flex min-w-0 flex-col gap-5 @2xl:flex-row @2xl:items-start">
+        <div className="w-full min-w-0 @2xl:max-w-[26rem] @2xl:flex-1">
+          <div key={view} className={cn("view-switch-enter", heightClass)}>
+            <BaseChart
+              option={option}
+              ariaLabel={ariaLabel}
+              className="h-full w-full"
             />
-            {t(masteryStateLabelKeys[state])}
-          </li>
-        ))}
-      </ul>
+          </div>
+        </div>
+        <div className="@2xl:border-border-subtle min-w-0 flex-1 @2xl:border-l @2xl:pl-5">
+          <p className="text-label text-ink-muted">
+            {t("spaces.courseDetail.graph.masterySummary")}
+          </p>
+          <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+            <li className="text-label text-ink-muted flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="bg-ink-strong size-2 rounded-full"
+              />
+              {t("spaces.courseDetail.graph.legendCore")}
+            </li>
+            {(["mastered", "learning", "untouched"] as const).map((state) => (
+              <li
+                key={state}
+                className="text-label text-ink-muted flex items-center gap-1.5"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-2 rounded-full",
+                    masteryDotClassNames[state],
+                  )}
+                />
+                {t(masteryStateLabelKeys[state])}
+                <span className="text-ink tabular-nums">
+                  {stateCounts[state]}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-label text-ink-muted mt-4">
+            {t("spaces.courseDetail.graph.conceptCount", {
+              count: topics.length,
+            })}
+          </p>
+          <ul className="divide-border-subtle mt-1 flex flex-col divide-y">
+            {topics.map((node) => (
+              <li
+                key={node.id}
+                className="flex min-w-0 items-center justify-between gap-3 py-1.5"
+              >
+                <span
+                  className="text-body-dense text-ink min-w-0 truncate"
+                  title={node.displayName}
+                >
+                  {node.displayName}
+                </span>
+                <MasteryStateBadge state={node.state} className="shrink-0" />
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
 
       <Dialog open={fullscreen} onOpenChange={setFullscreen}>
         <DialogContent className="sm:max-w-5xl">
@@ -346,7 +394,7 @@ export function CourseKnowledgeGraph({
               {t("spaces.courseDetail.graph.fullscreenDescription")}
             </DialogDescription>
           </DialogHeader>
-          <div className="h-[68vh]">
+          <div className="mx-auto h-[68vh] w-full max-w-3xl">
             <BaseChart
               option={option}
               ariaLabel={ariaLabel}
