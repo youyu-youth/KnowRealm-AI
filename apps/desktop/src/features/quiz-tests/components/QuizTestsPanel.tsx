@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -50,65 +51,62 @@ export function QuizTestsPanel({ courseId }: { courseId: string }) {
 
   if (tests.isPending) {
     return (
-      <p
-        role="status"
-        className="text-body text-muted-foreground flex items-center gap-2 border-t pt-8"
-      >
-        <Spinner aria-hidden="true" />
-        {t("spaces.simulations.loading")}
-      </p>
+      <SurfaceCard title={t("spaces.simulations.title")}>
+        <p
+          role="status"
+          className="text-body text-muted-foreground mt-4 flex items-center gap-2"
+        >
+          <Spinner aria-hidden="true" />
+          {t("spaces.simulations.loading")}
+        </p>
+      </SurfaceCard>
     );
   }
 
   if (tests.isError) {
     return (
-      <section role="alert" className="border-border border-t pt-8">
-        <h2 className="text-section font-section text-ink">
-          {t("spaces.simulations.errorTitle")}
-        </h2>
-        <p className="text-body text-muted-foreground mt-2">
-          {t("spaces.simulations.errorDescription")}
-        </p>
-        <Button
-          variant="outline"
-          className="mt-5"
-          onClick={() => void tests.refetch()}
-        >
-          {t("spaces.simulations.retry")}
-        </Button>
-      </section>
+      <SurfaceCard title={t("spaces.simulations.title")}>
+        <div role="alert" className="mt-4">
+          <h3 className="text-section font-section text-ink">
+            {t("spaces.simulations.errorTitle")}
+          </h3>
+          <p className="text-body text-muted-foreground mt-2">
+            {t("spaces.simulations.errorDescription")}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-5"
+            onClick={() => void tests.refetch()}
+          >
+            {t("spaces.simulations.retry")}
+          </Button>
+        </div>
+      </SurfaceCard>
     );
   }
 
   if (tests.data.blocked_reason === "COURSE_ARCHIVED") {
     return (
-      <p
-        role="status"
-        className="text-body text-muted-foreground border-t pt-8"
-      >
-        {t("spaces.simulations.archived")}
-      </p>
+      <SurfaceCard title={t("spaces.simulations.title")}>
+        <p role="status" className="text-body text-muted-foreground mt-4">
+          {t("spaces.simulations.archived")}
+        </p>
+      </SurfaceCard>
     );
   }
 
   return (
-    <section className="border-border border-t pt-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h2 className="text-section font-section text-ink">
-            {t("spaces.simulations.title")}
-          </h2>
-          <p className="text-body text-muted-foreground mt-1">
-            {t("spaces.simulations.description")}
-          </p>
-        </div>
-        {tests.data.blocked_reason !== "NO_AVAILABLE_QUIZZES" ? (
+    <SurfaceCard
+      title={t("spaces.simulations.title")}
+      description={t("spaces.simulations.description")}
+      action={
+        tests.data.blocked_reason !== "NO_AVAILABLE_QUIZZES" ? (
           <Button onClick={() => setDialogOpen(true)}>
             {t("spaces.simulations.start")}
           </Button>
-        ) : null}
-      </div>
-
+        ) : undefined
+      }
+    >
       {tests.data.items.length === 0 ? (
         <Empty className="items-start rounded-none p-0 pt-8 text-start">
           <EmptyHeader className="items-start text-start">
@@ -129,17 +127,17 @@ export function QuizTestsPanel({ courseId }: { courseId: string }) {
           </EmptyHeader>
         </Empty>
       ) : (
-        <ul aria-label={t("spaces.simulations.listLabel")} className="mt-5">
+        <ul
+          aria-label={t("spaces.simulations.listLabel")}
+          className="mt-3 flex flex-col gap-1"
+        >
           {tests.data.items.map((test) => (
-            <li
-              key={test.id}
-              className="border-border border-b last:border-b-0"
-            >
+            <li key={test.id} className="min-w-0">
               <Link
                 to="/spaces/$courseId/tests/$testId"
                 params={{ courseId, testId: test.id }}
                 search={{}}
-                className="hover:bg-surface-subtle focus-visible:ring-ring/40 -mx-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-sm px-2 py-4 transition-colors focus-visible:ring-3"
+                className="hover:bg-surface-subtle focus-visible:ring-ring/40 -mx-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-lg px-2 py-3 transition-colors duration-[120ms] focus-visible:ring-3"
               >
                 <div className="min-w-0">
                   <h3 className="text-body font-section text-ink">
@@ -177,7 +175,7 @@ export function QuizTestsPanel({ courseId }: { courseId: string }) {
           })
         }
       />
-    </section>
+    </SurfaceCard>
   );
 }
 

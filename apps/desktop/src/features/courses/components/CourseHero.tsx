@@ -1,0 +1,142 @@
+import { useNavigate } from "@tanstack/react-router";
+import { ChevronRight, FolderOpen, Star } from "lucide-react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { appToast } from "@/components/common/appToastManager";
+import { Button } from "@/components/ui/button";
+import type { CourseDetail } from "@/features/courses/api/types";
+import { courseDetailSeed } from "@/features/courses/courseDetailInsights";
+import { CourseMetaTags } from "@/features/courses/components/CourseMetaTags";
+import { CourseStatusTag } from "@/features/courses/components/CourseCard";
+
+const COVER_PALETTES = [
+  ["#eceef1", "#c4c9d2"],
+  ["#e9edf2", "#b9c3d2"],
+  ["#eeece8", "#d2c9bd"],
+  ["#e8ecea", "#bacdc6"],
+  ["#eceaf0", "#c6bfd2"],
+] as const;
+
+const COVER_PALETTES_DARK = [
+  ["#23262c", "#3a3f48"],
+  ["#212730", "#39434f"],
+  ["#282520", "#423c33"],
+  ["#212826", "#37443f"],
+  ["#26222c", "#3d3745"],
+] as const;
+
+/** 确定性封面：按课程 id 生成灰度渐变 + 同心纹样，不依赖外部资源。 */
+function CourseCoverArt({ course }: { course: CourseDetail }) {
+  const seed = courseDetailSeed(course.id);
+  const isDark = document.documentElement.classList.contains("dark");
+  const [from, to] = (isDark ? COVER_PALETTES_DARK : COVER_PALETTES)[
+    seed % COVER_PALETTES.length
+  ];
+  const gradientId = `course-cover-${course.id}`;
+  const stroke = isDark ? "#f2f4f7" : "#1a1c20";
+  return (
+    <svg
+      viewBox="0 0 160 120"
+      role="img"
+      aria-hidden="true"
+      preserveAspectRatio="xMidYMid slice"
+      className="h-full w-full"
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={from} />
+          <stop offset="100%" stopColor={to} />
+        </linearGradient>
+      </defs>
+      <rect width="160" height="120" fill={`url(#${gradientId})`} />
+      <g fill="none" stroke={stroke} strokeOpacity={isDark ? 0.12 : 0.09}>
+        <circle cx={24 + (seed % 40)} cy={26 + ((seed >>> 6) % 30)} r={34} />
+        <circle cx={120 - ((seed >>> 9) % 40)} cy={92} r={46} />
+        <circle cx={132} cy={22 + ((seed >>> 12) % 26)} r={20} />
+        <path
+          d={`M0 ${96 - ((seed >>> 15) % 24)} L160 ${10 + ((seed >>> 18) % 30)}`}
+          strokeOpacity="0.07"
+        />
+      </g>
+    </svg>
+  );
+}
+
+type CourseHeroProps = {
+  course: CourseDetail;
+  /** 最近一条学习记录；无记录时为空。 */
+  latestRecordId?: string;
+  className?: string;
+};
+
+export function CourseHero({
+  course,
+  latestRecordId,
+  className,
+}: CourseHeroProps) {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const [following, setFollowing] = useState(false);
+
+  const description =
+    course.description?.trim() || t("spaces.detail.noDescription");
+
+  function openCourse() {
+    if (latestRecordId) {
+      void navigate({
+        to: "/records/$recordId",
+        params: { recordId: latestRecordId },
+      });
+      return;
+    }
+    appToast.add({
+      description: t("spaces.courseDetail.hero.noRecordsToast"),
+    });
+  }
+
+  return (
+    <header
+      className={`border-border bg-surface-raised flex min-w-0 flex-col gap-4 rounded-xl border p-4 sm:flex-row sm:items-start sm:gap-5 ${className ?? ""}`}
+    >
+      <div className="h-32 w-full shrink-0 overflow-hidden rounded-lg sm:h-36 sm:w-36">
+        <CourseCoverArt course={course} />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="text-headline font-headline text-ink-strong min-w-0 break-words">
+              {course.name}
+            </h1>
+            <CourseStatusTag course={course} />
+          </div>
+          <CourseMetaTags course={course} className="mt-2.5" />
+          <p className="text-body text-muted-foreground max-w-reading mt-2.5">
+            {description}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            aria-pressed={following}
+            onClick={() => setFollowing((current) => !current)}
+          >
+            <Star
+              data-icon="inline-start"
+              aria-hidden="true"
+              className={following ? "fill-current" : undefined}
+            />
+            {following
+              ? t("spaces.courseDetail.hero.following")
+              : t("spaces.courseDetail.hero.follow")}
+          </Button>
+          <Button size="sm" onClick={openCourse}>
+            <FolderOpen data-icon="inline-start" aria-hidden="true" />
+            {t("spaces.courseDetail.hero.openCourse")}
+            <ChevronRight data-icon="inline-end" aria-hidden="true" />
+          </Button>
+        </div>
+      </div>
+    </header>
+  );
+}

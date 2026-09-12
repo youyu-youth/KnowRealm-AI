@@ -19,12 +19,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Course, LearningContext } from "@/features/courses/api/types";
-import {
-  courseLevelLabelKey,
-  courseStatusLabelKeys,
-  courseTypeLabelKeys,
-  learningContextLabelKeys,
-} from "@/features/courses/courseOptions";
+import { courseStatusLabelKeys } from "@/features/courses/courseOptions";
+import { CourseMetaTags } from "@/features/courses/components/CourseMetaTags";
 import { formatCourseMoment } from "@/features/courses/spacesDateFormat";
 import { mockCourseStats } from "@/features/courses/spacesInsights";
 
@@ -72,28 +68,6 @@ export function CourseStatusTag({ course }: { course: Course }) {
       className={`text-label font-label inline-flex h-5 items-center rounded-sm px-1.5 whitespace-nowrap ${course.status === "ACTIVE" ? activeStatusClassName : archivedStatusClassName}`}
     >
       {t(courseStatusLabelKeys[course.status])}
-    </span>
-  );
-}
-
-function CourseMetaTags({ course }: { course: Course }) {
-  const { t } = useTranslation();
-  const levelKey = courseLevelLabelKey(course);
-  return (
-    <span className="flex min-w-0 flex-wrap items-center gap-1">
-      <span className="bg-surface-subtle text-ink-neutral text-label font-label inline-flex h-5 items-center rounded-sm px-1.5 whitespace-nowrap">
-        {t(learningContextLabelKeys[course.learning_context])}
-      </span>
-      {levelKey ? (
-        <span className="bg-surface-subtle text-ink-muted text-label font-label inline-flex h-5 items-center rounded-sm px-1.5 whitespace-nowrap">
-          {t(levelKey)}
-        </span>
-      ) : null}
-      {course.course_type ? (
-        <span className="bg-surface-subtle text-ink-muted text-label font-label inline-flex h-5 items-center rounded-sm px-1.5 whitespace-nowrap">
-          {t(courseTypeLabelKeys[course.course_type])}
-        </span>
-      ) : null}
     </span>
   );
 }

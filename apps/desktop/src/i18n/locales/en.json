@@ -391,7 +391,10 @@
       "tabs": {
         "overview": "Overview",
         "records": "Records",
-        "tests": "Mock Tests"
+        "tests": "Mock Tests",
+        "map": "Mind Map",
+        "gps": "Knowledge GPS",
+        "chat": "Course Chat"
       },
       "label": {
         "name": "Course name",
@@ -405,6 +408,161 @@
       "notSetValue": "Not set",
       "noDescription": "No description",
       "noHotWords": "No hot words"
+    },
+    "courseDetail": {
+      "breadcrumb": {
+        "label": "Breadcrumb",
+        "myCourses": "My courses"
+      },
+      "hero": {
+        "follow": "Follow",
+        "following": "Following",
+        "openCourse": "Open course",
+        "noRecordsToast": "No records yet. Use Note or Record in the top bar to create the first one."
+      },
+      "coreStats": {
+        "title": "Course overview",
+        "chapters": "Chapters",
+        "chaptersValue": "{{count}}",
+        "knowledgePoints": "Knowledge points",
+        "knowledgePointsValue": "{{count}}",
+        "quizSets": "Quiz sets",
+        "quizSetsValue": "{{count}}",
+        "mastery": "Mastery",
+        "masteryValue": "{{count}}%"
+      },
+      "coreQuote": {
+        "text": "Learning is the bridge between phenomena and principles, and the key to higher knowledge."
+      },
+      "context": {
+        "title": "Learning context",
+        "currentProgress": "Progress",
+        "currentProgressValue": "Ch. {{chapter}} · {{name}}",
+        "goal": "Goal"
+      },
+      "gps": {
+        "title": "Knowledge GPS · Mastery",
+        "tabTitle": "Knowledge GPS · Mastery",
+        "progressLabel": "Chapter {{chapter}} mastery",
+        "summary": {
+          "chapters": "Chapters",
+          "mastered": "Mastered",
+          "learning": "Learning",
+          "untouched": "Not started"
+        }
+      },
+      "mastery": {
+        "mastered": "Mastered",
+        "learning": "Learning",
+        "untouched": "Not started"
+      },
+      "insight": {
+        "title": "AI Assistant · Course insights",
+        "description": "Based on your learning records, here are a few suggestions:",
+        "mastery": "Your overall mastery of this course is about {{percent}}%. Keep a steady learning rhythm.",
+        "nextChapter": "\"{{chapter}}\" has not started yet; try skimming its introduction first.",
+        "hotWords": "{{count}} key terms have been recorded; focus on them in the knowledge map.",
+        "focusReview": "You have recent learning records; review the weak points in \"{{chapter}}\".",
+        "cta": "Chat about this course"
+      },
+      "recommend": {
+        "title": "Recommended topics",
+        "refresh": "Refresh",
+        "go": "Study",
+        "meta": "Ch. {{chapter}} · {{section}} · {{count}}k learners",
+        "sampleToast": "Sample data: this study entry opens once the knowledge point domain is available."
+      },
+      "recentRecords": {
+        "title": "Recent learning records",
+        "unavailable": "Learning records are unavailable right now."
+      },
+      "graph": {
+        "title": "Knowledge concept map",
+        "tabTitle": "Course mind map",
+        "viewLabel": "Graph view",
+        "force": "Graph",
+        "tree": "Tree",
+        "fullscreen": "Fullscreen",
+        "fullscreenDescription": "View the concept map and mastery in fullscreen (sample).",
+        "legendCore": "Core node",
+        "aria": "Knowledge concept map of {{course}}"
+      },
+      "map": {
+        "descriptionTitle": "About the course mind map",
+        "description": "The map shows core concepts and their relations; node colors reflect mastery. Data is sampled and updates automatically once the mastery domain lands."
+      },
+      "chat": {
+        "title": "Course chat",
+        "notice": "The conversation below is sample content; go to AI Chat for real questions.",
+        "placeholder": "Ask a question…",
+        "send": "Send"
+      },
+      "info": {
+        "subject": "Subject",
+        "status": "Status",
+        "createdAt": "Created",
+        "recentLearning": "Last studied",
+        "resources": "Resources",
+        "addTag": "Add tag"
+      },
+      "quote": {
+        "text": "From the concrete to the abstract, from the known to the unknown. Learning teaches us to see the world through reason."
+      },
+      "mock": {
+        "nodes": {
+          "0": "Basic concepts",
+          "1": "Core definitions",
+          "2": "Key theorems",
+          "3": "Typical methods",
+          "4": "Use cases",
+          "5": "Common pitfalls",
+          "6": "Related knowledge",
+          "7": "Advanced topics",
+          "8": "Hands-on practice",
+          "9": "Review summary"
+        },
+        "chapters": {
+          "0": "Foundations",
+          "1": "Core principles",
+          "2": "Typical methods",
+          "3": "Integrated practice",
+          "4": "Common models",
+          "5": "Advanced topics",
+          "6": "Case studies",
+          "7": "Review"
+        },
+        "goals": {
+          "0": "Build a solid foundation and a complete knowledge framework",
+          "1": "Master core methods and solve typical problems independently",
+          "2": "Connect the chapters into a coherent whole",
+          "3": "Get ready for more advanced content"
+        },
+        "subjects": {
+          "0": "Mathematics",
+          "1": "Computer Science",
+          "2": "Language & Literature",
+          "3": "Economics & Management",
+          "4": "Natural Sciences",
+          "5": "Engineering"
+        },
+        "points": {
+          "0": "Definitions and basic properties",
+          "1": "Worked examples of typical problems",
+          "2": "Common mistakes",
+          "3": "Core derivations",
+          "4": "Real-world applications",
+          "5": "Links to neighboring chapters",
+          "6": "Further reading",
+          "7": "Formulas and conclusions at a glance",
+          "8": "Practice strategies"
+        },
+        "chat": {
+          "q1": "How should I understand the core concepts of this chapter?",
+          "a1": "Start by linking \"{{first}}\" and \"{{second}}\": understand the definitions first, then see how they work in typical examples.",
+          "q2": "What are the easy things to confuse?",
+          "a2": "A common pitfall is memorizing conclusions without checking conditions. Review the pitfalls section and verify with one integrated exercise."
+        }
+      }
     },
     "editForm": {
       "title": "Edit course",

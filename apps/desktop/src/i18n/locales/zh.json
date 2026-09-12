@@ -391,7 +391,10 @@
       "tabs": {
         "overview": "概览",
         "records": "学习记录",
-        "tests": "模拟测试"
+        "tests": "模拟测试",
+        "map": "课程脑图",
+        "gps": "知识GPS",
+        "chat": "课程对话"
       },
       "label": {
         "name": "课程名称",
@@ -405,6 +408,161 @@
       "notSetValue": "未设置",
       "noDescription": "暂无说明",
       "noHotWords": "暂无热词"
+    },
+    "courseDetail": {
+      "breadcrumb": {
+        "label": "面包屑导航",
+        "myCourses": "我的课程"
+      },
+      "hero": {
+        "follow": "关注",
+        "following": "已关注",
+        "openCourse": "打开课程",
+        "noRecordsToast": "暂无学习记录，可用顶部「速记 / 录音」创建第一条。"
+      },
+      "coreStats": {
+        "title": "课程核心概览",
+        "chapters": "课程章节",
+        "chaptersValue": "{{count}} 章",
+        "knowledgePoints": "知识点",
+        "knowledgePointsValue": "{{count}} 个",
+        "quizSets": "习题集",
+        "quizSetsValue": "{{count}} 个",
+        "mastery": "掌握度",
+        "masteryValue": "{{count}} %"
+      },
+      "coreQuote": {
+        "text": "学习是连接现象与规律的桥梁，也是打开更高阶知识的钥匙。"
+      },
+      "context": {
+        "title": "学习上下文",
+        "currentProgress": "当前进度",
+        "currentProgressValue": "第 {{chapter}} 章 · {{name}}",
+        "goal": "学习目标"
+      },
+      "gps": {
+        "title": "知识GPS · 掌握状态",
+        "tabTitle": "知识GPS · 掌握状态",
+        "progressLabel": "第 {{chapter}} 章掌握度",
+        "summary": {
+          "chapters": "章节总数",
+          "mastered": "已掌握",
+          "learning": "学习中",
+          "untouched": "未开始"
+        }
+      },
+      "mastery": {
+        "mastered": "已掌握",
+        "learning": "学习中",
+        "untouched": "未开始"
+      },
+      "insight": {
+        "title": "AI 助手 · 课程洞察",
+        "description": "基于你的学习记录，为你生成了一些建议：",
+        "mastery": "你在这门课程的整体掌握度约为 {{percent}}%，建议保持稳定的学习节奏。",
+        "nextChapter": "「{{chapter}}」尚未开始，建议先通读本章的导入内容。",
+        "hotWords": "已记录 {{count}} 个重点热词，可在知识地图中优先关注。",
+        "focusReview": "最近有一批学习记录，建议复习「{{chapter}}」中的薄弱知识点。",
+        "cta": "和课程聊一聊"
+      },
+      "recommend": {
+        "title": "重点知识点推荐",
+        "refresh": "换一批",
+        "go": "去学习",
+        "meta": "第 {{chapter}} 章 · {{section}} · {{count}}k 人学习",
+        "sampleToast": "示意数据：该学习入口将在知识点域接入后开放。"
+      },
+      "recentRecords": {
+        "title": "最近学习记录",
+        "unavailable": "学习记录暂时无法读取。"
+      },
+      "graph": {
+        "title": "知识概念图谱",
+        "tabTitle": "课程脑图",
+        "viewLabel": "图谱视图",
+        "force": "力导图",
+        "tree": "树状图",
+        "fullscreen": "全屏",
+        "fullscreenDescription": "放大查看知识概念与掌握状态（示意）。",
+        "legendCore": "核心节点",
+        "aria": "{{course}}知识概念图谱"
+      },
+      "map": {
+        "descriptionTitle": "关于课程脑图",
+        "description": "脑图展示课程核心概念及其关联，节点颜色反映掌握状态。当前为示意数据，掌握度域接入后自动更新。"
+      },
+      "chat": {
+        "title": "课程对话",
+        "notice": "以下为示意对话；正式提问请前往 AI 对话。",
+        "placeholder": "输入你的问题…",
+        "send": "发送"
+      },
+      "info": {
+        "subject": "所属学科",
+        "status": "状态",
+        "createdAt": "创建时间",
+        "recentLearning": "最近学习",
+        "resources": "相关资源",
+        "addTag": "添加标签"
+      },
+      "quote": {
+        "text": "从具体到抽象，从已知到未知。学习让我们学会用理性的眼光理解这个世界。"
+      },
+      "mock": {
+        "nodes": {
+          "0": "基本概念",
+          "1": "核心定义",
+          "2": "关键定理",
+          "3": "典型方法",
+          "4": "应用场景",
+          "5": "常见误区",
+          "6": "关联知识",
+          "7": "进阶主题",
+          "8": "实战练习",
+          "9": "总结复盘"
+        },
+        "chapters": {
+          "0": "基础概念",
+          "1": "核心原理",
+          "2": "典型方法",
+          "3": "综合应用",
+          "4": "常见模型",
+          "5": "进阶主题",
+          "6": "实战案例",
+          "7": "总结与复习"
+        },
+        "goals": {
+          "0": "打牢基础，形成完整的知识框架",
+          "1": "掌握核心方法，能独立解决典型问题",
+          "2": "建立章节之间的联系，融会贯通",
+          "3": "为后续进阶内容做好准备"
+        },
+        "subjects": {
+          "0": "数学",
+          "1": "计算机科学",
+          "2": "语言文学",
+          "3": "经济管理",
+          "4": "自然科学",
+          "5": "工程技术"
+        },
+        "points": {
+          "0": "定义与基本性质",
+          "1": "典型题型精讲",
+          "2": "常见易错点",
+          "3": "核心推导过程",
+          "4": "实际应用案例",
+          "5": "与前后章节的联系",
+          "6": "拓展阅读方向",
+          "7": "公式与结论速查",
+          "8": "综合练习策略"
+        },
+        "chat": {
+          "q1": "这一章的核心概念应该怎么理解？",
+          "a1": "可以先把「{{first}}」和「{{second}}」联系起来：先理解定义，再看它在典型例题中的作用。",
+          "q2": "有哪些容易混淆的地方？",
+          "a2": "常见误区是只记结论不看条件。建议对照课程里的易错点说明，再用一道综合题验证。"
+        }
+      }
     },
     "editForm": {
       "title": "编辑课程",

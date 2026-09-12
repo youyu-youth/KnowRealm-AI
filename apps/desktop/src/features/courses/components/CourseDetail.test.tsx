@@ -11,7 +11,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { TEST_LAUNCH_TOKEN, TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
@@ -70,6 +70,12 @@ vi.mock("@/services/tauri/sidecar", () => ({
 
 vi.stubGlobal("scrollTo", vi.fn());
 
+// 详情页现在常驻拉取课程学习记录（最近记录卡 / 相关资源 / 打开课程）；
+// 各用例按需覆盖，默认给空列表避免未处理请求。
+beforeEach(() => {
+  server.use(http.get(RECORDS_URL, () => HttpResponse.json([])));
+});
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
@@ -107,37 +113,131 @@ describe("课程详情与编辑", () => {
     expect(
       await screen.findByRole("heading", { name: "操作系统" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("学业学习")).toBeInTheDocument();
-    expect(screen.getByText("本科")).toBeInTheDocument();
-    expect(screen.getByText("专业课")).toBeInTheDocument();
+    expect(screen.getAllByText("学业学习").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("本科").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("专业课").length).toBeGreaterThan(0);
     expect(screen.getByText("理解进程、内存与文件系统。")).toBeInTheDocument();
     expect(screen.getByText("暂无热词")).toBeInTheDocument();
+    expect(screen.getByText("课程核心概览")).toBeInTheDocument();
   });
 
   it("tab 状态受 URL 校验：记录宿主可恢复、切换写回 URL、非法值回退概览", async () => {
-    server.use(
-      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
-      http.get(RECORDS_URL, () => HttpResponse.json([])),
-    );
+    server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
     renderAt(`${ROUTE_PATH}?tab=records`);
 
     expect(
       await screen.findByRole("heading", { name: "还没有学习记录" }),
     ).toBeInTheDocument();
-    expect(screen.queryByText("课程信息")).not.toBeInTheDocument();
-    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "课程核心概览" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "概览" }));
 
-    expect(await screen.findByText("课程信息")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "课程核心概览" }),
+    ).toBeInTheDocument();
     expect(window.location.search).toBe("?tab=overview");
 
     cleanup();
     window.history.replaceState(null, "", `${ROUTE_PATH}?tab=nonsense`);
     render(<App />);
 
-    expect(await screen.findByText("课程信息")).toBeInTheDocument();
-    expect(screen.queryByText("还没有学习记录")).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "课程核心概览" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "还没有学习记录" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("新增标签页（脑图/知识GPS/课程对话）可访问并写回 URL", async () => {
+    server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
+    renderAt(`${ROUTE_PATH}?tab=map`);
+
+    expect(
+      await screen.findByRole("heading", { name: "课程脑图" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "知识GPS" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "知识GPS · 掌握状态" }),
+    ).toBeInTheDocument();
+    expect(window.location.search).toBe("?tab=gps");
+
+    fireEvent.click(screen.getByRole("tab", { name: "课程对话" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "课程对话" }),
+    ).toBeInTheDocument();
+    expect(window.location.search).toBe("?tab=chat");
+    expect(screen.getAllByText("示意").length).toBeGreaterThan(0);
+  });
+
+  it("知识图谱可切换力导图/树状图并提供全屏入口", async () => {
+    server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
+    renderAt(ROUTE_PATH);
+
+    const force = await screen.findByRole("button", { name: "力导图" });
+    expect(force).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "树状图" }));
+
+    expect(screen.getByRole("button", { name: "树状图" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "力导图" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "全屏" }));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("关注为本地界面态切换且不发起请求", async () => {
+    server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
+    renderAt(ROUTE_PATH);
+
+    const follow = await screen.findByRole("button", { name: "关注" });
+    expect(follow).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(follow);
+
+    expect(screen.getByRole("button", { name: "已关注" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("打开课程进入最近一条学习记录", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(RECORDS_URL, () => HttpResponse.json(records)),
+    );
+    renderAt(ROUTE_PATH);
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开课程" }));
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/records/${records[0].id}`),
+    );
+  });
+
+  it("没有学习记录时打开课程给出捕获引导", async () => {
+    server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
+    renderAt(ROUTE_PATH);
+
+    fireEvent.click(await screen.findByRole("button", { name: "打开课程" }));
+
+    expect(
+      await screen.findByText(
+        "暂无学习记录，可用顶部「速记 / 录音」创建第一条。",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("学习记录加载中保持稳定状态", async () => {
@@ -183,7 +283,7 @@ describe("课程详情与编辑", () => {
     expect(
       await screen.findByRole("heading", { name: "还没有学习记录" }),
     ).toBeInTheDocument();
-    expect(calls).toBe(4);
+    expect(calls).toBeGreaterThanOrEqual(4);
   });
 
   it("真实列表呈现标题回退、采集类型、八态、创建时间和有效时长", async () => {
@@ -224,6 +324,29 @@ describe("课程详情与编辑", () => {
     ]) {
       expect(within(list).getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it("概览最近学习记录展示真实记录并给出查看全部入口", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(RECORDS_URL, () => HttpResponse.json(records)),
+    );
+    renderAt(ROUTE_PATH);
+
+    const recent = await screen.findByRole("heading", {
+      name: "最近学习记录",
+    });
+    expect(recent).toBeInTheDocument();
+    expect(await screen.findByText(`学习记录 1`)).toBeInTheDocument();
+
+    const recentCard = recent.closest("section");
+    expect(recentCard).not.toBeNull();
+    fireEvent.click(
+      within(recentCard as HTMLElement).getByRole("button", {
+        name: /查看全部/,
+      }),
+    );
+    await waitFor(() => expect(window.location.search).toBe("?tab=records"));
   });
 
   it("不存在或已软删课程显示未找到状态并提供返回知识空间路径", async () => {
@@ -310,7 +433,7 @@ describe("课程详情与编辑", () => {
     renderAt(ROUTE_PATH);
 
     fireEvent.click(await screen.findByRole("button", { name: "编辑课程" }));
-    fireEvent.click(await screen.findByRole("radio", { name: /职业技能/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /职业技能/ }));
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
     expect(await screen.findByText("请选择学习深度")).toBeVisible();
@@ -447,11 +570,16 @@ describe("课程详情与编辑", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
 
-    expect(await screen.findByText("进程 · 文件系统 · 内存")).toBeVisible();
-    expect(patchCalls).toBe(1);
+    await waitFor(() => expect(patchCalls).toBe(1));
     expect(patchBody).toMatchObject({
       hot_words: ["进程", "文件系统", "内存"],
     });
+    const infoPanel = screen.getByRole("complementary", {
+      name: "课程信息",
+    });
+    expect(within(infoPanel).getByText("进程")).toBeInTheDocument();
+    expect(within(infoPanel).getByText("文件系统")).toBeInTheDocument();
+    expect(within(infoPanel).getByText("内存")).toBeInTheDocument();
   });
 
   it("取消删除不会发请求或改变课程状态", async () => {
