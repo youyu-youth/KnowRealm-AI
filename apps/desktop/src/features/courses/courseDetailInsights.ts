@@ -33,6 +33,33 @@ export type KnowledgeNode = {
   y: number;
 };
 
+export type MockCourseKnowledgePoint = {
+  id: string;
+  recordId: string;
+  /** 展示名称：课程热词原样显示，示意名称走 i18n key。 */
+  name: string;
+  fromHotWords: boolean;
+  tags: string[];
+  importance: number;
+};
+
+export type AggregatedCourseKnowledgePoint = {
+  id: string;
+  name: string;
+  fromHotWords: boolean;
+  tags: string[];
+  totalWeight: number;
+  recordCount: number;
+  conceptCount: number;
+  other: boolean;
+};
+
+export type CourseKnowledgeRelation = {
+  source: string;
+  target: string;
+  sharedTagCount: number;
+};
+
 export type ChapterMastery = {
   id: string;
   /** 1 起的章节序号 */
@@ -92,7 +119,10 @@ export function courseDetailSeed(courseId: string): number {
 }
 
 /** 示意名称的展示文案：热词原样返回，示意名称走 i18n。 */
-export function translateNodeName(t: TFunction, node: KnowledgeNode): string {
+export function translateNodeName(
+  t: TFunction,
+  node: Pick<KnowledgeNode, "name" | "fromHotWords">,
+): string {
   return node.fromHotWords ? node.name : t(node.name);
 }
 
@@ -106,8 +136,124 @@ export function mockCourseCoreStats(courseId: string): CourseCoreStats {
   };
 }
 
-const NODE_NAME_COUNT = 10;
+const NODE_NAME_COUNT = 14;
 const SATELLITE_ANGLES = [-90, -45, 0, 45, 90, 135, 180, 225];
+
+/** 模拟多条学习记录中的知识点；同一名称会跨记录重复，供课程级聚合使用。 */
+export function mockCourseKnowledgePoints(
+  course: CourseDetail,
+): MockCourseKnowledgePoint[] {
+  const hotWords = [
+    ...new Set((course.hot_words ?? []).map((word) => word.trim())),
+  ]
+    .filter(Boolean)
+    .slice(0, NODE_NAME_COUNT);
+  const names = Array.from({ length: NODE_NAME_COUNT }, (_, index) => ({
+    name:
+      hotWords[index] ??
+      `spaces.courseDetail.mock.nodes.${index % NODE_NAME_COUNT}`,
+    fromHotWords: index < hotWords.length,
+  }));
+  const recordCount = 6 + (hash(`${course.id}-knowledge-records`) % 3);
+
+  return Array.from({ length: recordCount }, (_, recordIndex) =>
+    Array.from({ length: 4 }, (_, offset) => {
+      const nameIndex = (recordIndex * 4 + offset) % names.length;
+      const name = names[nameIndex];
+      return {
+        id: `${course.id}-record-${recordIndex + 1}-point-${offset + 1}`,
+        recordId: `${course.id}-record-${recordIndex + 1}`,
+        ...name,
+        tags: [`cluster-${nameIndex % 4}`, `theme-${(nameIndex + 1) % 3}`],
+        importance:
+          1 + (hash(`${course.id}-${recordIndex}-${nameIndex}-importance`) % 5),
+      };
+    }),
+  ).flat();
+}
+
+/** 同名知识点合并权重，保留 Top N，其余汇总为「其他」。 */
+export function aggregateCourseKnowledgePoints(
+  points: MockCourseKnowledgePoint[],
+  limit = 12,
+): AggregatedCourseKnowledgePoint[] {
+  const aggregated = new Map<
+    string,
+    Omit<AggregatedCourseKnowledgePoint, "recordCount"> & {
+      recordIds: Set<string>;
+    }
+  >();
+
+  for (const point of points) {
+    const key = point.name.trim().toLocaleLowerCase();
+    const current = aggregated.get(key);
+    if (current) {
+      current.totalWeight += point.importance;
+      current.recordIds.add(point.recordId);
+      for (const tag of point.tags) {
+        if (!current.tags.includes(tag)) current.tags.push(tag);
+      }
+      continue;
+    }
+    aggregated.set(key, {
+      id: point.id,
+      name: point.name,
+      fromHotWords: point.fromHotWords,
+      tags: [...point.tags],
+      totalWeight: point.importance,
+      recordIds: new Set([point.recordId]),
+      conceptCount: 1,
+      other: false,
+    });
+  }
+
+  const sorted = [...aggregated.values()].sort(
+    (left, right) =>
+      right.totalWeight - left.totalWeight ||
+      left.name.localeCompare(right.name),
+  );
+  const visible = sorted.slice(0, limit).map(({ recordIds, ...point }) => ({
+    ...point,
+    recordCount: recordIds.size,
+  }));
+  const remainder = sorted.slice(limit);
+  if (remainder.length === 0) return visible;
+
+  return [
+    ...visible,
+    {
+      id: "other",
+      name: "spaces.courseDetail.graph.other",
+      fromHotWords: false,
+      tags: [],
+      totalWeight: remainder.reduce(
+        (total, point) => total + point.totalWeight,
+        0,
+      ),
+      recordCount: new Set(remainder.flatMap((point) => [...point.recordIds]))
+        .size,
+      conceptCount: remainder.length,
+      other: true,
+    },
+  ];
+}
+
+/** 共享标签的具名知识点形成一条无向关系；「其他」不参与建图。 */
+export function buildCourseKnowledgeRelations(
+  points: AggregatedCourseKnowledgePoint[],
+): CourseKnowledgeRelation[] {
+  const namedPoints = points.filter((point) => !point.other);
+  return namedPoints.flatMap((source, sourceIndex) =>
+    namedPoints.slice(sourceIndex + 1).flatMap((target) => {
+      const sharedTagCount = source.tags.filter((tag) =>
+        target.tags.includes(tag),
+      ).length;
+      return sharedTagCount > 0
+        ? [{ source: source.id, target: target.id, sharedTagCount }]
+        : [];
+    }),
+  );
+}
 
 /** 中心课程节点 + 8 个知识主题节点（热词优先，不足用示意名称补齐）。 */
 export function mockKnowledgeNodes(course: CourseDetail): KnowledgeNode[] {

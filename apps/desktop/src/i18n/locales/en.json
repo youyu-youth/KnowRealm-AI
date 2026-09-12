@@ -498,19 +498,23 @@
       "graph": {
         "title": "Knowledge concept map",
         "tabTitle": "Course mind map",
-        "viewLabel": "Graph view",
-        "force": "Graph",
-        "tree": "Tree",
         "fullscreen": "Fullscreen",
-        "fullscreenDescription": "View the concept map and mastery in fullscreen (sample).",
-        "legendCore": "Core node",
-        "masterySummary": "Mastery",
+        "fullscreenDescription": "View course knowledge-point weights and relations in fullscreen (sample).",
+        "weightSummary": "Knowledge-point weight summary",
+        "summaryConcepts": "Concepts",
+        "summaryWeight": "Total weight",
+        "summaryRecords": "Source records",
+        "weightValue": "Combined weight: {{weight}}",
+        "sourceRecords": "Source records: {{count}}",
+        "weightCompact": "Weight {{weight}} · {{count}} records",
         "conceptCount": "Concepts ({{count}})",
-        "aria": "Knowledge concept map of {{course}}"
+        "other": "Other",
+        "roseAria": "Nightingale rose chart of knowledge-point weights for {{course}} (sample)",
+        "relationAria": "Knowledge-point relation graph for {{course}} (sample)"
       },
       "map": {
         "descriptionTitle": "About the course mind map",
-        "description": "The map shows core concepts and their relations; node colors reflect mastery. Data is sampled and updates automatically once the mastery domain lands."
+        "description": "The map centers on the course and connects knowledge points that share tags. Node size reflects combined weight, and overlapping labels hide automatically. Data is sampled."
       },
       "chat": {
         "title": "Course chat",
@@ -538,7 +542,11 @@
           "6": "Related knowledge",
           "7": "Advanced topics",
           "8": "Hands-on practice",
-          "9": "Review summary"
+          "9": "Review summary",
+          "10": "Problem analysis",
+          "11": "Method comparison",
+          "12": "Boundary conditions",
+          "13": "Further reading"
         },
         "chapters": {
           "0": "Foundations",

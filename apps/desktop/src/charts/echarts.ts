@@ -6,7 +6,6 @@ import {
   PieChart,
   RadarChart,
   SankeyChart,
-  TreeChart,
 } from "echarts/charts";
 import {
   GridComponent,
@@ -21,7 +20,6 @@ echarts.use([
   PieChart,
   RadarChart,
   SankeyChart,
-  TreeChart,
   GridComponent,
   RadarComponent,
   TooltipComponent,

@@ -1,9 +1,11 @@
-import { ListTree, Maximize2, Network } from "lucide-react";
+import { Maximize2 } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
 import { prefersReducedMotion, rootFontSize } from "@/charts/dom";
+import type { echarts } from "@/charts/echarts";
 import { chartPalette, cssVar, darkTooltipStyle } from "@/charts/token";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { Button } from "@/components/ui/button";
@@ -16,24 +18,21 @@ import {
 } from "@/components/ui/dialog";
 import type { CourseDetail } from "@/features/courses/api/types";
 import {
-  mockKnowledgeNodes,
+  aggregateCourseKnowledgePoints,
+  buildCourseKnowledgeRelations,
+  mockCourseKnowledgePoints,
   translateNodeName,
-  type KnowledgeNode,
+  type AggregatedCourseKnowledgePoint,
 } from "@/features/courses/courseDetailInsights";
-import { MasteryStateBadge } from "@/features/courses/components/MasteryStateBadge";
-import {
-  masteryChartColors,
-  masteryDotClassNames,
-  masteryStateLabelKeys,
-} from "@/features/courses/masteryState";
 import { cn } from "@/lib/utils";
 
-type GraphView = "force" | "tree";
+type GraphVariant = "rose" | "relation";
 
-type DisplayNode = KnowledgeNode & { displayName: string };
+type DisplayPoint = AggregatedCourseKnowledgePoint & { displayName: string };
 
 type CourseKnowledgeGraphProps = {
   course: CourseDetail;
+  variant: GraphVariant;
   /** 卡片标题的 i18n key（默认「知识概念图谱」）。 */
   titleKey?: string;
   /** 图表区高度类（rem 基准，随字号缩放）。 */
@@ -41,179 +40,245 @@ type CourseKnowledgeGraphProps = {
   className?: string;
 };
 
+type TooltipParams = {
+  data?: {
+    name?: string;
+    value?: number;
+    totalWeight?: number;
+    recordCount?: number;
+    core?: boolean;
+  };
+};
+
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-type TooltipParams = {
-  data?: { name?: string; core?: boolean; stateLabel?: string };
-};
-
-function tooltipConfig() {
-  return {
-    ...darkTooltipStyle(),
-    confine: true,
-    formatter: (params: TooltipParams) => {
-      const data = params.data;
-      if (!data?.name) return "";
-      if (data.core) return data.name;
-      return `${data.name}<br/>${data.stateLabel ?? ""}`;
-    },
-  };
+function chartGrayRamp() {
+  const palette = chartPalette();
+  return [
+    palette.primary ?? "#1a1c20",
+    palette.foreground ?? "#2f3239",
+    palette.neutralForeground ?? "#4b4f58",
+    palette.mutedForeground ?? "#666b75",
+    palette.faintForeground ?? "#858b96",
+    palette.borderStrong ?? "#bbc0c9",
+  ];
 }
 
-function buildForceOption(
-  courseName: string,
-  nodes: DisplayNode[],
-  stateLabels: Record<string, string>,
-) {
+function buildRoseOption(
+  points: DisplayPoint[],
+  t: TFunction,
+): echarts.EChartsCoreOption {
   const palette = chartPalette();
-  const stateColors = masteryChartColors();
-  const rem = rootFontSize();
-  const fontSize = Math.round(rem * 0.75);
-  const coreId = nodes.find((node) => node.core)?.id;
+  const colors = chartGrayRamp();
+  const reducedMotion = prefersReducedMotion();
+  const fontSize = Math.round(rootFontSize() * 0.75);
 
   return {
-    animation: !prefersReducedMotion(),
-    animationDuration: 300,
-    tooltip: tooltipConfig(),
+    animation: !reducedMotion,
+    animationDuration: reducedMotion ? 0 : 420,
+    animationEasing: "cubicOut",
+    tooltip: {
+      ...darkTooltipStyle(),
+      trigger: "item",
+      renderMode: "richText",
+      confine: true,
+      formatter: ({ data }: TooltipParams) => {
+        if (!data?.name) return "";
+        return [
+          data.name,
+          t("spaces.courseDetail.graph.weightValue", {
+            weight: data.value ?? 0,
+          }),
+          t("spaces.courseDetail.graph.sourceRecords", {
+            count: data.recordCount ?? 0,
+          }),
+        ].join("\n");
+      },
+    },
     series: [
       {
-        type: "graph",
-        layout: "none",
-        roam: false,
-        left: 24,
-        right: 24,
-        top: 16,
-        bottom: 16,
-        symbol: "circle",
-        data: nodes.map((node) => ({
-          id: node.id,
-          name: node.displayName,
-          core: node.core,
-          stateLabel: stateLabels[node.id],
-          x: node.x,
-          y: node.y,
-          symbolSize: node.core ? Math.round(rem * 4.6) : 8,
-          itemStyle: {
-            color: node.core
-              ? (palette.primary ?? "#1a1c20")
-              : node.state === "untouched"
-                ? palette.card
-                : stateColors[node.state],
-            borderColor: node.core ? palette.primary : stateColors[node.state],
-            borderWidth: node.core ? 0 : node.state === "untouched" ? 1 : 0,
-          },
-          label: node.core
-            ? {
-                show: true,
-                position: "inside",
-                color: cssVar("--paper"),
-                fontWeight: 600,
-                fontSize: fontSize + 1,
-                width: Math.round(rem * 3.9),
-                overflow: "truncate",
-                formatter: () => truncate(courseName, 8),
-              }
-            : {
-                show: true,
-                position: "bottom",
-                distance: 5,
-                color: palette.foreground,
-                fontSize,
-                backgroundColor: palette.card,
-                borderColor: palette.border,
-                borderWidth: 1,
-                borderRadius: 4,
-                padding: [3, 7],
-                formatter: (params: { name?: string }) =>
-                  truncate(params.name ?? "", 10),
-              },
-        })),
-        links: nodes
-          .filter((node) => !node.core)
-          .map((node) => ({ source: coreId, target: node.id })),
-        lineStyle: {
-          color: palette.borderStrong,
-          width: 1,
-          curveness: 0.12,
+        type: "pie",
+        roseType: "radius",
+        radius: ["18%", "72%"],
+        center: ["50%", "50%"],
+        minAngle: 7,
+        avoidLabelOverlap: true,
+        animationType: "scale",
+        labelLayout: { hideOverlap: true },
+        label: {
+          show: true,
+          color: palette.foreground,
+          fontSize,
+          formatter: ({ name }: { name?: string }) => truncate(name ?? "", 10),
+        },
+        labelLine: {
+          show: true,
+          length: 8,
+          length2: 6,
+          smooth: 0.2,
+          lineStyle: { color: palette.borderStrong, width: 1 },
+        },
+        itemStyle: {
+          borderColor: palette.card,
+          borderWidth: 2,
+          borderRadius: 2,
         },
         emphasis: {
-          focus: "adjacency",
-          lineStyle: { width: 2 },
+          scale: true,
+          scaleSize: 4,
+          itemStyle: { borderColor: palette.primary, borderWidth: 2 },
         },
+        data: points.map((point, index) => {
+          const colorIndex = Math.round(
+            (index / Math.max(points.length - 1, 1)) * (colors.length - 1),
+          );
+          return {
+            name: point.displayName,
+            value: point.totalWeight,
+            recordCount: point.recordCount,
+            itemStyle: {
+              color: point.other
+                ? (palette.borderStrong ?? colors[colors.length - 1])
+                : colors[colorIndex],
+            },
+          };
+        }),
       },
     ],
   };
 }
 
-function buildTreeOption(
+function buildRelationOption(
   courseName: string,
-  nodes: DisplayNode[],
-  stateLabels: Record<string, string>,
-) {
+  points: DisplayPoint[],
+  t: TFunction,
+): echarts.EChartsCoreOption {
   const palette = chartPalette();
-  const stateColors = masteryChartColors();
+  const colors = chartGrayRamp();
+  const reducedMotion = prefersReducedMotion();
   const fontSize = Math.round(rootFontSize() * 0.75);
-  const topics = nodes.filter((node) => !node.core);
+  const visiblePoints = points.filter((point) => !point.other);
+  const maxWeight = Math.max(
+    ...visiblePoints.map((point) => point.totalWeight),
+  );
+  const coreId = "course-core";
+  const sharedTagLinks = buildCourseKnowledgeRelations(visiblePoints).map(
+    (relation) => ({
+      source: relation.source,
+      target: relation.target,
+      value: relation.sharedTagCount,
+      lineStyle: {
+        width: relation.sharedTagCount > 1 ? 1.25 : 0.75,
+        opacity: relation.sharedTagCount > 1 ? 0.52 : 0.3,
+      },
+    }),
+  );
 
   return {
-    animation: !prefersReducedMotion(),
-    animationDuration: 300,
-    tooltip: tooltipConfig(),
+    animation: !reducedMotion,
+    animationDuration: reducedMotion ? 0 : 360,
+    animationDurationUpdate: reducedMotion ? 0 : 240,
+    animationEasing: "cubicOut",
+    animationEasingUpdate: "cubicOut",
+    tooltip: {
+      ...darkTooltipStyle(),
+      trigger: "item",
+      renderMode: "richText",
+      confine: true,
+      formatter: ({ data }: TooltipParams) => {
+        if (!data?.name) return "";
+        if (data.core) return data.name;
+        return [
+          data.name,
+          t("spaces.courseDetail.graph.weightValue", {
+            weight: data.totalWeight ?? 0,
+          }),
+          t("spaces.courseDetail.graph.sourceRecords", {
+            count: data.recordCount ?? 0,
+          }),
+        ].join("\n");
+      },
+    },
     series: [
       {
-        type: "tree",
-        layout: "orthogonal",
-        orient: "LR",
-        top: 12,
-        bottom: 12,
-        left: 84,
-        right: 96,
-        symbol: "circle",
-        symbolSize: 10,
-        expandAndCollapse: false,
-        initialTreeDepth: -1,
-        data: [
-          {
-            name: courseName,
-            core: true,
-            itemStyle: {
-              color: palette.primary,
-              borderColor: palette.primary,
-            },
-            label: { fontWeight: 600 },
-            children: topics.map((node) => ({
-              name: node.displayName,
-              stateLabel: stateLabels[node.id],
-              itemStyle: {
-                color:
-                  node.state === "untouched"
-                    ? palette.card
-                    : stateColors[node.state],
-                borderColor: stateColors[node.state],
-                borderWidth: node.state === "untouched" ? 1 : 0,
-              },
-            })),
-          },
-        ],
-        lineStyle: {
-          color: palette.borderStrong,
-          width: 1,
-          curveness: 0.5,
-        },
+        type: "graph",
+        layout: "force",
+        roam: true,
+        scaleLimit: { min: 0.7, max: 3 },
+        draggable: true,
+        cursor: "grab",
+        labelLayout: { hideOverlap: true },
         label: {
           show: true,
           position: "right",
-          verticalAlign: "middle",
-          align: "left",
-          distance: 6,
+          distance: 5,
           color: palette.foreground,
           fontSize,
-          formatter: (params: { name?: string }) =>
-            truncate(params.name ?? "", 12),
+          formatter: ({ name }: { name?: string }) => truncate(name ?? "", 12),
         },
-        emphasis: { focus: "descendant" },
+        data: [
+          {
+            id: coreId,
+            name: courseName,
+            core: true,
+            symbolSize: 48,
+            itemStyle: { color: palette.primary, borderWidth: 0 },
+            label: {
+              color: cssVar("--paper"),
+              fontWeight: 600,
+              position: "inside",
+              width: 40,
+              overflow: "truncate",
+              formatter: () => truncate(courseName, 7),
+            },
+          },
+          ...visiblePoints.map((point, index) => {
+            const colorIndex = Math.round(
+              (index / Math.max(visiblePoints.length - 1, 1)) *
+                (colors.length - 1),
+            );
+            return {
+              id: point.id,
+              name: point.displayName,
+              totalWeight: point.totalWeight,
+              recordCount: point.recordCount,
+              symbolSize: 14 + Math.round((point.totalWeight / maxWeight) * 20),
+              itemStyle: {
+                color: colors[colorIndex],
+                borderColor: palette.card,
+                borderWidth: 1.5,
+              },
+            };
+          }),
+        ],
+        links: [
+          ...visiblePoints.map((point) => ({
+            source: coreId,
+            target: point.id,
+            lineStyle: { width: 1, opacity: 0.48 },
+          })),
+          ...sharedTagLinks,
+        ],
+        force: {
+          edgeLength: [54, 92],
+          repulsion: 150,
+          gravity: 0.08,
+          friction: 0.62,
+          layoutAnimation: !reducedMotion,
+        },
+        lineStyle: {
+          color: palette.borderStrong,
+          width: 1,
+          opacity: 0.4,
+          curveness: 0.12,
+        },
+        emphasis: {
+          focus: "adjacency",
+          blurScope: "coordinateSystem",
+          lineStyle: { color: palette.foreground, opacity: 0.82, width: 1.5 },
+        },
       },
     ],
   };
@@ -221,45 +286,49 @@ function buildTreeOption(
 
 export function CourseKnowledgeGraph({
   course,
+  variant,
   titleKey = "spaces.courseDetail.graph.title",
   heightClass = "h-72",
   className,
 }: CourseKnowledgeGraphProps) {
   const { t } = useTranslation();
-  const [view, setView] = useState<GraphView>("force");
   const [fullscreen, setFullscreen] = useState(false);
-
-  const nodes = useMemo<DisplayNode[]>(
-    () =>
-      mockKnowledgeNodes(course).map((node) => ({
-        ...node,
-        displayName: translateNodeName(t, node),
-      })),
-    [course, t],
+  const sourcePoints = useMemo(
+    () => mockCourseKnowledgePoints(course),
+    [course],
   );
-  const stateLabels = useMemo(
+  const points = useMemo<DisplayPoint[]>(
     () =>
-      Object.fromEntries(
-        nodes.map((node) => [node.id, t(masteryStateLabelKeys[node.state])]),
-      ),
-    [nodes, t],
+      aggregateCourseKnowledgePoints(sourcePoints).map((point) => ({
+        ...point,
+        displayName: translateNodeName(t, point),
+      })),
+    [sourcePoints, t],
   );
   const option = useMemo(
     () =>
-      view === "force"
-        ? buildForceOption(course.name, nodes, stateLabels)
-        : buildTreeOption(course.name, nodes, stateLabels),
-    [view, course.name, nodes, stateLabels],
+      variant === "rose"
+        ? buildRoseOption(points, t)
+        : buildRelationOption(course.name, points, t),
+    [variant, points, course.name, t],
   );
-  const ariaLabel = t("spaces.courseDetail.graph.aria", {
-    course: course.name,
-  });
-  const topics = useMemo(() => nodes.filter((node) => !node.core), [nodes]);
-  const stateCounts = useMemo(() => {
-    const counts = { mastered: 0, learning: 0, untouched: 0 };
-    for (const node of topics) counts[node.state] += 1;
-    return counts;
-  }, [topics]);
+  const namedPoints = points.filter((point) => !point.other);
+  const summaryPoints = variant === "rose" ? points : namedPoints;
+  const conceptCount =
+    variant === "rose"
+      ? points.reduce((total, point) => total + point.conceptCount, 0)
+      : namedPoints.length;
+  const totalWeight = points.reduce(
+    (total, point) => total + point.totalWeight,
+    0,
+  );
+  const recordCount = new Set(sourcePoints.map((point) => point.recordId)).size;
+  const ariaLabel = t(
+    variant === "rose"
+      ? "spaces.courseDetail.graph.roseAria"
+      : "spaces.courseDetail.graph.relationAria",
+    { course: course.name },
+  );
 
   return (
     <SurfaceCard
@@ -267,63 +336,28 @@ export function CourseKnowledgeGraph({
       sample
       className={cn("@container", className)}
       action={
-        <div className="flex items-center gap-1">
-          <div
-            role="group"
-            aria-label={t("spaces.courseDetail.graph.viewLabel")}
-            className="border-border bg-background flex h-8 items-center gap-0.5 rounded-lg border p-0.5"
-          >
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              aria-pressed={view === "force"}
-              className={cn(
-                "h-7 px-2 transition-colors duration-[120ms] ease-out",
-                view === "force" && "bg-muted",
-              )}
-              onClick={() => setView("force")}
-            >
-              <Network data-icon="inline-start" aria-hidden="true" />
-              <span className="max-compact:sr-only">
-                {t("spaces.courseDetail.graph.force")}
-              </span>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              aria-pressed={view === "tree"}
-              className={cn(
-                "h-7 px-2 transition-colors duration-[120ms] ease-out",
-                view === "tree" && "bg-muted",
-              )}
-              onClick={() => setView("tree")}
-            >
-              <ListTree data-icon="inline-start" aria-hidden="true" />
-              <span className="max-compact:sr-only">
-                {t("spaces.courseDetail.graph.tree")}
-              </span>
-            </Button>
-          </div>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            aria-label={t("spaces.courseDetail.graph.fullscreen")}
-            onClick={() => setFullscreen(true)}
-          >
-            <Maximize2 data-icon="inline-start" aria-hidden="true" />
-            <span className="max-compact:sr-only">
-              {t("spaces.courseDetail.graph.fullscreen")}
-            </span>
-          </Button>
-        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          aria-label={t("spaces.courseDetail.graph.fullscreen")}
+          onClick={() => setFullscreen(true)}
+        >
+          <Maximize2 data-icon="inline-start" aria-hidden="true" />
+          <span className="max-compact:sr-only">
+            {t("spaces.courseDetail.graph.fullscreen")}
+          </span>
+        </Button>
       }
     >
       <div className="mt-2 flex min-w-0 flex-col gap-5 @2xl:flex-row @2xl:items-start">
-        <div className="w-full min-w-0 @2xl:max-w-[26rem] @2xl:flex-1">
-          <div key={view} className={cn("view-switch-enter", heightClass)}>
+        <div
+          className={cn(
+            "w-full min-w-0 @2xl:flex-1",
+            variant === "rose" && "@2xl:max-w-[26rem]",
+          )}
+        >
+          <div className={cn("view-switch-enter", heightClass)}>
             <BaseChart
               option={option}
               ariaLabel={ariaLabel}
@@ -333,53 +367,57 @@ export function CourseKnowledgeGraph({
         </div>
         <div className="@2xl:border-border-subtle min-w-0 flex-1 @2xl:border-l @2xl:pl-5">
           <p className="text-label text-ink-muted">
-            {t("spaces.courseDetail.graph.masterySummary")}
+            {t("spaces.courseDetail.graph.weightSummary")}
           </p>
-          <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-            <li className="text-label text-ink-muted flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="bg-ink-strong size-2 rounded-full"
-              />
-              {t("spaces.courseDetail.graph.legendCore")}
-            </li>
-            {(["mastered", "learning", "untouched"] as const).map((state) => (
-              <li
-                key={state}
-                className="text-label text-ink-muted flex items-center gap-1.5"
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn(
-                    "size-2 rounded-full",
-                    masteryDotClassNames[state],
-                  )}
-                />
-                {t(masteryStateLabelKeys[state])}
-                <span className="text-ink tabular-nums">
-                  {stateCounts[state]}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <dl className="mt-2 grid grid-cols-3 gap-3">
+            <div>
+              <dt className="text-label text-ink-muted">
+                {t("spaces.courseDetail.graph.summaryConcepts")}
+              </dt>
+              <dd className="text-body text-ink-strong mt-0.5 font-medium tabular-nums">
+                {conceptCount}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-label text-ink-muted">
+                {t("spaces.courseDetail.graph.summaryWeight")}
+              </dt>
+              <dd className="text-body text-ink-strong mt-0.5 font-medium tabular-nums">
+                {totalWeight}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-label text-ink-muted">
+                {t("spaces.courseDetail.graph.summaryRecords")}
+              </dt>
+              <dd className="text-body text-ink-strong mt-0.5 font-medium tabular-nums">
+                {recordCount}
+              </dd>
+            </div>
+          </dl>
           <p className="text-label text-ink-muted mt-4">
             {t("spaces.courseDetail.graph.conceptCount", {
-              count: topics.length,
+              count: conceptCount,
             })}
           </p>
           <ul className="divide-border-subtle mt-1 flex flex-col divide-y">
-            {topics.map((node) => (
+            {summaryPoints.map((point) => (
               <li
-                key={node.id}
+                key={point.id}
                 className="flex min-w-0 items-center justify-between gap-3 py-1.5"
               >
                 <span
                   className="text-body-dense text-ink min-w-0 truncate"
-                  title={node.displayName}
+                  title={point.displayName}
                 >
-                  {node.displayName}
+                  {point.displayName}
                 </span>
-                <MasteryStateBadge state={node.state} className="shrink-0" />
+                <span className="text-label text-ink-muted shrink-0 tabular-nums">
+                  {t("spaces.courseDetail.graph.weightCompact", {
+                    weight: point.totalWeight,
+                    count: point.recordCount,
+                  })}
+                </span>
               </li>
             ))}
           </ul>

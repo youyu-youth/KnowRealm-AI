@@ -10,6 +10,7 @@ export function KnowledgeMapTab({ course }: { course: CourseDetail }) {
     <div className="flex min-w-0 flex-col gap-5">
       <CourseKnowledgeGraph
         course={course}
+        variant="relation"
         titleKey="spaces.courseDetail.graph.tabTitle"
         heightClass="h-[30rem]"
       />

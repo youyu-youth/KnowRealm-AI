@@ -68,6 +68,12 @@ vi.mock("@/services/tauri/sidecar", () => ({
   }),
 }));
 
+vi.mock("@/charts/BaseChart", () => ({
+  BaseChart: ({ ariaLabel }: { ariaLabel: string }) => (
+    <div role="img" aria-label={ariaLabel} />
+  ),
+}));
+
 vi.stubGlobal("scrollTo", vi.fn());
 
 // 详情页现在常驻拉取课程学习记录（最近记录卡 / 相关资源 / 打开课程）；
@@ -175,26 +181,34 @@ describe("课程详情与编辑", () => {
     expect(screen.getAllByText("示意").length).toBeGreaterThan(0);
   });
 
-  it("知识图谱可切换力导图/树状图并提供全屏入口", async () => {
+  it("概览显示权重玫瑰图、课程脑图显示关系图且两处均可全屏", async () => {
     server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
     renderAt(ROUTE_PATH);
 
-    const force = await screen.findByRole("button", { name: "力导图" });
-    expect(force).toHaveAttribute("aria-pressed", "true");
-
-    fireEvent.click(screen.getByRole("button", { name: "树状图" }));
-
-    expect(screen.getByRole("button", { name: "树状图" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "力导图" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
+    expect(
+      await screen.findByRole("img", {
+        name: "操作系统知识点权重南丁格尔玫瑰图（示意）",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "力导图" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "树状图" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "全屏" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
+    cleanup();
+    renderAt(`${ROUTE_PATH}?tab=map`);
+
+    expect(
+      await screen.findByRole("img", {
+        name: "操作系统知识点关系图（示意）",
+      }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全屏" }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
   });
 

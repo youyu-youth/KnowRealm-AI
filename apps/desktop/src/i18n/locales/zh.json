@@ -498,19 +498,23 @@
       "graph": {
         "title": "知识概念图谱",
         "tabTitle": "课程脑图",
-        "viewLabel": "图谱视图",
-        "force": "力导图",
-        "tree": "树状图",
         "fullscreen": "全屏",
-        "fullscreenDescription": "放大查看知识概念与掌握状态（示意）。",
-        "legendCore": "核心节点",
-        "masterySummary": "掌握状态",
+        "fullscreenDescription": "放大查看课程知识点权重与关联（示意）。",
+        "weightSummary": "知识点权重摘要",
+        "summaryConcepts": "概念",
+        "summaryWeight": "总权重",
+        "summaryRecords": "来源记录",
+        "weightValue": "累计权重：{{weight}}",
+        "sourceRecords": "来源记录：{{count}} 条",
+        "weightCompact": "权重 {{weight}} · {{count}} 条记录",
         "conceptCount": "概念（{{count}}）",
-        "aria": "{{course}}知识概念图谱"
+        "other": "其他",
+        "roseAria": "{{course}}知识点权重南丁格尔玫瑰图（示意）",
+        "relationAria": "{{course}}知识点关系图（示意）"
       },
       "map": {
         "descriptionTitle": "关于课程脑图",
-        "description": "脑图展示课程核心概念及其关联，节点颜色反映掌握状态。当前为示意数据，掌握度域接入后自动更新。"
+        "description": "脑图以课程为中心，使用共享标签连接知识点；节点大小反映累计权重，重叠标签会自动隐藏。当前为示意数据。"
       },
       "chat": {
         "title": "课程对话",
@@ -538,7 +542,11 @@
           "6": "关联知识",
           "7": "进阶主题",
           "8": "实战练习",
-          "9": "总结复盘"
+          "9": "总结复盘",
+          "10": "问题分析",
+          "11": "方法比较",
+          "12": "边界条件",
+          "13": "延伸阅读"
         },
         "chapters": {
           "0": "基础概念",

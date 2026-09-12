@@ -206,7 +206,7 @@ export function CourseDetailPage({
               <div className="@container min-h-0 min-w-0 overflow-y-auto pr-1 pb-2">
                 <div className="flex min-w-0 flex-col gap-6">
                   <CourseCoreOverview course={detail} />
-                  <CourseKnowledgeGraph course={detail} />
+                  <CourseKnowledgeGraph course={detail} variant="rose" />
                   <div className="grid min-w-0 gap-6 @2xl:grid-cols-2">
                     <CourseRecentRecordsCard
                       courseId={courseId}

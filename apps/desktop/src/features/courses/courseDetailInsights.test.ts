@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { CourseDetail } from "@/features/courses/api/types";
 import {
+  aggregateCourseKnowledgePoints,
+  buildCourseKnowledgeRelations,
   masteryStateOf,
   mockChapterMastery,
   mockCourseCoreStats,
   mockCurrentProgress,
   mockInsightSuggestions,
   mockKnowledgeNodes,
+  mockCourseKnowledgePoints,
   mockRecommendedPoints,
 } from "@/features/courses/courseDetailInsights";
 
@@ -47,6 +50,42 @@ describe("courseDetailInsights 示意数据", () => {
     expect(nodes[1].name).toBe("进程调度");
     expect(nodes[1].fromHotWords).toBe(true);
     expect(nodes[3].fromHotWords).toBe(false);
+  });
+
+  it("课程知识点按同名合并权重并将 Top 12 之外汇总为其他", () => {
+    const points = mockCourseKnowledgePoints(course);
+    expect(points).toEqual(mockCourseKnowledgePoints(course));
+    expect(new Set(points.map((point) => point.recordId)).size).toBeGreaterThan(
+      1,
+    );
+
+    const aggregated = aggregateCourseKnowledgePoints(points);
+    const visible = aggregated.filter((point) => !point.other);
+    const other = aggregated.find((point) => point.other);
+
+    expect(visible).toHaveLength(12);
+    expect(other?.conceptCount).toBe(2);
+    expect(aggregated.reduce((sum, point) => sum + point.totalWeight, 0)).toBe(
+      points.reduce((sum, point) => sum + point.importance, 0),
+    );
+    expect(visible[0].totalWeight).toBeGreaterThanOrEqual(
+      visible[visible.length - 1].totalWeight,
+    );
+  });
+
+  it("课程知识关系仅连接共享标签的具名知识点", () => {
+    const aggregated = aggregateCourseKnowledgePoints(
+      mockCourseKnowledgePoints(course),
+    );
+    const relations = buildCourseKnowledgeRelations(aggregated);
+    const pointsById = new Map(aggregated.map((point) => [point.id, point]));
+
+    expect(relations.length).toBeGreaterThan(0);
+    for (const relation of relations) {
+      expect(pointsById.get(relation.source)?.other).toBe(false);
+      expect(pointsById.get(relation.target)?.other).toBe(false);
+      expect(relation.sharedTagCount).toBeGreaterThan(0);
+    }
   });
 
   it("章级掌握数量与核心统计章节数一致，掌握度整体递减", () => {

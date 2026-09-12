@@ -20,6 +20,69 @@ use crate::data_migration;
 use crate::desktop_config;
 use crate::pending_import;
 
+/// Windows Job Object 兜底：`KILL_ON_JOB_CLOSE` 让 sidecar 随壳进程终止而终止。
+/// 壳被强杀（Ctrl+C、任务管理器、panic）时 `RunEvent::Exit` 不会执行，
+/// 没有它就会留下占着数据目录锁的孤儿 sidecar，令下次启动报 DATA_DIRECTORY_IN_USE。
+#[cfg(target_os = "windows")]
+mod job_object {
+    use std::io;
+    use std::os::windows::io::AsRawHandle;
+    use std::process::Child;
+
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+        SetInformationJobObject,
+    };
+
+    pub struct KillOnCloseJob {
+        // 句柄必须存活到壳进程退出（关闭即触发连带终止）；以 usize 持有，
+        // 原始指针不满足 SidecarState 的 Send + Sync。
+        handle: usize,
+    }
+
+    impl KillOnCloseJob {
+        pub fn create() -> io::Result<Self> {
+            // SAFETY: 两个空指针均为该 API 的合法缺省值（默认安全属性、匿名 job）。
+            let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+            if handle.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            // SAFETY: info 已完整初始化，大小由编译器给出；handle 来自上面的 Create。
+            let configured = unsafe {
+                SetInformationJobObject(
+                    handle,
+                    JobObjectExtendedLimitInformation,
+                    std::ptr::addr_of!(info).cast(),
+                    std::mem::size_of_val(&info) as u32,
+                )
+            };
+            if configured == 0 {
+                // SAFETY: handle 有效且尚未转交，失败路径负责关闭。
+                unsafe { CloseHandle(handle) };
+                return Err(io::Error::last_os_error());
+            }
+            Ok(Self {
+                handle: handle as usize,
+            })
+        }
+
+        pub fn assign(&self, child: &Child) -> io::Result<()> {
+            // SAFETY: handle 由 create() 创建且保持有效；child 句柄在子进程存活期间有效。
+            let assigned = unsafe {
+                AssignProcessToJobObject(self.handle as HANDLE, child.as_raw_handle() as HANDLE)
+            };
+            if assigned == 0 {
+                return Err(io::Error::last_os_error());
+            }
+            Ok(())
+        }
+    }
+}
+
 const LOOPBACK: &str = "127.0.0.1";
 const PORT_MARKER: &str = "KNOWREALM_SIDECAR_PORT=";
 #[cfg(not(test))]
@@ -38,6 +101,9 @@ pub struct SidecarState {
     config: SidecarConfig,
     data_dir: PathBuf,
     child: Mutex<Option<Child>>,
+    // 仅保活：字段存活期间 job 句柄不关闭，sidecar 才与壳进程同生共死。
+    #[cfg(target_os = "windows")]
+    _job: job_object::KillOnCloseJob,
 }
 
 pub fn launch_token() -> io::Result<String> {
@@ -94,7 +160,14 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         .stderr(Stdio::piped());
     #[cfg(target_os = "windows")]
     command.creation_flags(0x0800_0000);
+    #[cfg(target_os = "windows")]
+    let job = job_object::KillOnCloseJob::create()?;
     let mut child = command.spawn()?;
+    #[cfg(target_os = "windows")]
+    if let Err(error) = job.assign(&child) {
+        stop_process(child);
+        return Err(Box::new(error));
+    }
     let stdout = child
         .stdout
         .take()
@@ -134,6 +207,8 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         },
         data_dir,
         child: Mutex::new(Some(child)),
+        #[cfg(target_os = "windows")]
+        _job: job,
     })
 }
 
