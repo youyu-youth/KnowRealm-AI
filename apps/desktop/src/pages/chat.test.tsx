@@ -100,22 +100,26 @@ function sseResponse(chunks: string[], onClose?: () => void) {
   });
 }
 
-/** 保持打开的流：推完初始块后不关闭，返回关闭器供“停止”场景收尾。 */
+/** 保持打开的流：推完初始块后不关闭，可按需继续推事件或收尾关闭。 */
 function openSseResponse(initialChunks: string[]) {
   const encoder = new TextEncoder();
-  let closeStream = () => {};
+  let streamController: ReadableStreamDefaultController<Uint8Array> | null =
+    null;
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      streamController = controller;
       for (const chunk of initialChunks)
         controller.enqueue(encoder.encode(chunk));
-      closeStream = () => controller.close();
     },
   });
   return {
     response: new HttpResponse(stream, {
       headers: { "Content-Type": "text/event-stream" },
     }),
-    closeStream: () => closeStream(),
+    pushEvent: (event: string) => {
+      streamController?.enqueue(encoder.encode(`${event}\n\n`));
+    },
+    closeStream: () => streamController?.close(),
   };
 }
 
@@ -766,6 +770,96 @@ describe("挂载对话引用", () => {
       screen.queryByRole("button", { name: /查看引用/ }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "引用来源" })).toBeNull();
+  });
+});
+
+describe("挂载对话检索过程", () => {
+  const RECORD_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+
+  function renderMountedStreaming(answered: { current: boolean }) {
+    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json(
+            answered.current
+              ? [
+                  SYSTEM_ROW,
+                  messageRow("user-row", "USER", "MVCC 怎么实现"),
+                  messageRow(
+                    "assistant-row",
+                    "ASSISTANT",
+                    "答案见转写原文。",
+                    "stub",
+                  ),
+                ]
+              : [SYSTEM_ROW],
+          ),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+  }
+
+  it("检索状态卡三态逐条呈现，done 后随流式态消失", async () => {
+    const answered = { current: false };
+    const opened = openSseResponse([]);
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => opened.response,
+      ),
+    );
+    renderMountedStreaming(answered);
+
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "MVCC 怎么实现" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    // 加载态：tool_call 到达即显示「正在检索」。
+    opened.pushEvent('event: status\ndata: {"phase":"generating"}');
+    opened.pushEvent(
+      'event: tool_call\ndata: {"tool":"search_transcript","query":"MVCC"}',
+    );
+    expect(await screen.findByText("正在检索「MVCC」")).toBeVisible();
+
+    // 成功态：tool_result 回填命中数。
+    opened.pushEvent(
+      'event: tool_result\ndata: {"tool":"search_transcript","hits":3,"ok":true}',
+    );
+    expect(await screen.findByText("「MVCC」命中 3 条")).toBeVisible();
+
+    // 失败态 + 多次检索逐条陈列：第一条结果卡仍在。
+    opened.pushEvent(
+      'event: tool_call\ndata: {"tool":"search_transcript","query":"undo 日志"}',
+    );
+    opened.pushEvent(
+      'event: tool_result\ndata: {"tool":"search_transcript","hits":0,"ok":false}',
+    );
+    expect(await screen.findByText("「undo 日志」检索失败")).toBeVisible();
+    expect(screen.getByText("「MVCC」命中 3 条")).toBeVisible();
+
+    opened.pushEvent('event: token\ndata: {"text":"答案"}');
+    opened.pushEvent('event: token\ndata: {"text":"见转写原文。"}');
+    answered.current = true;
+    opened.pushEvent(
+      'event: done\ndata: {"message_id":"assistant-row","content":"答案见转写原文。"}',
+    );
+    opened.closeStream();
+
+    // done 后工具过程卡随流式态消失，历史只有正文。
+    await waitFor(() =>
+      expect(screen.queryByText("「MVCC」命中 3 条")).not.toBeInTheDocument(),
+    );
+    expect(screen.queryByText("「undo 日志」检索失败")).not.toBeInTheDocument();
+    expect(await screen.findByText("答案见转写原文。")).toBeVisible();
   });
 });
 

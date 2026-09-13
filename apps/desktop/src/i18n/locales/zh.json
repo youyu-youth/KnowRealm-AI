@@ -1526,6 +1526,12 @@
     "tools": {
       "title": "工具状态",
       "beta": "Beta",
+      "activity": {
+        "label": "检索过程",
+        "running": "正在检索「{{query}}」",
+        "hits": "「{{query}}」命中 {{count}} 条",
+        "failed": "「{{query}}」检索失败"
+      },
       "webSearch": {
         "title": "联网搜索",
         "description": "搜索最新资料与网页内容"

@@ -49,7 +49,7 @@ export function ChatConversationView({
   initialPrompt,
 }: ChatConversationViewProps) {
   const { t, i18n } = useTranslation();
-  const { isStreaming, streamedText, streamError, send, stop } =
+  const { isStreaming, streamedText, streamError, toolActivities, send, stop } =
     useChatStream(sessionId);
   const [composerValue, setComposerValue] = useState(initialPrompt ?? "");
   const [renameOpen, setRenameOpen] = useState(false);
@@ -162,6 +162,7 @@ export function ChatConversationView({
           <ChatMessageList
             messages={messages.data}
             streamingText={streamedText}
+            toolActivities={toolActivities}
             isStreaming={isStreaming}
             streamError={streamError}
             onRetry={send}

@@ -1537,6 +1537,14 @@
     "tools": {
       "title": "Tool status",
       "beta": "Beta",
+      "activity": {
+        "label": "Retrieval activity",
+        "running": "Searching “{{query}}”",
+        "hits": "“{{query}}” found {{count}} matches",
+        "hits_one": "“{{query}}” found {{count}} match",
+        "hits_other": "“{{query}}” found {{count}} matches",
+        "failed": "“{{query}}” search failed"
+      },
       "webSearch": {
         "title": "Web search",
         "description": "Search the latest material and web content"

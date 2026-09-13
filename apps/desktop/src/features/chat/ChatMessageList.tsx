@@ -1,14 +1,17 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { RotateCcw } from "lucide-react";
+import { CircleAlert, RotateCcw, Search } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import type { ChatMessage } from "@/features/chat/api/types";
 import { ChatMarkdown } from "@/features/chat/ChatMarkdown";
+import type { ChatToolActivity } from "@/features/chat/useChatStream";
 
 type ChatMessageListProps = {
   messages: ChatMessage[];
   streamingText: string | null;
+  toolActivities: ChatToolActivity[];
   isStreaming: boolean;
   streamError: string | null;
   onRetry: (content: string) => void;
@@ -21,9 +24,59 @@ const messageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
 });
 
+const toolActivityCardClass =
+  "bg-surface-subtle text-label flex max-w-full items-center gap-2 rounded-sm px-2.5 py-1.5";
+const toolActivityIconClass = "size-3.5 shrink-0";
+
+/** 检索过程卡：加载 / 命中 / 失败三态，图标与文字同时表达状态（不只靠颜色）。 */
+function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
+  const { t } = useTranslation();
+  if (activity.result === null) {
+    return (
+      <li className={toolActivityCardClass}>
+        <Spinner
+          aria-hidden="true"
+          className={`${toolActivityIconClass} text-muted-foreground`}
+        />
+        <span className="text-muted-foreground">
+          {t("chat.tools.activity.running", { query: activity.query })}
+        </span>
+      </li>
+    );
+  }
+  if (activity.result.ok) {
+    return (
+      <li className={toolActivityCardClass}>
+        <Search
+          aria-hidden="true"
+          className={`${toolActivityIconClass} text-muted-foreground`}
+        />
+        <span className="text-muted-foreground">
+          {t("chat.tools.activity.hits", {
+            query: activity.query,
+            count: activity.result.hits,
+          })}
+        </span>
+      </li>
+    );
+  }
+  return (
+    <li className={toolActivityCardClass}>
+      <CircleAlert
+        aria-hidden="true"
+        className={`${toolActivityIconClass} text-destructive`}
+      />
+      <span className="text-destructive">
+        {t("chat.tools.activity.failed", { query: activity.query })}
+      </span>
+    </li>
+  );
+}
+
 export function ChatMessageList({
   messages,
   streamingText,
+  toolActivities,
   isStreaming,
   streamError,
   onRetry,
@@ -42,7 +95,7 @@ export function ChatMessageList({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [visible.length, streamingText]);
+  }, [visible.length, streamingText, toolActivities.length]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite">
@@ -78,6 +131,16 @@ export function ChatMessageList({
           )}
           {streamingText !== null ? (
             <li className="flex min-w-0 flex-col gap-3">
+              {toolActivities.length > 0 ? (
+                <ul
+                  aria-label={t("chat.tools.activity.label")}
+                  className="flex flex-col items-start gap-1.5"
+                >
+                  {toolActivities.map((activity, index) => (
+                    <ToolActivityCard key={index} activity={activity} />
+                  ))}
+                </ul>
+              ) : null}
               {streamingText ? (
                 <ChatMarkdown
                   content={streamingText}

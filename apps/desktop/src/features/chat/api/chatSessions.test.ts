@@ -64,6 +64,8 @@ describe("chatApi.streamMessage", () => {
           statusCount += 1;
         },
         onToken: (text) => tokens.push(text),
+        onToolCall: () => undefined,
+        onToolResult: () => undefined,
         onDone: (payload) => {
           donePayload = payload;
         },
@@ -77,6 +79,66 @@ describe("chatApi.streamMessage", () => {
     expect(statusCount).toBe(1);
     expect(tokens).toEqual(["操", "作", "系统"]);
     expect(donePayload).toEqual({ messageId: "m1", content: "操作系统" });
+  });
+
+  it("tool_call / tool_result 事件按到达顺序分发，畸形载荷忽略", async () => {
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
+        () => {
+          const { stream } = sseBody([
+            'event: status\ndata: {"phase":"generating"}\n\n',
+            'event: tool_call\ndata: {"tool":"search_transcript","query":"MVCC"}\n\n',
+            'event: tool_call\ndata: {"tool":"search_transcript"}\n\n',
+            'event: tool_result\ndata: {"tool":"search_transcript","hits":3,"ok":true}\n\n',
+            'event: tool_result\ndata: {"tool":"search_transcript","query":"MVCC"}\n\n',
+            'event: token\ndata: {"text":"命中"}\n\n',
+            'event: tool_call\ndata: {"tool":"search_transcript","query":"undo"}\n\n',
+            'event: tool_result\ndata: {"tool":"search_transcript","hits":0,"ok":false}\n\n',
+            'event: done\ndata: {"message_id":"m1","content":"命中"}\n\n',
+          ]);
+          return new HttpResponse(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        },
+      ),
+    );
+
+    const events: string[] = [];
+    const tokens: string[] = [];
+    await chatApi.streamMessage(
+      SESSION_ID,
+      "MVCC 怎么实现",
+      {
+        onStatus: () => events.push("status"),
+        onToken: (text) => {
+          events.push("token");
+          tokens.push(text);
+        },
+        onToolCall: (payload) =>
+          events.push(`tool_call:${payload.tool}:${payload.query}`),
+        onToolResult: (payload) =>
+          events.push(
+            `tool_result:${payload.tool}:${payload.hits}:${payload.ok}`,
+          ),
+        onDone: () => events.push("done"),
+        onError: () => {
+          throw new Error("不应出现 error 事件");
+        },
+      },
+      undefined,
+    );
+
+    expect(events).toEqual([
+      "status",
+      "tool_call:search_transcript:MVCC",
+      "tool_result:search_transcript:3:true",
+      "token",
+      "tool_call:search_transcript:undo",
+      "tool_result:search_transcript:0:false",
+      "done",
+    ]);
+    expect(tokens).toEqual(["命中"]);
   });
 
   it("error 事件回调可读错误码；409 由 apiRequest 转为 ApiError", async () => {
@@ -109,6 +171,8 @@ describe("chatApi.streamMessage", () => {
       {
         onStatus: () => undefined,
         onToken: () => undefined,
+        onToolCall: () => undefined,
+        onToolResult: () => undefined,
         onDone: () => undefined,
         onError: (payload) => errors.push(payload),
       },
@@ -125,6 +189,8 @@ describe("chatApi.streamMessage", () => {
         {
           onStatus: () => undefined,
           onToken: () => undefined,
+          onToolCall: () => undefined,
+          onToolResult: () => undefined,
           onDone: () => undefined,
           onError: () => undefined,
         },
@@ -155,6 +221,8 @@ describe("chatApi.streamMessage", () => {
       {
         onStatus: () => controller.abort(),
         onToken: () => undefined,
+        onToolCall: () => undefined,
+        onToolResult: () => undefined,
         onDone: () => undefined,
         onError: () => undefined,
       },
@@ -200,6 +268,8 @@ describe("chatApi.streamMessage", () => {
         {
           onStatus: () => undefined,
           onToken: () => undefined,
+          onToolCall: () => undefined,
+          onToolResult: () => undefined,
           onDone: () => undefined,
           onError: (payload) => errors.push(payload),
         },

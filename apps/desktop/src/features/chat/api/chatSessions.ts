@@ -12,9 +12,22 @@ import {
   apiRequest,
 } from "@/services/http/client";
 
+export type ChatToolCallPayload = {
+  tool: string;
+  query: string;
+};
+
+export type ChatToolResultPayload = {
+  tool: string;
+  hits: number;
+  ok: boolean;
+};
+
 export type ChatStreamHandlers = {
   onStatus: () => void;
   onToken: (text: string) => void;
+  onToolCall: (payload: ChatToolCallPayload) => void;
+  onToolResult: (payload: ChatToolResultPayload) => void;
   onDone: (payload: { messageId: string; content: string }) => void;
   onError: (payload: { code: string; detail: string }) => void;
 };
@@ -66,6 +79,24 @@ async function streamMessage(
           break;
         case "token":
           if (typeof data.text === "string") handlers.onToken(data.text);
+          break;
+        case "tool_call":
+          if (typeof data.tool === "string" && typeof data.query === "string") {
+            handlers.onToolCall({ tool: data.tool, query: data.query });
+          }
+          break;
+        case "tool_result":
+          if (
+            typeof data.tool === "string" &&
+            typeof data.hits === "number" &&
+            typeof data.ok === "boolean"
+          ) {
+            handlers.onToolResult({
+              tool: data.tool,
+              hits: data.hits,
+              ok: data.ok,
+            });
+          }
           break;
         case "done":
           if (
