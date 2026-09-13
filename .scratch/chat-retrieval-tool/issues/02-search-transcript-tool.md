@@ -15,8 +15,8 @@
 - [x] 测试（test_chat_streaming.py fake model seam）：工具循环端到端——工具被调用且结果进上下文、SSE 事件序列、命中句引用逐字校验通过、>30k 指引注入 / ≤30k 不注入、usage 累加、兜底路径；全套门禁绿
 
 **交付注记（2026-09-13）：**
-- 落点：`backend/app/modules/chat/search_tool.py`（`SearchTranscriptContext` 经 ContextVar 每轮绑定 + `@tool search_transcript`：FTS top-8 逐字命中带 time/page + sequence_no，无命中回退 transcript 行级子串、400 字窗口，tool 输出为 JSON `{hits, message?}`）；`graph.py`（`MOUNTED_CHAT_AGENT_CONFIG`、`ChatTokenEvent/ChatToolCallEvent/ChatToolResultEvent` 结构化流、usage 累加、`MountedMaterial` 成对挂载参数、>30k 指引、v3）；`message_service.py`（SSE 转发两新事件，正文与引用落库不变）。
+- 落点：`backend/app/modules/chat/search_tool.py`（`SearchTranscriptContext` 经 ContextVar 每轮绑定 + `@tool search_transcript`：FTS top-8 逐字命中带 time/page + sequence_no；无分片记录经 `SegmentSearchService.record_has_segments` 判定后回退 transcript 全文子串（含跨行查询、400 字窗口），有分片记录 FTS 无命中如实返回；tool 输出为 JSON `{hits, message?}`）；`graph.py`（`MOUNTED_CHAT_AGENT_CONFIG`、`ChatTokenEvent/ChatToolCallEvent/ChatToolResultEvent` 结构化流、usage 累加、`MountedMaterial` 成对挂载参数、>30k 指引、v3）；`message_service.py`（SSE 转发两新事件，正文与引用落库不变）。
 - 评审修复：① `AIMessageChunk.tool_calls` 对未闭合 args 做部分解析（实测 1.6.3 把 `{"query": "傅里叶` 报成截断 query）——改为 tool_call_chunks 逐片累加 + 严格 `json.loads`，拼装完整才上报；② `record_id`/`transcript` 数据泥团收拢为 `MountedMaterial` 单一可选参（`SessionPromptContext.mounted`）。
-- 测试：`test_chat_streaming.py` +4 项（FTS 命中端到端含引用逐字校验与 usage 累加、分片 args 不截断、无分片兜底、>30k 指引、工具失败 ok:false），全量 434 绿；`ruff check` / `pyright` strict 0 错误；OpenAPI 无漂移（校验命令相对路径应为 `../packages/api-types/openapi.json`，文档中 `../../` 有误）。
+- 测试：`test_chat_streaming.py` +5 项（FTS 命中端到端含引用逐字校验与 usage 累加、分片 args 不截断、无分片兜底、有分片 FTS 无命中不兜底、>30k 指引、工具失败 ok:false），全量 435 绿；`ruff check` / `pyright` strict 0 错误；OpenAPI 无漂移（校验命令相对路径应为 `../packages/api-types/openapi.json`，文档中 `../../` 有误）。
 - 遗留（建议 docs 收尾处理）：SSE 新增 `tool_call`/`tool_result` 与 `.claude/rules/fastapi.md` §5 固定事件清单不符（spec 已授权，rules 正本禁改，宜落 ADR 或同步规则）；`ruff format --check .` 在 lock 钉的 ruff 0.16.3 下对 8 个历史文件报格式差异（非本次触及文件）。
 

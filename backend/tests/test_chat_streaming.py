@@ -1257,6 +1257,40 @@ async def test_mounted_tool_falls_back_to_substring_without_segments(
 
 
 @pytest.mark.anyio
+async def test_segmented_record_fts_miss_returns_no_hits_without_substring_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply("search_transcript", {"query": "MVC"}), list(STUB_REPLY)],
+    ) as (_app, client, _captured):
+        imported = await client.post(
+            "/api/document-imports",
+            files={
+                "file": (
+                    "MVCC笔记.txt",
+                    "MVCC 依赖 undo 日志实现多版本读".encode(),
+                    "text/plain",
+                )
+            },
+        )
+        assert imported.status_code == 202
+        record_id = cast(str, imported.json()["record_id"])
+        await wait_for_transcript_ready(client, record_id)
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "MVC 是什么？")
+
+        # 有分片记录：FTS 未命中即如实返回（「MVC」是原文子串但非索引词，不做子串兜底）。
+        assert "MVC" in "MVCC 依赖 undo 日志实现多版本读"
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "search_transcript", "hits": 0, "ok": True}
+        ]
+
+
+@pytest.mark.anyio
 async def test_long_mounted_prompt_adds_retrieval_tool_guidance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

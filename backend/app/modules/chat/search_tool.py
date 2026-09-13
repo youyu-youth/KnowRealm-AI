@@ -1,7 +1,7 @@
 """挂载对话的转写检索工具（chat→search 单向）：分片 FTS 命中 → 逐字原文 + 定位。
 
 检索词经 jieba 分词构造 FTS5 MATCH 找到分片，再回表取逐字 content（引用逐字
-校验的根基）；分片无命中（含 FTS 命不中的粘贴/速记记录）回退 transcript 全文
+校验的根基）；无分片记录（粘贴/速记，F1 有意不建分片）回退 transcript 全文
 子串匹配——transcript 恒为事实源。运行期上下文（挂载 record / transcript /
 只读会话工厂）由 stream_chat_reply 每轮生成前经 ContextVar 绑定、不在工具实例
 上携带，AgentConfig 挂载变体因此保持常量。
@@ -19,7 +19,6 @@ from app.modules.search.segment_service import (
     ENTITY_TRANSCRIPT_SEGMENT,
     SegmentSearchService,
 )
-from app.modules.transcript.sentences import sentences_from_plain_text
 
 SEARCH_TRANSCRIPT_LIMIT = 8
 # 兜底命中为整行原文；单行过长（无标点的整段）时以命中词为中心截窗口，控制回喂长度。
@@ -87,16 +86,24 @@ def _substring_window(text: str, needle: str) -> str:
 
 
 def _substring_hits(transcript: str, query: str, limit: int) -> list[dict[str, object]]:
+    """transcript 全文子串匹配 → 命中所在行的逐字原文（无分片记录的兜底路径）。"""
     needle = query.strip()
     if not needle:
         return []
     hits: list[dict[str, object]] = []
-    for sentence in sentences_from_plain_text(transcript):
-        if needle not in sentence.text:
-            continue
-        hits.append({"content": _substring_window(sentence.text, needle)})
-        if len(hits) >= limit:
+    seen_line_starts: set[int] = set()
+    start = 0
+    while len(hits) < limit:
+        index = transcript.find(needle, start)
+        if index < 0:
             break
+        line_start = transcript.rfind("\n", 0, index) + 1
+        line_end = transcript.find("\n", index)
+        line_end = len(transcript) if line_end < 0 else line_end
+        if line_start not in seen_line_starts:
+            seen_line_starts.add(line_start)
+            hits.append({"content": _substring_window(transcript[line_start:line_end], needle)})
+        start = line_end + 1
     return hits
 
 
@@ -123,8 +130,11 @@ async def search_transcript(query: str) -> str:
         hits = await SegmentSearchService.search_segments(
             session, context.record_id, query, SEARCH_TRANSCRIPT_LIMIT
         )
-    if hits:
-        return _payload([_segment_hit_payload(hit) for hit in hits])
+        if hits:
+            return _payload([_segment_hit_payload(hit) for hit in hits])
+        if await SegmentSearchService.record_has_segments(session, context.record_id):
+            # 有分片索引记录：FTS 无命中即如实返回，不做子串兜底（spec：兜底仅限无分片记录）。
+            return _payload([], "未找到相关原文；可换同义词或相关关键词重试。")
     fallback = _substring_hits(context.transcript, query, SEARCH_TRANSCRIPT_LIMIT)
     if fallback:
         return _payload(fallback)

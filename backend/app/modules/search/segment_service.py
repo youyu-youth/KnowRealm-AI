@@ -89,6 +89,12 @@ _MISSING_DOCUMENT_SEGMENTS_SQL = text(
     "WHERE si.entity_type = 'document_segment' AND si.entity_id = ds.id)"
 )
 
+# 记录是否存在分片：chat 检索工具据此选择「FTS 无命中如实返回」或「无分片子串兜底」。
+_RECORD_HAS_SEGMENTS_SQL = text(
+    "SELECT EXISTS(SELECT 1 FROM transcript_segments WHERE record_id = :record_id) "
+    "OR EXISTS(SELECT 1 FROM document_segments WHERE record_id = :record_id)"
+)
+
 
 async def _delete_segment_rows(
     session: AsyncSession, entity_type: str, segment_ids: list[str]
@@ -212,6 +218,11 @@ class SegmentSearchService:
         ]
         scored.sort(key=lambda item: item[0])
         return [hit for _score, hit in scored[:limit]]
+
+    @staticmethod
+    async def record_has_segments(session: AsyncSession, record_id: str) -> bool:
+        """记录是否存在分片（含软删宿主；chat 检索工具据此选择兜底路径）。"""
+        return bool(await session.scalar(_RECORD_HAS_SEGMENTS_SQL, {"record_id": record_id}))
 
     @staticmethod
     async def backfill_missing(session_factory: async_sessionmaker[AsyncSession]) -> None:
