@@ -212,6 +212,7 @@ opencode.jsonc
 .mcp.json
 img
 
+docs/research
 docs/improve-codebase-architecture
 .pytest-tmp
 .pytest-tmp-*

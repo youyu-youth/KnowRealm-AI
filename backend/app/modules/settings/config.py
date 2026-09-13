@@ -1,5 +1,7 @@
 import json
 import os
+import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -36,11 +38,20 @@ def _read_json(path: Path) -> dict[str, object]:
 
 def _write_json(path: Path, value: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
+    # 带 pid+线程 id 避免并发写共用同名临时文件互相截断；仍以 .tmp 结尾供导出排除。
+    temporary = path.with_name(f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     with temporary.open("w", encoding="utf-8", newline="\n") as output:
         json.dump(value, output, ensure_ascii=False, separators=(",", ":"))
         output.flush()
         os.fsync(output.fileno())
+    # Windows 下替换需删除目标；并发读（llm_consent 等）或杀软瞬持句柄会报
+    # WinError 5，读方毫秒级释放，短退避重试即可恢复。
+    for delay in (0.05, 0.1, 0.2, 0.4):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            time.sleep(delay)
     os.replace(temporary, path)
 
 
