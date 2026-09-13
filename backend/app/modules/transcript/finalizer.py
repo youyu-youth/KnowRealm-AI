@@ -14,6 +14,7 @@ from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
+from app.modules.search.segment_service import SegmentSearchService
 from app.modules.search.service import SearchService
 from app.modules.transcript.document_parser import (
     DocumentBlock,
@@ -59,9 +60,7 @@ async def _read_source(
     sentences: list[Sentence]
     raw_sentences_path = result_data.get("source_sentences_path")
     if isinstance(raw_sentences_path, str):
-        sentences_path = (
-            data_dir / Path(*PurePosixPath(raw_sentences_path).parts)
-        ).resolve()
+        sentences_path = (data_dir / Path(*PurePosixPath(raw_sentences_path).parts)).resolve()
         if not sentences_path.is_relative_to(cache_root):
             return None
         try:
@@ -273,14 +272,13 @@ async def _finalize_record_if_ready(
             )
             session.add(new_transcript)
             await session.flush()
-            session.add_all(
-                _build_segments(new_transcript.id, record_id, files_sentences)
-            )
+            session.add_all(_build_segments(new_transcript.id, record_id, files_sentences))
             session.add_all(_build_document_segments(record, files_blocks))
         record.status = RecordStatus.SUMMARY_PENDING
         record.updated_at = now
         await session.flush()
         await SearchService.upsert_record_index(session, record_id)
+        await SegmentSearchService.upsert_record_segments(session, record_id)
 
     for cache_dir in (
         data_dir / "cache" / "audio" / record_id,
@@ -407,6 +405,7 @@ async def complete_source_job(
                 finalized = True
             await session.flush()
             await SearchService.upsert_record_index(session, record_id)
+            await SegmentSearchService.upsert_record_segments(session, record_id)
         if finalized:
             for cache_dir in (
                 data_dir / "cache" / "audio" / record_id,

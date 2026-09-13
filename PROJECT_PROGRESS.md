@@ -2,7 +2,7 @@
 
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
-> **最后更新**：2026-09-13（「AI 对话」按视觉参考重设计为三栏工作区；接入 Streamdown 流式 Markdown / 代码高亮 / KaTeX 公式）
+> **最后更新**：2026-09-13（A1+A2 chat 检索工具票 01「分片 FTS 索引地基」交付：迁移 0020 + SegmentSearchService + 三处写路径挂点 + 启动回填）
 
 ## 1. 项目概述
 
@@ -30,7 +30,7 @@
 - 课堂详情门禁：`pnpm test -- --maxWorkers=4` 421/421、`pnpm lint`、前端触及文件 Prettier、`pnpm build`（内嵌 tsc）均通过；真实 Tauri sidecar 经 WebView2 CDP 目检：学习链 Tab 桑基图亮/暗两态、java实现（5 条含失败分支）与 1111（单条）两个真实课程数据形态、脑图/GPS/记录等 Tab 与概览回归；知识图谱玫瑰图/关系图亮暗两态、全屏、关系节点拖拽、画布缩放、悬浮邻接提示，以及常规动效 / `prefers-reduced-motion` 均通过；1440×900、1280×800、1099×720 CSS viewport 无页面横向溢出。空课程空态由 jsdom 用例覆盖（本机数据目录无 0 记录课程）。
 - `/chat`「AI 对话」已按视觉参考重设计为**三栏工作区**（对话记录 | 对话 | 上下文面板）：左栏筛选胶囊（全部/今天/本周/已收藏）+ 会话行 ⋯ 菜单（收藏/重命名/删除）；中栏标题栏（收藏/⋯）、范围胶囊、空会话建议卡、流式消息与图 1 输入区；右栏当前挂载上下文 / 来源引用 / 工具状态 / 小提示。回答与流式 Markdown 改用 **Streamdown**（`@streamdown/code|cjk|math`：代码高亮、中文换行、KaTeX 公式、`animated` 动画；`[n]` 引用角标经 remark 插件转链接后由 `components.a` 渲染为可点击角标）。`ChatMessageList` / `ChatComposer` 重构，旧 `ChatPage`/`ChatSessionPage`/`ChatSessionList` 由 `ChatWorkspace` 三栏替代；路由与 URL 不变（`/chat`、`/chat/$sessionId`、`?prompt=` 知识点讲解入口保留）。后端零改动；图 1 独有而后端暂无的能力（会话收藏、右栏工具开关、输入区附件/设置图标）为本地示意状态并以禁用/tooltip 明示，课程/全部资料范围胶囊禁用提示「即将支持」。
 - AI 对话重设计门禁：`pnpm test -- --maxWorkers=4` 424/424、`pnpm lint`、前端触及文件 Prettier、`pnpm build`（内嵌 tsc）通过；chat 测试 19 项（原 16 项行为断言保留，重命名/删除改走 ⋯ 菜单路径；新增筛选/收藏、建议卡/工具开关与多回答引用聚合用例）。真机 Tauri sidecar + WebView2 CDP 目检：亮/暗两态、根字号 18px（L 档）无横向溢出、1200px 窄窗右栏自动收起且左栏保留、引用聚合（多回答 [n] 去重）与工具开关（chat-accent）实测正常。
-- 下一扩展方向（扩展文档 §40.4「P2 统一序列」）：F1 ✅ → A1+A2 并行槽位；B3「Tutor 提前」尚待用户决策，**不要擅自开工**。
+- 下一扩展方向（扩展文档 §40.4「P2 统一序列」）：F1 ✅ → **A1+A2 已拆三票并开工**（`.scratch/chat-retrieval-tool/`）：票 01「分片 FTS 索引地基」✅ 交付（迁移 0020 `segment_search_index` FTS5 表、search 模块 `SegmentSearchService` 维护+检索服务、finalizer/realign/存量回填三处写路径同事务挂点、main.py 启动幂等回填、`tests/test_segment_search.py` 7 项，user_version 断言 11 处同步 19→20，门禁 430 全绿）；票 02 检索工具与 SSE 工具事件、票 03 前端呈现与文档收尾待做；B3「Tutor 提前」尚待用户决策，**不要擅自开工**。
 
 ---
 

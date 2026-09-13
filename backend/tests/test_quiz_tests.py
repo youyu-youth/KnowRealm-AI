@@ -126,7 +126,7 @@ async def test_migration_0016_creates_quiz_test_tables_and_grading_job_type(
             (NOW, NOW),
         )
 
-    assert version is not None and version[0] == 19
+    assert version is not None and version[0] == 20
     assert tables == {"quiz_tests", "quiz_test_items"}
 
 

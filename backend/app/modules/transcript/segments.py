@@ -15,6 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.capture.models import RecordFile
 from app.modules.record.models import Record
+from app.modules.search.segment_service import (
+    ENTITY_DOCUMENT_SEGMENT,
+    ENTITY_TRANSCRIPT_SEGMENT,
+    SegmentSearchService,
+)
 from app.modules.transcript.models import (
     DocumentSegment,
     Transcript,
@@ -86,10 +91,16 @@ class SegmentService:
     ) -> None:
         """编辑保存同事务内的增量对齐重切：命中句仅重排 sequence_no，未命中删除重建。"""
         # 编辑后 content 已变，文档块的块界与 offset 全部失效，同事务清零
-        # （前端时间轴随之回落到本次重切产出的行级 transcript_segments）。
-        await session.execute(
-            delete(DocumentSegment).where(DocumentSegment.record_id == record_id)
+        # （前端时间轴随之回落到本次重切产出的行级 transcript_segments）；
+        # 物理删除的行在删除前先取 id，同事务清理其索引行。
+        document_segment_ids = list(
+            (
+                await session.scalars(
+                    select(DocumentSegment.id).where(DocumentSegment.record_id == record_id)
+                )
+            ).all()
         )
+        await session.execute(delete(DocumentSegment).where(DocumentSegment.record_id == record_id))
         file_ids = list(
             (
                 await session.scalars(
@@ -119,9 +130,19 @@ class SegmentService:
                         TranscriptSegment.transcript_id == transcript_id
                     )
                 )
+                await SegmentSearchService.delete_segment_index(
+                    session,
+                    ENTITY_TRANSCRIPT_SEGMENT,
+                    [segment.id for segment in old_segments],
+                )
+            await SegmentSearchService.delete_segment_index(
+                session, ENTITY_DOCUMENT_SEGMENT, document_segment_ids
+            )
             return
         rows = plan_alignment(sentences_from_plain_text(content), old_segments, file_ids[0])
         keep_ids = [row.segment_id for row in rows if row.segment_id is not None]
+        keep_id_set = set(keep_ids)
+        removed_ids = [segment.id for segment in old_segments if segment.id not in keep_id_set]
         if old_segments:
             await session.execute(
                 delete(TranscriptSegment).where(
@@ -130,6 +151,7 @@ class SegmentService:
                 )
             )
         old_by_id = {segment.id: segment for segment in old_segments}
+        new_segments: list[TranscriptSegment] = []
         for sequence_no, row in enumerate(rows):
             if row.segment_id is not None:
                 if old_by_id[row.segment_id].sequence_no != sequence_no:
@@ -139,16 +161,30 @@ class SegmentService:
                         .values(sequence_no=sequence_no)
                     )
             else:
-                session.add(
-                    TranscriptSegment(
-                        transcript_id=transcript_id,
-                        record_id=record_id,
-                        file_id=row.file_id,
-                        sequence_no=sequence_no,
-                        content=row.content,
-                        content_hash=row.content_hash,
-                    )
+                segment = TranscriptSegment(
+                    transcript_id=transcript_id,
+                    record_id=record_id,
+                    file_id=row.file_id,
+                    sequence_no=sequence_no,
+                    content=row.content,
+                    content_hash=row.content_hash,
                 )
+                session.add(segment)
+                new_segments.append(segment)
+        # 物理删除行同事务清索引行；新建分片落库后回表补索引（保留句 content
+        # 未变，索引行原样复用）。
+        await session.flush()
+        await SegmentSearchService.delete_segment_index(
+            session, ENTITY_TRANSCRIPT_SEGMENT, removed_ids
+        )
+        await SegmentSearchService.upsert_segment_index(
+            session,
+            ENTITY_TRANSCRIPT_SEGMENT,
+            [segment.id for segment in new_segments],
+        )
+        await SegmentSearchService.delete_segment_index(
+            session, ENTITY_DOCUMENT_SEGMENT, document_segment_ids
+        )
 
     @staticmethod
     async def backfill_missing(session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -213,7 +249,7 @@ class SegmentService:
                 if file_id is None:
                     continue
                 rows = plan_alignment(sentences_from_plain_text(transcript.content), [], file_id)
-                session.add_all(
+                segments = [
                     TranscriptSegment(
                         transcript_id=transcript_id,
                         record_id=transcript.record_id,
@@ -223,6 +259,13 @@ class SegmentService:
                         content_hash=row.content_hash,
                     )
                     for sequence_no, row in enumerate(rows)
+                ]
+                session.add_all(segments)
+                await session.flush()
+                await SegmentSearchService.upsert_segment_index(
+                    session,
+                    ENTITY_TRANSCRIPT_SEGMENT,
+                    [segment.id for segment in segments],
                 )
                 total += len(rows)
         if total:

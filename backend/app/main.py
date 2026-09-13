@@ -57,6 +57,7 @@ from app.modules.review_material import review_materials
 from app.modules.review_material.graph import build_review_material_graph
 from app.modules.review_material.worker import review_material_spec
 from app.modules.search import search as search_routes
+from app.modules.search.segment_service import SegmentSearchService
 from app.modules.search.service import SearchService
 from app.modules.search.tokenizer import warmup as warmup_jieba
 from app.modules.settings import routes as settings_routes
@@ -132,6 +133,14 @@ def create_app(
             except Exception:
                 logger.error(
                     "transcript_segments_backfill_failed", error_code="SEGMENT_BACKFILL_FAILED"
+                )
+            # 分片检索索引同为可再生衍生数据：回填失败不阻断启动，下次启动重试。
+            try:
+                await SegmentSearchService.backfill_missing(session_factory)
+            except Exception:
+                logger.error(
+                    "segment_search_index_backfill_failed",
+                    error_code="SEGMENT_SEARCH_BACKFILL_FAILED",
                 )
             app.state.ffmpeg_path = ffmpeg_path.resolve() if ffmpeg_path is not None else None
             app.state.summary_model = summary_model or OpenAiCompatibleSummaryModel()

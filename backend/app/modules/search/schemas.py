@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
+
+SegmentEntityType = Literal["transcript_segment", "document_segment"]
 
 
 class SearchQuery(BaseModel):
@@ -61,3 +64,15 @@ class SearchOut(BaseModel):
     courses: list[SearchCourseItem]
     records: list[SearchRecordItem]
     knowledge_points: list[SearchKnowledgePointItem]
+
+
+class SegmentSearchHit(BaseModel):
+    """分片检索命中：content 为回表取得的逐字原文（引用逐字校验的根基）。"""
+
+    entity_type: SegmentEntityType
+    segment_id: str
+    content: str
+    sequence_no: int
+    record_start_ms: int | None = Field(default=None, description="转写分片时间轴起点")
+    record_end_ms: int | None = Field(default=None, description="转写分片时间轴终点")
+    page_no: int | None = Field(default=None, description="文档分片页码")
