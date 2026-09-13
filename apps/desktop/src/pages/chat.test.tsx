@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -167,8 +168,8 @@ describe("AI 对话", () => {
       await screen.findByRole("textbox", { name: "提问输入框" }),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
-    // 空会话只有 SYSTEM 快照（不渲染），给出引导文案。
-    expect(await screen.findByText("向 AI 提出第一个问题吧")).toBeVisible();
+    // 空会话由建议卡承担引导，不再显示旧文案。
+    expect(await screen.findByText("你可以这样提问")).toBeVisible();
   });
 
   it("新建时可挂载收件箱记录，无转写记录置灰并说明原因", async () => {
@@ -270,8 +271,9 @@ describe("AI 对话", () => {
     expect(rows[1]).toHaveTextContent("线程调度答疑");
 
     fireEvent.click(
-      screen.getByRole("button", { name: "重命名 线程调度答疑" }),
+      screen.getByRole("button", { name: "「线程调度答疑」的更多操作" }),
     );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重命名" }));
     expect(
       await screen.findByRole("heading", { name: "重命名对话" }),
     ).toBeVisible();
@@ -309,8 +311,9 @@ describe("AI 对话", () => {
     renderAt("/chat");
 
     fireEvent.click(
-      await screen.findByRole("button", { name: "删除 待删除对话" }),
+      await screen.findByRole("button", { name: "「待删除对话」的更多操作" }),
     );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除" }));
     expect(
       await screen.findByRole("heading", { name: "删除对话" }),
     ).toBeVisible();
@@ -324,6 +327,36 @@ describe("AI 对话", () => {
     expect(
       await screen.findByRole("heading", { name: "开始第一场对话" }),
     ).toBeVisible();
+  });
+
+  it("收藏会话后可从「已收藏」筛选定位，取消收藏后筛选为空", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([
+          chatSession(FIRST_SESSION_ID, { title: "线程调度答疑" }),
+        ]),
+      ),
+    );
+    renderAt("/chat");
+
+    expect(await screen.findByText("线程调度答疑")).toBeVisible();
+    // 收藏是图 1 对齐的本地示意状态。
+    fireEvent.click(
+      screen.getByRole("button", { name: "「线程调度答疑」的更多操作" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "收藏" }));
+
+    // 「已收藏」筛选下仍可见。
+    fireEvent.click(screen.getByRole("button", { name: "已收藏" }));
+    expect(screen.getByText("线程调度答疑")).toBeVisible();
+
+    // 取消收藏后该筛选为空。
+    fireEvent.click(
+      screen.getByRole("button", { name: "「线程调度答疑」的更多操作" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "取消收藏" }));
+    expect(await screen.findByText("没有符合条件的对话")).toBeVisible();
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
   });
 
   it("会话页对不存在的会话给出诚实状态与返回入口", async () => {
@@ -550,6 +583,24 @@ describe("自由聊天流式", () => {
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "重新生成回答" })).toBeEnabled();
   });
+
+  it("建议卡点击后填入输入框，右栏工具开关可切换", async () => {
+    useSessionPage();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /解释这个知识点/ }),
+    );
+    expect(screen.getByRole("textbox", { name: "提问输入框" })).toHaveValue(
+      "请用通俗的语言解释这个知识点，并给出简单的例子。",
+    );
+
+    const knowledgeSwitch = screen.getByRole("switch", {
+      name: "知识库检索",
+    });
+    expect(knowledgeSwitch).toBeChecked();
+    fireEvent.click(knowledgeSwitch);
+    expect(knowledgeSwitch).not.toBeChecked();
+  });
 });
 
 describe("挂载对话引用", () => {
@@ -624,6 +675,60 @@ describe("挂载对话引用", () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/records/${RECORD_ID}`),
     );
+  });
+
+  it("右栏聚合多条回答的引用并按编号去重（后出现的回答优先）", async () => {
+    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-1", "USER", "第一问"),
+            {
+              id: "assistant-1",
+              role: "ASSISTANT",
+              content: "第一答[1]。",
+              model: "stub-chat-model",
+              citations: [{ index: 1, record_id: RECORD_ID, quote: "旧引用" }],
+              created_at: "2026-08-27T08:00:00.000000Z",
+            },
+            messageRow("user-2", "USER", "第二问"),
+            {
+              id: "assistant-2",
+              role: "ASSISTANT",
+              content: "第二答[1][2]。",
+              model: "stub-chat-model",
+              citations: [
+                { index: 1, record_id: RECORD_ID, quote: "新引用" },
+                { index: 2, record_id: RECORD_ID, quote: "第二条引用" },
+              ],
+              created_at: "2026-08-27T08:01:00.000000Z",
+            },
+          ]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    // 右栏聚合出现即消息渲染完成；[2] 按钮出现证明相邻角标 [1][2] 已各自成链。
+    expect(
+      await screen.findByRole("button", { name: "[2] 第二条引用" }),
+    ).toBeVisible();
+    const list = screen.getByRole("list", { name: "引用来源" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(
+      within(list).getByRole("button", { name: "[1] 新引用" }),
+    ).toBeVisible();
+    expect(
+      within(list).queryByRole("button", { name: "[1] 旧引用" }),
+    ).not.toBeInTheDocument();
   });
 
   it("角标无对应引用时保持纯文本，不出现可点击项", async () => {
@@ -712,10 +817,10 @@ describe("挂载会话失效态", () => {
     );
     renderAt(`/chat/${FIRST_SESSION_ID}`);
 
-    // 历史仍可读；头部与侧栏列表各有一个失效标记。
+    // 历史仍可读；头部、侧栏列表与右栏上下文各有一个失效标记。
     expect(await screen.findByText("旧提问")).toBeVisible();
     expect(screen.getByText("旧回答")).toBeVisible();
-    expect(screen.getAllByText("原记录已删除")).toHaveLength(2);
+    expect(screen.getAllByText("原记录已删除")).toHaveLength(3);
 
     const input = screen.getByRole("textbox", { name: "提问输入框" });
     expect(input).toBeDisabled();

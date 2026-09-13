@@ -1,10 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Pencil, Trash2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Dialog,
   DialogClose,
@@ -13,114 +13,37 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Spinner } from "@/components/ui/spinner";
+import { Input } from "@/components/ui/input";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
-import type { ChatSession } from "@/features/chat/api/types";
-import { cn } from "@/lib/utils";
 
-const chatDateFormatter = new Intl.DateTimeFormat("zh-CN", {
-  month: "numeric",
-  day: "numeric",
-  hour: "numeric",
-  minute: "numeric",
-});
-
-type ChatSessionListProps = {
-  sessions: ChatSession[];
-  activeSessionId?: string;
-};
-
-export function ChatSessionList({
-  sessions,
-  activeSessionId,
-}: ChatSessionListProps) {
-  const { t } = useTranslation();
-  return (
-    <ul aria-label={t("chat.listLabel")} className="border-border border-t">
-      {sessions.map((session) => (
-        <ChatSessionRow
-          key={session.id}
-          session={session}
-          active={session.id === activeSessionId}
-        />
-      ))}
-    </ul>
-  );
-}
-
-function ChatSessionRow({
-  session,
-  active,
-}: {
-  session: ChatSession;
-  active: boolean;
-}) {
-  const { t } = useTranslation();
-  const title = session.title ?? t("chat.untitled");
-  return (
-    <li className="border-border flex min-w-0 items-center gap-2 border-b last:border-b-0">
-      <Link
-        to="/chat/$sessionId"
-        params={{ sessionId: session.id }}
-        className={cn(
-          "hover:bg-surface-subtle focus-visible:ring-ring/40 -mx-2 min-w-0 flex-1 rounded-sm px-2 py-4 transition-colors focus-visible:ring-3",
-          active && "bg-surface-subtle",
-        )}
-      >
-        <span
-          className="text-body font-section text-ink block truncate"
-          title={title}
-        >
-          {title}
-        </span>
-        <span className="mt-1 flex flex-wrap items-center gap-2">
-          {session.record_deleted ? (
-            <span className="text-label bg-destructive/10 text-destructive font-label rounded-xs px-2 py-0.5">
-              {t("chat.recordDeleted")}
-            </span>
-          ) : null}
-          <time
-            dateTime={session.updated_at}
-            className="text-label text-muted-foreground"
-          >
-            {t("chat.updatedAt", {
-              time: chatDateFormatter.format(new Date(session.updated_at)),
-            })}
-          </time>
-        </span>
-      </Link>
-      <RenameChatDialog
-        sessionId={session.id}
-        displayTitle={title}
-        hasCustomTitle={session.title !== null}
-      />
-      <DeleteChatDialog
-        sessionId={session.id}
-        title={title}
-        wasActive={active}
-      />
-    </li>
-  );
-}
-
-function RenameChatDialog({
-  sessionId,
-  displayTitle,
-  hasCustomTitle,
-}: {
+type RenameChatDialogProps = {
   sessionId: string;
   displayTitle: string;
   hasCustomTitle: boolean;
-}) {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function RenameChatDialog({
+  sessionId,
+  displayTitle,
+  hasCustomTitle,
+  open,
+  onOpenChange,
+}: RenameChatDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [draftTitle, setDraftTitle] = useState("");
+  const [prevOpen, setPrevOpen] = useState(open);
+
+  // 打开瞬间初始化草稿（渲染期调整状态，替代 effect）。
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setDraftTitle(hasCustomTitle ? displayTitle : "");
+  }
 
   const renameSession = useMutation({
     mutationFn: (nextTitle: string) => chatApi.rename(sessionId, nextTitle),
@@ -129,16 +52,14 @@ function RenameChatDialog({
       await queryClient.invalidateQueries({
         queryKey: chatKeys.detail(sessionId),
       });
-      setOpen(false);
+      onOpenChange(false);
     },
   });
 
   function handleOpenChange(nextOpen: boolean) {
     if (renameSession.isPending) return;
     if (!nextOpen) renameSession.reset();
-    // 只有用户重命名过的标题才回填编辑框；默认"新对话"从空开始。
-    setDraftTitle(nextOpen && hasCustomTitle ? displayTitle : "");
-    setOpen(nextOpen);
+    onOpenChange(nextOpen);
   }
 
   const trimmed = draftTitle.trim();
@@ -146,17 +67,6 @@ function RenameChatDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={t("chat.rename.action", { title: displayTitle })}
-          />
-        }
-      >
-        <Pencil aria-hidden="true" />
-      </DialogTrigger>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{t("chat.rename.title")}</DialogTitle>
@@ -201,19 +111,24 @@ function RenameChatDialog({
   );
 }
 
-function DeleteChatDialog({
-  sessionId,
-  title,
-  wasActive,
-}: {
+type DeleteChatDialogProps = {
   sessionId: string;
   title: string;
   wasActive: boolean;
-}) {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+};
+
+export function DeleteChatDialog({
+  sessionId,
+  title,
+  wasActive,
+  open,
+  onOpenChange,
+}: DeleteChatDialogProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
 
   const deleteSession = useMutation({
     mutationFn: () => chatApi.delete(sessionId),
@@ -223,7 +138,7 @@ function DeleteChatDialog({
         exact: true,
       });
       await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
-      setOpen(false);
+      onOpenChange(false);
       if (wasActive) {
         await navigate({ to: "/chat" });
       }
@@ -233,22 +148,11 @@ function DeleteChatDialog({
   function handleOpenChange(nextOpen: boolean) {
     if (deleteSession.isPending) return;
     if (!nextOpen) deleteSession.reset();
-    setOpen(nextOpen);
+    onOpenChange(nextOpen);
   }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            aria-label={t("chat.delete.action", { title })}
-          />
-        }
-      >
-        <Trash2 aria-hidden="true" />
-      </DialogTrigger>
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{t("chat.delete.title")}</DialogTitle>

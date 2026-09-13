@@ -1463,7 +1463,95 @@
     "composer.recordDeletedHint": "原记录已删除，对话已失效，无法继续发送。",
     "citation": {
       "listLabel": "引用来源",
-      "jump": "查看引用 {{index}} 的转写原文"
+      "jump": "查看引用 {{index}} 的转写原文",
+      "entry": "[{{index}}] {{quote}}",
+      "recordTag": "记录"
+    },
+    "recordsTitle": "对话记录",
+    "selectSessionTitle": "选择或新建对话",
+    "selectSessionDescription": "从左侧选择一条对话记录，或新建一个开始提问。",
+    "filter": {
+      "all": "全部",
+      "today": "今天",
+      "week": "本周",
+      "favorite": "已收藏",
+      "empty": "没有符合条件的对话"
+    },
+    "time": {
+      "todayAt": "今天 {{time}}",
+      "yesterdayAt": "昨天 {{time}}"
+    },
+    "menu": {
+      "action": "「{{title}}」的更多操作",
+      "favorite": "收藏",
+      "unfavorite": "取消收藏",
+      "rename": "重命名",
+      "delete": "删除"
+    },
+    "scope": {
+      "free": "自由聊天",
+      "record": "记录",
+      "course": "课程",
+      "all": "全部资料",
+      "unavailable": "{{scope}}范围即将支持"
+    },
+    "suggestions": {
+      "title": "你可以这样提问",
+      "explain": {
+        "title": "解释这个知识点",
+        "description": "用简单的语言解释复杂概念",
+        "prompt": "请用通俗的语言解释这个知识点，并给出简单的例子。"
+      },
+      "quiz": {
+        "title": "根据内容出 5 道题",
+        "description": "基于课程内容生成练习题",
+        "prompt": "请根据当前内容出 5 道练习题，并给出答案和解析。"
+      },
+      "sources": {
+        "title": "结合全部资料回答",
+        "description": "整合笔记、课件、习题等",
+        "prompt": "请结合全部资料回答我的问题，并标注引用来源。"
+      }
+    },
+    "context": {
+      "label": "上下文面板",
+      "title": "当前挂载上下文",
+      "manage": "查看记录",
+      "free": "自由聊天（未挂载学习记录）",
+      "recordFallback": "学习记录",
+      "addMore": "添加更多内容（即将支持）",
+      "citations": "来源引用",
+      "citationsEmpty": "回答中的 [n] 角标会在这里列出，点击可跳回原文。"
+    },
+    "tools": {
+      "title": "工具状态",
+      "beta": "Beta",
+      "webSearch": {
+        "title": "联网搜索",
+        "description": "搜索最新资料与网页内容"
+      },
+      "knowledgeBase": {
+        "title": "知识库检索",
+        "description": "检索你的课程、笔记与资料"
+      },
+      "codeRun": {
+        "title": "代码运行",
+        "description": "在对话中运行 Python 代码"
+      },
+      "documentParse": {
+        "title": "文档解析",
+        "description": "支持 PDF / Word / PPT 等"
+      }
+    },
+    "tips": {
+      "title": "小提示",
+      "body": "回答中的 [1] 角标可以点击，直接跳回对应记录的转写原文。"
+    },
+    "attachment": {
+      "action": "添加附件（即将支持）"
+    },
+    "settings": {
+      "action": "对话设置（即将支持）"
     }
   },
   "settings": {

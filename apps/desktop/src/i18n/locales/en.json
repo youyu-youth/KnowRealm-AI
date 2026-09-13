@@ -1474,7 +1474,95 @@
     "composer.recordDeletedHint": "The source Record was deleted; this chat is no longer active and cannot send messages.",
     "citation": {
       "listLabel": "Citations",
-      "jump": "View the Transcript passage for citation {{index}}"
+      "jump": "View the Transcript passage for citation {{index}}",
+      "entry": "[{{index}}] {{quote}}",
+      "recordTag": "Record"
+    },
+    "recordsTitle": "Chat history",
+    "selectSessionTitle": "Select or start a chat",
+    "selectSessionDescription": "Pick a chat on the left, or start a new one and ask away.",
+    "filter": {
+      "all": "All",
+      "today": "Today",
+      "week": "This week",
+      "favorite": "Favorites",
+      "empty": "No chats match this filter"
+    },
+    "time": {
+      "todayAt": "Today {{time}}",
+      "yesterdayAt": "Yesterday {{time}}"
+    },
+    "menu": {
+      "action": "More actions for “{{title}}”",
+      "favorite": "Add to favorites",
+      "unfavorite": "Remove from favorites",
+      "rename": "Rename",
+      "delete": "Delete"
+    },
+    "scope": {
+      "free": "Free chat",
+      "record": "Record",
+      "course": "Course",
+      "all": "All materials",
+      "unavailable": "{{scope}} scope is coming soon"
+    },
+    "suggestions": {
+      "title": "You can ask like this",
+      "explain": {
+        "title": "Explain this topic",
+        "description": "Explain complex ideas in plain language",
+        "prompt": "Please explain this topic in plain language with a simple example."
+      },
+      "quiz": {
+        "title": "Generate 5 practice questions",
+        "description": "Create exercises from the material",
+        "prompt": "Please create 5 practice questions from the current material, with answers and explanations."
+      },
+      "sources": {
+        "title": "Answer with all materials",
+        "description": "Combine notes, slides, exercises, and more",
+        "prompt": "Please answer using all materials and cite your sources."
+      }
+    },
+    "context": {
+      "label": "Context panel",
+      "title": "Mounted context",
+      "manage": "View record",
+      "free": "Free chat (no Record mounted)",
+      "recordFallback": "Record",
+      "addMore": "Add more content (coming soon)",
+      "citations": "Citations",
+      "citationsEmpty": "Citation [n] markers in answers are listed here; click one to jump back to the source."
+    },
+    "tools": {
+      "title": "Tool status",
+      "beta": "Beta",
+      "webSearch": {
+        "title": "Web search",
+        "description": "Search the latest material and web content"
+      },
+      "knowledgeBase": {
+        "title": "Knowledge search",
+        "description": "Search your courses, notes, and materials"
+      },
+      "codeRun": {
+        "title": "Code run",
+        "description": "Run Python code in the chat"
+      },
+      "documentParse": {
+        "title": "Document parsing",
+        "description": "Supports PDF / Word / PPT and more"
+      }
+    },
+    "tips": {
+      "title": "Tip",
+      "body": "Click a [1] marker in an answer to jump back to the transcript passage it cites."
+    },
+    "attachment": {
+      "action": "Add attachment (coming soon)"
+    },
+    "settings": {
+      "action": "Chat settings (coming soon)"
     }
   },
   "settings": {

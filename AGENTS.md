@@ -76,6 +76,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - Agent 开始任务前或完成功能必须先阅读 `PROJECT_PROGRESS.md`，了解当前项目进度、技术决策和已知问题。
 - 完成重要功能、架构调整或技术方案变更后，必须同步更新 `PROJECT_PROGRESS.md`。
 - 文档内容必须以当前代码实际状态为准，避免重复开发、状态失真或 Agent 之间的信息断层。
+- `PROJECT_PROGRESS.md`文档行数始终保持在200行内。
 
 
 

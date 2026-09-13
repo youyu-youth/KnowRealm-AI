@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { ChatSessionPage } from "@/features/chat/ChatSessionPage";
+import { ChatSessionRoute } from "@/features/chat/ChatSessionRoute";
 
 export const Route = createFileRoute("/chat/$sessionId")({
   validateSearch: (search: Record<string, unknown>): { prompt?: string } => ({
@@ -8,5 +8,5 @@ export const Route = createFileRoute("/chat/$sessionId")({
         ? search.prompt
         : undefined,
   }),
-  component: ChatSessionPage,
+  component: ChatSessionRoute,
 });

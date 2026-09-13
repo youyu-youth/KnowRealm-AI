@@ -35,6 +35,8 @@
   --ring: var(--focus);
   --learning: #2f3239;
   --learning-soft: #ecedef;
+  --chat-accent: #2563eb;
+  --chat-accent-soft: #e8effc;
   --warning-foreground: #8a5700;
   --warning-soft: #fff2dc;
   --success-foreground: #267653;
@@ -94,6 +96,8 @@
   --ring: var(--focus);
   --learning: #d5d8de;
   --learning-soft: #24272c;
+  --chat-accent: #7ba7f7;
+  --chat-accent-soft: #1b2635;
   --warning-foreground: #e8b26b;
   --warning-soft: #2b2116;
   --success-foreground: #78c7a0;

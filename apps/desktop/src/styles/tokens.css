@@ -37,6 +37,8 @@
   --color-focus: var(--focus);
   --color-learning: var(--learning);
   --color-learning-soft: var(--learning-soft);
+  --color-chat-accent: var(--chat-accent);
+  --color-chat-accent-soft: var(--chat-accent-soft);
   --color-warning-foreground: var(--warning-foreground);
   --color-warning-soft: var(--warning-soft);
   --color-success-foreground: var(--success-foreground);

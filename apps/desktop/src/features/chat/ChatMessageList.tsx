@@ -1,11 +1,10 @@
 import { useEffect, useRef } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { RotateCcw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import type { ChatCitation, ChatMessage } from "@/features/chat/api/types";
-import { cn } from "@/lib/utils";
+import type { ChatMessage } from "@/features/chat/api/types";
+import { ChatMarkdown } from "@/features/chat/ChatMarkdown";
 
 type ChatMessageListProps = {
   messages: ChatMessage[];
@@ -13,10 +12,14 @@ type ChatMessageListProps = {
   isStreaming: boolean;
   streamError: string | null;
   onRetry: (content: string) => void;
+  /** 建议卡已承担空会话引导时置 false，避免重复文案。 */
+  showEmptyHint?: boolean;
 };
 
-const CITATION_SPLIT_RE = /(\[\d{1,3}\])/;
-const CITATION_MARKER_RE = /^\[(\d{1,3})\]$/;
+const messageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 export function ChatMessageList({
   messages,
@@ -24,6 +27,7 @@ export function ChatMessageList({
   isStreaming,
   streamError,
   onRetry,
+  showEmptyHint = true,
 }: ChatMessageListProps) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -43,44 +47,51 @@ export function ChatMessageList({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite">
       {visible.length === 0 && streamingText === null ? (
-        <p className="text-body text-muted-foreground py-8 text-center">
-          {t("chat.emptyConversation")}
-        </p>
+        showEmptyHint ? (
+          <p className="text-body text-muted-foreground py-8 text-center">
+            {t("chat.emptyConversation")}
+          </p>
+        ) : null
       ) : (
-        <ul className="flex flex-col gap-4 py-6">
-          {visible.map((message) => (
-            <li
-              key={message.id}
-              className={cn(
-                "flex w-fit max-w-full flex-col",
-                message.role === "USER" ? "self-end" : "self-start",
-              )}
-            >
-              {message.role === "ASSISTANT" &&
-              (message.citations?.length ?? 0) > 0 ? (
-                <CitationBubble message={message} />
-              ) : (
-                <p
-                  className={cn(
-                    "text-body rounded-card px-4 py-2.5 break-words whitespace-pre-wrap",
-                    message.role === "USER"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-surface-subtle text-ink border-border border",
-                  )}
-                >
+        <ul className="flex flex-col gap-6 py-6">
+          {visible.map((message) =>
+            message.role === "USER" ? (
+              <li key={message.id} className="flex flex-col items-end gap-1">
+                <p className="bg-primary text-primary-foreground text-body max-w-[85%] rounded-2xl rounded-ee-md px-4 py-2.5 break-words whitespace-pre-wrap">
                   {message.content}
                 </p>
-              )}
-            </li>
-          ))}
+                <time
+                  dateTime={message.created_at}
+                  className="text-label text-muted-foreground px-1"
+                >
+                  {messageTimeFormatter.format(new Date(message.created_at))}
+                </time>
+              </li>
+            ) : (
+              <li key={message.id} className="flex min-w-0 flex-col gap-3">
+                <ChatMarkdown
+                  content={message.content}
+                  citations={message.citations ?? []}
+                />
+              </li>
+            ),
+          )}
           {streamingText !== null ? (
-            <li className="flex w-fit max-w-full flex-col self-start">
-              <p
-                role="status"
-                className="text-body bg-surface-subtle text-ink border-border rounded-card border px-4 py-2.5 break-words whitespace-pre-wrap"
-              >
-                {streamingText || t("chat.streamingStatus")}
-              </p>
+            <li className="flex min-w-0 flex-col gap-3">
+              {streamingText ? (
+                <ChatMarkdown
+                  content={streamingText}
+                  citations={[]}
+                  streaming
+                />
+              ) : (
+                <p
+                  role="status"
+                  className="text-body text-muted-foreground animate-pulse"
+                >
+                  {t("chat.streamingStatus")}
+                </p>
+              )}
             </li>
           ) : null}
         </ul>
@@ -93,7 +104,7 @@ export function ChatMessageList({
       ) : null}
 
       {interrupted ? (
-        <div className="border-border mt-4 flex flex-col gap-2 border-t pt-4">
+        <div className="border-border-subtle mt-4 flex flex-col gap-2 border-t pt-4">
           <p className="text-label text-muted-foreground">
             {t("chat.interruptedDescription")}
           </p>
@@ -111,69 +122,5 @@ export function ChatMessageList({
       ) : null}
       <div ref={bottomRef} aria-hidden="true" />
     </div>
-  );
-}
-
-const markerButtonClass =
-  "text-primary hover:text-primary-hover focus-visible:ring-ring/40 mx-0.5 align-super text-label rounded-sm font-medium focus-visible:ring-3";
-
-/** 带引用的回答气泡：正文 [n] 角标与引用区都可点击，跳转该记录转写页定位原文。 */
-function CitationBubble({ message }: { message: ChatMessage }) {
-  const { t } = useTranslation();
-  const navigate = useNavigate();
-  const citations = message.citations ?? [];
-  const citationMap = new Map<number, ChatCitation>(
-    citations.map((citation) => [citation.index, citation]),
-  );
-
-  function openCitation(citation: ChatCitation) {
-    void navigate({
-      to: "/records/$recordId",
-      params: { recordId: citation.record_id },
-      search: { tab: "transcript", highlight: citation.quote },
-    });
-  }
-
-  return (
-    <>
-      <p className="text-body bg-surface-subtle text-ink border-border rounded-card border px-4 py-2.5 break-words whitespace-pre-wrap">
-        {message.content.split(CITATION_SPLIT_RE).map((part, index) => {
-          const marker = CITATION_MARKER_RE.exec(part);
-          if (marker === null) return <span key={index}>{part}</span>;
-          const citation = citationMap.get(Number(marker[1]));
-          if (citation === undefined) return <span key={index}>{part}</span>;
-          return (
-            <button
-              key={index}
-              type="button"
-              className={markerButtonClass}
-              aria-label={t("chat.citation.jump", { index: citation.index })}
-              onClick={() => openCitation(citation)}
-            >
-              {part}
-            </button>
-          );
-        })}
-      </p>
-      <ul
-        aria-label={t("chat.citation.listLabel")}
-        className="border-border bg-surface-subtle rounded-card mt-1 flex max-w-full flex-col gap-1 rounded-ss-none border p-3"
-      >
-        {citations.map((citation) => (
-          <li key={citation.index}>
-            <button
-              type="button"
-              className="text-label text-muted-foreground hover:text-ink focus-visible:ring-ring/40 w-full rounded-sm text-start focus-visible:ring-3"
-              onClick={() => openCitation(citation)}
-            >
-              <span className="text-primary font-medium">
-                [{citation.index}]
-              </span>{" "}
-              {citation.quote}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </>
   );
 }

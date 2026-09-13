@@ -3,11 +3,19 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/noto-sans-sc";
+@import "streamdown/styles.css";
+@import "katex/dist/katex.min.css";
 @import "./tokens.css";
 @import "./theme.css";
 @import "./animations.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* Streamdown 与其插件的类名在 dist 产物中，需显式告知 Tailwind 扫描。 */
+@source "../../node_modules/streamdown/dist/*.js";
+@source "../../node_modules/@streamdown/code/dist/*.js";
+@source "../../node_modules/@streamdown/cjk/dist/*.js";
+@source "../../node_modules/@streamdown/math/dist/*.js";
 
 @layer base {
   * {
