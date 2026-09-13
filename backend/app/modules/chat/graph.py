@@ -1,19 +1,24 @@
-"""对话 agent：上下文组装（每轮从业务表显式重建）与流式生成路径。"""
+"""对话 agent：上下文组装（每轮从业务表显式重建）、deepagents 骨架装配与流式生成路径。"""
 
 import re
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Callable, Sequence
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from time import perf_counter
 from typing import Any, cast
 
 import openai
-from langchain.agents import (
-    create_agent,  # pyright: ignore[reportUnknownVariableType]
+from deepagents import (
+    create_deep_agent,  # pyright: ignore[reportMissingTypeStubs, reportUnknownVariableType]
+)
+from deepagents.backends.protocol import (  # pyright: ignore[reportMissingTypeStubs]
+    BackendProtocol,
 )
 from langchain.agents.middleware.types import (  # pyright: ignore[reportMissingTypeStubs]
+    AgentMiddleware,
     AgentState,
     InputAgentState,
+    ModelRequest,
     OutputAgentState,
 )
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -89,9 +94,7 @@ def _align_quote(quote: str, transcript: str) -> str | None:
         normalized_line = _normalize_for_align(line.text)
         if not normalized_line:
             continue
-        matcher = SequenceMatcher(
-            None, normalized_quote, normalized_line, autojunk=False
-        )
+        matcher = SequenceMatcher(None, normalized_quote, normalized_line, autojunk=False)
         if matcher.real_quick_ratio() < CITATION_ALIGN_MIN_RATIO:
             continue
         ratio = matcher.ratio()
@@ -140,9 +143,7 @@ def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> Parse
         else:
             final_quote = _align_quote(quote, transcript)
         if final_quote is not None:
-            citations.append(
-                {"index": index, "record_id": record_id, "quote": final_quote}
-            )
+            citations.append({"index": index, "record_id": record_id, "quote": final_quote})
     return ParsedReply(content="\n".join(lines[:cut]).rstrip(), citations=citations)
 
 
@@ -282,11 +283,132 @@ def build_context_messages(
 def build_chat_agent(
     model: BaseChatModel,
     checkpointer: BaseCheckpointSaver[str],
+    *,
+    system_prompt: SystemMessage | None,
 ) -> CompiledStateGraph[AgentState[Any], Any, InputAgentState, OutputAgentState[Any]]:
-    """自由聊天 agent：工具集为空（检索工具为后续工单），复用 lifespan 的 checkpointer。"""
-    return create_agent(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+    """自由聊天 / 挂载对话 agent：CHAT_AGENT_CONFIG 能力面为空（工具等为后续工单），
+    复用 lifespan 的 checkpointer。"""
+    return build_agent(CHAT_AGENT_CONFIG, model, checkpointer, system_prompt=system_prompt)
+
+
+# ---------------------------------------------------------------------------
+# deepagents 骨架装配层：严格空骨架，模型可见面（工具列表 / 提示组装）与
+# create_agent 时代一致；能力扩展经 AgentConfig 逐项开启（ADR-0018）。
+# ---------------------------------------------------------------------------
+
+# deepagents 内置工具名（文件 / shell / 委派）。未来工单启用某个内置工具时，
+# 从此集合移除对应名字，模型即可见（task 可见的前提是 subagents 非空）。
+DEEPAGENT_TOOL_NAMES = frozenset(
+    {
+        "delete",
+        "edit_file",
+        "execute",
+        "glob",
+        "grep",
+        "ls",
+        "read_file",
+        "task",
+        "write_file",
+    }
+)
+
+
+class _ExcludeDeepAgentToolsMiddleware(
+    AgentMiddleware[Any, Any, Any]  # pyright: ignore[reportMissingTypeStubs]
+):
+    """空骨架闸门：从模型请求中移除 deepagents 内置工具。
+
+    模型请求的工具列表每次调用重建，此处不改图结构；FilesystemMiddleware
+    默认不注入提示词、子代理信息只随 task 工具描述出现（均已核实 0.7.13），
+    因此工具名移除后内置能力对模型完全不可见。
+    """
+
+    @property
+    def name(self) -> str:
+        return "ExcludeDeepAgentToolsMiddleware"
+
+    def _without_builtin_tools(self, request: ModelRequest[Any]) -> ModelRequest[Any]:
+        return request.override(
+            tools=[
+                tool
+                for tool in request.tools
+                if getattr(tool, "name", None) not in DEEPAGENT_TOOL_NAMES
+            ]
+        )
+
+    def wrap_model_call(  # pyright: ignore[reportMissingTypeStubs]
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Any],
+    ) -> Any:
+        return handler(self._without_builtin_tools(request))
+
+    async def awrap_model_call(  # pyright: ignore[reportMissingTypeStubs]
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Any],
+    ) -> Any:
+        return await handler(self._without_builtin_tools(request))
+
+
+class _NoopSummarizationMiddleware(
+    AgentMiddleware[Any, Any, Any]  # pyright: ignore[reportMissingTypeStubs]
+):
+    """同名替换 deepagents 默认摘要件：chat 每轮从 chat_messages 显式重建上下文
+    （窗口裁剪 + 预算计量），摘要卸载（逐出消息写 backend 文件）不适用，原位禁用。"""
+
+    @property
+    def name(self) -> str:
+        return "SummarizationMiddleware"
+
+
+@dataclass(frozen=True)
+class AgentConfig:
+    """chat 系 agent 的 deepagents 装配配置；新变体（Tutor 等）= 新增常量实例。
+
+    扩展点（按后续工单逐项启用；启用内置工具须同步调整 DEEPAGENT_TOOL_NAMES）：
+    - tools：追加工具（检索等），与 deepagents 内置工具并存；
+    - subagents：子代理规格，非空时 task 工具才有意义；
+    - skills：技能源（SKILL.md 渐进加载，需配合 backend 提供文件）；
+    - backend：文件后端（虚拟文件上下文 / 大输出落盘等能力的前提）；
+    - middleware：附加中间件（错误归一、超时等横切能力）。
+    """
+
+    tools: tuple[Any, ...] = ()
+    subagents: tuple[Any, ...] = ()
+    skills: tuple[str, ...] | None = None
+    backend: BackendProtocol | None = None
+    middleware: tuple[AgentMiddleware[Any, Any, Any], ...] = ()  # pyright: ignore[reportMissingTypeStubs]
+
+
+CHAT_AGENT_CONFIG = AgentConfig()
+
+
+def build_agent(
+    config: AgentConfig,
+    model: BaseChatModel,
+    checkpointer: BaseCheckpointSaver[str],
+    *,
+    system_prompt: SystemMessage | None,
+) -> CompiledStateGraph[AgentState[Any], Any, InputAgentState, OutputAgentState[Any]]:
+    """按配置装配 deep agent。
+
+    system_prompt 必须经参数注入：deepagents 会把组装结果（哪怕空串）传给
+    create_agent 的 system_prompt 参数，输入 messages 里的 SystemMessage 会被
+    覆盖丢弃（已实测 0.7.13），混入消息不生效。
+    """
+    return create_deep_agent(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
         model=model,
-        tools=[],
+        tools=list(config.tools),
+        system_prompt=system_prompt,
+        subagents=list(config.subagents) or None,
+        skills=list(config.skills) if config.skills is not None else None,
+        backend=config.backend,
+        middleware=[
+            _ExcludeDeepAgentToolsMiddleware(),
+            _NoopSummarizationMiddleware(),
+            *config.middleware,
+        ],
         checkpointer=checkpointer,
     )
 
@@ -316,10 +438,18 @@ async def stream_chat_reply(
     await checkpointer.adelete_thread(thread_id)
     http_client = openai.DefaultAsyncHttpxClient(trust_env=False)
     started = perf_counter()
+    # 业务 system 提示经 build_chat_agent 参数注入（deepagents 下混入 messages 会被丢弃），
+    # 其余消息（轮次窗口 + 当前提问）照常作为对话历史喂入。
+    system_prompt = next((m for m in context_messages if isinstance(m, SystemMessage)), None)
+    input_messages = [m for m in context_messages if not isinstance(m, SystemMessage)]
     try:
-        agent = build_chat_agent(build_chat_model(provider, http_client), checkpointer)
+        agent = build_chat_agent(
+            build_chat_model(provider, http_client),
+            checkpointer,
+            system_prompt=system_prompt,
+        )
         async for chunk, _metadata in agent.astream(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
-            {"messages": list(context_messages)},  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]
+            {"messages": input_messages},  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]
             config={
                 "configurable": {"thread_id": thread_id},
                 "recursion_limit": CHAT_RECURSION_LIMIT,

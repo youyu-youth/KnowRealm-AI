@@ -21,6 +21,7 @@
 
 - 基线（PRD 决策表 #1~#59 绝大多数）代码完结，约 15 个功能波次仅剩**用户真机验收**（按惯例由用户执行，Agent 验证止于自动化门禁，不代勾）。
 - 扩展 F1「转写分片 / 来源时间轴」**六票 + 07 补票全部完结**（06 文档收尾：数据模型升 v2.4 重命名、扩展文档 §7 回写、全库交叉引用同步、backend/AGENTS.md 0019）；锚点两表空表就位，剩用户真机验收。
+- **Chat Agent 骨架已迁移 deepagents**（ADR-0018，2026-09-13）：`create_agent` → `create_deep_agent` 严格空骨架 + `AgentConfig` 轻工厂，模型可见面与迁移前严格一致（423 测试全绿），为 Tools/Skills/Memory/RAG 预留官方架构入口；summary/review 两图维持裸 LangGraph 形态。
 - Desktop 全局框架与 `/`「今日」页已按新版 `DESIGN.md` 完成重设计：冷中性设计令牌、分层应用壳、课程侧栏、紧凑 Command 入口、Toast / Tooltip / 状态标签与今日页「学习链 → 行动/资产 → 统计」阅读顺序均已落地；范围外页面只继承主题基础，不改业务布局。
 - `/inbox` 已改为高密度桌面工作区：真实统计、来源/状态筛选、URL 可恢复搜索与分页、多选批量归类/升级/删除、Transcript 预览及宽屏常驻右栏/窄屏 Dialog 均已落地；并按用户提供的视觉参考强化彩色统计图标、分组筛选按钮、列标题、独立圆角记录行、约 30% 宽右侧检查器及主次操作按钮。真实空态可主动查看醒目标注且完全只读的本地示意数据，未新增后端接口。
 - `/spaces`「知识空间」已按视觉参考完成重设计：标题 + 场景/状态胶囊筛选 + 排序 + 「更多筛选」子菜单（收纳教育阶段/课程类型）+ 网格/列表视图切换；课程卡片含场景图标、状态徽章、统计三格（记录/知识点/最近更新）、学习进度条与打开/编辑/⋯删除；右栏四模块（知识空间统计 / 最近活跃课程 / 待归类内容 / 最近活动）；新建课程改为右侧 Sheet 抽屉（学习场景三卡片按钮 + 只读初始状态 + 简介 200 字计数）。筛选/排序/视图全部在客户端完成（一次全量拉取，URL search params 可恢复），后端零改动。课程级聚合统计与周活跃、待归类、活动流后端暂无接口，按惯例用确定性示意数据并以「示意」标签明示（`spacesInsights.ts`，统计域接入后整体替换）；右栏「待归类内容」唯一真实入口为 `/inbox`。卡片「编辑」经 `/spaces/$courseId?edit=1` 直达编辑态。
@@ -48,7 +49,7 @@
 | 模拟测试 | 五题型建卷、作答面、逐题 LLM 评分+交卷、结果页+摘要侧栏、崩溃恢复重评 | QUIZ_TEST_COMPLETED 幂等；失败题排除分母 |
 | Todo | 手动 CRUD、生成/采纳/修剪、用户接管语义 | 接管即脱离批次（ADR-0011） |
 | 复习资料 | 生成（上下文=转写全文+总结辅助）、HITL 确认对话框、版本链编辑、导出接入 | LangGraph 图之二；RAG 已否决 |
-| AI 对话 | 档案（角色+自我介绍）、会话管理、流式自由对话、记录挂载上下文、引用（citations）+转写失效联动、知识点讲解入口；**三栏工作区（对话记录/对话/上下文面板）+ Streamdown 流式 Markdown（代码高亮/CJK/公式/引用角标）** | LangGraph 图之三：`create_agent` 循环（#53），**tools=[] 空置预留**检索工具；图 1 独有交互（收藏/工具开关）为本地示意假数据，未接后端 |
+| AI 对话 | 档案（角色+自我介绍）、会话管理、流式自由对话、记录挂载上下文、引用（citations）+转写失效联动、知识点讲解入口；**三栏工作区（对话记录/对话/上下文面板）+ Streamdown 流式 Markdown（代码高亮/CJK/公式/引用角标）** | LangGraph 图之三：deepagents `create_deep_agent` 骨架（ADR-0018，严格空骨架），**tools 空置预留**检索工具；图 1 独有交互（收藏/工具开关）为本地示意假数据，未接后端 |
 | 课程 | 工作台骨架、课程 CRUD、发现页、详情编辑、归档退出 | ARCHIVED 前置护栏三道闸门已校验；归档/恢复 UI 未做（有意推迟） |
 | 记录 | 真实记录列表、记录详情（总结/转写面板化）、记录删除退出 | |
 | 学习统计 | 后端七口径统计端点、前端统计带+5 图（真实数据） | 七口径=JOIN records+子表 deleted_at 双过滤 |
@@ -110,7 +111,7 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 └─ .scratch/              工单 tracker（25 个 feature 目录）
 ```
 
-**LangGraph（后端三图）**：`summary/graph.py`（总结生成）、`review_material/graph.py`（复习资料）、`chat/graph.py`（create_agent 循环，tools 预留空位）。无独立 agent 服务，「Agent 能力」以工具挂载形式演进（见扩展文档 §40）。
+**LangGraph（后端三图）**：`summary/graph.py`（总结生成）、`review_material/graph.py`（复习资料）、`chat/graph.py`（deepagents `create_deep_agent` 主骨架，ADR-0018：严格空骨架 + `AgentConfig` 轻工厂，tools/subagents/skills/backend/middleware 五扩展点预留）。无独立 agent 服务，「Agent 能力」以工具挂载形式演进（见扩展文档 §40）。
 
 **任务系统**：`modules/jobs` JobRunner——SQLite 单属主任务循环（ADR-0012），ASR/总结/KP/习题/复习/评分/回填等全走此通道；崩溃恢复与幂等由各 worker 自理。
 

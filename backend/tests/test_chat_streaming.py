@@ -17,7 +17,8 @@ from langchain_core.messages import (
     SystemMessage,
     UsageMetadata,
 )
-from langchain_core.outputs import ChatGenerationChunk, ChatResult
+from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
+from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import update
 
 from app.main import create_app
@@ -26,6 +27,7 @@ from app.modules.chat.graph import (
     ChatContextTooLargeError,
     ContextRow,
     RecordContext,
+    build_chat_agent,
     build_context_messages,
     parse_citation_reply,
 )
@@ -119,10 +121,7 @@ class TestBuildContextMessages:
         assert len(messages) == 3
         assert isinstance(messages[0], SystemMessage)
         # 有效 SYSTEM 消息末尾统一携带对话内容语言指令（决策 #59）。
-        assert (
-            messages[0].content
-            == "你是学习助手\n回答使用与用户最新提问相同的语言。"
-        )
+        assert messages[0].content == "你是学习助手\n回答使用与用户最新提问相同的语言。"
         assert messages[0].id == "sys"
         assert isinstance(messages[1], HumanMessage)
         assert isinstance(messages[2], AIMessage)
@@ -1020,3 +1019,64 @@ async def test_free_chat_reply_produces_no_citations(
         assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
         assert assistant["citations"] == []
         assert assistant["content"] == "普通回答[1]。\n[1] 看起来像引用的一行"
+
+
+class _SkeletonProbeModel(BaseChatModel):
+    """空骨架探测缝隙：记录 bind_tools 收到的工具名与模型实际收到的 system 消息。
+
+    ClassVar 共享沿用 StubChatModel 模式；每次测试前手动重置。
+    """
+
+    bound_tools: ClassVar[list[str] | None] = None
+    seen_system: ClassVar[str | None] = None
+
+    @property
+    def _llm_type(self) -> str:
+        return "skeleton-probe"
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "_SkeletonProbeModel":
+        type(self).bound_tools = [getattr(t, "name", "?") for t in tools]
+        return self
+
+    def _generate(
+        self,
+        messages: Any,
+        stop: Any = None,
+        run_manager: Any = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        type(self).seen_system = cast(
+            "str | None",
+            next(
+                (m.content for m in messages if isinstance(m, SystemMessage)),
+                None,
+            ),
+        )
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content="骨架等价探测回复"))]
+        )
+
+
+class TestDeepagentsEmptySkeleton:
+    """ADR-0018 空骨架等价闸门：模型可见工具面为空、system 提示经参数注入完整到达。
+
+    兼作 deepagents 升级的回归闸门——升级后内置工具名或提示注入行为变化即红。
+    """
+
+    def test_model_sees_empty_toolset_and_param_system_prompt(self) -> None:
+        _SkeletonProbeModel.bound_tools = None
+        _SkeletonProbeModel.seen_system = None
+        agent = build_chat_agent(
+            _SkeletonProbeModel(),
+            InMemorySaver(),
+            system_prompt=SystemMessage(content="你是学习助手"),
+        )
+        result = agent.invoke(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+            {"messages": [HumanMessage(content="你好")]},
+            config={"configurable": {"thread_id": "skeleton-probe"}},
+        )
+        assert result["messages"][-1].content == "骨架等价探测回复"
+        # 空工具面：bind_tools 未被调用或收到空列表（deepagents 内置工具全部不可见）。
+        assert _SkeletonProbeModel.bound_tools in (None, [])
+        # system 提示经参数注入完整到达（deepagents 会丢弃混入 messages 的 SystemMessage）。
+        assert _SkeletonProbeModel.seen_system == "你是学习助手"
