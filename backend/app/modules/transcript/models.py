@@ -24,7 +24,7 @@ class Transcript(Base):
 
 
 class TranscriptSegment(Base):
-    """句级转写分片：transcripts.content 的派生定位层（F1，数据模型 v2.4）。
+    """句级转写分片：transcripts.content 的派生定位层（F1，数据模型 v2.5）。
 
     四个时间戳列允许 NULL——全库唯一退化态（无时间轴来源：存量回填 /
     in-flight 降级 / 编辑未命中句共用该语义）；speaker 列恒 NULL 预留。

@@ -1,4 +1,4 @@
-# KnowRealm-AI 数据模型 v2.4
+# KnowRealm-AI 数据模型 v2.5
 
 > **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.7》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.5.md`。
 > **核心原则（v2.0 范式，ADR-0001 / 决策 #55）**：
@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：v2.5（2026-09-13）**A1+A2 Chat 检索工具已实施（迁移 0020，chat-retrieval-tool plan）**——§4.5 增配套 FTS5 虚拟表 `segment_search_index`（entity_type ∈ {transcript_segment, document_segment} / entity_id / body 为 jieba 分词串；与全局搜索 `search_index` 分表，`/api/search` 语义零变化）；可再生衍生索引不计正式表数，纪律同 ADR-0016（写路径同事务先删后插、软删不触碰索引行、查询期回表过滤）。挂载对话经 `search_transcript` 工具消费该索引：命中一律回业务表取逐字原文（索引只负责"找到哪个片段"），无分片记录退化为 transcript 全文子串兜底。
 > **变更记录**：v2.4（2026-09-10）**F1 转写分片与来源时间轴已实施（迁移 0019，transcript-segments plan）**——§4.5 前四表（transcript_segments / document_segments / source_anchors / source_anchor_links）标注**已实施**，表结构以此节为准。实施定案：transcript_segments 四个时间戳列允许 NULL（= 无时间轴来源，存量回填 / in-flight 降级 / 编辑未命中句三场景共用同一退化语义）；document_segments.course_id 可空（收件箱导入未归类为一等场景）、course_material_id 挂靠路径列预留（course_materials P5 未建，暂无外键，其落地时补约束）；source_anchors「至少关联一个分片」收紧为精确类型 CHECK（AUDIO_SEGMENT 必挂 transcript_segment_id、DOCUMENT_SEGMENT 必挂 document_segment_id，§10 同步）；四表为派生定位/引用结构，不带 created_at / 软删列（随父实体级联删除）；锚点两表空表就位、本期零写入者（首个写入者随 A1 检索工具 / A3 Evidence Builder）。
 > **变更记录**：v2.3（2026-09-06）**复习资料定稿（16 plan grill）**——review_materials 由 6 字段草案补齐完整形态：status（GENERATED / CONFIRMED / SUPERSEDED，确认必选）、version_no（(record_id, version_no) 唯一；仅 AI 重生成换代，手动编辑就地生效不换代）、transcript_source_version（过期锚点：转写已改则拒绝新提交）、generated_from_summary_id（可空，仅溯源不阻塞）、user_feedback / token_usage_json / latency_ms / confirmed_at / 软删列。生成上下文定为**转写/文档解析全文为主 + 已确认总结辅助**（KP 不进，弃"总结+KP"草案）；生成走 LangGraph interrupt/resume（复用 langgraph.db，thread_id 前缀隔离，与总结同构）；超长按模型窗口自适应（装得下单次调用、超限语义分块 map-reduce，禁静默截断）；Top 重点清单条数不固定（LLM 按内容密度决定）。
 > **变更记录**：2026-08-25 **习题生成与作答定稿（08 plan grill）**——quizzes 增作答三列（user_answer_json / answer_result 可空 CORRECT·WRONG，NULL=简答待自评 / answered_at，与 QUIZ_ANSWERED 同事务写）并补软删标注；不建 model / prompt_version / quality_score / cognitive_level / concept_id / source_anchor_id 列（溯源记 processing_jobs.result_json——07 先例，P3 / P5 / 评测域后补）；选择题单选、判断题 options 固定「对/错」两项与选择题同构；逐题模式一题一答、简答二态自评；learning_events 幂等键构造定为 `{event-slug}:{source-id}`（quiz-answered:{quiz_id}）；习题批次采纳不发学习事件；Wave B 测验模式同题再答键位另立（quiz-answered:test:{item_id} 风格）。
@@ -308,6 +309,8 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 | record_file_id / course_material_id | TEXT | 二者**必须且只能一个非空**（CHECK）；course_material 路径列预留未启用——course_materials 表 P5 未建、本列暂无外键，其落地时补约束，本期恒走 record_file_id |
 | sequence_no / page_no / section_title | INTEGER / INTEGER / TEXT | sequence_no 记录内全局连续；page_no 可空（PDF 逐页提取、页码 1 起；DOCX/txt/md 为 NULL）；section_title 可空 |
 | content / start_offset / end_offset / content_hash | TEXT / INTEGER / INTEGER / TEXT | start_offset / end_offset 可空，为相对文档全文 content 的字符偏移 |
+
+配套 **FTS5 虚拟表** `segment_search_index(entity_type, entity_id, body)`（v2.5，迁移 0020）——entity_type ∈ {transcript_segment, document_segment}；body 为 jieba `cut_for_search` 分词串，BM25 排序；与全局搜索 `search_index` 分表（`/api/search` 不混入分片命中）。可再生衍生索引：**不计正式表数**，写入同事务先删后插、软删不触碰索引行、查询期回表过滤（ADR-0016 纪律）。
 
 **source_anchors** — 来源锚点（已实施，空表零写入者）
 | 字段 | 类型 | 说明 |

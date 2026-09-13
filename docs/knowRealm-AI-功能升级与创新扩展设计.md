@@ -30,7 +30,7 @@
 | D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | Tauri sidecar（Python 进程内）FastAPI + LangChain/LangGraph + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4.3） |
 | D7 | 异步与缓存 | Redis/Redisson + RabbitMQ（§27.4/§27.5） | 自研 processing_jobs 队列（SQLite 表即队列 + sidecar 进程内 asyncio worker），无 Redis / RabbitMQ / procrastinate（决策 #1） |
 | D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | sqlite-vec（vec0 虚拟表）+ semantic_embeddings 统一表；明确不做 Qdrant / pgvector（技术栈 v4.3） |
-| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.4（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
+| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.5（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
 | D10 | shares 表 | §25.1 保留 t_share | 不建 shares 表（决策 #15） |
 | D11 | F15 落地 | 不新增表（仅 action_type=PREVIEW） | 依赖 course_materials 课程级资料表（决策 #12） |
 | D12 | Teach-back 输入 | 语音解释 → ASR（§18.1） | V1 文本先行，语音后补（决策 #19） |
@@ -39,7 +39,7 @@
 | D15 | 优先级与阶段 | §6 S+/A+ 评级、§32 Phase 1~7、§37 P0~P3 | 基线 §4.7 阶段映射（F1=P2 … F16=P6）与 §5.1 阶段规划 |
 | D16 | 产品定位语境 | 毕业设计 / 项目展示 / 比赛（§33） | 开源、面向个人使用（基线头部） |
 
-> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.4》。
+> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.5》。
 
 ---
 
@@ -619,7 +619,7 @@ Course Concept Graph                         Learning Evidence
 
 # 7. F1 — Transcript Segment + Evidence Timeline
 
-> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v2.4》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
+> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v2.5》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
 >
 > - **术语定名「来源时间轴」（Source Timeline）**：本章 "Evidence Timeline" 废弃——Evidence 一词专属「学习证据」（Learning Evidence）；
 > - **交付边界**：本期 = 数据地基（四表 + 切分管道 + 存量回填）+ 来源时间轴前端；不含音频回放、不含 AI 产物 graph prompt 引用改造、不动搜索索引；
@@ -3592,7 +3592,7 @@ Mastery Update
 三项真实缺口（按严重度）：
 
 1. **`learning_events` 零消费者**：表结构完备（幂等键、`schema_version`、score/difficulty/duration 字段，`record/models.py`），summary / quiz / knowledge_point 三处 service 已在写入，但无任何 dispatch 与 Evidence Builder——数据在攒、管道未接，是当前离"学习大脑"最远的一环；
-2. **chat 无工具层 + 长材料降级丢细节**：`build_context_messages` 在转写超过 30000 字符时降级为"已确认摘要 + 知识点全文 + 近三轮引用摘录"并告知模型"缺失细节不可推断"——这条降级路径即检索工具需求已真实发生的证据；
+2. **chat 工具层已落地（2026-09-13 A1+A2），长材料降级保留为保底**：`build_context_messages` 在转写超过 30000 字符时降级为"已确认摘要 + 知识点全文 + 近三轮引用摘录"并告知模型"缺失细节不可推断"——该降级路径即检索工具需求已真实发生的证据；挂载会话现已注入 `search_transcript`，细节由 agent 主动检索找回（无分片记录退化为全文子串）；
 3. **单记录挂载限制**：`ChatSessionCreate.record_id` 为单值，用户无法跨记录提问（基线 #24 已定 P2 以「@全部资料全局 RAG」解除）。
 
 架构洞察：chat 每轮发送前清空 checkpoint、以业务表为唯一记忆源（`stream_chat_reply` 轮初 `adelete_thread`）。这对工具化**有利**——工具循环中间态不跨轮持久，不存在 checkpoint 膨胀与跨轮工具状态泄漏问题。
@@ -3601,7 +3601,7 @@ Mastery Update
 
 | 能力 | §39.2 裁定 | 代码级细化 |
 |---|---|---|
-| Agent Tools | ✅ 立即做 | 第一工具 `search_library` 直接包装 `SearchService.search`；工具引用结果落 `citations_json` 契约复用前端；挂载会话超 30k 转写从"降级塞摘要"改为"agent 主动检索" |
+| Agent Tools | ✅ 立即做 | 第一工具 `search_transcript`（2026-09-13 已实施：分片级 FTS + 挂载内单工具；原"直接包装 `SearchService.search`"设想据两代码事实修正，见 §40.3 A1 行）；工具引用结果落 `citations_json` 契约复用前端；挂载会话超 30k 转写保留"降级塞摘要"保底，细节由 agent 主动检索找回 |
 | RAG | ✅ 已规划 | FTS5 已覆盖关键词检索，向量不急于上——BM25+jieba 对中文学习语料够用；sqlite-vec 等"同义改写问不出"成为真实抱怨再进（#24 `semantic_embeddings.course_id` 可空已预留） |
 | Memory | ✅ 分层，不引框架 | 现状 = 逐轮重放业务表（最近 N 轮 + 字符预算窗口），**跨会话零记忆**；最小可行增量：学习偏好沉淀进 profile（SQLite 业务表即记忆，否决 mem0/letta） |
 | Agent Workflow | ✅ 域内 graph | 现有 3 graph 的"确定性 Service 与 Graph 分离"模式正确；Autopilot 的 Plan-and-Execute 留 P6，勿提前 |
@@ -3616,9 +3616,9 @@ Mastery Update
 
 | # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
 |---|---|---|---|---|---|
-| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.4 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
-| A1 | Chat 检索工具（Agent 第一工具） | 基线 §4.7"检索为第一工具"（#53） | ★★★ | 中低 | `@tool` 包装 `SearchService`；解决 >30k 转写丢细节痛点；检索入口与引用 UI 双复用，工作量集中在工具编排 |
-| A2 | 工具调用的前端呈现 | ——（基线未细化的实施项） | ★★★ | 中 | SSE 增加 `tool_call` / `tool_result` 事件类型；chat UI 展示"正在检索 → 命中 n 条"状态卡；AI Elements 评估预留的"chat 上工具调用"重启触发点在此落地（自定义组件为主体） |
+| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.5 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
+| A1 | Chat 检索工具（Agent 第一工具） | 基线 §4.7"检索为第一工具"（#53） | ★★★ | 中低 | **已实施（2026-09-13，A1+A2 三票完结）**：实现形态定为「分片级 FTS 索引 + 挂载内单工具 `search_transcript`」（迁移 0020 `segment_search_index`，jieba 分词 + BM25；命中回业务表取逐字原文，无分片记录退化为全文子串）。与 §40.2 原设想「直接包装全局 `SearchService.search`」的差异源于两处代码事实：全局索引 snippet 产自 jieba token 串（非逐字原文，无法通过引用逐字校验）、索引 body 截断在 30,000 字符（覆盖不了 >30k 转写痛点）；`search_library` 留给 B2 连同跨记录范围胶囊一并设计。>30k 降级材料保留保底，`CHAT_PROMPT_VERSION` bump v3 |
+| A2 | 工具调用的前端呈现 | ——（基线未细化的实施项） | ★★★ | 中 | **已实施（2026-09-13）**：SSE 增 `tool_call` / `tool_result` 事件（消息流内检索状态卡「正在检索 → 命中 n 条 / 失败」，多次检索逐条陈列）；过程态与流式文本同生命周期、done / 中断后消失，不持久化（历史消息仍只有正文与引用）；右栏工具开关维持示意态（B1 接真） |
 | A3 | 事件消费框架 + Evidence Builder 最小版 | Phase 2 Learning Evidence | ★★★ | 中 | §39.2 基础设施第 1 项；复用 JobRunner / asyncio 模式；幂等键已具备；**Evidence 不可再生，每晚一天上线丢一天积累** |
 
 ### B 档：P2 后期 ~ P3（依赖 A 档）
@@ -3649,7 +3649,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 第 1 步   F1 Segment + Source Anchor（A0）   ← ✅ 已完成（2026-09-10）
 第 2 步   A3 Evidence Builder 管道            ← 依赖 F1（learning_evidence.source_anchor_id）
   ┆ 并行槽（不依赖 F1 / A3，可随时插入，单独成线）
-  ┆   A1 chat 检索工具 → A2 工具调用前端呈现
+  ┆   A1 chat 检索工具 → A2 工具调用前端呈现   ← ✅ 已完成（2026-09-13，见 §40.3 A1/A2 行）
 第 3 步   B1 web_search（Tavily，#53）
 第 4 步   B2 跨记录 / 全局问答（#24 @全部资料）
 第 5 步   B5 sqlite-vec 混合检索（BM25 吃力时可提前）
