@@ -20,7 +20,10 @@ from app.modules.chat.graph import (
     CHAT_TRANSCRIPT_MAX_CHARS,
     ChatContextTooLargeError,
     ChatStreamOutcome,
+    ChatTokenEvent,
+    ChatToolCallEvent,
     ContextRow,
+    MountedMaterial,
     RecordContext,
     build_context_messages,
     parse_citation_reply,
@@ -81,6 +84,13 @@ class SessionPromptContext:
     messages: list[AnyMessage]
     transcript: str | None = None  # 挂载会话的当前转写全文；自由聊天为 None
     record_id: str | None = None
+
+    @property
+    def mounted(self) -> MountedMaterial | None:
+        """挂载材料（record_id 与 transcript 成对）；自由聊天或半对时为 None。"""
+        if self.record_id is None or self.transcript is None:
+            return None
+        return MountedMaterial(record_id=self.record_id, transcript=self.transcript)
 
 
 def _sse(event: str, payload: Mapping[str, object]) -> ServerSentEvent:
@@ -314,16 +324,25 @@ class ChatMessageService:
             parts: list[str] = []
             try:
                 prompt_context = await _session_context(session_factory, session_id)
-                async for text in stream_chat_reply(
+                async for event in stream_chat_reply(
                     session_factory=session_factory,
                     checkpointer=checkpointer,
                     provider=accepted.provider,
                     context_messages=prompt_context.messages,
                     session_id=session_id,
                     outcome=outcome,
+                    mounted=prompt_context.mounted,
                 ):
-                    parts.append(text)
-                    yield _sse("token", {"text": text})
+                    if isinstance(event, ChatTokenEvent):
+                        parts.append(event.text)
+                        yield _sse("token", {"text": event.text})
+                    elif isinstance(event, ChatToolCallEvent):
+                        yield _sse("tool_call", {"tool": event.tool, "query": event.query})
+                    else:
+                        yield _sse(
+                            "tool_result",
+                            {"tool": event.tool, "hits": event.hits, "ok": event.ok},
+                        )
             except ChatContextTooLargeError:
                 yield _sse(
                     "error",

@@ -1,7 +1,9 @@
 """对话 agent：上下文组装（每轮从业务表显式重建）、deepagents 骨架装配与流式生成路径。"""
 
+import json
 import re
 from collections.abc import AsyncGenerator, Callable, Sequence
+from contextvars import Token
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from time import perf_counter
@@ -28,6 +30,7 @@ from langchain_core.messages import (
     AnyMessage,
     HumanMessage,
     SystemMessage,
+    ToolMessage,
 )
 from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
 from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
@@ -37,6 +40,12 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.chat.schemas import ChatRole
+from app.modules.chat.search_tool import (
+    SearchTranscriptContext,
+    bind_search_context,
+    reset_search_context,
+    search_transcript,
+)
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 from app.modules.transcript.sentences import sentences_from_plain_text
@@ -48,8 +57,10 @@ CHAT_TRANSCRIPT_MAX_CHARS = 30000
 # 对话内容语言指令：逐条跟随当前用户提问的语言，与界面语言正交（决策 #59）。
 # 组装上下文时统一追加到有效 SYSTEM 消息末尾（自由聊天的角色快照与挂载指令都覆盖）。
 CHAT_LANGUAGE_INSTRUCTION = "回答使用与用户最新提问相同的语言。"
-CHAT_PROMPT_VERSION = "chat-mount-cite-v2"
+CHAT_PROMPT_VERSION = "chat-mount-cite-v3"
 CHAT_RECURSION_LIMIT = 25
+# >30k 降级分支追加的检索工具指引（仅挂载会话；≤30k 全文在上下文与自由聊天不加）。
+CHAT_RETRIEVAL_GUIDANCE = "需要细节时可用 search_transcript 工具检索转写原文，并依据命中原文回答。"
 
 # 引用块约定：正文 [1][2] 角标，文末每行「[n] 转写原文摘录」，摘录 ≤80 字。
 # 引用行行首允许模型常见的 markdown 前缀（> 引用、-/* 列表），前缀不进摘录。
@@ -166,11 +177,46 @@ class RecordContext:
     knowledge_points: str = ""
 
 
+@dataclass(frozen=True)
+class MountedMaterial:
+    """挂载会话的检索材料：record_id 与 transcript 恒成对（半对不挂检索工具）。"""
+
+    record_id: str
+    transcript: str
+
+
 @dataclass
 class ChatStreamOutcome:
     """流式生成的用量回传（llm_call_logs 与 assistant 行落库共用）。"""
 
     token_usage: dict[str, object] = field(default_factory=dict[str, object])
+
+
+@dataclass(frozen=True)
+class ChatTokenEvent:
+    """流式文本增量。"""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class ChatToolCallEvent:
+    """工具调用开始：SSE 载荷 {tool, query}。"""
+
+    tool: str
+    query: str
+
+
+@dataclass(frozen=True)
+class ChatToolResultEvent:
+    """工具调用结束：SSE 载荷 {tool, hits, ok}（执行失败 ok=False）。"""
+
+    tool: str
+    hits: int
+    ok: bool
+
+
+ChatStreamEvent = ChatTokenEvent | ChatToolCallEvent | ChatToolResultEvent
 
 
 @dataclass(frozen=True)
@@ -247,6 +293,7 @@ def build_context_messages(
             )
             source = (
                 "转写超过 30000 字符，本轮仅提供以下材料，缺失细节不可推断。\n"
+                f"{CHAT_RETRIEVAL_GUIDANCE}\n"
                 f"已确认摘要：\n{record.summary or '暂无已确认摘要'}\n\n"
                 f"知识点全文：\n{record.knowledge_points or '暂无知识点'}\n\n"
                 "近三轮引用的转写摘录：\n" + ("\n".join(excerpts) or "暂无引用摘录")
@@ -278,17 +325,6 @@ def build_context_messages(
     if trailing_user is not None:
         messages.append(HumanMessage(content=trailing_user.content, id=trailing_user.id))
     return messages
-
-
-def build_chat_agent(
-    model: BaseChatModel,
-    checkpointer: BaseCheckpointSaver[str],
-    *,
-    system_prompt: SystemMessage | None,
-) -> CompiledStateGraph[AgentState[Any], Any, InputAgentState, OutputAgentState[Any]]:
-    """自由聊天 / 挂载对话 agent：CHAT_AGENT_CONFIG 能力面为空（工具等为后续工单），
-    复用 lifespan 的 checkpointer。"""
-    return build_agent(CHAT_AGENT_CONFIG, model, checkpointer, system_prompt=system_prompt)
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +418,8 @@ class AgentConfig:
 
 
 CHAT_AGENT_CONFIG = AgentConfig()
+# 挂载变体：带 search_transcript 检索工具；自由聊天维持空配置（ADR-0018 变体=常量）。
+MOUNTED_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_transcript,))
 
 
 def build_agent(
@@ -413,9 +451,95 @@ def build_agent(
     )
 
 
+def build_chat_agent(
+    model: BaseChatModel,
+    checkpointer: BaseCheckpointSaver[str],
+    *,
+    system_prompt: SystemMessage | None,
+    config: AgentConfig = CHAT_AGENT_CONFIG,
+) -> CompiledStateGraph[AgentState[Any], Any, InputAgentState, OutputAgentState[Any]]:
+    """chat agent 装配：config 决定能力面（自由聊天空配置 / 挂载变体带检索工具），
+    复用 lifespan 的 checkpointer。"""
+    return build_agent(config, model, checkpointer, system_prompt=system_prompt)
+
+
 def chat_thread_id(session_id: str) -> str:
     """checkpoint 线程命名；每轮发送前清空，checkpoint 只承载当轮运行态。"""
     return f"chat-{session_id}"
+
+
+def _accumulate_usage(total: dict[str, object], usage: object) -> None:
+    """把单次模型调用的 usage_metadata 累加进总量（工具循环 = 多次调用求和）。"""
+    if not isinstance(usage, dict):
+        return
+    chunk_usage = cast(dict[str, object], usage)
+    for key in ("input_tokens", "output_tokens", "total_tokens"):
+        value = chunk_usage.get(key)
+        if isinstance(value, int):
+            current = total.get(key)
+            total[key] = (current if isinstance(current, int) else 0) + value
+
+
+@dataclass
+class _ToolCallDraft:
+    """一次工具调用的流式拼装：名称取首个非空片段，args 逐片累加。"""
+
+    name: str = ""
+    args: str = ""
+    emitted: bool = False
+
+
+def _consume_tool_call_fragments(
+    drafts: dict[int, _ToolCallDraft], chunk: AIMessageChunk
+) -> list[ChatToolCallEvent]:
+    """消费 tool_call_chunks 增量：args 严格 JSON 解析成功（拼装完整）才上报 query。
+
+    不能读 ``AIMessageChunk.tool_calls``：它对未闭合的 args 做部分解析（实测
+    1.6.3 会把 ``{"query": "傅里叶`` 解析成截断 query），会导致检索词提前上报。
+    """
+    events: list[ChatToolCallEvent] = []
+    for fragment in chunk.tool_call_chunks:
+        index = fragment.get("index")
+        if not isinstance(index, int):
+            continue
+        draft = drafts.setdefault(index, _ToolCallDraft())
+        name = fragment.get("name")
+        if not draft.name and isinstance(name, str) and name:
+            draft.name = name
+        args_fragment = fragment.get("args")
+        if isinstance(args_fragment, str) and args_fragment:
+            draft.args += args_fragment
+        if draft.emitted or not draft.name or not draft.args:
+            continue
+        try:
+            parsed = json.loads(draft.args)
+        except ValueError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        query = cast(dict[str, object], parsed).get("query")
+        if not isinstance(query, str) or not query:
+            continue
+        draft.emitted = True
+        events.append(ChatToolCallEvent(tool=draft.name, query=query))
+    return events
+
+
+def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
+    """ToolMessage → {tool, hits, ok}；错误态 ok=False，命中数从工具 JSON 载荷读取。"""
+    if message.status == "error":
+        return ChatToolResultEvent(tool=message.name or "", hits=0, ok=False)
+    hits = 0
+    if isinstance(message.content, str):
+        try:
+            payload = json.loads(message.content)
+        except ValueError:
+            payload = None
+        if isinstance(payload, dict):
+            value = cast(dict[str, object], payload).get("hits")
+            if isinstance(value, list):
+                hits = len(cast(list[object], value))
+    return ChatToolResultEvent(tool=message.name or "", hits=hits, ok=True)
 
 
 async def stream_chat_reply(
@@ -426,10 +550,14 @@ async def stream_chat_reply(
     context_messages: Sequence[AnyMessage],
     session_id: str,
     outcome: ChatStreamOutcome,
-) -> AsyncGenerator[str, None]:
-    """工厂层流式生成路径：建模型 → 清残留 → astream 逐 token → 统一埋点。
+    mounted: MountedMaterial | None = None,
+) -> AsyncGenerator[ChatStreamEvent, None]:
+    """工厂层流式生成路径：建模型 → 清残留 → astream 分发结构化流事件 → 统一埋点。
 
     - 每轮从 chat_messages 重建喂入：轮初清掉上轮/崩溃残留，checkpoint 只承载当轮运行态；
+    - 挂载会话（mounted）注入检索工具与运行期上下文；自由聊天空配置；
+    - 事件分发：AIMessageChunk 文本 → token、tool_call_chunks 拼全 → tool_call、
+      ToolMessage → tool_result；token 用量跨工具循环累加；
     - 正常完成埋点（graph_name=chat，仅元数据）并在返回前清理本轮 checkpoint；
     - 中断（GeneratorExit，客户端断开/用户停止）不落埋点直接终止；
     - 其他异常埋点后重新抛出，由调用方转 error 事件。
@@ -442,12 +570,24 @@ async def stream_chat_reply(
     # 其余消息（轮次窗口 + 当前提问）照常作为对话历史喂入。
     system_prompt = next((m for m in context_messages if isinstance(m, SystemMessage)), None)
     input_messages = [m for m in context_messages if not isinstance(m, SystemMessage)]
+    # 挂载会话：绑定检索工具上下文（record_id 与 transcript 成对，见 MountedMaterial）。
+    search_token: Token[SearchTranscriptContext | None] | None = None
+    if mounted is not None:
+        search_token = bind_search_context(
+            SearchTranscriptContext(
+                record_id=mounted.record_id,
+                transcript=mounted.transcript,
+                session_factory=session_factory,
+            )
+        )
     try:
         agent = build_chat_agent(
             build_chat_model(provider, http_client),
             checkpointer,
             system_prompt=system_prompt,
+            config=MOUNTED_CHAT_AGENT_CONFIG if search_token is not None else CHAT_AGENT_CONFIG,
         )
+        tool_call_drafts: dict[int, _ToolCallDraft] = {}
         async for chunk, _metadata in agent.astream(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
             {"messages": input_messages},  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]
             config={
@@ -456,15 +596,18 @@ async def stream_chat_reply(
             },
             stream_mode="messages",
         ):
-            if not isinstance(chunk, AIMessageChunk):
-                continue
-            chunk_usage = getattr(chunk, "usage_metadata", None)
-            if isinstance(chunk_usage, dict):
-                outcome.token_usage = cast(dict[str, object], chunk_usage)
-            text = chunk.content if isinstance(chunk.content, str) else ""
-            if not text:
-                continue
-            yield text
+            if isinstance(chunk, AIMessageChunk):
+                _accumulate_usage(outcome.token_usage, getattr(chunk, "usage_metadata", None))
+                text = chunk.content if isinstance(chunk.content, str) else ""
+                if text:
+                    yield ChatTokenEvent(text=text)
+                if chunk.tool_call_chunks:
+                    for event in _consume_tool_call_fragments(tool_call_drafts, chunk):
+                        yield event
+            elif isinstance(chunk, ToolMessage):
+                # 本轮工具执行完毕：拼装草稿在下一次模型调用前清空。
+                tool_call_drafts = {}
+                yield _tool_result_event(chunk)
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise
@@ -482,6 +625,8 @@ async def stream_chat_reply(
         )
         raise
     finally:
+        if search_token is not None:
+            reset_search_context(search_token)
         await http_client.aclose()
     await write_llm_call_log(
         session_factory=session_factory,

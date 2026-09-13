@@ -1,6 +1,8 @@
+import asyncio
 import json
 from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
@@ -15,6 +17,7 @@ from langchain_core.messages import (
     AnyMessage,
     HumanMessage,
     SystemMessage,
+    ToolMessage,
     UsageMetadata,
 )
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
@@ -41,6 +44,23 @@ from app.modules.summary.models import AiSummary
 TOKEN = "test-launch-token"
 
 STUB_REPLY = ["回答", "完成", "了"]
+
+
+@dataclass(frozen=True)
+class ToolCallReply:
+    """假模型的一次工具调用响应：单个完整 tool_call chunk（args 一次给全）。
+
+    args_fragments 非 None 时按给定片段流式发出 args（模拟真实供应商分片，
+    首片带 name/id），用于验证未闭合 JSON 不会被提前上报。
+    """
+
+    tool: str
+    args: dict[str, Any]
+    call_id: str = "call-1"
+    args_fragments: tuple[str, ...] | None = None
+
+
+StubReply = list[str] | ToolCallReply | None
 
 
 def row(row_id: str, role: ChatRole, content: str) -> ContextRow:
@@ -312,12 +332,13 @@ class TestParseCitationReply:
 class StubChatModel(BaseChatModel):
     """测试缝隙：捕获喂入的消息列表，按队列逐 token 吐出预设回复。
 
-    replies 队列元素为分片列表；None 表示该次调用抛错（注入供应商故障）。
-    captured / replies 用类级共享（ClassVar），跨每请求新建的实例累积。
+    replies 队列元素为分片列表（None 表示该次调用抛错、ToolCallReply 表示
+    该次调用发起工具调用）；captured / replies 用类级共享（ClassVar），
+    跨每请求新建的实例累积。
     """
 
     captured: ClassVar[list[list[AnyMessage]]] = []
-    replies: ClassVar[list[list[str] | None]] = []
+    replies: ClassVar[list[StubReply]] = []
 
     @property
     def _llm_type(self) -> str:
@@ -341,6 +362,29 @@ class StubChatModel(BaseChatModel):
     ) -> AsyncIterator[ChatGenerationChunk]:
         type(self).captured.append(list(messages))
         reply = type(self).replies.pop(0)
+        if isinstance(reply, ToolCallReply):
+            fragments = reply.args_fragments or (json.dumps(reply.args, ensure_ascii=False),)
+            for index, fragment in enumerate(fragments):
+                first = index == 0
+                yield ChatGenerationChunk(
+                    message=AIMessageChunk(
+                        content="",
+                        tool_call_chunks=[
+                            {
+                                "name": reply.tool if first else None,
+                                "args": fragment,
+                                "id": reply.call_id if first else None,
+                                "index": 0,
+                            }
+                        ],
+                        usage_metadata=(
+                            UsageMetadata(input_tokens=3, output_tokens=4, total_tokens=7)
+                            if index == len(fragments) - 1
+                            else None
+                        ),
+                    )
+                )
+            return
         if reply is None:
             raise RuntimeError("stub provider down")
         for index, part in enumerate(reply):
@@ -368,10 +412,10 @@ async def streaming_chat_app(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    replies: Sequence[list[str] | None] | None = None,
+    replies: Sequence[StubReply] | None = None,
 ) -> AsyncGenerator[tuple[FastAPI, httpx.AsyncClient, list[list[AnyMessage]]]]:
     captured: list[list[AnyMessage]] = []
-    queue: list[list[str] | None] = list(replies) if replies is not None else [list(STUB_REPLY)]
+    queue: list[StubReply] = list(replies) if replies is not None else [list(STUB_REPLY)]
 
     class _StubChatOpenAI(StubChatModel):
         pass
@@ -457,6 +501,18 @@ async def create_session(client: httpx.AsyncClient) -> str:
     created = await client.post("/api/chat-sessions", json={})
     assert created.status_code == 201
     return cast(str, created.json()["id"])
+
+
+async def wait_for_transcript_ready(client: httpx.AsyncClient, record_id: str) -> None:
+    for _ in range(250):
+        payload = cast(
+            dict[str, object],
+            (await client.get(f"/api/records/{record_id}/transcript")).json(),
+        )
+        if payload.get("status") == "READY":
+            return
+        await asyncio.sleep(0.02)
+    pytest.fail("转写未落稿")
 
 
 @pytest.mark.anyio
@@ -1080,3 +1136,167 @@ class TestDeepagentsEmptySkeleton:
         assert _SkeletonProbeModel.bound_tools in (None, [])
         # system 提示经参数注入完整到达（deepagents 会丢弃混入 messages 的 SystemMessage）。
         assert _SkeletonProbeModel.seen_system == "你是学习助手"
+
+
+@pytest.mark.anyio
+async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    final_reply = [
+        "傅里叶级数用三角函数的和表示周期函数[1]。",
+        "\n[1] 本讲系统梳理傅里叶级数的展开方法",
+    ]
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply("search_transcript", {"query": "傅里叶"}), final_reply],
+    ) as (_app, client, captured):
+        imported = await client.post(
+            "/api/document-imports",
+            files={
+                "file": (
+                    "傅里叶笔记.txt",
+                    "本讲系统梳理傅里叶级数的展开方法".encode(),
+                    "text/plain",
+                )
+            },
+        )
+        assert imported.status_code == 202
+        record_id = cast(str, imported.json()["record_id"])
+        await wait_for_transcript_ready(client, record_id)
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "傅里叶级数怎么展开？")
+
+        names = [name for name, _payload in events]
+        assert names[0] == "status"
+        assert names[-1] == "done"
+        assert names.index("tool_call") < names.index("tool_result") < names.index("token")
+        assert [payload for name, payload in events if name == "tool_call"] == [
+            {"tool": "search_transcript", "query": "傅里叶"}
+        ]
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "search_transcript", "hits": 1, "ok": True}
+        ]
+        # 工具命中进入第二次模型调用的上下文（ToolMessage 逐字原文）。
+        tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
+        assert len(tool_messages) == 1
+        assert "本讲系统梳理傅里叶级数的展开方法" in str(tool_messages[0].content)
+        # 命中句被模型逐字引用：citation 完整下发并落库。
+        assert [payload for name, payload in events if name == "citation"] == [
+            {
+                "index": 1,
+                "record_id": record_id,
+                "quote": "本讲系统梳理傅里叶级数的展开方法",
+            }
+        ]
+        history = await client.get(f"/api/chat-sessions/{session_id}/messages")
+        assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
+        assert assistant["citations"] == [
+            {
+                "index": 1,
+                "record_id": record_id,
+                "quote": "本讲系统梳理傅里叶级数的展开方法",
+            }
+        ]
+
+        # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
+        rows = await chat_log_rows(tmp_path)
+        assert len(rows) == 1
+        assert rows[0][3] == "chat-mount-cite-v3"
+        usage = json.loads(cast(str, rows[0][4]))
+        assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
+
+
+@pytest.mark.anyio
+async def test_mounted_tool_falls_back_to_substring_without_segments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transcript = "第一段讲缓存淘汰策略。\n第二段讲一致性哈希。"
+    final_reply = ["一致性哈希把节点映射到环上[1]。", "\n[1] 第二段讲一致性哈希。"]
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[
+            # args 分片流式到达：未闭合 JSON 不得提前上报截断的「一致」。
+            ToolCallReply(
+                "search_transcript",
+                {"query": "一致性哈希"},
+                args_fragments=('{"query": "一致', '性哈希"}'),
+            ),
+            final_reply,
+        ],
+    ) as (_app, client, captured):
+        # 粘贴/速记记录无分片：检索退化为全文子串兜底。
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": transcript}
+        )
+        assert capture.status_code == 201
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "一致性哈希是什么？")
+
+        assert [payload for name, payload in events if name == "tool_call"] == [
+            {"tool": "search_transcript", "query": "一致性哈希"}
+        ]
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "search_transcript", "hits": 1, "ok": True}
+        ]
+        tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
+        assert len(tool_messages) == 1
+        assert "第二段讲一致性哈希。" in str(tool_messages[0].content)
+        assert [payload for name, payload in events if name == "citation"] == [
+            {"index": 1, "record_id": record_id, "quote": "第二段讲一致性哈希。"}
+        ]
+        # ≤30k 挂载不追加检索工具指引（全文已在上下文，工具闲置）。
+        assert "search_transcript" not in str(captured[0][0].content)
+
+
+@pytest.mark.anyio
+async def test_long_mounted_prompt_adds_retrieval_tool_guidance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transcript = "长" * 30001 + "可检索细节"
+    async with streaming_chat_app(tmp_path, monkeypatch) as (_app, client, captured):
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": transcript}
+        )
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+
+        assert (await send_message(client, session_id, "细节问题"))[-1][0] == "done"
+
+        # >30k 降级材料追加检索工具指引；工具描述对模型可见。
+        prompt = str(captured[0][0].content)
+        assert "search_transcript" in prompt
+        assert "缺失细节不可推断" in prompt
+
+
+@pytest.mark.anyio
+async def test_mounted_tool_failure_streams_failed_tool_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 参数类型非法：工具执行失败落在 ToolNode 错误 ToolMessage，SSE 如实下发失败态。
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply("search_transcript", {"query": 123}), list(STUB_REPLY)],
+    ) as (_app, client, _captured):
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "原文"}
+        )
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "检索一下")
+
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "search_transcript", "hits": 0, "ok": False}
+        ]
+        assert events[-1][0] == "done"
