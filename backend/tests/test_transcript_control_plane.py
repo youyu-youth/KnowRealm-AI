@@ -338,9 +338,7 @@ async def test_transcript_patch_clears_stale_document_segments(tmp_path: Path) -
             f"/api/records/{record_id}/transcript",
             json={"content": "第一段改\n第二段", "expected_source_version": 1},
         )
-        document_segments = (
-            await client.get(f"/api/records/{record_id}/document-segments")
-        ).json()
+        document_segments = (await client.get(f"/api/records/{record_id}/document-segments")).json()
         segments = (await client.get(f"/api/records/{record_id}/transcript/segments")).json()
 
     assert updated.status_code == 200

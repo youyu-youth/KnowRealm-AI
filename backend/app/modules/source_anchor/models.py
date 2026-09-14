@@ -16,9 +16,7 @@ class SourceAnchor(Base):
     __tablename__ = "source_anchors"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    course_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("courses.id", ondelete="CASCADE")
-    )
+    course_id: Mapped[str] = mapped_column(String(36), ForeignKey("courses.id", ondelete="CASCADE"))
     source_type: Mapped[str] = mapped_column(String(30))
     source_id: Mapped[str] = mapped_column(String(36))
     record_id: Mapped[str | None] = mapped_column(

@@ -46,9 +46,7 @@ def read_sentences_jsonl(path: Path) -> list[Sentence]:
 
 
 def write_sentences_jsonl(path: Path, sentences: list[Sentence]) -> None:
-    path.write_text(
-        "\n".join(sentence_line(sentence) for sentence in sentences), encoding="utf-8"
-    )
+    path.write_text("\n".join(sentence_line(sentence) for sentence in sentences), encoding="utf-8")
 
 
 def sentences_from_plain_text(text: str) -> list[Sentence]:

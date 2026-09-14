@@ -36,9 +36,7 @@ class TranscriptSegment(Base):
     transcript_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("transcripts.id", ondelete="CASCADE")
     )
-    record_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("records.id", ondelete="CASCADE")
-    )
+    record_id: Mapped[str] = mapped_column(String(36), ForeignKey("records.id", ondelete="CASCADE"))
     file_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("record_files.id", ondelete="CASCADE")
     )

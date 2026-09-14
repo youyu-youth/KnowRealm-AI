@@ -709,9 +709,7 @@ async def test_knowledge_point_regeneration_and_confirm_sync_index(
         item_id = cast(str, draft_items[0]["id"])
         items = cast(list[dict[str, object]], payload["items"])
         batch_ids = {
-            cast(str, item["batch_id"])
-            for item in items
-            if item["generation_status"] == "DRAFT"
+            cast(str, item["batch_id"]) for item in items if item["generation_status"] == "DRAFT"
         }
         assert len(batch_ids) == 1
 
@@ -745,9 +743,7 @@ async def test_course_create_rename_and_hot_words_sync_index(tmp_path: Path) -> 
         by_name = await client.get("/api/search", params={"q": "量子"})
         assert [course["id"] for course in by_name.json()["courses"]] == [course_id]
 
-        renamed = await client.patch(
-            f"/api/courses/{course_id}", json={"name": "统计力学入门"}
-        )
+        renamed = await client.patch(f"/api/courses/{course_id}", json={"name": "统计力学入门"})
         assert renamed.status_code == 200
         by_new = await client.get("/api/search", params={"q": "统计"})
         by_old = await client.get("/api/search", params={"q": "量子"})
@@ -798,4 +794,3 @@ async def test_index_sync_failure_rolls_back_business_write(
 
     assert [record["id"] for record in by_old.json()["records"]] == [record_id]
     assert by_new.json()["records"] == []
-

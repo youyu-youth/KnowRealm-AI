@@ -97,8 +97,7 @@ async def assert_segment_tables_schema(db_path: Path) -> None:
     nullable_timestamps = ["record_start_ms", "record_end_ms", "file_start_ms", "file_end_ms"]
     assert all(transcript_columns[column] == 0 for column in nullable_timestamps + ["speaker"])
     # id 为 TEXT PRIMARY KEY（SQLite notnull 位恒 0），不在必填断言内。
-    required = ["transcript_id", "record_id", "file_id", "sequence_no", "content",
-                "content_hash"]
+    required = ["transcript_id", "record_id", "file_id", "sequence_no", "content", "content_hash"]
     assert all(transcript_columns[column] == 1 for column in required)
 
     assert list(document_columns) == [
@@ -218,17 +217,13 @@ async def test_document_segments_require_exactly_one_source(tmp_path: Path) -> N
             ":course_material_id, 0, 1, NULL, '第一页', 0, 100, 'hash-1')"
         )
         with pytest.raises(aiosqlite.IntegrityError):
-            await connection.execute(
-                insert, {"record_file_id": None, "course_material_id": None}
-            )
+            await connection.execute(insert, {"record_file_id": None, "course_material_id": None})
         with pytest.raises(aiosqlite.IntegrityError):
             await connection.execute(
                 insert,
                 {"record_file_id": FILE_ID, "course_material_id": "material-1"},
             )
-        await connection.execute(
-            insert, {"record_file_id": FILE_ID, "course_material_id": None}
-        )
+        await connection.execute(insert, {"record_file_id": FILE_ID, "course_material_id": None})
         await connection.commit()
 
 
@@ -330,19 +325,31 @@ async def test_source_anchor_links_unique_per_resource_and_relation(tmp_path: Pa
         )
         await connection.execute(
             insert,
-            {"id": "link-1", "resource_type": "SUMMARY", "resource_id": "summary-1",
-             "relation_type": "SUPPORTS"},
+            {
+                "id": "link-1",
+                "resource_type": "SUMMARY",
+                "resource_id": "summary-1",
+                "relation_type": "SUPPORTS",
+            },
         )
         with pytest.raises(aiosqlite.IntegrityError):
             await connection.execute(
                 insert,
-                {"id": "link-2", "resource_type": "SUMMARY", "resource_id": "summary-1",
-                 "relation_type": "SUPPORTS"},
+                {
+                    "id": "link-2",
+                    "resource_type": "SUMMARY",
+                    "resource_id": "summary-1",
+                    "relation_type": "SUPPORTS",
+                },
             )
         await connection.execute(
             insert,
-            {"id": "link-3", "resource_type": "SUMMARY", "resource_id": "summary-1",
-             "relation_type": "REFERENCES"},
+            {
+                "id": "link-3",
+                "resource_type": "SUMMARY",
+                "resource_id": "summary-1",
+                "relation_type": "REFERENCES",
+            },
         )
         await connection.commit()
 

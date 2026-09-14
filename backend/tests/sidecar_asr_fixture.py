@@ -125,9 +125,7 @@ class FixtureTencentAsrTransport(httpx.AsyncBaseTransport):
                     "Data": {
                         "Status": 2,
                         "Result": f"[0:0.020,0:2.380]  {text}\n",
-                        "ResultDetail": [
-                            {"FinalSentence": text, "StartMs": 20, "EndMs": 2380}
-                        ],
+                        "ResultDetail": [{"FinalSentence": text, "StartMs": 20, "EndMs": 2380}],
                     },
                     "RequestId": "fixture",
                 }

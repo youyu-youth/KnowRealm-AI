@@ -123,15 +123,13 @@ def _base_prompt(ctx: _ClaimedReviewMaterial, transcript: str) -> str:
             "严格返回指定结构，不添加结构外字段。\n"
         )
         revision = (
-            f"上一版复习资料：\n{_previous_text(ctx.previous)}\n"
-            f"用户反馈：{ctx.feedback or ''}\n"
+            f"上一版复习资料：\n{_previous_text(ctx.previous)}\n用户反馈：{ctx.feedback or ''}\n"
         )
     else:
         head = "请基于全部原文生成复习资料，严格返回指定结构，不添加结构外字段。\n"
         revision = ""
     return (
-        head
-        + "考前速记使用 Markdown；重点清单条数按内容密度决定；大纲只能使用 Markdown "
+        head + "考前速记使用 Markdown；重点清单条数按内容密度决定；大纲只能使用 Markdown "
         "标题与列表行，不得使用代码块或表格。\n"
         f"学习场景：{ctx.course.learning_context}\n"
         f"教育阶段：{ctx.course.education_stage or '未设置'}\n"
