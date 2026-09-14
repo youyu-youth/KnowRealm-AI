@@ -475,7 +475,7 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 ```
 /api/profile /api/settings /api/providers（供应商卡 CRUD + 连接测试）
 /api/courses .../records    /api/records/{id}/(files|transcript|summary|knowledge|quiz|review|todo)
-/api/chat/sessions .../messages（SSE：事件区分 token/status/citation/interrupt/done/error）
+/api/chat/sessions .../messages（SSE：事件区分 status/token/tool_call/tool_result/citation/done/error，ADR-0019）
 /api/learning/events|evidence    /api/courses/{id}/(concepts|knowledge-gps|brain/chat)
 /api/concepts/{id}/(mastery|misconceptions)    /api/review/(today|rescue)
 /api/tutor/sessions /api/teach-back/sessions /api/assessment/adaptive

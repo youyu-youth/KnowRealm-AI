@@ -70,7 +70,7 @@ app/
 ### SSE（ADR-0008 按流语义拆分）
 
 - Record 失效通知（**已实现**）：`GET /api/records/{id}/events`，只发 `invalidate` 事件（`RecordInvalidationNotifier`：per-record 版本号 + asyncio.Event；15s ping）；REST/SQLite 恒为事实源。
-- AI/Chat 命令流（**已实现**）：POST + `status/token/tool_call/tool_result/citation/done/error` 七种事件（`interrupt` 尚未在 chat 命令流发出）。`.claude/rules/fastapi.md` §5 的六事件清单为早期目标态，实际以代码为准，rule 待后续同步。
+- AI/Chat 命令流（**已实现**）：POST + `status/token/tool_call/tool_result/citation/done/error` 七种事件（`interrupt` 尚未在 chat 命令流发出）。事件清单扩展决策见 ADR-0019，两份 rules 及镜像已同步为八事件全集。
 
 ### 录音分片接收（ADR-0009：sidecar 拥有暂存）
 

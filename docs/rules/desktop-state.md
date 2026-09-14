@@ -70,7 +70,7 @@ queries: {
 ## 5. SSE
 
 - SSE 统一用原生 `fetch` 读取流并由 `eventsource-parser` 解析：AI 问答使用 POST 流；Record 失效通知使用 `GET /api/records/{record_id}/events`。原生 `EventSource` 无法携带启动令牌请求头，不使用。
-- Chat 事件类型固定为 `token`、`status`、`citation`、`interrupt`、`done`、`error`，调用方必须显式处理 `error` 和 `done`；Record 事件只表达“该 Record 已变化”，不得携带业务状态副本。
+- Chat 事件类型固定为 `status`、`token`、`tool_call`、`tool_result`、`citation`、`interrupt`、`done`、`error`（ADR-0019；`tool_call` / `tool_result` 为工具调用流专用，`interrupt` 当前尚未发出），调用方必须显式处理 `error` 和 `done`；Record 事件只表达“该 Record 已变化”，不得携带业务状态副本。
 - 连接同样携带 `X-KnowRealm-Token`；组件卸载或用户停止时调用 `AbortController.abort()`，防止连接泄漏。
 - Record/Jobs 状态最终以 REST/SQLite 为事实源；SSE 只通知失效，不引入 Realtime、WebSocket 或事件重放。阶段例外：plan 05 在 plan 04 接入 SSE 前，仅对 PENDING/RUNNING 文档任务使用条件轮询。
 - Record 事件、重连和窗口恢复的消费路径固定为：queryKey 工厂定位缓存 → `invalidateQueries` → REST 重取；SSE 断线时仅非终态 Record 每 2 秒条件轮询，终态立即停止。

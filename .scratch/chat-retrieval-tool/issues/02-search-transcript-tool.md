@@ -19,4 +19,5 @@
 - 评审修复：① `AIMessageChunk.tool_calls` 对未闭合 args 做部分解析（实测 1.6.3 把 `{"query": "傅里叶` 报成截断 query）——改为 tool_call_chunks 逐片累加 + 严格 `json.loads`，拼装完整才上报；② `record_id`/`transcript` 数据泥团收拢为 `MountedMaterial` 单一可选参（`SessionPromptContext.mounted`）。
 - 测试：`test_chat_streaming.py` +5 项（FTS 命中端到端含引用逐字校验与 usage 累加、分片 args 不截断、无分片兜底、有分片 FTS 无命中不兜底、>30k 指引、工具失败 ok:false），全量 435 绿；`ruff check` / `pyright` strict 0 错误；OpenAPI 无漂移（校验命令相对路径应为 `../packages/api-types/openapi.json`，文档中 `../../` 有误）。
 - 遗留（建议 docs 收尾处理）：SSE 新增 `tool_call`/`tool_result` 与 `.claude/rules/fastapi.md` §5 固定事件清单不符（spec 已授权，rules 正本禁改，宜落 ADR 或同步规则）；`ruff format --check .` 在 lock 钉的 ruff 0.16.3 下对 8 个历史文件报格式差异（非本次触及文件）。
+- 遗留处置（2026-09-14）：两遗留均已解决——事件清单经 ADR-0019 定稿，两份 rules 正本 §5 与 docs/rules/ 镜像同步为八事件全集，backend/AGENTS.md"待同步"备注解除；8 个历史文件经独立提交 `1fd2757` 按 ruff 0.16.3 重排，`ruff format --check` 恢复全绿（435 项全量测试验证零行为变更）。
 

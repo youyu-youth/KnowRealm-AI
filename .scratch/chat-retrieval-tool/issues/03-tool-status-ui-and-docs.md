@@ -22,3 +22,4 @@
 - 测试：`chatSessions.test.ts` +1（事件顺序与畸形载荷忽略）；`chat.test.tsx` +1（三态逐条陈列、done 后消失、历史只留正文）；前端全量 `pnpm test -- --maxWorkers=4` 426/426、`pnpm lint`、触及文件 Prettier（CRLF 工作区已按 LF 副本核验全清白）、`pnpm build`（内嵌 tsc）全绿；`pnpm --filter @knowrealm/api-types check` 零漂移。
 - 文档：数据模型 v2.4→v2.5 重命名（§4.5 增 FTS5 虚拟表 `segment_search_index` 说明与 v2.5 变更记录行，虚拟表不计正式表数）；交叉引用同步（根 AGENTS.md、CONTEXT.md、PRD v2.7 头部、技术栈 v4.5 §SQLite 行、扩展设计文档 §0/§40、backend/AGENTS.md 迁移纪律 0020 + SSE 现状）；扩展文档 §40.1/§40.2/§40.3 A1+A2 行/§40.4 并行槽回写；CONTEXT.md 增「分片索引」「检索过程」词条；PROJECT_PROGRESS 同步（最后更新 / A1+A2 三票完结 / AI 对话行 / 规划中 / 技术债 / 426 全量证据）。
 - 遗留：`.claude/rules/fastapi.md` §5 / `.claude/rules/desktop-state.md` §5 的事件清单落后于实现（实际七事件，含 `tool_call`/`tool_result`；`interrupt` 尚未在 chat 命令流发出）——rules 为规范正本禁改，已在 backend/AGENTS.md 明示"以代码为准、rule 待同步"，建议后续落 ADR-0019 或单独 rules 修订票。
+- 遗留处置（2026-09-14）：已解决——ADR-0019 落盘（事件清单扩展决策与载荷契约），两份 rules 正本 §5 与 docs/rules/ 两份镜像同步为八事件全集，backend/AGENTS.md"待同步"备注解除，PRD v2.7 API 清单行同步。

@@ -45,7 +45,7 @@ Feature-first 模块化单体（ADR-0015）：
 
 - 服务端使用 `sse-starlette` 的 `EventSourceResponse`，不得手拼 `StreamingResponse` 格式。
 - SSE 端点使用 POST，并与普通 API 一样校验 `X-KnowRealm-Token`。
-- 事件类型固定为 `token`、`status`、`citation`、`interrupt`、`done`、`error`。
+- 事件类型固定为 `status`、`token`、`tool_call`、`tool_result`、`citation`、`interrupt`、`done`、`error`；`tool_call` / `tool_result` 仅 AI/Chat 工具调用流使用（ADR-0019），`interrupt` 保留给需要前端确认界面的流，chat 命令流尚未发出。
 - 流内异常必须转换为 `error` 事件，不能无声断开；`interrupt` 必须携带前端渲染确认界面所需的完整 payload，并由恢复接口继续流程。
 - sidecar 状态变更最终通过进程内事件推送 SSE；阶段例外：plan 05 在 plan 04 接入 SSE 前，可由 UI 对 PENDING/RUNNING 文档任务条件轮询同一查询入口，终态立即停止；plan 04 完成后轮询仅作断线兜底。
 
