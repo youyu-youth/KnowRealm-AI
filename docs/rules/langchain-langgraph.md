@@ -1,13 +1,14 @@
 # 规范：LangChain 1.x + LangGraph（AI 编排层）
 
-> 适用范围：`backend/app/agents/`（Summary / Tutor / TeachBack / Autopilot / MisconceptionVerification 五个 Graph，功能需求基线红线 #2）及一切 LLM 调用、RAG 检索代码。
+> 适用范围：`app/modules/agent/`（对话式 Agent 域，ADR-0020）、`app/modules/summary/` 与 `app/modules/review_material/`（两 LangGraph 工作流）及一切 LLM 调用、RAG 检索代码。
 
 ## 0. 版本基线（2026-08 核实）
 
 | 包 | 基线 | 说明 |
 |---|---|---|
-| `langchain` / `langchain-core` | **1.3.x / 兼容的 1.x（<2）**（当前 1.3.16 / 1.6.0） | 两者独立发布；由 uv 解析兼容组合 |
+| `langchain` / `langchain-core` | **1.3.x / 兼容的 1.x（<2）**（当前 1.3.18 / 1.6.3） | 两者独立发布；由 uv 解析兼容组合 |
 | `langgraph` | **1.2.x**（当前 1.2.11） | ⚠️ **LangGraph 没有 1.3 版本**，版本线与 LangChain 相互独立，官方协调发布的兼容组合就是 langchain 1.3.x + langgraph 1.2.x |
+| `deepagents` | **>=0.7.x,<0.8（钉 0.7.13）** | chat 系 agent 主骨架（ADR-0018）：`create_deep_agent` = `create_agent` 官方超集封装（规划/文件/技能/子代理原语） |
 | `langgraph-checkpoint-sqlite` | 最新稳定 | SqliteSaver 持久化到数据目录 `langgraph.db`（见 §7） |
 | `langchain-openai` / `langchain-community` | 1.x / 最新 | 配套已解析的 langchain-core 1.x |
 
@@ -20,6 +21,7 @@
 
 ```
 langchain              # 仅 create_agent / middleware
+deepagents             # 仅 create_deep_agent / BackendProtocol（chat 系 agent 骨架，ADR-0018）
 langchain-core         # 消息、Runnable、@tool、Document
 langchain-openai       # ChatOpenAI / OpenAIEmbeddings（LLM 指向供应商卡端点；Embedding 固定 DashScope）
 langchain-community    # 文档 Loader
@@ -40,10 +42,10 @@ from langchain.agents import AgentExecutor, create_react_agent
 
 ## 2. 模型接入：统一工厂，供应商卡自选 OpenAI 兼容端点
 
-模型实例只在一个工厂模块创建（`agents/llm.py`），配置来自数据目录 `config/providers.json`（供应商卡：base_url + key + model，用户自配；默认预设 DashScope qwen-plus），禁止散落硬编码。**评测基线（黄金样本）只对默认预设 qwen-plus 负责**，文档明示。
+模型实例只在一个工厂模块创建（`app/modules/llm/service.py` 的 `build_chat_model`），配置来自数据目录 `config/providers.json`（供应商卡：base_url + key + model，用户自配；默认预设 DashScope qwen-plus），禁止散落硬编码。**评测基线（黄金样本）只对默认预设 qwen-plus 负责**，文档明示。
 
 ```python
-# agents/llm.py
+# app/modules/llm/service.py（示意）
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -69,9 +71,9 @@ def get_embeddings() -> OpenAIEmbeddings:
 
 > `check_embedding_ctx_length=False` 是 DashScope 兼容模式的已知兼容性要求，漏掉会报错或产生错误分片。
 
-## 3. Agent：只用 `create_agent()`（1.x 唯一标准）
+## 3. Agent：`create_agent()` / `create_deep_agent()`（chat 系骨架）
 
-需要"LLM 自主调用工具"的循环时用 `create_agent`；固定流程用 StateGraph（见 §5）。旧式 `AgentExecutor` 一律禁止。
+需要"LLM 自主调用工具"的循环时用 `create_agent`；chat 系 agent（自由聊天 / 挂载问答及未来 Tutor 变体）用 deepagents 的 `create_deep_agent` 骨架（ADR-0018；装配与 `AgentConfig` 变体配置落 `app/modules/agent/graph.py`，ADR-0020）——它是 `create_agent` 的官方超集封装（规划 / 文件 / 技能 / 子代理原语），业务 system 提示必须走 `system_prompt` 参数（messages 里的 SystemMessage 会被覆盖丢弃）。固定流程用 StateGraph（见 §5）。旧式 `AgentExecutor` 一律禁止。
 
 ```python
 from langchain.agents import create_agent
@@ -296,7 +298,7 @@ async def search_segments(session: AsyncSession, query_vec: list[float], *,
 
 自建 `llm_call_logs` 表替代 Langfuse/Sentry 自托管（决策 #2），埋点规则：
 
-- **埋在统一封装层**（`agents/llm.py` 的调用包装 / LangChain callback），Graph 节点代码不手写埋点——节点只管业务，观测在工厂层一次接入。
+- **埋在统一封装层**（`app/modules/llm/service.py` 的 `write_llm_call_log` / LangChain callback），Graph 节点代码不手写埋点——节点只管业务，观测在工厂层一次接入。
 - 每次调用记录字段 = 数据模型 v2.2 §4.10：`request_id`、`graph_name`、`graph_node`、`model`、`prompt_version`、`token_usage_json`、`latency_ms`、`error_code`（embedding 调用记 `embedding_model`）。
 - **隐私红线**：不记 prompt 与输出全文（同 fastapi.md §7.1）；埋点失败不得影响主流程（吞掉并 loguru 记 error code）。
 
@@ -304,7 +306,7 @@ async def search_segments(session: AsyncSession, query_vec: list[float], *,
 
 | 禁止 | 用什么代替 |
 |---|---|
-| `AgentExecutor` / `create_react_agent` / 0.x chains | `create_agent()` / StateGraph |
+| `AgentExecutor` / `create_react_agent` / 0.x chains | `create_agent()` / `create_deep_agent()` / StateGraph |
 | `ChatTongyi` 专有集成 | `ChatOpenAI` + 供应商卡 `base_url`（DashScope 默认预设） |
 | 安装 monolithic 旧版 `langchain` 0.x | 拆分包（§1 清单）+ uv 锁定 |
 | 节点内直接改 state / 返回整个 state | 返回部分更新 dict |
