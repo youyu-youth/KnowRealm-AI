@@ -22,6 +22,13 @@ CHAT_TRANSCRIPT_MAX_CHARS = 30000
 CHAT_LANGUAGE_INSTRUCTION = "回答使用与用户最新提问相同的语言。"
 # >30k 降级分支追加的检索工具指引（仅挂载会话；≤30k 全文在上下文与自由聊天不加）。
 CHAT_RETRIEVAL_GUIDANCE = "需要细节时可用 search_transcript 工具检索转写原文，并依据命中原文回答。"
+# 联网搜索指引：仅在本轮 web_search 生效时追加，关闭时提示与现状逐字一致（B1）。
+CHAT_WEB_SEARCH_GUIDANCE = (
+    "本轮已启用联网搜索：遇到时效性问题或你不确定的内容时，可用 web_search 工具联网查询；"
+    "由你自行决定是否搜索与搜索词，可多次搜索。回答实际使用了网络来源时，在正文结束后"
+    "另起引用块，网络来源每行一条、以「[n] 标题 — URL」格式列出（此类行无需逐字摘录）。"
+)
+CHAT_WEB_SEARCH_MOUNTED_GUIDANCE = "回答须优先依据学习材料，网络结果仅作为材料外的补充来源。"
 
 
 class ChatContextTooLargeError(ValueError):
@@ -98,12 +105,14 @@ def build_context_messages(
     *,
     record: RecordContext | None = None,
     budget: int = CHAT_CONTEXT_CHAR_BUDGET,
+    web_search: bool = False,
 ) -> list[AnyMessage]:
     """把会话全部消息行组装为喂入 LLM 的上下文。
 
     - 自由聊天保留角色 SYSTEM 快照；挂载对话改用记录当前材料，不注入角色；
     - 只保留最近 CHAT_CONTEXT_MAX_TURNS 个完成轮，末尾未获回复的 user（当前提问）额外附加；
-    - 超出字符预算时从最旧完成轮继续丢弃，当前提问永不丢弃。
+    - 超出字符预算时从最旧完成轮继续丢弃，当前提问永不丢弃；
+    - web_search 生效时在有效 SYSTEM 末尾追加联网指引（挂载会话带"材料优先"语义）。
     """
     system_row, turns, trailing_user = _split_turns(rows)
     if record is not None:
@@ -140,12 +149,18 @@ def build_context_messages(
             content=instructions + focus + source,
         )
     # 对话内容语言指令统一附加在有效 SYSTEM 末尾（挂载指令与自由聊天的角色快照都覆盖），
-    # 且在窗口裁剪 / 预算计量之前，保证预算与实际喂入一致。
+    # 且在窗口裁剪 / 预算计量之前，保证预算与实际喂入一致；联网指引同样计入预算。
     if system_row is not None:
+        content = f"{system_row.content}\n{CHAT_LANGUAGE_INSTRUCTION}"
+        if web_search:
+            guidance = CHAT_WEB_SEARCH_GUIDANCE
+            if record is not None:
+                guidance += CHAT_WEB_SEARCH_MOUNTED_GUIDANCE
+            content = f"{content}\n{guidance}"
         system_row = ContextRow(
             id=system_row.id,
             role=ChatRole.SYSTEM,
-            content=f"{system_row.content}\n{CHAT_LANGUAGE_INSTRUCTION}",
+            content=content,
         )
     turns = turns[-CHAT_CONTEXT_MAX_TURNS:]
     while turns and _turns_chars(system_row, turns, trailing_user) > budget:

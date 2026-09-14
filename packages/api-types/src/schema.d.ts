@@ -1256,6 +1256,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/providers/web-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Web Search Provider */
+        get: operations["get_web_search_provider_api_settings_providers_web_search_get"];
+        /** Put Web Search Provider */
+        put: operations["put_web_search_provider_api_settings_providers_web_search_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/providers/web-search/tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Web Search Provider */
+        post: operations["test_web_search_provider_api_settings_providers_web_search_tests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/usage/llm": {
         parameters: {
             query?: never;
@@ -1401,7 +1436,11 @@ export interface components {
         CaptureType: "RECORDING" | "AUDIO_IMPORT" | "DOCUMENT_IMPORT" | "MULTI_SOURCE" | "PASTE" | "QUICK_NOTE" | "CLIP";
         /**
          * ChatCitationOut
-         * @description 回答引用：正文 [n] 角标对应的一条转写摘录。
+         * @description 回答引用：record=转写摘录（逐字校验），web=网络来源（标题+URL，B1）。
+         *
+         *     citations_json 按条目判别化：record 条目 {index, record_id, quote}（历史
+         *     行无 source 键，按默认 "record" 读取）；web 条目 {index, source:"web",
+         *     url, title}。
          */
         ChatCitationOut: {
             /**
@@ -1411,14 +1450,31 @@ export interface components {
             index: number;
             /**
              * Quote
-             * @description 转写原文摘录，不超过 80 字
+             * @description 转写原文摘录（≤80 字），web 来源为空
              */
-            quote: string;
+            quote?: string | null;
             /**
              * Record Id
-             * @description 被引用的学习记录 ID
+             * @description 被引用的学习记录 ID，web 来源为空
              */
-            record_id: string;
+            record_id?: string | null;
+            /**
+             * Source
+             * @description 来源类型
+             * @default record
+             * @enum {string}
+             */
+            source: "record" | "web";
+            /**
+             * Title
+             * @description 网络来源标题，record 来源为空
+             */
+            title?: string | null;
+            /**
+             * Url
+             * @description 网络来源 URL，record 来源为空
+             */
+            url?: string | null;
         };
         /** ChatMessageCreate */
         ChatMessageCreate: {
@@ -1427,6 +1483,12 @@ export interface components {
              * @description 用户消息文本
              */
             content: string;
+            /**
+             * Web Search
+             * @description 本轮是否允许联网搜索；无 key 时后端强制忽略
+             * @default false
+             */
+            web_search: boolean;
         };
         /** ChatMessageOut */
         ChatMessageOut: {
@@ -2996,6 +3058,46 @@ export interface components {
             content: string;
             /** Expected Source Version */
             expected_source_version: number;
+        };
+        /** WebSearchProviderOut */
+        WebSearchProviderOut: {
+            /** Api Key Hint */
+            api_key_hint: string | null;
+            /** Has Api Key */
+            has_api_key: boolean;
+            /** Provider */
+            provider: string;
+        };
+        /** WebSearchProviderStateOut */
+        WebSearchProviderStateOut: {
+            provider: components["schemas"]["WebSearchProviderOut"] | null;
+        };
+        /** WebSearchProviderUpdate */
+        WebSearchProviderUpdate: {
+            /**
+             * Api Key
+             * @default
+             */
+            api_key: string;
+            /**
+             * Clear Api Key
+             * @default false
+             */
+            clear_api_key: boolean;
+            /**
+             * Provider
+             * @description 搜索供应商，本期仅 tavily
+             * @default tavily
+             * @constant
+             */
+            provider: "tavily";
+        };
+        /** WebSearchTestOut */
+        WebSearchTestOut: {
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
         };
     };
     responses: never;
@@ -9466,6 +9568,184 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TencentAsrTestOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_web_search_provider_api_settings_providers_web_search_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSearchProviderStateOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_web_search_provider_api_settings_providers_web_search_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WebSearchProviderUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSearchProviderStateOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    test_web_search_provider_api_settings_providers_web_search_tests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSearchTestOut"];
                 };
             };
             /** @description Forbidden */

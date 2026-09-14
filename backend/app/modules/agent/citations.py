@@ -1,4 +1,8 @@
-"""挂载对话回答的引用块解析与逐字校验（纯函数，独立可测）。"""
+"""挂载对话回答的引用块解析与逐字校验（纯函数，独立可测）。
+
+条目分流：引用行内含 URL 视为网络来源（web 条目，仅非空检查、不逐字校验，
+B1）；否则按转写摘录走逐字校验路径（record 条目）。
+"""
 
 import re
 from dataclasses import dataclass
@@ -6,12 +10,16 @@ from difflib import SequenceMatcher
 
 from app.modules.transcript.sentences import sentences_from_plain_text
 
-# 引用块约定：正文 [1][2] 角标，文末每行「[n] 转写原文摘录」，摘录 ≤80 字。
-# 引用行行首允许模型常见的 markdown 前缀（> 引用、-/* 列表），前缀不进摘录。
+# 引用块约定：正文 [1][2] 角标，文末每行「[n] 转写原文摘录」（web 条目为
+# 「[n] 标题 — URL」），摘录 ≤80 字。引用行行首允许模型常见的 markdown 前缀
+# （> 引用、-/* 列表），前缀不进摘录。
 CITATION_QUOTE_MAX_CHARS = 80
 CITATION_LINE_RE = re.compile(r"^(?:>\s*)?(?:[-*]\s*)*\[(\d{1,3})\]\s*(.+)$")
 # 意译摘录兜底对齐的最低相似度：低于它的「最佳匹配句」视为无可靠出处，丢弃。
 CITATION_ALIGN_MIN_RATIO = 0.65
+# web 引用行内 URL 的识别与尾部标点清理（URL 按约定位于行尾，容忍句读粘带）。
+WEB_URL_RE = re.compile(r"https?://[^\s（）()\[\]{}<>＞]+")
+WEB_URL_TRAILING_PUNCT = "。，,；;！!？?、"
 
 
 @dataclass(frozen=True)
@@ -63,13 +71,29 @@ def _align_quote(quote: str, transcript: str) -> str | None:
     return best_line[start : start + CITATION_QUOTE_MAX_CHARS]
 
 
+def _web_entry(index: int, text: str) -> dict[str, int | str] | None:
+    """含 URL 的引用行 → web 条目：title 取剥除 URL 与分隔符后的剩余文本。
+
+    只做非空检查（url/title 任一为空即丢弃），不做逐字校验（B1 决策 6）。
+    """
+    match = WEB_URL_RE.search(text)
+    if match is None:
+        return None
+    url = match.group(0).rstrip(WEB_URL_TRAILING_PUNCT)
+    title = re.sub(r"[\s\-—–:：·|]+$", "", (text[: match.start()] + text[match.end() :]).strip())
+    if not url or not title:
+        return None
+    return {"index": index, "source": "web", "url": url, "title": title}
+
+
 def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> ParsedReply:
     """从回答尾部识别「[n] 摘录」引用块：剥离入 citations，逐条校验。
 
     - 只有文末连续匹配引用行格式的部分才算引用块（行首容忍 > / - / * 等
       markdown 前缀），正文中的 [1] 角标不受影响；
-    - 摘录逐字命中转写原文（≤80 字）直接保留；意译或超长的摘录经
-      ``_align_quote`` 在转写行中模糊对齐，达标则以真实原文替换展示；
+    - 行内含 URL → web 条目（仅非空检查）；其余按转写摘录校验：逐字命中
+      （≤80 字）直接保留，意译或超长的摘录经 ``_align_quote`` 在转写行中
+      模糊对齐，达标则以真实原文替换展示；
     - 对齐不到可靠出处（或空、index<1）→ 整条丢弃不展示；
     - 引用块被识别即从展示正文剥离，即使全部条目未通过校验。
     """
@@ -89,10 +113,21 @@ def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> Parse
     for index, quote in entries:
         if not quote or index < 1:
             continue
+        web = _web_entry(index, quote)
+        if web is not None:
+            citations.append(web)
+            continue
         if len(quote) <= CITATION_QUOTE_MAX_CHARS and quote in transcript:
             final_quote: str | None = quote
         else:
             final_quote = _align_quote(quote, transcript)
         if final_quote is not None:
-            citations.append({"index": index, "record_id": record_id, "quote": final_quote})
+            citations.append(
+                {
+                    "index": index,
+                    "source": "record",
+                    "record_id": record_id,
+                    "quote": final_quote,
+                }
+            )
     return ParsedReply(content="\n".join(lines[:cut]).rstrip(), citations=citations)

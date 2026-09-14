@@ -5,6 +5,8 @@ import httpx
 from fastapi import APIRouter, Depends, Request
 
 from app.modules.llm.service import SummaryGenerationError, call_summary_model
+from app.modules.search.integrations.tavily import TavilySearchClient
+from app.modules.search.web_search import WebSearchError
 from app.modules.settings.config import (
     external_processing_consent_at,
     grant_external_processing_consent,
@@ -14,9 +16,12 @@ from app.modules.settings.config import (
     load_preferences,
     load_tencent_asr_config,
     load_tencent_asr_provider,
+    load_web_search_config,
+    load_web_search_provider,
     save_llm_provider,
     save_preferences,
     save_tencent_asr_provider,
+    save_web_search_provider,
 )
 from app.modules.settings.schemas import (
     ExternalProcessingConsentOut,
@@ -32,6 +37,10 @@ from app.modules.settings.schemas import (
     TencentAsrProviderStateOut,
     TencentAsrProviderUpdate,
     TencentAsrTestOut,
+    WebSearchProviderOut,
+    WebSearchProviderStateOut,
+    WebSearchProviderUpdate,
+    WebSearchTestOut,
 )
 from app.modules.settings.usage import llm_usage
 from app.modules.transcript.integrations.tencent import (
@@ -74,6 +83,14 @@ def _tencent_asr_out(
         region=region,
         has_credentials=bool(secret_id and secret_key),
         secret_id_hint=f"••••{secret_id[-4:]}" if secret_id else None,
+    )
+
+
+def _web_search_out(provider: str, api_key: str) -> WebSearchProviderOut:
+    return WebSearchProviderOut(
+        provider=provider,
+        has_api_key=bool(api_key),
+        api_key_hint=f"••••{api_key[-4:]}" if api_key else None,
     )
 
 
@@ -192,6 +209,53 @@ async def test_tencent_asr_provider(request: Request) -> TencentAsrTestOut:
             code="ASR_UNREACHABLE", status_code=502, detail="无法连接腾讯云语音识别服务，请检查网络"
         ) from exc
     return TencentAsrTestOut(ok=True, region=config.region)
+
+
+@router.get("/providers/web-search", response_model=WebSearchProviderStateOut)
+async def get_web_search_provider(request: Request) -> WebSearchProviderStateOut:
+    provider = await asyncio.to_thread(load_web_search_provider, request.app.state.data_dir)
+    return WebSearchProviderStateOut(
+        provider=_web_search_out(provider.provider, provider.api_key)
+        if provider is not None
+        else None
+    )
+
+
+@router.put("/providers/web-search", response_model=WebSearchProviderStateOut)
+async def put_web_search_provider(
+    body: WebSearchProviderUpdate,
+    request: Request,
+) -> WebSearchProviderStateOut:
+    provider = await asyncio.to_thread(
+        save_web_search_provider,
+        request.app.state.data_dir,
+        provider=body.provider,
+        api_key=body.api_key,
+        clear_api_key=body.clear_api_key,
+    )
+    return WebSearchProviderStateOut(provider=_web_search_out(provider.provider, provider.api_key))
+
+
+@router.post("/providers/web-search/tests", response_model=WebSearchTestOut)
+async def test_web_search_provider(request: Request) -> WebSearchTestOut:
+    config = await asyncio.to_thread(load_web_search_config, request.app.state.data_dir)
+    if config is None:
+        raise CodedHTTPException(
+            code="WEB_SEARCH_KEY_NOT_CONFIGURED", status_code=409, detail="请先配置搜索服务密钥"
+        )
+    client = TavilySearchClient(config.api_key)
+    try:
+        # 连通性测试 = 一次真实极简搜索（Tavily 计 1 credit）。
+        await client.search("hello", max_results=1)
+    except WebSearchError as exc:
+        raise CodedHTTPException(
+            status_code=502, code="WEB_SEARCH_TEST_FAILED", detail=str(exc)
+        ) from exc
+    except httpx.RequestError as exc:
+        raise CodedHTTPException(
+            code="WEB_SEARCH_UNREACHABLE", status_code=502, detail="无法连接搜索服务，请检查网络"
+        ) from exc
+    return WebSearchTestOut(ok=True, provider=config.provider)
 
 
 @router.get("/external-processing-consents/llm", response_model=LlmConsentOut)

@@ -68,6 +68,9 @@ class ChatRecordOption(BaseModel):
 
 class ChatMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=8000, description="用户消息文本")
+    web_search: bool = Field(
+        default=False, description="本轮是否允许联网搜索；无 key 时后端强制忽略"
+    )
 
     @field_validator("content")
     @classmethod
@@ -103,11 +106,30 @@ class ChatSessionOut(BaseModel):
 
 
 class ChatCitationOut(BaseModel):
-    """回答引用：正文 [n] 角标对应的一条转写摘录。"""
+    """回答引用：record=转写摘录（逐字校验），web=网络来源（标题+URL，B1）。
+
+    citations_json 按条目判别化：record 条目 {index, record_id, quote}（历史
+    行无 source 键，按默认 "record" 读取）；web 条目 {index, source:"web",
+    url, title}。
+    """
 
     index: int = Field(ge=1, description="正文角标序号")
-    record_id: str = Field(description="被引用的学习记录 ID")
-    quote: str = Field(max_length=80, description="转写原文摘录，不超过 80 字")
+    source: Literal["record", "web"] = Field(default="record", description="来源类型")
+    record_id: str | None = Field(default=None, description="被引用的学习记录 ID，web 来源为空")
+    quote: str | None = Field(
+        default=None, max_length=80, description="转写原文摘录（≤80 字），web 来源为空"
+    )
+    url: str | None = Field(default=None, description="网络来源 URL，record 来源为空")
+    title: str | None = Field(default=None, description="网络来源标题，record 来源为空")
+
+    @model_validator(mode="after")
+    def require_fields_for_source(self) -> "ChatCitationOut":
+        if self.source == "record":
+            if not self.record_id or not self.quote:
+                raise ValueError("record 引用必须携带 record_id 与 quote")
+        elif not self.url or not self.title:
+            raise ValueError("web 引用必须携带 url 与 title")
+        return self
 
 
 def parse_citations(raw: str | None) -> list[ChatCitationOut]:

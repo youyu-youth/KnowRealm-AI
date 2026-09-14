@@ -63,6 +63,27 @@ class TencentAsrProviderUpdate(BaseModel):
         return normalized
 
 
+class WebSearchProviderUpdate(BaseModel):
+    provider: Literal["tavily"] = Field(default="tavily", description="搜索供应商，本期仅 tavily")
+    api_key: str = Field(default="", max_length=4096)
+    clear_api_key: bool = False
+
+
+class WebSearchProviderOut(BaseModel):
+    provider: str
+    has_api_key: bool
+    api_key_hint: str | None
+
+
+class WebSearchProviderStateOut(BaseModel):
+    provider: WebSearchProviderOut | None
+
+
+class WebSearchTestOut(BaseModel):
+    ok: bool
+    provider: str
+
+
 class TencentAsrProviderOut(BaseModel):
     region: str
     has_credentials: bool

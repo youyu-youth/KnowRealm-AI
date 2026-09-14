@@ -26,6 +26,16 @@ class LlmProviderConfig:
     model: str
 
 
+@dataclass(frozen=True)
+class WebSearchProviderConfig:
+    provider: str
+    api_key: str
+
+
+# web_search 供应商本期只认 tavily；provider 字段为博查/智谱预留（spec 根决策 2）。
+WEB_SEARCH_PROVIDER_CHOICES = ("tavily",)
+
+
 def _read_json(path: Path) -> dict[str, object]:
     if not path.exists():
         return {}
@@ -149,6 +159,47 @@ def save_llm_provider(
     providers["llm"] = {"base_url": base_url, "api_key": saved_key, "model": model}
     _write_json(path, providers)
     return LlmProviderConfig(base_url, saved_key, model)
+
+
+def load_web_search_provider(data_dir: Path) -> WebSearchProviderConfig | None:
+    """按 providers.json 事实返回（允许空 key），供设置页读写使用。"""
+    raw = _read_json(data_dir / "config" / "providers.json").get("web_search")
+    if not isinstance(raw, dict):
+        return None
+    provider = cast(dict[str, object], raw)
+    name = provider.get("provider")
+    api_key = provider.get("api_key")
+    if not isinstance(name, str) or not isinstance(api_key, str):
+        return None
+    return WebSearchProviderConfig(provider=name, api_key=api_key)
+
+
+def load_web_search_config(data_dir: Path) -> WebSearchProviderConfig | None:
+    """功能可用性口径：已配置且 key 非空、provider 在白名单内才返回。"""
+    provider = load_web_search_provider(data_dir)
+    if (
+        provider is None
+        or not provider.api_key
+        or provider.provider not in WEB_SEARCH_PROVIDER_CHOICES
+    ):
+        return None
+    return provider
+
+
+def save_web_search_provider(
+    data_dir: Path,
+    *,
+    provider: str,
+    api_key: str,
+    clear_api_key: bool,
+) -> WebSearchProviderConfig:
+    path = data_dir / "config" / "providers.json"
+    providers = _read_json(path)
+    current = load_web_search_provider(data_dir)
+    saved_key = "" if clear_api_key else api_key or (current.api_key if current else "")
+    providers["web_search"] = {"provider": provider, "api_key": saved_key}
+    _write_json(path, providers)
+    return WebSearchProviderConfig(provider, saved_key)
 
 
 def llm_provider_fingerprint(provider: LlmProviderConfig) -> str:

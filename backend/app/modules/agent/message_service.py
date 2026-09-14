@@ -37,7 +37,13 @@ from app.modules.agent.session_service import ChatSessionService
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
 from app.modules.record.service import RecordService
-from app.modules.settings.config import LlmProviderConfig, load_llm_provider
+from app.modules.search.integrations.tavily import TavilySearchClient
+from app.modules.search.web_search import SearchProvider
+from app.modules.settings.config import (
+    LlmProviderConfig,
+    load_llm_provider,
+    load_web_search_config,
+)
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.shared.errors import CodedHTTPException
@@ -71,12 +77,17 @@ class ChatStreamRegistry:
 
 @dataclass(frozen=True)
 class AcceptedMessage:
-    """受理结果：user 行已落库（或补答复用），流式生成从这里开始。"""
+    """受理结果：user 行已落库（或补答复用），流式生成从这里开始。
+
+    web_search 为当轮生效的搜索客户端：请求标志开启且已配置可用 key 才非空
+    （无 key 时后端无视标志强制不挂工具，B1 双保险）。
+    """
 
     session_id: str
     user_row_id: str
     content: str
     provider: LlmProviderConfig
+    web_search: SearchProvider | None = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +97,7 @@ class SessionPromptContext:
     messages: list[AnyMessage]
     transcript: str | None = None  # 挂载会话的当前转写全文；自由聊天为 None
     record_id: str | None = None
+    web_search: bool = False  # 本轮联网生效（已含 key 双保险）；自由聊天也可为 True
 
     @property
     def mounted(self) -> MountedMaterial | None:
@@ -93,6 +105,11 @@ class SessionPromptContext:
         if self.record_id is None or self.transcript is None:
             return None
         return MountedMaterial(record_id=self.record_id, transcript=self.transcript)
+
+    @property
+    def should_parse_citations(self) -> bool:
+        """挂载会话恒解析引用块；自由聊天仅本轮联网时解析（产出 web 条目）。"""
+        return self.record_id is not None or self.web_search
 
 
 def _sse(event: str, payload: Mapping[str, object]) -> ServerSentEvent:
@@ -109,7 +126,7 @@ async def _last_message(session: AsyncSession, session_id: str) -> ChatMessage |
 
 
 async def _session_context(
-    session_factory: async_sessionmaker[AsyncSession], session_id: str
+    session_factory: async_sessionmaker[AsyncSession], session_id: str, *, web_search: bool = False
 ) -> SessionPromptContext:
     async with session_factory() as session:
         chat = await ChatSessionService.get(session, session_id)
@@ -193,9 +210,11 @@ async def _session_context(
                     for row in rows
                 ],
                 record=record_context,
+                web_search=web_search,
             ),
             transcript=transcript_text,
             record_id=record_id,
+            web_search=web_search,
         )
 
 
@@ -245,8 +264,12 @@ class ChatMessageService:
         registry: ChatStreamRegistry,
         session_id: str,
         content: str,
+        web_search: bool = False,
     ) -> AcceptedMessage:
-        """受理发送：校验供应商与在途状态，落库 user 行（补答复用原行）。"""
+        """受理发送：校验供应商与在途状态，落库 user 行（补答复用原行）。
+
+        web_search 标志仅在已配置可用 key 时生效（无 key 强制不挂工具）。
+        """
         provider = await asyncio.to_thread(load_llm_provider, data_dir)
         if provider is None or not provider.api_key:
             raise CodedHTTPException(
@@ -254,6 +277,11 @@ class ChatMessageService:
                 status_code=409,
                 detail="LLM_PROVIDER_UNCONFIGURED：未配置 AI 服务，请先完成供应商配置",
             )
+        web_search_provider: SearchProvider | None = None
+        if web_search:
+            config = await asyncio.to_thread(load_web_search_config, data_dir)
+            if config is not None:
+                web_search_provider = TavilySearchClient(config.api_key)
         if not registry.acquire(session_id):
             raise CodedHTTPException(
                 code="CHAT_STREAM_IN_PROGRESS",
@@ -308,6 +336,7 @@ class ChatMessageService:
             user_row_id=user_row_id,
             content=content,
             provider=provider,
+            web_search=web_search_provider,
         )
 
     @staticmethod
@@ -325,7 +354,9 @@ class ChatMessageService:
             outcome = ChatStreamOutcome()
             parts: list[str] = []
             try:
-                prompt_context = await _session_context(session_factory, session_id)
+                prompt_context = await _session_context(
+                    session_factory, session_id, web_search=accepted.web_search is not None
+                )
                 async for event in stream_chat_reply(
                     session_factory=session_factory,
                     checkpointer=checkpointer,
@@ -334,6 +365,7 @@ class ChatMessageService:
                     session_id=session_id,
                     outcome=outcome,
                     mounted=prompt_context.mounted,
+                    web_search=accepted.web_search,
                 ):
                     if isinstance(event, ChatTokenEvent):
                         parts.append(event.text)
@@ -367,13 +399,14 @@ class ChatMessageService:
             if not content:
                 yield _sse("error", {"code": "EMPTY_REPLY", "detail": "回答为空，请重试"})
                 return
-            # 挂载对话：流结束后解析文末引用块——正文剥离、摘录子串校验、citation 事件下发。
+            # 引用块解析：挂载对话恒解析（转写摘录逐字校验）；自由聊天仅本轮联网时
+            # 解析（产出 web 条目，无转写可校验则 record 行自然丢弃）。
             citations: list[dict[str, int | str]] = []
-            if prompt_context.transcript is not None and prompt_context.record_id is not None:
+            if prompt_context.should_parse_citations:
                 parsed = parse_citation_reply(
                     content,
-                    transcript=prompt_context.transcript,
-                    record_id=prompt_context.record_id,
+                    transcript=prompt_context.transcript or "",
+                    record_id=prompt_context.record_id or "",
                 )
                 content = parsed.content
                 citations = parsed.citations

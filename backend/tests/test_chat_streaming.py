@@ -34,11 +34,15 @@ from app.modules.agent.context import (
     build_context_messages,
 )
 from app.modules.agent.graph import build_chat_agent
-from app.modules.agent.message_service import ChatMessageService
+from app.modules.agent.message_service import (
+    ChatMessageService,
+    _cited_excerpts,  # pyright: ignore[reportPrivateUsage]
+)
 from app.modules.agent.models import ChatMessage
 from app.modules.agent.schemas import ChatRole
 from app.modules.knowledge_point.models import KnowledgePoint
-from app.modules.settings.config import save_llm_provider
+from app.modules.search.integrations.tavily import TavilySearchClient
+from app.modules.settings.config import save_llm_provider, save_web_search_provider
 from app.modules.summary.models import AiSummary
 
 TOKEN = "test-launch-token"
@@ -240,8 +244,48 @@ class TestParseCitationReply:
         )
         assert parsed.content == "MVCC 依赖 undo 日志[1]。"
         assert parsed.citations == [
-            {"index": 1, "record_id": "rec-1", "quote": "MVCC 依赖 undo 日志实现多版本读"}
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": "rec-1",
+                "quote": "MVCC 依赖 undo 日志实现多版本读",
+            }
         ]
+
+    def test_web_line_becomes_web_entry_without_verbatim_check(self) -> None:
+        parsed = parse_citation_reply(
+            "MVCC 依赖 undo 日志[1]，最新动态见官方博客[2]。\n"
+            "[1] MVCC 依赖 undo 日志实现多版本读\n"
+            "[2] Tavily 官方博客 — https://tavily.com/blog。",
+            transcript=self.TRANSCRIPT,
+            record_id="rec-1",
+        )
+        # 混合引用块：URL 行 → web 条目（不逐字校验、容忍尾部句读），转写行照旧校验。
+        assert parsed.citations == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": "rec-1",
+                "quote": "MVCC 依赖 undo 日志实现多版本读",
+            },
+            {
+                "index": 2,
+                "source": "web",
+                "url": "https://tavily.com/blog",
+                "title": "Tavily 官方博客",
+            },
+        ]
+        assert parsed.content == "MVCC 依赖 undo 日志[1]，最新动态见官方博客[2]。"
+
+    def test_web_line_without_title_dropped(self) -> None:
+        parsed = parse_citation_reply(
+            "回答[1]。\n[1] https://example.com",
+            transcript=self.TRANSCRIPT,
+            record_id="rec-1",
+        )
+        # 仅非空检查：裸 URL 无标题整条丢弃（引用块仍剥离）。
+        assert parsed.citations == []
+        assert parsed.content == "回答[1]。"
 
     def test_blockquote_and_list_prefix_lines_recognized(self) -> None:
         parsed = parse_citation_reply(
@@ -253,8 +297,13 @@ class TestParseCitationReply:
         )
         assert parsed.content == "MVCC 依赖 undo 日志[1]。"
         assert parsed.citations == [
-            {"index": 1, "record_id": "rec-1", "quote": "MVCC 依赖 undo 日志实现多版本读"},
-            {"index": 2, "record_id": "rec-1", "quote": "写入时保留旧版本"},
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": "rec-1",
+                "quote": "MVCC 依赖 undo 日志实现多版本读",
+            },
+            {"index": 2, "source": "record", "record_id": "rec-1", "quote": "写入时保留旧版本"},
         ]
 
     def test_paraphrased_quote_aligned_to_real_transcript_line(self) -> None:
@@ -272,6 +321,7 @@ class TestParseCitationReply:
         assert parsed.citations == [
             {
                 "index": 1,
+                "source": "record",
                 "record_id": "rec-1",
                 "quote": "Docker 是一个用于开发、交付和运行应用程序的开放平台。",
             }
@@ -459,12 +509,16 @@ async def read_sse(response: httpx.Response) -> list[tuple[str, dict[str, Any]]]
 
 
 async def send_message(
-    client: httpx.AsyncClient, session_id: str, content: str
+    client: httpx.AsyncClient,
+    session_id: str,
+    content: str,
+    *,
+    web_search: bool = False,
 ) -> list[tuple[str, dict[str, Any]]]:
     async with client.stream(
         "POST",
         f"/api/chat-sessions/{session_id}/messages",
-        json={"content": content},
+        json={"content": content, "web_search": web_search},
     ) as response:
         assert response.status_code == 200
         return await read_sse(response)
@@ -982,6 +1036,7 @@ async def test_mounted_reply_citations_validated_stripped_and_streamed(
         assert [payload for name, payload in events if name == "citation"] == [
             {
                 "index": 1,
+                "source": "record",
                 "record_id": record_id,
                 "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
             }
@@ -994,8 +1049,11 @@ async def test_mounted_reply_citations_validated_stripped_and_streamed(
         assert assistant["citations"] == [
             {
                 "index": 1,
+                "source": "record",
                 "record_id": record_id,
                 "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
+                "url": None,
+                "title": None,
             }
         ]
         assert "citations_json" not in assistant
@@ -1036,6 +1094,7 @@ async def test_mounted_blockquote_paraphrase_citation_aligned(
         assert [payload for name, payload in events if name == "citation"] == [
             {
                 "index": 1,
+                "source": "record",
                 "record_id": record_id,
                 "quote": "Docker 是一个用于开发、交付和运行应用程序的开放平台。",
             }
@@ -1047,8 +1106,11 @@ async def test_mounted_blockquote_paraphrase_citation_aligned(
         assert assistant["citations"] == [
             {
                 "index": 1,
+                "source": "record",
                 "record_id": record_id,
                 "quote": "Docker 是一个用于开发、交付和运行应用程序的开放平台。",
+                "url": None,
+                "title": None,
             }
         ]
 
@@ -1188,6 +1250,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         assert [payload for name, payload in events if name == "citation"] == [
             {
                 "index": 1,
+                "source": "record",
                 "record_id": record_id,
                 "quote": "本讲系统梳理傅里叶级数的展开方法",
             }
@@ -1197,15 +1260,18 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         assert assistant["citations"] == [
             {
                 "index": 1,
+                "source": "record",
                 "record_id": record_id,
                 "quote": "本讲系统梳理傅里叶级数的展开方法",
+                "url": None,
+                "title": None,
             }
         ]
 
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-mount-cite-v3"
+        assert rows[0][3] == "chat-mount-cite-v4"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -1250,7 +1316,12 @@ async def test_mounted_tool_falls_back_to_substring_without_segments(
         assert len(tool_messages) == 1
         assert "第二段讲一致性哈希。" in str(tool_messages[0].content)
         assert [payload for name, payload in events if name == "citation"] == [
-            {"index": 1, "record_id": record_id, "quote": "第二段讲一致性哈希。"}
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": record_id,
+                "quote": "第二段讲一致性哈希。",
+            }
         ]
         # ≤30k 挂载不追加检索工具指引（全文已在上下文，工具闲置）。
         assert "search_transcript" not in str(captured[0][0].content)
@@ -1334,3 +1405,294 @@ async def test_mounted_tool_failure_streams_failed_tool_result(
             {"tool": "search_transcript", "hits": 0, "ok": False}
         ]
         assert events[-1][0] == "done"
+
+
+# ---------------------------------------------------------------------------
+# B1 联网搜索：装配矩阵（挂载 × web_search 标志 × 有/无 key）、工具事件、
+# 网络引用分流与提示注入契约。
+# ---------------------------------------------------------------------------
+
+
+class BindRecordingModel(StubChatModel):
+    """装配矩阵探针：记录 bind_tools 收到的工具名列表（每次断言前重置）。"""
+
+    bound: ClassVar[list[str]] = []
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> "BindRecordingModel":
+        type(self).bound = [getattr(t, "name", "?") for t in tools]
+        return self
+
+
+def tavily_payload(*titles: str) -> dict[str, Any]:
+    return {
+        "results": [
+            {"title": title, "url": f"https://example.com/{title}", "content": f"{title} 的内容"}
+            for title in titles
+        ]
+    }
+
+
+def patch_tavily_transport(
+    monkeypatch: pytest.MonkeyPatch, transport: httpx.AsyncBaseTransport
+) -> None:
+    class _TransportedTavily(TavilySearchClient):
+        def __init__(self, api_key: str) -> None:
+            super().__init__(api_key, transport=transport)
+
+    monkeypatch.setattr("app.modules.agent.message_service.TavilySearchClient", _TransportedTavily)
+
+
+def test_cited_excerpts_skip_web_entries() -> None:
+    raw = json.dumps(
+        [
+            {"index": 1, "source": "record", "record_id": "r1", "quote": "摘录甲"},
+            {"index": 2, "source": "web", "url": "https://example.com", "title": "网页"},
+        ]
+    )
+    # 长转写回喂摘录按 record_id 过滤，web 条目天然排除。
+    assert _cited_excerpts(raw, "r1") == ("摘录甲",)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.anyio
+async def test_web_search_mounting_matrix_tool_visibility(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.modules.llm.service.ChatOpenAI", BindRecordingModel)
+    save_llm_provider(
+        tmp_path,
+        base_url="https://stub.example.com/v1",
+        api_key="sk-test",
+        model="stub-chat-model",
+        clear_api_key=False,
+    )
+    app = create_app(data_dir=tmp_path, launch_token=TOKEN)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://testserver",
+            headers={"X-KnowRealm-Token": TOKEN},
+        ) as client:
+            capture = await client.post(
+                "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "材料原文"}
+            )
+            record_id = capture.json()["record_id"]
+            free_id = await create_session(client)
+            created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+            assert created.status_code == 201
+            mounted_id = created.json()["id"]
+            BindRecordingModel.replies = [list(STUB_REPLY)] * 12
+
+            async def visible(session_id: str, *, web: bool) -> list[str]:
+                BindRecordingModel.bound = []
+                events = await send_message(client, session_id, "问题", web_search=web)
+                assert events[-1][0] == "done"
+                return list(BindRecordingModel.bound)
+
+            # 无 key：标志开启也被后端无视（双保险），自由与挂载都不出现 web_search。
+            assert "web_search" not in await visible(free_id, web=True)
+            assert "web_search" not in await visible(mounted_id, web=True)
+            assert "search_transcript" in await visible(mounted_id, web=True)
+
+            save_web_search_provider(
+                tmp_path, provider="tavily", api_key="tvly-test", clear_api_key=False
+            )
+
+            # 有 key：标志开关精确控制挂载；挂载会话两工具并存。
+            assert "web_search" in await visible(free_id, web=True)
+            assert "web_search" not in await visible(free_id, web=False)
+            assert "search_transcript" not in await visible(free_id, web=False)
+            assert "web_search" in await visible(mounted_id, web=True)
+            assert "search_transcript" in await visible(mounted_id, web=True)
+            assert "web_search" not in await visible(mounted_id, web=False)
+            assert "search_transcript" in await visible(mounted_id, web=False)
+
+
+@pytest.mark.anyio
+async def test_free_chat_web_search_streams_tool_events_and_web_citation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tavily_requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        tavily_requests.append(request)
+        return httpx.Response(200, json=tavily_payload("Python 3.13", "PEP 604"))
+
+    final_reply = [
+        "Python 3.13 已发布[1]。",
+        "\n[1] Python 官网 — https://www.python.org/downloads/",
+    ]
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply("web_search", {"query": "Python 最新版本"}), final_reply],
+    ) as (_app, client, captured):
+        patch_tavily_transport(monkeypatch, httpx.MockTransport(handler))
+        save_web_search_provider(
+            tmp_path, provider="tavily", api_key="tvly-test", clear_api_key=False
+        )
+        session_id = await create_session(client)
+
+        events = await send_message(client, session_id, "Python 最新版本是多少？", web_search=True)
+
+        # 联网指引进入 system 提示（自由聊天无挂载限定句）。
+        prompt = str(captured[0][0].content)
+        assert "web_search 工具联网查询" in prompt
+        assert "[n] 标题 — URL" in prompt
+        assert "仅作为材料外的补充来源" not in prompt
+
+        names = [name for name, _payload in events]
+        assert names[0] == "status" and names[-1] == "done"
+        assert names.index("tool_call") < names.index("tool_result") < names.index("token")
+        assert [payload for name, payload in events if name == "tool_call"] == [
+            {"tool": "web_search", "query": "Python 最新版本"}
+        ]
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "web_search", "hits": 2, "ok": True}
+        ]
+        assert [payload for name, payload in events if name == "citation"] == [
+            {
+                "index": 1,
+                "source": "web",
+                "url": "https://www.python.org/downloads/",
+                "title": "Python 官网",
+            }
+        ]
+        assert events[-1][1]["content"] == "Python 3.13 已发布[1]。"
+
+        # Tavily 请求形态：单端点 REST、Bearer key、top-5。
+        request = tavily_requests[0]
+        assert str(request.url) == "https://api.tavily.com/search"
+        assert request.headers["Authorization"] == "Bearer tvly-test"
+        assert json.loads(request.content) == {"query": "Python 最新版本", "max_results": 5}
+
+        history = await client.get(f"/api/chat-sessions/{session_id}/messages")
+        assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
+        assert assistant["citations"] == [
+            {
+                "index": 1,
+                "source": "web",
+                "record_id": None,
+                "quote": None,
+                "url": "https://www.python.org/downloads/",
+                "title": "Python 官网",
+            }
+        ]
+
+
+@pytest.mark.anyio
+async def test_web_search_failure_streams_failed_tool_result_and_continues(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("timed out")
+
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply("web_search", {"query": "最新动态"}), list(STUB_REPLY)],
+    ) as (_app, client, _captured):
+        patch_tavily_transport(monkeypatch, httpx.MockTransport(handler))
+        save_web_search_provider(
+            tmp_path, provider="tavily", api_key="tvly-test", clear_api_key=False
+        )
+        session_id = await create_session(client)
+
+        events = await send_message(client, session_id, "外发查询", web_search=True)
+
+        # 网络失败：错误 JSON 载荷 → tool_result 失败态，流不中断、回答照常完成。
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "web_search", "hits": 0, "ok": False}
+        ]
+        assert events[-1][0] == "done"
+        assert not any(name == "error" for name, _payload in events)
+
+
+@pytest.mark.anyio
+async def test_mounted_web_flag_citations_mix_record_and_web_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    transcript = "数据库的 MVCC 依赖 undo 日志实现多版本读，写入时保留旧版本。"
+    reply = [
+        "MVCC 靠 undo 日志实现[1]，最新动态见官方博客[2]。",
+        "\n[1] 数据库的 MVCC 依赖 undo 日志实现多版本读",
+        "\n[2] MVCC 博客 — https://example.com/mvcc",
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[reply]) as (
+        _app,
+        client,
+        captured,
+    ):
+        save_web_search_provider(
+            tmp_path, provider="tavily", api_key="tvly-test", clear_api_key=False
+        )
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": transcript}
+        )
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "MVCC 怎么实现？", web_search=True)
+
+        # 挂载会话联网指引带「材料优先、网络补充」语义。
+        assert "仅作为材料外的补充来源" in str(captured[0][0].content)
+        # 混合引用块：转写条目逐字校验照旧，网络条目不校验，两者并存分流。
+        assert [payload for name, payload in events if name == "citation"] == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": record_id,
+                "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
+            },
+            {"index": 2, "source": "web", "url": "https://example.com/mvcc", "title": "MVCC 博客"},
+        ]
+
+        history = await client.get(f"/api/chat-sessions/{session_id}/messages")
+        assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
+        assert assistant["citations"] == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": record_id,
+                "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
+                "url": None,
+                "title": None,
+            },
+            {
+                "index": 2,
+                "source": "web",
+                "record_id": None,
+                "quote": None,
+                "url": "https://example.com/mvcc",
+                "title": "MVCC 博客",
+            },
+        ]
+
+
+@pytest.mark.anyio
+async def test_prompt_byte_identical_when_web_search_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with streaming_chat_app(tmp_path, monkeypatch) as (_app, client, captured):
+        save_web_search_provider(
+            tmp_path, provider="tavily", api_key="tvly-test", clear_api_key=False
+        )
+        session_id = await create_session(client)
+        await send_message(client, session_id, "问题")
+
+        # 关闭标志：提示与现状逐字一致（中性快照 + 语言指令，无联网指引）。
+        assert str(captured[0][0].content) == (
+            "你是 KnowRealm 学习助手。用户尚未建立档案，请以中性、通用的语气回答。\n"
+            "回答使用与用户最新提问相同的语言。"
+        )
+
+        # 挂载会话同样只在标志开启时注入联网指引。
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "材料原文"}
+        )
+        record_id = capture.json()["record_id"]
+        created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        assert created.status_code == 201
+        mounted_id = created.json()["id"]
+        await send_message(client, mounted_id, "挂载问题")
+        assert "web_search 工具联网查询" not in str(captured[1][0].content)
