@@ -25,18 +25,18 @@ from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import update
 
 from app.main import create_app
-from app.modules.chat.graph import (
+from app.modules.agent.citations import parse_citation_reply
+from app.modules.agent.context import (
     CHAT_CONTEXT_CHAR_BUDGET,
     ChatContextTooLargeError,
     ContextRow,
     RecordContext,
-    build_chat_agent,
     build_context_messages,
-    parse_citation_reply,
 )
-from app.modules.chat.message_service import ChatMessageService
-from app.modules.chat.models import ChatMessage
-from app.modules.chat.schemas import ChatRole
+from app.modules.agent.graph import build_chat_agent
+from app.modules.agent.message_service import ChatMessageService
+from app.modules.agent.models import ChatMessage
+from app.modules.agent.schemas import ChatRole
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.settings.config import save_llm_provider
 from app.modules.summary.models import AiSummary

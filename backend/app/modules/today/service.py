@@ -5,8 +5,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.modules.chat.models import ChatMessage, ChatSession
-from app.modules.chat.schemas import ChatRole
+from app.modules.agent.models import ChatMessage, ChatSession
+from app.modules.agent.schemas import ChatRole
 from app.modules.course.models import Course
 from app.modules.quiz.models import Quiz
 from app.modules.record.models import Record

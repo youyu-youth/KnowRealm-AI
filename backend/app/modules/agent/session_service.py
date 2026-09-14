@@ -4,8 +4,8 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.modules.chat.models import ChatMessage, ChatSession
-from app.modules.chat.schemas import ChatMode, ChatRecordOption, ChatRole, ChatSessionOut
+from app.modules.agent.models import ChatMessage, ChatSession
+from app.modules.agent.schemas import ChatMode, ChatRecordOption, ChatRole, ChatSessionOut
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus

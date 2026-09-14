@@ -17,6 +17,8 @@ from app.core.data_dir import DataDirectoryLock, ensure_data_dir
 from app.core.version import APP_VERSION
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
+from app.modules.agent import chat_sessions
+from app.modules.agent.message_service import ChatStreamRegistry
 from app.modules.capture import (
     audio_imports,
     capture_batches,
@@ -24,8 +26,6 @@ from app.modules.capture import (
     recording_sessions,
     text_captures,
 )
-from app.modules.chat import chat_sessions
-from app.modules.chat.message_service import ChatStreamRegistry
 from app.modules.course import courses
 from app.modules.course.tombstone_cleanup import DocumentCleanupService
 from app.modules.data import routes as data_routes

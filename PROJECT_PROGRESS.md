@@ -2,7 +2,7 @@
 
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
-> **最后更新**：2026-09-13（A1+A2 chat 检索工具票 03「前端工具状态卡 + 文档收尾」交付：消息流内检索过程卡、数据模型 v2.5、扩展文档 §40 回写，A1+A2 三票完结）
+> **最后更新**：2026-09-14（chat 模块升级为统一 agent 模块（ADR-0020）：graph.py 拆 context/citations/graph 三件 + tools/ + middleware/ 子包，行为零变更，openapi 逐字一致、435 测试全绿）
 
 ## 1. 项目概述
 
@@ -21,7 +21,7 @@
 
 - 基线（PRD 决策表 #1~#59 绝大多数）代码完结，约 15 个功能波次仅剩**用户真机验收**（按惯例由用户执行，Agent 验证止于自动化门禁，不代勾）。
 - 扩展 F1「转写分片 / 来源时间轴」**六票 + 07 补票全部完结**（06 文档收尾：数据模型升 v2.4 重命名——现 v2.5、扩展文档 §7 回写、全库交叉引用同步、backend/AGENTS.md 0019）；锚点两表空表就位，剩用户真机验收。
-- **Chat Agent 骨架已迁移 deepagents**（ADR-0018，2026-09-13）：`create_agent` → `create_deep_agent` 严格空骨架 + `AgentConfig` 轻工厂，模型可见面与迁移前严格一致（423 测试全绿），为 Tools/Skills/Memory/RAG 预留官方架构入口；summary/review 两图维持裸 LangGraph 形态。
+- **Chat Agent 骨架已迁移 deepagents**（ADR-0018，2026-09-13）：`create_agent` → `create_deep_agent` 严格空骨架 + `AgentConfig` 轻工厂，模型可见面与迁移前严格一致（423 测试全绿），为 Tools/Skills/Memory/RAG 预留官方架构入口；summary/review 两图维持裸 LangGraph 形态。2026-09-14 `chat/` 模块升级为统一 `agent/` 模块（ADR-0020，行为零变更）：装配落 `graph.py`、上下文组装落 `context.py`、引用校验落 `citations.py`，能力子包 `tools/`+`middleware/` 就位。
 - Desktop 全局框架与 `/`「今日」页已按新版 `DESIGN.md` 完成重设计：冷中性设计令牌、分层应用壳、课程侧栏、紧凑 Command 入口、Toast / Tooltip / 状态标签与今日页「学习链 → 行动/资产 → 统计」阅读顺序均已落地；范围外页面只继承主题基础，不改业务布局。
 - `/inbox` 已改为高密度桌面工作区：真实统计、来源/状态筛选、URL 可恢复搜索与分页、多选批量归类/升级/删除、Transcript 预览及宽屏常驻右栏/窄屏 Dialog 均已落地；并按用户提供的视觉参考强化彩色统计图标、分组筛选按钮、列标题、独立圆角记录行、约 30% 宽右侧检查器及主次操作按钮。真实空态可主动查看醒目标注且完全只读的本地示意数据，未新增后端接口。
 - `/spaces`「知识空间」已按视觉参考完成重设计：标题 + 场景/状态胶囊筛选 + 排序 + 「更多筛选」子菜单（收纳教育阶段/课程类型）+ 网格/列表视图切换；课程卡片含场景图标、状态徽章、统计三格（记录/知识点/最近更新）、学习进度条与打开/编辑/⋯删除；右栏四模块（知识空间统计 / 最近活跃课程 / 待归类内容 / 最近活动）；新建课程改为右侧 Sheet 抽屉（学习场景三卡片按钮 + 只读初始状态 + 简介 200 字计数）。筛选/排序/视图全部在客户端完成（一次全量拉取，URL search params 可恢复），后端零改动。课程级聚合统计与周活跃、待归类、活动流后端暂无接口，按惯例用确定性示意数据并以「示意」标签明示（`spacesInsights.ts`，统计域接入后整体替换）；右栏「待归类内容」唯一真实入口为 `/inbox`。卡片「编辑」经 `/spaces/$courseId?edit=1` 直达编辑态。
@@ -30,7 +30,7 @@
 - 课堂详情门禁：`pnpm test -- --maxWorkers=4` 421/421、`pnpm lint`、前端触及文件 Prettier、`pnpm build`（内嵌 tsc）均通过；真实 Tauri sidecar 经 WebView2 CDP 目检：学习链 Tab 桑基图亮/暗两态、java实现（5 条含失败分支）与 1111（单条）两个真实课程数据形态、脑图/GPS/记录等 Tab 与概览回归；知识图谱玫瑰图/关系图亮暗两态、全屏、关系节点拖拽、画布缩放、悬浮邻接提示，以及常规动效 / `prefers-reduced-motion` 均通过；1440×900、1280×800、1099×720 CSS viewport 无页面横向溢出。空课程空态由 jsdom 用例覆盖（本机数据目录无 0 记录课程）。
 - `/chat`「AI 对话」已按视觉参考重设计为**三栏工作区**（对话记录 | 对话 | 上下文面板）：左栏筛选胶囊（全部/今天/本周/已收藏）+ 会话行 ⋯ 菜单（收藏/重命名/删除）；中栏标题栏（收藏/⋯）、范围胶囊、空会话建议卡、流式消息与图 1 输入区；右栏当前挂载上下文 / 来源引用 / 工具状态 / 小提示。回答与流式 Markdown 改用 **Streamdown**（`@streamdown/code|cjk|math`：代码高亮、中文换行、KaTeX 公式、`animated` 动画；`[n]` 引用角标经 remark 插件转链接后由 `components.a` 渲染为可点击角标）。`ChatMessageList` / `ChatComposer` 重构，旧 `ChatPage`/`ChatSessionPage`/`ChatSessionList` 由 `ChatWorkspace` 三栏替代；路由与 URL 不变（`/chat`、`/chat/$sessionId`、`?prompt=` 知识点讲解入口保留）。后端零改动；图 1 独有而后端暂无的能力（会话收藏、右栏工具开关、输入区附件/设置图标）为本地示意状态并以禁用/tooltip 明示，课程/全部资料范围胶囊禁用提示「即将支持」。
 - AI 对话重设计门禁：`pnpm test -- --maxWorkers=4` 424/424、`pnpm lint`、前端触及文件 Prettier、`pnpm build`（内嵌 tsc）通过；chat 测试 19 项（原 16 项行为断言保留，重命名/删除改走 ⋯ 菜单路径；新增筛选/收藏、建议卡/工具开关与多回答引用聚合用例）。真机 Tauri sidecar + WebView2 CDP 目检：亮/暗两态、根字号 18px（L 档）无横向溢出、1200px 窄窗右栏自动收起且左栏保留、引用聚合（多回答 [n] 去重）与工具开关（chat-accent）实测正常。
-- 下一扩展方向（扩展文档 §40.4「P2 统一序列」）：F1 ✅ → **A1+A2 ✅ 已交付**（2026-09-13 三票完结，剩用户真机验收）：票 01「分片 FTS 索引地基」✅（迁移 0020 `segment_search_index` FTS5 表、search 模块 `SegmentSearchService` 维护+检索服务、finalizer/realign/存量回填三处写路径同事务挂点、main.py 启动幂等回填、`tests/test_segment_search.py` 7 项，user_version 断言 11 处同步 19→20）；票 02「检索工具与 SSE 工具事件」✅（`chat/search_tool.py` `search_transcript`：FTS top-8 逐字命中 + 时间戳/页码，无分片回退 transcript 子串；挂载变体 `MOUNTED_CHAT_AGENT_CONFIG`、`tool_call`/`tool_result` SSE 事件、usage 跨模型调用累加、>30k 工具指引、`CHAT_PROMPT_VERSION`=chat-mount-cite-v3）；票 03「前端工具状态卡 + 文档收尾」✅（SSE 两新事件分发、`useChatStream` 工具状态临时态、消息流内检索过程卡三态逐条陈列、done/中断后消失；数据模型升 v2.5、扩展文档 §40 A1/A2 回写、CONTEXT.md 增「分片索引」「检索过程」词条）；B3「Tutor 提前」尚待用户决策，**不要擅自开工**。
+- 下一扩展方向（扩展文档 §40.4「P2 统一序列」）：F1 ✅ → **A1+A2 ✅ 已交付**（2026-09-13 三票完结，剩用户真机验收）：票 01「分片 FTS 索引地基」✅（迁移 0020 `segment_search_index` FTS5 表、search 模块 `SegmentSearchService` 维护+检索服务、finalizer/realign/存量回填三处写路径同事务挂点、main.py 启动幂等回填、`tests/test_segment_search.py` 7 项，user_version 断言 11 处同步 19→20）；票 02「检索工具与 SSE 工具事件」✅（`agent/tools/search_transcript.py` `search_transcript`：FTS top-8 逐字命中 + 时间戳/页码，无分片回退 transcript 子串；挂载变体 `MOUNTED_CHAT_AGENT_CONFIG`、`tool_call`/`tool_result` SSE 事件、usage 跨模型调用累加、>30k 工具指引、`CHAT_PROMPT_VERSION`=chat-mount-cite-v3）；票 03「前端工具状态卡 + 文档收尾」✅（SSE 两新事件分发、`useChatStream` 工具状态临时态、消息流内检索过程卡三态逐条陈列、done/中断后消失；数据模型升 v2.5、扩展文档 §40 A1/A2 回写、CONTEXT.md 增「分片索引」「检索过程」词条）；B3「Tutor 提前」尚待用户决策，**不要擅自开工**。
 
 ---
 
@@ -74,7 +74,7 @@
 
 **明确待做（已有工单）：**
 
-- `ai-summary/03-long-summary-quality-recovery`（`ready-for-agent`，8 项未勾）：>30k 长总结 map-reduce、90s 超时/不自动重试语义、手动重试复用 Job、ACTIVE 校验、llm_call_logs 字段补全、评测样本。⚠️ 这是**唯一一张实质性未做的旧功能票**；现状是 chat 侧对 >30k 转写做降级提示（`chat/graph.py` CHAT_TRANSCRIPT_MAX_CHARS=30000），总结侧无长文处理。
+- `ai-summary/03-long-summary-quality-recovery`（`ready-for-agent`，8 项未勾）：>30k 长总结 map-reduce、90s 超时/不自动重试语义、手动重试复用 Job、ACTIVE 校验、llm_call_logs 字段补全、评测样本。⚠️ 这是**唯一一张实质性未做的旧功能票**；现状是 chat 侧对 >30k 转写做降级提示（`agent/context.py` CHAT_TRANSCRIPT_MAX_CHARS=30000），总结侧无长文处理。
 - `markdown-export/03` 聚合导出（`ready-for-human`，代码完成仅剩用户验收后关票）。
 
 **规划中（未拆票，勿直接开工）：**
@@ -99,7 +99,7 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 │  ├─ src/styles/         tokens.css(@theme) / theme.css / globals.css / animations.css 分层
 │  └─ src-tauri/          Rust 壳：sidecar 拉起、托盘、全局快捷键、数据目录解析（ADR-0013）
 ├─ backend/               FastAPI sidecar（uv 管理，py312，feature-first 模块化单体 ADR-0015）
-│  ├─ app/modules/        18 模块：capture/chat/course/data/jobs/knowledge_point/llm/profile/
+│  ├─ app/modules/        18 模块：agent/capture/course/data/jobs/knowledge_point/llm/profile/
 │  │                      quiz/record/review_material/search/settings/source_anchor/summary/
 │  │                      today/todo/transcript
 │  ├─ app/shared/         deps/errors(带码 HTTPException)/events/prompts/schemas

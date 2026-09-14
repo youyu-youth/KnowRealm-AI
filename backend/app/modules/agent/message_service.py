@@ -16,22 +16,24 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette import ServerSentEvent
 
 from app.db.base import utcnow
-from app.modules.chat.graph import (
+from app.modules.agent.citations import parse_citation_reply
+from app.modules.agent.context import (
     CHAT_TRANSCRIPT_MAX_CHARS,
     ChatContextTooLargeError,
-    ChatStreamOutcome,
-    ChatTokenEvent,
-    ChatToolCallEvent,
     ContextRow,
     MountedMaterial,
     RecordContext,
     build_context_messages,
-    parse_citation_reply,
+)
+from app.modules.agent.graph import (
+    ChatStreamOutcome,
+    ChatTokenEvent,
+    ChatToolCallEvent,
     stream_chat_reply,
 )
-from app.modules.chat.models import ChatMessage
-from app.modules.chat.schemas import ChatRole
-from app.modules.chat.session_service import ChatSessionService
+from app.modules.agent.models import ChatMessage
+from app.modules.agent.schemas import ChatRole
+from app.modules.agent.session_service import ChatSessionService
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
 from app.modules.record.service import RecordService
