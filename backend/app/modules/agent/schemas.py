@@ -22,6 +22,18 @@ class ChatMode(StrEnum):
     TEACH_BACK = "TEACH_BACK"
 
 
+class ChatScope(StrEnum):
+    """会话挂载范围（B2）：FREE 自由 / RECORD 单记录 / COURSE 课程 / ALL 全部资料。
+
+    与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；范围会话内不可变。
+    """
+
+    FREE = "FREE"
+    RECORD = "RECORD"
+    COURSE = "COURSE"
+    ALL = "ALL"
+
+
 class ChatRole(StrEnum):
     USER = "USER"
     ASSISTANT = "ASSISTANT"
@@ -33,15 +45,38 @@ class ChatSessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     mode: Literal[ChatMode.ASK] = Field(default=ChatMode.ASK, description="会话模式")
+    scope: ChatScope | None = Field(
+        default=None,
+        description="会话范围；不传时按 record_id 派生（非空 → RECORD，否则 FREE），旧调用方零破坏",
+    )
     record_id: UUID | None = Field(default=None, description="挂载的学习记录，空为自由聊天")
+    course_id: UUID | None = Field(default=None, description="课程范围会话挂载的课程")
     knowledge_point_id: UUID | None = Field(
         default=None, description="知识点解释入口的知识点快照来源"
     )
 
     @model_validator(mode="after")
-    def require_record_for_knowledge_point(self) -> "ChatSessionCreate":
-        if self.knowledge_point_id is not None and self.record_id is None:
-            raise ValueError("知识点解释必须挂载学习记录")
+    def validate_scope_matrix(self) -> "ChatSessionCreate":
+        """范围 × 挂载 id 校验矩阵；派生后写回 scope，调用方读取到的一定是显式值。"""
+        scope = self.scope or (ChatScope.RECORD if self.record_id is not None else ChatScope.FREE)
+        if scope == ChatScope.RECORD:
+            if self.record_id is None:
+                raise ValueError("RECORD 范围必须挂载学习记录")
+            if self.course_id is not None:
+                raise ValueError("RECORD 范围的课程由挂载记录派生，不接受 course_id")
+        elif scope == ChatScope.COURSE:
+            if self.course_id is None:
+                raise ValueError("COURSE 范围必须指定课程")
+            if self.record_id is not None:
+                raise ValueError("COURSE 范围不接受 record_id")
+            if self.knowledge_point_id is not None:
+                raise ValueError("知识点解释仅支持 RECORD 范围会话")
+        else:
+            if self.record_id is not None or self.course_id is not None:
+                raise ValueError("FREE/ALL 范围不能携带挂载 id")
+            if self.knowledge_point_id is not None:
+                raise ValueError("知识点解释仅支持 RECORD 范围会话")
+        self.scope = scope
         return self
 
 
@@ -91,11 +126,18 @@ class ChatSessionOut(BaseModel):
 
     id: str
     mode: ChatMode
+    scope: ChatScope = Field(default=ChatScope.FREE, description="会话挂载范围")
     title: str | None = Field(default=None, description="会话标题，未重命名时为空")
-    record_id: str | None = Field(default=None, description="挂载的学习记录，自由聊天为空")
-    course_id: str | None = Field(default=None, description="挂载记录所属课程，自由聊天为空")
+    record_id: str | None = Field(default=None, description="挂载的学习记录，RECORD 会话非空")
+    course_id: str | None = Field(
+        default=None,
+        description="COURSE 会话挂载的课程；RECORD 会话为挂载记录所属课程（运行时派生）",
+    )
     record_deleted: bool = Field(
         default=False, description="挂载记录已软删（运行时推导，无失效列），会话只读"
+    )
+    course_deleted: bool = Field(
+        default=False, description="COURSE 会话挂载课程已软删（运行时推导），会话只读"
     )
     created_at: datetime
     updated_at: datetime
@@ -110,12 +152,16 @@ class ChatCitationOut(BaseModel):
 
     citations_json 按条目判别化：record 条目 {index, record_id, quote}（历史
     行无 source 键，按默认 "record" 读取）；web 条目 {index, source:"web",
-    url, title}。
+    url, title}。跨记录条目（B2）额外携带 record_title（标题快照，创建时
+    固化；历史行无此键 → None，前端降级展示）。
     """
 
     index: int = Field(ge=1, description="正文角标序号")
     source: Literal["record", "web"] = Field(default="record", description="来源类型")
     record_id: str | None = Field(default=None, description="被引用的学习记录 ID，web 来源为空")
+    record_title: str | None = Field(
+        default=None, max_length=200, description="被引用记录的标题快照（跨记录引用），历史行为空"
+    )
     quote: str | None = Field(
         default=None, max_length=80, description="转写原文摘录（≤80 字），web 来源为空"
     )

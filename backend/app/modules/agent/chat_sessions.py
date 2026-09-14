@@ -9,6 +9,7 @@ from app.modules.agent.schemas import (
     ChatMessageCreate,
     ChatMessageOut,
     ChatRecordOption,
+    ChatScope,
     ChatSessionCreate,
     ChatSessionOut,
     ChatSessionRename,
@@ -39,12 +40,14 @@ async def create_chat_session(
 ) -> ChatSessionOut:
     chat = await ChatSessionService.create(
         session,
+        scope=payload.scope or ChatScope.FREE,
         record_id=str(payload.record_id) if payload.record_id is not None else None,
+        course_id=str(payload.course_id) if payload.course_id is not None else None,
         knowledge_point_id=(
             str(payload.knowledge_point_id) if payload.knowledge_point_id is not None else None
         ),
     )
-    # 创建时挂载记录已校验存活，失效态恒为 False。
+    # 创建时挂载记录/课程已校验存活，失效态恒为 False。
     return ChatSessionService.to_out(chat)
 
 

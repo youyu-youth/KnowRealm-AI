@@ -39,6 +39,12 @@ from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
     NoopSummarizationMiddleware,
 )
+from app.modules.agent.tools.search_library import (
+    LibrarySearchContext,
+    bind_library_context,
+    reset_library_context,
+    search_library,
+)
 from app.modules.agent.tools.search_transcript import (
     SearchTranscriptContext,
     bind_search_context,
@@ -54,7 +60,7 @@ from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-mount-cite-v4"
+CHAT_PROMPT_VERSION = "chat-mount-cite-v5"
 CHAT_RECURSION_LIMIT = 25
 
 
@@ -121,12 +127,21 @@ class AgentConfig:
 CHAT_AGENT_CONFIG = AgentConfig()
 # 挂载变体：带 search_transcript 检索工具；自由聊天维持空配置（ADR-0018 变体=常量）。
 MOUNTED_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_transcript,))
+# 课程 / 全部范围变体（B2）：带 search_library 跨记录检索工具（与 search_transcript 互斥）。
+LIBRARY_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_library,))
 
 
-def _resolve_agent_config(mounted: bool, web_search_enabled: bool) -> AgentConfig:
-    """按「挂载 × web_search」组合出当轮装配（B1）：既有变体维持常量，
-    web_search 生效时在其基础上追加工具（frozen dataclass 实例化）。"""
-    config = MOUNTED_CHAT_AGENT_CONFIG if mounted else CHAT_AGENT_CONFIG
+def _resolve_agent_config(*, mounted: bool, library: bool, web_search_enabled: bool) -> AgentConfig:
+    """按「scope × web_search」组合出当轮装配（B2）：既有变体维持常量，
+    web_search 生效时在其基础上追加工具（frozen dataclass 实例化）。
+    mounted 与 library 互斥（RECORD 挂 search_transcript，COURSE/ALL 挂
+    search_library），同时为真按 library 优先（调用方不会产生该组合）。"""
+    if library:
+        config = LIBRARY_CHAT_AGENT_CONFIG
+    elif mounted:
+        config = MOUNTED_CHAT_AGENT_CONFIG
+    else:
+        config = CHAT_AGENT_CONFIG
     if web_search_enabled:
         config = AgentConfig(tools=(*config.tools, web_search))
     return config
@@ -269,12 +284,14 @@ async def stream_chat_reply(
     session_id: str,
     outcome: ChatStreamOutcome,
     mounted: MountedMaterial | None = None,
+    library: LibrarySearchContext | None = None,
     web_search: SearchProvider | None = None,
 ) -> AsyncGenerator[ChatStreamEvent, None]:
     """工厂层流式生成路径：建模型 → 清残留 → astream 分发结构化流事件 → 统一埋点。
 
     - 每轮从 chat_messages 重建喂入：轮初清掉上轮/崩溃残留，checkpoint 只承载当轮运行态；
-    - 挂载会话（mounted）注入检索工具与运行期上下文；web_search 非 None 时挂载
+    - 挂载会话（mounted）注入检索工具与运行期上下文；课程 / 全部范围会话（library）
+    注入 search_library 与范围上下文（与 mounted 互斥）；web_search 非 None 时挂载
       联网工具并绑定凭据（每请求组合装配）；自由聊天空配置；
     - 事件分发：AIMessageChunk 文本 → token、tool_call_chunks 拼全 → tool_call、
       ToolMessage → tool_result；token 用量跨工具循环累加；
@@ -291,6 +308,7 @@ async def stream_chat_reply(
     system_prompt = next((m for m in context_messages if isinstance(m, SystemMessage)), None)
     input_messages = [m for m in context_messages if not isinstance(m, SystemMessage)]
     # 挂载会话：绑定检索工具上下文（record_id 与 transcript 成对，见 MountedMaterial）；
+    # 课程 / 全部范围：绑定跨记录检索范围（scope 与 course_id，见 LibrarySearchContext）；
     # web_search 生效：绑定联网搜索凭据（无 key 时调用方已强制不传）。
     search_token: Token[SearchTranscriptContext | None] | None = None
     if mounted is not None:
@@ -299,6 +317,15 @@ async def stream_chat_reply(
                 record_id=mounted.record_id,
                 transcript=mounted.transcript,
                 session_factory=session_factory,
+            )
+        )
+    library_token: Token[LibrarySearchContext | None] | None = None
+    if library is not None:
+        library_token = bind_library_context(
+            LibrarySearchContext(
+                scope=library.scope,
+                course_id=library.course_id,
+                session_factory=library.session_factory,
             )
         )
     web_token: Token[SearchProvider | None] | None = None
@@ -310,7 +337,9 @@ async def stream_chat_reply(
             checkpointer,
             system_prompt=system_prompt,
             config=_resolve_agent_config(
-                mounted=search_token is not None, web_search_enabled=web_token is not None
+                mounted=search_token is not None,
+                library=library_token is not None,
+                web_search_enabled=web_token is not None,
             ),
         )
         tool_call_drafts: dict[int, _ToolCallDraft] = {}
@@ -353,6 +382,8 @@ async def stream_chat_reply(
     finally:
         if search_token is not None:
             reset_search_context(search_token)
+        if library_token is not None:
+            reset_library_context(library_token)
         if web_token is not None:
             reset_web_search(web_token)
         await http_client.aclose()

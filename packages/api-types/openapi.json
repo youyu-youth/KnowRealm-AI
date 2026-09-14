@@ -187,7 +187,7 @@
         "type": "string"
       },
       "ChatCitationOut": {
-        "description": "回答引用：record=转写摘录（逐字校验），web=网络来源（标题+URL，B1）。\n\ncitations_json 按条目判别化：record 条目 {index, record_id, quote}（历史\n行无 source 键，按默认 \"record\" 读取）；web 条目 {index, source:\"web\",\nurl, title}。",
+        "description": "回答引用：record=转写摘录（逐字校验），web=网络来源（标题+URL，B1）。\n\ncitations_json 按条目判别化：record 条目 {index, record_id, quote}（历史\n行无 source 键，按默认 \"record\" 读取）；web 条目 {index, source:\"web\",\nurl, title}。跨记录条目（B2）额外携带 record_title（标题快照，创建时\n固化；历史行无此键 → None，前端降级展示）。",
         "properties": {
           "index": {
             "description": "正文角标序号",
@@ -219,6 +219,19 @@
             ],
             "description": "被引用的学习记录 ID，web 来源为空",
             "title": "Record Id"
+          },
+          "record_title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "被引用记录的标题快照（跨记录引用），历史行为空",
+            "title": "Record Title"
           },
           "source": {
             "default": "record",
@@ -389,9 +402,33 @@
         "title": "ChatRole",
         "type": "string"
       },
+      "ChatScope": {
+        "description": "会话挂载范围（B2）：FREE 自由 / RECORD 单记录 / COURSE 课程 / ALL 全部资料。\n\n与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；范围会话内不可变。",
+        "enum": [
+          "FREE",
+          "RECORD",
+          "COURSE",
+          "ALL"
+        ],
+        "title": "ChatScope",
+        "type": "string"
+      },
       "ChatSessionCreate": {
         "additionalProperties": false,
         "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "课程范围会话挂载的课程",
+            "title": "Course Id"
+          },
           "knowledge_point_id": {
             "anyOf": [
               {
@@ -424,6 +461,17 @@
             ],
             "description": "挂载的学习记录，空为自由聊天",
             "title": "Record Id"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatScope"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "会话范围；不传时按 record_id 派生（非空 → RECORD，否则 FREE），旧调用方零破坏"
           }
         },
         "title": "ChatSessionCreate",
@@ -431,6 +479,12 @@
       },
       "ChatSessionOut": {
         "properties": {
+          "course_deleted": {
+            "default": false,
+            "description": "COURSE 会话挂载课程已软删（运行时推导），会话只读",
+            "title": "Course Deleted",
+            "type": "boolean"
+          },
           "course_id": {
             "anyOf": [
               {
@@ -440,7 +494,7 @@
                 "type": "null"
               }
             ],
-            "description": "挂载记录所属课程，自由聊天为空",
+            "description": "COURSE 会话挂载的课程；RECORD 会话为挂载记录所属课程（运行时派生）",
             "title": "Course Id"
           },
           "created_at": {
@@ -469,8 +523,13 @@
                 "type": "null"
               }
             ],
-            "description": "挂载的学习记录，自由聊天为空",
+            "description": "挂载的学习记录，RECORD 会话非空",
             "title": "Record Id"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ChatScope",
+            "default": "FREE",
+            "description": "会话挂载范围"
           },
           "title": {
             "anyOf": [

@@ -89,7 +89,7 @@ async def test_migration_0014_creates_chat_tables_and_advances_user_version(
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
             version = await (await connection.execute("PRAGMA user_version")).fetchone()
 
-        assert version == (21,)
+        assert version == (22,)
 
         tables = await table_names(tmp_path)
         assert {"profile", "chat_sessions", "chat_messages"} <= tables
@@ -330,4 +330,133 @@ async def test_deleted_mount_record_marks_session_invalid_and_rejects_send(
         )
         assert rejected.status_code == 409
         assert "CHAT_RECORD_UNAVAILABLE" in rejected.json()["detail"]
+        assert await message_rows(tmp_path, session_id) == []
+
+
+async def create_course(
+    client: httpx.AsyncClient, name: str = "操作系统", status: str | None = None
+) -> str:
+    payload: dict[str, object] = {
+        "name": name,
+        "learning_context": "INTEREST",
+        "depth": "BEGINNER",
+    }
+    if status is not None:
+        payload["status"] = status
+    created = await client.post("/api/courses", json=payload)
+    assert created.status_code == 201
+    return cast(str, created.json()["id"])
+
+
+@pytest.mark.anyio
+async def test_scope_create_matrix_derivation_and_validation(tmp_path: Path) -> None:
+    async with running_chat_app(tmp_path) as (_app, client):
+        capture = await client.post(
+            "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "速记内容"}
+        )
+        record_id = capture.json()["record_id"]
+        course_id = await create_course(client)
+
+        # 派生：不传 scope 时 record_id 非空 → RECORD，否则 FREE（旧调用方零破坏）。
+        derived_free = (await client.post("/api/chat-sessions", json={})).json()
+        assert derived_free["scope"] == "FREE"
+        derived_record = (
+            await client.post("/api/chat-sessions", json={"record_id": record_id})
+        ).json()
+        assert derived_record["scope"] == "RECORD"
+        assert derived_record["course_deleted"] is False
+
+        # 显式四档。
+        free = (await client.post("/api/chat-sessions", json={"scope": "FREE"})).json()
+        assert free["scope"] == "FREE" and free["record_id"] is None
+        all_scope = (await client.post("/api/chat-sessions", json={"scope": "ALL"})).json()
+        assert all_scope["scope"] == "ALL" and all_scope["course_id"] is None
+        course_scope = (
+            await client.post(
+                "/api/chat-sessions", json={"scope": "COURSE", "course_id": course_id}
+            )
+        ).json()
+        assert course_scope["scope"] == "COURSE"
+        assert course_scope["course_id"] == course_id
+        assert course_scope["record_id"] is None
+        # 课程 / 全部范围会话不注入角色快照（清单指令在每轮组装时生成）。
+        assert await message_rows(tmp_path, course_scope["id"]) == []
+        assert await message_rows(tmp_path, all_scope["id"]) == []
+
+        # 校验矩阵：422 家族。
+        matrix = [
+            {"scope": "RECORD"},
+            {"scope": "COURSE"},
+            {"scope": "COURSE", "course_id": course_id, "record_id": record_id},
+            {"scope": "FREE", "record_id": record_id},
+            {"scope": "FREE", "course_id": course_id},
+            {"scope": "ALL", "record_id": record_id},
+            {"scope": "ALL", "course_id": course_id},
+            {"scope": "RECORD", "record_id": record_id, "course_id": course_id},
+            {"scope": "COURSE", "course_id": course_id, "knowledge_point_id": record_id},
+        ]
+        for payload in matrix:
+            rejected = await client.post("/api/chat-sessions", json=payload)
+            assert rejected.status_code == 422, payload
+
+        # 课程存活校验：不存在 404（归档 409 见独立用例）。
+        missing = await client.post(
+            "/api/chat-sessions",
+            json={"scope": "COURSE", "course_id": "00000000-0000-4000-8000-000000000000"},
+        )
+        assert missing.status_code == 404
+        assert missing.json()["code"] == "CHAT_COURSE_NOT_FOUND"
+
+
+@pytest.mark.anyio
+async def test_archived_course_rejects_course_session_creation(tmp_path: Path) -> None:
+    async with running_chat_app(tmp_path) as (_app, client):
+        course_id = await create_course(client, name="归档课")
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            await connection.execute(
+                "UPDATE courses SET status = 'ARCHIVED' WHERE id = ?", (course_id,)
+            )
+            await connection.commit()
+
+        rejected = await client.post(
+            "/api/chat-sessions", json={"scope": "COURSE", "course_id": course_id}
+        )
+        assert rejected.status_code == 409
+        assert rejected.json()["code"] == "CHAT_COURSE_ARCHIVED"
+
+
+@pytest.mark.anyio
+async def test_deleted_course_marks_course_session_read_only(tmp_path: Path) -> None:
+    save_llm_provider(
+        tmp_path,
+        base_url="https://stub.example.com/v1",
+        api_key="sk-test",
+        model="stub-chat-model",
+        clear_api_key=False,
+    )
+    async with running_chat_app(tmp_path) as (_app, client):
+        course_id = await create_course(client)
+        created = await client.post(
+            "/api/chat-sessions", json={"scope": "COURSE", "course_id": course_id}
+        )
+        session_id = created.json()["id"]
+        assert created.json()["course_deleted"] is False
+
+        deleted = await client.delete(f"/api/courses/{course_id}")
+        assert deleted.status_code == 204
+
+        # 列表与详情标记失效；会话保留可读。
+        listed = await client.get("/api/chat-sessions")
+        by_id = {item["id"]: item for item in listed.json()}
+        assert by_id[session_id]["course_deleted"] is True
+        detail = await client.get(f"/api/chat-sessions/{session_id}")
+        assert detail.status_code == 200
+        assert detail.json()["course_deleted"] is True
+
+        # 失效会话发送返回语义化冲突错误，不落 user 行。
+        rejected = await client.post(
+            f"/api/chat-sessions/{session_id}/messages", json={"content": "还能问吗"}
+        )
+        assert rejected.status_code == 409
+        assert rejected.json()["code"] == "CHAT_COURSE_UNAVAILABLE"
         assert await message_rows(tmp_path, session_id) == []

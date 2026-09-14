@@ -5,8 +5,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.modules.agent.models import ChatMessage, ChatSession
-from app.modules.agent.schemas import ChatMode, ChatRecordOption, ChatRole, ChatSessionOut
+from app.modules.agent.schemas import (
+    ChatMode,
+    ChatRecordOption,
+    ChatRole,
+    ChatScope,
+    ChatSessionOut,
+)
 from app.modules.course.models import Course
+from app.modules.course.schemas import CourseStatus
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
 from app.modules.profile.models import PROFILE_ID, Profile
@@ -80,11 +87,14 @@ class ChatSessionService:
     async def create(
         session: AsyncSession,
         *,
+        scope: ChatScope,
         record_id: str | None = None,
+        course_id: str | None = None,
         knowledge_point_id: str | None = None,
     ) -> ChatSession:
         async with session.begin():
             record = None
+            course = None
             knowledge_point = None
             if knowledge_point_id is not None:
                 knowledge_point = await session.get(KnowledgePoint, knowledge_point_id)
@@ -105,25 +115,48 @@ class ChatSessionService:
                         status_code=409,
                         detail="知识点不属于挂载的学习记录",
                     )
-            if record_id is not None:
-                record = await RecordService.get(session, record_id)
+            if scope == ChatScope.RECORD:
+                record = await RecordService.get(session, record_id or "")
                 if record is None:
                     raise CodedHTTPException(
-                        code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
+                        code="RECORD_NOT_FOUND",
+                        status_code=404,
+                        detail="学习记录不存在或已删除",
                     )
-                if await RecordService.get_transcript(session, record_id) is None:
+                if await RecordService.get_transcript(session, record.id) is None:
                     raise CodedHTTPException(
                         code="TRANSCRIPT_NOT_READY",
                         status_code=409,
                         detail="TRANSCRIPT_NOT_READY：转写尚未生成，暂不可挂载",
                     )
+            elif scope == ChatScope.COURSE:
+                course = await session.get(Course, course_id or "")
+                if course is None or course.deleted_at is not None:
+                    raise CodedHTTPException(
+                        code="CHAT_COURSE_NOT_FOUND",
+                        status_code=404,
+                        detail="课程不存在或已删除",
+                    )
+                if course.status == CourseStatus.ARCHIVED:
+                    raise CodedHTTPException(
+                        code="CHAT_COURSE_ARCHIVED",
+                        status_code=409,
+                        detail="课程已归档，暂不支持发起课程问答",
+                    )
             now = utcnow()
             chat = ChatSession(
                 id=str(uuid4()),
-                course_id=record.course_id if record is not None else None,
-                record_id=record_id,
+                course_id=(
+                    record.course_id
+                    if record is not None
+                    else course.id
+                    if course is not None
+                    else None
+                ),
+                record_id=record_id if scope == ChatScope.RECORD else None,
                 concept_id=None,
                 mode=ChatMode.ASK,
+                scope=scope,
                 title=None,
                 created_at=now,
                 updated_at=now,
@@ -144,7 +177,7 @@ class ChatSessionService:
                         created_at=now,
                     )
                 )
-            elif record is None:
+            elif scope == ChatScope.FREE:
                 profile = await session.get(Profile, PROFILE_ID)
                 session.add(
                     ChatMessage(
@@ -162,25 +195,36 @@ class ChatSessionService:
             return chat
 
     @staticmethod
-    def to_out(chat: ChatSession, *, record_deleted: bool = False) -> ChatSessionOut:
-        """失效态由记录软删标记运行时推导（无失效列）：挂载记录不存在或已软删即失效。"""
+    def to_out(
+        chat: ChatSession,
+        *,
+        record_deleted: bool = False,
+        course_deleted: bool = False,
+    ) -> ChatSessionOut:
+        """失效态由软删标记运行时推导（无失效列）：挂载记录/课程不存在或已软删即失效。"""
         out = ChatSessionOut.model_validate(chat)
         out.record_deleted = record_deleted
+        out.course_deleted = course_deleted
         return out
 
     @staticmethod
     async def list_out(session: AsyncSession) -> list[ChatSessionOut]:
         rows = (
             await session.execute(
-                select(ChatSession, Record.deleted_at)
+                select(ChatSession, Record.deleted_at, Course.deleted_at)
                 .outerjoin(Record, Record.id == ChatSession.record_id)
+                .outerjoin(Course, Course.id == ChatSession.course_id)
                 .where(ChatSession.deleted_at.is_(None))
                 .order_by(ChatSession.updated_at.desc())
             )
         ).all()
         return [
-            ChatSessionService.to_out(chat, record_deleted=deleted_at is not None)
-            for chat, deleted_at in rows
+            ChatSessionService.to_out(
+                chat,
+                record_deleted=record_deleted_at is not None,
+                course_deleted=(chat.scope == ChatScope.COURSE and course_deleted_at is not None),
+            )
+            for chat, record_deleted_at, course_deleted_at in rows
         ]
 
     @staticmethod
@@ -192,7 +236,13 @@ class ChatSessionService:
             chat.record_id is not None
             and (await RecordService.get(session, chat.record_id)) is None
         )
-        return ChatSessionService.to_out(chat, record_deleted=record_deleted)
+        course_deleted = False
+        if chat.scope == ChatScope.COURSE and chat.course_id is not None:
+            course = await session.get(Course, chat.course_id)
+            course_deleted = course is None or course.deleted_at is not None
+        return ChatSessionService.to_out(
+            chat, record_deleted=record_deleted, course_deleted=course_deleted
+        )
 
     @staticmethod
     async def list(session: AsyncSession) -> list[ChatSession]:

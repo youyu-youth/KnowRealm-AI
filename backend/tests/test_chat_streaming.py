@@ -25,11 +25,17 @@ from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import update
 
 from app.main import create_app
-from app.modules.agent.citations import parse_citation_reply
+from app.modules.agent.citations import (
+    LibraryRecordMaterial,
+    parse_citation_reply,
+    parse_library_citation_reply,
+)
 from app.modules.agent.context import (
     CHAT_CONTEXT_CHAR_BUDGET,
     ChatContextTooLargeError,
     ContextRow,
+    LibraryContext,
+    LibraryRecordRow,
     RecordContext,
     build_context_messages,
 )
@@ -377,6 +383,195 @@ class TestParseCitationReply:
         )
         assert parsed.content == ""
         assert len(parsed.citations) == 1
+
+
+class TestBuildContextMessagesLibrary:
+    def test_library_listing_replaces_system_and_carries_citation_format(self) -> None:
+        messages = build_context_messages(
+            [row("sys", ChatRole.SYSTEM, "角色快照"), row("u1", ChatRole.USER, "这门课讲了什么")],
+            library=LibraryContext(
+                scope_label="课程「分布式系统」",
+                records=(
+                    LibraryRecordRow(
+                        title="第 2 讲 一致性哈希", updated_date="2026-09-10", has_transcript=True
+                    ),
+                    LibraryRecordRow(
+                        title="闪念速记", updated_date="2026-09-12", has_transcript=False
+                    ),
+                ),
+            ),
+        )
+        prompt = str(messages[0].content)
+        # 角色快照让位清单指令：标题 + 日期 + 无转写标注 + 检索指引 + 跨记录引用格式。
+        assert "角色快照" not in prompt
+        assert "课程「分布式系统」" in prompt
+        assert "第 2 讲 一致性哈希（2026-09-10）" in prompt
+        assert "闪念速记（2026-09-12，暂无转写）" in prompt
+        assert "search_library" in prompt
+        assert "（来源：记录标题）" in prompt
+        assert messages[-1].content == "这门课讲了什么"
+
+    def test_empty_library_states_no_records_honestly(self) -> None:
+        messages = build_context_messages(
+            [row("u1", ChatRole.USER, "有哪些资料")],
+            library=LibraryContext(scope_label="全部资料", records=()),
+        )
+        prompt = str(messages[0].content)
+        assert "共 0 条学习记录" in prompt
+        assert "不要编造" in prompt
+
+    def test_listing_budget_keeps_most_recent_with_note(self) -> None:
+        # 记录行按 updated_at 降序传入（加载器语义）：预算内保留最前（最近）的记录。
+        rows = tuple(
+            LibraryRecordRow(title=f"记录{i}", updated_date="2026-09-01", has_transcript=True)
+            for i in range(499, -1, -1)
+        )
+        messages = build_context_messages(
+            [row("u1", ChatRole.USER, "问")],
+            library=LibraryContext(scope_label="全部资料", records=rows),
+        )
+        prompt = str(messages[0].content)
+        assert "共 500 条学习记录，仅列最近" in prompt
+        assert "记录499" in prompt and "记录0" not in prompt
+
+    def test_library_web_search_guidance_keeps_materials_first(self) -> None:
+        messages = build_context_messages(
+            [row("u1", ChatRole.USER, "问")],
+            library=LibraryContext(scope_label="全部资料", records=()),
+            web_search=True,
+        )
+        assert "仅作为材料外的补充来源" in str(messages[0].content)
+
+
+class TestParseLibraryCitationReply:
+    RECORDS = [
+        LibraryRecordMaterial(
+            record_id="rec-1",
+            title="第 2 讲 一致性哈希",
+            transcript="第二讲聚焦一致性哈希的实践应用。",
+        ),
+        LibraryRecordMaterial(
+            record_id="rec-2",
+            title="第 5 讲 分布式共识",
+            transcript="第五讲聚焦一致性哈希的理论证明。这里的共识协议是 Raft。",
+        ),
+    ]
+
+    def test_source_title_locates_record_and_passes_verbatim(self) -> None:
+        parsed = parse_library_citation_reply(
+            "第 2 讲更强调实践[1]。\n"
+            "[1] 第二讲聚焦一致性哈希的实践应用（来源：第 2 讲 一致性哈希）",
+            self.RECORDS,
+        )
+        assert parsed.content == "第 2 讲更强调实践[1]。"
+        assert parsed.citations == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": "rec-1",
+                "record_title": "第 2 讲 一致性哈希",
+                "quote": "第二讲聚焦一致性哈希的实践应用",
+            }
+        ]
+
+    def test_duplicate_titles_verify_each_and_take_first_pass(self) -> None:
+        records = [
+            LibraryRecordMaterial("rec-a", "同名讲义", "内容甲，不含目标句。"),
+            LibraryRecordMaterial("rec-b", "同名讲义", "目标句出现在第二条同名记录里。"),
+        ]
+        parsed = parse_library_citation_reply(
+            "见原文[1]。\n[1] 目标句出现在第二条同名记录里（来源：同名讲义）",
+            records,
+        )
+        assert parsed.citations == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": "rec-b",
+                "record_title": "同名讲义",
+                "quote": "目标句出现在第二条同名记录里",
+            }
+        ]
+
+    def test_unknown_title_dropped_without_scope_wide_fallback(self) -> None:
+        parsed = parse_library_citation_reply(
+            "回答[1]。\n[1] 第五讲聚焦一致性哈希的理论证明（来源：不存在的标题）",
+            self.RECORDS,
+        )
+        # 标题定位失败不做全范围兜底：摘录真实存在也丢弃（归属不可信）。
+        assert parsed.citations == []
+        assert parsed.content == "回答[1]。"
+
+    def test_bare_quote_scans_scope_verbatim_and_takes_first_container(self) -> None:
+        records = [
+            LibraryRecordMaterial("rec-a", "甲", "这句话只在后一条出现。"),
+            LibraryRecordMaterial("rec-b", "乙", "裸摘录没有来源标记。"),
+        ]
+        parsed = parse_library_citation_reply("两种形态[1]。\n[1] 裸摘录没有来源标记", records)
+        assert parsed.citations == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": "rec-b",
+                "record_title": "乙",
+                "quote": "裸摘录没有来源标记",
+            }
+        ]
+
+    def test_bare_quote_miss_dropped_without_fuzzy_alignment(self) -> None:
+        parsed = parse_library_citation_reply(
+            "回答[1]。\n[1] 裸摘录意译版本与任何记录都不逐字相同",
+            self.RECORDS,
+        )
+        assert parsed.citations == []
+
+    def test_paraphrase_aligned_only_within_title_located_candidates(self) -> None:
+        transcript = "一致性哈希把节点映射到哈希环上，实现均匀分布。"
+        records = [
+            LibraryRecordMaterial("rec-a", "甲", "无关内容一句。"),
+            LibraryRecordMaterial("rec-b", "哈希讲义", transcript),
+        ]
+        parsed = parse_library_citation_reply(
+            "见下[1]。\n[1] 一致性哈希将节点映射至哈希环，从而实现均匀的分布（来源：哈希讲义）",
+            records,
+        )
+        assert len(parsed.citations) == 1
+        entry = parsed.citations[0]
+        assert entry["record_id"] == "rec-b"
+        assert entry["quote"] == "一致性哈希把节点映射到哈希环上，实现均匀分布。"
+
+    def test_web_line_and_parenthesis_variants(self) -> None:
+        parsed = parse_library_citation_reply(
+            "本地与网络并存[1][2]。\n"
+            "[1] 第二讲聚焦一致性哈希的实践应用（来源：《第 2 讲 一致性哈希》）\n"
+            "[2] 共识博客 — https://example.com/raft。",
+            self.RECORDS,
+        )
+        assert parsed.citations == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": "rec-1",
+                "record_title": "第 2 讲 一致性哈希",
+                "quote": "第二讲聚焦一致性哈希的实践应用",
+            },
+            {"index": 2, "source": "web", "url": "https://example.com/raft", "title": "共识博客"},
+        ]
+        assert parsed.content == "本地与网络并存[1][2]。"
+
+    def test_half_width_parenthesis_source_marker_accepted(self) -> None:
+        parsed = parse_library_citation_reply(
+            "见[1]。\n[1] 第五讲聚焦一致性哈希的理论证明 (来源: 第 5 讲 分布式共识)",
+            self.RECORDS,
+        )
+        assert len(parsed.citations) == 1
+        assert parsed.citations[0]["record_id"] == "rec-2"
+
+    def test_without_trailing_block_content_untouched(self) -> None:
+        text = "正文中间的[1]角标不算引用块"
+        parsed = parse_library_citation_reply(text, self.RECORDS)
+        assert parsed.content == text
+        assert parsed.citations == []
 
 
 class StubChatModel(BaseChatModel):
@@ -1051,6 +1246,7 @@ async def test_mounted_reply_citations_validated_stripped_and_streamed(
                 "index": 1,
                 "source": "record",
                 "record_id": record_id,
+                "record_title": None,
                 "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
                 "url": None,
                 "title": None,
@@ -1108,6 +1304,7 @@ async def test_mounted_blockquote_paraphrase_citation_aligned(
                 "index": 1,
                 "source": "record",
                 "record_id": record_id,
+                "record_title": None,
                 "quote": "Docker 是一个用于开发、交付和运行应用程序的开放平台。",
                 "url": None,
                 "title": None,
@@ -1262,6 +1459,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
                 "index": 1,
                 "source": "record",
                 "record_id": record_id,
+                "record_title": None,
                 "quote": "本讲系统梳理傅里叶级数的展开方法",
                 "url": None,
                 "title": None,
@@ -1271,7 +1469,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-mount-cite-v4"
+        assert rows[0][3] == "chat-mount-cite-v5"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -1572,6 +1770,7 @@ async def test_free_chat_web_search_streams_tool_events_and_web_citation(
                 "index": 1,
                 "source": "web",
                 "record_id": None,
+                "record_title": None,
                 "quote": None,
                 "url": "https://www.python.org/downloads/",
                 "title": "Python 官网",
@@ -1654,6 +1853,7 @@ async def test_mounted_web_flag_citations_mix_record_and_web_entries(
                 "index": 1,
                 "source": "record",
                 "record_id": record_id,
+                "record_title": None,
                 "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
                 "url": None,
                 "title": None,
@@ -1662,6 +1862,7 @@ async def test_mounted_web_flag_citations_mix_record_and_web_entries(
                 "index": 2,
                 "source": "web",
                 "record_id": None,
+                "record_title": None,
                 "quote": None,
                 "url": "https://example.com/mvcc",
                 "title": "MVCC 博客",
@@ -1696,3 +1897,222 @@ async def test_prompt_byte_identical_when_web_search_off(
         mounted_id = created.json()["id"]
         await send_message(client, mounted_id, "挂载问题")
         assert "web_search 工具联网查询" not in str(captured[1][0].content)
+
+
+# ---------------------------------------------------------------------------
+# B2 跨记录问答：scope 装配矩阵（FREE/RECORD/COURSE|ALL × web_search）、
+# search_library 工具事件、清单注入与跨记录引用落库。
+# ---------------------------------------------------------------------------
+
+
+async def create_course_for_scope(client: httpx.AsyncClient, name: str = "分布式系统") -> str:
+    created = await client.post(
+        "/api/courses", json={"name": name, "learning_context": "INTEREST", "depth": "BEGINNER"}
+    )
+    assert created.status_code == 201
+    return cast(str, created.json()["id"])
+
+
+async def record_id_by_title(client: httpx.AsyncClient, title: str) -> str:
+    options = await client.get("/api/chat-sessions/record-options")
+    assert options.status_code == 200
+    return cast(str, next(item["id"] for item in options.json() if item["title"] == title))
+
+
+@pytest.mark.anyio
+async def test_scope_mounting_matrix_tool_visibility(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.modules.llm.service.ChatOpenAI", BindRecordingModel)
+    save_llm_provider(
+        tmp_path,
+        base_url="https://stub.example.com/v1",
+        api_key="sk-test",
+        model="stub-chat-model",
+        clear_api_key=False,
+    )
+    app = create_app(data_dir=tmp_path, launch_token=TOKEN)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://testserver",
+            headers={"X-KnowRealm-Token": TOKEN},
+        ) as client:
+            course_id = await create_course_for_scope(client)
+            capture = await client.post(
+                "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "材料原文"}
+            )
+            record_id = capture.json()["record_id"]
+            free_id = await create_session(client)
+            record_created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+            assert record_created.status_code == 201
+            record_session_id = record_created.json()["id"]
+            course_created = await client.post(
+                "/api/chat-sessions", json={"scope": "COURSE", "course_id": course_id}
+            )
+            assert course_created.status_code == 201
+            course_session_id = course_created.json()["id"]
+            all_created = await client.post("/api/chat-sessions", json={"scope": "ALL"})
+            assert all_created.status_code == 201
+            all_session_id = all_created.json()["id"]
+            BindRecordingModel.replies = [list(STUB_REPLY)] * 8
+
+            async def visible(session_id: str, *, web: bool = False) -> list[str]:
+                BindRecordingModel.bound = []
+                events = await send_message(client, session_id, "问题", web_search=web)
+                assert events[-1][0] == "done"
+                return list(BindRecordingModel.bound)
+
+            # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library。
+            assert await visible(free_id) == []
+            assert await visible(record_session_id) == ["search_transcript"]
+            assert await visible(course_session_id) == ["search_library"]
+            assert await visible(all_session_id) == ["search_library"]
+
+            # web_search 生效时在各 scope 基础上追加（需已配置 key）。
+            save_web_search_provider(
+                tmp_path, provider="tavily", api_key="tvly-test", clear_api_key=False
+            )
+            assert await visible(course_session_id, web=True) == [
+                "search_library",
+                "web_search",
+            ]
+            assert await visible(all_session_id, web=True) == ["search_library", "web_search"]
+            assert await visible(record_session_id, web=True) == [
+                "search_transcript",
+                "web_search",
+            ]
+
+
+@pytest.mark.anyio
+async def test_course_session_streams_library_tool_and_cross_record_citations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    final_reply = [
+        "第 2 讲更强调实践[1]。",
+        "\n[1] 第二讲聚焦一致性哈希的实践应用（来源：第 2 讲 一致性哈希）",
+    ]
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply("search_library", {"query": "一致性哈希"}), final_reply],
+    ) as (_app, client, captured):
+        course_id = await create_course_for_scope(client)
+        # 粘贴 / 速记记录无分片：search_library FTS 零命中走 LIKE 兜底（跨记录）。
+        # text-capture 标题自动派生自内容，这里显式改写为可引用的讲次标题。
+        first_capture = await client.post(
+            "/api/text-captures",
+            json={
+                "capture_type": "PASTE",
+                "content": "第二讲聚焦一致性哈希的实践应用。",
+                "course_id": course_id,
+            },
+        )
+        second_capture = await client.post(
+            "/api/text-captures",
+            json={
+                "capture_type": "PASTE",
+                "content": "第五讲聚焦共识协议 Raft 的理论证明。",
+                "course_id": course_id,
+            },
+        )
+        first_record_id = cast(str, first_capture.json()["record_id"])
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            await connection.execute(
+                "UPDATE records SET title = ? WHERE id = ?",
+                ("第 2 讲 一致性哈希", first_record_id),
+            )
+            await connection.execute(
+                "UPDATE records SET title = ? WHERE id = ?",
+                ("第 5 讲 分布式共识", cast(str, second_capture.json()["record_id"])),
+            )
+            await connection.commit()
+        created = await client.post(
+            "/api/chat-sessions", json={"scope": "COURSE", "course_id": course_id}
+        )
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "对比一下两次课？")
+
+        # 清单注入：课程范围 + 标题行 + 检索指引 + 跨记录引用格式；无角色快照。
+        prompt = str(captured[0][0].content)
+        assert "课程「分布式系统」" in prompt
+        assert "共 2 条学习记录" in prompt
+        assert "第 2 讲 一致性哈希（" in prompt
+        assert "search_library" in prompt
+        assert "（来源：记录标题）" in prompt
+
+        names = [name for name, _payload in events]
+        assert names[0] == "status" and names[-1] == "done"
+        assert names.index("tool_call") < names.index("tool_result") < names.index("token")
+        assert [payload for name, payload in events if name == "tool_call"] == [
+            {"tool": "search_library", "query": "一致性哈希"}
+        ]
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "search_library", "hits": 1, "ok": True}
+        ]
+        # 工具命中进入第二次模型调用：跨记录命中带标题与逐字原文。
+        tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
+        assert len(tool_messages) == 1
+        assert "第 2 讲 一致性哈希" in str(tool_messages[0].content)
+        assert "第二讲聚焦一致性哈希的实践应用" in str(tool_messages[0].content)
+
+        # 跨记录引用：归属由校验器裁定，落 record_id + record_title 快照。
+        cited_record_id = await record_id_by_title(client, "第 2 讲 一致性哈希")
+        assert [payload for name, payload in events if name == "citation"] == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": cited_record_id,
+                "record_title": "第 2 讲 一致性哈希",
+                "quote": "第二讲聚焦一致性哈希的实践应用",
+            }
+        ]
+        history = await client.get(f"/api/chat-sessions/{session_id}/messages")
+        assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
+        assert assistant["citations"][0]["record_title"] == "第 2 讲 一致性哈希"
+
+
+@pytest.mark.anyio
+async def test_all_session_fts_library_hits_and_web_guidance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply("search_library", {"query": "傅里叶"}), list(STUB_REPLY)],
+    ) as (_app, client, captured):
+        save_web_search_provider(
+            tmp_path, provider="tavily", api_key="tvly-test", clear_api_key=False
+        )
+        imported = await client.post(
+            "/api/document-imports",
+            files={
+                "file": (
+                    "傅里叶笔记.txt",
+                    "本讲系统梳理傅里叶级数的展开方法".encode(),
+                    "text/plain",
+                )
+            },
+        )
+        assert imported.status_code == 202
+        record_id = cast(str, imported.json()["record_id"])
+        await wait_for_transcript_ready(client, record_id)
+        created = await client.post("/api/chat-sessions", json={"scope": "ALL"})
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "傅里叶级数？", web_search=True)
+
+        # 全部范围清单 + 联网指引带材料优先语义。
+        prompt = str(captured[0][0].content)
+        assert "全部资料" in prompt
+        assert "仅作为材料外的补充来源" in prompt
+        # 有分片记录命中 FTS（文档导入建分片）。
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "search_library", "hits": 1, "ok": True}
+        ]
+        tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
+        assert len(tool_messages) == 1
+        assert "本讲系统梳理傅里叶级数的展开方法" in str(tool_messages[0].content)

@@ -45,17 +45,19 @@ async def seed_record(
     *,
     capture_type: str = "RECORDING",
     deleted_at: str | None = None,
+    course_id: str | None = None,
 ) -> None:
     async with app.state.session_factory() as session, session.begin():
         await session.execute(
             text(
                 "INSERT INTO records (id, course_id, capture_type, title, status, duration_ms, "
                 "summary_confirmed_at, created_at, updated_at, deleted_at) "
-                "VALUES (:id, NULL, :capture_type, :title, 'COMPLETED', 60000, NULL, "
+                "VALUES (:id, :course_id, :capture_type, :title, 'COMPLETED', 60000, NULL, "
                 ":now, :now, :deleted_at)"
             ),
             {
                 "id": record_id,
+                "course_id": course_id,
                 "capture_type": capture_type,
                 "title": title,
                 "now": NOW,
@@ -212,7 +214,7 @@ async def test_migration_0020_creates_segment_search_index(tmp_path: Path) -> No
             ).fetchall()
         ]
 
-    assert version == (21,)
+    assert version == (22,)
     assert "segment_search_index" in tables
     assert columns == ["body", "entity_type", "entity_id"]
 
@@ -527,3 +529,83 @@ async def test_backfill_missing_is_idempotent_and_covers_new_segments(tmp_path: 
 
     assert await index_row_count(app) == first_count + 1
     assert [hit.segment_id for hit in hits] == [segment_c]
+
+
+@pytest.mark.anyio
+async def test_search_scope_segments_filters_course_and_soft_delete_with_titles(
+    tmp_path: Path,
+) -> None:
+    """B2 跨记录检索：course 过滤可空、软删照旧过滤、命中携带归属记录标题。"""
+    from app.modules.search.schemas import LibrarySegmentSearchHit
+
+    async with running_app(tmp_path / "KnowRealm") as (app, _client):
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO courses (id, name, learning_context, depth, status, "
+                    "created_at, updated_at, deleted_at) "
+                    "VALUES (:id, :name, 'INTEREST', 'BEGINNER', 'ACTIVE', :now, :now, NULL)"
+                ),
+                [
+                    {"id": "c-1", "name": "分布式", "now": NOW},
+                    {"id": "c-2", "name": "其他课", "now": NOW},
+                ],
+            )
+        record_hash = "88888888-8888-4888-8888-888888888888"
+        record_other = "99999999-9999-4999-8999-999999999999"
+        record_inbox = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        transcript_hash = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        file_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        await seed_record(app, record_hash, "第 2 讲 一致性哈希", course_id="c-1")
+        await seed_record(app, record_other, "独立课记录", course_id="c-2")
+        await seed_record(app, record_inbox, "收件箱速记")
+        await seed_record_file(app, record_hash, file_id)
+        await seed_transcript(app, record_hash, transcript_hash, "正文")
+        segments = {
+            record_hash: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            record_other: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            record_inbox: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        }
+        for record_id, segment_id in segments.items():
+            await seed_transcript_segment(
+                app,
+                segment_id=segment_id,
+                transcript_id=transcript_hash,
+                record_id=record_id,
+                file_id=file_id,
+                sequence_no=0,
+                content="一致性哈希把节点映射到环上",
+            )
+        await upsert_index(app, ENTITY_TRANSCRIPT_SEGMENT, list(segments.values()))
+
+        async def scope_hits(course_id: str | None) -> list[LibrarySegmentSearchHit]:
+            async with app.state.session_factory() as session:
+                return await SegmentSearchService.search_scope_segments(
+                    session, course_id, "一致性哈希", 8
+                )
+
+        # 全部范围（course_id=None）：跨记录命中并携带标题。
+        all_hits = await scope_hits(None)
+        assert {hit.record_id for hit in all_hits} == set(segments)
+        titles = {hit.record_id: hit.record_title for hit in all_hits}
+        assert titles[record_hash] == "第 2 讲 一致性哈希"
+        assert titles[record_inbox] == "收件箱速记"
+        assert all(hit.content == "一致性哈希把节点映射到环上" for hit in all_hits)
+
+        # 课程过滤：只命中该课程记录。
+        course_hits = await scope_hits("c-1")
+        assert [hit.record_id for hit in course_hits] == [record_hash]
+
+        # 记录软删：查询期回表过滤。
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE records SET deleted_at = :now WHERE id = :rid"),
+                {"now": NOW, "rid": record_hash},
+            )
+        assert [hit.record_id for hit in await scope_hits("c-1")] == []
+
+        # 无关课程 / 关键词不匹配：零命中。
+        assert await scope_hits("c-404") == []
+        async with app.state.session_factory() as session:
+            empty = await SegmentSearchService.search_scope_segments(session, None, "完全无关词", 8)
+        assert empty == []

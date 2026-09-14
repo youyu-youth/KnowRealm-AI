@@ -1440,7 +1440,8 @@ export interface components {
          *
          *     citations_json 按条目判别化：record 条目 {index, record_id, quote}（历史
          *     行无 source 键，按默认 "record" 读取）；web 条目 {index, source:"web",
-         *     url, title}。
+         *     url, title}。跨记录条目（B2）额外携带 record_title（标题快照，创建时
+         *     固化；历史行无此键 → None，前端降级展示）。
          */
         ChatCitationOut: {
             /**
@@ -1458,6 +1459,11 @@ export interface components {
              * @description 被引用的学习记录 ID，web 来源为空
              */
             record_id?: string | null;
+            /**
+             * Record Title
+             * @description 被引用记录的标题快照（跨记录引用），历史行为空
+             */
+            record_title?: string | null;
             /**
              * Source
              * @description 来源类型
@@ -1543,8 +1549,21 @@ export interface components {
          * @enum {string}
          */
         ChatRole: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
+        /**
+         * ChatScope
+         * @description 会话挂载范围（B2）：FREE 自由 / RECORD 单记录 / COURSE 课程 / ALL 全部资料。
+         *
+         *     与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；范围会话内不可变。
+         * @enum {string}
+         */
+        ChatScope: "FREE" | "RECORD" | "COURSE" | "ALL";
         /** ChatSessionCreate */
         ChatSessionCreate: {
+            /**
+             * Course Id
+             * @description 课程范围会话挂载的课程
+             */
+            course_id?: string | null;
             /**
              * Knowledge Point Id
              * @description 知识点解释入口的知识点快照来源
@@ -1562,12 +1581,20 @@ export interface components {
              * @description 挂载的学习记录，空为自由聊天
              */
             record_id?: string | null;
+            /** @description 会话范围；不传时按 record_id 派生（非空 → RECORD，否则 FREE），旧调用方零破坏 */
+            scope?: components["schemas"]["ChatScope"] | null;
         };
         /** ChatSessionOut */
         ChatSessionOut: {
             /**
+             * Course Deleted
+             * @description COURSE 会话挂载课程已软删（运行时推导），会话只读
+             * @default false
+             */
+            course_deleted: boolean;
+            /**
              * Course Id
-             * @description 挂载记录所属课程，自由聊天为空
+             * @description COURSE 会话挂载的课程；RECORD 会话为挂载记录所属课程（运行时派生）
              */
             course_id?: string | null;
             /** Created At */
@@ -1583,9 +1610,14 @@ export interface components {
             record_deleted: boolean;
             /**
              * Record Id
-             * @description 挂载的学习记录，自由聊天为空
+             * @description 挂载的学习记录，RECORD 会话非空
              */
             record_id?: string | null;
+            /**
+             * @description 会话挂载范围
+             * @default FREE
+             */
+            scope: components["schemas"]["ChatScope"];
             /**
              * Title
              * @description 会话标题，未重命名时为空

@@ -5,7 +5,7 @@ from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ISODateTime, utcnow
-from app.modules.agent.schemas import ChatMode, ChatRole
+from app.modules.agent.schemas import ChatMode, ChatRole, ChatScope
 
 
 class ChatSession(Base):
@@ -24,6 +24,7 @@ class ChatSession(Base):
     )
     concept_id: Mapped[str | None] = mapped_column(String(36), default=None)
     mode: Mapped[ChatMode] = mapped_column(String(20))
+    scope: Mapped[ChatScope] = mapped_column(String(20), default=ChatScope.FREE)
     title: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)

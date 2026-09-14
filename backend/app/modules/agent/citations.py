@@ -1,10 +1,13 @@
 """挂载对话回答的引用块解析与逐字校验（纯函数，独立可测）。
 
 条目分流：引用行内含 URL 视为网络来源（web 条目，仅非空检查、不逐字校验，
-B1）；否则按转写摘录走逐字校验路径（record 条目）。
+B1）；否则按转写摘录走逐字校验路径（record 条目）。跨记录会话（B2）走
+parse_library_citation_reply：「（来源：标题）」定位候选记录后逐字 / 模糊
+校验，无候选才全范围逐字扫描兜底（禁止全范围模糊对齐，性能红线）。
 """
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 
@@ -20,6 +23,12 @@ CITATION_ALIGN_MIN_RATIO = 0.65
 # web 引用行内 URL 的识别与尾部标点清理（URL 按约定位于行尾，容忍句读粘带）。
 WEB_URL_RE = re.compile(r"https?://[^\s（）()\[\]{}<>＞]+")
 WEB_URL_TRAILING_PUNCT = "。，,；;！!？?、"
+# 跨记录引用行的来源标记：「[n] 摘录（来源：记录标题）」，容忍全 / 半角括号与
+# 冒号变体；标题外层允许书名号包裹（照抄指令的常见走样）。
+SOURCE_MARK_RE = re.compile(
+    r"^(?P<quote>.+?)[（(]\s*来源\s*[:：]\s*(?P<title>.+?)[）)]$", re.DOTALL
+)
+TITLE_WRAP_CHARS = "《》\"“”'"
 
 
 @dataclass(frozen=True)
@@ -28,6 +37,15 @@ class ParsedReply:
 
     content: str
     citations: list[dict[str, int | str]]
+
+
+@dataclass(frozen=True)
+class LibraryRecordMaterial:
+    """跨记录引用校验材料：记录标题与转写全文（标题定位与逐字校验的根基）。"""
+
+    record_id: str
+    title: str
+    transcript: str
 
 
 def _normalize_for_align(text: str) -> str:
@@ -97,18 +115,9 @@ def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> Parse
     - 对齐不到可靠出处（或空、index<1）→ 整条丢弃不展示；
     - 引用块被识别即从展示正文剥离，即使全部条目未通过校验。
     """
-    lines = text.rstrip().split("\n")
-    cut = len(lines)
-    entries: list[tuple[int, str]] = []
-    while cut > 0:
-        match = CITATION_LINE_RE.match(lines[cut - 1].strip())
-        if match is None:
-            break
-        entries.append((int(match.group(1)), match.group(2).strip()))
-        cut -= 1
+    lines, entries = _split_trailing_citation_lines(text)
     if not entries:
         return ParsedReply(content=text, citations=[])
-    entries.reverse()
     citations: list[dict[str, int | str]] = []
     for index, quote in entries:
         if not quote or index < 1:
@@ -130,4 +139,88 @@ def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> Parse
                     "quote": final_quote,
                 }
             )
-    return ParsedReply(content="\n".join(lines[:cut]).rstrip(), citations=citations)
+    return ParsedReply(content="\n".join(lines).rstrip(), citations=citations)
+
+
+def _split_trailing_citation_lines(text: str) -> tuple[list[str], list[tuple[int, str]]]:
+    """识别文末连续引用行：返回（正文行, [(index, 行文本)]），无引用块时行文本为空列表。"""
+    lines = text.rstrip().split("\n")
+    cut = len(lines)
+    entries: list[tuple[int, str]] = []
+    while cut > 0:
+        match = CITATION_LINE_RE.match(lines[cut - 1].strip())
+        if match is None:
+            break
+        entries.append((int(match.group(1)), match.group(2).strip()))
+        cut -= 1
+    entries.reverse()
+    return lines[:cut], entries
+
+
+def _library_record_entry(
+    index: int, quote: str, record: LibraryRecordMaterial
+) -> dict[str, int | str]:
+    return {
+        "index": index,
+        "source": "record",
+        "record_id": record.record_id,
+        "record_title": record.title,
+        "quote": quote,
+    }
+
+
+def parse_library_citation_reply(
+    text: str, records: Sequence[LibraryRecordMaterial]
+) -> ParsedReply:
+    """跨记录会话（COURSE/ALL）的引用块解析：归属由校验器裁定，模型只写标题。
+
+    行分流：URL → web 条目（不逐字校验）；含「（来源：标题）」→ 标题等值定位
+    候选记录，逐字命中（≤80 字）直接过（重名逐一验证取首过者），逐字不过仅在
+    候选记录内模糊对齐（复用 _align_quote）；无来源标记 → 全范围逐字扫描取首
+    包含者（禁止全范围模糊对齐，性能红线）。全部失败整条丢弃；引用块被识别
+    即从展示正文剥离。
+    """
+    body_lines, entries = _split_trailing_citation_lines(text)
+    if not entries:
+        return ParsedReply(content=text, citations=[])
+    citations: list[dict[str, int | str]] = []
+    for index, line in entries:
+        if not line or index < 1:
+            continue
+        web = _web_entry(index, line)
+        if web is not None:
+            citations.append(web)
+            continue
+        match = SOURCE_MARK_RE.match(line)
+        if match is not None:
+            quote = match.group("quote").strip()
+            title = match.group("title").strip().strip(TITLE_WRAP_CHARS)
+            candidates = [record for record in records if record.title == title]
+            if quote and candidates:
+                # 逐字验证按清单顺序取首过者；逐字不过才在候选内模糊对齐。
+                entry = next(
+                    (
+                        _library_record_entry(index, quote, record)
+                        for record in candidates
+                        if len(quote) <= CITATION_QUOTE_MAX_CHARS and quote in record.transcript
+                    ),
+                    None,
+                )
+                if entry is None:
+                    for record in candidates:
+                        aligned = _align_quote(quote, record.transcript)
+                        if aligned is not None:
+                            entry = _library_record_entry(index, aligned, record)
+                            break
+                if entry is not None:
+                    citations.append(entry)
+                    continue
+            # 来源标记存在但定位 / 校验失败：不做全范围兜底（标题不可信时归属不可裁定）。
+            continue
+        # 无来源标记：全范围逐字扫描取首包含者（仅逐字，不做模糊对齐）。
+        if 0 < len(line) <= CITATION_QUOTE_MAX_CHARS:
+            for record in records:
+                if line in record.transcript:
+                    citations.append(_library_record_entry(index, line, record))
+                    break
+    return ParsedReply(content="\n".join(body_lines).rstrip(), citations=citations)

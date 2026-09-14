@@ -146,7 +146,7 @@ async def assert_document_import_schema(db_path: Path) -> None:
             await connection.execute("PRAGMA index_list(processing_jobs)")
         ).fetchall()
 
-    assert version == (21,)
+    assert version == (22,)
     assert {"record_files", "transcripts", "processing_jobs"} <= tables
     assert "processing_status" not in {column[1] for column in record_file_columns}
     assert {index[1] for index in processing_job_indexes} >= {

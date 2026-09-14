@@ -13,7 +13,11 @@ from loguru import logger
 from sqlalchemy import TextClause, bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.modules.search.schemas import SegmentEntityType, SegmentSearchHit
+from app.modules.search.schemas import (
+    LibrarySegmentSearchHit,
+    SegmentEntityType,
+    SegmentSearchHit,
+)
 from app.modules.search.tokenizer import match_expression, tokenize
 
 ENTITY_TRANSCRIPT_SEGMENT: SegmentEntityType = "transcript_segment"
@@ -74,6 +78,36 @@ _SEARCH_DOCUMENT_SEGMENTS_SQL = text(
     "WHERE segment_search_index MATCH :match "
     "AND segment_search_index.entity_type = 'document_segment' "
     "AND ds.record_id = :record_id "
+    "ORDER BY score "
+    "LIMIT :limit"
+)
+
+# 跨记录分片检索（B2 search_library）：去掉单记录过滤、JOIN records 取标题；
+# course 条件可空（NULL = 全部未软删记录），软删过滤与单记录版一致。
+_SEARCH_SCOPE_TRANSCRIPT_SEGMENTS_SQL = text(
+    "SELECT ts.id, ts.record_id, r.title AS record_title, ts.content, "
+    "ts.sequence_no, ts.record_start_ms, ts.record_end_ms, "
+    "bm25(segment_search_index) AS score "
+    "FROM segment_search_index "
+    "JOIN transcript_segments ts ON ts.id = segment_search_index.entity_id "
+    "JOIN transcripts t ON t.id = ts.transcript_id AND t.deleted_at IS NULL "
+    "JOIN records r ON r.id = ts.record_id AND r.deleted_at IS NULL "
+    "WHERE segment_search_index MATCH :match "
+    "AND segment_search_index.entity_type = 'transcript_segment' "
+    "AND (:course_id IS NULL OR r.course_id = :course_id) "
+    "ORDER BY score "
+    "LIMIT :limit"
+)
+_SEARCH_SCOPE_DOCUMENT_SEGMENTS_SQL = text(
+    "SELECT ds.id, ds.record_id, r.title AS record_title, ds.content, "
+    "ds.sequence_no, ds.page_no, "
+    "bm25(segment_search_index) AS score "
+    "FROM segment_search_index "
+    "JOIN document_segments ds ON ds.id = segment_search_index.entity_id "
+    "JOIN records r ON r.id = ds.record_id AND r.deleted_at IS NULL "
+    "WHERE segment_search_index MATCH :match "
+    "AND segment_search_index.entity_type = 'document_segment' "
+    "AND (:course_id IS NULL OR r.course_id = :course_id) "
     "ORDER BY score "
     "LIMIT :limit"
 )
@@ -220,6 +254,56 @@ class SegmentSearchService:
     async def record_has_segments(session: AsyncSession, record_id: str) -> bool:
         """记录是否存在分片（含软删宿主；chat 检索工具据此选择兜底路径）。"""
         return bool(await session.scalar(_RECORD_HAS_SEGMENTS_SQL, {"record_id": record_id}))
+
+    @staticmethod
+    async def search_scope_segments(
+        session: AsyncSession,
+        course_id: str | None,
+        query: str,
+        limit: int,
+    ) -> list[LibrarySegmentSearchHit]:
+        """跨记录分片检索（课程 / 全部范围）：FTS MATCH → 回表逐字原文 + 归属记录标题，
+        BM25 跨两类合并排序。course_id 为 None 时范围 = 全部未软删记录（含收件箱）。"""
+        match = match_expression(query)
+        if match is None:
+            return []
+        params = {"match": match, "course_id": course_id, "limit": limit}
+        transcript_rows = (
+            await session.execute(_SEARCH_SCOPE_TRANSCRIPT_SEGMENTS_SQL, params)
+        ).all()
+        document_rows = (await session.execute(_SEARCH_SCOPE_DOCUMENT_SEGMENTS_SQL, params)).all()
+        scored: list[tuple[float, LibrarySegmentSearchHit]] = [
+            (
+                cast(float, row.score),
+                LibrarySegmentSearchHit(
+                    entity_type=ENTITY_TRANSCRIPT_SEGMENT,
+                    segment_id=cast(str, row.id),
+                    record_id=cast(str, row.record_id),
+                    record_title=cast(str, row.record_title),
+                    content=cast(str, row.content),
+                    sequence_no=cast(int, row.sequence_no),
+                    record_start_ms=cast("int | None", row.record_start_ms),
+                    record_end_ms=cast("int | None", row.record_end_ms),
+                ),
+            )
+            for row in transcript_rows
+        ] + [
+            (
+                cast(float, row.score),
+                LibrarySegmentSearchHit(
+                    entity_type=ENTITY_DOCUMENT_SEGMENT,
+                    segment_id=cast(str, row.id),
+                    record_id=cast(str, row.record_id),
+                    record_title=cast(str, row.record_title),
+                    content=cast(str, row.content),
+                    sequence_no=cast(int, row.sequence_no),
+                    page_no=cast("int | None", row.page_no),
+                ),
+            )
+            for row in document_rows
+        ]
+        scored.sort(key=lambda item: item[0])
+        return [hit for _score, hit in scored[:limit]]
 
     @staticmethod
     async def backfill_missing(session_factory: async_sessionmaker[AsyncSession]) -> None:

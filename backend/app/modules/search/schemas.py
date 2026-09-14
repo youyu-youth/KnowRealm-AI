@@ -76,3 +76,17 @@ class SegmentSearchHit(BaseModel):
     record_start_ms: int | None = Field(default=None, description="转写分片时间轴起点")
     record_end_ms: int | None = Field(default=None, description="转写分片时间轴终点")
     page_no: int | None = Field(default=None, description="文档分片页码")
+
+
+class LibrarySegmentSearchHit(BaseModel):
+    """跨记录分片检索命中（B2）：额外携带归属记录（id + 标题）供引用归属。"""
+
+    entity_type: SegmentEntityType
+    segment_id: str
+    record_id: str
+    record_title: str
+    content: str
+    sequence_no: int
+    record_start_ms: int | None = Field(default=None, description="转写分片时间轴起点")
+    record_end_ms: int | None = Field(default=None, description="转写分片时间轴终点")
+    page_no: int | None = Field(default=None, description="文档分片页码")
