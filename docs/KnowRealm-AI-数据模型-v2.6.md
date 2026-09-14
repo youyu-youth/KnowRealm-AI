@@ -1,4 +1,4 @@
-# KnowRealm-AI 数据模型 v2.5
+# KnowRealm-AI 数据模型 v2.6
 
 > **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.7》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.5.md`。
 > **核心原则（v2.0 范式，ADR-0001 / 决策 #55）**：
@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：v2.6（2026-09-14）**A3 事件消费框架 + Evidence Builder 已实施（迁移 0021，learning-evidence plan）**——§4.5 learning_events / learning_evidence 标注**已实施**（learning 域：统一事件写入函数 `learning.events.write_learning_event`、独立 asyncio 水位消费循环 `learning/consumer.py`、映射规则集中声明，ADR-0021；水位 = 隐式 rowid 单调扫描、禁 NOT EXISTS；event_id 预查幂等 + 唯一约束兜底；失败 3 次跳过不建死信表；证据可由事件流清空重放再生）；event_id 由普通索引**收紧为唯一约束**（重放幂等的数据库级保障，一事件至多一证据）；learning 域薄只读查询（按记录/课程取证据流）就位，为 Mastery Engine 与 agent 学习上下文中间件共同底座；concept_id / source_anchor_id 本期恒 NULL。
 > **变更记录**：v2.5（2026-09-13）**A1+A2 Chat 检索工具已实施（迁移 0020，chat-retrieval-tool plan）**——§4.5 增配套 FTS5 虚拟表 `segment_search_index`（entity_type ∈ {transcript_segment, document_segment} / entity_id / body 为 jieba 分词串；与全局搜索 `search_index` 分表，`/api/search` 语义零变化）；可再生衍生索引不计正式表数，纪律同 ADR-0016（写路径同事务先删后插、软删不触碰索引行、查询期回表过滤）。挂载对话经 `search_transcript` 工具消费该索引：命中一律回业务表取逐字原文（索引只负责"找到哪个片段"），无分片记录退化为 transcript 全文子串兜底。
 > **变更记录**：v2.4（2026-09-10）**F1 转写分片与来源时间轴已实施（迁移 0019，transcript-segments plan）**——§4.5 前四表（transcript_segments / document_segments / source_anchors / source_anchor_links）标注**已实施**，表结构以此节为准。实施定案：transcript_segments 四个时间戳列允许 NULL（= 无时间轴来源，存量回填 / in-flight 降级 / 编辑未命中句三场景共用同一退化语义）；document_segments.course_id 可空（收件箱导入未归类为一等场景）、course_material_id 挂靠路径列预留（course_materials P5 未建，暂无外键，其落地时补约束）；source_anchors「至少关联一个分片」收紧为精确类型 CHECK（AUDIO_SEGMENT 必挂 transcript_segment_id、DOCUMENT_SEGMENT 必挂 document_segment_id，§10 同步）；四表为派生定位/引用结构，不带 created_at / 软删列（随父实体级联删除）；锚点两表空表就位、本期零写入者（首个写入者随 A1 检索工具 / A3 Evidence Builder）。
 > **变更记录**：v2.3（2026-09-06）**复习资料定稿（16 plan grill）**——review_materials 由 6 字段草案补齐完整形态：status（GENERATED / CONFIRMED / SUPERSEDED，确认必选）、version_no（(record_id, version_no) 唯一；仅 AI 重生成换代，手动编辑就地生效不换代）、transcript_source_version（过期锚点：转写已改则拒绝新提交）、generated_from_summary_id（可空，仅溯源不阻塞）、user_feedback / token_usage_json / latency_ms / confirmed_at / 软删列。生成上下文定为**转写/文档解析全文为主 + 已确认总结辅助**（KP 不进，弃"总结+KP"草案）；生成走 LangGraph interrupt/resume（复用 langgraph.db，thread_id 前缀隔离，与总结同构）；超长按模型窗口自适应（装得下单次调用、超限语义分块 map-reduce，禁静默截断）；Top 重点清单条数不固定（LLM 按内容密度决定）。
@@ -288,6 +289,7 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 ### 4.5 学习数据基础域（P2；learning_events P1）
 
 > **v2.4 已实施标注**：本节前四表已随 F1 落地（迁移 0019，2026-09-10）。四表均为派生定位/引用结构（非可编辑实体）：不带 created_at / updated_at / deleted_at，生命周期随父实体 ON DELETE CASCADE。锚点两表空表就位，本期零写入者。
+> **v2.6 已实施标注**：learning_events 四事件 MVP 与 learning_evidence 已随 A3 落地（迁移 0021，2026-09-14）。四事件与业务动作同事务写入（统一经 `learning.events.write_learning_event`，幂等键冲突静默跳过）；消费为独立 asyncio 水位循环（ADR-0021，不入 processing_jobs，水位 = 隐式 rowid 单调扫描、禁 NOT EXISTS 子查询）；证据可由事件流清空重放再生（event_id 唯一 = 数据库级重放幂等）；learning 域薄只读查询（按记录/课程取证据流）为 Mastery Engine 与 agent 学习上下文中间件的共同底座；concept_id / source_anchor_id 本期恒 NULL。
 
 **transcript_segments** — 句子级转写分片（已实施）
 | 字段 | 类型 | 说明 |
@@ -341,7 +343,7 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 
 唯一约束 `(resource_type, resource_id, source_anchor_id, relation_type)`。实体表上的 `source_anchor_id` 仅为可选主锚点。
 
-**learning_events** — 学习行为事实（追加型，不软删；**提前至 P1**，MVP 四事件：SUMMARY_CONFIRMED / KNOWLEDGE_CONFIRMED / QUIZ_ANSWERED / QUIZ_TEST_COMPLETED，#33/#43）
+**learning_events** — 学习行为事实（追加型，不软删，已实施；**提前至 P1**，MVP 四事件：SUMMARY_CONFIRMED / KNOWLEDGE_CONFIRMED / QUIZ_ANSWERED / QUIZ_TEST_COMPLETED，#33/#43）
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id / course_id | TEXT | record_id / concept_id 可空 |
@@ -353,16 +355,16 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 | schema_version | INTEGER | |
 | occurred_at / created_at | TEXT | 索引 (occurred_at desc)、(concept_id, occurred_at desc)、(course_id, event_type, occurred_at desc) |
 
-**learning_evidence** — 学习证据（追加型）
+**learning_evidence** — 学习证据（追加型，已实施）
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id / course_id / concept_id / event_id | TEXT | |
+| id / course_id / concept_id / event_id | TEXT | event_id **唯一**（重放幂等键）；concept_id 本期恒 NULL（Concept 为 P3 实体） |
 | evidence_type | TEXT | QUIZ / RECALL / TEACH_BACK / TUTOR_CHECK / TRANSFER / CLASSROOM_SIGNAL / USER_CONFIRMATION |
 | result / score / difficulty | | |
 | weight / confidence | REAL | 0~1；AI_SYNTHESIS 不作为证据类型 |
-| source_anchor_id | TEXT | 可空 |
+| source_anchor_id | TEXT | 可空，本期恒 NULL（锚点回填属后续溯源域） |
 | metadata_json | TEXT | |
-| occurred_at / created_at | TEXT | 索引 (concept_id, occurred_at desc)、(event_id) |
+| occurred_at / created_at | TEXT | 索引 (concept_id, occurred_at desc)；**唯一约束 (event_id)**（v2.6 由普通索引收紧） |
 
 ### 4.6 Course Brain 域
 

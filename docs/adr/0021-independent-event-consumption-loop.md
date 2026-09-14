@@ -28,3 +28,10 @@ Status: accepted（2026-09-14，A3「事件消费框架 + Evidence Builder」gri
 - 未来 UI 需要即时性时，在循环骨架上加推送唤醒，形态不变。
 - `learning_evidence.event_id` 唯一约束是对数据模型 v2.5 `(event_id)` 普通索引的字段级收紧，落地票内升版 v2.6 重命名（F1 CHECK 收紧先例）。
 - Mastery（红线 #3 唯一写入口 Mastery Engine，P4）与 agent 学习上下文中间件是 evidence 的两个未来消费者；本期仅随实现提供只读查询能力，不建消费者。
+
+## 落地备注（2026-09-14，learning-evidence 票 03/04 实施定稿）
+
+- **水位键 = SQLite 隐式 rowid**：`learning_events.id` 是 uuid4（非单调），无法直接作「单调 id」水位；实现落在追加型表的隐式 rowid 上（严格递增、走表 b-tree，禁 NOT EXISTS 同样满足）。本决定中的「单调 id 比较」按此落地形态理解。
+- **幂等方式 = event_id 预查点查跳过**（与统一事件写入函数同款先例），非 INSERT 撞唯一约束；唯一约束仍作竞态兜底（撞上走失败重试路径自愈）。点查走唯一索引，不属上述禁止的 NOT EXISTS 扫描。
+- **「重试 3 次」= 单条共 3 次尝试**（`MAX_CONVERSION_ATTEMPTS=3`），第 3 次失败才计跳过告警。
+- 数据模型已升 v2.6 重命名（event_id 唯一收紧落档）；`docs/后端错误码清单.md` 为 HTTP 错误响应码清单，消费循环两个纯日志码（EVIDENCE_CONSUME_FAILED / EVIDENCE_CONVERSION_FAILED）不入册（先例 WORKER_INTERRUPTED 同）。
