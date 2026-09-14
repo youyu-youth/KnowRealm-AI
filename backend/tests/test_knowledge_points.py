@@ -752,7 +752,7 @@ async def test_double_confirm_is_idempotent_and_event_key_is_unique(
 ) -> None:
     model = FakeKnowledgePointModel()
     async with running_knowledge_point_app(tmp_path / "KnowRealm", model) as (app, client):
-        record_id, _summary_id = await create_completed_record(app, client)
+        record_id, summary_id = await create_completed_record(app, client)
         await configure_llm(client)
         await grant_llm_consent(client)
         batch_id, payload = await generate_draft_batch(client, record_id)
@@ -774,6 +774,20 @@ async def test_double_confirm_is_idempotent_and_event_key_is_unique(
             f"/api/records/{record_id}/knowledge-point-batches/{batch_id}/confirmations"
         )
         final_event_count = await confirmed_event_count(app.state.session_factory, record_id)
+        async with app.state.session_factory() as session:
+            event_row = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT source_id, score, metadata_json FROM learning_events "
+                            "WHERE event_type='KNOWLEDGE_CONFIRMED' AND record_id=:record_id"
+                        ),
+                        {"record_id": record_id},
+                    )
+                )
+                .mappings()
+                .one()
+            )
 
         with pytest.raises(IntegrityError):
             async with app.state.session_factory() as session, session.begin():
@@ -800,6 +814,13 @@ async def test_double_confirm_is_idempotent_and_event_key_is_unique(
     assert third.status_code == 200
     assert third.json()["items"] == []
     assert final_event_count == 1
+    assert event_row["source_id"] == batch_id
+    assert event_row["score"] is None
+    assert json.loads(event_row["metadata_json"]) == {
+        "batch_id": batch_id,
+        "confirmed_count": len(cast(list[dict[str, object]], payload["items"])),
+        "generated_from_summary_id": summary_id,
+    }
 
 
 @pytest.mark.anyio

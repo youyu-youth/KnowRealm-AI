@@ -441,6 +441,10 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
                 .mappings()
                 .all()
             )
+            # 批次生成/采纳与手工 CRUD 均不发学习事件（既定语义，负向断言）。
+            learning_event_count = await session.scalar(
+                text("SELECT count(*) FROM learning_events")
+            )
         assert {
             row["id"]: (row["source"], row["generation_status"], row["deleted_at"] is not None)
             for row in deleted_states
@@ -448,6 +452,7 @@ async def test_prune_adopt_and_discard_todo_batches(tmp_path: Path) -> None:
             candidates[1]["id"]: ("AI", "DRAFT", True),
             active[2]["id"]: ("AI", "ACTIVE", True),
         }
+        assert learning_event_count == 0
 
         second = await client.post(f"/api/records/{RECORD_ID}/todo-jobs")
         second_id = cast(str, second.json()["job_id"])

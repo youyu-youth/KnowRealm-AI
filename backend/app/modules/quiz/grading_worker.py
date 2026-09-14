@@ -37,7 +37,7 @@ from app.modules.llm.service import (
 from app.modules.quiz.models import Quiz, QuizTest, QuizTestItem
 from app.modules.quiz.schemas import QuizQuestionType, ShortAnswerGrade
 from app.modules.quiz.test_schemas import QuizTestItemResult, QuizTestStatus
-from app.modules.quiz.test_service import build_test_answer_event, finalize_completed_test
+from app.modules.quiz.test_service import finalize_completed_test, record_test_answer_event
 from app.modules.quiz.worker import preflight
 from app.modules.record.models import Record
 from app.modules.settings.config import LlmProviderConfig, llm_provider_fingerprint
@@ -210,7 +210,18 @@ async def _land_item_grade(
             test = await session.get(QuizTest, test_id)
             quiz = await session.get(Quiz, quiz_id)
             if test is not None and quiz is not None:
-                session.add(build_test_answer_event(test, item, quiz, verdict, grade.score, now))
+                # 事件代表作答行为：评分落行在评分时刻，occurred_at 取作答时刻
+                # （交卷闸门要求全部作答，answered_at 必非空）。
+                await record_test_answer_event(
+                    session,
+                    test,
+                    item,
+                    quiz,
+                    verdict,
+                    grade.score,
+                    occurred_at=cast(datetime, item.answered_at),
+                    created_at=now,
+                )
         else:
             item.ai_grade_json = json.dumps({"error_code": error_code}, separators=(",", ":"))
         item.updated_at = now

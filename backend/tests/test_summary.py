@@ -730,6 +730,10 @@ async def test_confirm_is_idempotent_and_writes_single_learning_event(tmp_path: 
     assert event["idempotency_key"] == f"summary-confirmed:{summary_id}"
     assert event["record_id"] == record_id
     assert event["course_id"] == course_id
+    assert event["score"] is None
+    assert json.loads(event["metadata_json"]) == {"summary_version_no": 1}
+    # occurred_at=确认时刻：与总结行落定的 confirmed_at 同值。
+    assert event["occurred_at"] == summary_row[1]
     assert summary_row[0] == "CONFIRMED"
     assert summary_row[1] is not None
 

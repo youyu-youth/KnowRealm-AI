@@ -15,7 +15,8 @@ from app.db.base import utcnow
 from app.modules.course.models import Course
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.modules.record.models import LearningEvent, Record
+from app.modules.learning.events import write_learning_event
+from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.settings.config import (
     LlmProviderConfig,
@@ -360,28 +361,16 @@ class SummaryService:
             record.status = RecordStatus.COMPLETED
             record.summary_confirmed_at = now
             record.updated_at = now
-            session.add(
-                LearningEvent(
-                    id=str(uuid4()),
-                    course_id=record.course_id,
-                    record_id=record_id,
-                    concept_id=None,
-                    event_type="SUMMARY_CONFIRMED",
-                    source_type="AI_SUMMARY",
-                    source_id=summary.id,
-                    result=None,
-                    score=None,
-                    difficulty=None,
-                    duration_ms=None,
-                    metadata_json=json.dumps(
-                        {"summary_version_no": summary.version_no},
-                        separators=(",", ":"),
-                    ),
-                    idempotency_key=f"summary-confirmed:{summary.id}",
-                    schema_version=1,
-                    occurred_at=now,
-                    created_at=now,
-                )
+            await write_learning_event(
+                session,
+                course_id=record.course_id,
+                record_id=record_id,
+                event_type="SUMMARY_CONFIRMED",
+                source_type="AI_SUMMARY",
+                source_id=summary.id,
+                idempotency_key=f"summary-confirmed:{summary.id}",
+                occurred_at=now,
+                metadata={"summary_version_no": summary.version_no},
             )
             return SummaryConfirmOut(
                 summary=_summary_out(summary),

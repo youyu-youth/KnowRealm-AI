@@ -701,7 +701,8 @@ async def fetch_learning_events(app: FastAPI, key_pattern: str) -> list[dict[str
                 await session.execute(
                     text(
                         "SELECT idempotency_key, event_type, source_type, source_id, "
-                        "result, score, duration_ms, metadata_json FROM learning_events "
+                        "result, score, duration_ms, metadata_json, occurred_at "
+                        "FROM learning_events "
                         "WHERE idempotency_key LIKE :pattern"
                     ),
                     {"pattern": key_pattern},
@@ -762,6 +763,8 @@ async def test_submit_requires_all_answers_and_objective_only_completes_synchron
         assert completed["source_id"] == test_id
         assert completed["score"] == 0.5
         assert cast(int, completed["duration_ms"]) >= 0
+        # occurred_at=完成时刻（同步判分：与交卷响应的 completed_at 同值）。
+        assert completed["occurred_at"] == body["completed_at"]
         metadata = json.loads(cast(str, completed["metadata_json"]))
         assert metadata["question_count"] == 2
         assert metadata["unscored_count"] == 0
@@ -845,6 +848,12 @@ async def test_short_answer_grading_job_completes_test_with_events_and_telemetry
         )
         assert short_event["result"] == "PARTIAL"
         assert short_event["score"] == 0.6
+        # 评分路径的作答事件：occurred_at 取作答时刻（answered_at），非评分时刻。
+        async with app.state.session_factory() as session:
+            short_answered_at = await session.scalar(
+                text("SELECT answered_at FROM quiz_test_items WHERE id=:id"), {"id": short["id"]}
+            )
+        assert short_event["occurred_at"] == short_answered_at
         completed_events = await fetch_learning_events(app, "quiz-test-completed:%")
         assert len(completed_events) == 1
         metadata = json.loads(cast(str, completed_events[0]["metadata_json"]))

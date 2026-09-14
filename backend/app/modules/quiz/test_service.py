@@ -15,6 +15,7 @@ from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.learning.events import write_learning_event
 from app.modules.quiz.models import Quiz, QuizTest, QuizTestItem
 from app.modules.quiz.schemas import (
     QuizDifficulty,
@@ -37,7 +38,7 @@ from app.modules.quiz.test_schemas import (
     QuizTestStatus,
     QuizTestSummaryOut,
 )
-from app.modules.record.models import LearningEvent, Record
+from app.modules.record.models import Record
 from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
@@ -478,43 +479,25 @@ async def finalize_completed_test(session: AsyncSession, test: QuizTest, now: da
     test.completed_at = now
     test.updated_at = now
     type_counts = Counter(question_type for _, question_type in rows)
-    existing = await session.scalar(
-        select(LearningEvent.id).where(
-            LearningEvent.idempotency_key == f"quiz-test-completed:{test.id}"
-        )
+    await write_learning_event(
+        session,
+        course_id=test.course_id,
+        event_type=QuizLearningEventType.TEST_COMPLETED,
+        source_type=QuizLearningEventSourceType.TEST,
+        source_id=test.id,
+        idempotency_key=f"quiz-test-completed:{test.id}",
+        score=test.score,
+        duration_ms=max(
+            0,
+            int((now - _as_utc(test.started_at)).total_seconds() * 1000),
+        ),
+        occurred_at=now,
+        metadata={
+            "question_count": len(rows),
+            "question_types": dict(type_counts),
+            "unscored_count": len(rows) - len(counted),
+        },
     )
-    if existing is None:
-        session.add(
-            LearningEvent(
-                id=str(uuid4()),
-                course_id=test.course_id,
-                record_id=None,
-                concept_id=None,
-                event_type=QuizLearningEventType.TEST_COMPLETED,
-                source_type=QuizLearningEventSourceType.TEST,
-                source_id=test.id,
-                result=None,
-                score=test.score,
-                difficulty=None,
-                duration_ms=max(
-                    0,
-                    int((now - _as_utc(test.started_at)).total_seconds() * 1000),
-                ),
-                metadata_json=json.dumps(
-                    {
-                        "question_count": len(rows),
-                        "question_types": dict(type_counts),
-                        "unscored_count": len(rows) - len(counted),
-                    },
-                    separators=(",", ":"),
-                ),
-                idempotency_key=f"quiz-test-completed:{test.id}",
-                schema_version=1,
-                occurred_at=now,
-                created_at=now,
-            )
-        )
-    await session.flush()
 
 
 async def _detail_out(session: AsyncSession, test: QuizTest) -> QuizTestDetailOut:
@@ -654,38 +637,36 @@ def _grade_objective(
     return result, score, stripped
 
 
-def build_test_answer_event(
+async def record_test_answer_event(
+    session: AsyncSession,
     test: QuizTest,
     item: QuizTestItem,
     quiz: Quiz,
     result: QuizTestItemResult,
     score: float,
-    now: datetime,
-) -> LearningEvent:
-    return LearningEvent(
-        id=str(uuid4()),
+    *,
+    occurred_at: datetime,
+    created_at: datetime | None = None,
+) -> None:
+    """落单题作答事件（键位 quiz-answered:test:{item_id}）；occurred_at 由调用方
+    传入作答时刻（客观题=作答落定时刻，评分路径=item.answered_at）。"""
+    await write_learning_event(
+        session,
         course_id=test.course_id,
-        record_id=None,
-        concept_id=None,
         event_type=QuizLearningEventType.ANSWERED,
         source_type=QuizLearningEventSourceType.QUESTION,
         source_id=quiz.id,
+        idempotency_key=f"quiz-answered:test:{item.id}",
         result=result.value,
         score=score,
         difficulty=quiz.difficulty,
-        duration_ms=None,
-        metadata_json=json.dumps(
-            {
-                "test_id": test.id,
-                "question_type": quiz.question_type,
-                "sequence_no": item.sequence_no,
-            },
-            separators=(",", ":"),
-        ),
-        idempotency_key=f"quiz-answered:test:{item.id}",
-        schema_version=1,
-        occurred_at=now,
-        created_at=now,
+        occurred_at=occurred_at,
+        created_at=created_at,
+        metadata={
+            "test_id": test.id,
+            "question_type": quiz.question_type,
+            "sequence_no": item.sequence_no,
+        },
     )
 
 
@@ -729,5 +710,6 @@ async def _grade_and_record(
         await session.refresh(item)
         return
     if result is not None:
-        session.add(build_test_answer_event(test, item, quiz, result, cast(float, score), now))
-    await session.flush()
+        await record_test_answer_event(
+            session, test, item, quiz, result, cast(float, score), occurred_at=now
+        )

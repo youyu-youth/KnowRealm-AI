@@ -24,6 +24,7 @@ from app.modules.knowledge_point.schemas import (
     KnowledgePointReadOut,
     KnowledgePointWriteRequest,
 )
+from app.modules.learning.events import write_learning_event
 from app.modules.record.models import LearningEvent, Record
 from app.modules.search.service import SearchService
 from app.modules.settings.config import (
@@ -462,32 +463,20 @@ class KnowledgePointService:
                 for row in other_active:
                     row.generation_status = KnowledgePointGenerationStatus.SUPERSEDED
                     row.updated_at = now
-                session.add(
-                    LearningEvent(
-                        id=str(uuid4()),
-                        course_id=cast(str, record.course_id),
-                        record_id=record_id,
-                        concept_id=None,
-                        event_type="KNOWLEDGE_CONFIRMED",
-                        source_type="KNOWLEDGE_BATCH",
-                        source_id=batch_id,
-                        result=None,
-                        score=None,
-                        difficulty=None,
-                        duration_ms=None,
-                        metadata_json=json.dumps(
-                            {
-                                "batch_id": batch_id,
-                                "confirmed_count": len(draft_rows),
-                                "generated_from_summary_id": summary_id,
-                            },
-                            separators=(",", ":"),
-                        ),
-                        idempotency_key=f"knowledge-confirmed:{batch_id}",
-                        schema_version=1,
-                        occurred_at=now,
-                        created_at=now,
-                    )
+                await write_learning_event(
+                    session,
+                    course_id=cast(str, record.course_id),
+                    record_id=record_id,
+                    event_type="KNOWLEDGE_CONFIRMED",
+                    source_type="KNOWLEDGE_BATCH",
+                    source_id=batch_id,
+                    idempotency_key=f"knowledge-confirmed:{batch_id}",
+                    occurred_at=now,
+                    metadata={
+                        "batch_id": batch_id,
+                        "confirmed_count": len(draft_rows),
+                        "generated_from_summary_id": summary_id,
+                    },
                 )
                 # 确认不改检索内容，但显式补齐索引行：候选期间缺行的旧数据确认后同样可搜。
                 for row in draft_rows:
