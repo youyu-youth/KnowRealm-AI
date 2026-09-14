@@ -19,3 +19,5 @@
 - user_version 硬编码断言实测 12 处（含元组式 `== (20,)` 9 处 + `== 20` 3 处），全部同步 21。
 - 新增 `tests/test_learning.py`：0021 迁移表结构/索引/无软删列 + weight 越界与 event_id 重复的约束行为；HTTP 级事件断言扩展进既有 `tests/test_quizzes.py` 五个用例（同事务回滚触发器用例原样保留通过）。
 - 其余三挂点（总结确认/知识点批次/模拟测试两键位）仍为存量内联写入，票 02 迁移至统一函数。
+- 双轴审查结论：spec 轴六项全落实、无超纲；standards 轴采纳三项（提取局部 `_record_answer_event` 封装消除两挂点重复字段、删除冗余 flush、补幂等跳过服务级测试），遗留一项提案——`.claude/rules/fastapi.md` §1 业务域清单与法定方向未含 `learning`（且此前已缺 search/source_anchor、chat 未更名 agent，属长期漂移），按纪律不动规范文件，待用户批准后统一同步。
+- 统一写入函数的幂等跳过 = 预查 SELECT（repo 先例同款）；并发同键竞态由 idempotency_key UNIQUE 兜底，各挂点业务守卫已排除双写路径，消费侧撞唯一约束即忽略的语义见 ADR-0021（票 03）。
