@@ -3625,7 +3625,7 @@ Mastery Update
 
 | # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
 |---|---|---|---|---|---|
-| B1 | Web search 工具 | #53 / Phase 2 | ★★ | 低 | SearchProvider 抽象，默认 Tavily，预留博查/智谱；无 key 按 #38 降级（搜索置灰，聊天照常）；搜索来源经 `citations_json` 引用 |
+| B1 | Web search 工具 | #53 / Phase 2 | ★★ | 低 | **已实施（2026-09-14，web-search 两票完结）**：薄 `SearchProvider` Protocol + 仅 Tavily 一家实现（httpx 直连零新依赖，`trust_env=True` 尊重系统代理——与 LLM 端点的动机不同，见票 01 审查备注）；开关 = 每请求 body 参数 `web_search`（默认 false 零迁移、不落库），前端按会话 Zustand 记忆（重启重置），默认自由 ON / 挂载 OFF；无 key 后端无视标志强制不挂工具（前端置灰之外的双保险）；`citations_json` 条目判别化（record 逐字校验不变 / web `{index,source:"web",url,title}` 仅非空检查），前端 web 条目渲染外链经系统浏览器打开；SSE `tool_call`/`tool_result` 零改动复用（工具卡文案按 tool 名分流）；`CHAT_PROMPT_VERSION` bump v4；不做搜索快照持久化（grill Q10 定稿） |
 | B2 | 跨记录 / 课程级问答 | #24「@全部资料全局 RAG」（P2 已定） | ★★★ | 中 | 检索工具天然跨库返回；产品层把挂载范围从"自由 / 单记录"扩为"单记录 / 课程 / 全部资料"（决策 #22/#24，见 §0 D5）；权限与软删过滤沿用 SearchService 查询期回表过滤 |
 | B3 | Tutor / Teach-back 场景包最小形态 | ⚠️ 增量建议（§29 的 Tutor / TeachBack Graph 留 P5） | ★★ | 低 | `ChatMode` 四模式枚举已预留但 `Literal[ChatMode.ASK]` 仅启用一种（`chat/schemas.py`）；**不建独立 Graph**，以 prompt 模板 + 模式开关先行，作为场景包机制（§39.3）首个验证实例；苏格拉底辅导是通用学习工作台最正交的 AI Native 功能 |
 | B5 | sqlite-vec 向量混合检索 | #24 / Phase 2 | ★ | 中 | 语义检索增益项，等 BM25 真实吃力再进（触发条件见未来候选库路线图） |
@@ -3650,7 +3650,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 第 2 步   A3 Evidence Builder 管道            ← ✅ 已完成（2026-09-14，见 §40.3 A3 行）
   ┆ 并行槽（不依赖 F1 / A3，可随时插入，单独成线）
   ┆   A1 chat 检索工具 → A2 工具调用前端呈现   ← ✅ 已完成（2026-09-13，见 §40.3 A1/A2 行）
-第 3 步   B1 web_search（Tavily，#53）
+第 3 步   B1 web_search（Tavily，#53）        ← ✅ 已完成（2026-09-14，见 §40.3 B1 行）
 第 4 步   B2 跨记录 / 全局问答（#24 @全部资料）
 第 5 步   B5 sqlite-vec 混合检索（BM25 吃力时可提前）
 其后      B3 Tutor 场景包 / 网页剪藏 / 英文支持（§39.5 既有 P2 项）→ P3 Course Brain
