@@ -1,4 +1,4 @@
-"""learning 域：learning_evidence 迁移结构与约束行为（event_id 唯一、weight/confidence 0~1）。"""
+"""learning 域：learning_evidence 迁移结构与约束行为、统一事件写入幂等跳过。"""
 
 import sqlite3
 from pathlib import Path
@@ -6,8 +6,13 @@ from typing import cast
 
 import aiosqlite
 import pytest
+from sqlalchemy import func, select
 
+from app.db.base import utcnow
+from app.db.engine import create_database
 from app.db.migrations import run_migrations
+from app.modules.learning.events import write_learning_event
+from app.modules.record.models import LearningEvent
 
 
 @pytest.mark.anyio
@@ -55,7 +60,7 @@ async def test_migration_0021_creates_learning_evidence_table(tmp_path: Path) ->
     assert "sqlite_autoindex_learning_evidence_1" in indexes
 
 
-def evidence_row(
+def evidence_insert_sql(
     *,
     event_id: str,
     weight: str,
@@ -76,13 +81,48 @@ async def test_learning_evidence_rejects_out_of_range_weight(tmp_path: Path) -> 
     await run_migrations(db_path)
 
     async with aiosqlite.connect(db_path) as connection:
-        await connection.execute(evidence_row(event_id="event-1", weight="0.9"))
+        await connection.execute(evidence_insert_sql(event_id="event-1", weight="0.9"))
         await connection.commit()
 
         with pytest.raises(sqlite3.IntegrityError):
-            await connection.execute(evidence_row(event_id="event-2", weight="1.5"))
+            await connection.execute(evidence_insert_sql(event_id="event-2", weight="1.5"))
         with pytest.raises(sqlite3.IntegrityError):
-            await connection.execute(evidence_row(event_id="event-3", weight="-0.1"))
+            await connection.execute(evidence_insert_sql(event_id="event-3", weight="-0.1"))
         # event_id 唯一：重放同键再插被数据库拒绝。
         with pytest.raises(sqlite3.IntegrityError):
-            await connection.execute(evidence_row(event_id="event-1", weight="0.9"))
+            await connection.execute(evidence_insert_sql(event_id="event-1", weight="0.9"))
+
+
+@pytest.mark.anyio
+async def test_write_learning_event_skips_duplicate_idempotency_key(tmp_path: Path) -> None:
+    db_path = tmp_path / "knowrealm.db"
+    await run_migrations(db_path)
+    _engine, session_factory = create_database(db_path)
+
+    async with session_factory() as session, session.begin():
+        await write_learning_event(
+            session,
+            course_id="course-1",
+            event_type="QUIZ_ANSWERED",
+            source_type="QUIZ_QUESTION",
+            source_id="quiz-1",
+            idempotency_key="quiz-answered:quiz-1",
+            occurred_at=utcnow(),
+            metadata={"question_type": "MULTIPLE_CHOICE"},
+        )
+
+    # 同键重放（崩溃恢复/重复触发场景）：静默跳过、不抛错、不重复落行。
+    async with session_factory() as session, session.begin():
+        await write_learning_event(
+            session,
+            course_id="course-1",
+            event_type="QUIZ_ANSWERED",
+            source_type="QUIZ_QUESTION",
+            source_id="quiz-1",
+            idempotency_key="quiz-answered:quiz-1",
+            occurred_at=utcnow(),
+            metadata={"question_type": "MULTIPLE_CHOICE"},
+        )
+        count = await session.scalar(select(func.count()).select_from(LearningEvent))
+
+    assert count == 1

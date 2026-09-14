@@ -217,6 +217,36 @@ async def _answerable_quiz(session: AsyncSession, record_id: str, quiz_id: str) 
     return quiz
 
 
+async def _record_answer_event(
+    session: AsyncSession,
+    record: Record,
+    quiz: Quiz,
+    result: QuizAnswerResult,
+    *,
+    occurred_at: datetime,
+    created_at: datetime | None = None,
+) -> None:
+    await write_learning_event(
+        session,
+        course_id=cast(str, record.course_id),
+        record_id=record.id,
+        event_type=QuizLearningEventType.ANSWERED,
+        source_type=QuizLearningEventSourceType.QUESTION,
+        source_id=quiz.id,
+        idempotency_key=f"quiz-answered:{quiz.id}",
+        result=result,
+        score=1.0 if result == QuizAnswerResult.CORRECT else 0.0,
+        difficulty=quiz.difficulty,
+        occurred_at=occurred_at,
+        created_at=created_at,
+        metadata={
+            "batch_id": quiz.batch_id,
+            "question_type": quiz.question_type,
+            "generated_from_summary_id": quiz.generated_from_summary_id,
+        },
+    )
+
+
 class QuizService:
     @staticmethod
     async def read(
@@ -626,25 +656,7 @@ class QuizService:
                     )
                 return _quiz_out(quiz), False
 
-            await write_learning_event(
-                session,
-                course_id=record.course_id,
-                record_id=record.id,
-                event_type=QuizLearningEventType.ANSWERED,
-                source_type=QuizLearningEventSourceType.QUESTION,
-                source_id=quiz.id,
-                idempotency_key=f"quiz-answered:{quiz.id}",
-                result=answer_result,
-                score=1.0 if answer_result == QuizAnswerResult.CORRECT else 0.0,
-                difficulty=quiz.difficulty,
-                occurred_at=now,
-                metadata={
-                    "batch_id": quiz.batch_id,
-                    "question_type": quiz.question_type,
-                    "generated_from_summary_id": quiz.generated_from_summary_id,
-                },
-            )
-            await session.flush()
+            await _record_answer_event(session, record, quiz, answer_result, occurred_at=now)
             return _quiz_out(quiz), True
 
     @staticmethod
@@ -741,25 +753,14 @@ class QuizService:
                     )
                 return _quiz_out(quiz), False
 
-            await write_learning_event(
+            # 自评在作答之后：事件仍代表作答行为，occurred_at 取作答时刻。
+            await _record_answer_event(
                 session,
-                course_id=record.course_id,
-                record_id=record.id,
-                event_type=QuizLearningEventType.ANSWERED,
-                source_type=QuizLearningEventSourceType.QUESTION,
-                source_id=quiz.id,
-                idempotency_key=f"quiz-answered:{quiz.id}",
-                result=body.result,
-                score=1.0 if body.result == QuizAnswerResult.CORRECT else 0.0,
-                difficulty=quiz.difficulty,
-                # 自评在作答之后：事件仍代表作答行为，occurred_at 取作答时刻。
+                record,
+                quiz,
+                body.result,
                 occurred_at=quiz.answered_at,
                 created_at=now,
-                metadata={
-                    "batch_id": quiz.batch_id,
-                    "question_type": quiz.question_type,
-                    "generated_from_summary_id": quiz.generated_from_summary_id,
-                },
             )
             await session.refresh(quiz)
             return _quiz_out(quiz), True
