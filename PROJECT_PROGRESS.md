@@ -2,7 +2,7 @@
 
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
-> **最后更新**：2026-09-14（**B1「chat 联网搜索」两票完结**：后端 Tavily 全链 + 前端开关接真/web 引用外链/设置供应商卡；同日 A3「事件消费框架 + Evidence Builder」四票完结，ADR-0021）
+> **最后更新**：2026-09-14（**B2「跨记录/课程级问答」单票全栈完结**：scope 四档 + search_library + 跨记录引用 + 前端范围接真，数据模型升 v2.7；同日早前 B1 联网搜索与 A3 证据框架均已完结）
 
 ## 1. 项目概述
 
@@ -30,7 +30,7 @@
 - 课堂详情门禁：`pnpm test -- --maxWorkers=4` 421/421、`pnpm lint`、前端触及文件 Prettier、`pnpm build`（内嵌 tsc）均通过；真实 Tauri sidecar 经 WebView2 CDP 目检：学习链 Tab 桑基图亮/暗两态、java实现（5 条含失败分支）与 1111（单条）两个真实课程数据形态、脑图/GPS/记录等 Tab 与概览回归；知识图谱玫瑰图/关系图亮暗两态、全屏、关系节点拖拽、画布缩放、悬浮邻接提示，以及常规动效 / `prefers-reduced-motion` 均通过；1440×900、1280×800、1099×720 CSS viewport 无页面横向溢出。空课程空态由 jsdom 用例覆盖（本机数据目录无 0 记录课程）。
 - `/chat`「AI 对话」已按视觉参考重设计为**三栏工作区**（对话记录 | 对话 | 上下文面板）：左栏筛选胶囊（全部/今天/本周/已收藏）+ 会话行 ⋯ 菜单（收藏/重命名/删除）；中栏标题栏（收藏/⋯）、范围胶囊、空会话建议卡、流式消息与图 1 输入区；右栏当前挂载上下文 / 来源引用 / 工具状态 / 小提示。回答与流式 Markdown 改用 **Streamdown**（`@streamdown/code|cjk|math`：代码高亮、中文换行、KaTeX 公式、`animated` 动画；`[n]` 引用角标经 remark 插件转链接后由 `components.a` 渲染为可点击角标）。`ChatMessageList` / `ChatComposer` 重构，旧 `ChatPage`/`ChatSessionPage`/`ChatSessionList` 由 `ChatWorkspace` 三栏替代；路由与 URL 不变（`/chat`、`/chat/$sessionId`、`?prompt=` 知识点讲解入口保留）。后端零改动；图 1 独有而后端暂无的能力（会话收藏、右栏工具开关、输入区附件/设置图标）为本地示意状态并以禁用/tooltip 明示，课程/全部资料范围胶囊禁用提示「即将支持」。
 - AI 对话重设计门禁：`pnpm test -- --maxWorkers=4` 424/424、`pnpm lint`、前端触及文件 Prettier、`pnpm build`（内嵌 tsc）通过；chat 测试 19 项（原 16 项行为断言保留，重命名/删除改走 ⋯ 菜单路径；新增筛选/收藏、建议卡/工具开关与多回答引用聚合用例）。真机 Tauri sidecar + WebView2 CDP 目检：亮/暗两态、根字号 18px（L 档）无横向溢出、1200px 窄窗右栏自动收起且左栏保留、引用聚合（多回答 [n] 去重）与工具开关（chat-accent）实测正常。
-- 下一扩展方向（扩展文档 §40.4「P2 统一序列」）：F1 ✅ → **A1+A2 ✅ 已交付**（2026-09-13 三票完结，剩用户真机验收）：票 01「分片 FTS 索引地基」✅（迁移 0020 `segment_search_index` FTS5 表、search 模块 `SegmentSearchService` 维护+检索服务、finalizer/realign/存量回填三处写路径同事务挂点、main.py 启动幂等回填、`tests/test_segment_search.py` 7 项，user_version 断言 11 处同步 19→20）；票 02「检索工具与 SSE 工具事件」✅（`agent/tools/search_transcript.py` `search_transcript`：FTS top-8 逐字命中 + 时间戳/页码，无分片回退 transcript 子串；挂载变体 `MOUNTED_CHAT_AGENT_CONFIG`、`tool_call`/`tool_result` SSE 事件、usage 跨模型调用累加、>30k 工具指引、`CHAT_PROMPT_VERSION`=chat-mount-cite-v3）；票 03「前端工具状态卡 + 文档收尾」✅（SSE 两新事件分发、`useChatStream` 工具状态临时态、消息流内检索过程卡三态逐条陈列、done/中断后消失；数据模型升 v2.5、扩展文档 §40 A1/A2 回写、CONTEXT.md 增「分片索引」「检索过程」词条）→ A3 ✅（2026-09-14 四票完结，ADR-0021，见 §3「学习事件/证据」行）→ **B1 web_search ✅**（2026-09-14 两票完结，见 §3「AI 对话」行与扩展文档 §40.3 B1 行）→ 下一步：**B2 跨记录问答已 grill 十问定稿并落 spec+单票全栈工单（2026-09-14，.scratch/cross-record-qa/，ready-for-agent；闭环功能不拆前后端票=用户定规）**：scope 四档显式列（迁移 0022，course_id 列启用语义）、`search_library` 跨记录工具（FTS+LIKE 兜底、与 search_transcript 互斥挂载）、标题清单上下文、跨记录引用（`（来源：记录标题）`+校验器裁定归属+record_title 快照）、web_search 挂载语义延伸、前端范围胶囊/课程对话 Tab 接真；此后 B5 sqlite-vec（按 §40.4 序）；B3「Tutor 提前」尚待用户决策，**不要擅自开工**。
+- 下一扩展方向（扩展文档 §40.4「P2 统一序列」）：F1 ✅ → **A1+A2 ✅ 已交付**（2026-09-13 三票完结，剩用户真机验收）：票 01「分片 FTS 索引地基」✅（迁移 0020 `segment_search_index` FTS5 表、search 模块 `SegmentSearchService` 维护+检索服务、finalizer/realign/存量回填三处写路径同事务挂点、main.py 启动幂等回填、`tests/test_segment_search.py` 7 项，user_version 断言 11 处同步 19→20）；票 02「检索工具与 SSE 工具事件」✅（`agent/tools/search_transcript.py` `search_transcript`：FTS top-8 逐字命中 + 时间戳/页码，无分片回退 transcript 子串；挂载变体 `MOUNTED_CHAT_AGENT_CONFIG`、`tool_call`/`tool_result` SSE 事件、usage 跨模型调用累加、>30k 工具指引、`CHAT_PROMPT_VERSION`=chat-mount-cite-v3）；票 03「前端工具状态卡 + 文档收尾」✅（SSE 两新事件分发、`useChatStream` 工具状态临时态、消息流内检索过程卡三态逐条陈列、done/中断后消失；数据模型升 v2.5、扩展文档 §40 A1/A2 回写、CONTEXT.md 增「分片索引」「检索过程」词条）→ A3 ✅（2026-09-14 四票完结，ADR-0021，见 §3「学习事件/证据」行）→ **B1 web_search ✅**（2026-09-14 两票完结，见 §3「AI 对话」行与扩展文档 §40.3 B1 行）→ **B2 跨记录问答 ✅（2026-09-14 单票全栈完结，.scratch/cross-record-qa/，后端 488 + 前端 440 绿）**：scope 四档显式列（迁移 0022）、`search_library` 跨记录工具（FTS+LIKE 兜底、互斥挂载）、标题清单上下文、跨记录引用（校验器裁定归属+record_title 快照）、web_search 挂载语义延伸、前端范围胶囊/新建菜单/课程对话 Tab/右栏接真；数据模型升 v2.7、错误码清单 +3。下一步：**B5 sqlite-vec 混合检索（按 §40.4 序）**；B3「Tutor 提前」尚待用户决策，**不要擅自开工**。
 
 ---
 
@@ -49,7 +49,7 @@
 | 模拟测试 | 五题型建卷、作答面、逐题 LLM 评分+交卷、结果页+摘要侧栏、崩溃恢复重评 | QUIZ_TEST_COMPLETED 幂等；失败题排除分母 |
 | Todo | 手动 CRUD、生成/采纳/修剪、用户接管语义 | 接管即脱离批次（ADR-0011） |
 | 复习资料 | 生成（上下文=转写全文+总结辅助）、HITL 确认对话框、版本链编辑、导出接入 | LangGraph 图之二；RAG 已否决 |
-| AI 对话 | 档案（角色+自我介绍）、会话管理、流式自由对话、记录挂载上下文、引用（citations）+转写失效联动、知识点讲解入口；**三栏工作区（对话记录/对话/上下文面板）+ Streamdown 流式 Markdown（代码高亮/CJK/公式/引用角标）**；**B1 联网搜索已接真（2026-09-14 两票）**：`web_search` 工具（Tavily，无 key 双保险不挂载）、发消息带 `web_search` 标志（右栏开关+输入区 Globe 按会话记忆，自由 ON/挂载 OFF）、citations web 条目「标题+域名+外链」经系统浏览器打开、工具卡文案分流、设置页搜索供应商卡（key/测试）、`CHAT_PROMPT_VERSION` v4 | LangGraph 图之三：deepagents `create_deep_agent` 骨架（ADR-0018）；挂载会话注入 `search_transcript` 检索工具（A1），SSE 增 `tool_call`/`tool_result` 事件并在消息流内呈现检索过程卡（A2：正在检索 → 命中 n 条 / 失败，逐条陈列、done 后消失、不落库）；图 1 独有交互（收藏/其余三工具开关）为本地示意假数据，未接后端 |
+| AI 对话 | 档案（角色+自我介绍）、会话管理、流式自由对话、记录挂载上下文、引用（citations）+转写失效联动、知识点讲解入口；**三栏工作区（对话记录/对话/上下文面板）+ Streamdown 流式 Markdown（代码高亮/CJK/公式/引用角标）**；**B1 联网搜索已接真（2026-09-14 两票）**：`web_search` 工具（Tavily，无 key 双保险不挂载）、发消息带 `web_search` 标志（右栏开关+输入区 Globe 按会话记忆，自由 ON/挂载 OFF）、citations web 条目「标题+域名+外链」经系统浏览器打开、工具卡文案分流、设置页搜索供应商卡（key/测试）、`CHAT_PROMPT_VERSION` v4；**B2 跨记录/课程级问答已接真（2026-09-14 单票全栈）**：`chat_sessions.scope` 四档（FREE/RECORD/COURSE/ALL，迁移 0022，course_id 启用语义、课程软删→会话只读）、COURSE/ALL 会话挂 `search_library`（跨记录分片 FTS top-8 + LIKE 兜底，与 search_transcript 互斥）、上下文=记录标题清单（约 4000 字符预算）+检索指引、跨记录引用「[n] 摘录（来源：标题）」+record_title 快照+校验器裁定归属（禁全范围模糊对齐）、web_search 视同挂载默认关、前端范围胶囊（点其它=新建会话）/新建菜单四入口/课程详情对话 Tab/右栏范围卡/工具卡与引用标题接真、`CHAT_PROMPT_VERSION` v5（RECORD 范围零回归） | LangGraph 图之三：deepagents `create_deep_agent` 骨架（ADR-0018）；挂载会话注入 `search_transcript` 检索工具（A1），SSE 增 `tool_call`/`tool_result` 事件并在消息流内呈现检索过程卡（A2：正在检索 → 命中 n 条 / 失败，逐条陈列、done 后消失、不落库）；图 1 独有交互（收藏/其余三工具开关）为本地示意假数据，未接后端 |
 | 课程 | 工作台骨架、课程 CRUD、发现页、详情编辑、归档退出 | ARCHIVED 前置护栏三道闸门已校验；归档/恢复 UI 未做（有意推迟） |
 | 记录 | 真实记录列表、记录详情（总结/转写面板化）、记录删除退出 | |
 | **学习事件/证据（A3）** | 迁移 0021 `learning_evidence` + learning 域（`events.write_learning_event` 统一写入 / `consumer.py` 独立 asyncio 水位消费循环 / `queries.py` 薄只读查询按记录/课程取证据流）；四事件（总结确认/知识点确认/逐题作答/交卷）与业务动作同事务写入 | ADR-0021：不入 processing_jobs、水位=隐式 rowid 单调扫描、禁 NOT EXISTS、失败 3 次跳过、映射集中声明（QUIZ 0.9/0.8、CONFIRMED→USER_CONFIRMATION 0.3·0.4/0.7、交卷不产证据防双计）；零 LLM/零前端/零新 API；concept_id/source_anchor_id 恒 NULL 留 P3/P5 |
@@ -80,7 +80,7 @@
 
 **规划中（未拆票，勿直接开工）：**
 
-- 扩展文档 §40.4「P2 统一序列」：F1（✅ 2026-09-10）→ A1+A2（✅ 2026-09-13，剩用户真机验收）→ A3「事件消费框架 + Evidence Builder」（✅ 2026-09-14 四票，ADR-0021，.scratch/learning-evidence/）→ **B1 web_search（✅ 2026-09-14 两票完结，.scratch/web-search/：后端 Tavily 全链+citations 判别化；前端开关接真+web 引用外链+设置卡；数据模型 citations_json 就地补记不升版）**。下一步候选：**B2 跨记录问答（已拆票：.scratch/cross-record-qa/，spec+单票全栈 ready-for-agent，2026-09-14 grill 定稿——scope 显式列/迁移 0022、search_library、标题清单上下文、跨记录引用契约、前端范围接真）** → B5 sqlite-vec（按 §40.4 序）；B3「Tutor 提前」与 F2/F3（课堂相关）**待用户决策**。
+- 扩展文档 §40.4「P2 统一序列」：F1（✅ 2026-09-10）→ A1+A2（✅ 2026-09-13，剩用户真机验收）→ A3「事件消费框架 + Evidence Builder」（✅ 2026-09-14 四票，ADR-0021，.scratch/learning-evidence/）→ **B1 web_search（✅ 2026-09-14 两票完结，.scratch/web-search/：后端 Tavily 全链+citations 判别化；前端开关接真+web 引用外链+设置卡；数据模型 citations_json 就地补记不升版）**。下一步候选：**B5 sqlite-vec 混合检索（按 §40.4 序）**；B3「Tutor 提前」与 F2/F3（课堂相关）**待用户决策**。B2 跨记录问答已完结（2026-09-14，.scratch/cross-record-qa/）。
 - 习题 Groundedness：待用户采集真实样本（阻塞项）+ 06 总结黄金样本另议；回归触发=prompt_version/模型变更。⚠️ prompt_version 至今未 bump，启用评测前需处理。
 - 未来候选库路线图（带触发条件，见记忆/后端轮子审计）：检索 FTS5 trigram→sqlite-vec、复习调度 fsrs、导出 fpdf2、pytest-cov/timeout；APScheduler/LanceDB/本地 whisper 已否决。
 - 产品层扩展方向五新场景包：见扩展文档 §39.4（仅评审记录，**非用户已批准**）。
@@ -106,7 +106,7 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 │  ├─ app/shared/         deps/errors(带码 HTTPException)/events/prompts/schemas
 │  ├─ app/core/           data_dir/logging/loop/version
 │  ├─ app/db/             engine/base/migrations（SQL 迁移执行器，PRAGMA user_version 推进）
-│  └─ migrations/         0001~0020 手写 SQL，四位编号连续递增不可跳号
+│  └─ migrations/         0001~0022 手写 SQL，四位编号连续递增不可跳号
 ├─ packages/api-types/    OpenAPI → TS 类型生成（后端 schema 变更后必须重新 generate）
 ├─ docs/                  权威文档 + ADR + 评测 + 规则镜像（正本在 .claude/rules/）
 └─ .scratch/              工单 tracker（25 个 feature 目录）
@@ -125,7 +125,7 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 **技术债务 / 临时实现：**
 
 - **learning_events 表零消费者**——为预留（§40 A 档建设的挂点），非缺陷但勿误删。
-- **AI 对话右栏「工具状态」其余三开关（knowledgeBase/codeRun/documentParse）与「会话收藏」为图 1 对齐的本地示意状态**（Zustand 内存，不落库、不触发请求）；「课程/全部资料」范围胶囊为禁用展示。webSearch 开关已随 B1 接真（按会话记忆，发消息带 `web_search` 标志；无 key 置灰+设置页配置）；A 档工具检索已落地为消息流内检索过程卡。
+- **AI 对话右栏「工具状态」其余三开关（knowledgeBase/codeRun/documentParse）与「会话收藏」为图 1 对齐的本地示意状态**（Zustand 内存，不落库、不触发请求）。webSearch 开关已随 B1 接真（按会话记忆，发消息带 `web_search` 标志；无 key 置灰+设置页配置）；范围胶囊与课程/全部资料问答已随 B2 接真（点其它胶囊=新建对应范围会话）。
 - **总结侧无长文 map-reduce**（仅 chat 侧有 >30k 降级提示）；`prompt_version` 从未 bump，评测回归机制启用前需补。
 - 供应商连通性测试用腾讯 `GetAsrVocabList` 只读接口近似（LLM 测试=真实计费生成，故仅手动）。
 - 前端全量测试默认并发时，资源竞争会使不同 5 秒用例偶发超时；失败文件单跑均通过，本次以 `pnpm test -- --maxWorkers=4` 的 426/426 作为稳定全量证据（本地 `format:check` 会因 `core.autocrlf=true` 的 CRLF 工作区对全库报 warn，CI/LF 检出下正常；验收格式以触及文件为准）。

@@ -1,6 +1,6 @@
 # B2 跨记录 / 课程级问答（scope 扩展 + search_library + 跨记录引用）
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

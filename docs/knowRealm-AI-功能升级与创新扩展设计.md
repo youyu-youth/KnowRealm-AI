@@ -27,19 +27,19 @@
 | D3 | 捕获入口 | 仅"录音+文档"双入口 | 五级捕获（速记/粘贴/剪藏/音频/文档）+ 收件箱 Inbox，records.course_id 可空（决策 #21） |
 | D4 | 目标用户与课程上下文 | 全学段学生；education_stage 唯一个性化输入 | 一切学习知识的人；learning_context + education_stage/depth 双字段（决策 #23） |
 | D5 | AI 对话形态 | 聊天仅作为 Record/Course 上下文二级功能 | 💬 AI 对话一级入口：自由聊天 + @记录/@课程/@全部资料挂载可切换；自由聊天不建向量索引、不进 Learning Evidence 链（决策 #22/#24） |
-| D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | Tauri sidecar（Python 进程内）FastAPI + LangChain/LangGraph + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4.3） |
+| D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | Tauri sidecar（Python 进程内）FastAPI + LangChain/LangGraph + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4.5） |
 | D7 | 异步与缓存 | Redis/Redisson + RabbitMQ（§27.4/§27.5） | 自研 processing_jobs 队列（SQLite 表即队列 + sidecar 进程内 asyncio worker），无 Redis / RabbitMQ / procrastinate（决策 #1） |
-| D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | sqlite-vec（vec0 虚拟表）+ semantic_embeddings 统一表；明确不做 Qdrant / pgvector（技术栈 v4.3） |
-| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.6（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
+| D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | sqlite-vec（vec0 虚拟表）+ semantic_embeddings 统一表；明确不做 Qdrant / pgvector（技术栈 v4.5） |
+| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.7（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
 | D10 | shares 表 | §25.1 保留 t_share | 不建 shares 表（决策 #15） |
 | D11 | F15 落地 | 不新增表（仅 action_type=PREVIEW） | 依赖 course_materials 课程级资料表（决策 #12） |
 | D12 | Teach-back 输入 | 语音解释 → ASR（§18.1） | V1 文本先行，语音后补（决策 #19） |
 | D13 | AI 可观测 | Micrometer / OTel / Langfuse（§27.9） | 自建 llm_call_logs 表（决策 #2） |
-| D14 | 编排框架 | Spring AI Alibaba StateGraph | LangGraph，五个独立 Graph（Summary/Tutor/TeachBack/Autopilot/MisconceptionVerification），禁止超级 Graph（基线 §3.1 红线 #2） |
+| D14 | 编排框架 | Spring AI Alibaba StateGraph | LangGraph 编排、禁止超级 Graph（基线 §3.1 红线 #2）；现役三图 = Summary / ReviewMaterial / Chat（chat 以 deepagents 骨架装配，ADR-0018），Tutor / TeachBack / Autopilot / MisconceptionVerification 为后续规划图（P5/P6） |
 | D15 | 优先级与阶段 | §6 S+/A+ 评级、§32 Phase 1~7、§37 P0~P3 | 基线 §4.7 阶段映射（F1=P2 … F16=P6）与 §5.1 阶段规划 |
 | D16 | 产品定位语境 | 毕业设计 / 项目展示 / 比赛（§33） | 开源、面向个人使用（基线头部） |
 
-> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.6》。
+> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.7》。
 
 ---
 
@@ -619,7 +619,7 @@ Course Concept Graph                         Learning Evidence
 
 # 7. F1 — Transcript Segment + Evidence Timeline
 
-> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v2.6》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
+> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v2.7》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
 >
 > - **术语定名「来源时间轴」（Source Timeline）**：本章 "Evidence Timeline" 废弃——Evidence 一词专属「学习证据」（Learning Evidence）；
 > - **交付边界**：本期 = 数据地基（四表 + 切分管道 + 存量回填）+ 来源时间轴前端；不含音频回放、不含 AI 产物 graph prompt 引用改造、不动搜索索引；
@@ -1221,6 +1221,14 @@ MISCONCEPTION_RISK
 ---
 
 # 12. F6 — Learning Event + Learning Evidence
+
+> **✅ 已实施回写（2026-09-14，learning-evidence 四票完结，ADR-0021）**：本章为草案，表结构权威见《数据模型 v2.7》。与草案的定案差异：
+>
+> - **四事件先行**（总结确认 / 知识点确认 / 逐题作答 / 交卷），与业务动作同事务写入，统一经 `learning.events.write_learning_event`；幂等键形制 `{event-slug}:{source-id}`（独立 `idempotency_key` 列设想未采用，`event_id` 为 uuid4）；
+> - **消费为独立 asyncio 水位循环**：不入 processing_jobs；水位 = SQLite 隐式 rowid 单调扫描、禁 NOT EXISTS、失败 3 次跳过不建死信表；
+> - **Evidence 映射集中声明**：QUIZ 0.9/0.8、CONFIRMED → USER_CONFIRMATION 0.3·0.4/0.7、交卷不产证据（防双计）——§12.4 权重表为早期设想；evidence_type 首批落地 QUIZ / USER_CONFIRMATION，RECALL / TEACH_BACK 等随对应功能进入；
+> - 证据可由事件流清空重放再生；learning 域提供薄只读查询（按记录 / 课程取证据流，Mastery 与学习上下文中间件的共同底座）；零 LLM / 零前端 / 零新 API；
+> - `concept_id` / `source_anchor_id` 恒 NULL，留 P3（Concept）/ P5（细粒度来源）接入。
 
 这是整个升级最重要的数据基础。
 
@@ -2796,7 +2804,7 @@ t_source_anchor
 
 # 27. 技术实现建议
 
-> ⚠️ **历史快照（见 §0 对齐声明 D6/D7/D8/D13）**：本章 27.1~27.5 与 27.9 的技术选型（Java 系栈 / Qdrant / Redis / RabbitMQ / OTel+Langfuse）**已全部作废**，现行技术选型以《技术栈设计与审查-v4》为准。本章仅 27.6（FSRS 分阶段）、27.7（ECharts）、27.8（一期不做 TTS）的方向性结论仍有效。
+> ⚠️ **历史快照（见 §0 对齐声明 D6/D7/D8/D13）**：本章 27.1~27.5 与 27.9 的技术选型（Java 系栈 / Qdrant / Redis / RabbitMQ / OTel+Langfuse）**已全部作废**，现行技术选型以《技术栈设计与审查-v4.5》为准。本章仅 27.6（FSRS 分阶段）、27.7（ECharts）、27.8（一期不做 TTS）的方向性结论仍有效。
 
 > 以下技术以现有 PRD 与原扩展设计为基础，不为了“技术炫技”强行增加中间件。
 
@@ -3454,7 +3462,7 @@ Mastery Update
 
 # 38. 来源与设计边界说明
 
-- 现有业务基线来自旧《AI课堂助手 PRD v2.1》（该文档已删除，有效内容现以《KnowRealm-AI-功能需求基线 v2.5》为准）。
+- 现有业务基线来自旧《AI课堂助手 PRD v2.1》（该文档已删除，有效内容现以《KnowRealm-AI-功能需求基线 v2.7》为准）。
 - 原创新方向来自 `AI课堂助手-创新功能扩展设计-v1-去除排行榜.md`。
 - 本最终版对原扩展文档做了结构收敛与歧义消除，包括：
   - Knowledge Point 与 Concept 分层；
@@ -3474,9 +3482,9 @@ Mastery Update
 
 ---
 
-# 39. 技术评估结论（2026-09-08）
+# 39. 技术评估结论（2026-09-08 评审，2026-09-14 随交付同步）
 
-> **评估性质**：基于《功能需求基线 v2.7》决策 #1~#59、代码库实现现状（backend 17 个 feature-first 模块、18 张迁移、Summary / ReviewMaterial / Chat 三个 LangGraph graph 在产、`learning_events` 四事件已落地）与《chatgpt根据需求文档和扩展功能文档给出的结论.md》，对扩展方向、Agent 架构演进、新业务方向与技术栈的核验裁定。本章为评审记录：**优先级 / 技术选型 / 表结构的权威仍在三份权威文档**，本章结论与之冲突时以权威文档为准（目前零冲突）。
+> **评估性质**：基于《功能需求基线 v2.7》决策 #1~#59、代码库实现现状（backend 19 个 feature-first 模块、21 张迁移、Summary / ReviewMaterial / Chat 三图在产——chat 以 deepagents 骨架装配（ADR-0018）、`learning_events` 四事件写入 + 独立消费循环已落地（ADR-0021））与《chatgpt根据需求文档和扩展功能文档给出的结论.md》，对扩展方向、Agent 架构演进、新业务方向与技术栈的核验裁定。本章为评审记录：**优先级 / 技术选型 / 表结构的权威仍在三份权威文档**，本章结论与之冲突时以权威文档为准（目前零冲突）。
 
 ## 39.1 ChatGPT 方案核验
 
@@ -3505,21 +3513,21 @@ Mastery Update
 
 | 能力 | 裁定 | 理由与落位 |
 |---|---|---|
-| ReAct Agent | ✅ 已有 | chat 即 `create_agent` agent 循环（#53，Wave A 定稿避免 P2 重构） |
-| Agent Tools | ✅ 立即做（P2） | 第一工具=检索（`tools=[]` 位已预留）→ 第二工具=web_search（Tavily，#53）；工具=普通 Python 函数 + Pydantic 同源 schema；按域隔离遵守红线 #11（工具仅聊天域，Summary/Tutor/TeachBack 禁联网） |
+| ReAct Agent | ✅ 已有 | chat 以 deepagents 骨架装配 `create_agent` 循环（#53；ADR-0018） |
+| Agent Tools | ✅ 已落地（P2） | `search_transcript`（2026-09-13，分片级 FTS）+ `web_search`（2026-09-14，Tavily，#53）均已上线；工具=普通 Python 函数 + Pydantic 同源 schema；按域隔离遵守红线 #11（工具仅聊天域，Summary/Tutor/TeachBack 禁联网） |
 | RAG | ✅ 已规划 | FTS5+jieba 已交付；sqlite-vec + 混合检索 P2；课程级 RAG P3；不引新框架 |
 | Memory | ✅ 分层落地 | 三层：chat memory（已有，逐轮重建）→ learner state（P4 业务表）→ 学习习惯记忆（39.1 并入 LearnerProfileService）；不引 mem0/letta 类记忆框架（单用户场景 SQLite 业务表即记忆） |
 | Plan-and-Execute | ✅ 域内实现（P6） | Autopilot Graph 本质即此模式 + HITL；候选动作打分是确定性规则（红线 #8），自制域逻辑不套库模板 |
 | Reflection | ⚠️ 域内轻量已有，通用机制延后 | 域内反思已设计：Misconception 验证环、Summary 反馈循环、评分低置信复核（#20）；通用反思循环 token 成本翻倍，BYO-key 用户敏感，仅在评测证明必要处引入 |
 | Skills 技能系统 | ❌ 不做通用框架 | YAGNI——七类 prompt + 结构化输出 + prompt_version 已是轻量形态；用户自定义学习模式以"场景包"承载（39.3），不做开发者级 skill 框架 |
 | MCP | ⚠️ 延后评估（P3+） | 分两向：MCP client（用户接入外部工具服务器）在 chat 内部工具体系稳定后评估，受红线 #11 约束只能进聊天域；MCP server（对外暴露本产品能力）不符合单机个人数据定位，不做 |
-| Multi-Agent | ❌ 否决 | 红线 #2 明令禁止超级 Graph；多 Graph 经 DB 共享状态优于运行时 agent 间通信；DeepAgents（子 agent + 虚拟文件系统规划）适配开放式研究任务，不适配结构化学习管线 |
+| Multi-Agent | ❌ 否决 | 红线 #2 明令禁止超级 Graph；多 Graph 经 DB 共享状态优于运行时 agent 间通信；DeepAgents 仅取 create_agent + 中间件骨架（ADR-0018），其子 agent / 虚拟文件系统规划不采用 |
 
 需提前建设的基础设施（便宜且 P2 全要用）：
 
-1. **事件消费框架**：`learning_events` 写入 → 进程内异步 dispatch → Evidence Builder 的最小模式（复用 JobRunner 或 asyncio 任务，幂等键已具备）——闭环 `Event → Evidence → Mastery` 的管道件，P2 定型；
+1. **事件消费框架**：✅ 已落地（2026-09-14，ADR-0021）——独立 asyncio 水位消费循环（不入 processing_jobs），`Event → Evidence` 管道定型，Mastery / Misconception / 学习上下文后续全部挂接；
 2. **评测资产按阶段扩**：Mastery/遗忘公式黄金样本、agent 工具调用轨迹断言；
-3. **卫生项**：prompt_version bump 纪律补齐、`.claude/rules` 镜像同步。
+3. **卫生项**：✅ 已完成——`CHAT_PROMPT_VERSION` 已随工具交付 bump（v3→v4）、`.claude/rules` 八事件镜像同步。
 
 ## 39.3 新增业务方向扩展分析（场景包机制）
 
@@ -3544,7 +3552,7 @@ Mastery Update
 | FastAPI | 保留 | OpenAPI codegen 契约链在产（#56：40+ 端点单一事实源 + UniApp 未来复用） |
 | LangChain / LangGraph | 保留并深耕 | interrupt/HITL 是核心差异化、无等价替代（#56 否决全 Rust 重写的理由）；1.3/1.2 版本组合已核实 |
 | LlamaIndex | 不引 | 需求面 = 课程级/全局 RAG，LangChain retriever + sqlite-vec 完全覆盖；两框架 = 两套抽象重复造轮子。重评触发：复杂多格式文档索引管道且 LangChain 侧明显吃力 |
-| DeepAgents | 不引 | 子 agent + 虚拟文件系统规划不适配结构化学习管线，与红线 #2 冲突 |
+| DeepAgents | ✅ 已引入（chat 骨架，ADR-0018） | 仅取 create_agent + 中间件装配形态；子 agent / 虚拟文件系统规划不采用（红线 #2 禁超级 Graph） |
 | Pydantic AI | 不引 | 双 agent 框架违反单栈纪律；其类型安全优势已由 Pydantic 同源 Schema 覆盖；保持观察 |
 | 向量数据库 | sqlite-vec（已定案） | Qdrant/pgvector 在不做清单；个人学习数据量远达不到 SQLite 不适区 |
 | 工作流引擎（Temporal 等） | 否决 | processing_jobs 自研队列已过后端轮子审计（单人单进程下分布式编排是负资产） |
@@ -3558,7 +3566,7 @@ Mastery Update
 
 ## 39.5 开发规划（短 / 中 / 长期）
 
-- **短期（~1-2 月）**：plan 20 收尾（i18n 错误码前端）+ prompt_version 遗留清理；P2 详细设计评审（#48 门槛：Segment/Anchor 表结构、Evidence Builder 管道、sqlite-vec 索引与混合排序、chat 工具契约）；P2 按序实施——Segment+Anchor → Evidence Builder → sqlite-vec/RAG → chat 工具层+web_search → 剪藏/英文。
+- **短期（~1-2 月）**：P2 主体已交付——F1 Segment+Source Anchor（09-10）→ A3 Evidence Builder（09-14）→ A1+A2 chat 检索工具与前端呈现（09-13，并行槽）→ B1 web_search（09-14）；plan 20 收尾与 prompt_version 清理已完结。余：网页剪藏、英文支持；sqlite-vec 后移 B5（BM25 吃力再进）。
 - **中期（3-6 月）**：P3 Course Brain（Concept 抽取消歧、课程级 RAG、Knowledge GPS v1、课件 Diff）；P4 Learner Brain（Mastery 确定性算法黄金样本先行、遗忘 V1 规则、Misconception 状态机、Digital Twin 视图）；职业场景包第一弹（项目总结分析）。
 - **长期（6-12 月+）**：P5 Adaptive（Tutor / Teach-back / 自适应测验 + Transfer，面试模拟场景包在此进入）；P6 Planner+Autopilot（最小创新闭环跑通 = 产品分水岭）+ Learning Journey Timeline；P7 Outcome（Passport / Learning Profile 整合）；MCP client 评估（若 chat 工具生态需求成立）；商业化触发评估（ADR-0014）。
 
@@ -3573,9 +3581,9 @@ Mastery Update
 
 ---
 
-# 40. Agent 能力建设评估与开发跟进清单（2026-09-09）
+# 40. Agent 能力建设评估与开发跟进清单（2026-09-09 建立，2026-09-14 随交付同步）
 
-> **评估性质**：基于代码库实际状态（`feat/extend-dev-05`，1df1f3f）对 Agent 化就绪度做的核验，与 §39 裁定及基线 §5.1 阶段规划零冲突。§40.3 的 A 档与 B1/B2/B5 属**基线 P2 已定项的就绪度核验与实施细化**；B3 与「课堂功能降后」为**排期增量建议（⚠️ 待决策）**。本章为评审记录，优先级 / 技术选型 / 表结构的权威仍在三份权威文档。文中代码引用以 1df1f3f 时点为准。
+> **评估性质**：基于代码库实际状态（`feat/extend-dev-05`，1df1f3f）对 Agent 化就绪度做的核验，与 §39 裁定及基线 §5.1 阶段规划零冲突。§40.3 的 A 档与 B1/B2/B5 属**基线 P2 已定项的就绪度核验与实施细化**；B3 与「课堂功能降后」为**排期增量建议（⚠️ 待决策）**。本章为评审记录，优先级 / 技术选型 / 表结构的权威仍在三份权威文档。文中代码引用已同步至 B1 交付后（2026-09-14）状态。
 
 ## 40.1 架构 Agent 化适配度核验（代码证据）
 
@@ -3583,17 +3591,16 @@ Mastery Update
 
 五项已就绪的结构条件：
 
-1. **ReAct Agent 循环已在产**：chat 用 `create_agent`（`backend/app/modules/chat/graph.py` 的 `build_chat_agent`），`tools=[]` 空置且注释明确"检索工具为后续工单"——Agent 化不是加框架，是往空位填工具；
+1. **Agent 循环与工具已在产**：chat 以 deepagents 骨架装配（ADR-0018，`backend/app/modules/agent/graph.py` 的 `build_agent` / `build_chat_agent`）；`AgentConfig.tools` 已挂 `search_transcript`（挂载会话，2026-09-13）与 `web_search`（每请求开关，2026-09-14）两工具；
 2. **HITL 已跨重启验证**：Summary / ReviewMaterial 两 graph 的 `interrupt()` 人工确认环（各自 `graph.py`）在生产多版本运行，断点恢复能力已被验证；
-3. **检索入口已统一**：`SearchService`（`backend/app/modules/search/service.py`）docstring 明确"唯一搜索入口：HTTP 路由与未来 AI 对话检索工具共用"；FTS5+jieba、BM25 列权重、写路径同事务 upsert、启动幂等回填全部就绪，工具化只是包一层 `@tool`；
-4. **引用契约前后端闭环**：`ChatCitationOut`（`chat/schemas.py`，`[n]` 角标 + 80 字摘录）→ 前端 `CitationBubble` 角标点击跳转转写页高亮（`ChatMessageList.tsx`）。**Agent 工具的检索结果可直接复用该契约，前端近乎零改**；
-5. **异步任务管道在产**：JobRunner 自研队列带崩溃恢复（`jobs/runner.py` 的 `recover_running_to_failed` / `recover_interrupted`），Evidence Builder 类异步管道有现成模式可循。
+3. **检索基建双轨就绪**：全局搜索唯一入口 `SearchService`（`backend/app/modules/search/service.py`，FTS5+jieba、BM25 列权重、写路径同事务 upsert、启动幂等回填）；chat 检索工具按 A1 定稿走分片级 FTS（迁移 0020 `segment_search_index`，命中回业务表取逐字原文，无分片记录退化为全文子串）——未直接包装 SearchService（全局索引 snippet 产自 jieba token 串非逐字原文、索引 body 截断 30,000 字符）；
+4. **引用契约前后端闭环且已判别化**：`ChatCitationOut`（`agent/schemas.py`，`[n]` 角标 + 80 字摘录，`source` 判别 record / web）→ 前端 `ChatCitationList` 角标定位高亮（`ChatMessageList.tsx`）+ `useOpenCitation` 打开（record 跳转转写页逐字校验 / web 外链经系统浏览器，B1）；
+5. **两条异步管道在产**：JobRunner 自研队列带崩溃恢复（`jobs/runner.py` 的 `recover_running_to_failed` / `recover_interrupted`）；`learning_events` 独立 asyncio 水位消费循环（ADR-0021）。
 
-三项真实缺口（按严重度）：
+当前真实缺口（按严重度）：
 
-1. **`learning_events` 零消费者**：表结构完备（幂等键、`schema_version`、score/difficulty/duration 字段，`record/models.py`），summary / quiz / knowledge_point 三处 service 已在写入，但无任何 dispatch 与 Evidence Builder——数据在攒、管道未接，是当前离"学习大脑"最远的一环；
-2. **chat 工具层已落地（2026-09-13 A1+A2），长材料降级保留为保底**：`build_context_messages` 在转写超过 30000 字符时降级为"已确认摘要 + 知识点全文 + 近三轮引用摘录"并告知模型"缺失细节不可推断"——该降级路径即检索工具需求已真实发生的证据；挂载会话现已注入 `search_transcript`，细节由 agent 主动检索找回（无分片记录退化为全文子串）；
-3. **单记录挂载限制**：`ChatSessionCreate.record_id` 为单值，用户无法跨记录提问（基线 #24 已定 P2 以「@全部资料全局 RAG」解除）。
+1. **单记录挂载限制**：`ChatSessionCreate.record_id` 为单值，用户无法跨记录提问（基线 #24 已定 P2 以「@全部资料全局 RAG」解除——B2 已实施，2026-09-14）；
+2. **长材料降级保留为保底**：`build_context_messages` 在转写超过 30000 字符时降级为"已确认摘要 + 知识点全文 + 近三轮引用摘录"并告知模型"缺失细节不可推断"；挂载会话细节由 agent 经 `search_transcript` 主动检索找回。
 
 架构洞察：chat 每轮发送前清空 checkpoint、以业务表为唯一记忆源（`stream_chat_reply` 轮初 `adelete_thread`）。这对工具化**有利**——工具循环中间态不跨轮持久，不存在 checkpoint 膨胀与跨轮工具状态泄漏问题。
 
@@ -3616,9 +3623,9 @@ Mastery Update
 
 | # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
 |---|---|---|---|---|---|
-| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.6 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
+| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.7 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
 | A1 | Chat 检索工具（Agent 第一工具） | 基线 §4.7"检索为第一工具"（#53） | ★★★ | 中低 | **已实施（2026-09-13，A1+A2 三票完结）**：实现形态定为「分片级 FTS 索引 + 挂载内单工具 `search_transcript`」（迁移 0020 `segment_search_index`，jieba 分词 + BM25；命中回业务表取逐字原文，无分片记录退化为全文子串）。与 §40.2 原设想「直接包装全局 `SearchService.search`」的差异源于两处代码事实：全局索引 snippet 产自 jieba token 串（非逐字原文，无法通过引用逐字校验）、索引 body 截断在 30,000 字符（覆盖不了 >30k 转写痛点）；`search_library` 留给 B2 连同跨记录范围胶囊一并设计。>30k 降级材料保留保底，`CHAT_PROMPT_VERSION` bump v3 |
-| A2 | 工具调用的前端呈现 | ——（基线未细化的实施项） | ★★★ | 中 | **已实施（2026-09-13）**：SSE 增 `tool_call` / `tool_result` 事件（消息流内检索状态卡「正在检索 → 命中 n 条 / 失败」，多次检索逐条陈列）；过程态与流式文本同生命周期、done / 中断后消失，不持久化（历史消息仍只有正文与引用）；右栏工具开关维持示意态（B1 接真） |
+| A2 | 工具调用的前端呈现 | ——（基线未细化的实施项） | ★★★ | 中 | **已实施（2026-09-13）**：SSE 增 `tool_call` / `tool_result` 事件（消息流内检索状态卡「正在检索 → 命中 n 条 / 失败」，多次检索逐条陈列）；过程态与流式文本同生命周期、done / 中断后消失，不持久化（历史消息仍只有正文与引用）；右栏工具开关已由 B1 接真（2026-09-14，联网搜索按会话记忆） |
 | A3 | 事件消费框架 + Evidence Builder 最小版 | Phase 2 Learning Evidence | ★★★ | 中 | **已实施（2026-09-14，learning-evidence 四票完结，ADR-0021）**：四事件（总结确认 / 知识点确认 / 逐题作答 / 交卷）与业务动作同事务写入（统一经 `learning.events.write_learning_event`，幂等键 `{event-slug}:{source-id}`）；消费为独立 asyncio 水位循环——原「复用 JobRunner」设想按 ADR-0021 修正为不入 processing_jobs（毫秒级纯函数转换，领取协议属过度设计），水位 = SQLite 隐式 rowid 单调扫描（`learning_events.id` 是 uuid4 非单调）、禁 NOT EXISTS、event_id 预查幂等 + 唯一约束兜底、失败 3 次跳过不建死信表；映射集中声明（QUIZ 0.9/0.8、CONFIRMED → USER_CONFIRMATION 0.3·0.4/0.7、交卷不产证据防双计）；证据可由事件流清空重放再生；learning 域薄只读查询按记录/课程取证据流（Mastery / 学习上下文中间件共同底座）；零 LLM / 零前端 / 零新 API；concept_id / source_anchor_id 恒 NULL 留 P3/P5 |
 
 ### B 档：P2 后期 ~ P3（依赖 A 档）
@@ -3626,8 +3633,8 @@ Mastery Update
 | # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
 |---|---|---|---|---|---|
 | B1 | Web search 工具 | #53 / Phase 2 | ★★ | 低 | **已实施（2026-09-14，web-search 两票完结）**：薄 `SearchProvider` Protocol + 仅 Tavily 一家实现（httpx 直连零新依赖，`trust_env=True` 尊重系统代理——与 LLM 端点的动机不同，见票 01 审查备注）；开关 = 每请求 body 参数 `web_search`（默认 false 零迁移、不落库），前端按会话 Zustand 记忆（重启重置），默认自由 ON / 挂载 OFF；无 key 后端无视标志强制不挂工具（前端置灰之外的双保险）；`citations_json` 条目判别化（record 逐字校验不变 / web `{index,source:"web",url,title}` 仅非空检查），前端 web 条目渲染外链经系统浏览器打开；SSE `tool_call`/`tool_result` 零改动复用（工具卡文案按 tool 名分流）；`CHAT_PROMPT_VERSION` bump v4；不做搜索快照持久化（grill Q10 定稿） |
-| B2 | 跨记录 / 课程级问答 | #24「@全部资料全局 RAG」（P2 已定） | ★★★ | 中 | 检索工具天然跨库返回；产品层把挂载范围从"自由 / 单记录"扩为"单记录 / 课程 / 全部资料"（决策 #22/#24，见 §0 D5）；权限与软删过滤沿用 SearchService 查询期回表过滤 |
-| B3 | Tutor / Teach-back 场景包最小形态 | ⚠️ 增量建议（§29 的 Tutor / TeachBack Graph 留 P5） | ★★ | 低 | `ChatMode` 四模式枚举已预留但 `Literal[ChatMode.ASK]` 仅启用一种（`chat/schemas.py`）；**不建独立 Graph**，以 prompt 模板 + 模式开关先行，作为场景包机制（§39.3）首个验证实例；苏格拉底辅导是通用学习工作台最正交的 AI Native 功能 |
+| B2 | 跨记录 / 课程级问答 | #24「@全部资料全局 RAG」（P2 已定） | ★★★ | 中 | **已实施（2026-09-14，cross-record-qa 单票全栈完结）**：`chat_sessions.scope` 显式四档列（迁移 0022，FREE/RECORD/COURSE/ALL，与 mode 轴正交）；COURSE/ALL 会话挂 `search_library` 跨记录工具（分片 FTS top-8 BM25 + FTS 零命中 LIKE 兜底，与 `search_transcript` 互斥挂载）；上下文 = 记录标题清单（约 4000 字符预算，超出取最近并注明）+ 检索指引 + 跨记录引用格式；引用行 `[n] 摘录（来源：标题）`，归属由校验器裁定（标题定位→逐字→仅候选内模糊；无候选全范围逐字兜底、禁全范围模糊对齐），落库携 `record_title` 快照；`CHAT_PROMPT_VERSION` v5；软删过滤沿用查询期回表；范围胶囊 / 新建菜单 / 课程详情对话 Tab 前端接真（记录范围行为零回归） |
+| B3 | Tutor / Teach-back 场景包最小形态 | ⚠️ 增量建议（§29 的 Tutor / TeachBack Graph 留 P5） | ★★ | 低 | `ChatMode` 四模式枚举已预留但 `Literal[ChatMode.ASK]` 仅启用一种（`agent/schemas.py`）；**不建独立 Graph**，以 prompt 模板 + 模式开关先行，作为场景包机制（§39.3）首个验证实例；苏格拉底辅导是通用学习工作台最正交的 AI Native 功能 |
 | B5 | sqlite-vec 向量混合检索 | #24 / Phase 2 | ★ | 中 | 语义检索增益项，等 BM25 真实吃力再进（触发条件见未来候选库路线图） |
 
 > 2026-09-09 修正：原 B4（Segment + Source Anchor）即 F1 本体，是 A3 的**数据前置**而非其依赖项，已前移至 A 档 A0——与 §39.5 P2 顺序（Segment+Anchor → Evidence Builder → …）对齐，引用精度升级要点并入 A0 行。
@@ -3638,7 +3645,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 
 ### 明确不做 / 进一步降后
 
-- §39.4 技术栈裁定全部维持：Multi-Agent、通用 Skills 框架、mem0/letta、MCP server、LlamaIndex、DeepAgents；
+- §39.4 技术栈裁定维持：Multi-Agent、通用 Skills 框架、mem0/letta、MCP server、LlamaIndex；DeepAgents 已按 ADR-0018 以 chat 骨架形态引入（子 agent / 虚拟文件系统规划仍不采用）；
 - ⚠️ **增量建议（待决策）**：从"通用 AI 学习工作台"定位出发，课堂专属功能（F2 课堂实时标记、F3 课件 Diff）进一步降后——§37 关键链路本就不含它们，通用主链 = 捕获 → 结构化理解 → 个性化状态 → 推荐。
 
 ## 40.4 下一阶段开发路线（P2 统一序列，2026-09-09 修订）
@@ -3651,7 +3658,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
   ┆ 并行槽（不依赖 F1 / A3，可随时插入，单独成线）
   ┆   A1 chat 检索工具 → A2 工具调用前端呈现   ← ✅ 已完成（2026-09-13，见 §40.3 A1/A2 行）
 第 3 步   B1 web_search（Tavily，#53）        ← ✅ 已完成（2026-09-14，见 §40.3 B1 行）
-第 4 步   B2 跨记录 / 全局问答（#24 @全部资料）
+第 4 步   B2 跨记录 / 全局问答（#24 @全部资料） ← ✅ 已完成（2026-09-14，见 §40.3 B2 行）
 第 5 步   B5 sqlite-vec 混合检索（BM25 吃力时可提前）
 其后      B3 Tutor 场景包 / 网页剪藏 / 英文支持（§39.5 既有 P2 项）→ P3 Course Brain
 ```
