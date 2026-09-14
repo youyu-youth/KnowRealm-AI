@@ -337,7 +337,7 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
             )
         }
 
-    assert version == (20,)
+    assert version == (21,)
     assert {
         "id",
         "record_id",
@@ -1083,7 +1083,8 @@ async def test_answer_objective_quizzes_scores_once_and_persists_events(tmp_path
                     await session.execute(
                         text(
                             "SELECT source_type, source_id, result, score, difficulty, "
-                            "duration_ms, concept_id, metadata_json, idempotency_key "
+                            "duration_ms, concept_id, metadata_json, idempotency_key, "
+                            "occurred_at "
                             "FROM learning_events "
                             "WHERE event_type='QUIZ_ANSWERED' ORDER BY source_id"
                         )
@@ -1115,11 +1116,15 @@ async def test_answer_objective_quizzes_scores_once_and_persists_events(tmp_path
     wrong_event = by_source_id[multiple_choice["id"]]
     assert wrong_event["source_type"] == "QUIZ_QUESTION"
     assert wrong_event["result"] == "WRONG"
-    assert wrong_event["score"] is None
+    assert wrong_event["score"] == 0.0
     assert wrong_event["difficulty"] == "EASY"
     assert wrong_event["duration_ms"] is None
     assert wrong_event["concept_id"] is None
     assert wrong_event["idempotency_key"] == f"quiz-answered:{multiple_choice['id']}"
+    assert wrong_event["occurred_at"] == wrong.json()["answered_at"]
+    correct_event = by_source_id[true_false["id"]]
+    assert correct_event["result"] == "CORRECT"
+    assert correct_event["score"] == 1.0
     assert json.loads(wrong_event["metadata_json"]) == {
         "batch_id": batch_id,
         "question_type": "MULTIPLE_CHOICE",
@@ -1311,7 +1316,8 @@ async def test_short_answer_self_assessment_creates_event_and_completes_batch(
                 (
                     await session.execute(
                         text(
-                            "SELECT source_id, result, difficulty, metadata_json, idempotency_key "
+                            "SELECT source_id, result, score, difficulty, metadata_json, "
+                            "idempotency_key, occurred_at, created_at "
                             "FROM learning_events WHERE event_type='QUIZ_ANSWERED' "
                             "ORDER BY source_id"
                         )
@@ -1335,8 +1341,13 @@ async def test_short_answer_self_assessment_creates_event_and_completes_batch(
     assert len(events) == 3
     short_event = next(event for event in events if event["source_id"] == short["id"])
     assert short_event["result"] == "CORRECT"
+    assert short_event["score"] == 1.0
     assert short_event["difficulty"] == "MEDIUM"
     assert short_event["idempotency_key"] == f"quiz-answered:{short['id']}"
+    # 事件代表作答行为：occurred_at 取作答时刻（提交简答落定的 answered_at），
+    # created_at 是自评落行时刻，不早于行为发生时刻。
+    assert short_event["occurred_at"] == assessed.json()["answered_at"]
+    assert short_event["created_at"] >= short_event["occurred_at"]
     assert json.loads(short_event["metadata_json"]) == {
         "batch_id": batch_id,
         "question_type": "SHORT_ANSWER",

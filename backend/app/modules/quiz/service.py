@@ -15,6 +15,7 @@ from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.learning.events import write_learning_event
 from app.modules.quiz.models import Quiz
 from app.modules.quiz.schemas import (
     QuizAction,
@@ -32,7 +33,7 @@ from app.modules.quiz.schemas import (
     QuizSelfAssessmentRequest,
     QuizShortAnswerRequest,
 )
-from app.modules.record.models import LearningEvent, Record
+from app.modules.record.models import Record
 from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
@@ -214,39 +215,6 @@ async def _answerable_quiz(session: AsyncSession, record_id: str, quiz_id: str) 
             code="QUIZ_NOT_ADOPTED", status_code=409, detail="只有已采用批次的题可以作答"
         )
     return quiz
-
-
-def _answer_event(
-    record: Record,
-    quiz: Quiz,
-    result: QuizAnswerResult,
-    now: datetime,
-) -> LearningEvent:
-    return LearningEvent(
-        id=str(uuid4()),
-        course_id=record.course_id,
-        record_id=record.id,
-        concept_id=None,
-        event_type=QuizLearningEventType.ANSWERED,
-        source_type=QuizLearningEventSourceType.QUESTION,
-        source_id=quiz.id,
-        result=result,
-        score=None,
-        difficulty=quiz.difficulty,
-        duration_ms=None,
-        metadata_json=json.dumps(
-            {
-                "batch_id": quiz.batch_id,
-                "question_type": quiz.question_type,
-                "generated_from_summary_id": quiz.generated_from_summary_id,
-            },
-            separators=(",", ":"),
-        ),
-        idempotency_key=f"quiz-answered:{quiz.id}",
-        schema_version=1,
-        occurred_at=now,
-        created_at=now,
-    )
 
 
 class QuizService:
@@ -658,7 +626,24 @@ class QuizService:
                     )
                 return _quiz_out(quiz), False
 
-            session.add(_answer_event(record, quiz, answer_result, now))
+            await write_learning_event(
+                session,
+                course_id=record.course_id,
+                record_id=record.id,
+                event_type=QuizLearningEventType.ANSWERED,
+                source_type=QuizLearningEventSourceType.QUESTION,
+                source_id=quiz.id,
+                idempotency_key=f"quiz-answered:{quiz.id}",
+                result=answer_result,
+                score=1.0 if answer_result == QuizAnswerResult.CORRECT else 0.0,
+                difficulty=quiz.difficulty,
+                occurred_at=now,
+                metadata={
+                    "batch_id": quiz.batch_id,
+                    "question_type": quiz.question_type,
+                    "generated_from_summary_id": quiz.generated_from_summary_id,
+                },
+            )
             await session.flush()
             return _quiz_out(quiz), True
 
@@ -756,8 +741,26 @@ class QuizService:
                     )
                 return _quiz_out(quiz), False
 
-            session.add(_answer_event(record, quiz, body.result, now))
-            await session.flush()
+            await write_learning_event(
+                session,
+                course_id=record.course_id,
+                record_id=record.id,
+                event_type=QuizLearningEventType.ANSWERED,
+                source_type=QuizLearningEventSourceType.QUESTION,
+                source_id=quiz.id,
+                idempotency_key=f"quiz-answered:{quiz.id}",
+                result=body.result,
+                score=1.0 if body.result == QuizAnswerResult.CORRECT else 0.0,
+                difficulty=quiz.difficulty,
+                # 自评在作答之后：事件仍代表作答行为，occurred_at 取作答时刻。
+                occurred_at=quiz.answered_at,
+                created_at=now,
+                metadata={
+                    "batch_id": quiz.batch_id,
+                    "question_type": quiz.question_type,
+                    "generated_from_summary_id": quiz.generated_from_summary_id,
+                },
+            )
             await session.refresh(quiz)
             return _quiz_out(quiz), True
 
