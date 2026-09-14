@@ -1,75 +1,78 @@
 import { useTranslation } from "react-i18next";
 import { FileText, GraduationCap, Library, MessageCircle } from "lucide-react";
+import type { ChatSession } from "@/features/chat/api/types";
 import { cn } from "@/lib/utils";
 
+export type ScopeChipId = "free" | "record" | "course" | "all";
+
 type ChatScopeChipsProps = {
-  recordId: string | null;
+  scope: ChatSession["scope"];
+  /** 点击非当前范围胶囊：由宿主承接「新建会话」流程（范围会话内不可变，spec 根决策 2）。 */
+  onSelectScope: (scope: ScopeChipId) => void;
+  disabled?: boolean;
+};
+
+const CHIP_BY_SCOPE: Record<ChatSession["scope"], ScopeChipId> = {
+  FREE: "free",
+  RECORD: "record",
+  COURSE: "course",
+  ALL: "all",
 };
 
 /**
- * 对话范围示意（图 1 对齐）：自由聊天/记录由会话真实挂载决定高亮；
- * 课程与全部资料尚未支持，仅展示并标注，不参与任何请求。
+ * 对话范围胶囊（图 1 对齐）：当前会话范围高亮；点其它胶囊 = 发起对应范围的新会话。
  */
-export function ChatScopeChips({ recordId }: ChatScopeChipsProps) {
+export function ChatScopeChips({
+  scope,
+  onSelectScope,
+  disabled,
+}: ChatScopeChipsProps) {
   const { t } = useTranslation();
-  const free = recordId === null;
-  const scopes = [
-    {
-      id: "free",
-      icon: MessageCircle,
-      active: free,
-      label: t("chat.scope.free"),
-    },
-    {
-      id: "record",
-      icon: FileText,
-      active: !free,
-      label: t("chat.scope.record"),
-    },
-    {
-      id: "course",
-      icon: GraduationCap,
-      active: false,
-      label: t("chat.scope.course"),
-    },
-    {
-      id: "all",
-      icon: Library,
-      active: false,
-      label: t("chat.scope.all"),
-    },
+  const activeChip = CHIP_BY_SCOPE[scope];
+  const scopes: {
+    id: ScopeChipId;
+    icon: typeof MessageCircle;
+    label: string;
+  }[] = [
+    { id: "free", icon: MessageCircle, label: t("chat.scope.free") },
+    { id: "record", icon: FileText, label: t("chat.scope.record") },
+    { id: "course", icon: GraduationCap, label: t("chat.scope.course") },
+    { id: "all", icon: Library, label: t("chat.scope.all") },
   ];
   return (
     <div className="flex flex-wrap gap-2">
-      {scopes.map((scope) => {
-        const Icon = scope.icon;
-        const unavailable = scope.id === "course" || scope.id === "all";
+      {scopes.map((scopeChip) => {
+        const Icon = scopeChip.icon;
+        const active = scopeChip.id === activeChip;
         return (
-          <span
-            key={scope.id}
-            aria-current={scope.active ? "true" : undefined}
+          <button
+            key={scopeChip.id}
+            type="button"
+            disabled={disabled}
+            aria-current={active ? "true" : undefined}
             aria-label={
-              unavailable
-                ? t("chat.scope.unavailable", { scope: scope.label })
-                : scope.label
+              active
+                ? scopeChip.label
+                : t("chat.scope.switchTo", { scope: scopeChip.label })
             }
             title={
-              unavailable
-                ? t("chat.scope.unavailable", { scope: scope.label })
-                : undefined
+              active
+                ? undefined
+                : t("chat.scope.switchTo", { scope: scopeChip.label })
             }
             className={cn(
               "text-label inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 transition-colors",
-              scope.active
+              active
                 ? "border-primary bg-primary text-primary-foreground font-medium"
-                : unavailable
-                  ? "border-border-subtle text-muted-foreground/70 bg-transparent"
-                  : "border-border-subtle bg-surface-raised text-ink-muted",
+                : "border-border-subtle bg-surface-raised text-ink-muted hover:text-ink",
             )}
+            onClick={() => {
+              if (!active) onSelectScope(scopeChip.id);
+            }}
           >
             <Icon className="size-3.5" aria-hidden="true" />
-            {scope.label}
-          </span>
+            {scopeChip.label}
+          </button>
         );
       })}
     </div>

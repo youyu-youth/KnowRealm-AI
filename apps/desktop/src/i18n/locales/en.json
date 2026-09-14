@@ -518,9 +518,11 @@
       },
       "chat": {
         "title": "Course chat",
-        "notice": "The conversation below is sample content; go to AI Chat for real questions.",
-        "placeholder": "Ask a question…",
-        "send": "Send"
+        "notice": "Start an AI chat grounded in all records of this course: ask for the big picture or compare across records.",
+        "placeholder": "What do you want to ask about this course?",
+        "send": "Send",
+        "cta": "Start “{{course}}” course chat",
+        "error": "Couldn't create the course chat. Please retry."
       },
       "info": {
         "subject": "Subject",
@@ -582,12 +584,6 @@
           "6": "Further reading",
           "7": "Formulas and conclusions at a glance",
           "8": "Practice strategies"
-        },
-        "chat": {
-          "q1": "How should I understand the core concepts of this chapter?",
-          "a1": "Start by linking \"{{first}}\" and \"{{second}}\": understand the definitions first, then see how they work in typical examples.",
-          "q2": "What are the easy things to confuse?",
-          "a2": "A common pitfall is memorizing conclusions without checking conditions. Review the pitfalls section and verify with one integrated exercise."
         }
       }
     },
@@ -1471,14 +1467,15 @@
     "interruptedDescription": "The previous answer was interrupted; no partial content was kept.",
     "retryAnswer": "Regenerate response",
     "recordDeleted": "Source Record deleted",
-    "composer.recordDeletedHint": "The source Record was deleted; this chat is no longer active and cannot send messages.",
     "citation": {
       "listLabel": "Citations",
       "jump": "View the Transcript passage for citation {{index}}",
       "jumpWeb": "Open the web source for citation {{index}}",
       "entry": "[{{index}}] {{quote}}",
       "webEntry": "[{{index}}] {{title}}, opens in your browser",
-      "recordTag": "Record"
+      "recordTag": "Record",
+      "recordFromTitle": "From “{{title}}”",
+      "entryWithTitle": "[{{index}}] {{quote}} (from “{{title}}”)"
     },
     "recordsTitle": "Chat history",
     "selectSessionTitle": "Select or start a chat",
@@ -1506,7 +1503,7 @@
       "record": "Record",
       "course": "Course",
       "all": "All materials",
-      "unavailable": "{{scope}} scope is coming soon"
+      "switchTo": "Switch to {{scope}} (starts a new chat)"
     },
     "suggestions": {
       "title": "You can ask like this",
@@ -1534,7 +1531,9 @@
       "recordFallback": "Record",
       "addMore": "Add more content (coming soon)",
       "citations": "Citations",
-      "citationsEmpty": "Citation [n] markers in answers are listed here; click one to jump back to the source."
+      "citationsEmpty": "Citation [n] markers in answers are listed here; click one to jump back to the source.",
+      "scopeRecords_one": "{{count}} record in scope",
+      "scopeRecords_other": "{{count}} records in scope"
     },
     "tools": {
       "title": "Tool status",
@@ -1552,6 +1551,11 @@
           "hits_one": "Found {{count}} result",
           "hits_other": "Found {{count}} results",
           "failed": "“{{query}}” web search failed"
+        },
+        "library": {
+          "running": "Searching your materials for “{{query}}”",
+          "hits": "Found {{count}} matches for “{{query}}”",
+          "failed": "Search failed for “{{query}}”"
         }
       },
       "webSearch": {
@@ -1581,6 +1585,24 @@
     },
     "settings": {
       "action": "Chat settings (coming soon)"
+    },
+    "newMenu": {
+      "free": "Free chat",
+      "record": "Mount a record…",
+      "course": "Course Q&A…",
+      "all": "All materials Q&A"
+    },
+    "coursePicker": {
+      "title": "Choose a course",
+      "description": "The chat will search and cite across all records in this course.",
+      "loading": "Loading courses",
+      "error": "Couldn't load courses. Please retry.",
+      "empty": "No courses yet. Create one first, then start a course chat."
+    },
+    "courseDeleted": "Course deleted",
+    "composer": {
+      "recordDeletedHint": "The source Record was deleted; this chat is no longer active and cannot send messages.",
+      "courseDeletedHint": "The course was deleted; this chat is read-only."
     }
   },
   "settings": {
@@ -1996,6 +2018,9 @@
     "UNSUPPORTED_AUDIO": "This audio format is not supported.",
     "UNSUPPORTED_SOURCE": "This source format is not supported.",
     "UNSUPPORTED_TEXT_CAPTURE": "Only Quick Notes or pasted text are supported.",
-    "UPGRADE_COURSE_REQUIRED": "Assign a course to the unclassified Record before upgrading."
+    "UPGRADE_COURSE_REQUIRED": "Assign a course to the unclassified Record before upgrading.",
+    "CHAT_COURSE_ARCHIVED": "This course is archived; course chat is unavailable",
+    "CHAT_COURSE_NOT_FOUND": "Course not found or deleted",
+    "CHAT_COURSE_UNAVAILABLE": "The mounted course was deleted; this chat is read-only"
   }
 }

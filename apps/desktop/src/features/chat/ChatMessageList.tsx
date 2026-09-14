@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleAlert, Globe, RotateCcw, Search } from "lucide-react";
+import {
+  CircleAlert,
+  Globe,
+  Library,
+  RotateCcw,
+  Search,
+} from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -29,13 +35,16 @@ const toolActivityCardClass =
 const toolActivityIconClass = "size-3.5 shrink-0";
 
 /** 检索过程卡：加载 / 命中 / 失败三态，图标与文字同时表达状态（不只靠颜色）。
- * web_search 与 search_transcript 共用卡形态，仅文案与图标分流。 */
+ * web_search / search_transcript / search_library 共用卡形态，仅文案与图标分流。 */
 function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
   const { t } = useTranslation();
   const isWeb = activity.tool === "web_search";
+  const isLibrary = activity.tool === "search_library";
   const copyKey = isWeb
     ? "chat.tools.activity.webSearch"
-    : "chat.tools.activity";
+    : isLibrary
+      ? "chat.tools.activity.library"
+      : "chat.tools.activity";
   if (activity.result === null) {
     return (
       <li className={toolActivityCardClass}>
@@ -50,7 +59,7 @@ function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
     );
   }
   if (activity.result.ok) {
-    const ResultIcon = isWeb ? Globe : Search;
+    const ResultIcon = isWeb ? Globe : isLibrary ? Library : Search;
     return (
       <li className={toolActivityCardClass}>
         <ResultIcon

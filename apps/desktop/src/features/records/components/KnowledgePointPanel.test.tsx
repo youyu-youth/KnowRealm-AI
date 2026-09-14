@@ -888,10 +888,12 @@ describe("KnowledgePointPanel", () => {
     const chatSession: components["schemas"]["ChatSessionOut"] = {
       id: sessionId,
       mode: "ASK",
+      scope: "RECORD",
       title: null,
       record_id: RECORD_ID,
       course_id: COURSE_ID,
       record_deleted: false,
+      course_deleted: false,
       created_at: "2026-08-29T08:00:00.000000Z",
       updated_at: "2026-08-29T08:00:00.000000Z",
     };

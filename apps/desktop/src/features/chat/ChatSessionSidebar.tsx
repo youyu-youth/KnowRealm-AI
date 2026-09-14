@@ -27,6 +27,7 @@ import {
 import { NewChatButton } from "@/features/chat/NewChatButton";
 import { formatChatTimestamp } from "@/features/chat/chatTime";
 import { useChatUiStore } from "@/features/chat/chatUiStore";
+import { useCourseNames } from "@/features/chat/useCourseNames";
 import { cn } from "@/lib/utils";
 
 type SessionFilter = "all" | "today" | "week" | "favorite";
@@ -146,10 +147,17 @@ function ChatSessionRow({
     (state) => state.favoriteSessionIds,
   );
   const toggleFavorite = useChatUiStore((state) => state.toggleFavorite);
+  const courseNames = useCourseNames();
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const title = session.title ?? t("chat.untitled");
   const favorited = favoriteSessionIds.has(session.id);
+  const scopeLabel =
+    session.scope === "COURSE"
+      ? (courseNames.get(session.course_id ?? "") ?? t("chat.scope.course"))
+      : session.scope === "ALL"
+        ? t("chat.scope.all")
+        : null;
 
   return (
     <li>
@@ -186,6 +194,16 @@ function ChatSessionRow({
               {session.record_deleted ? (
                 <span className="bg-destructive/10 text-destructive rounded-xs px-1.5 py-px">
                   {t("chat.recordDeleted")}
+                </span>
+              ) : null}
+              {session.course_deleted ? (
+                <span className="bg-destructive/10 text-destructive rounded-xs px-1.5 py-px">
+                  {t("chat.courseDeleted")}
+                </span>
+              ) : null}
+              {scopeLabel ? (
+                <span className="bg-surface-strong text-ink-muted rounded-xs px-1.5 py-px">
+                  {scopeLabel}
                 </span>
               ) : null}
               <time dateTime={session.updated_at}>

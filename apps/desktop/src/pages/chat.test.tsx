@@ -10,7 +10,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, type HttpHandler } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
@@ -49,10 +49,12 @@ function chatSession(
   return {
     id,
     mode: "ASK",
+    scope: "FREE",
     title: null,
     record_id: null,
     course_id: null,
     record_deleted: false,
+    course_deleted: false,
     created_at: "2026-08-27T08:00:00.000000Z",
     updated_at: "2026-08-27T08:00:00.000000Z",
     ...overrides,
@@ -146,14 +148,19 @@ describe("AI 对话", () => {
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  it("新建自由对话后立即进入会话页，显示提问输入区", async () => {
+  it("新建菜单：自由聊天直达，挂载记录走选卡弹窗", async () => {
     const created = chatSession(FIRST_SESSION_ID, {});
+    let freeBody: unknown;
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
         HttpResponse.json([]),
       ),
-      http.post(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
-        HttpResponse.json(created, { status: 201 }),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions`,
+        async ({ request }) => {
+          freeBody = await request.json();
+          return HttpResponse.json(created, { status: 201 });
+        },
       ),
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json([created]),
@@ -166,25 +173,26 @@ describe("AI 对话", () => {
 
     renderAt("/chat");
     fireEvent.click(await screen.findByRole("button", { name: "新建对话" }));
-    fireEvent.click(await screen.findByRole("button", { name: "创建对话" }));
+    // 菜单四入口：自由聊天直达建会话。
+    fireEvent.click(await screen.findByRole("menuitem", { name: "自由聊天" }));
 
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
     );
-    expect(
-      await screen.findByRole("heading", { name: "新对话" }),
-    ).toBeVisible();
+    expect(freeBody).toEqual({ mode: "ASK", scope: "FREE" });
     expect(
       await screen.findByRole("textbox", { name: "提问输入框" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
     // 空会话由建议卡承担引导，不再显示旧文案。
     expect(await screen.findByText("你可以这样提问")).toBeVisible();
   });
 
   it("新建时可挂载收件箱记录，无转写记录置灰并说明原因", async () => {
     const recordId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
-    const created = chatSession(FIRST_SESSION_ID, { record_id: recordId });
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: recordId,
+      scope: "RECORD",
+    });
     let body: unknown;
     let attempts = 0;
     server.use(
@@ -223,6 +231,7 @@ describe("AI 对话", () => {
     );
     renderAt("/chat");
     fireEvent.click(await screen.findByRole("button", { name: "新建对话" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "挂载记录…" }));
     fireEvent.click(
       await screen.findByRole("combobox", { name: "挂载学习记录（可选）" }),
     );
@@ -629,7 +638,10 @@ describe("挂载对话引用", () => {
   }
 
   function renderMountedSession() {
-    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: RECORD_ID,
+      scope: "RECORD",
+    });
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json([created]),
@@ -688,7 +700,10 @@ describe("挂载对话引用", () => {
   });
 
   it("右栏聚合多条回答的引用并按编号去重（后出现的回答优先）", async () => {
-    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: RECORD_ID,
+      scope: "RECORD",
+    });
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json([created]),
@@ -742,7 +757,10 @@ describe("挂载对话引用", () => {
   });
 
   it("角标无对应引用时保持纯文本，不出现可点击项", async () => {
-    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: RECORD_ID,
+      scope: "RECORD",
+    });
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json([created]),
@@ -783,7 +801,10 @@ describe("挂载对话检索过程", () => {
   const RECORD_ID = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 
   function renderMountedStreaming(answered: { current: boolean }) {
-    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: RECORD_ID,
+      scope: "RECORD",
+    });
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json([created]),
@@ -963,7 +984,10 @@ describe("联网搜索接线（B1）", () => {
 
   it("挂载会话默认关闭：输入区 Globe 打开后与右栏开关同源联动", async () => {
     const RECORD_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
-    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: RECORD_ID,
+      scope: "RECORD",
+    });
     const answered = { current: false };
     const bodies = capturedMessagePost(answered);
     server.use(
@@ -1097,7 +1121,10 @@ describe("联网搜索接线（B1）", () => {
   it("web 引用显示标题与域名，点击经系统浏览器打开；正文角标同样分流", async () => {
     const RECORD_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     const WEB_URL = "https://en.wikipedia.org/wiki/Operating_system";
-    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: RECORD_ID,
+      scope: "RECORD",
+    });
     server.use(
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json([created]),
@@ -1176,6 +1203,7 @@ describe("挂载会话失效态", () => {
         HttpResponse.json([
           chatSession(FIRST_SESSION_ID, {
             title: "失效会话",
+            scope: "RECORD",
             record_id: RECORD_ID,
             record_deleted: true,
           }),
@@ -1192,6 +1220,7 @@ describe("挂载会话失效态", () => {
 
   it("会话页保留可读历史，输入区禁用并说明原因", async () => {
     const created = chatSession(FIRST_SESSION_ID, {
+      scope: "RECORD",
       record_id: RECORD_ID,
       record_deleted: true,
     });
@@ -1225,6 +1254,310 @@ describe("挂载会话失效态", () => {
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     expect(
       screen.getByText("原记录已删除，对话已失效，无法继续发送。"),
+    ).toBeVisible();
+  });
+});
+
+describe("跨记录问答范围（B2）", () => {
+  const COURSE_ID = "11111111-2222-4333-8444-555555555555";
+
+  function courseList() {
+    return http.get(`${TEST_SIDECAR_URL}/api/courses`, () =>
+      HttpResponse.json([
+        {
+          id: COURSE_ID,
+          name: "分布式系统",
+          learning_context: "INTEREST",
+          status: "ACTIVE",
+          created_at: "2026-08-27T08:00:00.000000Z",
+          updated_at: "2026-08-27T08:00:00.000000Z",
+        },
+      ]),
+    );
+  }
+
+  function scopeSessionPage(
+    session: ChatSessionOut,
+    handlers: HttpHandler[],
+  ) {
+    server.use(
+      ...handlers,
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([session]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/${session.id}`, () =>
+        HttpResponse.json(session),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${session.id}/messages`,
+        () => HttpResponse.json([SYSTEM_ROW]),
+      ),
+      courseList(),
+    );
+    renderAt(`/chat/${session.id}`);
+  }
+
+  it("范围胶囊点「全部资料」直接建会话并跳转", async () => {
+    const created = chatSession(FIRST_SESSION_ID, { scope: "ALL" });
+    let body: unknown;
+    scopeSessionPage(chatSession(SECOND_SESSION_ID, {}), [
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions`,
+        async ({ request }) => {
+          body = await request.json();
+          return HttpResponse.json(created, { status: 201 });
+        },
+      ),
+    ]);
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "切换到全部资料（将新建对话）",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
+    );
+    expect(body).toEqual({ mode: "ASK", scope: "ALL" });
+  });
+
+  it("范围胶囊点「课程」打开选课弹窗，选定后创建 COURSE 会话", async () => {
+    const created = chatSession(FIRST_SESSION_ID, {
+      scope: "COURSE",
+      course_id: COURSE_ID,
+    });
+    let body: unknown;
+    scopeSessionPage(chatSession(SECOND_SESSION_ID, {}), [
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions`,
+        async ({ request }) => {
+          body = await request.json();
+          return HttpResponse.json(created, { status: 201 });
+        },
+      ),
+    ]);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "切换到课程（将新建对话）" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "选择课程" }),
+    ).toBeVisible();
+    fireEvent.click(await screen.findByRole("button", { name: "分布式系统" }));
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
+    );
+    expect(body).toEqual({
+      mode: "ASK",
+      scope: "COURSE",
+      course_id: COURSE_ID,
+    });
+  });
+
+  it("新建菜单「课程问答」与「全部资料」入口可用", async () => {
+    const created = chatSession(FIRST_SESSION_ID, {
+      scope: "COURSE",
+      course_id: COURSE_ID,
+    });
+    let body: unknown;
+    server.use(
+      courseList(),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions`,
+        async ({ request }) => {
+          body = await request.json();
+          return HttpResponse.json(created, { status: 201 });
+        },
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([]),
+      ),
+    );
+    renderAt("/chat");
+
+    fireEvent.click(await screen.findByRole("button", { name: "开始对话" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "课程问答…" }));
+    expect(
+      await screen.findByRole("heading", { name: "选择课程" }),
+    ).toBeVisible();
+    fireEvent.click(await screen.findByRole("button", { name: "分布式系统" }));
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
+    );
+    expect(body).toEqual({
+      mode: "ASK",
+      scope: "COURSE",
+      course_id: COURSE_ID,
+    });
+  });
+
+  it("课程会话页展示课程名标识与右栏范围卡，webSearch 默认关闭", async () => {
+    // 独立 sessionId：webSearchBySession 按会话记忆跨用例存留（Zustand 模块级）。
+    const created = chatSession("1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a", {
+      scope: "COURSE",
+      course_id: COURSE_ID,
+    });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/settings/providers/web-search`, () =>
+        HttpResponse.json({
+          provider: {
+            provider: "tavily",
+            has_api_key: true,
+            api_key_hint: "••••1234",
+          },
+        }),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([
+          {
+            id: "r1",
+            title: "第 2 讲",
+            course_id: COURSE_ID,
+            has_transcript: true,
+          },
+          {
+            id: "r2",
+            title: "第 5 讲",
+            course_id: COURSE_ID,
+            has_transcript: true,
+          },
+          {
+            id: "r3",
+            title: "收件箱速记",
+            course_id: null,
+            has_transcript: true,
+          },
+        ]),
+      ),
+    );
+    scopeSessionPage(created, []);
+
+    // 标题栏与右栏出现课程名；右栏范围卡显示范围内记录数（只数该课程）。
+    expect(
+      await screen.findAllByText("分布式系统", { selector: "span" }),
+    ).not.toHaveLength(0);
+    expect(await screen.findByText("范围内 2 条记录")).toBeVisible();
+    // 课程范围视同挂载：联网开关默认关。
+    await waitFor(() => {
+      const webSwitch = screen.getByRole("switch", { name: "联网搜索" });
+      expect(webSwitch).not.toBeChecked();
+    });
+  });
+
+  it("全部资料会话行与右栏显示范围标识", async () => {
+    const created = chatSession(FIRST_SESSION_ID, { scope: "ALL" });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([]),
+      ),
+    );
+    scopeSessionPage(created, []);
+
+    // 标题栏徽标与侧栏行标识（全部资料 span）至少各出现一次。
+    expect(
+      (await screen.findAllByText("全部资料", { selector: "span" })).length,
+    ).toBeGreaterThan(0);
+    expect(await screen.findByText("范围内 0 条记录")).toBeVisible();
+  });
+
+  it("search_library 工具卡三态文案", async () => {
+    const created = chatSession(FIRST_SESSION_ID, { scope: "ALL" });
+    scopeSessionPage(created, []);
+    const opened = openSseResponse([]);
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => opened.response,
+      ),
+    );
+
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "一致性哈希" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    opened.pushEvent('event: status\ndata: {"phase":"generating"}');
+    opened.pushEvent(
+      'event: tool_call\ndata: {"tool":"search_library","query":"一致性哈希"}',
+    );
+    expect(
+      await screen.findByText("正在检索学习资料「一致性哈希」"),
+    ).toBeVisible();
+
+    opened.pushEvent(
+      'event: tool_result\ndata: {"tool":"search_library","hits":4,"ok":true}',
+    );
+    expect(await screen.findByText("「一致性哈希」命中 4 条")).toBeVisible();
+
+    opened.pushEvent(
+      'event: tool_call\ndata: {"tool":"search_library","query":"Raft"}',
+    );
+    opened.pushEvent(
+      'event: tool_result\ndata: {"tool":"search_library","hits":0,"ok":false}',
+    );
+    expect(await screen.findByText("「Raft」检索失败")).toBeVisible();
+    opened.closeStream();
+  });
+
+  it("跨记录引用显示记录标题，历史行无标题降级为现状", async () => {
+    const RECORD_A = "12121212-1212-4121-8121-121212121212";
+    const RECORD_B = "13131313-1313-4131-8131-131313131313";
+    const created = chatSession(FIRST_SESSION_ID, { scope: "ALL" });
+    scopeSessionPage(created, [
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "对比两次课"),
+            {
+              id: "assistant-row",
+              role: "ASSISTANT",
+              content: "两次课侧重不同[1][2]。",
+              model: "stub-chat-model",
+              citations: [
+                {
+                  index: 1,
+                  source: "record",
+                  record_id: RECORD_A,
+                  record_title: "第 2 讲 一致性哈希",
+                  quote: "第二讲聚焦实践",
+                },
+                {
+                  index: 2,
+                  source: "record",
+                  record_id: RECORD_B,
+                  quote: "第五讲聚焦理论",
+                },
+              ],
+              created_at: "2026-08-27T08:00:00.000000Z",
+            },
+          ]),
+      ),
+    ]);
+
+    // 跨记录条目：摘录 + 来自《标题》；历史行无 title：降级为「记录」标签。
+    expect(await screen.findByText("第二讲聚焦实践")).toBeVisible();
+    expect(await screen.findByText("来自《第 2 讲 一致性哈希》")).toBeVisible();
+    expect(await screen.findByText("第五讲聚焦理论")).toBeVisible();
+    const citationList = screen.getByRole("list", { name: "引用来源" });
+    expect(within(citationList).getByText("记录")).toBeVisible();
+  });
+
+  it("课程软删后课程会话只读并明示原因", async () => {
+    const created = chatSession(FIRST_SESSION_ID, {
+      scope: "COURSE",
+      course_id: COURSE_ID,
+      course_deleted: true,
+    });
+    scopeSessionPage(created, []);
+
+    expect(await screen.findAllByText("课程已删除")).not.toHaveLength(0);
+    const input = screen.getByRole("textbox", { name: "提问输入框" });
+    expect(input).toBeDisabled();
+    expect(
+      screen.getByText("课程已删除，对话已失效，无法继续发送。"),
     ).toBeVisible();
   });
 });

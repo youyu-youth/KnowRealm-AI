@@ -7,7 +7,9 @@ import {
   Code2,
   FileText,
   Globe,
+  GraduationCap,
   Lightbulb,
+  Library,
   Plus,
 } from "lucide-react";
 import { AppTooltip } from "@/components/common/AppTooltip";
@@ -15,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
-import type { ChatCitation } from "@/features/chat/api/types";
+import type { ChatCitation, ChatSession } from "@/features/chat/api/types";
 import { ChatCitationList } from "@/features/chat/ChatCitationList";
 import {
   CHAT_DEMO_TOOL_IDS,
@@ -23,6 +25,7 @@ import {
   useChatUiStore,
   type ChatToolId,
 } from "@/features/chat/chatUiStore";
+import { useCourseNames } from "@/features/chat/useCourseNames";
 import { useWebSearchAvailability } from "@/features/chat/useWebSearchAvailability";
 
 const TOOL_ICONS: Record<ChatToolId, typeof Globe> = {
@@ -34,42 +37,55 @@ const TOOL_ICONS: Record<ChatToolId, typeof Globe> = {
 
 type ChatContextPanelProps = {
   sessionId: string;
+  scope: ChatSession["scope"];
   recordId: string | null;
+  courseId: string | null;
   recordDeleted: boolean;
+  courseDeleted: boolean;
   citations: ChatCitation[];
 };
 
 /**
- * 右栏上下文面板：当前挂载内容（真实）、来源引用（真实，含 web 外链）与工具状态。
- * 联网搜索开关已接真（按会话记忆、发消息携带标志），其余三个为图 1 示意开关。
+ * 右栏上下文面板：当前挂载内容（真实，按 scope 展示）、来源引用（真实，含 web 外链）
+ * 与工具状态。联网搜索开关已接真（按会话记忆、发消息携带标志），其余三个为图 1 示意开关。
  */
 export function ChatContextPanel({
   sessionId,
+  scope,
   recordId,
+  courseId,
   recordDeleted,
+  courseDeleted,
   citations,
 }: ChatContextPanelProps) {
   const { t } = useTranslation();
   const tools = useChatUiStore((state) => state.tools);
   const toggleTool = useChatUiStore((state) => state.toggleTool);
+  const mountedScope = scope !== "FREE";
   const webSearchOn = useChatUiStore((state) =>
-    selectWebSearchEnabled(state, sessionId, recordId !== null),
+    selectWebSearchEnabled(state, sessionId, mountedScope),
   );
   const setWebSearchEnabled = useChatUiStore(
     (state) => state.setWebSearchEnabled,
   );
   const webSearchAvailable = useWebSearchAvailability();
-  // 挂载记录的标题来自可挂载记录列表；与新建对话共用缓存。
+  const courseNames = useCourseNames();
+  // 挂载记录标题与范围记录数共用可挂载记录列表缓存；课程 / 全部范围也消费计数。
   const recordOptions = useQuery({
     queryKey: chatKeys.recordOptions(),
     queryFn: () => chatApi.recordOptions(),
-    enabled: recordId !== null,
+    enabled: scope !== "FREE",
   });
   const recordTitle =
     recordId === null
       ? null
       : (recordOptions.data?.find((record) => record.id === recordId)?.title ??
         null);
+  const scopeRecordCount =
+    scope === "COURSE"
+      ? recordOptions.data?.filter((record) => record.course_id === courseId)
+          .length
+      : recordOptions.data?.length;
 
   return (
     <aside
@@ -92,11 +108,11 @@ export function ChatContextPanel({
             </Link>
           ) : null}
         </div>
-        {recordId === null ? (
+        {scope === "FREE" ? (
           <p className="border-border-subtle text-label text-muted-foreground mt-3 rounded-lg border border-dashed px-3 py-3">
             {t("chat.context.free")}
           </p>
-        ) : (
+        ) : scope === "RECORD" ? (
           <div className="border-border-subtle bg-surface-subtle mt-3 flex items-start gap-3 rounded-lg border p-3">
             <span className="bg-surface-raised flex size-8 shrink-0 items-center justify-center rounded-md">
               <FileText className="text-ink-muted size-4" aria-hidden="true" />
@@ -112,6 +128,40 @@ export function ChatContextPanel({
                 {recordDeleted
                   ? t("chat.recordDeleted")
                   : t("chat.citation.recordTag")}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="border-border-subtle bg-surface-subtle mt-3 flex items-start gap-3 rounded-lg border p-3">
+            <span className="bg-surface-raised flex size-8 shrink-0 items-center justify-center rounded-md">
+              {scope === "COURSE" ? (
+                <GraduationCap
+                  className="text-ink-muted size-4"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Library className="text-ink-muted size-4" aria-hidden="true" />
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p
+                className="text-body-dense text-ink truncate font-medium"
+                title={
+                  scope === "COURSE"
+                    ? (courseNames.get(courseId ?? "") ?? undefined)
+                    : undefined
+                }
+              >
+                {scope === "COURSE"
+                  ? (courseNames.get(courseId ?? "") ?? t("chat.scope.course"))
+                  : t("chat.scope.all")}
+              </p>
+              <p className="text-label text-muted-foreground mt-0.5">
+                {courseDeleted
+                  ? t("chat.courseDeleted")
+                  : t("chat.context.scopeRecords", {
+                      count: scopeRecordCount ?? 0,
+                    })}
               </p>
             </div>
           </div>

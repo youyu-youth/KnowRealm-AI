@@ -119,8 +119,10 @@ export function ChatWorkspace({
             title={detail.data.title ?? t("chat.untitled")}
             hasCustomTitle={detail.data.title !== null}
             updatedAt={detail.data.updated_at}
-            recordId={detail.data.record_id ?? null}
+            scope={detail.data.scope}
+            courseId={detail.data.course_id ?? null}
             recordDeleted={detail.data.record_deleted}
+            courseDeleted={detail.data.course_deleted}
             messages={messages}
             initialPrompt={initialPrompt}
           />
@@ -130,8 +132,11 @@ export function ChatWorkspace({
       {sessionId !== undefined ? (
         <ChatContextPanel
           sessionId={sessionId}
+          scope={detail.data?.scope ?? "FREE"}
           recordId={detail.data?.record_id ?? null}
+          courseId={detail.data?.course_id ?? null}
           recordDeleted={detail.data?.record_deleted ?? false}
+          courseDeleted={detail.data?.course_deleted ?? false}
           citations={citations}
         />
       ) : null}

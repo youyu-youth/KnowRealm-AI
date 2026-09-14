@@ -86,17 +86,6 @@ export type InsightSuggestion = {
   chapter?: ChapterMastery;
 };
 
-export type CourseChatMessage = {
-  id: string;
-  role: "user" | "assistant";
-  textKey: string;
-  params?: {
-    course?: string;
-    firstNode?: KnowledgeNode;
-    secondNode?: KnowledgeNode;
-  };
-};
-
 /** FNV-1a 32 位哈希：仅用于生成稳定的示意数值。 */
 function hash(value: string): number {
   let result = 0x811c9dc5;
@@ -361,27 +350,4 @@ export function mockRecommendedPoints(
       learnersK: (8 + ((seed >>> (poolIndex % 16)) % 120)) / 10,
     };
   });
-}
-
-export function mockCourseChatMessages(
-  course: CourseDetail,
-): CourseChatMessage[] {
-  const nodes = mockKnowledgeNodes(course).filter((node) => !node.core);
-  const [first, second] = nodes;
-  return [
-    { id: "chat-1", role: "user", textKey: "spaces.courseDetail.mock.chat.q1" },
-    {
-      id: "chat-2",
-      role: "assistant",
-      textKey: "spaces.courseDetail.mock.chat.a1",
-      params: { firstNode: first, secondNode: second },
-    },
-    { id: "chat-3", role: "user", textKey: "spaces.courseDetail.mock.chat.q2" },
-    {
-      id: "chat-4",
-      role: "assistant",
-      textKey: "spaces.courseDetail.mock.chat.a2",
-      params: { course: course.name },
-    },
-  ];
 }

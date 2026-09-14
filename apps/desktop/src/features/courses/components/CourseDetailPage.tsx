@@ -302,10 +302,7 @@ export function CourseDetailPage({
         >
           <div className="px-content">
             <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <CourseChatTab
-                course={detail}
-                onOpenChat={() => void navigate({ to: "/chat" })}
-              />
+              <CourseChatTab course={detail} />
             </div>
           </div>
         </TabsContent>

@@ -518,9 +518,11 @@
       },
       "chat": {
         "title": "课程对话",
-        "notice": "以下为示意对话；正式提问请前往 AI 对话。",
-        "placeholder": "输入你的问题…",
-        "send": "发送"
+        "notice": "基于该课程全部记录发起 AI 问答：可问整体脉络，也可跨记录对比。",
+        "placeholder": "想问这门课的什么？",
+        "send": "发送",
+        "cta": "开启「{{course}}」课程问答",
+        "error": "创建课程对话失败，请重试。"
       },
       "info": {
         "subject": "所属学科",
@@ -582,12 +584,6 @@
           "6": "拓展阅读方向",
           "7": "公式与结论速查",
           "8": "综合练习策略"
-        },
-        "chat": {
-          "q1": "这一章的核心概念应该怎么理解？",
-          "a1": "可以先把「{{first}}」和「{{second}}」联系起来：先理解定义，再看它在典型例题中的作用。",
-          "q2": "有哪些容易混淆的地方？",
-          "a2": "常见误区是只记结论不看条件。建议对照课程里的易错点说明，再用一道综合题验证。"
         }
       }
     },
@@ -1460,14 +1456,15 @@
     "interruptedDescription": "上一条提问的回答被中断，没有保留半截内容。",
     "retryAnswer": "重新生成回答",
     "recordDeleted": "原记录已删除",
-    "composer.recordDeletedHint": "原记录已删除，对话已失效，无法继续发送。",
     "citation": {
       "listLabel": "引用来源",
       "jump": "查看引用 {{index}} 的转写原文",
       "jumpWeb": "打开引用 {{index}} 的网络来源",
       "entry": "[{{index}}] {{quote}}",
       "webEntry": "[{{index}}] {{title}}，点击在浏览器打开",
-      "recordTag": "记录"
+      "recordTag": "记录",
+      "recordFromTitle": "来自《{{title}}》",
+      "entryWithTitle": "[{{index}}] {{quote}}（来自《{{title}}》）"
     },
     "recordsTitle": "对话记录",
     "selectSessionTitle": "选择或新建对话",
@@ -1495,7 +1492,7 @@
       "record": "记录",
       "course": "课程",
       "all": "全部资料",
-      "unavailable": "{{scope}}范围即将支持"
+      "switchTo": "切换到{{scope}}（将新建对话）"
     },
     "suggestions": {
       "title": "你可以这样提问",
@@ -1523,7 +1520,8 @@
       "recordFallback": "学习记录",
       "addMore": "添加更多内容（即将支持）",
       "citations": "来源引用",
-      "citationsEmpty": "回答中的 [n] 角标会在这里列出，点击可跳回原文。"
+      "citationsEmpty": "回答中的 [n] 角标会在这里列出，点击可跳回原文。",
+      "scopeRecords": "范围内 {{count}} 条记录"
     },
     "tools": {
       "title": "工具状态",
@@ -1537,6 +1535,11 @@
           "running": "正在搜索网络「{{query}}」",
           "hits": "找到 {{count}} 条结果",
           "failed": "「{{query}}」搜索失败"
+        },
+        "library": {
+          "running": "正在检索学习资料「{{query}}」",
+          "hits": "「{{query}}」命中 {{count}} 条",
+          "failed": "「{{query}}」检索失败"
         }
       },
       "webSearch": {
@@ -1566,6 +1569,24 @@
     },
     "settings": {
       "action": "对话设置（即将支持）"
+    },
+    "newMenu": {
+      "free": "自由聊天",
+      "record": "挂载记录…",
+      "course": "课程问答…",
+      "all": "全部资料问答"
+    },
+    "coursePicker": {
+      "title": "选择课程",
+      "description": "对话将在该课程的全部记录范围内检索与引用。",
+      "loading": "正在读取课程",
+      "error": "课程暂时无法读取，请重试。",
+      "empty": "还没有课程。可以先创建课程，再回来发起课程问答。"
+    },
+    "courseDeleted": "课程已删除",
+    "composer": {
+      "recordDeletedHint": "原记录已删除，对话已失效，无法继续发送。",
+      "courseDeletedHint": "课程已删除，对话已失效，无法继续发送。"
     }
   },
   "settings": {
@@ -1981,6 +2002,9 @@
     "UNSUPPORTED_AUDIO": "不支持的音频格式",
     "UNSUPPORTED_SOURCE": "不支持的来源格式",
     "UNSUPPORTED_TEXT_CAPTURE": "仅支持速记或粘贴文本",
-    "UPGRADE_COURSE_REQUIRED": "未归类记录升级前必须选择课程"
+    "UPGRADE_COURSE_REQUIRED": "未归类记录升级前必须选择课程",
+    "CHAT_COURSE_ARCHIVED": "课程已归档，暂不支持发起课程问答",
+    "CHAT_COURSE_NOT_FOUND": "课程不存在或已删除",
+    "CHAT_COURSE_UNAVAILABLE": "挂载课程已删除，对话失效"
   }
 }

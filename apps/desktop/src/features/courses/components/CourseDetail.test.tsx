@@ -178,7 +178,13 @@ describe("课程详情与编辑", () => {
       await screen.findByRole("heading", { name: "课程对话" }),
     ).toBeInTheDocument();
     expect(window.location.search).toBe("?tab=chat");
-    expect(screen.getAllByText("示意").length).toBeGreaterThan(0);
+    // 课程对话已接真（B2）：不再有「示意」标记，展示发起课程会话的 CTA。
+    expect(screen.queryByText("示意")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "开启「操作系统」课程问答",
+      }),
+    ).toBeEnabled();
   });
 
   it("概览显示权重玫瑰图、课程脑图显示关系图且两处均可全屏", async () => {

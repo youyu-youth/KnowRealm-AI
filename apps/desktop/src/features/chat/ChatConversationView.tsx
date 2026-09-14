@@ -1,7 +1,14 @@
 import { useState } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { MoreHorizontal, Pencil, Star, Trash2 } from "lucide-react";
+import {
+  GraduationCap,
+  Library,
+  MoreHorizontal,
+  Pencil,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -12,21 +19,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { ChatMessage } from "@/features/chat/api/types";
+import type { ChatMessage, ChatSession } from "@/features/chat/api/types";
 import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ChatMessageList } from "@/features/chat/ChatMessageList";
-import { ChatScopeChips } from "@/features/chat/ChatScopeChips";
+import {
+  ChatScopeChips,
+  type ScopeChipId,
+} from "@/features/chat/ChatScopeChips";
 import {
   DeleteChatDialog,
   RenameChatDialog,
 } from "@/features/chat/ChatSessionDialogs";
 import { ChatSuggestions } from "@/features/chat/ChatSuggestions";
+import { CoursePickerDialog } from "@/features/chat/CoursePickerDialog";
+import { RecordMountDialog } from "@/features/chat/RecordMountDialog";
 import { formatChatTimestamp } from "@/features/chat/chatTime";
 import {
   selectWebSearchEnabled,
   useChatUiStore,
 } from "@/features/chat/chatUiStore";
 import { useChatStream } from "@/features/chat/useChatStream";
+import { useCourseNames } from "@/features/chat/useCourseNames";
+import { useCreateChatSession } from "@/features/chat/useCreateChatSession";
 import { useWebSearchAvailability } from "@/features/chat/useWebSearchAvailability";
 import { cn } from "@/lib/utils";
 
@@ -35,8 +49,10 @@ type ChatConversationViewProps = {
   title: string;
   hasCustomTitle: boolean;
   updatedAt: string;
-  recordId: string | null;
+  scope: ChatSession["scope"];
+  courseId: string | null;
   recordDeleted: boolean;
+  courseDeleted: boolean;
   messages: UseQueryResult<ChatMessage[]>;
   initialPrompt?: string;
 };
@@ -47,8 +63,10 @@ export function ChatConversationView({
   title,
   hasCustomTitle,
   updatedAt,
-  recordId,
+  scope,
+  courseId,
   recordDeleted,
+  courseDeleted,
   messages,
   initialPrompt,
 }: ChatConversationViewProps) {
@@ -58,18 +76,24 @@ export function ChatConversationView({
   const [composerValue, setComposerValue] = useState(initialPrompt ?? "");
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [recordPickOpen, setRecordPickOpen] = useState(false);
+  const [coursePickOpen, setCoursePickOpen] = useState(false);
+  const createSession = useCreateChatSession();
+  const courseNames = useCourseNames();
   const favoriteSessionIds = useChatUiStore(
     (state) => state.favoriteSessionIds,
   );
   const toggleFavorite = useChatUiStore((state) => state.toggleFavorite);
-  // 联网搜索开关按会话记忆；发送与重新生成都携带当前开关值。
+  // 联网搜索开关按会话记忆；默认值按范围取（自由 ON / 挂载类范围 OFF，B2 延伸）。
+  const mountedScope = scope !== "FREE";
   const webSearchAvailable = useWebSearchAvailability();
   const webSearchEnabled = useChatUiStore((state) =>
-    selectWebSearchEnabled(state, sessionId, recordId !== null),
+    selectWebSearchEnabled(state, sessionId, mountedScope),
   );
   const setWebSearchEnabled = useChatUiStore(
     (state) => state.setWebSearchEnabled,
   );
+  const scopeUnavailable = recordDeleted || courseDeleted;
 
   const visibleCount = (messages.data ?? []).filter(
     (message) => message.role !== "SYSTEM",
@@ -80,8 +104,37 @@ export function ChatConversationView({
     visibleCount === 0 &&
     streamedText === null &&
     !isStreaming &&
-    !recordDeleted;
+    !scopeUnavailable;
   const favorited = favoriteSessionIds.has(sessionId);
+
+  function handleSelectScope(chip: ScopeChipId) {
+    // 范围会话内不可变：点其它胶囊 = 发起对应范围的新会话（spec 根决策 2）。
+    if (chip === "course") {
+      setCoursePickOpen(true);
+      return;
+    }
+    if (chip === "record") {
+      setRecordPickOpen(true);
+      return;
+    }
+    createSession.mutate({
+      mode: "ASK",
+      scope: chip === "all" ? "ALL" : "FREE",
+    });
+  }
+
+  const scopeBadge =
+    scope === "COURSE" ? (
+      <span className="bg-surface-subtle text-ink-muted flex items-center gap-1 rounded-xs px-1.5 py-px">
+        <GraduationCap aria-hidden="true" className="size-3" />
+        {courseNames.get(courseId ?? "") ?? t("chat.scope.course")}
+      </span>
+    ) : scope === "ALL" ? (
+      <span className="bg-surface-subtle text-ink-muted flex items-center gap-1 rounded-xs px-1.5 py-px">
+        <Library aria-hidden="true" className="size-3" />
+        {t("chat.scope.all")}
+      </span>
+    ) : null;
 
   return (
     <article
@@ -96,12 +149,18 @@ export function ChatConversationView({
           >
             {title}
           </h1>
-          <p className="text-label text-muted-foreground mt-1 flex items-center gap-1.5">
+          <p className="text-label text-muted-foreground mt-1 flex flex-wrap items-center gap-1.5">
             {recordDeleted ? (
               <span className="bg-destructive/10 text-destructive rounded-xs px-1.5 py-px">
                 {t("chat.recordDeleted")}
               </span>
             ) : null}
+            {courseDeleted ? (
+              <span className="bg-destructive/10 text-destructive rounded-xs px-1.5 py-px">
+                {t("chat.courseDeleted")}
+              </span>
+            ) : null}
+            {scopeBadge}
             {formatChatTimestamp(t, i18n.language, updatedAt)}
           </p>
         </div>
@@ -151,7 +210,11 @@ export function ChatConversationView({
       </header>
 
       <div className="shrink-0 px-6 pt-4">
-        <ChatScopeChips recordId={recordId} />
+        <ChatScopeChips
+          scope={scope}
+          onSelectScope={handleSelectScope}
+          disabled={createSession.isPending}
+        />
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-6">
@@ -183,9 +246,13 @@ export function ChatConversationView({
         )}
         <ChatComposer
           value={composerValue}
-          disabled={messages.isPending || recordDeleted}
+          disabled={messages.isPending || scopeUnavailable}
           disabledHint={
-            recordDeleted ? t("chat.composer.recordDeletedHint") : undefined
+            recordDeleted
+              ? t("chat.composer.recordDeletedHint")
+              : courseDeleted
+                ? t("chat.composer.courseDeletedHint")
+                : undefined
           }
           isStreaming={isStreaming}
           webSearchEnabled={webSearchEnabled}
@@ -210,6 +277,23 @@ export function ChatConversationView({
         wasActive
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
+      />
+      <RecordMountDialog
+        open={recordPickOpen}
+        onOpenChange={setRecordPickOpen}
+      />
+      <CoursePickerDialog
+        open={coursePickOpen}
+        onOpenChange={setCoursePickOpen}
+        pending={createSession.isPending}
+        error={createSession.error?.message ?? null}
+        onConfirm={(pickedCourseId) =>
+          createSession.mutate({
+            mode: "ASK",
+            scope: "COURSE",
+            course_id: pickedCourseId,
+          })
+        }
       />
     </article>
   );

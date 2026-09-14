@@ -1,6 +1,10 @@
 import { FileText, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { isWebCitation, type ChatCitation } from "@/features/chat/api/types";
+import {
+  isRecordCitation,
+  isWebCitation,
+  type ChatCitation,
+} from "@/features/chat/api/types";
 import { useOpenCitation } from "@/features/chat/useOpenCitation";
 
 type ChatCitationListProps = {
@@ -44,6 +48,8 @@ export function ChatCitationList({ citations }: ChatCitationListProps) {
 function CitationItem({ citation }: { citation: ChatCitation }) {
   const { t } = useTranslation();
   const openCitation = useOpenCitation();
+  // 跨记录条目带标题快照（B2）；历史行无 title 降级为现状展示。
+  const recordTitle = isRecordCitation(citation) ? citation.record_title : null;
 
   const main = isWebCitation(citation) ? (
     <>
@@ -62,7 +68,9 @@ function CitationItem({ citation }: { citation: ChatCitation }) {
       </span>
       <span className={citationTagClass}>
         <FileText className="size-3" aria-hidden="true" />
-        {t("chat.citation.recordTag")}
+        {recordTitle
+          ? t("chat.citation.recordFromTitle", { title: recordTitle })
+          : t("chat.citation.recordTag")}
       </span>
     </>
   );
@@ -78,10 +86,16 @@ function CitationItem({ citation }: { citation: ChatCitation }) {
                 index: citation.index,
                 title: citation.title,
               })
-            : t("chat.citation.entry", {
-                index: citation.index,
-                quote: citation.quote,
-              })
+            : recordTitle
+              ? t("chat.citation.entryWithTitle", {
+                  index: citation.index,
+                  quote: citation.quote,
+                  title: recordTitle,
+                })
+              : t("chat.citation.entry", {
+                  index: citation.index,
+                  quote: citation.quote,
+                })
         }
         onClick={() => openCitation(citation)}
       >
