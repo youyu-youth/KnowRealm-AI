@@ -68,6 +68,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 8. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
 
 10. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
+11. 如果一个用户的任务是可以通过脚本而稳定实现的，就不要通过llm来实现，这样可以避免过多的token消耗，如果脚本难以实现的，必须用llm则使用llm实现，脚本优先，llm次之。
 
 
 

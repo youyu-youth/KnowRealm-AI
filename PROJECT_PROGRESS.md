@@ -2,7 +2,7 @@
 
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
-> **最后更新**：2026-09-14（chat 模块升级为统一 agent 模块（ADR-0020）：graph.py 拆 context/citations/graph 三件 + tools/ + middleware/ 子包，行为零变更，openapi 逐字一致、435 测试全绿）
+> **最后更新**：2026-09-14（A3「事件消费框架 + Evidence Builder」spec + 四票落盘（.scratch/learning-evidence/，ADR-0021）；票 01「learning_evidence 地基 + 逐题作答事件首通」已完结：迁移 0021 + learning 域统一事件写入 + 逐题作答 score 映射，票 02~04 待做）
 
 ## 1. 项目概述
 
@@ -79,7 +79,7 @@
 
 **规划中（未拆票，勿直接开工）：**
 
-- 扩展文档 §40.4「P2 统一序列」：F1（✅ 已完成）→ **A1+A2（✅ 已交付，2026-09-13 三票完结，剩用户真机验收）**；序列其后为 A3「Evidence Builder 管道」（依赖 F1，未拆票）；B3「Tutor 提前」与 F2/F3（课堂相关）**待用户决策**。
+- 扩展文档 §40.4「P2 统一序列」：F1（✅ 已完成）→ **A1+A2（✅ 已交付，2026-09-13 三票完结，剩用户真机验收）**；A3「事件消费框架 + Evidence Builder」**spec+四票已落盘（2026-09-14，ADR-0021，.scratch/learning-evidence/，线性 01→04）**：票 01 地基+逐题作答事件 ✅ 已完结（迁移 0021 learning_evidence + learning 域统一事件写入函数 + score 1/0 映射），票 02 其余四挂点、票 03 消费循环、票 04 查询+文档收尾待做。设计要点：四事件同事务写入、独立 asyncio 水位消费循环（约 30s 周期 + 启动即扫，禁 NOT EXISTS 子查询）、确定性映射落 learning_evidence（event_id 唯一、证据可重放再生、失败 3 次跳过、零 LLM、零前端、数据模型升 v2.6 在票 04）；B3「Tutor 提前」与 F2/F3（课堂相关）**待用户决策**。
 - 习题 Groundedness：待用户采集真实样本（阻塞项）+ 06 总结黄金样本另议；回归触发=prompt_version/模型变更。⚠️ prompt_version 至今未 bump，启用评测前需处理。
 - 未来候选库路线图（带触发条件，见记忆/后端轮子审计）：检索 FTS5 trigram→sqlite-vec、复习调度 fsrs、导出 fpdf2、pytest-cov/timeout；APScheduler/LanceDB/本地 whisper 已否决。
 - 产品层扩展方向五新场景包：见扩展文档 §39.4（仅评审记录，**非用户已批准**）。
