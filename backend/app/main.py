@@ -34,6 +34,7 @@ from app.modules.jobs import processing_jobs
 from app.modules.jobs.runner import JobRunner, ManagedWorker
 from app.modules.knowledge_point import knowledge_points
 from app.modules.knowledge_point.worker import knowledge_point_spec
+from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.llm.service import (
     KnowledgePointModel,
     OpenAiCompatibleKnowledgePointModel,
@@ -294,10 +295,17 @@ def create_app(
                     await worker.recover_interrupted()
                     worker_tasks.append(asyncio.create_task(worker.run()))
                 app.state.worker_tasks = worker_tasks
+                # 学习事件消费循环（ADR-0021）：不入 processing_jobs 的独立水位循环，
+                # 水位仅存内存、重启全量补扫靠 event_id 唯一约束去重。
+                evidence_consumer = EvidenceConsumer(session_factory)
+                consumer_task = asyncio.create_task(evidence_consumer.run())
+                app.state.evidence_consumer = evidence_consumer
                 try:
                     yield
                 finally:
                     # 逆序停止并等待（与启动相反）；engine.dispose 为唯一收尾 finally
+                    evidence_consumer.stop()
+                    await consumer_task
                     for _name, worker in reversed(workers):
                         worker.stop()
                     for task in reversed(worker_tasks):
