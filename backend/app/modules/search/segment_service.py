@@ -78,16 +78,13 @@ _SEARCH_DOCUMENT_SEGMENTS_SQL = text(
     "LIMIT :limit"
 )
 
-_MISSING_TRANSCRIPT_SEGMENTS_SQL = text(
-    "SELECT ts.id FROM transcript_segments ts WHERE NOT EXISTS ("
-    "SELECT 1 FROM segment_search_index si "
-    "WHERE si.entity_type = 'transcript_segment' AND si.entity_id = ts.id)"
-)
-_MISSING_DOCUMENT_SEGMENTS_SQL = text(
-    "SELECT ds.id FROM document_segments ds WHERE NOT EXISTS ("
-    "SELECT 1 FROM segment_search_index si "
-    "WHERE si.entity_type = 'document_segment' AND si.entity_id = ds.id)"
-)
+# FTS5 无普通索引：NOT EXISTS 相关子查询会让外层每行全扫索引表
+# （13356 分片 × 15296 索引行实测 40s），改两侧各扫一次、集合差集求缺行。
+_INDEXED_SEGMENT_KEYS_SQL = text("SELECT entity_type, entity_id FROM segment_search_index")
+_ALL_SEGMENT_IDS_SQL: dict[SegmentEntityType, TextClause] = {
+    ENTITY_TRANSCRIPT_SEGMENT: text("SELECT id FROM transcript_segments"),
+    ENTITY_DOCUMENT_SEGMENT: text("SELECT id FROM document_segments"),
+}
 
 # 记录是否存在分片：chat 检索工具据此选择「FTS 无命中如实返回」或「无分片子串兜底」。
 _RECORD_HAS_SEGMENTS_SQL = text(
@@ -228,18 +225,24 @@ class SegmentSearchService:
     async def backfill_missing(session_factory: async_sessionmaker[AsyncSession]) -> None:
         """启动幂等回填：为索引缺行的分片补索引行（含软删宿主，查询期过滤）。
 
-        NOT EXISTS 保证重复执行零副作用；按块开短事务（data-layer 写事务纪律）。
+        缺行检测见 _INDEXED_SEGMENT_KEYS_SQL 注释（集合差集）；
+        按块开短事务（data-layer 写事务纪律）。
         """
         total = 0
-        backfills: tuple[tuple[TextClause, SegmentEntityType], ...] = (
-            (_MISSING_TRANSCRIPT_SEGMENTS_SQL, ENTITY_TRANSCRIPT_SEGMENT),
-            (_MISSING_DOCUMENT_SEGMENTS_SQL, ENTITY_DOCUMENT_SEGMENT),
-        )
-        for missing_sql, entity_type in backfills:
-            async with session_factory() as session:
-                ids = list(await session.scalars(missing_sql))
-            for start in range(0, len(ids), _BACKFILL_CHUNK):
-                chunk = ids[start : start + _BACKFILL_CHUNK]
+        async with session_factory() as session:
+            indexed = {
+                (row.entity_type, row.entity_id)
+                for row in (await session.execute(_INDEXED_SEGMENT_KEYS_SQL)).all()
+            }
+            missing_by_type: list[tuple[SegmentEntityType, list[str]]] = []
+            for entity_type, ids_sql in _ALL_SEGMENT_IDS_SQL.items():
+                ids = list(await session.scalars(ids_sql))
+                missing_by_type.append(
+                    (entity_type, [sid for sid in ids if (entity_type, sid) not in indexed])
+                )
+        for entity_type, missing in missing_by_type:
+            for start in range(0, len(missing), _BACKFILL_CHUNK):
+                chunk = missing[start : start + _BACKFILL_CHUNK]
                 async with session_factory() as session, session.begin():
                     await SegmentSearchService.upsert_segment_index(session, entity_type, chunk)
                 total += len(chunk)
