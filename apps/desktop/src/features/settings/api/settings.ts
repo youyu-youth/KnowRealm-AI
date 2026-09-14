@@ -37,6 +37,22 @@ export const settingsApi = {
       "/api/settings/providers/tencent-asr/tests",
       { method: "POST" },
     ),
+  getWebSearchProvider: () =>
+    apiFetch<components["schemas"]["WebSearchProviderStateOut"]>(
+      "/api/settings/providers/web-search",
+    ),
+  updateWebSearchProvider: (
+    body: components["schemas"]["WebSearchProviderUpdate"],
+  ) =>
+    apiFetch<components["schemas"]["WebSearchProviderStateOut"]>(
+      "/api/settings/providers/web-search",
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+  testWebSearchProvider: () =>
+    apiFetch<components["schemas"]["WebSearchTestOut"]>(
+      "/api/settings/providers/web-search/tests",
+      { method: "POST" },
+    ),
   getLlmUsage: () =>
     apiFetch<components["schemas"]["LlmUsageOut"]>("/api/settings/usage/llm"),
   getLlmConsent: () =>

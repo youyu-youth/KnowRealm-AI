@@ -1475,7 +1475,9 @@
     "citation": {
       "listLabel": "Citations",
       "jump": "View the Transcript passage for citation {{index}}",
+      "jumpWeb": "Open the web source for citation {{index}}",
       "entry": "[{{index}}] {{quote}}",
+      "webEntry": "[{{index}}] {{title}}, opens in your browser",
       "recordTag": "Record"
     },
     "recordsTitle": "Chat history",
@@ -1543,11 +1545,19 @@
         "hits": "“{{query}}” found {{count}} matches",
         "hits_one": "“{{query}}” found {{count}} match",
         "hits_other": "“{{query}}” found {{count}} matches",
-        "failed": "“{{query}}” search failed"
+        "failed": "“{{query}}” search failed",
+        "webSearch": {
+          "running": "Searching the web for “{{query}}”",
+          "hits": "Found {{count}} results",
+          "hits_one": "Found {{count}} result",
+          "hits_other": "Found {{count}} results",
+          "failed": "“{{query}}” web search failed"
+        }
       },
       "webSearch": {
         "title": "Web search",
-        "description": "Search the latest material and web content"
+        "description": "Search the latest material and web content",
+        "unavailable": "No search API key configured. Add one in Settings."
       },
       "knowledgeBase": {
         "title": "Knowledge search",
@@ -1762,6 +1772,24 @@
         "testing": "Testing",
         "testSucceeded": "Connection test succeeded ({{region}})",
         "consentNote": "Saving credentials is not consent to send: before the first transcription you will be asked separately, and only then is audio sent to Tencent Cloud."
+      },
+      "webSearch": {
+        "title": "Web search",
+        "configured": "Configured",
+        "missingKey": "Key not set",
+        "missingKeyHint": "Without a key, the web search switch in chat is unavailable; chat and other AI features keep working.",
+        "description": "Tavily API key for web search in chat; once enabled, search queries are sent to Tavily.",
+        "apiKey": "API key",
+        "apiKeyPlaceholder": "Paste your Tavily key",
+        "apiKeyKept": "Saved; leave empty to keep",
+        "clearApiKey": "Clear saved key",
+        "save": "Save configuration",
+        "saving": "Saving",
+        "savedFeedback": "Web search configuration saved",
+        "test": "Test connection",
+        "testing": "Testing",
+        "testSucceeded": "Connection test succeeded ({{provider}})",
+        "testNote": "Testing performs one real search (about 1 credit); with web search enabled in chat, search queries are also sent to Tavily."
       },
       "usage": {
         "title": "AI usage, last 30 days",

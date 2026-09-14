@@ -44,6 +44,10 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/settings/providers/tencent-asr`, () =>
     HttpResponse.json({ provider: null }),
   ),
+  // 默认未配置搜索供应商；联网搜索开关在 chat 测试中按需覆盖为已配置。
+  http.get(`${TEST_SIDECAR_URL}/api/settings/providers/web-search`, () =>
+    HttpResponse.json({ provider: null }),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/settings/preferences`, () =>
     HttpResponse.json(preferencesPayload),
   ),

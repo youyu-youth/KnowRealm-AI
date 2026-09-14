@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { CircleAlert, RotateCcw, Search } from "lucide-react";
+import { CircleAlert, Globe, RotateCcw, Search } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -28,9 +28,14 @@ const toolActivityCardClass =
   "bg-surface-subtle text-label flex max-w-full items-center gap-2 rounded-sm px-2.5 py-1.5";
 const toolActivityIconClass = "size-3.5 shrink-0";
 
-/** 检索过程卡：加载 / 命中 / 失败三态，图标与文字同时表达状态（不只靠颜色）。 */
+/** 检索过程卡：加载 / 命中 / 失败三态，图标与文字同时表达状态（不只靠颜色）。
+ * web_search 与 search_transcript 共用卡形态，仅文案与图标分流。 */
 function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
   const { t } = useTranslation();
+  const isWeb = activity.tool === "web_search";
+  const copyKey = isWeb
+    ? "chat.tools.activity.webSearch"
+    : "chat.tools.activity";
   if (activity.result === null) {
     return (
       <li className={toolActivityCardClass}>
@@ -39,20 +44,21 @@ function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
           className={`${toolActivityIconClass} text-muted-foreground`}
         />
         <span className="text-muted-foreground">
-          {t("chat.tools.activity.running", { query: activity.query })}
+          {t(`${copyKey}.running`, { query: activity.query })}
         </span>
       </li>
     );
   }
   if (activity.result.ok) {
+    const ResultIcon = isWeb ? Globe : Search;
     return (
       <li className={toolActivityCardClass}>
-        <Search
+        <ResultIcon
           aria-hidden="true"
           className={`${toolActivityIconClass} text-muted-foreground`}
         />
         <span className="text-muted-foreground">
-          {t("chat.tools.activity.hits", {
+          {t(`${copyKey}.hits`, {
             query: activity.query,
             count: activity.result.hits,
           })}
@@ -67,7 +73,7 @@ function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
         className={`${toolActivityIconClass} text-destructive`}
       />
       <span className="text-destructive">
-        {t("chat.tools.activity.failed", { query: activity.query })}
+        {t(`${copyKey}.failed`, { query: activity.query })}
       </span>
     </li>
   );

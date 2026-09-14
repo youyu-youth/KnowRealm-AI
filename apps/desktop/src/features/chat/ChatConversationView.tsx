@@ -22,8 +22,12 @@ import {
 } from "@/features/chat/ChatSessionDialogs";
 import { ChatSuggestions } from "@/features/chat/ChatSuggestions";
 import { formatChatTimestamp } from "@/features/chat/chatTime";
-import { useChatUiStore } from "@/features/chat/chatUiStore";
+import {
+  selectWebSearchEnabled,
+  useChatUiStore,
+} from "@/features/chat/chatUiStore";
 import { useChatStream } from "@/features/chat/useChatStream";
+import { useWebSearchAvailability } from "@/features/chat/useWebSearchAvailability";
 import { cn } from "@/lib/utils";
 
 type ChatConversationViewProps = {
@@ -58,6 +62,14 @@ export function ChatConversationView({
     (state) => state.favoriteSessionIds,
   );
   const toggleFavorite = useChatUiStore((state) => state.toggleFavorite);
+  // 联网搜索开关按会话记忆；发送与重新生成都携带当前开关值。
+  const webSearchAvailable = useWebSearchAvailability();
+  const webSearchEnabled = useChatUiStore((state) =>
+    selectWebSearchEnabled(state, sessionId, recordId !== null),
+  );
+  const setWebSearchEnabled = useChatUiStore(
+    (state) => state.setWebSearchEnabled,
+  );
 
   const visibleCount = (messages.data ?? []).filter(
     (message) => message.role !== "SYSTEM",
@@ -165,7 +177,7 @@ export function ChatConversationView({
             toolActivities={toolActivities}
             isStreaming={isStreaming}
             streamError={streamError}
-            onRetry={send}
+            onRetry={(content) => send(content, webSearchEnabled)}
             showEmptyHint={!showSuggestions}
           />
         )}
@@ -176,8 +188,11 @@ export function ChatConversationView({
             recordDeleted ? t("chat.composer.recordDeletedHint") : undefined
           }
           isStreaming={isStreaming}
+          webSearchEnabled={webSearchEnabled}
+          webSearchAvailable={webSearchAvailable}
+          onToggleWebSearch={(next) => setWebSearchEnabled(sessionId, next)}
           onValueChange={setComposerValue}
-          onSend={send}
+          onSend={(content) => send(content, webSearchEnabled)}
           onStop={stop}
         />
       </div>

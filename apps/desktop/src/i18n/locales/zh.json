@@ -1464,7 +1464,9 @@
     "citation": {
       "listLabel": "引用来源",
       "jump": "查看引用 {{index}} 的转写原文",
+      "jumpWeb": "打开引用 {{index}} 的网络来源",
       "entry": "[{{index}}] {{quote}}",
+      "webEntry": "[{{index}}] {{title}}，点击在浏览器打开",
       "recordTag": "记录"
     },
     "recordsTitle": "对话记录",
@@ -1530,11 +1532,17 @@
         "label": "检索过程",
         "running": "正在检索「{{query}}」",
         "hits": "「{{query}}」命中 {{count}} 条",
-        "failed": "「{{query}}」检索失败"
+        "failed": "「{{query}}」检索失败",
+        "webSearch": {
+          "running": "正在搜索网络「{{query}}」",
+          "hits": "找到 {{count}} 条结果",
+          "failed": "「{{query}}」搜索失败"
+        }
       },
       "webSearch": {
         "title": "联网搜索",
-        "description": "搜索最新资料与网页内容"
+        "description": "搜索最新资料与网页内容",
+        "unavailable": "未配置搜索密钥，请前往设置页配置"
       },
       "knowledgeBase": {
         "title": "知识库检索",
@@ -1749,6 +1757,24 @@
         "testing": "正在测试",
         "testSucceeded": "连接测试成功（{{region}}）",
         "consentNote": "保存密钥不等于同意外发：首次转写前会单独征得你的同意，之后才会把音频发送到腾讯云。"
+      },
+      "webSearch": {
+        "title": "联网搜索",
+        "configured": "已配置",
+        "missingKey": "未配置密钥",
+        "missingKeyHint": "未配置密钥时，对话中的「联网搜索」开关不可用；对话与其他 AI 功能不受影响。",
+        "description": "Tavily 联网搜索的访问密钥，用于对话中的联网搜索；开启后搜索词将发送至 Tavily。",
+        "apiKey": "API 密钥",
+        "apiKeyPlaceholder": "粘贴 Tavily 密钥",
+        "apiKeyKept": "已保存密钥，留空则沿用",
+        "clearApiKey": "清除已保存的密钥",
+        "save": "保存配置",
+        "saving": "正在保存",
+        "savedFeedback": "联网搜索配置已保存",
+        "test": "测试连接",
+        "testing": "正在测试",
+        "testSucceeded": "连接测试成功（{{provider}}）",
+        "testNote": "测试连接会执行一次真实搜索，约消耗 1 credit；对话中开启联网搜索后，搜索词也会发送至 Tavily。"
       },
       "usage": {
         "title": "近 30 天 AI 用量",

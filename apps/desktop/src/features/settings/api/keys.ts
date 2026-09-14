@@ -4,6 +4,7 @@ export const settingsKeys = {
   llmProvider: ["settings", "llm-provider"] as const,
   llmUsage: ["settings", "llm-usage"] as const,
   tencentAsrProvider: ["settings", "tencent-asr-provider"] as const,
+  webSearchProvider: ["settings", "web-search-provider"] as const,
   preferences: ["settings", "preferences"] as const,
   profile: ["settings", "profile"] as const,
   profileAvatar: ["settings", "profile-avatar"] as const,

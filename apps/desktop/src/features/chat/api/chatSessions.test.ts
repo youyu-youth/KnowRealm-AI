@@ -141,6 +141,58 @@ describe("chatApi.streamMessage", () => {
     expect(tokens).toEqual(["命中"]);
   });
 
+  it("web_search 标志进请求体：显式 true 与缺省 false", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
+        async ({ request }) => {
+          bodies.push(await request.json());
+          const { stream } = sseBody([
+            'event: done\ndata: {"message_id":"m1","content":"好"}\n\n',
+          ]);
+          return new HttpResponse(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        },
+      ),
+    );
+
+    const noop = () => undefined;
+    await chatApi.streamMessage(
+      SESSION_ID,
+      "带标志",
+      {
+        onStatus: noop,
+        onToken: noop,
+        onToolCall: noop,
+        onToolResult: noop,
+        onDone: noop,
+        onError: noop,
+      },
+      undefined,
+      true,
+    );
+    await chatApi.streamMessage(
+      SESSION_ID,
+      "默认",
+      {
+        onStatus: noop,
+        onToken: noop,
+        onToolCall: noop,
+        onToolResult: noop,
+        onDone: noop,
+        onError: noop,
+      },
+      undefined,
+    );
+
+    expect(bodies).toEqual([
+      { content: "带标志", web_search: true },
+      { content: "默认", web_search: false },
+    ]);
+  });
+
   it("error 事件回调可读错误码；409 由 apiRequest 转为 ApiError", async () => {
     let rejected = false;
     server.use(

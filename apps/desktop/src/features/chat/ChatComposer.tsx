@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { ArrowUp, Globe, Plus, SlidersHorizontal, Square } from "lucide-react";
+import { AppTooltip } from "@/components/common/AppTooltip";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useChatUiStore } from "@/features/chat/chatUiStore";
 import { cn } from "@/lib/utils";
 
 type ChatComposerProps = {
@@ -11,6 +11,10 @@ type ChatComposerProps = {
   /** 禁用的用户可读原因（如挂载记录已删除），展示在输入区下方。 */
   disabledHint?: string;
   isStreaming: boolean;
+  /** 联网搜索开关（已接真）：available=false 时置灰并经 tooltip 引导设置页。 */
+  webSearchEnabled: boolean;
+  webSearchAvailable: boolean;
+  onToggleWebSearch: (next: boolean) => void;
   onValueChange: (value: string) => void;
   onSend: (content: string) => void;
   onStop: () => void;
@@ -23,13 +27,14 @@ export function ChatComposer({
   disabled,
   disabledHint,
   isStreaming,
+  webSearchEnabled,
+  webSearchAvailable,
+  onToggleWebSearch,
   onValueChange,
   onSend,
   onStop,
 }: ChatComposerProps) {
   const { t } = useTranslation();
-  const webSearchEnabled = useChatUiStore((state) => state.tools.webSearch);
-  const toggleTool = useChatUiStore((state) => state.toggleTool);
 
   function submit() {
     const content = value.trim();
@@ -37,6 +42,21 @@ export function ChatComposer({
     onSend(content);
     onValueChange("");
   }
+
+  const webSearchButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      disabled={!webSearchAvailable}
+      aria-pressed={webSearchEnabled}
+      aria-label={t("chat.tools.webSearch.title")}
+      className={cn(webSearchEnabled && "text-chat-accent")}
+      onClick={() => onToggleWebSearch(!webSearchEnabled)}
+    >
+      <Globe aria-hidden="true" />
+    </Button>
+  );
 
   return (
     <form
@@ -75,17 +95,16 @@ export function ChatComposer({
             >
               <Plus aria-hidden="true" />
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-pressed={webSearchEnabled}
-              aria-label={t("chat.tools.webSearch.title")}
-              className={cn(webSearchEnabled && "text-chat-accent")}
-              onClick={() => toggleTool("webSearch")}
-            >
-              <Globe aria-hidden="true" />
-            </Button>
+            {webSearchAvailable ? (
+              webSearchButton
+            ) : (
+              <AppTooltip
+                label={t("chat.tools.webSearch.unavailable")}
+                side="top"
+              >
+                <span className="inline-flex">{webSearchButton}</span>
+              </AppTooltip>
+            )}
             <Button
               type="button"
               variant="ghost"

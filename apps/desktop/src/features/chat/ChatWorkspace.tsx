@@ -129,6 +129,7 @@ export function ChatWorkspace({
 
       {sessionId !== undefined ? (
         <ChatContextPanel
+          sessionId={sessionId}
           recordId={detail.data?.record_id ?? null}
           recordDeleted={detail.data?.record_deleted ?? false}
           citations={citations}

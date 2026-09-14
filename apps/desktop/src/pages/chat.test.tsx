@@ -16,6 +16,7 @@ import App from "@/App";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 import { setRecordingKeepAwake } from "@/services/tauri/recording";
+import { openWebUrl } from "@/services/tauri/webLinks";
 
 vi.mock("@/services/tauri/sidecar", () => ({
   getSidecarConfig: vi.fn().mockResolvedValue({
@@ -27,6 +28,10 @@ vi.mock("@/services/tauri/sidecar", () => ({
 vi.mock("@/services/tauri/recording", () => ({
   setRecordingKeepAwake: vi.fn().mockResolvedValue(undefined),
   hideWindowTemporarily: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/services/tauri/webLinks", () => ({
+  openWebUrl: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.stubGlobal("scrollTo", vi.fn());
@@ -127,6 +132,7 @@ afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
   vi.mocked(setRecordingKeepAwake).mockReset().mockResolvedValue(undefined);
+  vi.mocked(openWebUrl).mockClear();
 });
 
 describe("AI 对话", () => {
@@ -860,6 +866,304 @@ describe("挂载对话检索过程", () => {
     );
     expect(screen.queryByText("「undo 日志」检索失败")).not.toBeInTheDocument();
     expect(await screen.findByText("答案见转写原文。")).toBeVisible();
+  });
+});
+
+describe("联网搜索接线（B1）", () => {
+  // 已配置搜索供应商：webSearch 开关可用；未覆盖时走默认 handler（provider:null）→ 置灰。
+  function useConfiguredWebSearch() {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/settings/providers/web-search`, () =>
+        HttpResponse.json({
+          provider: {
+            provider: "tavily",
+            has_api_key: true,
+            api_key_hint: "••••1234",
+          },
+        }),
+      ),
+    );
+  }
+
+  function capturedMessagePost(answered: { current: boolean }) {
+    const bodies: unknown[] = [];
+    const handler = http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+      async ({ request }) => {
+        bodies.push(await request.json());
+        return sseResponse(
+          sseChunks([
+            'event: token\ndata: {"text":"答"}',
+            'event: done\ndata: {"message_id":"assistant-row","content":"答"}',
+          ]),
+          () => {
+            answered.current = true;
+          },
+        );
+      },
+    );
+    server.use(handler);
+    return bodies;
+  }
+
+  it("自由聊天默认开启：发送携带 web_search:true，关闭开关后为 false", async () => {
+    const created = chatSession(FIRST_SESSION_ID, {});
+    const answered = { current: false };
+    const bodies = capturedMessagePost(answered);
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json(
+            answered.current
+              ? [
+                  SYSTEM_ROW,
+                  messageRow("user-row", "USER", "什么是 MVCC"),
+                  messageRow("assistant-row", "ASSISTANT", "答", "stub"),
+                ]
+              : [SYSTEM_ROW],
+          ),
+      ),
+    );
+    useConfiguredWebSearch();
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    // 右栏开关默认开（自由会话）；可用性查询返回后切到可用分支（节点重建，须重查询）。
+    await waitFor(() =>
+      expect(screen.getByRole("switch", { name: "联网搜索" })).toBeChecked(),
+    );
+    const webSwitch = screen.getByRole("switch", { name: "联网搜索" });
+
+    const input = screen.getByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "最新版本是多少" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() =>
+      expect(bodies[0]).toEqual({
+        content: "最新版本是多少",
+        web_search: true,
+      }),
+    );
+
+    // 关闭开关后同一会话再发：标志随开关变化。
+    fireEvent.click(webSwitch);
+    expect(webSwitch).not.toBeChecked();
+    fireEvent.change(input, { target: { value: "不联网问问" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() =>
+      expect(bodies[1]).toEqual({ content: "不联网问问", web_search: false }),
+    );
+  });
+
+  it("挂载会话默认关闭：输入区 Globe 打开后与右栏开关同源联动", async () => {
+    const RECORD_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    const answered = { current: false };
+    const bodies = capturedMessagePost(answered);
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => HttpResponse.json([SYSTEM_ROW]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([]),
+      ),
+    );
+    useConfiguredWebSearch();
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    // 挂载会话默认关；可用性查询返回后开关解禁且未勾选（须重查询取可用分支节点）。
+    await waitFor(() => {
+      const webSwitch = screen.getByRole("switch", { name: "联网搜索" });
+      expect(webSwitch).not.toBeChecked();
+      expect(webSwitch).not.toHaveAttribute("data-disabled");
+    });
+
+    // 输入区 Globe 与右栏开关读写同一份按会话状态。
+    fireEvent.click(screen.getByRole("button", { name: "联网搜索" }));
+    const webSwitch = screen.getByRole("switch", { name: "联网搜索" });
+    expect(webSwitch).toBeChecked();
+
+    const input = screen.getByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "追问材料外背景" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    await waitFor(() =>
+      expect(bodies[0]).toEqual({
+        content: "追问材料外背景",
+        web_search: true,
+      }),
+    );
+  });
+
+  it("未配置搜索密钥：开关与输入区按钮置灰，聊天不受影响", async () => {
+    const created = chatSession(FIRST_SESSION_ID, {});
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => HttpResponse.json([SYSTEM_ROW]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    // Switch 是 span（jest-dom 的 toBeDisabled 不认 aria-disabled），按属性断言置灰。
+    const webSwitch = await screen.findByRole("switch", { name: "联网搜索" });
+    await waitFor(() =>
+      expect(webSwitch).toHaveAttribute("aria-disabled", "true"),
+    );
+    expect(screen.getByRole("button", { name: "联网搜索" })).toBeDisabled();
+    // 缺 key 只降级搜索：输入与发送照常可用。
+    expect(screen.getByRole("textbox", { name: "提问输入框" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "发送" })).toBeEnabled();
+  });
+
+  it("web_search 工具卡文案分流：搜索中 / 命中 / 失败", async () => {
+    const created = chatSession(FIRST_SESSION_ID, {});
+    server.use(
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => HttpResponse.json([SYSTEM_ROW]),
+      ),
+    );
+    useConfiguredWebSearch();
+    const opened = openSseResponse([]);
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => opened.response,
+      ),
+    );
+    const listHandler = http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+      HttpResponse.json([created]),
+    );
+    const detailHandler = http.get(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+      () => HttpResponse.json(created),
+    );
+    server.use(listHandler, detailHandler);
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "最新版本是多少" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    opened.pushEvent('event: status\ndata: {"phase":"generating"}');
+    opened.pushEvent(
+      'event: tool_call\ndata: {"tool":"web_search","query":"MVCC 最新版本"}',
+    );
+    expect(
+      await screen.findByText("正在搜索网络「MVCC 最新版本」"),
+    ).toBeVisible();
+
+    opened.pushEvent(
+      'event: tool_result\ndata: {"tool":"web_search","hits":5,"ok":true}',
+    );
+    expect(await screen.findByText("找到 5 条结果")).toBeVisible();
+
+    opened.pushEvent(
+      'event: tool_call\ndata: {"tool":"web_search","query":"undo 日志"}',
+    );
+    opened.pushEvent(
+      'event: tool_result\ndata: {"tool":"web_search","hits":0,"ok":false}',
+    );
+    expect(await screen.findByText("「undo 日志」搜索失败")).toBeVisible();
+
+    opened.pushEvent('event: token\ndata: {"text":"答"}');
+    opened.pushEvent(
+      'event: done\ndata: {"message_id":"assistant-row","content":"答"}',
+    );
+    opened.closeStream();
+  });
+
+  it("web 引用显示标题与域名，点击经系统浏览器打开；正文角标同样分流", async () => {
+    const RECORD_ID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const WEB_URL = "https://en.wikipedia.org/wiki/Operating_system";
+    const created = chatSession(FIRST_SESSION_ID, { record_id: RECORD_ID });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "操作系统是什么"),
+            {
+              id: "assistant-row",
+              role: "ASSISTANT",
+              content: "操作系统是管理硬件的软件[1][2]。",
+              model: "stub-chat-model",
+              citations: [
+                {
+                  index: 1,
+                  source: "record",
+                  record_id: RECORD_ID,
+                  quote: "操作系统管理硬件资源",
+                },
+                {
+                  index: 2,
+                  source: "web",
+                  url: WEB_URL,
+                  title: "Operating system - Wikipedia",
+                },
+              ],
+              created_at: "2026-08-27T08:00:00.000000Z",
+            },
+          ]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    // 右栏列表：web 条目 = 标题 + 域名；record 条目照旧。
+    const webEntry = await screen.findByRole("button", {
+      name: "[2] Operating system - Wikipedia，点击在浏览器打开",
+    });
+    expect(screen.getByText("en.wikipedia.org")).toBeVisible();
+    fireEvent.click(webEntry);
+    await waitFor(() =>
+      expect(vi.mocked(openWebUrl)).toHaveBeenCalledWith(WEB_URL),
+    );
+
+    // 正文 web 角标点击同样开浏览器。
+    fireEvent.click(
+      screen.getByRole("button", { name: "打开引用 2 的网络来源" }),
+    );
+    await waitFor(() => expect(openWebUrl).toHaveBeenCalledTimes(2));
+
+    // record 角标仍跳转写页，不触发浏览器打开。
+    fireEvent.click(
+      screen.getByRole("button", { name: "查看引用 1 的转写原文" }),
+    );
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/records/${RECORD_ID}`),
+    );
+    expect(openWebUrl).toHaveBeenCalledTimes(2);
   });
 });
 

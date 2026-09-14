@@ -24,6 +24,7 @@ const DASHSCOPE_PRESET_MODEL = "qwen-plus";
 
 type LlmProviderOut = components["schemas"]["LlmProviderOut"];
 type TencentAsrProviderOut = components["schemas"]["TencentAsrProviderOut"];
+type WebSearchProviderOut = components["schemas"]["WebSearchProviderOut"];
 
 export function ProvidersSection() {
   const { t } = useTranslation();
@@ -36,6 +37,7 @@ export function ProvidersSection() {
       <div className="mt-8 flex flex-col gap-12">
         <LlmProviderCard />
         <TencentAsrCard />
+        <WebSearchCard />
         <LlmUsageCard />
       </div>
     </section>
@@ -541,6 +543,200 @@ function TencentAsrForm({
         ) : null}
         <FieldDescription className="mt-3">
           {t("settings.providers.asr.consentNote")}
+        </FieldDescription>
+      </SettingsActions>
+    </form>
+  );
+}
+
+// 联网搜索供应商卡（B1）：模式对齐 LLM/ASR 卡；无同意门——配 key 即显式 opt-in，
+// 外发知情说明写进卡片描述与测试注释。
+export function WebSearchCard() {
+  const { t } = useTranslation();
+  const provider = useQuery({
+    queryKey: settingsKeys.webSearchProvider,
+    queryFn: settingsApi.getWebSearchProvider,
+  });
+
+  if (provider.isPending) {
+    return (
+      <p
+        role="status"
+        className="text-body text-muted-foreground flex items-center gap-2"
+      >
+        <Spinner aria-hidden="true" />
+        {t("settings.providers.loading")}
+      </p>
+    );
+  }
+  if (provider.isError) {
+    return (
+      <SectionError
+        title={t("settings.providers.webSearch.title")}
+        message={provider.error.message}
+        onRetry={() => void provider.refetch()}
+      />
+    );
+  }
+
+  const data = provider.data.provider;
+  const hasApiKey = data?.has_api_key ?? false;
+  return (
+    <section aria-labelledby="providers-web-search-title">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3
+          id="providers-web-search-title"
+          className="text-section font-section text-ink"
+        >
+          {t("settings.providers.webSearch.title")}
+        </h3>
+        <StatusBadge
+          ok={hasApiKey}
+          okLabel={t("settings.providers.webSearch.configured")}
+          missingLabel={t("settings.providers.webSearch.missingKey")}
+        />
+      </div>
+      {hasApiKey ? null : (
+        <p className="text-body text-danger mt-1">
+          {t("settings.providers.webSearch.missingKeyHint")}
+        </p>
+      )}
+      <p className="text-body text-muted-foreground mt-1">
+        {t("settings.providers.webSearch.description")}
+      </p>
+      <WebSearchForm
+        key={`${data?.has_api_key ?? false}|${data?.api_key_hint ?? ""}`}
+        initial={data ?? null}
+      />
+    </section>
+  );
+}
+
+function WebSearchForm({ initial }: { initial: WebSearchProviderOut | null }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const [apiKey, setApiKey] = useState("");
+  const [clearApiKey, setClearApiKey] = useState(false);
+  const hasApiKey = initial?.has_api_key ?? false;
+
+  const save = useMutation({
+    mutationFn: () =>
+      settingsApi.updateWebSearchProvider({
+        provider: "tavily",
+        api_key: apiKey,
+        clear_api_key: clearApiKey,
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: settingsKeys.webSearchProvider,
+      });
+    },
+  });
+  const test = useMutation({ mutationFn: settingsApi.testWebSearchProvider });
+
+  const savedHasKey = save.data?.provider?.has_api_key ?? hasApiKey;
+  const canSave = clearApiKey || apiKey.length > 0 || hasApiKey;
+
+  return (
+    <form
+      className="mt-6 flex flex-col gap-7"
+      onChange={() => {
+        save.reset();
+        test.reset();
+      }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canSave && !save.isPending) save.mutate();
+      }}
+    >
+      <SettingsRow
+        label={t("settings.providers.webSearch.apiKey")}
+        htmlFor="provider-web-search-api-key"
+      >
+        <Input
+          id="provider-web-search-api-key"
+          type="password"
+          value={apiKey}
+          placeholder={
+            hasApiKey
+              ? (initial?.api_key_hint ??
+                t("settings.providers.webSearch.apiKeyKept"))
+              : t("settings.providers.webSearch.apiKeyPlaceholder")
+          }
+          disabled={save.isPending || clearApiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+        />
+        {hasApiKey ? (
+          <Field orientation="horizontal" className="mt-3">
+            <Checkbox
+              id="provider-web-search-clear"
+              checked={clearApiKey}
+              onCheckedChange={(checked) => {
+                setClearApiKey(checked === true);
+                save.reset();
+                test.reset();
+              }}
+              disabled={save.isPending}
+            />
+            <FieldLabel htmlFor="provider-web-search-clear">
+              {t("settings.providers.webSearch.clearApiKey")}
+            </FieldLabel>
+          </Field>
+        ) : null}
+      </SettingsRow>
+
+      <SettingsActions>
+        {save.isError ? (
+          <Alert variant="destructive" className="mb-3 w-auto">
+            <AlertDescription>{save.error.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        {save.isSuccess ? (
+          <p role="status" className="text-body text-muted-foreground mb-3">
+            {t("settings.providers.webSearch.savedFeedback")}
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="submit" disabled={!canSave || save.isPending}>
+            {save.isPending ? (
+              <Spinner
+                data-icon="inline-start"
+                aria-label={t("settings.providers.webSearch.saving")}
+              />
+            ) : null}
+            {t("settings.providers.webSearch.save")}
+          </Button>
+          {savedHasKey ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={test.isPending}
+              onClick={() => test.mutate()}
+            >
+              {test.isPending ? (
+                <Spinner
+                  data-icon="inline-start"
+                  aria-label={t("settings.providers.webSearch.testing")}
+                />
+              ) : null}
+              {t("settings.providers.webSearch.test")}
+            </Button>
+          ) : null}
+        </div>
+        {test.isSuccess ? (
+          <p role="status" className="text-body text-muted-foreground mt-3">
+            {t("settings.providers.webSearch.testSucceeded", {
+              provider: test.data.provider,
+            })}
+          </p>
+        ) : null}
+        {test.isError ? (
+          <Alert variant="destructive" className="mt-3 w-auto">
+            <AlertDescription>{test.error.message}</AlertDescription>
+          </Alert>
+        ) : null}
+        <FieldDescription className="mt-3">
+          {t("settings.providers.webSearch.testNote")}
         </FieldDescription>
       </SettingsActions>
     </form>

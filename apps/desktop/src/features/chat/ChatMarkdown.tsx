@@ -1,12 +1,12 @@
 import type { AnchorHTMLAttributes } from "react";
 import { useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { code } from "@streamdown/code";
 import { cjk } from "@streamdown/cjk";
 import { math } from "@streamdown/math";
 import { Streamdown, defaultRemarkPlugins, type Components } from "streamdown";
-import type { ChatCitation } from "@/features/chat/api/types";
+import { isWebCitation, type ChatCitation } from "@/features/chat/api/types";
+import { useOpenCitation } from "@/features/chat/useOpenCitation";
 
 const CHAT_PLUGINS = { code, cjk, math };
 const CHAT_SHIKI_THEME: [string, string] = ["github-light", "github-dark"];
@@ -29,7 +29,7 @@ export function ChatMarkdown({
   streaming = false,
 }: ChatMarkdownProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+  const openCitation = useOpenCitation();
 
   const components = useMemo<Components>(() => {
     const citationMap = new Map(
@@ -47,14 +47,12 @@ export function ChatMarkdown({
             <button
               type="button"
               className={markerButtonClass}
-              aria-label={t("chat.citation.jump", { index: citation.index })}
-              onClick={() =>
-                void navigate({
-                  to: "/records/$recordId",
-                  params: { recordId: citation.record_id },
-                  search: { tab: "transcript", highlight: citation.quote },
-                })
+              aria-label={
+                isWebCitation(citation)
+                  ? t("chat.citation.jumpWeb", { index: citation.index })
+                  : t("chat.citation.jump", { index: citation.index })
               }
+              onClick={() => openCitation(citation)}
             >
               {children}
             </button>
@@ -63,7 +61,7 @@ export function ChatMarkdown({
         return <a href={href}>{children}</a>;
       },
     };
-  }, [citations, navigate, t]);
+  }, [citations, openCitation, t]);
 
   return (
     <Streamdown

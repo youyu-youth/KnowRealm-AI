@@ -34,7 +34,7 @@ export function useChatStream(sessionId: string) {
   }, []);
 
   const send = useCallback(
-    (content: string) => {
+    (content: string, webSearch: boolean) => {
       if (abortRef.current) return;
       const controller = new AbortController();
       abortRef.current = controller;
@@ -86,6 +86,7 @@ export function useChatStream(sessionId: string) {
             },
           },
           controller.signal,
+          webSearch,
         )
         .catch((error: unknown) => {
           // 用户停止属于预期路径，静默；其余（409 在途、网络失败等）展示可读错误。

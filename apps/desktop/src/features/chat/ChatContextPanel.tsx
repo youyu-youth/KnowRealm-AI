@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BookOpenText,
@@ -9,6 +10,7 @@ import {
   Lightbulb,
   Plus,
 } from "lucide-react";
+import { AppTooltip } from "@/components/common/AppTooltip";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { chatApi } from "@/features/chat/api/chatSessions";
@@ -16,10 +18,12 @@ import { chatKeys } from "@/features/chat/api/keys";
 import type { ChatCitation } from "@/features/chat/api/types";
 import { ChatCitationList } from "@/features/chat/ChatCitationList";
 import {
-  CHAT_TOOL_IDS,
+  CHAT_DEMO_TOOL_IDS,
+  selectWebSearchEnabled,
   useChatUiStore,
   type ChatToolId,
 } from "@/features/chat/chatUiStore";
+import { useWebSearchAvailability } from "@/features/chat/useWebSearchAvailability";
 
 const TOOL_ICONS: Record<ChatToolId, typeof Globe> = {
   webSearch: Globe,
@@ -29,16 +33,18 @@ const TOOL_ICONS: Record<ChatToolId, typeof Globe> = {
 };
 
 type ChatContextPanelProps = {
+  sessionId: string;
   recordId: string | null;
   recordDeleted: boolean;
   citations: ChatCitation[];
 };
 
 /**
- * 右栏上下文面板：当前挂载内容（真实）、来源引用（真实）与工具状态（图 1 示意，
- * 开关只改本地状态，不触发任何请求）。
+ * 右栏上下文面板：当前挂载内容（真实）、来源引用（真实，含 web 外链）与工具状态。
+ * 联网搜索开关已接真（按会话记忆、发消息携带标志），其余三个为图 1 示意开关。
  */
 export function ChatContextPanel({
+  sessionId,
   recordId,
   recordDeleted,
   citations,
@@ -46,6 +52,13 @@ export function ChatContextPanel({
   const { t } = useTranslation();
   const tools = useChatUiStore((state) => state.tools);
   const toggleTool = useChatUiStore((state) => state.toggleTool);
+  const webSearchOn = useChatUiStore((state) =>
+    selectWebSearchEnabled(state, sessionId, recordId !== null),
+  );
+  const setWebSearchEnabled = useChatUiStore(
+    (state) => state.setWebSearchEnabled,
+  );
+  const webSearchAvailable = useWebSearchAvailability();
   // 挂载记录的标题来自可挂载记录列表；与新建对话共用缓存。
   const recordOptions = useQuery({
     queryKey: chatKeys.recordOptions(),
@@ -134,26 +147,46 @@ export function ChatContextPanel({
           {t("chat.tools.title")}
         </h2>
         <ul className="mt-3 flex flex-col gap-3.5">
-          {CHAT_TOOL_IDS.map((id) => {
-            const Icon = TOOL_ICONS[id];
-            return (
-              <li key={id} className="flex items-center gap-3">
-                <span className="bg-surface-subtle flex size-8 shrink-0 items-center justify-center rounded-md">
-                  <Icon className="text-ink-muted size-4" aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="text-body-dense text-ink flex items-center gap-1.5 font-medium">
-                    {t(`chat.tools.${id}.title`)}
-                    {id === "codeRun" ? (
-                      <span className="bg-chat-accent-soft text-chat-accent text-label rounded-xs px-1.5 font-semibold">
-                        {t("chat.tools.beta")}
-                      </span>
-                    ) : null}
+          <ChatToolRow
+            id="webSearch"
+            label={t("chat.tools.webSearch.title")}
+            description={t("chat.tools.webSearch.description")}
+            control={
+              webSearchAvailable ? (
+                <Switch
+                  size="sm"
+                  checked={webSearchOn}
+                  onCheckedChange={(checked) =>
+                    setWebSearchEnabled(sessionId, checked)
+                  }
+                  aria-label={t("chat.tools.webSearch.title")}
+                  className="data-checked:bg-chat-accent"
+                />
+              ) : (
+                <AppTooltip
+                  label={t("chat.tools.webSearch.unavailable")}
+                  side="left"
+                >
+                  <span className="flex items-center">
+                    <Switch
+                      size="sm"
+                      disabled
+                      aria-label={t("chat.tools.webSearch.title")}
+                      className="data-checked:bg-chat-accent"
+                    />
                   </span>
-                  <span className="text-label text-muted-foreground block">
-                    {t(`chat.tools.${id}.description`)}
-                  </span>
-                </span>
+                </AppTooltip>
+              )
+            }
+          />
+          {CHAT_DEMO_TOOL_IDS.map((id) => (
+            <ChatToolRow
+              key={id}
+              id={id}
+              label={t(`chat.tools.${id}.title`)}
+              description={t(`chat.tools.${id}.description`)}
+              badge={id === "codeRun" ? t("chat.tools.beta") : undefined}
+              control={
                 <Switch
                   size="sm"
                   checked={tools[id]}
@@ -161,9 +194,9 @@ export function ChatContextPanel({
                   aria-label={t(`chat.tools.${id}.title`)}
                   className="data-checked:bg-chat-accent"
                 />
-              </li>
-            );
-          })}
+              }
+            />
+          ))}
         </ul>
       </section>
 
@@ -179,5 +212,45 @@ export function ChatContextPanel({
         </div>
       </section>
     </aside>
+  );
+}
+
+type ChatToolRowProps = {
+  id: ChatToolId;
+  label: string;
+  description: string;
+  /** 角标文案（如 codeRun 的 Beta）。 */
+  badge?: string;
+  control: ReactNode;
+};
+
+function ChatToolRow({
+  id,
+  label,
+  description,
+  badge,
+  control,
+}: ChatToolRowProps) {
+  const Icon = TOOL_ICONS[id];
+  return (
+    <li className="flex items-center gap-3">
+      <span className="bg-surface-subtle flex size-8 shrink-0 items-center justify-center rounded-md">
+        <Icon className="text-ink-muted size-4" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="text-body-dense text-ink flex items-center gap-1.5 font-medium">
+          {label}
+          {badge ? (
+            <span className="bg-chat-accent-soft text-chat-accent text-label rounded-xs px-1.5 font-semibold">
+              {badge}
+            </span>
+          ) : null}
+        </span>
+        <span className="text-label text-muted-foreground block">
+          {description}
+        </span>
+      </span>
+      {control}
+    </li>
   );
 }

@@ -15,6 +15,7 @@
     "dialog:allow-save",
     "dialog:allow-open",
     "opener:allow-open-path",
+    "opener:allow-default-urls",
     "process:allow-restart",
     "window-state:default",
     {

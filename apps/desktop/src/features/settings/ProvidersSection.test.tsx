@@ -6,16 +6,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/test-utils";
 import { ProvidersSection } from "./ProvidersSection";
 
-const { getLlmProvider, getTencentAsrProvider, getLlmUsage } = vi.hoisted(
-  () => ({
-    getLlmProvider: vi.fn(),
-    getTencentAsrProvider: vi.fn(),
-    getLlmUsage: vi.fn(),
-  }),
-);
+const {
+  getLlmProvider,
+  getTencentAsrProvider,
+  getLlmUsage,
+  getWebSearchProvider,
+} = vi.hoisted(() => ({
+  getLlmProvider: vi.fn(),
+  getTencentAsrProvider: vi.fn(),
+  getLlmUsage: vi.fn(),
+  getWebSearchProvider: vi.fn(),
+}));
 
 vi.mock("@/features/settings/api/settings", () => ({
-  settingsApi: { getLlmProvider, getTencentAsrProvider, getLlmUsage },
+  settingsApi: {
+    getLlmProvider,
+    getTencentAsrProvider,
+    getLlmUsage,
+    getWebSearchProvider,
+  },
 }));
 
 const EMPTY_USAGE = {
@@ -32,10 +41,11 @@ describe("ProvidersSection 健康检查徽章", () => {
     getLlmProvider.mockReset();
     getTencentAsrProvider.mockReset();
     getLlmUsage.mockReset();
+    getWebSearchProvider.mockReset();
     getLlmUsage.mockResolvedValue(EMPTY_USAGE);
   });
 
-  it("缺 key 时两张卡标红并给出补救提示", async () => {
+  it("缺 key 时三张卡标红并给出补救提示", async () => {
     getLlmProvider.mockResolvedValue({
       provider: {
         base_url: "",
@@ -47,11 +57,12 @@ describe("ProvidersSection 健康检查徽章", () => {
     getTencentAsrProvider.mockResolvedValue({
       provider: { region: "", has_credentials: false, secret_id_hint: null },
     });
+    getWebSearchProvider.mockResolvedValue({ provider: null });
 
     renderWithQuery(<ProvidersSection />);
 
     await waitFor(() =>
-      expect(screen.getAllByText("未配置密钥")).toHaveLength(2),
+      expect(screen.getAllByText("未配置密钥")).toHaveLength(3),
     );
     expect(
       screen.getByText(
@@ -61,6 +72,12 @@ describe("ProvidersSection 健康检查徽章", () => {
     expect(
       screen.getByText(
         "未配置腾讯云密钥，录音与音频导入的转写暂不可用；在下方填写并保存后即可恢复。",
+      ),
+    ).toBeInTheDocument();
+    // 联网搜索缺 key 只降级搜索，聊天不受影响。
+    expect(
+      screen.getByText(
+        "未配置密钥时，对话中的「联网搜索」开关不可用；对话与其他 AI 功能不受影响。",
       ),
     ).toBeInTheDocument();
   });
@@ -81,13 +98,25 @@ describe("ProvidersSection 健康检查徽章", () => {
         secret_id_hint: "••••1234",
       },
     });
+    getWebSearchProvider.mockResolvedValue({
+      provider: {
+        provider: "tavily",
+        has_api_key: true,
+        api_key_hint: "••••1234",
+      },
+    });
 
     renderWithQuery(<ProvidersSection />);
 
-    await waitFor(() => expect(screen.getAllByText("已配置")).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText("已配置")).toHaveLength(3));
     expect(screen.queryByText("未配置密钥")).not.toBeInTheDocument();
     expect(
       screen.queryByText(/暂不可用；在下方填写并保存后即可恢复。/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "未配置密钥时，对话中的「联网搜索」开关不可用；对话与其他 AI 功能不受影响。",
+      ),
     ).not.toBeInTheDocument();
   });
 });
