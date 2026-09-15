@@ -11,7 +11,13 @@ from app.modules.source_anchor.schemas import SourceAnchorOut
 from app.shared.errors import CodedHTTPException
 
 ResourceType = Literal[
-    "SUMMARY", "KNOWLEDGE_POINT", "QUIZ", "MISCONCEPTION", "CHAT_MESSAGE", "RECORD_ANALYSIS"
+    "SUMMARY",
+    "KNOWLEDGE_POINT",
+    "QUIZ",
+    "MISCONCEPTION",
+    "CHAT_MESSAGE",
+    "RECORD_ANALYSIS",
+    "CONCEPT",
 ]
 RelationType = Literal["SUPPORTS", "PRIMARY", "CONTRADICTS", "REFERENCES"]
 

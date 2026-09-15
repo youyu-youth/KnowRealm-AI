@@ -134,7 +134,7 @@ async def test_token_context_constraints_and_sqlite_pragmas(tmp_path: Path) -> N
         version_row = await (await connection.execute("PRAGMA user_version")).fetchone()
         assert version_row is not None
         user_version = cast(int, version_row[0])
-        assert user_version == 22
+        assert user_version == 23
         with pytest.raises(aiosqlite.IntegrityError):
             await connection.execute(
                 """
