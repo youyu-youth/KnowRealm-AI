@@ -3636,6 +3636,7 @@ Mastery Update
 | B2 | 跨记录 / 课程级问答 | #24「@全部资料全局 RAG」（P2 已定） | ★★★ | 中 | **已实施（2026-09-14，cross-record-qa 单票全栈完结）**：`chat_sessions.scope` 显式四档列（迁移 0022，FREE/RECORD/COURSE/ALL，与 mode 轴正交）；COURSE/ALL 会话挂 `search_library` 跨记录工具（分片 FTS top-8 BM25 + FTS 零命中 LIKE 兜底，与 `search_transcript` 互斥挂载）；上下文 = 记录标题清单（约 4000 字符预算，超出取最近并注明）+ 检索指引 + 跨记录引用格式；引用行 `[n] 摘录（来源：标题）`，归属由校验器裁定（标题定位→逐字→仅候选内模糊；无候选全范围逐字兜底、禁全范围模糊对齐），落库携 `record_title` 快照；`CHAT_PROMPT_VERSION` v5；软删过滤沿用查询期回表；范围胶囊 / 新建菜单 / 课程详情对话 Tab 前端接真（记录范围行为零回归） |
 | B3 | Tutor / Teach-back 场景包最小形态 | ⚠️ 增量建议（§29 的 Tutor / TeachBack Graph 留 P5） | ★★ | 低 | `ChatMode` 四模式枚举已预留但 `Literal[ChatMode.ASK]` 仅启用一种（`agent/schemas.py`）；**不建独立 Graph**，以 prompt 模板 + 模式开关先行，作为场景包机制（§39.3）首个验证实例；苏格拉底辅导是通用学习工作台最正交的 AI Native 功能 |
 | B5 | sqlite-vec 向量混合检索 | #24 / Phase 2 | ★ | 中 | 语义检索增益项，等 BM25 真实吃力再进（触发条件见未来候选库路线图） |
+| B6 | 对话转学习资产 V1（对话转知识点） | 基线 Phase 2 已定项（:261「问→懂→沉淀」闭环） | ★★ | 低~中 | **已实施（2026-09-15，chat-to-knowledge-point 单票全栈完结）**：`POST /chat-sessions/{sid}/messages/{mid}/knowledge-points` 把 AI 回答保存为目标记录知识点；单事务四写（知识点 ACTIVE + 搜索索引 + CHAT_MESSAGE 锚点〔**锚点体系首个写入者**〕+ KNOWLEDGE_POINT/PRIMARY 链接，事务由路由编排层统一管理——校验查询 autobegin 与 Service begin 冲突的定案解）；`KnowledgePointOut.chat_source` 三表 JOIN 派生回溯（不回查会话软删），前端「源自 AI 对话」徽章跳回原会话；全 scope 可保存、目标记录选择器（RECORD 默认挂载记录）、detail 预填聚焦摘要（首段 + 引用句纯函数提取）；**零学习事件**（AI 自述不是 Evidence 红线，防沉淀污染掌握度证据）；零迁移（四表现成）。锚点写入函数落位 `SourceAnchorService`（无独立事务约定，P3 Concept 等后续写入者直接复用） |
 
 > 2026-09-09 修正：原 B4（Segment + Source Anchor）即 F1 本体，是 A3 的**数据前置**而非其依赖项，已前移至 A 档 A0——与 §39.5 P2 顺序（Segment+Anchor → Evidence Builder → …）对齐，引用精度升级要点并入 A0 行。
 
@@ -3659,6 +3660,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
   ┆   A1 chat 检索工具 → A2 工具调用前端呈现   ← ✅ 已完成（2026-09-13，见 §40.3 A1/A2 行）
 第 3 步   B1 web_search（Tavily，#53）        ← ✅ 已完成（2026-09-14，见 §40.3 B1 行）
 第 4 步   B2 跨记录 / 全局问答（#24 @全部资料） ← ✅ 已完成（2026-09-14，见 §40.3 B2 行）
+第 4.5 步 B6 对话转学习资产 V1（基线 Phase 2 已定项，B2 价值闭环） ← ✅ 已完成（2026-09-15，见 §40.3 B6 行）
 第 5 步   B5 sqlite-vec 混合检索（BM25 吃力时可提前）
 其后      B3 Tutor 场景包 / 网页剪藏 / 英文支持（§39.5 既有 P2 项）→ P3 Course Brain
 ```
