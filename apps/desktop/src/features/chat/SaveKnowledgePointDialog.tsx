@@ -116,7 +116,7 @@ export function SaveKnowledgePointDialog({
         close();
       }}
     >
-      <DialogContent showCloseButton={false}>
+      <DialogContent className="flex h-[85vh] flex-col sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t("chat.saveKp.title")}</DialogTitle>
           <DialogDescription>{t("chat.saveKp.description")}</DialogDescription>
@@ -175,6 +175,7 @@ export function SaveKnowledgePointDialog({
             submitLabel={t("chat.saveKp.submit")}
             pending={save.isPending}
             error={save.error}
+            fillHeight
             onSubmit={handleSubmit}
             onCancel={close}
           />

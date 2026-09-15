@@ -22,6 +22,7 @@ import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { KnowledgePointOut } from "@/features/records/api/types";
 import { settingsApi } from "@/features/settings/api/settings";
+import { cn } from "@/lib/utils";
 import type { components } from "@knowrealm/api-types";
 
 export type KnowledgePointValues =
@@ -559,6 +560,7 @@ export function KnowledgePointItemForm({
   error,
   onSubmit,
   onCancel,
+  fillHeight = false,
 }: {
   initial: KnowledgePointValues;
   submitLabel: string;
@@ -566,6 +568,8 @@ export function KnowledgePointItemForm({
   error: Error | null;
   onSubmit: (values: KnowledgePointValues) => void;
   onCancel: () => void;
+  /** 填充父容器高度：详情输入框吸收剩余空间并在内部滚动（对话框场景）。 */
+  fillHeight?: boolean;
 }) {
   const { t } = useTranslation();
   const formId = useId();
@@ -580,10 +584,17 @@ export function KnowledgePointItemForm({
     parsedTags.length <= 5 &&
     parsedTags.every((tag) => tag.length <= 20) &&
     !pending;
+  // 填充模式（对话框）：表单撑满容器，详情输入框吸收剩余空间并在内部滚动。
+  const formClass = fillHeight
+    ? "flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto"
+    : "grid gap-4";
+  const detailFieldClass = fillHeight
+    ? "flex min-h-0 flex-1 flex-col gap-2"
+    : "grid gap-2";
 
   return (
     <form
-      className="grid gap-4"
+      className={formClass}
       onSubmit={(event) => {
         event.preventDefault();
         if (submittable) {
@@ -607,12 +618,15 @@ export function KnowledgePointItemForm({
           maxLength={100}
         />
       </div>
-      <div className="grid gap-2">
+      <div className={detailFieldClass}>
         <Label htmlFor={`${formId}-detail`}>
           {t("record.detail.knowledgePoints.fieldDetail")}
         </Label>
         <Textarea
           id={`${formId}-detail`}
+          className={cn(
+            fillHeight && "field-sizing-fixed min-h-16 flex-1 overflow-y-auto",
+          )}
           value={detail}
           onChange={(event) => setDetail(event.target.value)}
           rows={4}
