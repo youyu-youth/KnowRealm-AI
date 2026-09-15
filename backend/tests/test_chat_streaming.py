@@ -22,7 +22,7 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
-from sqlalchemy import update
+from sqlalchemy import text, update
 
 from app.main import create_app
 from app.modules.agent.citations import (
@@ -45,13 +45,28 @@ from app.modules.agent.message_service import (
     _cited_excerpts,  # pyright: ignore[reportPrivateUsage]
 )
 from app.modules.agent.models import ChatMessage
-from app.modules.agent.schemas import ChatRole
+from app.modules.agent.schemas import ChatRole, ChatScope
+from app.modules.agent.tools.search_library import (
+    LibrarySearchContext,
+    bind_library_context,
+    reset_library_context,
+    search_library,
+)
+from app.modules.course_brain.service import normalize_concept_name
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.search.integrations.tavily import TavilySearchClient
+from app.modules.search.segment_service import (
+    ENTITY_CONCEPT,
+    ENTITY_TRANSCRIPT_SEGMENT,
+    SegmentSearchService,
+)
+from app.modules.search.tokenizer import tokenize
 from app.modules.settings.config import save_llm_provider, save_web_search_provider
 from app.modules.summary.models import AiSummary
+from app.modules.transcript.sentences import content_hash
 
 TOKEN = "test-launch-token"
+NOW = "2026-09-15T00:00:00Z"
 
 STUB_REPLY = ["回答", "完成", "了"]
 
@@ -1469,7 +1484,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-mount-cite-v5"
+        assert rows[0][3] == "chat-concept-v6"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2116,3 +2131,320 @@ async def test_all_session_fts_library_hits_and_web_guidance(
         tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
         assert len(tool_messages) == 1
         assert "本讲系统梳理傅里叶级数的展开方法" in str(tool_messages[0].content)
+
+
+# ---------------------------------------------------------------------------
+# CB-07 search_library 概念增强：concepts/occurrences 扩展与范围语义。
+# ---------------------------------------------------------------------------
+
+
+async def seed_library_course(app: FastAPI, course_id: str, name: str) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO courses (id, name, learning_context, depth, status, "
+                "created_at, updated_at, deleted_at) "
+                "VALUES (:id, :name, 'INTEREST', 'BEGINNER', 'ACTIVE', :now, :now, NULL)"
+            ),
+            {"id": course_id, "name": name, "now": NOW},
+        )
+
+
+async def seed_library_transcript(
+    app: FastAPI,
+    *,
+    record_id: str,
+    course_id: str,
+    title: str,
+    segment_id: str,
+    content: str,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
+) -> None:
+    """直插带转写分片的记录并同步分片索引（概念扩展命中的数据地基）。"""
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO records (id, course_id, capture_type, title, status, duration_ms, "
+                "created_at, updated_at, deleted_at) "
+                "VALUES (:id, :course_id, 'RECORDING', :title, 'COMPLETED', 60000, "
+                ":now, :now, NULL)"
+            ),
+            {"id": record_id, "course_id": course_id, "title": title, "now": NOW},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO record_files (id, record_id, file_type, source_type, file_path, "
+                "original_name, mime_type, file_size, duration_ms, sequence_no, content_hash, "
+                "created_at, updated_at, deleted_at) "
+                "VALUES (:id, :record_id, 'AUDIO', 'RECORDED', 'p.ogg', 'p.ogg', 'audio/ogg', "
+                "1, 60000, 0, 'h', :now, :now, NULL)"
+            ),
+            {"id": f"file-{segment_id}", "record_id": record_id, "now": NOW},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO transcripts (id, record_id, language, content, source_version, "
+                "edited_by_user, created_at, updated_at, deleted_at) "
+                "VALUES (:id, :record_id, 'zh-CN', :content, 1, 0, :now, :now, NULL)"
+            ),
+            {
+                "id": f"transcript-{segment_id}",
+                "record_id": record_id,
+                "content": content,
+                "now": NOW,
+            },
+        )
+        await session.execute(
+            text(
+                "INSERT INTO transcript_segments (id, transcript_id, record_id, file_id, "
+                "sequence_no, record_start_ms, record_end_ms, file_start_ms, file_end_ms, "
+                "speaker, content, content_hash) "
+                "VALUES (:id, :transcript_id, :record_id, :file_id, 0, "
+                ":start_ms, :end_ms, :start_ms, :end_ms, NULL, :content, :content_hash)"
+            ),
+            {
+                "id": segment_id,
+                "transcript_id": f"transcript-{segment_id}",
+                "record_id": record_id,
+                "file_id": f"file-{segment_id}",
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "content": content,
+                "content_hash": content_hash(content),
+            },
+        )
+        await SegmentSearchService.upsert_segment_index(
+            session, ENTITY_TRANSCRIPT_SEGMENT, [segment_id]
+        )
+
+
+async def seed_library_concept(
+    app: FastAPI,
+    *,
+    concept_id: str,
+    course_id: str,
+    name: str,
+    description: str = "",
+    status: str = "CONFIRMED",
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO concepts (id, course_id, canonical_name, normalized_name, "
+                "description, concept_type, importance, status, source, created_at, updated_at) "
+                "VALUES (:id, :course_id, :name, :normalized, :description, 'TERM', 3, "
+                ":status, 'AI_EXTRACTED', :now, :now)"
+            ),
+            {
+                "id": concept_id,
+                "course_id": course_id,
+                "name": name,
+                "normalized": normalize_concept_name(name),
+                "description": description,
+                "status": status,
+                "now": NOW,
+            },
+        )
+        if status == "CONFIRMED":
+            await SegmentSearchService.upsert_segment_index(session, ENTITY_CONCEPT, [concept_id])
+
+
+async def seed_library_record_concept(
+    app: FastAPI, *, record_id: str, concept_id: str, evidence_count: int = 1
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO record_concepts (id, record_id, concept_id, relevance, "
+                "evidence_count, created_at, updated_at) "
+                "VALUES (:id, :record_id, :concept_id, 0.8, :evidence_count, :now, :now)"
+            ),
+            {
+                "id": f"rc-{record_id}-{concept_id}",
+                "record_id": record_id,
+                "concept_id": concept_id,
+                "evidence_count": evidence_count,
+                "now": NOW,
+            },
+        )
+
+
+async def invoke_search_library(
+    app: FastAPI, *, scope: ChatScope, course_id: str | None, query: str
+) -> dict[str, Any]:
+    """绑定运行期范围后直调 search_library，返回解析后的工具 JSON 载荷。"""
+    token = bind_library_context(
+        LibrarySearchContext(
+            scope=scope, course_id=course_id, session_factory=app.state.session_factory
+        )
+    )
+    try:
+        return cast(dict[str, Any], json.loads(await search_library.ainvoke({"query": query})))
+    finally:
+        reset_library_context(token)
+
+
+@pytest.mark.anyio
+async def test_search_library_concept_enrichment_course_scope(tmp_path: Path) -> None:
+    """COURSE 会话：概念命中→概念名扩展命中分片；payload 含 concepts/occurrences。"""
+    app = create_app(data_dir=tmp_path, launch_token=TOKEN)
+    async with app.router.lifespan_context(app):
+        await seed_library_course(app, "course-1", "数据库课程")
+        await seed_library_concept(
+            app,
+            concept_id="concept-mvcc",
+            course_id="course-1",
+            name="MVCC",
+            description="多版本并发控制机制",
+        )
+        await seed_library_transcript(
+            app,
+            record_id="record-a",
+            course_id="course-1",
+            title="第 3 讲",
+            segment_id="seg-a",
+            content="MVCC 通过 ReadView 实现事务可见性",
+            start_ms=1000,
+            end_ms=5000,
+        )
+        await seed_library_record_concept(
+            app, record_id="record-a", concept_id="concept-mvcc", evidence_count=2
+        )
+
+        # 原查询「并发控制」在分片 FTS 零命中，hits 只能来自概念名扩展 → 增强生效。
+        payload = await invoke_search_library(
+            app, scope=ChatScope.COURSE, course_id="course-1", query="并发控制"
+        )
+        assert payload["concepts"] == [
+            {
+                "concept_id": "concept-mvcc",
+                "canonical_name": "MVCC",
+                "description": "多版本并发控制机制",
+                "record_count": 1,
+                "occurrence_count": 2,
+            }
+        ]
+        assert [hit["record_id"] for hit in payload["hits"]] == ["record-a"]
+        assert payload["hits"][0]["time"] == "0:01-0:05"
+        assert payload["occurrences"] == [
+            {
+                "record_id": "record-a",
+                "record_title": "第 3 讲",
+                "quote": "MVCC 通过 ReadView 实现事务可见性",
+                "time": "0:01-0:05",
+            }
+        ]
+
+
+@pytest.mark.anyio
+async def test_search_library_all_scope_expands_within_concept_course(tmp_path: Path) -> None:
+    """ALL 会话：概念只在归属课程内扩展；原查询保持全库范围。"""
+    app = create_app(data_dir=tmp_path, launch_token=TOKEN)
+    async with app.router.lifespan_context(app):
+        await seed_library_course(app, "course-1", "数据库课程")
+        await seed_library_course(app, "course-2", "算法课程")
+        await seed_library_concept(
+            app,
+            concept_id="concept-mvcc",
+            course_id="course-1",
+            name="MVCC",
+            description="多版本并发控制",
+        )
+        await seed_library_transcript(
+            app,
+            record_id="record-1",
+            course_id="course-1",
+            title="DB 第 3 讲",
+            segment_id="seg-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+        )
+        # 课程 2 分片含原查询词（原查询全库命中）与概念名字样（概念扩展不得混入）。
+        await seed_library_transcript(
+            app,
+            record_id="record-2",
+            course_id="course-2",
+            title="算法第 1 讲",
+            segment_id="seg-2",
+            content="并发控制依赖与 MVCC 类似的隔离思想",
+        )
+
+        payload = await invoke_search_library(
+            app, scope=ChatScope.ALL, course_id=None, query="并发控制"
+        )
+        hit_records = {hit["record_id"] for hit in payload["hits"]}
+        assert hit_records == {"record-1", "record-2"}, "原查询全库 + 概念扩展限归属课程"
+        assert [item["concept_id"] for item in payload["concepts"]] == ["concept-mvcc"]
+        assert {item["record_id"] for item in payload["occurrences"]} == hit_records
+
+
+@pytest.mark.anyio
+async def test_search_library_excludes_candidate_concepts(tmp_path: Path) -> None:
+    """候选概念不进 Agent 上下文：直插索引行的纵深防线（SQL CONFIRMED-only）。"""
+    app = create_app(data_dir=tmp_path, launch_token=TOKEN)
+    async with app.router.lifespan_context(app):
+        await seed_library_course(app, "course-1", "数据库课程")
+        await seed_library_concept(
+            app,
+            concept_id="concept-cand",
+            course_id="course-1",
+            name="MVCC",
+            description="多版本并发控制",
+            status="CANDIDATE",
+        )
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO segment_search_index (body, entity_type, entity_id) "
+                    "VALUES (:body, 'CONCEPT', :concept_id)"
+                ),
+                {
+                    "body": tokenize("MVCC 多版本并发控制"),
+                    "concept_id": "concept-cand",
+                },
+            )
+
+        payload = await invoke_search_library(
+            app, scope=ChatScope.COURSE, course_id="course-1", query="并发控制"
+        )
+        assert payload["concepts"] == [], "候选概念即使有索引行也不得命中"
+        assert payload["hits"] == [] and payload["occurrences"] == []
+
+
+@pytest.mark.anyio
+async def test_search_library_degrades_without_concepts(tmp_path: Path) -> None:
+    """无 brain 课程退化：零概念时行为与现行一致（LIKE 兜底照旧），新键为空。"""
+    app = create_app(data_dir=tmp_path, launch_token=TOKEN)
+    async with app.router.lifespan_context(app):
+        await seed_library_course(app, "course-1", "分布式系统")
+        # 粘贴记录只有转写全文、无分片：FTS 零命中 → LIKE 兜底（现行行为）。
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO records (id, course_id, capture_type, title, status, "
+                    "duration_ms, created_at, updated_at, deleted_at) "
+                    "VALUES (:id, 'course-1', 'PASTE', '粘贴笔记', 'COMPLETED', 0, "
+                    ":now, :now, NULL)"
+                ),
+                {"id": "record-paste", "now": NOW},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO transcripts (id, record_id, language, content, source_version, "
+                    "edited_by_user, created_at, updated_at, deleted_at) "
+                    "VALUES (:id, 'record-paste', 'zh-CN', :content, 1, 0, :now, :now, NULL)"
+                ),
+                {
+                    "id": "transcript-paste",
+                    "content": "第二讲聚焦一致性哈希的实践应用。",
+                    "now": NOW,
+                },
+            )
+
+        payload = await invoke_search_library(
+            app, scope=ChatScope.COURSE, course_id="course-1", query="一致性哈希"
+        )
+        assert payload["concepts"] == [] and payload["occurrences"] == []
+        assert len(payload["hits"]) == 1
+        assert payload["hits"][0]["record_id"] == "record-paste"
+        assert "一致性哈希" in payload["hits"][0]["content"]

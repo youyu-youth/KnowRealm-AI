@@ -116,13 +116,13 @@ _ACTIVE_BUILD_JOB_SQL = text(
     "LIMIT 1"
 )
 
-# 出现统计：只计未软删且仍在课程内的记录（跨课程/软删不泄漏）。
+# 出现统计：只计未软删记录；course_id 为 None 时统计全部课程（Agent ALL 范围）。
 _RECORD_CONCEPT_STATS_SQL = text(
     "SELECT rc.concept_id AS concept_id, count(*) AS record_count, "
     "coalesce(sum(rc.evidence_count), 0) AS occurrence_count "
     "FROM record_concepts rc "
     "JOIN records r ON r.id = rc.record_id AND r.deleted_at IS NULL "
-    "WHERE rc.concept_id IN :ids AND r.course_id = :course_id "
+    "WHERE rc.concept_id IN :ids AND (:course_id IS NULL OR r.course_id = :course_id) "
     "GROUP BY rc.concept_id"
 ).bindparams(bindparam("ids", expanding=True))
 
@@ -135,14 +135,16 @@ _CONCEPT_ANCHOR_COUNT_SQL = text(
     "AND (a.record_id IS NULL OR r.id IS NOT NULL)"
 )
 
-# Concept 命中：CONFIRMED-only（Agent 只读边界，ADR-0022）。
+# Concept 命中：CONFIRMED-only（Agent 只读边界，ADR-0022）；course_id 为 None
+# 时匹配全部课程（Agent ALL 范围），扩展由调用方按概念归属课程执行。
 _CONCEPT_MATCH_SQL = text(
-    "SELECT c.id AS concept_id, c.canonical_name, c.description "
+    "SELECT c.id AS concept_id, c.canonical_name, c.description, c.course_id AS course_id "
     "FROM segment_search_index "
     "JOIN concepts c ON c.id = segment_search_index.entity_id "
     "WHERE segment_search_index MATCH :match "
     "AND segment_search_index.entity_type = 'CONCEPT' "
-    "AND c.course_id = :course_id AND c.status = 'CONFIRMED' "
+    "AND c.status = 'CONFIRMED' "
+    "AND (:course_id IS NULL OR c.course_id = :course_id) "
     "ORDER BY bm25(segment_search_index) "
     "LIMIT :limit"
 )
@@ -555,7 +557,7 @@ def _stored_fingerprint(result_json: str | None) -> dict[str, object] | None:
 
 
 async def _concept_stats(
-    session: AsyncSession, course_id: str, concept_ids: list[str]
+    session: AsyncSession, course_id: str | None, concept_ids: list[str]
 ) -> dict[str, tuple[int, int]]:
     if not concept_ids:
         return {}
@@ -979,40 +981,50 @@ class CourseBrainService:
         return _concept_out(concept, stats.get(concept.id))
 
     @staticmethod
+    async def match_concepts(
+        session: AsyncSession,
+        course_id: str | None,
+        query: str,
+        limit: int = _CONCEPT_MATCH_LIMIT,
+    ) -> list[BrainSearchConceptOut]:
+        """概念 FTS 命中（CONFIRMED-only，BM25 序）：course_id 为 None 时匹配全部课程。"""
+        match = match_expression(query)
+        if match is None:
+            return []
+        rows = (
+            await session.execute(
+                _CONCEPT_MATCH_SQL, {"match": match, "course_id": course_id, "limit": limit}
+            )
+        ).all()
+        stats = await _concept_stats(
+            session, course_id, [cast(str, row.concept_id) for row in rows]
+        )
+        return [
+            BrainSearchConceptOut(
+                concept_id=cast(str, row.concept_id),
+                canonical_name=cast(str, row.canonical_name),
+                description=cast(str, row.description),
+                course_id=cast(str, row.course_id),
+                record_count=stats.get(cast(str, row.concept_id), (0, 0))[0],
+                occurrence_count=stats.get(cast(str, row.concept_id), (0, 0))[1],
+            )
+            for row in rows
+        ]
+
+    @staticmethod
     async def search(
         session: AsyncSession, course_id: str, query: str, limit: int = 8
     ) -> CourseBrainSearchOut:
         """概念命中 → 检索词扩展（原查询 + 各 canonical_name 并跑）→ 合并去重。"""
         await _get_active_course(session, course_id)
-        match = match_expression(query)
-        if match is None:
-            return CourseBrainSearchOut(matched_concepts=[], related_concepts=[], occurrences=[])
-        concept_rows = (
-            await session.execute(
-                _CONCEPT_MATCH_SQL,
-                {
-                    "match": match,
-                    "course_id": course_id,
-                    "limit": min(limit, _CONCEPT_MATCH_LIMIT),
-                },
-            )
-        ).all()
-        matched_ids = [cast(str, row.concept_id) for row in concept_rows]
-        stats = await _concept_stats(session, course_id, matched_ids)
-        matched_concepts = [
-            BrainSearchConceptOut(
-                concept_id=cast(str, row.concept_id),
-                canonical_name=cast(str, row.canonical_name),
-                description=cast(str, row.description),
-                record_count=stats.get(cast(str, row.concept_id), (0, 0))[0],
-                occurrence_count=stats.get(cast(str, row.concept_id), (0, 0))[1],
-            )
-            for row in concept_rows
-        ]
+        matched_concepts = await CourseBrainService.match_concepts(
+            session, course_id, query, min(limit, _CONCEPT_MATCH_LIMIT)
+        )
+        matched_ids = [concept.concept_id for concept in matched_concepts]
 
         occurrences: list[BrainSearchOccurrenceOut] = []
         seen: set[tuple[str, str]] = set()
-        expansion_terms = [query] + [cast(str, row.canonical_name) for row in concept_rows]
+        expansion_terms = [query] + [concept.canonical_name for concept in matched_concepts]
         for term in expansion_terms:
             hits = await SegmentSearchService.search_scope_segments(
                 session, course_id, term, _OCCURRENCE_PER_TERM

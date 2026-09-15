@@ -60,7 +60,7 @@ from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-mount-cite-v5"
+CHAT_PROMPT_VERSION = "chat-concept-v6"
 CHAT_RECURSION_LIMIT = 25
 
 

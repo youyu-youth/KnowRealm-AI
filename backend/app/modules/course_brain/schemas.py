@@ -206,6 +206,7 @@ class BrainSearchConceptOut(BaseModel):
     concept_id: str
     canonical_name: str
     description: str
+    course_id: str = Field(description="归属课程（Agent ALL 范围内概念只在其归属课程内扩展）")
     record_count: int = Field(description="出现该概念的未删除记录数")
     occurrence_count: int = Field(description="出现次数合计（证据计数）")
 
