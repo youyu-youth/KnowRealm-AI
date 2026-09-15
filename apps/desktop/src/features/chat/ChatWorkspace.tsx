@@ -121,6 +121,7 @@ export function ChatWorkspace({
             updatedAt={detail.data.updated_at}
             scope={detail.data.scope}
             courseId={detail.data.course_id ?? null}
+            recordId={detail.data.record_id ?? null}
             recordDeleted={detail.data.record_deleted}
             courseDeleted={detail.data.course_deleted}
             messages={messages}

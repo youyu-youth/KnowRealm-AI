@@ -1014,6 +1014,8 @@
         "savedTitle": "知识点",
         "savedLocally": "已保存到本地 · 待确认",
         "savedLocallyActive": "已保存到本地 · 按重要度排序",
+        "chatSourceBadge": "源自 AI 对话",
+        "chatSourceTitle": "查看来源对话",
         "importance": "重要度 {{value}} / 5",
         "importanceFor": "{{name}} · 重要度 {{value}} / 5",
         "setImportance": "设为重要度 {{value}}",
@@ -1456,6 +1458,17 @@
     "interruptedDescription": "上一条提问的回答被中断，没有保留半截内容。",
     "retryAnswer": "重新生成回答",
     "recordDeleted": "原记录已删除",
+    "saveKp": {
+      "action": "保存为知识点",
+      "title": "保存为知识点",
+      "description": "把这条回答沉淀为所选学习记录的知识点，可回溯到本对话。",
+      "targetLabel": "目标记录",
+      "targetPlaceholder": "选择要保存到的记录",
+      "targetEmpty": "暂无可保存的记录（需已归类到课程）",
+      "submit": "保存知识点",
+      "errorNoRecord": "请先选择目标记录",
+      "success": "已保存为知识点「{{name}}」"
+    },
     "citation": {
       "listLabel": "引用来源",
       "jump": "查看引用 {{index}} 的转写原文",
@@ -2005,6 +2018,8 @@
     "UPGRADE_COURSE_REQUIRED": "未归类记录升级前必须选择课程",
     "CHAT_COURSE_ARCHIVED": "课程已归档，暂不支持发起课程问答",
     "CHAT_COURSE_NOT_FOUND": "课程不存在或已删除",
-    "CHAT_COURSE_UNAVAILABLE": "挂载课程已删除，对话失效"
+    "CHAT_COURSE_UNAVAILABLE": "挂载课程已删除，对话失效",
+    "CHAT_MESSAGE_NOT_FOUND": "对话消息不存在",
+    "CHAT_MESSAGE_NOT_ASSISTANT": "仅 AI 回答可保存为知识点"
   }
 }

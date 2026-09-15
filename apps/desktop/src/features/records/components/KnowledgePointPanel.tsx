@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Pencil, Star, Trash2 } from "lucide-react";
+import { MessageSquareText, Pencil, Star, Trash2 } from "lucide-react";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -24,7 +24,8 @@ import type { KnowledgePointOut } from "@/features/records/api/types";
 import { settingsApi } from "@/features/settings/api/settings";
 import type { components } from "@knowrealm/api-types";
 
-type KnowledgePointValues = components["schemas"]["KnowledgePointWriteRequest"];
+export type KnowledgePointValues =
+  components["schemas"]["KnowledgePointWriteRequest"];
 
 type KnowledgePointPanelProps = {
   recordId: string;
@@ -446,6 +447,27 @@ function KnowledgePointRow({
             </Button>
           </div>
         </div>
+        {item.chat_source ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-ink mt-1 h-auto cursor-pointer gap-1.5 px-1.5 py-1"
+            title={t("record.detail.knowledgePoints.chatSourceTitle")}
+            onClick={() =>
+              void navigate({
+                to: "/chat/$sessionId",
+                params: { sessionId: item.chat_source?.chat_session_id ?? "" },
+              })
+            }
+          >
+            <MessageSquareText
+              data-icon="inline-start"
+              aria-hidden="true"
+              className="size-3.5"
+            />
+            {t("record.detail.knowledgePoints.chatSourceBadge")}
+          </Button>
+        ) : null}
         <p className="text-body text-ink mt-2 whitespace-pre-wrap">
           {item.detail}
         </p>
@@ -529,7 +551,8 @@ function ImportanceStars({
   );
 }
 
-function KnowledgePointItemForm({
+/** 知识点编辑表单（导出供 chat 域保存对话框复用，字段与校验同源）。 */
+export function KnowledgePointItemForm({
   initial,
   submitLabel,
   pending,

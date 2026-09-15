@@ -51,6 +51,7 @@ type ChatConversationViewProps = {
   updatedAt: string;
   scope: ChatSession["scope"];
   courseId: string | null;
+  recordId: string | null;
   recordDeleted: boolean;
   courseDeleted: boolean;
   messages: UseQueryResult<ChatMessage[]>;
@@ -65,6 +66,7 @@ export function ChatConversationView({
   updatedAt,
   scope,
   courseId,
+  recordId,
   recordDeleted,
   courseDeleted,
   messages,
@@ -242,6 +244,8 @@ export function ChatConversationView({
             streamError={streamError}
             onRetry={(content) => send(content, webSearchEnabled)}
             showEmptyHint={!showSuggestions}
+            sessionId={sessionId}
+            defaultRecordId={recordId}
           />
         )}
         <ChatComposer

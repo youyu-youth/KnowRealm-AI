@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  BookmarkPlus,
   CircleAlert,
   Globe,
   Library,
@@ -12,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { ChatMessage } from "@/features/chat/api/types";
 import { ChatMarkdown } from "@/features/chat/ChatMarkdown";
+import { SaveKnowledgePointDialog } from "@/features/chat/SaveKnowledgePointDialog";
 import type { ChatToolActivity } from "@/features/chat/useChatStream";
 
 type ChatMessageListProps = {
@@ -23,6 +25,10 @@ type ChatMessageListProps = {
   onRetry: (content: string) => void;
   /** 建议卡已承担空会话引导时置 false，避免重复文案。 */
   showEmptyHint?: boolean;
+  /** 对话转知识点（对话转学习资产 V1）：保存对话框所需的会话标识。 */
+  sessionId: string;
+  /** RECORD 会话的挂载记录，作为保存目标默认值；其它范围为空。 */
+  defaultRecordId: string | null;
 };
 
 const messageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
@@ -96,9 +102,12 @@ export function ChatMessageList({
   streamError,
   onRetry,
   showEmptyHint = true,
+  sessionId,
+  defaultRecordId,
 }: ChatMessageListProps) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [saveTarget, setSaveTarget] = useState<ChatMessage | null>(null);
   // SYSTEM 是会话创建时的角色快照，仅喂给模型，不渲染给用户。
   const visible = messages.filter((message) => message.role !== "SYSTEM");
   const lastVisible = visible[visible.length - 1];
@@ -141,6 +150,20 @@ export function ChatMessageList({
                   content={message.content}
                   citations={message.citations ?? []}
                 />
+                {/* 对话转知识点（对话转学习资产 V1）：messages 里的回答均已落库，可直接保存。 */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground hover:text-ink h-auto w-fit cursor-pointer gap-1.5 px-2 py-1"
+                  onClick={() => setSaveTarget(message)}
+                >
+                  <BookmarkPlus
+                    data-icon="inline-start"
+                    aria-hidden="true"
+                    className="size-3.5"
+                  />
+                  {t("chat.saveKp.action")}
+                </Button>
               </li>
             ),
           )}
@@ -198,6 +221,12 @@ export function ChatMessageList({
           </div>
         </div>
       ) : null}
+      <SaveKnowledgePointDialog
+        message={saveTarget}
+        onClose={() => setSaveTarget(null)}
+        sessionId={sessionId}
+        defaultRecordId={defaultRecordId}
+      />
       <div ref={bottomRef} aria-hidden="true" />
     </div>
   );

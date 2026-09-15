@@ -1022,6 +1022,8 @@
         "savedTitle": "Knowledge Points",
         "savedLocally": "Saved locally · awaiting confirmation",
         "savedLocallyActive": "Saved locally · sorted by importance",
+        "chatSourceBadge": "From AI chat",
+        "chatSourceTitle": "Open the source chat",
         "importance": "Importance {{value}} / 5",
         "importanceFor": "{{name}} · importance {{value}} / 5",
         "setImportance": "Set importance to {{value}}",
@@ -1467,6 +1469,17 @@
     "interruptedDescription": "The previous answer was interrupted; no partial content was kept.",
     "retryAnswer": "Regenerate response",
     "recordDeleted": "Source Record deleted",
+    "saveKp": {
+      "action": "Save as knowledge point",
+      "title": "Save as knowledge point",
+      "description": "Turn this answer into a knowledge point of the selected record, traceable back to this chat.",
+      "targetLabel": "Target record",
+      "targetPlaceholder": "Choose a record",
+      "targetEmpty": "No eligible records (must be filed to a course)",
+      "submit": "Save knowledge point",
+      "errorNoRecord": "Choose a target record first",
+      "success": "Saved as knowledge point \"{{name}}\""
+    },
     "citation": {
       "listLabel": "Citations",
       "jump": "View the Transcript passage for citation {{index}}",
@@ -2021,6 +2034,8 @@
     "UPGRADE_COURSE_REQUIRED": "Assign a course to the unclassified Record before upgrading.",
     "CHAT_COURSE_ARCHIVED": "This course is archived; course chat is unavailable",
     "CHAT_COURSE_NOT_FOUND": "Course not found or deleted",
-    "CHAT_COURSE_UNAVAILABLE": "The mounted course was deleted; this chat is read-only"
+    "CHAT_COURSE_UNAVAILABLE": "The mounted course was deleted; this chat is read-only",
+    "CHAT_MESSAGE_NOT_FOUND": "Chat message not found",
+    "CHAT_MESSAGE_NOT_ASSISTANT": "Only AI answers can be saved as knowledge points"
   }
 }

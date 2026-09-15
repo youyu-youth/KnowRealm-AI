@@ -5,6 +5,10 @@ export type ChatMessage = components["schemas"]["ChatMessageOut"];
 export type ChatSessionCreate = components["schemas"]["ChatSessionCreate"];
 export type ChatRecordOption = components["schemas"]["ChatRecordOption"];
 export type ChatCitation = components["schemas"]["ChatCitationOut"];
+/** 对话转知识点（对话转学习资产 V1）请求体与保存产物。 */
+export type ChatKnowledgePointSaveRequest =
+  components["schemas"]["ChatKnowledgePointSaveRequest"];
+export type KnowledgePointOut = components["schemas"]["KnowledgePointOut"];
 
 /** web 来源条目（URL+标题，无逐字摘录）；历史行无 source 键视为 record。 */
 export type WebCitation = ChatCitation & {

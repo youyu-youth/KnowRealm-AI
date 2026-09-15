@@ -1,9 +1,11 @@
 import { createParser } from "eventsource-parser";
 import type {
+  ChatKnowledgePointSaveRequest,
   ChatMessage,
   ChatRecordOption,
   ChatSession,
   ChatSessionCreate,
+  KnowledgePointOut,
 } from "@/features/chat/api/types";
 import { apiErrorMessage } from "@/services/http/apiErrorMessage";
 import {
@@ -172,5 +174,15 @@ export const chatApi = {
     apiFetchNoContent(`/api/chat-sessions/${sessionId}`, { method: "DELETE" }),
   getMessages: (sessionId: string) =>
     apiFetch<ChatMessage[]>(`/api/chat-sessions/${sessionId}/messages`),
+  /** 对话转知识点（对话转学习资产 V1）：把一条 AI 回答保存为目标记录的知识点。 */
+  saveKnowledgePoint: (
+    sessionId: string,
+    messageId: string,
+    body: ChatKnowledgePointSaveRequest,
+  ) =>
+    apiFetch<KnowledgePointOut>(
+      `/api/chat-sessions/${sessionId}/messages/${messageId}/knowledge-points`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   streamMessage,
 };

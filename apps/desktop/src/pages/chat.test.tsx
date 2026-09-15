@@ -1276,10 +1276,7 @@ describe("跨记录问答范围（B2）", () => {
     );
   }
 
-  function scopeSessionPage(
-    session: ChatSessionOut,
-    handlers: HttpHandler[],
-  ) {
+  function scopeSessionPage(session: ChatSessionOut, handlers: HttpHandler[]) {
     server.use(
       ...handlers,
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
@@ -1559,5 +1556,168 @@ describe("跨记录问答范围（B2）", () => {
     expect(
       screen.getByText("课程已删除，对话已失效，无法继续发送。"),
     ).toBeVisible();
+  });
+});
+
+describe("对话转知识点（对话转学习资产 V1）", () => {
+  const RECORD_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+  const COURSE_ID = "99999999-9999-4999-8999-999999999999";
+
+  function recordMountSessionPage() {
+    const created = chatSession(FIRST_SESSION_ID, {
+      scope: "RECORD",
+      record_id: RECORD_ID,
+    });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "AOF 是什么"),
+            messageRow(
+              "assistant-row",
+              "ASSISTANT",
+              "## AOF 持久化\n\n写入以追加方式进行 [1]。",
+              "stub-chat-model",
+            ),
+          ]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([
+          {
+            id: RECORD_ID,
+            title: "第 1 讲 Redis 持久化",
+            course_id: COURSE_ID,
+            has_transcript: true,
+          },
+          {
+            id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            title: "收件箱速记",
+            course_id: null,
+            has_transcript: true,
+          },
+        ]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+  }
+
+  it("AI 回答可保存为知识点：默认挂载记录、预填聚焦摘要、请求体完整", async () => {
+    const bodies: object[] = [];
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages/assistant-row/knowledge-points`,
+        async ({ request }) => {
+          bodies.push((await request.json()) as object);
+          return HttpResponse.json(
+            {
+              id: "kp-new",
+              record_id: RECORD_ID,
+              batch_id: null,
+              name: "AOF 持久化",
+              detail: "写入以追加方式进行。",
+              tags: [],
+              importance: 3,
+              generated_from_summary_id: null,
+              generation_status: "ACTIVE",
+              chat_source: null,
+              created_at: "2026-08-27T08:00:00.000000Z",
+              updated_at: "2026-08-27T08:00:00.000000Z",
+            },
+            { status: 201 },
+          );
+        },
+      ),
+    );
+    recordMountSessionPage();
+
+    // 仅 AI 回答携带保存入口（用户消息无）。
+    const saveButton = await screen.findAllByRole("button", {
+      name: "保存为知识点",
+    });
+    expect(saveButton).toHaveLength(1);
+    fireEvent.click(saveButton[0]);
+
+    // Dialog 打开：详情预填聚焦摘要（首段去标题标记 + 引用句去角标）。
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByLabelText("详情")).toHaveValue(
+      "AOF 持久化\n\n写入以追加方式进行。",
+    );
+    fireEvent.change(within(dialog).getByLabelText("名称"), {
+      target: { value: "AOF 持久化" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存知识点" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "保存知识点" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0]).toEqual({
+      name: "AOF 持久化",
+      detail: "AOF 持久化\n\n写入以追加方式进行。",
+      tags: [],
+      importance: 3,
+      target_record_id: RECORD_ID,
+    });
+    expect(
+      await screen.findByText("已保存为知识点「AOF 持久化」"),
+    ).toBeVisible();
+  });
+
+  it("自由会话未选目标记录时提交被拦并提示", async () => {
+    const created = chatSession(FIRST_SESSION_ID, { scope: "FREE" });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "AOF 是什么"),
+            messageRow(
+              "assistant-row",
+              "ASSISTANT",
+              "回答正文。",
+              "stub-chat-model",
+            ),
+          ]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([
+          {
+            id: RECORD_ID,
+            title: "第 1 讲 Redis 持久化",
+            course_id: COURSE_ID,
+            has_transcript: true,
+          },
+        ]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "保存为知识点" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("名称"), {
+      target: { value: "AOF" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存知识点" }));
+
+    expect(within(dialog).getByText("请先选择目标记录")).toBeVisible();
   });
 });
