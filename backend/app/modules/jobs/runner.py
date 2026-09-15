@@ -1,6 +1,7 @@
 """任务循环骨架唯一归属（ADR-0012）。
 
-七个 worker（audio / summary / quiz / quiz_grading / knowledge_point / todo / document）的执行体
+九个 worker（audio / summary / review_material / quiz / quiz_grading / knowledge_point / todo /
+document / course_brain）的执行体
 以 ``WorkerSpec``（声明式钩子描述）注入 ``JobRunner``；轮询、条件抢占、恢复、
 失败记账、停止与协议点通知（recover / 领取成功后 / 写回尾 / 失败尾）全部归本
 模块，执行体不得自带横切副本。领取协议三态与 CANCELLED 静默为显式契约。

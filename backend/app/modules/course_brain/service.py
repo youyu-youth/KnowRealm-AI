@@ -5,16 +5,20 @@
 一次成功构建的 result_json.fingerprint 比对得出（ADR-0022）。
 """
 
+import asyncio
 import json
 import re
 import unicodedata
 from datetime import datetime
+from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.base import utcnow
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.course_brain.models import Concept
@@ -35,9 +39,16 @@ from app.modules.course_brain.schemas import (
     ConceptStatus,
     CourseBrainSearchOut,
 )
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.search.schemas import LibrarySegmentSearchHit
 from app.modules.search.segment_service import ENTITY_CONCEPT, SegmentSearchService
 from app.modules.search.tokenizer import match_expression
+from app.modules.settings.config import (
+    llm_consent,
+    llm_provider_fingerprint,
+    load_llm_provider,
+)
 from app.modules.source_anchor.schemas import SourceAnchorType
 from app.shared.errors import CodedHTTPException
 
@@ -77,6 +88,15 @@ _COURSE_JOBS_SQL = text(
     "WHERE record_id IS NULL AND job_type = 'CONCEPT_EXTRACTION' "
     "AND json_extract(input_json, '$.course_id') = :course_id "
     "ORDER BY created_at DESC, id DESC"
+)
+
+# 重复触发闸门：课程级构建任务在 PENDING/RUNNING 即视为进行中。
+_ACTIVE_BUILD_JOB_SQL = text(
+    "SELECT id FROM processing_jobs "
+    "WHERE record_id IS NULL AND job_type = 'CONCEPT_EXTRACTION' "
+    "AND status IN ('PENDING', 'RUNNING') "
+    "AND json_extract(input_json, '$.course_id') = :course_id "
+    "LIMIT 1"
 )
 
 # 出现统计：只计未软删且仍在课程内的记录（跨课程/软删不泄漏）。
@@ -197,6 +217,13 @@ async def _require_concept(session: AsyncSession, course_id: str, concept_id: st
             code="COURSE_BRAIN_CONCEPT_NOT_FOUND", status_code=404, detail="概念不存在"
         )
     return concept
+
+
+async def _active_build_job(session: AsyncSession, course_id: str) -> str | None:
+    return cast(
+        "str | None",
+        await session.scalar(_ACTIVE_BUILD_JOB_SQL, {"course_id": course_id}),
+    )
 
 
 async def compute_source_fingerprint(session: AsyncSession, course_id: str) -> dict[str, object]:
@@ -419,6 +446,61 @@ class CourseBrainService:
         return ConceptSourcesOut(
             concept_id=concept.id, anchors=anchors, knowledge_points=knowledge_points
         )
+
+    @staticmethod
+    async def request_build(session: AsyncSession, data_dir: Path, course_id: str) -> str:
+        """触发课程级构建任务（CB-04）：Provider/同意前置 → 课程守卫 → 重复触发闸门。"""
+        provider, consent = await asyncio.gather(
+            asyncio.to_thread(load_llm_provider, data_dir),
+            asyncio.to_thread(llm_consent, data_dir),
+        )
+        if provider is None or not provider.api_key:
+            raise CodedHTTPException(
+                code="LLM_PROVIDER_UNCONFIGURED", status_code=409, detail="请先配置 LLM Provider"
+            )
+        if not consent[1]:
+            raise CodedHTTPException(
+                code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意外部 AI 处理"
+            )
+        async with session.begin():
+            await _get_active_course(session, course_id)
+            if await _active_build_job(session, course_id) is not None:
+                raise CodedHTTPException(
+                    code="COURSE_BRAIN_BUILD_IN_PROGRESS",
+                    status_code=409,
+                    detail="已有进行中的课程大脑构建任务",
+                )
+            now = utcnow()
+            job = ProcessingJob(
+                id=str(uuid4()),
+                record_id=None,
+                job_type=ProcessingJobType.CONCEPT_EXTRACTION,
+                status=ProcessingJobStatus.PENDING,
+                progress=0,
+                attempts=0,
+                max_attempts=1,
+                next_run_at=None,
+                waiting_reason=None,
+                input_json=json.dumps(
+                    {
+                        "course_id": course_id,
+                        "provider_fingerprint": llm_provider_fingerprint(provider),
+                        "source_fingerprint": await compute_source_fingerprint(session, course_id),
+                    },
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                result_json=None,
+                error_code=None,
+                error_message=None,
+                started_at=None,
+                finished_at=None,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(job)
+            await session.flush()
+            return job.id
 
     @staticmethod
     async def create_concept(

@@ -11,6 +11,7 @@ from pydantic import BaseModel, SecretStr, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
+from app.modules.course_brain.schemas import CourseBrainExtractionBatch
 from app.modules.knowledge_point.schemas import KnowledgePointBatch
 from app.modules.llm.models import LlmCallLog
 from app.modules.quiz.schemas import QuizBatch, ShortAnswerGrade
@@ -71,6 +72,13 @@ class ReviewMaterialCallResult:
     latency_ms: int
 
 
+@dataclass(frozen=True)
+class CourseBrainCallResult:
+    content: CourseBrainExtractionBatch
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
 class StructuredModel(Protocol):
     async def generate(
         self,
@@ -89,6 +97,7 @@ QuizGradingModel = StructuredModel
 TodoModel = StructuredModel
 ReviewMaterialModel = StructuredModel
 ReviewMaterialModelResult = StructuredModelResult
+CourseBrainModel = StructuredModel
 
 
 class StructuredGenerationError(Exception):
@@ -193,6 +202,11 @@ class OpenAiCompatibleTodoModel(_OpenAiCompatibleStructuredModel):
 class OpenAiCompatibleReviewMaterialModel(_OpenAiCompatibleStructuredModel):
     def __init__(self) -> None:
         super().__init__(ReviewMaterialContent)
+
+
+class OpenAiCompatibleCourseBrainModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self) -> None:
+        super().__init__(CourseBrainExtractionBatch)
 
 
 def build_chat_model(
@@ -461,6 +475,32 @@ async def call_review_material_model(
     )
     return ReviewMaterialCallResult(
         content=cast(ReviewMaterialContent, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )
+
+
+async def call_course_brain_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    course_brain_model: CourseBrainModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> CourseBrainCallResult:
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=course_brain_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="course-brain",
+        graph_node="extract",
+        prompt_version=prompt_version,
+        output_schema=CourseBrainExtractionBatch,
+        invalid_output_code="INVALID_STRUCTURED_OUTPUT",
+    )
+    return CourseBrainCallResult(
+        content=cast(CourseBrainExtractionBatch, result.content),
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
     )

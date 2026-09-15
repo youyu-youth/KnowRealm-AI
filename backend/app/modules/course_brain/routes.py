@@ -2,10 +2,11 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.course_brain.schemas import (
+    BrainBuildAcceptedOut,
     BrainConceptCreate,
     BrainConceptDetailOut,
     BrainConceptListQuery,
@@ -37,6 +38,20 @@ async def get_course_brain(
     session: AsyncSession = Depends(get_db),
 ) -> BrainSnapshotOut:
     return await CourseBrainService.get_snapshot(session, course_id)
+
+
+@router.post(
+    "/{course_id}/brain/builds",
+    response_model=BrainBuildAcceptedOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def trigger_course_brain_build(
+    course_id: str,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> BrainBuildAcceptedOut:
+    job_id = await CourseBrainService.request_build(session, request.app.state.data_dir, course_id)
+    return BrainBuildAcceptedOut(job_id=job_id)
 
 
 @router.get("/{course_id}/brain/concepts", response_model=list[BrainConceptOut])

@@ -156,3 +156,57 @@ class CourseBrainSearchOut(BaseModel):
     matched_concepts: list[BrainSearchConceptOut]
     related_concepts: list[BrainSearchRelationOut]
     occurrences: list[BrainSearchOccurrenceOut]
+
+
+class BrainBuildAcceptedOut(BaseModel):
+    job_id: str = Field(description="已入队的构建任务 id")
+
+
+# ---------------------------------------------------------------------------
+# CB-04 LLM 结构化抽取合同（with_structured_output 输出面；DB 值域见迁移 0023）
+# ---------------------------------------------------------------------------
+
+
+class CourseBrainRelationType(StrEnum):
+    PREREQUISITE = "PREREQUISITE"
+    PART_OF = "PART_OF"
+    RELATED_TO = "RELATED_TO"
+    COMPARE_WITH = "COMPARE_WITH"
+    CAUSES = "CAUSES"
+    APPLIES_TO = "APPLIES_TO"
+
+
+class CourseBrainEvidence(BaseModel):
+    quote: str = Field(
+        min_length=1, max_length=120, description="逐字摘自原文的证据片段，不得改写或概括"
+    )
+    source_hint: str = Field(default="", max_length=200, description="来源提示（记录标题或章节）")
+
+
+class CourseBrainExtractionConcept(BaseModel):
+    name: str = Field(min_length=1, max_length=100, description="概念规范名，跨记录保持一致")
+    description: str = Field(default="", max_length=500, description="一句话概念说明")
+    concept_type: str = Field(
+        default="TERM", max_length=30, description="概念类型，如 TERM/PROCESS/PRINCIPLE/METHOD/TOOL"
+    )
+    importance: int = Field(default=3, ge=1, le=5, description="重要度 1~5")
+    evidence: list[CourseBrainEvidence] = Field(
+        default_factory=list[CourseBrainEvidence], description="支撑该概念的原文证据，至少一条"
+    )
+
+
+class CourseBrainExtractionRelation(BaseModel):
+    source: str = Field(min_length=1, max_length=100, description="关系起点概念名")
+    target: str = Field(min_length=1, max_length=100, description="关系终点概念名")
+    relation_type: CourseBrainRelationType = Field(description="关系类型")
+    confidence: float = Field(default=0.5, ge=0, le=1, description="置信度 0~1")
+
+
+class CourseBrainExtractionBatch(BaseModel):
+    concepts: list[CourseBrainExtractionConcept] = Field(
+        default_factory=list[CourseBrainExtractionConcept], description="本次内容中抽取到的概念"
+    )
+    relations: list[CourseBrainExtractionRelation] = Field(
+        default_factory=list[CourseBrainExtractionRelation],
+        description="概念之间的关系（source/target 必须是本次概念名）",
+    )

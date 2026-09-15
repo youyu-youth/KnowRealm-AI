@@ -5,10 +5,12 @@ run_migrations 补齐后与全新库双口径对照；锚点链接表重建后�
 查询口径：六态派生、CONFIRMED-only 不泄漏、来源回溯与 B2 检索扩展。
 """
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import cast
 
 import aiosqlite
 import httpx
@@ -20,12 +22,21 @@ from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_ver
 from app.main import create_app
 from app.modules.course_brain.schemas import CourseBrainSearchOut
 from app.modules.course_brain.service import CourseBrainService, normalize_concept_name
+from app.modules.course_brain.worker import course_brain_spec, preflight
+from app.modules.llm.service import StructuredGenerationError, StructuredModelResult
 from app.modules.search.segment_service import (
     ENTITY_CONCEPT,
+    ENTITY_DOCUMENT_SEGMENT,
     ENTITY_TRANSCRIPT_SEGMENT,
     SegmentSearchService,
 )
 from app.modules.search.tokenizer import tokenize
+from app.modules.settings.config import (
+    grant_llm_consent as grant_llm_consent_file,
+)
+from app.modules.settings.config import (
+    save_llm_provider,
+)
 from app.modules.transcript.sentences import content_hash
 
 TOKEN = "test-launch-token"
@@ -1363,3 +1374,483 @@ async def test_brain_search_respects_limit_and_truncates_quote(tmp_path: Path) -
         assert len(result.occurrences) == 1
         assert len(result.occurrences[0].quote) == 500
         assert long_content.startswith(result.occurrences[0].quote)
+
+
+# ---------------------------------------------------------------------------
+# CB-04 多来源收集与构建 Worker（job_type=CONCEPT_EXTRACTION）
+# ---------------------------------------------------------------------------
+
+BRAIN_OUTPUT: dict[str, object] = {
+    "concepts": [
+        {
+            "name": "MVCC",
+            "description": "多版本并发控制",
+            "concept_type": "TERM",
+            "importance": 5,
+            "evidence": [
+                {"quote": "MVCC 通过 ReadView 实现事务可见性", "source_hint": "转写"},
+            ],
+        },
+        {
+            "name": "ReadView",
+            "description": "一致性视图",
+            "concept_type": "TERM",
+            "importance": 4,
+            "evidence": [
+                {"quote": "可见性判断依赖 ReadView", "source_hint": "文档"},
+            ],
+        },
+    ],
+    "relations": [
+        {
+            "source": "MVCC",
+            "target": "ReadView",
+            "relation_type": "PART_OF",
+            "confidence": 0.8,
+        }
+    ],
+}
+
+
+class FakeCourseBrainModel:
+    def __init__(self, output: object | None = None) -> None:
+        self.output = output if output is not None else BRAIN_OUTPUT
+        self.prompts: list[str] = []
+        self.error: Exception | None = None
+        self.release = asyncio.Event()
+        self.release.set()
+
+    async def generate(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        prompt: str,
+    ) -> StructuredModelResult:
+        assert base_url == "https://example.com/v1"
+        assert api_key == "sk-test"
+        assert model == "qwen-plus"
+        self.prompts.append(prompt)
+        await self.release.wait()
+        if self.error is not None:
+            raise self.error
+        return StructuredModelResult(output=self.output, token_usage={"total_tokens": 21})
+
+
+@asynccontextmanager
+async def running_brain_worker_app(
+    data_dir: Path, model: FakeCourseBrainModel
+) -> AsyncGenerator[tuple[FastAPI, httpx.AsyncClient]]:
+    app = create_app(data_dir=data_dir, launch_token=TOKEN, course_brain_model=model)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://testserver",
+            headers={"X-KnowRealm-Token": TOKEN},
+        ) as client:
+            yield app, client
+
+
+async def configure_llm(client: httpx.AsyncClient) -> None:
+    response = await client.put(
+        "/api/settings/providers/llm",
+        json={
+            "base_url": "https://example.com/v1",
+            "api_key": "sk-test",
+            "model": "qwen-plus",
+        },
+    )
+    assert response.status_code == 200
+
+
+async def grant_llm_consent(client: httpx.AsyncClient) -> None:
+    response = await client.post("/api/settings/external-processing-consents/llm")
+    assert response.status_code == 200
+
+
+async def seed_document_segment(
+    app: FastAPI,
+    *,
+    course_id: str,
+    record_id: str,
+    segment_id: str,
+    file_id: str,
+    content: str,
+    page_no: int = 1,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO record_files (id, record_id, file_type, source_type, file_path, "
+                "original_name, mime_type, file_size, duration_ms, sequence_no, content_hash, "
+                "created_at, updated_at, deleted_at) "
+                "VALUES (:id, :record_id, 'DOCUMENT', 'UPLOADED', 'p.pdf', 'p.pdf', "
+                "'application/pdf', 1, 0, 1, 'h', :now, :now, NULL)"
+            ),
+            {"id": file_id, "record_id": record_id, "now": NOW},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO document_segments (id, course_id, record_id, record_file_id, "
+                "sequence_no, page_no, content, content_hash) "
+                "VALUES (:id, :course_id, :record_id, :file_id, 0, :page_no, :content, "
+                ":content_hash)"
+            ),
+            {
+                "id": segment_id,
+                "course_id": course_id,
+                "record_id": record_id,
+                "file_id": file_id,
+                "page_no": page_no,
+                "content": content,
+                "content_hash": content_hash(content),
+            },
+        )
+        await SegmentSearchService.upsert_segment_index(
+            session, ENTITY_DOCUMENT_SEGMENT, [segment_id]
+        )
+
+
+async def link_anchor(
+    app: FastAPI,
+    *,
+    link_id: str,
+    resource_type: str,
+    resource_id: str,
+    anchor_id: str,
+    relation_type: str = "PRIMARY",
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO source_anchor_links (id, resource_type, resource_id, "
+                "source_anchor_id, relation_type) "
+                "VALUES (:id, :resource_type, :resource_id, :anchor_id, :relation_type)"
+            ),
+            {
+                "id": link_id,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "anchor_id": anchor_id,
+                "relation_type": relation_type,
+            },
+        )
+
+
+async def wait_for_brain_status(
+    client: httpx.AsyncClient, course_id: str, expected: str, attempts: int = 300
+) -> dict[str, object]:
+    for _ in range(attempts):
+        payload = cast(
+            dict[str, object],
+            (await client.get(f"/api/courses/{course_id}/brain")).json(),
+        )
+        if payload["status"] == expected:
+            return payload
+        await asyncio.sleep(0.02)
+    pytest.fail(f"课程大脑未进入 {expected}")
+
+
+async def wait_for_job_status(
+    app: FastAPI, job_id: str, expected: str, attempts: int = 300
+) -> dict[str, object]:
+    for _ in range(attempts):
+        async with app.state.session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT status, error_code, result_json FROM processing_jobs "
+                        "WHERE id = :job_id"
+                    ),
+                    {"job_id": job_id},
+                )
+            ).one()
+        status = cast(str, row[0])
+        if status == expected:
+            return {"status": status, "error_code": row[1], "result_json": row[2]}
+        await asyncio.sleep(0.02)
+    pytest.fail(f"构建任务未进入 {expected}")
+
+
+async def count_rows(app: FastAPI, table: str) -> int:
+    async with app.state.session_factory() as session:
+        return int(await session.scalar(text(f"SELECT count(*) FROM {table}")) or 0)
+
+
+async def seed_full_sources(app: FastAPI) -> None:
+    """一条记录聚合转写分片 + 文档分片 + ACTIVE KP + 该 KP 的对话锚点。"""
+    await seed_record(app, RECORD_ID, COURSE_ID, title="数据库课程")
+    await seed_transcript_segment(
+        app,
+        record_id=RECORD_ID,
+        segment_id="seg-1",
+        transcript_id="transcript-1",
+        file_id="file-1",
+        content="MVCC 通过 ReadView 实现事务可见性",
+        start_ms=1000,
+        end_ms=5000,
+    )
+    await seed_document_segment(
+        app,
+        course_id=COURSE_ID,
+        record_id=RECORD_ID,
+        segment_id="doc-seg-1",
+        file_id="doc-file-1",
+        content="本页说明可见性判断依赖 ReadView 的快照读机制",
+        page_no=2,
+    )
+    await seed_knowledge_point(app, kp_id=KP_ID, record_id=RECORD_ID, name="MVCC")
+    await seed_chat_message(
+        app, session_id="chat-session-1", message_id="chat-message-1", content="MVCC 要点"
+    )
+    await seed_anchor(
+        app,
+        anchor_id="anchor-chat",
+        course_id=COURSE_ID,
+        source_type="CHAT_MESSAGE",
+        source_id="chat-message-1",
+        record_id=RECORD_ID,
+    )
+    await link_anchor(
+        app,
+        link_id="kp-chat-link",
+        resource_type="KNOWLEDGE_POINT",
+        resource_id=KP_ID,
+        anchor_id="anchor-chat",
+    )
+
+
+@pytest.mark.anyio
+async def test_build_collects_multi_source_and_publishes_candidates(tmp_path: Path) -> None:
+    model = FakeCourseBrainModel()
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_full_sources(app)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert accepted.status_code == 202, accepted.text
+        job_id = accepted.json()["job_id"]
+        snapshot = await wait_for_brain_status(client, COURSE_ID, "REVIEW")
+        assert snapshot["candidate_count"] == 2 and snapshot["concept_count"] == 0
+
+        candidates = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        by_name = {item["canonical_name"]: item["id"] for item in candidates}
+        assert set(by_name) == {"MVCC", "ReadView"}
+
+        mvcc_sources = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/{by_name['MVCC']}/sources")
+        ).json()
+        assert {anchor["source_type"] for anchor in mvcc_sources["anchors"]} == {
+            "AUDIO_SEGMENT",
+            "CHAT_MESSAGE",
+        }
+        assert mvcc_sources["knowledge_points"] == [
+            {
+                "record_id": RECORD_ID,
+                "record_title": "数据库课程",
+                "knowledge_point_id": KP_ID,
+                "knowledge_point_name": "MVCC",
+                "relevance": 1.0,
+                "evidence_count": 1,
+            }
+        ]
+        readview_sources = (
+            await client.get(
+                f"/api/courses/{COURSE_ID}/brain/concepts/{by_name['ReadView']}/sources"
+            )
+        ).json()
+        assert [anchor["source_type"] for anchor in readview_sources["anchors"]] == [
+            "DOCUMENT_SEGMENT"
+        ]
+        assert readview_sources["anchors"][0]["page_no"] == 2
+        assert readview_sources["knowledge_points"] == []
+
+        result = json.loads(
+            cast(str, (await wait_for_job_status(app, job_id, "SUCCEEDED"))["result_json"])
+        )
+        assert result["concept_count"] == 2 and result["candidate_count"] == 2
+        assert set(result["fingerprint"]) == {
+            "transcript_segments",
+            "document_segments",
+            "knowledge_points",
+        }
+
+        async with app.state.session_factory() as session:
+            relations = (
+                await session.execute(
+                    text(
+                        "SELECT source_concept_id, target_concept_id, relation_type, status "
+                        "FROM concept_relations"
+                    )
+                )
+            ).all()
+            log_row = (
+                await session.execute(
+                    text(
+                        "SELECT graph_name, graph_node, prompt_version "
+                        "FROM llm_call_logs WHERE graph_name = 'course-brain'"
+                    )
+                )
+            ).one()
+        assert relations == [(by_name["MVCC"], by_name["ReadView"], "PART_OF", "CANDIDATE")]
+        assert log_row == ("course-brain", "extract", "course_brain_v1")
+        assert await count_rows(app, "learning_events") == 0
+        assert len(model.prompts) == 1
+        assert "学习场景：INTEREST" in model.prompts[0]
+        assert "MVCC 通过 ReadView 实现事务可见性" in model.prompts[0]
+        assert "已确认知识点：\n- MVCC" in model.prompts[0]
+
+
+@pytest.mark.anyio
+async def test_rebuild_is_idempotent_and_reuses_confirmed_concept(tmp_path: Path) -> None:
+    model = FakeCourseBrainModel()
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_full_sources(app)
+        await seed_concept(app, concept_id="concept-mvcc", course_id=COURSE_ID, name="MVCC")
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        first = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert first.status_code == 202
+        await wait_for_brain_status(client, COURSE_ID, "REVIEW")
+
+        concepts_after_first = await count_rows(app, "concepts")
+        occurrences_after_first = await count_rows(app, "record_concepts")
+        anchors_after_first = await count_rows(app, "source_anchors")
+        relations_after_first = await count_rows(app, "concept_relations")
+        assert concepts_after_first == 2  # 1 复用 CONFIRMED + 1 新候选
+        assert occurrences_after_first == 2
+        assert anchors_after_first == 3  # 对话锚点 + 转写锚点 + 文档锚点
+        assert relations_after_first == 1
+
+        second = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert second.status_code == 202
+        await wait_for_job_status(app, second.json()["job_id"], "SUCCEEDED")
+
+        assert await count_rows(app, "concepts") == concepts_after_first
+        assert await count_rows(app, "record_concepts") == occurrences_after_first
+        assert await count_rows(app, "source_anchors") == anchors_after_first
+        assert await count_rows(app, "concept_relations") == relations_after_first
+        async with app.state.session_factory() as session:
+            confirmed = await session.scalar(
+                text("SELECT count(*) FROM concepts WHERE status = 'CONFIRMED'")
+            )
+            mvcc = await session.scalar(
+                text("SELECT status FROM concepts WHERE id = 'concept-mvcc'")
+            )
+        assert confirmed == 1, "重复构建不得新增或覆盖正式节点"
+        assert mvcc == "CONFIRMED"
+
+
+@pytest.mark.anyio
+async def test_build_failure_keeps_previous_graph(tmp_path: Path) -> None:
+    model = FakeCourseBrainModel()
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_full_sources(app)
+        await seed_concept(app, concept_id="concept-mvcc", course_id=COURSE_ID, name="MVCC")
+        await seed_concept(app, concept_id="concept-readview", course_id=COURSE_ID, name="ReadView")
+        await seed_record_concept(
+            app, rc_id="rc-kept", record_id=RECORD_ID, concept_id="concept-mvcc"
+        )
+        await seed_relation(
+            app,
+            relation_id="rel-kept",
+            course_id=COURSE_ID,
+            source_concept_id="concept-mvcc",
+            target_concept_id="concept-readview",
+        )
+        await configure_llm(client)
+        await grant_llm_consent(client)
+        model.error = StructuredGenerationError("PROVIDER_REQUEST_FAILED")
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert accepted.status_code == 202
+        job = await wait_for_job_status(app, accepted.json()["job_id"], "FAILED")
+
+        assert job["error_code"] == "PROVIDER_REQUEST_FAILED"
+        assert await count_rows(app, "concepts") == 2
+        assert await count_rows(app, "record_concepts") == 1
+        assert await count_rows(app, "concept_relations") == 1
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert snapshot["status"] == "READY" and snapshot["stale"] is False
+
+
+@pytest.mark.anyio
+async def test_build_trigger_guards(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        unconfigured = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert unconfigured.status_code == 409
+        assert unconfigured.json()["code"] == "LLM_PROVIDER_UNCONFIGURED"
+
+        await configure_llm(client)
+        no_consent = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert no_consent.status_code == 409
+        assert no_consent.json()["code"] == "AI_CONSENT_REQUIRED"
+
+        await grant_llm_consent(client)
+        await seed_job(app, job_id="job-active", course_id=COURSE_ID, status="RUNNING")
+        in_progress = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert in_progress.status_code == 409
+        assert in_progress.json()["code"] == "COURSE_BRAIN_BUILD_IN_PROGRESS"
+
+        await seed_course(app, OTHER_COURSE_ID, status="ARCHIVED")
+        archived = await client.post(f"/api/courses/{OTHER_COURSE_ID}/brain/builds")
+        assert archived.status_code == 409
+        assert archived.json()["code"] == "COURSE_ARCHIVED"
+
+        missing = await client.post("/api/courses/missing-course/brain/builds")
+        assert missing.status_code == 404
+        assert missing.json()["code"] == "COURSE_NOT_FOUND"
+
+
+@pytest.mark.anyio
+async def test_build_preflight_waits_for_provider_and_consent(tmp_path: Path) -> None:
+    data_dir = tmp_path / "KnowRealm"
+    data_dir.mkdir()
+    assert await preflight(data_dir) is None
+
+    await asyncio.to_thread(
+        save_llm_provider,
+        data_dir,
+        base_url="https://example.com/v1",
+        api_key="sk-test",
+        model="qwen-plus",
+        clear_api_key=False,
+    )
+    assert await preflight(data_dir) is None, "有 key 但无同意时仍应等待"
+
+    await asyncio.to_thread(grant_llm_consent_file, data_dir)
+    provider = await preflight(data_dir)
+    assert provider is not None and provider.model == "qwen-plus"
+
+
+@pytest.mark.anyio
+async def test_build_worker_recovers_interrupted_running_job(tmp_path: Path) -> None:
+    model = FakeCourseBrainModel()
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, _client):
+        await seed_course(app, COURSE_ID)
+        await seed_job(app, job_id="job-running", course_id=COURSE_ID, status="RUNNING")
+
+        spec = course_brain_spec(
+            app.state.session_factory,
+            app.state.data_dir,
+            model,
+            app.state.record_notifier,
+        )
+        await spec.recover_interrupted()
+
+        async with app.state.session_factory() as session:
+            row = (
+                await session.execute(
+                    text("SELECT status, error_code FROM processing_jobs WHERE id = 'job-running'")
+                )
+            ).one()
+        assert row == ("FAILED", "WORKER_INTERRUPTED")

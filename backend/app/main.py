@@ -29,6 +29,7 @@ from app.modules.capture import (
 from app.modules.course import courses
 from app.modules.course.tombstone_cleanup import DocumentCleanupService
 from app.modules.course_brain import routes as course_brain_routes
+from app.modules.course_brain.worker import course_brain_spec
 from app.modules.data import routes as data_routes
 from app.modules.data.archive import create_rolling_backup, restore_archive
 from app.modules.jobs import processing_jobs
@@ -37,7 +38,9 @@ from app.modules.knowledge_point import knowledge_points
 from app.modules.knowledge_point.worker import knowledge_point_spec
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.llm.service import (
+    CourseBrainModel,
     KnowledgePointModel,
+    OpenAiCompatibleCourseBrainModel,
     OpenAiCompatibleKnowledgePointModel,
     OpenAiCompatibleQuizGradingModel,
     OpenAiCompatibleQuizModel,
@@ -98,6 +101,7 @@ def create_app(
     quiz_grading_model: QuizGradingModel | None = None,
     todo_model: TodoModel | None = None,
     review_material_model: ReviewMaterialModel | None = None,
+    course_brain_model: CourseBrainModel | None = None,
     import_archive: Path | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
@@ -155,6 +159,7 @@ def create_app(
             app.state.review_material_model = (
                 review_material_model or OpenAiCompatibleReviewMaterialModel()
             )
+            app.state.course_brain_model = course_brain_model or OpenAiCompatibleCourseBrainModel()
             app.state.asr_client = asr_client or TencentAsrClient()
 
             async def cleanup_course_tombstones() -> None:
@@ -280,6 +285,19 @@ def create_app(
                                 session_factory,
                                 resolved_data_dir,
                                 app.state.todo_model,
+                                record_notifier,
+                            ),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
+                    (
+                        "course_brain",
+                        lambda: JobRunner(
+                            course_brain_spec(
+                                session_factory,
+                                resolved_data_dir,
+                                app.state.course_brain_model,
                                 record_notifier,
                             ),
                             session_factory,

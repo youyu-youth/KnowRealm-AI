@@ -152,6 +152,20 @@
         "title": "Body_import_document_api_document_imports_post",
         "type": "object"
       },
+      "BrainBuildAcceptedOut": {
+        "properties": {
+          "job_id": {
+            "description": "已入队的构建任务 id",
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "BrainBuildAcceptedOut",
+        "type": "object"
+      },
       "BrainConceptCreate": {
         "properties": {
           "concept_type": {
@@ -2485,7 +2499,8 @@
           "QUIZ_GENERATION",
           "TODO_GENERATION",
           "QUIZ_GRADING",
-          "REVIEW_MATERIAL_GENERATION"
+          "REVIEW_MATERIAL_GENERATION",
+          "CONCEPT_EXTRACTION"
         ],
         "title": "ProcessingJobType",
         "type": "string"
@@ -7107,6 +7122,104 @@
           }
         },
         "summary": "Get Course Brain",
+        "tags": [
+          "course-brain"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/brain/builds": {
+      "post": {
+        "operationId": "trigger_course_brain_build_api_courses__course_id__brain_builds_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrainBuildAcceptedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Trigger Course Brain Build",
         "tags": [
           "course-brain"
         ]
