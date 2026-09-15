@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
+from loguru import logger
 from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -57,7 +58,11 @@ from app.modules.settings.config import (
     load_llm_provider,
 )
 from app.modules.source_anchor.models import SourceAnchor, SourceAnchorLink
+from app.modules.source_anchor.schemas import SourceAnchorType
 from app.modules.source_anchor.service import SourceAnchorService
+from app.modules.summary.derivation import summary_content
+from app.modules.summary.models import AiSummary
+from app.modules.summary.schemas import AiSummaryStatus, SummaryContent
 from app.shared.events import RecordInvalidationNotifier
 from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
@@ -95,13 +100,6 @@ _KP_ROWS_SQL = text(
     "AND kp.generation_status = 'ACTIVE' "
     "ORDER BY kp.record_id, kp.created_at"
 )
-_CONFIRMED_SUMMARY_SQL = text(
-    "SELECT s.record_id, s.summary_json FROM ai_summaries s "
-    "WHERE s.status = 'CONFIRMED' AND s.deleted_at IS NULL "
-    "AND s.record_id IN ("
-    "SELECT id FROM records WHERE course_id = :course_id AND deleted_at IS NULL) "
-    "ORDER BY s.version_no DESC"
-)
 _KP_CHAT_ANCHOR_SQL = text(
     "SELECT l.resource_id AS kp_id, a.id AS anchor_id "
     "FROM source_anchor_links l "
@@ -115,7 +113,7 @@ _KP_CHAT_ANCHOR_SQL = text(
 
 @dataclass(frozen=True)
 class _SourceSegment:
-    source_type: str  # AUDIO_SEGMENT / DOCUMENT_SEGMENT
+    source_type: SourceAnchorType
     segment_id: str
     record_id: str
     content: str
@@ -159,6 +157,7 @@ class _Occurrence:
 class _PublishPlan:
     touched_count: int
     created_concept_count: int
+    skipped_evidence_count: int
     occurrences: dict[tuple[str, str], _Occurrence]
     located: dict[tuple[str, str], _SourceSegment]
     relation_candidates: dict[tuple[str, str, str], float]
@@ -199,29 +198,11 @@ def build_brain_prompt(ctx: _ClaimedBrainJob, block: _RecordBlock) -> str:
     )
 
 
-def _summary_text(summary_json: str) -> str:
-    try:
-        payload: object = json.loads(summary_json)
-    except json.JSONDecodeError:
-        return ""
-    if not isinstance(payload, dict):
-        return ""
-    content = cast(dict[str, object], payload)
-    lines = [str(content.get("topic", "")), str(content.get("abstract", ""))]
-    sections = content.get("sections")
-    if isinstance(sections, list):
-        for section in cast(list[object], sections):
-            if not isinstance(section, dict):
-                continue
-            fields = cast(dict[str, object], section)
-            points = fields.get("points")
-            joined = (
-                "；".join(str(point) for point in cast("list[object]", points))
-                if isinstance(points, list)
-                else ""
-            )
-            lines.append(f"{fields.get('heading', '')}：{joined}")
-    return "\n".join(line for line in lines if line)
+def _summary_text(content: SummaryContent) -> str:
+    sections = "\n".join(
+        f"{section.heading}：" + "；".join(section.points) for section in content.sections
+    )
+    return "\n".join(part for part in (content.topic, content.abstract, sections) if part)
 
 
 def _build_block(
@@ -233,14 +214,16 @@ def _build_block(
     summary_text: str | None,
 ) -> _RecordBlock:
     transcript_text = "\n".join(
-        segment.content for segment in segments if segment.source_type == "AUDIO_SEGMENT"
+        segment.content
+        for segment in segments
+        if segment.source_type == SourceAnchorType.AUDIO_SEGMENT
     )
     document_text = "\n".join(
         f"第 {segment.page_no} 页：{segment.content}"
         if segment.page_no is not None
         else segment.content
         for segment in segments
-        if segment.source_type == "DOCUMENT_SEGMENT"
+        if segment.source_type == SourceAnchorType.DOCUMENT_SEGMENT
     )
     parts = [f"记录：{title}"]
     if kp_rows:
@@ -271,7 +254,7 @@ async def _collect_blocks(session: AsyncSession, course_id: str) -> list[_Record
     for row in (await session.execute(_TRANSCRIPT_SEGMENTS_SQL, params)).all():
         segments_by_record.setdefault(cast(str, row.record_id), []).append(
             _SourceSegment(
-                source_type="AUDIO_SEGMENT",
+                source_type=SourceAnchorType.AUDIO_SEGMENT,
                 segment_id=cast(str, row.segment_id),
                 record_id=cast(str, row.record_id),
                 content=cast(str, row.content),
@@ -284,7 +267,7 @@ async def _collect_blocks(session: AsyncSession, course_id: str) -> list[_Record
     for row in (await session.execute(_DOCUMENT_SEGMENTS_SQL, params)).all():
         segments_by_record.setdefault(cast(str, row.record_id), []).append(
             _SourceSegment(
-                source_type="DOCUMENT_SEGMENT",
+                source_type=SourceAnchorType.DOCUMENT_SEGMENT,
                 segment_id=cast(str, row.segment_id),
                 record_id=cast(str, row.record_id),
                 content=cast(str, row.content),
@@ -300,10 +283,21 @@ async def _collect_blocks(session: AsyncSession, course_id: str) -> list[_Record
             (cast(str, row.kp_id), cast(str, row.name), cast(str, row.detail))
         )
     summary_by_record: dict[str, str] = {}
-    for row in (await session.execute(_CONFIRMED_SUMMARY_SQL, params)).all():
-        summary_by_record.setdefault(
-            cast(str, row.record_id), _summary_text(cast(str, row.summary_json))
+    summaries = (
+        await session.scalars(
+            select(AiSummary)
+            .join(Record, Record.id == AiSummary.record_id)
+            .where(
+                Record.course_id == course_id,
+                Record.deleted_at.is_(None),
+                AiSummary.status == AiSummaryStatus.CONFIRMED,
+                AiSummary.deleted_at.is_(None),
+            )
+            .order_by(AiSummary.version_no.desc())
         )
+    ).all()
+    for summary in summaries:
+        summary_by_record.setdefault(summary.record_id, _summary_text(summary_content(summary)))
 
     blocks: list[_RecordBlock] = []
     for record in records:
@@ -450,6 +444,7 @@ async def writeback(
                 "fingerprint": extraction.fingerprint,
                 "concept_count": plan.touched_count,
                 "candidate_count": plan.created_concept_count,
+                "skipped_evidence_count": plan.skipped_evidence_count,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -458,6 +453,12 @@ async def writeback(
         job.error_message = None
         job.finished_at = now
         job.updated_at = now
+    if plan.skipped_evidence_count:
+        logger.warning(
+            "course_brain_evidence_unlocated",
+            course_id=ctx.course_id,
+            count=plan.skipped_evidence_count,
+        )
     return True
 
 
@@ -466,7 +467,19 @@ async def _build_publish_plan(
 ) -> _PublishPlan:
     """归一化抽取结果：复用/新建概念、累计出现、逐字定位证据、汇总关系候选。"""
     concepts = list(
-        (await session.scalars(select(Concept).where(Concept.course_id == course_id))).all()
+        (
+            await session.scalars(
+                select(Concept)
+                .where(
+                    Concept.course_id == course_id,
+                    # ARCHIVED 不参与复用：用户已忽略的同名概念重新抽取须再走 CANDIDATE 审核。
+                    Concept.status.in_(
+                        (ConceptStatus.CONFIRMED.value, ConceptStatus.CANDIDATE.value)
+                    ),
+                )
+                .order_by(Concept.created_at, Concept.id)
+            )
+        ).all()
     )
     # 同 normalized_name 优先复用 CONFIRMED，其次早建候选（不重正式节点）。
     concept_by_norm: dict[str, Concept] = {}
@@ -483,6 +496,7 @@ async def _build_publish_plan(
     occurrences: dict[tuple[str, str], _Occurrence] = {}
     located: dict[tuple[str, str], _SourceSegment] = {}
     relation_candidates: dict[tuple[str, str, str], float] = {}
+    skipped_evidence_count = 0
 
     for record_extraction in extraction.records:
         block = record_extraction.block
@@ -515,15 +529,20 @@ async def _build_publish_plan(
                     knowledge_point_id=block.kp_id_by_normalized.get(normalized),
                 ),
             )
-            occurrence.evidence_count += len(raw.evidence)
             if occurrence.knowledge_point_id is None:
                 occurrence.knowledge_point_id = block.kp_id_by_normalized.get(normalized)
             for evidence in raw.evidence:
                 segment = _locate_quote(block.segments, evidence.quote)
                 if segment is None:
+                    # 逐字定位失败：跳过该条证据并计数（不污染出现次数）。
+                    skipped_evidence_count += 1
                     continue
+                occurrence.evidence_count += 1
                 located.setdefault((concept.id, segment.segment_id), segment)
-                if segment.source_type == "AUDIO_SEGMENT" and segment.start_ms is not None:
+                if (
+                    segment.source_type == SourceAnchorType.AUDIO_SEGMENT
+                    and segment.start_ms is not None
+                ):
                     if (
                         occurrence.first_start_ms is None
                         or segment.start_ms < occurrence.first_start_ms
@@ -535,13 +554,14 @@ async def _build_publish_plan(
             target = concept_by_norm.get(normalize_concept_name(relation.target))
             if source is None or target is None or source.id == target.id:
                 continue
-            relation_candidates[(source.id, target.id, relation.relation_type.value)] = (
-                relation.confidence
-            )
+            key = (source.id, target.id, relation.relation_type.value)
+            # 同一三元组重复出现取最高置信度（Last-write 会让顺序影响结果）。
+            relation_candidates[key] = max(relation_candidates.get(key, 0.0), relation.confidence)
 
     return _PublishPlan(
         touched_count=len(touched_ids),
         created_concept_count=len(created_concepts),
+        skipped_evidence_count=skipped_evidence_count,
         occurrences=occurrences,
         located=located,
         relation_candidates=relation_candidates,
@@ -588,7 +608,9 @@ async def _publish_anchors(session: AsyncSession, course_id: str, plan: _Publish
         await session.execute(
             delete(SourceAnchor).where(
                 SourceAnchor.id.in_(existing_anchor_ids),
-                SourceAnchor.source_type.in_(("AUDIO_SEGMENT", "DOCUMENT_SEGMENT")),
+                SourceAnchor.source_type.in_(
+                    (SourceAnchorType.AUDIO_SEGMENT, SourceAnchorType.DOCUMENT_SEGMENT)
+                ),
             )
         )
         await session.execute(
@@ -604,10 +626,14 @@ async def _publish_anchors(session: AsyncSession, course_id: str, plan: _Publish
             source_id=segment.segment_id,
             record_id=segment.record_id,
             transcript_segment_id=(
-                segment.segment_id if segment.source_type == "AUDIO_SEGMENT" else None
+                segment.segment_id
+                if segment.source_type == SourceAnchorType.AUDIO_SEGMENT
+                else None
             ),
             document_segment_id=(
-                segment.segment_id if segment.source_type == "DOCUMENT_SEGMENT" else None
+                segment.segment_id
+                if segment.source_type == SourceAnchorType.DOCUMENT_SEGMENT
+                else None
             ),
             page_no=segment.page_no,
         )

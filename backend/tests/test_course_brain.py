@@ -1674,6 +1674,7 @@ async def test_build_collects_multi_source_and_publishes_candidates(tmp_path: Pa
             cast(str, (await wait_for_job_status(app, job_id, "SUCCEEDED"))["result_json"])
         )
         assert result["concept_count"] == 2 and result["candidate_count"] == 2
+        assert result["skipped_evidence_count"] == 0
         assert set(result["fingerprint"]) == {
             "transcript_segments",
             "document_segments",
@@ -1854,3 +1855,98 @@ async def test_build_worker_recovers_interrupted_running_job(tmp_path: Path) -> 
                 )
             ).one()
         assert row == ("FAILED", "WORKER_INTERRUPTED")
+
+
+@pytest.mark.anyio
+async def test_build_skips_unlocatable_evidence_from_occurrence_count(tmp_path: Path) -> None:
+    output: dict[str, object] = {
+        "concepts": [
+            {
+                "name": "MVCC",
+                "description": "多版本并发控制",
+                "concept_type": "TERM",
+                "importance": 4,
+                "evidence": [
+                    {"quote": "MVCC 通过 ReadView 实现事务可见性", "source_hint": "转写"},
+                    {"quote": "这句话并不存在于任何原文之中", "source_hint": "转写"},
+                ],
+            }
+        ],
+        "relations": [],
+    }
+    model = FakeCourseBrainModel(output=output)
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+        )
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        job = await wait_for_job_status(app, accepted.json()["job_id"], "SUCCEEDED")
+        result = json.loads(cast(str, job["result_json"]))
+        assert result["skipped_evidence_count"] == 1
+
+        candidates = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        assert [item["canonical_name"] for item in candidates] == ["MVCC"]
+        assert candidates[0]["occurrence_count"] == 1, "定位失败的证据不得计入出现次数"
+
+
+@pytest.mark.anyio
+async def test_rebuild_reproposes_archived_concept_as_candidate(tmp_path: Path) -> None:
+    output: dict[str, object] = {
+        "concepts": [
+            {
+                "name": "MVCC",
+                "description": "多版本并发控制",
+                "concept_type": "TERM",
+                "importance": 4,
+                "evidence": [{"quote": "MVCC 通过 ReadView 实现事务可见性", "source_hint": "转写"}],
+            }
+        ],
+        "relations": [],
+    }
+    model = FakeCourseBrainModel(output=output)
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+        )
+        await seed_concept(
+            app,
+            concept_id="concept-archived",
+            course_id=COURSE_ID,
+            name="MVCC",
+            status="ARCHIVED",
+        )
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert accepted.status_code == 202
+        await wait_for_brain_status(client, COURSE_ID, "REVIEW")
+
+        candidates = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        assert [item["canonical_name"] for item in candidates] == ["MVCC"]
+        async with app.state.session_factory() as session:
+            archived = await session.scalar(
+                text("SELECT count(*) FROM concepts WHERE id = 'concept-archived'")
+            )
+        assert archived == 1, "已忽略概念保持 ARCHIVED，重新抽取生成新的待审候选"
