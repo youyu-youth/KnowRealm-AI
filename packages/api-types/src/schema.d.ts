@@ -113,6 +113,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat-sessions/{session_id}/messages/{message_id}/knowledge-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Chat Message As Knowledge Point
+         * @description 把一条 AI 回答保存为目标记录的知识点（对话转学习资产 V1）。
+         *
+         *     单事务包住 agent 域会话校验与知识点域写入（校验查询会触发 autobegin，
+         *     Service 内再 begin 会撞已开事务，事务由编排层统一管理）：知识点 + 搜索
+         *     索引 + CHAT_MESSAGE 锚点与链接同生同灭；不写学习事件。
+         */
+        post: operations["save_chat_message_as_knowledge_point_api_chat_sessions__session_id__messages__message_id__knowledge_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses": {
         parameters: {
             query?: never;
@@ -1482,6 +1506,42 @@ export interface components {
              */
             url?: string | null;
         };
+        /**
+         * ChatKnowledgePointSaveRequest
+         * @description 对话转知识点（对话转学习资产 V1）请求体。
+         *
+         *     继承手工新增的校验边界，但显式关闭 strict（pydantic config 为合并语义，
+         *     不写则继承 True；target_record_id 经 JSON 字符串传入，strict 下 UUID
+         *     不接受字符串）。
+         */
+        ChatKnowledgePointSaveRequest: {
+            /**
+             * Detail
+             * @description 知识点详情
+             */
+            detail: string;
+            /**
+             * Importance
+             * @description 重要度，1 至 5 的整数
+             */
+            importance: number;
+            /**
+             * Name
+             * @description 知识点名称
+             */
+            name: string;
+            /**
+             * Tags
+             * @description 最多五个简短标签
+             */
+            tags: string[];
+            /**
+             * Target Record Id
+             * Format: uuid
+             * @description 知识点归属的目标学习记录
+             */
+            target_record_id: string;
+        };
         /** ChatMessageCreate */
         ChatMessageCreate: {
             /**
@@ -1840,6 +1900,17 @@ export interface components {
          */
         KnowledgePointBlockedReason: "SUMMARY_NOT_CONFIRMED" | "SUMMARY_SUPERSEDED" | "COURSE_ARCHIVED" | "TRANSCRIPT_NOT_READY" | "PROVIDER_NOT_CONFIGURED" | "CONSENT_REQUIRED";
         /**
+         * KnowledgePointChatSourceOut
+         * @description 对话来源回溯（对话转学习资产 V1）：经 CHAT_MESSAGE 锚点链接派生的只读信息。
+         */
+        KnowledgePointChatSourceOut: {
+            /**
+             * Chat Session Id
+             * @description 来源对话会话，可跳回查看原回答与引用
+             */
+            chat_session_id: string;
+        };
+        /**
          * KnowledgePointGenerationStatus
          * @enum {string}
          */
@@ -1858,6 +1929,8 @@ export interface components {
         KnowledgePointOut: {
             /** Batch Id */
             batch_id: string | null;
+            /** @description 源自 AI 对话的回溯信息；手工/批量生成知识点为空 */
+            chat_source?: components["schemas"]["KnowledgePointChatSourceOut"] | null;
             /** Created At */
             created_at: string;
             /** Detail */
@@ -3842,6 +3915,80 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    save_chat_message_as_knowledge_point_api_chat_sessions__session_id__messages__message_id__knowledge_points_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+                message_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatKnowledgePointSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgePointOut"];
+                };
             };
             /** @description Forbidden */
             403: {

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
+from app.modules.agent.models import ChatMessage
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
@@ -18,6 +19,7 @@ from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import (
     KnowledgePointAction,
     KnowledgePointBlockedReason,
+    KnowledgePointChatSourceOut,
     KnowledgePointGenerationStatus,
     KnowledgePointInputMode,
     KnowledgePointOut,
@@ -33,6 +35,8 @@ from app.modules.settings.config import (
     llm_provider_fingerprint,
     load_llm_provider,
 )
+from app.modules.source_anchor.models import SourceAnchor, SourceAnchorLink
+from app.modules.source_anchor.service import SourceAnchorService
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.transcript.models import Transcript
@@ -41,7 +45,11 @@ from app.shared.errors import CodedHTTPException
 TRANSCRIPT_LIMIT = 30_000
 
 
-def _knowledge_point_out(item: KnowledgePoint) -> KnowledgePointOut:
+def _knowledge_point_out(
+    item: KnowledgePoint,
+    *,
+    chat_source: KnowledgePointChatSourceOut | None = None,
+) -> KnowledgePointOut:
     raw_tags = cast(object, json.loads(item.tags))
     tag_items = cast(list[object], raw_tags) if isinstance(raw_tags, list) else []
     tags = [value for value in tag_items if isinstance(value, str)]
@@ -55,6 +63,7 @@ def _knowledge_point_out(item: KnowledgePoint) -> KnowledgePointOut:
         importance=int(item.importance),
         generated_from_summary_id=item.generated_from_summary_id,
         generation_status=KnowledgePointGenerationStatus(item.generation_status),
+        chat_source=chat_source,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -175,6 +184,27 @@ async def _visible_items(
     )
 
 
+async def _chat_source_sessions(session: AsyncSession, record_id: str) -> dict[str, str]:
+    """记录下知识点的对话来源映射（kp_id → chat_session_id）。
+
+    经 KNOWLEDGE_POINT 链接 × CHAT_MESSAGE 锚点派生；不回查会话软删——
+    徽章表达「来自 AI 对话」的历史事实，跳转后由会话页自然处理失效态。
+    """
+    rows = (
+        await session.execute(
+            select(SourceAnchorLink.resource_id, ChatMessage.session_id)
+            .join(SourceAnchor, SourceAnchor.id == SourceAnchorLink.source_anchor_id)
+            .join(ChatMessage, ChatMessage.id == SourceAnchor.source_id)
+            .where(
+                SourceAnchorLink.resource_type == "KNOWLEDGE_POINT",
+                SourceAnchor.source_type == "CHAT_MESSAGE",
+                SourceAnchor.record_id == record_id,
+            )
+        )
+    ).all()
+    return {resource_id: chat_session_id for resource_id, chat_session_id in rows}
+
+
 def _job_input_mode(job: ProcessingJob) -> KnowledgePointInputMode | None:
     raw = cast(dict[str, object], json.loads(job.input_json))
     value = raw.get("input_mode")
@@ -192,7 +222,18 @@ class KnowledgePointService:
     ) -> KnowledgePointReadOut:
         record = await _get_record(session, record_id)
         items = await _visible_items(session, record_id, include_superseded=include_superseded)
-        output = [_knowledge_point_out(item) for item in items]
+        chat_sources = await _chat_source_sessions(session, record_id)
+        output = [
+            _knowledge_point_out(
+                item,
+                chat_source=(
+                    KnowledgePointChatSourceOut(chat_session_id=session_id)
+                    if (session_id := chat_sources.get(item.id)) is not None
+                    else None
+                ),
+            )
+            for item in items
+        ]
         active = await _active_job(session, record_id)
         if active is not None:
             return KnowledgePointReadOut(
@@ -378,6 +419,52 @@ class KnowledgePointService:
             await session.flush()
             await SearchService.upsert_knowledge_point_index(session, item.id)
             return _knowledge_point_out(item)
+
+    @staticmethod
+    async def create_from_chat(
+        session: AsyncSession,
+        *,
+        body: KnowledgePointWriteRequest,
+        target_record_id: str,
+        chat_message_id: str,
+    ) -> KnowledgePointOut:
+        """对话转知识点（对话转学习资产 V1）：把一条 AI 回答保存为目标记录的知识点。
+
+        无独立事务：调用方（agent 路由编排）的事务包住会话校验与本写入，
+        保证知识点、搜索索引、CHAT_MESSAGE 锚点与链接要么同生要么同灭。
+        AI 辅助沉淀不代表用户已掌握，不写学习事件（AI 自述不是 Evidence 红线）。
+        """
+        record = await _get_record(session, target_record_id)
+        if record.course_id is None:
+            raise CodedHTTPException(
+                code="RECORD_COURSE_MISSING",
+                status_code=409,
+                detail="目标记录尚未归类到课程，无法建立对话溯源",
+            )
+        item = _new_item(
+            target_record_id,
+            name=body.name,
+            detail=body.detail,
+            tags=body.tags,
+            importance=body.importance,
+        )
+        session.add(item)
+        await session.flush()
+        await SearchService.upsert_knowledge_point_index(session, item.id)
+        anchor = await SourceAnchorService.create_chat_message_anchor(
+            session,
+            course_id=record.course_id,
+            chat_message_id=chat_message_id,
+            record_id=target_record_id,
+        )
+        await SourceAnchorService.link_resource(
+            session,
+            resource_type="KNOWLEDGE_POINT",
+            resource_id=item.id,
+            source_anchor_id=anchor.id,
+            relation_type="PRIMARY",
+        )
+        return _knowledge_point_out(item)
 
     @staticmethod
     async def update(

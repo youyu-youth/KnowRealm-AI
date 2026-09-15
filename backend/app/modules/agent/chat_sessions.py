@@ -6,6 +6,7 @@ from sse_starlette import EventSourceResponse
 
 from app.modules.agent.message_service import ChatMessageService
 from app.modules.agent.schemas import (
+    ChatKnowledgePointSaveRequest,
     ChatMessageCreate,
     ChatMessageOut,
     ChatRecordOption,
@@ -15,6 +16,8 @@ from app.modules.agent.schemas import (
     ChatSessionRename,
 )
 from app.modules.agent.session_service import ChatSessionService
+from app.modules.knowledge_point.schemas import KnowledgePointOut
+from app.modules.knowledge_point.service import KnowledgePointService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
@@ -120,6 +123,36 @@ async def list_chat_messages(
             code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
         )
     return [ChatMessageOut.model_validate(message) for message in messages]
+
+
+@router.post(
+    "/{session_id}/messages/{message_id}/knowledge-points",
+    response_model=KnowledgePointOut,
+    status_code=201,
+)
+async def save_chat_message_as_knowledge_point(
+    session_id: UUID,
+    message_id: UUID,
+    payload: ChatKnowledgePointSaveRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> KnowledgePointOut:
+    """把一条 AI 回答保存为目标记录的知识点（对话转学习资产 V1）。
+
+    单事务包住 agent 域会话校验与知识点域写入（校验查询会触发 autobegin，
+    Service 内再 begin 会撞已开事务，事务由编排层统一管理）：知识点 + 搜索
+    索引 + CHAT_MESSAGE 锚点与链接同生同灭；不写学习事件。
+    """
+    async with session.begin():
+        await ChatSessionService.get_message(session, str(session_id), str(message_id))
+        item = await KnowledgePointService.create_from_chat(
+            session,
+            body=payload,
+            target_record_id=str(payload.target_record_id),
+            chat_message_id=str(message_id),
+        )
+    await request.app.state.record_notifier.notify(str(payload.target_record_id))
+    return item
 
 
 @router.post("/{session_id}/messages", response_class=EventSourceResponse)

@@ -68,6 +68,12 @@ class KnowledgePointBlockedReason(StrEnum):
     CONSENT_REQUIRED = "CONSENT_REQUIRED"
 
 
+class KnowledgePointChatSourceOut(BaseModel):
+    """对话来源回溯（对话转学习资产 V1）：经 CHAT_MESSAGE 锚点链接派生的只读信息。"""
+
+    chat_session_id: str = Field(description="来源对话会话，可跳回查看原回答与引用")
+
+
 class KnowledgePointOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -80,6 +86,9 @@ class KnowledgePointOut(BaseModel):
     importance: int
     generated_from_summary_id: str | None
     generation_status: KnowledgePointGenerationStatus
+    chat_source: KnowledgePointChatSourceOut | None = Field(
+        default=None, description="源自 AI 对话的回溯信息；手工/批量生成知识点为空"
+    )
     created_at: datetime
     updated_at: datetime
 

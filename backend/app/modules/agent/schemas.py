@@ -14,6 +14,8 @@ from pydantic import (
     model_validator,
 )
 
+from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
+
 
 class ChatMode(StrEnum):
     ASK = "ASK"
@@ -114,6 +116,19 @@ class ChatMessageCreate(BaseModel):
         if not cleaned:
             raise ValueError("消息内容不能为空白")
         return cleaned
+
+
+class ChatKnowledgePointSaveRequest(KnowledgePointWriteRequest):
+    """对话转知识点（对话转学习资产 V1）请求体。
+
+    继承手工新增的校验边界，但显式关闭 strict（pydantic config 为合并语义，
+    不写则继承 True；target_record_id 经 JSON 字符串传入，strict 下 UUID
+    不接受字符串）。
+    """
+
+    model_config = ConfigDict(extra="forbid", strict=False)
+
+    target_record_id: UUID = Field(description="知识点归属的目标学习记录")
 
 
 def _iso_utc(value: datetime) -> str:

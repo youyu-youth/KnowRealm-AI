@@ -274,6 +274,57 @@
         "title": "ChatCitationOut",
         "type": "object"
       },
+      "ChatKnowledgePointSaveRequest": {
+        "additionalProperties": false,
+        "description": "对话转知识点（对话转学习资产 V1）请求体。\n\n继承手工新增的校验边界，但显式关闭 strict（pydantic config 为合并语义，\n不写则继承 True；target_record_id 经 JSON 字符串传入，strict 下 UUID\n不接受字符串）。",
+        "properties": {
+          "detail": {
+            "description": "知识点详情",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Detail",
+            "type": "string"
+          },
+          "importance": {
+            "description": "重要度，1 至 5 的整数",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Importance",
+            "type": "integer"
+          },
+          "name": {
+            "description": "知识点名称",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "tags": {
+            "description": "最多五个简短标签",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Tags",
+            "type": "array"
+          },
+          "target_record_id": {
+            "description": "知识点归属的目标学习记录",
+            "format": "uuid",
+            "title": "Target Record Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "detail",
+          "tags",
+          "importance",
+          "target_record_id"
+        ],
+        "title": "ChatKnowledgePointSaveRequest",
+        "type": "object"
+      },
       "ChatMessageCreate": {
         "properties": {
           "content": {
@@ -1142,6 +1193,21 @@
         "title": "KnowledgePointBlockedReason",
         "type": "string"
       },
+      "KnowledgePointChatSourceOut": {
+        "description": "对话来源回溯（对话转学习资产 V1）：经 CHAT_MESSAGE 锚点链接派生的只读信息。",
+        "properties": {
+          "chat_session_id": {
+            "description": "来源对话会话，可跳回查看原回答与引用",
+            "title": "Chat Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chat_session_id"
+        ],
+        "title": "KnowledgePointChatSourceOut",
+        "type": "object"
+      },
       "KnowledgePointGenerationStatus": {
         "enum": [
           "DRAFT",
@@ -1184,6 +1250,17 @@
               }
             ],
             "title": "Batch Id"
+          },
+          "chat_source": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgePointChatSourceOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "源自 AI 对话的回溯信息；手工/批量生成知识点为空"
           },
           "created_at": {
             "title": "Created At",
@@ -5881,6 +5958,126 @@
           }
         },
         "summary": "Send Chat Message",
+        "tags": [
+          "chat-sessions"
+        ]
+      }
+    },
+    "/api/chat-sessions/{session_id}/messages/{message_id}/knowledge-points": {
+      "post": {
+        "description": "把一条 AI 回答保存为目标记录的知识点（对话转学习资产 V1）。\n\n单事务包住 agent 域会话校验与知识点域写入（校验查询会触发 autobegin，\nService 内再 begin 会撞已开事务，事务由编排层统一管理）：知识点 + 搜索\n索引 + CHAT_MESSAGE 锚点与链接同生同灭；不写学习事件。",
+        "operationId": "save_chat_message_as_knowledge_point_api_chat_sessions__session_id__messages__message_id__knowledge_points_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatKnowledgePointSaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgePointOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Save Chat Message As Knowledge Point",
         "tags": [
           "chat-sessions"
         ]

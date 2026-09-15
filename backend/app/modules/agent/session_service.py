@@ -264,6 +264,36 @@ class ChatSessionService:
         return chat
 
     @staticmethod
+    async def get_message(session: AsyncSession, session_id: str, message_id: str) -> ChatMessage:
+        """取会话内消息并做可保存校验（对话转知识点 V1 前置）。
+
+        会话不存在或已软删 → 404；消息不在该会话 → 404；非 AI 回答 → 409。
+        只读不开事务，写入由调用方（KnowledgePointService.create_from_chat）的事务承担。
+        """
+        if await ChatSessionService.get(session, session_id) is None:
+            raise CodedHTTPException(
+                code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+            )
+        message = (
+            await session.scalars(
+                select(ChatMessage).where(
+                    ChatMessage.id == message_id, ChatMessage.session_id == session_id
+                )
+            )
+        ).one_or_none()
+        if message is None:
+            raise CodedHTTPException(
+                code="CHAT_MESSAGE_NOT_FOUND", status_code=404, detail="对话消息不存在"
+            )
+        if message.role != ChatRole.ASSISTANT:
+            raise CodedHTTPException(
+                code="CHAT_MESSAGE_NOT_ASSISTANT",
+                status_code=409,
+                detail="仅 AI 回答可保存为知识点",
+            )
+        return message
+
+    @staticmethod
     async def rename(session: AsyncSession, session_id: str, title: str) -> ChatSession | None:
         async with session.begin():
             chat = await ChatSessionService.get(session, session_id)
