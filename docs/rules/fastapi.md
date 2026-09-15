@@ -1,73 +1,55 @@
+---
+paths:
+  - "backend/**"
+---
+
 # 规范：FastAPI 后端服务层
 
-> 适用范围：`backend/app/`。FastAPI 以 Tauri sidecar 运行，并由 PyInstaller 随 `.msi` 分发。稳定线为 0.14x；0.x minor 可能破坏兼容，版本必须由 uv 锁定。
+> 适用范围：`backend/app/`。FastAPI 以 Tauri sidecar 运行，经 PyInstaller 随 `.msi` 分发；版本由 uv 锁定。
 
-## 1. 架构与职责
-
-Feature-first 模块化单体（ADR-0015）：
+## 1. 架构（feature-first 模块化单体，ADR-0015）
 
 | 位置 | 唯一职责 |
 |---|---|
-| `modules/<域>/` | 一个业务域的完整闭环：路由（薄层）+ service（业务逻辑与事务边界）+ worker + models（该域 ORM 表）+ schemas（该域 Pydantic）；包 `__init__.py` 仅写 docstring，禁止再导出 |
+| `modules/<域>/` | 业务域闭环：薄路由 + service（业务与事务边界）+ worker + models + schemas；`__init__.py` 仅 docstring |
 | `core/` | 进程机制：日志、事件循环、数据目录锁；无业务无状态 |
-| `db/` | engine、`user_version` 迁移执行器、Declarative Base（`db/base.py`） |
-| `shared/` | 跨域无业务契约：deps（会话/令牌依赖）、全局错误 Schema、失效通知总线 |
+| `db/` | engine、`user_version` 迁移执行器、Declarative Base |
+| `shared/` | 跨域契约：deps（会话/令牌依赖）、全局错误 Schema、失效通知总线 |
 
-- 模块划分：平台四件套 `llm`/`jobs`/`settings`/`data`（被单向依赖，不引用业务模块）+ 业务域 `course`/`record`/`capture`/`transcript`/`summary`/`knowledge_point`/`quiz`/`todo`/`chat`/`profile`/`today`；供应商集成落域内 `integrations/` 子包。
-- 跨模块引用（行为与数据契约同规则）一律**直达具体文件**（如 `from app.modules.quiz.service import QuizService`）；模块间方向必须无环，法定方向 = `capture → transcript → summary → {knowledge_point, quiz, todo}`，chat/today 下游，course/record 上游聚合。
-- 路由必须保持薄层，不得直接写 SQL、调用 LLM 或组装业务流程。
-- service 层集中承载事务、worker 复用逻辑和唯一写入口等领域约束。
-- 后台任务不设独立 worker 进程：`processing_jobs` 表作为队列，由 sidecar 进程内 asyncio 任务池消费。
+- 模块清单：平台 `llm`/`jobs`/`settings`/`data`（被单向依赖）+ 业务域 `course`/`record`/`capture`/`transcript`/`summary`/`knowledge_point`/`quiz`/`todo`/`agent`/`learning`/`search`/`source_anchor`/`review_material`/`profile`/`today`；供应商集成落域内 `integrations/` 子包。
+- 跨模块引用（行为与数据契约同规则）直达具体文件（如 `from app.modules.quiz.service import QuizService`）；模块间方向无环，法定方向 = `capture → transcript → summary → {knowledge_point, quiz, todo}`，agent/today 下游，course/record 上游聚合。
+- 路由必须薄层（不写 SQL、不调 LLM、不编排业务流程）；事务与领域约束集中在 service；后台任务无独立 worker 进程：`processing_jobs` 表 + 进程内 asyncio 任务池消费。
 
 ## 2. 路由与 OpenAPI 契约
 
-- 每个资源一个 `APIRouter`，统一 `prefix` 和 `tags`。路径使用复数名词 kebab-case，行为由 HTTP 方法表达；子动作也使用名词资源。
-- 路径和查询参数使用 `UUID`、`int`、Pydantic query model 等具体类型，让 FastAPI 在边界校验。
-- 请求与响应分别使用 `XxxCreate`、`XxxUpdate`、`XxxOut`；更新模型通过可选字段与 `model_dump(exclude_unset=True)` 区分未传和显式空值。
-- 每个路由必须声明 `response_model`，每个 Schema 字段必须有类型注解；响应只暴露对外字段，不返回 ORM 或内部技术字段。
-- OpenAPI 位于 `/api/openapi.json`，是 `packages/api-types` 生成 TypeScript 类型的唯一契约。破坏性字段变更必须同步 OpenAPI 生成物，再更新前端调用。
+- 每资源一个 APIRouter（统一 prefix/tags）；路径复数名词 kebab-case，行为由 HTTP 方法表达；路径/查询参数用具体类型（`UUID`、`int`、query model）在边界校验。
+- 请求/响应 `XxxCreate`/`XxxUpdate`/`XxxOut`；更新模型用可选字段 + `model_dump(exclude_unset=True)` 区分未传/显式空值；每路由必须 `response_model`，只暴露对外字段，不返回 ORM/内部技术字段。
+- OpenAPI（`/api/openapi.json`）是 `packages/api-types` 生成 TS 类型的唯一契约：破坏性字段变更必须同步生成物再更新前端。
 
-## 3. 依赖与安全边界
+## 3. 安全与异步
 
-- 数据库会话由依赖按请求创建并关闭；路由不得自行创建或长期持有 Session。
-- 本机单用户模式不引入 JWT、`get_current_user` 或 RLS claims，但 localhost 不是信任边界。
-- 所有端点，包括 health 和 SSE，都必须校验 Tauri 壳生成的 `X-KnowRealm-Token` 单次启动能力令牌；缺失或错误统一返回 403。该令牌不是用户登录认证。
+- 所有端点（含 health、SSE）校验 Tauri 壳生成的 `X-KnowRealm-Token` 单次启动能力令牌，缺失/错误统一 403；不引入 JWT/`get_current_user`（localhost 不是信任边界）。
+- 数据库会话由依赖按请求创建关闭，路由不自建不长期持有。
+- uvicorn 经 `app/core/loop.py` 的 loop 工厂启动，入口不散落 `asyncio.run()`；全异步（httpx、SQLAlchemy async），禁协程内 `requests`/同步 SDK/直跑 ffmpeg；重活只进 `processing_jobs` worker；无法替换的同步调用用 `to_thread()` 包裹并注明；subprocess 统一 `create_subprocess_exec()`；对外 HTTP 统一 httpx 且 `trust_env=False`（防系统代理劫持 localhost）。
 
-## 4. Windows 与异步纪律
+## 4. SSE
 
-- uvicorn 必须通过 `app/core/loop.py` 的 loop 工厂和专用入口启动；不得在入口散落 `asyncio.run()`。
-- 路由和 service 使用 `async def` 与异步 IO（httpx、SQLAlchemy async）。不得在 API 协程中调用 `requests`、同步 SDK 或直接执行 ffmpeg。
-- ASR、ffmpeg 等重活只在 `processing_jobs` worker 任务中执行；无法替换的同步第三方调用用 `asyncio.to_thread()` 包裹并注明原因。
-- subprocess 统一使用 `asyncio.create_subprocess_exec()`。
-- 对外 HTTP 统一使用 httpx 且设置 `trust_env=False`，避免 Windows 系统代理劫持 localhost 或直连请求。
+- `sse-starlette` 的 `EventSourceResponse`，不手拼 StreamingResponse；POST + 与普通 API 同样的令牌校验。
+- 事件类型固定 `status`/`token`/`tool_call`/`tool_result`/`citation`/`interrupt`/`done`/`error`（ADR-0019；`tool_call`/`tool_result` 仅工具调用流，`interrupt` 保留给需前端确认界面的流）；流内异常必须转 `error` 事件，不得无声断开。
 
-## 5. SSE
+## 5. 错误与日志
 
-- 服务端使用 `sse-starlette` 的 `EventSourceResponse`，不得手拼 `StreamingResponse` 格式。
-- SSE 端点使用 POST，并与普通 API 一样校验 `X-KnowRealm-Token`。
-- 事件类型固定为 `status`、`token`、`tool_call`、`tool_result`、`citation`、`interrupt`、`done`、`error`；`tool_call` / `tool_result` 仅 AI/Chat 工具调用流使用（ADR-0019），`interrupt` 保留给需要前端确认界面的流，chat 命令流尚未发出。
-- 流内异常必须转换为 `error` 事件，不能无声断开；`interrupt` 必须携带前端渲染确认界面所需的完整 payload，并由恢复接口继续流程。
-- sidecar 状态变更最终通过进程内事件推送 SSE；阶段例外：plan 05 在 plan 04 接入 SSE 前，可由 UI 对 PENDING/RUNNING 文档任务条件轮询同一查询入口，终态立即停止；plan 04 完成后轮询仅作断线兜底。
+- 业务错误用 `CodedHTTPException`（`shared/errors.py`）：稳定错误码 + 语义状态码（400 参数/404 不存在/409 冲突），禁裸 `HTTPException`（防线测试强制）；响应统一 `{"detail": "中文说明", "code": "STABLE_CODE"}`，码名规范见 `docs/后端错误码清单.md`（ADR-0017）。
+- 422 统一 `REQUEST_VALIDATION_FAILED`；未预期异常 500 `INTERNAL_ERROR` + `params.request_id`，不暴露堆栈。
+- 日志 loguru（InterceptHandler 接管标准 logging）；只记最小元数据（`record_id`/`session_id`/token 数/latency/model/prompt_version/error code），禁记完整转写、敏感对话、prompt/输出正文、密钥或能力令牌。
 
-## 6. 错误与日志
+## 6. 配置与生命周期
 
-- 业务错误使用 `CodedHTTPException`（`shared/errors.py`）携带稳定错误码与语义化状态码：400 参数错误、404 资源不存在、409 业务状态冲突；禁止直接 raise 裸 `HTTPException`（防线测试强制）。错误响应统一为 `{"detail": "中文说明", "code": "STABLE_CODE", "params"?: {...}}`，`detail` 中文原文保留；码名规范与全量清单见 `docs/后端错误码清单.md`（ADR-0017）。
-- 参数校验失败（422）统一返回 `REQUEST_VALIDATION_FAILED`；未预期异常由全局处理器记录后返回 500 `INTERNAL_ERROR` 和 `params.request_id`；不得向前端暴露堆栈或内部异常。
-- 日志统一使用 loguru；`InterceptHandler` 接管 uvicorn、SQLAlchemy 标准 logging，附加字段通过 kwargs 写入。
-- 日志只记录最小元数据：`record_id`、`segment_id`、`session_id`、token 数量、latency、model、prompt_version、error code。
-- 禁止记录完整转写、Teach-back、敏感对话、prompt/输出正文、密钥或能力令牌。
+- **当前后端不读 `.env`、无 pydantic-settings**：部署级常量为模块内语义常量（先例 `agent/context.py`，配置体系统一后迁移）；不得散落 `os.getenv` 或硬编码配置。
+- 用户级供应商密钥存数据目录 `config/providers.json`、偏好存 `config/settings.json`，由 sidecar 运行时读写；数据目录、端口、启动令牌由 Tauri 壳启动参数注入。
+- engine/session factory、checkpointer、迁移、worker 的创建销毁统一 lifespan（禁 `@app.on_event`）；启动顺序：解析数据目录 → OS 排他锁 → 迁移 → 共享资源 → worker；退出反向释放。唯一例外：`--import-archive` 在 ensure_data_dir 之后、目录锁与开库之前执行（ADR-0013）。
 
-## 7. 配置与生命周期
+## 7. 测试与门禁
 
-- 部署级配置集中到继承 `BaseSettings` 的 Settings 单例；`.env` 不入仓库，新增项同步补充 `.env.example`。不得散落 `os.getenv` 或硬编码配置。
-- 用户级供应商密钥存于数据目录 `config/providers.json`，偏好存于 `config/settings.json`，均由 sidecar 运行时读写；数据目录、端口和启动令牌由 Tauri 壳通过启动参数注入，不进入 `.env`。
-- 取值有限的配置使用 `Literal` 等类型约束。
-- engine/session factory、LangGraph checkpointer、迁移和 worker 的创建与销毁统一放在 FastAPI `lifespan`；不得新增 `@app.on_event`。
-- lifespan 启动顺序：解析数据目录 → 获取进程生命周期 OS 排他锁 → 执行迁移 → 创建共享资源 → 启动 worker。拿锁失败必须在迁移、备份和 worker 前退出；退出时先停止 worker、释放 engine 等资源，再释放目录锁。不得只用可能残留的 sentinel 文件判断占用。唯一例外：`--import-archive` 导入落位在 ensure_data_dir 之后、目录锁与开库之前执行（工单 05/ADR-0013），校验拒绝时数据目录保持原样。
-
-## 8. 测试与质量门禁
-
-- 路由测试使用 `httpx.AsyncClient` + `ASGITransport(app=app)`，无需启动真实服务。
-- 数据库测试使用 aiosqlite 临时库并完整重放生产迁移链；不得用 `create_all()` 替代迁移。
-- Ruff 同时负责 lint 与 format，Pyright 使用 strict；配置统一放 `pyproject.toml`，不新增 `.flake8`、`.isort.cfg` 等重复配置。
-- CI 门禁为 `ruff check`、`ruff format --check`、`pyright`；`ty` 仍为观察项，暂不引入。
+- 路由测试 `httpx.AsyncClient` + `ASGITransport(app=app)`；数据库测试 aiosqlite 临时库完整重放迁移链（不用 `create_all()`）。
+- Ruff 同时负责 lint 与 format、Pyright strict，配置集中 `pyproject.toml`，不新增重复配置文件。

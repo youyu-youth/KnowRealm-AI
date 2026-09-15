@@ -43,7 +43,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 ## 编码规范（重要）
 
-1. 写任何代码前必须遵循 `.claude/rules/` 下的编码规范（**正本**；`docs/rules/` 为发布镜像，改动须同步保持一致）。任何时候不要更改rules下的文件。
+1. 写任何代码前必须遵循 `.claude/rules/` 下的编码规范（**正本**；`docs/rules/` 为发布镜像，改动须同步保持一致）。每份规范带 `paths` frontmatter，按所改文件路径自动/按需加载——只读匹配当前任务的规范即可，不要全读。任何时候不要更改rules下的文件。
 
 2. 设计或创建对应的桌面端ui时，需要遵循 impeccable skill 的规范要求，以及调用它来设计。
    - 不要重复造轮子，需要搞清楚当前的ui组件是否 可以用 shadcn ui 来实现。并保持设计规范。
