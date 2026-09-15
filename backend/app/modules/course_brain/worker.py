@@ -445,6 +445,11 @@ async def writeback(
                 "concept_count": plan.touched_count,
                 "candidate_count": plan.created_concept_count,
                 "skipped_evidence_count": plan.skipped_evidence_count,
+                # 本次抽取到的关系三元组（CB-06）：查询侧据此派生 CONFIRMED 关系的过期徽章。
+                "supported_relations": [
+                    [source_id, target_id, relation_type]
+                    for source_id, target_id, relation_type in plan.relation_candidates
+                ],
             },
             ensure_ascii=False,
             separators=(",", ":"),

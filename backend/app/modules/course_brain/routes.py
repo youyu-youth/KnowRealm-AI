@@ -12,6 +12,8 @@ from app.modules.course_brain.schemas import (
     BrainConceptDetailOut,
     BrainConceptListQuery,
     BrainConceptOut,
+    BrainRelationListQuery,
+    BrainRelationOut,
     BrainSnapshotOut,
     ConceptSourcesOut,
 )
@@ -62,6 +64,15 @@ async def list_course_brain_concepts(
     session: AsyncSession = Depends(get_db),
 ) -> list[BrainConceptOut]:
     return await CourseBrainService.list_concepts(session, course_id, filters)
+
+
+@router.get("/{course_id}/brain/relations", response_model=list[BrainRelationOut])
+async def list_course_brain_relations(
+    course_id: str,
+    filters: Annotated[BrainRelationListQuery, Query()],
+    session: AsyncSession = Depends(get_db),
+) -> list[BrainRelationOut]:
+    return await CourseBrainService.list_relations(session, course_id, filters)
 
 
 @router.get("/{course_id}/brain/concepts/{concept_id}", response_model=BrainConceptDetailOut)

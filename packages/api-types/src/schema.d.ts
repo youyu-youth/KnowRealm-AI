@@ -294,6 +294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{course_id}/brain/relations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Course Brain Relations */
+        get: operations["list_course_brain_relations_api_courses__course_id__brain_relations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/quiz-tests": {
         parameters: {
             query?: never;
@@ -1530,7 +1547,7 @@ export interface components {
              * Decisions
              * @description 审核决策列表（单事务原子应用）
              */
-            decisions: (components["schemas"]["ConfirmDecision"] | components["schemas"]["MergeDecision"] | components["schemas"]["DismissDecision"])[];
+            decisions: (components["schemas"]["ConfirmDecision"] | components["schemas"]["MergeDecision"] | components["schemas"]["DismissDecision"] | components["schemas"]["ConfirmRelationDecision"] | components["schemas"]["DismissRelationDecision"])[];
         };
         /** AudioImportAccepted */
         AudioImportAccepted: {
@@ -1712,6 +1729,99 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /** BrainGraphEdgeOut */
+        BrainGraphEdgeOut: {
+            /** Confidence */
+            confidence: number;
+            /** Evidence Count */
+            evidence_count: number;
+            /** Relation Type */
+            relation_type: string;
+            /** Source Concept Id */
+            source_concept_id: string;
+            /**
+             * Stale
+             * @description 过期徽章（最近一次成功构建对该关系零证据支撑），查询时派生不落库
+             * @default false
+             */
+            stale: boolean;
+            /** Target Concept Id */
+            target_concept_id: string;
+        };
+        /** BrainGraphNodeOut */
+        BrainGraphNodeOut: {
+            /** Canonical Name */
+            canonical_name: string;
+            /** Concept Type */
+            concept_type: string;
+            /** Id */
+            id: string;
+            /** Importance */
+            importance: number;
+            /**
+             * Occurrence Count
+             * @description 出现次数合计（图谱节点权重映射）
+             */
+            occurrence_count: number;
+            /**
+             * Record Count
+             * @description 出现该概念的未删除记录数（图谱节点大小映射）
+             */
+            record_count: number;
+        };
+        /**
+         * BrainGraphOut
+         * @description 正式图谱视图：节点 = CONFIRMED 概念，边 = 两端均 CONFIRMED 的 CONFIRMED 关系。
+         */
+        BrainGraphOut: {
+            /** Edges */
+            edges: components["schemas"]["BrainGraphEdgeOut"][];
+            /** Nodes */
+            nodes: components["schemas"]["BrainGraphNodeOut"][];
+        };
+        /** BrainRelationOut */
+        BrainRelationOut: {
+            /** Confidence */
+            confidence: number;
+            /** Course Id */
+            course_id: string;
+            /** Created At */
+            created_at: string;
+            /** Evidence Count */
+            evidence_count: number;
+            /** Id */
+            id: string;
+            /** Relation Type */
+            relation_type: string;
+            /** Source Concept Id */
+            source_concept_id: string;
+            /**
+             * Source Name
+             * @description 起点概念规范名
+             */
+            source_name: string;
+            /**
+             * Stale
+             * @description 过期徽章（仅 CONFIRMED 关系：两端概念仍正式且最近一次成功构建零证据支撑）
+             * @default false
+             */
+            stale: boolean;
+            status: components["schemas"]["BrainRelationStatus"];
+            /** Target Concept Id */
+            target_concept_id: string;
+            /**
+             * Target Name
+             * @description 终点概念规范名
+             */
+            target_name: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * BrainRelationStatus
+         * @enum {string}
+         */
+        BrainRelationStatus: "CANDIDATE" | "CONFIRMED" | "DISMISSED";
         /** BrainSnapshotOut */
         BrainSnapshotOut: {
             /**
@@ -1731,6 +1841,8 @@ export interface components {
             concept_count: number;
             /** Course Id */
             course_id: string;
+            /** @description CONFIRMED 概念邻接（节点+边一次取齐，供关系图渲染） */
+            graph: components["schemas"]["BrainGraphOut"];
             /**
              * Last Built At
              * @description 最近一次成功构建完成时间
@@ -2094,6 +2206,22 @@ export interface components {
              */
             new_name?: string | null;
         };
+        /**
+         * ConfirmRelationDecision
+         * @description 关系候选确认：CANDIDATE→CONFIRMED，进入正式图谱参与检索。
+         */
+        ConfirmRelationDecision: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            decision_type: "confirm_relation";
+            /**
+             * Relation Id
+             * @description 待确认关系候选 id
+             */
+            relation_id: string;
+        };
         /** CourseCreate */
         CourseCreate: {
             /** @description 可选课程类型 */
@@ -2232,6 +2360,22 @@ export interface components {
              * @enum {string}
              */
             decision_type: "dismiss";
+        };
+        /**
+         * DismissRelationDecision
+         * @description 关系候选忽略：CANDIDATE→DISMISSED；重建不会复活（同三元组被跳过）。
+         */
+        DismissRelationDecision: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            decision_type: "dismiss_relation";
+            /**
+             * Relation Id
+             * @description 待忽略关系候选 id
+             */
+            relation_id: string;
         };
         /** DocumentImportAccepted */
         DocumentImportAccepted: {
@@ -5304,6 +5448,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConceptSourcesOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_course_brain_relations_api_courses__course_id__brain_relations_get: {
+        parameters: {
+            query?: {
+                /** @description 关系状态筛选 */
+                status?: components["schemas"]["BrainRelationStatus"];
+                /** @description 返回数量上限 */
+                limit?: number;
+                /** @description 分页偏移 */
+                offset?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainRelationOut"][];
                 };
             };
             /** @description Forbidden */

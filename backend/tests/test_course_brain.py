@@ -2480,3 +2480,257 @@ async def test_stale_archivable_badge_and_archive_endpoint(tmp_path: Path) -> No
         )
         assert rejected.status_code == 409
         assert rejected.json()["code"] == "COURSE_BRAIN_CONCEPT_STATE_INVALID"
+
+
+# ---------------------------------------------------------------------------
+# CB-06 关系候选审核与过期检测
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_snapshot_graph_excludes_unconfirmed_relations(tmp_path: Path) -> None:
+    """正式邻接只含 CONFIRMED 关系且两端概念均 CONFIRMED；归档一端即退出图谱。"""
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_course(app, OTHER_COURSE_ID)
+        await seed_concept(app, concept_id="concept-a", course_id=COURSE_ID, name="MVCC")
+        await seed_concept(app, concept_id="concept-b", course_id=COURSE_ID, name="ReadView")
+        await seed_concept(
+            app, concept_id="concept-c", course_id=COURSE_ID, name="候选概念", status="CANDIDATE"
+        )
+        await seed_concept(
+            app, concept_id="concept-other", course_id=OTHER_COURSE_ID, name="跨课程"
+        )
+        await seed_relation(
+            app,
+            relation_id="rel-confirmed",
+            course_id=COURSE_ID,
+            source_concept_id="concept-a",
+            target_concept_id="concept-b",
+        )
+        await seed_relation(
+            app,
+            relation_id="rel-candidate",
+            course_id=COURSE_ID,
+            source_concept_id="concept-a",
+            target_concept_id="concept-c",
+            status="CANDIDATE",
+        )
+        # 异常数据：CONFIRMED 关系但目标概念跨课程，不得泄漏进图谱。
+        await seed_relation(
+            app,
+            relation_id="rel-cross-course",
+            course_id=COURSE_ID,
+            source_concept_id="concept-a",
+            target_concept_id="concept-other",
+        )
+
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert [node["id"] for node in snapshot["graph"]["nodes"]] == ["concept-a", "concept-b"]
+        assert len(snapshot["graph"]["edges"]) == 1
+        edge = snapshot["graph"]["edges"][0]
+        assert (
+            edge["source_concept_id"],
+            edge["target_concept_id"],
+            edge["relation_type"],
+        ) == ("concept-a", "concept-b", "RELATED_TO")
+        assert edge["stale"] is False
+
+        archived = await client.post(f"/api/courses/{COURSE_ID}/brain/concepts/concept-b/archive")
+        assert archived.status_code == 200
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert [node["id"] for node in snapshot["graph"]["nodes"]] == ["concept-a"]
+        assert snapshot["graph"]["edges"] == [], "概念归档后其关系不再参与图谱"
+
+
+@pytest.mark.anyio
+async def test_apply_review_confirm_and_dismiss_relations(tmp_path: Path) -> None:
+    """关系候选确认/忽略：状态机守卫、跨课程 404 与重复决策 422。"""
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_course(app, OTHER_COURSE_ID)
+        await seed_concept(app, concept_id="concept-a", course_id=COURSE_ID, name="MVCC")
+        await seed_concept(app, concept_id="concept-b", course_id=COURSE_ID, name="ReadView")
+        await seed_concept(app, concept_id="concept-c", course_id=COURSE_ID, name="事务")
+        await seed_relation(
+            app,
+            relation_id="rel-candidate",
+            course_id=COURSE_ID,
+            source_concept_id="concept-a",
+            target_concept_id="concept-b",
+            status="CANDIDATE",
+        )
+        await seed_relation(
+            app,
+            relation_id="rel-candidate-2",
+            course_id=COURSE_ID,
+            source_concept_id="concept-a",
+            target_concept_id="concept-c",
+            relation_type="PREREQUISITE",
+            status="CANDIDATE",
+        )
+
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert snapshot["graph"]["edges"] == [], "未确认关系不出现在正式邻接"
+
+        candidates = (await client.get(f"/api/courses/{COURSE_ID}/brain/relations")).json()
+        assert [item["id"] for item in candidates] == ["rel-candidate", "rel-candidate-2"]
+        assert candidates[0]["source_name"] == "MVCC"
+        assert candidates[0]["target_name"] == "ReadView"
+        assert candidates[0]["confidence"] == 0.9 and candidates[0]["evidence_count"] == 1
+
+        confirmed = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={
+                "decisions": [{"decision_type": "confirm_relation", "relation_id": "rel-candidate"}]
+            },
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json()["graph"]["edges"][0]["relation_type"] == "RELATED_TO"
+
+        dismissed = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={
+                "decisions": [
+                    {"decision_type": "dismiss_relation", "relation_id": "rel-candidate-2"}
+                ]
+            },
+        )
+        assert dismissed.status_code == 200
+        still_confirmed = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/relations?status=CONFIRMED")
+        ).json()
+        assert [item["id"] for item in still_confirmed] == ["rel-candidate"]
+        dismissed_list = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/relations?status=DISMISSED")
+        ).json()
+        assert [item["id"] for item in dismissed_list] == ["rel-candidate-2"]
+
+        # 已确认关系不可再确认/忽略（状态机守卫）。
+        for decision_type in ("confirm_relation", "dismiss_relation"):
+            response = await client.post(
+                f"/api/courses/{COURSE_ID}/brain/apply-review",
+                json={
+                    "decisions": [{"decision_type": decision_type, "relation_id": "rel-candidate"}]
+                },
+            )
+            assert response.status_code == 409
+            assert response.json()["code"] == "COURSE_BRAIN_RELATION_STATE_INVALID"
+
+        # 跨课程 relation_id 一律 404（与概念同口径）。
+        await seed_concept(app, concept_id="concept-o1", course_id=OTHER_COURSE_ID, name="外课甲")
+        await seed_concept(app, concept_id="concept-o2", course_id=OTHER_COURSE_ID, name="外课乙")
+        await seed_relation(
+            app,
+            relation_id="rel-other",
+            course_id=OTHER_COURSE_ID,
+            source_concept_id="concept-o1",
+            target_concept_id="concept-o2",
+            status="CANDIDATE",
+        )
+        cross = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={"decisions": [{"decision_type": "confirm_relation", "relation_id": "rel-other"}]},
+        )
+        assert cross.status_code == 404
+        assert cross.json()["code"] == "COURSE_BRAIN_RELATION_NOT_FOUND"
+
+        duplicate = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={
+                "decisions": [
+                    {"decision_type": "confirm_relation", "relation_id": "rel-candidate"},
+                    {"decision_type": "dismiss_relation", "relation_id": "rel-candidate"},
+                ]
+            },
+        )
+        assert duplicate.status_code == 422, "同一关系重复决策在边界校验即拒绝"
+
+
+@pytest.mark.anyio
+async def test_soft_deleted_record_invalidates_graph_node_counts(tmp_path: Path) -> None:
+    """记录软删后图谱节点与概念列表的计数即时失效（只计未删记录）。"""
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_record(app, "record-live", COURSE_ID)
+        await seed_concept(app, concept_id="concept-a", course_id=COURSE_ID, name="MVCC")
+        await seed_record_concept(app, rc_id="rc-dead", record_id=RECORD_ID, concept_id="concept-a")
+        await seed_record_concept(
+            app, rc_id="rc-live", record_id="record-live", concept_id="concept-a"
+        )
+        await soft_delete_record(app, RECORD_ID)
+
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        node = snapshot["graph"]["nodes"][0]
+        assert node["record_count"] == 1 and node["occurrence_count"] == 1
+
+        concepts = (await client.get(f"/api/courses/{COURSE_ID}/brain/concepts")).json()
+        assert concepts[0]["record_count"] == 1
+        assert concepts[0]["occurrence_count"] == 1
+
+
+@pytest.mark.anyio
+async def test_confirmed_relation_stale_after_rebuild_without_evidence(tmp_path: Path) -> None:
+    """重建零证据支撑不删 CONFIRMED 关系，仅派生过期徽章；有支撑时徽章熄灭。"""
+    no_relations_output: dict[str, object] = {
+        "concepts": [
+            {
+                "name": "MVCC",
+                "description": "多版本并发控制",
+                "concept_type": "TERM",
+                "importance": 5,
+                "evidence": [{"quote": "MVCC 通过 ReadView 实现事务可见性", "source_hint": "转写"}],
+            }
+        ],
+        "relations": [],
+    }
+    model = FakeCourseBrainModel()
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+        )
+        await seed_concept(app, concept_id="concept-mvcc", course_id=COURSE_ID, name="MVCC")
+        await seed_concept(app, concept_id="concept-readview", course_id=COURSE_ID, name="ReadView")
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert accepted.status_code == 202
+        await wait_for_job_status(app, accepted.json()["job_id"], "SUCCEEDED")
+
+        candidates = (await client.get(f"/api/courses/{COURSE_ID}/brain/relations")).json()
+        assert len(candidates) == 1
+        relation_id = candidates[0]["id"]
+        confirmed = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={"decisions": [{"decision_type": "confirm_relation", "relation_id": relation_id}]},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json()["graph"]["edges"][0]["stale"] is False
+
+        # 第二次构建只抽概念不抽关系：正式关系保留，过期徽章亮起。
+        model.output = no_relations_output
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert accepted.status_code == 202
+        await wait_for_job_status(app, accepted.json()["job_id"], "SUCCEEDED")
+
+        async with app.state.session_factory() as session:
+            status = await session.scalar(
+                text("SELECT status FROM concept_relations WHERE id = :id"), {"id": relation_id}
+            )
+        assert status == "CONFIRMED", "重建零证据不自动降级正式关系"
+
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert snapshot["graph"]["edges"][0]["stale"] is True
+        listed = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/relations?status=CONFIRMED")
+        ).json()
+        assert listed[0]["stale"] is True

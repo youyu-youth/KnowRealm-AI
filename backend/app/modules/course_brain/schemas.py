@@ -31,6 +31,12 @@ class ConceptSource(StrEnum):
     SYSTEM = "SYSTEM"
 
 
+class BrainRelationStatus(StrEnum):
+    CANDIDATE = "CANDIDATE"
+    CONFIRMED = "CONFIRMED"
+    DISMISSED = "DISMISSED"
+
+
 def _serialize_utc(value: datetime) -> str:
     utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
     return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
@@ -94,6 +100,34 @@ class BrainConceptDetailOut(BrainConceptOut):
     anchor_count: int = Field(default=0, description="来源锚点链接数")
 
 
+class BrainGraphEdgeOut(BaseModel):
+    source_concept_id: str
+    target_concept_id: str
+    relation_type: str
+    confidence: float
+    evidence_count: int
+    stale: bool = Field(
+        default=False,
+        description="过期徽章（最近一次成功构建对该关系零证据支撑），查询时派生不落库",
+    )
+
+
+class BrainGraphNodeOut(BaseModel):
+    id: str
+    canonical_name: str
+    concept_type: str
+    importance: int
+    record_count: int = Field(description="出现该概念的未删除记录数（图谱节点大小映射）")
+    occurrence_count: int = Field(description="出现次数合计（图谱节点权重映射）")
+
+
+class BrainGraphOut(BaseModel):
+    """正式图谱视图：节点 = CONFIRMED 概念，边 = 两端均 CONFIRMED 的 CONFIRMED 关系。"""
+
+    nodes: list[BrainGraphNodeOut]
+    edges: list[BrainGraphEdgeOut]
+
+
 class BrainSnapshotOut(BaseModel):
     course_id: str
     status: BrainStatus
@@ -102,10 +136,42 @@ class BrainSnapshotOut(BaseModel):
     stale: bool = Field(description="来源指纹与上次成功构建不一致")
     active_job_id: str | None = Field(default=None, description="进行中的构建任务 id")
     last_built_at: datetime | None = Field(default=None, description="最近一次成功构建完成时间")
+    graph: BrainGraphOut = Field(description="CONFIRMED 概念邻接（节点+边一次取齐，供关系图渲染）")
 
     @field_serializer("last_built_at")
     def serialize_utc(self, value: datetime | None) -> str | None:
         return None if value is None else _serialize_utc(value)
+
+
+class BrainRelationListQuery(BaseModel):
+    status: BrainRelationStatus = Field(
+        default=BrainRelationStatus.CANDIDATE, description="关系状态筛选"
+    )
+    limit: int = Field(default=50, ge=1, le=200, description="返回数量上限")
+    offset: int = Field(default=0, ge=0, description="分页偏移")
+
+
+class BrainRelationOut(BaseModel):
+    id: str
+    course_id: str
+    source_concept_id: str
+    source_name: str = Field(description="起点概念规范名")
+    target_concept_id: str
+    target_name: str = Field(description="终点概念规范名")
+    relation_type: str
+    confidence: float
+    evidence_count: int
+    status: BrainRelationStatus
+    stale: bool = Field(
+        default=False,
+        description="过期徽章（仅 CONFIRMED 关系：两端概念仍正式且最近一次成功构建零证据支撑）",
+    )
+    created_at: datetime
+    updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def serialize_utc(self, value: datetime) -> str:
+        return _serialize_utc(value)
 
 
 class ConceptAnchorSourceOut(BaseModel):
@@ -173,7 +239,7 @@ class BrainBuildAcceptedOut(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# CB-05 审核闭环：apply-review 决策（同事务原子应用；relation 审核见 CB-06）
+# CB-05/CB-06 审核闭环：apply-review 决策（同事务原子应用）
 # ---------------------------------------------------------------------------
 
 
@@ -181,6 +247,8 @@ class ReviewDecisionType(StrEnum):
     CONFIRM = "confirm"
     MERGE = "merge"
     DISMISS = "dismiss"
+    CONFIRM_RELATION = "confirm_relation"
+    DISMISS_RELATION = "dismiss_relation"
 
 
 class ConfirmDecision(BaseModel):
@@ -213,8 +281,26 @@ class DismissDecision(BaseModel):
     concept_id: str = Field(min_length=1, description="待忽略候选概念 id")
 
 
+class ConfirmRelationDecision(BaseModel):
+    """关系候选确认：CANDIDATE→CONFIRMED，进入正式图谱参与检索。"""
+
+    decision_type: Literal[ReviewDecisionType.CONFIRM_RELATION]
+    relation_id: str = Field(min_length=1, description="待确认关系候选 id")
+
+
+class DismissRelationDecision(BaseModel):
+    """关系候选忽略：CANDIDATE→DISMISSED；重建不会复活（同三元组被跳过）。"""
+
+    decision_type: Literal[ReviewDecisionType.DISMISS_RELATION]
+    relation_id: str = Field(min_length=1, description="待忽略关系候选 id")
+
+
 ReviewDecision = Annotated[
-    ConfirmDecision | MergeDecision | DismissDecision,
+    ConfirmDecision
+    | MergeDecision
+    | DismissDecision
+    | ConfirmRelationDecision
+    | DismissRelationDecision,
     Field(discriminator="decision_type"),
 ]
 
@@ -225,10 +311,19 @@ class ApplyReviewRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def reject_duplicate_concepts(self) -> "ApplyReviewRequest":
-        concept_ids = [decision.concept_id for decision in self.decisions]
-        if len(set(concept_ids)) != len(concept_ids):
-            raise ValueError("同一概念在决策列表中重复出现")
+    def reject_duplicate_targets(self) -> "ApplyReviewRequest":
+        concept_ids = [
+            decision.concept_id
+            for decision in self.decisions
+            if isinstance(decision, (ConfirmDecision, MergeDecision, DismissDecision))
+        ]
+        relation_ids = [
+            decision.relation_id
+            for decision in self.decisions
+            if isinstance(decision, (ConfirmRelationDecision, DismissRelationDecision))
+        ]
+        if len(set(concept_ids)) != len(concept_ids) or len(set(relation_ids)) != len(relation_ids):
+            raise ValueError("同一目标在决策列表中重复出现")
         return self
 
 

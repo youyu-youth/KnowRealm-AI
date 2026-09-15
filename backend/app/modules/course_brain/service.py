@@ -21,13 +21,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utcnow
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
-from app.modules.course_brain.models import Concept, RecordConcept
+from app.modules.course_brain.models import Concept, ConceptRelation, RecordConcept
 from app.modules.course_brain.schemas import (
     ApplyReviewRequest,
     BrainConceptCreate,
     BrainConceptDetailOut,
     BrainConceptListQuery,
     BrainConceptOut,
+    BrainGraphEdgeOut,
+    BrainGraphNodeOut,
+    BrainGraphOut,
+    BrainRelationListQuery,
+    BrainRelationOut,
+    BrainRelationStatus,
     BrainSearchConceptOut,
     BrainSearchOccurrenceOut,
     BrainSearchRelationOut,
@@ -39,8 +45,10 @@ from app.modules.course_brain.schemas import (
     ConceptSourcesOut,
     ConceptStatus,
     ConfirmDecision,
+    ConfirmRelationDecision,
     CourseBrainSearchOut,
     DismissDecision,
+    DismissRelationDecision,
     MergeDecision,
 )
 from app.modules.jobs.models import ProcessingJob
@@ -203,6 +211,43 @@ _STALE_ARCHIVABLE_SQL = text(
     "GROUP BY rc.concept_id"
 ).bindparams(bindparam("ids", expanding=True))
 
+# 关系列表（CB-06）：JOIN 两端概念取规范名，供候选审核与正式关系管理。
+_RELATIONS_LIST_SQL = text(
+    "SELECT cr.id, cr.source_concept_id, "
+    "sc.canonical_name AS source_name, sc.status AS source_status, "
+    "cr.target_concept_id, "
+    "tc.canonical_name AS target_name, tc.status AS target_status, "
+    "cr.relation_type, cr.confidence, cr.evidence_count, cr.status, cr.created_at, cr.updated_at "
+    "FROM concept_relations cr "
+    "JOIN concepts sc ON sc.id = cr.source_concept_id "
+    "JOIN concepts tc ON tc.id = cr.target_concept_id "
+    "WHERE cr.course_id = :course_id AND cr.status = :status "
+    "ORDER BY cr.confidence DESC, cr.created_at, cr.id "
+    "LIMIT :limit OFFSET :offset"
+)
+
+# 图谱边（CB-06）：CONFIRMED 关系且两端概念均 CONFIRMED（跨课程异常行不泄漏）。
+_GRAPH_EDGES_SQL = text(
+    "SELECT cr.source_concept_id, cr.target_concept_id, cr.relation_type, "
+    "cr.confidence, cr.evidence_count "
+    "FROM concept_relations cr "
+    "JOIN concepts sc ON sc.id = cr.source_concept_id "
+    "AND sc.status = 'CONFIRMED' AND sc.course_id = :course_id "
+    "JOIN concepts tc ON tc.id = cr.target_concept_id "
+    "AND tc.status = 'CONFIRMED' AND tc.course_id = :course_id "
+    "WHERE cr.course_id = :course_id AND cr.status = 'CONFIRMED' "
+    "ORDER BY cr.confidence DESC, cr.id"
+)
+
+# 最近一次成功构建的产物（关系过期判定依据）；无产物返回 None（不标过期）。
+_LATEST_BUILD_RESULT_SQL = text(
+    "SELECT result_json FROM processing_jobs "
+    "WHERE record_id IS NULL AND job_type = 'CONCEPT_EXTRACTION' "
+    "AND status = 'SUCCEEDED' AND result_json IS NOT NULL "
+    "AND json_extract(input_json, '$.course_id') = :course_id "
+    "ORDER BY created_at DESC, id DESC LIMIT 1"
+)
+
 
 def normalize_concept_name(name: str) -> str:
     """规范名归一化（spec 数据合同）：strip → 空白折叠 → 全角转半角 → casefold。"""
@@ -314,6 +359,103 @@ async def _concept_badges(
     return suggestions, stale_map
 
 
+def _supported_relation_keys(result_json: str | None) -> set[tuple[str, str, str]] | None:
+    """最近一次成功构建的关系支撑集（CB-06 worker 落盘）；无产物或旧格式为 None（不标过期）。"""
+    if not result_json:
+        return None
+    try:
+        payload: object = json.loads(result_json)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    supported = cast("dict[str, object]", payload).get("supported_relations")
+    if not isinstance(supported, list):
+        return None
+    keys: set[tuple[str, str, str]] = set()
+    for raw in cast("list[object]", supported):
+        if not isinstance(raw, list):
+            continue
+        parts = cast("list[object]", raw)
+        if len(parts) != 3:
+            continue
+        source_id, target_id, relation_type = parts
+        if (
+            isinstance(source_id, str)
+            and isinstance(target_id, str)
+            and isinstance(relation_type, str)
+        ):
+            keys.add((source_id, target_id, relation_type))
+    return keys
+
+
+def _relation_stale(key: tuple[str, str, str], supported: set[tuple[str, str, str]] | None) -> bool:
+    """CONFIRMED 关系过期判定：有构建产物且本次抽取未覆盖该三元组；无产物不诬报。"""
+    return supported is not None and key not in supported
+
+
+async def _latest_supported_relations(
+    session: AsyncSession, course_id: str
+) -> set[tuple[str, str, str]] | None:
+    row = cast(
+        "str | None", await session.scalar(_LATEST_BUILD_RESULT_SQL, {"course_id": course_id})
+    )
+    return _supported_relation_keys(row)
+
+
+async def _course_graph(
+    session: AsyncSession, course_id: str, supported: set[tuple[str, str, str]] | None
+) -> BrainGraphOut:
+    """正式图谱视图（CB-06）：节点 = CONFIRMED 概念，边 = 两端均 CONFIRMED 的正式关系。
+
+    supported 为 None（无成功构建产物）时不判过期，避免无依据的过期告警。
+    """
+    concepts = list(
+        (
+            await session.scalars(
+                select(Concept)
+                .where(
+                    Concept.course_id == course_id,
+                    Concept.status == ConceptStatus.CONFIRMED.value,
+                )
+                .order_by(Concept.canonical_name, Concept.id)
+            )
+        ).all()
+    )
+    stats = await _concept_stats(session, course_id, [concept.id for concept in concepts])
+    nodes = [
+        BrainGraphNodeOut(
+            id=concept.id,
+            canonical_name=concept.canonical_name,
+            concept_type=concept.concept_type,
+            importance=concept.importance,
+            record_count=stats.get(concept.id, (0, 0))[0],
+            occurrence_count=stats.get(concept.id, (0, 0))[1],
+        )
+        for concept in concepts
+    ]
+    edge_rows = (await session.execute(_GRAPH_EDGES_SQL, {"course_id": course_id})).all()
+    edges = [
+        BrainGraphEdgeOut(
+            source_concept_id=cast(str, row.source_concept_id),
+            target_concept_id=cast(str, row.target_concept_id),
+            relation_type=cast(str, row.relation_type),
+            confidence=float(row.confidence),
+            evidence_count=int(row.evidence_count),
+            stale=_relation_stale(
+                (
+                    cast(str, row.source_concept_id),
+                    cast(str, row.target_concept_id),
+                    cast(str, row.relation_type),
+                ),
+                supported,
+            ),
+        )
+        for row in edge_rows
+    ]
+    return BrainGraphOut(nodes=nodes, edges=edges)
+
+
 async def _set_concept_status(
     session: AsyncSession, concept: Concept, status: ConceptStatus
 ) -> None:
@@ -325,6 +467,15 @@ async def _set_concept_status(
     concept.updated_at = utcnow()
     await session.flush()
     await SegmentSearchService.upsert_segment_index(session, ENTITY_CONCEPT, [concept.id])
+
+
+async def _set_relation_status(
+    session: AsyncSession, relation: ConceptRelation, status: BrainRelationStatus
+) -> None:
+    """关系状态迁移同事务收尾：relation 不进 FTS，仅落 updated_at。"""
+    relation.status = status.value
+    relation.updated_at = utcnow()
+    await session.flush()
 
 
 async def _get_active_course(session: AsyncSession, course_id: str) -> Course:
@@ -355,6 +506,23 @@ async def _require_concept(session: AsyncSession, course_id: str, concept_id: st
             code="COURSE_BRAIN_CONCEPT_NOT_FOUND", status_code=404, detail="概念不存在"
         )
     return concept
+
+
+async def _require_relation(
+    session: AsyncSession, course_id: str, relation_id: str
+) -> ConceptRelation:
+    relation = (
+        await session.scalars(
+            select(ConceptRelation).where(
+                ConceptRelation.id == relation_id, ConceptRelation.course_id == course_id
+            )
+        )
+    ).one_or_none()
+    if relation is None:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_RELATION_NOT_FOUND", status_code=404, detail="概念关系不存在"
+        )
+    return relation
 
 
 async def _active_build_job(session: AsyncSession, course_id: str) -> str | None:
@@ -477,6 +645,12 @@ class CourseBrainService:
             stored = _stored_fingerprint(cast("str | None", last_succeeded.result_json))
             if stored is not None:
                 stale = stored != await compute_source_fingerprint(session, course_id)
+        # 关系过期判定依据：最近一次成功构建抽取到的关系三元组集合（CB-06）。
+        supported = (
+            _supported_relation_keys(cast("str | None", last_succeeded.result_json))
+            if last_succeeded is not None
+            else None
+        )
 
         if active_job is not None:
             status = BrainStatus.BUILDING
@@ -503,6 +677,7 @@ class CourseBrainService:
                 if last_succeeded is not None
                 else None
             ),
+            graph=await _course_graph(session, course_id, supported),
         )
 
     @staticmethod
@@ -555,6 +730,54 @@ class CourseBrainService:
             stale_archivable=stale_map.get(concept.id, False),
         )
         return BrainConceptDetailOut(**base.model_dump(), anchor_count=anchor_count)
+
+    @staticmethod
+    async def list_relations(
+        session: AsyncSession, course_id: str, query: BrainRelationListQuery
+    ) -> list[BrainRelationOut]:
+        """关系列表（CB-06）：按状态筛选；CONFIRMED 关系附过期徽章。"""
+        await _get_active_course(session, course_id)
+        supported: set[tuple[str, str, str]] | None = None
+        if query.status == BrainRelationStatus.CONFIRMED:
+            supported = await _latest_supported_relations(session, course_id)
+        rows = (
+            await session.execute(
+                _RELATIONS_LIST_SQL,
+                {
+                    "course_id": course_id,
+                    "status": query.status.value,
+                    "limit": query.limit,
+                    "offset": query.offset,
+                },
+            )
+        ).all()
+        relations: list[BrainRelationOut] = []
+        for row in rows:
+            source_id = cast(str, row.source_concept_id)
+            target_id = cast(str, row.target_concept_id)
+            relation_type = cast(str, row.relation_type)
+            relations.append(
+                BrainRelationOut(
+                    id=cast(str, row.id),
+                    course_id=course_id,
+                    source_concept_id=source_id,
+                    source_name=cast(str, row.source_name),
+                    target_concept_id=target_id,
+                    target_name=cast(str, row.target_name),
+                    relation_type=relation_type,
+                    confidence=float(row.confidence),
+                    evidence_count=int(row.evidence_count),
+                    status=BrainRelationStatus(cast(str, row.status)),
+                    stale=(
+                        cast(str, row.source_status) == ConceptStatus.CONFIRMED.value
+                        and cast(str, row.target_status) == ConceptStatus.CONFIRMED.value
+                        and _relation_stale((source_id, target_id, relation_type), supported)
+                    ),
+                    created_at=cast(datetime, row.created_at),
+                    updated_at=cast(datetime, row.updated_at),
+                )
+            )
+        return relations
 
     @staticmethod
     async def get_concept_sources(
@@ -714,7 +937,7 @@ class CourseBrainService:
     async def apply_review(
         session: AsyncSession, course_id: str, body: ApplyReviewRequest
     ) -> BrainSnapshotOut:
-        """审核闭环（CB-05）：决策列表单事务原子应用，任一决策失败整体回滚。"""
+        """审核闭环（CB-05 概念 / CB-06 关系）：决策列表单事务原子应用，任一决策失败整体回滚。"""
         try:
             async with session.begin():
                 await _get_active_course(session, course_id)
@@ -723,8 +946,13 @@ class CourseBrainService:
                         await _apply_confirm(session, course_id, decision)
                     elif isinstance(decision, MergeDecision):
                         await _apply_merge(session, course_id, decision)
-                    else:
+                    elif isinstance(decision, DismissDecision):
                         await _apply_dismiss(session, course_id, decision)
+                    elif isinstance(decision, ConfirmRelationDecision):
+                        await _apply_confirm_relation(session, course_id, decision)
+                    else:
+                        # discriminated union 已穷尽五种决策，此处必为 DismissRelationDecision。
+                        await _apply_dismiss_relation(session, course_id, decision)
         except IntegrityError:
             # 部分唯一索引兜底（确认/重命名撞已有正式名额）。
             raise CodedHTTPException(
@@ -946,6 +1174,34 @@ async def _apply_dismiss(session: AsyncSession, course_id: str, decision: Dismis
             detail="仅待审核候选可忽略",
         )
     await _set_concept_status(session, concept, ConceptStatus.ARCHIVED)
+
+
+async def _apply_confirm_relation(
+    session: AsyncSession, course_id: str, decision: ConfirmRelationDecision
+) -> None:
+    """关系候选确认：CANDIDATE→CONFIRMED，进入正式图谱与检索扩展。"""
+    relation = await _require_relation(session, course_id, decision.relation_id)
+    if relation.status != BrainRelationStatus.CANDIDATE.value:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_RELATION_STATE_INVALID",
+            status_code=409,
+            detail="仅待审核关系候选可确认",
+        )
+    await _set_relation_status(session, relation, BrainRelationStatus.CONFIRMED)
+
+
+async def _apply_dismiss_relation(
+    session: AsyncSession, course_id: str, decision: DismissRelationDecision
+) -> None:
+    """关系候选忽略：CANDIDATE→DISMISSED；重建同三元组被跳过，不会复活。"""
+    relation = await _require_relation(session, course_id, decision.relation_id)
+    if relation.status != BrainRelationStatus.CANDIDATE.value:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_RELATION_STATE_INVALID",
+            status_code=409,
+            detail="仅待审核关系候选可忽略",
+        )
+    await _set_relation_status(session, relation, BrainRelationStatus.DISMISSED)
 
 
 async def _related_concepts(

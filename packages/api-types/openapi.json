@@ -9,7 +9,9 @@
               "discriminator": {
                 "mapping": {
                   "confirm": "#/components/schemas/ConfirmDecision",
+                  "confirm_relation": "#/components/schemas/ConfirmRelationDecision",
                   "dismiss": "#/components/schemas/DismissDecision",
+                  "dismiss_relation": "#/components/schemas/DismissRelationDecision",
                   "merge": "#/components/schemas/MergeDecision"
                 },
                 "propertyName": "decision_type"
@@ -23,6 +25,12 @@
                 },
                 {
                   "$ref": "#/components/schemas/DismissDecision"
+                },
+                {
+                  "$ref": "#/components/schemas/ConfirmRelationDecision"
+                },
+                {
+                  "$ref": "#/components/schemas/DismissRelationDecision"
                 }
               ]
             },
@@ -444,6 +452,194 @@
         "title": "BrainConceptOut",
         "type": "object"
       },
+      "BrainGraphEdgeOut": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence_count": {
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "relation_type": {
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "source_concept_id": {
+            "title": "Source Concept Id",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "description": "过期徽章（最近一次成功构建对该关系零证据支撑），查询时派生不落库",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "target_concept_id": {
+            "title": "Target Concept Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_concept_id",
+          "target_concept_id",
+          "relation_type",
+          "confidence",
+          "evidence_count"
+        ],
+        "title": "BrainGraphEdgeOut",
+        "type": "object"
+      },
+      "BrainGraphNodeOut": {
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "concept_type": {
+            "title": "Concept Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "importance": {
+            "title": "Importance",
+            "type": "integer"
+          },
+          "occurrence_count": {
+            "description": "出现次数合计（图谱节点权重映射）",
+            "title": "Occurrence Count",
+            "type": "integer"
+          },
+          "record_count": {
+            "description": "出现该概念的未删除记录数（图谱节点大小映射）",
+            "title": "Record Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "canonical_name",
+          "concept_type",
+          "importance",
+          "record_count",
+          "occurrence_count"
+        ],
+        "title": "BrainGraphNodeOut",
+        "type": "object"
+      },
+      "BrainGraphOut": {
+        "description": "正式图谱视图：节点 = CONFIRMED 概念，边 = 两端均 CONFIRMED 的 CONFIRMED 关系。",
+        "properties": {
+          "edges": {
+            "items": {
+              "$ref": "#/components/schemas/BrainGraphEdgeOut"
+            },
+            "title": "Edges",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/BrainGraphNodeOut"
+            },
+            "title": "Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "nodes",
+          "edges"
+        ],
+        "title": "BrainGraphOut",
+        "type": "object"
+      },
+      "BrainRelationOut": {
+        "properties": {
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_count": {
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "relation_type": {
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "source_concept_id": {
+            "title": "Source Concept Id",
+            "type": "string"
+          },
+          "source_name": {
+            "description": "起点概念规范名",
+            "title": "Source Name",
+            "type": "string"
+          },
+          "stale": {
+            "default": false,
+            "description": "过期徽章（仅 CONFIRMED 关系：两端概念仍正式且最近一次成功构建零证据支撑）",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BrainRelationStatus"
+          },
+          "target_concept_id": {
+            "title": "Target Concept Id",
+            "type": "string"
+          },
+          "target_name": {
+            "description": "终点概念规范名",
+            "title": "Target Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "source_concept_id",
+          "source_name",
+          "target_concept_id",
+          "target_name",
+          "relation_type",
+          "confidence",
+          "evidence_count",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BrainRelationOut",
+        "type": "object"
+      },
+      "BrainRelationStatus": {
+        "enum": [
+          "CANDIDATE",
+          "CONFIRMED",
+          "DISMISSED"
+        ],
+        "title": "BrainRelationStatus",
+        "type": "string"
+      },
       "BrainSnapshotOut": {
         "properties": {
           "active_job_id": {
@@ -472,6 +668,10 @@
             "title": "Course Id",
             "type": "string"
           },
+          "graph": {
+            "$ref": "#/components/schemas/BrainGraphOut",
+            "description": "CONFIRMED 概念邻接（节点+边一次取齐，供关系图渲染）"
+          },
           "last_built_at": {
             "anyOf": [
               {
@@ -498,7 +698,8 @@
           "status",
           "concept_count",
           "candidate_count",
-          "stale"
+          "stale",
+          "graph"
         ],
         "title": "BrainSnapshotOut",
         "type": "object"
@@ -1214,6 +1415,28 @@
         "title": "ConfirmDecision",
         "type": "object"
       },
+      "ConfirmRelationDecision": {
+        "description": "关系候选确认：CANDIDATE→CONFIRMED，进入正式图谱参与检索。",
+        "properties": {
+          "decision_type": {
+            "const": "confirm_relation",
+            "title": "Decision Type",
+            "type": "string"
+          },
+          "relation_id": {
+            "description": "待确认关系候选 id",
+            "minLength": 1,
+            "title": "Relation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_type",
+          "relation_id"
+        ],
+        "title": "ConfirmRelationDecision",
+        "type": "object"
+      },
       "CourseCreate": {
         "properties": {
           "course_type": {
@@ -1619,6 +1842,28 @@
           "concept_id"
         ],
         "title": "DismissDecision",
+        "type": "object"
+      },
+      "DismissRelationDecision": {
+        "description": "关系候选忽略：CANDIDATE→DISMISSED；重建不会复活（同三元组被跳过）。",
+        "properties": {
+          "decision_type": {
+            "const": "dismiss_relation",
+            "title": "Decision Type",
+            "type": "string"
+          },
+          "relation_id": {
+            "description": "待忽略关系候选 id",
+            "minLength": 1,
+            "title": "Relation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_type",
+          "relation_id"
+        ],
+        "title": "DismissRelationDecision",
         "type": "object"
       },
       "DocumentImportAccepted": {
@@ -8078,6 +8323,146 @@
           }
         },
         "summary": "Get Course Brain Concept Sources",
+        "tags": [
+          "course-brain"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/brain/relations": {
+      "get": {
+        "operationId": "list_course_brain_relations_api_courses__course_id__brain_relations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "关系状态筛选",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/BrainRelationStatus",
+              "default": "CANDIDATE",
+              "description": "关系状态筛选"
+            }
+          },
+          {
+            "description": "返回数量上限",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "返回数量上限",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "分页偏移",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "分页偏移",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrainRelationOut"
+                  },
+                  "title": "Response List Course Brain Relations Api Courses  Course Id  Brain Relations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Course Brain Relations",
         "tags": [
           "course-brain"
         ]
