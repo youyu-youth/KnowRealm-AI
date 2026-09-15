@@ -21,8 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utcnow
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
-from app.modules.course_brain.models import Concept
+from app.modules.course_brain.models import Concept, RecordConcept
 from app.modules.course_brain.schemas import (
+    ApplyReviewRequest,
     BrainConceptCreate,
     BrainConceptDetailOut,
     BrainConceptListQuery,
@@ -37,7 +38,10 @@ from app.modules.course_brain.schemas import (
     ConceptSource,
     ConceptSourcesOut,
     ConceptStatus,
+    ConfirmDecision,
     CourseBrainSearchOut,
+    DismissDecision,
+    MergeDecision,
 )
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
@@ -49,6 +53,7 @@ from app.modules.settings.config import (
     llm_provider_fingerprint,
     load_llm_provider,
 )
+from app.modules.source_anchor.models import SourceAnchorLink
 from app.modules.source_anchor.schemas import SourceAnchorType
 from app.shared.errors import CodedHTTPException
 
@@ -56,6 +61,10 @@ _ACTIVE_JOB_STATUSES = ("PENDING", "RUNNING")
 _CONCEPT_MATCH_LIMIT = 4
 _OCCURRENCE_PER_TERM = 8
 _OCCURRENCE_QUOTE_LIMIT = 500
+
+# 合并建议阈值（CB-05）：确定性相似度量，超阈值只标注建议，不自动合并。
+_MERGE_EDIT_SIMILARITY = 0.8
+_MERGE_TOKEN_OVERLAP = 0.5
 
 # 来源指纹：各来源表 (count, max_updated_at) 聚合；只统计未软删记录（含其宿主）。
 _FINGERPRINT_SQL = {
@@ -183,10 +192,139 @@ _CONCEPT_KP_SOURCES_SQL = text(
 )
 
 
+# 待归档派生（CB-05）：有出现映射且全部挂失效记录（软删/缺失）→ stale_archivable；
+# 查询时派生不落库，零映射（如手动创建）不算待归档。
+_STALE_ARCHIVABLE_SQL = text(
+    "SELECT rc.concept_id AS concept_id, count(*) AS total_rows, "
+    "sum(CASE WHEN r.id IS NULL OR r.deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS dead_rows "
+    "FROM record_concepts rc "
+    "LEFT JOIN records r ON r.id = rc.record_id "
+    "WHERE rc.concept_id IN :ids "
+    "GROUP BY rc.concept_id"
+).bindparams(bindparam("ids", expanding=True))
+
+
 def normalize_concept_name(name: str) -> str:
     """规范名归一化（spec 数据合同）：strip → 空白折叠 → 全角转半角 → casefold。"""
     collapsed = re.sub(r"\s+", " ", name.strip())
     return unicodedata.normalize("NFKC", collapsed).casefold()
+
+
+def _levenshtein_distance(left: str, right: str) -> int:
+    if left == right:
+        return 0
+    if not left:
+        return len(right)
+    if not right:
+        return len(left)
+    previous = list(range(len(right) + 1))
+    for i, left_char in enumerate(left, 1):
+        current = [i]
+        for j, right_char in enumerate(right, 1):
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + (left_char != right_char),
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _token_overlap(left: str, right: str) -> float:
+    left_tokens = set(left.split(" "))
+    right_tokens = set(right.split(" "))
+    smaller = min(len(left_tokens), len(right_tokens))
+    if smaller == 0:
+        return 0.0
+    return len(left_tokens & right_tokens) / smaller
+
+
+def _suggest_merge_target(normalized_name: str, confirmed: list[Concept]) -> Concept | None:
+    """确定性合并建议（CB-05）：编辑距离相似度或 token 重叠率超阈值的最高分正式概念。
+
+    不自动合并；平分时保持传入顺序（调用方按 canonical_name, id 定序保证确定性）。
+    """
+    best: Concept | None = None
+    best_score = 0.0
+    for concept in confirmed:
+        longer = max(len(normalized_name), len(concept.normalized_name))
+        edit_similarity = (
+            1.0 - _levenshtein_distance(normalized_name, concept.normalized_name) / longer
+            if longer
+            else 1.0
+        )
+        overlap = _token_overlap(normalized_name, concept.normalized_name)
+        if edit_similarity < _MERGE_EDIT_SIMILARITY and overlap < _MERGE_TOKEN_OVERLAP:
+            continue
+        score = max(edit_similarity, overlap)
+        if best is None or score > best_score:
+            best = concept
+            best_score = score
+    return best
+
+
+async def _confirmed_concepts(session: AsyncSession, course_id: str) -> list[Concept]:
+    """课程内全部正式概念（合并建议的候选目标池）。"""
+    return list(
+        (
+            await session.scalars(
+                select(Concept)
+                .where(
+                    Concept.course_id == course_id,
+                    Concept.status == ConceptStatus.CONFIRMED.value,
+                )
+                .order_by(Concept.canonical_name, Concept.id)
+            )
+        ).all()
+    )
+
+
+async def _stale_archivable_map(session: AsyncSession, concept_ids: list[str]) -> dict[str, bool]:
+    """出现映射全部失效的正式概念 → 待归档徽章（查询时派生，不自动改状态）。"""
+    if not concept_ids:
+        return {}
+    rows = (await session.execute(_STALE_ARCHIVABLE_SQL, {"ids": concept_ids})).all()
+    return {
+        cast(str, row.concept_id): int(row.total_rows) > 0
+        and int(row.total_rows) == int(row.dead_rows)
+        for row in rows
+    }
+
+
+async def _concept_badges(
+    session: AsyncSession, course_id: str, concepts: list[Concept]
+) -> tuple[dict[str, Concept | None], dict[str, bool]]:
+    """按状态装配派生字段：候选 → 合并建议；正式概念 → 待归档徽章。"""
+    suggestions: dict[str, Concept | None] = {}
+    stale_map: dict[str, bool] = {}
+    if any(concept.status == ConceptStatus.CANDIDATE.value for concept in concepts):
+        confirmed = await _confirmed_concepts(session, course_id)
+        suggestions = {
+            concept.id: _suggest_merge_target(concept.normalized_name, confirmed)
+            for concept in concepts
+            if concept.status == ConceptStatus.CANDIDATE.value
+        }
+    confirmed_ids = [
+        concept.id for concept in concepts if concept.status == ConceptStatus.CONFIRMED.value
+    ]
+    if confirmed_ids:
+        stale_map = await _stale_archivable_map(session, confirmed_ids)
+    return suggestions, stale_map
+
+
+async def _set_concept_status(
+    session: AsyncSession, concept: Concept, status: ConceptStatus
+) -> None:
+    """状态迁移同事务收尾：updated_at 落盘 + FTS 索引同步。
+
+    归档 id 回表无 CONFIRMED 行，upsert 即顺带清理残留索引；确认/重命名则重建索引。
+    """
+    concept.status = status.value
+    concept.updated_at = utcnow()
+    await session.flush()
+    await SegmentSearchService.upsert_segment_index(session, ENTITY_CONCEPT, [concept.id])
 
 
 async def _get_active_course(session: AsyncSession, course_id: str) -> Course:
@@ -264,7 +402,13 @@ async def _concept_stats(
     }
 
 
-def _concept_out(concept: Concept, stats: tuple[int, int] | None) -> BrainConceptOut:
+def _concept_out(
+    concept: Concept,
+    stats: tuple[int, int] | None,
+    *,
+    suggested_target: Concept | None = None,
+    stale_archivable: bool = False,
+) -> BrainConceptOut:
     record_count, occurrence_count = stats if stats is not None else (0, 0)
     return BrainConceptOut(
         id=concept.id,
@@ -279,6 +423,11 @@ def _concept_out(concept: Concept, stats: tuple[int, int] | None) -> BrainConcep
         updated_at=concept.updated_at,
         record_count=record_count,
         occurrence_count=occurrence_count,
+        suggested_target_id=suggested_target.id if suggested_target is not None else None,
+        suggested_target_name=(
+            suggested_target.canonical_name if suggested_target is not None else None
+        ),
+        stale_archivable=stale_archivable,
     )
 
 
@@ -373,7 +522,17 @@ class CourseBrainService:
             ).all()
         )
         stats = await _concept_stats(session, course_id, [concept.id for concept in concepts])
-        return [_concept_out(concept, stats.get(concept.id)) for concept in concepts]
+        # 派生徽章按状态装配：候选带合并建议，正式概念带待归档徽章（均查询时派生）。
+        suggestions, stale_map = await _concept_badges(session, course_id, concepts)
+        return [
+            _concept_out(
+                concept,
+                stats.get(concept.id),
+                suggested_target=suggestions.get(concept.id),
+                stale_archivable=stale_map.get(concept.id, False),
+            )
+            for concept in concepts
+        ]
 
     @staticmethod
     async def get_concept(
@@ -388,7 +547,13 @@ class CourseBrainService:
             )
             or 0
         )
-        base = _concept_out(concept, stats.get(concept.id))
+        suggestions, stale_map = await _concept_badges(session, course_id, [concept])
+        base = _concept_out(
+            concept,
+            stats.get(concept.id),
+            suggested_target=suggestions.get(concept.id),
+            stale_archivable=stale_map.get(concept.id, False),
+        )
         return BrainConceptDetailOut(**base.model_dump(), anchor_count=anchor_count)
 
     @staticmethod
@@ -546,6 +711,46 @@ class CourseBrainService:
         return _concept_out(concept, None)
 
     @staticmethod
+    async def apply_review(
+        session: AsyncSession, course_id: str, body: ApplyReviewRequest
+    ) -> BrainSnapshotOut:
+        """审核闭环（CB-05）：决策列表单事务原子应用，任一决策失败整体回滚。"""
+        try:
+            async with session.begin():
+                await _get_active_course(session, course_id)
+                for decision in body.decisions:
+                    if isinstance(decision, ConfirmDecision):
+                        await _apply_confirm(session, course_id, decision)
+                    elif isinstance(decision, MergeDecision):
+                        await _apply_merge(session, course_id, decision)
+                    else:
+                        await _apply_dismiss(session, course_id, decision)
+        except IntegrityError:
+            # 部分唯一索引兜底（确认/重命名撞已有正式名额）。
+            raise CodedHTTPException(
+                code="COURSE_BRAIN_CONCEPT_EXISTS", status_code=409, detail="已存在同名概念"
+            ) from None
+        return await CourseBrainService.get_snapshot(session, course_id)
+
+    @staticmethod
+    async def archive_concept(
+        session: AsyncSession, course_id: str, concept_id: str
+    ) -> BrainConceptOut:
+        """正式概念归档（CONFIRMED→ARCHIVED）：界面二次确认后的受控退役路径。"""
+        async with session.begin():
+            await _get_active_course(session, course_id)
+            concept = await _require_concept(session, course_id, concept_id)
+            if concept.status != ConceptStatus.CONFIRMED.value:
+                raise CodedHTTPException(
+                    code="COURSE_BRAIN_CONCEPT_STATE_INVALID",
+                    status_code=409,
+                    detail="仅正式概念可归档",
+                )
+            await _set_concept_status(session, concept, ConceptStatus.ARCHIVED)
+            stats = await _concept_stats(session, course_id, [concept.id])
+        return _concept_out(concept, stats.get(concept.id))
+
+    @staticmethod
     async def search(
         session: AsyncSession, course_id: str, query: str, limit: int = 8
     ) -> CourseBrainSearchOut:
@@ -603,6 +808,144 @@ class CourseBrainService:
             related_concepts=related,
             occurrences=occurrences,
         )
+
+
+async def _apply_confirm(session: AsyncSession, course_id: str, decision: ConfirmDecision) -> None:
+    """候选确认：可选重命名（归一化撞正式名额即 409）；确认后进 FTS 供检索。"""
+    concept = await _require_concept(session, course_id, decision.concept_id)
+    if concept.status != ConceptStatus.CANDIDATE.value:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_CONCEPT_STATE_INVALID",
+            status_code=409,
+            detail="仅待审核候选可确认",
+        )
+    if decision.new_name:
+        normalized = normalize_concept_name(decision.new_name)
+        existing = await session.scalar(
+            select(Concept.id).where(
+                Concept.course_id == course_id,
+                Concept.normalized_name == normalized,
+                Concept.status == ConceptStatus.CONFIRMED.value,
+            )
+        )
+        if existing is not None:
+            raise CodedHTTPException(
+                code="COURSE_BRAIN_CONCEPT_EXISTS", status_code=409, detail="已存在同名概念"
+            )
+        concept.canonical_name = decision.new_name
+        concept.normalized_name = normalized
+    await _set_concept_status(session, concept, ConceptStatus.CONFIRMED)
+
+
+async def _apply_merge(session: AsyncSession, course_id: str, decision: MergeDecision) -> None:
+    """候选并入正式概念：出现映射计数合并、锚点链接改挂去重，候选退役。"""
+    concept = await _require_concept(session, course_id, decision.concept_id)
+    target = await _require_concept(session, course_id, decision.target_concept_id)
+    if concept.id == target.id:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_CONCEPT_STATE_INVALID",
+            status_code=409,
+            detail="合并目标不能是候选自身",
+        )
+    if concept.status != ConceptStatus.CANDIDATE.value:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_CONCEPT_STATE_INVALID",
+            status_code=409,
+            detail="仅待审核候选可合并",
+        )
+    if target.status != ConceptStatus.CONFIRMED.value:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_CONCEPT_STATE_INVALID",
+            status_code=409,
+            detail="合并目标必须是正式概念",
+        )
+    now = utcnow()
+
+    # 出现映射迁移：目标已有同记录行 → 计数合并后退役候选侧行；否则整体改挂。
+    candidate_rows = list(
+        (
+            await session.scalars(
+                select(RecordConcept).where(RecordConcept.concept_id == concept.id)
+            )
+        ).all()
+    )
+    if candidate_rows:
+        target_rows = {
+            row.record_id: row
+            for row in (
+                await session.scalars(
+                    select(RecordConcept).where(
+                        RecordConcept.concept_id == target.id,
+                        RecordConcept.record_id.in_([row.record_id for row in candidate_rows]),
+                    )
+                )
+            ).all()
+        }
+        for row in candidate_rows:
+            merged = target_rows.get(row.record_id)
+            if merged is None:
+                row.concept_id = target.id
+                row.updated_at = now
+                continue
+            merged.evidence_count += row.evidence_count
+            merged.relevance = max(merged.relevance, row.relevance)
+            if row.first_start_ms is not None and (
+                merged.first_start_ms is None or row.first_start_ms < merged.first_start_ms
+            ):
+                merged.first_start_ms = row.first_start_ms
+            if merged.knowledge_point_id is None:
+                merged.knowledge_point_id = row.knowledge_point_id
+            merged.updated_at = now
+            await session.delete(row)
+        await session.flush()
+
+    # 锚点链接迁移：目标已有同锚点同关系类型的链接则去重删除，否则改挂 resource_id。
+    candidate_links = list(
+        (
+            await session.scalars(
+                select(SourceAnchorLink).where(
+                    SourceAnchorLink.resource_type == "CONCEPT",
+                    SourceAnchorLink.resource_id == concept.id,
+                )
+            )
+        ).all()
+    )
+    if candidate_links:
+        target_link_keys = {
+            (row.source_anchor_id, row.relation_type)
+            for row in (
+                await session.scalars(
+                    select(SourceAnchorLink).where(
+                        SourceAnchorLink.resource_type == "CONCEPT",
+                        SourceAnchorLink.resource_id == target.id,
+                        SourceAnchorLink.source_anchor_id.in_(
+                            [link.source_anchor_id for link in candidate_links]
+                        ),
+                    )
+                )
+            ).all()
+        }
+        for link in candidate_links:
+            key = (link.source_anchor_id, link.relation_type)
+            if key in target_link_keys:
+                await session.delete(link)
+            else:
+                link.resource_id = target.id
+        await session.flush()
+
+    await _set_concept_status(session, concept, ConceptStatus.ARCHIVED)
+
+
+async def _apply_dismiss(session: AsyncSession, course_id: str, decision: DismissDecision) -> None:
+    """候选忽略：CANDIDATE→ARCHIVED；重建时同名概念会重新进入审核。"""
+    concept = await _require_concept(session, course_id, decision.concept_id)
+    if concept.status != ConceptStatus.CANDIDATE.value:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_CONCEPT_STATE_INVALID",
+            status_code=409,
+            detail="仅待审核候选可忽略",
+        )
+    await _set_concept_status(session, concept, ConceptStatus.ARCHIVED)
 
 
 async def _related_concepts(

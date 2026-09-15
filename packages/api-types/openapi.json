@@ -1,6 +1,43 @@
 {
   "components": {
     "schemas": {
+      "ApplyReviewRequest": {
+        "properties": {
+          "decisions": {
+            "description": "审核决策列表（单事务原子应用）",
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "confirm": "#/components/schemas/ConfirmDecision",
+                  "dismiss": "#/components/schemas/DismissDecision",
+                  "merge": "#/components/schemas/MergeDecision"
+                },
+                "propertyName": "decision_type"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ConfirmDecision"
+                },
+                {
+                  "$ref": "#/components/schemas/MergeDecision"
+                },
+                {
+                  "$ref": "#/components/schemas/DismissDecision"
+                }
+              ]
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Decisions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decisions"
+        ],
+        "title": "ApplyReviewRequest",
+        "type": "object"
+      },
       "AudioImportAccepted": {
         "properties": {
           "asr_job_id": {
@@ -256,8 +293,38 @@
           "source": {
             "$ref": "#/components/schemas/ConceptSource"
           },
+          "stale_archivable": {
+            "default": false,
+            "description": "待归档徽章（仅正式概念：出现映射全部失效时为真），查询时派生不落库",
+            "title": "Stale Archivable",
+            "type": "boolean"
+          },
           "status": {
             "$ref": "#/components/schemas/ConceptStatus"
+          },
+          "suggested_target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "确定性相似度量超阈值的合并建议目标（仅候选概念填充；只建议不自动合并）",
+            "title": "Suggested Target Id"
+          },
+          "suggested_target_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "合并建议目标的规范名",
+            "title": "Suggested Target Name"
           },
           "updated_at": {
             "title": "Updated At",
@@ -324,8 +391,38 @@
           "source": {
             "$ref": "#/components/schemas/ConceptSource"
           },
+          "stale_archivable": {
+            "default": false,
+            "description": "待归档徽章（仅正式概念：出现映射全部失效时为真），查询时派生不落库",
+            "title": "Stale Archivable",
+            "type": "boolean"
+          },
           "status": {
             "$ref": "#/components/schemas/ConceptStatus"
+          },
+          "suggested_target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "确定性相似度量超阈值的合并建议目标（仅候选概念填充；只建议不自动合并）",
+            "title": "Suggested Target Id"
+          },
+          "suggested_target_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "合并建议目标的规范名",
+            "title": "Suggested Target Name"
           },
           "updated_at": {
             "title": "Updated At",
@@ -1082,6 +1179,41 @@
         "title": "ConceptStatus",
         "type": "string"
       },
+      "ConfirmDecision": {
+        "description": "候选确认：CANDIDATE→CONFIRMED，可带重命名（重命名走归一化撞名检查）。",
+        "properties": {
+          "concept_id": {
+            "description": "待确认候选概念 id",
+            "minLength": 1,
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "decision_type": {
+            "const": "confirm",
+            "title": "Decision Type",
+            "type": "string"
+          },
+          "new_name": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选重命名；缺省沿用候选规范名",
+            "title": "New Name"
+          }
+        },
+        "required": [
+          "decision_type",
+          "concept_id"
+        ],
+        "title": "ConfirmDecision",
+        "type": "object"
+      },
       "CourseCreate": {
         "properties": {
           "course_type": {
@@ -1465,6 +1597,28 @@
           "empty_library"
         ],
         "title": "DataDirectoryLibraryStateOut",
+        "type": "object"
+      },
+      "DismissDecision": {
+        "description": "候选忽略：CANDIDATE→ARCHIVED；重建时同名概念可再次进入审核。",
+        "properties": {
+          "concept_id": {
+            "description": "待忽略候选概念 id",
+            "minLength": 1,
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "decision_type": {
+            "const": "dismiss",
+            "title": "Decision Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_type",
+          "concept_id"
+        ],
+        "title": "DismissDecision",
         "type": "object"
       },
       "DocumentImportAccepted": {
@@ -2111,6 +2265,35 @@
           "daily"
         ],
         "title": "LlmUsageOut",
+        "type": "object"
+      },
+      "MergeDecision": {
+        "description": "候选合并：候选并入同课程正式概念，迁移出现映射与锚点链接后退役。",
+        "properties": {
+          "concept_id": {
+            "description": "待合并候选概念 id",
+            "minLength": 1,
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "decision_type": {
+            "const": "merge",
+            "title": "Decision Type",
+            "type": "string"
+          },
+          "target_concept_id": {
+            "description": "并入的正式概念 id",
+            "minLength": 1,
+            "title": "Target Concept Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision_type",
+          "concept_id",
+          "target_concept_id"
+        ],
+        "title": "MergeDecision",
         "type": "object"
       },
       "PreferencesOut": {
@@ -7127,6 +7310,114 @@
         ]
       }
     },
+    "/api/courses/{course_id}/brain/apply-review": {
+      "post": {
+        "operationId": "apply_course_brain_review_api_courses__course_id__brain_apply_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyReviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrainSnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Apply Course Brain Review",
+        "tags": [
+          "course-brain"
+        ]
+      }
+    },
     "/api/courses/{course_id}/brain/builds": {
       "post": {
         "operationId": "trigger_course_brain_build_api_courses__course_id__brain_builds_post",
@@ -7573,6 +7864,113 @@
           }
         },
         "summary": "Get Course Brain Concept",
+        "tags": [
+          "course-brain"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/brain/concepts/{concept_id}/archive": {
+      "post": {
+        "operationId": "archive_course_brain_concept_api_courses__course_id__brain_concepts__concept_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "concept_id",
+            "required": true,
+            "schema": {
+              "title": "Concept Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrainConceptOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Archive Course Brain Concept",
         "tags": [
           "course-brain"
         ]

@@ -1950,3 +1950,533 @@ async def test_rebuild_reproposes_archived_concept_as_candidate(tmp_path: Path) 
                 text("SELECT count(*) FROM concepts WHERE id = 'concept-archived'")
             )
         assert archived == 1, "已忽略概念保持 ARCHIVED，重新抽取生成新的待审候选"
+
+
+# ---------------------------------------------------------------------------
+# CB-05 审核闭环：apply-review / archive / 合并建议 / 待归档徽章
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_apply_review_confirm_with_rename_reindexes_search(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_concept(
+            app,
+            concept_id="concept-cand",
+            course_id=COURSE_ID,
+            name="mvcc",
+            status="CANDIDATE",
+            description="旧描述",
+        )
+        await seed_record_concept(
+            app, rc_id="rc-cand", record_id=RECORD_ID, concept_id="concept-cand"
+        )
+
+        response = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={
+                "decisions": [
+                    {
+                        "decision_type": "confirm",
+                        "concept_id": "concept-cand",
+                        "new_name": "MVCC 并发控制",
+                    }
+                ]
+            },
+        )
+        assert response.status_code == 200, response.text
+        snapshot = response.json()
+        assert snapshot["status"] == "READY"
+        assert snapshot["concept_count"] == 1 and snapshot["candidate_count"] == 0
+
+        confirmed = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CONFIRMED")
+        ).json()
+        assert [item["canonical_name"] for item in confirmed] == ["MVCC 并发控制"]
+        assert confirmed[0]["source"] == "AI_EXTRACTED", "确认不改变概念来源口径"
+        assert confirmed[0]["record_count"] == 1
+        assert confirmed[0]["suggested_target_id"] is None
+
+        result = await run_search(app, COURSE_ID, "并发控制")
+        assert [item.canonical_name for item in result.matched_concepts] == ["MVCC 并发控制"], (
+            "确认后（含重命名）须同步进 FTS"
+        )
+
+
+@pytest.mark.anyio
+async def test_apply_review_rename_collision_conflicts(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_concept(app, concept_id="concept-live", course_id=COURSE_ID, name="MVCC")
+        await seed_concept(
+            app,
+            concept_id="concept-cand",
+            course_id=COURSE_ID,
+            name="并发控制",
+            status="CANDIDATE",
+        )
+
+        response = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={
+                "decisions": [
+                    {
+                        "decision_type": "confirm",
+                        "concept_id": "concept-cand",
+                        "new_name": " MVCC ",
+                    }
+                ]
+            },
+        )
+        assert response.status_code == 409
+        assert response.json()["code"] == "COURSE_BRAIN_CONCEPT_EXISTS"
+
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert snapshot["candidate_count"] == 1, "失败决策不得改动候选状态"
+
+
+@pytest.mark.anyio
+async def test_apply_review_merge_migrates_records_and_anchors(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_record(app, "record-2", COURSE_ID)
+        await seed_knowledge_point(app, kp_id=KP_ID, record_id=RECORD_ID)
+        await seed_concept(
+            app,
+            concept_id="concept-target",
+            course_id=COURSE_ID,
+            name="MVCC",
+            description="正式概念",
+        )
+        await seed_concept(
+            app,
+            concept_id="concept-cand",
+            course_id=COURSE_ID,
+            name="mvcc 并发控制",
+            status="CANDIDATE",
+        )
+        # 目标在 record-1 已有出现；候选与目标同记录冲突（计数合并）+ record-2 干净改挂。
+        await seed_record_concept(
+            app,
+            rc_id="rc-target-1",
+            record_id=RECORD_ID,
+            concept_id="concept-target",
+            evidence_count=2,
+        )
+        await seed_record_concept(
+            app,
+            rc_id="rc-cand-1",
+            record_id=RECORD_ID,
+            concept_id="concept-cand",
+            kp_id=KP_ID,
+            evidence_count=1,
+        )
+        await seed_record_concept(
+            app,
+            rc_id="rc-cand-2",
+            record_id="record-2",
+            concept_id="concept-cand",
+            evidence_count=3,
+        )
+        # anchor-shared 目标已挂 PRIMARY（迁移须去重），anchor-only 仅候选挂 SUPPORTS（改挂）。
+        await seed_anchor(
+            app,
+            anchor_id="anchor-shared",
+            course_id=COURSE_ID,
+            source_type="USER_NOTE",
+            source_id="note-1",
+            record_id=RECORD_ID,
+        )
+        await seed_anchor(
+            app,
+            anchor_id="anchor-only",
+            course_id=COURSE_ID,
+            source_type="USER_NOTE",
+            source_id="note-2",
+            record_id="record-2",
+        )
+        await link_concept_anchor(
+            app, link_id="link-target", concept_id="concept-target", anchor_id="anchor-shared"
+        )
+        await link_concept_anchor(
+            app,
+            link_id="link-cand-shared",
+            concept_id="concept-cand",
+            anchor_id="anchor-shared",
+        )
+        await link_concept_anchor(
+            app,
+            link_id="link-cand-only",
+            concept_id="concept-cand",
+            anchor_id="anchor-only",
+            relation_type="SUPPORTS",
+        )
+
+        response = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={
+                "decisions": [
+                    {
+                        "decision_type": "merge",
+                        "concept_id": "concept-cand",
+                        "target_concept_id": "concept-target",
+                    }
+                ]
+            },
+        )
+        assert response.status_code == 200, response.text
+        snapshot = response.json()
+        assert snapshot["concept_count"] == 1 and snapshot["candidate_count"] == 0
+
+        confirmed = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CONFIRMED")
+        ).json()
+        assert confirmed[0]["id"] == "concept-target"
+        assert confirmed[0]["record_count"] == 2
+        assert confirmed[0]["occurrence_count"] == 6, "计数合并：2+1 与 3"
+
+        async with app.state.session_factory() as session:
+            candidate_status = await session.scalar(
+                text("SELECT status FROM concepts WHERE id = 'concept-cand'")
+            )
+            merged_row = (
+                await session.execute(
+                    text(
+                        "SELECT concept_id, evidence_count, knowledge_point_id "
+                        "FROM record_concepts WHERE id = 'rc-target-1'"
+                    )
+                )
+            ).one()
+            moved_row = await session.scalar(
+                text("SELECT concept_id FROM record_concepts WHERE id = 'rc-cand-2'")
+            )
+            dropped_row = await session.scalar(
+                text("SELECT count(*) FROM record_concepts WHERE id = 'rc-cand-1'")
+            )
+            links = (
+                await session.execute(
+                    text(
+                        "SELECT id, resource_id FROM source_anchor_links "
+                        "WHERE resource_type = 'CONCEPT' ORDER BY id"
+                    )
+                )
+            ).all()
+            candidate_index_rows = await session.scalar(
+                text(
+                    "SELECT count(*) FROM segment_search_index "
+                    "WHERE entity_type = 'CONCEPT' AND entity_id = 'concept-cand'"
+                )
+            )
+        assert candidate_status == "ARCHIVED", "合并后候选退役"
+        assert merged_row == ("concept-target", 3, KP_ID), "冲突行计数合并并回填 KP 桥"
+        assert moved_row == "concept-target", "无冲突出现映射整体改挂"
+        assert dropped_row == 0
+        assert links == [
+            ("link-cand-only", "concept-target"),
+            ("link-target", "concept-target"),
+        ], "锚点链接改挂目标，重复链接去重"
+        assert candidate_index_rows == 0, "退役候选的 FTS 索引行顺带清理"
+
+
+@pytest.mark.anyio
+async def test_apply_review_merge_cross_course_target_not_found(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_course(app, OTHER_COURSE_ID)
+        await seed_concept(
+            app, concept_id="concept-cand", course_id=COURSE_ID, name="MVCC", status="CANDIDATE"
+        )
+        await seed_concept(
+            app, concept_id="concept-foreign", course_id=OTHER_COURSE_ID, name="MVCC"
+        )
+
+        response = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={
+                "decisions": [
+                    {
+                        "decision_type": "merge",
+                        "concept_id": "concept-cand",
+                        "target_concept_id": "concept-foreign",
+                    }
+                ]
+            },
+        )
+        assert response.status_code == 404
+        assert response.json()["code"] == "COURSE_BRAIN_CONCEPT_NOT_FOUND"
+
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert snapshot["candidate_count"] == 1, "跨课程合并被拒绝且不改动候选"
+
+
+@pytest.mark.anyio
+async def test_apply_review_invalid_decisions_rejected(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_concept(app, concept_id="concept-live", course_id=COURSE_ID, name="MVCC")
+        await seed_concept(
+            app,
+            concept_id="concept-cand",
+            course_id=COURSE_ID,
+            name="MVCC 补充",
+            status="CANDIDATE",
+        )
+
+        async def apply(decisions: list[dict[str, object]]) -> httpx.Response:
+            return await client.post(
+                f"/api/courses/{COURSE_ID}/brain/apply-review", json={"decisions": decisions}
+            )
+
+        confirm_confirmed = await apply(
+            [{"decision_type": "confirm", "concept_id": "concept-live"}]
+        )
+        assert confirm_confirmed.status_code == 409
+        assert confirm_confirmed.json()["code"] == "COURSE_BRAIN_CONCEPT_STATE_INVALID"
+
+        merge_into_candidate = await apply(
+            [
+                {
+                    "decision_type": "merge",
+                    "concept_id": "concept-cand",
+                    "target_concept_id": "concept-cand",
+                }
+            ]
+        )
+        assert merge_into_candidate.status_code == 409, "禁止自合并"
+
+        dismiss_confirmed = await apply(
+            [{"decision_type": "dismiss", "concept_id": "concept-live"}]
+        )
+        assert dismiss_confirmed.status_code == 409, "正式概念须走 archive 退役"
+
+        duplicate = await apply(
+            [
+                {"decision_type": "dismiss", "concept_id": "concept-cand"},
+                {"decision_type": "confirm", "concept_id": "concept-cand"},
+            ]
+        )
+        assert duplicate.status_code == 422, "同一概念重复决策在边界校验即拒绝"
+
+        empty = await apply([])
+        assert empty.status_code == 422
+
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert snapshot["candidate_count"] == 1, "全部失败决策不得改动概念状态"
+
+
+@pytest.mark.anyio
+async def test_rebuild_never_overwrites_confirmed_identity(tmp_path: Path) -> None:
+    output: dict[str, object] = {
+        "concepts": [
+            {
+                "name": "mvcc",
+                "description": "抽取侧想覆盖的新描述",
+                "concept_type": "TERM",
+                "importance": 5,
+                "evidence": [{"quote": "MVCC 通过 ReadView 实现事务可见性", "source_hint": "转写"}],
+            }
+        ],
+        "relations": [],
+    }
+    model = FakeCourseBrainModel(output=output)
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+        )
+        await seed_concept(
+            app,
+            concept_id="concept-mvcc",
+            course_id=COURSE_ID,
+            name="MVCC",
+            description="用户确认的描述",
+        )
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert accepted.status_code == 202
+        await wait_for_job_status(app, accepted.json()["job_id"], "SUCCEEDED")
+
+        assert await count_rows(app, "concepts") == 1, "同归一化名复用正式节点，不新建候选"
+        async with app.state.session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT canonical_name, description, status FROM concepts "
+                        "WHERE id = 'concept-mvcc'"
+                    )
+                )
+            ).one()
+            occurrences = await session.scalar(
+                text("SELECT count(*) FROM record_concepts WHERE concept_id = 'concept-mvcc'")
+            )
+        assert row == ("MVCC", "用户确认的描述", "CONFIRMED"), "重建不得改写正式概念身份"
+        assert occurrences == 1, "重建只增量挂接出现映射"
+
+
+@pytest.mark.anyio
+async def test_dismissed_candidate_rebuilds_as_new_candidate(tmp_path: Path) -> None:
+    output: dict[str, object] = {
+        "concepts": [
+            {
+                "name": "MVCC",
+                "description": "多版本并发控制",
+                "concept_type": "TERM",
+                "importance": 4,
+                "evidence": [{"quote": "MVCC 通过 ReadView 实现事务可见性", "source_hint": "转写"}],
+            }
+        ],
+        "relations": [],
+    }
+    model = FakeCourseBrainModel(output=output)
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+        )
+        await seed_concept(
+            app,
+            concept_id="concept-old",
+            course_id=COURSE_ID,
+            name="MVCC",
+            status="CANDIDATE",
+        )
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        response = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={"decisions": [{"decision_type": "dismiss", "concept_id": "concept-old"}]},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["candidate_count"] == 0
+        async with app.state.session_factory() as session:
+            status = await session.scalar(
+                text("SELECT status FROM concepts WHERE id = 'concept-old'")
+            )
+        assert status == "ARCHIVED"
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert accepted.status_code == 202
+        await wait_for_brain_status(client, COURSE_ID, "REVIEW")
+
+        candidates = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        assert len(candidates) == 1
+        assert candidates[0]["id"] != "concept-old", "被忽略概念不复活，重建为新候选（可再审）"
+        assert candidates[0]["canonical_name"] == "MVCC"
+
+
+@pytest.mark.anyio
+async def test_candidate_lists_suggested_merge_target(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_concept(app, concept_id="concept-target", course_id=COURSE_ID, name="MVCC")
+        await seed_concept(
+            app,
+            concept_id="concept-similar",
+            course_id=COURSE_ID,
+            name="mvcc 并发控制",
+            status="CANDIDATE",
+        )
+        await seed_concept(
+            app,
+            concept_id="concept-unrelated",
+            course_id=COURSE_ID,
+            name="Scrum 会议",
+            status="CANDIDATE",
+        )
+
+        candidates = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        by_id = {item["id"]: item for item in candidates}
+        assert by_id["concept-similar"]["suggested_target_id"] == "concept-target"
+        assert by_id["concept-similar"]["suggested_target_name"] == "MVCC"
+        assert by_id["concept-unrelated"]["suggested_target_id"] is None
+
+        detail = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-similar")
+        ).json()
+        assert detail["suggested_target_id"] == "concept-target"
+
+        # 目标归档后建议随之消失（读取期派生，不悬空）。
+        archived = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts/concept-target/archive"
+        )
+        assert archived.status_code == 200, archived.text
+        assert archived.json()["status"] == "ARCHIVED"
+        candidates_after = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        by_id_after = {item["id"]: item for item in candidates_after}
+        assert by_id_after["concept-similar"]["suggested_target_id"] is None
+
+
+@pytest.mark.anyio
+async def test_stale_archivable_badge_and_archive_endpoint(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_record(app, "record-live", COURSE_ID)
+        await seed_concept(app, concept_id="concept-dead", course_id=COURSE_ID, name="旧概念")
+        await seed_concept(app, concept_id="concept-live", course_id=COURSE_ID, name="活概念")
+        await seed_concept(app, concept_id="concept-manual", course_id=COURSE_ID, name="手动概念")
+        await seed_record_concept(
+            app, rc_id="rc-dead", record_id=RECORD_ID, concept_id="concept-dead"
+        )
+        await seed_record_concept(
+            app, rc_id="rc-live", record_id="record-live", concept_id="concept-live"
+        )
+        await soft_delete_record(app, RECORD_ID)
+
+        confirmed = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CONFIRMED")
+        ).json()
+        by_id = {item["id"]: item for item in confirmed}
+        assert by_id["concept-dead"]["stale_archivable"] is True, "出现映射全部失效 → 待归档徽章"
+        assert by_id["concept-live"]["stale_archivable"] is False
+        assert by_id["concept-manual"]["stale_archivable"] is False, "零出现映射不算待归档"
+
+        detail = (await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-dead")).json()
+        assert detail["stale_archivable"] is True
+
+        archived = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts/concept-dead/archive"
+        )
+        assert archived.status_code == 200, archived.text
+        assert archived.json()["status"] == "ARCHIVED"
+        remaining = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CONFIRMED")
+        ).json()
+        assert {item["id"] for item in remaining} == {"concept-live", "concept-manual"}
+
+        await seed_concept(
+            app,
+            concept_id="concept-cand",
+            course_id=COURSE_ID,
+            name="候选概念",
+            status="CANDIDATE",
+        )
+        rejected = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts/concept-cand/archive"
+        )
+        assert rejected.status_code == 409
+        assert rejected.json()["code"] == "COURSE_BRAIN_CONCEPT_STATE_INVALID"

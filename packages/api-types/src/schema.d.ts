@@ -191,6 +191,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{course_id}/brain/apply-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Course Brain Review */
+        post: operations["apply_course_brain_review_api_courses__course_id__brain_apply_review_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/brain/builds": {
         parameters: {
             query?: never;
@@ -237,6 +254,23 @@ export interface paths {
         get: operations["get_course_brain_concept_api_courses__course_id__brain_concepts__concept_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/brain/concepts/{concept_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Course Brain Concept */
+        post: operations["archive_course_brain_concept_api_courses__course_id__brain_concepts__concept_id__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1490,6 +1524,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ApplyReviewRequest */
+        ApplyReviewRequest: {
+            /**
+             * Decisions
+             * @description 审核决策列表（单事务原子应用）
+             */
+            decisions: (components["schemas"]["ConfirmDecision"] | components["schemas"]["MergeDecision"] | components["schemas"]["DismissDecision"])[];
+        };
         /** AudioImportAccepted */
         AudioImportAccepted: {
             /** Asr Job Id */
@@ -1601,7 +1643,23 @@ export interface components {
              */
             record_count: number;
             source: components["schemas"]["ConceptSource"];
+            /**
+             * Stale Archivable
+             * @description 待归档徽章（仅正式概念：出现映射全部失效时为真），查询时派生不落库
+             * @default false
+             */
+            stale_archivable: boolean;
             status: components["schemas"]["ConceptStatus"];
+            /**
+             * Suggested Target Id
+             * @description 确定性相似度量超阈值的合并建议目标（仅候选概念填充；只建议不自动合并）
+             */
+            suggested_target_id?: string | null;
+            /**
+             * Suggested Target Name
+             * @description 合并建议目标的规范名
+             */
+            suggested_target_name?: string | null;
             /** Updated At */
             updated_at: string;
         };
@@ -1634,7 +1692,23 @@ export interface components {
              */
             record_count: number;
             source: components["schemas"]["ConceptSource"];
+            /**
+             * Stale Archivable
+             * @description 待归档徽章（仅正式概念：出现映射全部失效时为真），查询时派生不落库
+             * @default false
+             */
+            stale_archivable: boolean;
             status: components["schemas"]["ConceptStatus"];
+            /**
+             * Suggested Target Id
+             * @description 确定性相似度量超阈值的合并建议目标（仅候选概念填充；只建议不自动合并）
+             */
+            suggested_target_id?: string | null;
+            /**
+             * Suggested Target Name
+             * @description 合并建议目标的规范名
+             */
+            suggested_target_name?: string | null;
             /** Updated At */
             updated_at: string;
         };
@@ -1999,6 +2073,27 @@ export interface components {
          * @enum {string}
          */
         ConceptStatus: "CANDIDATE" | "CONFIRMED" | "ARCHIVED";
+        /**
+         * ConfirmDecision
+         * @description 候选确认：CANDIDATE→CONFIRMED，可带重命名（重命名走归一化撞名检查）。
+         */
+        ConfirmDecision: {
+            /**
+             * Concept Id
+             * @description 待确认候选概念 id
+             */
+            concept_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            decision_type: "confirm";
+            /**
+             * New Name
+             * @description 可选重命名；缺省沿用候选规范名
+             */
+            new_name?: string | null;
+        };
         /** CourseCreate */
         CourseCreate: {
             /** @description 可选课程类型 */
@@ -2121,6 +2216,22 @@ export interface components {
         DataDirectoryLibraryStateOut: {
             /** Empty Library */
             empty_library: boolean;
+        };
+        /**
+         * DismissDecision
+         * @description 候选忽略：CANDIDATE→ARCHIVED；重建时同名概念可再次进入审核。
+         */
+        DismissDecision: {
+            /**
+             * Concept Id
+             * @description 待忽略候选概念 id
+             */
+            concept_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            decision_type: "dismiss";
         };
         /** DocumentImportAccepted */
         DocumentImportAccepted: {
@@ -2378,6 +2489,27 @@ export interface components {
             daily: components["schemas"]["LlmUsageDailyPointOut"][];
             /** Items */
             items: components["schemas"]["LlmUsageItemOut"][];
+        };
+        /**
+         * MergeDecision
+         * @description 候选合并：候选并入同课程正式概念，迁移出现映射与锚点链接后退役。
+         */
+        MergeDecision: {
+            /**
+             * Concept Id
+             * @description 待合并候选概念 id
+             */
+            concept_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            decision_type: "merge";
+            /**
+             * Target Concept Id
+             * @description 并入的正式概念 id
+             */
+            target_concept_id: string;
         };
         /** PreferencesOut */
         PreferencesOut: {
@@ -4720,6 +4852,79 @@ export interface operations {
             };
         };
     };
+    apply_course_brain_review_api_courses__course_id__brain_apply_review_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainSnapshotOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     trigger_course_brain_build_api_courses__course_id__brain_builds_post: {
         parameters: {
             query?: never;
@@ -4959,6 +5164,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrainConceptDetailOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_course_brain_concept_api_courses__course_id__brain_concepts__concept_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                concept_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainConceptOut"];
                 };
             };
             /** @description Forbidden */

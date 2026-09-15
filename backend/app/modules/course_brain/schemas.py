@@ -2,8 +2,9 @@
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, Field, field_serializer, field_validator, model_validator
 
 from app.modules.search.schemas import SegmentEntityType
 from app.modules.source_anchor.schemas import SourceAnchorType
@@ -74,6 +75,15 @@ class BrainConceptOut(BaseModel):
     updated_at: datetime
     record_count: int = Field(default=0, description="出现该概念的未删除记录数")
     occurrence_count: int = Field(default=0, description="出现次数合计（证据计数）")
+    suggested_target_id: str | None = Field(
+        default=None,
+        description="确定性相似度量超阈值的合并建议目标（仅候选概念填充；只建议不自动合并）",
+    )
+    suggested_target_name: str | None = Field(default=None, description="合并建议目标的规范名")
+    stale_archivable: bool = Field(
+        default=False,
+        description="待归档徽章（仅正式概念：出现映射全部失效时为真），查询时派生不落库",
+    )
 
     @field_serializer("created_at", "updated_at")
     def serialize_utc(self, value: datetime) -> str:
@@ -160,6 +170,66 @@ class CourseBrainSearchOut(BaseModel):
 
 class BrainBuildAcceptedOut(BaseModel):
     job_id: str = Field(description="已入队的构建任务 id")
+
+
+# ---------------------------------------------------------------------------
+# CB-05 审核闭环：apply-review 决策（同事务原子应用；relation 审核见 CB-06）
+# ---------------------------------------------------------------------------
+
+
+class ReviewDecisionType(StrEnum):
+    CONFIRM = "confirm"
+    MERGE = "merge"
+    DISMISS = "dismiss"
+
+
+class ConfirmDecision(BaseModel):
+    """候选确认：CANDIDATE→CONFIRMED，可带重命名（重命名走归一化撞名检查）。"""
+
+    decision_type: Literal[ReviewDecisionType.CONFIRM]
+    concept_id: str = Field(min_length=1, description="待确认候选概念 id")
+    new_name: str | None = Field(
+        default=None, max_length=100, description="可选重命名；缺省沿用候选规范名"
+    )
+
+    @field_validator("new_name")
+    @classmethod
+    def clean_new_name(cls, value: str | None) -> str | None:
+        return None if value is None else value.strip()
+
+
+class MergeDecision(BaseModel):
+    """候选合并：候选并入同课程正式概念，迁移出现映射与锚点链接后退役。"""
+
+    decision_type: Literal[ReviewDecisionType.MERGE]
+    concept_id: str = Field(min_length=1, description="待合并候选概念 id")
+    target_concept_id: str = Field(min_length=1, description="并入的正式概念 id")
+
+
+class DismissDecision(BaseModel):
+    """候选忽略：CANDIDATE→ARCHIVED；重建时同名概念可再次进入审核。"""
+
+    decision_type: Literal[ReviewDecisionType.DISMISS]
+    concept_id: str = Field(min_length=1, description="待忽略候选概念 id")
+
+
+ReviewDecision = Annotated[
+    ConfirmDecision | MergeDecision | DismissDecision,
+    Field(discriminator="decision_type"),
+]
+
+
+class ApplyReviewRequest(BaseModel):
+    decisions: list[ReviewDecision] = Field(
+        min_length=1, max_length=200, description="审核决策列表（单事务原子应用）"
+    )
+
+    @model_validator(mode="after")
+    def reject_duplicate_concepts(self) -> "ApplyReviewRequest":
+        concept_ids = [decision.concept_id for decision in self.decisions]
+        if len(set(concept_ids)) != len(concept_ids):
+            raise ValueError("同一概念在决策列表中重复出现")
+        return self
 
 
 # ---------------------------------------------------------------------------

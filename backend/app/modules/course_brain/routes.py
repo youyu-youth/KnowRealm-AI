@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.course_brain.schemas import (
+    ApplyReviewRequest,
     BrainBuildAcceptedOut,
     BrainConceptCreate,
     BrainConceptDetailOut,
@@ -91,3 +92,24 @@ async def create_course_brain_concept(
     session: AsyncSession = Depends(get_db),
 ) -> BrainConceptOut:
     return await CourseBrainService.create_concept(session, course_id, payload)
+
+
+@router.post("/{course_id}/brain/apply-review", response_model=BrainSnapshotOut)
+async def apply_course_brain_review(
+    course_id: str,
+    payload: ApplyReviewRequest,
+    session: AsyncSession = Depends(get_db),
+) -> BrainSnapshotOut:
+    return await CourseBrainService.apply_review(session, course_id, payload)
+
+
+@router.post(
+    "/{course_id}/brain/concepts/{concept_id}/archive",
+    response_model=BrainConceptOut,
+)
+async def archive_course_brain_concept(
+    course_id: str,
+    concept_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> BrainConceptOut:
+    return await CourseBrainService.archive_concept(session, course_id, concept_id)
