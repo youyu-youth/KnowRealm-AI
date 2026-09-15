@@ -17,4 +17,5 @@
 **门禁**
 
 - [x] 后端四门禁全绿；提交：`feat(backend): 实现 Concept 审核闭环与正式概念保护（F4 CB-05）`
+- 真机验收：用户执行，步骤清单见同目录 `verification-cb05.md`
 - 实施备注：确认后 source 保持 AI_EXTRACTED 不变（来源口径=溯源，status 已表达确认态）；新错误码 `COURSE_BRAIN_CONCEPT_STATE_INVALID` 409；零迁移（13 处 user_version 断言未动）
