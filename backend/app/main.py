@@ -28,6 +28,7 @@ from app.modules.capture import (
 )
 from app.modules.course import courses
 from app.modules.course.tombstone_cleanup import DocumentCleanupService
+from app.modules.course_brain import routes as course_brain_routes
 from app.modules.data import routes as data_routes
 from app.modules.data.archive import create_rolling_backup, restore_archive
 from app.modules.jobs import processing_jobs
@@ -332,6 +333,7 @@ def create_app(
         allow_headers=["Content-Type", "X-KnowRealm-Token"],
     )
     app.include_router(courses.router)
+    app.include_router(course_brain_routes.router)
     app.include_router(audio_imports.router)
     app.include_router(capture_batches.router)
     app.include_router(settings_routes.router)

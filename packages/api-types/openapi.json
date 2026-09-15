@@ -152,6 +152,258 @@
         "title": "Body_import_document_api_document_imports_post",
         "type": "object"
       },
+      "BrainConceptCreate": {
+        "properties": {
+          "concept_type": {
+            "default": "TERM",
+            "description": "概念类型",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Concept Type",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "description": "概念说明",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "importance": {
+            "default": 3,
+            "description": "重要度 1~5",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Importance",
+            "type": "integer"
+          },
+          "name": {
+            "description": "概念规范名",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "BrainConceptCreate",
+        "type": "object"
+      },
+      "BrainConceptDetailOut": {
+        "properties": {
+          "anchor_count": {
+            "default": 0,
+            "description": "来源锚点链接数",
+            "title": "Anchor Count",
+            "type": "integer"
+          },
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "concept_type": {
+            "title": "Concept Type",
+            "type": "string"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "importance": {
+            "title": "Importance",
+            "type": "integer"
+          },
+          "occurrence_count": {
+            "default": 0,
+            "description": "出现次数合计（证据计数）",
+            "title": "Occurrence Count",
+            "type": "integer"
+          },
+          "record_count": {
+            "default": 0,
+            "description": "出现该概念的未删除记录数",
+            "title": "Record Count",
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ConceptSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConceptStatus"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "canonical_name",
+          "description",
+          "concept_type",
+          "importance",
+          "status",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BrainConceptDetailOut",
+        "type": "object"
+      },
+      "BrainConceptOut": {
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "concept_type": {
+            "title": "Concept Type",
+            "type": "string"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "importance": {
+            "title": "Importance",
+            "type": "integer"
+          },
+          "occurrence_count": {
+            "default": 0,
+            "description": "出现次数合计（证据计数）",
+            "title": "Occurrence Count",
+            "type": "integer"
+          },
+          "record_count": {
+            "default": 0,
+            "description": "出现该概念的未删除记录数",
+            "title": "Record Count",
+            "type": "integer"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ConceptSource"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConceptStatus"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "canonical_name",
+          "description",
+          "concept_type",
+          "importance",
+          "status",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "BrainConceptOut",
+        "type": "object"
+      },
+      "BrainSnapshotOut": {
+        "properties": {
+          "active_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "进行中的构建任务 id",
+            "title": "Active Job Id"
+          },
+          "candidate_count": {
+            "description": "待审核（CANDIDATE）概念数",
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "concept_count": {
+            "description": "已确认（CONFIRMED）概念数",
+            "title": "Concept Count",
+            "type": "integer"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "last_built_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次成功构建完成时间",
+            "title": "Last Built At"
+          },
+          "stale": {
+            "description": "来源指纹与上次成功构建不一致",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BrainStatus"
+          }
+        },
+        "required": [
+          "course_id",
+          "status",
+          "concept_count",
+          "candidate_count",
+          "stale"
+        ],
+        "title": "BrainSnapshotOut",
+        "type": "object"
+      },
+      "BrainStatus": {
+        "enum": [
+          "EMPTY",
+          "BUILDING",
+          "REVIEW",
+          "READY",
+          "STALE",
+          "FAILED"
+        ],
+        "title": "BrainStatus",
+        "type": "string"
+      },
       "CaptureBatchAccepted": {
         "properties": {
           "job_ids": {
@@ -624,6 +876,197 @@
         ],
         "title": "ChatSessionRename",
         "type": "object"
+      },
+      "ConceptAnchorSourceOut": {
+        "properties": {
+          "anchor_id": {
+            "title": "Anchor Id",
+            "type": "string"
+          },
+          "chat_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "对话来源会话 id（跳转用）",
+            "title": "Chat Session Id"
+          },
+          "end_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "转写分片时间轴终点",
+            "title": "End Ms"
+          },
+          "page_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文档分片页码",
+            "title": "Page No"
+          },
+          "quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "来源逐字原文（分片/对话内容）",
+            "title": "Quote"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "锚点挂靠记录；无记录来源为 null",
+            "title": "Record Id"
+          },
+          "record_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "锚点挂靠记录标题",
+            "title": "Record Title"
+          },
+          "relation_type": {
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/SourceAnchorType"
+          },
+          "start_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "转写分片时间轴起点",
+            "title": "Start Ms"
+          }
+        },
+        "required": [
+          "anchor_id",
+          "source_type",
+          "relation_type"
+        ],
+        "title": "ConceptAnchorSourceOut",
+        "type": "object"
+      },
+      "ConceptKpSourceOut": {
+        "properties": {
+          "evidence_count": {
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "knowledge_point_id": {
+            "title": "Knowledge Point Id",
+            "type": "string"
+          },
+          "knowledge_point_name": {
+            "title": "Knowledge Point Name",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_title": {
+            "title": "Record Title",
+            "type": "string"
+          },
+          "relevance": {
+            "title": "Relevance",
+            "type": "number"
+          }
+        },
+        "required": [
+          "record_id",
+          "record_title",
+          "knowledge_point_id",
+          "knowledge_point_name",
+          "relevance",
+          "evidence_count"
+        ],
+        "title": "ConceptKpSourceOut",
+        "type": "object"
+      },
+      "ConceptSource": {
+        "enum": [
+          "AI_EXTRACTED",
+          "USER_CONFIRMED",
+          "SYSTEM"
+        ],
+        "title": "ConceptSource",
+        "type": "string"
+      },
+      "ConceptSourcesOut": {
+        "properties": {
+          "anchors": {
+            "items": {
+              "$ref": "#/components/schemas/ConceptAnchorSourceOut"
+            },
+            "title": "Anchors",
+            "type": "array"
+          },
+          "concept_id": {
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "knowledge_points": {
+            "items": {
+              "$ref": "#/components/schemas/ConceptKpSourceOut"
+            },
+            "title": "Knowledge Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "concept_id",
+          "anchors",
+          "knowledge_points"
+        ],
+        "title": "ConceptSourcesOut",
+        "type": "object"
+      },
+      "ConceptStatus": {
+        "enum": [
+          "CANDIDATE",
+          "CONFIRMED",
+          "ARCHIVED"
+        ],
+        "title": "ConceptStatus",
+        "type": "string"
       },
       "CourseCreate": {
         "properties": {
@@ -6568,6 +7011,564 @@
         "summary": "Update Course",
         "tags": [
           "courses"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/brain": {
+      "get": {
+        "operationId": "get_course_brain_api_courses__course_id__brain_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrainSnapshotOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Course Brain",
+        "tags": [
+          "course-brain"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/brain/concepts": {
+      "get": {
+        "operationId": "list_course_brain_concepts_api_courses__course_id__brain_concepts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "概念状态筛选",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ConceptStatus",
+              "default": "CONFIRMED",
+              "description": "概念状态筛选"
+            }
+          },
+          {
+            "description": "返回数量上限",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "description": "返回数量上限",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "分页偏移",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "分页偏移",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BrainConceptOut"
+                  },
+                  "title": "Response List Course Brain Concepts Api Courses  Course Id  Brain Concepts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Course Brain Concepts",
+        "tags": [
+          "course-brain"
+        ]
+      },
+      "post": {
+        "operationId": "create_course_brain_concept_api_courses__course_id__brain_concepts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrainConceptCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrainConceptOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Create Course Brain Concept",
+        "tags": [
+          "course-brain"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/brain/concepts/{concept_id}": {
+      "get": {
+        "operationId": "get_course_brain_concept_api_courses__course_id__brain_concepts__concept_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "concept_id",
+            "required": true,
+            "schema": {
+              "title": "Concept Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrainConceptDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Course Brain Concept",
+        "tags": [
+          "course-brain"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/brain/concepts/{concept_id}/sources": {
+      "get": {
+        "operationId": "get_course_brain_concept_sources_api_courses__course_id__brain_concepts__concept_id__sources_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "concept_id",
+            "required": true,
+            "schema": {
+              "title": "Concept Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConceptSourcesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Course Brain Concept Sources",
+        "tags": [
+          "course-brain"
         ]
       }
     },

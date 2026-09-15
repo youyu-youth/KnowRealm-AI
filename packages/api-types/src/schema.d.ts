@@ -174,6 +174,75 @@ export interface paths {
         patch: operations["update_course_api_courses__course_id__patch"];
         trace?: never;
     };
+    "/api/courses/{course_id}/brain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Course Brain */
+        get: operations["get_course_brain_api_courses__course_id__brain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/brain/concepts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Course Brain Concepts */
+        get: operations["list_course_brain_concepts_api_courses__course_id__brain_concepts_get"];
+        put?: never;
+        /** Create Course Brain Concept */
+        post: operations["create_course_brain_concept_api_courses__course_id__brain_concepts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/brain/concepts/{concept_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Course Brain Concept */
+        get: operations["get_course_brain_concept_api_courses__course_id__brain_concepts__concept_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/brain/concepts/{concept_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Course Brain Concept Sources */
+        get: operations["get_course_brain_concept_sources_api_courses__course_id__brain_concepts__concept_id__sources_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/quiz-tests": {
         parameters: {
             query?: never;
@@ -1446,6 +1515,140 @@ export interface components {
             /** File */
             file: string;
         };
+        /** BrainConceptCreate */
+        BrainConceptCreate: {
+            /**
+             * Concept Type
+             * @description 概念类型
+             * @default TERM
+             */
+            concept_type: string;
+            /**
+             * Description
+             * @description 概念说明
+             * @default
+             */
+            description: string;
+            /**
+             * Importance
+             * @description 重要度 1~5
+             * @default 3
+             */
+            importance: number;
+            /**
+             * Name
+             * @description 概念规范名
+             */
+            name: string;
+        };
+        /** BrainConceptDetailOut */
+        BrainConceptDetailOut: {
+            /**
+             * Anchor Count
+             * @description 来源锚点链接数
+             * @default 0
+             */
+            anchor_count: number;
+            /** Canonical Name */
+            canonical_name: string;
+            /** Concept Type */
+            concept_type: string;
+            /** Course Id */
+            course_id: string;
+            /** Created At */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Importance */
+            importance: number;
+            /**
+             * Occurrence Count
+             * @description 出现次数合计（证据计数）
+             * @default 0
+             */
+            occurrence_count: number;
+            /**
+             * Record Count
+             * @description 出现该概念的未删除记录数
+             * @default 0
+             */
+            record_count: number;
+            source: components["schemas"]["ConceptSource"];
+            status: components["schemas"]["ConceptStatus"];
+            /** Updated At */
+            updated_at: string;
+        };
+        /** BrainConceptOut */
+        BrainConceptOut: {
+            /** Canonical Name */
+            canonical_name: string;
+            /** Concept Type */
+            concept_type: string;
+            /** Course Id */
+            course_id: string;
+            /** Created At */
+            created_at: string;
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Importance */
+            importance: number;
+            /**
+             * Occurrence Count
+             * @description 出现次数合计（证据计数）
+             * @default 0
+             */
+            occurrence_count: number;
+            /**
+             * Record Count
+             * @description 出现该概念的未删除记录数
+             * @default 0
+             */
+            record_count: number;
+            source: components["schemas"]["ConceptSource"];
+            status: components["schemas"]["ConceptStatus"];
+            /** Updated At */
+            updated_at: string;
+        };
+        /** BrainSnapshotOut */
+        BrainSnapshotOut: {
+            /**
+             * Active Job Id
+             * @description 进行中的构建任务 id
+             */
+            active_job_id?: string | null;
+            /**
+             * Candidate Count
+             * @description 待审核（CANDIDATE）概念数
+             */
+            candidate_count: number;
+            /**
+             * Concept Count
+             * @description 已确认（CONFIRMED）概念数
+             */
+            concept_count: number;
+            /** Course Id */
+            course_id: string;
+            /**
+             * Last Built At
+             * @description 最近一次成功构建完成时间
+             */
+            last_built_at?: string | null;
+            /**
+             * Stale
+             * @description 来源指纹与上次成功构建不一致
+             */
+            stale: boolean;
+            status: components["schemas"]["BrainStatus"];
+        };
+        /**
+         * BrainStatus
+         * @enum {string}
+         */
+        BrainStatus: "EMPTY" | "BUILDING" | "REVIEW" | "READY" | "STALE" | "FAILED";
         /** CaptureBatchAccepted */
         CaptureBatchAccepted: {
             /** Job Ids */
@@ -1694,6 +1897,83 @@ export interface components {
              */
             title: string;
         };
+        /** ConceptAnchorSourceOut */
+        ConceptAnchorSourceOut: {
+            /** Anchor Id */
+            anchor_id: string;
+            /**
+             * Chat Session Id
+             * @description 对话来源会话 id（跳转用）
+             */
+            chat_session_id?: string | null;
+            /**
+             * End Ms
+             * @description 转写分片时间轴终点
+             */
+            end_ms?: number | null;
+            /**
+             * Page No
+             * @description 文档分片页码
+             */
+            page_no?: number | null;
+            /**
+             * Quote
+             * @description 来源逐字原文（分片/对话内容）
+             */
+            quote?: string | null;
+            /**
+             * Record Id
+             * @description 锚点挂靠记录；无记录来源为 null
+             */
+            record_id?: string | null;
+            /**
+             * Record Title
+             * @description 锚点挂靠记录标题
+             */
+            record_title?: string | null;
+            /** Relation Type */
+            relation_type: string;
+            source_type: components["schemas"]["SourceAnchorType"];
+            /**
+             * Start Ms
+             * @description 转写分片时间轴起点
+             */
+            start_ms?: number | null;
+        };
+        /** ConceptKpSourceOut */
+        ConceptKpSourceOut: {
+            /** Evidence Count */
+            evidence_count: number;
+            /** Knowledge Point Id */
+            knowledge_point_id: string;
+            /** Knowledge Point Name */
+            knowledge_point_name: string;
+            /** Record Id */
+            record_id: string;
+            /** Record Title */
+            record_title: string;
+            /** Relevance */
+            relevance: number;
+        };
+        /**
+         * ConceptSource
+         * @enum {string}
+         */
+        ConceptSource: "AI_EXTRACTED" | "USER_CONFIRMED" | "SYSTEM";
+        /** ConceptSourcesOut */
+        ConceptSourcesOut: {
+            /** Anchors */
+            anchors: components["schemas"]["ConceptAnchorSourceOut"][];
+            /** Concept Id */
+            concept_id: string;
+            /** Knowledge Points */
+            knowledge_points: components["schemas"]["ConceptKpSourceOut"][];
+        };
+        /**
+         * ConceptStatus
+         * @enum {string}
+         */
+        ConceptStatus: "CANDIDATE" | "CONFIRMED" | "ARCHIVED";
         /** CourseCreate */
         CourseCreate: {
             /** @description 可选课程类型 */
@@ -4319,6 +4599,364 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_course_brain_api_courses__course_id__brain_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainSnapshotOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_course_brain_concepts_api_courses__course_id__brain_concepts_get: {
+        parameters: {
+            query?: {
+                /** @description 概念状态筛选 */
+                status?: components["schemas"]["ConceptStatus"];
+                /** @description 返回数量上限 */
+                limit?: number;
+                /** @description 分页偏移 */
+                offset?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainConceptOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_course_brain_concept_api_courses__course_id__brain_concepts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BrainConceptCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainConceptOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_course_brain_concept_api_courses__course_id__brain_concepts__concept_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                concept_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BrainConceptDetailOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_course_brain_concept_sources_api_courses__course_id__brain_concepts__concept_id__sources_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                concept_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConceptSourcesOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

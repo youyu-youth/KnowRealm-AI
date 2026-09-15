@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer, field_validator
 
-SegmentEntityType = Literal["transcript_segment", "document_segment"]
+SegmentEntityType = Literal["transcript_segment", "document_segment", "CONCEPT"]
 
 
 class SearchQuery(BaseModel):

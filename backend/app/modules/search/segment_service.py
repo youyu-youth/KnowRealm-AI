@@ -22,6 +22,8 @@ from app.modules.search.tokenizer import match_expression, tokenize
 
 ENTITY_TRANSCRIPT_SEGMENT: SegmentEntityType = "transcript_segment"
 ENTITY_DOCUMENT_SEGMENT: SegmentEntityType = "document_segment"
+# Course Brain（F4）：Concept 进同一多态索引表；只索引 CONFIRMED（Agent 可见面）。
+ENTITY_CONCEPT: SegmentEntityType = "CONCEPT"
 
 # 沿用全局索引的正文限长纪律：jieba 切词开销与正文长度线性，限长保证写路径时延有界。
 _INDEX_BODY_LIMIT = 30_000
@@ -44,6 +46,11 @@ _SEGMENT_SOURCE_SQL = {
     ).bindparams(bindparam("ids", expanding=True)),
     ENTITY_DOCUMENT_SEGMENT: text(
         "SELECT id, content FROM document_segments WHERE id IN :ids"
+    ).bindparams(bindparam("ids", expanding=True)),
+    # 正文 = 规范名 + 说明；仅 CONFIRMED 回表（归档 id 命中空行即顺带清索引）。
+    ENTITY_CONCEPT: text(
+        "SELECT id, canonical_name || ' ' || description AS content FROM concepts "
+        "WHERE id IN :ids AND status = 'CONFIRMED'"
     ).bindparams(bindparam("ids", expanding=True)),
 }
 
@@ -118,6 +125,7 @@ _INDEXED_SEGMENT_KEYS_SQL = text("SELECT entity_type, entity_id FROM segment_sea
 _ALL_SEGMENT_IDS_SQL: dict[SegmentEntityType, TextClause] = {
     ENTITY_TRANSCRIPT_SEGMENT: text("SELECT id FROM transcript_segments"),
     ENTITY_DOCUMENT_SEGMENT: text("SELECT id FROM document_segments"),
+    ENTITY_CONCEPT: text("SELECT id FROM concepts WHERE status = 'CONFIRMED'"),
 }
 
 # 记录是否存在分片：chat 检索工具据此选择「FTS 无命中如实返回」或「无分片子串兜底」。

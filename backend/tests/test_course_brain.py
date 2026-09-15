@@ -1,18 +1,35 @@
-"""迁移 0023：Course Brain 三表（concepts / concept_relations / record_concepts）
-与 source_anchor_links 的 CONCEPT 值域扩展：schema、约束行为与升级路径。
+"""Course Brain：迁移 0023 三表结构与约束（CB-02）+ 查询模块（CB-03）。
 
 迁移口径对齐 test_source_anchors 动态惯例：手工执行 migrations[:-1] 构造升级库，
 run_migrations 补齐后与全新库双口径对照；锚点链接表重建后既有行必须完好。
+查询口径：六态派生、CONFIRMED-only 不泄漏、来源回溯与 B2 检索扩展。
 """
 
+import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiosqlite
+import httpx
 import pytest
+from fastapi import FastAPI
+from sqlalchemy import text
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
+from app.main import create_app
+from app.modules.course_brain.schemas import CourseBrainSearchOut
+from app.modules.course_brain.service import CourseBrainService, normalize_concept_name
+from app.modules.search.segment_service import (
+    ENTITY_CONCEPT,
+    ENTITY_TRANSCRIPT_SEGMENT,
+    SegmentSearchService,
+)
+from app.modules.search.tokenizer import tokenize
+from app.modules.transcript.sentences import content_hash
+
+TOKEN = "test-launch-token"
+NOW = "2026-09-15T08:00:00.000000Z"
 
 COURSE_ID = "c1000000-0000-4000-8000-000000000001"
 OTHER_COURSE_ID = "c1000000-0000-4000-8000-000000000002"
@@ -439,3 +456,738 @@ async def test_record_concepts_unique_pair_and_kp_bridge_set_null(tmp_path: Path
         await connection.commit()
 
     assert row == (None,)
+
+
+# ---------------------------------------------------------------------------
+# CB-03 查询模块：快照六态 / 概念视图 / 来源回溯 / 检索增强 / 手动创建
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def running_brain_app(data_dir: Path) -> AsyncGenerator[tuple[FastAPI, httpx.AsyncClient]]:
+    app = create_app(data_dir=data_dir, launch_token=TOKEN)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://testserver",
+            headers={"X-KnowRealm-Token": TOKEN},
+        ) as client:
+            yield app, client
+
+
+async def seed_course(
+    app: FastAPI,
+    course_id: str,
+    *,
+    status: str = "ACTIVE",
+    deleted_at: str | None = None,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO courses (id, name, learning_context, depth, status, "
+                "created_at, updated_at, deleted_at) "
+                "VALUES (:id, '测试课程', 'INTEREST', 'BEGINNER', :status, :now, :now, :deleted_at)"
+            ),
+            {"id": course_id, "status": status, "now": NOW, "deleted_at": deleted_at},
+        )
+
+
+async def seed_record(
+    app: FastAPI,
+    record_id: str,
+    course_id: str,
+    *,
+    title: str = "测试记录",
+    deleted_at: str | None = None,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO records (id, course_id, capture_type, title, status, duration_ms, "
+                "created_at, updated_at, deleted_at) "
+                "VALUES (:id, :course_id, 'RECORDING', :title, 'COMPLETED', 60000, "
+                ":now, :now, :deleted_at)"
+            ),
+            {
+                "id": record_id,
+                "course_id": course_id,
+                "title": title,
+                "now": NOW,
+                "deleted_at": deleted_at,
+            },
+        )
+
+
+async def seed_transcript_segment(
+    app: FastAPI,
+    *,
+    record_id: str,
+    segment_id: str,
+    transcript_id: str,
+    file_id: str,
+    content: str,
+    sequence_no: int = 0,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO record_files (id, record_id, file_type, source_type, file_path, "
+                "original_name, mime_type, file_size, duration_ms, sequence_no, content_hash, "
+                "created_at, updated_at, deleted_at) "
+                "VALUES (:id, :record_id, 'AUDIO', 'RECORDED', 'p.ogg', 'p.ogg', 'audio/ogg', "
+                "1, 60000, 0, 'h', :now, :now, NULL)"
+            ),
+            {"id": file_id, "record_id": record_id, "now": NOW},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO transcripts (id, record_id, language, content, source_version, "
+                "edited_by_user, created_at, updated_at, deleted_at) "
+                "VALUES (:id, :record_id, 'zh-CN', :content, 1, 0, :now, :now, NULL)"
+            ),
+            {"id": transcript_id, "record_id": record_id, "content": content, "now": NOW},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO transcript_segments (id, transcript_id, record_id, file_id, "
+                "sequence_no, record_start_ms, record_end_ms, file_start_ms, file_end_ms, "
+                "speaker, content, content_hash) "
+                "VALUES (:id, :transcript_id, :record_id, :file_id, :sequence_no, "
+                ":start_ms, :end_ms, :start_ms, :end_ms, NULL, :content, :content_hash)"
+            ),
+            {
+                "id": segment_id,
+                "transcript_id": transcript_id,
+                "record_id": record_id,
+                "file_id": file_id,
+                "sequence_no": sequence_no,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "content": content,
+                "content_hash": content_hash(content),
+            },
+        )
+        await SegmentSearchService.upsert_segment_index(
+            session, ENTITY_TRANSCRIPT_SEGMENT, [segment_id]
+        )
+
+
+async def seed_extra_transcript_segment(
+    app: FastAPI,
+    *,
+    record_id: str,
+    segment_id: str,
+    transcript_id: str,
+    file_id: str,
+    content: str,
+    sequence_no: int,
+) -> None:
+    """复用已存在的 transcript/record_file 追加分片并同步索引。"""
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO transcript_segments (id, transcript_id, record_id, file_id, "
+                "sequence_no, record_start_ms, record_end_ms, file_start_ms, file_end_ms, "
+                "speaker, content, content_hash) "
+                "VALUES (:id, :transcript_id, :record_id, :file_id, :sequence_no, "
+                "NULL, NULL, NULL, NULL, NULL, :content, :content_hash)"
+            ),
+            {
+                "id": segment_id,
+                "transcript_id": transcript_id,
+                "record_id": record_id,
+                "file_id": file_id,
+                "sequence_no": sequence_no,
+                "content": content,
+                "content_hash": content_hash(content),
+            },
+        )
+        await SegmentSearchService.upsert_segment_index(
+            session, ENTITY_TRANSCRIPT_SEGMENT, [segment_id]
+        )
+
+
+async def seed_knowledge_point(
+    app: FastAPI,
+    *,
+    kp_id: str,
+    record_id: str,
+    name: str = "知识点",
+    deleted_at: str | None = None,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO knowledge_points (id, record_id, name, detail, tags, importance, "
+                "generation_status, created_at, updated_at, deleted_at) "
+                "VALUES (:id, :record_id, :name, '细节', '[]', 3, 'ACTIVE', "
+                ":now, :now, :deleted_at)"
+            ),
+            {
+                "id": kp_id,
+                "record_id": record_id,
+                "name": name,
+                "now": NOW,
+                "deleted_at": deleted_at,
+            },
+        )
+
+
+async def seed_concept(
+    app: FastAPI,
+    *,
+    concept_id: str,
+    course_id: str,
+    name: str,
+    status: str = "CONFIRMED",
+    source: str = "AI_EXTRACTED",
+    description: str = "",
+    importance: int = 3,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO concepts (id, course_id, canonical_name, normalized_name, "
+                "description, concept_type, importance, status, source, created_at, updated_at) "
+                "VALUES (:id, :course_id, :name, :normalized, :description, 'TERM', :importance, "
+                ":status, :source, :now, :now)"
+            ),
+            {
+                "id": concept_id,
+                "course_id": course_id,
+                "name": name,
+                "normalized": normalize_concept_name(name),
+                "description": description,
+                "importance": importance,
+                "status": status,
+                "source": source,
+                "now": NOW,
+            },
+        )
+    await index_concept(app, concept_id)
+
+
+async def index_concept(app: FastAPI, concept_id: str) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await SegmentSearchService.upsert_segment_index(session, ENTITY_CONCEPT, [concept_id])
+
+
+async def force_index_concept(app: FastAPI, concept_id: str, body_text: str) -> None:
+    """绕过 CONFIRMED 过滤直插 FTS 行：验证查询侧状态过滤的纵深防线。"""
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO segment_search_index (body, entity_type, entity_id) "
+                "VALUES (:body, 'CONCEPT', :concept_id)"
+            ),
+            {"body": tokenize(body_text), "concept_id": concept_id},
+        )
+
+
+async def seed_job(
+    app: FastAPI,
+    *,
+    job_id: str,
+    course_id: str,
+    status: str,
+    result_json: str | None = None,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO processing_jobs (id, record_id, job_type, status, progress, "
+                "attempts, max_attempts, next_run_at, input_json, result_json, error_code, "
+                "error_message, started_at, finished_at, created_at, updated_at, waiting_reason) "
+                "VALUES (:id, NULL, 'CONCEPT_EXTRACTION', :status, 0, 0, 3, NULL, :input_json, "
+                ":result_json, NULL, NULL, :now, :now, :now, :now, NULL)"
+            ),
+            {
+                "id": job_id,
+                "status": status,
+                "input_json": json.dumps({"course_id": course_id}),
+                "result_json": result_json,
+                "now": NOW,
+            },
+        )
+
+
+async def seed_anchor(
+    app: FastAPI,
+    *,
+    anchor_id: str,
+    course_id: str,
+    source_type: str,
+    source_id: str,
+    record_id: str | None = None,
+    transcript_segment_id: str | None = None,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO source_anchors (id, course_id, source_type, source_id, record_id, "
+                "transcript_segment_id, document_segment_id) "
+                "VALUES (:id, :course_id, :source_type, :source_id, :record_id, "
+                ":transcript_segment_id, NULL)"
+            ),
+            {
+                "id": anchor_id,
+                "course_id": course_id,
+                "source_type": source_type,
+                "source_id": source_id,
+                "record_id": record_id,
+                "transcript_segment_id": transcript_segment_id,
+            },
+        )
+
+
+async def link_concept_anchor(
+    app: FastAPI,
+    *,
+    link_id: str,
+    concept_id: str,
+    anchor_id: str,
+    relation_type: str = "PRIMARY",
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO source_anchor_links (id, resource_type, resource_id, "
+                "source_anchor_id, relation_type) "
+                "VALUES (:id, 'CONCEPT', :concept_id, :anchor_id, :relation_type)"
+            ),
+            {
+                "id": link_id,
+                "concept_id": concept_id,
+                "anchor_id": anchor_id,
+                "relation_type": relation_type,
+            },
+        )
+
+
+async def seed_record_concept(
+    app: FastAPI,
+    *,
+    rc_id: str,
+    record_id: str,
+    concept_id: str,
+    kp_id: str | None = None,
+    evidence_count: int = 1,
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO record_concepts (id, record_id, concept_id, knowledge_point_id, "
+                "relevance, evidence_count, first_start_ms, created_at, updated_at) "
+                "VALUES (:id, :record_id, :concept_id, :kp_id, 0.8, :evidence_count, 1000, "
+                ":now, :now)"
+            ),
+            {
+                "id": rc_id,
+                "record_id": record_id,
+                "concept_id": concept_id,
+                "kp_id": kp_id,
+                "evidence_count": evidence_count,
+                "now": NOW,
+            },
+        )
+
+
+async def seed_chat_message(
+    app: FastAPI, *, session_id: str, message_id: str, content: str
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO chat_sessions (id, course_id, mode, created_at, updated_at, "
+                "deleted_at) VALUES (:id, NULL, 'ASK', :now, :now, NULL)"
+            ),
+            {"id": session_id, "now": NOW},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO chat_messages (id, session_id, role, content, created_at) "
+                "VALUES (:id, :session_id, 'ASSISTANT', :content, :now)"
+            ),
+            {"id": message_id, "session_id": session_id, "content": content, "now": NOW},
+        )
+
+
+async def soft_delete_record(app: FastAPI, record_id: str) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text("UPDATE records SET deleted_at = :now WHERE id = :id"),
+            {"now": NOW, "id": record_id},
+        )
+
+
+async def run_search(
+    app: FastAPI, course_id: str, query: str, limit: int = 8
+) -> CourseBrainSearchOut:
+    async with app.state.session_factory() as session:
+        return await CourseBrainService.search(session, course_id, query, limit)
+
+
+@pytest.mark.anyio
+async def test_brain_snapshot_empty_then_ready_after_manual_create(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        empty = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert empty["status"] == "EMPTY"
+        assert empty["concept_count"] == 0 and empty["candidate_count"] == 0
+
+        created = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts",
+            json={"name": "MVCC", "description": "多版本并发控制"},
+        )
+        assert created.status_code == 201
+        body = created.json()
+        assert body["status"] == "CONFIRMED"
+        assert body["source"] == "USER_CONFIRMED"
+        assert body["record_count"] == 0 and body["occurrence_count"] == 0
+
+        ready = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert ready["status"] == "READY"
+        assert ready["concept_count"] == 1 and ready["candidate_count"] == 0
+        assert ready["stale"] is False
+
+
+@pytest.mark.anyio
+async def test_brain_snapshot_review_and_building(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_concept(
+            app,
+            concept_id="candidate-1",
+            course_id=COURSE_ID,
+            name="候选概念",
+            status="CANDIDATE",
+        )
+        review = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert review["status"] == "REVIEW"
+        assert review["candidate_count"] == 1 and review["concept_count"] == 0
+
+        await seed_job(app, job_id="job-running", course_id=COURSE_ID, status="RUNNING")
+        building = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert building["status"] == "BUILDING"
+        assert building["active_job_id"] == "job-running"
+
+
+@pytest.mark.anyio
+async def test_brain_snapshot_stale_after_source_change(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        empty_fingerprint = {
+            "transcript_segments": [0, None],
+            "document_segments": [0, None],
+            "knowledge_points": [0, None],
+        }
+        await seed_job(
+            app,
+            job_id="job-ok",
+            course_id=COURSE_ID,
+            status="SUCCEEDED",
+            result_json=json.dumps({"fingerprint": empty_fingerprint}),
+        )
+        ready = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert ready["status"] == "READY"
+        assert ready["stale"] is False
+        assert ready["last_built_at"] is not None
+
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_knowledge_point(app, kp_id=KP_ID, record_id=RECORD_ID)
+        stale = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert stale["status"] == "STALE"
+        assert stale["stale"] is True
+
+
+@pytest.mark.anyio
+async def test_brain_snapshot_failed_without_confirmed_concepts(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_job(app, job_id="job-fail", course_id=COURSE_ID, status="FAILED")
+        failed = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert failed["status"] == "FAILED"
+
+        await client.post(f"/api/courses/{COURSE_ID}/brain/concepts", json={"name": "MVCC"})
+        ready = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert ready["status"] == "READY"
+
+
+@pytest.mark.anyio
+async def test_brain_concept_list_status_filter_and_pagination(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_concept(app, concept_id="concept-a", course_id=COURSE_ID, name="A")
+        await seed_concept(app, concept_id="concept-b", course_id=COURSE_ID, name="B")
+        await seed_concept(
+            app, concept_id="concept-c", course_id=COURSE_ID, name="候选", status="CANDIDATE"
+        )
+        await seed_concept(
+            app, concept_id="concept-d", course_id=COURSE_ID, name="退役", status="ARCHIVED"
+        )
+        default = (await client.get(f"/api/courses/{COURSE_ID}/brain/concepts")).json()
+        assert [item["canonical_name"] for item in default] == ["A", "B"]
+
+        candidates = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        assert [item["canonical_name"] for item in candidates] == ["候选"]
+
+        page = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?limit=1&offset=1")
+        ).json()
+        assert [item["canonical_name"] for item in page] == ["B"]
+
+
+@pytest.mark.anyio
+async def test_brain_concept_detail_stats_and_cross_course_404(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_course(app, OTHER_COURSE_ID)
+        await seed_concept(app, concept_id="concept-1", course_id=COURSE_ID, name="MVCC")
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_record_concept(
+            app,
+            rc_id="rc-1",
+            record_id=RECORD_ID,
+            concept_id="concept-1",
+            evidence_count=2,
+        )
+        detail = (await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1")).json()
+        assert detail["record_count"] == 1 and detail["occurrence_count"] == 2
+
+        cross = await client.get(f"/api/courses/{OTHER_COURSE_ID}/brain/concepts/concept-1")
+        assert cross.status_code == 404
+        assert cross.json()["code"] == "COURSE_BRAIN_CONCEPT_NOT_FOUND"
+
+        missing = await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/missing")
+        assert missing.status_code == 404
+
+        await soft_delete_record(app, RECORD_ID)
+        after_delete = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1")
+        ).json()
+        assert after_delete["record_count"] == 0 and after_delete["occurrence_count"] == 0
+
+
+@pytest.mark.anyio
+async def test_manual_create_normalized_duplicate_and_validation(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        created = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts", json={"name": "MVCC"}
+        )
+        assert created.status_code == 201
+        for name in ("mvcc", "  ＭＶＣＣ  ", "MVCC"):
+            duplicate = await client.post(
+                f"/api/courses/{COURSE_ID}/brain/concepts", json={"name": name}
+            )
+            assert duplicate.status_code == 409
+            assert duplicate.json()["code"] == "COURSE_BRAIN_CONCEPT_EXISTS"
+
+        blank = await client.post(f"/api/courses/{COURSE_ID}/brain/concepts", json={"name": "   "})
+        assert blank.status_code == 422
+        bad_importance = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts", json={"name": "X", "importance": 6}
+        )
+        assert bad_importance.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_brain_endpoints_course_guards(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        paths = [
+            f"/api/courses/{COURSE_ID}/brain",
+            f"/api/courses/{COURSE_ID}/brain/concepts",
+            f"/api/courses/{COURSE_ID}/brain/concepts/missing",
+            f"/api/courses/{COURSE_ID}/brain/concepts/missing/sources",
+        ]
+        for path in paths:
+            response = await client.get(path)
+            assert response.status_code == 404
+            assert response.json()["code"] == "COURSE_NOT_FOUND"
+        response = await client.post(f"/api/courses/{COURSE_ID}/brain/concepts", json={"name": "X"})
+        assert response.status_code == 404
+
+        await seed_course(app, COURSE_ID, status="ARCHIVED")
+        for path in paths:
+            response = await client.get(path)
+            assert response.status_code == 409
+            assert response.json()["code"] == "COURSE_ARCHIVED"
+        response = await client.post(f"/api/courses/{COURSE_ID}/brain/concepts", json={"name": "X"})
+        assert response.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_brain_search_matches_concept_and_expands_segments(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID, title="数据库课程")
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+            start_ms=1000,
+            end_ms=5000,
+        )
+        created = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts",
+            json={"name": "MVCC", "description": "多版本并发控制，通过快照读实现可见性"},
+        )
+        concept_id = created.json()["id"]
+        await seed_record_concept(
+            app, rc_id="rc-1", record_id=RECORD_ID, concept_id=concept_id, evidence_count=2
+        )
+
+        result = await run_search(app, COURSE_ID, "可见性")
+        assert [concept.concept_id for concept in result.matched_concepts] == [concept_id]
+        matcher = result.matched_concepts[0]
+        assert matcher.record_count == 1 and matcher.occurrence_count == 2
+        assert len(result.occurrences) == 1
+        occurrence = result.occurrences[0]
+        assert occurrence.quote == "MVCC 通过 ReadView 实现事务可见性"
+        assert occurrence.record_id == RECORD_ID
+        assert occurrence.record_title == "数据库课程"
+        assert occurrence.start_ms == 1000 and occurrence.position == 0
+
+        # 原查询与 canonical_name 并跑：以 "MVCC" 查询同样命中且去重后仅一条。
+        mvcc_result = await run_search(app, COURSE_ID, "MVCC")
+        assert len(mvcc_result.occurrences) == 1
+        assert mvcc_result.occurrences[0].segment_id == "seg-1"
+
+        # 同记录第二条命中：occurrences 逐条保留，去重计数由消费方按 record_id 处理。
+        await seed_extra_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-2",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="可见性判断依赖 ReadView",
+            sequence_no=1,
+        )
+        expanded = await run_search(app, COURSE_ID, "可见性")
+        assert len(expanded.occurrences) == 2
+        assert {hit.record_id for hit in expanded.occurrences} == {RECORD_ID}
+
+
+@pytest.mark.anyio
+async def test_brain_search_ignores_candidates_and_other_courses(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_course(app, OTHER_COURSE_ID)
+        await seed_concept(
+            app,
+            concept_id="candidate-1",
+            course_id=COURSE_ID,
+            name="候选并发",
+            status="CANDIDATE",
+        )
+        await force_index_concept(app, "candidate-1", "候选并发 可见性")
+        candidates = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        assert [item["canonical_name"] for item in candidates] == ["候选并发"]
+        result = await run_search(app, COURSE_ID, "可见性")
+        assert result.matched_concepts == []
+        assert result.occurrences == []
+
+        await seed_concept(
+            app,
+            concept_id="concept-other",
+            course_id=OTHER_COURSE_ID,
+            name="其他课程概念",
+            description="可见性",
+        )
+        cross = await run_search(app, COURSE_ID, "可见性")
+        assert cross.matched_concepts == []
+
+
+@pytest.mark.anyio
+async def test_concept_sources_anchor_kp_chat_and_soft_delete(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID, title="数据库课程")
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+            start_ms=1000,
+            end_ms=5000,
+        )
+        await seed_concept(app, concept_id="concept-1", course_id=COURSE_ID, name="MVCC")
+        await seed_anchor(
+            app,
+            anchor_id="anchor-audio",
+            course_id=COURSE_ID,
+            source_type="AUDIO_SEGMENT",
+            source_id="seg-1",
+            record_id=RECORD_ID,
+            transcript_segment_id="seg-1",
+        )
+        await link_concept_anchor(
+            app, link_id="link-1", concept_id="concept-1", anchor_id="anchor-audio"
+        )
+        await seed_knowledge_point(app, kp_id=KP_ID, record_id=RECORD_ID, name="MVCC 可见性")
+        await seed_record_concept(
+            app,
+            rc_id="rc-1",
+            record_id=RECORD_ID,
+            concept_id="concept-1",
+            kp_id=KP_ID,
+        )
+        await seed_chat_message(
+            app, session_id="chat-session-1", message_id="chat-message-1", content="MVCC 要点"
+        )
+        await seed_anchor(
+            app,
+            anchor_id="anchor-chat",
+            course_id=COURSE_ID,
+            source_type="CHAT_MESSAGE",
+            source_id="chat-message-1",
+            record_id=RECORD_ID,
+        )
+        await link_concept_anchor(
+            app, link_id="link-2", concept_id="concept-1", anchor_id="anchor-chat"
+        )
+
+        sources = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1/sources")
+        ).json()
+        anchors = {item["anchor_id"]: item for item in sources["anchors"]}
+        assert set(anchors) == {"anchor-audio", "anchor-chat"}
+        audio = anchors["anchor-audio"]
+        assert audio["source_type"] == "AUDIO_SEGMENT"
+        assert audio["quote"] == "MVCC 通过 ReadView 实现事务可见性"
+        assert audio["start_ms"] == 1000 and audio["record_title"] == "数据库课程"
+        chat = anchors["anchor-chat"]
+        assert chat["chat_session_id"] == "chat-session-1" and chat["quote"] == "MVCC 要点"
+        assert sources["knowledge_points"] == [
+            {
+                "record_id": RECORD_ID,
+                "record_title": "数据库课程",
+                "knowledge_point_id": KP_ID,
+                "knowledge_point_name": "MVCC 可见性",
+                "relevance": 0.8,
+                "evidence_count": 1,
+            }
+        ]
+
+        detail = (await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1")).json()
+        assert detail["anchor_count"] == 2
+
+        # 软删记录：来源回跳与 KP 桥全部失效，不泄漏。
+        await soft_delete_record(app, RECORD_ID)
+        after_delete = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1/sources")
+        ).json()
+        assert after_delete["anchors"] == []
+        assert after_delete["knowledge_points"] == []
