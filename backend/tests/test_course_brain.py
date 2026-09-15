@@ -616,6 +616,7 @@ async def seed_knowledge_point(
     kp_id: str,
     record_id: str,
     name: str = "知识点",
+    status: str = "ACTIVE",
     deleted_at: str | None = None,
 ) -> None:
     async with app.state.session_factory() as session, session.begin():
@@ -623,13 +624,14 @@ async def seed_knowledge_point(
             text(
                 "INSERT INTO knowledge_points (id, record_id, name, detail, tags, importance, "
                 "generation_status, created_at, updated_at, deleted_at) "
-                "VALUES (:id, :record_id, :name, '细节', '[]', 3, 'ACTIVE', "
+                "VALUES (:id, :record_id, :name, '细节', '[]', 3, :status, "
                 ":now, :now, :deleted_at)"
             ),
             {
                 "id": kp_id,
                 "record_id": record_id,
                 "name": name,
+                "status": status,
                 "now": NOW,
                 "deleted_at": deleted_at,
             },
@@ -763,6 +765,37 @@ async def link_concept_anchor(
                 "concept_id": concept_id,
                 "anchor_id": anchor_id,
                 "relation_type": relation_type,
+            },
+        )
+
+
+async def seed_relation(
+    app: FastAPI,
+    *,
+    relation_id: str,
+    course_id: str,
+    source_concept_id: str,
+    target_concept_id: str,
+    relation_type: str = "RELATED_TO",
+    status: str = "CONFIRMED",
+) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO concept_relations (id, course_id, source_concept_id, "
+                "target_concept_id, relation_type, confidence, evidence_count, status, "
+                "created_at, updated_at) "
+                "VALUES (:id, :course_id, :source_id, :target_id, :relation_type, 0.9, 1, "
+                ":status, :now, :now)"
+            ),
+            {
+                "id": relation_id,
+                "course_id": course_id,
+                "source_id": source_concept_id,
+                "target_id": target_concept_id,
+                "relation_type": relation_type,
+                "status": status,
+                "now": NOW,
             },
         )
 
@@ -1191,3 +1224,142 @@ async def test_concept_sources_anchor_kp_chat_and_soft_delete(tmp_path: Path) ->
         ).json()
         assert after_delete["anchors"] == []
         assert after_delete["knowledge_points"] == []
+        after_detail = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1")
+        ).json()
+        assert after_detail["anchor_count"] == 0
+
+
+@pytest.mark.anyio
+async def test_concept_sources_only_active_knowledge_points(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID, title="记录一")
+        await seed_record(app, "record-2", COURSE_ID, title="记录二")
+        await seed_concept(app, concept_id="concept-1", course_id=COURSE_ID, name="MVCC")
+        await seed_knowledge_point(
+            app, kp_id="kp-superseded", record_id=RECORD_ID, name="过期知识点", status="SUPERSEDED"
+        )
+        await seed_record_concept(
+            app,
+            rc_id="rc-superseded",
+            record_id=RECORD_ID,
+            concept_id="concept-1",
+            kp_id="kp-superseded",
+        )
+        await seed_knowledge_point(app, kp_id="kp-active", record_id="record-2", name="有效知识点")
+        await seed_record_concept(
+            app, rc_id="rc-active", record_id="record-2", concept_id="concept-1", kp_id="kp-active"
+        )
+
+        sources = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1/sources")
+        ).json()
+        assert [item["knowledge_point_name"] for item in sources["knowledge_points"]] == [
+            "有效知识点"
+        ]
+
+
+@pytest.mark.anyio
+async def test_brain_search_related_concepts_confirmed_only(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, _client):
+        await seed_course(app, COURSE_ID)
+        await seed_course(app, OTHER_COURSE_ID)
+        await seed_concept(
+            app, concept_id="concept-1", course_id=COURSE_ID, name="MVCC", description="可见性"
+        )
+        await seed_concept(app, concept_id="concept-ok", course_id=COURSE_ID, name="快照读")
+        await seed_concept(
+            app,
+            concept_id="concept-candidate",
+            course_id=COURSE_ID,
+            name="候选相关",
+            status="CANDIDATE",
+        )
+        await seed_concept(
+            app,
+            concept_id="concept-archived",
+            course_id=COURSE_ID,
+            name="归档相关",
+            status="ARCHIVED",
+        )
+        await seed_concept(
+            app, concept_id="concept-other", course_id=OTHER_COURSE_ID, name="跨课程相关"
+        )
+        await seed_relation(
+            app,
+            relation_id="rel-ok",
+            course_id=COURSE_ID,
+            source_concept_id="concept-1",
+            target_concept_id="concept-ok",
+        )
+        await seed_relation(
+            app,
+            relation_id="rel-candidate",
+            course_id=COURSE_ID,
+            source_concept_id="concept-1",
+            target_concept_id="concept-candidate",
+        )
+        await seed_relation(
+            app,
+            relation_id="rel-archived",
+            course_id=COURSE_ID,
+            source_concept_id="concept-1",
+            target_concept_id="concept-archived",
+        )
+        # 异常数据：关系行归属本课程但目标概念属于其他课程，同样不得泄漏。
+        await seed_relation(
+            app,
+            relation_id="rel-other",
+            course_id=COURSE_ID,
+            source_concept_id="concept-1",
+            target_concept_id="concept-other",
+        )
+        await seed_relation(
+            app,
+            relation_id="rel-candidate-status",
+            course_id=COURSE_ID,
+            source_concept_id="concept-1",
+            target_concept_id="concept-ok",
+            relation_type="APPLIES_TO",
+            status="CANDIDATE",
+        )
+
+        result = await run_search(app, COURSE_ID, "可见性")
+        assert [concept.concept_id for concept in result.related_concepts] == ["concept-ok"]
+
+
+@pytest.mark.anyio
+async def test_brain_search_respects_limit_and_truncates_quote(tmp_path: Path) -> None:
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        long_content = "可见性" * 300
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content=long_content,
+        )
+        created = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts",
+            json={"name": "MVCC", "description": "可见性"},
+        )
+        assert created.status_code == 201
+        for index in range(5):
+            await seed_concept(
+                app,
+                concept_id=f"concept-extra-{index}",
+                course_id=COURSE_ID,
+                name=f"补充概念{index}",
+                description="可见性",
+            )
+
+        capped = await run_search(app, COURSE_ID, "可见性", limit=8)
+        assert len(capped.matched_concepts) == 4
+        result = await run_search(app, COURSE_ID, "可见性", limit=1)
+        assert len(result.occurrences) == 1
+        assert len(result.occurrences[0].quote) == 500
+        assert long_content.startswith(result.occurrences[0].quote)

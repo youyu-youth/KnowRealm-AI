@@ -92,8 +92,10 @@ _RECORD_CONCEPT_STATS_SQL = text(
 _CONCEPT_ANCHOR_COUNT_SQL = text(
     "SELECT count(*) FROM source_anchor_links l "
     "JOIN source_anchors a ON a.id = l.source_anchor_id "
+    "LEFT JOIN records r ON r.id = a.record_id AND r.deleted_at IS NULL "
     "WHERE l.resource_type = 'CONCEPT' AND l.resource_id = :concept_id "
-    "AND a.course_id = :course_id"
+    "AND a.course_id = :course_id "
+    "AND (a.record_id IS NULL OR r.id IS NOT NULL)"
 )
 
 # Concept 命中：CONFIRMED-only（Agent 只读边界，ADR-0022）。
@@ -108,10 +110,12 @@ _CONCEPT_MATCH_SQL = text(
     "LIMIT :limit"
 )
 
+# 关联概念同样守 CONFIRMED-only + 同课程（Agent 只读边界；跨课程异常行不泄漏）。
 _RELATED_OUTGOING_SQL = text(
     "SELECT c.id AS concept_id, c.canonical_name, cr.relation_type "
     "FROM concept_relations cr "
     "JOIN concepts c ON c.id = cr.target_concept_id "
+    "AND c.status = 'CONFIRMED' AND c.course_id = :course_id "
     "WHERE cr.course_id = :course_id AND cr.status = 'CONFIRMED' "
     "AND cr.source_concept_id IN :ids "
     "ORDER BY cr.confidence DESC, c.canonical_name"
@@ -120,6 +124,7 @@ _RELATED_INCOMING_SQL = text(
     "SELECT c.id AS concept_id, c.canonical_name, cr.relation_type "
     "FROM concept_relations cr "
     "JOIN concepts c ON c.id = cr.source_concept_id "
+    "AND c.status = 'CONFIRMED' AND c.course_id = :course_id "
     "WHERE cr.course_id = :course_id AND cr.status = 'CONFIRMED' "
     "AND cr.target_concept_id IN :ids "
     "ORDER BY cr.confidence DESC, c.canonical_name"
@@ -144,13 +149,15 @@ _CONCEPT_ANCHORS_SQL = text(
     "ORDER BY a.id"
 )
 
-# KP 桥来源：record_concepts 中携带 knowledge_point_id 的行（KP→Concept Resolution）。
+# KP 桥来源：record_concepts 中携带 knowledge_point_id 的行（KP→Concept Resolution）；
+# 只露 ACTIVE（收集/指纹口径一致，DRAFT/SUPERSEDED 不进来源面）。
 _CONCEPT_KP_SOURCES_SQL = text(
     "SELECT rc.record_id, r.title AS record_title, rc.knowledge_point_id, "
     "kp.name AS knowledge_point_name, rc.relevance, rc.evidence_count "
     "FROM record_concepts rc "
     "JOIN records r ON r.id = rc.record_id AND r.deleted_at IS NULL "
-    "JOIN knowledge_points kp ON kp.id = rc.knowledge_point_id AND kp.deleted_at IS NULL "
+    "JOIN knowledge_points kp ON kp.id = rc.knowledge_point_id "
+    "AND kp.deleted_at IS NULL AND kp.generation_status = 'ACTIVE' "
     "WHERE rc.concept_id = :concept_id AND r.course_id = :course_id "
     "ORDER BY r.updated_at DESC, rc.id"
 )

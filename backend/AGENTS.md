@@ -33,7 +33,7 @@ app/
 │   ├── jobs/        # 平台：processing_jobs 队列 + JobRunner（ADR-0012）+ 控制面 API
 │   ├── settings/    # 平台：providers/consents/preferences（config.py 读写 settings.json、providers.json）
 │   ├── data/        # 平台：数据目录导出/导入/滚动备份
-│   ├── course/ record/ capture/ transcript/ summary/ knowledge_point/ quiz/ todo/ profile/ today/
+│   ├── course/ course_brain/ record/ capture/ transcript/ summary/ knowledge_point/ quiz/ todo/ profile/ today/
 │   ├── agent/        # 对话式 Agent 域（ADR-0020）：chat 产品面 + graph 装配 + tools/ + middleware/（chat/ 更名升级）
 │   └── transcript/integrations/tencent.py  # 腾讯 ASR 客户端（供应商集成样板）
 ├── shared/          # deps（令牌与会话依赖）/ schemas（ErrorResponse）/ events（Record 失效通知总线）
@@ -58,7 +58,7 @@ app/
 
 ### 迁移纪律
 
-`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0020**（分片检索索引 `segment_search_index`）；`tests/test_records.py` 等 11 个测试文件断言 `user_version == 20`，**新增迁移需同步这些断言**（`test_archive.py` 走 `supported_user_version()` 动态断言，无需改）。
+`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0023**（Course Brain 三表 `concepts`/`concept_relations`/`record_concepts` + `CONCEPT` 锚点链接值域）；`tests/test_records.py` 等 13 个测试文件断言 `user_version == 23`，**新增迁移需同步这些断言**（`test_archive.py` 走 `supported_user_version()` 动态断言，无需改）。
 
 ### 令牌校验
 
