@@ -38,6 +38,8 @@ type RecordDetailPageProps = {
   tab: RecordDetailTab;
   /** 引用跳转带来的转写定位摘录；在转写中找不到时提示“原文已变动”。 */
   highlight?: string;
+  /** 来源锚点分片 id：优先于摘录文本精确定位（同一摘录多次出现时不误落首次）。 */
+  segmentId?: string;
   onTabChange: (tab: RecordDetailTab) => void;
   onDeleted: (courseId: string | null) => void | Promise<void>;
 };
@@ -55,6 +57,7 @@ export function RecordDetailPage({
   recordId,
   tab,
   highlight,
+  segmentId,
   onTabChange,
   onDeleted,
 }: RecordDetailPageProps) {
@@ -329,6 +332,7 @@ export function RecordDetailPage({
           <TranscriptPanel
             record={detail}
             highlight={tab === "transcript" ? highlight : undefined}
+            segmentId={tab === "transcript" ? segmentId : undefined}
             enabled={tab === "transcript" && !isDeleting}
             onRecordAssetsChanged={invalidateRecord}
           />

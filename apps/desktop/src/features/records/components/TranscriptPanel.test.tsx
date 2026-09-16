@@ -125,16 +125,19 @@ function jobsResponse(
 function renderTranscript({
   detail = record,
   highlight,
+  segmentId,
   enabled = true,
 }: {
   detail?: RecordOut;
   highlight?: string;
+  segmentId?: string;
   enabled?: boolean;
 } = {}) {
   return renderWithQuery(
     <TranscriptPanel
       record={detail}
       highlight={highlight}
+      segmentId={segmentId}
       enabled={enabled}
       onRecordAssetsChanged={vi.fn()}
     />,
@@ -455,7 +458,7 @@ describe("TranscriptPanel", () => {
     expect(rows[1].textContent).toBe("第二句没有时间戳。");
   });
 
-  it("引用摘录定位到首个命中分片：滚动高亮并显示时间戳徽章", async () => {
+  it("无分片 id 时引用摘录回落文本匹配：首个命中滚动高亮并显示时间戳徽章", async () => {
     const quote = "AOF 重写由阈值触发";
     server.use(
       http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
@@ -498,6 +501,51 @@ describe("TranscriptPanel", () => {
     const row = mark.closest("li");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByText("04:35")).toBeVisible();
+    expect(document.querySelectorAll("mark")).toHaveLength(1);
+    expect(window.Element.prototype.scrollIntoView).toHaveBeenCalled();
+  });
+
+  it("来源分片 id 优先精确定位：重复摘录落在指定分片而非首次出现", async () => {
+    const quote = "AOF 重写由阈值触发";
+    server.use(
+      http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
+      http.get(TRANSCRIPT_URL, () =>
+        HttpResponse.json(
+          readyTranscript(`${quote}。${quote} 再提一次。`),
+        ),
+      ),
+      http.get(SEGMENTS_URL, () =>
+        HttpResponse.json([
+          segment({
+            id: "seg-275",
+            sequence_no: 1,
+            record_start_ms: 275_000,
+            record_end_ms: 278_000,
+            content: `${quote}，默认阈值是百分比。`,
+          }),
+          segment({
+            id: "seg-300",
+            sequence_no: 2,
+            record_start_ms: 300_000,
+            record_end_ms: 303_000,
+            content: `${quote} 再提一次。`,
+          }),
+        ]),
+      ),
+    );
+    vi.mocked(window.Element.prototype.scrollIntoView).mockClear();
+    renderTranscript({
+      detail: { ...record, status: "COMPLETED" },
+      highlight: quote,
+      segmentId: "seg-300",
+    });
+
+    // 文本匹配会命中的是 04:35 首次出现；分片 id 精确定位到 05:00 的第二次出现。
+    const mark = await screen.findByText(quote, { selector: "mark" });
+    const row = mark.closest("li");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).getByText("05:00")).toBeVisible();
+    expect(within(row as HTMLElement).queryByText("04:35")).toBeNull();
     expect(document.querySelectorAll("mark")).toHaveLength(1);
     expect(window.Element.prototype.scrollIntoView).toHaveBeenCalled();
   });

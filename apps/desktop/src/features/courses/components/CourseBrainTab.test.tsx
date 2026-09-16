@@ -135,6 +135,7 @@ const conceptSources: ConceptSourcesOut = {
       relation_type: "MENTIONS",
       chat_session_id: null,
       page_no: null,
+      segment_id: "seg-65",
     },
     {
       anchor_id: "a2",
@@ -147,6 +148,7 @@ const conceptSources: ConceptSourcesOut = {
       relation_type: "MENTIONS",
       chat_session_id: null,
       page_no: 4,
+      segment_id: "dseg-4",
     },
     {
       anchor_id: "a3",
@@ -159,6 +161,7 @@ const conceptSources: ConceptSourcesOut = {
       relation_type: "MENTIONS",
       chat_session_id: "session-1",
       page_no: null,
+      segment_id: null,
     },
   ],
   knowledge_points: [
@@ -251,7 +254,7 @@ describe("Course Brain 页面", () => {
     ).closest("a");
     expect(quoteRow).toHaveAttribute(
       "href",
-      `/records/record-1?tab=transcript&highlight=${encodeURIComponent(
+      `/records/record-1?tab=transcript&segmentId=seg-65&highlight=${encodeURIComponent(
         "进程调度是操作系统的核心机制",
       )}`,
     );
@@ -259,7 +262,7 @@ describe("Course Brain 页面", () => {
     const documentRow = screen.getByText("课件.pdf").closest("a");
     expect(documentRow).toHaveAttribute(
       "href",
-      "/records/record-2?tab=transcript",
+      "/records/record-2?tab=transcript&segmentId=dseg-4",
     );
     expect(screen.getByText("第 4 页")).toBeInTheDocument();
 

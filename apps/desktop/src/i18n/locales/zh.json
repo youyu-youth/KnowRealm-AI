@@ -2050,6 +2050,7 @@
     "COURSE_BRAIN_BUILD_IN_PROGRESS": "已有进行中的课程脑图构建任务",
     "COURSE_BRAIN_CONCEPT_EXISTS": "已存在同名概念",
     "COURSE_BRAIN_CONCEPT_NOT_FOUND": "概念不存在或已删除",
+    "COURSE_BRAIN_CONCEPT_NO_EVIDENCE": "零证据候选不能确认，请忽略或重新构建",
     "COURSE_BRAIN_CONCEPT_STATE_INVALID": "概念当前状态不允许该操作",
     "COURSE_BRAIN_RELATION_NOT_FOUND": "概念关系不存在或已删除",
     "COURSE_BRAIN_RELATION_STATE_INVALID": "概念关系当前状态不允许该操作",

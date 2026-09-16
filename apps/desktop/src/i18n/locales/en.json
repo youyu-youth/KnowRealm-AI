@@ -2068,6 +2068,7 @@
     "COURSE_BRAIN_BUILD_IN_PROGRESS": "A course brain build is already running.",
     "COURSE_BRAIN_CONCEPT_EXISTS": "A concept with the same name already exists.",
     "COURSE_BRAIN_CONCEPT_NOT_FOUND": "The concept does not exist or has been deleted.",
+    "COURSE_BRAIN_CONCEPT_NO_EVIDENCE": "A candidate without evidence cannot be confirmed; dismiss it or rebuild the course brain.",
     "COURSE_BRAIN_CONCEPT_STATE_INVALID": "The concept's current state does not allow this action.",
     "COURSE_BRAIN_RELATION_NOT_FOUND": "The concept relation does not exist or has been deleted.",
     "COURSE_BRAIN_RELATION_STATE_INVALID": "The relation's current state does not allow this action.",

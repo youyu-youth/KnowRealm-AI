@@ -16,6 +16,8 @@ import { ApiError } from "@/services/http/client";
 type TranscriptPanelProps = {
   record: RecordOut;
   highlight?: string;
+  /** 来源锚点分片 id：优先于 highlight 文本精确定位到指定分片。 */
+  segmentId?: string;
   enabled: boolean;
   onRecordAssetsChanged: () => void | Promise<void>;
 };
@@ -28,6 +30,7 @@ const processingStatuses = new Set([
 export function TranscriptPanel({
   record,
   highlight,
+  segmentId,
   enabled,
   onRecordAssetsChanged,
 }: TranscriptPanelProps) {
@@ -258,7 +261,7 @@ export function TranscriptPanel({
               {t("record.detail.transcript.segmentsLoading")}
             </p>
           ) : timelineRows !== null ? (
-            <SourceTimeline rows={timelineRows} highlight={highlight} />
+            <SourceTimeline rows={timelineRows} highlight={highlight} segmentId={segmentId} />
           ) : (
             // 无分片记录（粘贴/速记）回落纯文本；分片读取失败时同样回落，正文仍可读。
             <TranscriptView
@@ -357,21 +360,28 @@ type TimelineRow = {
  * 来源时间轴：行式排布（左标记列、右内容）。标记列三态——时间戳 / 页码 /
  * 全表无任何标记时退为淡色块序号（保证时间轴结构可见；序号非时间标记，
  * 不违「无时间轴来源不造时间」语义）。无标记行保留占位列维持文本基线对齐。
- * 引用摘录在行内容中匹配（多命中取首个）→ 滚动 + 摘录内联高亮 + 标记升级
- * 徽章，找不到提示「原文已变动」。
+ * 定位优先级：来源分片 id（segmentId）精确命中行 → 摘录文本（highlight，
+ * 多命中取首个）回落；命中行滚动 + 摘录内联高亮 + 标记升级徽章，都找不到
+ * 提示「原文已变动」。
  */
 function SourceTimeline({
   rows,
   highlight,
+  segmentId,
 }: {
   rows: TimelineRow[];
   highlight?: string;
+  segmentId?: string;
 }) {
   const { t } = useTranslation();
   const matchRowRef = useRef<HTMLLIElement | null>(null);
-  const matchIndex = highlight
-    ? rows.findIndex((row) => row.content.includes(highlight))
-    : -1;
+  const segmentIndex = segmentId ? rows.findIndex((row) => row.id === segmentId) : -1;
+  const matchIndex =
+    segmentIndex >= 0
+      ? segmentIndex
+      : highlight
+        ? rows.findIndex((row) => row.content.includes(highlight))
+        : -1;
   const hasMarkers = rows.some((row) => row.marker !== null);
 
   useEffect(() => {

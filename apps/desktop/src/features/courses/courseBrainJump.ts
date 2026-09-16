@@ -6,7 +6,11 @@ import type {
 type RecordJump = {
   to: "/records/$recordId";
   params: { recordId: string };
-  search: { tab: "transcript" | "knowledge-points"; highlight?: string };
+  search: {
+    tab: "transcript" | "knowledge-points";
+    highlight?: string;
+    segmentId?: string;
+  };
 };
 
 type ChatJump = {
@@ -17,9 +21,11 @@ type ChatJump = {
 export type SourceJump = RecordJump | ChatJump;
 
 /**
- * 锚点跳转目标（grill Q7）：转写/文档/速记锚点落到记录转写视图，quote
- * 非空时作为定位摘录（TranscriptPanel 命中即滚动高亮，找不到提示原文已变动）；
- * 对话锚点直达会话。无 record_id 且非对话的锚点返回 null，退化为纯文本行。
+ * 锚点跳转目标（grill Q7）：转写/文档/速记锚点落到记录转写视图，segmentId
+ * 精确定位到锚点分片（同一摘录多次出现时不误落首次），quote 非空时作为
+ * 定位摘录（TranscriptPanel 分片 id 未命中时按文本回落，找不到提示原文已
+ * 变动）；对话锚点直达会话。无 record_id 且非对话的锚点返回 null，退化为
+ * 纯文本行。
  */
 export function anchorJumpTarget(
   anchor: ConceptAnchorSource,
@@ -39,6 +45,7 @@ export function anchorJumpTarget(
     params: { recordId: anchor.record_id },
     search: {
       tab: "transcript",
+      ...(anchor.segment_id ? { segmentId: anchor.segment_id } : {}),
       ...(quote ? { highlight: quote } : {}),
     },
   };
