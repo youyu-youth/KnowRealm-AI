@@ -6,10 +6,29 @@ import type {
   BrainConceptListQuery,
   BrainConcept,
   BrainBuildAccepted,
+  BrainRelationListQuery,
+  BrainRelation,
   BrainSnapshot,
   ConceptSources,
 } from "@/features/courses/api/types";
 import { apiFetch } from "@/services/http/client";
+
+// brain 列表端点（concepts/relations）共用的单页上限 = 后端 limit 上限。
+export const BRAIN_PAGE_LIMIT = 200;
+
+type BrainListQuery = {
+  status?: string;
+  limit?: number;
+  offset?: number;
+};
+
+function brainListPath(base: string, query: BrainListQuery): string {
+  const search = new URLSearchParams();
+  if (query.status) search.set("status", query.status);
+  if (query.limit != null) search.set("limit", String(query.limit));
+  if (query.offset != null) search.set("offset", String(query.offset));
+  return `${base}${search.size > 0 ? `?${search}` : ""}`;
+}
 
 export const courseBrainApi = {
   snapshot: (courseId: string) =>
@@ -18,17 +37,10 @@ export const courseBrainApi = {
     apiFetch<BrainBuildAccepted>(`/api/courses/${courseId}/brain/builds`, {
       method: "POST",
     }),
-  concepts: (courseId: string, query: BrainConceptListQuery = {}) => {
-    const search = new URLSearchParams();
-    if (query.status) search.set("status", query.status);
-    if (query.limit != null) search.set("limit", String(query.limit));
-    if (query.offset != null) search.set("offset", String(query.offset));
-    return apiFetch<BrainConcept[]>(
-      `/api/courses/${courseId}/brain/concepts${
-        search.size > 0 ? `?${search}` : ""
-      }`,
-    );
-  },
+  concepts: (courseId: string, query: BrainConceptListQuery = {}) =>
+    apiFetch<BrainConcept[]>(
+      brainListPath(`/api/courses/${courseId}/brain/concepts`, query),
+    ),
   sources: (courseId: string, conceptId: string) =>
     apiFetch<ConceptSources>(
       `/api/courses/${courseId}/brain/concepts/${conceptId}/sources`,
@@ -43,6 +55,15 @@ export const courseBrainApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  relations: (courseId: string, query: BrainRelationListQuery = {}) =>
+    apiFetch<BrainRelation[]>(
+      brainListPath(`/api/courses/${courseId}/brain/relations`, query),
+    ),
+  archiveConcept: (courseId: string, conceptId: string) =>
+    apiFetch<BrainConcept>(
+      `/api/courses/${courseId}/brain/concepts/${conceptId}/archive`,
+      { method: "POST" },
+    ),
 };
 
 // BUILDING 期间快照轮询节奏；其余状态不轮询（写操作与触发即时失效缓存）。
@@ -78,6 +99,16 @@ export function useConceptSources(courseId: string, conceptId: string | null) {
   });
 }
 
+export function useCourseBrainRelations(
+  courseId: string,
+  query: BrainRelationListQuery = {},
+) {
+  return useQuery({
+    queryKey: courseBrainKeys.relations(courseId, query),
+    queryFn: () => courseBrainApi.relations(courseId, query),
+  });
+}
+
 // 写操作统一失效整个 brain 域：confirm/merge 会同时改变快照计数、图谱、
 // 概念列表与来源链接（merge 迁移锚点），按前缀失效比逐键枚举更不易漏。
 function useInvalidateBrain() {
@@ -108,6 +139,15 @@ export function useCreateConcept(courseId: string) {
   return useMutation({
     mutationFn: (payload: BrainConceptCreate) =>
       courseBrainApi.createConcept(courseId, payload),
+    onSuccess: invalidate,
+  });
+}
+
+export function useArchiveConcept(courseId: string) {
+  const invalidate = useInvalidateBrain();
+  return useMutation({
+    mutationFn: (conceptId: string) =>
+      courseBrainApi.archiveConcept(courseId, conceptId),
     onSuccess: invalidate,
   });
 }

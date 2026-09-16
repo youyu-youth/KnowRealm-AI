@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { X } from "lucide-react";
+import { Archive, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { BrainConcept } from "@/features/courses/api/types";
 import { useConceptSources } from "@/features/courses/api/courseBrain";
+import { CourseBrainArchiveDialog } from "@/features/courses/components/CourseBrainArchiveDialog";
 import {
   anchorJumpTarget,
   knowledgePointJumpTarget,
@@ -34,6 +35,7 @@ export function CourseBrainConceptDetail({
   const { t } = useTranslation();
   const sources = useConceptSources(courseId, concept.id);
   const [filter, setFilter] = useState<SourceFilter>("ALL");
+  const [archiveOpen, setArchiveOpen] = useState(false);
 
   const sourceTypes = useMemo(() => {
     const types = new Set<string>();
@@ -130,6 +132,19 @@ export function CourseBrainConceptDetail({
             name: concept.suggested_target_name,
           })}
         </p>
+      ) : null}
+
+      {concept.status === "CONFIRMED" ? (
+        <div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setArchiveOpen(true)}
+          >
+            <Archive aria-hidden="true" data-icon="inline-start" />
+            {t("spaces.courseDetail.brain.archive.action")}
+          </Button>
+        </div>
       ) : null}
 
       <section aria-label={t("spaces.courseDetail.brain.sources.title")}>
@@ -274,6 +289,13 @@ export function CourseBrainConceptDetail({
           </ul>
         )}
       </section>
+
+      <CourseBrainArchiveDialog
+        courseId={courseId}
+        concept={archiveOpen ? concept : null}
+        onOpenChange={setArchiveOpen}
+        onArchived={onClose}
+      />
     </div>
   );
 }

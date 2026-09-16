@@ -15,7 +15,10 @@ import {
 import type { BrainConcept, CourseDetail } from "@/features/courses/api/types";
 import { CourseBrainConceptDetail } from "@/features/courses/components/CourseBrainConceptDetail";
 import { CourseBrainConceptList } from "@/features/courses/components/CourseBrainConceptList";
+import { CourseBrainCreateConceptSheet } from "@/features/courses/components/CourseBrainCreateConceptSheet";
 import { CourseBrainGraph } from "@/features/courses/components/CourseBrainGraph";
+import { CourseBrainRelationReview } from "@/features/courses/components/CourseBrainRelationReview";
+import { CourseBrainReviewDrawer } from "@/features/courses/components/CourseBrainReviewDrawer";
 
 type BrainMode = "graph" | "list";
 
@@ -47,6 +50,8 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
   });
   const [mode, setMode] = useState<BrainMode>("graph");
   const [selected, setSelected] = useState<BrainConcept | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // 图谱节点全为 CONFIRMED 概念：从正式列表映射出完整概念（详情需要描述等字段）。
   const handleNodeSelect = useCallback(
@@ -165,20 +170,38 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
 
       {showWorkspace ? (
         <>
-          <div
-            role="group"
-            aria-label={t("spaces.courseDetail.brain.graph.title")}
-            className="flex items-center gap-1"
-          >
-            {(["graph", "list"] as const).map((value) => (
-              <ToggleChip
-                key={value}
-                active={mode === value}
-                onClick={() => setMode(value)}
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div
+              role="group"
+              aria-label={t("spaces.courseDetail.brain.graph.title")}
+              className="flex items-center gap-1"
+            >
+              {(["graph", "list"] as const).map((value) => (
+                <ToggleChip
+                  key={value}
+                  active={mode === value}
+                  onClick={() => setMode(value)}
+                >
+                  {t(`spaces.courseDetail.brain.view.${value}`)}
+                </ToggleChip>
+              ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {snapshot.candidate_count > 0 ? (
+                <Button size="sm" onClick={() => setReviewOpen(true)}>
+                  {t("spaces.courseDetail.brain.review.open", {
+                    count: snapshot.candidate_count,
+                  })}
+                </Button>
+              ) : null}
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setCreateOpen(true)}
               >
-                {t(`spaces.courseDetail.brain.view.${value}`)}
-              </ToggleChip>
-            ))}
+                {t("spaces.courseDetail.brain.create.action")}
+              </Button>
+            </div>
           </div>
 
           <div className="grid min-w-0 gap-5 @2xl:grid-cols-[minmax(0,1fr)_clamp(16rem,22vw,20rem)]">
@@ -225,6 +248,20 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
               )}
             </aside>
           </div>
+
+          <CourseBrainRelationReview courseId={course.id} />
+
+          <CourseBrainReviewDrawer
+            courseId={course.id}
+            open={reviewOpen}
+            onOpenChange={setReviewOpen}
+            onReviewed={() => setSelected(null)}
+          />
+          <CourseBrainCreateConceptSheet
+            courseId={course.id}
+            open={createOpen}
+            onOpenChange={setCreateOpen}
+          />
         </>
       ) : null}
     </div>

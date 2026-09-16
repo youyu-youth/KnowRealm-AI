@@ -1,5 +1,6 @@
 import type {
   BrainConceptListQuery,
+  BrainRelationListQuery,
   CourseListQuery,
 } from "@/features/courses/api/types";
 
@@ -20,4 +21,6 @@ export const courseBrainKeys = {
     [...courseBrainKeys.all, "concepts", courseId, query] as const,
   sources: (courseId: string, conceptId: string | null) =>
     [...courseBrainKeys.all, "sources", courseId, conceptId] as const,
+  relations: (courseId: string, query: BrainRelationListQuery = {}) =>
+    [...courseBrainKeys.all, "relations", courseId, query] as const,
 };

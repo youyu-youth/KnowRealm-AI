@@ -26,3 +26,8 @@ export type BrainApplyReviewRequest =
 export type BrainConceptListQuery = NonNullable<
   operations["list_course_brain_concepts_api_courses__course_id__brain_concepts_get"]["parameters"]["query"]
 >;
+export type BrainRelation = components["schemas"]["BrainRelationOut"];
+export type BrainRelationStatus = components["schemas"]["BrainRelationStatus"];
+export type BrainRelationListQuery = NonNullable<
+  operations["list_course_brain_relations_api_courses__course_id__brain_relations_get"]["parameters"]["query"]
+>;
