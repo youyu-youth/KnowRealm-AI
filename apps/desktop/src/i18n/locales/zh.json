@@ -1594,6 +1594,7 @@
     },
     "citation": {
       "listLabel": "引用来源",
+      "dialogDescription": "本对话回答中的全部引用，点击条目跳转查看。",
       "jump": "查看引用 {{index}} 的转写原文",
       "jumpWeb": "打开引用 {{index}} 的网络来源",
       "entry": "[{{index}}] {{quote}}",
@@ -1657,6 +1658,7 @@
       "addMore": "添加更多内容（即将支持）",
       "citations": "来源引用",
       "citationsEmpty": "回答中的 [n] 角标会在这里列出，点击可跳回原文。",
+      "citationsViewAll": "查看全部 {{count}} 条",
       "scopeRecords": "范围内 {{count}} 条记录"
     },
     "tools": {

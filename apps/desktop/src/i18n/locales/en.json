@@ -1606,6 +1606,7 @@
     },
     "citation": {
       "listLabel": "Citations",
+      "dialogDescription": "Every source cited in this chat; click an entry to open it.",
       "jump": "View the Transcript passage for citation {{index}}",
       "jumpWeb": "Open the web source for citation {{index}}",
       "entry": "[{{index}}] {{quote}}",
@@ -1669,6 +1670,8 @@
       "addMore": "Add more content (coming soon)",
       "citations": "Citations",
       "citationsEmpty": "Citation [n] markers in answers are listed here; click one to jump back to the source.",
+      "citationsViewAll_one": "View all {{count}} citation",
+      "citationsViewAll_other": "View all {{count}} citations",
       "scopeRecords_one": "{{count}} record in scope",
       "scopeRecords_other": "{{count}} records in scope"
     },

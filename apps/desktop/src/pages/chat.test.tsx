@@ -756,6 +756,60 @@ describe("挂载对话引用", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("右栏引用超过 4 条时只预览前 4 条，查看全部在弹窗中列出", async () => {
+    const created = chatSession(FIRST_SESSION_ID, {
+      record_id: RECORD_ID,
+      scope: "RECORD",
+    });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "总结一下"),
+            {
+              id: "assistant-row",
+              role: "ASSISTANT",
+              content: "根据资料总结如下[1][2][3][4][5][6]。",
+              model: "stub-chat-model",
+              citations: Array.from({ length: 6 }, (_, position) => ({
+                index: position + 1,
+                record_id: RECORD_ID,
+                quote: `引用条目 ${position + 1}`,
+              })),
+              created_at: "2026-08-27T08:00:00.000000Z",
+            },
+          ]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    const viewAll = await screen.findByRole("button", {
+      name: "查看全部 6 条",
+    });
+    const panelList = screen.getByRole("list", { name: "引用来源" });
+    expect(within(panelList).getAllByRole("listitem")).toHaveLength(4);
+    expect(
+      within(panelList).queryByRole("button", { name: "[5] 引用条目 5" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(viewAll);
+
+    const dialog = await screen.findByRole("dialog");
+    const dialogList = within(dialog).getByRole("list", { name: "引用来源" });
+    expect(within(dialogList).getAllByRole("listitem")).toHaveLength(6);
+    expect(
+      within(dialogList).getByRole("button", { name: "[6] 引用条目 6" }),
+    ).toBeVisible();
+  });
+
   it("角标无对应引用时保持纯文本，不出现可点击项", async () => {
     const created = chatSession(FIRST_SESSION_ID, {
       record_id: RECORD_ID,

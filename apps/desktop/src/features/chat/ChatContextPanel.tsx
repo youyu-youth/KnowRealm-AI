@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   BookOpenText,
@@ -10,6 +10,7 @@ import {
   GraduationCap,
   Lightbulb,
   Library,
+  List,
   Plus,
 } from "lucide-react";
 import { AppTooltip } from "@/components/common/AppTooltip";
@@ -19,6 +20,7 @@ import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
 import type { ChatCitation, ChatSession } from "@/features/chat/api/types";
 import { ChatCitationList } from "@/features/chat/ChatCitationList";
+import { ChatCitationsDialog } from "@/features/chat/ChatCitationsDialog";
 import {
   CHAT_DEMO_TOOL_IDS,
   selectWebSearchEnabled,
@@ -34,6 +36,9 @@ const TOOL_ICONS: Record<ChatToolId, typeof Globe> = {
   codeRun: Code2,
   documentParse: FileText,
 };
+
+/** 右栏来源引用仅预览前 4 条，超出部分收进「查看全部」弹窗。 */
+const CITATION_PREVIEW_COUNT = 4;
 
 type ChatContextPanelProps = {
   sessionId: string;
@@ -70,6 +75,8 @@ export function ChatContextPanel({
   );
   const webSearchAvailable = useWebSearchAvailability();
   const courseNames = useCourseNames();
+  const [citationsOpen, setCitationsOpen] = useState(false);
+  const hasMoreCitations = citations.length > CITATION_PREVIEW_COUNT;
   // 挂载记录标题与范围记录数共用可挂载记录列表缓存；课程 / 全部范围也消费计数。
   const recordOptions = useQuery({
     queryKey: chatKeys.recordOptions(),
@@ -183,7 +190,26 @@ export function ChatContextPanel({
         </h2>
         {citations.length > 0 ? (
           <div className="-mx-2 mt-2">
-            <ChatCitationList citations={citations} />
+            <ChatCitationList
+              citations={
+                hasMoreCitations
+                  ? citations.slice(0, CITATION_PREVIEW_COUNT)
+                  : citations
+              }
+            />
+            {hasMoreCitations ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-chat-accent mt-1 w-full justify-start"
+                onClick={() => setCitationsOpen(true)}
+              >
+                <List data-icon="inline-start" aria-hidden="true" />
+                {t("chat.context.citationsViewAll", {
+                  count: citations.length,
+                })}
+              </Button>
+            ) : null}
           </div>
         ) : (
           <p className="text-label text-muted-foreground mt-3">
@@ -261,6 +287,12 @@ export function ChatContextPanel({
           </p>
         </div>
       </section>
+
+      <ChatCitationsDialog
+        open={citationsOpen}
+        onOpenChange={setCitationsOpen}
+        citations={citations}
+      />
     </aside>
   );
 }
