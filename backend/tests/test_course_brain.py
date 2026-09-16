@@ -9,6 +9,7 @@ import asyncio
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from io import StringIO
 from pathlib import Path
 from typing import cast
 
@@ -16,6 +17,7 @@ import aiosqlite
 import httpx
 import pytest
 from fastapi import FastAPI
+from loguru import logger
 from sqlalchemy import text
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
@@ -1781,6 +1783,101 @@ async def test_build_failure_keeps_previous_graph(tmp_path: Path) -> None:
         assert await count_rows(app, "concept_relations") == 1
         snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
         assert snapshot["status"] == "READY" and snapshot["stale"] is False
+
+
+@pytest.mark.anyio
+async def test_extraction_failure_llm_log_distinguishes_error(tmp_path: Path) -> None:
+    """CB-08 抽取错误归因：INVALID_STRUCTURED_OUTPUT 落 course-brain 埋点，正文不入日志。"""
+    # concepts 非列表：StructuredModel 输出过不了 schema 校验（INVALID_STRUCTURED_OUTPUT 路径）。
+    model = FakeCourseBrainModel(output={"concepts": "not-a-list"})
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_full_sources(app)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        assert accepted.status_code == 202
+        job = await wait_for_job_status(app, accepted.json()["job_id"], "FAILED")
+        assert job["error_code"] == "INVALID_STRUCTURED_OUTPUT"
+
+        async with app.state.session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT graph_name, graph_node, model, prompt_version,"
+                        " token_usage_json, error_code"
+                        " FROM llm_call_logs WHERE graph_name = 'course-brain'"
+                    )
+                )
+            ).one()
+        # 与 chat 问答埋点可区分：graph_name/graph_node/prompt_version 定位到构建抽取。
+        assert tuple(row) == (
+            "course-brain",
+            "extract",
+            "qwen-plus",
+            "course_brain_v1",
+            '{"total_tokens":21}',
+            "INVALID_STRUCTURED_OUTPUT",
+        )
+        # 日志只有元数据：转写正文与 prompt 片段不出现在任何列。
+        dump = "\n".join(str(value) for value in row)
+        assert "MVCC 通过 ReadView 实现事务可见性" not in dump
+        assert "学习场景" not in dump
+
+
+@pytest.mark.anyio
+async def test_apply_review_writes_audit_log(tmp_path: Path) -> None:
+    """CB-08 审核归因：apply-review 落最小审计日志（course_id + 决策计数，无概念名）。"""
+    logs = StringIO()
+    sink_id = logger.add(logs, format="{message} {extra}", level="INFO")
+    try:
+        async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+            await seed_course(app, COURSE_ID)
+            await seed_concept(
+                app,
+                concept_id="concept-mvcc",
+                course_id=COURSE_ID,
+                name="MVCC",
+                status="CANDIDATE",
+            )
+            await seed_concept(
+                app, concept_id="concept-readview", course_id=COURSE_ID, name="ReadView"
+            )
+            await seed_relation(
+                app,
+                relation_id="rel-1",
+                course_id=COURSE_ID,
+                source_concept_id="concept-mvcc",
+                target_concept_id="concept-readview",
+                status="CANDIDATE",
+            )
+
+            response = await client.post(
+                f"/api/courses/{COURSE_ID}/brain/apply-review",
+                json={
+                    "decisions": [
+                        {"decision_type": "confirm", "concept_id": "concept-mvcc"},
+                        {"decision_type": "dismiss_relation", "relation_id": "rel-1"},
+                    ]
+                },
+            )
+            assert response.status_code == 200, response.text
+    finally:
+        logger.remove(sink_id)
+
+    audit_lines = [
+        line for line in logs.getvalue().splitlines() if "course_brain_review_applied" in line
+    ]
+    assert len(audit_lines) == 1
+    assert COURSE_ID in audit_lines[0]
+    assert "'confirm': 1" in audit_lines[0]
+    assert "'dismiss_relation': 1" in audit_lines[0]
+    assert "'merge': 0" in audit_lines[0]
+    assert "'dismiss': 0" in audit_lines[0]
+    assert "'confirm_relation': 0" in audit_lines[0]
+    # 审计只记计数：概念名不得出现在日志行。
+    assert "MVCC" not in audit_lines[0]
 
 
 @pytest.mark.anyio

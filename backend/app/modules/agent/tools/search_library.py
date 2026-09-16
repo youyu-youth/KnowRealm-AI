@@ -169,6 +169,8 @@ def _payload(
     concepts: list[dict[str, object]] | None = None,
     occurrences: list[dict[str, object]] | None = None,
     message: str = "",
+    *,
+    ok: bool = True,
 ) -> str:
     body: dict[str, object] = {
         "hits": hits,
@@ -177,6 +179,8 @@ def _payload(
     }
     if message:
         body["message"] = message
+    if not ok:
+        body["ok"] = False
     return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -197,51 +201,55 @@ async def search_library(query: str) -> str:
     needle = query.strip()
     if not needle:
         return _payload([], [], [], "检索词不能为空。")
-    async with context.session_factory() as session:
-        concepts = await CourseBrainService.match_concepts(
-            session, context.course_id, needle, CONCEPT_MATCH_LIMIT
-        )
-        # 原查询（会话范围）+ 各命中概念名（只在其归属课程内）并跑；ALL 不跨课程混入。
-        terms: list[tuple[str, str | None, int]] = [
-            (needle, context.course_id, SEARCH_LIBRARY_LIMIT)
-        ]
-        terms.extend(
-            (concept.canonical_name, concept.course_id, _EXPANSION_PER_TERM_LIMIT)
-            for concept in concepts
-        )
-        seen: set[tuple[str, str]] = set()
-        merged: list[LibrarySegmentSearchHit] = []
-        for term, scope_course_id, per_term_limit in terms:
-            for hit in await SegmentSearchService.search_scope_segments(
-                session, scope_course_id, term, per_term_limit
-            ):
-                key = (hit.record_id, hit.content)
-                if key not in seen:
-                    seen.add(key)
-                    merged.append(hit)
-        if merged:
-            occurrences: list[dict[str, object]] = []
-            seen_records: set[str] = set()
-            for hit in merged:
-                if hit.record_id in seen_records:
-                    continue
-                seen_records.add(hit.record_id)
-                occurrences.append(_occurrence_payload(hit))
-            return _payload(
-                [_hit_payload(hit) for hit in merged[:SEARCH_LIBRARY_LIMIT]],
-                [_concept_payload(concept) for concept in concepts],
-                occurrences,
+    # FTS 异常不炸整轮流（同 web_search 先例）：错误载荷 ok=false，模型可据此说明。
+    try:
+        async with context.session_factory() as session:
+            concepts = await CourseBrainService.match_concepts(
+                session, context.course_id, needle, CONCEPT_MATCH_LIMIT
             )
-        rows = (
-            await session.execute(
-                _SCOPE_TRANSCRIPT_LIKE_SQL,
-                {
-                    "course_id": context.course_id,
-                    "needle": _escape_like(needle),
-                    "limit": SEARCH_LIBRARY_LIMIT,
-                },
+            # 原查询（会话范围）+ 各命中概念名（只在其归属课程内）并跑；ALL 不跨课程混入。
+            terms: list[tuple[str, str | None, int]] = [
+                (needle, context.course_id, SEARCH_LIBRARY_LIMIT)
+            ]
+            terms.extend(
+                (concept.canonical_name, concept.course_id, _EXPANSION_PER_TERM_LIMIT)
+                for concept in concepts
             )
-        ).all()
+            seen: set[tuple[str, str]] = set()
+            merged: list[LibrarySegmentSearchHit] = []
+            for term, scope_course_id, per_term_limit in terms:
+                for hit in await SegmentSearchService.search_scope_segments(
+                    session, scope_course_id, term, per_term_limit
+                ):
+                    key = (hit.record_id, hit.content)
+                    if key not in seen:
+                        seen.add(key)
+                        merged.append(hit)
+            if merged:
+                occurrences: list[dict[str, object]] = []
+                seen_records: set[str] = set()
+                for hit in merged:
+                    if hit.record_id in seen_records:
+                        continue
+                    seen_records.add(hit.record_id)
+                    occurrences.append(_occurrence_payload(hit))
+                return _payload(
+                    [_hit_payload(hit) for hit in merged[:SEARCH_LIBRARY_LIMIT]],
+                    [_concept_payload(concept) for concept in concepts],
+                    occurrences,
+                )
+            rows = (
+                await session.execute(
+                    _SCOPE_TRANSCRIPT_LIKE_SQL,
+                    {
+                        "course_id": context.course_id,
+                        "needle": _escape_like(needle),
+                        "limit": SEARCH_LIBRARY_LIMIT,
+                    },
+                )
+            ).all()
+    except Exception:
+        return _payload([], [], [], "检索暂时失败，请稍后重试。", ok=False)
     fallback = _like_fallback_hits(
         [(str(row.record_id), str(row.record_title), str(row.content)) for row in rows],
         needle,

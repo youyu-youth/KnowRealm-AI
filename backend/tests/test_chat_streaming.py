@@ -3,6 +3,7 @@ import json
 from collections.abc import AsyncGenerator, AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
@@ -22,6 +23,7 @@ from langchain_core.messages import (
 )
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
+from loguru import logger
 from sqlalchemy import text, update
 
 from app.main import create_app
@@ -1121,6 +1123,10 @@ async def test_provider_failure_emits_error_and_chat_continues(
         rows = await message_rows(tmp_path, session_id)
         assert ("ASSISTANT", "回答完成了") in rows
 
+        # 回答错误可区分（CB-08）：失败轮埋点带 CHAT_STREAM_FAILED，重试成功轮无错误码。
+        logs = await chat_log_rows(tmp_path)
+        assert [cast(str | None, row[5]) for row in logs] == ["CHAT_STREAM_FAILED", None]
+
 
 @pytest.mark.anyio
 async def test_llm_call_logs_records_metadata_only(
@@ -1166,6 +1172,127 @@ async def test_llm_call_logs_records_metadata_only(
             "error_code",
             "created_at",
         }
+
+
+@pytest.mark.anyio
+async def test_llm_call_logs_retrieval_count_and_no_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CB-08 观测性：retrieval_count 反映资料检索命中（None=未检索 / 0=检索无命中），
+    且日志任何列都不含转写正文、用户提问或检索词。"""
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[
+            ToolCallReply("search_transcript", {"query": "傅里叶"}),
+            ["回答完成了"],
+            list(STUB_REPLY),
+            # 参数类型非法：工具执行失败（检索了但 0 命中）。
+            ToolCallReply("search_transcript", {"query": 123}),
+            list(STUB_REPLY),
+        ],
+    ) as (_app, client, _captured):
+        imported = await client.post(
+            "/api/document-imports",
+            files={
+                "file": (
+                    "傅里叶笔记.txt",
+                    "本讲系统梳理傅里叶级数的展开方法".encode(),
+                    "text/plain",
+                )
+            },
+        )
+        assert imported.status_code == 202
+        record_id = cast(str, imported.json()["record_id"])
+        await wait_for_transcript_ready(client, record_id)
+        mounted = await client.post("/api/chat-sessions", json={"record_id": record_id})
+        assert mounted.status_code == 201
+        mounted_id = cast(str, mounted.json()["id"])
+
+        events = await send_message(client, mounted_id, "傅里叶级数怎么展开？")
+        assert [payload for name, payload in events if name == "tool_result"] == [
+            {"tool": "search_transcript", "hits": 1, "ok": True}
+        ]
+
+        free_id = await create_session(client)
+        assert (await send_message(client, free_id, "自由提问"))[-1][0] == "done"
+
+        failed = await send_message(client, mounted_id, "再检索一次")
+        assert [payload for name, payload in failed if name == "tool_result"] == [
+            {"tool": "search_transcript", "hits": 0, "ok": False}
+        ]
+        assert failed[-1][0] == "done"
+
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            rows = list(
+                await (
+                    await connection.execute(
+                        "SELECT error_code, retrieval_count FROM llm_call_logs"
+                        " WHERE graph_name = 'chat'"
+                    )
+                ).fetchall()
+            )
+        assert rows == [
+            (None, 1),  # 挂载检索成功：命中合计
+            (None, None),  # 自由聊天：未检索
+            (None, 0),  # 检索失败：检索了但 0 命中（与未检索可区分）
+        ]
+
+        # 日志只有元数据：转写原文 / 用户提问 / 检索词不出现在任何列。
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            log_rows = list(
+                await (await connection.execute("SELECT * FROM llm_call_logs")).fetchall()
+            )
+        dump = "\n".join(str(value) for row in log_rows for value in row)
+        assert "本讲系统梳理傅里叶级数的展开方法" not in dump
+        assert "傅里叶" not in dump
+        assert "自由提问" not in dump
+        assert "再检索一次" not in dump
+
+
+@pytest.mark.anyio
+async def test_fts_exception_streams_failure_and_logs_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CB-08 检索错误归因：FTS 异常 → SSE 失败态 + loguru 告警 + 埋点 0 命中，流不断。"""
+
+    async def _fts_down(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("fts index unavailable")
+
+    monkeypatch.setattr(SegmentSearchService, "search_segments", _fts_down)
+    logs = StringIO()
+    sink_id = logger.add(logs, format="{message} {extra}", level="WARNING")
+    try:
+        async with streaming_chat_app(
+            tmp_path,
+            monkeypatch,
+            replies=[ToolCallReply("search_transcript", {"query": "傅里叶"}), list(STUB_REPLY)],
+        ) as (_app, client, _captured):
+            capture = await client.post(
+                "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "原文"}
+            )
+            record_id = cast(str, capture.json()["record_id"])
+            created = await client.post("/api/chat-sessions", json={"record_id": record_id})
+            session_id = cast(str, created.json()["id"])
+
+            events = await send_message(client, session_id, "检索一下")
+    finally:
+        logger.remove(sink_id)
+
+    assert [payload for name, payload in events if name == "tool_result"] == [
+        {"tool": "search_transcript", "hits": 0, "ok": False}
+    ]
+    assert events[-1][0] == "done"
+    warnings = [line for line in logs.getvalue().splitlines() if "chat_tool_failed" in line]
+    assert len(warnings) == 1 and "'tool': 'search_transcript'" in warnings[0]
+
+    async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+        row = await (
+            await connection.execute(
+                "SELECT error_code, retrieval_count FROM llm_call_logs WHERE graph_name = 'chat'"
+            )
+        ).fetchone()
+    assert row is not None and (row[0], row[1]) == (None, 0)
 
 
 @pytest.mark.anyio

@@ -9,11 +9,13 @@ import asyncio
 import json
 import re
 import unicodedata
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+from loguru import logger
 from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +52,7 @@ from app.modules.course_brain.schemas import (
     DismissDecision,
     DismissRelationDecision,
     MergeDecision,
+    ReviewDecisionType,
 )
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
@@ -960,6 +963,17 @@ class CourseBrainService:
             raise CodedHTTPException(
                 code="COURSE_BRAIN_CONCEPT_EXISTS", status_code=409, detail="已存在同名概念"
             ) from None
+        # 审计日志（CB-08）：只记课程与决策计数，不落概念名/正文。
+        counts = Counter(decision.decision_type for decision in body.decisions)
+        logger.info(
+            "course_brain_review_applied",
+            course_id=course_id,
+            confirm=counts.get(ReviewDecisionType.CONFIRM, 0),
+            merge=counts.get(ReviewDecisionType.MERGE, 0),
+            dismiss=counts.get(ReviewDecisionType.DISMISS, 0),
+            confirm_relation=counts.get(ReviewDecisionType.CONFIRM_RELATION, 0),
+            dismiss_relation=counts.get(ReviewDecisionType.DISMISS_RELATION, 0),
+        )
         return await CourseBrainService.get_snapshot(session, course_id)
 
     @staticmethod

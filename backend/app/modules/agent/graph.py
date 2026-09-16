@@ -62,6 +62,8 @@ from app.modules.settings.config import LlmProviderConfig
 
 CHAT_PROMPT_VERSION = "chat-concept-v6"
 CHAT_RECURSION_LIMIT = 25
+# 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
+RETRIEVAL_TOOL_NAMES = frozenset({"search_transcript", "search_library"})
 
 
 @dataclass
@@ -331,6 +333,8 @@ async def stream_chat_reply(
     web_token: Token[SearchProvider | None] | None = None
     if web_search is not None:
         web_token = bind_web_search(web_search)
+    # 检索归因（CB-08）：本轮资料检索命中合计（None=未检索，0=检索无命中）。
+    retrieval_count: int | None = None
     try:
         agent = build_chat_agent(
             build_chat_model(provider, http_client),
@@ -362,7 +366,12 @@ async def stream_chat_reply(
             elif isinstance(chunk, ToolMessage):
                 # 本轮工具执行完毕：拼装草稿在下一次模型调用前清空。
                 tool_call_drafts = {}
-                yield _tool_result_event(chunk)
+                result_event = _tool_result_event(chunk)
+                if result_event.tool in RETRIEVAL_TOOL_NAMES:
+                    retrieval_count = (retrieval_count or 0) + result_event.hits
+                if not result_event.ok:
+                    logger.warning("chat_tool_failed", tool=result_event.tool)
+                yield result_event
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise
@@ -376,6 +385,7 @@ async def stream_chat_reply(
             prompt_version=CHAT_PROMPT_VERSION,
             token_usage=outcome.token_usage,
             latency_ms=max(0, round((perf_counter() - started) * 1000)),
+            retrieval_count=retrieval_count,
             error_code="CHAT_STREAM_FAILED",
         )
         raise
@@ -395,6 +405,7 @@ async def stream_chat_reply(
         prompt_version=CHAT_PROMPT_VERSION,
         token_usage=outcome.token_usage,
         latency_ms=max(0, round((perf_counter() - started) * 1000)),
+        retrieval_count=retrieval_count,
         error_code=None,
     )
     await checkpointer.adelete_thread(thread_id)

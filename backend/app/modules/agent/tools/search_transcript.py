@@ -107,10 +107,12 @@ def _substring_hits(transcript: str, query: str, limit: int) -> list[dict[str, o
     return hits
 
 
-def _payload(hits: list[dict[str, object]], message: str = "") -> str:
+def _payload(hits: list[dict[str, object]], message: str = "", *, ok: bool = True) -> str:
     body: dict[str, object] = {"hits": hits}
     if message:
         body["message"] = message
+    if not ok:
+        body["ok"] = False
     return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -126,15 +128,19 @@ async def search_transcript(query: str) -> str:
     context = _search_context.get()
     if context is None:
         return _payload([], "当前对话未挂载学习材料，无法检索。")
-    async with context.session_factory() as session:
-        hits = await SegmentSearchService.search_segments(
-            session, context.record_id, query, SEARCH_TRANSCRIPT_LIMIT
-        )
-        if hits:
-            return _payload([_segment_hit_payload(hit) for hit in hits])
-        if await SegmentSearchService.record_has_segments(session, context.record_id):
-            # 有分片索引记录：FTS 无命中即如实返回，不做子串兜底（spec：兜底仅限无分片记录）。
-            return _payload([], "未找到相关原文；可换同义词或相关关键词重试。")
+    # FTS 异常不炸整轮流（同 web_search 先例）：错误载荷 ok=false，模型可据此说明。
+    try:
+        async with context.session_factory() as session:
+            hits = await SegmentSearchService.search_segments(
+                session, context.record_id, query, SEARCH_TRANSCRIPT_LIMIT
+            )
+            if hits:
+                return _payload([_segment_hit_payload(hit) for hit in hits])
+            if await SegmentSearchService.record_has_segments(session, context.record_id):
+                # 有分片索引记录：FTS 无命中即如实返回，不做子串兜底（spec：兜底仅限无分片记录）。
+                return _payload([], "未找到相关原文；可换同义词或相关关键词重试。")
+    except Exception:
+        return _payload([], "检索暂时失败，请稍后重试。", ok=False)
     fallback = _substring_hits(context.transcript, query, SEARCH_TRANSCRIPT_LIMIT)
     if fallback:
         return _payload(fallback)

@@ -241,10 +241,12 @@ async def write_llm_call_log(
     prompt_version: str,
     token_usage: dict[str, object],
     latency_ms: int,
+    retrieval_count: int | None = None,
     error_code: str | None = None,
 ) -> None:
     """llm_call_logs 统一埋点（只记元数据，不落 prompt 与输出正文）。
 
+    retrieval_count：本轮资料检索命中数（未检索=None，检索了=命中合计）。
     埋点失败不得影响主流程：吞掉并记 error code。
     """
     try:
@@ -259,7 +261,7 @@ async def write_llm_call_log(
                     embedding_model=None,
                     token_usage_json=json.dumps(token_usage, separators=(",", ":")),
                     latency_ms=latency_ms,
-                    retrieval_count=None,
+                    retrieval_count=retrieval_count,
                     evidence_count=None,
                     interrupt_count=0,
                     error_code=error_code,
