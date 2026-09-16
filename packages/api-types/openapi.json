@@ -1271,6 +1271,18 @@
             "title": "Relation Type",
             "type": "string"
           },
+          "segment_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "转写/文档分片 id（来源跳转精确定位）；对话来源为 null",
+            "title": "Segment Id"
+          },
           "source_type": {
             "$ref": "#/components/schemas/SourceAnchorType"
           },

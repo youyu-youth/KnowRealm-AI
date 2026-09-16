@@ -184,6 +184,9 @@ class ConceptAnchorSourceOut(BaseModel):
     start_ms: int | None = Field(default=None, description="转写分片时间轴起点")
     end_ms: int | None = Field(default=None, description="转写分片时间轴终点")
     page_no: int | None = Field(default=None, description="文档分片页码")
+    segment_id: str | None = Field(
+        default=None, description="转写/文档分片 id（来源跳转精确定位）；对话来源为 null"
+    )
     chat_session_id: str | None = Field(default=None, description="对话来源会话 id（跳转用）")
 
 
@@ -357,7 +360,8 @@ class CourseBrainExtractionConcept(BaseModel):
     )
     importance: int = Field(default=3, ge=1, le=5, description="重要度 1~5")
     evidence: list[CourseBrainEvidence] = Field(
-        default_factory=list[CourseBrainEvidence], description="支撑该概念的原文证据，至少一条"
+        min_length=1,
+        description="支撑该概念的原文证据，至少一条（零证据概念不进审核）",
     )
 
 

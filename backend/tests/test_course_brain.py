@@ -18,11 +18,15 @@ import httpx
 import pytest
 from fastapi import FastAPI
 from loguru import logger
+from pydantic import ValidationError
 from sqlalchemy import text
 
 from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
 from app.main import create_app
-from app.modules.course_brain.schemas import CourseBrainSearchOut
+from app.modules.course_brain.schemas import (
+    CourseBrainExtractionConcept,
+    CourseBrainSearchOut,
+)
 from app.modules.course_brain.service import CourseBrainService, normalize_concept_name
 from app.modules.course_brain.worker import course_brain_spec, preflight
 from app.modules.llm.service import StructuredGenerationError, StructuredModelResult
@@ -1214,8 +1218,10 @@ async def test_concept_sources_anchor_kp_chat_and_soft_delete(tmp_path: Path) ->
         assert audio["source_type"] == "AUDIO_SEGMENT"
         assert audio["quote"] == "MVCC 通过 ReadView 实现事务可见性"
         assert audio["start_ms"] == 1000 and audio["record_title"] == "数据库课程"
+        assert audio["segment_id"] == "seg-1", "来源跳转按分片精确定位所需字段"
         chat = anchors["anchor-chat"]
         assert chat["chat_session_id"] == "chat-session-1" and chat["quote"] == "MVCC 要点"
+        assert chat["segment_id"] is None
         assert sources["knowledge_points"] == [
             {
                 "record_id": RECORD_ID,
@@ -1241,6 +1247,63 @@ async def test_concept_sources_anchor_kp_chat_and_soft_delete(tmp_path: Path) ->
             await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1")
         ).json()
         assert after_detail["anchor_count"] == 0
+
+
+@pytest.mark.anyio
+async def test_concept_sources_excludes_record_moved_to_other_course(tmp_path: Path) -> None:
+    """记录移出课程后旧课程不泄漏其来源，出现映射全部失效 → 待归档徽章（读取期派生）。"""
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_course(app, OTHER_COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID, title="数据库课程")
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+            start_ms=1000,
+            end_ms=5000,
+        )
+        await seed_concept(app, concept_id="concept-1", course_id=COURSE_ID, name="MVCC")
+        await seed_anchor(
+            app,
+            anchor_id="anchor-audio",
+            course_id=COURSE_ID,
+            source_type="AUDIO_SEGMENT",
+            source_id="seg-1",
+            record_id=RECORD_ID,
+            transcript_segment_id="seg-1",
+        )
+        await link_concept_anchor(
+            app, link_id="link-1", concept_id="concept-1", anchor_id="anchor-audio"
+        )
+        await seed_record_concept(
+            app, rc_id="rc-1", record_id=RECORD_ID, concept_id="concept-1"
+        )
+
+        # 产品入口本版本不支持重新归类（409），直改 course_id 模拟移动后的读取期防护。
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE records SET course_id = :course_id WHERE id = :id"),
+                {"course_id": OTHER_COURSE_ID, "id": RECORD_ID},
+            )
+
+        after_move = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1/sources")
+        ).json()
+        assert after_move["anchors"] == [], "移出课程的记录原文不得再从旧课程泄漏"
+        assert after_move["knowledge_points"] == []
+        after_detail = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts/concept-1")
+        ).json()
+        assert after_detail["anchor_count"] == 0
+
+        confirmed = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CONFIRMED")
+        ).json()
+        assert confirmed[0]["stale_archivable"] is True, "出现映射全部移出课程 → 待归档徽章"
 
 
 @pytest.mark.anyio
@@ -1834,12 +1897,16 @@ async def test_apply_review_writes_audit_log(tmp_path: Path) -> None:
     try:
         async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
             await seed_course(app, COURSE_ID)
+            await seed_record(app, RECORD_ID, COURSE_ID)
             await seed_concept(
                 app,
                 concept_id="concept-mvcc",
                 course_id=COURSE_ID,
                 name="MVCC",
                 status="CANDIDATE",
+            )
+            await seed_record_concept(
+                app, rc_id="rc-mvcc", record_id=RECORD_ID, concept_id="concept-mvcc"
             )
             await seed_concept(
                 app, concept_id="concept-readview", course_id=COURSE_ID, name="ReadView"
@@ -1998,6 +2065,97 @@ async def test_build_skips_unlocatable_evidence_from_occurrence_count(tmp_path: 
         assert candidates[0]["occurrence_count"] == 1, "定位失败的证据不得计入出现次数"
 
 
+def test_extraction_concept_requires_at_least_one_evidence() -> None:
+    """契约闸门：零证据概念在结构化生成校验侧即拒绝（描述「至少一条」落实为约束）。"""
+    with pytest.raises(ValidationError):
+        CourseBrainExtractionConcept.model_validate(
+            {
+                "name": "MVCC",
+                "description": "多版本并发控制",
+                "concept_type": "TERM",
+                "importance": 4,
+                "evidence": [],
+            }
+        )
+
+
+@pytest.mark.anyio
+async def test_build_drops_concept_without_located_evidence(tmp_path: Path) -> None:
+    """零证据闸门：全部证据定位失败的概念不进审核、不写零证据出现映射，关系候选连带剔除。"""
+    output: dict[str, object] = {
+        "concepts": [
+            {
+                "name": "幻觉概念",
+                "description": "证据全部无法逐字定位",
+                "concept_type": "TERM",
+                "importance": 4,
+                "evidence": [
+                    {"quote": "第一句并不存在于任何原文之中", "source_hint": "转写"},
+                    {"quote": "第二句也不存在于任何原文之中", "source_hint": "转写"},
+                ],
+            },
+            {
+                "name": "MVCC",
+                "description": "多版本并发控制",
+                "concept_type": "TERM",
+                "importance": 4,
+                "evidence": [{"quote": "MVCC 通过 ReadView 实现事务可见性", "source_hint": "转写"}],
+            },
+        ],
+        "relations": [
+            {
+                "source": "MVCC",
+                "target": "幻觉概念",
+                "relation_type": "PREREQUISITE",
+                "confidence": 0.9,
+            }
+        ],
+    }
+    model = FakeCourseBrainModel(output=output)
+    async with running_brain_worker_app(tmp_path / "KnowRealm", model) as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_transcript_segment(
+            app,
+            record_id=RECORD_ID,
+            segment_id="seg-1",
+            transcript_id="transcript-1",
+            file_id="file-1",
+            content="MVCC 通过 ReadView 实现事务可见性",
+        )
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        accepted = await client.post(f"/api/courses/{COURSE_ID}/brain/builds")
+        job = await wait_for_job_status(app, accepted.json()["job_id"], "SUCCEEDED")
+        result = json.loads(cast(str, job["result_json"]))
+        assert result["skipped_evidence_count"] == 2
+        assert result["candidate_count"] == 1, "仅保留有定位证据的概念"
+
+        candidates = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/concepts?status=CANDIDATE")
+        ).json()
+        assert [item["canonical_name"] for item in candidates] == ["MVCC"]
+        assert candidates[0]["occurrence_count"] == 1
+
+        relations = (
+            await client.get(f"/api/courses/{COURSE_ID}/brain/relations?status=CANDIDATE")
+        ).json()
+        assert relations == [], "被剔除概念参与的关系候选不得发布"
+
+        async with app.state.session_factory() as session:
+            dropped = await session.scalar(
+                text("SELECT count(*) FROM concepts WHERE canonical_name = '幻觉概念'")
+            )
+            zero_rows = list(
+                await session.execute(
+                    text("SELECT concept_id FROM record_concepts WHERE evidence_count = 0")
+                )
+            )
+        assert dropped == 0, "零证据概念不落库"
+        assert zero_rows == [], "零证据出现映射不得写入"
+
+
 @pytest.mark.anyio
 async def test_rebuild_reproposes_archived_concept_as_candidate(tmp_path: Path) -> None:
     output: dict[str, object] = {
@@ -2132,6 +2290,38 @@ async def test_apply_review_rename_collision_conflicts(tmp_path: Path) -> None:
 
         snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
         assert snapshot["candidate_count"] == 1, "失败决策不得改动候选状态"
+
+
+@pytest.mark.anyio
+async def test_apply_review_confirm_zero_evidence_candidate_rejected(tmp_path: Path) -> None:
+    """零证据闸门：无定位证据的候选不得确认转正（历史遗留候选兜底），被拒后状态不变。"""
+    async with running_brain_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course(app, COURSE_ID)
+        await seed_record(app, RECORD_ID, COURSE_ID)
+        await seed_concept(
+            app,
+            concept_id="concept-cand",
+            course_id=COURSE_ID,
+            name="零证据概念",
+            status="CANDIDATE",
+        )
+        await seed_record_concept(
+            app,
+            rc_id="rc-cand",
+            record_id=RECORD_ID,
+            concept_id="concept-cand",
+            evidence_count=0,
+        )
+
+        response = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/apply-review",
+            json={"decisions": [{"decision_type": "confirm", "concept_id": "concept-cand"}]},
+        )
+        assert response.status_code == 409
+        assert response.json()["code"] == "COURSE_BRAIN_CONCEPT_NO_EVIDENCE"
+
+        snapshot = (await client.get(f"/api/courses/{COURSE_ID}/brain")).json()
+        assert snapshot["candidate_count"] == 1, "被拒候选保持待审核"
 
 
 @pytest.mark.anyio

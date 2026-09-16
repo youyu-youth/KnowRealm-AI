@@ -2144,6 +2144,11 @@ export interface components {
             record_title?: string | null;
             /** Relation Type */
             relation_type: string;
+            /**
+             * Segment Id
+             * @description 转写/文档分片 id（来源跳转精确定位）；对话来源为 null
+             */
+            segment_id?: string | null;
             source_type: components["schemas"]["SourceAnchorType"];
             /**
              * Start Ms

@@ -135,7 +135,7 @@ _CONCEPT_ANCHOR_COUNT_SQL = text(
     "LEFT JOIN records r ON r.id = a.record_id AND r.deleted_at IS NULL "
     "WHERE l.resource_type = 'CONCEPT' AND l.resource_id = :concept_id "
     "AND a.course_id = :course_id "
-    "AND (a.record_id IS NULL OR r.id IS NOT NULL)"
+    "AND (a.record_id IS NULL OR (r.id IS NOT NULL AND r.course_id = :course_id))"
 )
 
 # Concept 命中：CONFIRMED-only（Agent 只读边界，ADR-0022）；course_id 为 None
@@ -172,10 +172,13 @@ _RELATED_INCOMING_SQL = text(
     "ORDER BY cr.confidence DESC, c.canonical_name"
 ).bindparams(bindparam("ids", expanding=True))
 
-# 来源锚点：AUDIO/DOCUMENT 取分片逐字原文与时间/页码；CHAT 回溯会话 id。
+# 来源锚点：AUDIO/DOCUMENT 取分片逐字原文、时间/页码与分片 id（跳转精确定位）；
+# CHAT 回溯会话 id。记录须仍归属本课程（软删或移出课程都不泄漏；
+# CHAT 锚点无 record_id 不受此约束）。
 _CONCEPT_ANCHORS_SQL = text(
     "SELECT l.relation_type, a.id AS anchor_id, a.source_type, a.record_id, "
     "r.title AS record_title, "
+    "a.transcript_segment_id, a.document_segment_id, "
     "ts.content AS transcript_content, ts.record_start_ms, ts.record_end_ms, "
     "ds.content AS document_content, ds.page_no, "
     "cm.content AS chat_content, cm.session_id AS chat_session_id "
@@ -187,7 +190,7 @@ _CONCEPT_ANCHORS_SQL = text(
     "LEFT JOIN chat_messages cm ON cm.id = a.source_id AND a.source_type = 'CHAT_MESSAGE' "
     "WHERE l.resource_type = 'CONCEPT' AND l.resource_id = :concept_id "
     "AND a.course_id = :course_id "
-    "AND (a.record_id IS NULL OR r.id IS NOT NULL) "
+    "AND (a.record_id IS NULL OR (r.id IS NOT NULL AND r.course_id = :course_id)) "
     "ORDER BY a.id"
 )
 
@@ -205,12 +208,14 @@ _CONCEPT_KP_SOURCES_SQL = text(
 )
 
 
-# 待归档派生（CB-05）：有出现映射且全部挂失效记录（软删/缺失）→ stale_archivable；
+# 待归档派生（CB-05）：有出现映射且全部挂失效记录（软删/缺失/移出课程）→ stale_archivable；
 # 查询时派生不落库，零映射（如手动创建）不算待归档。
 _STALE_ARCHIVABLE_SQL = text(
     "SELECT rc.concept_id AS concept_id, count(*) AS total_rows, "
-    "sum(CASE WHEN r.id IS NULL OR r.deleted_at IS NOT NULL THEN 1 ELSE 0 END) AS dead_rows "
+    "sum(CASE WHEN r.id IS NULL OR r.deleted_at IS NOT NULL "
+    "OR r.course_id IS NULL OR r.course_id != c.course_id THEN 1 ELSE 0 END) AS dead_rows "
     "FROM record_concepts rc "
+    "JOIN concepts c ON c.id = rc.concept_id "
     "LEFT JOIN records r ON r.id = rc.record_id "
     "WHERE rc.concept_id IN :ids "
     "GROUP BY rc.concept_id"
@@ -817,6 +822,9 @@ class CourseBrainService:
                     start_ms=cast("int | None", row.record_start_ms),
                     end_ms=cast("int | None", row.record_end_ms),
                     page_no=cast("int | None", row.page_no),
+                    segment_id=cast(
+                        "str | None", row.transcript_segment_id or row.document_segment_id
+                    ),
                     chat_session_id=cast("str | None", row.chat_session_id),
                 )
             )
@@ -1065,7 +1073,8 @@ class CourseBrainService:
 
 
 async def _apply_confirm(session: AsyncSession, course_id: str, decision: ConfirmDecision) -> None:
-    """候选确认：可选重命名（归一化撞正式名额即 409）；确认后进 FTS 供检索。"""
+    """候选确认：可选重命名（归一化撞正式名额即 409）；AI 候选须有至少一条
+    定位成功的证据（零证据概念不得转正），确认后进 FTS 供检索。"""
     concept = await _require_concept(session, course_id, decision.concept_id)
     if concept.status != ConceptStatus.CANDIDATE.value:
         raise CodedHTTPException(
@@ -1088,6 +1097,21 @@ async def _apply_confirm(session: AsyncSession, course_id: str, decision: Confir
             )
         concept.canonical_name = decision.new_name
         concept.normalized_name = normalized
+    if concept.source == ConceptSource.AI_EXTRACTED.value:
+        total_evidence = cast(
+            int,
+            await session.scalar(
+                select(func.coalesce(func.sum(RecordConcept.evidence_count), 0)).where(
+                    RecordConcept.concept_id == concept.id
+                )
+            ),
+        )
+        if not total_evidence:
+            raise CodedHTTPException(
+                code="COURSE_BRAIN_CONCEPT_NO_EVIDENCE",
+                status_code=409,
+                detail="零证据候选不能确认，请忽略或重新构建",
+            )
     await _set_concept_status(session, concept, ConceptStatus.CONFIRMED)
 
 

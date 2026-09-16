@@ -502,6 +502,7 @@ async def _build_publish_plan(
     located: dict[tuple[str, str], _SourceSegment] = {}
     relation_candidates: dict[tuple[str, str, str], float] = {}
     skipped_evidence_count = 0
+    evidenced_concept_ids: set[str] = set()
 
     for record_extraction in extraction.records:
         block = record_extraction.block
@@ -543,6 +544,7 @@ async def _build_publish_plan(
                     skipped_evidence_count += 1
                     continue
                 occurrence.evidence_count += 1
+                evidenced_concept_ids.add(concept.id)
                 located.setdefault((concept.id, segment.segment_id), segment)
                 if (
                     segment.source_type == SourceAnchorType.AUDIO_SEGMENT
@@ -562,6 +564,29 @@ async def _build_publish_plan(
             key = (source.id, target.id, relation.relation_type.value)
             # 同一三元组重复出现取最高置信度（Last-write 会让顺序影响结果）。
             relation_candidates[key] = max(relation_candidates.get(key, 0.0), relation.confidence)
+
+    # 零证据闸门：本次新建但一条证据都未定位成功的概念不进审核（连同关系候选、
+    # 出现计数一并剔除）；零证据出现映射一律不写（无逐字证据的挂靠不算出现）。
+    # 复用中的既有候选/正式概念不动历史数据，由确认闸门（service._apply_confirm）兜底。
+    kept_created: list[Concept] = []
+    dropped_ids: set[str] = set()
+    for concept in created_concepts:
+        if concept.id in evidenced_concept_ids:
+            kept_created.append(concept)
+        else:
+            dropped_ids.add(concept.id)
+            touched_ids.discard(concept.id)
+            await session.delete(concept)
+    created_concepts = kept_created
+    occurrences = {
+        key: occurrence for key, occurrence in occurrences.items() if occurrence.evidence_count > 0
+    }
+    if dropped_ids:
+        relation_candidates = {
+            key: confidence
+            for key, confidence in relation_candidates.items()
+            if key[0] not in dropped_ids and key[1] not in dropped_ids
+        }
 
     return _PublishPlan(
         touched_count=len(touched_ids),
