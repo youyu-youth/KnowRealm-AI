@@ -11,3 +11,14 @@ export type CourseType = components["schemas"]["CourseType"];
 export type CourseListQuery = NonNullable<
   operations["list_courses_api_courses_get"]["parameters"]["query"]
 >;
+
+export type BrainSnapshot = components["schemas"]["BrainSnapshotOut"];
+export type BrainConcept = components["schemas"]["BrainConceptOut"];
+export type BrainBuildAccepted = components["schemas"]["BrainBuildAcceptedOut"];
+export type ConceptSources = components["schemas"]["ConceptSourcesOut"];
+export type BrainConceptCreate = components["schemas"]["BrainConceptCreate"];
+export type BrainApplyReviewRequest =
+  components["schemas"]["ApplyReviewRequest"];
+export type BrainConceptListQuery = NonNullable<
+  operations["list_course_brain_concepts_api_courses__course_id__brain_concepts_get"]["parameters"]["query"]
+>;

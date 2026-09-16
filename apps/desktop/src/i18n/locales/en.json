@@ -411,6 +411,70 @@
       "noHotWords": "No hot words"
     },
     "courseDetail": {
+      "brain": {
+        "status": {
+          "EMPTY": "Not built",
+          "BUILDING": "Building",
+          "REVIEW": "Review pending",
+          "READY": "Ready",
+          "STALE": "Update suggested",
+          "FAILED": "Build failed"
+        },
+        "statusHint": {
+          "EMPTY": "The course brain has not been built yet. Trigger a build first.",
+          "BUILDING": "Extracting concepts from course material. Review opens when finished.",
+          "REVIEW": "There are concept candidates to review. Confirm them to join the graph.",
+          "READY": "The brain and concepts are up to date.",
+          "STALE": "Course material has changed. Rebuilding is recommended.",
+          "FAILED": "The last build failed. Check your provider and try again."
+        },
+        "build": {
+          "trigger": "Build brain",
+          "rebuild": "Rebuild",
+          "building": "Building…",
+          "lastBuiltAt": "Last built: {{time}}",
+          "conceptCount": "{{count}} confirmed concepts",
+          "candidateCount": "{{count}} pending review"
+        },
+        "graph": {
+          "title": "Concept graph",
+          "empty": "The confirmed graph will appear here once concepts are confirmed."
+        },
+        "concepts": {
+          "title": "Concepts",
+          "filterConfirmed": "Confirmed",
+          "filterCandidate": "Candidates",
+          "importance": "Importance",
+          "records": "{{count}} records",
+          "occurrences": "{{count}} occurrences",
+          "suggestedMerge": "Possible duplicate of “{{name}}”",
+          "staleArchivable": "All sources are gone",
+          "empty": "No concepts yet"
+        },
+        "review": {
+          "title": "Concept review",
+          "confirm": "Confirm",
+          "merge": "Merge",
+          "dismiss": "Dismiss",
+          "confirmRelation": "Confirm relation",
+          "dismissRelation": "Dismiss relation",
+          "applyFailed": "The review action failed. Please try again."
+        },
+        "sources": {
+          "title": "Concept sources",
+          "anchors": "Source quotes",
+          "knowledgePoints": "Linked knowledge points",
+          "page": "Page {{page}}",
+          "viewRecord": "View record",
+          "viewChat": "View chat",
+          "empty": "No sources yet"
+        },
+        "emptyGuide": {
+          "title": "Grow a brain for this course",
+          "description": "Once transcripts, documents or chats accumulate, extract core concepts into a graph in one click. Confirmed concepts power retrieval and Q&A.",
+          "cta": "Build course brain"
+        }
+      },
       "breadcrumb": {
         "label": "Breadcrumb",
         "myCourses": "My courses"
@@ -1938,6 +2002,12 @@
     "CHAT_STREAM_IN_PROGRESS": "This chat is already generating an answer. Please wait a moment.",
     "CORRUPT_AUDIO": "The audio is corrupted.",
     "COURSE_ARCHIVED": "Archived courses cannot receive new material or generate content.",
+    "COURSE_BRAIN_BUILD_IN_PROGRESS": "A course brain build is already running.",
+    "COURSE_BRAIN_CONCEPT_EXISTS": "A concept with the same name already exists.",
+    "COURSE_BRAIN_CONCEPT_NOT_FOUND": "The concept does not exist or has been deleted.",
+    "COURSE_BRAIN_CONCEPT_STATE_INVALID": "The concept's current state does not allow this action.",
+    "COURSE_BRAIN_RELATION_NOT_FOUND": "The concept relation does not exist or has been deleted.",
+    "COURSE_BRAIN_RELATION_STATE_INVALID": "The relation's current state does not allow this action.",
     "COURSE_EDUCATION_STAGE_REQUIRED": "A school context requires an education stage.",
     "COURSE_LEARNING_DEPTH_REQUIRED": "A work or hobby context requires a learning depth.",
     "COURSE_NOT_FOUND": "This course does not exist or has been deleted.",

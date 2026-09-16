@@ -411,6 +411,70 @@
       "noHotWords": "暂无热词"
     },
     "courseDetail": {
+      "brain": {
+        "status": {
+          "EMPTY": "未构建",
+          "BUILDING": "构建中",
+          "REVIEW": "待审核",
+          "READY": "已就绪",
+          "STALE": "待更新",
+          "FAILED": "构建失败"
+        },
+        "statusHint": {
+          "EMPTY": "还没有构建课程脑图，先触发一次构建。",
+          "BUILDING": "正在从课程资料抽取概念，完成后进入审核。",
+          "REVIEW": "有概念候选待审核，确认后进入正式图谱。",
+          "READY": "脑图与概念已是最新。",
+          "STALE": "课程资料已更新，建议重新构建。",
+          "FAILED": "上次构建失败，请检查 Provider 后重试。"
+        },
+        "build": {
+          "trigger": "构建脑图",
+          "rebuild": "重新构建",
+          "building": "构建中…",
+          "lastBuiltAt": "上次构建：{{time}}",
+          "conceptCount": "{{count}} 个正式概念",
+          "candidateCount": "{{count}} 条待审核"
+        },
+        "graph": {
+          "title": "概念图谱",
+          "empty": "确认概念后，正式图谱会在这里生成。"
+        },
+        "concepts": {
+          "title": "概念列表",
+          "filterConfirmed": "正式概念",
+          "filterCandidate": "待审核候选",
+          "importance": "重要度",
+          "records": "{{count}} 条记录",
+          "occurrences": "{{count}} 次出现",
+          "suggestedMerge": "疑似与「{{name}}」重复",
+          "staleArchivable": "来源已全部失效",
+          "empty": "暂无概念"
+        },
+        "review": {
+          "title": "概念审核",
+          "confirm": "确认",
+          "merge": "合并",
+          "dismiss": "忽略",
+          "confirmRelation": "确认关系",
+          "dismissRelation": "忽略关系",
+          "applyFailed": "审核操作失败，请重试"
+        },
+        "sources": {
+          "title": "概念来源",
+          "anchors": "原文出处",
+          "knowledgePoints": "关联知识点",
+          "page": "第 {{page}} 页",
+          "viewRecord": "查看记录",
+          "viewChat": "查看对话",
+          "empty": "暂无来源"
+        },
+        "emptyGuide": {
+          "title": "让课程长出「大脑」",
+          "description": "积累转写、文档或对话后，一键抽取核心概念并整理成图谱；确认后可用于检索增强与问答。",
+          "cta": "构建课程脑图"
+        }
+      },
       "breadcrumb": {
         "label": "面包屑导航",
         "myCourses": "我的课程"
@@ -1922,6 +1986,12 @@
     "CHAT_STREAM_IN_PROGRESS": "该对话正在生成回答，请稍候",
     "CORRUPT_AUDIO": "音频已损坏",
     "COURSE_ARCHIVED": "归档课程不能接受新资料/生成内容",
+    "COURSE_BRAIN_BUILD_IN_PROGRESS": "已有进行中的课程脑图构建任务",
+    "COURSE_BRAIN_CONCEPT_EXISTS": "已存在同名概念",
+    "COURSE_BRAIN_CONCEPT_NOT_FOUND": "概念不存在或已删除",
+    "COURSE_BRAIN_CONCEPT_STATE_INVALID": "概念当前状态不允许该操作",
+    "COURSE_BRAIN_RELATION_NOT_FOUND": "概念关系不存在或已删除",
+    "COURSE_BRAIN_RELATION_STATE_INVALID": "概念关系当前状态不允许该操作",
     "COURSE_EDUCATION_STAGE_REQUIRED": "学业场景必须选择教育阶段",
     "COURSE_LEARNING_DEPTH_REQUIRED": "职业或兴趣场景必须选择学习深度",
     "COURSE_NOT_FOUND": "课程不存在或已删除",

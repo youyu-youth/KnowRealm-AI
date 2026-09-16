@@ -97,4 +97,36 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/today/stats/trend`, () =>
     HttpResponse.json([]),
   ),
+  // 课程脑图默认态：未构建 EMPTY（详情页测试按需覆盖为 REVIEW/READY 等状态）。
+  http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/brain`, ({ params }) =>
+    HttpResponse.json(emptyBrainSnapshot(String(params.courseId))),
+  ),
+  http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/brain/concepts`, () =>
+    HttpResponse.json([]),
+  ),
+  http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/brain/relations`, () =>
+    HttpResponse.json([]),
+  ),
+  http.get(
+    `${TEST_SIDECAR_URL}/api/courses/:courseId/brain/concepts/:conceptId/sources`,
+    ({ params }) =>
+      HttpResponse.json({
+        concept_id: String(params.conceptId),
+        anchors: [],
+        knowledge_points: [],
+      }),
+  ),
 ];
+
+function emptyBrainSnapshot(courseId: string) {
+  return {
+    course_id: courseId,
+    status: "EMPTY",
+    concept_count: 0,
+    candidate_count: 0,
+    stale: false,
+    active_job_id: null,
+    last_built_at: null,
+    graph: { nodes: [], edges: [] },
+  };
+}
