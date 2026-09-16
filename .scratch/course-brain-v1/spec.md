@@ -1,6 +1,6 @@
 # F4 Course Brain V1（课程知识大脑：Concept 图谱 + 构建审核闭环 + B2 检索增强）
 
-Status: in-progress
+Status: done（2026-09-16，CB-00~12 十二票完结，剩用户真机验收）
 
 依据：`.scratch/course-brain-v1/plan.md`（用户提供的开发计划）+ 2026-09-15 grill 九问裁决（全部按推荐）。
 权威对齐：数据模型 v2.7 §4.6 Course Brain 域（升 v2.8 时标注已实施）、基线 v2.7 F4（:280/:307）、ADR-0022（本 Epic 新增）。

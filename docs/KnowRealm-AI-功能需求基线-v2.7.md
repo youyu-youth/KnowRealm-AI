@@ -4,7 +4,7 @@
 >
 > 配套文档：
 > - 技术选型：`docs/技术栈设计与审查-v4.5.md`
-> - 数据库设计：`docs/KnowRealm-AI-数据模型-v2.7.md`
+> - 数据库设计：`docs/KnowRealm-AI-数据模型-v2.8.md`
 > - Learning Brain 扩展设计（F1~F18 机制与交互参考）：`docs/AI课堂助手-功能升级与创新扩展设计.md`
 > - 存储范式决策：`docs/adr/0001-local-first-storage.md`
 > **项目定位**：开源、面向个人使用、**本地优先**。所有设计先过两问：**数据是否落在用户可见、可整体搬移的本地目录？这项能力是否要求用户多装任何东西（容器/账号/付费云服务）？**
@@ -153,7 +153,7 @@ Agent 运行态  = LangGraph Checkpoint（langgraph.db，独立文件，非业�
 |------|---------|--------|
 | 课程 CRUD | 名称必填；`learning_context`（SCHOOL/CAREER/INTEREST）；SCHOOL 场景必填 `education_stage`（5 枚举），CAREER/INTEREST 场景必填 `depth`（BEGINNER/INTERMEDIATE/ADVANCED）——均进 AI 上下文；`course_type`（MAJOR/GENERAL/ELECTIVE，可空）；状态为 ACTIVE/ARCHIVED，**只有 ACTIVE 课程可接受新捕获、归类、升级或 AI 触发**；软删除并级联处理关联数据；**新建课程按用户角色预选默认场景**（STUDENT→SCHOOL，DEVELOPER/OFFICE_WORKER→CAREER，可改，#52） | MVP |
 | 查询 | 按教育阶段/类型筛选、名称搜索 | MVP |
-| 课程详情 | Overview / Records / Course Brain / Knowledge GPS / Course Chat（后三项扩展阶段） | MVP(Overview+Records) |
+| 课程详情 | Overview / Records / Course Brain / Knowledge GPS / Course Chat（Knowledge GPS / Course Chat 为扩展阶段；Course Brain V1 已实施） | MVP(Overview+Records) |
 
 ### 4.3 M3 — 课堂记录与资料（数据入口模块）
 
@@ -277,7 +277,7 @@ DRAFT → CONTENT_PROCESSING（本地转码 + ASR 提交/轮询 或 文档解析
 | F1 Segment+证据时间轴 | 句子级 Segment 持久化（record/file 双时间轴）；AI 结论可回跳原声 | P2 |
 | F2 课堂标记 | 录音中 ⭐/❓/📝 快速标记；CONFUSED 仅主观信号，经验证才影响状态 | P2 |
 | F6 Event+Evidence | 全部学习行为统一事件化（幂等）；Evidence 分层 | P2 |
-| F4 Course Brain | Concept 图谱（concept/concept_relation/record_concepts）+ 语义记忆（semantic_embeddings + sqlite-vec）；V1 无 Neo4j | P3 |
+| F4 Course Brain | Concept 图谱（concepts/concept_relations/record_concepts）+ 语义记忆（semantic_embeddings + sqlite-vec）；V1 无 Neo4j。**V1 已实施（2026-09-16，原 P3 提前，ADR-0022）：迁移 0023 三表 + 构建 Worker + 审核闭环 + B2 检索增强 + 前端主页面；语义记忆（semantic_embeddings/sqlite-vec）经 CB-01 评测延后不进 V1** | ~~P3~~ 已提前实施 |
 | F5 Knowledge GPS | 掌握度地图；节点状态六枚举，禁止只按 Mastery 数字着色 | P3 |
 | F7 Mastery | 可解释确定性算法（quiz/recall/teach_back/transfer 四分量 × 正确性/难度/新近度/权重）；带 confidence 与 evidence_count | P4 |
 | F8 Misconception | SUSPECTED→验证→CONFIRMED/DISMISSED→纠错→RESOLVED；带置信度与证据计数 | P4 |
@@ -304,7 +304,7 @@ DRAFT → CONTENT_PROCESSING（本地转码 + ASR 提交/轮询 或 文档解析
 | **Phase 1 = MVP · Wave A（学习闭环主干）** | 课程 CRUD；录音/导入（统一转码 #31）；ASR+文档解析；Transcript（整段）；总结+HITL（长转写分级 #36）；知识点/习题/Todo/Markdown 导出；**AI 对话一级入口（自由聊天 + @记录挂载，SSE；上下文组装 #39）**；速记/粘贴捕获 + **Inbox 最小闭环**（#29/#30）；learning_events 四事件（#43） | **一节真实课堂（录音或导入）当日走通：转写 → 总结确认 → 知识点确认 → 习题作答 → 导出 .md；未归类内容可归类升级进同一闭环** |
 | **Phase 1 = MVP · Wave B（工作台完善）** | 模拟测试（简答 AI 评分 + 低置信复核标记）；复习资料；Inbox 整理增强（批量/筛选）；命令面板 Ctrl+K（FTS5 全文搜索，#32）；学习统计；设置完善/深色模式；空态引导卡（#42）；无 key 降级 + 健康检查面板（#38）；**全量数据导出/导入** | **本基线 §4.1~§4.6 MVP 项全量可用 + 工作台形态达成** |
 | Phase 2 学习数据基础 | Transcript/Document Segment、Source Anchor、Marker、Learning Evidence（Learning Event 已提前至 MVP，#33）、**sqlite-vec 语义检索**、**网页剪藏（正文抓取）**、**对话转学习资产**、**@全部资料全局 RAG**、**英文内容支持**、**Chat 联网搜索工具（Tavily，#53）**、**可选快照备份（WebDAV/S3，单向推送）** | AI 结论可回跳课堂原声 |
-| Phase 3 Course Brain | Concept 抽取与消歧、课程级 RAG、Knowledge GPS v1、课件 Diff | "讲过几次 X"可答且带来源 |
+| Phase 3 Course Brain | Concept 抽取与消歧（**V1 已提前实施，2026-09-16**：构建/审核/图谱/课程对话检索增强，「讲过几次 X」已可答且带来源）、课程级 RAG 深化、Knowledge GPS v1、课件 Diff | "讲过几次 X"可答且带来源（**V1 已达成**） |
 | Phase 4 Learner Brain | Mastery、Forgetting（V1 规则）、Misconception、Digital Twin v1 | 事件→证据→掌握度闭环 |
 | Phase 5 Adaptive | Socratic Tutor、Teach-back、自适应测验+Transfer、Memory Rescue、课前预习 | 三种学习模式产生 Evidence |
 | Phase 6 Planner+Autopilot | Goal/动态计划、Next Best Action、今日建议+HITL、反馈 | 最小创新闭环跑通 |
@@ -459,7 +459,7 @@ P2 快照备份：可选配置 WebDAV/S3 → 定期单向推送导出 zip；永�
 │ 学习画像  │                                                 │
 └──────────┴─────────────────────────────────────────────────┘
 收件箱 Inbox：未分类捕获时间流 → 归类 / 升级 / 删除（MVP）
-知识空间：Overview / Records / Course Brain(P3) / Knowledge GPS(P3) / Course Chat(P3)
+知识空间：Overview / Records / Course Brain(V1 已实施) / Knowledge GPS(P3) / Course Chat(P3)
 资产库 Library：跨课程统一检索（MVP=记录/知识点全文搜索；P2+=向量语义检索）
 学习画像(P7)：Activity / Mastery / Forgetting / Misconception / Passport
 Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知识点 / 习题 / 复习 / Todo / Ask AI
