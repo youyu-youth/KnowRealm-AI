@@ -120,12 +120,14 @@ export type CourseBrainPhase = BrainSnapshot["status"];
  */
 export type CourseBrainView =
   | { phase: "loading" }
-  | { phase: "error" }
+  | { phase: "error"; retry: () => void }
   | { phase: CourseBrainPhase; snapshot: BrainSnapshot };
 
 export function useCourseBrainView(courseId: string): CourseBrainView {
   const snapshot = useCourseBrainSnapshot(courseId);
   if (snapshot.isPending) return { phase: "loading" };
-  if (snapshot.isError) return { phase: "error" };
+  if (snapshot.isError) {
+    return { phase: "error", retry: () => void snapshot.refetch() };
+  }
   return { phase: snapshot.data.status, snapshot: snapshot.data };
 }

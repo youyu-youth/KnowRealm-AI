@@ -16,6 +16,10 @@ export type BrainSnapshot = components["schemas"]["BrainSnapshotOut"];
 export type BrainConcept = components["schemas"]["BrainConceptOut"];
 export type BrainBuildAccepted = components["schemas"]["BrainBuildAcceptedOut"];
 export type ConceptSources = components["schemas"]["ConceptSourcesOut"];
+export type ConceptAnchorSource =
+  components["schemas"]["ConceptAnchorSourceOut"];
+export type ConceptKpSource = components["schemas"]["ConceptKpSourceOut"];
+export type BrainGraph = components["schemas"]["BrainGraphOut"];
 export type BrainConceptCreate = components["schemas"]["BrainConceptCreate"];
 export type BrainApplyReviewRequest =
   components["schemas"]["ApplyReviewRequest"];

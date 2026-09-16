@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
-type StatusTagProps = ComponentProps<"span"> & {
+export type StatusTagProps = ComponentProps<"span"> & {
   tone?: "neutral" | "success" | "warning" | "danger";
 };
 

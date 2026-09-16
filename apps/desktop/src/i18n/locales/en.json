@@ -431,6 +431,7 @@
         "build": {
           "trigger": "Build brain",
           "rebuild": "Rebuild",
+          "retry": "Retry build",
           "building": "Building…",
           "lastBuiltAt": "Last built: {{time}}",
           "conceptCount": "{{count}} confirmed concepts",
@@ -438,7 +439,41 @@
         },
         "graph": {
           "title": "Concept graph",
-          "empty": "The confirmed graph will appear here once concepts are confirmed."
+          "empty": "The confirmed graph will appear here once concepts are confirmed.",
+          "aria": "Concept graph for {{course}}",
+          "tooltipImportance": "Importance {{importance}}"
+        },
+        "rose": {
+          "title": "Concept distribution",
+          "aria": "Concept importance distribution rose chart for {{course}}"
+        },
+        "view": {
+          "graph": "Graph",
+          "list": "List"
+        },
+        "detail": {
+          "type": "Type",
+          "close": "Close details",
+          "placeholder": "Select a concept to see details and sources"
+        },
+        "sourceType": {
+          "AUDIO_SEGMENT": "Transcript",
+          "DOCUMENT_SEGMENT": "Document",
+          "USER_NOTE": "Quick note",
+          "CHAT_MESSAGE": "Chat",
+          "KNOWLEDGE_POINT": "Knowledge point"
+        },
+        "sourceOrigin": {
+          "AI_EXTRACTED": "AI extracted",
+          "USER_CONFIRMED": "User confirmed",
+          "SYSTEM": "System"
+        },
+        "conceptType": {
+          "TERM": "Term",
+          "PROCESS": "Process",
+          "PRINCIPLE": "Principle",
+          "METHOD": "Method",
+          "TOOL": "Tool"
         },
         "concepts": {
           "title": "Concepts",
@@ -464,6 +499,7 @@
           "title": "Concept sources",
           "anchors": "Source quotes",
           "knowledgePoints": "Linked knowledge points",
+          "filterAll": "All sources",
           "page": "Page {{page}}",
           "viewRecord": "View record",
           "viewChat": "View chat",
@@ -559,27 +595,6 @@
         "title": "Recent learning records",
         "unavailable": "Learning records are unavailable right now."
       },
-      "graph": {
-        "title": "Knowledge concept map",
-        "tabTitle": "Course mind map",
-        "fullscreen": "Fullscreen",
-        "fullscreenDescription": "View course knowledge-point weights and relations in fullscreen (sample).",
-        "weightSummary": "Knowledge-point weight summary",
-        "summaryConcepts": "Concepts",
-        "summaryWeight": "Total weight",
-        "summaryRecords": "Source records",
-        "weightValue": "Combined weight: {{weight}}",
-        "sourceRecords": "Source records: {{count}}",
-        "weightCompact": "Weight {{weight}} · {{count}} records",
-        "conceptCount": "Concepts ({{count}})",
-        "other": "Other",
-        "roseAria": "Nightingale rose chart of knowledge-point weights for {{course}} (sample)",
-        "relationAria": "Knowledge-point relation graph for {{course}} (sample)"
-      },
-      "map": {
-        "descriptionTitle": "About the course mind map",
-        "description": "The map centers on the course and connects knowledge points that share tags. Node size reflects combined weight, and overlapping labels hide automatically. Data is sampled."
-      },
       "chat": {
         "title": "Course chat",
         "notice": "Start an AI chat grounded in all records of this course: ask for the big picture or compare across records.",
@@ -598,22 +613,6 @@
         "sheetDescription": "Review course fields, key terms, and resources."
       },
       "mock": {
-        "nodes": {
-          "0": "Basic concepts",
-          "1": "Core definitions",
-          "2": "Key theorems",
-          "3": "Typical methods",
-          "4": "Use cases",
-          "5": "Common pitfalls",
-          "6": "Related knowledge",
-          "7": "Advanced topics",
-          "8": "Hands-on practice",
-          "9": "Review summary",
-          "10": "Problem analysis",
-          "11": "Method comparison",
-          "12": "Boundary conditions",
-          "13": "Further reading"
-        },
         "chapters": {
           "0": "Foundations",
           "1": "Core principles",

@@ -431,6 +431,7 @@
         "build": {
           "trigger": "构建脑图",
           "rebuild": "重新构建",
+          "retry": "重试构建",
           "building": "构建中…",
           "lastBuiltAt": "上次构建：{{time}}",
           "conceptCount": "{{count}} 个正式概念",
@@ -438,7 +439,41 @@
         },
         "graph": {
           "title": "概念图谱",
-          "empty": "确认概念后，正式图谱会在这里生成。"
+          "empty": "确认概念后，正式图谱会在这里生成。",
+          "aria": "「{{course}}」概念关系图谱",
+          "tooltipImportance": "重要度 {{importance}}"
+        },
+        "rose": {
+          "title": "概念分布",
+          "aria": "「{{course}}」概念重要度分布玫瑰图"
+        },
+        "view": {
+          "graph": "图谱",
+          "list": "列表"
+        },
+        "detail": {
+          "type": "类型",
+          "close": "关闭详情",
+          "placeholder": "选择概念查看详情与来源"
+        },
+        "sourceType": {
+          "AUDIO_SEGMENT": "转写",
+          "DOCUMENT_SEGMENT": "文档",
+          "USER_NOTE": "速记",
+          "CHAT_MESSAGE": "对话",
+          "KNOWLEDGE_POINT": "知识点"
+        },
+        "sourceOrigin": {
+          "AI_EXTRACTED": "AI 提取",
+          "USER_CONFIRMED": "用户确认",
+          "SYSTEM": "系统"
+        },
+        "conceptType": {
+          "TERM": "术语",
+          "PROCESS": "过程",
+          "PRINCIPLE": "原理",
+          "METHOD": "方法",
+          "TOOL": "工具"
         },
         "concepts": {
           "title": "概念列表",
@@ -464,6 +499,7 @@
           "title": "概念来源",
           "anchors": "原文出处",
           "knowledgePoints": "关联知识点",
+          "filterAll": "全部来源",
           "page": "第 {{page}} 页",
           "viewRecord": "查看记录",
           "viewChat": "查看对话",
@@ -559,27 +595,6 @@
         "title": "最近学习记录",
         "unavailable": "学习记录暂时无法读取。"
       },
-      "graph": {
-        "title": "知识概念图谱",
-        "tabTitle": "课程脑图",
-        "fullscreen": "全屏",
-        "fullscreenDescription": "放大查看课程知识点权重与关联（示意）。",
-        "weightSummary": "知识点权重摘要",
-        "summaryConcepts": "概念",
-        "summaryWeight": "总权重",
-        "summaryRecords": "来源记录",
-        "weightValue": "累计权重：{{weight}}",
-        "sourceRecords": "来源记录：{{count}} 条",
-        "weightCompact": "权重 {{weight}} · {{count}} 条记录",
-        "conceptCount": "概念（{{count}}）",
-        "other": "其他",
-        "roseAria": "{{course}}知识点权重南丁格尔玫瑰图（示意）",
-        "relationAria": "{{course}}知识点关系图（示意）"
-      },
-      "map": {
-        "descriptionTitle": "关于课程脑图",
-        "description": "脑图以课程为中心，使用共享标签连接知识点；节点大小反映累计权重，重叠标签会自动隐藏。当前为示意数据。"
-      },
       "chat": {
         "title": "课程对话",
         "notice": "基于该课程全部记录发起 AI 问答：可问整体脉络，也可跨记录对比。",
@@ -598,22 +613,6 @@
         "sheetDescription": "查看课程字段、热词与相关资源。"
       },
       "mock": {
-        "nodes": {
-          "0": "基本概念",
-          "1": "核心定义",
-          "2": "关键定理",
-          "3": "典型方法",
-          "4": "应用场景",
-          "5": "常见误区",
-          "6": "关联知识",
-          "7": "进阶主题",
-          "8": "实战练习",
-          "9": "总结复盘",
-          "10": "问题分析",
-          "11": "方法比较",
-          "12": "边界条件",
-          "13": "延伸阅读"
-        },
         "chapters": {
           "0": "基础概念",
           "1": "核心原理",

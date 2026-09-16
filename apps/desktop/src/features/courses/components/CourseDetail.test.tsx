@@ -187,35 +187,26 @@ describe("课程详情与编辑", () => {
     ).toBeEnabled();
   });
 
-  it("概览显示权重玫瑰图、课程脑图显示关系图且两处均可全屏", async () => {
+  it("概览概念分布卡与课程脑图页在未构建时给出构建引导空态", async () => {
     server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
     renderAt(ROUTE_PATH);
 
     expect(
-      await screen.findByRole("img", {
-        name: "操作系统知识点权重南丁格尔玫瑰图（示意）",
-      }),
+      await screen.findByRole("heading", { name: "概念分布" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "力导图" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "树状图" }),
-    ).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "全屏" }));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+      await screen.findByText(
+        "积累转写、文档或对话后，一键抽取核心概念并整理成图谱；确认后可用于检索增强与问答。",
+      ),
+    ).toBeInTheDocument();
 
     cleanup();
     renderAt(`${ROUTE_PATH}?tab=map`);
 
     expect(
-      await screen.findByRole("img", {
-        name: "操作系统知识点关系图（示意）",
-      }),
+      await screen.findByRole("heading", { name: "让课程长出「大脑」" }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "全屏" }));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "构建课程脑图" })).toBeEnabled();
   });
 
   it("关注为本地界面态切换且不发起请求", async () => {

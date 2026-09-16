@@ -10,6 +10,7 @@ import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { ProcessingJobOut, RecordOut } from "@/features/records/api/types";
 import { settingsApi } from "@/features/settings/api/settings";
+import { formatTimelineTimestamp } from "@/features/records/recordPresentation";
 import { ApiError } from "@/services/http/client";
 
 type TranscriptPanelProps = {
@@ -343,17 +344,6 @@ function TranscriptView({
       </pre>
     </>
   );
-}
-
-/** 来源时间轴时间戳：不足 1 小时 mm:ss，超过则 h:mm:ss（对齐 DESIGN.md 时长规范）。 */
-function formatTimelineTimestamp(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const mm = String(minutes).padStart(2, "0");
-  const ss = String(seconds).padStart(2, "0");
-  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 type TimelineRow = {

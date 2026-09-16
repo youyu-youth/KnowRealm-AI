@@ -20,13 +20,14 @@ import { courseApi } from "@/features/courses/api/courses";
 import { ApiError } from "@/services/http/client";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
+import { CourseBrainRoseCard } from "@/features/courses/components/CourseBrainRoseCard";
+import { CourseBrainTab } from "@/features/courses/components/CourseBrainTab";
 import { CourseChatTab } from "@/features/courses/components/CourseChatTab";
 import { CourseCoreOverview } from "@/features/courses/components/CourseCoreOverview";
 import { CourseEditSheet } from "@/features/courses/components/CourseEditSheet";
 import { CourseHero } from "@/features/courses/components/CourseHero";
 import { CourseInfoPanel } from "@/features/courses/components/CourseInfoPanel";
 import { CourseInsightCard } from "@/features/courses/components/CourseInsightCard";
-import { CourseKnowledgeGraph } from "@/features/courses/components/CourseKnowledgeGraph";
 import { CourseLearningChainTab } from "@/features/courses/components/CourseLearningChainTab";
 import { CourseMasteryGpsCard } from "@/features/courses/components/CourseMasteryGpsCard";
 import { CourseRecentRecordsCard } from "@/features/courses/components/CourseRecentRecordsCard";
@@ -34,7 +35,6 @@ import { CourseRecommendedPointsCard } from "@/features/courses/components/Cours
 import { CourseRecordsPanel } from "@/features/courses/components/CourseRecordsPanel";
 import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDialog";
 import { KnowledgeGpsTab } from "@/features/courses/components/KnowledgeGpsTab";
-import { KnowledgeMapTab } from "@/features/courses/components/KnowledgeMapTab";
 import { QuizTestsPanel } from "@/features/quiz-tests/components/QuizTestsPanel";
 
 type CourseDetailPageProps = {
@@ -206,7 +206,7 @@ export function CourseDetailPage({
               <div className="@container min-h-0 min-w-0 overflow-y-auto pr-1 pb-2">
                 <div className="flex min-w-0 flex-col gap-6">
                   <CourseCoreOverview course={detail} />
-                  <CourseKnowledgeGraph course={detail} variant="rose" />
+                  <CourseBrainRoseCard course={detail} />
                   <div className="grid min-w-0 gap-6 @2xl:grid-cols-2">
                     <CourseRecentRecordsCard
                       courseId={courseId}
@@ -280,7 +280,7 @@ export function CourseDetailPage({
         >
           <div className="px-content">
             <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <KnowledgeMapTab course={detail} />
+              <CourseBrainTab course={detail} />
             </div>
           </div>
         </TabsContent>

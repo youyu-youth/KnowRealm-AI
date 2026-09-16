@@ -51,3 +51,14 @@ export function formatRecordDuration(durationMs: number, t: TFunction): string {
     .filter(Boolean)
     .join(" ");
 }
+
+/** 来源时间轴时间戳：不足 1 小时 mm:ss，超过则 h:mm:ss（对齐 DESIGN.md 时长规范）。 */
+export function formatTimelineTimestamp(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+}
