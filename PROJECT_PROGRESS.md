@@ -83,6 +83,7 @@
 **规划中（未拆票，勿直接开工）：**
 
 - 扩展文档 §40.4「P2 统一序列」：F1（✅ 2026-09-10）→ A1+A2（✅ 2026-09-13）→ A3（✅ 2026-09-14 四票，ADR-0021，.scratch/learning-evidence/）→ B1 web_search（✅ 2026-09-14 两票，.scratch/web-search/）→ B2 跨记录/课程级问答（✅ 2026-09-14 单票全栈，.scratch/cross-record-qa/，数据模型 v2.7）→ B6 对话转学习资产 V1（✅ 2026-09-15 单票全栈，.scratch/chat-to-knowledge-point/）→ **F4 Course Brain V1（✅ 2026-09-16 十二票完结，原 P3 提前实施，.scratch/course-brain-v1/，ADR-0022，数据模型 v2.8：迁移 0023 三表 + 构建 Worker + 审核闭环（apply-review 五决策/合并建议/归档/stale 派生徽章）+ B2 search_library 概念增强（prompt v6，occurrences 按 record 去重）+ 可观测（retrieval_count 埋点/检索工具异常 ok=false/审计日志）+ 前端 Course Brain 主页面与审核工作台（mock 图谱链删除）；详见 §3 行与扩展文档 §40.3 B7 回写）**。B3「Tutor 场景包」待决策；B5 sqlite-vec 维持延后（CB-01 合成评测四维全过，`docs/evaluation/course-brain-retrieval-baseline.md`），触发条件=真实语料词汇不重合失败（届时新开 CB-VEC 票）。
+- **起点扩展波次已定稿（2026-09-17 grill，扩展文档 §41，输入=docs/起点知识库建议.md 已归档）**：Concept Mastery V1 完结后开工，顺序 = 网页剪藏（基线 P2 已定项，V1 不存 HTML 快照）→ ai-summary/03 map-reduce（前置旧票）→ 书籍拆章导入模式（大 PDF 按目录书签/启发式/等窗口三级降级拆章多 Record，论文走单 Record 现状）→ 课程大纲初始化 → 问题驱动研究会话；B3/B5 维持压后，视频不翻案，不做对象驱动模板。
 - 习题 Groundedness：待用户采集真实样本（阻塞项）+ 06 总结黄金样本另议；回归触发=prompt_version/模型变更。⚠️ prompt_version 至今未 bump，启用评测前需处理。
 - 未来候选库路线图（带触发条件，见记忆/后端轮子审计）：检索 FTS5 trigram→sqlite-vec、复习调度 fsrs、导出 fpdf2、pytest-cov/timeout；APScheduler/LanceDB/本地 whisper 已否决。
 - 产品层扩展方向五新场景包：见扩展文档 §39.4（仅评审记录，**非用户已批准**）。
