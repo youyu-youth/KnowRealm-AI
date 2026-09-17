@@ -610,36 +610,44 @@
         "knowledgePoints": "Knowledge points",
         "knowledgePointsUnit": "pts",
         "quizSets": "Quiz sets",
-        "quizSetsUnit": "sets",
-        "mastery": "Mastery",
-        "masteryUnit": "%"
-      },
-      "context": {
-        "title": "Learning context",
-        "currentProgress": "Progress",
-        "currentProgressValue": "Ch. {{chapter}} · {{name}}",
-        "goal": "Goal"
+        "quizSetsUnit": "sets"
       },
       "gps": {
         "title": "Knowledge GPS · Mastery",
         "tabTitle": "Knowledge GPS · Mastery",
-        "progressLabel": "Chapter {{chapter}} mastery",
-        "summary": {
-          "chapters": "Chapters",
-          "mastered": "Mastered",
-          "learning": "Learning",
-          "untouched": "Not started"
-        }
+        "confirmedConcepts": "Confirmed concepts",
+        "coverage": "Evidence coverage",
+        "coverageValue": "{{verified}} / {{total}}",
+        "conceptListLabel": "Concept mastery list",
+        "filterLabel": "Filter by mastery status",
+        "filterAll": "All statuses",
+        "filterEmpty": "No concepts with this status",
+        "percentValue": "{{percent}}%",
+        "confidence": "Confidence {{level}}",
+        "meta": "{{count}} evidence · last verified {{time}}",
+        "metaPracticed": "{{count}} evidence · last answered {{time}}",
+        "metaNoVerification": "{{count}} evidence",
+        "loading": "Reading mastery status",
+        "errorTitle": "Mastery status is unavailable right now",
+        "retry": "Reload",
+        "emptyTitle": "No confirmed concepts yet",
+        "emptyDescription": "Build the course brain and confirm core concepts; answers then accumulate real mastery here.",
+        "emptyAction": "Open course brain"
       },
       "mastery": {
-        "mastered": "Mastered",
-        "learning": "Learning",
-        "untouched": "Not started"
+        "NOT_ENOUGH_DATA": "Not enough data",
+        "WEAK": "Needs work",
+        "LEARNING": "Learning",
+        "STABLE": "Stable",
+        "confidence": {
+          "LOW": "low",
+          "MEDIUM": "medium",
+          "HIGH": "high"
+        }
       },
       "insight": {
         "title": "AI Assistant · Course insights",
         "description": "Based on your learning records, here are a few suggestions:",
-        "mastery": "Your overall mastery of this course is about {{percent}}%. Keep a steady learning rhythm.",
         "nextChapter": "\"{{chapter}}\" has not started yet; try skimming its introduction first.",
         "hotWords": "{{count}} key terms have been recorded; focus on them in the knowledge map.",
         "focusReview": "You have recent learning records; review the weak points in \"{{chapter}}\".",
@@ -683,12 +691,6 @@
           "5": "Advanced topics",
           "6": "Case studies",
           "7": "Review"
-        },
-        "goals": {
-          "0": "Build a solid foundation and a complete knowledge framework",
-          "1": "Master core methods and solve typical problems independently",
-          "2": "Connect the chapters into a coherent whole",
-          "3": "Get ready for more advanced content"
         },
         "subjects": {
           "0": "Mathematics",

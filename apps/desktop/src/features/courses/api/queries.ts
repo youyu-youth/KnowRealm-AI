@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
-import type { Course } from "@/features/courses/api/types";
+import type { Course, MasteryStatus } from "@/features/courses/api/types";
 
 export function useActiveCourses(enabled = true): {
   courses: Course[];
@@ -20,4 +20,14 @@ export function useActiveCourses(enabled = true): {
     isPending: courses.isPending,
     isError: courses.isError,
   };
+}
+
+/** 课程掌握度：不传 status 返回全量；status 只筛选列表，分布计数始终全量。 */
+export function useCourseMastery(courseId: string, status?: MasteryStatus) {
+  const query = status ? { status } : {};
+  return useQuery({
+    queryKey: courseKeys.mastery(courseId, query),
+    queryFn: () => courseApi.mastery(courseId, query),
+    placeholderData: keepPreviousData,
+  });
 }

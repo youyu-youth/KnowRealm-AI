@@ -4,6 +4,8 @@ import type {
   CourseCreate,
   CourseDetail,
   CourseListQuery,
+  CourseMastery,
+  CourseMasteryQuery,
   CourseUpdate,
 } from "@/features/courses/api/types";
 
@@ -24,6 +26,13 @@ export const courseApi = {
       body: JSON.stringify(payload),
     }),
   get: (courseId: string) => apiFetch<CourseDetail>(`/api/courses/${courseId}`),
+  mastery: (courseId: string, query: CourseMasteryQuery = {}) => {
+    const search = new URLSearchParams();
+    if (query.status) search.set("status", query.status);
+    return apiFetch<CourseMastery>(
+      `/api/courses/${courseId}/mastery${search.size > 0 ? `?${search}` : ""}`,
+    );
+  },
   update: (courseId: string, payload: CourseUpdate) =>
     apiFetch<Course>(`/api/courses/${courseId}`, {
       method: "PATCH",

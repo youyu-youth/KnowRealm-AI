@@ -15,6 +15,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { asCourseTab, type CourseTab } from "@/features/courses/courseTabs";
+import type { MasteryStatus } from "@/features/courses/api/types";
 import { courseKeys } from "@/features/courses/api/keys";
 import { courseApi } from "@/features/courses/api/courses";
 import { ApiError } from "@/services/http/client";
@@ -41,7 +42,9 @@ type CourseDetailPageProps = {
   courseId: string;
   tab: CourseTab;
   initialEditing?: boolean;
+  masteryStatus?: MasteryStatus;
   onTabChange: (tab: CourseTab) => void;
+  onMasteryStatusChange: (status?: MasteryStatus) => void;
   onDeleted: () => void | Promise<void>;
 };
 
@@ -49,7 +52,9 @@ export function CourseDetailPage({
   courseId,
   tab,
   initialEditing = false,
+  masteryStatus,
   onTabChange,
+  onMasteryStatusChange,
   onDeleted,
 }: CourseDetailPageProps) {
   const { t } = useTranslation();
@@ -215,6 +220,7 @@ export function CourseDetailPage({
                     <CourseMasteryGpsCard
                       course={detail}
                       onViewAll={() => onTabChange("gps")}
+                      onOpenBrain={() => onTabChange("map")}
                     />
                   </div>
                   <div className="grid min-w-0 gap-6 @2xl:grid-cols-2">
@@ -291,7 +297,12 @@ export function CourseDetailPage({
         >
           <div className="px-content">
             <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <KnowledgeGpsTab course={detail} />
+              <KnowledgeGpsTab
+                course={detail}
+                statusFilter={masteryStatus}
+                onStatusFilterChange={onMasteryStatusChange}
+                onOpenBrain={() => onTabChange("map")}
+              />
             </div>
           </div>
         </TabsContent>

@@ -18,11 +18,76 @@ import { server } from "@/mocks/server";
 
 type CourseDetail = components["schemas"]["CourseDetailOut"];
 type RecordOut = components["schemas"]["RecordOut"];
+type CourseMastery = components["schemas"]["CourseMasteryOut"];
+type ConceptMastery = components["schemas"]["ConceptMasteryOut"];
 
 const COURSE_ID = "11111111-1111-4111-8111-111111111111";
 const DETAIL_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}`;
 const RECORDS_URL = `${DETAIL_URL}/records`;
+const MASTERY_URL = `${DETAIL_URL}/mastery`;
 const ROUTE_PATH = `/spaces/${COURSE_ID}`;
+
+const weakConcept: ConceptMastery = {
+  concept_id: "concept-weak",
+  canonical_name: "进程调度",
+  description: "调度器如何选择就绪进程。",
+  concept_type: "TERM",
+  importance: 4,
+  status: "WEAK",
+  mastery_score: 0.33,
+  confidence: "HIGH",
+  evidence_count: 8,
+  positive_evidence_count: 4,
+  negative_evidence_count: 4,
+  last_practiced_at: "2026-09-16T08:00:00.000000Z",
+  last_verified_at: "2026-09-15T08:00:00.000000Z",
+};
+
+const learningConcept: ConceptMastery = {
+  concept_id: "concept-learning",
+  canonical_name: "内存分页",
+  description: "分页机制与页表。",
+  concept_type: "TERM",
+  importance: 3,
+  status: "LEARNING",
+  mastery_score: 0.74,
+  confidence: "MEDIUM",
+  evidence_count: 6,
+  positive_evidence_count: 5,
+  negative_evidence_count: 1,
+  last_practiced_at: "2026-09-16T09:00:00.000000Z",
+  last_verified_at: "2026-09-16T09:00:00.000000Z",
+};
+
+const notEnoughConcept: ConceptMastery = {
+  concept_id: "concept-empty",
+  canonical_name: "虚拟内存",
+  description: "地址空间与换页。",
+  concept_type: "TERM",
+  importance: 3,
+  status: "NOT_ENOUGH_DATA",
+  mastery_score: null,
+  confidence: null,
+  evidence_count: 1,
+  positive_evidence_count: 1,
+  negative_evidence_count: 0,
+  last_practiced_at: "2026-09-14T08:00:00.000000Z",
+  last_verified_at: null,
+};
+
+const masteryPayload: CourseMastery = {
+  course_id: COURSE_ID,
+  confirmed_concept_count: 3,
+  verified_concept_count: 2,
+  coverage: 2 / 3,
+  status_counts: {
+    not_enough_data: 1,
+    weak: 1,
+    learning: 1,
+    stable: 0,
+  },
+  concepts: [weakConcept, learningConcept, notEnoughConcept],
+};
 
 const schoolCourse: CourseDetail = {
   id: COURSE_ID,
@@ -207,6 +272,113 @@ describe("课程详情与编辑", () => {
       await screen.findByRole("heading", { name: "让课程长出「大脑」" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "构建课程脑图" })).toBeEnabled();
+  });
+
+  it("概览掌握卡使用真实覆盖率与状态分布，不再出现章级示意数据", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(MASTERY_URL, () => HttpResponse.json(masteryPayload)),
+    );
+    renderAt(ROUTE_PATH);
+
+    expect(await screen.findByText("67%")).toBeInTheDocument();
+    expect(screen.getByText("已确认概念")).toBeInTheDocument();
+    expect(screen.getByText("证据覆盖率")).toBeInTheDocument();
+    expect(screen.getByText("待加强")).toBeInTheDocument();
+    expect(screen.getByText("数据不足")).toBeInTheDocument();
+    // 章级示意数据不再出现在概览入口。
+    expect(screen.queryByText("基础概念")).not.toBeInTheDocument();
+    expect(screen.queryByText("掌握度")).not.toBeInTheDocument();
+  });
+
+  it("知识GPS 展示真实 Concept 掌握列表并支持状态筛选写回 URL", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(MASTERY_URL, ({ request }) => {
+        const status = new URL(request.url).searchParams.get("status");
+        return HttpResponse.json(
+          status
+            ? {
+                ...masteryPayload,
+                concepts: masteryPayload.concepts.filter(
+                  (concept) => concept.status === status,
+                ),
+              }
+            : masteryPayload,
+        );
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=gps`);
+
+    const list = await screen.findByRole("list", { name: "概念掌握列表" });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    expect(within(items[0]).getByText("进程调度")).toBeInTheDocument();
+    expect(within(items[0]).getByText("待加强")).toBeInTheDocument();
+    expect(within(items[0]).getByText("33%")).toBeInTheDocument();
+    expect(within(items[0]).getByText("置信度 高")).toBeInTheDocument();
+    expect(within(items[0]).getByText(/8 条证据/)).toBeInTheDocument();
+    expect(within(items[1]).getByText("内存分页")).toBeInTheDocument();
+    expect(within(items[1]).getByText("74%")).toBeInTheDocument();
+    expect(within(items[1]).getByText("置信度 中")).toBeInTheDocument();
+    expect(within(items[2]).getByText("虚拟内存")).toBeInTheDocument();
+    expect(within(items[2]).getByText("数据不足")).toBeInTheDocument();
+    // 无答对记录时展示「最近作答」，不把练习时间冒充为验证时间。
+    expect(within(items[2]).getByText(/最近作答/)).toBeInTheDocument();
+    expect(within(items[2]).queryByText(/最近验证/)).not.toBeInTheDocument();
+    // 数据不足不显示伪造百分比。
+    expect(within(items[2]).queryByText(/%/)).not.toBeInTheDocument();
+
+    await selectOption("按掌握状态筛选", "待加强");
+
+    await waitFor(() =>
+      expect(window.location.search).toBe("?tab=gps&mastery=WEAK"),
+    );
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole("list", { name: "概念掌握列表" })).getAllByRole(
+          "listitem",
+        ),
+      ).toHaveLength(1),
+    );
+  });
+
+  it("知识GPS 无已确认概念时给出构建课程脑图引导", async () => {
+    server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
+    renderAt(`${ROUTE_PATH}?tab=gps`);
+
+    expect(await screen.findByText("还没有已确认的概念")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "打开课程脑图" }));
+
+    await waitFor(() => expect(window.location.search).toBe("?tab=map"));
+  });
+
+  it("知识GPS 掌握状态读取失败可原地重试且不伪装为空态", async () => {
+    let calls = 0;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(MASTERY_URL, () => {
+        calls += 1;
+        return calls <= 3
+          ? HttpResponse.json({ detail: "数据库暂时忙" }, { status: 500 })
+          : HttpResponse.json(masteryPayload);
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=gps`);
+
+    expect(
+      await screen.findByText("掌握状态暂时无法读取", undefined, {
+        timeout: 6_000,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("还没有已确认的概念")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
+
+    expect(
+      await screen.findByRole("list", { name: "概念掌握列表" }),
+    ).toBeInTheDocument();
+    expect(calls).toBeGreaterThanOrEqual(4);
   });
 
   it("关注为本地界面态切换且不发起请求", async () => {

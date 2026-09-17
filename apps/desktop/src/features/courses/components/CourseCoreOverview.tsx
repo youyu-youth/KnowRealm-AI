@@ -3,16 +3,11 @@ import { StatusTag } from "@/components/common/StatusTag";
 import type { CourseDetail } from "@/features/courses/api/types";
 import { mockCourseCoreStats } from "@/features/courses/courseDetailInsights";
 
-type MetricKey = "chapters" | "knowledgePoints" | "quizSets" | "mastery";
+type MetricKey = "chapters" | "knowledgePoints" | "quizSets";
 
-const metricKeys: MetricKey[] = [
-  "chapters",
-  "knowledgePoints",
-  "quizSets",
-  "mastery",
-];
+const metricKeys: MetricKey[] = ["chapters", "knowledgePoints", "quizSets"];
 
-/** 课程核心概览：章节/知识点/习题集/掌握度（示意）。指标带形态，不做卡片壳。 */
+/** 课程核心概览：章节/知识点/习题集（示意）。指标带形态，不做卡片壳。 */
 export function CourseCoreOverview({ course }: { course: CourseDetail }) {
   const { t } = useTranslation();
   const stats = mockCourseCoreStats(course.id);
@@ -20,7 +15,6 @@ export function CourseCoreOverview({ course }: { course: CourseDetail }) {
     chapters: stats.chapters,
     knowledgePoints: stats.knowledgePoints,
     quizSets: stats.quizSets,
-    mastery: stats.masteryPercent,
   };
 
   return (
@@ -31,7 +25,7 @@ export function CourseCoreOverview({ course }: { course: CourseDetail }) {
         </h2>
         <StatusTag>{t("spaces.insights.sample")}</StatusTag>
       </div>
-      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4">
+      <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3">
         {metricKeys.map((key) => (
           <div
             key={key}

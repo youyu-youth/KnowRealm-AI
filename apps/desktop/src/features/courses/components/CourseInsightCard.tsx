@@ -45,7 +45,6 @@ export function CourseInsightCard({
             />
             <span>
               {t(`spaces.courseDetail.insight.${suggestion.key}`, {
-                percent: suggestion.percent,
                 count: suggestion.count,
                 chapter: suggestion.chapter
                   ? t(suggestion.chapter.nameKey)

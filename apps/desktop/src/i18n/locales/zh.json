@@ -609,36 +609,44 @@
         "knowledgePoints": "知识点",
         "knowledgePointsUnit": "个",
         "quizSets": "习题集",
-        "quizSetsUnit": "个",
-        "mastery": "掌握度",
-        "masteryUnit": "%"
-      },
-      "context": {
-        "title": "学习上下文",
-        "currentProgress": "当前进度",
-        "currentProgressValue": "第 {{chapter}} 章 · {{name}}",
-        "goal": "学习目标"
+        "quizSetsUnit": "个"
       },
       "gps": {
         "title": "知识GPS · 掌握状态",
         "tabTitle": "知识GPS · 掌握状态",
-        "progressLabel": "第 {{chapter}} 章掌握度",
-        "summary": {
-          "chapters": "章节总数",
-          "mastered": "已掌握",
-          "learning": "学习中",
-          "untouched": "未开始"
-        }
+        "confirmedConcepts": "已确认概念",
+        "coverage": "证据覆盖率",
+        "coverageValue": "{{verified}} / {{total}}",
+        "conceptListLabel": "概念掌握列表",
+        "filterLabel": "按掌握状态筛选",
+        "filterAll": "全部状态",
+        "filterEmpty": "该状态下暂无概念",
+        "percentValue": "{{percent}}%",
+        "confidence": "置信度 {{level}}",
+        "meta": "{{count}} 条证据 · 最近验证 {{time}}",
+        "metaPracticed": "{{count}} 条证据 · 最近作答 {{time}}",
+        "metaNoVerification": "{{count}} 条证据",
+        "loading": "正在读取掌握状态",
+        "errorTitle": "掌握状态暂时无法读取",
+        "retry": "重新读取",
+        "emptyTitle": "还没有已确认的概念",
+        "emptyDescription": "先构建课程脑图并确认核心概念，作答后即可在此积累真实的掌握度。",
+        "emptyAction": "打开课程脑图"
       },
       "mastery": {
-        "mastered": "已掌握",
-        "learning": "学习中",
-        "untouched": "未开始"
+        "NOT_ENOUGH_DATA": "数据不足",
+        "WEAK": "待加强",
+        "LEARNING": "学习中",
+        "STABLE": "稳定",
+        "confidence": {
+          "LOW": "低",
+          "MEDIUM": "中",
+          "HIGH": "高"
+        }
       },
       "insight": {
         "title": "AI 助手 · 课程洞察",
         "description": "基于你的学习记录，为你生成了一些建议：",
-        "mastery": "你在这门课程的整体掌握度约为 {{percent}}%，建议保持稳定的学习节奏。",
         "nextChapter": "「{{chapter}}」尚未开始，建议先通读本章的导入内容。",
         "hotWords": "已记录 {{count}} 个重点热词，可在知识地图中优先关注。",
         "focusReview": "最近有一批学习记录，建议复习「{{chapter}}」中的薄弱知识点。",
@@ -682,12 +690,6 @@
           "5": "进阶主题",
           "6": "实战案例",
           "7": "总结与复习"
-        },
-        "goals": {
-          "0": "打牢基础，形成完整的知识框架",
-          "1": "掌握核心方法，能独立解决典型问题",
-          "2": "建立章节之间的联系，融会贯通",
-          "3": "为后续进阶内容做好准备"
         },
         "subjects": {
           "0": "数学",

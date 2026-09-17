@@ -14,8 +14,6 @@ export type CourseCoreStats = {
   knowledgePoints: number;
   /** 习题集个数（示意） */
   quizSets: number;
-  /** 我的掌握度百分比（示意，0–100） */
-  masteryPercent: number;
 };
 
 export type ChapterMastery = {
@@ -38,8 +36,7 @@ export type RecommendedPoint = {
 };
 
 export type InsightSuggestion = {
-  key: "mastery" | "nextChapter" | "hotWords" | "focusReview";
-  percent?: number;
+  key: "nextChapter" | "hotWords" | "focusReview";
   count?: number;
   chapter?: ChapterMastery;
 };
@@ -71,7 +68,6 @@ export function mockCourseCoreStats(courseId: string): CourseCoreStats {
     chapters: 6 + (seed % 5),
     knowledgePoints: 120 + ((seed >>> 6) % 260),
     quizSets: 24 + ((seed >>> 13) % 40),
-    masteryPercent: 42 + ((seed >>> 19) % 46),
   };
 }
 
@@ -101,12 +97,6 @@ export function mockCurrentProgress(course: CourseDetail): ChapterMastery {
   );
 }
 
-const GOAL_COUNT = 4;
-
-export function mockLearningGoalKey(course: CourseDetail): string {
-  return `spaces.courseDetail.mock.goals.${hash(`${course.id}-goal`) % GOAL_COUNT}`;
-}
-
 const SUBJECT_COUNT = 6;
 
 export function mockSubjectKey(course: CourseDetail): string {
@@ -117,10 +107,8 @@ export function mockInsightSuggestions(
   course: CourseDetail,
 ): InsightSuggestion[] {
   const seed = hash(`${course.id}-insights`);
-  const stats = mockCourseCoreStats(course.id);
   const progress = mockCurrentProgress(course);
   const all: InsightSuggestion[] = [
-    { key: "mastery", percent: stats.masteryPercent },
     { key: "nextChapter", chapter: progress },
     { key: "hotWords", count: Math.max(1, (course.hot_words ?? []).length) },
     { key: "focusReview", count: 3 + (seed % 6), chapter: progress },

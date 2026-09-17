@@ -101,6 +101,10 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/brain`, ({ params }) =>
     HttpResponse.json(emptyBrainSnapshot(String(params.courseId))),
   ),
+  // 课程掌握度默认态：零已确认概念（详情页测试按需覆盖为真实分布与列表）。
+  http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/mastery`, ({ params }) =>
+    HttpResponse.json(emptyCourseMastery(String(params.courseId))),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/brain/concepts`, () =>
     HttpResponse.json([]),
   ),
@@ -128,5 +132,16 @@ function emptyBrainSnapshot(courseId: string) {
     active_job_id: null,
     last_built_at: null,
     graph: { nodes: [], edges: [] },
+  };
+}
+
+function emptyCourseMastery(courseId: string) {
+  return {
+    course_id: courseId,
+    confirmed_concept_count: 0,
+    verified_concept_count: 0,
+    coverage: 0,
+    status_counts: { not_enough_data: 0, weak: 0, learning: 0, stable: 0 },
+    concepts: [],
   };
 }

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CourseDetail } from "@/features/courses/api/types";
 import {
-  masteryStateOf,
   mockChapterMastery,
   mockCourseCoreStats,
   mockCurrentProgress,
@@ -31,12 +30,6 @@ describe("courseDetailInsights 示意数据", () => {
     expect(mockChapterMastery(course)).toEqual(mockChapterMastery(course));
   });
 
-  it("掌握状态按百分比分档：≥80 已掌握、>0 学习中、0 未开始", () => {
-    expect(masteryStateOf(88)).toBe("mastered");
-    expect(masteryStateOf(62)).toBe("learning");
-    expect(masteryStateOf(0)).toBe("untouched");
-  });
-
   it("章级掌握数量与核心统计章节数一致，掌握度整体递减", () => {
     const chapters = mockChapterMastery(course);
     expect(chapters).toHaveLength(mockCourseCoreStats(course.id).chapters);
@@ -51,10 +44,11 @@ describe("courseDetailInsights 示意数据", () => {
     expect(progress.index).toBeGreaterThanOrEqual(1);
   });
 
-  it("洞察建议固定 3 条且 key 不重复", () => {
+  it("洞察建议固定 3 条且 key 不重复，不包含掌握度模拟建议", () => {
     const suggestions = mockInsightSuggestions(course);
     expect(suggestions).toHaveLength(3);
     expect(new Set(suggestions.map((item) => item.key)).size).toBe(3);
+    expect(suggestions.map((item) => item.key)).not.toContain("mastery");
   });
 
   it("重点推荐按批次轮转，每批 3 条且批次间内容变化", () => {

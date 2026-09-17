@@ -1,16 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
+import type { MasteryStatus } from "@/features/courses/api/types";
 import { asCourseTab, type CourseTab } from "@/features/courses/courseTabs";
+import { isMasteryStatus } from "@/features/courses/masteryStatus";
 import { CourseDetailPage } from "@/features/courses/components/CourseDetailPage";
 
 export const Route = createFileRoute("/spaces/$courseId")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab: CourseTab; edit?: boolean } => {
+  ): { tab: CourseTab; edit?: boolean; mastery?: MasteryStatus } => {
     const editing =
       search.edit === true || search.edit === "true" || search.edit === "1";
+    const mastery = isMasteryStatus(search.mastery)
+      ? search.mastery
+      : undefined;
     return {
       tab: asCourseTab(search.tab),
       ...(editing ? { edit: true } : {}),
+      ...(mastery ? { mastery } : {}),
     };
   },
   component: CourseDetailRoute,
@@ -18,17 +24,32 @@ export const Route = createFileRoute("/spaces/$courseId")({
 
 export function CourseDetailRoute() {
   const { courseId } = Route.useParams();
-  const { tab, edit } = Route.useSearch();
+  const { tab, edit, mastery } = Route.useSearch();
   const navigate = Route.useNavigate();
   return (
     <CourseDetailPage
       courseId={courseId}
       tab={tab}
       initialEditing={edit}
+      masteryStatus={mastery}
       onTabChange={(nextTab) =>
         void navigate({
           to: "/spaces/$courseId",
-          search: { tab: nextTab },
+          search: {
+            tab: nextTab,
+            ...(mastery ? { mastery } : {}),
+          },
+          replace: true,
+        })
+      }
+      onMasteryStatusChange={(next) =>
+        void navigate({
+          to: "/spaces/$courseId",
+          search: {
+            tab: "gps",
+            ...(edit === true ? { edit: true } : {}),
+            ...(next ? { mastery: next } : {}),
+          },
           replace: true,
         })
       }

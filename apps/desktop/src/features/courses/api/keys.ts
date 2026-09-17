@@ -2,6 +2,7 @@ import type {
   BrainConceptListQuery,
   BrainRelationListQuery,
   CourseListQuery,
+  CourseMasteryQuery,
 } from "@/features/courses/api/types";
 
 export const courseKeys = {
@@ -11,6 +12,8 @@ export const courseKeys = {
     [...courseKeys.lists(), query] as const,
   detail: (courseId: string) =>
     [...courseKeys.all, "detail", courseId] as const,
+  mastery: (courseId: string, query: CourseMasteryQuery = {}) =>
+    [...courseKeys.all, "mastery", courseId, query] as const,
 };
 
 export const courseBrainKeys = {
