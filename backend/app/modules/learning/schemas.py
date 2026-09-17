@@ -4,6 +4,7 @@
 """
 
 from datetime import UTC, datetime
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
@@ -60,4 +61,52 @@ class CourseMasteryOut(BaseModel):
     status_counts: MasteryStatusCountsOut
     concepts: list[ConceptMasteryOut] = Field(
         description="按状态优先级排序（WEAK → LEARNING → 数据不足 → STABLE）；不返回课程平均分"
+    )
+
+
+class MasteryQuizSourceOut(BaseModel):
+    """普通 Quiz 来源：可跳转到宿主 Record 的习题区。"""
+
+    source_type: Literal["QUIZ"] = "QUIZ"
+    record_id: str
+    record_title: str
+    quiz_id: str
+
+
+class MasteryTestSourceOut(BaseModel):
+    """模拟测试逐题来源：可跳转到该场测试结果页。"""
+
+    source_type: Literal["QUIZ_TEST"] = "QUIZ_TEST"
+    test_id: str
+    sequence_no: int | None = None
+
+
+MasteryEvidenceSourceOut = Annotated[
+    MasteryQuizSourceOut | MasteryTestSourceOut, Field(discriminator="source_type")
+]
+
+
+class MasteryEvidenceOut(BaseModel):
+    """参与当前算法版本的单条有效 Quiz Evidence（窗口内，按时间倒序）。"""
+
+    evidence_id: str
+    score: float
+    result: str | None
+    occurred_at: datetime
+    source: MasteryEvidenceSourceOut | None = Field(
+        default=None, description="业务来源定位；无法定位时为 null，前端只展示来源说明与时间"
+    )
+
+    @field_serializer("occurred_at")
+    def serialize_utc(self, value: datetime) -> str:
+        return _serialize_utc(value)
+
+
+class ConceptMasteryDetailOut(BaseModel):
+    """Concept Mastery 只读详情：快照 + 当前算法版本实际采用的有效 Evidence。"""
+
+    snapshot: ConceptMasteryOut = Field(description="掌握度快照（口径与课程列表一致）")
+    algorithm_version: str = Field(description="快照算法版本；无快照时为当前算法版本")
+    evidences: list[MasteryEvidenceOut] = Field(
+        description="参与计算的 Evidence，按发生时间倒序；窗口外、已删除来源不出现"
     )

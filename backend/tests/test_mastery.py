@@ -4,6 +4,7 @@
 4 对后 4 错、8 次交替（最新为错）、6 错后 6 对的分数与状态，不能只靠端到端间接覆盖。
 """
 
+import json
 import sqlite3
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -39,6 +40,7 @@ RECORD_ID = "22222222-2222-4222-8222-222222222222"
 CONCEPT_ID = "33333333-3333-4333-8333-333333333331"
 OTHER_CONCEPT_ID = "33333333-3333-4333-8333-333333333332"
 ARCHIVED_CONCEPT_ID = "33333333-3333-4333-8333-333333333333"
+TEST_ID = "55555555-5555-4555-8555-555555555551"
 NOW = "2026-09-01T08:00:00.000000Z"
 
 
@@ -105,6 +107,66 @@ async def seed_active_quiz(app: FastAPI, *, quiz_id: str, concept_id: str | None
                 "record_id": RECORD_ID,
                 "concept_id": concept_id,
                 "now": NOW,
+            },
+        )
+
+
+async def seed_quiz_answer_events(
+    app: FastAPI,
+    *,
+    events: list[tuple[str, str, str]],
+    record_id: str | None = RECORD_ID,
+) -> None:
+    """种普通 Quiz 作答事件（与 quiz.service._record_answer_event 同构，全对）。"""
+    async with app.state.session_factory() as session, session.begin():
+        for event_id, concept_id, occurred_at in events:
+            await session.execute(
+                text(
+                    "INSERT INTO learning_events (id, course_id, record_id, concept_id, "
+                    "event_type, source_type, source_id, result, score, difficulty, "
+                    "duration_ms, metadata_json, idempotency_key, schema_version, "
+                    "occurred_at, created_at) "
+                    "VALUES (:event_id, :course_id, :record_id, :concept_id, "
+                    "'QUIZ_ANSWERED', 'QUIZ_QUESTION', :event_id, 'CORRECT', 1.0, 'EASY', "
+                    "NULL, '{}', :event_id, 1, :occurred_at, :occurred_at)"
+                ),
+                {
+                    "event_id": event_id,
+                    "course_id": COURSE_ID,
+                    "record_id": record_id,
+                    "concept_id": concept_id,
+                    "occurred_at": occurred_at,
+                },
+            )
+
+
+async def seed_test_item_event(
+    app: FastAPI, *, event_id: str, concept_id: str | None, occurred_at: str
+) -> None:
+    """种模拟测试逐题作答事件（与 test_service.record_test_answer_event 同构）。"""
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO learning_events (id, course_id, record_id, concept_id, "
+                "event_type, source_type, source_id, result, score, difficulty, "
+                "duration_ms, metadata_json, idempotency_key, schema_version, "
+                "occurred_at, created_at) "
+                "VALUES (:event_id, :course_id, NULL, :concept_id, 'QUIZ_ANSWERED', "
+                "'QUIZ_QUESTION', :event_id, 'CORRECT', 1.0, 'EASY', NULL, :metadata, "
+                ":event_id, 1, :occurred_at, :occurred_at)"
+            ),
+            {
+                "event_id": event_id,
+                "course_id": COURSE_ID,
+                "concept_id": concept_id,
+                "metadata": json.dumps(
+                    {
+                        "test_id": TEST_ID,
+                        "question_type": "MULTIPLE_CHOICE",
+                        "sequence_no": 2,
+                    }
+                ),
+                "occurred_at": occurred_at,
             },
         )
 
@@ -650,3 +712,185 @@ async def test_mastery_recompute_is_idempotent_across_rounds(tmp_path: Path) -> 
     assert first["evidence_count"] == 1
     assert dict(rows[0])["evidence_count"] == 1
     assert dict(rows[0])["algorithm_version"] == ALGORITHM_VERSION
+
+
+@pytest.mark.anyio
+async def test_concept_mastery_detail_returns_snapshot_and_evidence_sources(
+    tmp_path: Path,
+) -> None:
+    """详情契约：快照+状态+分档+窗口内 Evidence；来源区分普通 Quiz 与模拟测试。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                ("event-quiz-1", CONCEPT_ID, "2026-09-01T10:00:00.000000Z"),
+                ("event-quiz-2", CONCEPT_ID, "2026-09-02T10:00:00.000000Z"),
+            ],
+        )
+        await seed_test_item_event(
+            app,
+            event_id="event-test-1",
+            concept_id=CONCEPT_ID,
+            occurred_at="2026-09-03T10:00:00.000000Z",
+        )
+        await app.state.evidence_consumer.run_once()
+
+        response = await client.get(f"/api/courses/{COURSE_ID}/mastery/concepts/{CONCEPT_ID}")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["snapshot"]["concept_id"] == CONCEPT_ID
+    assert payload["snapshot"]["canonical_name"] == "进程调度"
+    assert payload["snapshot"]["status"] == "LEARNING"
+    assert payload["snapshot"]["mastery_score"] == pytest.approx(1.0, abs=1e-12)
+    assert payload["snapshot"]["confidence"] == "LOW"
+    assert payload["snapshot"]["evidence_count"] == 3
+    assert payload["algorithm_version"] == "mastery_v1"
+    # 按发生时间倒序；模拟测试逐题（record_id 为空）同样参与计算。
+    evidences = payload["evidences"]
+    assert [row["occurred_at"] for row in evidences] == [
+        "2026-09-03T10:00:00.000000Z",
+        "2026-09-02T10:00:00.000000Z",
+        "2026-09-01T10:00:00.000000Z",
+    ]
+    assert evidences[0]["score"] == 1.0
+    assert evidences[0]["result"] == "CORRECT"
+    assert evidences[0]["source"] == {
+        "source_type": "QUIZ_TEST",
+        "test_id": TEST_ID,
+        "sequence_no": 2,
+    }
+    assert evidences[1]["source"] == {
+        "source_type": "QUIZ",
+        "record_id": RECORD_ID,
+        "record_title": "进程调度",
+        "quiz_id": "event-quiz-2",
+    }
+    assert evidences[2]["source"]["quiz_id"] == "event-quiz-1"
+
+
+@pytest.mark.anyio
+async def test_concept_mastery_detail_truncates_window_and_drops_deleted_records(
+    tmp_path: Path,
+) -> None:
+    """窗口截断：13 条只展示最近 12 条；Record 删除后退出列表但历史行保留。"""
+    events = [
+        (
+            f"event-window-{index:02d}",
+            CONCEPT_ID,
+            f"2026-09-01T10:{index:02d}:00.000000Z",
+        )
+        for index in range(13)
+    ]
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(app, events=events)
+        await app.state.evidence_consumer.run_once()
+
+        before = await client.get(f"/api/courses/{COURSE_ID}/mastery/concepts/{CONCEPT_ID}")
+        async with app.state.session_factory() as session:
+            await session.execute(
+                text("UPDATE records SET deleted_at = :now WHERE id = :record_id"),
+                {"now": NOW, "record_id": RECORD_ID},
+            )
+            await session.commit()
+        await MasteryService.recompute_concepts(app.state.session_factory, [CONCEPT_ID])
+        after = await client.get(f"/api/courses/{COURSE_ID}/mastery/concepts/{CONCEPT_ID}")
+        async with app.state.session_factory() as session:
+            kept = (
+                await session.execute(
+                    text("SELECT COUNT(*) FROM learning_evidence WHERE concept_id = :id"),
+                    {"id": CONCEPT_ID},
+                )
+            ).scalar_one()
+
+    before_payload = before.json()
+    assert len(before_payload["evidences"]) == 12
+    assert before_payload["evidences"][0]["occurred_at"] == "2026-09-01T10:12:00.000000Z"
+    assert before_payload["evidences"][-1]["occurred_at"] == "2026-09-01T10:01:00.000000Z"
+    assert "2026-09-01T10:00:00.000000Z" not in {
+        row["occurred_at"] for row in before_payload["evidences"]
+    }
+    # 删除后：退出参与列表、快照归为数据不足，历史证据行不被删除或改写。
+    after_payload = after.json()
+    assert after_payload["evidences"] == []
+    assert after_payload["snapshot"]["status"] == "NOT_ENOUGH_DATA"
+    assert after_payload["snapshot"]["mastery_score"] is None
+    assert kept == 13
+
+
+@pytest.mark.anyio
+async def test_concept_mastery_detail_guards_cross_course_and_unknown(
+    tmp_path: Path,
+) -> None:
+    """跨课程防护：他课程概念、归档概念、未知概念与未知课程均 404。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(
+            app,
+            concepts=[
+                (CONCEPT_ID, "进程调度", "CONFIRMED"),
+                (ARCHIVED_CONCEPT_ID, "已归档概念", "ARCHIVED"),
+            ],
+        )
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO courses (id, name, learning_context, education_stage, depth, "
+                    "course_type, description, hot_words, status, created_at, updated_at, "
+                    "deleted_at) VALUES ('99999999-9999-4999-8999-999999999998', '别的课程', "
+                    "'SCHOOL', 'UNDERGRADUATE', NULL, NULL, NULL, '[]', 'ACTIVE', "
+                    ":now, :now, NULL)"
+                ),
+                {"now": NOW},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO concepts (id, course_id, canonical_name, normalized_name, "
+                    "description, concept_type, importance, status, source, created_at, "
+                    "updated_at) VALUES ('99999999-9999-4999-8999-999999999997', "
+                    "'99999999-9999-4999-8999-999999999998', '他课程概念', '他课程概念', "
+                    "'', 'TERM', 3, 'CONFIRMED', 'AI_EXTRACTED', :now, :now)"
+                ),
+                {"now": NOW},
+            )
+
+        cross_course = await client.get(
+            f"/api/courses/{COURSE_ID}/mastery/concepts/99999999-9999-4999-8999-999999999997"
+        )
+        archived = await client.get(
+            f"/api/courses/{COURSE_ID}/mastery/concepts/{ARCHIVED_CONCEPT_ID}"
+        )
+        unknown_concept = await client.get(
+            f"/api/courses/{COURSE_ID}/mastery/concepts/99999999-9999-4999-8999-999999999996"
+        )
+        unknown_course = await client.get(
+            f"/api/courses/99999999-9999-4999-8999-999999999995/mastery/concepts/{CONCEPT_ID}"
+        )
+
+    assert cross_course.status_code == 404
+    assert archived.status_code == 404
+    assert unknown_concept.status_code == 404
+    assert unknown_course.status_code == 404
+    assert unknown_course.json()["code"] == "COURSE_NOT_FOUND"
+
+
+@pytest.mark.anyio
+async def test_concept_mastery_detail_returns_empty_state_without_snapshot(
+    tmp_path: Path,
+) -> None:
+    """已确认概念尚无快照：NOT_ENOUGH_DATA 空详情，不伪装成 404 或 0%。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+
+        response = await client.get(f"/api/courses/{COURSE_ID}/mastery/concepts/{OTHER_CONCEPT_ID}")
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["snapshot"]["concept_id"] == OTHER_CONCEPT_ID
+    assert payload["snapshot"]["status"] == "NOT_ENOUGH_DATA"
+    assert payload["snapshot"]["mastery_score"] is None
+    assert payload["snapshot"]["confidence"] is None
+    assert payload["snapshot"]["evidence_count"] == 0
+    assert payload["evidences"] == []
+    assert payload["algorithm_version"] == "mastery_v1"

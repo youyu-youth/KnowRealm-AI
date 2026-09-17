@@ -1345,6 +1345,35 @@
         "title": "ConceptKpSourceOut",
         "type": "object"
       },
+      "ConceptMasteryDetailOut": {
+        "description": "Concept Mastery 只读详情：快照 + 当前算法版本实际采用的有效 Evidence。",
+        "properties": {
+          "algorithm_version": {
+            "description": "快照算法版本；无快照时为当前算法版本",
+            "title": "Algorithm Version",
+            "type": "string"
+          },
+          "evidences": {
+            "description": "参与计算的 Evidence，按发生时间倒序；窗口外、已删除来源不出现",
+            "items": {
+              "$ref": "#/components/schemas/MasteryEvidenceOut"
+            },
+            "title": "Evidences",
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/ConceptMasteryOut",
+            "description": "掌握度快照（口径与课程列表一致）"
+          }
+        },
+        "required": [
+          "snapshot",
+          "algorithm_version",
+          "evidences"
+        ],
+        "title": "ConceptMasteryDetailOut",
+        "type": "object"
+      },
       "ConceptMasteryOut": {
         "properties": {
           "canonical_name": {
@@ -2677,6 +2706,98 @@
         "title": "MasteryConfidence",
         "type": "string"
       },
+      "MasteryEvidenceOut": {
+        "description": "参与当前算法版本的单条有效 Quiz Evidence（窗口内，按时间倒序）。",
+        "properties": {
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "occurred_at": {
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "QUIZ": "#/components/schemas/MasteryQuizSourceOut",
+                    "QUIZ_TEST": "#/components/schemas/MasteryTestSourceOut"
+                  },
+                  "propertyName": "source_type"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/MasteryQuizSourceOut"
+                  },
+                  {
+                    "$ref": "#/components/schemas/MasteryTestSourceOut"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "业务来源定位；无法定位时为 null，前端只展示来源说明与时间",
+            "title": "Source"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "score",
+          "result",
+          "occurred_at"
+        ],
+        "title": "MasteryEvidenceOut",
+        "type": "object"
+      },
+      "MasteryQuizSourceOut": {
+        "description": "普通 Quiz 来源：可跳转到宿主 Record 的习题区。",
+        "properties": {
+          "quiz_id": {
+            "title": "Quiz Id",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_title": {
+            "title": "Record Title",
+            "type": "string"
+          },
+          "source_type": {
+            "const": "QUIZ",
+            "default": "QUIZ",
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "record_title",
+          "quiz_id"
+        ],
+        "title": "MasteryQuizSourceOut",
+        "type": "object"
+      },
       "MasteryStatus": {
         "description": "V1 四态：AT_RISK / MISCONCEPTION_RISK 留给 Forgetting 与 Misconception。",
         "enum": [
@@ -2714,6 +2835,37 @@
           "stable"
         ],
         "title": "MasteryStatusCountsOut",
+        "type": "object"
+      },
+      "MasteryTestSourceOut": {
+        "description": "模拟测试逐题来源：可跳转到该场测试结果页。",
+        "properties": {
+          "sequence_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sequence No"
+          },
+          "source_type": {
+            "const": "QUIZ_TEST",
+            "default": "QUIZ_TEST",
+            "title": "Source Type",
+            "type": "string"
+          },
+          "test_id": {
+            "title": "Test Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "test_id"
+        ],
+        "title": "MasteryTestSourceOut",
         "type": "object"
       },
       "MergeDecision": {
@@ -8840,6 +8992,103 @@
           }
         },
         "summary": "Get Course Mastery",
+        "tags": [
+          "mastery"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/mastery/concepts/{concept_id}": {
+      "get": {
+        "operationId": "get_concept_mastery_detail_api_courses__course_id__mastery_concepts__concept_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "concept_id",
+            "required": true,
+            "schema": {
+              "title": "Concept Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConceptMasteryDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Concept Mastery Detail",
         "tags": [
           "mastery"
         ]

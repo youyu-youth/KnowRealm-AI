@@ -328,6 +328,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{course_id}/mastery/concepts/{concept_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Concept Mastery Detail */
+        get: operations["get_concept_mastery_detail_api_courses__course_id__mastery_concepts__concept_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/quiz-tests": {
         parameters: {
             query?: never;
@@ -2205,6 +2222,24 @@ export interface components {
             /** Relevance */
             relevance: number;
         };
+        /**
+         * ConceptMasteryDetailOut
+         * @description Concept Mastery 只读详情：快照 + 当前算法版本实际采用的有效 Evidence。
+         */
+        ConceptMasteryDetailOut: {
+            /**
+             * Algorithm Version
+             * @description 快照算法版本；无快照时为当前算法版本
+             */
+            algorithm_version: string;
+            /**
+             * Evidences
+             * @description 参与计算的 Evidence，按发生时间倒序；窗口外、已删除来源不出现
+             */
+            evidences: components["schemas"]["MasteryEvidenceOut"][];
+            /** @description 掌握度快照（口径与课程列表一致） */
+            snapshot: components["schemas"]["ConceptMasteryOut"];
+        };
         /** ConceptMasteryOut */
         ConceptMasteryOut: {
             /** Canonical Name */
@@ -2745,6 +2780,42 @@ export interface components {
          */
         MasteryConfidence: "LOW" | "MEDIUM" | "HIGH";
         /**
+         * MasteryEvidenceOut
+         * @description 参与当前算法版本的单条有效 Quiz Evidence（窗口内，按时间倒序）。
+         */
+        MasteryEvidenceOut: {
+            /** Evidence Id */
+            evidence_id: string;
+            /** Occurred At */
+            occurred_at: string;
+            /** Result */
+            result: string | null;
+            /** Score */
+            score: number;
+            /**
+             * Source
+             * @description 业务来源定位；无法定位时为 null，前端只展示来源说明与时间
+             */
+            source?: (components["schemas"]["MasteryQuizSourceOut"] | components["schemas"]["MasteryTestSourceOut"]) | null;
+        };
+        /**
+         * MasteryQuizSourceOut
+         * @description 普通 Quiz 来源：可跳转到宿主 Record 的习题区。
+         */
+        MasteryQuizSourceOut: {
+            /** Quiz Id */
+            quiz_id: string;
+            /** Record Id */
+            record_id: string;
+            /** Record Title */
+            record_title: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            source_type: "QUIZ";
+        };
+        /**
          * MasteryStatus
          * @description V1 四态：AT_RISK / MISCONCEPTION_RISK 留给 Forgetting 与 Misconception。
          * @enum {string}
@@ -2760,6 +2831,21 @@ export interface components {
             stable: number;
             /** Weak */
             weak: number;
+        };
+        /**
+         * MasteryTestSourceOut
+         * @description 模拟测试逐题来源：可跳转到该场测试结果页。
+         */
+        MasteryTestSourceOut: {
+            /** Sequence No */
+            sequence_no?: number | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            source_type: "QUIZ_TEST";
+            /** Test Id */
+            test_id: string;
         };
         /**
          * MergeDecision
@@ -5741,6 +5827,67 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CourseMasteryOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_concept_mastery_detail_api_courses__course_id__mastery_concepts__concept_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                concept_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConceptMasteryDetailOut"];
                 };
             };
             /** @description Forbidden */

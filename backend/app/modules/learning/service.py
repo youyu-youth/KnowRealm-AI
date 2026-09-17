@@ -5,8 +5,9 @@
 本模块不调用 LLM、不读墙钟时间（除写入 updated_at）。
 """
 
+import json
 from collections.abc import Collection
-from typing import cast
+from typing import NamedTuple, cast
 from uuid import uuid4
 
 from loguru import logger
@@ -24,12 +25,17 @@ from app.modules.learning.mastery import (
     classify_status,
     compute_mastery,
     confidence_level_of,
+    window_evidence,
 )
 from app.modules.learning.models import LearningEvidence, UserConceptMastery
 from app.modules.learning.schemas import (
+    ConceptMasteryDetailOut,
     ConceptMasteryOut,
     CourseMasteryOut,
+    MasteryEvidenceOut,
+    MasteryQuizSourceOut,
     MasteryStatusCountsOut,
+    MasteryTestSourceOut,
 )
 from app.modules.record.models import LearningEvent, Record
 from app.shared.errors import CodedHTTPException
@@ -46,15 +52,27 @@ _STATUS_PRIORITY = {
 }
 
 
-async def _load_effective_evidence(
+class EffectiveEvidenceRow(NamedTuple):
+    """有效集合单行：Evidence + 固化归属的 Event + 宿主 Record 标题（无宿主为 None）。"""
+
+    evidence: LearningEvidence
+    event: LearningEvent
+    record_title: str | None
+
+
+async def _load_effective_evidence_rows(
     session: AsyncSession, concept: Concept
-) -> list[MasteryEvidence]:
-    """有效集合：同课程、带分数、类型为 QUIZ，且宿主 Record 未软删除。"""
+) -> list[EffectiveEvidenceRow]:
+    """有效集合原始行（重算与详情共用同一过滤）：同课程、带分数、类型为 QUIZ。
+
+    Record 走 LEFT JOIN：模拟测试逐题事件无 Record 归属，照样参与；宿主 Record
+    已软删除的才被排除（spec：历史行保留，只退出有效集合）。
+    """
     rows = (
-        await session.scalars(
-            select(LearningEvidence)
+        await session.execute(
+            select(LearningEvidence, LearningEvent, Record.title)
             .join(LearningEvent, LearningEvidence.event_id == LearningEvent.id)
-            .join(Record, Record.id == LearningEvent.record_id)
+            .outerjoin(Record, Record.id == LearningEvent.record_id)
             .where(
                 LearningEvidence.concept_id == concept.id,
                 LearningEvidence.course_id == concept.course_id,
@@ -65,15 +83,29 @@ async def _load_effective_evidence(
         )
     ).all()
     return [
-        MasteryEvidence(
-            evidence_id=row.id,
-            score=cast(float, row.score),
-            weight=row.weight,
-            confidence=row.confidence,
-            result=row.result,
-            occurred_at=row.occurred_at,
-        )
-        for row in rows
+        EffectiveEvidenceRow(evidence=row, event=event, record_title=title)
+        for row, event, title in rows
+    ]
+
+
+def _to_mastery_evidence(row: LearningEvidence) -> MasteryEvidence:
+    return MasteryEvidence(
+        evidence_id=row.id,
+        score=cast(float, row.score),
+        weight=row.weight,
+        confidence=row.confidence,
+        result=row.result,
+        occurred_at=row.occurred_at,
+    )
+
+
+async def _load_effective_evidence(
+    session: AsyncSession, concept: Concept
+) -> list[MasteryEvidence]:
+    """有效集合的算法输入形式。"""
+    return [
+        _to_mastery_evidence(item.evidence)
+        for item in await _load_effective_evidence_rows(session, concept)
     ]
 
 
@@ -137,6 +169,33 @@ def _concept_mastery_out(
     )
 
 
+def _evidence_source(
+    event: LearningEvent, record_title: str | None
+) -> MasteryQuizSourceOut | MasteryTestSourceOut | None:
+    """业务来源定位：metadata 带 test_id 为模拟测试逐题，否则按宿主 Record 定位。
+
+    两类事件 source_type 均为 QUIZ_QUESTION（quiz 域写入口径），区分只能靠
+    Event 固化的 metadata；定位能力不足时返回 None，前端只展示时间。
+    """
+    metadata: dict[str, object] = json.loads(event.metadata_json) if event.metadata_json else {}
+    test_id = metadata.get("test_id")
+    if isinstance(test_id, str) and test_id:
+        sequence_no = metadata.get("sequence_no")
+        return MasteryTestSourceOut(
+            source_type="QUIZ_TEST",
+            test_id=test_id,
+            sequence_no=sequence_no if isinstance(sequence_no, int) else None,
+        )
+    if event.record_id is not None and record_title is not None:
+        return MasteryQuizSourceOut(
+            source_type="QUIZ",
+            record_id=event.record_id,
+            record_title=record_title,
+            quiz_id=event.source_id,
+        )
+    return None
+
+
 async def _get_course(session: AsyncSession, course_id: str) -> Course:
     course = (
         await session.scalars(
@@ -174,6 +233,49 @@ class MasteryService:
                     error=repr(last_error),
                 )
         return succeeded
+
+    @staticmethod
+    async def get_concept_mastery(
+        session: AsyncSession, course_id: str, concept_id: str
+    ) -> ConceptMasteryDetailOut:
+        """Concept Mastery 只读详情：快照 + 窗口内有效 Evidence（无快照不 404）。"""
+        await _get_course(session, course_id)
+        concept = (
+            await session.scalars(
+                select(Concept).where(Concept.id == concept_id, Concept.course_id == course_id)
+            )
+        ).one_or_none()
+        if concept is None or concept.status != ConceptStatus.CONFIRMED.value:
+            raise CodedHTTPException(
+                code="COURSE_BRAIN_CONCEPT_NOT_FOUND", status_code=404, detail="概念不存在"
+            )
+        snapshot = (
+            await session.scalars(
+                select(UserConceptMastery).where(UserConceptMastery.concept_id == concept_id)
+            )
+        ).one_or_none()
+        rows = await _load_effective_evidence_rows(session, concept)
+        windowed = window_evidence([_to_mastery_evidence(item.evidence) for item in rows])
+        rows_by_id = {item.evidence.id: item for item in rows}
+        evidences: list[MasteryEvidenceOut] = []
+        for item in windowed:
+            row = rows_by_id[item.evidence_id]
+            evidences.append(
+                MasteryEvidenceOut(
+                    evidence_id=item.evidence_id,
+                    score=item.score,
+                    result=item.result,
+                    occurred_at=item.occurred_at,
+                    source=_evidence_source(row.event, row.record_title),
+                )
+            )
+        return ConceptMasteryDetailOut(
+            snapshot=_concept_mastery_out(concept, snapshot),
+            algorithm_version=(
+                snapshot.algorithm_version if snapshot is not None else ALGORITHM_VERSION
+            ),
+            evidences=evidences,
+        )
 
     @staticmethod
     async def list_course_mastery(

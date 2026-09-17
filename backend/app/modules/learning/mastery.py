@@ -90,13 +90,21 @@ def classify_status(score: float | None, confidence_value: float | None) -> Mast
     return MasteryStatus.LEARNING
 
 
-def compute_mastery(evidence: list[MasteryEvidence]) -> MasteryComputation:
-    """从有效证据全量计算快照：窗口截断、序位加权、计数与状态分类。"""
-    ordered = sorted(
+def window_evidence(evidence: list[MasteryEvidence]) -> list[MasteryEvidence]:
+    """最近 12 条窗口（唯一口径）：按 ``occurred_at`` 倒序、稳定 ID 打破平局。
+
+    重算与详情查询共用本函数，保证「参与计算」列表与快照永远同口径。
+    """
+    return sorted(
         evidence,
         key=lambda item: (item.occurred_at, item.evidence_id),
         reverse=True,
     )[:WINDOW_SIZE]
+
+
+def compute_mastery(evidence: list[MasteryEvidence]) -> MasteryComputation:
+    """从有效证据全量计算快照：窗口截断、序位加权、计数与状态分类。"""
+    ordered = window_evidence(evidence)
     positive_count = sum(1 for item in ordered if item.result == POSITIVE_RESULT)
     negative_count = sum(1 for item in ordered if item.result == NEGATIVE_RESULT)
     last_practiced_at = ordered[0].occurred_at if ordered else None

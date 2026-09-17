@@ -5,7 +5,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.learning.schemas import CourseMasteryOut, CourseMasteryQuery
+from app.modules.learning.schemas import (
+    ConceptMasteryDetailOut,
+    CourseMasteryOut,
+    CourseMasteryQuery,
+)
 from app.modules.learning.service import MasteryService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
@@ -30,3 +34,15 @@ async def get_course_mastery(
     session: AsyncSession = Depends(get_db),
 ) -> CourseMasteryOut:
     return await MasteryService.list_course_mastery(session, course_id, filters.status)
+
+
+@router.get(
+    "/{course_id}/mastery/concepts/{concept_id}",
+    response_model=ConceptMasteryDetailOut,
+)
+async def get_concept_mastery_detail(
+    course_id: str,
+    concept_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> ConceptMasteryDetailOut:
+    return await MasteryService.get_concept_mastery(session, course_id, concept_id)
