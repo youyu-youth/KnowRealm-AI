@@ -21,6 +21,12 @@ import { recordApi } from "@/features/records/api/records";
 
 type BrainConcept = components["schemas"]["BrainConceptOut"];
 
+/** 主概念变更结果：服务端返回的归属快照，由宿主页面更新各自缓存 */
+export type QuizConceptChange = {
+  conceptId: string | null;
+  conceptName: string | null;
+};
+
 type QuizConceptFieldProps = {
   recordId: string;
   quizId: string;
@@ -30,10 +36,7 @@ type QuizConceptFieldProps = {
   conceptName?: string | null;
   /** 可编辑 = 首次作答前；作答后为只读归属展示 */
   editable: boolean;
-  onUpdated: (concept: {
-    conceptId: string | null;
-    conceptName: string | null;
-  }) => void;
+  onUpdated: (concept: QuizConceptChange) => void;
 };
 
 export function QuizConceptField({

@@ -34,7 +34,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { QuizOut, QuizReadOut } from "@/features/records/api/types";
-import { QuizConceptField } from "@/features/records/components/QuizConceptField";
+import {
+  QuizConceptField,
+  type QuizConceptChange,
+} from "@/features/records/components/QuizConceptField";
 import { settingsApi } from "@/features/settings/api/settings";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { cn } from "@/lib/utils";
@@ -275,10 +278,7 @@ function QuizCandidateList({
     queryClient.invalidateQueries({
       queryKey: recordKeys.quizzes(recordId),
     });
-  const applyConcept = (
-    quizId: string,
-    concept: { conceptId: string | null; conceptName: string | null },
-  ) => {
+  const applyConcept = (quizId: string, concept: QuizConceptChange) => {
     patchQuizConcept(queryClient, recordId, quizId, concept);
     void invalidate();
   };
@@ -447,10 +447,7 @@ function ActiveQuizList({
       queryKey: recordKeys.quizzes(recordId),
     });
   };
-  const applyConcept = (
-    quizId: string,
-    concept: { conceptId: string | null; conceptName: string | null },
-  ) => {
+  const applyConcept = (quizId: string, concept: QuizConceptChange) => {
     patchQuizConcept(queryClient, recordId, quizId, concept);
     void refreshQuizzes();
   };
@@ -1132,7 +1129,7 @@ function patchQuizConcept(
   queryClient: QueryClient,
   recordId: string,
   quizId: string,
-  concept: { conceptId: string | null; conceptName: string | null },
+  concept: QuizConceptChange,
 ) {
   queryClient.setQueryData<QuizReadOut>(
     recordKeys.quizzes(recordId),

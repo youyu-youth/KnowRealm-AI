@@ -15,7 +15,10 @@ import type {
   QuizTestAnswer,
   QuizTestItem,
 } from "@/features/quiz-tests/api/types";
-import { QuizConceptField } from "@/features/records/components/QuizConceptField";
+import {
+  QuizConceptField,
+  type QuizConceptChange,
+} from "@/features/records/components/QuizConceptField";
 
 type TestQuestionCardProps = {
   item: QuizTestItem;
@@ -31,10 +34,7 @@ type TestQuestionCardProps = {
   draft?: QuizTestAnswer;
   onDraftChange: (itemId: string, value: QuizTestAnswer) => void;
   onSubmit: (itemId: string, answer: QuizTestAnswer) => void;
-  onConceptUpdated: (
-    quizId: string,
-    concept: { conceptId: string | null; conceptName: string | null },
-  ) => void;
+  onConceptUpdated: (quizId: string, concept: QuizConceptChange) => void;
 };
 
 export function TestQuestionCard({

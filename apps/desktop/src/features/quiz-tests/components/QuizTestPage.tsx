@@ -26,6 +26,7 @@ import {
   type TestView,
 } from "@/features/quiz-tests/api/types";
 import { TestQuestionCard } from "@/features/quiz-tests/components/TestQuestionCard";
+import type { QuizConceptChange } from "@/features/records/components/QuizConceptField";
 
 const SECTION_NUMERALS = ["一", "二", "三", "四", "五"] as const;
 
@@ -184,10 +185,7 @@ function ExamPaper({
       queryClient.setQueryData(quizTestKeys.detail(data.id), result),
   });
   /** 主概念变更后按 quiz_id 就地更新题位缓存，再失效拉取服务端权威状态 */
-  const applyConcept = (
-    quizId: string,
-    concept: { conceptId: string | null; conceptName: string | null },
-  ) => {
+  const applyConcept = (quizId: string, concept: QuizConceptChange) => {
     queryClient.setQueryData<QuizTestDetail>(
       quizTestKeys.detail(data.id),
       (current) =>
