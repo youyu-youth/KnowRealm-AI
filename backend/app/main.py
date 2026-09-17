@@ -38,6 +38,7 @@ from app.modules.knowledge_point import knowledge_points
 from app.modules.knowledge_point.worker import knowledge_point_spec
 from app.modules.learning import routes as learning_routes
 from app.modules.learning.consumer import EvidenceConsumer
+from app.modules.learning.service import MasteryService
 from app.modules.llm.service import (
     CourseBrainModel,
     KnowledgePointModel,
@@ -148,6 +149,16 @@ def create_app(
                 logger.error(
                     "segment_search_index_backfill_failed",
                     error_code="SEGMENT_SEARCH_BACKFILL_FAILED",
+                )
+            # Mastery 快照同为可再生派生数据：缺失/算法版本过期的概念全量重建，
+            # 失败不阻断启动，下次启动重试（幂等，版本一致的快照零写入）。
+            try:
+                await MasteryService.recover_snapshots(session_factory)
+            except Exception as exc:
+                logger.error(
+                    "mastery_snapshot_recover_failed",
+                    error_code="MASTERY_RECOVER_FAILED",
+                    error=repr(exc),
                 )
             app.state.ffmpeg_path = ffmpeg_path.resolve() if ffmpeg_path is not None else None
             app.state.summary_model = summary_model or OpenAiCompatibleSummaryModel()

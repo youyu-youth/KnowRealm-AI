@@ -40,6 +40,7 @@ RECORD_ID = "22222222-2222-4222-8222-222222222222"
 CONCEPT_ID = "33333333-3333-4333-8333-333333333331"
 OTHER_CONCEPT_ID = "33333333-3333-4333-8333-333333333332"
 ARCHIVED_CONCEPT_ID = "33333333-3333-4333-8333-333333333333"
+CANDIDATE_CONCEPT_ID = "33333333-3333-4333-8333-333333333334"
 TEST_ID = "55555555-5555-4555-8555-555555555551"
 NOW = "2026-09-01T08:00:00.000000Z"
 
@@ -824,13 +825,14 @@ async def test_concept_mastery_detail_truncates_window_and_drops_deleted_records
 async def test_concept_mastery_detail_guards_cross_course_and_unknown(
     tmp_path: Path,
 ) -> None:
-    """跨课程防护：他课程概念、归档概念、未知概念与未知课程均 404。"""
+    """跨课程防护：他课程概念、归档概念、候选概念、未知概念与未知课程均 404。"""
     async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
         await seed_course_and_concepts(
             app,
             concepts=[
                 (CONCEPT_ID, "进程调度", "CONFIRMED"),
                 (ARCHIVED_CONCEPT_ID, "已归档概念", "ARCHIVED"),
+                (CANDIDATE_CONCEPT_ID, "候选概念", "CANDIDATE"),
             ],
         )
         async with app.state.session_factory() as session, session.begin():
@@ -858,6 +860,9 @@ async def test_concept_mastery_detail_guards_cross_course_and_unknown(
         cross_course = await client.get(
             f"/api/courses/{COURSE_ID}/mastery/concepts/99999999-9999-4999-8999-999999999997"
         )
+        candidate = await client.get(
+            f"/api/courses/{COURSE_ID}/mastery/concepts/{CANDIDATE_CONCEPT_ID}"
+        )
         archived = await client.get(
             f"/api/courses/{COURSE_ID}/mastery/concepts/{ARCHIVED_CONCEPT_ID}"
         )
@@ -869,6 +874,7 @@ async def test_concept_mastery_detail_guards_cross_course_and_unknown(
         )
 
     assert cross_course.status_code == 404
+    assert candidate.status_code == 404
     assert archived.status_code == 404
     assert unknown_concept.status_code == 404
     assert unknown_course.status_code == 404
@@ -894,3 +900,339 @@ async def test_concept_mastery_detail_returns_empty_state_without_snapshot(
     assert payload["snapshot"]["evidence_count"] == 0
     assert payload["evidences"] == []
     assert payload["algorithm_version"] == "mastery_v1"
+
+
+@pytest.mark.anyio
+async def test_archived_concept_keeps_history_and_ignores_new_evidence(
+    tmp_path: Path,
+) -> None:
+    """归档：保留历史快照与证据、退出课程聚合与活跃查询、不接收新证据。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-arch-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+
+        archived = await client.post(
+            f"/api/courses/{COURSE_ID}/brain/concepts/{CONCEPT_ID}/archive"
+        )
+        listed = await client.get(f"/api/courses/{COURSE_ID}/mastery")
+        detail = await client.get(f"/api/courses/{COURSE_ID}/mastery/concepts/{CONCEPT_ID}")
+
+        # 归档后的新作答：证据照常落库（事实保留），但快照不被改写。
+        await seed_quiz_answer_events(
+            app, events=[("event-after-archive", CONCEPT_ID, "2026-09-10T10:00:00.000000Z")]
+        )
+        await app.state.evidence_consumer.run_once()
+        after = await client.get(f"/api/courses/{COURSE_ID}/mastery/concepts/{CONCEPT_ID}")
+        async with app.state.session_factory() as session:
+            evidence_rows = (
+                await session.execute(
+                    text("SELECT COUNT(*) FROM learning_evidence WHERE concept_id = :id"),
+                    {"id": CONCEPT_ID},
+                )
+            ).scalar_one()
+            snapshot = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT mastery_score, evidence_count FROM user_concept_mastery "
+                            "WHERE concept_id = :id"
+                        ),
+                        {"id": CONCEPT_ID},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+
+    assert archived.status_code == 200, archived.text
+    listed_payload = listed.json()
+    assert [row["concept_id"] for row in listed_payload["concepts"]] == [OTHER_CONCEPT_ID]
+    assert listed_payload["confirmed_concept_count"] == 1
+    # 详情退出活跃查询（spec）；历史快照保留在库，数值停在归档时刻。
+    assert detail.status_code == 404
+    assert after.status_code == 404
+    assert snapshot["evidence_count"] == 3
+    assert snapshot["mastery_score"] == pytest.approx(1.0, abs=1e-12)
+    assert evidence_rows == 4
+
+
+@pytest.mark.anyio
+async def test_concept_rename_keeps_snapshot_attribution(tmp_path: Path) -> None:
+    """重命名不改 ID：快照与证据归属不动，详情返回新名称（重命名入口在审核流程内）。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-rename-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE concepts SET canonical_name = '调度算法' WHERE id = :id"),
+                {"id": CONCEPT_ID},
+            )
+
+        response = await client.get(f"/api/courses/{COURSE_ID}/mastery/concepts/{CONCEPT_ID}")
+
+    payload = response.json()
+    assert payload["snapshot"]["concept_id"] == CONCEPT_ID
+    assert payload["snapshot"]["canonical_name"] == "调度算法"
+    assert payload["snapshot"]["evidence_count"] == 3
+    assert len(payload["evidences"]) == 3
+
+
+@pytest.mark.anyio
+async def test_record_soft_delete_recomputes_affected_concepts_and_keeps_history(
+    tmp_path: Path,
+) -> None:
+    """Record 删除：删除端点立即重算受影响概念；历史事件与证据原样保留审计。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-del-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+
+        deleted = await client.delete(f"/api/records/{RECORD_ID}")
+        response = await client.get(f"/api/courses/{COURSE_ID}/mastery")
+        async with app.state.session_factory() as session:
+            counts = (
+                await session.execute(
+                    text(
+                        "SELECT (SELECT COUNT(*) FROM learning_events WHERE concept_id = :id), "
+                        "(SELECT COUNT(*) FROM learning_evidence WHERE concept_id = :id)"
+                    ),
+                    {"id": CONCEPT_ID},
+                )
+            ).one()
+
+    assert deleted.status_code == 204, deleted.text
+    row = next(item for item in response.json()["concepts"] if item["concept_id"] == CONCEPT_ID)
+    assert row["status"] == "NOT_ENOUGH_DATA"
+    assert row["evidence_count"] == 0
+    assert row["mastery_score"] is None
+    assert tuple(counts) == (3, 3)
+
+
+@pytest.mark.anyio
+async def test_course_soft_delete_recomputes_then_physical_delete_cascades(
+    tmp_path: Path,
+) -> None:
+    """Course 删除：软删沿用 Record 纪律并触发重算；物理删除时快照随概念级联清理。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-course-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+
+        deleted = await client.delete(f"/api/courses/{COURSE_ID}")
+        after_course = await client.get(f"/api/courses/{COURSE_ID}/mastery")
+        async with app.state.session_factory() as session:
+            snapshot = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT mastery_score, evidence_count FROM user_concept_mastery "
+                            "WHERE concept_id = :id"
+                        ),
+                        {"id": CONCEPT_ID},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            # 墓碑清理的物理删除：概念级联删，快照随之清理（FK ondelete=CASCADE）。
+            await session.execute(text("DELETE FROM courses WHERE id = :id"), {"id": COURSE_ID})
+            await session.commit()
+            remaining = (
+                await session.execute(
+                    text(
+                        "SELECT (SELECT COUNT(*) FROM concepts WHERE course_id = :id), "
+                        "(SELECT COUNT(*) FROM user_concept_mastery WHERE course_id = :id)"
+                    ),
+                    {"id": COURSE_ID},
+                )
+            ).one()
+
+    assert deleted.status_code == 204, deleted.text
+    assert after_course.status_code == 404
+    # 软删即重算：全部宿主 Record 退出有效集合，快照回落为数据不足。
+    assert snapshot["mastery_score"] is None
+    assert snapshot["evidence_count"] == 0
+    assert tuple(remaining) == (0, 0)
+
+
+@pytest.mark.anyio
+async def test_missing_snapshot_recovered_on_startup(tmp_path: Path) -> None:
+    """启动恢复：缺失快照按当前算法从有效证据确定性重建。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, _client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-recover-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("DELETE FROM user_concept_mastery WHERE concept_id = :id"),
+                {"id": CONCEPT_ID},
+            )
+
+        recovered = await MasteryService.recover_snapshots(app.state.session_factory)
+        async with app.state.session_factory() as session:
+            snapshots = {
+                row["concept_id"]: row
+                for row in (
+                    await session.execute(
+                        text(
+                            "SELECT concept_id, mastery_score, evidence_count, "
+                            "algorithm_version FROM user_concept_mastery"
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            }
+
+    # 两个 CONFIRMED 概念的快照都缺失：有证据的按证据重建，无证据的落数据不足。
+    assert recovered == 2
+    assert snapshots[CONCEPT_ID]["mastery_score"] == pytest.approx(1.0, abs=1e-12)
+    assert snapshots[CONCEPT_ID]["evidence_count"] == 3
+    assert snapshots[CONCEPT_ID]["algorithm_version"] == ALGORITHM_VERSION
+    assert snapshots[OTHER_CONCEPT_ID]["evidence_count"] == 0
+    assert snapshots[OTHER_CONCEPT_ID]["mastery_score"] is None
+
+
+@pytest.mark.anyio
+async def test_stale_algorithm_version_rebuilt_on_startup(tmp_path: Path) -> None:
+    """算法升级 = 版本号 + 全量重建：过期快照按当前版本重算，不混用旧口径。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, _client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-stale-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+        # 先补齐全部缺失快照，再单独污染一个概念的算法版本与分数。
+        await MasteryService.recover_snapshots(app.state.session_factory)
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE user_concept_mastery SET algorithm_version = 'mastery_v0', "
+                    "mastery_score = 0.42 WHERE concept_id = :id"
+                ),
+                {"id": CONCEPT_ID},
+            )
+
+        recovered = await MasteryService.recover_snapshots(app.state.session_factory)
+        async with app.state.session_factory() as session:
+            snapshot = (
+                (
+                    await session.execute(
+                        text(
+                            "SELECT mastery_score, algorithm_version FROM user_concept_mastery "
+                            "WHERE concept_id = :id"
+                        ),
+                        {"id": CONCEPT_ID},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+
+    # 仅版本过期的快照被重建；版本一致的概念跳过。
+    assert recovered == 1
+    assert snapshot["mastery_score"] == pytest.approx(1.0, abs=1e-12)
+    assert snapshot["algorithm_version"] == ALGORITHM_VERSION
+
+
+@pytest.mark.anyio
+async def test_recover_snapshots_is_idempotent(tmp_path: Path) -> None:
+    """重复恢复零写入：版本一致的快照不重算、updated_at 不变。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, _client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-idem-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+        await MasteryService.recover_snapshots(app.state.session_factory)
+        async with app.state.session_factory() as session:
+            before = (
+                await session.execute(
+                    text(
+                        "SELECT concept_id, updated_at FROM user_concept_mastery "
+                        "ORDER BY concept_id"
+                    )
+                )
+            ).all()
+
+        recovered = await MasteryService.recover_snapshots(app.state.session_factory)
+        async with app.state.session_factory() as session:
+            after = (
+                await session.execute(
+                    text(
+                        "SELECT concept_id, updated_at FROM user_concept_mastery "
+                        "ORDER BY concept_id"
+                    )
+                )
+            ).all()
+
+    assert recovered == 0
+    assert after == before

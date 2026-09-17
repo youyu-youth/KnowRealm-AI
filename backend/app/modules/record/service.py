@@ -5,7 +5,7 @@ from app.db.base import utcnow
 from app.modules.course.service import CourseService
 from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
-from app.modules.record.models import Record
+from app.modules.record.models import LearningEvent, Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.review_material.models import ReviewMaterial
 from app.modules.search.service import SearchService
@@ -104,11 +104,28 @@ class RecordService:
         )
 
     @staticmethod
-    async def soft_delete(session: AsyncSession, record_id: str) -> bool:
+    async def soft_delete(session: AsyncSession, record_id: str) -> set[str] | None:
+        """软删除并返回受影响的 Concept 集合（None = 记录不存在）。
+
+        历史 Event/Evidence 原样保留审计价值；受影响概念由调用方触发
+        Mastery 全量重算（删除事务先行提交，重算失败不回滚删除）。
+        """
         async with session.begin():
             record = await RecordService.get(session, record_id)
             if record is None:
-                return False
+                return None
+            affected_concepts = {
+                concept_id
+                for concept_id in (
+                    await session.scalars(
+                        select(LearningEvent.concept_id).where(
+                            LearningEvent.record_id == record_id,
+                            LearningEvent.concept_id.is_not(None),
+                        )
+                    )
+                ).all()
+                if concept_id is not None
+            }
             deleted_at = utcnow()
             record.deleted_at = deleted_at
             record.updated_at = deleted_at
@@ -134,7 +151,7 @@ class RecordService:
                 .values(deleted_at=deleted_at, updated_at=deleted_at)
             )
             await session.flush()
-        return True
+        return affected_concepts
 
     @staticmethod
     async def update_transcript(

@@ -235,6 +235,34 @@ class MasteryService:
         return succeeded
 
     @staticmethod
+    async def recover_snapshots(
+        session_factory: async_sessionmaker[AsyncSession],
+    ) -> int:
+        """启动恢复：快照缺失或算法版本过期的 CONFIRMED 概念全量重算（幂等）。
+
+        版本一致且已有快照的概念直接跳过——重复调用、应用重启零写入；
+        版本升级因此只需要 bump ``ALGORITHM_VERSION``，启动即全量重建。
+        """
+        async with session_factory() as session:
+            concept_ids = list(
+                (
+                    await session.scalars(
+                        select(Concept.id).where(Concept.status == ConceptStatus.CONFIRMED.value)
+                    )
+                ).all()
+            )
+            snapshots = {
+                snapshot.concept_id: snapshot.algorithm_version
+                for snapshot in (await session.scalars(select(UserConceptMastery))).all()
+            }
+        stale = [
+            concept_id
+            for concept_id in concept_ids
+            if snapshots.get(concept_id) != ALGORITHM_VERSION
+        ]
+        return await MasteryService.recompute_concepts(session_factory, stale)
+
+    @staticmethod
     async def get_concept_mastery(
         session: AsyncSession, course_id: str, concept_id: str
     ) -> ConceptMasteryDetailOut:
@@ -245,6 +273,7 @@ class MasteryService:
                 select(Concept).where(Concept.id == concept_id, Concept.course_id == course_id)
             )
         ).one_or_none()
+        # 仅活跃 CONFIRMED 可查（spec：归档退出活跃查询，历史快照保留在库供审计）。
         if concept is None or concept.status != ConceptStatus.CONFIRMED.value:
             raise CodedHTTPException(
                 code="COURSE_BRAIN_CONCEPT_NOT_FOUND", status_code=404, detail="概念不存在"

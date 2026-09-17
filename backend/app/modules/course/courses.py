@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.course.schemas import (
@@ -11,6 +11,7 @@ from app.modules.course.schemas import (
     CourseUpdate,
 )
 from app.modules.course.service import CourseService
+from app.modules.learning.service import MasteryService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
@@ -81,10 +82,14 @@ async def update_course(
 @router.delete("/{course_id}", status_code=204, response_class=Response, response_model=None)
 async def delete_course(
     course_id: str,
+    request: Request,
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    if not await CourseService.soft_delete(session, course_id):
+    affected_concepts = await CourseService.soft_delete(session, course_id)
+    if affected_concepts is None:
         raise CodedHTTPException(
             code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
         )
+    # 删除事务已提交；重算失败只记日志，不回滚删除。
+    await MasteryService.recompute_concepts(request.app.state.session_factory, affected_concepts)
     return Response(status_code=204)

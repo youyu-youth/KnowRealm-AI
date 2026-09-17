@@ -11,6 +11,7 @@ from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.modules.jobs.schemas import RecordJobsOut
 from app.modules.jobs.service import ProcessingJobService
+from app.modules.learning.service import MasteryService
 from app.modules.record.classification import RecordClassificationService
 from app.modules.record.schemas import (
     RecordClassificationRequest,
@@ -151,10 +152,13 @@ async def delete_record(
     request: Request,
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    if not await RecordService.soft_delete(session, str(record_id)):
+    affected_concepts = await RecordService.soft_delete(session, str(record_id))
+    if affected_concepts is None:
         raise CodedHTTPException(
             code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
         )
+    # 删除事务已提交；重算失败只记日志，不回滚删除，也不阻塞缓存清理。
+    await MasteryService.recompute_concepts(request.app.state.session_factory, affected_concepts)
     for cache_dir in (
         Path(request.app.state.data_dir) / "cache" / "audio" / str(record_id),
         Path(request.app.state.data_dir) / "cache" / "sources" / str(record_id),

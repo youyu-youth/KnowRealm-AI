@@ -16,7 +16,7 @@ from app.modules.course.schemas import (
 )
 from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
-from app.modules.record.models import Record
+from app.modules.record.models import LearningEvent, Record
 from app.modules.search.service import SearchService
 from app.shared.errors import CodedHTTPException
 
@@ -107,11 +107,27 @@ class CourseService:
         return list((await session.scalars(statement)).all())
 
     @staticmethod
-    async def soft_delete(session: AsyncSession, course_id: str) -> bool:
+    async def soft_delete(session: AsyncSession, course_id: str) -> set[str] | None:
+        """软删除课程及其 Record，并返回受影响的 Concept 集合（None = 课程不存在）。
+
+        删除纪律沿用 Record 链；受影响概念由调用方触发 Mastery 全量重算。
+        """
         async with session.begin():
             course = await CourseService.get(session, course_id)
             if course is None:
-                return False
+                return None
+            affected_concepts = {
+                concept_id
+                for concept_id in (
+                    await session.scalars(
+                        select(LearningEvent.concept_id).where(
+                            LearningEvent.course_id == course_id,
+                            LearningEvent.concept_id.is_not(None),
+                        )
+                    )
+                ).all()
+                if concept_id is not None
+            }
             deleted_at = utcnow()
             record_ids = select(Record.id).where(
                 Record.course_id == course_id,
@@ -141,4 +157,4 @@ class CourseService:
             course.deleted_at = deleted_at
             course.updated_at = deleted_at
             await session.flush()
-        return True
+        return affected_concepts
