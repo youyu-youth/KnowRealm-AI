@@ -40,7 +40,7 @@ async def test_migration_0021_creates_learning_evidence_table(tmp_path: Path) ->
             ).fetchall()
         }
 
-    assert version == (23,)
+    assert version == (24,)
     assert columns == {
         "id",
         "course_id",

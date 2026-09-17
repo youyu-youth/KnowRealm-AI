@@ -530,7 +530,7 @@ async def test_todo_migration_creates_table(tmp_path: Path) -> None:
             row[1]
             for row in await (await connection.execute("PRAGMA table_info(todo_items)")).fetchall()
         }
-    assert version is not None and version[0] == 23
+    assert version is not None and version[0] == 24
     assert columns == {
         "id",
         "record_id",

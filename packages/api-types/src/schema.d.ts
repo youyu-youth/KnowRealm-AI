@@ -864,6 +864,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/quizzes/{quiz_id}/concept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Quiz Concept */
+        put: operations["set_quiz_concept_api_records__record_id__quizzes__quiz_id__concept_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/records/{record_id}/quizzes/{quiz_id}/self-assessments": {
         parameters: {
             query?: never;
@@ -2852,6 +2869,14 @@ export interface components {
          * @enum {string}
          */
         QuizBlockedReason: "SUMMARY_NOT_CONFIRMED" | "SUMMARY_SUPERSEDED" | "COURSE_ARCHIVED" | "PROVIDER_NOT_CONFIGURED" | "CONSENT_REQUIRED";
+        /**
+         * QuizConceptUpdateRequest
+         * @description 主概念设置/清空请求；concept_id 为空即清空归属。
+         */
+        QuizConceptUpdateRequest: {
+            /** Concept Id */
+            concept_id?: string | null;
+        };
         /** QuizConflictResponse */
         QuizConflictResponse: {
             blocked_reason: components["schemas"]["QuizBlockedReason"];
@@ -2899,6 +2924,10 @@ export interface components {
             answered_at?: string | null;
             /** Batch Id */
             batch_id: string | null;
+            /** Concept Id */
+            concept_id?: string | null;
+            /** Concept Name */
+            concept_name?: string | null;
             /** Correct Answer */
             correct_answer: number | string | number[] | string[][] | null;
             /** Created At */
@@ -3042,6 +3071,10 @@ export interface components {
             ai_grade?: components["schemas"]["QuizTestAiGradeOut"] | null;
             /** Answered At */
             answered_at: string | null;
+            /** Concept Id */
+            concept_id?: string | null;
+            /** Concept Name */
+            concept_name?: string | null;
             /** Correct Answer */
             correct_answer?: number | string | number[] | string[][] | null;
             difficulty: components["schemas"]["QuizDifficulty"];
@@ -3054,6 +3087,8 @@ export interface components {
             question_type: components["schemas"]["QuizQuestionType"];
             /** Quiz Id */
             quiz_id: string;
+            /** Record Id */
+            record_id: string;
             result: components["schemas"]["QuizTestItemResult"] | null;
             /** Score */
             score: number | null;
@@ -8336,6 +8371,80 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["QuizObjectiveAnswerRequest"] | components["schemas"]["QuizShortAnswerRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuizOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    set_quiz_concept_api_records__record_id__quizzes__quiz_id__concept_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+                quiz_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuizConceptUpdateRequest"];
             };
         };
         responses: {

@@ -13,14 +13,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utcnow
 from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
+from app.modules.course_brain.models import Concept
+from app.modules.course_brain.schemas import ConceptStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.learning.events import write_learning_event
-from app.modules.quiz.models import Quiz
+from app.modules.quiz.models import Quiz, QuizTestItem
 from app.modules.quiz.schemas import (
     QuizAction,
     QuizAnswerResult,
     QuizBlockedReason,
+    QuizConceptUpdateRequest,
     QuizDifficulty,
     QuizGenerateRequest,
     QuizGenerationStatus,
@@ -45,7 +48,7 @@ from app.modules.summary.schemas import AiSummaryStatus
 from app.shared.errors import CodedHTTPException
 
 
-def _quiz_out(item: Quiz) -> QuizOut:
+def _quiz_out(item: Quiz, concept_name: str | None = None) -> QuizOut:
     user_answer: int | str | list[int] | list[str] | None = None
     if item.user_answer_json is not None:
         raw_answer = cast(object, json.loads(item.user_answer_json))
@@ -76,12 +79,35 @@ def _quiz_out(item: Quiz) -> QuizOut:
         ),
         explanation=item.explanation if answer_visible else None,
         difficulty=QuizDifficulty(item.difficulty),
+        concept_id=item.concept_id,
+        concept_name=concept_name if item.concept_id is not None else None,
         user_answer=user_answer,
         answer_result=QuizAnswerResult(item.answer_result) if item.answer_result else None,
         answered_at=item.answered_at,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
+
+
+async def concept_names(
+    session: AsyncSession,
+    quizzes: list[Quiz],
+) -> dict[str, str]:
+    """批量解析主概念展示名；名字快照仅作展示，归属事实以 concept_id 为准。"""
+    concept_ids = {item.concept_id for item in quizzes if item.concept_id is not None}
+    if not concept_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(Concept.id, Concept.canonical_name).where(Concept.id.in_(concept_ids))
+        )
+    ).all()
+    return {row[0]: row[1] for row in rows}
+
+
+async def _named_quiz_out(session: AsyncSession, item: Quiz) -> QuizOut:
+    names = await concept_names(session, [item])
+    return _quiz_out(item, names.get(cast(str, item.concept_id)))
 
 
 async def _provider_state(data_dir: Path) -> tuple[LlmProviderConfig | None, bool]:
@@ -217,6 +243,50 @@ async def _answerable_quiz(session: AsyncSession, record_id: str, quiz_id: str) 
     return quiz
 
 
+async def _ensure_concept_unlocked(session: AsyncSession, quiz: Quiz) -> None:
+    """首次作答后归属固定：普通作答看 quiz.answered_at，模拟测试作答看试卷题位。"""
+    locked = quiz.answered_at is not None or (
+        await session.scalar(
+            select(QuizTestItem.id)
+            .where(
+                QuizTestItem.quiz_id == quiz.id,
+                QuizTestItem.deleted_at.is_(None),
+                QuizTestItem.answered_at.is_not(None),
+            )
+            .limit(1)
+        )
+        is not None
+    )
+    if locked:
+        raise CodedHTTPException(
+            code="QUIZ_CONCEPT_LOCKED", status_code=409, detail="已作答习题的主概念不可修改"
+        )
+
+
+async def _bindable_concept(
+    session: AsyncSession,
+    record: Record,
+    concept_id: str,
+) -> Concept:
+    """主概念只允许同课程 CONFIRMED 概念；Candidate/Archived/跨课程一律拒绝。"""
+    concept = await session.get(Concept, concept_id)
+    if concept is None:
+        raise CodedHTTPException(
+            code="COURSE_BRAIN_CONCEPT_NOT_FOUND", status_code=404, detail="概念不存在"
+        )
+    if (
+        record.course_id is None
+        or record.course_id != concept.course_id
+        or concept.status != ConceptStatus.CONFIRMED
+    ):
+        raise CodedHTTPException(
+            code="QUIZ_CONCEPT_INVALID",
+            status_code=409,
+            detail="主概念必须是本记录所属课程的已确认概念",
+        )
+    return concept
+
+
 async def _record_answer_event(
     session: AsyncSession,
     record: Record,
@@ -230,6 +300,7 @@ async def _record_answer_event(
         session,
         course_id=cast(str, record.course_id),
         record_id=record.id,
+        concept_id=quiz.concept_id,
         event_type=QuizLearningEventType.ANSWERED,
         source_type=QuizLearningEventSourceType.QUESTION,
         source_id=quiz.id,
@@ -262,7 +333,8 @@ class QuizService:
             record_id,
             include_superseded=include_superseded,
         )
-        output = [_quiz_out(item) for item in items]
+        names = await concept_names(session, items)
+        output = [_quiz_out(item, names.get(cast(str, item.concept_id))) for item in items]
         active = await _active_job(session, record_id)
         if active is not None:
             return QuizReadOut(
@@ -524,6 +596,40 @@ class QuizService:
         return await QuizService.read(session, data_dir, record_id)
 
     @staticmethod
+    async def set_concept(
+        session: AsyncSession,
+        record_id: str,
+        quiz_id: str,
+        body: QuizConceptUpdateRequest,
+    ) -> QuizOut:
+        """设置/清空主概念：仅首次作答前可改；归属固定后返回 409。"""
+        async with session.begin():
+            record = await _get_record(session, record_id)
+            quiz = (
+                await session.scalars(
+                    select(Quiz).where(
+                        Quiz.id == quiz_id,
+                        Quiz.record_id == record_id,
+                        Quiz.deleted_at.is_(None),
+                    )
+                )
+            ).one_or_none()
+            if quiz is None:
+                raise CodedHTTPException(
+                    code="QUIZ_NOT_FOUND", status_code=404, detail="习题不存在或已删除"
+                )
+            await _ensure_concept_unlocked(session, quiz)
+            concept = (
+                await _bindable_concept(session, record, body.concept_id)
+                if body.concept_id is not None
+                else None
+            )
+            quiz.concept_id = concept.id if concept is not None else None
+            quiz.updated_at = utcnow()
+            await session.flush()
+            return _quiz_out(quiz, concept.canonical_name if concept is not None else None)
+
+    @staticmethod
     async def answer_objective(
         session: AsyncSession,
         record_id: str,
@@ -623,7 +729,7 @@ class QuizService:
                     else QuizAnswerResult.WRONG
                 )
             if quiz.answered_at is not None:
-                return _quiz_out(quiz), False
+                return await _named_quiz_out(session, quiz), False
             if record.course_id is None:
                 raise CodedHTTPException(
                     code="RECORD_COURSE_MISSING",
@@ -654,10 +760,10 @@ class QuizService:
                         status_code=409,
                         detail="只有已采用批次的题可以作答",
                     )
-                return _quiz_out(quiz), False
+                return await _named_quiz_out(session, quiz), False
 
             await _record_answer_event(session, record, quiz, answer_result, occurred_at=now)
-            return _quiz_out(quiz), True
+            return await _named_quiz_out(session, quiz), True
 
     @staticmethod
     async def answer_short(
@@ -674,7 +780,7 @@ class QuizService:
                     code="QUIZ_NOT_SHORT_ANSWER", status_code=409, detail="该题不是简答题"
                 )
             if quiz.answered_at is not None:
-                return _quiz_out(quiz), False
+                return await _named_quiz_out(session, quiz), False
 
             now = utcnow()
             updated = await session.execute(
@@ -698,10 +804,10 @@ class QuizService:
                         status_code=409,
                         detail="只有已采用批次的题可以作答",
                     )
-                return _quiz_out(quiz), False
+                return await _named_quiz_out(session, quiz), False
 
             await session.refresh(quiz)
-            return _quiz_out(quiz), True
+            return await _named_quiz_out(session, quiz), True
 
     @staticmethod
     async def self_assess_short(
@@ -724,7 +830,7 @@ class QuizService:
                     detail="请先提交简答作答",
                 )
             if quiz.answer_result is not None:
-                return _quiz_out(quiz), False
+                return await _named_quiz_out(session, quiz), False
             if record.course_id is None:
                 raise CodedHTTPException(
                     code="RECORD_COURSE_MISSING",
@@ -751,7 +857,7 @@ class QuizService:
                         status_code=409,
                         detail="只有已采用批次的题可以作答",
                     )
-                return _quiz_out(quiz), False
+                return await _named_quiz_out(session, quiz), False
 
             # 自评在作答之后：事件仍代表作答行为，occurred_at 取作答时刻。
             await _record_answer_event(
@@ -763,7 +869,7 @@ class QuizService:
                 created_at=now,
             )
             await session.refresh(quiz)
-            return _quiz_out(quiz), True
+            return await _named_quiz_out(session, quiz), True
 
 
 class QuizAdoptionBlocked(Exception):

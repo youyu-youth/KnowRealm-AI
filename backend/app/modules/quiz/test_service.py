@@ -24,6 +24,7 @@ from app.modules.quiz.schemas import (
     QuizLearningEventType,
     QuizQuestionType,
 )
+from app.modules.quiz.service import concept_names
 from app.modules.quiz.test_schemas import (
     QuizTestAiGradeOut,
     QuizTestAnswerRequest,
@@ -514,20 +515,32 @@ async def _detail_out(session: AsyncSession, test: QuizTest) -> QuizTestDetailOu
     ).all()
     # 正确答案与解析仅在终态（COMPLETED / GRADING_FAILED）揭示：作答期泄漏即泄漏未来卷
     reveal = test.status in (QuizTestStatus.COMPLETED, QuizTestStatus.GRADING_FAILED)
-    items = [_item_out(item, quiz, reveal=reveal) for item, quiz in rows]
+    names = await concept_names(session, [quiz for _, quiz in rows if quiz.concept_id is not None])
+    items = [
+        _item_out(item, quiz, names.get(quiz.concept_id), reveal=reveal) for item, quiz in rows
+    ]
     summary = _summary_out(test, len(items), sum(item.answered_at is not None for item in items))
     return QuizTestDetailOut(**summary.model_dump(), items=items)
 
 
-def _item_out(item: QuizTestItem, quiz: Quiz, *, reveal: bool) -> QuizTestItemOut:
+def _item_out(
+    item: QuizTestItem,
+    quiz: Quiz,
+    concept_name: str | None,
+    *,
+    reveal: bool,
+) -> QuizTestItemOut:
     return QuizTestItemOut(
         id=item.id,
         quiz_id=item.quiz_id,
+        record_id=quiz.record_id,
         sequence_no=item.sequence_no,
         question_type=QuizQuestionType(quiz.question_type),
         stem=quiz.stem,
         options=cast(list[str], json.loads(quiz.options_json)),
         difficulty=QuizDifficulty(quiz.difficulty),
+        concept_id=quiz.concept_id,
+        concept_name=concept_name,
         user_answer=cast(
             int | str | list[int] | list[str] | None,
             _decode_json(item.user_answer_json),
@@ -653,6 +666,7 @@ async def record_test_answer_event(
     await write_learning_event(
         session,
         course_id=test.course_id,
+        concept_id=quiz.concept_id,
         event_type=QuizLearningEventType.ANSWERED,
         source_type=QuizLearningEventSourceType.QUESTION,
         source_id=quiz.id,

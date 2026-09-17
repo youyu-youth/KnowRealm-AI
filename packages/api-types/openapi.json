@@ -3064,6 +3064,24 @@
         "title": "QuizBlockedReason",
         "type": "string"
       },
+      "QuizConceptUpdateRequest": {
+        "description": "主概念设置/清空请求；concept_id 为空即清空归属。",
+        "properties": {
+          "concept_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Id"
+          }
+        },
+        "title": "QuizConceptUpdateRequest",
+        "type": "object"
+      },
       "QuizConflictResponse": {
         "properties": {
           "blocked_reason": {
@@ -3204,6 +3222,28 @@
               }
             ],
             "title": "Batch Id"
+          },
+          "concept_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Id"
+          },
+          "concept_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Name"
           },
           "correct_answer": {
             "anyOf": [
@@ -3727,6 +3767,28 @@
             ],
             "title": "Answered At"
           },
+          "concept_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Id"
+          },
+          "concept_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Name"
+          },
           "correct_answer": {
             "anyOf": [
               {
@@ -3788,6 +3850,10 @@
             "title": "Quiz Id",
             "type": "string"
           },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
           "result": {
             "anyOf": [
               {
@@ -3847,6 +3913,7 @@
         "required": [
           "id",
           "quiz_id",
+          "record_id",
           "sequence_no",
           "question_type",
           "stem",
@@ -12589,6 +12656,125 @@
           }
         },
         "summary": "Answer Quiz",
+        "tags": [
+          "quizzes"
+        ]
+      }
+    },
+    "/api/records/{record_id}/quizzes/{quiz_id}/concept": {
+      "put": {
+        "operationId": "set_quiz_concept_api_records__record_id__quizzes__quiz_id__concept_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "quiz_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Quiz Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuizConceptUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Set Quiz Concept",
         "tags": [
           "quizzes"
         ]

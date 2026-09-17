@@ -337,7 +337,7 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
             )
         }
 
-    assert version == (23,)
+    assert version == (24,)
     assert {
         "id",
         "record_id",
@@ -350,6 +350,7 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
         "correct_answer_json",
         "explanation",
         "difficulty",
+        "concept_id",
         "user_answer_json",
         "answer_result",
         "answered_at",
@@ -551,12 +552,12 @@ async def test_generate_candidates_persists_draft_batch_and_provenance(tmp_path:
     result = json.loads(cast(str, job_row.result_json))
     assert result == {
         "model": "qwen-plus",
-        "prompt_version": "quiz_v1",
+        "prompt_version": "quiz_v2",
         "question_count": 3,
         "question_types": {"MULTIPLE_CHOICE": 1, "TRUE_FALSE": 1, "SHORT_ANSWER": 1},
     }
     assert job_row.status == "SUCCEEDED"
-    assert tuple(log_row) == ("quiz", "generate", "quiz_v1", None)
+    assert tuple(log_row) == ("quiz", "generate", "quiz_v2", None)
 
 
 @pytest.mark.anyio
@@ -1506,3 +1507,237 @@ async def test_objective_answer_and_event_roll_back_together(tmp_path: Path) -> 
     assert failed.status_code == 500
     assert tuple(row) == (None, None, None)
     assert event_count == 0
+
+
+CONCEPT_ID = "55555555-5555-4555-8555-555555555551"
+CANDIDATE_CONCEPT_ID = "55555555-5555-4555-8555-555555555552"
+FOREIGN_CONCEPT_ID = "55555555-5555-4555-8555-555555555553"
+ARCHIVED_CONCEPT_ID = "55555555-5555-4555-8555-555555555554"
+FOREIGN_COURSE_ID = "66666666-6666-4666-8666-666666666666"
+MISSING_CONCEPT_ID = "00000000-0000-4000-8000-000000000000"
+CONCEPT_NOW = "2026-09-01T08:00:00.000000Z"
+
+
+async def seed_concept(
+    app: FastAPI,
+    record_id: str,
+    concept_id: str,
+    name: str,
+    *,
+    status: str = "CONFIRMED",
+    foreign: bool = False,
+) -> None:
+    """在记录所属课程下种概念；foreign=True 时种入独立课程（跨课程用例）。"""
+    async with app.state.session_factory() as session, session.begin():
+        if foreign:
+            await session.execute(
+                text(
+                    "INSERT INTO courses "
+                    "(id, name, learning_context, education_stage, depth, course_type, "
+                    "description, hot_words, status, created_at, updated_at, deleted_at) "
+                    "VALUES (:id, '词汇学', 'SCHOOL', 'UNDERGRADUATE', NULL, NULL, NULL, '[]', "
+                    "'ACTIVE', :now, :now, NULL)"
+                ),
+                {"id": FOREIGN_COURSE_ID, "now": CONCEPT_NOW},
+            )
+            course_id = FOREIGN_COURSE_ID
+        else:
+            course_id = cast(
+                str,
+                await session.scalar(
+                    text("SELECT course_id FROM records WHERE id=:id"), {"id": record_id}
+                ),
+            )
+        await session.execute(
+            text(
+                "INSERT INTO concepts "
+                "(id, course_id, canonical_name, normalized_name, description, concept_type, "
+                "importance, status, source, created_at, updated_at) "
+                "VALUES (:id, :course_id, :name, :name, '', 'TERM', 3, :status, "
+                "'AI_EXTRACTED', :now, :now)"
+            ),
+            {
+                "id": concept_id,
+                "course_id": course_id,
+                "name": name,
+                "status": status,
+                "now": CONCEPT_NOW,
+            },
+        )
+
+
+def output_with_concepts(assignments: list[str | None]) -> dict[str, object]:
+    """DEFAULT_OUTPUT 同构成批，逐题附加模型建议的 concept_id。"""
+    output = batch_output(ALL_TYPES)
+    items = cast(list[dict[str, object]], output["items"])
+    for item, concept_id in zip(items, assignments, strict=True):
+        if concept_id is not None:
+            item["concept_id"] = concept_id
+    return output
+
+
+async def set_concept(
+    client: httpx.AsyncClient,
+    record_id: str,
+    quiz_id: str,
+    concept_id: str | None,
+) -> httpx.Response:
+    return await client.put(
+        f"/api/records/{record_id}/quizzes/{quiz_id}/concept",
+        json={"concept_id": concept_id},
+    )
+
+
+@pytest.mark.anyio
+async def test_concept_suggestion_flows_from_generation_to_locked_event(tmp_path: Path) -> None:
+    model = FakeQuizModel(output=output_with_concepts([CONCEPT_ID, None, None]))
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await seed_concept(app, record_id, CONCEPT_ID, "进程调度")
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        batch_id, draft = await generate_draft_batch(client, record_id)
+
+        # 建议指令与可选概念清单出现在提示词中
+        assert CONCEPT_ID in model.prompts[0]
+        assert "进程调度" in model.prompts[0]
+
+        draft_items = cast(list[dict[str, object]], draft["items"])
+        choice = next(item for item in draft_items if item["question_type"] == "MULTIPLE_CHOICE")
+        judge = next(item for item in draft_items if item["question_type"] == "TRUE_FALSE")
+        assert choice["concept_id"] == CONCEPT_ID
+        assert choice["concept_name"] == "进程调度"
+        assert judge["concept_id"] is None
+
+        adoption = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations"
+        )
+        assert adoption.status_code == 200
+
+        quiz_id = cast(str, choice["id"])
+        cleared = await set_concept(client, record_id, quiz_id, None)
+        assert cleared.status_code == 200
+        assert cleared.json()["concept_id"] is None
+        rebound = await set_concept(client, record_id, quiz_id, CONCEPT_ID)
+        assert rebound.status_code == 200
+        assert rebound.json()["concept_id"] == CONCEPT_ID
+        assert rebound.json()["concept_name"] == "进程调度"
+
+        answered = await client.post(
+            f"/api/records/{record_id}/quizzes/{quiz_id}/answers",
+            json={"answer": 0},
+        )
+        assert answered.status_code == 200
+
+        async with app.state.session_factory() as session:
+            event_concept = await session.scalar(
+                text("SELECT concept_id FROM learning_events WHERE idempotency_key=:key"),
+                {"key": f"quiz-answered:{quiz_id}"},
+            )
+        assert event_concept == CONCEPT_ID
+
+        locked = await set_concept(client, record_id, quiz_id, None)
+        assert locked.status_code == 409
+        assert cast(dict[str, object], locked.json())["code"] == "QUIZ_CONCEPT_LOCKED"
+
+
+@pytest.mark.anyio
+async def test_concept_suggestion_validation_drops_invalid_ids(tmp_path: Path) -> None:
+    model = FakeQuizModel(
+        output=output_with_concepts([CANDIDATE_CONCEPT_ID, FOREIGN_CONCEPT_ID, None])
+    )
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await seed_concept(app, record_id, CANDIDATE_CONCEPT_ID, "待确认概念", status="CANDIDATE")
+        await seed_concept(app, record_id, FOREIGN_CONCEPT_ID, "词汇学", foreign=True)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        _batch_id, draft = await generate_draft_batch(client, record_id)
+        draft_items = cast(list[dict[str, object]], draft["items"])
+        for item in draft_items:
+            assert item["concept_id"] is None
+            assert item["concept_name"] is None
+
+
+@pytest.mark.anyio
+async def test_concept_update_rejects_candidate_archived_cross_course_and_missing(
+    tmp_path: Path,
+) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await seed_concept(app, record_id, CANDIDATE_CONCEPT_ID, "待确认概念", status="CANDIDATE")
+        await seed_concept(app, record_id, ARCHIVED_CONCEPT_ID, "已归档概念", status="ARCHIVED")
+        await seed_concept(app, record_id, FOREIGN_CONCEPT_ID, "词汇学", foreign=True)
+        await seed_concept(app, record_id, CONCEPT_ID, "进程调度")
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        batch_id, draft = await generate_draft_batch(client, record_id)
+        adoption = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations"
+        )
+        assert adoption.status_code == 200
+        choice = next(
+            item
+            for item in cast(list[dict[str, object]], draft["items"])
+            if item["question_type"] == "MULTIPLE_CHOICE"
+        )
+        quiz_id = cast(str, choice["id"])
+
+        for concept_id, expected_status, expected_code in [
+            (CANDIDATE_CONCEPT_ID, 409, "QUIZ_CONCEPT_INVALID"),
+            (ARCHIVED_CONCEPT_ID, 409, "QUIZ_CONCEPT_INVALID"),
+            (FOREIGN_CONCEPT_ID, 409, "QUIZ_CONCEPT_INVALID"),
+            (MISSING_CONCEPT_ID, 404, "COURSE_BRAIN_CONCEPT_NOT_FOUND"),
+        ]:
+            rejected = await set_concept(client, record_id, quiz_id, concept_id)
+            assert rejected.status_code == expected_status, (concept_id, rejected.text)
+            assert cast(dict[str, object], rejected.json())["code"] == expected_code
+
+        accepted = await set_concept(client, record_id, quiz_id, CONCEPT_ID)
+        assert accepted.status_code == 200
+        assert accepted.json()["concept_id"] == CONCEPT_ID
+
+
+@pytest.mark.anyio
+async def test_generation_without_confirmed_concept_keeps_concept_empty(tmp_path: Path) -> None:
+    model = FakeQuizModel()
+    async with running_quiz_app(tmp_path / "KnowRealm", model) as (app, client):
+        record_id, _summary_id = await create_completed_record(app, client)
+        await configure_llm(client)
+        await grant_llm_consent(client)
+
+        batch_id, draft = await generate_draft_batch(client, record_id)
+        assert "主概念建议" not in model.prompts[0]
+        draft_items = cast(list[dict[str, object]], draft["items"])
+        for item in draft_items:
+            assert item["concept_id"] is None
+
+        choice = next(item for item in draft_items if item["question_type"] == "MULTIPLE_CHOICE")
+        quiz_id = cast(str, choice["id"])
+        cleared = await set_concept(client, record_id, quiz_id, None)
+        assert cleared.status_code == 200
+
+        adoption = await client.post(
+            f"/api/records/{record_id}/quiz-batches/{batch_id}/confirmations"
+        )
+        assert adoption.status_code == 200
+        answered = await client.post(
+            f"/api/records/{record_id}/quizzes/{quiz_id}/answers",
+            json={"answer": 0},
+        )
+        assert answered.status_code == 200
+
+        async with app.state.session_factory() as session:
+            event_concept = await session.scalar(
+                text("SELECT concept_id FROM learning_events WHERE idempotency_key=:key"),
+                {"key": f"quiz-answered:{quiz_id}"},
+            )
+            historical_concepts = await session.execute(
+                text("SELECT concept_id FROM quizzes WHERE record_id=:id"), {"id": record_id}
+            )
+        assert event_concept is None
+        assert all(concept is None for (concept,) in historical_concepts.all())

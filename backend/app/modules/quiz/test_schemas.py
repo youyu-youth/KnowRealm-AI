@@ -125,11 +125,14 @@ class QuizTestAiGradeOut(BaseModel):
 class QuizTestItemOut(BaseModel):
     id: str
     quiz_id: str
+    record_id: str
     sequence_no: int
     question_type: QuizQuestionType
     stem: str
     options: list[str]
     difficulty: QuizDifficulty
+    concept_id: str | None = None
+    concept_name: str | None = None
     user_answer: int | str | list[int] | list[str] | None
     result: QuizTestItemResult | None
     score: float | None

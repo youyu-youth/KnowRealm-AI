@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.quiz.schemas import (
+    QuizConceptUpdateRequest,
     QuizConflictResponse,
     QuizGenerateRequest,
     QuizJobAccepted,
@@ -113,6 +114,28 @@ async def adopt_quiz_batch(
             blocked_reason=error.blocked_reason,
         )
         return JSONResponse(status_code=409, content=body.model_dump(mode="json"))
+    await request.app.state.record_notifier.notify(str(record_id))
+    return result
+
+
+@router.put(
+    "/{record_id}/quizzes/{quiz_id}/concept",
+    response_model=QuizOut,
+    responses={404: {"model": ErrorResponse}},
+)
+async def set_quiz_concept(
+    record_id: UUID,
+    quiz_id: UUID,
+    body: QuizConceptUpdateRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> QuizOut:
+    result = await QuizService.set_concept(
+        session,
+        str(record_id),
+        str(quiz_id),
+        body,
+    )
     await request.app.state.record_notifier.notify(str(record_id))
     return result
 

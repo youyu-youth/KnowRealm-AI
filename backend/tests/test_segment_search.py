@@ -214,7 +214,7 @@ async def test_migration_0020_creates_segment_search_index(tmp_path: Path) -> No
             ).fetchall()
         ]
 
-    assert version == (23,)
+    assert version == (24,)
     assert "segment_search_index" in tables
     assert columns == ["body", "entity_type", "entity_id"]
 

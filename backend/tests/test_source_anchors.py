@@ -79,7 +79,7 @@ async def assert_segment_tables_schema(db_path: Path) -> None:
             await connection.execute("PRAGMA index_list(source_anchor_links)")
         ).fetchall()
 
-    assert version == (23,)
+    assert version == (24,)
     assert list(transcript_columns) == [
         "id",
         "transcript_id",

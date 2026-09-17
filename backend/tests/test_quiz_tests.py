@@ -126,7 +126,7 @@ async def test_migration_0016_creates_quiz_test_tables_and_grading_job_type(
             (NOW, NOW),
         )
 
-    assert version is not None and version[0] == 23
+    assert version is not None and version[0] == 24
     assert tables == {"quiz_tests", "quiz_test_items"}
 
 
@@ -299,7 +299,7 @@ async def fetch_test_answer_events(app: FastAPI) -> list[dict[str, object]]:
                 await session.execute(
                     text(
                         "SELECT idempotency_key, event_type, source_type, source_id, course_id, "
-                        "record_id, result, score FROM learning_events "
+                        "record_id, concept_id, result, score FROM learning_events "
                         "WHERE idempotency_key LIKE 'quiz-answered:test:%'"
                     )
                 )
@@ -1114,3 +1114,76 @@ async def test_archived_course_cancels_grading_job_at_claim(tmp_path: Path) -> N
         assert test_status == "GRADING_FAILED"
         # 未发生任何 LLM 调用
         assert model.prompts == []
+
+
+TEST_CONCEPT_ID = "55555555-5555-4555-8555-555555555565"
+
+
+async def seed_confirmed_concept(app: FastAPI, concept_id: str, name: str) -> None:
+    async with app.state.session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO concepts "
+                "(id, course_id, canonical_name, normalized_name, description, concept_type, "
+                "importance, status, source, created_at, updated_at) "
+                "VALUES (:id, :course_id, :name, :name, '', 'TERM', 3, 'CONFIRMED', "
+                "'AI_EXTRACTED', :now, :now)"
+            ),
+            {"id": concept_id, "course_id": COURSE_ID, "name": name, "now": NOW},
+        )
+
+
+@pytest.mark.anyio
+async def test_concept_binds_before_answer_fixes_on_test_answer(tmp_path: Path) -> None:
+    async with running_app(tmp_path) as (app, client):
+        await seed_quiz_bank(app, [("MULTIPLE_CHOICE", 2), ("TRUE_FALSE", 0)])
+        await seed_confirmed_concept(app, TEST_CONCEPT_ID, "进程调度")
+        test_id, items = await create_test_from_bank(client, ["MULTIPLE_CHOICE", "TRUE_FALSE"])
+        mc = next(item for item in items if item["question_type"] == "MULTIPLE_CHOICE")
+        tf = next(item for item in items if item["question_type"] == "TRUE_FALSE")
+        assert mc["record_id"] and mc["concept_id"] is None
+
+        # 作答前：模拟测试题位可经记录端点修改主概念
+        rebound = await client.put(
+            f"/api/records/{mc['record_id']}/quizzes/{mc['quiz_id']}/concept",
+            json={"concept_id": TEST_CONCEPT_ID},
+        )
+        assert rebound.status_code == 200, rebound.text
+        assert rebound.json()["concept_id"] == TEST_CONCEPT_ID
+        assert rebound.json()["concept_name"] == "进程调度"
+
+        answered = await client.post(
+            f"/api/quiz-tests/{test_id}/answers",
+            json={"item_id": mc["id"], "answer": 2},
+        )
+        assert answered.status_code == 200
+        mc_row = item_of(cast(list[QuizItem], answered.json()["items"]), mc["id"])
+        assert mc_row["concept_id"] == TEST_CONCEPT_ID
+        assert mc_row["concept_name"] == "进程调度"
+
+        events = await fetch_test_answer_events(app)
+        assert len(events) == 1
+        assert events[0]["concept_id"] == TEST_CONCEPT_ID
+
+        # 未绑定主概念的题位直接作答后，同样锁定（409 QUIZ_CONCEPT_LOCKED）
+        tf_answered = await client.post(
+            f"/api/quiz-tests/{test_id}/answers",
+            json={"item_id": tf["id"], "answer": 0},
+        )
+        assert tf_answered.status_code == 200
+        tf_locked = await client.put(
+            f"/api/records/{tf['record_id']}/quizzes/{tf['quiz_id']}/concept",
+            json={"concept_id": None},
+        )
+        assert tf_locked.status_code == 409
+        assert cast(dict[str, object], tf_locked.json())["code"] == "QUIZ_CONCEPT_LOCKED"
+
+        # 无主概念的作答事件照常落库，concept_id 为空
+        events = await fetch_test_answer_events(app)
+        assert len(events) == 2
+        tf_event = next(
+            event
+            for event in events
+            if event["idempotency_key"] == f"quiz-answered:test:{tf['id']}"
+        )
+        assert tf_event["concept_id"] is None

@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.modules.course.models import Course
+from app.modules.course_brain.models import Concept
+from app.modules.course_brain.schemas import ConceptStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import (
     CancelClaim,
@@ -51,7 +53,7 @@ from app.modules.summary.schemas import SummaryContent
 from app.shared.events import RecordInvalidationNotifier
 from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
-PROMPT_VERSION = "quiz_v1"
+PROMPT_VERSION = "quiz_v2"
 
 _QUESTION_TYPE_LABELS = {
     QuizQuestionType.MULTIPLE_CHOICE: "单选题",
@@ -70,6 +72,8 @@ class _ClaimedQuizJob(ClaimedJob):
     summary: SummaryContent
     course: Course
     provider: LlmProviderConfig
+    # 课程 CONFIRMED 概念的 (id, canonical_name)；空元组 = 无 Course Brain 可建议。
+    concepts: tuple[tuple[str, str], ...] = ()
 
 
 def build_quiz_prompt(claimed: _ClaimedQuizJob) -> str:
@@ -77,6 +81,15 @@ def build_quiz_prompt(claimed: _ClaimedQuizJob) -> str:
         f"{section.heading}：" + "；".join(section.points) for section in claimed.summary.sections
     )
     type_names = "、".join(_QUESTION_TYPE_LABELS[item] for item in claimed.question_types)
+    concept_instruction = ""
+    if claimed.concepts:
+        concept_list = "；".join(f"{concept_id}={name}" for concept_id, name in claimed.concepts)
+        concept_instruction = (
+            "主概念建议：\n"
+            f"- 可选主概念清单（id=名称）：{concept_list}\n"
+            "- 每题的 concept_id 只能从上述清单中选一个最贴合题目的，"
+            "没有贴切的就留空；不得编造清单之外的值\n"
+        )
     return (
         "请根据以下课程上下文和已确认总结出练习题。"
         "严格返回指定结构，不添加结构外字段。\n"
@@ -86,8 +99,7 @@ def build_quiz_prompt(claimed: _ClaimedQuizJob) -> str:
         "已确认总结：\n"
         f"主题：{claimed.summary.topic}\n"
         f"摘要：{claimed.summary.abstract}\n"
-        f"{sections}\n"
-        "出题要求：\n"
+        f"{sections}\n" + concept_instruction + "出题要求：\n"
         f"- 恰好出 {claimed.total_count} 题，题型限定：{type_names}，每种所选题型至少 1 道，"
         "各题型数量构成由你按内容决定\n"
         "- 单选题：options 为 3 至 5 个选项文本，"
@@ -173,6 +185,17 @@ async def validate_claim(
     ):
         return CancelClaim(PREREQUISITE_CHANGED)
     current_summary = cast(AiSummary, summary)
+    concepts: tuple[tuple[str, str], ...] = ()
+    if course is not None:
+        concept_rows = (
+            await session.execute(
+                select(Concept.id, Concept.canonical_name).where(
+                    Concept.course_id == course.id,
+                    Concept.status == ConceptStatus.CONFIRMED,
+                )
+            )
+        ).all()
+        concepts = tuple((row[0], row[1]) for row in concept_rows)
     return Ready(
         _ClaimedQuizJob(
             job_id=job.id,
@@ -183,6 +206,7 @@ async def validate_claim(
             summary=summary_content(current_summary),
             course=cast(Course, course),
             provider=current_provider,
+            concepts=concepts,
         )
     )
 
@@ -229,7 +253,30 @@ async def writeback(
             job.finished_at = now
             job.updated_at = now
             return False
+        # 主概念服务端校验（spec）：只认写入时刻同课程 CONFIRMED 概念，
+        # 模型编造、跨课程或已归档的 id 一律落空，批次照常发布。
+        suggested_ids = {
+            candidate.concept_id for candidate in content.items if candidate.concept_id
+        }
+        valid_ids: set[str] = set()
+        if suggested_ids:
+            valid_ids = set(
+                (
+                    await session.scalars(
+                        select(Concept.id).where(
+                            Concept.id.in_(suggested_ids),
+                            Concept.course_id == ctx.course.id,
+                            Concept.status == ConceptStatus.CONFIRMED,
+                        )
+                    )
+                ).all()
+            )
         for candidate in content.items:
+            concept_id = (
+                candidate.concept_id
+                if candidate.concept_id and candidate.concept_id in valid_ids
+                else None
+            )
             session.add(
                 Quiz(
                     id=str(uuid4()),
@@ -247,6 +294,7 @@ async def writeback(
                     ),
                     explanation=candidate.explanation,
                     difficulty=candidate.difficulty,
+                    concept_id=concept_id,
                     user_answer_json=None,
                     answer_result=None,
                     answered_at=None,

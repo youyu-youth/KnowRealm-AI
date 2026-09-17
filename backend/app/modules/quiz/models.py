@@ -25,6 +25,9 @@ class Quiz(Base):
     correct_answer_json: Mapped[str] = mapped_column(Text)
     explanation: Mapped[str] = mapped_column(Text)
     difficulty: Mapped[str] = mapped_column(String(10))
+    concept_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("concepts.id", ondelete="SET NULL"), default=None
+    )
     user_answer_json: Mapped[str | None] = mapped_column(Text, default=None)
     answer_result: Mapped[str | None] = mapped_column(String(10), default=None)
     answered_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)

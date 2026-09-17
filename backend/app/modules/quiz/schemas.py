@@ -53,6 +53,10 @@ class QuizQuestionCandidate(BaseModel):
     )
     explanation: str = Field(min_length=1, max_length=2000, description="解析")
     difficulty: Literal["EASY", "MEDIUM", "HARD"] = Field(description="难度三档")
+    concept_id: str | None = Field(
+        default=None,
+        description="主概念：只能从提示词给出的同课程已确认概念清单中选一个，无法可靠归属时为空",
+    )
 
     @field_validator("stem", "explanation")
     @classmethod
@@ -238,6 +242,12 @@ class QuizShortAnswerRequest(BaseModel):
         return value
 
 
+class QuizConceptUpdateRequest(BaseModel):
+    """主概念设置/清空请求；concept_id 为空即清空归属。"""
+
+    concept_id: str | None = None
+
+
 class QuizSelfAssessmentRequest(BaseModel):
     result: QuizAnswerResult
 
@@ -254,6 +264,8 @@ class QuizOut(BaseModel):
     correct_answer: int | str | list[int] | list[list[str]] | None
     explanation: str | None
     difficulty: QuizDifficulty
+    concept_id: str | None = None
+    concept_name: str | None = None
     user_answer: int | str | list[int] | list[str] | None = None
     answer_result: QuizAnswerResult | None = None
     answered_at: datetime | None = None
