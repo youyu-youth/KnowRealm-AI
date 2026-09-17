@@ -272,7 +272,7 @@ async def test_knowledge_point_migration_creates_table_and_active_job_guard(
             ).fetchall()
         }
 
-    assert version == (24,)
+    assert version == (25,)
     assert {
         "id",
         "record_id",

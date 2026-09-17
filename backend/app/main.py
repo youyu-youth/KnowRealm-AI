@@ -36,6 +36,7 @@ from app.modules.jobs import processing_jobs
 from app.modules.jobs.runner import JobRunner, ManagedWorker
 from app.modules.knowledge_point import knowledge_points
 from app.modules.knowledge_point.worker import knowledge_point_spec
+from app.modules.learning import routes as learning_routes
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.llm.service import (
     CourseBrainModel,
@@ -352,6 +353,7 @@ def create_app(
     )
     app.include_router(courses.router)
     app.include_router(course_brain_routes.router)
+    app.include_router(learning_routes.router)
     app.include_router(audio_imports.router)
     app.include_router(capture_batches.router)
     app.include_router(settings_routes.router)

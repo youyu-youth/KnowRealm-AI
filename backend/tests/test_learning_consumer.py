@@ -34,6 +34,8 @@ async def seed_event(
     score: float | None = None,
     difficulty: str | None = None,
     metadata: dict[str, object] | None = None,
+    record_id: str | None = None,
+    concept_id: str | None = None,
 ) -> str:
     """经统一写入函数落一条学习事件，返回事件 id（消费断言坐标）。"""
     async with session_factory() as session, session.begin():
@@ -49,11 +51,72 @@ async def seed_event(
             result=result,
             score=score,
             difficulty=difficulty,
+            record_id=record_id,
+            concept_id=concept_id,
         )
         event_id = await session.scalar(
             select(LearningEvent.id).where(LearningEvent.idempotency_key == idempotency_key)
         )
     return cast(str, event_id)
+
+
+async def seed_mastery_subject(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    course_id: str = "course-1",
+    record_id: str = "record-1",
+    concept_id: str = "concept-1",
+) -> None:
+    """种课程 / 未删除记录 / 已确认概念：Mastery 重算的完整前置。"""
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO courses (id, name, learning_context, education_stage, depth, "
+                "course_type, description, hot_words, status, created_at, updated_at, deleted_at) "
+                "VALUES (:course_id, '操作系统', 'SCHOOL', 'UNDERGRADUATE', NULL, NULL, NULL, "
+                "'[]', 'ACTIVE', :now, :now, NULL)"
+            ),
+            {"course_id": course_id, "now": OCCURRED_TEXT},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO records (id, course_id, capture_type, title, status, duration_ms, "
+                "summary_confirmed_at, created_at, updated_at, deleted_at) "
+                "VALUES (:record_id, :course_id, 'DOCUMENT_IMPORT', '进程调度', 'COMPLETED', 0, "
+                ":now, :now, :now, NULL)"
+            ),
+            {"record_id": record_id, "course_id": course_id, "now": OCCURRED_TEXT},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO concepts (id, course_id, canonical_name, normalized_name, "
+                "description, concept_type, importance, status, source, created_at, updated_at) "
+                "VALUES (:concept_id, :course_id, '进程调度', '进程调度', '', 'TERM', 3, "
+                "'CONFIRMED', 'AI_EXTRACTED', :now, :now)"
+            ),
+            {"concept_id": concept_id, "course_id": course_id, "now": OCCURRED_TEXT},
+        )
+
+
+async def fetch_mastery(
+    session_factory: async_sessionmaker[AsyncSession], concept_id: str
+) -> dict[str, object] | None:
+    async with session_factory() as session:
+        row = (
+            (
+                await session.execute(
+                    text(
+                        "SELECT mastery_score, mastery_confidence, evidence_count, "
+                        "algorithm_version FROM user_concept_mastery "
+                        "WHERE concept_id = :concept_id"
+                    ),
+                    {"concept_id": concept_id},
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+    return None if row is None else dict(row)
 
 
 async def fetch_evidence(
@@ -164,12 +227,84 @@ async def test_run_once_maps_events_per_mapping_table(tmp_path: Path) -> None:
 
     # 交卷不产证据（双计规避）；未映射类型不产证据。
     assert completed_id not in by_event
-    # 本期恒 NULL 字段与行为时刻透传。
+    # Event 未带 Concept 时证据归属保持为空；source_anchor 未回填；行为时刻透传。
     for row in evidence:
         assert row["course_id"] == "course-1"
         assert row["concept_id"] is None
         assert row["source_anchor_id"] is None
         assert row["occurred_at"] == OCCURRED_TEXT
+
+
+@pytest.mark.anyio
+async def test_event_concept_is_copied_verbatim_and_triggers_mastery_recompute(
+    tmp_path: Path,
+) -> None:
+    """票 02：证据复制 Event 已固化的 concept_id，并由消费轮触发全量重算。"""
+    db_path = tmp_path / "knowrealm.db"
+    await run_migrations(db_path)
+    _engine, session_factory = create_database(db_path)
+    await seed_mastery_subject(session_factory)
+    event_id = await seed_event(
+        session_factory,
+        idempotency_key="quiz-answered:quiz-1",
+        event_type="QUIZ_ANSWERED",
+        result="CORRECT",
+        score=1.0,
+        record_id="record-1",
+        concept_id="concept-1",
+    )
+
+    consumer = EvidenceConsumer(session_factory)
+    await consumer.run_once()
+
+    evidence = await fetch_evidence(session_factory)
+    assert len(evidence) == 1
+    assert evidence[0]["event_id"] == event_id
+    assert evidence[0]["concept_id"] == "concept-1"
+    snapshot = await fetch_mastery(session_factory, "concept-1")
+    assert snapshot is not None
+    assert snapshot["evidence_count"] == 1
+    assert snapshot["mastery_score"] is None
+    assert snapshot["algorithm_version"] == "mastery_v1"
+
+
+@pytest.mark.anyio
+async def test_mastery_recompute_failure_keeps_persisted_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """重算失败不回滚已落证据：按概念有限重试后吞错记日志，主流程与证据完整。"""
+    db_path = tmp_path / "knowrealm.db"
+    await run_migrations(db_path)
+    _engine, session_factory = create_database(db_path)
+    await seed_mastery_subject(session_factory)
+    await seed_event(
+        session_factory,
+        idempotency_key="quiz-answered:quiz-1",
+        event_type="QUIZ_ANSWERED",
+        result="CORRECT",
+        score=1.0,
+        record_id="record-1",
+        concept_id="concept-1",
+    )
+    attempts = 0
+
+    async def failing_recompute(*_args: object, **_kwargs: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("mastery boom")
+
+    monkeypatch.setattr("app.modules.learning.service._recompute_concept", failing_recompute)
+    consumer = EvidenceConsumer(session_factory)
+
+    processed = await consumer.run_once()
+
+    # 概念级失败被 MasteryService 重试并吞掉：证据照常保留，快照缺席等待恢复。
+    assert processed == 1
+    assert consumer.failed_conversion_count == 0
+    assert attempts == 3
+    evidence = await fetch_evidence(session_factory)
+    assert [row["concept_id"] for row in evidence] == ["concept-1"]
+    assert await fetch_mastery(session_factory, "concept-1") is None
 
 
 @pytest.mark.anyio

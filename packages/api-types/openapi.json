@@ -1345,6 +1345,106 @@
         "title": "ConceptKpSourceOut",
         "type": "object"
       },
+      "ConceptMasteryOut": {
+        "properties": {
+          "canonical_name": {
+            "title": "Canonical Name",
+            "type": "string"
+          },
+          "concept_id": {
+            "title": "Concept Id",
+            "type": "string"
+          },
+          "concept_type": {
+            "title": "Concept Type",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MasteryConfidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Confidence 分档（证据充足程度）；数据不足时为 null"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "evidence_count": {
+            "description": "参与当前算法版本的有效 Evidence 条数（窗口内）",
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "importance": {
+            "title": "Importance",
+            "type": "integer"
+          },
+          "last_practiced_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次有效作答时间",
+            "title": "Last Practiced At"
+          },
+          "last_verified_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近一次答对时间",
+            "title": "Last Verified At"
+          },
+          "mastery_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最近 12 条窗口加权分数 0~1；数据不足时为 null，不返回 0",
+            "title": "Mastery Score"
+          },
+          "negative_evidence_count": {
+            "title": "Negative Evidence Count",
+            "type": "integer"
+          },
+          "positive_evidence_count": {
+            "title": "Positive Evidence Count",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MasteryStatus"
+          }
+        },
+        "required": [
+          "concept_id",
+          "canonical_name",
+          "description",
+          "concept_type",
+          "importance",
+          "status",
+          "evidence_count",
+          "positive_evidence_count",
+          "negative_evidence_count"
+        ],
+        "title": "ConceptMasteryOut",
+        "type": "object"
+      },
       "ConceptSource": {
         "enum": [
           "AI_EXTRACTED",
@@ -1602,6 +1702,50 @@
           "updated_at"
         ],
         "title": "CourseDetailOut",
+        "type": "object"
+      },
+      "CourseMasteryOut": {
+        "properties": {
+          "concepts": {
+            "description": "按状态优先级排序（WEAK → LEARNING → 数据不足 → STABLE）；不返回课程平均分",
+            "items": {
+              "$ref": "#/components/schemas/ConceptMasteryOut"
+            },
+            "title": "Concepts",
+            "type": "array"
+          },
+          "confirmed_concept_count": {
+            "description": "活跃 CONFIRMED Concept 总数",
+            "title": "Confirmed Concept Count",
+            "type": "integer"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "coverage": {
+            "description": "证据覆盖率 = 有证据 Concept / 已确认 Concept，0~1",
+            "title": "Coverage",
+            "type": "number"
+          },
+          "status_counts": {
+            "$ref": "#/components/schemas/MasteryStatusCountsOut"
+          },
+          "verified_concept_count": {
+            "description": "至少有一条有效证据的 Concept 数",
+            "title": "Verified Concept Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_id",
+          "confirmed_concept_count",
+          "verified_concept_count",
+          "coverage",
+          "status_counts",
+          "concepts"
+        ],
+        "title": "CourseMasteryOut",
         "type": "object"
       },
       "CourseOut": {
@@ -2522,6 +2666,54 @@
           "daily"
         ],
         "title": "LlmUsageOut",
+        "type": "object"
+      },
+      "MasteryConfidence": {
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH"
+        ],
+        "title": "MasteryConfidence",
+        "type": "string"
+      },
+      "MasteryStatus": {
+        "description": "V1 四态：AT_RISK / MISCONCEPTION_RISK 留给 Forgetting 与 Misconception。",
+        "enum": [
+          "NOT_ENOUGH_DATA",
+          "WEAK",
+          "LEARNING",
+          "STABLE"
+        ],
+        "title": "MasteryStatus",
+        "type": "string"
+      },
+      "MasteryStatusCountsOut": {
+        "properties": {
+          "learning": {
+            "title": "Learning",
+            "type": "integer"
+          },
+          "not_enough_data": {
+            "title": "Not Enough Data",
+            "type": "integer"
+          },
+          "stable": {
+            "title": "Stable",
+            "type": "integer"
+          },
+          "weak": {
+            "title": "Weak",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "not_enough_data",
+          "weak",
+          "learning",
+          "stable"
+        ],
+        "title": "MasteryStatusCountsOut",
         "type": "object"
       },
       "MergeDecision": {
@@ -8544,6 +8736,112 @@
         "summary": "List Course Brain Relations",
         "tags": [
           "course-brain"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/mastery": {
+      "get": {
+        "operationId": "get_course_mastery_api_courses__course_id__mastery_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "按掌握状态筛选概念列表；缺省返回全部四态",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MasteryStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "按掌握状态筛选概念列表；缺省返回全部四态",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseMasteryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Course Mastery",
+        "tags": [
+          "mastery"
         ]
       }
     },

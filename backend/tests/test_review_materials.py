@@ -239,7 +239,7 @@ async def test_migration_0017_adds_review_materials_and_single_active_job(
             )
         ).fetchone()
 
-    assert version == (24,)
+    assert version == (25,)
     assert columns == {
         "id",
         "record_id",

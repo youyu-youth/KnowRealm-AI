@@ -311,6 +311,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{course_id}/mastery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Course Mastery */
+        get: operations["get_course_mastery_api_courses__course_id__mastery_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/quiz-tests": {
         parameters: {
             query?: never;
@@ -2188,6 +2205,46 @@ export interface components {
             /** Relevance */
             relevance: number;
         };
+        /** ConceptMasteryOut */
+        ConceptMasteryOut: {
+            /** Canonical Name */
+            canonical_name: string;
+            /** Concept Id */
+            concept_id: string;
+            /** Concept Type */
+            concept_type: string;
+            /** @description Confidence 分档（证据充足程度）；数据不足时为 null */
+            confidence?: components["schemas"]["MasteryConfidence"] | null;
+            /** Description */
+            description: string;
+            /**
+             * Evidence Count
+             * @description 参与当前算法版本的有效 Evidence 条数（窗口内）
+             */
+            evidence_count: number;
+            /** Importance */
+            importance: number;
+            /**
+             * Last Practiced At
+             * @description 最近一次有效作答时间
+             */
+            last_practiced_at?: string | null;
+            /**
+             * Last Verified At
+             * @description 最近一次答对时间
+             */
+            last_verified_at?: string | null;
+            /**
+             * Mastery Score
+             * @description 最近 12 条窗口加权分数 0~1；数据不足时为 null，不返回 0
+             */
+            mastery_score?: number | null;
+            /** Negative Evidence Count */
+            negative_evidence_count: number;
+            /** Positive Evidence Count */
+            positive_evidence_count: number;
+            status: components["schemas"]["MasteryStatus"];
+        };
         /**
          * ConceptSource
          * @enum {string}
@@ -2287,6 +2344,32 @@ export interface components {
             status: components["schemas"]["CourseStatus"];
             /** Updated At */
             updated_at: string;
+        };
+        /** CourseMasteryOut */
+        CourseMasteryOut: {
+            /**
+             * Concepts
+             * @description 按状态优先级排序（WEAK → LEARNING → 数据不足 → STABLE）；不返回课程平均分
+             */
+            concepts: components["schemas"]["ConceptMasteryOut"][];
+            /**
+             * Confirmed Concept Count
+             * @description 活跃 CONFIRMED Concept 总数
+             */
+            confirmed_concept_count: number;
+            /** Course Id */
+            course_id: string;
+            /**
+             * Coverage
+             * @description 证据覆盖率 = 有证据 Concept / 已确认 Concept，0~1
+             */
+            coverage: number;
+            status_counts: components["schemas"]["MasteryStatusCountsOut"];
+            /**
+             * Verified Concept Count
+             * @description 至少有一条有效证据的 Concept 数
+             */
+            verified_concept_count: number;
         };
         /** CourseOut */
         CourseOut: {
@@ -2655,6 +2738,28 @@ export interface components {
             daily: components["schemas"]["LlmUsageDailyPointOut"][];
             /** Items */
             items: components["schemas"]["LlmUsageItemOut"][];
+        };
+        /**
+         * MasteryConfidence
+         * @enum {string}
+         */
+        MasteryConfidence: "LOW" | "MEDIUM" | "HIGH";
+        /**
+         * MasteryStatus
+         * @description V1 四态：AT_RISK / MISCONCEPTION_RISK 留给 Forgetting 与 Misconception。
+         * @enum {string}
+         */
+        MasteryStatus: "NOT_ENOUGH_DATA" | "WEAK" | "LEARNING" | "STABLE";
+        /** MasteryStatusCountsOut */
+        MasteryStatusCountsOut: {
+            /** Learning */
+            learning: number;
+            /** Not Enough Data */
+            not_enough_data: number;
+            /** Stable */
+            stable: number;
+            /** Weak */
+            weak: number;
         };
         /**
          * MergeDecision
@@ -5586,6 +5691,69 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_course_mastery_api_courses__course_id__mastery_get: {
+        parameters: {
+            query?: {
+                /** @description 按掌握状态筛选概念列表；缺省返回全部四态 */
+                status?: components["schemas"]["MasteryStatus"] | null;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CourseMasteryOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
