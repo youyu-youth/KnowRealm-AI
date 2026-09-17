@@ -58,7 +58,7 @@ app/
 
 ### 迁移纪律
 
-`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0024**（Quiz 主概念：`quizzes.concept_id` 可空列 + `SET NULL` 外键 + `idx_quizzes_concept` 索引）；`tests/test_records.py` 等 13 个测试文件断言 `user_version == 24`，**新增迁移需同步这些断言**（`test_archive.py` 走 `supported_user_version()` 动态断言，无需改）。
+`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0025**（Concept Mastery 快照 `user_concept_mastery`：每 Concept 唯一 + `concept_id`/`course_id` 级联清理 + 分数/置信度 0~1 CHECK）；`tests/test_records.py` 等 13 个测试文件断言 `user_version == 25`，**新增迁移需同步这些断言**（`test_archive.py` 走 `supported_user_version()` 动态断言，无需改）。
 
 ### 令牌校验
 
