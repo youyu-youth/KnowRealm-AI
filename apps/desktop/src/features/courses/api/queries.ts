@@ -31,3 +31,16 @@ export function useCourseMastery(courseId: string, status?: MasteryStatus) {
     placeholderData: keepPreviousData,
   });
 }
+
+/** Concept 掌握详情：选中概念时才发起查询（Dialog 打开即选中）。 */
+export function useConceptMasteryDetail(
+  courseId: string,
+  conceptId: string | null,
+) {
+  return useQuery({
+    queryKey: courseKeys.masteryDetail(courseId, conceptId ?? ""),
+    // enabled 已排除 null；queryFn 签名要求非空参数，故收窄。
+    queryFn: () => courseApi.masteryDetail(courseId, conceptId as string),
+    enabled: conceptId !== null,
+  });
+}

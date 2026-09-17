@@ -105,6 +105,30 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/mastery`, ({ params }) =>
     HttpResponse.json(emptyCourseMastery(String(params.courseId))),
   ),
+  // 概念掌握详情默认态：数据不足空详情（测试按需覆盖为含 Evidence 的快照）。
+  http.get(
+    `${TEST_SIDECAR_URL}/api/courses/:courseId/mastery/concepts/:conceptId`,
+    ({ params }) =>
+      HttpResponse.json({
+        snapshot: {
+          concept_id: String(params.conceptId),
+          canonical_name: "",
+          description: "",
+          concept_type: "TERM",
+          importance: 3,
+          status: "NOT_ENOUGH_DATA",
+          mastery_score: null,
+          confidence: null,
+          evidence_count: 0,
+          positive_evidence_count: 0,
+          negative_evidence_count: 0,
+          last_practiced_at: null,
+          last_verified_at: null,
+        },
+        algorithm_version: "mastery_v1",
+        evidences: [],
+      }),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/brain/concepts`, () =>
     HttpResponse.json([]),
   ),

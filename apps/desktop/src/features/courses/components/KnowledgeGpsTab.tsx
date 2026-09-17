@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
@@ -10,8 +11,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CourseDetail, MasteryStatus } from "@/features/courses/api/types";
+import type {
+  ConceptMastery,
+  CourseDetail,
+  MasteryStatus,
+} from "@/features/courses/api/types";
 import { useCourseMastery } from "@/features/courses/api/queries";
+import { ConceptMasteryDetailDialog } from "@/features/courses/components/ConceptMasteryDetailDialog";
 import { ConceptMasteryList } from "@/features/courses/components/ConceptMasteryList";
 import { MasteryStatusCounts } from "@/features/courses/components/MasteryStatusCounts";
 import {
@@ -22,7 +28,7 @@ import {
 
 const ALL_FILTER = "ALL";
 
-/** 知识GPS：真实 Concept Mastery 列表 + 状态筛选（URL 可恢复）。 */
+/** 知识GPS：真实 Concept Mastery 列表 + 状态筛选（URL 可恢复）；行可下钻详情。 */
 export function KnowledgeGpsTab({
   course,
   statusFilter,
@@ -36,6 +42,9 @@ export function KnowledgeGpsTab({
 }) {
   const { t } = useTranslation();
   const mastery = useCourseMastery(course.id, statusFilter);
+  const [selectedConcept, setSelectedConcept] = useState<ConceptMastery | null>(
+    null,
+  );
   const filterItems = [
     { value: ALL_FILTER, label: t("spaces.courseDetail.gps.filterAll") },
     ...masteryStatuses.map((status) => ({
@@ -143,11 +152,23 @@ export function KnowledgeGpsTab({
                 {t("spaces.courseDetail.gps.filterEmpty")}
               </p>
             ) : (
-              <ConceptMasteryList concepts={mastery.data.concepts} />
+              <ConceptMasteryList
+                concepts={mastery.data.concepts}
+                onSelect={setSelectedConcept}
+              />
             )}
           </div>
         )
       ) : null}
+
+      <ConceptMasteryDetailDialog
+        courseId={course.id}
+        concept={selectedConcept}
+        open={selectedConcept !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedConcept(null);
+        }}
+      />
     </SurfaceCard>
   );
 }

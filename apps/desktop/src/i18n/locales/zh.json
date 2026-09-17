@@ -631,7 +631,27 @@
         "retry": "重新读取",
         "emptyTitle": "还没有已确认的概念",
         "emptyDescription": "先构建课程脑图并确认核心概念，作答后即可在此积累真实的掌握度。",
-        "emptyAction": "打开课程脑图"
+        "emptyAction": "打开课程脑图",
+        "detail": {
+          "description": "只展示参与当前算法版本的有效作答证据",
+          "loading": "正在读取掌握详情",
+          "errorTitle": "掌握详情暂时无法读取",
+          "retry": "重新读取",
+          "confidenceLabel": "置信度",
+          "evidenceCountLabel": "参与计算证据",
+          "lastVerifiedLabel": "最近验证",
+          "lastPracticedLabel": "最近作答",
+          "evidenceListLabel": "参与计算的作答证据",
+          "evidenceEmpty": "暂无参与计算的作答证据",
+          "sourceQuiz": "习题 · {{title}}",
+          "sourceTest": "模拟测试 · 第 {{sequence}} 题",
+          "sourceTestPlain": "模拟测试",
+          "sourceUnknown": "来源信息不足",
+          "resultCorrect": "答对",
+          "resultWrong": "答错",
+          "resultPartial": "部分正确",
+          "openSource": "查看来源"
+        }
       },
       "mastery": {
         "NOT_ENOUGH_DATA": "数据不足",

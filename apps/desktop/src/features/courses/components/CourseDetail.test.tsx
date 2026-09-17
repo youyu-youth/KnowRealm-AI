@@ -20,6 +20,8 @@ type CourseDetail = components["schemas"]["CourseDetailOut"];
 type RecordOut = components["schemas"]["RecordOut"];
 type CourseMastery = components["schemas"]["CourseMasteryOut"];
 type ConceptMastery = components["schemas"]["ConceptMasteryOut"];
+type ConceptMasteryDetail =
+  components["schemas"]["ConceptMasteryDetailOut"];
 
 const COURSE_ID = "11111111-1111-4111-8111-111111111111";
 const DETAIL_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}`;
@@ -379,6 +381,183 @@ describe("课程详情与编辑", () => {
       await screen.findByRole("list", { name: "概念掌握列表" }),
     ).toBeInTheDocument();
     expect(calls).toBeGreaterThanOrEqual(4);
+  });
+
+  it("点击概念行打开掌握详情，展示快照与参与计算的 Evidence 来源", async () => {
+    const detailPayload: ConceptMasteryDetail = {
+      snapshot: weakConcept,
+      algorithm_version: "mastery_v1",
+      evidences: [
+        {
+          evidence_id: "evidence-quiz-1",
+          score: 1,
+          result: "CORRECT",
+          occurred_at: "2026-09-16T09:00:00.000000Z",
+          source: {
+            source_type: "QUIZ",
+            record_id: "record-quiz-1",
+            record_title: "进程与线程",
+            quiz_id: "quiz-1",
+          },
+        },
+        {
+          evidence_id: "evidence-test-1",
+          score: 0,
+          result: "WRONG",
+          occurred_at: "2026-09-15T10:00:00.000000Z",
+          source: {
+            source_type: "QUIZ_TEST",
+            test_id: "test-1",
+            sequence_no: 2,
+          },
+        },
+        {
+          evidence_id: "evidence-orphan-1",
+          score: 0.5,
+          result: null,
+          occurred_at: "2026-09-14T10:00:00.000000Z",
+          source: null,
+        },
+      ],
+    };
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(MASTERY_URL, () => HttpResponse.json(masteryPayload)),
+      http.get(
+        `${DETAIL_URL}/mastery/concepts/${weakConcept.concept_id}`,
+        () => HttpResponse.json(detailPayload),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=gps`);
+
+    const list = await screen.findByRole("list", { name: "概念掌握列表" });
+    fireEvent.click(within(list).getByText("进程调度"));
+
+    const dialog = await screen.findByRole("dialog", { name: "进程调度" });
+    expect(await within(dialog).findByText("待加强")).toBeInTheDocument();
+    expect(within(dialog).getByText("33%")).toBeInTheDocument();
+    expect(within(dialog).getByText("置信度 高")).toBeInTheDocument();
+    expect(within(dialog).getByText("参与计算证据")).toBeInTheDocument();
+    // 两类来源：普通 Quiz 带宿主记录标题，模拟测试带题号。
+    expect(
+      within(dialog).getByText("习题 · 进程与线程"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("答对")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("模拟测试 · 第 2 题"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("答错")).toBeInTheDocument();
+    // 定位能力不足的 Evidence 只保留来源说明与时间，不生成假链接。
+    expect(within(dialog).getByText("来源信息不足")).toBeInTheDocument();
+    expect(
+      within(dialog).getAllByRole("button", { name: "查看来源" }),
+    ).toHaveLength(2);
+  });
+
+  it("Evidence 来源可跳回普通习题与模拟测试结果页", async () => {
+    const detailPayload: ConceptMasteryDetail = {
+      snapshot: weakConcept,
+      algorithm_version: "mastery_v1",
+      evidences: [
+        {
+          evidence_id: "evidence-quiz-1",
+          score: 1,
+          result: "CORRECT",
+          occurred_at: "2026-09-16T09:00:00.000000Z",
+          source: {
+            source_type: "QUIZ",
+            record_id: "record-quiz-1",
+            record_title: "进程与线程",
+            quiz_id: "quiz-1",
+          },
+        },
+        {
+          evidence_id: "evidence-test-1",
+          score: 0,
+          result: "WRONG",
+          occurred_at: "2026-09-15T10:00:00.000000Z",
+          source: {
+            source_type: "QUIZ_TEST",
+            test_id: "test-1",
+            sequence_no: 2,
+          },
+        },
+      ],
+    };
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(MASTERY_URL, () => HttpResponse.json(masteryPayload)),
+      http.get(
+        `${DETAIL_URL}/mastery/concepts/${weakConcept.concept_id}`,
+        () => HttpResponse.json(detailPayload),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=gps`);
+
+    const list = await screen.findByRole("list", { name: "概念掌握列表" });
+    fireEvent.click(within(list).getByText("进程调度"));
+
+    const dialog = await screen.findByRole("dialog", { name: "进程调度" });
+    const sources = await within(dialog).findAllByRole("button", {
+      name: "查看来源",
+    });
+    // 第一条（时间倒序最晚）是普通 Quiz → 记录页习题区。
+    fireEvent.click(sources[0]);
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe("/records/record-quiz-1"),
+    );
+    expect(window.location.search).toBe("?tab=quiz");
+
+    // 第二条是模拟测试逐题 → 该场测试结果页。
+    window.history.replaceState(null, "", `${ROUTE_PATH}?tab=gps`);
+    render(<App />);
+    const listAgain = await screen.findByRole("list", {
+      name: "概念掌握列表",
+    });
+    fireEvent.click(within(listAgain).getByText("进程调度"));
+    const dialogAgain = await screen.findByRole("dialog", {
+      name: "进程调度",
+    });
+    const sourcesAgain = await within(dialogAgain).findAllByRole("button", {
+      name: "查看来源",
+    });
+    fireEvent.click(sourcesAgain[1]);
+
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(
+        `/spaces/${COURSE_ID}/tests/test-1`,
+      ),
+    );
+  });
+
+  it("数据不足的概念详情给出空 Evidence 空态", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(MASTERY_URL, () => HttpResponse.json(masteryPayload)),
+      http.get(
+        `${DETAIL_URL}/mastery/concepts/${notEnoughConcept.concept_id}`,
+        () =>
+          HttpResponse.json({
+            snapshot: notEnoughConcept,
+            algorithm_version: "mastery_v1",
+            evidences: [],
+          } satisfies ConceptMasteryDetail),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=gps`);
+
+    const list = await screen.findByRole("list", { name: "概念掌握列表" });
+    fireEvent.click(within(list).getByText("虚拟内存"));
+
+    const dialog = await screen.findByRole("dialog", { name: "虚拟内存" });
+    expect(
+      await within(dialog).findByText("数据不足"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("暂无参与计算的作答证据")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: "查看来源" }),
+    ).not.toBeInTheDocument();
   });
 
   it("关注为本地界面态切换且不发起请求", async () => {

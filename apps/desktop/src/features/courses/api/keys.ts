@@ -14,6 +14,8 @@ export const courseKeys = {
     [...courseKeys.all, "detail", courseId] as const,
   mastery: (courseId: string, query: CourseMasteryQuery = {}) =>
     [...courseKeys.all, "mastery", courseId, query] as const,
+  masteryDetail: (courseId: string, conceptId: string) =>
+    [...courseKeys.all, "mastery", courseId, "concept", conceptId] as const,
 };
 
 export const courseBrainKeys = {

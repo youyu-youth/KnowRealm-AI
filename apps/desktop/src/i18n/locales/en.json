@@ -632,7 +632,27 @@
         "retry": "Reload",
         "emptyTitle": "No confirmed concepts yet",
         "emptyDescription": "Build the course brain and confirm core concepts; answers then accumulate real mastery here.",
-        "emptyAction": "Open course brain"
+        "emptyAction": "Open course brain",
+        "detail": {
+          "description": "Only valid answers that count toward the current algorithm version are shown",
+          "loading": "Reading mastery details",
+          "errorTitle": "Mastery details are unavailable right now",
+          "retry": "Reload",
+          "confidenceLabel": "Confidence",
+          "evidenceCountLabel": "Counting evidence",
+          "lastVerifiedLabel": "Last verified",
+          "lastPracticedLabel": "Last answered",
+          "evidenceListLabel": "Evidence that counts toward mastery",
+          "evidenceEmpty": "No counted evidence yet",
+          "sourceQuiz": "Quiz · {{title}}",
+          "sourceTest": "Mock test · question {{sequence}}",
+          "sourceTestPlain": "Mock test",
+          "sourceUnknown": "Source details unavailable",
+          "resultCorrect": "Correct",
+          "resultWrong": "Incorrect",
+          "resultPartial": "Partially correct",
+          "openSource": "View source"
+        }
       },
       "mastery": {
         "NOT_ENOUGH_DATA": "Not enough data",
