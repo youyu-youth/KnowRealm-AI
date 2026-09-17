@@ -183,6 +183,33 @@ function ExamPaper({
     onSuccess: (result) =>
       queryClient.setQueryData(quizTestKeys.detail(data.id), result),
   });
+  /** 主概念变更后按 quiz_id 就地更新题位缓存，再失效拉取服务端权威状态 */
+  const applyConcept = (
+    quizId: string,
+    concept: { conceptId: string | null; conceptName: string | null },
+  ) => {
+    queryClient.setQueryData<QuizTestDetail>(
+      quizTestKeys.detail(data.id),
+      (current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((item) =>
+                item.quiz_id === quizId
+                  ? {
+                      ...item,
+                      concept_id: concept.conceptId,
+                      concept_name: concept.conceptName,
+                    }
+                  : item,
+              ),
+            }
+          : current,
+    );
+    void queryClient.invalidateQueries({
+      queryKey: quizTestKeys.detail(data.id),
+    });
+  };
   const abandon = useMutation({
     mutationFn: () => quizTestApi.abandon(data.id),
     onSuccess: async () => {
@@ -276,6 +303,7 @@ function ExamPaper({
     <TestQuestionCard
       key={item.id}
       item={item}
+      courseId={courseId}
       locked={!answering}
       pending={pendingItemId === item.id}
       reviewing={reviewing}
@@ -284,6 +312,7 @@ function ExamPaper({
         setDrafts((current) => ({ ...current, [itemId]: value }))
       }
       onSubmit={(itemId, value) => answer.mutate({ itemId, answer: value })}
+      onConceptUpdated={applyConcept}
     />
   );
 

@@ -841,4 +841,92 @@ describe("习题页签", () => {
     expect(await screen.findByText("上次生成没有成功")).toBeVisible();
     expect(screen.getByRole("button", { name: "重新生成" })).toBeVisible();
   });
+
+  it("未作答习题展示可编辑主概念选择器，选择后写入并回显", async () => {
+    const CONCEPT_ID = "77777777-7777-4777-8777-777777777771";
+    const quiz = activateQuiz(quizItem());
+    let current = quiz;
+    const conceptBodies: unknown[] = [];
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          quizReadOut({ action_required: "NONE", items: [current] }),
+        ),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}/brain/concepts`,
+        () =>
+          HttpResponse.json([
+            {
+              id: CONCEPT_ID,
+              course_id: COURSE_ID,
+              canonical_name: "进程调度",
+              normalized_name: "进程调度",
+              description: "",
+              concept_type: "TERM",
+              importance: 3,
+              status: "CONFIRMED",
+              source: "AI_EXTRACTED",
+              occurrence_count: 0,
+              record_count: 0,
+              stale_archivable: false,
+              created_at: "2026-09-01T08:00:00.000000Z",
+              updated_at: "2026-09-01T08:00:00.000000Z",
+            },
+          ]),
+      ),
+      http.put(`${QUIZZES_URL}/${quiz.id}/concept`, async ({ request }) => {
+        conceptBodies.push(await request.json());
+        current = {
+          ...quiz,
+          concept_id: CONCEPT_ID,
+          concept_name: "进程调度",
+        };
+        return HttpResponse.json(current);
+      }),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    const trigger = await screen.findByRole("combobox", { name: "主概念" });
+    await waitFor(() => expect(trigger).toBeEnabled());
+    fireEvent.click(trigger);
+    const option = await screen.findByRole("option", { name: "进程调度" });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(conceptBodies).toEqual([{ concept_id: CONCEPT_ID }]),
+    );
+    await waitFor(() => expect(trigger).toHaveTextContent("进程调度"));
+  });
+
+  it("已作答习题展示只读主概念归属，不再提供选择器", async () => {
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(completedRecord)),
+      http.get(QUIZZES_URL, () =>
+        HttpResponse.json(
+          quizReadOut({
+            action_required: "NONE",
+            items: [
+              activateQuiz({
+                ...quizItem(),
+                concept_id: "77777777-7777-4777-8777-777777777771",
+                concept_name: "进程调度",
+                user_answer: 0,
+                answer_result: "CORRECT",
+                answered_at: "2026-08-25T13:00:00.000000Z",
+              }),
+            ],
+          }),
+        ),
+      ),
+    );
+    renderAt(`${ROUTE_PATH}?tab=quiz`);
+
+    expect(await screen.findByText("主概念：进程调度")).toBeVisible();
+    expect(
+      screen.queryByRole("combobox", { name: "主概念" }),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -60,6 +60,7 @@ const summary: QuizTestSummary = {
 const mcItem: QuizTestItem = {
   id: "item-1",
   quiz_id: "quiz-1",
+  record_id: "record-1",
   sequence_no: 1,
   question_type: "MULTIPLE_CHOICE",
   stem: "进程调度的核心职责是什么？",
@@ -74,6 +75,7 @@ const mcItem: QuizTestItem = {
 const fillBlankItem: QuizTestItem = {
   id: "item-2",
   quiz_id: "quiz-2",
+  record_id: "record-1",
   sequence_no: 2,
   question_type: "FILL_BLANK",
   stem: "线程是____的调度单位。",
@@ -88,6 +90,7 @@ const fillBlankItem: QuizTestItem = {
 const shortItem: QuizTestItem = {
   id: "item-3",
   quiz_id: "quiz-3",
+  record_id: "record-1",
   sequence_no: 3,
   question_type: "SHORT_ANSWER",
   stem: "简述时间片轮转。",
@@ -403,6 +406,7 @@ function completedDetail(): QuizTestDetail {
       {
         id: "item-4",
         quiz_id: "quiz-4",
+        record_id: "record-1",
         sequence_no: 4,
         question_type: "SHORT_ANSWER",
         stem: "简述死锁的四个必要条件。",
@@ -580,5 +584,80 @@ describe("交卷评分与结果页", () => {
     // 放弃态不揭示答案：无正确答案批改行、无成绩摘要侧栏
     expect(screen.queryByText(/正确答案：/)).not.toBeTruthy();
     expect(screen.queryByText(/得分/)).not.toBeTruthy();
+  });
+
+  it("作答前题位可改主概念并回显，已作答题位只读归属", async () => {
+    const CONCEPT_ID = "77777777-7777-4777-8777-777777777771";
+    let paper = detail;
+    const conceptBodies: unknown[] = [];
+    mockPaper();
+    server.use(
+      http.get(TEST_URL, () => HttpResponse.json(paper)),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}/brain/concepts`,
+        () =>
+          HttpResponse.json([
+            {
+              id: CONCEPT_ID,
+              course_id: COURSE_ID,
+              canonical_name: "进程调度",
+              normalized_name: "进程调度",
+              description: "",
+              concept_type: "TERM",
+              importance: 3,
+              status: "CONFIRMED",
+              source: "AI_EXTRACTED",
+              occurrence_count: 0,
+              record_count: 0,
+              stale_archivable: false,
+              created_at: "2026-09-01T08:00:00.000000Z",
+              updated_at: "2026-09-01T08:00:00.000000Z",
+            },
+          ]),
+      ),
+      http.put(
+        `${TEST_SIDECAR_URL}/api/records/${mcItem.record_id}/quizzes/${mcItem.quiz_id}/concept`,
+        async ({ request }) => {
+          conceptBodies.push(await request.json());
+          paper = {
+            ...paper,
+            items: paper.items.map((item) =>
+              item.quiz_id === mcItem.quiz_id
+                ? { ...item, concept_id: CONCEPT_ID, concept_name: "进程调度" }
+                : item,
+            ),
+          };
+          return HttpResponse.json({
+            concept_id: CONCEPT_ID,
+            concept_name: "进程调度",
+          });
+        },
+      ),
+    );
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=single`);
+
+    // 作答前：单题档题位出现可编辑选择器
+    const trigger = await screen.findByRole("combobox", { name: "主概念" });
+    await vi.waitFor(() => expect(trigger).toBeEnabled());
+    fireEvent.click(trigger);
+    const option = await screen.findByRole("option", { name: "进程调度" });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    await vi.waitFor(() =>
+      expect(conceptBodies).toEqual([{ concept_id: CONCEPT_ID }]),
+    );
+    await vi.waitFor(() => expect(trigger).toHaveTextContent("进程调度"));
+
+    // 作答后：题位变为只读归属，不再提供选择器
+    cleanup();
+    server.use(
+      http.get(TEST_URL, () => HttpResponse.json(answeredAllDetail())),
+    );
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=single`);
+    expect(await screen.findByText("主概念：未归属")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "主概念" }),
+    ).not.toBeInTheDocument();
   });
 });

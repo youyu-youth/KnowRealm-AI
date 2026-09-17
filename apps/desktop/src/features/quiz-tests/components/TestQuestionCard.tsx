@@ -15,9 +15,12 @@ import type {
   QuizTestAnswer,
   QuizTestItem,
 } from "@/features/quiz-tests/api/types";
+import { QuizConceptField } from "@/features/records/components/QuizConceptField";
 
 type TestQuestionCardProps = {
   item: QuizTestItem;
+  /** 记录所属课程：主概念选择器的候选来源 */
+  courseId: string | null;
   /** 测试整体不再可作答（已交卷 / 评分中 / 已放弃） */
   locked: boolean;
   /** 本题提交请求在途 */
@@ -28,16 +31,22 @@ type TestQuestionCardProps = {
   draft?: QuizTestAnswer;
   onDraftChange: (itemId: string, value: QuizTestAnswer) => void;
   onSubmit: (itemId: string, answer: QuizTestAnswer) => void;
+  onConceptUpdated: (
+    quizId: string,
+    concept: { conceptId: string | null; conceptName: string | null },
+  ) => void;
 };
 
 export function TestQuestionCard({
   item,
+  courseId,
   locked,
   pending,
   reviewing,
   draft,
   onDraftChange,
   onSubmit,
+  onConceptUpdated,
 }: TestQuestionCardProps) {
   const { t } = useTranslation();
   const answered = item.answered_at !== null;
@@ -57,6 +66,15 @@ export function TestQuestionCard({
             <span>{t(`record.detail.quiz.difficulty.${item.difficulty}`)}</span>
             {item.result ? <VerdictTag result={item.result} /> : null}
           </div>
+          <QuizConceptField
+            recordId={item.record_id}
+            quizId={item.quiz_id}
+            courseId={courseId}
+            conceptId={item.concept_id}
+            conceptName={item.concept_name}
+            editable={!disabled}
+            onUpdated={(concept) => onConceptUpdated(item.quiz_id, concept)}
+          />
           {item.question_type === "FILL_BLANK" ? null : (
             <p className="text-body text-ink mt-2 break-words">{item.stem}</p>
           )}

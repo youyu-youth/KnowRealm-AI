@@ -354,6 +354,7 @@ export function RecordDetailPage({
         >
           <QuizPanel
             recordId={recordId}
+            courseId={detail.course_id}
             onOpenSummary={() => onTabChange("summary")}
           />
         </TabsContent>

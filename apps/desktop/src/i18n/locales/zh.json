@@ -1257,6 +1257,16 @@
           "MEDIUM": "中等",
           "HARD": "困难"
         },
+        "concept": {
+          "label": "主概念",
+          "placeholder": "选择主概念",
+          "none": "未归属",
+          "readonly": "主概念：{{name}}",
+          "clear": "清空",
+          "lockedHint": "首次作答后主概念固定",
+          "emptyCourse": "课程暂无已确认概念，主概念将保持未归属",
+          "loadError": "主概念列表加载失败"
+        },
         "correctAnswer": "正确答案：{{answer}}",
         "referenceAnswer": "参考答案：{{answer}}",
         "explanation": "解析：{{detail}}",
@@ -2098,6 +2108,8 @@
     "QUIZ_BATCH_SUPERSEDED": "习题批次已被新批次替代",
     "QUIZ_NOT_ADOPTED": "只有已采用批次的题可以作答",
     "QUIZ_NOT_FOUND": "习题不存在或已删除",
+    "QUIZ_CONCEPT_LOCKED": "已作答习题的主概念不可修改",
+    "QUIZ_CONCEPT_INVALID": "主概念必须是本记录所属课程的已确认概念",
     "QUIZ_NOT_OBJECTIVE": "该题不是客观题",
     "QUIZ_NOT_SHORT_ANSWER": "该题不是简答题",
     "QUIZ_POOL_EMPTY": "课程题库暂无可用习题",

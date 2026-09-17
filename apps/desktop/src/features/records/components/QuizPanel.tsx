@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import type { QueryClient } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { components } from "@knowrealm/api-types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -33,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { QuizOut, QuizReadOut } from "@/features/records/api/types";
+import { QuizConceptField } from "@/features/records/components/QuizConceptField";
 import { settingsApi } from "@/features/settings/api/settings";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { cn } from "@/lib/utils";
@@ -55,10 +57,15 @@ type QuizObjectiveAnswer =
 
 type QuizPanelProps = {
   recordId: string;
+  courseId: string | null;
   onOpenSummary: () => void;
 };
 
-export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
+export function QuizPanel({
+  recordId,
+  courseId,
+  onOpenSummary,
+}: QuizPanelProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -133,6 +140,7 @@ export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
       {draftBatchId ? (
         <QuizCandidateList
           recordId={recordId}
+          courseId={courseId}
           batchId={draftBatchId}
           items={draftItems}
           oldRemainingCount={oldRemainingCount}
@@ -143,6 +151,7 @@ export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
       {activeItems.length ? (
         <ActiveQuizList
           recordId={recordId}
+          courseId={courseId}
           items={activeItems}
           onRegenerate={
             generateAction === "GENERATE" ? () => setDialogOpen(true) : null
@@ -245,12 +254,14 @@ export function QuizPanel({ recordId, onOpenSummary }: QuizPanelProps) {
 
 function QuizCandidateList({
   recordId,
+  courseId,
   batchId,
   items,
   oldRemainingCount,
   canAdopt,
 }: {
   recordId: string;
+  courseId: string | null;
   batchId: string;
   items: QuizOut[];
   oldRemainingCount: number;
@@ -264,6 +275,13 @@ function QuizCandidateList({
     queryClient.invalidateQueries({
       queryKey: recordKeys.quizzes(recordId),
     });
+  const applyConcept = (
+    quizId: string,
+    concept: { conceptId: string | null; conceptName: string | null },
+  ) => {
+    patchQuizConcept(queryClient, recordId, quizId, concept);
+    void invalidate();
+  };
   const discard = useMutation({
     mutationFn: () => recordApi.discardQuizBatch(recordId, batchId),
     onSuccess: () => void invalidate(),
@@ -297,7 +315,17 @@ function QuizCandidateList({
       </div>
       <ol className="mt-4">
         {items.map((item, index) => (
-          <QuizQuestionCard key={item.id} item={item} index={index} />
+          <QuizQuestionCard key={item.id} item={item} index={index}>
+            <QuizConceptField
+              recordId={recordId}
+              quizId={item.id}
+              courseId={courseId}
+              conceptId={item.concept_id}
+              conceptName={item.concept_name}
+              editable
+              onUpdated={(concept) => applyConcept(item.id, concept)}
+            />
+          </QuizQuestionCard>
         ))}
       </ol>
       <div className="border-border mt-8 flex flex-wrap gap-2 border-t pt-6">
@@ -385,11 +413,13 @@ function QuizCandidateList({
 
 function ActiveQuizList({
   recordId,
+  courseId,
   items,
   onRegenerate,
   className,
 }: {
   recordId: string;
+  courseId: string | null;
   items: QuizOut[];
   onRegenerate: (() => void) | null;
   className?: string;
@@ -416,6 +446,13 @@ function ActiveQuizList({
     await queryClient.invalidateQueries({
       queryKey: recordKeys.quizzes(recordId),
     });
+  };
+  const applyConcept = (
+    quizId: string,
+    concept: { conceptId: string | null; conceptName: string | null },
+  ) => {
+    patchQuizConcept(queryClient, recordId, quizId, concept);
+    void refreshQuizzes();
   };
   const refreshQuizzes = () =>
     queryClient.invalidateQueries({
@@ -523,6 +560,15 @@ function ActiveQuizList({
                     {t(`record.detail.quiz.difficulty.${item.difficulty}`)}
                   </span>
                 </div>
+                <QuizConceptField
+                  recordId={recordId}
+                  quizId={item.id}
+                  courseId={courseId}
+                  conceptId={item.concept_id}
+                  conceptName={item.concept_name}
+                  editable={!answered}
+                  onUpdated={(concept) => applyConcept(item.id, concept)}
+                />
                 {item.question_type !== "FILL_BLANK" ? (
                   <h3 className="text-section font-section text-ink mt-2 break-words">
                     {item.stem}
@@ -1002,7 +1048,15 @@ function objectiveAnswerLabel(item: QuizOut, optionIndex: number): string {
     : `${String.fromCharCode(65 + optionIndex)}. ${option}`;
 }
 
-function QuizQuestionCard({ item, index }: { item: QuizOut; index: number }) {
+function QuizQuestionCard({
+  item,
+  index,
+  children,
+}: {
+  item: QuizOut;
+  index: number;
+  children?: ReactNode;
+}) {
   const { t } = useTranslation();
   const correctIndexes = isNumberArray(item.correct_answer)
     ? item.correct_answer
@@ -1067,8 +1121,36 @@ function QuizQuestionCard({ item, index }: { item: QuizOut; index: number }) {
         <p className="text-body text-muted-foreground mt-3 whitespace-pre-wrap">
           {t("record.detail.quiz.explanation", { detail: item.explanation })}
         </p>
+        {children}
       </article>
     </li>
+  );
+}
+
+/** 主概念变更后先就地更新缓存再刷新（服务端返回的是单题 QuizOut）。 */
+function patchQuizConcept(
+  queryClient: QueryClient,
+  recordId: string,
+  quizId: string,
+  concept: { conceptId: string | null; conceptName: string | null },
+) {
+  queryClient.setQueryData<QuizReadOut>(
+    recordKeys.quizzes(recordId),
+    (current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((item) =>
+              item.id === quizId
+                ? {
+                    ...item,
+                    concept_id: concept.conceptId,
+                    concept_name: concept.conceptName,
+                  }
+                : item,
+            ),
+          }
+        : current,
   );
 }
 

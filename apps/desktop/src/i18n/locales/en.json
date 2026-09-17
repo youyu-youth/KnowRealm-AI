@@ -1269,6 +1269,16 @@
           "MEDIUM": "Medium",
           "HARD": "Hard"
         },
+        "concept": {
+          "label": "Primary concept",
+          "placeholder": "Select a concept",
+          "none": "Unassigned",
+          "readonly": "Primary concept: {{name}}",
+          "clear": "Clear",
+          "lockedHint": "The primary concept is locked after your first answer",
+          "emptyCourse": "No confirmed concepts in this course yet; the primary concept stays unassigned",
+          "loadError": "Failed to load concepts"
+        },
         "correctAnswer": "Correct answer: {{answer}}",
         "referenceAnswer": "Reference answer: {{answer}}",
         "explanation": "Explanation: {{detail}}",
@@ -2116,6 +2126,8 @@
     "QUIZ_BATCH_SUPERSEDED": "The quiz batch has been replaced by a newer batch.",
     "QUIZ_NOT_ADOPTED": "Only questions from adopted batches can be answered.",
     "QUIZ_NOT_FOUND": "This quiz question does not exist or has been deleted.",
+    "QUIZ_CONCEPT_LOCKED": "The primary concept of an answered quiz can no longer be changed.",
+    "QUIZ_CONCEPT_INVALID": "The primary concept must be a confirmed concept from the course this record belongs to.",
     "QUIZ_NOT_OBJECTIVE": "This question is not an objective question.",
     "QUIZ_NOT_SHORT_ANSWER": "This question is not a short-answer question.",
     "QUIZ_POOL_EMPTY": "This course has no available quiz questions yet.",

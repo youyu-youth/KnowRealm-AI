@@ -68,6 +68,7 @@ const detail: QuizTestDetail = {
     {
       id: "item-1",
       quiz_id: "quiz-1",
+      record_id: "record-1",
       sequence_no: 1,
       question_type: "MULTIPLE_CHOICE",
       stem: "进程调度的核心职责是什么？",
@@ -81,6 +82,7 @@ const detail: QuizTestDetail = {
     {
       id: "item-2",
       quiz_id: "quiz-2",
+      record_id: "record-1",
       sequence_no: 2,
       question_type: "SHORT_ANSWER",
       stem: "简述时间片轮转。",

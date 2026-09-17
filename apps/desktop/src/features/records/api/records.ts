@@ -2,6 +2,7 @@ import type {
   ProcessingJobOut,
   KnowledgePointReadOut,
   QuizGenerateRequest,
+  QuizOut,
   QuizReadOut,
   RecordJobsOut,
   RecordOut,
@@ -113,6 +114,19 @@ export const recordApi = {
     return apiFetch<QuizReadOut>(
       `/api/records/${recordId}/quiz-batches/${batchId}/confirmations`,
       { method: "POST" },
+    );
+  },
+  setQuizConcept(
+    recordId: string,
+    quizId: string,
+    body: components["schemas"]["QuizConceptUpdateRequest"],
+  ) {
+    return apiFetch<QuizOut>(
+      `/api/records/${recordId}/quizzes/${quizId}/concept`,
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      },
     );
   },
   answerObjectiveQuiz(
