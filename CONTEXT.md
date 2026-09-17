@@ -100,7 +100,7 @@ Record 级资产——一次学习会话内被 AI 与用户确认的知识点。
 _Avoid_: 概念（那是 Course 级实体）
 
 **概念（Concept）**:
-Course 级规范概念，跨记录长期存在，用于掌握度建模。与 KP 不得混同或互并。
+Course 级规范概念，跨记录长期存在，用于掌握度建模。只有 CONFIRMED Concept 接收新学习证据；ARCHIVED Concept 保留历史但退出活跃聚合，与 KP 不得混同或互并。
 _Avoid_: 标签、主题、知识点
 
 **课程大脑（Course Brain）**:
@@ -184,16 +184,24 @@ _Avoid_: 模拟测试的作答（明细与事件键位另立，见「模拟测�
 _Avoid_: 考试、自适应测验（P5 依掌握度选题的另一形态）、测验（裸用）
 
 **学习证据（Learning Evidence）**:
-事件对某 Concept 学习状态的证据（带权重/置信度）。**AI 自述（AI_SYNTHESIS）不是证据**——证据只来自答题、Teach-back、Recall 验证、Tutor 检查、课堂信号、用户确认。
+事件对某 Concept 学习状态的证据（带权重/置信度）。内容审核确认可以留作学习活动证据，但只有带可判定学习结果的验证性证据才可改变掌握度；**AI 自述（AI_SYNTHESIS）不是证据**。
 _Avoid_: 数据、信号
+
+**主概念（Primary Concept）**:
+一道习题直接评估的唯一 CONFIRMED Concept；无法可靠归属时保持为空，不得把习题广播到所在 Record 的全部 Concept。归属在首次作答后固定。
+_Avoid_: 相关概念、记录概念
 
 **证据重放（Evidence Replay）**:
 学习证据的派生性质——证据由学习事件经确定性规则转换而来，可随时从事件流全量重建；不可再生的只有事件本身。
 _Avoid_: 重算（泛称）、补数（运维口语）
 
 **掌握度（Mastery）**:
-学习者对某 Concept 的掌握状态。唯一写入口是 Mastery Engine（事件 → 证据 → 引擎），任何业务功能禁止直写。
+学习者对某 Concept 已验证能力的可重建派生快照；证据不足时为 NOT_ENOUGH_DATA，不显示伪精确分数。唯一写入口是 Mastery Engine，且不会仅因时间流逝自动下降。
 _Avoid_: 分数、正确率
+
+**遗忘风险（Forgetting Risk）**:
+学习者对某 Concept 的记忆随时间衰减风险，与已验证能力的掌握度分离，由 Forgetting Engine 负责。
+_Avoid_: 掌握度下降、Mastery 衰减
 
 **误区（Misconception）**:
 先怀疑再验证的 learner 状态：SUSPECTED → 验证 → CONFIRMED/DISMISSED → 纠错 → RESOLVED。一次答错不得定性。
