@@ -38,8 +38,7 @@ export type ConceptMastery = components["schemas"]["ConceptMasteryOut"];
 export type CourseMastery = components["schemas"]["CourseMasteryOut"];
 export type ConceptMasteryDetail =
   components["schemas"]["ConceptMasteryDetailOut"];
-export type MasteryEvidenceItem =
-  components["schemas"]["MasteryEvidenceOut"];
+export type MasteryEvidenceItem = components["schemas"]["MasteryEvidenceOut"];
 export type CourseMasteryQuery = NonNullable<
   operations["get_course_mastery_api_courses__course_id__mastery_get"]["parameters"]["query"]
 >;

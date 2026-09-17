@@ -20,8 +20,7 @@ type CourseDetail = components["schemas"]["CourseDetailOut"];
 type RecordOut = components["schemas"]["RecordOut"];
 type CourseMastery = components["schemas"]["CourseMasteryOut"];
 type ConceptMastery = components["schemas"]["ConceptMasteryOut"];
-type ConceptMasteryDetail =
-  components["schemas"]["ConceptMasteryDetailOut"];
+type ConceptMasteryDetail = components["schemas"]["ConceptMasteryDetailOut"];
 
 const COURSE_ID = "11111111-1111-4111-8111-111111111111";
 const DETAIL_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}`;
@@ -423,9 +422,8 @@ describe("课程详情与编辑", () => {
     server.use(
       http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
       http.get(MASTERY_URL, () => HttpResponse.json(masteryPayload)),
-      http.get(
-        `${DETAIL_URL}/mastery/concepts/${weakConcept.concept_id}`,
-        () => HttpResponse.json(detailPayload),
+      http.get(`${DETAIL_URL}/mastery/concepts/${weakConcept.concept_id}`, () =>
+        HttpResponse.json(detailPayload),
       ),
     );
     renderAt(`${ROUTE_PATH}?tab=gps`);
@@ -439,13 +437,9 @@ describe("课程详情与编辑", () => {
     expect(within(dialog).getByText("置信度 高")).toBeInTheDocument();
     expect(within(dialog).getByText("参与计算证据")).toBeInTheDocument();
     // 两类来源：普通 Quiz 带宿主记录标题，模拟测试带题号。
-    expect(
-      within(dialog).getByText("习题 · 进程与线程"),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText("习题 · 进程与线程")).toBeInTheDocument();
     expect(within(dialog).getByText("答对")).toBeInTheDocument();
-    expect(
-      within(dialog).getByText("模拟测试 · 第 2 题"),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText("模拟测试 · 第 2 题")).toBeInTheDocument();
     expect(within(dialog).getByText("答错")).toBeInTheDocument();
     // 定位能力不足的 Evidence 只保留来源说明与时间，不生成假链接。
     expect(within(dialog).getByText("来源信息不足")).toBeInTheDocument();
@@ -487,9 +481,8 @@ describe("课程详情与编辑", () => {
     server.use(
       http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
       http.get(MASTERY_URL, () => HttpResponse.json(masteryPayload)),
-      http.get(
-        `${DETAIL_URL}/mastery/concepts/${weakConcept.concept_id}`,
-        () => HttpResponse.json(detailPayload),
+      http.get(`${DETAIL_URL}/mastery/concepts/${weakConcept.concept_id}`, () =>
+        HttpResponse.json(detailPayload),
       ),
     );
     renderAt(`${ROUTE_PATH}?tab=gps`);
@@ -551,10 +544,10 @@ describe("课程详情与编辑", () => {
     fireEvent.click(within(list).getByText("虚拟内存"));
 
     const dialog = await screen.findByRole("dialog", { name: "虚拟内存" });
+    expect(await within(dialog).findByText("数据不足")).toBeInTheDocument();
     expect(
-      await within(dialog).findByText("数据不足"),
+      within(dialog).getByText("暂无参与计算的作答证据"),
     ).toBeInTheDocument();
-    expect(within(dialog).getByText("暂无参与计算的作答证据")).toBeInTheDocument();
     expect(
       within(dialog).queryByRole("button", { name: "查看来源" }),
     ).not.toBeInTheDocument();

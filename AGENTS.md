@@ -41,6 +41,14 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - `packages/api-types` — OpenAPI → TS 类型生成（前后端契约链：后端 schema 变更后须重新 generate）
 - 无根 package.json；前端 workspace 由 `pnpm-workspace.yaml` 定义，后端独立用 uv
 
+
+## KnowRealm-AI产品AI能力实现的相关准则
+**本规范仅适用于 KnowRealm-AI 产品内部的 AI / Agent 能力调用：**
+
+- KnowRealm-AI 中能通过脚本、程序逻辑或工具稳定完成的任务，应优先使用确定性方案，不调用 LLM。
+- 只有脚本难以实现，或任务涉及语义理解、推理、生成等能力时，才使用 LLM。
+- **总体原则：**KnowRealm-AI 内部脚本优先、LLM 次之，以降低 Token 消耗、延迟和运行成本。
+
 ## 编码规范（重要）
 
 1. 写任何代码前必须遵循 `.claude/rules/` 下的编码规范（**正本**；`docs/rules/` 为发布镜像，改动须同步保持一致）。每份规范带 `paths` frontmatter，按所改文件路径自动/按需加载——只读匹配当前任务的规范即可，不要全读。任何时候不要更改rules下的文件。
@@ -68,7 +76,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 8. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
 
 10. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
-11. 如果一个用户的任务是可以通过脚本而稳定实现的，就不要通过llm来实现，这样可以避免过多的token消耗，如果脚本难以实现的，必须用llm则使用llm实现，脚本优先，llm次之。
+
 
 
 

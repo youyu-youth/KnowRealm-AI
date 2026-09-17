@@ -78,14 +78,14 @@
 
 **明确待做（已有工单）：**
 
-- `concept-mastery-v1/04~06`（`ready-for-agent`，票 01~03 已 done）：删除/归档/重启/算法升级恢复、Course Brain 非侵入式 Mastery 标记、一体化验收与文档收尾；**该链完结后**起点扩展波次（§41）才开工。
+- `concept-mastery-v1/04~06`（`ready-for-agent`，票 01~03 已 done）：删除/归档/重启/算法升级恢复、Course Brain 非侵入式 Mastery 标记、一体化验收与文档收尾；**该链完结后**资料库 V1 + 知识起点扩展波次（扩展文档 §41/§42）才开工。
 - `ai-summary/03-long-summary-quality-recovery`（`ready-for-agent`，8 项未勾）：>30k 长总结 map-reduce、90s 超时/不自动重试语义、手动重试复用 Job、ACTIVE 校验、llm_call_logs 字段补全、评测样本。⚠️ 这是**唯一一张实质性未做的旧功能票**；现状是 chat 侧对 >30k 转写做降级提示（`agent/context.py` CHAT_TRANSCRIPT_MAX_CHARS=30000），总结侧无长文处理。
 - `markdown-export/03` 聚合导出（`ready-for-human`，代码完成仅剩用户验收后关票）。
 
 **规划中（未拆票，勿直接开工）：**
 
 - 扩展文档 §40.4「P2 统一序列」：F1（✅ 2026-09-10）→ A1+A2（✅ 2026-09-13）→ A3（✅ 2026-09-14 四票，ADR-0021，.scratch/learning-evidence/）→ B1 web_search（✅ 2026-09-14 两票，.scratch/web-search/）→ B2 跨记录/课程级问答（✅ 2026-09-14 单票全栈，.scratch/cross-record-qa/，数据模型 v2.7）→ B6 对话转学习资产 V1（✅ 2026-09-15 单票全栈，.scratch/chat-to-knowledge-point/）→ **F4 Course Brain V1（✅ 2026-09-16 十二票完结，原 P3 提前实施，.scratch/course-brain-v1/，ADR-0022，数据模型 v2.8：迁移 0023 三表 + 构建 Worker + 审核闭环（apply-review 五决策/合并建议/归档/stale 派生徽章）+ B2 search_library 概念增强（prompt v6，occurrences 按 record 去重）+ 可观测（retrieval_count 埋点/检索工具异常 ok=false/审计日志）+ 前端 Course Brain 主页面与审核工作台（mock 图谱链删除）；详见 §3 行与扩展文档 §40.3 B7 回写）**。B3「Tutor 场景包」待决策；B5 sqlite-vec 维持延后（CB-01 合成评测四维全过，`docs/evaluation/course-brain-retrieval-baseline.md`），触发条件=真实语料词汇不重合失败（届时新开 CB-VEC 票）。
-- **起点扩展波次已定稿（2026-09-17 grill，扩展文档 §41，输入=docs/起点知识库建议.md 已归档）**：Concept Mastery V1 完结后开工，顺序 = 网页剪藏（基线 P2 已定项，V1 不存 HTML 快照）→ ai-summary/03 map-reduce（前置旧票）→ 书籍拆章导入模式（大 PDF 按目录书签/启发式/等窗口三级降级拆章多 Record，论文走单 Record 现状）→ 课程大纲初始化 → 问题驱动研究会话；B3/B5 维持压后，视频不翻案，不做对象驱动模板。
+- **资料库 V1 + 起点扩展波次已定稿（2026-09-17，扩展文档 §41/§42，输入=docs/起点知识库建议.md 已归档）**：Concept Mastery V1 完结后开工；第一外部版本 = 资料库来源资产模型 / 入库与生命周期 / 统一 RAG 检索接口 + 网页剪藏首适配器（不先造空框架，V1 不存原始 HTML），随后 ai-summary/03 map-reduce → 书籍拆章 Adapter（大 PDF 按目录书签/启发式/等窗口三级降级拆章多 Record，论文走单 Record 现状）→ 课程大纲初始化 → 问题驱动研究会话；`search_library` 收敛到统一检索模块，Agent V1 只读、研究入库写动作须 HITL；B3/B5 维持压后，sqlite-vec 仍由真实召回失败触发，视频不翻案，不做对象驱动模板。
 - 习题 Groundedness：待用户采集真实样本（阻塞项）+ 06 总结黄金样本另议；回归触发=prompt_version/模型变更。⚠️ prompt_version 至今未 bump，启用评测前需处理。
 - 未来候选库路线图（带触发条件，见记忆/后端轮子审计）：检索 FTS5 trigram→sqlite-vec、复习调度 fsrs、导出 fpdf2、pytest-cov/timeout；APScheduler/LanceDB/本地 whisper 已否决。
 - 产品层扩展方向五新场景包：见扩展文档 §39.4（仅评审记录，**非用户已批准**）。
