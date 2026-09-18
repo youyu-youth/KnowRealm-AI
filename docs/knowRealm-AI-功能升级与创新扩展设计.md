@@ -30,7 +30,7 @@
 | D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | Tauri sidecar（Python 进程内）FastAPI + LangChain/LangGraph + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4.5） |
 | D7 | 异步与缓存 | Redis/Redisson + RabbitMQ（§27.4/§27.5） | 自研 processing_jobs 队列（SQLite 表即队列 + sidecar 进程内 asyncio worker），无 Redis / RabbitMQ / procrastinate（决策 #1） |
 | D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | sqlite-vec（vec0 虚拟表）+ semantic_embeddings 统一表；明确不做 Qdrant / pgvector（技术栈 v4.5） |
-| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.8（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
+| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.9（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
 | D10 | shares 表 | §25.1 保留 t_share | 不建 shares 表（决策 #15） |
 | D11 | F15 落地 | 不新增表（仅 action_type=PREVIEW） | 依赖资料库来源资产模型（原 course_materials 草案由 §42 统一重审，决策 #12） |
 | D12 | Teach-back 输入 | 语音解释 → ASR（§18.1） | V1 文本先行，语音后补（决策 #19） |
@@ -39,7 +39,7 @@
 | D15 | 优先级与阶段 | §6 S+/A+ 评级、§32 Phase 1~7、§37 P0~P3 | 基线 §4.7 阶段映射（F1=P2 … F16=P6）与 §5.1 阶段规划 |
 | D16 | 产品定位语境 | 毕业设计 / 项目展示 / 比赛（§33） | 开源、面向个人使用（基线头部） |
 
-> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.8》。
+> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.9》。
 
 ---
 
@@ -619,7 +619,7 @@ Course Concept Graph                         Learning Evidence
 
 # 7. F1 — Transcript Segment + Evidence Timeline
 
-> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v2.8》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
+> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v2.9》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
 >
 > - **术语定名「来源时间轴」（Source Timeline）**：本章 "Evidence Timeline" 废弃——Evidence 一词专属「学习证据」（Learning Evidence）；
 > - **交付边界**：本期 = 数据地基（四表 + 切分管道 + 存量回填）+ 来源时间轴前端；不含音频回放、不含 AI 产物 graph prompt 引用改造、不动搜索索引；
@@ -1222,7 +1222,7 @@ MISCONCEPTION_RISK
 
 # 12. F6 — Learning Event + Learning Evidence
 
-> **✅ 已实施回写（2026-09-14，learning-evidence 四票完结，ADR-0021）**：本章为草案，表结构权威见《数据模型 v2.8》。与草案的定案差异：
+> **✅ 已实施回写（2026-09-14，learning-evidence 四票完结，ADR-0021）**：本章为草案，表结构权威见《数据模型 v2.9》。与草案的定案差异：
 >
 > - **四事件先行**（总结确认 / 知识点确认 / 逐题作答 / 交卷），与业务动作同事务写入，统一经 `learning.events.write_learning_event`；幂等键形制 `{event-slug}:{source-id}`（独立 `idempotency_key` 列设想未采用，`event_id` 为 uuid4）；
 > - **消费为独立 asyncio 水位循环**：不入 processing_jobs；水位 = SQLite 隐式 rowid 单调扫描、禁 NOT EXISTS、失败 3 次跳过不建死信表；
@@ -3623,7 +3623,7 @@ Mastery Update
 
 | # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
 |---|---|---|---|---|---|
-| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.8 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
+| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.9 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
 | A1 | Chat 检索工具（Agent 第一工具） | 基线 §4.7"检索为第一工具"（#53） | ★★★ | 中低 | **已实施（2026-09-13，A1+A2 三票完结）**：实现形态定为「分片级 FTS 索引 + 挂载内单工具 `search_transcript`」（迁移 0020 `segment_search_index`，jieba 分词 + BM25；命中回业务表取逐字原文，无分片记录退化为全文子串）。与 §40.2 原设想「直接包装全局 `SearchService.search`」的差异源于两处代码事实：全局索引 snippet 产自 jieba token 串（非逐字原文，无法通过引用逐字校验）、索引 body 截断在 30,000 字符（覆盖不了 >30k 转写痛点）；`search_library` 留给 B2 连同跨记录范围胶囊一并设计。>30k 降级材料保留保底，`CHAT_PROMPT_VERSION` bump v3 |
 | A2 | 工具调用的前端呈现 | ——（基线未细化的实施项） | ★★★ | 中 | **已实施（2026-09-13）**：SSE 增 `tool_call` / `tool_result` 事件（消息流内检索状态卡「正在检索 → 命中 n 条 / 失败」，多次检索逐条陈列）；过程态与流式文本同生命周期、done / 中断后消失，不持久化（历史消息仍只有正文与引用）；右栏工具开关已由 B1 接真（2026-09-14，联网搜索按会话记忆） |
 | A3 | 事件消费框架 + Evidence Builder 最小版 | Phase 2 Learning Evidence | ★★★ | 中 | **已实施（2026-09-14，learning-evidence 四票完结，ADR-0021）**：四事件（总结确认 / 知识点确认 / 逐题作答 / 交卷）与业务动作同事务写入（统一经 `learning.events.write_learning_event`，幂等键 `{event-slug}:{source-id}`）；消费为独立 asyncio 水位循环——原「复用 JobRunner」设想按 ADR-0021 修正为不入 processing_jobs（毫秒级纯函数转换，领取协议属过度设计），水位 = SQLite 隐式 rowid 单调扫描（`learning_events.id` 是 uuid4 非单调）、禁 NOT EXISTS、event_id 预查幂等 + 唯一约束兜底、失败 3 次跳过不建死信表；映射集中声明（QUIZ 0.9/0.8、CONFIRMED → USER_CONFIRMATION 0.3·0.4/0.7、交卷不产证据防双计）；证据可由事件流清空重放再生；learning 域薄只读查询按记录/课程取证据流（Mastery / 学习上下文中间件共同底座）；零 LLM / 零前端 / 零新 API；concept_id / source_anchor_id 恒 NULL 留 P3/P5 |
@@ -3664,7 +3664,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 第 4.5 步 B6 对话转学习资产 V1（基线 Phase 2 已定项，B2 价值闭环） ← ✅ 已完成（2026-09-15，见 §40.3 B6 行）
 + 插入步  F4 Course Brain / Concept V1（原 P3，提前实施，ADR-0022） ← ✅ 已完成（2026-09-16，见 §40.3 B7 行）
 第 5 步   B5 sqlite-vec 混合检索（CB-01 合成评测全过 → 维持延后，真实语料吃力时进）
-其后      Concept Mastery 收尾 → 资料库 V1 + 网页剪藏首适配器（§41/§42）→ 长内容与其他知识起点；B3 继续压后
+其后      ~~Concept Mastery 收尾~~ ✅ 已完结（2026-09-18，concept-mastery-v1 六票，ADR-0023，数据模型 v2.9）→ 资料库 V1 + 网页剪藏首适配器（§41/§42）→ 长内容与其他知识起点；B3 继续压后
 ```
 
 > 2026-09-16 补记：F4 Course Brain / Concept V1 由 P3 提前实施并完结（原计划序列「其后 → P3 Course Brain」已兑现完毕），数据模型随之升 v2.8（§4.6 三表标已实施）；B5 的升级前置评测（CB-01）已先行完成，结论与升级路径见 §40.3 B5 行。
@@ -3955,7 +3955,7 @@ V1 实际 Adapter：
 本节补充的是已接受的产品方向与完整开发边界，但当前权威文档仍存在旧口径，**不得直接按本节建表**。工单 01 必须一次性消除以下冲突：
 
 - `CONTEXT.md` 当前把 Library 限定为跨课程搜索视图，需要改为“来源资产目录 + 统一浏览 / 检索入口”，同时保留 Course 唯一知识容器红线。
-- 功能基线决策 #12 的 `course_materials` 与数据模型 v2.8 的 P5 课程级草案，需要改为通用资料来源模型，或给出保留原名仍能覆盖全局资料的明确理由。
+- 功能基线决策 #12 的 `course_materials` 与数据模型 v2.9 的 P5 课程级草案，需要改为通用资料来源模型，或给出保留原名仍能覆盖全局资料的明确理由。
 - 数据模型中的 `document_segments/source_anchors.course_material_id` 预留列必须与最终来源资产表同名、加外键并同步所有交叉引用；历史变更记录保持史实不改。
 - §41 的“网页剪藏第一票”已在本次修订为“资料库 V1 + 网页剪藏第一外部版本”；`PROJECT_PROGRESS.md` 必须使用同一顺序。
 - 若表名、Course 可空语义、存量回填或删除规则改变既有 ADR，应新增递增编号 ADR，不得默默覆盖。

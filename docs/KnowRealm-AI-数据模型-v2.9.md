@@ -1,4 +1,4 @@
-# KnowRealm-AI 数据模型 v2.8
+# KnowRealm-AI 数据模型 v2.9
 
 > **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.7》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.5.md`。
 > **核心原则（v2.0 范式，ADR-0001 / 决策 #55）**：
@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：v2.9（2026-09-18）**Concept Mastery V1 已实施（迁移 0024/0025，concept-mastery-v1 plan，ADR-0023）**——§4.3 **quizzes** 增可空 `concept_id`（REFERENCES concepts ON DELETE SET NULL + 索引；一题至多一个主概念：生成只从同课程 CONFIRMED 概念建议、服务端校验、作答前可改/清空、首答后应用层锁定、Event 固化；存量行 NULL 不回填，2026-08-25「不建 concept_id」草案口径就此作废）；§4.7 **user_concept_mastery** 首张落地（Learner Brain 域 P4 提前）：course_id（FK CASCADE）/ concept_id **UNIQUE**（FK CASCADE）/ mastery_score 与 mastery_confidence 可空 0~1 CHECK / 证据三计数 ≥0 CHECK / last_practiced_at / last_verified_at / **algorithm_version** / updated_at——**只建 V1 真实使用列**，草案中的 memory_strength / transfer_score / reasoning_score / next_review_at / last_learned_at 不建（Forgetting / Transfer / Reasoning 落地时再迁移）；唯一写入口 = Mastery Engine（确定性纯函数 12 条窗口四条半衰，ADR-0023），快照由有效 Quiz Evidence 全量重建，<3 条 = NOT_ENOUGH_DATA 分数置空。正式表设计口径 42 张不变，**已实施 27 张**（截至迁移 0025）。
 > **变更记录**：v2.8（2026-09-16）**F4 Course Brain V1 已实施（迁移 0023，course-brain-v1 plan，ADR-0022）**——§4.6 concepts / concept_relations / record_concepts 三表标注**已实施**（无 deleted_at：ARCHIVED 即退役语义；normalized_name = 应用层确定性函数：strip → 空白折叠 → 全角转半角 → casefold；record_concepts 草案中的 importance 列未建，概念重要度只在 concepts.importance）；`source_anchor_links.resource_type` 值域扩 `'CONCEPT'`（rename→重建→拷贝→drop，0017 同款）；**更正**：「SQLite 无部分唯一索引」论断有误——CONFIRMED 唯一由部分唯一索引 `UNIQUE ... WHERE status='CONFIRMED'` 库级兜底（0017 已有先例）；semantic_embeddings / vec0 **维持未建**（CB-01 合成评测四维全过 → sqlite-vec 延后，见 `docs/evaluation/course-brain-retrieval-baseline.md`）；正式表设计口径 42 张不变，已实施 26 张（另有 search_index / segment_search_index 两张 FTS 衍生索引表，纪律不计正式表数）。
 > **变更记录**：v2.7（2026-09-14）**B2 跨记录/课程级问答已实施（迁移 0022，cross-record-qa plan）**——§4.4 chat_sessions 增 `scope` 列（TEXT NOT NULL DEFAULT 'FREE'，CHECK ∈ FREE/RECORD/COURSE/ALL；存量回填 record_id 非空→RECORD）：显式四档会话范围，与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；course_id 列自此启用语义（COURSE 会话=挂载课程；RECORD 会话维持随 record 派生；课程软删→会话只读，course_deleted 运行时推导，对齐 record_deleted 先例）；citations_json record 条目增 `record_title` （标题快照，跨记录引用归属由校验器裁定；历史行无此键→null，前端降级展示）。
 > **变更记录**：2026-09-14 **B1 web_search 已实施（web-search plan 两票，零表变更不升版）**——§4.4 chat_messages.citations_json 条目**判别化**就地补记：record 条目照旧（逐字校验不变、历史行无 source 键按 "record" 读取），web 条目 `{index, source:"web", url, title}`（联网搜索来源，仅非空检查）；citations_json 本就是自由 JSON，零迁移。
@@ -51,13 +52,13 @@
 | 对话（2） | chat_sessions, chat_messages | P1 |
 | 学习数据基础（6） | transcript_segments, document_segments, source_anchors, source_anchor_links, learning_events, learning_evidence | P2（learning_events 提前 **P1**，#33） |
 | Course Brain（4） | concepts, concept_relations, record_concepts, semantic_embeddings（+vec0 虚拟表） | **P3×3 已实施**（0023）/ P2 未建 |
-| Learner Brain（5） | user_concept_mastery*, misconceptions, misconception_evidence, review_schedules, learner_preferences | P4 |
+| Learner Brain（5） | user_concept_mastery*, misconceptions, misconception_evidence, review_schedules, learner_preferences | **user_concept_mastery 已实施**（0025，P4 提前）/ 其余 P4 |
 | Adaptive / Planner（6） | teach_back_attempts, learning_goals, learning_plans, learning_plan_items, learning_agent_actions, learning_agent_feedback | P5 / P6×5 |
 | Outcome（1） | learning_passport_snapshots | P7 |
 | 基础设施（2） | processing_jobs（兼任务队列）, llm_call_logs | P0 |
 | 暂缓 | ~~shares~~（不建，分享=Markdown 本地导出）、study_pods 系列（P8） | — |
 
-正式表合计 **42 张**（v2.0：-user_settings +recording_sessions；表名 user_concept_mastery 为历史命名，语义=概念掌握度，更名成本大于收益，保留）。**已实施 26 张**（截至迁移 0023：上述未建项为 course_materials / record_markers / record_analyses / semantic_embeddings 及 P4~P7 全部）；另有 `search_index` / `segment_search_index` 两张 FTS 衍生索引表，可再生不计正式表数（ADR-0016 纪律）。**Wave A 基线 15 张**：profile / courses / records / record_files / transcripts / recording_sessions / processing_jobs / llm_call_logs / ai_summaries / knowledge_points / quizzes / todo_items / chat_sessions / chat_messages / learning_events。
+正式表合计 **42 张**（v2.0：-user_settings +recording_sessions；表名 user_concept_mastery 为历史命名，语义=概念掌握度，更名成本大于收益，保留）。**已实施 27 张**（截至迁移 0025：上述未建项为 course_materials / record_markers / record_analyses / semantic_embeddings、misconceptions / misconception_evidence / learner_preferences 及 P5~P7 全部）；另有 `search_index` / `segment_search_index` 两张 FTS 衍生索引表，可再生不计正式表数（ADR-0016 纪律）。**Wave A 基线 15 张**：profile / courses / records / record_files / transcripts / recording_sessions / processing_jobs / llm_call_logs / ai_summaries / knowledge_points / quizzes / todo_items / chat_sessions / chat_messages / learning_events。
 
 ## 4. 表设计
 
@@ -192,7 +193,7 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | source_anchor_id | TEXT | 可空，主锚点（完整来源走 source_anchor_links；P1 恒空） |
 | updated_at | TEXT | |
 
-**quizzes** — 习题（P1，〔软删〕；2026-08-25 08 plan grill 定稿）
+**quizzes** — 习题（P1，〔软删〕；2026-08-25 08 plan grill 定稿；0024 增主概念列）
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id / record_id | TEXT | |
@@ -207,8 +208,9 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | user_answer_json | TEXT | 用户作答；与 answer_result / answered_at 同事务写 |
 | answer_result | TEXT | 可空：CORRECT / WRONG；NULL = 简答已提交待自评（客观题提交即判分） |
 | answered_at | TEXT | 可空；非空 = 已作答锁定（一题一答，不可重做） |
+| concept_id | TEXT | 可空主概念（**0024 已实施**，REFERENCES concepts ON DELETE SET NULL + 索引）：生成只从同课程 CONFIRMED 概念建议、服务端校验；作答前可改/清空，首答后应用层锁定（Quiz/模拟测试题同语义），Event 固化归属；概念物理删除置空，历史行不回填 |
 
-不建 model / prompt_version（溯源记 processing_jobs.result_json，07 先例）、quality_score（评测域 Wave B）、cognitive_level（P5）、concept_id（P3 起回填）、source_anchor_id——均由后续迁移加列。
+不建 model / prompt_version（溯源记 processing_jobs.result_json，07 先例）、quality_score（评测域 Wave B）、cognitive_level（P5）、source_anchor_id——均由后续迁移加列。（concept_id 已于 0024 落地，见上。）
 
 **quiz_tests** — 模拟/自适应测试（P1；ADAPTIVE 模式 P5）
 | 字段 | 类型 | 说明 |
@@ -293,7 +295,7 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 ### 4.5 学习数据基础域（P2；learning_events P1）
 
 > **v2.4 已实施标注**：本节前四表已随 F1 落地（迁移 0019，2026-09-10）。四表均为派生定位/引用结构（非可编辑实体）：不带 created_at / updated_at / deleted_at，生命周期随父实体 ON DELETE CASCADE。锚点两表空表就位，本期零写入者。
-> **v2.6 已实施标注**：learning_events 四事件 MVP 与 learning_evidence 已随 A3 落地（迁移 0021，2026-09-14）。四事件与业务动作同事务写入（统一经 `learning.events.write_learning_event`，幂等键冲突静默跳过）；消费为独立 asyncio 水位循环（ADR-0021，不入 processing_jobs，水位 = 隐式 rowid 单调扫描、禁 NOT EXISTS 子查询）；证据可由事件流清空重放再生（event_id 唯一 = 数据库级重放幂等）；learning 域薄只读查询（按记录/课程取证据流）为 Mastery Engine 与 agent 学习上下文中间件的共同底座；concept_id / source_anchor_id 本期恒 NULL。
+> **v2.6 已实施标注**：learning_events 四事件 MVP 与 learning_evidence 已随 A3 落地（迁移 0021，2026-09-14）。四事件与业务动作同事务写入（统一经 `learning.events.write_learning_event`，幂等键冲突静默跳过）；消费为独立 asyncio 水位循环（ADR-0021，不入 processing_jobs，水位 = 隐式 rowid 单调扫描、禁 NOT EXISTS 子查询）；证据可由事件流清空重放再生（event_id 唯一 = 数据库级重放幂等）；learning 域薄只读查询（按记录/课程取证据流）为 Mastery Engine 与 agent 学习上下文中间件的共同底座；concept_id 自 Concept Mastery V1（0024/0025，2026-09-18）起由 Quiz 事件固化写入（Event 原样复制进 Evidence），source_anchor_id 本期恒 NULL（锚点回填属后续溯源域）。
 
 **transcript_segments** — 句子级转写分片（已实施）
 | 字段 | 类型 | 说明 |
@@ -362,7 +364,7 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 **learning_evidence** — 学习证据（追加型，已实施）
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id / course_id / concept_id / event_id | TEXT | event_id **唯一**（重放幂等键）；concept_id 本期恒 NULL（Concept 为 P3 实体） |
+| id / course_id / concept_id / event_id | TEXT | event_id **唯一**（重放幂等键）；concept_id 由 Quiz 事件固化写入（Concept Mastery V1，2026-09-18），无归属为 NULL |
 | evidence_type | TEXT | QUIZ / RECALL / TEACH_BACK / TUTOR_CHECK / TRANSFER / CLASSROOM_SIGNAL / USER_CONFIRMATION |
 | result / score / difficulty | | |
 | weight / confidence | REAL | 0~1；AI_SYNTHESIS 不作为证据类型 |
@@ -401,9 +403,9 @@ id、course_id（FK CASCADE）、source_concept_id / target_concept_id（FK CASC
 
 ### 4.7 Learner Brain 域（P4）
 
-**user_concept_mastery** — concept_id 唯一（表名历史命名，保留）
-mastery_score / mastery_confidence / memory_strength（0~1 CHECK）；transfer_score / reasoning_score 可空；evidence_count / positive_evidence_count / negative_evidence_count（≥0）；last_learned_at / last_practiced_at / last_verified_at / next_review_at；updated_at。
-**唯一写入口 = Mastery Engine**（红线 #3）。
+**user_concept_mastery** — concept_id 唯一（表名历史命名，保留）——**P4 提前已实施**（0025，2026-09-18，Concept Mastery V1）
+> **已实施结构**：course_id（FK CASCADE）/ concept_id（**UNIQUE**，FK CASCADE）/ mastery_score / mastery_confidence（均可空，0~1 CHECK）/ evidence_count / positive_evidence_count / negative_evidence_count（≥0 CHECK）/ last_practiced_at / last_verified_at / **algorithm_version** / updated_at。V1 不显示伪精确：<3 条有效证据 = NOT_ENOUGH_DATA，分数与置信度置空。**仅建 V1 真实使用列**——草案中的 memory_strength / transfer_score / reasoning_score / next_review_at / last_learned_at 未建，Forgetting / Transfer / Reasoning 落地时再迁移；Concept 物理删除级联清快照，归档保留快照但退出活跃聚合。
+**唯一写入口 = Mastery Engine**（红线 #3；ADR-0023：确定性派生、证据可全量重建）。
 
 **misconceptions**
 type（KNOWLEDGE_GAP / MISCONCEPTION / MEMORY_DECAY / REASONING_GAP / PREREQUISITE_GAP / UNKNOWN）、title、description、confidence、evidence_count、status（SUSPECTED / CONFIRMED / RESOLVED / DISMISSED）、first_detected_at / last_detected_at / confirmed_at / resolved_at。
@@ -525,6 +527,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 | Todo | TodoItem | todo_items | MVP |
 | 💬 AI 对话（自由/挂载） | ChatSession/Message | chat_sessions、chat_messages | MVP |
 | 对话转学习资产 | KP/Quiz | knowledge_points / quizzes + source_anchor_links(CHAT_MESSAGE) | P2 |
+| Concept 掌握度（Knowledge GPS / 脑图标记） | Mastery | user_concept_mastery + learning_evidence（只读聚合） | P2 已实施（V1） |
 | 状态通知 | — | records.status + processing_jobs（sidecar SSE） | MVP |
 | 后台任务观测 | Job | processing_jobs | MVP |
 | LLM 观测 | — | llm_call_logs | MVP |

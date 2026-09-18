@@ -1279,9 +1279,7 @@ async def test_concept_sources_excludes_record_moved_to_other_course(tmp_path: P
         await link_concept_anchor(
             app, link_id="link-1", concept_id="concept-1", anchor_id="anchor-audio"
         )
-        await seed_record_concept(
-            app, rc_id="rc-1", record_id=RECORD_ID, concept_id="concept-1"
-        )
+        await seed_record_concept(app, rc_id="rc-1", record_id=RECORD_ID, concept_id="concept-1")
 
         # 产品入口本版本不支持重新归类（409），直改 course_id 模拟移动后的读取期防护。
         async with app.state.session_factory() as session, session.begin():

@@ -2,7 +2,7 @@
 
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
-> **最后更新**：2026-09-18（**Concept Mastery V1 票 01~05 完成**（`.scratch/concept-mastery-v1/`）：票 01 习题主概念绑定与作答前锁定（迁移 0024 `quizzes.concept_id`）、票 02 可见掌握度闭环（迁移 0025 `user_concept_mastery` + 确定性 Mastery Engine 纯函数全量重算 + 课程 Mastery 只读 API + Knowledge GPS/概览接真、章级示意掌握度删除）、票 03 掌握详情与证据下钻（`GET /api/courses/{id}/mastery/concepts/{cid}` + GPS 行打开详情 Dialog + Evidence 来源跳回习题/模拟测试；顺带修复票 02 缺陷：模拟测试逐题无 record_id 证据被 inner join 误排除，已改 LEFT JOIN）、票 04 生命周期恢复（Record/Course 删除立即重算受影响概念〔历史事件证据保留审计〕、归档退出聚合与活跃查询但快照证据保留、启动 `recover_snapshots` 重建缺失/版本过期快照〔幂等〕、物理删除走 FK CASCADE 清快照）、票 05 Course Brain 非侵入式 Mastery 标记（纯前端：Tab 查询层组合 `useCourseMastery` 派生单一映射，图谱节点标签 token 色状态点 + tooltip 掌握行〔节点主色仍为重要度灰阶〕、列表 CONFIRMED 行复用掌握徽章、详情 aside 掌握行 + 「掌握详情」复用既有 Evidence 弹窗；加载中/查询失败诚实无标记）；仅剩票 06 验收收尾待开发。此前 **F4 Course Brain V1 完结 + CB-13 P1 遗留修复完结**（CB-00~12 十二票：迁移 0023 三表 + 构建 Worker + 审核闭环 + B2 search_library 概念增强（prompt v6）+ 可观测性 + 前端 Course Brain 主页面与审核工作台；sqlite-vec 经 CB-01 合成评测维持延后；CB-13 三 P1 修复 5afd33a+c1f8ef4；剩余用户真机验收，清单在工单 12/13）；更早「对话转学习资产 V1」、B2 跨记录问答、B1 联网搜索与 A3 证据框架均已完结）
+> **最后更新**：2026-09-18（**Concept Mastery V1 六票全部完结（01~06）**（`.scratch/concept-mastery-v1/`，ADR-0023，数据模型升 v2.9：票 06 收口=新增 ADR-0023「掌握度只由验证性证据经确定性引擎派生」+ 数据模型 v2.9 重命名（quizzes.concept_id / user_concept_mastery 已实施、已实施 27 张）+ PRD F5/F7 已实施标注 + 扩展设计 §40.4 序列更新 + 全库交叉引用；真机验收清单在票 06，不代勾）：票 01 习题主概念绑定与作答前锁定（迁移 0024 `quizzes.concept_id`）、票 02 可见掌握度闭环（迁移 0025 `user_concept_mastery` + 确定性 Mastery Engine 纯函数全量重算 + 课程 Mastery 只读 API + Knowledge GPS/概览接真、章级示意掌握度删除）、票 03 掌握详情与证据下钻（`GET /api/courses/{id}/mastery/concepts/{cid}` + GPS 行打开详情 Dialog + Evidence 来源跳回习题/模拟测试；顺带修复票 02 缺陷：模拟测试逐题无 record_id 证据被 inner join 误排除，已改 LEFT JOIN）、票 04 生命周期恢复（Record/Course 删除立即重算受影响概念〔历史事件证据保留审计〕、归档退出聚合与活跃查询但快照证据保留、启动 `recover_snapshots` 重建缺失/版本过期快照〔幂等〕、物理删除走 FK CASCADE 清快照）、票 05 Course Brain 非侵入式 Mastery 标记（纯前端：Tab 查询层组合 `useCourseMastery` 派生单一映射，图谱节点标签 token 色状态点 + tooltip 掌握行〔节点主色仍为重要度灰阶〕、列表 CONFIRMED 行复用掌握徽章、详情 aside 掌握行 + 「掌握详情」复用既有 Evidence 弹窗；加载中/查询失败诚实无标记）；票 06 文档收口完结，**剩用户真机验收**（清单在票 06）。此前 **F4 Course Brain V1 完结 + CB-13 P1 遗留修复完结**（CB-00~12 十二票：迁移 0023 三表 + 构建 Worker + 审核闭环 + B2 search_library 概念增强（prompt v6）+ 可观测性 + 前端 Course Brain 主页面与审核工作台；sqlite-vec 经 CB-01 合成评测维持延后；CB-13 三 P1 修复 5afd33a+c1f8ef4；剩余用户真机验收，清单在工单 12/13）；更早「对话转学习资产 V1」、B2 跨记录问答、B1 联网搜索与 A3 证据框架均已完结）
 
 ## 1. 项目概述
 
@@ -20,7 +20,7 @@
 **基线功能已全部实现，处于「扩展功能（F 系列）+ 质量收尾」阶段。**
 
 - 基线（PRD 决策表 #1~#59 绝大多数）代码完结，约 15 个功能波次仅剩**用户真机验收**（按惯例由用户执行，Agent 验证止于自动化门禁，不代勾）。
-- 扩展 F1「转写分片 / 来源时间轴」**六票 + 07 补票全部完结**（06 文档收尾：数据模型升 v2.4 重命名——现 v2.8、扩展文档 §7 回写、全库交叉引用同步、backend/AGENTS.md 0019）；锚点两表空表就位，剩用户真机验收。
+- 扩展 F1「转写分片 / 来源时间轴」**六票 + 07 补票全部完结**（06 文档收尾：数据模型升 v2.4 重命名——现 v2.9、扩展文档 §7 回写、全库交叉引用同步、backend/AGENTS.md 0019）；锚点两表空表就位，剩用户真机验收。
 - **Chat Agent 骨架已迁移 deepagents**（ADR-0018，2026-09-13）：`create_agent` → `create_deep_agent` 严格空骨架 + `AgentConfig` 轻工厂，模型可见面与迁移前严格一致（423 测试全绿），为 Tools/Skills/Memory/RAG 预留官方架构入口；summary/review 两图维持裸 LangGraph 形态。2026-09-14 `chat/` 模块升级为统一 `agent/` 模块（ADR-0020，行为零变更）：装配落 `graph.py`、上下文组装落 `context.py`、引用校验落 `citations.py`，能力子包 `tools/`+`middleware/` 就位。
 - Desktop 全局框架与 `/`「今日」页已按新版 `DESIGN.md` 完成重设计：冷中性设计令牌、分层应用壳、课程侧栏、紧凑 Command 入口、Toast / Tooltip / 状态标签与今日页「学习链 → 行动/资产 → 统计」阅读顺序均已落地；范围外页面只继承主题基础，不改业务布局。
 - `/inbox` 已改为高密度桌面工作区：真实统计、来源/状态筛选、URL 可恢复搜索与分页、多选批量归类/升级/删除、Transcript 预览及宽屏常驻右栏/窄屏 Dialog 均已落地；并按用户提供的视觉参考强化彩色统计图标、分组筛选按钮、列标题、独立圆角记录行、约 30% 宽右侧检查器及主次操作按钮。真实空态可主动查看醒目标注且完全只读的本地示意数据，未新增后端接口。
@@ -43,7 +43,7 @@
 | --- | --- | --- |
 | 捕获 | 课堂录音（托盘/全局快捷键）、音频导入、单文件文档导入、文本捕获+闪念速记、捕获收件箱（归类/升级/移交总结）、全局快捷键+托盘 | 录音文件不经云端（ADR-0002/0004），云 ASR 前强制同意（ADR-0006） |
 | 转写 | 腾讯云 ASR 管道、密封批次生命周期、失败重试恢复、文档删除清理 | ASR 管道已接句级时间戳（F1 票 02） |
-| **F1 分片** | 迁移 0019 四表 + source_anchor 模块；ASR 句级时间戳→JSONL→`/records/{id}/segments`；文档分片 DocumentBlock + document-segments 端点；存量回填 + 编辑对齐重切；**前端来源时间轴（三态浏览视图、quote 内联高亮+时间戳徽章、分片重拉三处）+ chat 引用句级定位**；文档记录接入块级时间轴（07 补票） | 票 01~07 完结；文档收尾=数据模型 v2.4（现 v2.8）、扩展文档 §7 回写；降级双场景（无时间戳/无分片）已处理 |
+| **F1 分片** | 迁移 0019 四表 + source_anchor 模块；ASR 句级时间戳→JSONL→`/records/{id}/segments`；文档分片 DocumentBlock + document-segments 端点；存量回填 + 编辑对齐重切；**前端来源时间轴（三态浏览视图、quote 内联高亮+时间戳徽章、分片重拉三处）+ chat 引用句级定位**；文档记录接入块级时间轴（07 补票） | 票 01~07 完结；文档收尾=数据模型 v2.4（现 v2.9）、扩展文档 §7 回写；降级双场景（无时间戳/无分片）已处理 |
 | 总结 | Provider 优先的总结生成、调整/确认/恢复（人工确认制） | LangGraph 图之一；>30k 长文的 map-reduce **未做**（见 §5） |
 | 知识点 | 候选生成、人工审核确认、重生成与转写联动 | |
 | 习题 | 四题型生成/采纳/重生成、客观题作答、简答题完成 | |
@@ -54,10 +54,10 @@
 | 课程 | 工作台骨架、课程 CRUD、发现页、详情编辑、归档退出 | ARCHIVED 前置护栏三道闸门已校验；归档/恢复 UI 未做（有意推迟） |
 | 记录 | 真实记录列表、记录详情（总结/转写面板化）、记录删除退出 | |
 | **学习事件/证据（A3）** | 迁移 0021 `learning_evidence` + learning 域（`events.write_learning_event` 统一写入 / `consumer.py` 独立 asyncio 水位消费循环 / `queries.py` 薄只读查询按记录/课程取证据流）；四事件（总结确认/知识点确认/逐题作答/交卷）与业务动作同事务写入 | ADR-0021：不入 processing_jobs、水位=隐式 rowid 单调扫描、禁 NOT EXISTS、失败 3 次跳过、映射集中声明（QUIZ 0.9/0.8、CONFIRMED→USER_CONFIRMATION 0.3·0.4/0.7、交卷不产证据防双计）；零 LLM/零前端/零新 API；concept_id 已由票 01/02 接通（source_anchor_id 仍留后续） |
-| **Concept Mastery V1（票 01~05）** | 迁移 0024 `quizzes.concept_id`（生成只从同课程 CONFIRMED 概念建议主概念、作答前可改/清空、作答后锁定，逐题 Event 固化 concept_id）+ 迁移 0025 `user_concept_mastery`（每 Concept 唯一快照，只存 V1 字段）+ `learning/mastery.py` 确定性算法（12 条窗口/四条半衰/有效计数 Confidence/NOT_ENOUGH_DATA·WEAK·LEARNING·STABLE，黄金样本冻结；`window_evidence` 为重算与详情共享的唯一窗口口径）+ Evidence Builder 复制 Event 概念、Consumer 同轮触发全量重算（失败重试后记结构化错误）+ `GET /api/courses/{id}/mastery` 只读（覆盖率/四态计数/状态筛选/无写 API）+ `GET /api/courses/{id}/mastery/concepts/{cid}` 详情（snapshot + algorithm_version + 窗口内 Evidence 按时间倒序；来源区分普通 Quiz〔record_id+标题+quiz_id〕与模拟测试逐题〔metadata.test_id+sequence_no〕，无定位只给时间不造假链接）+ 前端 Knowledge GPS 真实列表（URL 可恢复筛选）与概览卡接真、行打开详情 Dialog 与来源跳转（`?tab=quiz` / tests 结果页）、章级示意掌握度与模拟课程掌握度删除 + **票 04 生命周期**：Record/Course 软删除返回受影响概念并由端点同步全量重算（历史 Event/Evidence 保留审计）、归档概念退出聚合与活跃查询（详情 404）但快照证据保留且不接收新证据、启动 `recover_snapshots` 重建缺失/版本过期快照（幂等、零新队列）、物理删除经 FK CASCADE 清快照 + **票 05 Course Brain 标记（纯前端 df4b628）**：Tab 查询层组合 `useCourseMastery`（与概览卡共享缓存）派生单一 `masteryByConceptId` 映射，图谱节点标签 token 色状态点（`masteryDotCssVars` 与 `masteryDotClassNames` 同源）+ tooltip「掌握状态」行（节点主色仍为重要度灰阶）、列表 CONFIRMED 行复用 `ConceptMasteryBadge`、详情 aside 掌握行 + 「掌握详情」复用既有 Evidence 弹窗；加载中/查询失败诚实无标记，候选行永不显示；`CourseBrainMastery.test.tsx` 5 项（列表标记/tooltip+标签/详情入口/失败降级/零概念） | 票 01~05 done（05 于 2026-09-18）；票 03 顺带修复票 02 缺陷=模拟测试逐题（record_id 空）证据被 inner join records 误排除、永不参与 Mastery，现 LEFT JOIN + deleted_at 过滤；票 06（一体化验收收尾）待开发；「后台计算中」状态未单列（与证据落库同轮完成，见工单 02 实施备注）；窗口内证据计数封顶 12 |
+| **Concept Mastery V1（票 01~06）** | 迁移 0024 `quizzes.concept_id`（生成只从同课程 CONFIRMED 概念建议主概念、作答前可改/清空、作答后锁定，逐题 Event 固化 concept_id）+ 迁移 0025 `user_concept_mastery`（每 Concept 唯一快照，只存 V1 字段）+ `learning/mastery.py` 确定性算法（12 条窗口/四条半衰/有效计数 Confidence/NOT_ENOUGH_DATA·WEAK·LEARNING·STABLE，黄金样本冻结；`window_evidence` 为重算与详情共享的唯一窗口口径）+ Evidence Builder 复制 Event 概念、Consumer 同轮触发全量重算（失败重试后记结构化错误）+ `GET /api/courses/{id}/mastery` 只读（覆盖率/四态计数/状态筛选/无写 API）+ `GET /api/courses/{id}/mastery/concepts/{cid}` 详情（snapshot + algorithm_version + 窗口内 Evidence 按时间倒序；来源区分普通 Quiz〔record_id+标题+quiz_id〕与模拟测试逐题〔metadata.test_id+sequence_no〕，无定位只给时间不造假链接）+ 前端 Knowledge GPS 真实列表（URL 可恢复筛选）与概览卡接真、行打开详情 Dialog 与来源跳转（`?tab=quiz` / tests 结果页）、章级示意掌握度与模拟课程掌握度删除 + **票 04 生命周期**：Record/Course 软删除返回受影响概念并由端点同步全量重算（历史 Event/Evidence 保留审计）、归档概念退出聚合与活跃查询（详情 404）但快照证据保留且不接收新证据、启动 `recover_snapshots` 重建缺失/版本过期快照（幂等、零新队列）、物理删除经 FK CASCADE 清快照 + **票 05 Course Brain 标记（纯前端 df4b628）**：Tab 查询层组合 `useCourseMastery`（与概览卡共享缓存）派生单一 `masteryByConceptId` 映射，图谱节点标签 token 色状态点（`masteryDotCssVars` 与 `masteryDotClassNames` 同源）+ tooltip「掌握状态」行（节点主色仍为重要度灰阶）、列表 CONFIRMED 行复用 `ConceptMasteryBadge`、详情 aside 掌握行 + 「掌握详情」复用既有 Evidence 弹窗；加载中/查询失败诚实无标记，候选行永不显示；`CourseBrainMastery.test.tsx` 5 项（列表标记/tooltip+标签/详情入口/失败降级/零概念） | 票 01~06 done（06 于 2026-09-18：ADR-0023 + 数据模型 v2.9 重命名 + PRD/扩展设计/CONTEXT/技术栈交叉引用收口；真机验收清单在票 06，剩用户验收）；票 03 顺带修复票 02 缺陷=模拟测试逐题（record_id 空）证据被 inner join records 误排除、永不参与 Mastery，现 LEFT JOIN + deleted_at 过滤；「后台计算中」状态未单列（与证据落库同轮完成，见工单 02 实施备注）；窗口内证据计数封顶 12 |
 | **F4 Course Brain V1** | 迁移 0023 三表（concepts/concept_relations/record_concepts，CONFIRMED 部分唯一索引）+ `course_brain` 模块（六态快照/概念与关系列表/来源回溯/手动创建/`apply-review` 五决策单事务/archive）+ 构建 Worker（`CONCEPT_EXTRACTION`：多来源收集/分块 LLM 结构化抽取/确定性归一化挂接/逐字锚点/单事务原子发布/重建不覆盖 CONFIRMED）+ B2 `search_library` 概念增强（Concept FTS top-4→canonical_name 并跑分片 FTS、occurrences 按 record 去重、`CHAT_PROMPT_VERSION` v6）+ 可观测（`llm_call_logs.retrieval_count` 埋点/检索工具体异常 ok=false/审计日志）+ 前端 map Tab=Course Brain 主页面（六态/图谱列表双视图/候选审核抽屉/Relation 审核区/详情与来源跳转/手动创建/归档），mock 图谱链删除 | ADR-0022；CB-00~12 十二票完结（2026-09-16）+ **CB-13 P1 遗留修复**（2026-09-16：来源跳转 segment_id 精确定位、课程移动读取期防护、零证据三层闸门+错误码 COURSE_BRAIN_CONCEPT_NO_EVIDENCE）；sqlite-vec 延后（CB-01 合成评测四维全过，`docs/evaluation/course-brain-retrieval-baseline.md`）；数据模型 v2.8；剩用户真机验收（工单 12/13 清单） |
 | 学习统计 | 后端七口径统计端点、前端统计带+5 图（真实数据） | 七口径=JOIN records+子表 deleted_at 双过滤 |
-| Desktop 界面 | 全局 `canvas → sidebar → paper` 框架、224/64px 响应式侧栏、52px 顶栏、课程快捷入口、Base UI Tooltip / Toast / 状态标签；「今日」页学习链、行动/资产双列、真实六指标 + 7/30 天趋势与次级洞察图；「收件箱」统计筛选、多选批量操作、紧凑列表与响应式内容预览；「知识空间」胶囊筛选 + 网格/列表视图、课程卡片（统计/进度）与右栏洞察、新建课程 Sheet 抽屉；「课堂详情」固定工作面 + 局部滚动、七标签、「学习链」Tab 桑基流转图（真实记录派生 + 文字摘要）、概览知识点权重玫瑰图、课程脑图力布局关系图（自动标签避让）+ 权重摘要 + 全屏、概览分区节奏、结构列课程信息（窄屏 Sheet，编辑 Sheet / 删除保留） | 无后端、API 或数据结构变更；无后端支持区域（右栏统计/活动、卡片聚合统计、课程级概览/掌握度/图谱/对话、相关推荐）以确定性示意数据 + 「示意」标签明示且只读（学习链/最近记录/相关资源为真实数据）；筛选/排序/视图/标签为客户端实现，URL 可恢复；整页不滚动、滚动只在明确局部容器内（DESIGN.md §4/§13） |
+| Desktop 界面 | 全局 `canvas → sidebar → paper` 框架、224/64px 响应式侧栏、52px 顶栏、课程快捷入口、Base UI Tooltip / Toast / 状态标签；「今日」页学习链、行动/资产双列、真实六指标 + 7/30 天趋势与次级洞察图；「收件箱」统计筛选、多选批量操作、紧凑列表与响应式内容预览；「知识空间」胶囊筛选 + 网格/列表视图、课程卡片（统计/进度）与右栏洞察、新建课程 Sheet 抽屉；「课堂详情」固定工作面 + 局部滚动、七标签、「学习链」Tab 桑基流转图（真实记录派生 + 文字摘要）、概览知识点权重玫瑰图、课程脑图力布局关系图（自动标签避让）+ 权重摘要 + 全屏、概览分区节奏、结构列课程信息（窄屏 Sheet，编辑 Sheet / 删除保留） | 无后端、API 或数据结构变更；无后端支持区域（右栏统计/活动、卡片聚合统计、课程级概览、图谱玫瑰图、相关推荐）以确定性示意数据 + 「示意」标签明示且只读（学习链/最近记录/相关资源/知识 GPS 掌握度为真实数据）；筛选/排序/视图/标签为客户端实现，URL 可恢复；整页不滚动、滚动只在明确局部容器内（DESIGN.md §4/§13） |
 | 全局搜索 | FTS5+jieba 应用层分词（ADR-0016）、写路径同事务同步 11 挂点、Ctrl+K 命令面板、`/library` 资产库视图 | 统一索引表；软删查询期回表过滤；启动幂等回填 |
 | 设置 | 偏好（外观/通用/关闭行为/自启/快捷键自定义/重启恢复）、档案（昵称/头像）、LLM/ASR 供应商卡+连通性手动测试、数据目录（切换/迁移/重启，desktop.json）、全量导出/导入/滚动备份、首启向导四步、**服务与用量分区（30 天 LLM 用量聚合+趋势图+缺 key 徽章）** | 单 active 供应商；连通性仅手动（真实计费） |
 | 界面语言 | 中英全量切换（含首启向导语言步）、en.json 全量真译+一致性防线、后端错误码化（ADR-0017 附加字段）、前端错误码翻译消费+壳层命令码化 | 内容语言与界面语言解耦（prompt 固化指令） |
@@ -78,7 +78,7 @@
 
 **明确待做（已有工单）：**
 
-- `concept-mastery-v1/06`（`ready-for-agent`，票 01~05 已 done）：一体化验收与文档收尾；**该链完结后**资料库 V1 + 知识起点扩展波次（扩展文档 §41/§42）才开工。
+- ~~`concept-mastery-v1/06`~~（✅ 2026-09-18 完结，ADR-0023）。**Concept Mastery V1 链整体完结**，资料库 V1 + 知识起点扩展波次（扩展文档 §41/§42）已解锁待开工。
 - `ai-summary/03-long-summary-quality-recovery`（`ready-for-agent`，8 项未勾）：>30k 长总结 map-reduce、90s 超时/不自动重试语义、手动重试复用 Job、ACTIVE 校验、llm_call_logs 字段补全、评测样本。⚠️ 这是**唯一一张实质性未做的旧功能票**；现状是 chat 侧对 >30k 转写做降级提示（`agent/context.py` CHAT_TRANSCRIPT_MAX_CHARS=30000），总结侧无长文处理。
 - `markdown-export/03` 聚合导出（`ready-for-human`，代码完成仅剩用户验收后关票）。
 
@@ -105,9 +105,9 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 │  ├─ src/styles/         tokens.css(@theme) / theme.css / globals.css / animations.css 分层
 │  └─ src-tauri/          Rust 壳：sidecar 拉起、托盘、全局快捷键、数据目录解析（ADR-0013）
 ├─ backend/               FastAPI sidecar（uv 管理，py312，feature-first 模块化单体 ADR-0015）
-│  ├─ app/modules/        19 模块：agent/capture/course/course_brain/data/jobs/knowledge_point/llm/
-│  │                      profile/quiz/record/review_material/search/settings/source_anchor/summary/
-│  │                      today/todo/transcript
+│  ├─ app/modules/        20 模块：agent/capture/course/course_brain/data/jobs/knowledge_point/
+│  │                      learning/llm/profile/quiz/record/review_material/search/settings/
+│  │                      source_anchor/summary/today/todo/transcript
 │  ├─ app/shared/         deps/errors(带码 HTTPException)/events/prompts/schemas
 │  ├─ app/core/           data_dir/logging/loop/version
 │  ├─ app/db/             engine/base/migrations（SQL 迁移执行器，PRAGMA user_version 推进）
@@ -132,7 +132,7 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 - **AI 对话右栏「工具状态」其余三开关（knowledgeBase/codeRun/documentParse）与「会话收藏」为图 1 对齐的本地示意状态**（Zustand 内存，不落库、不触发请求）。webSearch 开关已随 B1 接真（按会话记忆，发消息带 `web_search` 标志；无 key 置灰+设置页配置）；范围胶囊与课程/全部资料问答已随 B2 接真（点其它胶囊=新建对应范围会话）。
 - **总结侧无长文 map-reduce**（仅 chat 侧有 >30k 降级提示）；`prompt_version` 从未 bump，评测回归机制启用前需补。
 - 供应商连通性测试用腾讯 `GetAsrVocabList` 只读接口近似（LLM 测试=真实计费生成，故仅手动）。
-- 前端全量测试默认并发时，资源竞争会使不同 5 秒用例偶发超时；失败文件单跑均通过，本次以 `pnpm test -- --maxWorkers=4` 的 426/426 作为稳定全量证据（本地 `format:check` 会因 `core.autocrlf=true` 的 CRLF 工作区对全库报 warn，CI/LF 检出下正常；验收格式以触及文件为准）。
+- 前端全量测试默认并发时，资源竞争会使不同用例偶发超时（失败文件每轮随机轮换：TodoPanel / CourseBrain 三件套 / chat 均出现过），失败文件单跑均通过；稳定证据口径 = 失败文件单跑全绿 + `npx vitest run <files>` 批跑绿（票 06 门禁实测：全量多轮 473~475/476，失败轮换，单跑批 28/28、44/44 全绿）（本地 `format:check` 会因 `core.autocrlf=true` 的 CRLF 工作区对全库报 warn，CI/LF 检出下正常；验收格式以触及文件为准）。
 - 分支未合并堆积：`feat/extend-dev-05` 领先 main 34 提交；本地尚存多个历史 feature 分支（feat/dev-01~04、arch-opt 等）。
 
 **本机环境坑（跑门禁前必读，详见 §9 命令）：**
