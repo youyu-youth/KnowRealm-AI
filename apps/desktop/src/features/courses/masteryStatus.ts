@@ -52,6 +52,15 @@ export const masteryDotClassNames: Record<MasteryStatus, string> = {
   STABLE: "bg-success-foreground",
 };
 
+// 状态点的主题 CSS 变量名：canvas 图表（ECharts rich text）读不了 Tailwind 类，
+// 经 charts/token 的 cssVar 取计算值；与 masteryDotClassNames 保持同源语义。
+export const masteryDotCssVars: Record<MasteryStatus, string> = {
+  NOT_ENOUGH_DATA: "--ink-faint",
+  WEAK: "--warning-foreground",
+  LEARNING: "--ink-muted",
+  STABLE: "--success-foreground",
+};
+
 export const masteryConfidenceLabelKeys: Record<MasteryConfidence, string> = {
   LOW: "spaces.courseDetail.mastery.confidence.LOW",
   MEDIUM: "spaces.courseDetail.mastery.confidence.MEDIUM",

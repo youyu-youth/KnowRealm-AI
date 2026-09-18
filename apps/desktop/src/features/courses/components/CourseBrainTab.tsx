@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { StatusTag, type StatusTagProps } from "@/components/common/StatusTag";
@@ -12,7 +12,13 @@ import {
   useTriggerBuild,
   type CourseBrainPhase,
 } from "@/features/courses/api/courseBrain";
-import type { BrainConcept, CourseDetail } from "@/features/courses/api/types";
+import type {
+  BrainConcept,
+  ConceptMastery,
+  CourseDetail,
+} from "@/features/courses/api/types";
+import { useCourseMastery } from "@/features/courses/api/queries";
+import { ConceptMasteryDetailDialog } from "@/features/courses/components/ConceptMasteryDetailDialog";
 import { CourseBrainConceptDetail } from "@/features/courses/components/CourseBrainConceptDetail";
 import { CourseBrainConceptList } from "@/features/courses/components/CourseBrainConceptList";
 import { CourseBrainCreateConceptSheet } from "@/features/courses/components/CourseBrainCreateConceptSheet";
@@ -48,8 +54,24 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
     status: "CONFIRMED",
     limit: 200,
   });
+  // 学习者状态在查询层组合（spec）：与概览知识 GPS 卡共用同一 query，图谱、
+  // 列表与详情三处从同一份派生映射取值，保证状态一致且不建第二份持久化状态。
+  const mastery = useCourseMastery(course.id);
+  const masteryByConceptId = useMemo(
+    () =>
+      new Map(
+        (mastery.data?.concepts ?? []).map((concept) => [
+          concept.concept_id,
+          concept,
+        ]),
+      ),
+    [mastery.data],
+  );
   const [mode, setMode] = useState<BrainMode>("graph");
   const [selected, setSelected] = useState<BrainConcept | null>(null);
+  const [masteryDetail, setMasteryDetail] = useState<ConceptMastery | null>(
+    null,
+  );
   const [reviewOpen, setReviewOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -89,6 +111,9 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
   const { snapshot } = view;
   const statusLabel = t(`spaces.courseDetail.brain.status.${snapshot.status}`);
   const buildPending = triggerBuild.isPending;
+  const selectedMastery = selected
+    ? (masteryByConceptId.get(selected.id) ?? null)
+    : null;
   const showWorkspace =
     snapshot.status === "READY" ||
     snapshot.status === "REVIEW" ||
@@ -216,6 +241,7 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
                     <CourseBrainGraph
                       courseName={course.name}
                       graph={snapshot.graph}
+                      masteryByConceptId={masteryByConceptId}
                       onSelect={handleNodeSelect}
                       className="mt-2"
                     />
@@ -229,6 +255,7 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
                     courseId={course.id}
                     selectedId={selected?.id ?? null}
                     onSelect={setSelected}
+                    masteryByConceptId={masteryByConceptId}
                     className="mt-2"
                   />
                 </SurfaceCard>
@@ -239,6 +266,8 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
                 <CourseBrainConceptDetail
                   courseId={course.id}
                   concept={selected}
+                  mastery={selectedMastery}
+                  onOpenMasteryDetail={() => setMasteryDetail(selectedMastery)}
                   onClose={() => setSelected(null)}
                 />
               ) : (
@@ -261,6 +290,14 @@ export function CourseBrainTab({ course }: { course: CourseDetail }) {
             courseId={course.id}
             open={createOpen}
             onOpenChange={setCreateOpen}
+          />
+          <ConceptMasteryDetailDialog
+            courseId={course.id}
+            concept={masteryDetail}
+            open={masteryDetail !== null}
+            onOpenChange={(open) => {
+              if (!open) setMasteryDetail(null);
+            }}
           />
         </>
       ) : null}

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Archive, X } from "lucide-react";
+import { Archive, ChevronRight, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,13 +7,18 @@ import { StatusTag } from "@/components/common/StatusTag";
 import { ToggleChip } from "@/components/common/ToggleChip";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
-import type { BrainConcept } from "@/features/courses/api/types";
+import type {
+  BrainConcept,
+  ConceptMastery,
+} from "@/features/courses/api/types";
 import { useConceptSources } from "@/features/courses/api/courseBrain";
+import { ConceptMasteryBadge } from "@/features/courses/components/ConceptMasteryBadge";
 import { CourseBrainArchiveDialog } from "@/features/courses/components/CourseBrainArchiveDialog";
 import {
   anchorJumpTarget,
   knowledgePointJumpTarget,
 } from "@/features/courses/courseBrainJump";
+import { masteryPercentOf } from "@/features/courses/masteryStatus";
 import { formatTimelineTimestamp } from "@/features/records/recordPresentation";
 
 // 筛选值：锚点四类 + 知识点小节；ALL 恒显示。
@@ -23,13 +28,19 @@ type SourceFilter = "ALL" | string;
 type CourseBrainConceptDetailProps = {
   courseId: string;
   concept: BrainConcept;
+  /** 该概念的掌握快照（仅正式概念有；未加载/失败时为空即诚实无标记）。 */
+  mastery?: ConceptMastery | null;
+  /** 打开掌握详情弹窗（复用既有 Evidence 下钻能力）。 */
+  onOpenMasteryDetail?: () => void;
   onClose: () => void;
 };
 
-/** 概念详情面板：元信息 + 描述 + 来源列表（锚点四类与知识点，按类型筛选）。 */
+/** 概念详情面板：元信息 + 描述 + 掌握状态 + 来源列表（锚点四类与知识点，按类型筛选）。 */
 export function CourseBrainConceptDetail({
   courseId,
   concept,
+  mastery,
+  onOpenMasteryDetail,
   onClose,
 }: CourseBrainConceptDetailProps) {
   const { t } = useTranslation();
@@ -124,6 +135,30 @@ export function CourseBrainConceptDetail({
         <p className="text-body-dense text-ink max-w-reading">
           {concept.description}
         </p>
+      ) : null}
+
+      {mastery ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <ConceptMasteryBadge status={mastery.status} />
+          {mastery.mastery_score !== null ? (
+            <span className="text-label text-ink-muted tabular-nums">
+              {t("spaces.courseDetail.gps.percentValue", {
+                percent: masteryPercentOf(mastery.mastery_score),
+              })}
+            </span>
+          ) : null}
+          {onOpenMasteryDetail ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto"
+              onClick={onOpenMasteryDetail}
+            >
+              {t("spaces.courseDetail.brain.detail.masteryAction")}
+              <ChevronRight aria-hidden="true" data-icon="inline-end" />
+            </Button>
+          ) : null}
+        </div>
       ) : null}
 
       {concept.suggested_target_name ? (

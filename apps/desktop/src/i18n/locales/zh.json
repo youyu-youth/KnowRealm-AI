@@ -441,7 +441,8 @@
           "title": "概念图谱",
           "empty": "确认概念后，正式图谱会在这里生成。",
           "aria": "「{{course}}」概念关系图谱",
-          "tooltipImportance": "重要度 {{importance}}"
+          "tooltipImportance": "重要度 {{importance}}",
+          "tooltipMastery": "掌握状态：{{status}}"
         },
         "rose": {
           "title": "概念分布",
@@ -454,7 +455,8 @@
         "detail": {
           "type": "类型",
           "close": "关闭详情",
-          "placeholder": "选择概念查看详情与来源"
+          "placeholder": "选择概念查看详情与来源",
+          "masteryAction": "掌握详情"
         },
         "sourceType": {
           "AUDIO_SEGMENT": "转写",

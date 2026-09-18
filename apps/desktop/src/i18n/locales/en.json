@@ -441,7 +441,8 @@
           "title": "Concept graph",
           "empty": "The confirmed graph will appear here once concepts are confirmed.",
           "aria": "Concept graph for {{course}}",
-          "tooltipImportance": "Importance {{importance}}"
+          "tooltipImportance": "Importance {{importance}}",
+          "tooltipMastery": "Mastery: {{status}}"
         },
         "rose": {
           "title": "Concept distribution",
@@ -454,7 +455,8 @@
         "detail": {
           "type": "Type",
           "close": "Close details",
-          "placeholder": "Select a concept to see details and sources"
+          "placeholder": "Select a concept to see details and sources",
+          "masteryAction": "Mastery details"
         },
         "sourceType": {
           "AUDIO_SEGMENT": "Transcript",

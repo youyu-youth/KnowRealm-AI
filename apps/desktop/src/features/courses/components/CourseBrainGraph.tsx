@@ -4,8 +4,17 @@ import { useTranslation } from "react-i18next";
 import { BaseChart } from "@/charts/BaseChart";
 import { prefersReducedMotion, rootFontSize } from "@/charts/dom";
 import type { echarts } from "@/charts/echarts";
-import { chartPalette, darkTooltipStyle } from "@/charts/token";
-import type { BrainGraph } from "@/features/courses/api/types";
+import { chartPalette, cssVar, darkTooltipStyle } from "@/charts/token";
+import type {
+  BrainGraph,
+  ConceptMastery,
+  MasteryStatus,
+} from "@/features/courses/api/types";
+import {
+  masteryDotCssVars,
+  masteryStatusLabelKeys,
+  masteryStatuses,
+} from "@/features/courses/masteryStatus";
 import { cn } from "@/lib/utils";
 
 type GraphTooltipParams = {
@@ -14,6 +23,7 @@ type GraphTooltipParams = {
     importance?: number;
     occurrenceCount?: number;
     recordCount?: number;
+    masteryStatus?: MasteryStatus;
   };
 };
 
@@ -23,6 +33,7 @@ type GraphNodeDatum = {
   importance: number;
   occurrenceCount: number;
   recordCount: number;
+  masteryStatus?: MasteryStatus;
   symbolSize: number;
   itemStyle: { color: string; borderColor?: string; borderWidth?: number };
 };
@@ -45,6 +56,7 @@ function truncate(text: string, max: number): string {
 
 function buildGraphOption(
   graph: BrainGraph,
+  masteryByConceptId: ReadonlyMap<string, ConceptMastery> | undefined,
   t: ReturnType<typeof useTranslation>["t"],
 ): echarts.EChartsCoreOption {
   const palette = chartPalette();
@@ -62,6 +74,8 @@ function buildGraphOption(
     importance: node.importance,
     occurrenceCount: node.occurrence_count,
     recordCount: node.record_count,
+    // 非侵入式掌握标记：只挂到标签/tooltip，不改动节点主色（重要度灰阶）。
+    masteryStatus: masteryByConceptId?.get(node.id)?.status,
     symbolSize: 14 + Math.round((node.record_count / maxRecordCount) * 20),
     itemStyle: {
       color: grays[Math.min(Math.max(node.importance, 1), 5) - 1],
@@ -92,7 +106,7 @@ function buildGraphOption(
       confine: true,
       formatter: ({ data }: GraphTooltipParams) => {
         if (!data?.name) return "";
-        return [
+        const lines = [
           data.name,
           t("spaces.courseDetail.brain.graph.tooltipImportance", {
             importance: data.importance ?? 0,
@@ -103,7 +117,15 @@ function buildGraphOption(
           t("spaces.courseDetail.brain.concepts.records", {
             count: data.recordCount ?? 0,
           }),
-        ].join("\n");
+        ];
+        if (data.masteryStatus) {
+          lines.push(
+            t("spaces.courseDetail.brain.graph.tooltipMastery", {
+              status: t(masteryStatusLabelKeys[data.masteryStatus]),
+            }),
+          );
+        }
+        return lines.join("\n");
       },
     },
     series: [
@@ -121,7 +143,19 @@ function buildGraphOption(
           distance: 5,
           color: palette.foreground,
           fontSize,
-          formatter: ({ name }: { name?: string }) => truncate(name ?? "", 12),
+          formatter: ({ data }: { data?: GraphNodeDatum }) => {
+            const name = truncate(data?.name ?? "", 12);
+            // 状态点 = 辅助标记；文字标签仍是节点主体（状态不止靠颜色，tooltip 有文字）。
+            return data?.masteryStatus
+              ? `{dot_${data.masteryStatus}|●} ${name}`
+              : name;
+          },
+          rich: Object.fromEntries(
+            masteryStatuses.map((status) => [
+              `dot_${status}`,
+              { color: cssVar(masteryDotCssVars[status]), fontSize },
+            ]),
+          ),
         },
         data: nodes,
         links,
@@ -151,6 +185,8 @@ function buildGraphOption(
 type CourseBrainGraphProps = {
   courseName: string;
   graph: BrainGraph;
+  /** 概念 → 掌握快照（查询层组合，缺数据/失败时不传即诚实无标记）。 */
+  masteryByConceptId?: ReadonlyMap<string, ConceptMastery>;
   /** 点击概念节点；由父组件打开概念详情面板。 */
   onSelect: (conceptId: string) => void;
   heightClass?: string;
@@ -161,12 +197,16 @@ type CourseBrainGraphProps = {
 export function CourseBrainGraph({
   courseName,
   graph,
+  masteryByConceptId,
   onSelect,
   heightClass = "h-[26rem]",
   className,
 }: CourseBrainGraphProps) {
   const { t } = useTranslation();
-  const option = useMemo(() => buildGraphOption(graph, t), [graph, t]);
+  const option = useMemo(
+    () => buildGraphOption(graph, masteryByConceptId, t),
+    [graph, masteryByConceptId, t],
+  );
   const handleSelect = useCallback(
     (params: echarts.ECElementEvent) => {
       const data = params.data as { id?: unknown } | undefined;
