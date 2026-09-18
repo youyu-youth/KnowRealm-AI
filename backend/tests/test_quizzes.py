@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.db.migrations import run_migrations
+from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.llm.service import StructuredModelResult, SummaryModel
 from app.modules.quiz.schemas import QuizBatch, QuizGenerateRequest
@@ -337,7 +337,7 @@ async def test_quiz_migration_creates_table_and_active_job_guard(tmp_path: Path)
             )
         }
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert {
         "id",
         "record_id",

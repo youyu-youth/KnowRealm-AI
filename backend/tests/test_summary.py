@@ -12,7 +12,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.db.migrations import MIGRATIONS_DIR, run_migrations
+from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.llm.service import OpenAiCompatibleSummaryModel, SummaryModel, SummaryModelResult
 from app.modules.summary.schemas import SummaryContent, SummarySection
@@ -195,7 +195,7 @@ async def assert_summary_schema(db_path: Path) -> None:
             ).fetchall()
         }
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert {"ai_summaries", "llm_call_logs", "learning_events"} <= tables
     assert "idx_processing_jobs_one_active_summary" in indexes
 

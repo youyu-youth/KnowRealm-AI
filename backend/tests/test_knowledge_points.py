@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.db.migrations import run_migrations
+from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.knowledge_point.schemas import KnowledgePointBatch
 from app.modules.llm.service import StructuredModelResult, SummaryModel
@@ -272,7 +272,7 @@ async def test_knowledge_point_migration_creates_table_and_active_job_guard(
             ).fetchall()
         }
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert {
         "id",
         "record_id",

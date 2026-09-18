@@ -195,7 +195,7 @@ async def test_migration_0020_creates_segment_search_index(tmp_path: Path) -> No
     data_dir = tmp_path / "KnowRealm"
     db_path = data_dir / "knowrealm.db"
     data_dir.mkdir()
-    from app.db.migrations import run_migrations
+    from app.db.migrations import run_migrations, supported_user_version
 
     await run_migrations(db_path)
 
@@ -214,7 +214,7 @@ async def test_migration_0020_creates_segment_search_index(tmp_path: Path) -> No
             ).fetchall()
         ]
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert "segment_search_index" in tables
     assert columns == ["body", "entity_type", "entity_id"]
 

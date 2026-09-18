@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.db.engine import create_database
-from app.db.migrations import run_migrations
+from app.db.migrations import run_migrations, supported_user_version
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.events import write_learning_event
 from app.modules.learning.queries import list_evidence_by_course, list_evidence_by_record
@@ -40,7 +40,7 @@ async def test_migration_0021_creates_learning_evidence_table(tmp_path: Path) ->
             ).fetchall()
         }
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert columns == {
         "id",
         "course_id",

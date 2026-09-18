@@ -23,7 +23,7 @@ from loguru import logger
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.db.migrations import MIGRATIONS_DIR, run_migrations
+from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import ClaimedJob, JobRunner
@@ -146,7 +146,7 @@ async def assert_document_import_schema(db_path: Path) -> None:
             await connection.execute("PRAGMA index_list(processing_jobs)")
         ).fetchall()
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert {"record_files", "transcripts", "processing_jobs"} <= tables
     assert "processing_status" not in {column[1] for column in record_file_columns}
     assert {index[1] for index in processing_job_indexes} >= {

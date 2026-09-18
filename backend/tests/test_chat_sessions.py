@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from sqlalchemy import update
 
 from app.db.base import utcnow
+from app.db.migrations import supported_user_version
 from app.main import create_app
 from app.modules.agent.session_service import NEUTRAL_PROFILE_SNAPSHOT
 from app.modules.settings.config import save_llm_provider
@@ -89,7 +90,7 @@ async def test_migration_0014_creates_chat_tables_and_advances_user_version(
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
             version = await (await connection.execute("PRAGMA user_version")).fetchone()
 
-        assert version == (25,)
+        assert version == (supported_user_version(),)
 
         tables = await table_names(tmp_path)
         assert {"profile", "chat_sessions", "chat_messages"} <= tables

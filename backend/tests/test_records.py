@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.db.migrations import MIGRATIONS_DIR, run_migrations
+from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.record.models import Record
 
@@ -49,7 +49,7 @@ async def assert_records_schema(db_path: Path) -> None:
         ).fetchall()
         indexes = await (await connection.execute("PRAGMA index_list(records)")).fetchall()
 
-        assert version == (25,)
+        assert version == (supported_user_version(),)
     assert [column[1] for column in columns] == [
         "id",
         "course_id",

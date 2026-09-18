@@ -11,7 +11,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.db.migrations import run_migrations
+from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.llm.service import StructuredModelResult
 from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
@@ -530,7 +530,7 @@ async def test_todo_migration_creates_table(tmp_path: Path) -> None:
             row[1]
             for row in await (await connection.execute("PRAGMA table_info(todo_items)")).fetchall()
         }
-    assert version is not None and version[0] == 25
+    assert version is not None and version[0] == supported_user_version()
     assert columns == {
         "id",
         "record_id",

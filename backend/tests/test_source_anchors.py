@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from app.db.migrations import MIGRATIONS_DIR, run_migrations
+from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.record.models import Record
 
@@ -79,7 +79,7 @@ async def assert_segment_tables_schema(db_path: Path) -> None:
             await connection.execute("PRAGMA index_list(source_anchor_links)")
         ).fetchall()
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert list(transcript_columns) == [
         "id",
         "transcript_id",

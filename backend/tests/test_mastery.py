@@ -18,7 +18,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.db.migrations import run_migrations
+from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.mastery import (
@@ -410,7 +410,7 @@ async def test_migration_0025_creates_unique_concept_mastery_snapshot(tmp_path: 
             ).fetchall()
         }
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert columns == {
         "id",
         "course_id",

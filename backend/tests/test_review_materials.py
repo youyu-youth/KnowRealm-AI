@@ -11,7 +11,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import text
 
-from app.db.migrations import run_migrations
+from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.llm.service import ReviewMaterialModel, ReviewMaterialModelResult
 from app.modules.review_material.schemas import ReviewMaterialContent
@@ -239,7 +239,7 @@ async def test_migration_0017_adds_review_materials_and_single_active_job(
             )
         ).fetchone()
 
-    assert version == (25,)
+    assert version == (supported_user_version(),)
     assert columns == {
         "id",
         "record_id",
