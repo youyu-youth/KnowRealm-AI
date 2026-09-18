@@ -150,10 +150,11 @@ def create_app(
                     "segment_search_index_backfill_failed",
                     error_code="SEGMENT_SEARCH_BACKFILL_FAILED",
                 )
-            # Mastery 快照同为可再生派生数据：缺失/算法版本过期的概念全量重建，
+            # Mastery 快照同为可再生派生数据：缺失/算法版本过期/stale 标记的概念全量重建，
             # 失败不阻断启动，下次启动重试（幂等，版本一致的快照零写入）。
+            recovery_failed: set[str] = set()
             try:
-                await MasteryService.recover_snapshots(session_factory)
+                recovery_failed = await MasteryService.recover_snapshots(session_factory)
             except Exception as exc:
                 logger.error(
                     "mastery_snapshot_recover_failed",
@@ -331,6 +332,14 @@ def create_app(
                 evidence_consumer = EvidenceConsumer(session_factory)
                 consumer_task = asyncio.create_task(evidence_consumer.run())
                 app.state.evidence_consumer = evidence_consumer
+                # 启动恢复的残留失败交 consumer 在轮询内继续重试（快照已标 stale 兜底）。
+                if recovery_failed:
+                    logger.error(
+                        "mastery_recover_pending_retry",
+                        error_code="MASTERY_RECOVER_PENDING_RETRY",
+                        concept_count=len(recovery_failed),
+                    )
+                    evidence_consumer.schedule_recompute(recovery_failed)
                 try:
                     yield
                 finally:

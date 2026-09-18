@@ -1041,6 +1041,114 @@ async def test_record_soft_delete_recomputes_affected_concepts_and_keeps_history
 
 
 @pytest.mark.anyio
+async def test_recompute_failure_marks_stale_and_recovery_rebuilds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """重算彻底失败：既有快照钉 stale 哨兵、失败概念计入返回集合；启动恢复重建。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, _client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-stale-mark-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+
+        async def failing_recompute(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("app.modules.learning.service._recompute_concept", failing_recompute)
+        failed = await MasteryService.recompute_concepts(
+            app.state.session_factory, [CONCEPT_ID, OTHER_CONCEPT_ID]
+        )
+        async with app.state.session_factory() as session:
+            marked = (
+                await session.execute(
+                    text(
+                        "SELECT algorithm_version, mastery_score FROM user_concept_mastery "
+                        "WHERE concept_id = :id"
+                    ),
+                    {"id": CONCEPT_ID},
+                )
+            ).one()
+
+        monkeypatch.undo()
+        recovered = await MasteryService.recover_snapshots(app.state.session_factory)
+        async with app.state.session_factory() as session:
+            rebuilt = (
+                await session.execute(
+                    text(
+                        "SELECT algorithm_version, evidence_count FROM user_concept_mastery "
+                        "WHERE concept_id = :id"
+                    ),
+                    {"id": CONCEPT_ID},
+                )
+            ).one()
+
+    # OTHER 概念快照尚不存在：标记空转（缺失本身就是恢复锚点），但同样计入失败集合。
+    assert failed == {CONCEPT_ID, OTHER_CONCEPT_ID}
+    assert tuple(marked) == ("stale", 1.0)
+    assert recovered == set()
+    assert tuple(rebuilt) == (ALGORITHM_VERSION, 3)
+
+
+@pytest.mark.anyio
+async def test_delete_recompute_failure_feeds_consumer_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """删除端点重算失败：仍 204、快照标 stale 并进 consumer pending，下一轮自愈。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-del-fail-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+
+        async def failing_recompute(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr("app.modules.learning.service._recompute_concept", failing_recompute)
+        deleted = await client.delete(f"/api/records/{RECORD_ID}")
+        pending = set(app.state.evidence_consumer._pending_recompute)
+        async with app.state.session_factory() as session:
+            marked = (
+                await session.execute(
+                    text(
+                        "SELECT algorithm_version, mastery_score FROM user_concept_mastery "
+                        "WHERE concept_id = :id"
+                    ),
+                    {"id": CONCEPT_ID},
+                )
+            ).one()
+
+        monkeypatch.undo()
+        await app.state.evidence_consumer.run_once()
+        response = await client.get(f"/api/courses/{COURSE_ID}/mastery")
+
+    assert deleted.status_code == 204, deleted.text
+    assert pending == {CONCEPT_ID}
+    assert tuple(marked) == ("stale", 1.0)  # 失败窗口保留最后已知值
+    row = next(item for item in response.json()["concepts"] if item["concept_id"] == CONCEPT_ID)
+    assert row["status"] == "NOT_ENOUGH_DATA"
+    assert row["mastery_score"] is None
+    assert row["evidence_count"] == 0
+
+
+@pytest.mark.anyio
 async def test_course_soft_delete_recomputes_then_physical_delete_cascades(
     tmp_path: Path,
 ) -> None:
@@ -1137,7 +1245,7 @@ async def test_missing_snapshot_recovered_on_startup(tmp_path: Path) -> None:
             }
 
     # 两个 CONFIRMED 概念的快照都缺失：有证据的按证据重建，无证据的落数据不足。
-    assert recovered == 2
+    assert recovered == set()
     assert snapshots[CONCEPT_ID]["mastery_score"] == pytest.approx(1.0, abs=1e-12)
     assert snapshots[CONCEPT_ID]["evidence_count"] == 3
     assert snapshots[CONCEPT_ID]["algorithm_version"] == ALGORITHM_VERSION
@@ -1190,7 +1298,7 @@ async def test_stale_algorithm_version_rebuilt_on_startup(tmp_path: Path) -> Non
             )
 
     # 仅版本过期的快照被重建；版本一致的概念跳过。
-    assert recovered == 1
+    assert recovered == set()
     assert snapshot["mastery_score"] == pytest.approx(1.0, abs=1e-12)
     assert snapshot["algorithm_version"] == ALGORITHM_VERSION
 
@@ -1234,5 +1342,5 @@ async def test_recover_snapshots_is_idempotent(tmp_path: Path) -> None:
                 )
             ).all()
 
-    assert recovered == 0
+    assert recovered == set()
     assert after == before

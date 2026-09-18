@@ -90,6 +90,10 @@ async def delete_course(
         raise CodedHTTPException(
             code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
         )
-    # 删除事务已提交；重算失败只记日志，不回滚删除。
-    await MasteryService.recompute_concepts(request.app.state.session_factory, affected_concepts)
+    # 删除事务已提交；重算失败标 stale 并交 consumer 轮询重试，不回滚删除。
+    failed = await MasteryService.recompute_concepts(
+        request.app.state.session_factory, affected_concepts
+    )
+    if failed:
+        request.app.state.evidence_consumer.schedule_recompute(failed)
     return Response(status_code=204)

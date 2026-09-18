@@ -4,6 +4,7 @@ learning_events 确定性转换为 learning_evidence。零 LLM、不入 processi
 """
 
 import asyncio
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import cast
 
@@ -53,10 +54,17 @@ class EvidenceConsumer:
         self._session_factory = session_factory
         self._stopped = asyncio.Event()
         self._watermark = 0
+        # 重算失败概念的内存 pending（删除/恢复路径不产事件，靠这里在轮询内重试）：
+        # 进程内自愈 ≤30s；重启即清，跨重启由快照 stale 哨兵接回启动恢复闭环。
+        self._pending_recompute: set[str] = set()
         self.failed_conversion_count = 0
 
     def stop(self) -> None:
         self._stopped.set()
+
+    def schedule_recompute(self, concept_ids: Collection[str]) -> None:
+        """登记待重算概念，下一轮 run_once 先行重试（失败的会继续留在 pending）。"""
+        self._pending_recompute.update(concept_ids)
 
     async def run(self) -> None:
         while not self._stopped.is_set():
@@ -73,11 +81,16 @@ class EvidenceConsumer:
                 pass
 
     async def run_once(self) -> int:
-        """单轮执行（测试接缝）：水位之上逐条转换落证据，返回本轮处理事件条数。
+        """单轮执行（测试接缝）：先重试 pending，再按水位逐条转换落证据，返回处理事件条数。
 
         计数含不产证据的未映射事件——它们同样被消费（推进水位）。证据成功
-        持久化后收拢受影响 Concept，由 Mastery Engine 异步全量重算（票 02）。
+        持久化后收拢受影响 Concept，由 Mastery Engine 异步全量重算（票 02）；
+        两路重算失败的概念都留在 pending，下一轮继续。
         """
+        pending, self._pending_recompute = self._pending_recompute, set()
+        if pending:
+            failed = await MasteryService.recompute_concepts(self._session_factory, pending)
+            self._pending_recompute.update(failed)
         # rowid 是追加型表的单调键；literal_column 收窄为整型列以供 select 类型解析。
         rowid_column = cast("ColumnElement[int]", literal_column("rowid"))
         async with self._session_factory() as session:
@@ -98,7 +111,10 @@ class EvidenceConsumer:
             processed += 1
         if affected_concepts:
             # 派生快照单独重算与重试：失败不回滚已落证据，也不阻塞下一轮水位。
-            await MasteryService.recompute_concepts(self._session_factory, affected_concepts)
+            failed = await MasteryService.recompute_concepts(
+                self._session_factory, affected_concepts
+            )
+            self._pending_recompute.update(failed)
         return processed
 
     async def _convert_with_retry(self, event: LearningEvent) -> str | None:

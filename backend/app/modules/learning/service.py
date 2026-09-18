@@ -11,7 +11,7 @@ from typing import NamedTuple, cast
 from uuid import uuid4
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
@@ -42,6 +42,9 @@ from app.shared.errors import CodedHTTPException
 
 MAX_RECOMPUTE_ATTEMPTS = 3
 QUIZ_EVIDENCE_TYPE = "QUIZ"
+# 重算彻底失败时钉在快照 algorithm_version 上的哨兵值：重启恢复按「版本不匹配」
+# 重建；重算成功会重写真实版本号，自愈自清。快照尚不存在时无需标记（缺失即锚点）。
+STALE_VERSION_MARKER = "stale"
 
 # 默认排序优先级：需要关注的状态在前，稳定项靠后（spec Desktop 体验）。
 _STATUS_PRIORITY = {
@@ -209,39 +212,64 @@ async def _get_course(session: AsyncSession, course_id: str) -> Course:
     return course
 
 
+async def _mark_snapshot_stale(
+    session_factory: async_sessionmaker[AsyncSession], concept_id: str
+) -> None:
+    """把既有快照钉上 stale 哨兵（best-effort）：标记写失败只记日志，不影响主流程。"""
+    try:
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(UserConceptMastery)
+                .where(UserConceptMastery.concept_id == concept_id)
+                .values(algorithm_version=STALE_VERSION_MARKER)
+            )
+    except Exception as exc:
+        logger.error(
+            "mastery_stale_mark_failed",
+            error_code="MASTERY_STALE_MARK_FAILED",
+            concept_id=concept_id,
+            error=repr(exc),
+        )
+
+
 class MasteryService:
     @staticmethod
     async def recompute_concepts(
         session_factory: async_sessionmaker[AsyncSession], concept_ids: Collection[str]
-    ) -> int:
-        """按 Concept 全量重算；单点失败重试后记结构化错误，不阻塞其余概念。"""
-        succeeded = 0
+    ) -> set[str]:
+        """按 Concept 全量重算；单点失败重试后记错误、标 stale 哨兵并收入返回的失败集合。
+
+        失败集合交调用方安排重试（如 consumer 的内存 pending）；不阻塞其余概念。
+        """
+        failed: set[str] = set()
         for concept_id in sorted(set(concept_ids)):
             last_error: Exception | None = None
             for _attempt in range(MAX_RECOMPUTE_ATTEMPTS):
                 try:
                     await _recompute_concept(session_factory, concept_id)
-                    succeeded += 1
                     break
                 except Exception as exc:
                     last_error = exc
             else:
+                failed.add(concept_id)
                 logger.error(
                     "mastery_recompute_failed",
                     error_code="MASTERY_RECOMPUTE_FAILED",
                     concept_id=concept_id,
                     error=repr(last_error),
                 )
-        return succeeded
+                await _mark_snapshot_stale(session_factory, concept_id)
+        return failed
 
     @staticmethod
     async def recover_snapshots(
         session_factory: async_sessionmaker[AsyncSession],
-    ) -> int:
-        """启动恢复：快照缺失或算法版本过期的 CONFIRMED 概念全量重算（幂等）。
+    ) -> set[str]:
+        """启动恢复：快照缺失、算法版本过期或失败标记（stale）的 CONFIRMED 概念全量重算（幂等）。
 
         版本一致且已有快照的概念直接跳过——重复调用、应用重启零写入；
         版本升级因此只需要 bump ``ALGORITHM_VERSION``，启动即全量重建。
+        返回仍失败的概念集合，交调用方安排重试。
         """
         async with session_factory() as session:
             concept_ids = list(

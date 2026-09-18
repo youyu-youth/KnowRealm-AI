@@ -157,8 +157,12 @@ async def delete_record(
         raise CodedHTTPException(
             code="RECORD_NOT_FOUND", status_code=404, detail="学习记录不存在或已删除"
         )
-    # 删除事务已提交；重算失败只记日志，不回滚删除，也不阻塞缓存清理。
-    await MasteryService.recompute_concepts(request.app.state.session_factory, affected_concepts)
+    # 删除事务已提交；重算失败标 stale 并交 consumer 轮询重试，不回滚删除、不阻塞缓存清理。
+    failed = await MasteryService.recompute_concepts(
+        request.app.state.session_factory, affected_concepts
+    )
+    if failed:
+        request.app.state.evidence_consumer.schedule_recompute(failed)
     for cache_dir in (
         Path(request.app.state.data_dir) / "cache" / "audio" / str(record_id),
         Path(request.app.state.data_dir) / "cache" / "sources" / str(record_id),
