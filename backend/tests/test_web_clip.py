@@ -333,3 +333,36 @@ async def test_fetch_dns_prefill_ignores_resolution_failure(
 async def test_assert_resolves_public_literal_and_empty() -> None:
     await assert_resolves_public("93.184.216.34")
     await assert_resolves_public("")
+
+
+@pytest.mark.anyio
+async def test_dns_preflight_allows_fake_ip_range(monkeypatch: pytest.MonkeyPatch) -> None:
+    """代理 fake-ip 模式：域名解析到 198.18.0.0/15（Clash 等虚拟路由段）放行。"""
+
+    async def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[Any, ...]]:
+        return [(None, None, None, None, ("198.18.0.158", 443))]
+
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
+    await assert_resolves_public("www.w3cschool.cn")
+
+
+@pytest.mark.anyio
+async def test_dns_preflight_skipped_when_proxy_env_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """环境变量代理存在时跳过 DNS 预检（fake-ip 解析不反映真实目标，预检必误杀）。"""
+    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
+
+    async def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[Any, ...]]:
+        raise AssertionError("代理环境不应发起预检解析")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=html_page())
+
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
+    raw, _final = await WebClipAdapter(transport=mock_transport(handler)).fetch(
+        "https://www.w3cschool.cn/java/"
+    )
+    assert b"<html>" in raw

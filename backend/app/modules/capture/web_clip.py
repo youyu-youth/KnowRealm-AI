@@ -51,7 +51,15 @@ class ClipContent:
     metadata: dict[str, Any]
 
 
+# 代理工具 fake-ip 虚拟路由约定段（Clash 等默认 198.18.0.0/16，IANA 基准段）：
+# 该段的 DNS 结果与连接均由本机代理接管转发（TUN/fake-ip 模式的正常网络路径），
+# 不触达真实内网——视为可信出口放行；真实私网/链路本地段拦截不受影响。
+_FAKE_IP_NETWORK = ipaddress.ip_network("198.18.0.0/15")
+
+
 def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if ip in _FAKE_IP_NETWORK:
+        return True
     return not (
         ip.is_private
         or ip.is_loopback
@@ -223,10 +231,13 @@ def extract_clip(raw: bytes, url: str) -> ClipContent:
     return ClipContent(text=text, title=meta.get("title"), metadata=meta)
 
 
-def _production_transport() -> httpx.AsyncBaseTransport:
-    """生产 transport：环境有代理时尊重系统代理（代理=可信出口，对齐 B1 trust_env
-    语义）；直连时换 DNS guard 连接池（逐连接解析校验 + IP 钉住）。"""
-    proxy_env = any(
+def proxy_env_present() -> bool:
+    """环境变量代理检测（与 httpx trust_env 的读取范围一致）。
+
+    代理存在时目标校验交由可信出口（B1 trust_env 拍板语义），DNS 预检跳过
+    ——代理环境（尤其 fake-ip 模式）的本地解析结果不反映真实目标地址，
+    预检只会误杀。"""
+    return any(
         os.environ.get(name)
         for name in (
             "HTTP_PROXY",
@@ -237,7 +248,12 @@ def _production_transport() -> httpx.AsyncBaseTransport:
             "all_proxy",
         )
     )
-    if proxy_env:
+
+
+def _production_transport() -> httpx.AsyncBaseTransport:
+    """生产 transport：环境有代理时尊重系统代理（代理=可信出口）；直连时换
+    DNS guard 连接池（逐连接解析校验 + IP 钉住）。"""
+    if proxy_env_present():
         return httpx.AsyncHTTPTransport(trust_env=True)
 
     class _GuardedTransport(httpx.AsyncHTTPTransport):
@@ -270,7 +286,8 @@ class WebClipAdapter:
         """受限抓取：手动跟随重定向（每跳重新校验目标），流式读取限制解压后大小。"""
         current = validate_public_http_url(url)
         try:
-            await assert_resolves_public(urlsplit(current).hostname or "")
+            if not proxy_env_present():
+                await assert_resolves_public(urlsplit(current).hostname or "")
             return await self._fetch_following(current)
         except WebClipError:
             raise
@@ -286,7 +303,8 @@ class WebClipAdapter:
                         if not location:
                             raise WebClipError("WEB_FETCH_UNREACHABLE", "重定向响应缺少目标地址")
                         current = validate_public_http_url(urljoin(current, location))
-                        await assert_resolves_public(urlsplit(current).hostname or "")
+                        if not proxy_env_present():
+                            await assert_resolves_public(urlsplit(current).hostname or "")
                         continue
                     if response.status_code >= 400:
                         raise WebClipError(
