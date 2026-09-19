@@ -17,6 +17,7 @@ from sse_starlette import ServerSentEvent
 
 from app.db.base import utcnow
 from app.modules.agent.citations import (
+    LibraryItemMaterial,
     LibraryRecordMaterial,
     parse_citation_reply,
     parse_library_citation_reply,
@@ -27,7 +28,6 @@ from app.modules.agent.context import (
     ContextRow,
     LibraryContext,
     LibraryRecordRow,
-    MountedMaterial,
     RecordContext,
     build_context_messages,
 )
@@ -40,10 +40,11 @@ from app.modules.agent.graph import (
 from app.modules.agent.models import ChatMessage, ChatSession
 from app.modules.agent.schemas import ChatRole, ChatScope
 from app.modules.agent.session_service import ChatSessionService
-from app.modules.agent.tools.search_library import LibrarySearchContext
+from app.modules.agent.tools.search_library import LibrarySearchContext, ToolCallBudget
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
+from app.modules.library.models import LibraryItem, LibraryItemRecord
 from app.modules.record.models import Record
 from app.modules.record.service import RecordService
 from app.modules.search.integrations.tavily import TavilySearchClient
@@ -55,13 +56,23 @@ from app.modules.settings.config import (
 )
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
-from app.modules.transcript.models import Transcript
+from app.modules.transcript.models import DocumentSegment, Transcript
 from app.shared.errors import CodedHTTPException
 
 # 会话标题默认取首条用户消息的截断长度。
 CHAT_TITLE_MAX_CHARS = 30
 
 STREAM_STATUS_GENERATING = "generating"
+
+# 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library）。
+RETRIEVAL_SCOPES = frozenset(
+    {
+        ChatScope.RECORD,
+        ChatScope.LIBRARY_ITEM,
+        ChatScope.COURSE,
+        ChatScope.ALL,
+    }
+)
 
 
 class ChatStreamRegistry:
@@ -102,26 +113,22 @@ class AcceptedMessage:
 
 @dataclass(frozen=True)
 class SessionPromptContext:
-    """喂入 LLM 的上下文与挂载会话的引用校验材料。"""
+    """喂入 LLM 的上下文与范围会话的引用校验材料。"""
 
     messages: list[AnyMessage]
     scope: ChatScope = ChatScope.FREE
     transcript: str | None = None  # 挂载会话的当前转写全文；自由聊天为 None
     record_id: str | None = None
-    course_id: str | None = None  # COURSE 会话挂载的课程
-    library: LibraryContext | None = None  # COURSE/ALL 会话的记录标题清单
+    # 检索边界课程：COURSE=挂载课程；RECORD/LIBRARY_ITEM=挂载对象所属课程（概念
+    # 扩展用）；ALL=None。
+    course_id: str | None = None
+    library: LibraryContext | None = None  # COURSE/ALL/LIBRARY_ITEM 的清单上下文
+    library_item_id: str | None = None  # LIBRARY_ITEM 会话挂载的资料条目
     web_search: bool = False  # 本轮联网生效（已含 key 双保险）；自由聊天也可为 True
 
     @property
-    def mounted(self) -> MountedMaterial | None:
-        """挂载材料（record_id 与 transcript 成对）；自由聊天或半对时为 None。"""
-        if self.record_id is None or self.transcript is None:
-            return None
-        return MountedMaterial(record_id=self.record_id, transcript=self.transcript)
-
-    @property
     def should_parse_citations(self) -> bool:
-        """挂载与跨范围会话恒解析引用块；自由聊天仅本轮联网时解析（产出 web 条目）。"""
+        """挂载与范围会话恒解析引用块；自由聊天仅本轮联网时解析（产出 web 条目）。"""
         return self.record_id is not None or self.library is not None or self.web_search
 
 
@@ -146,11 +153,37 @@ async def _course_available(session: AsyncSession, chat: ChatSession) -> bool:
     return course is not None and course.deleted_at is None
 
 
-def _scope_record_filters(scope: ChatScope, course_id: str | None) -> list[Any]:
-    """范围条件：COURSE = 该课程全部未软删记录；ALL = 全部未软删记录（含收件箱，
-    软删课程下的记录随课程排除，口径同 record_options）。"""
+def _library_item_unavailable_error() -> CodedHTTPException:
+    return CodedHTTPException(
+        code="CHAT_LIBRARY_ITEM_UNAVAILABLE",
+        status_code=409,
+        detail="CHAT_LIBRARY_ITEM_UNAVAILABLE：原资料已删除或归档，对话已失效",
+    )
+
+
+async def _require_library_item(session: AsyncSession, item_id: str | None) -> LibraryItem:
+    """LIBRARY_ITEM 会话挂载资料存活校验：不存在/软删/归档一律失效（会话只读）。"""
+    item = await session.get(LibraryItem, item_id or "")
+    if item is None or item.deleted_at is not None or item.status == "ARCHIVED":
+        raise _library_item_unavailable_error()
+    return item
+
+
+def _scope_record_filters(scope: ChatScope, scope_id: str | None) -> list[Any]:
+    """范围条件（scope_id 语义按 scope：COURSE=课程 id、LIBRARY_ITEM=资料条目 id）：
+    COURSE = 该课程全部未软删记录；ALL = 全部未软删记录（含收件箱，软删课程下的
+    记录随课程排除，口径同 record_options）；LIBRARY_ITEM = 该资料关联的未软删记录。"""
     if scope == ChatScope.COURSE:
-        return [Record.deleted_at.is_(None), Record.course_id == course_id]
+        return [Record.deleted_at.is_(None), Record.course_id == scope_id]
+    if scope == ChatScope.LIBRARY_ITEM:
+        return [
+            Record.deleted_at.is_(None),
+            Record.id.in_(
+                select(LibraryItemRecord.record_id).where(
+                    LibraryItemRecord.library_item_id == scope_id
+                )
+            ),
+        ]
     return [
         Record.deleted_at.is_(None),
         or_(
@@ -161,9 +194,12 @@ def _scope_record_filters(scope: ChatScope, course_id: str | None) -> list[Any]:
 
 
 async def _scope_library_rows(
-    session: AsyncSession, scope: ChatScope, course_id: str | None
+    session: AsyncSession, scope: ChatScope, scope_id: str | None
 ) -> list[tuple[str, str, Any, bool]]:
-    """课程 / 全部范围的记录行（updated_at 降序）：(id, title, updated_at, has_transcript)。"""
+    """范围会话的记录行（updated_at 降序）：(id, title, updated_at, has_transcript)。
+
+    scope_id 语义按 scope：COURSE=课程 id，LIBRARY_ITEM=资料条目 id，ALL=None。
+    """
     stmt = (
         select(
             Record.id,
@@ -176,7 +212,7 @@ async def _scope_library_rows(
             and_(Transcript.record_id == Record.id, Transcript.deleted_at.is_(None)),
         )
         .outerjoin(Course, Course.id == Record.course_id)
-        .where(*_scope_record_filters(scope, course_id))
+        .where(*_scope_record_filters(scope, scope_id))
         .order_by(Record.updated_at.desc(), Record.id.desc())
     )
     rows = (await session.execute(stmt)).all()
@@ -184,9 +220,30 @@ async def _scope_library_rows(
 
 
 async def _load_library_context(
-    session: AsyncSession, scope: ChatScope, course_id: str | None
+    session: AsyncSession,
+    scope: ChatScope,
+    course_id: str | None,
+    library_item_id: str | None = None,
 ) -> LibraryContext:
-    """课程 / 全部范围的清单上下文（只含标题 + 日期 + 有无转写，不携带正文）。"""
+    """范围会话的清单上下文（只含标题 + 日期 + 有无转写，不携带正文）。
+
+    LIBRARY_ITEM：清单 = 该资料关联的学习记录（资料自身在 scope_label 中描述）；
+    COURSE/ALL：清单 = 范围内全部学习记录。
+    """
+    if scope == ChatScope.LIBRARY_ITEM:
+        item = await _require_library_item(session, library_item_id)
+        rows = await _scope_library_rows(session, scope, item.id)
+        return LibraryContext(
+            scope_label=f"资料「{item.title}」及其关联学习记录",
+            records=tuple(
+                LibraryRecordRow(
+                    title=title,
+                    updated_date=updated_at.strftime("%Y-%m-%d"),
+                    has_transcript=has_transcript,
+                )
+                for _id, title, updated_at, has_transcript in rows
+            ),
+        )
     if scope == ChatScope.COURSE:
         course = await session.get(Course, course_id or "")
         scope_label = f"课程「{course.name}」" if course is not None else "课程"
@@ -209,9 +266,13 @@ async def _load_library_context(
 async def _load_library_materials(
     session_factory: async_sessionmaker[AsyncSession],
     scope: ChatScope,
-    course_id: str | None,
-) -> list[LibraryRecordMaterial]:
-    """跨记录引用校验材料：范围内全部未软删记录的转写全文（个人量级，#24 背书）。"""
+    scope_id: str | None,
+) -> tuple[list[LibraryRecordMaterial], list[LibraryItemMaterial]]:
+    """范围会话引用校验材料：范围内全部未软删记录的转写全文 + 资料条目直挂正文。
+
+    记录材料（个人量级，#24 背书）覆盖转写命中；条目材料覆盖资料直挂分片命中
+    （03 网页剪藏起），两者共同支撑 library 条目的逐字校验与归属裁定。
+    """
     async with session_factory() as session:
         stmt = (
             select(Record.id, Record.title, Transcript.content)
@@ -220,16 +281,63 @@ async def _load_library_materials(
                 and_(Transcript.record_id == Record.id, Transcript.deleted_at.is_(None)),
             )
             .outerjoin(Course, Course.id == Record.course_id)
-            .where(*_scope_record_filters(scope, course_id))
+            .where(*_scope_record_filters(scope, scope_id))
             .order_by(Record.updated_at.desc(), Record.id.desc())
         )
         rows = (await session.execute(stmt)).all()
-        return [
+        records = [
             LibraryRecordMaterial(
                 record_id=str(row.id), title=str(row.title), transcript=str(row.content)
             )
             for row in rows
         ]
+        # 条目材料：COURSE/ALL 取范围内 ACTIVE 条目的直挂分片正文；LIBRARY_ITEM
+        # 只取挂载条目（边界=该资料）。
+        item_stmt = (
+            select(
+                LibraryItem.id,
+                LibraryItem.title,
+                DocumentSegment.content,
+                DocumentSegment.sequence_no,
+            )
+            .join(
+                DocumentSegment,
+                and_(
+                    DocumentSegment.library_item_id == LibraryItem.id,
+                    DocumentSegment.record_id.is_(None),
+                ),
+            )
+            .where(LibraryItem.deleted_at.is_(None), LibraryItem.status == "ACTIVE")
+        )
+        if scope == ChatScope.LIBRARY_ITEM:
+            item_stmt = item_stmt.where(LibraryItem.id == scope_id)
+        elif scope == ChatScope.COURSE:
+            item_stmt = item_stmt.where(LibraryItem.course_id == scope_id)
+        elif scope == ChatScope.ALL:
+            item_stmt = item_stmt.where(
+                or_(
+                    LibraryItem.course_id.is_(None),
+                    Course.id.is_not(None),
+                )
+            ).outerjoin(
+                Course, and_(Course.id == LibraryItem.course_id, Course.deleted_at.is_(None))
+            )
+        item_stmt = item_stmt.order_by(
+            LibraryItem.id, DocumentSegment.sequence_no, DocumentSegment.id
+        )
+        item_rows = (await session.execute(item_stmt)).all()
+        contents: dict[str, list[str]] = {}
+        titles: dict[str, str] = {}
+        for row in item_rows:
+            contents.setdefault(str(row.id), []).append(str(row.content))
+            titles[str(row.id)] = str(row.title)
+        items = [
+            LibraryItemMaterial(
+                library_item_id=item_id, title=titles[item_id], content="\n".join(parts)
+            )
+            for item_id, parts in contents.items()
+        ]
+        return records, items
 
 
 async def _session_context(
@@ -248,6 +356,9 @@ async def _session_context(
                 status_code=409,
                 detail="CHAT_COURSE_UNAVAILABLE：课程已删除，对话已失效",
             )
+        if chat.scope == ChatScope.LIBRARY_ITEM:
+            # 失效态运行时推导：挂载资料软删/归档后拒绝组装（accept 已先拦一道）。
+            await _require_library_item(session, chat.library_item_id)
         rows = (
             await session.scalars(
                 select(ChatMessage)
@@ -258,6 +369,7 @@ async def _session_context(
         record_context = None
         transcript_text: str | None = None
         record_id: str | None = None
+        retrieval_course_id: str | None = None
         library_context: LibraryContext | None = None
         if chat.record_id is not None:
             record = await RecordService.get(session, chat.record_id)
@@ -277,6 +389,8 @@ async def _session_context(
             record_context = RecordContext(transcript=transcript.content)
             transcript_text = transcript.content
             record_id = record.id
+            # 检索边界课程 = 记录所属课程（概念扩展用；RECORD 记录集边界由 record_id 保证）。
+            retrieval_course_id = record.course_id
             if len(transcript.content) > CHAT_TRANSCRIPT_MAX_CHARS:
                 summary = await session.scalar(
                     select(AiSummary)
@@ -313,8 +427,18 @@ async def _session_context(
                         f"{point.name}\n{point.detail}" for point in points
                     ),
                 )
-        elif chat.scope in (ChatScope.COURSE, ChatScope.ALL):
-            library_context = await _load_library_context(session, chat.scope, chat.course_id)
+        elif chat.scope in (ChatScope.LIBRARY_ITEM, ChatScope.COURSE, ChatScope.ALL):
+            # LIBRARY_ITEM 的清单 = 该资料关联记录（资料自身进 scope_label）；
+            # 检索边界课程：LIBRARY_ITEM=资料所属课程（概念扩展用），COURSE=挂载课程。
+            if chat.scope == ChatScope.LIBRARY_ITEM:
+                item = await _require_library_item(session, chat.library_item_id)
+                retrieval_course_id = item.course_id
+                library_context = await _load_library_context(
+                    session, chat.scope, None, chat.library_item_id
+                )
+            else:
+                retrieval_course_id = chat.course_id
+                library_context = await _load_library_context(session, chat.scope, chat.course_id)
         return SessionPromptContext(
             scope=chat.scope,
             messages=build_context_messages(
@@ -333,8 +457,9 @@ async def _session_context(
             ),
             transcript=transcript_text,
             record_id=record_id,
-            course_id=chat.course_id if chat.scope == ChatScope.COURSE else None,
+            course_id=retrieval_course_id,
             library=library_context,
+            library_item_id=chat.library_item_id if chat.scope == ChatScope.LIBRARY_ITEM else None,
             web_search=web_search,
         )
 
@@ -433,6 +558,9 @@ class ChatMessageService:
                         status_code=409,
                         detail="CHAT_COURSE_UNAVAILABLE：课程已删除，对话已失效",
                     )
+                if chat.scope == ChatScope.LIBRARY_ITEM:
+                    # 失效态运行时推导：挂载资料软删/归档后发送被拒，会话只读。
+                    await _require_library_item(session, chat.library_item_id)
                 last = await _last_message(session, session_id)
                 if last is not None and last.role == ChatRole.USER:
                     # 补答：会话末尾是无回复的 user 消息，复用原行重新生成，不重复落库。
@@ -485,14 +613,18 @@ class ChatMessageService:
                 prompt_context = await _session_context(
                     session_factory, session_id, web_search=accepted.web_search is not None
                 )
-                # 课程 / 全部范围：绑定跨记录检索范围（与挂载互斥，见 stream_chat_reply）。
+                # 范围会话（RECORD/LIBRARY_ITEM/COURSE/ALL）统一绑定 search_library
+                # 检索上下文：作用域 + 目标 id + 本轮工具预算（每轮新建累计器）。
                 library_binding = (
                     LibrarySearchContext(
                         scope=prompt_context.scope,
                         course_id=prompt_context.course_id,
                         session_factory=session_factory,
+                        record_id=prompt_context.record_id,
+                        library_item_id=prompt_context.library_item_id,
+                        budget=ToolCallBudget(),
                     )
-                    if prompt_context.library is not None
+                    if prompt_context.scope in RETRIEVAL_SCOPES
                     else None
                 )
                 async for event in stream_chat_reply(
@@ -502,7 +634,6 @@ class ChatMessageService:
                     context_messages=prompt_context.messages,
                     session_id=session_id,
                     outcome=outcome,
-                    mounted=prompt_context.mounted,
                     library=library_binding,
                     web_search=accepted.web_search,
                 ):
@@ -538,15 +669,21 @@ class ChatMessageService:
             if not content:
                 yield _sse("error", {"code": "EMPTY_REPLY", "detail": "回答为空，请重试"})
                 return
-            # 引用块解析：挂载与跨范围对话恒解析（转写摘录逐字校验、跨记录条目按
-            # 「（来源：标题）」裁定归属）；自由聊天仅本轮联网时解析（产出 web 条目）。
+            # 引用块解析：范围会话（RECORD 之外的挂载范围）按「（来源：标题）」裁定
+            # 归属（记录条目优先、资料条目 library 条目次之）；RECORD 单记录按转写
+            # 逐字校验；自由聊天仅本轮联网时解析（产出 web 条目）。
             citations: list[dict[str, int | str]] = []
             if prompt_context.should_parse_citations:
                 if prompt_context.library is not None:
-                    materials = await _load_library_materials(
-                        session_factory, prompt_context.scope, prompt_context.course_id
+                    scope_id = (
+                        prompt_context.library_item_id
+                        if prompt_context.scope == ChatScope.LIBRARY_ITEM
+                        else prompt_context.course_id
                     )
-                    parsed = parse_library_citation_reply(content, materials)
+                    records, items = await _load_library_materials(
+                        session_factory, prompt_context.scope, scope_id
+                    )
+                    parsed = parse_library_citation_reply(content, records, items)
                 else:
                     parsed = parse_citation_reply(
                         content,

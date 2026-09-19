@@ -262,18 +262,15 @@ class LibraryService:
         detail.segment_count = sum(cast(int, row.n) for row in seg_rows)
         if detail.availability == LibraryAvailability.FAILED and record_ids:
             # 失败原因透出（03）：解析链最新 FAILED 任务的稳定错误码，前端据此给降级引导。
-            detail.failed_error_code = cast(
-                "str | None",
-                await session.scalar(
-                    select(ProcessingJob.error_code)
-                    .where(
-                        ProcessingJob.record_id.in_(record_ids),
-                        ProcessingJob.job_type.in_(_PARSE_JOB_TYPES),
-                        ProcessingJob.status == ProcessingJobStatus.FAILED,
-                    )
-                    .order_by(ProcessingJob.updated_at.desc(), ProcessingJob.id.desc())
-                    .limit(1)
-                ),
+            detail.failed_error_code = await session.scalar(
+                select(ProcessingJob.error_code)
+                .where(
+                    ProcessingJob.record_id.in_(record_ids),
+                    ProcessingJob.job_type.in_(_PARSE_JOB_TYPES),
+                    ProcessingJob.status == ProcessingJobStatus.FAILED,
+                )
+                .order_by(ProcessingJob.updated_at.desc(), ProcessingJob.id.desc())
+                .limit(1)
             )
         rows = (
             await session.execute(

@@ -34,7 +34,6 @@ from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.modules.agent.context import MountedMaterial
 from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
     NoopSummarizationMiddleware,
@@ -45,12 +44,6 @@ from app.modules.agent.tools.search_library import (
     reset_library_context,
     search_library,
 )
-from app.modules.agent.tools.search_transcript import (
-    SearchTranscriptContext,
-    bind_search_context,
-    reset_search_context,
-    search_transcript,
-)
 from app.modules.agent.tools.web_search import (
     bind_web_search,
     reset_web_search,
@@ -60,10 +53,10 @@ from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-concept-v6"
+CHAT_PROMPT_VERSION = "chat-library-scope-v7"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
-RETRIEVAL_TOOL_NAMES = frozenset({"search_transcript", "search_library"})
+RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
 
 @dataclass
@@ -127,23 +120,15 @@ class AgentConfig:
 
 
 CHAT_AGENT_CONFIG = AgentConfig()
-# 挂载变体：带 search_transcript 检索工具；自由聊天维持空配置（ADR-0018 变体=常量）。
-MOUNTED_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_transcript,))
-# 课程 / 全部范围变体（B2）：带 search_library 跨记录检索工具（与 search_transcript 互斥）。
+# 检索挂载变体（工单 04）：五档范围会话（RECORD / LIBRARY_ITEM / COURSE / ALL）
+# 统一挂 search_library（作用域由会话运行时经 ContextVar 绑定）；自由聊天空配置。
 LIBRARY_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_library,))
 
 
-def _resolve_agent_config(*, mounted: bool, library: bool, web_search_enabled: bool) -> AgentConfig:
-    """按「scope × web_search」组合出当轮装配（B2）：既有变体维持常量，
-    web_search 生效时在其基础上追加工具（frozen dataclass 实例化）。
-    mounted 与 library 互斥（RECORD 挂 search_transcript，COURSE/ALL 挂
-    search_library），同时为真按 library 优先（调用方不会产生该组合）。"""
-    if library:
-        config = LIBRARY_CHAT_AGENT_CONFIG
-    elif mounted:
-        config = MOUNTED_CHAT_AGENT_CONFIG
-    else:
-        config = CHAT_AGENT_CONFIG
+def _resolve_agent_config(*, retrieval: bool, web_search_enabled: bool) -> AgentConfig:
+    """按「检索挂载 × web_search」组合出当轮装配：变体维持常量，web_search 生效时
+    在其基础上追加工具（frozen dataclass 实例化）。"""
+    config = LIBRARY_CHAT_AGENT_CONFIG if retrieval else CHAT_AGENT_CONFIG
     if web_search_enabled:
         config = AgentConfig(tools=(*config.tools, web_search))
     return config
@@ -257,6 +242,8 @@ def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
 
     web_search 失败走「错误 JSON 载荷」路径（模型可据此说明、流不中断）：
     ToolMessage status 仍为 success，由载荷内 ok=false 标记失败（B1）。
+    命中数兼容两代载荷键：search_library 的 evidence_hits（工单 04）与
+    web_search 的 hits。
     """
     if message.status == "error":
         return ChatToolResultEvent(tool=message.name or "", hits=0, ok=False)
@@ -268,7 +255,9 @@ def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
         except ValueError:
             payload = None
         if isinstance(payload, dict):
-            value = cast(dict[str, object], payload).get("hits")
+            value = cast(dict[str, object], payload).get("evidence_hits")
+            if not isinstance(value, list):
+                value = cast(dict[str, object], payload).get("hits")
             if isinstance(value, list):
                 hits = len(cast(list[object], value))
             ok_value = cast(dict[str, object], payload).get("ok")
@@ -285,16 +274,15 @@ async def stream_chat_reply(
     context_messages: Sequence[AnyMessage],
     session_id: str,
     outcome: ChatStreamOutcome,
-    mounted: MountedMaterial | None = None,
     library: LibrarySearchContext | None = None,
     web_search: SearchProvider | None = None,
 ) -> AsyncGenerator[ChatStreamEvent, None]:
     """工厂层流式生成路径：建模型 → 清残留 → astream 分发结构化流事件 → 统一埋点。
 
     - 每轮从 chat_messages 重建喂入：轮初清掉上轮/崩溃残留，checkpoint 只承载当轮运行态；
-    - 挂载会话（mounted）注入检索工具与运行期上下文；课程 / 全部范围会话（library）
-    注入 search_library 与范围上下文（与 mounted 互斥）；web_search 非 None 时挂载
-      联网工具并绑定凭据（每请求组合装配）；自由聊天空配置；
+    - 范围会话（library，RECORD/LIBRARY_ITEM/COURSE/ALL）注入 search_library 与
+      范围上下文（含本轮工具预算累计器）；web_search 非 None 时挂载联网工具并绑定
+      凭据（每请求组合装配）；自由聊天空配置；
     - 事件分发：AIMessageChunk 文本 → token、tool_call_chunks 拼全 → tool_call、
       ToolMessage → tool_result；token 用量跨工具循环累加；
     - 正常完成埋点（graph_name=chat，仅元数据）并在返回前清理本轮 checkpoint；
@@ -309,27 +297,12 @@ async def stream_chat_reply(
     # 其余消息（轮次窗口 + 当前提问）照常作为对话历史喂入。
     system_prompt = next((m for m in context_messages if isinstance(m, SystemMessage)), None)
     input_messages = [m for m in context_messages if not isinstance(m, SystemMessage)]
-    # 挂载会话：绑定检索工具上下文（record_id 与 transcript 成对，见 MountedMaterial）；
-    # 课程 / 全部范围：绑定跨记录检索范围（scope 与 course_id，见 LibrarySearchContext）；
-    # web_search 生效：绑定联网搜索凭据（无 key 时调用方已强制不传）。
-    search_token: Token[SearchTranscriptContext | None] | None = None
-    if mounted is not None:
-        search_token = bind_search_context(
-            SearchTranscriptContext(
-                record_id=mounted.record_id,
-                transcript=mounted.transcript,
-                session_factory=session_factory,
-            )
-        )
+    # 范围会话：绑定检索范围与目标 id（RECORD=记录、LIBRARY_ITEM=资料、COURSE=课程、
+    # ALL=全部含未归类），见 LibrarySearchContext；web_search 生效：绑定联网搜索凭据
+    # （无 key 时调用方已强制不传）。
     library_token: Token[LibrarySearchContext | None] | None = None
     if library is not None:
-        library_token = bind_library_context(
-            LibrarySearchContext(
-                scope=library.scope,
-                course_id=library.course_id,
-                session_factory=library.session_factory,
-            )
-        )
+        library_token = bind_library_context(library)
     web_token: Token[SearchProvider | None] | None = None
     if web_search is not None:
         web_token = bind_web_search(web_search)
@@ -341,8 +314,7 @@ async def stream_chat_reply(
             checkpointer,
             system_prompt=system_prompt,
             config=_resolve_agent_config(
-                mounted=search_token is not None,
-                library=library_token is not None,
+                retrieval=library_token is not None,
                 web_search_enabled=web_token is not None,
             ),
         )
@@ -390,8 +362,6 @@ async def stream_chat_reply(
         )
         raise
     finally:
-        if search_token is not None:
-            reset_search_context(search_token)
         if library_token is not None:
             reset_library_context(library_token)
         if web_token is not None:

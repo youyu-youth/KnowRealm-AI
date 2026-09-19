@@ -15,6 +15,7 @@ from pydantic import (
 )
 
 from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
+from app.modules.library.schemas import ChatScope
 
 
 class ChatMode(StrEnum):
@@ -22,18 +23,6 @@ class ChatMode(StrEnum):
     COURSE_QA = "COURSE_QA"
     SOCRATIC_TUTOR = "SOCRATIC_TUTOR"
     TEACH_BACK = "TEACH_BACK"
-
-
-class ChatScope(StrEnum):
-    """会话挂载范围（B2）：FREE 自由 / RECORD 单记录 / COURSE 课程 / ALL 全部资料。
-
-    与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；范围会话内不可变。
-    """
-
-    FREE = "FREE"
-    RECORD = "RECORD"
-    COURSE = "COURSE"
-    ALL = "ALL"
 
 
 class ChatRole(StrEnum):
@@ -53,6 +42,9 @@ class ChatSessionCreate(BaseModel):
     )
     record_id: UUID | None = Field(default=None, description="挂载的学习记录，空为自由聊天")
     course_id: UUID | None = Field(default=None, description="课程范围会话挂载的课程")
+    library_item_id: UUID | None = Field(
+        default=None, description="资料范围会话挂载的资料条目（仅资料详情入口创建）"
+    )
     knowledge_point_id: UUID | None = Field(
         default=None, description="知识点解释入口的知识点快照来源"
     )
@@ -60,21 +52,40 @@ class ChatSessionCreate(BaseModel):
     @model_validator(mode="after")
     def validate_scope_matrix(self) -> "ChatSessionCreate":
         """范围 × 挂载 id 校验矩阵；派生后写回 scope，调用方读取到的一定是显式值。"""
-        scope = self.scope or (ChatScope.RECORD if self.record_id is not None else ChatScope.FREE)
+        scope = self.scope or (
+            ChatScope.RECORD
+            if self.record_id is not None
+            else ChatScope.LIBRARY_ITEM
+            if self.library_item_id is not None
+            else ChatScope.FREE
+        )
         if scope == ChatScope.RECORD:
             if self.record_id is None:
                 raise ValueError("RECORD 范围必须挂载学习记录")
             if self.course_id is not None:
                 raise ValueError("RECORD 范围的课程由挂载记录派生，不接受 course_id")
+        elif scope == ChatScope.LIBRARY_ITEM:
+            if self.library_item_id is None:
+                raise ValueError("LIBRARY_ITEM 范围必须挂载资料条目")
+            if self.record_id is not None or self.course_id is not None:
+                raise ValueError("LIBRARY_ITEM 范围的记录与课程由资料条目派生，不接受挂载 id")
+            if self.knowledge_point_id is not None:
+                raise ValueError("知识点解释仅支持 RECORD 范围会话")
         elif scope == ChatScope.COURSE:
             if self.course_id is None:
                 raise ValueError("COURSE 范围必须指定课程")
             if self.record_id is not None:
                 raise ValueError("COURSE 范围不接受 record_id")
+            if self.library_item_id is not None:
+                raise ValueError("COURSE 范围不接受 library_item_id")
             if self.knowledge_point_id is not None:
                 raise ValueError("知识点解释仅支持 RECORD 范围会话")
         else:
-            if self.record_id is not None or self.course_id is not None:
+            if (
+                self.record_id is not None
+                or self.course_id is not None
+                or self.library_item_id is not None
+            ):
                 raise ValueError("FREE/ALL 范围不能携带挂载 id")
             if self.knowledge_point_id is not None:
                 raise ValueError("知识点解释仅支持 RECORD 范围会话")
@@ -146,13 +157,21 @@ class ChatSessionOut(BaseModel):
     record_id: str | None = Field(default=None, description="挂载的学习记录，RECORD 会话非空")
     course_id: str | None = Field(
         default=None,
-        description="COURSE 会话挂载的课程；RECORD 会话为挂载记录所属课程（运行时派生）",
+        description="COURSE 会话挂载的课程；RECORD/LIBRARY_ITEM 会话为挂载对象"
+        "所属课程（运行时派生）",
+    )
+    library_item_id: str | None = Field(
+        default=None, description="挂载的资料条目，LIBRARY_ITEM 会话非空"
     )
     record_deleted: bool = Field(
         default=False, description="挂载记录已软删（运行时推导，无失效列），会话只读"
     )
     course_deleted: bool = Field(
         default=False, description="COURSE 会话挂载课程已软删（运行时推导），会话只读"
+    )
+    library_item_deleted: bool = Field(
+        default=False,
+        description="LIBRARY_ITEM 会话挂载资料已删除/归档（运行时推导），会话只读",
     )
     created_at: datetime
     updated_at: datetime
@@ -163,31 +182,42 @@ class ChatSessionOut(BaseModel):
 
 
 class ChatCitationOut(BaseModel):
-    """回答引用：record=转写摘录（逐字校验），web=网络来源（标题+URL，B1）。
+    """回答引用：record=转写摘录（逐字校验）、web=网络来源（标题+URL，B1）、
+    library=资料条目正文摘录（资料直挂分片逐字校验，工单 04）。
 
     citations_json 按条目判别化：record 条目 {index, record_id, quote}（历史
     行无 source 键，按默认 "record" 读取）；web 条目 {index, source:"web",
-    url, title}。跨记录条目（B2）额外携带 record_title（标题快照，创建时
+    url, title}；library 条目 {index, source:"library", library_item_id,
+    title, quote}。跨记录条目（B2）额外携带 record_title（标题快照，创建时
     固化；历史行无此键 → None，前端降级展示）。
     """
 
     index: int = Field(ge=1, description="正文角标序号")
-    source: Literal["record", "web"] = Field(default="record", description="来源类型")
+    source: Literal["record", "web", "library"] = Field(default="record", description="来源类型")
     record_id: str | None = Field(default=None, description="被引用的学习记录 ID，web 来源为空")
     record_title: str | None = Field(
         default=None, max_length=200, description="被引用记录的标题快照（跨记录引用），历史行为空"
     )
-    quote: str | None = Field(
-        default=None, max_length=80, description="转写原文摘录（≤80 字），web 来源为空"
+    library_item_id: str | None = Field(
+        default=None, description="被引用的资料条目 ID，library 条目必填"
     )
-    url: str | None = Field(default=None, description="网络来源 URL，record 来源为空")
-    title: str | None = Field(default=None, description="网络来源标题，record 来源为空")
+    quote: str | None = Field(
+        default=None, max_length=80, description="本地原文摘录（≤80 字逐字），web 来源为空"
+    )
+    url: str | None = Field(default=None, description="网络来源 URL，record/library 来源为空")
+    title: str | None = Field(default=None, description="网络来源或资料条目标题，record 来源为空")
+    anchor_id: str | None = Field(
+        default=None, description="来源锚点 ID（预留：锚点写入者产生，当前为空）"
+    )
 
     @model_validator(mode="after")
     def require_fields_for_source(self) -> "ChatCitationOut":
         if self.source == "record":
             if not self.record_id or not self.quote:
                 raise ValueError("record 引用必须携带 record_id 与 quote")
+        elif self.source == "library":
+            if not self.library_item_id or not self.quote:
+                raise ValueError("library 引用必须携带 library_item_id 与 quote")
         elif not self.url or not self.title:
             raise ValueError("web 引用必须携带 url 与 title")
         return self

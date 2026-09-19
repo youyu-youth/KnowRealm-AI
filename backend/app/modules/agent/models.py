@@ -22,6 +22,11 @@ class ChatSession(Base):
         ForeignKey("records.id", ondelete="SET NULL"),
         default=None,
     )
+    library_item_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("library_items.id", ondelete="SET NULL"),
+        default=None,
+    )
     concept_id: Mapped[str | None] = mapped_column(String(36), default=None)
     mode: Mapped[ChatMode] = mapped_column(String(20))
     scope: Mapped[ChatScope] = mapped_column(String(20), default=ChatScope.FREE)

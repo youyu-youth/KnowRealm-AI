@@ -24,6 +24,24 @@ class LibrarySourceType(StrEnum):
     TEXT = "TEXT"
 
 
+class ChatScope(StrEnum):
+    """会话挂载范围（工单 04 起五档，ADR-0024）：FREE 自由 / RECORD 单记录 /
+    LIBRARY_ITEM 单资料 / COURSE 课程 / ALL 全部资料。
+
+    chat 与 library 两域的共享契约（LIBRARY_ITEM/COURSE/ALL 的检索边界由
+    LibraryRetrievalService 解释），故落 library 域定义、agent 域 re-export
+    消费（法定方向 agent→library，避免模块环）。与 mode 轴正交（mode 恒 ASK）；
+    范围会话内不可变；LIBRARY_ITEM 仅由资料详情「AI 解读」入口创建、不进
+    全局范围切换。
+    """
+
+    FREE = "FREE"
+    RECORD = "RECORD"
+    LIBRARY_ITEM = "LIBRARY_ITEM"
+    COURSE = "COURSE"
+    ALL = "ALL"
+
+
 class LibraryAvailability(StrEnum):
     """派生可用性（02 口径，04 检索服务落地后复核）：
 

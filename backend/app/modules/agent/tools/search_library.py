@@ -1,60 +1,58 @@
-"""课程 / 全部范围会话的跨记录检索工具（B2 + CB-07 概念增强，chat→search 单向）。
+"""范围会话的统一检索工具（工单 04：消费 LibraryRetrievalService，chat→library 单向）。
 
-与 search_transcript 互斥挂载：RECORD 会话只挂 search_transcript，
-COURSE/ALL 只挂本工具，FREE 不挂。检索 = 概念 FTS 命中（CONFIRMED-only，
-top 4）→ 原查询 + 各概念名并跑分片 FTS（概念只在其归属课程内扩展，每词
-top 8）→ 合并去重（record_id+content）→ FTS 零命中才 LIKE 兜底（整 query
-子串，覆盖粘贴 / 速记等无分片记录）。运行期范围由 stream_chat_reply 每轮
-生成前经 ContextVar 绑定，AgentConfig 挂载变体保持常量。
+五档挂载会话（RECORD / LIBRARY_ITEM / COURSE / ALL）统一只挂本工具：作用域
+与目标 id 由会话运行时经 ContextVar 绑定，AgentConfig 挂载变体保持常量；
+FREE 不挂任何检索工具。工具预算（contract §3）在此生效：每轮调用次数上限、
+单次载荷截断、累计回喂截断——超限截断并附 truncated 说明，不静默丢弃。
+
+search_transcript 已退出模型可见工具面（迁移期记录级子串兜底由本工具经
+服务继承）；web_search 为独立联网工具，与本地检索互不冒充。
 """
 
 import json
 from contextvars import ContextVar, Token
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import cast
 
 from langchain_core.tools import tool
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.schemas import ChatScope
-from app.modules.course_brain.schemas import BrainSearchConceptOut
-from app.modules.course_brain.service import CourseBrainService
-from app.modules.search.schemas import LibrarySegmentSearchHit
-from app.modules.search.segment_service import (
-    ENTITY_TRANSCRIPT_SEGMENT,
-    SegmentSearchService,
-)
-from app.modules.search.tokenizer import escape_like
-
-SEARCH_LIBRARY_LIMIT = 8
-# 概念扩展（CB-07）：命中概念数与每个扩展词的分片命中上限（spec B2 检索增强）。
-CONCEPT_MATCH_LIMIT = 4
-_EXPANSION_PER_TERM_LIMIT = 8
-# occurrences 按 record 去重后的代表摘录限长（引用仍以 hits 逐字原文为准）。
-_OCCURRENCE_QUOTE_LIMIT = 80
-# LIKE 兜底命中为整行原文；单行过长时以命中词为中心截窗口，控制回喂长度。
-FALLBACK_HIT_MAX_CHARS = 400
-
-# LIKE 兜底：范围内逐记录子串扫描（transcript 恒为事实源；无分片记录也覆盖）。
-_SCOPE_TRANSCRIPT_LIKE_SQL = text(
-    "SELECT r.id AS record_id, r.title AS record_title, t.content "
-    "FROM transcripts t "
-    "JOIN records r ON r.id = t.record_id AND r.deleted_at IS NULL "
-    "WHERE t.deleted_at IS NULL "
-    "AND (:course_id IS NULL OR r.course_id = :course_id) "
-    "AND t.content LIKE '%' || :needle || '%' ESCAPE '\\' "
-    "ORDER BY r.updated_at DESC, r.id DESC "
-    "LIMIT :limit"
+from app.modules.library.retrieval import (
+    # 评测基线（test_library_retrieval_eval）从这里复用冻结值；本模块不再直接消费。
+    CONCEPT_MATCH_LIMIT,  # noqa: F401  # pyright: ignore[reportUnusedImport]
+    SEARCH_LIBRARY_LIMIT,
+    AssetMatch,
+    ConceptHint,
+    EvidenceHit,
+    LibraryRetrievalService,
+    RetrievalScope,
 )
 
+# 工具预算（contract §3 冻结值）。
+MAX_TOOL_CALLS_PER_TURN = 6
+TOOL_RESULT_MAX_CHARS = 4_000
+TOOL_ROUND_OUTPUT_MAX_CHARS = 12_000
 
-@dataclass(frozen=True)
+
+@dataclass
+class ToolCallBudget:
+    """每轮（每条用户消息）的检索预算累计器：随上下文每轮重建。"""
+
+    calls_used: int = 0
+    chars_fed: int = 0
+
+
+@dataclass
 class LibrarySearchContext:
-    """跨记录检索的运行期上下文（每轮生成前绑定，工具执行期读取）。"""
+    """范围检索的运行期上下文（每轮生成前绑定，工具执行期读取）。"""
 
-    scope: ChatScope  # COURSE | ALL
-    course_id: str | None  # COURSE 会话非空
+    scope: ChatScope  # RECORD | LIBRARY_ITEM | COURSE | ALL
+    course_id: str | None  # 概念扩展与课程边界（RECORD=记录所属课程，ALL=None）
     session_factory: async_sessionmaker[AsyncSession]
+    record_id: str | None = None  # RECORD 会话非空
+    library_item_id: str | None = None  # LIBRARY_ITEM 会话非空
+    budget: ToolCallBudget = field(default_factory=ToolCallBudget)
 
 
 _library_context: ContextVar[LibrarySearchContext | None] = ContextVar(
@@ -70,112 +68,101 @@ def reset_library_context(token: Token[LibrarySearchContext | None]) -> None:
     _library_context.reset(token)
 
 
-def _format_timestamp(ms: int) -> str:
-    total_seconds = max(0, ms) // 1000
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    if hours:
-        return f"{hours}:{minutes:02d}:{seconds:02d}"
-    return f"{minutes}:{seconds:02d}"
-
-
-def _format_time_range(start_ms: int | None, end_ms: int | None) -> str | None:
-    start = _format_timestamp(start_ms) if start_ms is not None else None
-    end = _format_timestamp(end_ms) if end_ms is not None else None
-    if start is None:
-        return end
-    if end is None or end == start:
-        return start
-    return f"{start}-{end}"
-
-
-def _locator_fields(hit: LibrarySegmentSearchHit) -> dict[str, object]:
-    """锚点定位字段：转写分片带时间区间，文档分片带页码（无则为空）。"""
-    if hit.entity_type == ENTITY_TRANSCRIPT_SEGMENT:
-        time_range = _format_time_range(hit.record_start_ms, hit.record_end_ms)
-        return {"time": time_range} if time_range is not None else {}
-    return {"page": hit.page_no} if hit.page_no is not None else {}
-
-
-def _hit_payload(hit: LibrarySegmentSearchHit) -> dict[str, object]:
+def _hit_payload(hit: EvidenceHit) -> dict[str, object]:
+    """evidence 命中的模型可见载荷：逐字原文 + 来源标题 + 定位（分数不透出）。"""
     payload: dict[str, object] = {
-        "record_id": hit.record_id,
-        "record_title": hit.record_title,
-        "content": hit.content,
+        "source_title": hit.source_title,
+        "quote": hit.quote,
+        "context_window": hit.context_window,
+        "segment_id": hit.segment_id,
+        "source_type": hit.source_type,
+        "channel": hit.channel,
     }
-    payload.update(_locator_fields(hit))
+    payload.update(hit.locator)
+    if hit.record_id is not None:
+        payload["record_id"] = hit.record_id
+    if hit.library_item_id is not None:
+        payload["library_item_id"] = hit.library_item_id
     return payload
 
 
-def _concept_payload(concept: BrainSearchConceptOut) -> dict[str, object]:
+def _asset_payload(match: AssetMatch) -> dict[str, object]:
+    return {"type": match.type, "id": match.id, "title": match.title}
+
+
+def _concept_payload(hint: ConceptHint) -> dict[str, object]:
     return {
-        "concept_id": concept.concept_id,
-        "canonical_name": concept.canonical_name,
-        "description": concept.description,
-        "record_count": concept.record_count,
-        "occurrence_count": concept.occurrence_count,
+        "concept_id": hint.concept_id,
+        "canonical_name": hint.canonical_name,
+        "description": hint.description,
+        "course_id": hint.course_id,
     }
 
 
-def _occurrence_payload(hit: LibrarySegmentSearchHit) -> dict[str, object]:
-    """按 record 去重后的代表命中：一条记录一条，供「讲过几次」计数。"""
-    payload: dict[str, object] = {
-        "record_id": hit.record_id,
-        "record_title": hit.record_title,
-        "quote": hit.content[:_OCCURRENCE_QUOTE_LIMIT],
-    }
-    payload.update(_locator_fields(hit))
-    return payload
+def _truncate_payload(body: dict[str, object], budget: ToolCallBudget) -> tuple[str, bool]:
+    """按预算截断序列化载荷：单次 ≤4000 字符、每轮累计 ≤12000 字符。
 
+    截断顺序：evidence_hits 尾部 → asset_matches 尾部（concept_hints 保留，
+    量级固定且帮助理解术语）；命中截断即置 truncated=true 并附收窄提示。
+    累计已满时不再回喂新命中，仅返回提示（模型须基于已有结果回答）。
+    """
+    limit = min(TOOL_RESULT_MAX_CHARS, TOOL_ROUND_OUTPUT_MAX_CHARS - budget.chars_fed)
+    if limit <= 0:
+        body = {
+            "evidence_hits": [],
+            "asset_matches": [],
+            "concept_hints": [],
+            "truncated": True,
+            "message": (
+                "本轮检索结果累计已达上下文预算，请基于已获得的检索结果回答，并建议收窄查询范围。"
+            ),
+        }
+        return json.dumps(body, ensure_ascii=False, separators=(",", ":")), True
 
-def _substring_window(line: str, needle: str) -> str:
-    if len(line) <= FALLBACK_HIT_MAX_CHARS:
-        return line
-    index = line.find(needle)
-    start = max(0, index - (FALLBACK_HIT_MAX_CHARS - len(needle)) // 2)
-    return line[start : start + FALLBACK_HIT_MAX_CHARS]
+    def serialized() -> str:
+        return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
 
-
-def _like_fallback_hits(
-    rows: list[tuple[str, str, str]], query: str, limit: int
-) -> list[dict[str, object]]:
-    """LIKE 命中记录 → 每条记录取首个含命中词的行（窗口 ≤400 字）。"""
-    needle = query.strip()
-    hits: list[dict[str, object]] = []
-    for record_id, record_title, content in rows:
-        if len(hits) >= limit:
+    evidence = _as_list(body.get("evidence_hits"))
+    assets = _as_list(body.get("asset_matches"))
+    truncated = False
+    while len(serialized()) > limit:
+        truncated = True
+        if evidence:
+            evidence.pop()
+        elif assets:
+            assets.pop()
+        else:
             break
-        index = content.find(needle)
-        if index < 0:
-            continue
-        line_start = content.rfind("\n", 0, index) + 1
-        line_end = content.find("\n", index)
-        line_end = len(content) if line_end < 0 else line_end
-        hits.append(
-            {
-                "record_id": record_id,
-                "record_title": record_title,
-                "content": _substring_window(content[line_start:line_end], needle),
-            }
-        )
-    return hits
+    if truncated:
+        body["truncated"] = True
+        body["message"] = "检索结果超出本轮预算已截断，可用更具体的关键词收窄查询。"
+    payload = serialized()
+    budget.chars_fed += len(payload)
+    return payload, truncated
+
+
+def _as_list(value: object) -> list[object]:
+    return cast("list[object]", value) if isinstance(value, list) else []
 
 
 def _payload(
-    hits: list[dict[str, object]],
-    concepts: list[dict[str, object]] | None = None,
-    occurrences: list[dict[str, object]] | None = None,
+    evidence_hits: list[dict[str, object]] | None = None,
+    asset_matches: list[dict[str, object]] | None = None,
+    concept_hints: list[dict[str, object]] | None = None,
     message: str = "",
     *,
     ok: bool = True,
+    truncated: bool = False,
 ) -> str:
     body: dict[str, object] = {
-        "hits": hits,
-        "concepts": concepts if concepts is not None else [],
-        "occurrences": occurrences if occurrences is not None else [],
+        "evidence_hits": evidence_hits or [],
+        "asset_matches": asset_matches or [],
+        "concept_hints": concept_hints or [],
     }
     if message:
         body["message"] = message
+    if truncated:
+        body["truncated"] = True
     if not ok:
         body["ok"] = False
     return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
@@ -183,76 +170,52 @@ def _payload(
 
 @tool
 async def search_library(query: str) -> str:
-    """在本次对话范围的学习资料（多条记录的转写与文档）中检索原文片段。
+    """在本次对话范围的学习资料（转写、文档分片、资料正文）中检索原文片段。
 
-    当问题涉及范围内任意记录的细节、或需要跨记录对比时使用：用 2~6 个
-    关键词描述要找的内容，命中结果带所属记录标题与逐字原文，可直接作为
-    引用（引用时逐字照抄命中内容、不超过 80 字，并注明来源记录标题）。
-    返回中的 concepts 是范围内已确认的课程概念（含描述与出现计数），可帮
-    你理解术语；occurrences 是按记录去重后的出现明细（一条记录一条）。
-    没有命中就换同义词或相关词重试；不要编造资料中不存在的内容。
+    当问题涉及范围内资料的细节、需要跨记录对比或核实原文时使用：用 2~6 个
+    关键词描述要找的内容。返回三类结果——evidence_hits 是唯一可引用的逐字
+    原文（含来源标题、时间/页码定位），引用时逐字照抄其中原文、不超过 80 字，
+    并注明 source_title；asset_matches 是标题导航命中，不可当原文引用；
+    concept_hints 是范围内已确认的课程概念说明，可帮助理解术语，但不得当作
+    原文引用。没有命中就换同义词重试（不超过 2 次）；范围内确实没有证据时
+    如实说明「当前资料中未找到」，不要编造资料中不存在的内容。
     """
     context = _library_context.get()
     if context is None:
-        return _payload([], [], [], "当前对话未挂载资料范围，无法检索。")
+        return _payload(message="当前对话未挂载资料范围，无法检索。")
     needle = query.strip()
     if not needle:
-        return _payload([], [], [], "检索词不能为空。")
-    # FTS 异常不炸整轮流（同 web_search 先例）：错误载荷 ok=false，模型可据此说明。
+        return _payload(message="检索词不能为空。")
+    if context.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
+        return _payload(
+            message="本轮检索次数已达上限，请基于已获得的检索结果直接回答，并说明检索范围。"
+        )
+    context.budget.calls_used += 1
+    # 检索异常不炸整轮流（同 web_search 先例）：错误载荷 ok=false，模型可据此说明。
     try:
         async with context.session_factory() as session:
-            concepts = await CourseBrainService.match_concepts(
-                session, context.course_id, needle, CONCEPT_MATCH_LIMIT
+            result = await LibraryRetrievalService.search(
+                session,
+                RetrievalScope(
+                    scope=context.scope,
+                    record_id=context.record_id,
+                    library_item_id=context.library_item_id,
+                    course_id=context.course_id,
+                ),
+                needle,
+                SEARCH_LIBRARY_LIMIT,
             )
-            # 原查询（会话范围）+ 各命中概念名（只在其归属课程内）并跑；ALL 不跨课程混入。
-            terms: list[tuple[str, str | None, int]] = [
-                (needle, context.course_id, SEARCH_LIBRARY_LIMIT)
-            ]
-            terms.extend(
-                (concept.canonical_name, concept.course_id, _EXPANSION_PER_TERM_LIMIT)
-                for concept in concepts
-            )
-            seen: set[tuple[str, str]] = set()
-            merged: list[LibrarySegmentSearchHit] = []
-            for term, scope_course_id, per_term_limit in terms:
-                for hit in await SegmentSearchService.search_scope_segments(
-                    session, scope_course_id, term, per_term_limit
-                ):
-                    key = (hit.record_id, hit.content)
-                    if key not in seen:
-                        seen.add(key)
-                        merged.append(hit)
-            if merged:
-                occurrences: list[dict[str, object]] = []
-                seen_records: set[str] = set()
-                for hit in merged:
-                    if hit.record_id in seen_records:
-                        continue
-                    seen_records.add(hit.record_id)
-                    occurrences.append(_occurrence_payload(hit))
-                return _payload(
-                    [_hit_payload(hit) for hit in merged[:SEARCH_LIBRARY_LIMIT]],
-                    [_concept_payload(concept) for concept in concepts],
-                    occurrences,
-                )
-            rows = (
-                await session.execute(
-                    _SCOPE_TRANSCRIPT_LIKE_SQL,
-                    {
-                        "course_id": context.course_id,
-                        "needle": escape_like(needle),
-                        "limit": SEARCH_LIBRARY_LIMIT,
-                    },
-                )
-            ).all()
     except Exception:
-        return _payload([], [], [], "检索暂时失败，请稍后重试。", ok=False)
-    fallback = _like_fallback_hits(
-        [(str(row.record_id), str(row.record_title), str(row.content)) for row in rows],
-        needle,
-        SEARCH_LIBRARY_LIMIT,
-    )
-    if fallback:
-        # LIKE 兜底仍带上已命中的概念（模型理解术语用）；occurrences 仅 FTS 面提供。
-        return _payload(fallback, [_concept_payload(concept) for concept in concepts], [])
-    return _payload([], [], [], "未找到相关原文；可换同义词或相关关键词重试。")
+        return _payload(message="检索暂时失败，请稍后重试。", ok=False)
+    body: dict[str, object] = {
+        "evidence_hits": [_hit_payload(hit) for hit in result.evidence_hits],
+        "asset_matches": [_asset_payload(match) for match in result.asset_matches],
+        "concept_hints": [_concept_payload(hint) for hint in result.concept_hints],
+    }
+    if not result.evidence_hits:
+        body["message"] = (
+            "当前范围内未找到相关原文；可换同义词或相关关键词重试（不超过 2 次），"
+            "仍无命中请如实回答「当前资料中未找到」。"
+        )
+    payload, _truncated = _truncate_payload(body, context.budget)
+    return payload

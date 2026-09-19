@@ -56,6 +56,7 @@ from app.modules.agent.tools.search_library import (
 )
 from app.modules.course_brain.service import normalize_concept_name
 from app.modules.knowledge_point.models import KnowledgePoint
+from app.modules.library.retrieval import LibraryRetrievalService
 from app.modules.search.integrations.tavily import TavilySearchClient
 from app.modules.search.segment_service import (
     ENTITY_CONCEPT,
@@ -425,7 +426,7 @@ class TestBuildContextMessagesLibrary:
         assert "第 2 讲 一致性哈希（2026-09-10）" in prompt
         assert "闪念速记（2026-09-12，暂无转写）" in prompt
         assert "search_library" in prompt
-        assert "（来源：记录标题）" in prompt
+        assert "（来源：来源标题）" in prompt
         assert messages[-1].content == "这门课讲了什么"
 
     def test_empty_library_states_no_records_honestly(self) -> None:
@@ -435,7 +436,7 @@ class TestBuildContextMessagesLibrary:
         )
         prompt = str(messages[0].content)
         assert "共 0 条学习记录" in prompt
-        assert "不要编造" in prompt
+        assert "当前资料中未找到" in prompt
 
     def test_listing_budget_keeps_most_recent_with_note(self) -> None:
         # 记录行按 updated_at 降序传入（加载器语义）：预算内保留最前（最近）的记录。
@@ -1184,11 +1185,11 @@ async def test_llm_call_logs_retrieval_count_and_no_body(
         tmp_path,
         monkeypatch,
         replies=[
-            ToolCallReply("search_transcript", {"query": "傅里叶"}),
+            ToolCallReply("search_library", {"query": "傅里叶"}),
             ["回答完成了"],
             list(STUB_REPLY),
             # 参数类型非法：工具执行失败（检索了但 0 命中）。
-            ToolCallReply("search_transcript", {"query": 123}),
+            ToolCallReply("search_library", {"query": 123}),
             list(STUB_REPLY),
         ],
     ) as (_app, client, _captured):
@@ -1211,7 +1212,7 @@ async def test_llm_call_logs_retrieval_count_and_no_body(
 
         events = await send_message(client, mounted_id, "傅里叶级数怎么展开？")
         assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_transcript", "hits": 1, "ok": True}
+            {"tool": "search_library", "hits": 1, "ok": True}
         ]
 
         free_id = await create_session(client)
@@ -1219,7 +1220,7 @@ async def test_llm_call_logs_retrieval_count_and_no_body(
 
         failed = await send_message(client, mounted_id, "再检索一次")
         assert [payload for name, payload in failed if name == "tool_result"] == [
-            {"tool": "search_transcript", "hits": 0, "ok": False}
+            {"tool": "search_library", "hits": 0, "ok": False}
         ]
         assert failed[-1][0] == "done"
 
@@ -1259,14 +1260,16 @@ async def test_fts_exception_streams_failure_and_logs_warning(
     async def _fts_down(*_args: object, **_kwargs: object) -> object:
         raise RuntimeError("fts index unavailable")
 
-    monkeypatch.setattr(SegmentSearchService, "search_segments", _fts_down)
+    # 工单 04 起检索统一走 LibraryRetrievalService（seam 收编，
+    # SegmentSearchService 不再位于工具路径上）。
+    monkeypatch.setattr(LibraryRetrievalService, "search", _fts_down)
     logs = StringIO()
     sink_id = logger.add(logs, format="{message} {extra}", level="WARNING")
     try:
         async with streaming_chat_app(
             tmp_path,
             monkeypatch,
-            replies=[ToolCallReply("search_transcript", {"query": "傅里叶"}), list(STUB_REPLY)],
+            replies=[ToolCallReply("search_library", {"query": "傅里叶"}), list(STUB_REPLY)],
         ) as (_app, client, _captured):
             capture = await client.post(
                 "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "原文"}
@@ -1280,11 +1283,11 @@ async def test_fts_exception_streams_failure_and_logs_warning(
         logger.remove(sink_id)
 
     assert [payload for name, payload in events if name == "tool_result"] == [
-        {"tool": "search_transcript", "hits": 0, "ok": False}
+        {"tool": "search_library", "hits": 0, "ok": False}
     ]
     assert events[-1][0] == "done"
     warnings = [line for line in logs.getvalue().splitlines() if "chat_tool_failed" in line]
-    assert len(warnings) == 1 and "'tool': 'search_transcript'" in warnings[0]
+    assert len(warnings) == 1 and "'tool': 'search_library'" in warnings[0]
 
     async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
         row = await (
@@ -1392,6 +1395,8 @@ async def test_mounted_reply_citations_validated_stripped_and_streamed(
                 "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
                 "url": None,
                 "title": None,
+                "library_item_id": None,
+                "anchor_id": None,
             }
         ]
         assert "citations_json" not in assistant
@@ -1450,6 +1455,8 @@ async def test_mounted_blockquote_paraphrase_citation_aligned(
                 "quote": "Docker 是一个用于开发、交付和运行应用程序的开放平台。",
                 "url": None,
                 "title": None,
+                "library_item_id": None,
+                "anchor_id": None,
             }
         ]
 
@@ -1550,7 +1557,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
     async with streaming_chat_app(
         tmp_path,
         monkeypatch,
-        replies=[ToolCallReply("search_transcript", {"query": "傅里叶"}), final_reply],
+        replies=[ToolCallReply("search_library", {"query": "傅里叶"}), final_reply],
     ) as (_app, client, captured):
         imported = await client.post(
             "/api/document-imports",
@@ -1576,10 +1583,10 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         assert names[-1] == "done"
         assert names.index("tool_call") < names.index("tool_result") < names.index("token")
         assert [payload for name, payload in events if name == "tool_call"] == [
-            {"tool": "search_transcript", "query": "傅里叶"}
+            {"tool": "search_library", "query": "傅里叶"}
         ]
         assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_transcript", "hits": 1, "ok": True}
+            {"tool": "search_library", "hits": 1, "ok": True}
         ]
         # 工具命中进入第二次模型调用的上下文（ToolMessage 逐字原文）。
         tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
@@ -1605,13 +1612,15 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
                 "quote": "本讲系统梳理傅里叶级数的展开方法",
                 "url": None,
                 "title": None,
+                "library_item_id": None,
+                "anchor_id": None,
             }
         ]
 
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-concept-v6"
+        assert rows[0][3] == "chat-library-scope-v7"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -1628,7 +1637,7 @@ async def test_mounted_tool_falls_back_to_substring_without_segments(
         replies=[
             # args 分片流式到达：未闭合 JSON 不得提前上报截断的「一致」。
             ToolCallReply(
-                "search_transcript",
+                "search_library",
                 {"query": "一致性哈希"},
                 args_fragments=('{"query": "一致', '性哈希"}'),
             ),
@@ -1647,10 +1656,10 @@ async def test_mounted_tool_falls_back_to_substring_without_segments(
         events = await send_message(client, session_id, "一致性哈希是什么？")
 
         assert [payload for name, payload in events if name == "tool_call"] == [
-            {"tool": "search_transcript", "query": "一致性哈希"}
+            {"tool": "search_library", "query": "一致性哈希"}
         ]
         assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_transcript", "hits": 1, "ok": True}
+            {"tool": "search_library", "hits": 1, "ok": True}
         ]
         tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
         assert len(tool_messages) == 1
@@ -1664,7 +1673,7 @@ async def test_mounted_tool_falls_back_to_substring_without_segments(
             }
         ]
         # ≤30k 挂载不追加检索工具指引（全文已在上下文，工具闲置）。
-        assert "search_transcript" not in str(captured[0][0].content)
+        assert "search_library" not in str(captured[0][0].content)
 
 
 @pytest.mark.anyio
@@ -1674,7 +1683,7 @@ async def test_segmented_record_fts_miss_returns_no_hits_without_substring_fallb
     async with streaming_chat_app(
         tmp_path,
         monkeypatch,
-        replies=[ToolCallReply("search_transcript", {"query": "MVC"}), list(STUB_REPLY)],
+        replies=[ToolCallReply("search_library", {"query": "MVC"}), list(STUB_REPLY)],
     ) as (_app, client, _captured):
         imported = await client.post(
             "/api/document-imports",
@@ -1697,7 +1706,7 @@ async def test_segmented_record_fts_miss_returns_no_hits_without_substring_fallb
         # 有分片记录：FTS 未命中即如实返回（「MVC」是原文子串但非索引词，不做子串兜底）。
         assert "MVC" in "MVCC 依赖 undo 日志实现多版本读"
         assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_transcript", "hits": 0, "ok": True}
+            {"tool": "search_library", "hits": 0, "ok": True}
         ]
 
 
@@ -1718,7 +1727,7 @@ async def test_long_mounted_prompt_adds_retrieval_tool_guidance(
 
         # >30k 降级材料追加检索工具指引；工具描述对模型可见。
         prompt = str(captured[0][0].content)
-        assert "search_transcript" in prompt
+        assert "search_library" in prompt
         assert "缺失细节不可推断" in prompt
 
 
@@ -1730,7 +1739,7 @@ async def test_mounted_tool_failure_streams_failed_tool_result(
     async with streaming_chat_app(
         tmp_path,
         monkeypatch,
-        replies=[ToolCallReply("search_transcript", {"query": 123}), list(STUB_REPLY)],
+        replies=[ToolCallReply("search_library", {"query": 123}), list(STUB_REPLY)],
     ) as (_app, client, _captured):
         capture = await client.post(
             "/api/text-captures", json={"capture_type": "QUICK_NOTE", "content": "原文"}
@@ -1742,7 +1751,7 @@ async def test_mounted_tool_failure_streams_failed_tool_result(
         events = await send_message(client, session_id, "检索一下")
 
         assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_transcript", "hits": 0, "ok": False}
+            {"tool": "search_library", "hits": 0, "ok": False}
         ]
         assert events[-1][0] == "done"
 
@@ -1831,7 +1840,7 @@ async def test_web_search_mounting_matrix_tool_visibility(
             # 无 key：标志开启也被后端无视（双保险），自由与挂载都不出现 web_search。
             assert "web_search" not in await visible(free_id, web=True)
             assert "web_search" not in await visible(mounted_id, web=True)
-            assert "search_transcript" in await visible(mounted_id, web=True)
+            assert "search_library" in await visible(mounted_id, web=True)
 
             save_web_search_provider(
                 tmp_path, provider="tavily", api_key="tvly-test", clear_api_key=False
@@ -1840,11 +1849,11 @@ async def test_web_search_mounting_matrix_tool_visibility(
             # 有 key：标志开关精确控制挂载；挂载会话两工具并存。
             assert "web_search" in await visible(free_id, web=True)
             assert "web_search" not in await visible(free_id, web=False)
-            assert "search_transcript" not in await visible(free_id, web=False)
+            assert "search_library" not in await visible(free_id, web=False)
             assert "web_search" in await visible(mounted_id, web=True)
-            assert "search_transcript" in await visible(mounted_id, web=True)
+            assert "search_library" in await visible(mounted_id, web=True)
             assert "web_search" not in await visible(mounted_id, web=False)
-            assert "search_transcript" in await visible(mounted_id, web=False)
+            assert "search_library" in await visible(mounted_id, web=False)
 
 
 @pytest.mark.anyio
@@ -1916,6 +1925,8 @@ async def test_free_chat_web_search_streams_tool_events_and_web_citation(
                 "quote": None,
                 "url": "https://www.python.org/downloads/",
                 "title": "Python 官网",
+                "library_item_id": None,
+                "anchor_id": None,
             }
         ]
 
@@ -1999,6 +2010,8 @@ async def test_mounted_web_flag_citations_mix_record_and_web_entries(
                 "quote": "数据库的 MVCC 依赖 undo 日志实现多版本读",
                 "url": None,
                 "title": None,
+                "library_item_id": None,
+                "anchor_id": None,
             },
             {
                 "index": 2,
@@ -2008,6 +2021,8 @@ async def test_mounted_web_flag_citations_mix_record_and_web_entries(
                 "quote": None,
                 "url": "https://example.com/mvcc",
                 "title": "MVCC 博客",
+                "library_item_id": None,
+                "anchor_id": None,
             },
         ]
 
@@ -2107,7 +2122,7 @@ async def test_scope_mounting_matrix_tool_visibility(
 
             # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library。
             assert await visible(free_id) == []
-            assert await visible(record_session_id) == ["search_transcript"]
+            assert await visible(record_session_id) == ["search_library"]
             assert await visible(course_session_id) == ["search_library"]
             assert await visible(all_session_id) == ["search_library"]
 
@@ -2121,7 +2136,7 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(all_session_id, web=True) == ["search_library", "web_search"]
             assert await visible(record_session_id, web=True) == [
-                "search_transcript",
+                "search_library",
                 "web_search",
             ]
 
@@ -2140,35 +2155,33 @@ async def test_course_session_streams_library_tool_and_cross_record_citations(
         replies=[ToolCallReply("search_library", {"query": "一致性哈希"}), final_reply],
     ) as (_app, client, captured):
         course_id = await create_course_for_scope(client)
-        # 粘贴 / 速记记录无分片：search_library FTS 零命中走 LIKE 兜底（跨记录）。
-        # text-capture 标题自动派生自内容，这里显式改写为可引用的讲次标题。
-        first_capture = await client.post(
-            "/api/text-captures",
-            json={
-                "capture_type": "PASTE",
-                "content": "第二讲聚焦一致性哈希的实践应用。",
-                "course_id": course_id,
+        # 文档导入带分片索引：search_library 经 FTS 命中（工单 04 起 COURSE/ALL
+        # 不再做 LIKE 兜底，粘贴/速记类无分片记录不进检索面）。
+        first_imported = await client.post(
+            "/api/document-imports",
+            files={
+                "file": (
+                    "第 2 讲 一致性哈希.txt",
+                    "第二讲聚焦一致性哈希的实践应用。".encode(),
+                    "text/plain",
+                )
             },
+            data={"course_id": course_id},
         )
-        second_capture = await client.post(
-            "/api/text-captures",
-            json={
-                "capture_type": "PASTE",
-                "content": "第五讲聚焦共识协议 Raft 的理论证明。",
-                "course_id": course_id,
+        second_imported = await client.post(
+            "/api/document-imports",
+            files={
+                "file": (
+                    "第 5 讲 分布式共识.txt",
+                    "第五讲聚焦共识协议 Raft 的理论证明。".encode(),
+                    "text/plain",
+                )
             },
+            data={"course_id": course_id},
         )
-        first_record_id = cast(str, first_capture.json()["record_id"])
-        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
-            await connection.execute(
-                "UPDATE records SET title = ? WHERE id = ?",
-                ("第 2 讲 一致性哈希", first_record_id),
-            )
-            await connection.execute(
-                "UPDATE records SET title = ? WHERE id = ?",
-                ("第 5 讲 分布式共识", cast(str, second_capture.json()["record_id"])),
-            )
-            await connection.commit()
+        assert first_imported.status_code == 202 and second_imported.status_code == 202
+        await wait_for_transcript_ready(client, cast(str, first_imported.json()["record_id"]))
+        await wait_for_transcript_ready(client, cast(str, second_imported.json()["record_id"]))
         created = await client.post(
             "/api/chat-sessions", json={"scope": "COURSE", "course_id": course_id}
         )
@@ -2183,7 +2196,7 @@ async def test_course_session_streams_library_tool_and_cross_record_citations(
         assert "共 2 条学习记录" in prompt
         assert "第 2 讲 一致性哈希（" in prompt
         assert "search_library" in prompt
-        assert "（来源：记录标题）" in prompt
+        assert "（来源：来源标题）" in prompt
 
         names = [name for name, _payload in events]
         assert names[0] == "status" and names[-1] == "done"
@@ -2261,7 +2274,7 @@ async def test_all_session_fts_library_hits_and_web_guidance(
 
 
 # ---------------------------------------------------------------------------
-# CB-07 search_library 概念增强：concepts/occurrences 扩展与范围语义。
+# search_library 概念增强与范围语义（工单 04 起消费 LibraryRetrievalService）。
 # ---------------------------------------------------------------------------
 
 
@@ -2414,7 +2427,7 @@ async def invoke_search_library(
 
 @pytest.mark.anyio
 async def test_search_library_concept_enrichment_course_scope(tmp_path: Path) -> None:
-    """COURSE 会话：概念命中→概念名扩展命中分片；payload 含 concepts/occurrences。"""
+    """COURSE 会话：概念命中→概念名扩展命中分片；载荷三类（工单 04 契约）。"""
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
         await seed_library_course(app, "course-1", "数据库课程")
@@ -2439,29 +2452,24 @@ async def test_search_library_concept_enrichment_course_scope(tmp_path: Path) ->
             app, record_id="record-a", concept_id="concept-mvcc", evidence_count=2
         )
 
-        # 原查询「并发控制」在分片 FTS 零命中，hits 只能来自概念名扩展 → 增强生效。
+        # 原查询「并发控制」在分片 FTS 零命中，命中只能来自概念名扩展 → 增强生效。
         payload = await invoke_search_library(
             app, scope=ChatScope.COURSE, course_id="course-1", query="并发控制"
         )
-        assert payload["concepts"] == [
+        assert payload["concept_hints"] == [
             {
                 "concept_id": "concept-mvcc",
                 "canonical_name": "MVCC",
                 "description": "多版本并发控制机制",
-                "record_count": 1,
-                "occurrence_count": 2,
+                "course_id": "course-1",
             }
         ]
-        assert [hit["record_id"] for hit in payload["hits"]] == ["record-a"]
-        assert payload["hits"][0]["time"] == "0:01-0:05"
-        assert payload["occurrences"] == [
-            {
-                "record_id": "record-a",
-                "record_title": "第 3 讲",
-                "quote": "MVCC 通过 ReadView 实现事务可见性",
-                "time": "0:01-0:05",
-            }
-        ]
+        assert [hit["record_id"] for hit in payload["evidence_hits"]] == ["record-a"]
+        assert payload["evidence_hits"][0]["time"] == "0:01-0:05"
+        assert payload["evidence_hits"][0]["quote"] == "MVCC 通过 ReadView 实现事务可见性"
+        assert payload["evidence_hits"][0]["source_title"] == "第 3 讲"
+        assert payload["evidence_hits"][0]["channel"] == "concept_expansion"
+        assert "occurrences" not in payload
 
 
 @pytest.mark.anyio
@@ -2499,10 +2507,9 @@ async def test_search_library_all_scope_expands_within_concept_course(tmp_path: 
         payload = await invoke_search_library(
             app, scope=ChatScope.ALL, course_id=None, query="并发控制"
         )
-        hit_records = {hit["record_id"] for hit in payload["hits"]}
+        hit_records = {hit["record_id"] for hit in payload["evidence_hits"]}
         assert hit_records == {"record-1", "record-2"}, "原查询全库 + 概念扩展限归属课程"
-        assert [item["concept_id"] for item in payload["concepts"]] == ["concept-mvcc"]
-        assert {item["record_id"] for item in payload["occurrences"]} == hit_records
+        assert [item["concept_id"] for item in payload["concept_hints"]] == ["concept-mvcc"]
 
 
 @pytest.mark.anyio
@@ -2534,17 +2541,18 @@ async def test_search_library_excludes_candidate_concepts(tmp_path: Path) -> Non
         payload = await invoke_search_library(
             app, scope=ChatScope.COURSE, course_id="course-1", query="并发控制"
         )
-        assert payload["concepts"] == [], "候选概念即使有索引行也不得命中"
-        assert payload["hits"] == [] and payload["occurrences"] == []
+        assert payload["concept_hints"] == [], "候选概念即使有索引行也不得命中"
+        assert payload["evidence_hits"] == []
 
 
 @pytest.mark.anyio
 async def test_search_library_degrades_without_concepts(tmp_path: Path) -> None:
-    """无 brain 课程退化：零概念时行为与现行一致（LIKE 兜底照旧），新键为空。"""
+    """无 brain 课程退化：零概念时检索面为空；COURSE/ALL 不做 LIKE 兜底
+    （contract §4：LIKE 只由 RECORD/LIBRARY_ITEM 的记录级路径继承）。"""
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
         await seed_library_course(app, "course-1", "分布式系统")
-        # 粘贴记录只有转写全文、无分片：FTS 零命中 → LIKE 兜底（现行行为）。
+        # 粘贴记录只有转写全文、无分片：COURSE 范围 FTS 零命中 → 如实返回未找到。
         async with app.state.session_factory() as session, session.begin():
             await session.execute(
                 text(
@@ -2571,7 +2579,6 @@ async def test_search_library_degrades_without_concepts(tmp_path: Path) -> None:
         payload = await invoke_search_library(
             app, scope=ChatScope.COURSE, course_id="course-1", query="一致性哈希"
         )
-        assert payload["concepts"] == [] and payload["occurrences"] == []
-        assert len(payload["hits"]) == 1
-        assert payload["hits"][0]["record_id"] == "record-paste"
-        assert "一致性哈希" in payload["hits"][0]["content"]
+        assert payload["concept_hints"] == []
+        assert payload["evidence_hits"] == []
+        assert "未找到" in payload["message"]

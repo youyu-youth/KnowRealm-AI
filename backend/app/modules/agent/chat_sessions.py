@@ -46,11 +46,14 @@ async def create_chat_session(
         scope=payload.scope or ChatScope.FREE,
         record_id=str(payload.record_id) if payload.record_id is not None else None,
         course_id=str(payload.course_id) if payload.course_id is not None else None,
+        library_item_id=(
+            str(payload.library_item_id) if payload.library_item_id is not None else None
+        ),
         knowledge_point_id=(
             str(payload.knowledge_point_id) if payload.knowledge_point_id is not None else None
         ),
     )
-    # 创建时挂载记录/课程已校验存活，失效态恒为 False。
+    # 创建时挂载记录/课程/资料已校验存活，失效态恒为 False。
     return ChatSessionService.to_out(chat)
 
 

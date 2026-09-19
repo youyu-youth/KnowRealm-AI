@@ -16,6 +16,7 @@ from app.modules.course.models import Course
 from app.modules.course.schemas import CourseStatus
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
+from app.modules.library.models import LibraryItem
 from app.modules.profile.models import PROFILE_ID, Profile
 from app.modules.profile.schemas import PrimaryRole
 from app.modules.record.models import Record
@@ -90,11 +91,13 @@ class ChatSessionService:
         scope: ChatScope,
         record_id: str | None = None,
         course_id: str | None = None,
+        library_item_id: str | None = None,
         knowledge_point_id: str | None = None,
     ) -> ChatSession:
         async with session.begin():
             record = None
             course = None
+            library_item = None
             knowledge_point = None
             if knowledge_point_id is not None:
                 knowledge_point = await session.get(KnowledgePoint, knowledge_point_id)
@@ -129,6 +132,28 @@ class ChatSessionService:
                         status_code=409,
                         detail="TRANSCRIPT_NOT_READY：转写尚未生成，暂不可挂载",
                     )
+            elif scope == ChatScope.LIBRARY_ITEM:
+                # 仅资料详情「AI 解读」入口创建（contract §2.6）：不存在 404、
+                # 已软删 / 已归档 409；归档资料退出来源召回，也不可新发起问答。
+                library_item = await session.get(LibraryItem, library_item_id or "")
+                if library_item is None:
+                    raise CodedHTTPException(
+                        code="LIBRARY_ITEM_NOT_FOUND",
+                        status_code=404,
+                        detail="资料条目不存在或已删除",
+                    )
+                if library_item.deleted_at is not None:
+                    raise CodedHTTPException(
+                        code="LIBRARY_ITEM_DELETED",
+                        status_code=409,
+                        detail="资料条目已删除，暂不支持发起资料问答",
+                    )
+                if library_item.status == "ARCHIVED":
+                    raise CodedHTTPException(
+                        code="LIBRARY_ITEM_ARCHIVED",
+                        status_code=409,
+                        detail="资料条目已归档，暂不支持发起资料问答",
+                    )
             elif scope == ChatScope.COURSE:
                 course = await session.get(Course, course_id or "")
                 if course is None or course.deleted_at is not None:
@@ -151,10 +176,13 @@ class ChatSessionService:
                     if record is not None
                     else course.id
                     if course is not None
+                    else library_item.course_id
+                    if library_item is not None
                     else None
                 ),
                 record_id=record_id if scope == ChatScope.RECORD else None,
                 concept_id=None,
+                library_item_id=library_item_id if scope == ChatScope.LIBRARY_ITEM else None,
                 mode=ChatMode.ASK,
                 scope=scope,
                 title=None,
@@ -200,20 +228,29 @@ class ChatSessionService:
         *,
         record_deleted: bool = False,
         course_deleted: bool = False,
+        library_item_deleted: bool = False,
     ) -> ChatSessionOut:
-        """失效态由软删标记运行时推导（无失效列）：挂载记录/课程不存在或已软删即失效。"""
+        """失效态由软删标记运行时推导（无失效列）：挂载记录/课程/资料不存在或
+        已软删（资料含归档）即失效。"""
         out = ChatSessionOut.model_validate(chat)
         out.record_deleted = record_deleted
         out.course_deleted = course_deleted
+        out.library_item_deleted = library_item_deleted
         return out
+
+    @staticmethod
+    def _library_item_unavailable(item: LibraryItem | None) -> bool:
+        """LIBRARY_ITEM 会话失效判据：条目不存在 / 已软删 / 已归档（只读）。"""
+        return item is None or item.deleted_at is not None or item.status == "ARCHIVED"
 
     @staticmethod
     async def list_out(session: AsyncSession) -> list[ChatSessionOut]:
         rows = (
             await session.execute(
-                select(ChatSession, Record.deleted_at, Course.deleted_at)
+                select(ChatSession, Record.deleted_at, Course.deleted_at, LibraryItem)
                 .outerjoin(Record, Record.id == ChatSession.record_id)
                 .outerjoin(Course, Course.id == ChatSession.course_id)
+                .outerjoin(LibraryItem, LibraryItem.id == ChatSession.library_item_id)
                 .where(ChatSession.deleted_at.is_(None))
                 .order_by(ChatSession.updated_at.desc())
             )
@@ -223,8 +260,12 @@ class ChatSessionService:
                 chat,
                 record_deleted=record_deleted_at is not None,
                 course_deleted=(chat.scope == ChatScope.COURSE and course_deleted_at is not None),
+                library_item_deleted=(
+                    chat.scope == ChatScope.LIBRARY_ITEM
+                    and ChatSessionService._library_item_unavailable(item)
+                ),
             )
-            for chat, record_deleted_at, course_deleted_at in rows
+            for chat, record_deleted_at, course_deleted_at, item in rows
         ]
 
     @staticmethod
@@ -240,8 +281,16 @@ class ChatSessionService:
         if chat.scope == ChatScope.COURSE and chat.course_id is not None:
             course = await session.get(Course, chat.course_id)
             course_deleted = course is None or course.deleted_at is not None
+        library_item_deleted = False
+        if chat.scope == ChatScope.LIBRARY_ITEM and chat.library_item_id is not None:
+            library_item_deleted = ChatSessionService._library_item_unavailable(
+                await session.get(LibraryItem, chat.library_item_id)
+            )
         return ChatSessionService.to_out(
-            chat, record_deleted=record_deleted, course_deleted=course_deleted
+            chat,
+            record_deleted=record_deleted,
+            course_deleted=course_deleted,
+            library_item_deleted=library_item_deleted,
         )
 
     @staticmethod
