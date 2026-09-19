@@ -1467,6 +1467,10 @@
       "unfiled": "尚未归类，可预览详情后继续整理",
       "unfiledShort": "未归类"
     },
+    "meta": {
+      "duration": "时长 {{duration}}",
+      "characters": "{{count}} 字"
+    },
     "preview": {
       "title": "内容预览",
       "description": "预览所选收件箱内容及元数据。",
@@ -1492,13 +1496,6 @@
         "COMPLETED": "处理已完成，可打开详情查看完整内容。",
         "FAILED": "内容处理失败，可打开详情查看原因并重试。"
       }
-    },
-    "demo": {
-      "open": "查看示意布局",
-      "close": "退出示意",
-      "badge": "示意",
-      "description": "当前显示只读示意数据，用于体验收件箱布局；不会写入本地数据。",
-      "readOnly": "示意数据只读，整理操作不可用"
     },
     "bulk": {
       "ready": "可对所选内容批量整理",

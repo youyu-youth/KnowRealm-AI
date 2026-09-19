@@ -49,8 +49,8 @@ const course: components["schemas"]["CourseOut"] = {
 
 const inboxRecord = (
   id: string,
-  overrides: Partial<components["schemas"]["RecordOut"]>,
-): components["schemas"]["RecordOut"] => ({
+  overrides: Partial<components["schemas"]["InboxRecordOut"]>,
+): components["schemas"]["InboxRecordOut"] => ({
   id,
   course_id: null,
   capture_type: "QUICK_NOTE",
@@ -60,6 +60,8 @@ const inboxRecord = (
   summary_confirmed_at: null,
   created_at: "2026-08-23T10:00:00.000000Z",
   updated_at: "2026-08-23T10:00:00.000000Z",
+  file_size_bytes: null,
+  content_chars: null,
   ...overrides,
 });
 
@@ -380,36 +382,36 @@ describe("收件箱", () => {
     ).toBeVisible();
   });
 
-  it("空态可进入只读示意布局，筛选与搜索不会产生写请求", async () => {
-    let mutations = 0;
+  it("行副标题按来源展示真实元信息（时长/大小/字数）", async () => {
     server.use(
-      http.all(`${TEST_SIDECAR_URL}/api/records/*`, ({ request }) => {
-        if (request.method !== "GET") mutations += 1;
-        return new HttpResponse(null, { status: 500 });
-      }),
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json([
+          inboxRecord(NOTE_RECORD_ID, {
+            title: "SVM 速记",
+            content_chars: 312,
+          }),
+          inboxRecord(PROCESSING_RECORD_ID, {
+            capture_type: "AUDIO_IMPORT",
+            title: "课堂录音",
+            status: "CONTENT_PROCESSING",
+            duration_ms: 5_040_000,
+            file_size_bytes: 47_393_300,
+          }),
+          inboxRecord("44444444-4444-4444-8444-444444444444", {
+            capture_type: "DOCUMENT_IMPORT",
+            title: "定积分讲义.pdf",
+            status: "SUMMARY_PENDING",
+            file_size_bytes: 2_411_000,
+          }),
+        ]),
+      ),
     );
 
     renderAt("/inbox");
-    fireEvent.click(
-      await screen.findByRole("button", { name: "查看示意布局" }),
-    );
 
-    expect(screen.getByRole("alert")).toHaveTextContent("只读示意数据");
-    expect(screen.getByText("线性代数 · 向量空间的定义与性质")).toBeVisible();
-    fireEvent.change(screen.getByRole("searchbox", { name: "搜索收件箱" }), {
-      target: { value: "定积分" },
-    });
-    expect(await screen.findByText(/定积分的应用/)).toBeVisible();
-    await waitFor(() =>
-      expect(screen.queryByText(/向量空间的定义/)).not.toBeInTheDocument(),
-    );
-    fireEvent.click(
-      screen.getByRole("checkbox", {
-        name: "选择 高数上 第四章 定积分的应用 讲义.pdf",
-      }),
-    );
-    expect(screen.getByText("示意数据只读，整理操作不可用")).toBeVisible();
-    expect(mutations).toBe(0);
+    expect(await screen.findByText("312 字")).toBeVisible();
+    expect(screen.getByText("时长 1 小时 24 分 · 45.2 MB")).toBeVisible();
+    expect(screen.getByText("2.3 MB")).toBeVisible();
   });
 
   it("类型筛选写入 URL，行预览读取真实 Transcript", async () => {

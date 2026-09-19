@@ -16,12 +16,12 @@ import {
   Rocket,
   Search,
   SlidersHorizontal,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -52,11 +52,17 @@ import {
   type InboxStatusFilter,
   type InboxTypeFilter,
 } from "@/features/inbox/inboxSearch";
+import { formatSize } from "@/lib/utils";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
-import type { CaptureType, RecordOut } from "@/features/records/api/types";
+import type {
+  CaptureType,
+  InboxRecordOut,
+  RecordOut,
+} from "@/features/records/api/types";
 import {
   captureTypeLabelKeys,
+  formatRecordDuration,
   recordDateFormatter,
   statusLabelKeys,
 } from "@/features/records/recordPresentation";
@@ -106,95 +112,31 @@ const statusFilters = [
   "failed",
 ] as const;
 
-const demoContent: Record<string, string> = {
-  "demo-note":
-    "向量空间是线性代数的核心概念。它由向量集合以及加法、数乘两种运算构成，并满足封闭性与相应公理。理解基、维数和线性无关，是继续学习线性映射的基础。",
-  "demo-paste":
-    "函数极限描述自变量趋近某个值时函数值的变化趋势。判断极限时需要先确认定义域，再选择代数化简、夹逼或等价无穷小等方法。",
-  "demo-audio":
-    "课堂录音正在转写。完成后会在此显示可检索的正文，并保留原始时间轴供后续回看。",
-  "demo-document":
-    "本章介绍定积分的定义、几何意义与基本性质，并通过面积和累积量说明微积分基本定理的联系。",
-  "demo-recording":
-    "微分方程方法总结：先识别方程类型，再决定分离变量、常数变易或特征根方法。",
-  "demo-clip":
-    "复数可以写作 a + bi，在复平面中对应点 (a, b)。模长与辐角为乘除和幂运算提供了更直观的表示。",
-};
-
-function createDemoRecords(): RecordOut[] {
-  const now = new Date();
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const at = (date: Date, hour: number, minute: number) => {
-    const value = new Date(date);
-    value.setHours(hour, minute, 0, 0);
-    return value.toISOString();
-  };
-  const record = (
-    id: string,
-    capture_type: CaptureType,
-    title: string,
-    status: RecordOut["status"],
-    created_at: string,
-    duration_ms = 0,
-  ): RecordOut => ({
-    id,
-    course_id: null,
-    capture_type,
-    title,
-    status,
-    duration_ms,
-    summary_confirmed_at: null,
-    created_at,
-    updated_at: created_at,
-  });
-
-  return [
-    record(
-      "demo-note",
-      "QUICK_NOTE",
-      "线性代数 · 向量空间的定义与性质",
-      "NOTE",
-      at(now, 10, 32),
-    ),
-    record(
-      "demo-paste",
-      "PASTE",
-      "从《高等数学（上）》第 12 讲复制的文本",
-      "SUMMARY_PENDING",
-      at(now, 9, 58),
-    ),
-    record(
-      "demo-audio",
-      "AUDIO_IMPORT",
-      "线代第 3 章 线性相关性 课堂录音",
-      "CONTENT_PROCESSING",
-      at(yesterday, 16, 30),
-      2_061_000,
-    ),
-    record(
-      "demo-document",
-      "DOCUMENT_IMPORT",
-      "高数上 第四章 定积分的应用 讲义.pdf",
-      "SUMMARY_PENDING",
-      at(yesterday, 14, 2),
-    ),
-    record(
-      "demo-recording",
-      "RECORDING",
-      "微分方程方法总结（个人复盘）",
-      "CONTENT_PROCESSING",
-      at(yesterday, 10, 11),
-      1_687_000,
-    ),
-    record(
-      "demo-clip",
-      "CLIP",
-      "复数的几何表示与运算",
-      "NOTE",
-      at(yesterday, 8, 46),
-    ),
-  ];
+function inboxMetaText(record: InboxRecordOut, t: TFunction): string {
+  const parts: string[] = [];
+  const isAudio = ["RECORDING", "AUDIO_IMPORT"].includes(record.capture_type);
+  const isText = ["QUICK_NOTE", "PASTE"].includes(record.capture_type);
+  if (isAudio && record.duration_ms > 0) {
+    parts.push(
+      t("inbox.meta.duration", {
+        duration: formatRecordDuration(record.duration_ms, t),
+      }),
+    );
+  }
+  if (!isText) {
+    const size = formatSize(record.file_size_bytes ?? null);
+    if (size) parts.push(size);
+  }
+  if (
+    !isAudio &&
+    (isText ||
+      record.capture_type === "MULTI_SOURCE" ||
+      record.capture_type === "CLIP") &&
+    record.content_chars != null
+  ) {
+    parts.push(t("inbox.meta.characters", { count: record.content_chars }));
+  }
+  return parts.join(" · ");
 }
 
 function matchesType(record: RecordOut, filter: InboxTypeFilter) {
@@ -254,7 +196,6 @@ type InboxPageProps = {
 export function InboxPage({ search, onSearchChange }: InboxPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [demoRequested, setDemoRequested] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [previewOpen, setPreviewOpen] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -272,9 +213,7 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
         : false,
   });
 
-  const demoRecords = useMemo(() => createDemoRecords(), []);
-  const demoMode = demoRequested && records.data?.length === 0;
-  const allRecords = demoMode ? demoRecords : (records.data ?? []);
+  const allRecords = records.data ?? [];
   const typeFilter = search.type ?? "all";
   const statusFilter = search.status ?? "unfiled";
   const normalizedQuery = search.q?.trim().toLocaleLowerCase() ?? "";
@@ -437,7 +376,7 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
     );
   }
 
-  if (records.data.length === 0 && !demoMode) {
+  if (records.data.length === 0) {
     return (
       <section className="work-surface-enter max-w-workbench px-content mx-auto min-h-full py-8">
         <InboxHeader stats={stats} />
@@ -458,11 +397,6 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
               {t("inbox.emptyDescription")}
             </EmptyDescription>
           </EmptyHeader>
-          <EmptyContent className="items-start">
-            <Button variant="outline" onClick={() => setDemoRequested(true)}>
-              {t("inbox.demo.open")}
-            </Button>
-          </EmptyContent>
         </Empty>
       </section>
     );
@@ -471,24 +405,6 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
   return (
     <section className="work-surface-enter max-w-workbench px-content mx-auto min-h-full min-w-0 py-8">
       <InboxHeader stats={stats} />
-      {demoMode ? (
-        <Alert className="border-border bg-surface-subtle mt-5 pr-24">
-          <Sparkles aria-hidden="true" />
-          <AlertDescription>{t("inbox.demo.description")}</AlertDescription>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute top-1.5 right-2"
-            onClick={() => {
-              setDemoRequested(false);
-              setSelectedIds(new Set());
-              onSearchChange({});
-            }}
-          >
-            {t("inbox.demo.close")}
-          </Button>
-        </Alert>
-      ) : null}
       {feedback ? (
         <p role="status" className="text-body text-muted-foreground mt-4">
           {feedback}
@@ -600,52 +516,35 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
                 >
                   {t("inbox.selection.clear")}
                 </Button>
-                {demoMode ? (
-                  <div className="ml-auto flex items-center gap-1">
-                    <span className="text-label text-muted-foreground mr-1 hidden 2xl:inline">
-                      {t("inbox.demo.readOnly")}
-                    </span>
-                    <Button variant="outline" size="sm" disabled>
-                      {t("inbox.bulk.classify")}
-                    </Button>
-                    <Button variant="outline" size="sm" disabled>
-                      {t("inbox.bulk.upgrade")}
-                    </Button>
-                    <Button variant="outline" size="sm" disabled>
-                      {t("inbox.bulk.delete")}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="ml-auto flex items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!allSelectedOrganizable}
-                      onClick={() => setBulkAction("classify")}
-                    >
-                      <FolderOpen aria-hidden="true" />
-                      {t("inbox.bulk.classify")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={!allSelectedOrganizable}
-                      onClick={() => setBulkAction("upgrade")}
-                    >
-                      <Rocket aria-hidden="true" />
-                      {t("inbox.bulk.upgrade")}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => setBulkAction("delete")}
-                    >
-                      <Trash2 aria-hidden="true" />
-                      {t("inbox.bulk.delete")}
-                    </Button>
-                  </div>
-                )}
+                <div className="ml-auto flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!allSelectedOrganizable}
+                    onClick={() => setBulkAction("classify")}
+                  >
+                    <FolderOpen aria-hidden="true" />
+                    {t("inbox.bulk.classify")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={!allSelectedOrganizable}
+                    onClick={() => setBulkAction("upgrade")}
+                  >
+                    <Rocket aria-hidden="true" />
+                    {t("inbox.bulk.upgrade")}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setBulkAction("delete")}
+                  >
+                    <Trash2 aria-hidden="true" />
+                    {t("inbox.bulk.delete")}
+                  </Button>
+                </div>{" "}
               </>
             ) : (
               <span className="text-label text-muted-foreground">
@@ -675,7 +574,6 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
                   record={record}
                   selected={record.id === selectedRecord?.id}
                   checked={selectedIds.has(record.id)}
-                  demo={demoMode}
                   onCheckedChange={(checked) =>
                     toggleRecord(record.id, checked)
                   }
@@ -755,7 +653,6 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
         <aside className="border-border bg-background sticky top-4 hidden max-h-[calc(100vh-7rem)] min-h-[calc(100vh-9.5rem)] min-w-0 self-start overflow-y-auto rounded-xl border shadow-[0_4px_16px_rgb(15_23_42/0.045)] xl:block">
           <InboxPreview
             record={selectedRecord}
-            demo={demoMode}
             onClose={() => updateSearch({ record: undefined })}
             onClassified={(courseName) =>
               setFeedback(t("inbox.classifiedFeedback", { course: courseName }))
@@ -774,7 +671,6 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
           </DialogHeader>
           <InboxPreview
             record={selectedRecord}
-            demo={demoMode}
             onClassified={(courseName) =>
               setFeedback(t("inbox.classifiedFeedback", { course: courseName }))
             }
@@ -928,21 +824,20 @@ function InboxRow({
   record,
   selected,
   checked,
-  demo,
   onCheckedChange,
   onPreview,
   onClassified,
 }: {
-  record: RecordOut;
+  record: InboxRecordOut;
   selected: boolean;
   checked: boolean;
-  demo: boolean;
   onCheckedChange: (checked: boolean) => void;
   onPreview: () => void;
   onClassified: (courseName: string) => void;
 }) {
   const { t } = useTranslation();
   const title = record.title.trim() || t("spaces.records.untitled");
+  const meta = inboxMetaText(record, t);
   return (
     <li
       className={`group border-border bg-background relative grid min-h-[72px] min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl border px-4 shadow-[0_1px_2px_rgb(15_23_42/0.035)] transition-[border-color,background-color,box-shadow] ${selected ? "border-foreground/25 bg-surface-subtle shadow-[0_3px_10px_rgb(15_23_42/0.06)]" : "hover:border-foreground/20 hover:shadow-[0_3px_10px_rgb(15_23_42/0.05)]"}`}
@@ -970,7 +865,7 @@ function InboxRow({
               {title}
             </span>
             <span className="text-label text-muted-foreground mt-0.5 block truncate">
-              {demoContent[record.id] ?? t("inbox.row.unfiled")}
+              {meta || t("inbox.row.unfiled")}
             </span>
           </span>
         </span>
@@ -998,20 +893,17 @@ function InboxRow({
             record={record}
             onClassified={onClassified}
             compact
-            disabled={demo}
           />
         </div>
-        {!demo ? (
-          <Link
-            to="/records/$recordId"
-            params={{ recordId: record.id }}
-            search={{ tab: "transcript" }}
-            className="hover:bg-surface-subtle focus-visible:ring-ring/40 text-muted-foreground flex size-8 items-center justify-center rounded-sm focus-visible:ring-3"
-            aria-label={t("inbox.openRecord", { title })}
-          >
-            <FolderOpen aria-hidden="true" className="size-4" />
-          </Link>
-        ) : null}
+        <Link
+          to="/records/$recordId"
+          params={{ recordId: record.id }}
+          search={{ tab: "transcript" }}
+          className="hover:bg-surface-subtle focus-visible:ring-ring/40 text-muted-foreground flex size-8 items-center justify-center rounded-sm focus-visible:ring-3"
+          aria-label={t("inbox.openRecord", { title })}
+        >
+          <FolderOpen aria-hidden="true" className="size-4" />
+        </Link>
       </div>
     </li>
   );
@@ -1019,12 +911,10 @@ function InboxRow({
 
 function InboxPreview({
   record,
-  demo,
   onClose,
   onClassified,
 }: {
-  record: RecordOut | null;
-  demo: boolean;
+  record: InboxRecordOut | null;
   onClose?: () => void;
   onClassified: (courseName: string) => void;
 }) {
@@ -1032,7 +922,7 @@ function InboxPreview({
   const transcript = useQuery({
     queryKey: recordKeys.transcript(record?.id ?? "none"),
     queryFn: () => recordApi.getTranscript(record?.id ?? ""),
-    enabled: Boolean(record && !demo),
+    enabled: Boolean(record),
   });
 
   if (!record) {
@@ -1051,9 +941,7 @@ function InboxPreview({
   }
 
   const title = record.title.trim() || t("spaces.records.untitled");
-  const content = demo
-    ? demoContent[record.id]
-    : transcript.data?.transcript?.content;
+  const content = transcript.data?.transcript?.content;
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex items-start justify-between gap-3 px-5 pt-5">
@@ -1062,9 +950,7 @@ function InboxPreview({
             {t("inbox.preview.title")}
           </p>
           <span className="mt-2 inline-flex rounded-md bg-blue-50 px-2 py-1 text-xs text-blue-700 dark:bg-blue-950/45 dark:text-blue-300">
-            {demo
-              ? t("inbox.demo.badge")
-              : t(captureTypeLabelKeys[record.capture_type])}
+            {t(captureTypeLabelKeys[record.capture_type])}
           </span>
         </div>
         {onClose ? (
@@ -1088,7 +974,7 @@ function InboxPreview({
         {recordDateFormatter.format(new Date(record.created_at))}
       </time>
       <div className="border-border mx-5 mt-5 border-b pb-5">
-        {transcript.isPending && !demo ? (
+        {transcript.isPending ? (
           <p
             role="status"
             className="text-body text-muted-foreground flex items-center gap-2"
@@ -1096,7 +982,7 @@ function InboxPreview({
             <Spinner aria-hidden="true" />
             {t("inbox.preview.loading")}
           </p>
-        ) : transcript.isError && !demo ? (
+        ) : transcript.isError ? (
           <Alert variant="destructive">
             <AlertDescription>{t("inbox.preview.error")}</AlertDescription>
           </Alert>
@@ -1136,42 +1022,27 @@ function InboxPreview({
           <dt className="text-muted-foreground">
             {t("inbox.preview.characters")}
           </dt>
-          <dd className="text-ink tabular-nums">{content?.length ?? 0}</dd>
+          <dd className="text-ink tabular-nums">{record.content_chars ?? 0}</dd>
           <dt className="text-muted-foreground">{t("inbox.preview.course")}</dt>
           <dd className="text-ink">{t("inbox.row.unfiledShort")}</dd>
         </dl>
       </div>
       <div className="bg-background sticky bottom-0 mt-auto flex flex-wrap items-center gap-2 p-4">
-        {demo ? (
-          <>
-            <InboxRowActions
-              record={record}
-              onClassified={onClassified}
-              disabled
+        <InboxRowActions record={record} onClassified={onClassified} />
+        <Button
+          nativeButton={false}
+          variant="outline"
+          size="sm"
+          render={
+            <Link
+              to="/records/$recordId"
+              params={{ recordId: record.id }}
+              search={{ tab: "transcript" }}
             />
-            <p className="text-label text-muted-foreground basis-full">
-              {t("inbox.demo.readOnly")}
-            </p>
-          </>
-        ) : (
-          <>
-            <InboxRowActions record={record} onClassified={onClassified} />
-            <Button
-              nativeButton={false}
-              variant="outline"
-              size="sm"
-              render={
-                <Link
-                  to="/records/$recordId"
-                  params={{ recordId: record.id }}
-                  search={{ tab: "transcript" }}
-                />
-              }
-            >
-              {t("inbox.openRecordShort")}
-            </Button>
-          </>
-        )}
+          }
+        >
+          {t("inbox.openRecordShort")}
+        </Button>
       </div>
     </div>
   );

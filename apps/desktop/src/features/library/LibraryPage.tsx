@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { formatSize } from "@/lib/utils";
 import {
   AddLibraryItemDialog,
   type AddLibraryItemInitial,
@@ -139,13 +140,6 @@ function formatDateTime(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-function formatSize(bytes: number | null): string | null {
-  if (bytes === null) return null;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function SourceTypeIcon({ sourceType }: { sourceType: string }) {

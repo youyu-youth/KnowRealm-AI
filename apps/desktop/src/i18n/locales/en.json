@@ -1479,6 +1479,10 @@
       "unfiled": "Not filed yet; preview details before organizing",
       "unfiledShort": "Unfiled"
     },
+    "meta": {
+      "duration": "Duration {{duration}}",
+      "characters": "{{count}} characters"
+    },
     "preview": {
       "title": "Content preview",
       "description": "Preview the selected Inbox content and metadata.",
@@ -1504,13 +1508,6 @@
         "COMPLETED": "Processing is complete. Open details to view everything.",
         "FAILED": "Processing failed. Open details to review the error and retry."
       }
-    },
-    "demo": {
-      "open": "View sample layout",
-      "close": "Exit sample",
-      "badge": "Sample",
-      "description": "Read-only sample data is shown to demonstrate the Inbox layout. Nothing is written locally.",
-      "readOnly": "Sample data is read-only; organize actions are unavailable"
     },
     "bulk": {
       "ready": "Selected items can be organized in bulk",

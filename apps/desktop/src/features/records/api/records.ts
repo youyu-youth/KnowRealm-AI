@@ -1,4 +1,5 @@
 import type {
+  InboxRecordOut,
   ProcessingJobOut,
   KnowledgePointReadOut,
   QuizGenerateRequest,
@@ -25,7 +26,7 @@ import type { components } from "@knowrealm/api-types";
 
 export const recordApi = {
   get: (recordId: string) => apiFetch<RecordOut>(`/api/records/${recordId}`),
-  listInbox: () => apiFetch<RecordOut[]>("/api/inbox"),
+  listInbox: () => apiFetch<InboxRecordOut[]>("/api/inbox"),
   classify: (recordId: string, courseId: string) =>
     apiFetch<RecordOut>(`/api/records/${recordId}/classification`, {
       method: "POST",
