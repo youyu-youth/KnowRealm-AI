@@ -2039,30 +2039,87 @@
     "shortcutBadge": "Ctrl K"
   },
   "library": {
-    "title": "资产库",
-    "description": "跨课程检索你的学习记录、知识点与课程",
-    "searchLabel": "搜索资产",
-    "placeholder": "搜索学习记录、知识点、课程…",
-    "tabs": {
+    "title": "资料库",
+    "description": "统一浏览你的学习来源、记录与已确认资产",
+    "loading": "正在加载…",
+    "favoriteToggle": "收藏",
+    "domains": {
       "all": "全部",
+      "sources": "资料来源",
       "records": "学习记录",
-      "knowledgePoints": "知识点",
-      "courses": "课程"
+      "assets": "学习资产"
+    },
+    "views": {
+      "all": "全部",
+      "recent": "最近",
+      "favorites": "收藏",
+      "needsReview": "待整理"
     },
     "groups": {
-      "records": "学习记录",
-      "knowledgePoints": "知识点",
-      "courses": "课程"
+      "smart": "智能视图",
+      "domain": "领域分类",
+      "courses": "最近课程",
+      "noCourses": "暂无课程",
+      "viewAllCourses": "查看全部"
     },
-    "loading": "正在搜索…",
-    "emptyTitle": "资产库还是空的",
-    "emptyDescription": "捕获的学习记录、知识点与课程都会汇聚在这里。先从顶栏录音、速记或导入资料开始，之后就能在这里跨课程检索。",
-    "noResultsTitle": "没有找到相关内容",
-    "noResultsDescription": "换个关键词试试，或检查拼写是否正确",
-    "noResultsInFilter": "该类型下没有匹配结果，可切换到「全部」查看其他结果",
-    "errorTitle": "搜索失败",
-    "errorDescription": "检索服务暂时不可用，请稍后重试",
-    "retry": "重试"
+    "sourceTypes": {
+      "AUDIO": "音频",
+      "DOCUMENT": "文档",
+      "WEB": "网页",
+      "BOOK": "书籍",
+      "TEXT": "文本"
+    },
+    "availability": {
+      "PROCESSING": "处理中",
+      "RETRIEVABLE": "可检索",
+      "FAILED": "失败",
+      "EMPTY": "未就绪"
+    },
+    "layout": {
+      "list": "列表视图",
+      "grid": "网格视图"
+    },
+    "filters": {
+      "searchLabel": "搜索资料库",
+      "searchPlaceholder": "搜索标题、来源与元数据…",
+      "unclassified": "未归类",
+      "courseFilterActive": "已按课程筛选"
+    },
+    "backfill": {
+      "running": "正在回填历史资料… {{percent}}%",
+      "failed": "历史资料回填失败，重启应用或稍后自动重试"
+    },
+    "list": {
+      "emptyTitle": "资料库还是空的",
+      "emptyDescription": "录音、导入文档、粘贴与速记会自动汇聚为资料来源，在这里统一浏览与管理。",
+      "noResults": "没有找到相关内容",
+      "noResultsDescription": "换个关键词试试，或清除筛选条件"
+    },
+    "inspector": {
+      "title": "详情",
+      "noneSelected": "选择列表中的对象查看详情",
+      "loading": "正在加载详情…",
+      "notFound": "所选对象不存在或已删除",
+      "itemError": "资料条目加载失败",
+      "sourceMeta": "来源信息",
+      "originUri": "来源地址",
+      "localPath": "本地路径",
+      "mime": "类型",
+      "size": "大小",
+      "segmentCount": "分片数",
+      "updated": "更新时间",
+      "derivedRecords": "派生记录",
+      "preview": "内容预览",
+      "previewEmpty": "暂无可预览的正文",
+      "previewTruncated": "内容过长，已截断显示",
+      "recordSources": "来源资料",
+      "noSources": "该记录暂无关联的资料来源",
+      "recordAssets": "学习资产",
+      "recordAssetsHint": "总结、知识点与习题在记录页查看",
+      "openRecord": "打开记录页",
+      "assetRecord": "所属记录",
+      "importance": "重要度"
+    }
   },
   "errors": {
     "AI_CONSENT_REQUIRED": "请先同意外部 AI 处理",
@@ -2188,6 +2245,11 @@
     "CHAT_COURSE_NOT_FOUND": "课程不存在或已删除",
     "CHAT_COURSE_UNAVAILABLE": "挂载课程已删除，对话失效",
     "CHAT_MESSAGE_NOT_FOUND": "对话消息不存在",
-    "CHAT_MESSAGE_NOT_ASSISTANT": "仅 AI 回答可保存为知识点"
+    "CHAT_MESSAGE_NOT_ASSISTANT": "仅 AI 回答可保存为知识点",
+    "LIBRARY_ITEM_NOT_FOUND": "资料条目不存在或已删除",
+    "LIBRARY_PATCH_EMPTY": "至少提供一项可更新字段",
+    "PROPOSAL_NOT_FOUND": "提案不存在",
+    "PROPOSAL_ALREADY_DECIDED": "提案已处理，不能重复操作",
+    "PROPOSAL_APPLY_FAILED": "提案应用失败（{{errorCode}}）"
   }
 }

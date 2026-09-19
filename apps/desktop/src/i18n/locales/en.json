@@ -2058,29 +2058,86 @@
   },
   "library": {
     "title": "Library",
-    "description": "Search your Records, Knowledge Points and courses from one place",
-    "searchLabel": "Search assets",
-    "placeholder": "Search Records, Knowledge Points, courses…",
-    "tabs": {
+    "description": "Browse your learning sources, records and confirmed assets in one place",
+    "loading": "Loading…",
+    "favoriteToggle": "Favorite",
+    "domains": {
       "all": "All",
+      "sources": "Sources",
       "records": "Records",
-      "knowledgePoints": "Knowledge Points",
-      "courses": "Courses"
+      "assets": "Assets"
+    },
+    "views": {
+      "all": "All",
+      "recent": "Recent",
+      "favorites": "Favorites",
+      "needsReview": "Needs review"
     },
     "groups": {
-      "records": "Records",
-      "knowledgePoints": "Knowledge Points",
-      "courses": "Courses"
+      "smart": "Smart views",
+      "domain": "Categories",
+      "courses": "Recent courses",
+      "noCourses": "No courses yet",
+      "viewAllCourses": "View all"
     },
-    "loading": "Searching…",
-    "emptyTitle": "The Library is empty",
-    "emptyDescription": "Captured Records, Knowledge Points and courses all gather here. Start with a recording, Quick Note or import from the top bar, then search across courses here.",
-    "noResultsTitle": "No results found",
-    "noResultsDescription": "Try another keyword, or check the spelling",
-    "noResultsInFilter": "No matches under this type; switch to “All” to see other results",
-    "errorTitle": "Search failed",
-    "errorDescription": "The search service is temporarily unavailable; please retry later",
-    "retry": "Retry"
+    "sourceTypes": {
+      "AUDIO": "Audio",
+      "DOCUMENT": "Document",
+      "WEB": "Web",
+      "BOOK": "Book",
+      "TEXT": "Text"
+    },
+    "availability": {
+      "PROCESSING": "Processing",
+      "RETRIEVABLE": "Retrievable",
+      "FAILED": "Failed",
+      "EMPTY": "Not ready"
+    },
+    "layout": {
+      "list": "List view",
+      "grid": "Grid view"
+    },
+    "filters": {
+      "searchLabel": "Search library",
+      "searchPlaceholder": "Search titles, sources and metadata…",
+      "unclassified": "Unclassified",
+      "courseFilterActive": "Filtered by course"
+    },
+    "backfill": {
+      "running": "Backfilling existing content… {{percent}}%",
+      "failed": "Backfill failed; restart the app or retry later"
+    },
+    "list": {
+      "emptyTitle": "Your library is empty",
+      "emptyDescription": "Recordings, imported documents, pastes and quick notes are collected here as sources.",
+      "noResults": "No matching content",
+      "noResultsDescription": "Try different keywords or clear the filters"
+    },
+    "inspector": {
+      "title": "Details",
+      "noneSelected": "Select an item in the list to see details",
+      "loading": "Loading details…",
+      "notFound": "The selected object does not exist or was deleted",
+      "itemError": "Failed to load the library item",
+      "sourceMeta": "Source info",
+      "originUri": "Origin URL",
+      "localPath": "Local path",
+      "mime": "Type",
+      "size": "Size",
+      "segmentCount": "Segments",
+      "updated": "Updated",
+      "derivedRecords": "Derived records",
+      "preview": "Content preview",
+      "previewEmpty": "No previewable content yet",
+      "previewTruncated": "Content truncated",
+      "recordSources": "Source materials",
+      "noSources": "No linked source materials for this record",
+      "recordAssets": "Learning assets",
+      "recordAssetsHint": "Summaries, knowledge points and quizzes live on the record page",
+      "openRecord": "Open record page",
+      "assetRecord": "Record",
+      "importance": "Importance"
+    }
   },
   "errors": {
     "AI_CONSENT_REQUIRED": "Please consent to external AI processing first.",
@@ -2206,6 +2263,11 @@
     "CHAT_COURSE_NOT_FOUND": "Course not found or deleted",
     "CHAT_COURSE_UNAVAILABLE": "The mounted course was deleted; this chat is read-only",
     "CHAT_MESSAGE_NOT_FOUND": "Chat message not found",
-    "CHAT_MESSAGE_NOT_ASSISTANT": "Only AI answers can be saved as knowledge points"
+    "CHAT_MESSAGE_NOT_ASSISTANT": "Only AI answers can be saved as knowledge points",
+    "LIBRARY_ITEM_NOT_FOUND": "Library item not found or deleted",
+    "LIBRARY_PATCH_EMPTY": "Provide at least one field to update",
+    "PROPOSAL_NOT_FOUND": "Proposal not found",
+    "PROPOSAL_ALREADY_DECIDED": "Proposal already decided",
+    "PROPOSAL_APPLY_FAILED": "Failed to apply proposal ({{errorCode}})"
   }
 }

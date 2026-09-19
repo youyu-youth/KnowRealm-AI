@@ -2,8 +2,10 @@ import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
 export type StatusTagProps = ComponentProps<"span"> & {
-  tone?: "neutral" | "success" | "warning" | "danger";
+  tone?: StatusTagTone;
 };
+
+export type StatusTagTone = "neutral" | "success" | "warning" | "danger";
 
 const tones = {
   neutral: "bg-surface-strong text-ink-neutral",
