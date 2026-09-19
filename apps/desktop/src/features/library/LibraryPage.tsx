@@ -18,12 +18,11 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   AddLibraryItemDialog,
   type AddLibraryItemInitial,
 } from "@/features/library/components/AddLibraryItemDialog";
-import { getDataDirectory } from "@/services/tauri/dataDirectory";
+import { revealLibrarySnapshot } from "@/services/tauri/libraryFiles";
 import { openWebUrl } from "@/services/tauri/webLinks";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -461,10 +460,6 @@ function ItemInspector({
   const detail = useLibraryItemDetail(itemId);
   const content = useLibraryItemContent(itemId);
   const item = detail.data;
-  const revealSnapshot = async (relPath: string) => {
-    const root = (await getDataDirectory()).replace(/[/\\]+$/, "");
-    await revealItemInDir(`${root}/${relPath}`);
-  };
   if (detail.isPending) {
     return (
       <div className="text-muted-foreground flex items-center gap-2 py-6 text-sm">
@@ -543,7 +538,7 @@ function ItemInspector({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void revealSnapshot(item.local_path ?? "")}
+              onClick={() => void revealLibrarySnapshot(item.local_path ?? "")}
             >
               <FolderSearch className="size-4" aria-hidden />
               {t("library.inspector.revealFile")}

@@ -91,6 +91,34 @@ def validate_public_http_url(url: str) -> str:
     return url
 
 
+async def assert_resolves_public(host: str) -> None:
+    """每跳 DNS 预检：域名解析结果须全部为公网地址（代理路径下客户端无法
+    钉住代理解析，预检是最小防线；直连路径另有 GuardedNetworkBackend 钉住）。
+    解析失败本身放行——交由真实连接路径统一报 UNREACHABLE，避免双报。"""
+    if not host:
+        return
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        if not _is_public_ip(ip):
+            raise WebClipError("WEB_FETCH_BLOCKED_URL", "目标地址属于受限网络范围")
+        return
+    loop = asyncio.get_running_loop()
+    try:
+        infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)  # type: ignore[arg-type]
+    except OSError:
+        return
+    for _family, _kind, _proto, _canon, sockaddr in infos:
+        try:
+            address = ipaddress.ip_address(sockaddr[0])
+        except ValueError:
+            continue
+        if not _is_public_ip(address):
+            raise WebClipError("WEB_FETCH_BLOCKED_URL", "目标域名解析到受限网络地址")
+
+
 class GuardedNetworkBackend(httpcore.AsyncNetworkBackend):
     """DNS guard：连接前解析域名、校验全部候选 IP，并直连首个公网结果。
 
@@ -242,6 +270,7 @@ class WebClipAdapter:
         """受限抓取：手动跟随重定向（每跳重新校验目标），流式读取限制解压后大小。"""
         current = validate_public_http_url(url)
         try:
+            await assert_resolves_public(urlsplit(current).hostname or "")
             return await self._fetch_following(current)
         except WebClipError:
             raise
@@ -257,6 +286,7 @@ class WebClipAdapter:
                         if not location:
                             raise WebClipError("WEB_FETCH_UNREACHABLE", "重定向响应缺少目标地址")
                         current = validate_public_http_url(urljoin(current, location))
+                        await assert_resolves_public(urlsplit(current).hostname or "")
                         continue
                     if response.status_code >= 400:
                         raise WebClipError(

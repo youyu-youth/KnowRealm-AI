@@ -13,6 +13,7 @@ from app.modules.capture.web_clip import (
     GuardedNetworkBackend,
     WebClipAdapter,
     WebClipError,
+    assert_resolves_public,
     extract_clip,
     validate_public_http_url,
 )
@@ -32,6 +33,16 @@ def html_page(body: str = LONG_BODY, title: str = "测试页面") -> str:
 
 def mock_transport(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.MockTransport:
     return httpx.MockTransport(handler)
+
+
+async def _fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[Any, ...]]:
+    return [(None, None, None, None, ("93.184.216.34", 443))]
+
+
+def stub_public_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    """fetch 层 DNS 预检也打桩：fake transport 契约=零真实网络（含 DNS 查询）。"""
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "getaddrinfo", _fake_getaddrinfo)
 
 
 @pytest.mark.parametrize(
@@ -59,7 +70,9 @@ def test_validate_accepts_public_http_url() -> None:
 
 
 @pytest.mark.anyio
-async def test_fetch_extracts_markdown_with_title() -> None:
+async def test_fetch_extracts_markdown_with_title(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_public_dns(monkeypatch)
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200, headers={"content-type": "text/html; charset=utf-8"}, text=html_page()
@@ -75,7 +88,8 @@ async def test_fetch_extracts_markdown_with_title() -> None:
 
 
 @pytest.mark.anyio
-async def test_fetch_redirect_revalidates_target() -> None:
+async def test_fetch_redirect_revalidates_target(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_public_dns(monkeypatch)
     """公网 302 → 私网目标：重定向后重新校验，拒绝而非跟随。"""
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -87,7 +101,9 @@ async def test_fetch_redirect_revalidates_target() -> None:
 
 
 @pytest.mark.anyio
-async def test_fetch_follows_safe_redirects() -> None:
+async def test_fetch_follows_safe_redirects(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_public_dns(monkeypatch)
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/old":
             return httpx.Response(301, headers={"location": "https://example.com/new"})
@@ -101,7 +117,9 @@ async def test_fetch_follows_safe_redirects() -> None:
 
 
 @pytest.mark.anyio
-async def test_fetch_rejects_redirect_loop() -> None:
+async def test_fetch_rejects_redirect_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_public_dns(monkeypatch)
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(302, headers={"location": "https://example.com/loop"})
 
@@ -111,7 +129,8 @@ async def test_fetch_rejects_redirect_loop() -> None:
 
 
 @pytest.mark.anyio
-async def test_fetch_rejects_redirect_count_over_limit() -> None:
+async def test_fetch_rejects_redirect_count_over_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_public_dns(monkeypatch)
     state = {"count": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -126,7 +145,9 @@ async def test_fetch_rejects_redirect_count_over_limit() -> None:
 
 
 @pytest.mark.anyio
-async def test_fetch_rejects_oversized_body() -> None:
+async def test_fetch_rejects_oversized_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    stub_public_dns(monkeypatch)
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200, headers={"content-type": "text/html"}, content=b"x" * (5 * 1024 * 1024 + 1)
@@ -139,7 +160,11 @@ async def test_fetch_rejects_oversized_body() -> None:
 
 @pytest.mark.parametrize("content_type", ["application/json", "image/png", ""])
 @pytest.mark.anyio
-async def test_fetch_rejects_unsupported_content_type(content_type: str) -> None:
+async def test_fetch_rejects_unsupported_content_type(
+    content_type: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub_public_dns(monkeypatch)
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, headers={"content-type": content_type}, text="{}")
 
@@ -150,7 +175,11 @@ async def test_fetch_rejects_unsupported_content_type(content_type: str) -> None
 
 @pytest.mark.parametrize("status", [404, 503])
 @pytest.mark.anyio
-async def test_fetch_rejects_http_error_status(status: int) -> None:
+async def test_fetch_rejects_http_error_status(
+    status: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stub_public_dns(monkeypatch)
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(status, headers={"content-type": "text/html"}, text="x")
 
@@ -257,3 +286,50 @@ async def test_guarded_backend_pins_resolved_public_ip(
     stream = await backend.connect_tcp("example.com", 443)
     assert stream is not None
     assert seen["host"] == "93.184.216.34"
+
+
+@pytest.mark.anyio
+async def test_fetch_dns_preflight_blocks_private_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """代理/预检路径：目标域名解析到私网即拒绝（fake transport 正常响应也不跟随）。"""
+
+    async def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[Any, ...]]:
+        return [(None, None, None, None, ("10.0.0.8", 80))]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=html_page())
+
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
+    with pytest.raises(WebClipError) as exc:
+        await WebClipAdapter(transport=mock_transport(handler)).fetch(
+            "https://internal.example.com/doc"
+        )
+    assert exc.value.code == "WEB_FETCH_BLOCKED_URL"
+
+
+@pytest.mark.anyio
+async def test_fetch_dns_prefill_ignores_resolution_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """预检 DNS 解析失败放行（无外网测试环境零依赖），交由连接路径统一报错。"""
+
+    async def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[Any, ...]]:
+        raise OSError("no dns")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/html"}, text=html_page())
+
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
+    raw, _final = await WebClipAdapter(transport=mock_transport(handler)).fetch(
+        "https://example.com/article"
+    )
+    assert b"<html>" in raw
+
+
+@pytest.mark.anyio
+async def test_assert_resolves_public_literal_and_empty() -> None:
+    await assert_resolves_public("93.184.216.34")
+    await assert_resolves_public("")

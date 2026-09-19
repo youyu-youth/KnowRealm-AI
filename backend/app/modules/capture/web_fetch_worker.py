@@ -198,13 +198,16 @@ async def writeback(
             if clip.title:
                 item.title = clip.title
                 record.title = clip.title
-            item.content_hash = sha256(payload).hexdigest()
+            # content_hash 保持 ingest 时的 URL 哈希（同 URL 重复导入的判重锚），
+            # 正文哈希记入 metadata——REFETCH（同 URL 内容变化=新条目）属工单 05。
             item.fetched_at = now
             item.local_path = snapshot_rel
             item.mime_type = "text/markdown"
             item.file_size = len(payload)
             item.metadata_json = json.dumps(
-                clip.metadata, ensure_ascii=False, separators=(",", ":")
+                {**clip.metadata, "content_hash": sha256(payload).hexdigest()},
+                ensure_ascii=False,
+                separators=(",", ":"),
             )
             item.updated_at = now
         existing_transcript = (
@@ -300,11 +303,9 @@ async def recover_running(
         for job in jobs:
             if job.record_id is not None:
                 record_ids.add(job.record_id)
-            job.status = ProcessingJobStatus.FAILED
-            job.finished_at = now
-            job.error_code = code.value
-            job.error_message = ERROR_MESSAGES.get(code, "网页抓取失败")
-            job.updated_at = now
+            mark_failed(
+                job, code=code.value, message=ERROR_MESSAGES.get(code, "网页抓取失败"), now=now
+            )
             if job.record_id is not None:
                 record = await session.get(Record, job.record_id)
                 if record is not None:
