@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.course.models import Course
 from app.modules.jobs.models import ProcessingJob
-from app.modules.jobs.schemas import ProcessingJobType
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.knowledge_point.models import KnowledgePoint
+from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
 from app.modules.library.models import LibraryItem, LibraryItemRecord
 from app.modules.library.schemas import (
     BackfillStatusOut,
@@ -37,7 +38,12 @@ from app.modules.transcript.models import Transcript
 from app.shared.errors import CodedHTTPException
 
 # 解析链任务类型：只有这些任务的终态影响「处理可用性」（Summary 等下游任务不影响）。
-_PARSE_JOB_TYPES = ("ASR", "AUDIO_TRANSCODE", "DOCUMENT_PARSE", "WEB_FETCH")
+_PARSE_JOB_TYPES = (
+    ProcessingJobType.ASR,
+    ProcessingJobType.AUDIO_TRANSCODE,
+    ProcessingJobType.DOCUMENT_PARSE,
+    ProcessingJobType.WEB_FETCH,
+)
 
 # 页内条目的关联记录（批查询，避免逐条 N+1）。
 _LINKED_RECORD_IDS_SQL = text(
@@ -94,11 +100,12 @@ def _derive_availability(
 ) -> LibraryAvailability:
     """条目可用性 = 关联记录聚合：解析中 > 解析失败 > 有分片/正文 > 空。"""
     if any(
-        "PENDING" in job_states.get(rid, ()) or "RUNNING" in job_states.get(rid, ())
+        ProcessingJobStatus.PENDING in job_states.get(rid, ())
+        or ProcessingJobStatus.RUNNING in job_states.get(rid, ())
         for rid in record_ids
     ):
         return LibraryAvailability.PROCESSING
-    if any("FAILED" in job_states.get(rid, ()) for rid in record_ids):
+    if any(ProcessingJobStatus.FAILED in job_states.get(rid, ()) for rid in record_ids):
         return LibraryAvailability.FAILED
     if any(segment_counts.get(rid, 0) > 0 for rid in record_ids):
         return LibraryAvailability.RETRIEVABLE
@@ -195,9 +202,9 @@ class LibraryService:
             needle = f"%{escape_like(query.q.strip())}%"
             stmt = stmt.where(
                 or_(
-                    LibraryItem.title.like(needle),
-                    LibraryItem.origin_uri.like(needle),
-                    LibraryItem.metadata_json.like(needle),
+                    LibraryItem.title.like(needle, escape="\\"),
+                    LibraryItem.origin_uri.like(needle, escape="\\"),
+                    LibraryItem.metadata_json.like(needle, escape="\\"),
                 )
             )
         stmt = stmt.order_by(LibraryItem.updated_at.desc(), LibraryItem.id.desc())
@@ -335,7 +342,9 @@ class LibraryService:
         elif query.course_id is not None:
             stmt = stmt.where(Record.course_id == str(query.course_id))
         if query.q:
-            stmt = stmt.where(Record.title.like(f"%{escape_like(query.q.strip())}%"))
+            stmt = stmt.where(
+                Record.title.like(f"%{escape_like(query.q.strip())}%", escape="\\")
+            )
         stmt = stmt.order_by(Record.updated_at.desc(), Record.id.desc())
         rows = (await session.execute(stmt)).all()
         record_ids = [record.id for record, _course, _linked in rows]
@@ -380,7 +389,7 @@ class LibraryService:
             .outerjoin(Course, and_(Course.id == Record.course_id, Course.deleted_at.is_(None)))
             .where(
                 KnowledgePoint.deleted_at.is_(None),
-                KnowledgePoint.generation_status == "ACTIVE",
+                KnowledgePoint.generation_status == KnowledgePointGenerationStatus.ACTIVE,
                 Record.deleted_at.is_(None),
                 _COURSE_ALIVE,
             )
@@ -390,7 +399,10 @@ class LibraryService:
         if query.q:
             needle = f"%{escape_like(query.q.strip())}%"
             stmt = stmt.where(
-                or_(KnowledgePoint.name.like(needle), KnowledgePoint.detail.like(needle))
+                or_(
+                    KnowledgePoint.name.like(needle, escape="\\"),
+                    KnowledgePoint.detail.like(needle, escape="\\"),
+                )
             )
         stmt = stmt.order_by(KnowledgePoint.updated_at.desc(), KnowledgePoint.id.desc())
         rows = (await session.execute(stmt)).all()

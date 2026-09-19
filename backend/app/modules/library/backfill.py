@@ -24,6 +24,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
+from app.modules.capture.schemas import CaptureType
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import (
     ClaimCheck,
@@ -37,6 +38,7 @@ from app.modules.jobs.runner import (
 )
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.library.models import LibraryItem, LibraryItemRecord
+from app.modules.library.schemas import LibrarySourceType
 from app.modules.record.models import Record
 from app.modules.transcript.models import Transcript
 from app.shared.events import RecordInvalidationNotifier
@@ -161,7 +163,7 @@ async def _link_record(session: AsyncSession, record_id: str, now: datetime) -> 
 
     async def _add(
         *,
-        source_type: str,
+        source_type: LibrarySourceType,
         content_hash: str,
         local_path: str | None,
         mime_type: str | None,
@@ -193,7 +195,7 @@ async def _link_record(session: AsyncSession, record_id: str, now: datetime) -> 
             )
         )
 
-    if record.capture_type in ("PASTE", "QUICK_NOTE"):
+    if record.capture_type in (CaptureType.PASTE, CaptureType.QUICK_NOTE):
         content = await session.scalar(
             select(Transcript.content)
             .where(Transcript.record_id == record_id, Transcript.deleted_at.is_(None))
@@ -204,7 +206,7 @@ async def _link_record(session: AsyncSession, record_id: str, now: datetime) -> 
             return 0
         size = len(content.encode("utf-8"))
         await _add(
-            source_type="TEXT",
+            source_type=LibrarySourceType.TEXT,
             content_hash=sha256(content.encode("utf-8")).hexdigest(),
             local_path=None,
             mime_type="text/plain",
@@ -216,11 +218,13 @@ async def _link_record(session: AsyncSession, record_id: str, now: datetime) -> 
 
     if not files:
         return 0
-    if record.capture_type == "MULTI_SOURCE":
+    if record.capture_type == CaptureType.MULTI_SOURCE:
         # 多来源 Record：逐文件一来源条目（M:N 的「多来源」方向）。
         for record_file in files:
             await _add(
-                source_type="AUDIO" if record_file.file_type == "AUDIO" else "DOCUMENT",
+                source_type=LibrarySourceType.AUDIO
+                if record_file.file_type == "AUDIO"
+                else LibrarySourceType.DOCUMENT,
                 content_hash=record_file.content_hash,
                 local_path=record_file.file_path,
                 mime_type=record_file.mime_type,
@@ -234,12 +238,12 @@ async def _link_record(session: AsyncSession, record_id: str, now: datetime) -> 
             )
         return len(files)
     # 单来源类型：一条 Record 一个条目；hash = 有序文件哈希拼接（确定性、幂等）。
-    if record.capture_type in ("RECORDING", "AUDIO_IMPORT"):
-        source_type = "AUDIO"
-    elif record.capture_type == "DOCUMENT_IMPORT":
-        source_type = "DOCUMENT"
+    if record.capture_type in (CaptureType.RECORDING, CaptureType.AUDIO_IMPORT):
+        source_type = LibrarySourceType.AUDIO
+    elif record.capture_type == CaptureType.DOCUMENT_IMPORT:
+        source_type = LibrarySourceType.DOCUMENT
     else:  # CLIP（剪藏记录随工单 03 产生，此处按 WEB 防御性映射）
-        source_type = "WEB"
+        source_type = LibrarySourceType.WEB
     aggregate_hash = sha256("|".join(f.content_hash for f in files).encode()).hexdigest()
     await _add(
         source_type=source_type,

@@ -75,6 +75,7 @@ export function useLibraryItems(params: LibraryItemsParams = {}) {
 export function useLibraryItemDetail(itemId: string | null) {
   return useQuery({
     queryKey: libraryKeys.itemDetail(itemId ?? ""),
+    // enabled 保证 queryFn 仅在 itemId 非空时执行，as string 仅做类型收窄
     queryFn: () => libraryApi.getItem(itemId as string),
     enabled: itemId !== null,
   });
@@ -83,6 +84,7 @@ export function useLibraryItemDetail(itemId: string | null) {
 export function useLibraryItemContent(itemId: string | null) {
   return useQuery({
     queryKey: libraryKeys.itemContent(itemId ?? ""),
+    // enabled 保证 queryFn 仅在 itemId 非空时执行，as string 仅做类型收窄
     queryFn: () => libraryApi.getItemContent(itemId as string),
     enabled: itemId !== null,
     staleTime: 60_000,

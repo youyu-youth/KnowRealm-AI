@@ -9,7 +9,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.modules.capture.schemas import CaptureType
 from app.modules.record.schemas import RecordStatus
@@ -101,8 +101,8 @@ class LibraryItemListOut(BaseModel):
 
 
 class LibraryItemListQuery(BaseModel):
-    offset: int = 0
-    limit: int = 100
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
     view: LibrarySmartView = LibrarySmartView.ALL
     source_type: LibrarySourceType | None = None
     course_id: UUID | None = None
@@ -132,7 +132,7 @@ class LibraryItemDetailOut(LibraryItemOut):
 
 
 class LibraryItemContentQuery(BaseModel):
-    limit: int = 4000
+    limit: int = Field(default=4000, ge=1, le=100_000)
 
 
 class LibraryItemContentOut(BaseModel):
