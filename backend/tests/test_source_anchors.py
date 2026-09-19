@@ -105,7 +105,7 @@ async def assert_segment_tables_schema(db_path: Path) -> None:
         "course_id",
         "record_id",
         "record_file_id",
-        "course_material_id",
+        "library_item_id",
         "sequence_no",
         "page_no",
         "section_title",
@@ -120,7 +120,7 @@ async def assert_segment_tables_schema(db_path: Path) -> None:
             "course_id",
             "record_id",
             "record_file_id",
-            "course_material_id",
+            "library_item_id",
             "page_no",
             "section_title",
             "start_offset",
@@ -135,7 +135,7 @@ async def assert_segment_tables_schema(db_path: Path) -> None:
         "source_id",
         "record_id",
         "record_file_id",
-        "course_material_id",
+        "library_item_id",
         "transcript_segment_id",
         "document_segment_id",
         "start_offset",
@@ -211,19 +211,19 @@ async def test_document_segments_require_exactly_one_source(tmp_path: Path) -> N
         await connection.executescript(PARENT_ROWS_SQL)
         insert = (
             "INSERT INTO document_segments (id, course_id, record_id, record_file_id, "
-            "course_material_id, sequence_no, page_no, section_title, content, "
+            "library_item_id, sequence_no, page_no, section_title, content, "
             "start_offset, end_offset, content_hash) "
             f"VALUES ('ds-1', '{COURSE_ID}', '{RECORD_ID}', :record_file_id, "
-            ":course_material_id, 0, 1, NULL, '第一页', 0, 100, 'hash-1')"
+            ":library_item_id, 0, 1, NULL, '第一页', 0, 100, 'hash-1')"
         )
         with pytest.raises(aiosqlite.IntegrityError):
-            await connection.execute(insert, {"record_file_id": None, "course_material_id": None})
+            await connection.execute(insert, {"record_file_id": None, "library_item_id": None})
         with pytest.raises(aiosqlite.IntegrityError):
             await connection.execute(
                 insert,
-                {"record_file_id": FILE_ID, "course_material_id": "material-1"},
+                {"record_file_id": FILE_ID, "library_item_id": "material-1"},
             )
-        await connection.execute(insert, {"record_file_id": FILE_ID, "course_material_id": None})
+        await connection.execute(insert, {"record_file_id": FILE_ID, "library_item_id": None})
         await connection.commit()
 
 

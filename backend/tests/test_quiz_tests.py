@@ -773,7 +773,11 @@ async def test_submit_requires_all_answers_and_objective_only_completes_synchron
         async with app.state.session_factory() as session:
             jobs = cast(
                 int,
-                await session.scalar(text("SELECT count(*) FROM processing_jobs")),
+                await session.scalar(
+                    text(
+                        "SELECT count(*) FROM processing_jobs WHERE job_type != 'LIBRARY_BACKFILL'"
+                    )
+                ),
             )
         assert jobs == 0
 

@@ -40,3 +40,8 @@ def _query_terms(query: str) -> Iterable[str]:
 def warmup() -> None:
     """预加载 jieba 词典（首次约 0.5~1s），避免首搜卡顿。"""
     jieba.initialize()
+
+
+def escape_like(needle: str) -> str:
+    r"""LIKE 转义（%/_/反斜杠）：导航级子串查询共用（library 列表搜索、agent 兜底）。"""
+    return needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

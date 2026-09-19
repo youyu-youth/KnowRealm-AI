@@ -33,6 +33,7 @@ from app.modules.course.schemas import CourseDetailOut, CourseStatus
 from app.modules.course.service import CourseService
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.library.backfill import ensure_backfill_enqueued
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.search.service import SearchService
@@ -289,6 +290,7 @@ class CaptureBatchService:
                 current.updated_at = now
                 await session.flush()
                 await SearchService.upsert_record_index(session, recording_session_id)
+                await ensure_backfill_enqueued(session)
         except BaseException:
             await asyncio.to_thread(final_path.unlink, missing_ok=True)
             try:
@@ -541,6 +543,7 @@ class CaptureBatchService:
                         )
                 await session.flush()
                 await SearchService.upsert_record_index(session, record_id)
+                await ensure_backfill_enqueued(session)
         except BaseException:
             try:
                 await asyncio.to_thread(shutil.rmtree, final_dir, ignore_errors=True)

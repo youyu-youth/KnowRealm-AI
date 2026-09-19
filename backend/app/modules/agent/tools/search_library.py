@@ -24,6 +24,7 @@ from app.modules.search.segment_service import (
     ENTITY_TRANSCRIPT_SEGMENT,
     SegmentSearchService,
 )
+from app.modules.search.tokenizer import escape_like
 
 SEARCH_LIBRARY_LIMIT = 8
 # 概念扩展（CB-07）：命中概念数与每个扩展词的分片命中上限（spec B2 检索增强）。
@@ -125,10 +126,6 @@ def _occurrence_payload(hit: LibrarySegmentSearchHit) -> dict[str, object]:
     }
     payload.update(_locator_fields(hit))
     return payload
-
-
-def _escape_like(needle: str) -> str:
-    return needle.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _substring_window(line: str, needle: str) -> str:
@@ -243,7 +240,7 @@ async def search_library(query: str) -> str:
                     _SCOPE_TRANSCRIPT_LIKE_SQL,
                     {
                         "course_id": context.course_id,
-                        "needle": _escape_like(needle),
+                        "needle": escape_like(needle),
                         "limit": SEARCH_LIBRARY_LIMIT,
                     },
                 )

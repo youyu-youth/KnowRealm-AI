@@ -10,7 +10,7 @@ class SourceAnchor(Base):
     """来源锚点：指向一个具体来源片段（分片 / 笔记 / 消息）的定位。
 
     Audio/Document 来源必须关联具体分片（迁移 CHECK 保证）；
-    course_material_id 列预留（该表尚未存在，无外键）。
+    library_item_id 为资料来源直挂锚点（0026 起 FK）。
     """
 
     __tablename__ = "source_anchors"
@@ -25,7 +25,9 @@ class SourceAnchor(Base):
     record_file_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("record_files.id", ondelete="CASCADE"), default=None
     )
-    course_material_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    library_item_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("library_items.id", ondelete="CASCADE"), default=None
+    )
     transcript_segment_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("transcript_segments.id", ondelete="CASCADE"), default=None
     )

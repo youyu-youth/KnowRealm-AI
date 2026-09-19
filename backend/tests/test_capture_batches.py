@@ -270,8 +270,16 @@ async def test_invalid_source_at_any_position_rejects_the_whole_batch_without_bu
         )
         async with app.state.session_factory() as session:
             counts: list[int | None] = []
-            for table in ("records", "record_files", "processing_jobs"):
+            for table in ("records", "record_files"):
                 counts.append(await session.scalar(text(f"SELECT count(*) FROM {table}")))
+            # LIBRARY_BACKFILL 为启动期系统任务，不计入捕获业务行口径
+            counts.append(
+                await session.scalar(
+                    text(
+                        "SELECT count(*) FROM processing_jobs WHERE job_type != 'LIBRARY_BACKFILL'"
+                    )
+                )
+            )
 
     assert response.status_code == 400
     assert response.json()["detail"].startswith("UNSUPPORTED_SOURCE")
@@ -301,6 +309,7 @@ async def test_database_registration_failure_removes_rows_and_placed_files(
             await session.execute(
                 text(
                     "CREATE TRIGGER reject_capture_jobs BEFORE INSERT ON processing_jobs "
+                    "WHEN NEW.job_type IN ('AUDIO_TRANSCODE', 'ASR', 'DOCUMENT_PARSE') "
                     "BEGIN SELECT RAISE(ABORT, 'forced registration failure'); END"
                 )
             )
@@ -313,7 +322,14 @@ async def test_database_registration_failure_removes_rows_and_placed_files(
         async with app.state.session_factory() as session:
             counts = [
                 await session.scalar(text(f"SELECT count(*) FROM {table}"))
-                for table in ("records", "record_files", "processing_jobs")
+                for table in ("records", "record_files")
+            ] + [
+                # LIBRARY_BACKFILL 为启动期系统任务，不计入捕获业务行口径
+                await session.scalar(
+                    text(
+                        "SELECT count(*) FROM processing_jobs WHERE job_type != 'LIBRARY_BACKFILL'"
+                    )
+                )
             ]
 
     assert counts == [0, 0, 0]

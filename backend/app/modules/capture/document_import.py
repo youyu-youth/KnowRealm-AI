@@ -24,6 +24,7 @@ from app.modules.course.schemas import CourseStatus
 from app.modules.course.service import CourseService
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.library.backfill import ensure_backfill_enqueued
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.search.service import SearchService
@@ -159,6 +160,7 @@ class DocumentImportService:
                 )
                 await session.flush()
                 await SearchService.upsert_record_index(session, record_id)
+                await ensure_backfill_enqueued(session)
         except BaseException:
             for path in (final_path, temporary_path):
                 try:

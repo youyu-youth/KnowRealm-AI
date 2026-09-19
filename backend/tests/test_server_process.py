@@ -293,7 +293,9 @@ def test_real_process_audio_import_uses_bundled_ffmpeg_with_empty_path(tmp_path:
     with sqlite3.connect(data_dir / "knowrealm.db") as connection:
         assert connection.execute("SELECT count(*) FROM records").fetchone() == (1,)
         assert connection.execute("SELECT count(*) FROM record_files").fetchone() == (1,)
-        assert connection.execute("SELECT count(*) FROM processing_jobs").fetchone() == (2,)
+        assert connection.execute(
+            "SELECT count(*) FROM processing_jobs WHERE job_type != 'LIBRARY_BACKFILL'"
+        ).fetchone() == (2,)
 
 
 def test_real_process_audio_asr_and_sse_over_protected_socket(tmp_path: Path) -> None:

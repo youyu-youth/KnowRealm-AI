@@ -745,7 +745,14 @@ async def test_deleting_course_soft_deletes_its_records_in_one_transaction(
                 )
             ).all()
             job_statuses = (
-                (await session.execute(text("SELECT status FROM processing_jobs ORDER BY id")))
+                (
+                    await session.execute(
+                        text(
+                            "SELECT status FROM processing_jobs "
+                            "WHERE record_id IS NOT NULL ORDER BY id"
+                        )
+                    )
+                )
                 .scalars()
                 .all()
             )

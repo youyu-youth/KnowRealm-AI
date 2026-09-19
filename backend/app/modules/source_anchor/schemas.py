@@ -18,7 +18,7 @@ class SourceAnchorOut(BaseModel):
     source_id: str
     record_id: str | None = Field(description="关联学习记录 id；非记录类来源为 null")
     record_file_id: str | None
-    course_material_id: str | None
+    library_item_id: str | None
     transcript_segment_id: str | None
     document_segment_id: str | None
     start_offset: int | None

@@ -31,7 +31,11 @@ from app.modules.course.tombstone_cleanup import DocumentCleanupService
 from app.modules.course_brain import routes as course_brain_routes
 from app.modules.course_brain.worker import course_brain_spec
 from app.modules.data import routes as data_routes
-from app.modules.data.archive import create_rolling_backup, restore_archive
+from app.modules.data.archive import (
+    create_rolling_backup,
+    ensure_pre_upgrade_snapshot,
+    restore_archive,
+)
 from app.modules.jobs import processing_jobs
 from app.modules.jobs.runner import JobRunner, ManagedWorker
 from app.modules.knowledge_point import knowledge_points
@@ -39,6 +43,8 @@ from app.modules.knowledge_point.worker import knowledge_point_spec
 from app.modules.learning import routes as learning_routes
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.service import MasteryService
+from app.modules.library import routes as library_routes
+from app.modules.library.backfill import backfill_spec, ensure_backfill_enqueued
 from app.modules.llm.service import (
     CourseBrainModel,
     KnowledgePointModel,
@@ -120,6 +126,8 @@ def create_app(
         data_directory_lock = DataDirectoryLock.acquire(resolved_data_dir)
         try:
             db_path = resolved_data_dir / "knowrealm.db"
+            # 升级前快照：旧库应用新 Schema 前先落独立保护副本；失败停止启动保留旧数据。
+            await ensure_pre_upgrade_snapshot(db_path, resolved_data_dir / "backups")
             await run_migrations(db_path)
             try:
                 await create_rolling_backup(db_path, resolved_data_dir / "backups")
@@ -128,6 +136,17 @@ def create_app(
             engine, session_factory = create_database(db_path)
             app.state.session_factory = session_factory
             app.state.data_dir = resolved_data_dir
+            # 资料库回填任务入队（幂等：已有活动任务则跳过）；失败不阻断启动，
+            # capture 流程的同事务入队钩子会兜底。
+            try:
+                async with session_factory() as session, session.begin():
+                    if await ensure_backfill_enqueued(session):
+                        logger.info("library_backfill_enqueued")
+            except Exception:
+                logger.error(
+                    "library_backfill_enqueue_failed",
+                    error_code="LIBRARY_BACKFILL_ENQUEUE_FAILED",
+                )
             # 索引是可再生衍生数据：回填失败不阻断启动，下次启动重试（与滚动备份同容错级）。
             try:
                 # jieba 词典首载约 0.5~1s，放线程池预热避免阻塞事件循环（ADR-0016）。
@@ -317,6 +336,14 @@ def create_app(
                             record_notifier,
                         ),
                     ),
+                    (
+                        "library_backfill",
+                        lambda: JobRunner(
+                            backfill_spec(session_factory, record_notifier),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
                 ]
                 if ffmpeg_path is not None:
                     worker_factories.insert(1, ("audio", audio_factory))
@@ -390,6 +417,8 @@ def create_app(
     app.include_router(recording_sessions.router)
     app.include_router(records.router)
     app.include_router(text_captures.router)
+    app.include_router(library_routes.library_router)
+    app.include_router(library_routes.proposals_router)
     app.include_router(search_routes.router)
     app.include_router(source_anchors.router)
     app.include_router(chat_sessions.router)

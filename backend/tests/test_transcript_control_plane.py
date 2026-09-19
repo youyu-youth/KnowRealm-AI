@@ -320,7 +320,7 @@ async def test_transcript_patch_clears_stale_document_segments(tmp_path: Path) -
             await session.execute(
                 text(
                     "INSERT INTO document_segments "
-                    "(id, course_id, record_id, record_file_id, course_material_id, "
+                    "(id, course_id, record_id, record_file_id, library_item_id, "
                     "sequence_no, page_no, section_title, content, start_offset, "
                     "end_offset, content_hash) "
                     "VALUES ('doc-seg-1', NULL, :rid, :fid, NULL, 0, NULL, NULL, "

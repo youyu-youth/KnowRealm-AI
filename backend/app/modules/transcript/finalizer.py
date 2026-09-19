@@ -135,7 +135,7 @@ def _build_document_segments(
                     course_id=record.course_id,
                     record_id=record.id,
                     record_file_id=record_file.id,
-                    course_material_id=None,
+                    library_item_id=None,
                     sequence_no=len(segments),
                     page_no=block.page_no,
                     section_title=None,

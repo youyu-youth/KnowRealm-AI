@@ -413,7 +413,9 @@ async def test_audio_prevalidation_rejects_without_business_rows_or_formal_files
                             "SELECT "
                             "(SELECT count(*) FROM records), "
                             "(SELECT count(*) FROM record_files), "
-                            "(SELECT count(*) FROM processing_jobs)"
+                            # LIBRARY_BACKFILL 为启动期系统任务，不计入业务行口径
+                            "(SELECT count(*) FROM processing_jobs "
+                            "WHERE job_type != 'LIBRARY_BACKFILL')"
                         )
                     )
                 ).one()

@@ -51,10 +51,10 @@ class TranscriptSegment(Base):
 
 
 class DocumentSegment(Base):
-    """文档分片：record_file（导入文档）或未来 course_material 的内容切块。
+    """文档分片：record_file（导入文档）或 library_item（资料来源）的内容切块。
 
-    course_material_id 列预留（该表尚未存在，无外键）；本期 record_id 路径
-    之外的挂靠恒 NULL。course_id 随挂靠记录所属课程（收件箱记录为 NULL）。
+    library_item_id 为资料来源直挂分片（0026 起 FK）；本期 record_id 路径之外
+    的挂靠恒 NULL。course_id 随挂靠记录所属课程（收件箱记录为 NULL）。
     """
 
     __tablename__ = "document_segments"
@@ -69,7 +69,9 @@ class DocumentSegment(Base):
     record_file_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("record_files.id", ondelete="CASCADE"), default=None
     )
-    course_material_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    library_item_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("library_items.id", ondelete="CASCADE"), default=None
+    )
     sequence_no: Mapped[int] = mapped_column(Integer)
     page_no: Mapped[int | None] = mapped_column(Integer, default=None)
     section_title: Mapped[str | None] = mapped_column(Text, default=None)

@@ -1227,7 +1227,7 @@ async def test_document_imports_produce_locatable_segments(tmp_path: Path) -> No
             rows = await _document_segment_rows(app, body["record_id"])
             assert [row.page_no for row in rows] == [page for _, page in expected_blocks]
             assert all(row.record_file_id is not None for row in rows)
-            assert all(row.course_material_id is None for row in rows)
+            assert all(row.library_item_id is None for row in rows)
             assert all(row.course_id == course_id for row in rows)
             assert all(
                 row.content_hash == hashlib.sha256(row.content.encode("utf-8")).hexdigest()

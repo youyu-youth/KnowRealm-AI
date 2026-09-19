@@ -62,6 +62,25 @@ async def read_user_version(db_path: Path) -> int:
     return cast(int, row[0])
 
 
+async def ensure_pre_upgrade_snapshot(db_path: Path, backups_dir: Path) -> None:
+    """升级前快照（library-rag-v1 迁移纪律）：旧库版本低于 sidecar 支持版本时，
+    在应用新 Schema 前用 VACUUM INTO 落一份独立快照（每个目标版本一份，已存在
+    不覆盖——保留首次升级前状态）。失败抛错由 lifespan 终止启动：不得无保护升级。
+    命名不匹配滚动备份清理模式，不会被 7 份滚动上限清掉。"""
+    if not db_path.exists():
+        return
+    current = await read_user_version(db_path)
+    target = supported_user_version()
+    if current >= target:
+        return
+    snapshot = backups_dir / f"knowrealm-premigrate-{target:04d}.db"
+    if snapshot.exists():
+        return
+    backups_dir.mkdir(exist_ok=True)
+    await vacuum_into(db_path, snapshot)
+    logger.info("pre_upgrade_snapshot_created", current=current, target=target)
+
+
 def _collect_entries(data_dir: Path, include_secrets: bool) -> list[str]:
     entries: list[str] = []
     for root_name in ("files", "config"):

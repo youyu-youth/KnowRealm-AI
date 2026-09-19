@@ -142,7 +142,7 @@ async def seed_document_segment(
         await session.execute(
             text(
                 "INSERT INTO document_segments (id, course_id, record_id, record_file_id, "
-                "course_material_id, sequence_no, page_no, section_title, content, "
+                "library_item_id, sequence_no, page_no, section_title, content, "
                 "start_offset, end_offset, content_hash) "
                 "VALUES (:id, NULL, :record_id, :file_id, NULL, :sequence_no, :page_no, "
                 "NULL, :content, 0, 0, :content_hash)"

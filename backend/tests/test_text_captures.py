@@ -263,7 +263,14 @@ async def test_invalid_text_capture_combinations_are_rejected_without_business_r
         async with app.state.session_factory() as session:
             counts = [
                 await session.scalar(text(f"SELECT count(*) FROM {table}"))
-                for table in ("records", "transcripts", "record_files", "processing_jobs")
+                for table in ("records", "transcripts", "record_files")
+            ] + [
+                # LIBRARY_BACKFILL 为启动期系统任务，不计入捕获业务行口径
+                await session.scalar(
+                    text(
+                        "SELECT count(*) FROM processing_jobs WHERE job_type != 'LIBRARY_BACKFILL'"
+                    )
+                )
             ]
 
     assert response.status_code == expected_status

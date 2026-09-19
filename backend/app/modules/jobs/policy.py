@@ -12,5 +12,6 @@ RETRYABLE_PROCESSING_JOB_ERROR_CODES = frozenset(
         ProcessingJobErrorCode.ASR_SUBMIT_UNKNOWN,
         ProcessingJobErrorCode.ASR_RECOGNITION_FAILED,
         ProcessingJobErrorCode.ASR_TASK_EXPIRED,
+        ProcessingJobErrorCode.LIBRARY_BACKFILL_FAILED,
     }
 )
