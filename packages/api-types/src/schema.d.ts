@@ -3038,6 +3038,35 @@ export interface components {
             granted_at: string | null;
         };
         /**
+         * InboxRecordOut
+         * @description 收件箱条目：RecordOut + 列表展示用元信息。
+         *
+         *     file_size_bytes 为该记录全部文件（record_files，未软删）大小之和，无文件为 None；
+         *     content_chars 为当前生效转写/正文的字符数，转写未就绪为 None。
+         */
+        InboxRecordOut: {
+            capture_type: components["schemas"]["CaptureType"];
+            /** Content Chars */
+            content_chars?: number | null;
+            /** Course Id */
+            course_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Duration Ms */
+            duration_ms: number;
+            /** File Size Bytes */
+            file_size_bytes?: number | null;
+            /** Id */
+            id: string;
+            status: components["schemas"]["RecordStatus"];
+            /** Summary Confirmed At */
+            summary_confirmed_at: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
          * KnowledgePointAction
          * @enum {string}
          */
@@ -7042,7 +7071,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecordOut"][];
+                    "application/json": components["schemas"]["InboxRecordOut"][];
                 };
             };
             /** @description Forbidden */

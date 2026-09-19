@@ -14,6 +14,7 @@ from app.modules.jobs.service import ProcessingJobService
 from app.modules.learning.service import MasteryService
 from app.modules.record.classification import RecordClassificationService
 from app.modules.record.schemas import (
+    InboxRecordOut,
     RecordClassificationRequest,
     RecordOut,
     RecordStatus,
@@ -51,12 +52,19 @@ STREAMING_RECORD_STATUSES = {
 }
 
 
-@router.get("/inbox", response_model=list[RecordOut])
+@router.get("/inbox", response_model=list[InboxRecordOut])
 async def list_inbox_records(
     session: AsyncSession = Depends(get_db),
-) -> list[RecordOut]:
-    records = await RecordService.list_inbox(session)
-    return [RecordOut.model_validate(record) for record in records]
+) -> list[InboxRecordOut]:
+    rows = await RecordService.list_inbox(session)
+    return [
+        InboxRecordOut(
+            **RecordOut.model_validate(record).model_dump(),
+            file_size_bytes=file_size,
+            content_chars=content_chars,
+        )
+        for record, file_size, content_chars in rows
+    ]
 
 
 @router.get("/records/{record_id}", response_model=RecordOut)

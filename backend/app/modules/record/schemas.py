@@ -41,6 +41,17 @@ class RecordOut(BaseModel):
         return None if value is None else self.serialize_utc(value)
 
 
+class InboxRecordOut(RecordOut):
+    """收件箱条目：RecordOut + 列表展示用元信息。
+
+    file_size_bytes 为该记录全部文件（record_files，未软删）大小之和，无文件为 None；
+    content_chars 为当前生效转写/正文的字符数，转写未就绪为 None。
+    """
+
+    file_size_bytes: int | None = None
+    content_chars: int | None = None
+
+
 class RecordClassificationRequest(BaseModel):
     course_id: UUID
 

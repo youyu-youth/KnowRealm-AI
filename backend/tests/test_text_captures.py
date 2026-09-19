@@ -409,6 +409,58 @@ async def test_inbox_lists_unclassified_records_in_stable_descending_order(
 
 
 @pytest.mark.anyio
+async def test_inbox_entries_include_file_size_and_content_chars(
+    tmp_path: Path,
+) -> None:
+    note_body = "五个字的正文"
+    async with running_app(tmp_path / "KnowRealm") as (app, client):
+        note = await post_text(client, "QUICK_NOTE", note_body)
+        note_id = cast(str, note.json()["record_id"])
+        batch = await client.post(
+            "/api/capture-batches",
+            files=[
+                ("files", ("a.txt", b"a" * 2048, "text/plain")),
+                ("files", ("b.txt", b"b" * 1024, "text/plain")),
+            ],
+        )
+        assert batch.status_code == 202
+        batch_id = cast(str, batch.json()["record_id"])
+        inbox = await client.get("/api/inbox")
+        entries = {
+            cast(str, entry["id"]): entry
+            for entry in cast(list[dict[str, object]], inbox.json())
+        }
+        assert entries[note_id]["content_chars"] == len(note_body)
+        assert entries[note_id]["file_size_bytes"] is None
+        assert entries[batch_id]["file_size_bytes"] == 3072
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "UPDATE record_files SET deleted_at = "
+                    "'2026-08-23T00:00:00.000000Z' "
+                    "WHERE record_id = :rid AND original_name = 'a.txt'"
+                ),
+                {"rid": batch_id},
+            )
+            await session.execute(
+                text(
+                    "UPDATE transcripts SET deleted_at = "
+                    "'2026-08-23T00:00:00.000000Z' WHERE record_id = :rid"
+                ),
+                {"rid": note_id},
+            )
+        filtered = await client.get("/api/inbox")
+        filtered_entries = {
+            cast(str, entry["id"]): entry
+            for entry in cast(list[dict[str, object]], filtered.json())
+        }
+
+    assert filtered_entries[batch_id]["file_size_bytes"] == 1024
+    assert filtered_entries[note_id]["content_chars"] is None
+
+
+@pytest.mark.anyio
 async def test_unclassified_document_batches_finish_at_summary_pending_without_summary_calls(
     tmp_path: Path,
 ) -> None:

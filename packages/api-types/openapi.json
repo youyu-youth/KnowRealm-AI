@@ -2479,6 +2479,94 @@
         "title": "ExternalProcessingConsentOut",
         "type": "object"
       },
+      "InboxRecordOut": {
+        "description": "收件箱条目：RecordOut + 列表展示用元信息。\n\nfile_size_bytes 为该记录全部文件（record_files，未软删）大小之和，无文件为 None；\ncontent_chars 为当前生效转写/正文的字符数，转写未就绪为 None。",
+        "properties": {
+          "capture_type": {
+            "$ref": "#/components/schemas/CaptureType"
+          },
+          "content_chars": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Chars"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "title": "Duration Ms",
+            "type": "integer"
+          },
+          "file_size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "File Size Bytes"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RecordStatus"
+          },
+          "summary_confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Confirmed At"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "course_id",
+          "capture_type",
+          "title",
+          "status",
+          "duration_ms",
+          "summary_confirmed_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "InboxRecordOut",
+        "type": "object"
+      },
       "KnowledgePointAction": {
         "enum": [
           "NONE",
@@ -10772,7 +10860,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/RecordOut"
+                    "$ref": "#/components/schemas/InboxRecordOut"
                   },
                   "title": "Response List Inbox Records Api Inbox Get",
                   "type": "array"

@@ -1,7 +1,8 @@
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
+from app.modules.capture.models import RecordFile
 from app.modules.course.service import CourseService
 from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
@@ -53,16 +54,44 @@ class RecordService:
         return list((await session.scalars(statement)).all())
 
     @staticmethod
-    async def list_inbox(session: AsyncSession) -> list[Record]:
+    async def list_inbox(
+        session: AsyncSession,
+    ) -> list[tuple[Record, int | None, int | None]]:
+        """返回 (记录, 文件大小之和字节, 正文字符数)。
+
+        元信息用相关标量子查询取值，避免 files × transcript join 相乘导致 SUM 重复计数。
+        """
+        file_size_sq = (
+            select(func.sum(RecordFile.file_size))
+            .where(
+                RecordFile.record_id == Record.id,
+                RecordFile.deleted_at.is_(None),
+            )
+            .correlate(Record)
+            .scalar_subquery()
+        )
+        content_chars_sq = (
+            select(func.length(Transcript.content))
+            .where(
+                Transcript.record_id == Record.id,
+                Transcript.deleted_at.is_(None),
+            )
+            .correlate(Record)
+            .scalar_subquery()
+        )
         statement = (
-            select(Record)
+            select(Record, file_size_sq, content_chars_sq)
             .where(
                 Record.course_id.is_(None),
                 Record.deleted_at.is_(None),
             )
             .order_by(Record.created_at.desc(), Record.id.desc())
         )
-        return list((await session.scalars(statement)).all())
+        rows = (await session.execute(statement)).all()
+        return [
+            (record, file_size, content_chars)
+            for record, file_size, content_chars in rows
+        ]
 
     @staticmethod
     async def get_transcript(session: AsyncSession, record_id: str) -> Transcript | None:
