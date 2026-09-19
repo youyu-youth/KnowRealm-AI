@@ -2,7 +2,10 @@
 
 > Status: frozen（2026-09-19，工单 01 交付）
 > 消费方：工单 02~07。本文件冻结 spec 留白的全部实施级数值与契约形状；后续工单不再重新讨论已定边界。与 ADR-0024/0025、spec、数据模型 v3.0 冲突时以权威文档为准，发现冲突先回 ADR 评审（§42.13 纪律）。
-> 正本分工：黄金集与检索阈值正本 = `docs/evaluation/library-rag-retrieval-baseline.md`（本文件 §5 只做引用）；OpenAPI 正本 = 实施后由 FastAPI 生成（`pnpm --filter @knowrealm/api-types generate`），本文件 §3 是实施前契约草案。
+> 正本分工：黄金集与检索阈值正本 = `docs/evaluation/library-rag-retrieval-baseline.md`（本文件 §5 只做引用）；OpenAPI 正本 = 实施后由 FastAPI 生成（`pnpm --filter @knowrealm/api-types generate`），本文件 §2 是实施前契约草案。
+>
+> **02 实施记录（2026-09-19）**：§2.2 联邦端点按预留口补充两枚只读——`GET /api/library/records`（跨课程记录行 + `library_item_ids` 回链）与 `GET /api/library/assets`（02=已确认知识点行，含 `detail`）；§2.1 ingest 端点归工单 03 与 WebClipAdapter 同票落地（02 的新写路径 = capture 流程同事务入队 LIBRARY_BACKFILL，新捕获秒级出现在工作台）；§2.3 `PATCH` 02 仅实现 favorite，重命名/归类/归档/删除等随 05。数据模型已升 v3.1（调整 #3 落档）。另两处实施备案：①迁移文件名实际为 `0026_library_foundation.sql`（§1 原文 `_library_rag_foundation` 系草案笔误，DDL 内容零漂移）；②`q` 列表搜索实现为三列 LIKE（标题/origin_uri/metadata_json）——全局 `search_index` FTS 不含 library_items 行，FTS 接入随 04/05 检索域统一时评估，导航级语义（故事 15）已满足。
+
 
 ---
 

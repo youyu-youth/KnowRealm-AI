@@ -58,7 +58,7 @@ app/
 
 ### 迁移纪律
 
-`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0025**（Concept Mastery 快照 `user_concept_mastery`：每 Concept 唯一 + `concept_id`/`course_id` 级联清理 + 分数/置信度 0~1 CHECK）。全部 `user_version` 断言（16 个测试文件，`test_archive.py` 8 处 + 其余各 1 处）自 C2 收敛（3b836b0）起统一引用 `supported_user_version()` 动态值，**新增迁移零断言同步**（新迁移测试沿用同形断言；全库 grep 断言处数保留为兜底纪律）。
+`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0026**（资料库数据地基：`library_items`/`library_item_records`/`agent_proposals`/`learner_preferences` 四新表 + `course_material_id`→`library_item_id` 改名列补 FK + `chat_sessions` 五档 scope 与 `library_item_id` + `processing_jobs.library_item_id` 与三新 job_type；升级前自动落 `knowrealm-premigrate-NNNN.db` 快照，存量映射走 LIBRARY_BACKFILL 幂等 Job）。全部 `user_version` 断言（16 个测试文件，`test_archive.py` 8 处 + 其余各 1 处）自 C2 收敛（3b836b0）起统一引用 `supported_user_version()` 动态值，**新增迁移零断言同步**（新迁移测试沿用同形断言；全库 grep 断言处数保留为兜底纪律）。
 
 ### 令牌校验
 

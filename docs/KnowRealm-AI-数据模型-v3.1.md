@@ -1,4 +1,4 @@
-# KnowRealm-AI 数据模型 v3.0
+# KnowRealm-AI 数据模型 v3.1
 
 > **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.8》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.6.md`。
 > **核心原则（v2.0 范式，ADR-0001 / 决策 #55）**：
@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：v3.1（2026-09-19）**资料库数据地基已实施（迁移 0026，library-rag-v1 工单 02，ADR-0024/0025）**——§4.2 `library_items` / `library_item_records` 与 §4.10 `agent_proposals`、§4.6 `learner_preferences` 四表**已实施**（0026 一次建齐，升级前独立快照 `knowrealm-premigrate-NNNN.db` + LIBRARY_BACKFILL 幂等回填 Job 配套）；`library_items` 落地工单 01 契约**实施级调整 #3**：增 `favorite INTEGER NOT NULL DEFAULT 0`（收藏智能视图依赖，Record/资产收藏不在 V1 范围）与补充索引 `idx_library_items_deleted_at`（回收站视图）/ `idx_library_item_records_record`（反向派生查询）；`document_segments` / `source_anchors` 预留列 `course_material_id` 落地为 `library_item_id` 并补 FK CASCADE，`source_anchors.course_id` 改可空；`chat_sessions.scope` CHECK 扩五档（新增 LIBRARY_ITEM）并增可空 `library_item_id`（FK SET NULL，无表级 CHECK——条目物理删除后会话保留为运行时挂载失效态）；`processing_jobs` 增 `library_item_id`（FK CASCADE）与 job_type 三值扩展（WEB_FETCH / LIBRARY_BACKFILL / INDEX_REBUILD，WEB_FETCH/INDEX_REBUILD 建每条目 one-active 部分唯一索引，LIBRARY_BACKFILL 全局单例由服务层保证）。正式表合计 44 张不变，**已实施 31 张**（截至迁移 0026）。
 > **变更记录**：v3.0（2026-09-18）**资料库 / RAG Agent 与 Learner Memory V1 评审定稿（ADR-0024/0025）**——未实施的 `course_materials` 草案被 `library_items` + `library_item_records` 通用来源资产模型替换，`document_segments` / `source_anchors` / `semantic_embeddings` 的预留 `course_material_id` 统一改为 `library_item_id`；`chat_sessions` 规划 `LIBRARY_ITEM` 精确范围与 `library_item_id`；新增轻量 `agent_proposals` 承载整理、记忆和研究入库提案，业务提案不寄存在 LangGraph Checkpoint；`learner_preferences` 冻结为长期记忆 V1 的单例事实表，Mastery / Misconception / Goal 保持各自事实源，由 LearnerProfileService 聚合。sqlite-vec 改为真实语料评测触发，不再是资料库开工前置。正式表设计口径由 42 张调整为 **44 张**，已实施仍为 27 张；本版只定设计，不声明迁移已实施。
 > **变更记录**：v2.9（2026-09-18）**Concept Mastery V1 已实施（迁移 0024/0025，concept-mastery-v1 plan，ADR-0023）**——§4.3 **quizzes** 增可空 `concept_id`（REFERENCES concepts ON DELETE SET NULL + 索引；一题至多一个主概念：生成只从同课程 CONFIRMED 概念建议、服务端校验、作答前可改/清空、首答后应用层锁定、Event 固化；存量行 NULL 不回填，2026-08-25「不建 concept_id」草案口径就此作废）；§4.7 **user_concept_mastery** 首张落地（Learner Brain 域 P4 提前）：course_id（FK CASCADE）/ concept_id **UNIQUE**（FK CASCADE）/ mastery_score 与 mastery_confidence 可空 0~1 CHECK / 证据三计数 ≥0 CHECK / last_practiced_at / last_verified_at / **algorithm_version** / updated_at——**只建 V1 真实使用列**，草案中的 memory_strength / transfer_score / reasoning_score / next_review_at / last_learned_at 不建（Forgetting / Transfer / Reasoning 落地时再迁移）；唯一写入口 = Mastery Engine（确定性纯函数 12 条窗口四条半衰，ADR-0023），快照由有效 Quiz Evidence 全量重建，<3 条 = NOT_ENOUGH_DATA 分数置空。正式表设计口径 42 张不变，**已实施 27 张**（截至迁移 0025）。
 > **变更记录**：v2.8（2026-09-16）**F4 Course Brain V1 已实施（迁移 0023，course-brain-v1 plan，ADR-0022）**——§4.6 concepts / concept_relations / record_concepts 三表标注**已实施**（无 deleted_at：ARCHIVED 即退役语义；normalized_name = 应用层确定性函数：strip → 空白折叠 → 全角转半角 → casefold；record_concepts 草案中的 importance 列未建，概念重要度只在 concepts.importance）；`source_anchor_links.resource_type` 值域扩 `'CONCEPT'`（rename→重建→拷贝→drop，0017 同款）；**更正**：「SQLite 无部分唯一索引」论断有误——CONFIRMED 唯一由部分唯一索引 `UNIQUE ... WHERE status='CONFIRMED'` 库级兜底（0017 已有先例）；semantic_embeddings / vec0 **维持未建**（CB-01 合成评测四维全过 → sqlite-vec 延后，见 `docs/evaluation/course-brain-retrieval-baseline.md`）；正式表设计口径 42 张不变，已实施 26 张（另有 search_index / segment_search_index 两张 FTS 衍生索引表，纪律不计正式表数）。
@@ -60,7 +61,7 @@
 | 基础设施（2） | processing_jobs（兼任务队列）, llm_call_logs | P0 |
 | 暂缓 | ~~shares~~（不建，分享=Markdown 本地导出）、study_pods 系列（P8） | — |
 
-正式表合计 **44 张**（v3.0：`course_materials` 以 `library_items` + `library_item_records` 替换，净增 1；新增 `agent_proposals`，净增 1；表名 user_concept_mastery 为历史命名，语义=概念掌握度，更名成本大于收益，保留）。**已实施 27 张**（截至迁移 0025；本版新增 / 替换模型均未实施）；另有 `search_index` / `segment_search_index` 两张 FTS 衍生索引表，可再生不计正式表数（ADR-0016 纪律）。**Wave A 基线 15 张**：profile / courses / records / record_files / transcripts / recording_sessions / processing_jobs / llm_call_logs / ai_summaries / knowledge_points / quizzes / todo_items / chat_sessions / chat_messages / learning_events。
+正式表合计 **44 张**（v3.0：`course_materials` 以 `library_items` + `library_item_records` 替换，净增 1；新增 `agent_proposals`，净增 1；表名 user_concept_mastery 为历史命名，语义=概念掌握度，更名成本大于收益，保留）。**已实施 31 张**（截至迁移 0026；v3.1 四表落地，其余本版新增模型未实施）；另有 `search_index` / `segment_search_index` 两张 FTS 衍生索引表，可再生不计正式表数（ADR-0016 纪律）。**Wave A 基线 15 张**：profile / courses / records / record_files / transcripts / recording_sessions / processing_jobs / llm_call_logs / ai_summaries / knowledge_points / quizzes / todo_items / chat_sessions / chat_messages / learning_events。
 
 ## 4. 表设计
 
@@ -160,10 +161,11 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | fetched_at | TEXT | 网页抓取时间，可空 |
 | metadata_json | TEXT | 按 source_type 经 Pydantic 判别校验的来源专属小字段 |
 | schema_version | INTEGER | metadata_json 结构版本，≥1 |
+| favorite | INTEGER | NOT NULL DEFAULT 0；收藏智能视图（v3.1 调整 #3，仅条目域） |
 | status | TEXT | ACTIVE / ARCHIVED；解析、分片、索引等技术状态不复制到本表 |
 | created_at / updated_at / deleted_at | TEXT | 软删 30 天内可从资料条目回收站恢复 |
 
-索引：`(course_id, updated_at desc)`、`(source_type, updated_at desc)`、`(status, updated_at desc)`、`(content_hash)`。
+索引：`(course_id, updated_at desc)`、`(source_type, updated_at desc)`、`(status, updated_at desc)`、`(content_hash)`、`(deleted_at)`（v3.1 补充，回收站视图）；`library_item_records` 另有 `(record_id)` 反查索引。
 
 **library_item_records** — 资料条目与 Record 多对多关系（本波次规划）
 | 字段 | 类型 | 说明 |

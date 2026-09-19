@@ -2,7 +2,7 @@
 
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
-> **最后更新**：2026-09-19（**资料库 / RAG Agent / Learner Memory V1 开工：工单 01 契约与评测地基已完结**——`.scratch/library-rag-v1/contract.md` 冻结迁移 0026 DDL 终稿（四张新表 + 四表重建 + 实施级调整 #3 favorite 列/2 索引）、OpenAPI 契约草案、Agent 工具预算（6 次/轮、命中 8/4/8、累计 12k 字符）；`docs/evaluation/library-rag-retrieval-baseline.md` 冻结 20 查询黄金集与四指标阈值（实测 Recall@8=0.941/MRR=0.941/无答案 1.0/引用 1.0/泄漏 0；**sqlite-vec 判定=不进入本波次**；英文结论=无需补英文分词处理）；可复跑评测资产 `backend/tests/test_library_retrieval_eval.py` 6 测试绿；0026 落地零 user_version 断言同步（C2 后全动态，backend/AGENTS.md 已更正）。下一票 = 02 Schema+存量回填+基础工作台。此前 **Concept Mastery V1 六票全部完结（01~06）**（`.scratch/concept-mastery-v1/`，ADR-0023；迁移 0024/0025，已实施 27 张表；剩用户真机验收，清单在票 06）；F4 Course Brain V1、对话转学习资产 V1、B2 跨记录问答、B1 联网搜索与 A3 证据框架均已完结。）
+> **最后更新**：2026-09-19（**资料库 V1 工单 02 已完结：迁移 0026 四新表+四表重建落地（升级前快照 `knowrealm-premigrate-NNNN.db` 自动保护）、LIBRARY_BACKFILL 幂等回填 Worker（capture 五创建点同事务入队钩子）、`/library` 升级为统一工作台（左导航智能视图/顶部四分类/URL 筛选/列表网格/三对象检查器/收藏与待整理接真）、agent_proposals 提案框架端点；数据模型升 v3.1（已实施 31 张）；后端 611 绿+前端 471/472（唯一失败=TodoPanel 已知抖动）。下一票=03 网页剪藏 ∥ 04 RAG Agent。此前工单 01 契约与评测地基已完结**——`.scratch/library-rag-v1/contract.md` 冻结迁移 0026 DDL 终稿（四张新表 + 四表重建 + 实施级调整 #3 favorite 列/2 索引）、OpenAPI 契约草案、Agent 工具预算（6 次/轮、命中 8/4/8、累计 12k 字符）；`docs/evaluation/library-rag-retrieval-baseline.md` 冻结 20 查询黄金集与四指标阈值（实测 Recall@8=0.941/MRR=0.941/无答案 1.0/引用 1.0/泄漏 0；**sqlite-vec 判定=不进入本波次**；英文结论=无需补英文分词处理）；可复跑评测资产 `backend/tests/test_library_retrieval_eval.py` 6 测试绿；0026 落地零 user_version 断言同步（C2 后全动态，backend/AGENTS.md 已更正）。下一票 = 02 Schema+存量回填+基础工作台。此前 **Concept Mastery V1 六票全部完结（01~06）**（`.scratch/concept-mastery-v1/`，ADR-0023；迁移 0024/0025，已实施 27 张表；剩用户真机验收，清单在票 06）；F4 Course Brain V1、对话转学习资产 V1、B2 跨记录问答、B1 联网搜索与 A3 证据框架均已完结。）
 
 ## 1. 项目概述
 
@@ -85,7 +85,7 @@
 **规划中（未拆票，勿直接开工）：**
 
 - 扩展文档 §40.4「P2 统一序列」：F1（✅ 2026-09-10）→ A1+A2（✅ 2026-09-13）→ A3（✅ 2026-09-14 四票，ADR-0021，.scratch/learning-evidence/）→ B1 web_search（✅ 2026-09-14 两票，.scratch/web-search/）→ B2 跨记录/课程级问答（✅ 2026-09-14 单票全栈，.scratch/cross-record-qa/，数据模型 v2.7）→ B6 对话转学习资产 V1（✅ 2026-09-15 单票全栈，.scratch/chat-to-knowledge-point/）→ **F4 Course Brain V1（✅ 2026-09-16 十二票完结，原 P3 提前实施，.scratch/course-brain-v1/，ADR-0022，数据模型 v2.8：迁移 0023 三表 + 构建 Worker + 审核闭环（apply-review 五决策/合并建议/归档/stale 派生徽章）+ B2 search_library 概念增强（prompt v6，occurrences 按 record 去重）+ 可观测（retrieval_count 埋点/检索工具异常 ok=false/审计日志）+ 前端 Course Brain 主页面与审核工作台（mock 图谱链删除）；详见 §3 行与扩展文档 §40.3 B7 回写）**。B3「Tutor 场景包」待决策；B5 sqlite-vec 维持延后（CB-01 合成评测四维全过，`docs/evaluation/course-brain-retrieval-baseline.md`），触发条件=真实语料词汇不重合失败（届时新开 CB-VEC 票）。
-- **资料库 / RAG Agent / Learner Memory V1 已定稿并开工（2026-09-18 定稿，扩展文档 §41~§43，ADR-0024/0025）**：一个外部版本按七张纵向工单交付：契约与评测 → schema/幂等回填/工作台 → 网页剪藏（httpx + trafilatura）→ LibraryRetrievalService + LIBRARY_ITEM 范围 → 生命周期/提案/导出恢复 → Learner Memory V1 → 发布门禁。**工单 01 契约与评测地基已完结（2026-09-19，纯契约票零业务代码）**：迁移 0026 DDL 终稿/OpenAPI 草案/工具预算冻结于 `.scratch/library-rag-v1/contract.md`（含实施级调整 #3 = favorite 列 + 2 补充索引，02 同步数据模型）；黄金集 20 查询 + 阈值 + sqlite-vec 判据（不触发）+ 英文结论（无需补分词）冻结于 `docs/evaluation/library-rag-retrieval-baseline.md`，评测资产 `backend/tests/test_library_retrieval_eval.py` 可复跑（ARCHIVED/真实 WEB 维度激活时点在其 §3.1）。LibraryItem 只表示来源，Record/学习资产保持独立；Agent 只见 `search_library`，写动作持久化提案后经 HITL + 领域 Service；Learner Memory 复用 `learner_preferences` 并聚合既有事实，普通聊天不得静默记忆；sqlite-vec 只由真实黄金集净增益触发。后续再做 map-reduce、书籍拆章、课程大纲初始化与问题驱动研究会话。
+- **资料库 / RAG Agent / Learner Memory V1 已定稿并开工（2026-09-18 定稿，扩展文档 §41~§43，ADR-0024/0025）**：一个外部版本按七张纵向工单交付：契约与评测 → schema/幂等回填/工作台 → 网页剪藏（httpx + trafilatura）→ LibraryRetrievalService + LIBRARY_ITEM 范围 → 生命周期/提案/导出恢复 → Learner Memory V1 → 发布门禁。**工单 02 Schema+回填+工作台已完结（2026-09-19 全栈）**：library 域六件（models/schemas/service/backfill/proposals/routes）+ 联邦两枚只读端点（library/records、library/assets）+ 快照保护 + worker 注册；前端 features/library 全面重构（api hooks+librarySearch URL 契约+工作台+检查器）。遗留清单在工单 02（资产类型/时间筛选与 Record 检查器资产明细待 05/07、待整理=未归类口径）。**工单 01 契约与评测地基已完结（2026-09-19，纯契约票零业务代码）**：迁移 0026 DDL 终稿/OpenAPI 草案/工具预算冻结于 `.scratch/library-rag-v1/contract.md`（含实施级调整 #3 = favorite 列 + 2 补充索引，02 同步数据模型）；黄金集 20 查询 + 阈值 + sqlite-vec 判据（不触发）+ 英文结论（无需补分词）冻结于 `docs/evaluation/library-rag-retrieval-baseline.md`，评测资产 `backend/tests/test_library_retrieval_eval.py` 可复跑（ARCHIVED/真实 WEB 维度激活时点在其 §3.1）。LibraryItem 只表示来源，Record/学习资产保持独立；Agent 只见 `search_library`，写动作持久化提案后经 HITL + 领域 Service；Learner Memory 复用 `learner_preferences` 并聚合既有事实，普通聊天不得静默记忆；sqlite-vec 只由真实黄金集净增益触发。后续再做 map-reduce、书籍拆章、课程大纲初始化与问题驱动研究会话。
 - 习题 Groundedness：待用户采集真实样本（阻塞项）+ 06 总结黄金样本另议；回归触发=prompt_version/模型变更。⚠️ prompt_version 至今未 bump，启用评测前需处理。
 - 未来候选库路线图（带触发条件，见记忆/后端轮子审计）：检索维持 FTS+Concept 基线，真实黄金集证明净增益后才加 sqlite-vec；复习调度 fsrs、导出 fpdf2、pytest-cov/timeout；APScheduler/LanceDB/本地 whisper 已否决。
 - 产品层扩展方向五新场景包：见扩展文档 §39.4（仅评审记录，**非用户已批准**）。
@@ -105,13 +105,13 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 │  ├─ src/styles/         tokens.css(@theme) / theme.css / globals.css / animations.css 分层
 │  └─ src-tauri/          Rust 壳：sidecar 拉起、托盘、全局快捷键、数据目录解析（ADR-0013）
 ├─ backend/               FastAPI sidecar（uv 管理，py312，feature-first 模块化单体 ADR-0015）
-│  ├─ app/modules/        20 模块：agent/capture/course/course_brain/data/jobs/knowledge_point/
-│  │                      learning/llm/profile/quiz/record/review_material/search/settings/
-│  │                      source_anchor/summary/today/todo/transcript
+│  ├─ app/modules/        21 模块：agent/capture/course/course_brain/data/jobs/knowledge_point/
+│  │                      library/learning/llm/profile/quiz/record/review_material/search/
+│  │                      settings/source_anchor/summary/today/todo/transcript
 │  ├─ app/shared/         deps/errors(带码 HTTPException)/events/prompts/schemas
 │  ├─ app/core/           data_dir/logging/loop/version
 │  ├─ app/db/             engine/base/migrations（SQL 迁移执行器，PRAGMA user_version 推进）
-│  └─ migrations/         0001~0025 手写 SQL，四位编号连续递增不可跳号
+│  └─ migrations/         0001~0026 手写 SQL，四位编号连续递增不可跳号
 ├─ packages/api-types/    OpenAPI → TS 类型生成（后端 schema 变更后必须重新 generate）
 ├─ docs/                  权威文档 + ADR + 评测 + 规则镜像（正本在 .claude/rules/）
 └─ .scratch/              工单 tracker（25 个 feature 目录）

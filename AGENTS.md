@@ -13,7 +13,7 @@
 | --------------------------------------------- | ------------------------------------------------------------ |
 | `docs/KnowRealm-AI-功能需求基线-v2.8.md`      | 需求与决策表（#1~#61）                                       |
 | `docs/knowRealm-AI-功能升级与创新扩展设计.md` | KnowRealm-AI 扩展功能文档                                    |
-| `docs/KnowRealm-AI-数据模型-v3.0.md`          | 数据模型（设计 44 张表，已实施 27 张）                       |
+| `docs/KnowRealm-AI-数据模型-v3.1.md`          | 数据模型（设计 44 张表，已实施 27 张）                       |
 | `PROJECT_PROGRESS.md`                         | 项目进度总览文档/交接文档                                    |
 | `docs/技术栈设计与审查-v4.6.md`               | 技术选型与项目结构（§7.1 桌面端 / §7.2 后端）                |
 | `CONTEXT.md`                                  | 领域术语表（角色≠学习场景、KP≠Concept 等）                   |
@@ -40,6 +40,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - `backend` — FastAPI sidecar（uv 管理）：pytest/ruff/pyright 命令见 `backend/CLAUDE.md`
 - `packages/api-types` — OpenAPI → TS 类型生成（前后端契约链：后端 schema 变更后须重新 generate）
 - 无根 package.json；前端 workspace 由 `pnpm-workspace.yaml` 定义，后端独立用 uv
+- 同仓多会话并行时：pytest 各自独立 basetemp（互踩会产生伪失败）、提交点名 add、git mv 后用 `--follow` 核对
 
 
 ## KnowRealm-AI产品AI能力实现的相关准则
@@ -125,11 +126,16 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 任何文档的更新不要保存以前过期的任何信息，这会增大误解。
 
+规范/权威文档的增补先列提案，经用户批准后再动文件。
+
 ## Agent skills
 
 ### Issue tracker
 
 议题以本地 markdown 文件跟踪于 `.scratch/<feature-slug>/`。见 `docs/agents/issue-tracker.md`。
+
+- 闭环功能不拆前后端票：涉及前后端的功能用一张 issue 完成（票内 checklist 含各域条目，commit 仍按 type(scope) 分次），拆票按功能闭环拆、不按技术层拆。
+- 跨会话规模功能须 grill→spec→tickets 同窗口完成、不跳步；单会话小改动才可直连 implement。
 
 ### Triage labels
 
