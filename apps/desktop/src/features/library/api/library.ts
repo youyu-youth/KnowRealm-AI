@@ -20,6 +20,10 @@ export type LibraryItemListOut = components["schemas"]["LibraryItemListOut"];
 export type LibraryRecordOut = components["schemas"]["LibraryRecordOut"];
 export type LibraryAssetOut = components["schemas"]["LibraryAssetOut"];
 export type BackfillStatusOut = components["schemas"]["BackfillStatusOut"];
+export type LibraryIngestRequest =
+  components["schemas"]["LibraryIngestRequest"];
+export type LibraryIngestAccepted =
+  components["schemas"]["LibraryIngestAccepted"];
 
 export type LibraryItemsParams = {
   view?: LibraryView;
@@ -60,15 +64,45 @@ export const libraryApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  ingest: (body: LibraryIngestRequest) =>
+    apiFetch<LibraryIngestAccepted>("/api/library/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  ingestFile: (
+    file: File,
+    options: { courseId?: string; allowDuplicate?: boolean } = {},
+  ) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (options.courseId) form.append("course_id", options.courseId);
+    if (options.allowDuplicate) form.append("allow_duplicate", "true");
+    return apiFetch<LibraryIngestAccepted>("/api/library/ingest/file", {
+      method: "POST",
+      body: form,
+    });
+  },
   listRecords: () => apiFetch<LibraryRecordOut[]>("/api/library/records"),
   listAssets: () => apiFetch<LibraryAssetOut[]>("/api/library/assets"),
 };
 
-export function useLibraryItems(params: LibraryItemsParams = {}) {
+export function useLibraryItems(
+  params: LibraryItemsParams = {},
+  options?: {
+    /** 基于最新数据的轮询间隔：PROCESSING 条目存在时返回间隔，终态返回 false。 */
+    refetchIntervalMs?: (
+      data: LibraryItemListOut | undefined,
+    ) => number | false;
+  },
+) {
   return useQuery({
     queryKey: libraryKeys.items(params),
     queryFn: () => libraryApi.listItems(params),
     placeholderData: keepPreviousData,
+    refetchInterval: options?.refetchIntervalMs
+      ? (query) => options.refetchIntervalMs?.(query.state.data)
+      : false,
   });
 }
 

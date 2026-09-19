@@ -181,6 +181,80 @@ describe("LibraryPage 工作台", () => {
     expect(await screen.findByText("傅里叶变换入门")).toBeVisible();
   });
 
+  it("添加资料入口：按钮打开三标签入库对话框", async () => {
+    mockLibraryEndpoints();
+    server.use(
+      http.post(`${TEST_SIDECAR_URL}/api/library/ingest`, () =>
+        HttpResponse.json({}, { status: 202 }),
+      ),
+    );
+    renderAt("/library");
+    fireEvent.click(await screen.findByRole("button", { name: "添加资料" }));
+    expect(await screen.findByLabelText("网页地址")).toBeVisible();
+    expect(screen.getByRole("tab", { name: /文件/ })).toBeEnabled();
+    expect(screen.getByRole("tab", { name: /文本/ })).toBeEnabled();
+  });
+
+  it("失败条目检查器：显示失败原因与手动粘贴降级入口", async () => {
+    mockLibraryEndpoints();
+    const FAILED_ITEM_ID = "77777777-7777-4777-8777-777777777777";
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/library/items`, () =>
+        HttpResponse.json({
+          items: [
+            itemOut({
+              id: FAILED_ITEM_ID,
+              source_type: "WEB",
+              title: "登录墙文章",
+              origin_uri: "https://example.com/paywall",
+              local_path: null,
+              mime_type: null,
+              file_size: null,
+              availability: "FAILED",
+            }),
+          ],
+          total: 1,
+          backfill: null,
+        }),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/library/items/${FAILED_ITEM_ID}`, () =>
+        HttpResponse.json({
+          ...itemOut({
+            id: FAILED_ITEM_ID,
+            source_type: "WEB",
+            title: "登录墙文章",
+            origin_uri: "https://example.com/paywall",
+            local_path: null,
+            mime_type: null,
+            file_size: null,
+            availability: "FAILED",
+          }),
+          derived_records: [],
+          segment_count: 0,
+          failed_error_code: "WEB_FETCH_EXTRACT_FAILED",
+        }),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/library/items/${FAILED_ITEM_ID}/content`,
+        () => HttpResponse.json({ content: "", truncated: false }),
+      ),
+      http.post(`${TEST_SIDECAR_URL}/api/library/ingest`, () =>
+        HttpResponse.json({}, { status: 202 }),
+      ),
+    );
+    renderAt("/library");
+    fireEvent.click(await screen.findByText("登录墙文章"));
+    expect(
+      await screen.findByText("正文提取失败，可改用手动粘贴"),
+    ).toBeVisible();
+    // WEB 失败提供降级手动粘贴（预填原 URL）与重新导入
+    fireEvent.click(
+      await screen.findByRole("button", { name: "手动粘贴正文" }),
+    );
+    expect(await screen.findByText(/将手动保存/)).toBeVisible();
+    expect(await screen.findByLabelText("正文")).toBeVisible();
+  });
+
   it("URL 状态恢复：domain=records&view=favorites 直接进入对应视图", async () => {
     mockLibraryEndpoints();
     renderAt("/library?domain=records");
@@ -254,5 +328,64 @@ describe("LibraryPage 工作台", () => {
     });
     renderAt("/library");
     expect(await screen.findByText("正在回填历史资料… 42%")).toBeVisible();
+  });
+
+  it("AI 解读：对选中条目创建 LIBRARY_ITEM 会话并跳转对话页", async () => {
+    mockLibraryEndpoints();
+    const CHAT_SESSION_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    let chatCreated: { url: string; body: unknown } | null = null;
+    server.use(
+      http.post(`${TEST_SIDECAR_URL}/api/chat-sessions`, async ({ request }) => {
+        chatCreated = { url: request.url, body: await request.json() };
+        return HttpResponse.json(
+          {
+            id: CHAT_SESSION_ID,
+            mode: "ASK",
+            scope: "LIBRARY_ITEM",
+            title: null,
+            record_id: null,
+            course_id: COURSE_ID,
+            library_item_id: ITEM_ID,
+            record_deleted: false,
+            course_deleted: false,
+            library_item_deleted: false,
+            created_at: "2026-09-19T08:00:00.000000Z",
+            updated_at: "2026-09-19T08:00:00.000000Z",
+          },
+          { status: 201 },
+        );
+      }),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${CHAT_SESSION_ID}`,
+        () => HttpResponse.json({}),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${CHAT_SESSION_ID}/messages`,
+        () => HttpResponse.json([]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/settings/providers/llm`, () =>
+        HttpResponse.json({ provider: null }),
+      ),
+    );
+    renderAt("/library");
+    fireEvent.click(await screen.findByText("第3讲 傅里叶变换"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "AI 解读" }),
+    );
+    await waitFor(() =>
+      expect(chatCreated).toEqual({
+        url: `${TEST_SIDECAR_URL}/api/chat-sessions`,
+        body: { mode: "ASK", scope: "LIBRARY_ITEM", library_item_id: ITEM_ID },
+      }),
+    );
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/chat/${CHAT_SESSION_ID}`),
+    );
   });
 });

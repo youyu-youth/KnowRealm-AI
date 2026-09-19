@@ -448,6 +448,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library/ingest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Library Item
+         * @description 统一入库（web/text）：立即建条目；web 另建 WEB_FETCH 任务异步抓取净化。
+         */
+        post: operations["ingest_library_item_api_library_ingest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/ingest/file": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Library File
+         * @description 统一入库（本地文件）：复用文档导入校验与解析分片管线，另建资料条目。
+         */
+        post: operations["ingest_library_file_api_library_ingest_file_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/items": {
         parameters: {
             query?: never;
@@ -1821,6 +1861,18 @@ export interface components {
             /** File */
             file: string;
         };
+        /** Body_ingest_library_file_api_library_ingest_file_post */
+        Body_ingest_library_file_api_library_ingest_file_post: {
+            /**
+             * Allow Duplicate
+             * @default false
+             */
+            allow_duplicate: boolean;
+            /** Course Id */
+            course_id?: string | null;
+            /** File */
+            file: string;
+        };
         /** BrainBuildAcceptedOut */
         BrainBuildAcceptedOut: {
             /**
@@ -2104,22 +2156,34 @@ export interface components {
         CaptureType: "RECORDING" | "AUDIO_IMPORT" | "DOCUMENT_IMPORT" | "MULTI_SOURCE" | "PASTE" | "QUICK_NOTE" | "CLIP";
         /**
          * ChatCitationOut
-         * @description 回答引用：record=转写摘录（逐字校验），web=网络来源（标题+URL，B1）。
+         * @description 回答引用：record=转写摘录（逐字校验）、web=网络来源（标题+URL，B1）、
+         *     library=资料条目正文摘录（资料直挂分片逐字校验，工单 04）。
          *
          *     citations_json 按条目判别化：record 条目 {index, record_id, quote}（历史
          *     行无 source 键，按默认 "record" 读取）；web 条目 {index, source:"web",
-         *     url, title}。跨记录条目（B2）额外携带 record_title（标题快照，创建时
+         *     url, title}；library 条目 {index, source:"library", library_item_id,
+         *     title, quote}。跨记录条目（B2）额外携带 record_title（标题快照，创建时
          *     固化；历史行无此键 → None，前端降级展示）。
          */
         ChatCitationOut: {
+            /**
+             * Anchor Id
+             * @description 来源锚点 ID（预留：锚点写入者产生，当前为空）
+             */
+            anchor_id?: string | null;
             /**
              * Index
              * @description 正文角标序号
              */
             index: number;
             /**
+             * Library Item Id
+             * @description 被引用的资料条目 ID，library 条目必填
+             */
+            library_item_id?: string | null;
+            /**
              * Quote
-             * @description 转写原文摘录（≤80 字），web 来源为空
+             * @description 本地原文摘录（≤80 字逐字），web 来源为空
              */
             quote?: string | null;
             /**
@@ -2138,15 +2202,15 @@ export interface components {
              * @default record
              * @enum {string}
              */
-            source: "record" | "web";
+            source: "record" | "web" | "library";
             /**
              * Title
-             * @description 网络来源标题，record 来源为空
+             * @description 网络来源或资料条目标题，record 来源为空
              */
             title?: string | null;
             /**
              * Url
-             * @description 网络来源 URL，record 来源为空
+             * @description 网络来源 URL，record/library 来源为空
              */
             url?: string | null;
         };
@@ -2255,12 +2319,14 @@ export interface components {
         ChatRole: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
         /**
          * ChatScope
-         * @description 会话挂载范围（B2）：FREE 自由 / RECORD 单记录 / COURSE 课程 / ALL 全部资料。
+         * @description 会话挂载范围：FREE 自由 / RECORD 单记录 / LIBRARY_ITEM 单资料 /
+         *     COURSE 课程 / ALL 全部资料（工单 04 起五档）。
          *
          *     与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；范围会话内不可变。
+         *     LIBRARY_ITEM 仅由资料详情「AI 解读」入口创建、不进全局范围切换。
          * @enum {string}
          */
-        ChatScope: "FREE" | "RECORD" | "COURSE" | "ALL";
+        ChatScope: "FREE" | "RECORD" | "LIBRARY_ITEM" | "COURSE" | "ALL";
         /** ChatSessionCreate */
         ChatSessionCreate: {
             /**
@@ -2273,6 +2339,11 @@ export interface components {
              * @description 知识点解释入口的知识点快照来源
              */
             knowledge_point_id?: string | null;
+            /**
+             * Library Item Id
+             * @description 资料范围会话挂载的资料条目（仅资料详情入口创建）
+             */
+            library_item_id?: string | null;
             /**
              * Mode
              * @description 会话模式
@@ -2298,13 +2369,24 @@ export interface components {
             course_deleted: boolean;
             /**
              * Course Id
-             * @description COURSE 会话挂载的课程；RECORD 会话为挂载记录所属课程（运行时派生）
+             * @description COURSE 会话挂载的课程；RECORD/LIBRARY_ITEM 会话为挂载对象所属课程（运行时派生）
              */
             course_id?: string | null;
             /** Created At */
             created_at: string;
             /** Id */
             id: string;
+            /**
+             * Library Item Deleted
+             * @description LIBRARY_ITEM 会话挂载资料已删除/归档（运行时推导），会话只读
+             * @default false
+             */
+            library_item_deleted: boolean;
+            /**
+             * Library Item Id
+             * @description 挂载的资料条目，LIBRARY_ITEM 会话非空
+             */
+            library_item_id?: string | null;
             mode: components["schemas"]["ChatMode"];
             /**
              * Record Deleted
@@ -2930,6 +3012,43 @@ export interface components {
          * @enum {string}
          */
         LibraryAvailability: "PROCESSING" | "RETRIEVABLE" | "FAILED" | "EMPTY";
+        /**
+         * LibraryIngestAccepted
+         * @description 202 立即建条目：处理状态由列表/详情派生字段轮询（web/file 带 Job 摘要）。
+         */
+        LibraryIngestAccepted: {
+            item: components["schemas"]["LibraryItemOut"];
+            job?: components["schemas"]["ProcessingJobOut"] | null;
+        };
+        /**
+         * LibraryIngestRequest
+         * @description 统一入库 JSON 请求（本地文件走 /ingest/file multipart）。
+         *
+         *     origin_uri 仅供 TEXT 降级粘贴携带原页面 URL（网页抓取失败闭环），不作抓取目标。
+         */
+        LibraryIngestRequest: {
+            /**
+             * Allow Duplicate
+             * @default false
+             */
+            allow_duplicate: boolean;
+            /** Content */
+            content?: string | null;
+            /** Course Id */
+            course_id?: string | null;
+            /** Origin Uri */
+            origin_uri?: string | null;
+            source: components["schemas"]["LibraryIngestSource"];
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * LibraryIngestSource
+         * @enum {string}
+         */
+        LibraryIngestSource: "web" | "text";
         /** LibraryItemContentOut */
         LibraryItemContentOut: {
             /** Content */
@@ -2954,6 +3073,8 @@ export interface components {
              * @default []
              */
             derived_records: components["schemas"]["DerivedRecordOut"][];
+            /** Failed Error Code */
+            failed_error_code?: string | null;
             /** Favorite */
             favorite: boolean;
             /** Fetched At */
@@ -3356,7 +3477,7 @@ export interface components {
          * ProcessingJobErrorCode
          * @enum {string}
          */
-        ProcessingJobErrorCode: "AUDIO_TRANSCODE_FAILED" | "ASR_AUTH_FAILED" | "ASR_QUOTA_EXHAUSTED" | "ASR_TEMPORARY_UNAVAILABLE" | "ASR_SUBMIT_UNKNOWN" | "ASR_RECOGNITION_FAILED" | "ASR_TASK_EXPIRED" | "NO_SPEECH_DETECTED" | "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "SQLITE_BUSY" | "WORKER_INTERRUPTED" | "INTERNAL_ERROR" | "INVALID_STRUCTURED_OUTPUT" | "PROVIDER_REQUEST_FAILED" | "STALE_TRANSCRIPT" | "LLM_OUTPUT_INVALID" | "LIBRARY_BACKFILL_FAILED";
+        ProcessingJobErrorCode: "AUDIO_TRANSCODE_FAILED" | "ASR_AUTH_FAILED" | "ASR_QUOTA_EXHAUSTED" | "ASR_TEMPORARY_UNAVAILABLE" | "ASR_SUBMIT_UNKNOWN" | "ASR_RECOGNITION_FAILED" | "ASR_TASK_EXPIRED" | "NO_SPEECH_DETECTED" | "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "SQLITE_BUSY" | "WORKER_INTERRUPTED" | "INTERNAL_ERROR" | "INVALID_STRUCTURED_OUTPUT" | "PROVIDER_REQUEST_FAILED" | "STALE_TRANSCRIPT" | "LLM_OUTPUT_INVALID" | "LIBRARY_BACKFILL_FAILED" | "WEB_FETCH_BLOCKED_URL" | "WEB_FETCH_CONTENT_TOO_LARGE" | "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE" | "WEB_FETCH_UNREACHABLE" | "WEB_FETCH_EXTRACT_FAILED";
         /** ProcessingJobOut */
         ProcessingJobOut: {
             /** Attempts */
@@ -6775,6 +6896,184 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_library_item_api_library_ingest_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LibraryIngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryIngestAccepted"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient Storage */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    ingest_library_file_api_library_ingest_file_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_ingest_library_file_api_library_ingest_file_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryIngestAccepted"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Insufficient Storage */
+            507: {
                 headers: {
                     [name: string]: unknown;
                 };

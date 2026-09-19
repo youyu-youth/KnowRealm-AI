@@ -340,6 +340,37 @@
         "title": "Body_import_document_api_document_imports_post",
         "type": "object"
       },
+      "Body_ingest_library_file_api_library_ingest_file_post": {
+        "properties": {
+          "allow_duplicate": {
+            "default": false,
+            "title": "Allow Duplicate",
+            "type": "boolean"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_ingest_library_file_api_library_ingest_file_post",
+        "type": "object"
+      },
       "BrainBuildAcceptedOut": {
         "properties": {
           "job_id": {
@@ -894,13 +925,37 @@
         "type": "string"
       },
       "ChatCitationOut": {
-        "description": "回答引用：record=转写摘录（逐字校验），web=网络来源（标题+URL，B1）。\n\ncitations_json 按条目判别化：record 条目 {index, record_id, quote}（历史\n行无 source 键，按默认 \"record\" 读取）；web 条目 {index, source:\"web\",\nurl, title}。跨记录条目（B2）额外携带 record_title（标题快照，创建时\n固化；历史行无此键 → None，前端降级展示）。",
+        "description": "回答引用：record=转写摘录（逐字校验）、web=网络来源（标题+URL，B1）、\nlibrary=资料条目正文摘录（资料直挂分片逐字校验，工单 04）。\n\ncitations_json 按条目判别化：record 条目 {index, record_id, quote}（历史\n行无 source 键，按默认 \"record\" 读取）；web 条目 {index, source:\"web\",\nurl, title}；library 条目 {index, source:\"library\", library_item_id,\ntitle, quote}。跨记录条目（B2）额外携带 record_title（标题快照，创建时\n固化；历史行无此键 → None，前端降级展示）。",
         "properties": {
+          "anchor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "来源锚点 ID（预留：锚点写入者产生，当前为空）",
+            "title": "Anchor Id"
+          },
           "index": {
             "description": "正文角标序号",
             "minimum": 1.0,
             "title": "Index",
             "type": "integer"
+          },
+          "library_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "被引用的资料条目 ID，library 条目必填",
+            "title": "Library Item Id"
           },
           "quote": {
             "anyOf": [
@@ -912,7 +967,7 @@
                 "type": "null"
               }
             ],
-            "description": "转写原文摘录（≤80 字），web 来源为空",
+            "description": "本地原文摘录（≤80 字逐字），web 来源为空",
             "title": "Quote"
           },
           "record_id": {
@@ -945,7 +1000,8 @@
             "description": "来源类型",
             "enum": [
               "record",
-              "web"
+              "web",
+              "library"
             ],
             "title": "Source",
             "type": "string"
@@ -959,7 +1015,7 @@
                 "type": "null"
               }
             ],
-            "description": "网络来源标题，record 来源为空",
+            "description": "网络来源或资料条目标题，record 来源为空",
             "title": "Title"
           },
           "url": {
@@ -971,7 +1027,7 @@
                 "type": "null"
               }
             ],
-            "description": "网络来源 URL，record 来源为空",
+            "description": "网络来源 URL，record/library 来源为空",
             "title": "Url"
           }
         },
@@ -1161,10 +1217,11 @@
         "type": "string"
       },
       "ChatScope": {
-        "description": "会话挂载范围（B2）：FREE 自由 / RECORD 单记录 / COURSE 课程 / ALL 全部资料。\n\n与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；范围会话内不可变。",
+        "description": "会话挂载范围：FREE 自由 / RECORD 单记录 / LIBRARY_ITEM 单资料 /\nCOURSE 课程 / ALL 全部资料（工单 04 起五档）。\n\n与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；范围会话内不可变。\nLIBRARY_ITEM 仅由资料详情「AI 解读」入口创建、不进全局范围切换。",
         "enum": [
           "FREE",
           "RECORD",
+          "LIBRARY_ITEM",
           "COURSE",
           "ALL"
         ],
@@ -1199,6 +1256,19 @@
             ],
             "description": "知识点解释入口的知识点快照来源",
             "title": "Knowledge Point Id"
+          },
+          "library_item_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "资料范围会话挂载的资料条目（仅资料详情入口创建）",
+            "title": "Library Item Id"
           },
           "mode": {
             "const": "ASK",
@@ -1252,7 +1322,7 @@
                 "type": "null"
               }
             ],
-            "description": "COURSE 会话挂载的课程；RECORD 会话为挂载记录所属课程（运行时派生）",
+            "description": "COURSE 会话挂载的课程；RECORD/LIBRARY_ITEM 会话为挂载对象所属课程（运行时派生）",
             "title": "Course Id"
           },
           "created_at": {
@@ -1262,6 +1332,24 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "library_item_deleted": {
+            "default": false,
+            "description": "LIBRARY_ITEM 会话挂载资料已删除/归档（运行时推导），会话只读",
+            "title": "Library Item Deleted",
+            "type": "boolean"
+          },
+          "library_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "挂载的资料条目，LIBRARY_ITEM 会话非空",
+            "title": "Library Item Id"
           },
           "mode": {
             "$ref": "#/components/schemas/ChatMode"
@@ -2755,6 +2843,111 @@
         "title": "LibraryAvailability",
         "type": "string"
       },
+      "LibraryIngestAccepted": {
+        "description": "202 立即建条目：处理状态由列表/详情派生字段轮询（web/file 带 Job 摘要）。",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/LibraryItemOut"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProcessingJobOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "LibraryIngestAccepted",
+        "type": "object"
+      },
+      "LibraryIngestRequest": {
+        "description": "统一入库 JSON 请求（本地文件走 /ingest/file multipart）。\n\norigin_uri 仅供 TEXT 降级粘贴携带原页面 URL（网页抓取失败闭环），不作抓取目标。",
+        "properties": {
+          "allow_duplicate": {
+            "default": false,
+            "title": "Allow Duplicate",
+            "type": "boolean"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "origin_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origin Uri"
+          },
+          "source": {
+            "$ref": "#/components/schemas/LibraryIngestSource"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "LibraryIngestRequest",
+        "type": "object"
+      },
+      "LibraryIngestSource": {
+        "enum": [
+          "web",
+          "text"
+        ],
+        "title": "LibraryIngestSource",
+        "type": "string"
+      },
       "LibraryItemContentOut": {
         "properties": {
           "content": {
@@ -2816,6 +3009,17 @@
             },
             "title": "Derived Records",
             "type": "array"
+          },
+          "failed_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Error Code"
           },
           "favorite": {
             "title": "Favorite",
@@ -3895,7 +4099,12 @@
           "PROVIDER_REQUEST_FAILED",
           "STALE_TRANSCRIPT",
           "LLM_OUTPUT_INVALID",
-          "LIBRARY_BACKFILL_FAILED"
+          "LIBRARY_BACKFILL_FAILED",
+          "WEB_FETCH_BLOCKED_URL",
+          "WEB_FETCH_CONTENT_TOO_LARGE",
+          "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE",
+          "WEB_FETCH_UNREACHABLE",
+          "WEB_FETCH_EXTRACT_FAILED"
         ],
         "title": "ProcessingJobErrorCode",
         "type": "string"
@@ -10539,6 +10748,246 @@
           }
         },
         "summary": "List Library Assets",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/library/ingest": {
+      "post": {
+        "description": "统一入库（web/text）：立即建条目；web 另建 WEB_FETCH 任务异步抓取净化。",
+        "operationId": "ingest_library_item_api_library_ingest_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LibraryIngestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryIngestAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Insufficient Storage"
+          }
+        },
+        "summary": "Ingest Library Item",
+        "tags": [
+          "library"
+        ]
+      }
+    },
+    "/api/library/ingest/file": {
+      "post": {
+        "description": "统一入库（本地文件）：复用文档导入校验与解析分片管线，另建资料条目。",
+        "operationId": "ingest_library_file_api_library_ingest_file_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_ingest_library_file_api_library_ingest_file_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryIngestAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "507": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Insufficient Storage"
+          }
+        },
+        "summary": "Ingest Library File",
         "tags": [
           "library"
         ]
