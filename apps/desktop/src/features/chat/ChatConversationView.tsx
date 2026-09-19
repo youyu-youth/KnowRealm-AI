@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
+  BookOpen,
   GraduationCap,
   Library,
   MoreHorizontal,
@@ -54,6 +55,7 @@ type ChatConversationViewProps = {
   recordId: string | null;
   recordDeleted: boolean;
   courseDeleted: boolean;
+  libraryItemDeleted: boolean;
   messages: UseQueryResult<ChatMessage[]>;
   initialPrompt?: string;
 };
@@ -69,6 +71,7 @@ export function ChatConversationView({
   recordId,
   recordDeleted,
   courseDeleted,
+  libraryItemDeleted,
   messages,
   initialPrompt,
 }: ChatConversationViewProps) {
@@ -95,7 +98,7 @@ export function ChatConversationView({
   const setWebSearchEnabled = useChatUiStore(
     (state) => state.setWebSearchEnabled,
   );
-  const scopeUnavailable = recordDeleted || courseDeleted;
+  const scopeUnavailable = recordDeleted || courseDeleted || libraryItemDeleted;
 
   const visibleCount = (messages.data ?? []).filter(
     (message) => message.role !== "SYSTEM",
@@ -111,6 +114,8 @@ export function ChatConversationView({
 
   function handleSelectScope(chip: ScopeChipId) {
     // 范围会话内不可变：点其它胶囊 = 发起对应范围的新会话（spec 根决策 2）。
+    // LIBRARY_ITEM 无对应胶囊（仅资料详情入口创建），不会走到这里。
+    if (chip === "libraryItem") return;
     if (chip === "course") {
       setCoursePickOpen(true);
       return;
@@ -136,6 +141,11 @@ export function ChatConversationView({
         <Library aria-hidden="true" className="size-3" />
         {t("chat.scope.all")}
       </span>
+    ) : scope === "LIBRARY_ITEM" ? (
+      <span className="bg-surface-subtle text-ink-muted flex items-center gap-1 rounded-xs px-1.5 py-px">
+        <BookOpen aria-hidden="true" className="size-3" />
+        {t("chat.scope.libraryItem")}
+      </span>
     ) : null;
 
   return (
@@ -160,6 +170,11 @@ export function ChatConversationView({
             {courseDeleted ? (
               <span className="bg-destructive/10 text-destructive rounded-xs px-1.5 py-px">
                 {t("chat.courseDeleted")}
+              </span>
+            ) : null}
+            {libraryItemDeleted ? (
+              <span className="bg-destructive/10 text-destructive rounded-xs px-1.5 py-px">
+                {t("chat.libraryItemDeleted")}
               </span>
             ) : null}
             {scopeBadge}
@@ -256,7 +271,9 @@ export function ChatConversationView({
               ? t("chat.composer.recordDeletedHint")
               : courseDeleted
                 ? t("chat.composer.courseDeletedHint")
-                : undefined
+                : libraryItemDeleted
+                  ? t("chat.composer.libraryItemDeletedHint")
+                  : undefined
           }
           isStreaming={isStreaming}
           webSearchEnabled={webSearchEnabled}

@@ -1,6 +1,7 @@
-import { FileText, Globe } from "lucide-react";
+import { BookOpen, FileText, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
+  isLibraryCitation,
   isRecordCitation,
   isWebCitation,
   type ChatCitation,
@@ -26,7 +27,7 @@ function citationDomain(url: string): string {
   }
 }
 
-/** 引用来源列表：record 条目点击跳转该记录转写页定位原文；web 条目点击经系统浏览器打开外链。 */
+/** 引用来源列表：record 跳转记录转写定位、library 跳转资料来源预览、web 经系统浏览器打开。 */
 export function ChatCitationList({ citations }: ChatCitationListProps) {
   const { t } = useTranslation();
 
@@ -50,6 +51,9 @@ function CitationItem({ citation }: { citation: ChatCitation }) {
   const openCitation = useOpenCitation();
   // 跨记录条目带标题快照（B2）；历史行无 title 降级为现状展示。
   const recordTitle = isRecordCitation(citation) ? citation.record_title : null;
+  const libraryTitle = isLibraryCitation(citation)
+    ? (citation.title ?? null)
+    : null;
 
   const main = isWebCitation(citation) ? (
     <>
@@ -59,6 +63,18 @@ function CitationItem({ citation }: { citation: ChatCitation }) {
       <span className={citationTagClass}>
         <Globe className="size-3" aria-hidden="true" />
         {citationDomain(citation.url)}
+      </span>
+    </>
+  ) : isLibraryCitation(citation) ? (
+    <>
+      <span className="text-body-dense text-ink line-clamp-2 block break-words">
+        {citation.quote}
+      </span>
+      <span className={citationTagClass}>
+        <BookOpen className="size-3" aria-hidden="true" />
+        {libraryTitle
+          ? t("chat.citation.libraryFromTitle", { title: libraryTitle })
+          : t("chat.citation.libraryTag")}
       </span>
     </>
   ) : (
@@ -86,16 +102,22 @@ function CitationItem({ citation }: { citation: ChatCitation }) {
                 index: citation.index,
                 title: citation.title,
               })
-            : recordTitle
-              ? t("chat.citation.entryWithTitle", {
+            : isLibraryCitation(citation)
+              ? t("chat.citation.libraryEntry", {
                   index: citation.index,
                   quote: citation.quote,
-                  title: recordTitle,
+                  title: libraryTitle ?? "",
                 })
-              : t("chat.citation.entry", {
-                  index: citation.index,
-                  quote: citation.quote,
-                })
+              : recordTitle
+                ? t("chat.citation.entryWithTitle", {
+                    index: citation.index,
+                    quote: citation.quote,
+                    title: recordTitle,
+                  })
+                : t("chat.citation.entry", {
+                    index: citation.index,
+                    quote: citation.quote,
+                  })
         }
         onClick={() => openCitation(citation)}
       >

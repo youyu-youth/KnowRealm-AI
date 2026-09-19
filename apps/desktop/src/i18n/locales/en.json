@@ -1647,7 +1647,10 @@
       "webEntry": "[{{index}}] {{title}}, opens in your browser",
       "recordTag": "Record",
       "recordFromTitle": "From “{{title}}”",
-      "entryWithTitle": "[{{index}}] {{quote}} (from “{{title}}”)"
+      "entryWithTitle": "[{{index}}] {{quote}} (from “{{title}}”)",
+      "libraryTag": "Material source",
+      "libraryFromTitle": "Material: {{title}}",
+      "libraryEntry": "[{{index}}] {{quote}} (material: {{title}}), click to open the material"
     },
     "recordsTitle": "Chat history",
     "selectSessionTitle": "Select or start a chat",
@@ -1675,7 +1678,8 @@
       "record": "Record",
       "course": "Course",
       "all": "All materials",
-      "switchTo": "Switch to {{scope}} (starts a new chat)"
+      "switchTo": "Switch to {{scope}} (starts a new chat)",
+      "libraryItem": "Material"
     },
     "suggestions": {
       "title": "You can ask like this",
@@ -1707,7 +1711,8 @@
       "citationsViewAll_one": "View all {{count}} citation",
       "citationsViewAll_other": "View all {{count}} citations",
       "scopeRecords_one": "{{count}} record in scope",
-      "scopeRecords_other": "{{count}} records in scope"
+      "scopeRecords_other": "{{count}} records in scope",
+      "libraryItemScope": "This chat is scoped to the selected material and its linked Records"
     },
     "tools": {
       "title": "Tool status",
@@ -1776,8 +1781,10 @@
     "courseDeleted": "Course deleted",
     "composer": {
       "recordDeletedHint": "The source Record was deleted; this chat is no longer active and cannot send messages.",
-      "courseDeletedHint": "The course was deleted; this chat is read-only."
-    }
+      "courseDeletedHint": "The course was deleted; this chat is read-only.",
+      "libraryItemDeletedHint": "The source material was deleted or archived; this chat is read-only."
+    },
+    "libraryItemDeleted": "Source material deleted or archived"
   },
   "settings": {
     "title": "Settings",
@@ -2141,7 +2148,10 @@
       "reingest": "Re-ingest",
       "manualPaste": "Paste content manually",
       "openOrigin": "Open source page",
-      "revealFile": "Reveal in file explorer"
+      "revealFile": "Reveal in file explorer",
+      "aiInterpret": "Ask AI",
+      "aiInterpretPending": "Creating chat…",
+      "aiInterpretUnavailable": "Archived materials don't support AI Q&A"
     },
     "ingest": {
       "open": "Add material",
@@ -2310,6 +2320,9 @@
     "WEB_FETCH_EXTRACT_FAILED": "Content extraction failed; paste the content manually instead",
     "WEB_FETCH_INVALID_URL": "Only http(s) URLs are supported",
     "WEB_FETCH_UNREACHABLE": "Target site is unreachable",
-    "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE": "Unsupported page type"
+    "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE": "Unsupported page type",
+    "LIBRARY_ITEM_ARCHIVED": "This material is archived; material Q&A is unavailable",
+    "LIBRARY_ITEM_DELETED": "This material was deleted; material Q&A is unavailable",
+    "CHAT_LIBRARY_ITEM_UNAVAILABLE": "The source material was deleted or archived; this chat is read-only"
   }
 }

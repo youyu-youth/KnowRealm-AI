@@ -1635,7 +1635,10 @@
       "webEntry": "[{{index}}] {{title}}，点击在浏览器打开",
       "recordTag": "记录",
       "recordFromTitle": "来自《{{title}}》",
-      "entryWithTitle": "[{{index}}] {{quote}}（来自《{{title}}》）"
+      "entryWithTitle": "[{{index}}] {{quote}}（来自《{{title}}》）",
+      "libraryTag": "资料来源",
+      "libraryFromTitle": "资料：{{title}}",
+      "libraryEntry": "[{{index}}] {{quote}}（资料：{{title}}），点击查看资料来源"
     },
     "recordsTitle": "对话记录",
     "selectSessionTitle": "选择或新建对话",
@@ -1663,7 +1666,8 @@
       "record": "记录",
       "course": "课程",
       "all": "全部资料",
-      "switchTo": "切换到{{scope}}（将新建对话）"
+      "switchTo": "切换到{{scope}}（将新建对话）",
+      "libraryItem": "资料解读"
     },
     "suggestions": {
       "title": "你可以这样提问",
@@ -1693,7 +1697,8 @@
       "citations": "来源引用",
       "citationsEmpty": "回答中的 [n] 角标会在这里列出，点击可跳回原文。",
       "citationsViewAll": "查看全部 {{count}} 条",
-      "scopeRecords": "范围内 {{count}} 条记录"
+      "scopeRecords": "范围内 {{count}} 条记录",
+      "libraryItemScope": "对话范围限定在该资料及其关联学习记录"
     },
     "tools": {
       "title": "工具状态",
@@ -1758,8 +1763,10 @@
     "courseDeleted": "课程已删除",
     "composer": {
       "recordDeletedHint": "原记录已删除，对话已失效，无法继续发送。",
-      "courseDeletedHint": "课程已删除，对话已失效，无法继续发送。"
-    }
+      "courseDeletedHint": "课程已删除，对话已失效，无法继续发送。",
+      "libraryItemDeletedHint": "原资料已删除或归档，对话已失效，无法继续发送。"
+    },
+    "libraryItemDeleted": "原资料已删除或归档"
   },
   "settings": {
     "title": "设置",
@@ -2123,7 +2130,10 @@
       "reingest": "重新导入",
       "manualPaste": "手动粘贴正文",
       "openOrigin": "打开原网页",
-      "revealFile": "在资源管理器中显示"
+      "revealFile": "在资源管理器中显示",
+      "aiInterpret": "AI 解读",
+      "aiInterpretPending": "正在创建对话…",
+      "aiInterpretUnavailable": "资料已归档，归档资料暂不支持 AI 解读"
     },
     "ingest": {
       "open": "添加资料",
@@ -2292,6 +2302,9 @@
     "WEB_FETCH_EXTRACT_FAILED": "正文提取失败，可改用手动粘贴",
     "WEB_FETCH_INVALID_URL": "仅支持 http(s) 地址",
     "WEB_FETCH_UNREACHABLE": "目标站点无法访问",
-    "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE": "页面类型不受支持"
+    "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE": "页面类型不受支持",
+    "LIBRARY_ITEM_ARCHIVED": "资料条目已归档，暂不支持发起资料问答",
+    "LIBRARY_ITEM_DELETED": "资料条目已删除，暂不支持发起资料问答",
+    "CHAT_LIBRARY_ITEM_UNAVAILABLE": "原资料已删除或归档，对话已失效"
   }
 }

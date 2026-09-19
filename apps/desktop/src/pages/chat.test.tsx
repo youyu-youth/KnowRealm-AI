@@ -55,6 +55,7 @@ function chatSession(
     course_id: null,
     record_deleted: false,
     course_deleted: false,
+    library_item_deleted: false,
     created_at: "2026-08-27T08:00:00.000000Z",
     updated_at: "2026-08-27T08:00:00.000000Z",
     ...overrides,
@@ -1773,5 +1774,72 @@ describe("对话转知识点（对话转学习资产 V1）", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "保存知识点" }));
 
     expect(within(dialog).getByText("请先选择目标记录")).toBeVisible();
+  });
+});
+
+describe("资料解读会话（LIBRARY_ITEM，工单 04）", () => {
+  const ITEM_ID = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const QUOTE = "网页剪藏正文记录了向量检索的取舍";
+
+  function renderItemSession() {
+    const created = chatSession(FIRST_SESSION_ID, {
+      scope: "LIBRARY_ITEM",
+      library_item_id: ITEM_ID,
+      title: "网页剪藏正文怎么读？",
+    });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "这篇资料讲了什么？"),
+            {
+              id: "assistant-row",
+              role: "ASSISTANT",
+              content: "资料讲向量检索取舍[1]。",
+              model: "stub-chat-model",
+              citations: [
+                {
+                  index: 1,
+                  source: "library",
+                  library_item_id: ITEM_ID,
+                  title: "网页剪藏正文",
+                  quote: QUOTE,
+                },
+              ],
+              created_at: "2026-08-27T08:00:00.000000Z",
+            },
+          ]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+        HttpResponse.json([]),
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+  }
+
+  it("资料范围徽章与 library 引用点击跳转资料来源预览", async () => {
+    renderItemSession();
+
+    // 范围徽章 + 右栏挂载卡都以「资料解读」标识范围（LIBRARY_ITEM 不进全局胶囊）。
+    const markers = await screen.findAllByText("资料解读");
+    expect(markers.length).toBeGreaterThan(0);
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: `[1] ${QUOTE}（资料：网页剪藏正文），点击查看资料来源`,
+      }),
+    );
+    await waitFor(() => expect(window.location.pathname).toBe("/library"));
+    const search = new URLSearchParams(window.location.search);
+    expect(search.get("sel")).toBe(ITEM_ID);
+    expect(search.get("selType")).toBe("item");
   });
 });

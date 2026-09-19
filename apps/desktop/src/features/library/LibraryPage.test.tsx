@@ -335,32 +335,34 @@ describe("LibraryPage 工作台", () => {
     const CHAT_SESSION_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     let chatCreated: { url: string; body: unknown } | null = null;
     server.use(
-      http.post(`${TEST_SIDECAR_URL}/api/chat-sessions`, async ({ request }) => {
-        chatCreated = { url: request.url, body: await request.json() };
-        return HttpResponse.json(
-          {
-            id: CHAT_SESSION_ID,
-            mode: "ASK",
-            scope: "LIBRARY_ITEM",
-            title: null,
-            record_id: null,
-            course_id: COURSE_ID,
-            library_item_id: ITEM_ID,
-            record_deleted: false,
-            course_deleted: false,
-            library_item_deleted: false,
-            created_at: "2026-09-19T08:00:00.000000Z",
-            updated_at: "2026-09-19T08:00:00.000000Z",
-          },
-          { status: 201 },
-        );
-      }),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions`,
+        async ({ request }) => {
+          chatCreated = { url: request.url, body: await request.json() };
+          return HttpResponse.json(
+            {
+              id: CHAT_SESSION_ID,
+              mode: "ASK",
+              scope: "LIBRARY_ITEM",
+              title: null,
+              record_id: null,
+              course_id: COURSE_ID,
+              library_item_id: ITEM_ID,
+              record_deleted: false,
+              course_deleted: false,
+              library_item_deleted: false,
+              created_at: "2026-09-19T08:00:00.000000Z",
+              updated_at: "2026-09-19T08:00:00.000000Z",
+            },
+            { status: 201 },
+          );
+        },
+      ),
       http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
         HttpResponse.json([]),
       ),
-      http.get(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${CHAT_SESSION_ID}`,
-        () => HttpResponse.json({}),
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/${CHAT_SESSION_ID}`, () =>
+        HttpResponse.json({}),
       ),
       http.get(
         `${TEST_SIDECAR_URL}/api/chat-sessions/${CHAT_SESSION_ID}/messages`,
@@ -375,9 +377,7 @@ describe("LibraryPage 工作台", () => {
     );
     renderAt("/library");
     fireEvent.click(await screen.findByText("第3讲 傅里叶变换"));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "AI 解读" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "AI 解读" }));
     await waitFor(() =>
       expect(chatCreated).toEqual({
         url: `${TEST_SIDECAR_URL}/api/chat-sessions`,

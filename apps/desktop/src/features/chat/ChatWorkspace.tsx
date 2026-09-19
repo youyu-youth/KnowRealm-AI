@@ -124,6 +124,7 @@ export function ChatWorkspace({
             recordId={detail.data.record_id ?? null}
             recordDeleted={detail.data.record_deleted}
             courseDeleted={detail.data.course_deleted}
+            libraryItemDeleted={detail.data.library_item_deleted}
             messages={messages}
             initialPrompt={initialPrompt}
           />
@@ -138,6 +139,7 @@ export function ChatWorkspace({
           courseId={detail.data?.course_id ?? null}
           recordDeleted={detail.data?.record_deleted ?? false}
           courseDeleted={detail.data?.course_deleted ?? false}
+          libraryItemDeleted={detail.data?.library_item_deleted ?? false}
           citations={citations}
         />
       ) : null}

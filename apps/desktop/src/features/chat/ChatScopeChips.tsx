@@ -3,7 +3,7 @@ import { FileText, GraduationCap, Library, MessageCircle } from "lucide-react";
 import type { ChatSession } from "@/features/chat/api/types";
 import { cn } from "@/lib/utils";
 
-export type ScopeChipId = "free" | "record" | "course" | "all";
+export type ScopeChipId = "free" | "record" | "course" | "all" | "libraryItem";
 
 type ChatScopeChipsProps = {
   scope: ChatSession["scope"];
@@ -12,9 +12,12 @@ type ChatScopeChipsProps = {
   disabled?: boolean;
 };
 
+// LIBRARY_ITEM 不进全局范围切换（仅资料详情「AI 解读」入口创建）：映射到
+// 无对应胶囊的 id，即资料会话中无胶囊高亮。
 const CHIP_BY_SCOPE: Record<ChatSession["scope"], ScopeChipId> = {
   FREE: "free",
   RECORD: "record",
+  LIBRARY_ITEM: "libraryItem",
   COURSE: "course",
   ALL: "all",
 };

@@ -894,6 +894,7 @@ describe("KnowledgePointPanel", () => {
       course_id: COURSE_ID,
       record_deleted: false,
       course_deleted: false,
+      library_item_deleted: false,
       created_at: "2026-08-29T08:00:00.000000Z",
       updated_at: "2026-08-29T08:00:00.000000Z",
     };

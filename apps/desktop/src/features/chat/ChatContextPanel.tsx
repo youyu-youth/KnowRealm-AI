@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
+  BookOpen,
   BookOpenText,
   Code2,
   FileText,
@@ -47,6 +48,7 @@ type ChatContextPanelProps = {
   courseId: string | null;
   recordDeleted: boolean;
   courseDeleted: boolean;
+  libraryItemDeleted: boolean;
   citations: ChatCitation[];
 };
 
@@ -61,6 +63,7 @@ export function ChatContextPanel({
   courseId,
   recordDeleted,
   courseDeleted,
+  libraryItemDeleted,
   citations,
 }: ChatContextPanelProps) {
   const { t } = useTranslation();
@@ -146,6 +149,11 @@ export function ChatContextPanel({
                   className="text-ink-muted size-4"
                   aria-hidden="true"
                 />
+              ) : scope === "LIBRARY_ITEM" ? (
+                <BookOpen
+                  className="text-ink-muted size-4"
+                  aria-hidden="true"
+                />
               ) : (
                 <Library className="text-ink-muted size-4" aria-hidden="true" />
               )}
@@ -161,14 +169,20 @@ export function ChatContextPanel({
               >
                 {scope === "COURSE"
                   ? (courseNames.get(courseId ?? "") ?? t("chat.scope.course"))
-                  : t("chat.scope.all")}
+                  : scope === "LIBRARY_ITEM"
+                    ? t("chat.scope.libraryItem")
+                    : t("chat.scope.all")}
               </p>
               <p className="text-label text-muted-foreground mt-0.5">
-                {courseDeleted
-                  ? t("chat.courseDeleted")
-                  : t("chat.context.scopeRecords", {
-                      count: scopeRecordCount ?? 0,
-                    })}
+                {scope === "LIBRARY_ITEM"
+                  ? libraryItemDeleted
+                    ? t("chat.libraryItemDeleted")
+                    : t("chat.context.libraryItemScope")
+                  : courseDeleted
+                    ? t("chat.courseDeleted")
+                    : t("chat.context.scopeRecords", {
+                        count: scopeRecordCount ?? 0,
+                      })}
               </p>
             </div>
           </div>

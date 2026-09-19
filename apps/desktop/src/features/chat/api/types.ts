@@ -17,6 +17,14 @@ export type WebCitation = ChatCitation & {
   title: string;
 };
 
+/** library 来源条目（资料条目正文摘录，工单 04）：跳转资料库来源预览。 */
+export type LibraryCitation = ChatCitation & {
+  source: "library";
+  library_item_id: string;
+  quote: string;
+  title?: string | null;
+};
+
 export type RecordCitation = ChatCitation & {
   source: "record";
   record_id: string;
@@ -27,16 +35,22 @@ export function isWebCitation(citation: ChatCitation): citation is WebCitation {
   return citation.source === "web";
 }
 
+export function isLibraryCitation(
+  citation: ChatCitation,
+): citation is LibraryCitation {
+  return citation.source === "library";
+}
+
 export function isRecordCitation(
   citation: ChatCitation,
 ): citation is RecordCitation {
-  return citation.source !== "web";
+  return citation.source !== "web" && citation.source !== "library";
 }
 
 /**
  * SSE 流事件载荷（POST /chat-sessions/{id}/messages，事件名在 event: 行）。
  * citation 随流下发但渲染以 REST 的 citations 字段为事实源（done 后重取），
- * 故前端不单独消费；形状与 ChatCitationOut 同构（record/web 判别）。
+ * 故前端不单独消费；形状与 ChatCitationOut 同构（record/web/library 判别）。
  * interrupt 在当前阶段不产生，未列入。
  */
 export type ChatStreamPayloads = {
@@ -44,7 +58,14 @@ export type ChatStreamPayloads = {
   token: { text: string };
   citation:
     | { index: number; source: "record"; record_id: string; quote: string }
-    | { index: number; source: "web"; url: string; title: string };
+    | { index: number; source: "web"; url: string; title: string }
+    | {
+        index: number;
+        source: "library";
+        library_item_id: string;
+        quote: string;
+        title?: string | null;
+      };
   done: { message_id: string; content: string };
   error: { code: string; detail: string };
 };

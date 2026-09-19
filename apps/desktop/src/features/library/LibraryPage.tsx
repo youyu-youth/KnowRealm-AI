@@ -12,6 +12,7 @@ import {
   Loader2,
   Plus,
   RotateCcw,
+  Sparkles,
   Star,
   StickyNote,
   type LucideIcon,
@@ -22,6 +23,7 @@ import {
   AddLibraryItemDialog,
   type AddLibraryItemInitial,
 } from "@/features/library/components/AddLibraryItemDialog";
+import { useCreateChatSession } from "@/features/chat/useCreateChatSession";
 import { revealLibrarySnapshot } from "@/services/tauri/libraryFiles";
 import { openWebUrl } from "@/services/tauri/webLinks";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -460,6 +462,14 @@ function ItemInspector({
   const detail = useLibraryItemDetail(itemId);
   const content = useLibraryItemContent(itemId);
   const item = detail.data;
+  // 「AI 解读」（工单 04）：对该资料创建 LIBRARY_ITEM 会话并跳转对话页。
+  const createChatSession = useCreateChatSession();
+  const interpret = () =>
+    createChatSession.mutate({
+      mode: "ASK",
+      scope: "LIBRARY_ITEM",
+      library_item_id: itemId,
+    });
   if (detail.isPending) {
     return (
       <div className="text-muted-foreground flex items-center gap-2 py-6 text-sm">
@@ -488,6 +498,29 @@ function ItemInspector({
         <StatusTag tone={availabilityTone[item.availability] ?? "neutral"}>
           {t(`library.availability.${item.availability}`)}
         </StatusTag>
+      </div>
+
+      <div>
+        <Button
+          size="sm"
+          onClick={interpret}
+          disabled={createChatSession.isPending || item.status === "ARCHIVED"}
+          title={
+            item.status === "ARCHIVED"
+              ? t("library.inspector.aiInterpretUnavailable")
+              : undefined
+          }
+        >
+          <Sparkles className="size-4" aria-hidden />
+          {createChatSession.isPending
+            ? t("library.inspector.aiInterpretPending")
+            : t("library.inspector.aiInterpret")}
+        </Button>
+        {createChatSession.isError ? (
+          <p role="alert" className="text-destructive text-label mt-1">
+            {createChatSession.error.message}
+          </p>
+        ) : null}
       </div>
 
       {item.availability === "FAILED" ? (
