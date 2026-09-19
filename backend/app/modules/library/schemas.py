@@ -61,6 +61,8 @@ class LibrarySmartView(StrEnum):
     RECENT = "recent"
     FAVORITES = "favorites"
     NEEDS_REVIEW = "needs_review"
+    ARCHIVED = "archived"
+    TRASH = "trash"
 
 
 def _utc(value: datetime) -> str:
@@ -92,6 +94,7 @@ class LibraryItemOut(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+    deleted_at: datetime | None = None
     availability: LibraryAvailability = LibraryAvailability.EMPTY
 
     @field_serializer("created_at", "updated_at")
@@ -100,6 +103,10 @@ class LibraryItemOut(BaseModel):
 
     @field_serializer("fetched_at")
     def _ser_opt(self, value: datetime | None) -> str | None:
+        return _utc_opt(value)
+
+    @field_serializer("deleted_at")
+    def _ser_deleted(self, value: datetime | None) -> str | None:
         return _utc_opt(value)
 
 
@@ -131,8 +138,14 @@ class LibraryItemListQuery(BaseModel):
 
 
 class LibraryItemPatch(BaseModel):
-    """02 仅开放收藏；重命名/归类/归档/删除随工单 05 生命周期端点。"""
+    """05 生命周期：重命名（title）/ 归类（course_id，null=取消归类）/ 收藏。
 
+    字段未提供与显式置 null 语义不同（course_id=null 是取消归类），
+    路由层以 model_fields_set 判别。
+    """
+
+    title: str | None = None
+    course_id: UUID | None = None
     favorite: bool | None = None
 
 
@@ -279,3 +292,74 @@ class AgentProposalOut(BaseModel):
 class ProposalListQuery(BaseModel):
     status: ProposalStatus | None = None
     proposal_type: ProposalType | None = None
+
+
+# ---------------------------------------------------------------------------
+# AI 整理（工单 05）：确定性扫描结果 + LLM 建议 + 提案载荷判别
+
+
+class OrganizeDuplicateGroup(BaseModel):
+    """确定性重复组：未软删且同 content_hash 的条目（≥2 才成组）。"""
+
+    content_hash: str
+    items: list[LibraryItemOut]
+
+
+class OrganizeScanOut(BaseModel):
+    """确定性检测结果（零 LLM）：机械问题先暴露，AI 只处理语义建议。"""
+
+    duplicates: list[OrganizeDuplicateGroup]
+    failed_items: list[LibraryItemOut]
+    unclassified: list[LibraryItemOut]
+
+
+class OrganizeSuggestion(BaseModel):
+    """LLM 单条建议：只允许建议标题与归类，且 item_id / course_id 须回表校验。"""
+
+    item_id: str = Field(description="目标资料条目 id（必须来自输入清单）")
+    title: str | None = Field(default=None, description="规范化后的标题；标题已规范时不输出该字段")
+    course_id: str | None = Field(
+        default=None, description="建议归入的课程 id（必须来自课程清单；都不合适则不输出）"
+    )
+
+
+class OrganizeSuggestionBatch(BaseModel):
+    """LLM 结构化输出契约（call_organize_model 校验用）。"""
+
+    suggestions: list[OrganizeSuggestion] = Field(
+        description="只为需要整理的条目给出建议；已规范的条目不要输出"
+    )
+
+
+class OrganizeProposeOut(BaseModel):
+    """LLM 建议落为 ORGANIZE 提案后的返回（每条建议一提案，逐项确认）。"""
+
+    created: list[AgentProposalOut]
+    skipped: list[str] = []
+
+
+class OrganizePayload(BaseModel):
+    """ORGANIZE 提案载荷判别：只接受条目 id 与两个可应用字段。"""
+
+    item_id: str
+    title: str | None = None
+    course_id: str | None = None
+
+
+class ResearchIngestPayload(BaseModel):
+    """RESEARCH_INGEST 提案载荷：web_search 候选来源（确认后才真实抓取）。"""
+
+    url: str
+    title: str
+    course_id: str | None = None
+
+
+class ProposalCreateRequest(BaseModel):
+    """通用提案创建（05）：payload 按 proposal_type 判别校验后落库，不改事实。"""
+
+    proposal_type: ProposalType
+    payload: dict[str, Any]
+    session_id: str | None = None
+    message_id: str | None = None
+    target_type: str | None = None
+    target_id: str | None = None

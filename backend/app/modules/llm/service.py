@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.base import utcnow
 from app.modules.course_brain.schemas import CourseBrainExtractionBatch
 from app.modules.knowledge_point.schemas import KnowledgePointBatch
+from app.modules.library.schemas import OrganizeSuggestionBatch
 from app.modules.llm.models import LlmCallLog
 from app.modules.quiz.schemas import QuizBatch, ShortAnswerGrade
 from app.modules.review_material.schemas import ReviewMaterialContent, ReviewMaterialDraft
@@ -217,6 +218,11 @@ class OpenAiCompatibleCourseBrainModel(_OpenAiCompatibleStructuredModel):
         super().__init__(CourseBrainExtractionBatch)
 
 
+class OpenAiCompatibleOrganizeModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self) -> None:
+        super().__init__(OrganizeSuggestionBatch)
+
+
 def build_chat_model(
     provider: LlmProviderConfig,
     http_client: openai.DefaultAsyncHttpxClient,
@@ -328,9 +334,7 @@ async def _call_structured_model(
     if failure is not None:
         # 结构化失败此前全程无日志（错误码只进 DB）；真实校验错误内联进消息，
         # loguru 默认 sink 不渲染 extra kwargs，只记事件名会再次丢失原因。
-        detail = (
-            str(failure.__cause__)[:300] if failure.__cause__ is not None else ""
-        )
+        detail = str(failure.__cause__)[:300] if failure.__cause__ is not None else ""
         logger.warning(
             f"structured_generation_failed graph={graph_name} node={graph_node} "
             f"error={error_code} detail={detail}"
@@ -524,3 +528,26 @@ async def call_course_brain_model(
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
     )
+
+
+async def call_organize_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    organize_model: StructuredModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> OrganizeSuggestionBatch:
+    """AI 整理建议生成（工单 05）：结构化输出 = 每条目可选标题/课程建议。"""
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=organize_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="library-organize",
+        graph_node="propose",
+        prompt_version=prompt_version,
+        output_schema=OrganizeSuggestionBatch,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+    )
+    return cast(OrganizeSuggestionBatch, result.content)

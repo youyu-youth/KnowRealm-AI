@@ -285,9 +285,7 @@ async def test_ingest_web_full_loop(tmp_path: Path) -> None:
             assert job.status == "SUCCEEDED"
             assert item.title == "剪藏闭环测试页"
             # hash 恒为 URL 哈希（同 URL 判重锚）；正文哈希记入 metadata
-            assert (
-                item.content_hash == sha256(b"web:https://example.com/article").hexdigest()
-            )
+            assert item.content_hash == sha256(b"web:https://example.com/article").hexdigest()
             assert json.loads(item.metadata_json)["content_hash"] != item.content_hash
             assert item.local_path == f"files/{record_id}/{job_id}.md"
             assert item.fetched_at is not None

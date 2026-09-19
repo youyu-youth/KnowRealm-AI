@@ -53,7 +53,8 @@ from app.shared.errors import CodedHTTPException
 MAX_TEXT_BYTES = 1024 * 1024
 
 
-async def _valid_course(session: AsyncSession, course_id: str | None) -> None:
+async def valid_course(session: AsyncSession, course_id: str | None) -> None:
+    """归类目标课程校验（ingest 与 05 生命周期归类共用；跨模块公开）。"""
     if course_id is None:
         return
     from app.modules.course.schemas import CourseStatus
@@ -97,6 +98,92 @@ def _item_metadata(kind: str, extra: dict[str, object] | None = None) -> str:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
+async def create_web_ingest_rows(
+    session: AsyncSession,
+    url: str,
+    course_id: str | None,
+    *,
+    allow_duplicate: bool,
+    title: str | None = None,
+) -> tuple[str, str, str]:
+    """WEB 入库的事务内核心（ingest_web 与 RESEARCH_INGEST 提案应用器共用，
+    工单 05）：在调用者事务内写入 Record + LibraryItem + WEB_FETCH 任务 +
+    关联 + 搜索索引，返回 (record_id, item_id, job_id)。title 为提案携带的
+    展示标题（抓取成功后由 web_fetch_worker 用页面真标题覆盖）；真实抓取
+    由 web_fetch_worker 异步完成——确认前不发起任何网络请求。"""
+    try:
+        validate_public_http_url(url)
+    except WebClipError as exc:
+        raise CodedHTTPException(code=exc.code, status_code=422, detail=exc.detail) from exc
+    host = urlsplit(url).hostname or url
+    display_title = (title or "").strip() or host
+    content_hash = sha256(f"web:{url}".encode()).hexdigest()
+    record_id, item_id, job_id = (str(uuid4()) for _ in range(3))
+    now = utcnow()
+    await valid_course(session, course_id)
+    duplicate = await _duplicate_item_id(session, content_hash)
+    if duplicate is not None and not allow_duplicate:
+        _raise_duplicate(duplicate)
+    session.add(
+        Record(
+            id=record_id,
+            course_id=course_id,
+            capture_type=CaptureType.CLIP,
+            title=display_title,
+            status=RecordStatus.CONTENT_PROCESSING,
+            duration_ms=0,
+            summary_confirmed_at=None,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    await session.flush()
+    session.add(
+        LibraryItem(
+            id=item_id,
+            course_id=course_id,
+            source_type=LibrarySourceType.WEB,
+            title=display_title,
+            origin_uri=url,
+            local_path=None,
+            mime_type=None,
+            file_size=None,
+            content_hash=content_hash,
+            metadata_json=_item_metadata("web", {"url": url, "pending": True}),
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    await session.flush()
+    session.add(
+        ProcessingJob(
+            id=job_id,
+            record_id=record_id,
+            library_item_id=item_id,
+            job_type=ProcessingJobType.WEB_FETCH,
+            status=ProcessingJobStatus.PENDING,
+            progress=0,
+            attempts=0,
+            max_attempts=1,
+            input_json=json.dumps({"url": url, "library_item_id": item_id}),
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    session.add(
+        LibraryItemRecord(
+            library_item_id=item_id,
+            record_id=record_id,
+            role="PRIMARY",
+            sequence_no=0,
+            created_at=now,
+        )
+    )
+    await session.flush()
+    await SearchService.upsert_record_index(session, record_id)
+    return record_id, item_id, job_id
+
+
 class LibraryIngestService:
     @staticmethod
     async def ingest_text(
@@ -124,7 +211,7 @@ class LibraryIngestService:
         now = utcnow()
         course_id = str(body.course_id) if body.course_id is not None else None
         async with session_factory() as session, session.begin():
-            await _valid_course(session, course_id)
+            await valid_course(session, course_id)
             duplicate = await _duplicate_item_id(session, content_hash)
             if duplicate is not None and not body.allow_duplicate:
                 _raise_duplicate(duplicate)
@@ -203,77 +290,11 @@ class LibraryIngestService:
         body: LibraryIngestRequest,
     ) -> LibraryIngestAccepted:
         url = (body.url or "").strip()
-        try:
-            validate_public_http_url(url)
-        except WebClipError as exc:
-            raise CodedHTTPException(code=exc.code, status_code=422, detail=exc.detail) from exc
-        host = urlsplit(url).hostname or url
-        content_hash = sha256(f"web:{url}".encode()).hexdigest()
-
-        record_id, item_id, job_id = (str(uuid4()) for _ in range(3))
-        now = utcnow()
         course_id = str(body.course_id) if body.course_id is not None else None
         async with session_factory() as session, session.begin():
-            await _valid_course(session, course_id)
-            duplicate = await _duplicate_item_id(session, content_hash)
-            if duplicate is not None and not body.allow_duplicate:
-                _raise_duplicate(duplicate)
-            session.add(
-                Record(
-                    id=record_id,
-                    course_id=course_id,
-                    capture_type=CaptureType.CLIP,
-                    title=host,
-                    status=RecordStatus.CONTENT_PROCESSING,
-                    duration_ms=0,
-                    summary_confirmed_at=None,
-                    created_at=now,
-                    updated_at=now,
-                )
+            _record_id, item_id, job_id = await create_web_ingest_rows(
+                session, url, course_id, allow_duplicate=body.allow_duplicate
             )
-            await session.flush()
-            item = LibraryItem(
-                id=item_id,
-                course_id=course_id,
-                source_type=LibrarySourceType.WEB,
-                title=host,
-                origin_uri=url,
-                local_path=None,
-                mime_type=None,
-                file_size=None,
-                content_hash=content_hash,
-                metadata_json=_item_metadata("web", {"url": url, "pending": True}),
-                created_at=now,
-                updated_at=now,
-            )
-            session.add(item)
-            await session.flush()
-            session.add(
-                ProcessingJob(
-                    id=job_id,
-                    record_id=record_id,
-                    library_item_id=item_id,
-                    job_type=ProcessingJobType.WEB_FETCH,
-                    status=ProcessingJobStatus.PENDING,
-                    progress=0,
-                    attempts=0,
-                    max_attempts=1,
-                    input_json=json.dumps({"url": url, "library_item_id": item_id}),
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
-            session.add(
-                LibraryItemRecord(
-                    library_item_id=item_id,
-                    record_id=record_id,
-                    role="PRIMARY",
-                    sequence_no=0,
-                    created_at=now,
-                )
-            )
-            await session.flush()
-            await SearchService.upsert_record_index(session, record_id)
 
         async with session_factory() as session:
             from app.modules.jobs.service import ProcessingJobService
@@ -322,7 +343,7 @@ class LibraryIngestService:
                     code="INSUFFICIENT_DISK", status_code=507, detail="数据目录可用空间不足"
                 )
             async with session_factory() as session:
-                await _valid_course(session, course_id)
+                await valid_course(session, course_id)
                 duplicate = await _duplicate_item_id(session, content_hash)
             if duplicate is not None and not allow_duplicate:
                 _raise_duplicate(duplicate)

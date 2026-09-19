@@ -38,7 +38,7 @@ from app.modules.transcript.models import Transcript
 from app.shared.errors import CodedHTTPException
 
 # 解析链任务类型：只有这些任务的终态影响「处理可用性」（Summary 等下游任务不影响）。
-_PARSE_JOB_TYPES = (
+PARSE_JOB_TYPES = (
     ProcessingJobType.ASR,
     ProcessingJobType.AUDIO_TRANSCODE,
     ProcessingJobType.DOCUMENT_PARSE,
@@ -115,7 +115,7 @@ def _derive_availability(
 
 
 class LibraryService:
-    """资料条目只读 + 收藏写（重命名/归类/归档/删除随工单 05 生命周期端点）。"""
+    """资料条目只读查询与派生（写侧生命周期动作见 lifecycle.py，工单 05）。"""
 
     @staticmethod
     async def _availability_by_item(
@@ -138,7 +138,7 @@ class LibraryService:
         }
         rows = (
             await session.execute(
-                _PARSE_JOB_SQL, {"ids": all_record_ids, "types": list(_PARSE_JOB_TYPES)}
+                _PARSE_JOB_SQL, {"ids": all_record_ids, "types": list(PARSE_JOB_TYPES)}
             )
         ).all()
         job_states: dict[str, set[str]] = {}
@@ -160,13 +160,13 @@ class LibraryService:
         return {cast(str, cid): name for cid, name in rows.all()}
 
     @staticmethod
-    async def _linked_record_ids(session: AsyncSession, item_id: str) -> list[str]:
+    async def linked_record_ids(session: AsyncSession, item_id: str) -> list[str]:
         rows = (await session.execute(_LINKED_RECORD_IDS_SQL, {"ids": [item_id]})).all()
         return [cast(str, row.record_id) for row in rows]
 
     @staticmethod
     async def item_out(session: AsyncSession, item: LibraryItem) -> LibraryItemOut:
-        record_ids = await LibraryService._linked_record_ids(session, item.id)
+        record_ids = await LibraryService.linked_record_ids(session, item.id)
         availability = await LibraryService._availability_by_item(session, {item.id: record_ids})
         course_names = await LibraryService._course_names(session, {item.course_id})
         out = LibraryItemOut.model_validate(item)
@@ -187,7 +187,15 @@ class LibraryService:
 
     @staticmethod
     async def list_items(session: AsyncSession, query: LibraryItemListQuery) -> LibraryItemListOut:
-        stmt = select(LibraryItem).where(LibraryItem.deleted_at.is_(None))
+        # 回收站视图 = 仅软删条目；其余视图一律排除软删，且除归档视图外
+        # 排除 ARCHIVED（归档退出默认浏览，05 语义）。
+        if query.view == LibrarySmartView.TRASH:
+            stmt = select(LibraryItem).where(LibraryItem.deleted_at.is_not(None))
+        else:
+            expected_status = "ARCHIVED" if query.view == LibrarySmartView.ARCHIVED else "ACTIVE"
+            stmt = select(LibraryItem).where(
+                LibraryItem.deleted_at.is_(None), LibraryItem.status == expected_status
+            )
         if query.view == LibrarySmartView.FAVORITES:
             stmt = stmt.where(LibraryItem.favorite.is_(True))
         elif query.view == LibrarySmartView.NEEDS_REVIEW:
@@ -249,11 +257,33 @@ class LibraryService:
         return out
 
     @staticmethod
+    async def compose_outs(session: AsyncSession, items: list[LibraryItem]) -> list[LibraryItemOut]:
+        """批量组装出参（可用性派生 + 课程名；整理扫描等读侧共用）。"""
+        link_rows = (
+            await session.execute(_LINKED_RECORD_IDS_SQL, {"ids": [i.id for i in items]})
+        ).all()
+        item_record_ids: dict[str, list[str]] = {item.id: [] for item in items}
+        for row in link_rows:
+            item_record_ids.setdefault(cast(str, row.library_item_id), []).append(
+                cast(str, row.record_id)
+            )
+        availability = await LibraryService._availability_by_item(session, item_record_ids)
+        course_names = await LibraryService._course_names(
+            session, {item.course_id for item in items}
+        )
+        return [LibraryService._compose_out(item, availability, course_names) for item in items]
+
+    @staticmethod
     async def get_item(session: AsyncSession, item_id: str) -> LibraryItemDetailOut:
-        item = await LibraryService._active_item(session, item_id)
+        # 回收站条目仍可只读查看（05：检查器展示 + 恢复/彻底删除入口）。
+        item = await session.get(LibraryItem, item_id)
+        if item is None:
+            raise CodedHTTPException(
+                code="LIBRARY_ITEM_NOT_FOUND", status_code=404, detail="资料条目不存在"
+            )
         detail = LibraryItemDetailOut.model_validate(item)
         detail.source_metadata = _load_metadata(item.metadata_json)
-        record_ids = await LibraryService._linked_record_ids(session, item_id)
+        record_ids = await LibraryService.linked_record_ids(session, item_id)
         availability = await LibraryService._availability_by_item(session, {item_id: record_ids})
         detail.availability = availability.get(item_id, LibraryAvailability.EMPTY)
         seg_rows = (
@@ -266,7 +296,7 @@ class LibraryService:
                 select(ProcessingJob.error_code)
                 .where(
                     ProcessingJob.record_id.in_(record_ids),
-                    ProcessingJob.job_type.in_(_PARSE_JOB_TYPES),
+                    ProcessingJob.job_type.in_(PARSE_JOB_TYPES),
                     ProcessingJob.status == ProcessingJobStatus.FAILED,
                 )
                 .order_by(ProcessingJob.updated_at.desc(), ProcessingJob.id.desc())
@@ -299,18 +329,9 @@ class LibraryService:
         return detail
 
     @staticmethod
-    async def patch_item(session: AsyncSession, item_id: str, favorite: bool) -> LibraryItemOut:
-        async with session.begin():
-            item = await LibraryService._active_item(session, item_id)
-            item.favorite = favorite
-            # 不 refresh：refresh 会丢弃未 flush 的属性修改；expire_on_commit=False
-            # 使提交后属性仍可读。
-        return await LibraryService.item_out(session, item)
-
-    @staticmethod
     async def get_content(session: AsyncSession, item_id: str, limit: int) -> LibraryItemContentOut:
-        await LibraryService._active_item(session, item_id)
-        record_ids = await LibraryService._linked_record_ids(session, item_id)
+        await LibraryService.active_item(session, item_id)
+        record_ids = await LibraryService.linked_record_ids(session, item_id)
         content = ""
         if record_ids:
             alive = list(
@@ -434,7 +455,8 @@ class LibraryService:
         ]
 
     @staticmethod
-    async def _active_item(session: AsyncSession, item_id: str) -> LibraryItem:
+    async def active_item(session: AsyncSession, item_id: str) -> LibraryItem:
+        """未软删条目访问器（404 NOT_FOUND）；回收站条目走 lifecycle 的专属访问器。"""
         item = await session.get(LibraryItem, item_id)
         if item is None or item.deleted_at is not None:
             raise CodedHTTPException(

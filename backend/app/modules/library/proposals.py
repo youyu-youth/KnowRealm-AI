@@ -10,7 +10,9 @@ CodedHTTPException 表示应用失败（框架在独立小事务落 FAILED + err
 import json
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
+from uuid import uuid4
 
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,15 +20,25 @@ from app.db.base import utcnow
 from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import (
     AgentProposalOut,
+    OrganizePayload,
+    ProposalCreateRequest,
     ProposalListQuery,
     ProposalStatus,
     ProposalType,
+    ResearchIngestPayload,
 )
 from app.shared.errors import CodedHTTPException
 
 # 应用器注册表：proposal_type → 领域应用函数（05/06 落地时注册）。
 ProposalApplier = Callable[[AsyncSession, AgentProposal], Awaitable[object]]
 _APPLIERS: dict[ProposalType, ProposalApplier] = {}
+
+# payload 判别校验表：创建侧拒绝任意 SQL/路径/Shell 形状的载荷（ADR-0024）。
+_PAYLOAD_SCHEMAS: dict[ProposalType, type[BaseModel]] = {
+    ProposalType.ORGANIZE: OrganizePayload,
+    ProposalType.RESEARCH_INGEST: ResearchIngestPayload,
+    # MEMORY 的载荷 schema 随工单 06 注册。
+}
 
 
 def register_applier(proposal_type: ProposalType, applier: ProposalApplier) -> None:
@@ -78,11 +90,16 @@ class ProposalService:
 
     @staticmethod
     async def confirm(session: AsyncSession, proposal_id: str) -> AgentProposalOut:
-        """确认并应用：应用器写入与 APPLIED 同事务；失败独立落 FAILED 后 422。"""
+        """确认并应用：应用器写入与 APPLIED 同事务；失败独立落 FAILED 后 422。
+
+        FAILED 提案可再次确认（工单 05：失败留稳定错误码可重试）——
+        APPLIED / REJECTED 是终局，重复确认 409。
+        """
         try:
             async with session.begin():
                 proposal = await ProposalService._get(session, proposal_id)
-                if proposal.status != ProposalStatus.PENDING:
+                decided = (ProposalStatus.PENDING.value, ProposalStatus.FAILED.value)
+                if proposal.status not in decided:
                     raise CodedHTTPException(
                         code="PROPOSAL_ALREADY_DECIDED",
                         status_code=409,
@@ -118,6 +135,44 @@ class ProposalService:
         return _proposal_out(refreshed)
 
     @staticmethod
+    async def create(session: AsyncSession, body: ProposalCreateRequest) -> AgentProposalOut:
+        """通用提案创建（工单 05）：payload 按 proposal_type 判别校验后落库，
+        创建不改任何业务事实。尚未注册 payload schema 的类型（MEMORY）拒绝。"""
+        schema = _PAYLOAD_SCHEMAS.get(body.proposal_type)
+        if schema is None:
+            raise CodedHTTPException(
+                code="PROPOSAL_PAYLOAD_INVALID",
+                status_code=422,
+                detail="该提案类型暂不支持创建",
+            )
+        try:
+            validated = schema.model_validate(body.payload)
+        except ValidationError as exc:
+            raise CodedHTTPException(
+                code="PROPOSAL_PAYLOAD_INVALID",
+                status_code=422,
+                detail="提案载荷不符合该类型的结构要求",
+            ) from exc
+        # 落库的是判别校验后的清洗载荷（model_dump）：未知键不持久化，
+        # 存储层与 schema 形状一致（ADR-0024 禁任意 SQL/路径/Shell 形状）。
+        cleaned_payload = validated.model_dump()
+        async with session.begin():
+            proposal = AgentProposal(
+                id=str(uuid4()),
+                proposal_type=body.proposal_type.value,
+                status=ProposalStatus.PENDING.value,
+                session_id=body.session_id,
+                message_id=body.message_id,
+                target_type=body.target_type,
+                target_id=body.target_id,
+                payload_json=json.dumps(cleaned_payload, ensure_ascii=False),
+                created_at=utcnow(),
+            )
+            session.add(proposal)
+            await session.flush()
+            return _proposal_out(proposal)
+
+    @staticmethod
     async def reject(session: AsyncSession, proposal_id: str) -> AgentProposalOut:
         """拒绝：只改提案状态，不改任何业务事实。"""
         async with session.begin():
@@ -136,7 +191,10 @@ class ProposalService:
     async def _mark_failed(session: AsyncSession, proposal_id: str, error_code: str) -> None:
         async with session.begin():
             proposal = await session.get(AgentProposal, proposal_id)
-            if proposal is not None and proposal.status == ProposalStatus.PENDING.value:
+            if proposal is not None and proposal.status in (
+                ProposalStatus.PENDING.value,
+                ProposalStatus.FAILED.value,
+            ):
                 proposal.status = ProposalStatus.FAILED.value
                 proposal.error_code = error_code
                 proposal.decided_at = utcnow()

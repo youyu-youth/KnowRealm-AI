@@ -657,12 +657,10 @@ async def test_library_endpoints(tmp_path: Path) -> None:
         searched = (await client.get("/api/library/items", params={"q": "音频"})).json()
         assert searched["total"] == 1
         # 搜索词中的 %/_ 是字面量而非通配符（escape_like + ESCAPE 子句生效）
-        assert (
-            await client.get("/api/library/items", params={"q": "音频%"})
-        ).json()["total"] == 0
-        assert (
-            await client.get("/api/library/items", params={"q": "第3讲 音_"})
-        ).json()["total"] == 0
+        assert (await client.get("/api/library/items", params={"q": "音频%"})).json()["total"] == 0
+        assert (await client.get("/api/library/items", params={"q": "第3讲 音_"})).json()[
+            "total"
+        ] == 0
         typed = (await client.get("/api/library/items", params={"source_type": "TEXT"})).json()
         assert typed["total"] == 1 and typed["items"][0]["source_type"] == "TEXT"
         empty_page = (await client.get("/api/library/items", params={"offset": 10})).json()

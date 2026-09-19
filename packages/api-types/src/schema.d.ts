@@ -516,11 +516,39 @@ export interface paths {
         get: operations["get_library_item_api_library_items__item_id__get"];
         put?: never;
         post?: never;
+        /**
+         * Delete Library Item
+         * @description 软删入回收站（默认，30 天可恢复、不级联派生 Record）；permanent=true
+         *     物理删除（存在未软删派生 Record 时 409），返回 204。
+         */
+        delete: operations["delete_library_item_api_library_items__item_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Patch Library Item
+         * @description 重命名（title）/ 归类（course_id，null=取消归类）/ 收藏（favorite）。
+         */
+        patch: operations["patch_library_item_api_library_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/library/items/{item_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Library Item
+         * @description 归档：退出默认浏览与来源召回，快照与关联保留。
+         */
+        post: operations["archive_library_item_api_library_items__item_id__archive_post"];
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch Library Item */
-        patch: operations["patch_library_item_api_library_items__item_id__patch"];
+        patch?: never;
         trace?: never;
     };
     "/api/library/items/{item_id}/content": {
@@ -534,6 +562,143 @@ export interface paths {
         get: operations["get_library_item_content_api_library_items__item_id__content_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/items/{item_id}/rebuild-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Library Item Index
+         * @description 索引重建任务（INDEX_REBUILD）：索引是可再生衍生数据，条目存在即受理。
+         */
+        post: operations["rebuild_library_item_index_api_library_items__item_id__rebuild_index_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/items/{item_id}/refetch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refetch Library Item
+         * @description 同 URL 重新抓取 → 新条目（不覆盖旧快照、不建版本表）。
+         */
+        post: operations["refetch_library_item_api_library_items__item_id__refetch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/items/{item_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Library Item
+         * @description 回收站恢复：校验快照完整性并幂等重建索引。
+         */
+        post: operations["restore_library_item_api_library_items__item_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/items/{item_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Library Item
+         * @description 失败重试：复用解析链最新 FAILED 任务（attempts 归零）。
+         */
+        post: operations["retry_library_item_api_library_items__item_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/items/{item_id}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unarchive Library Item */
+        post: operations["unarchive_library_item_api_library_items__item_id__unarchive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/organize/propose": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Propose Library Organize
+         * @description LLM 生成结构化标题与归类建议 → ORGANIZE 提案（逐项确认应用）。
+         */
+        post: operations["propose_library_organize_api_library_organize_propose_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/organize/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan Library Organize
+         * @description 确定性检测（零 LLM）：重复哈希组 / 处理异常 / 未归类清单。
+         */
+        post: operations["scan_library_organize_api_library_organize_scan_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -638,7 +803,13 @@ export interface paths {
         /** List Proposals */
         get: operations["list_proposals_api_proposals_get"];
         put?: never;
-        post?: never;
+        /**
+         * Create Proposal
+         * @description 创建提案（不改事实）：payload 按 proposal_type 判别校验。
+         *
+         *     当前消费方：研究会话对 web_search 候选来源的「建议保存」（RESEARCH_INGEST）。
+         */
+        post: operations["create_proposal_api_proposals_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3071,6 +3242,8 @@ export interface components {
             course_name?: string | null;
             /** Created At */
             created_at: string;
+            /** Deleted At */
+            deleted_at?: string | null;
             /**
              * Derived Records
              * @default []
@@ -3134,6 +3307,8 @@ export interface components {
             course_name?: string | null;
             /** Created At */
             created_at: string;
+            /** Deleted At */
+            deleted_at?: string | null;
             /** Favorite */
             favorite: boolean;
             /** Fetched At */
@@ -3167,11 +3342,18 @@ export interface components {
         };
         /**
          * LibraryItemPatch
-         * @description 02 仅开放收藏；重命名/归类/归档/删除随工单 05 生命周期端点。
+         * @description 05 生命周期：重命名（title）/ 归类（course_id，null=取消归类）/ 收藏。
+         *
+         *     字段未提供与显式置 null 语义不同（course_id=null 是取消归类），
+         *     路由层以 model_fields_set 判别。
          */
         LibraryItemPatch: {
+            /** Course Id */
+            course_id?: string | null;
             /** Favorite */
             favorite?: boolean | null;
+            /** Title */
+            title?: string | null;
         };
         /**
          * LibraryRecordOut
@@ -3209,7 +3391,7 @@ export interface components {
          * LibrarySmartView
          * @enum {string}
          */
-        LibrarySmartView: "all" | "recent" | "favorites" | "needs_review";
+        LibrarySmartView: "all" | "recent" | "favorites" | "needs_review" | "archived" | "trash";
         /**
          * LibrarySourceType
          * @enum {string}
@@ -3386,6 +3568,41 @@ export interface components {
              */
             target_concept_id: string;
         };
+        /**
+         * OrganizeDuplicateGroup
+         * @description 确定性重复组：未软删且同 content_hash 的条目（≥2 才成组）。
+         */
+        OrganizeDuplicateGroup: {
+            /** Content Hash */
+            content_hash: string;
+            /** Items */
+            items: components["schemas"]["LibraryItemOut"][];
+        };
+        /**
+         * OrganizeProposeOut
+         * @description LLM 建议落为 ORGANIZE 提案后的返回（每条建议一提案，逐项确认）。
+         */
+        OrganizeProposeOut: {
+            /** Created */
+            created: components["schemas"]["AgentProposalOut"][];
+            /**
+             * Skipped
+             * @default []
+             */
+            skipped: string[];
+        };
+        /**
+         * OrganizeScanOut
+         * @description 确定性检测结果（零 LLM）：机械问题先暴露，AI 只处理语义建议。
+         */
+        OrganizeScanOut: {
+            /** Duplicates */
+            duplicates: components["schemas"]["OrganizeDuplicateGroup"][];
+            /** Failed Items */
+            failed_items: components["schemas"]["LibraryItemOut"][];
+            /** Unclassified */
+            unclassified: components["schemas"]["LibraryItemOut"][];
+        };
         /** PreferencesOut */
         PreferencesOut: {
             /** Autostart */
@@ -3480,7 +3697,7 @@ export interface components {
          * ProcessingJobErrorCode
          * @enum {string}
          */
-        ProcessingJobErrorCode: "AUDIO_TRANSCODE_FAILED" | "ASR_AUTH_FAILED" | "ASR_QUOTA_EXHAUSTED" | "ASR_TEMPORARY_UNAVAILABLE" | "ASR_SUBMIT_UNKNOWN" | "ASR_RECOGNITION_FAILED" | "ASR_TASK_EXPIRED" | "NO_SPEECH_DETECTED" | "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "SQLITE_BUSY" | "WORKER_INTERRUPTED" | "INTERNAL_ERROR" | "INVALID_STRUCTURED_OUTPUT" | "PROVIDER_REQUEST_FAILED" | "STALE_TRANSCRIPT" | "LLM_OUTPUT_INVALID" | "LIBRARY_BACKFILL_FAILED" | "WEB_FETCH_BLOCKED_URL" | "WEB_FETCH_CONTENT_TOO_LARGE" | "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE" | "WEB_FETCH_UNREACHABLE" | "WEB_FETCH_EXTRACT_FAILED";
+        ProcessingJobErrorCode: "AUDIO_TRANSCODE_FAILED" | "ASR_AUTH_FAILED" | "ASR_QUOTA_EXHAUSTED" | "ASR_TEMPORARY_UNAVAILABLE" | "ASR_SUBMIT_UNKNOWN" | "ASR_RECOGNITION_FAILED" | "ASR_TASK_EXPIRED" | "NO_SPEECH_DETECTED" | "NON_UTF8_TEXT" | "CORRUPT_DOCUMENT" | "PASSWORD_PROTECTED" | "FORMAT_MISMATCH" | "NO_EXTRACTABLE_TEXT" | "TEMPORARY_IO" | "SQLITE_BUSY" | "WORKER_INTERRUPTED" | "INTERNAL_ERROR" | "INVALID_STRUCTURED_OUTPUT" | "PROVIDER_REQUEST_FAILED" | "STALE_TRANSCRIPT" | "LLM_OUTPUT_INVALID" | "LIBRARY_BACKFILL_FAILED" | "LIBRARY_INDEX_REBUILD_FAILED" | "WEB_FETCH_BLOCKED_URL" | "WEB_FETCH_CONTENT_TOO_LARGE" | "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE" | "WEB_FETCH_UNREACHABLE" | "WEB_FETCH_EXTRACT_FAILED";
         /** ProcessingJobOut */
         ProcessingJobOut: {
             /** Attempts */
@@ -3562,6 +3779,25 @@ export interface components {
             nickname?: string | null;
             /** @description 角色四选一 */
             primary_role: components["schemas"]["PrimaryRole"];
+        };
+        /**
+         * ProposalCreateRequest
+         * @description 通用提案创建（05）：payload 按 proposal_type 判别校验后落库，不改事实。
+         */
+        ProposalCreateRequest: {
+            /** Message Id */
+            message_id?: string | null;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            proposal_type: components["schemas"]["ProposalType"];
+            /** Session Id */
+            session_id?: string | null;
+            /** Target Id */
+            target_id?: string | null;
+            /** Target Type */
+            target_type?: string | null;
         };
         /**
          * ProposalStatus
@@ -7213,6 +7449,84 @@ export interface operations {
             };
         };
     };
+    delete_library_item_api_library_items__item_id__delete: {
+        parameters: {
+            query?: {
+                permanent?: boolean;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryItemOut"];
+                };
+            };
+            /** @description 已物理删除 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     patch_library_item_api_library_items__item_id__patch: {
         parameters: {
             query?: never;
@@ -7250,6 +7564,84 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_library_item_api_library_items__item_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryItemOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7330,6 +7722,505 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    rebuild_library_item_index_api_library_items__item_id__rebuild_index_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    refetch_library_item_api_library_items__item_id__refetch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryIngestAccepted"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    restore_library_item_api_library_items__item_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryItemOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_library_item_api_library_items__item_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryItemOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    unarchive_library_item_api_library_items__item_id__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryItemOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    propose_library_organize_api_library_organize_propose_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeProposeOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    scan_library_organize_api_library_organize_scan_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeScanOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -7827,6 +8718,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentProposalOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_proposal_api_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposalCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentProposalOut"];
                 };
             };
             /** @description Forbidden */

@@ -46,11 +46,14 @@ from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.service import MasteryService
 from app.modules.library import routes as library_routes
 from app.modules.library.backfill import backfill_spec, ensure_backfill_enqueued
+from app.modules.library.index_rebuild_worker import index_rebuild_spec
+from app.modules.library.lifecycle import LibraryLifecycleService
 from app.modules.llm.service import (
     CourseBrainModel,
     KnowledgePointModel,
     OpenAiCompatibleCourseBrainModel,
     OpenAiCompatibleKnowledgePointModel,
+    OpenAiCompatibleOrganizeModel,
     OpenAiCompatibleQuizGradingModel,
     OpenAiCompatibleQuizModel,
     OpenAiCompatibleReviewMaterialModel,
@@ -59,6 +62,7 @@ from app.modules.llm.service import (
     QuizGradingModel,
     QuizModel,
     ReviewMaterialModel,
+    StructuredModel,
     SummaryModel,
     TodoModel,
 )
@@ -111,6 +115,7 @@ def create_app(
     todo_model: TodoModel | None = None,
     review_material_model: ReviewMaterialModel | None = None,
     course_brain_model: CourseBrainModel | None = None,
+    organize_model: StructuredModel | None = None,
     import_archive: Path | None = None,
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
@@ -193,6 +198,7 @@ def create_app(
                 review_material_model or OpenAiCompatibleReviewMaterialModel()
             )
             app.state.course_brain_model = course_brain_model or OpenAiCompatibleCourseBrainModel()
+            app.state.organize_model = organize_model or OpenAiCompatibleOrganizeModel()
             app.state.asr_client = asr_client or TencentAsrClient()
 
             async def cleanup_course_tombstones() -> None:
@@ -210,6 +216,15 @@ def create_app(
             cleanup_task = asyncio.create_task(cleanup_course_tombstones())
             app.state.course_tombstone_cleanup_task = cleanup_task
             await cleanup_task
+            # 资料条目回收站保留期清理（05）：30 天届满且无活动引用才物理删除，
+            # 失败仅记日志（与索引回填同容错级，下次启动重试）。
+            try:
+                await LibraryLifecycleService.purge_expired_trash(session_factory)
+            except Exception:
+                logger.error(
+                    "library_trash_cleanup_failed",
+                    error_code="LIBRARY_TRASH_CLEANUP_FAILED",
+                )
             await CacheLifecycleService.cleanup_orphans(session_factory, resolved_data_dir)
             checkpoint_path = resolved_data_dir / "langgraph.db"
             initialize_checkpointer = not checkpoint_path.exists()
@@ -353,6 +368,14 @@ def create_app(
                                 resolved_data_dir,
                                 record_notifier,
                             ),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
+                    (
+                        "library_index_rebuild",
+                        lambda: JobRunner(
+                            index_rebuild_spec(session_factory, record_notifier),
                             session_factory,
                             record_notifier,
                         ),
