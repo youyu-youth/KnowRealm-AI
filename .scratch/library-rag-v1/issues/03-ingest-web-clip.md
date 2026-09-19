@@ -33,3 +33,20 @@
 - **[Standards-硬违规] Tauri 封装**：revealItemInDir/getDataDirectory 从 LibraryPage 下沉 services/tauri/libraryFiles.ts（revealLibrarySnapshot），对齐 desktop-tauri.md §1。
 - **[Standards] recover_running 复用 mark_failed**（替代手写终态字段）。
 - **备案不修**：LIMIT_EXCEEDED 1 MiB 口径（30k 属 plan18 未决+索引层限长，contract 03 记录①）；TEXT 无分片（与既有 PASTE 管线一致，复用优先；04 检索有 transcript 兜底）；capture⇄library 包级引用（02 先例，文件级无环）；AddLibraryItemDialog 160 行 JSX（贴上限不拆）；role="PRIMARY" 裸串（02 先例）。
+
+## 用户真机验收清单（不代勾）
+
+> 启动：`pnpm --filter @knowrealm/desktop tauri dev`（壳自动拉 sidecar）。检查器中若出现「AI 解读」按钮（Sparkles 图标）为并行 04 会话在制品，不在本票验收范围；chat 页异常同理。
+
+- [ ] 三路入库：/library 顶部「添加资料」→ 网页/文件/文本三标签切换正常
+- [ ] 文本：粘贴正文（可选标题/课程）→ 列表立即出现且「可检索」，检查器预览有正文
+- [ ] 网页：正常文章 URL → 「解析中」数秒转「可检索」，标题=页面标题，检查器含来源 URL/抓取时间/快照路径/分片数≥1
+- [ ] 文件：TXT/MD/PDF/DOCX → 「解析中」→「可检索」，分片数≥1
+- [ ] 无效输入：`ftp://` 报「仅支持 http(s) 地址」；`http://192.168.1.1` 报「受限网络范围」；空正文时添加按钮禁用
+- [ ] 判重：同 URL/同文件/同文本再导入 → 提示已存在 +「打开已有条目」（选中已有）/「仍然保留」（双份保留）
+- [ ] 失败降级：登录墙/正文极短 URL → 「失败」态；检查器显示提取失败原因 +「重新导入」「手动粘贴正文」；手动粘贴预填原 URL 与标题
+- [ ] 不轰炸：不可达域名失败后无自动重试刷屏，重启应用后失败态保持稳定
+- [ ] 系统入口：WEB 条目「打开原网页」走系统浏览器；「在资源管理器中显示」定位数据目录 `files\<record_id>\*.md` 快照
+- [ ] 可检索性：Ctrl+K 全局搜索能命中新入库条目标题
+- [ ] 回归：收件箱粘贴/文档导入正常且新捕获出现在资料库；既有数据浏览/收藏不受影响
+- [ ] （可选）SQLite 直查：`SELECT count(*) FROM document_segments WHERE library_item_id='<条目id>'` ≥1
