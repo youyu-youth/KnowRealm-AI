@@ -1,8 +1,16 @@
 import re
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_serializer,
+    field_validator,
+)
 
 
 class ReviewMaterialStatus(StrEnum):
@@ -37,10 +45,71 @@ class ReviewMaterialContent(BaseModel):
     @field_validator("mind_map_markdown")
     @classmethod
     def validate_mind_map(cls, value: str) -> str:
-        allowed = re.compile(r"^(?:#{1,6}\s+\S|[-*+]\s+\S|\d+[.)]\s+\S)")
-        if any(line.strip() and not allowed.match(line.strip()) for line in value.splitlines()):
-            raise ValueError("Markdown 大纲只能包含标题与列表行")
-        return value
+        return check_mind_map_lines(value)
+
+    @classmethod
+    def from_draft(cls, draft: "ReviewMaterialDraft") -> "ReviewMaterialContent":
+        """宽松草稿 → 严格契约：超长清单项按标点确定性切分。"""
+        return cls(
+            quick_review=draft.quick_review,
+            key_list=split_key_items(draft.key_list),
+            mind_map_markdown=draft.mind_map_markdown,
+        )
+
+
+class ReviewMaterialDraft(BaseModel):
+    """LLM 产出的宽松校验版：flash 级模型稳定写超 80 字清单项且无法按提示纠正，
+    每项长度在此不设限，由 from_draft 切分归一；其余约束与严格版一致。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    quick_review: str = Field(min_length=1, max_length=5000, description="考前速记 Markdown")
+    key_list: list[Annotated[str, StringConstraints(min_length=1)]] = Field(
+        min_length=1,
+        max_length=50,
+        description="按内容密度生成的 Top 重点清单",
+    )
+    mind_map_markdown: str = Field(
+        min_length=1,
+        max_length=5000,
+        description="仅含标题与列表行的 Markdown 大纲",
+    )
+
+    @field_validator("mind_map_markdown")
+    @classmethod
+    def validate_mind_map(cls, value: str) -> str:
+        return check_mind_map_lines(value)
+
+
+_KEY_ITEM_MAX_LENGTH = 80
+_KEY_ITEM_SPLITTERS = "。；;，,、"
+
+
+def check_mind_map_lines(value: str) -> str:
+    allowed = re.compile(r"^(?:#{1,6}\s+\S|[-*+]\s+\S|\d+[.)]\s+\S)")
+    if any(line.strip() and not allowed.match(line.strip()) for line in value.splitlines()):
+        raise ValueError("Markdown 大纲只能包含标题与列表行")
+    return value
+
+
+def split_key_items(items: list[str]) -> list[str]:
+    """超 80 字清单项按句读切分为多条；无标点可切时硬切；总数截到 50。"""
+    result: list[str] = []
+    for raw in items:
+        text = raw.strip()
+        while len(text) > _KEY_ITEM_MAX_LENGTH:
+            cut = max(
+                text.rfind(ch, 1, _KEY_ITEM_MAX_LENGTH + 1) for ch in _KEY_ITEM_SPLITTERS
+            )
+            if cut <= 0:
+                cut = _KEY_ITEM_MAX_LENGTH
+            piece = text[:cut].strip(_KEY_ITEM_SPLITTERS + " ")
+            if piece:
+                result.append(piece)
+            text = text[cut:].lstrip(_KEY_ITEM_SPLITTERS + " ")
+        if text:
+            result.append(text)
+    return result[:50]
 
 
 class ReviewMaterialAction(StrEnum):

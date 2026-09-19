@@ -1,15 +1,15 @@
-# AI课堂助手：功能升级与创新扩展设计（最终版）
+# KnowRealm-AI：功能升级与创新扩展设计（2026-09-18 定稿）
 
-> **文档定位**：Learning Brain（F1~F18）的**功能机制与交互设计参考**。⚠️ **历史文档**：编写于 2026-06 旧技术栈时期，正文中的技术实现与"现有系统"描述已过时，阅读前必读下方 §0 对齐声明；需求边界以《KnowRealm-AI-功能需求基线 v2.7》为准。
+> **文档定位**：Learning Brain（F1~F18）与资料库 / RAG / Learner Memory 的**功能机制与交互设计参考**。需求边界以《KnowRealm-AI-功能需求基线 v2.8》为准；表结构与技术选型分别以数据模型 v3.0、技术栈 v4.6 为准。
 > **目标**：不推翻现有“课堂记录 → AI 总结 → HITL → 知识点/习题/Todo/复习 → AI 问答”主流程，而是在其上增加长期学习状态建模能力，将产品从 **AI课堂助手** 逐步升级为 **AI Personal Learning Brain / AI Learning OS**。  
 > **适用端**：Tauri Desktop（Windows 为 V1 唯一首发平台）；微信小程序形态已废弃。  
 > **设计原则**：现有能力优先复用；扩展能力按阶段引入；所有 AI 判断尽可能可追溯、可验证、可被用户纠正。
 
 ---
 
-# 0. 与基线 v2.7 的对齐声明（必读）
+# 0. 与基线 v2.8 的对齐声明（必读）
 
-> 本文档编写于 2026-06 旧技术栈时期（微信小程序 + Spring Boot + MySQL + MinIO + Qdrant 设想）。产品与架构此后经基线 v1.1~v1.6 多轮演进，本文正文**未随之改写**。阅读规则如下。
+> 本文档最初编写于 2026-06，现已按本地优先桌面架构、资料库 / RAG Agent 与 Learner Memory 决策修订。早期章节中的 `t_` 表名只表达领域关系，不是建表依据；现行实现以三份权威文档与 ADR 为准。
 
 **本文档仍然有效的部分（现行价值）**：
 
@@ -23,14 +23,14 @@
 | # | 维度 | 本文过时表述（出现位置） | 现行权威 |
 |---|------|------------------------|---------|
 | D1 | 产品端形态 | 微信小程序 + Desktop 复用 | Tauri Desktop，Windows V1 唯一首发；小程序已废弃（基线 §1.3） |
-| D2 | "现有能力"叙述 | 微信登录 / Sa-Token / MinIO / 分享卡片 / 状态轮询（§2 整章） | 无登录/无账号（本地单用户，首启三步）；原始文件明文存数据目录 files/；不做分享=Markdown 本地导出；Record 级 SSE 仅通知失效、REST 为事实源、断线条件轮询（基线 §4.1/§4.6、决策 #3/#8/#15/#58） |
+| D2 | "现有能力"叙述 | 微信登录 / Sa-Token / MinIO / 分享卡片 / 状态轮询（§2 整章） | 无登录/无账号（本地单用户，首启四步）；原始文件明文存数据目录 files/；不做分享=Markdown 本地导出；Record 级 SSE 仅通知失效、REST 为事实源、断线条件轮询（基线 §4.1/§4.6、决策 #3/#8/#15/#58） |
 | D3 | 捕获入口 | 仅"录音+文档"双入口 | 五级捕获（速记/粘贴/剪藏/音频/文档）+ 收件箱 Inbox，records.course_id 可空（决策 #21） |
 | D4 | 目标用户与课程上下文 | 全学段学生；education_stage 唯一个性化输入 | 一切学习知识的人；learning_context + education_stage/depth 双字段（决策 #23） |
-| D5 | AI 对话形态 | 聊天仅作为 Record/Course 上下文二级功能 | 💬 AI 对话一级入口：自由聊天 + @记录/@课程/@全部资料挂载可切换；自由聊天不建向量索引、不进 Learning Evidence 链（决策 #22/#24） |
-| D6 | 后端技术栈 | Java / Spring Boot / Spring AI / MyBatis-Plus / Sa-Token（§27.1） | Tauri sidecar（Python 进程内）FastAPI + LangChain/LangGraph + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4.5） |
+| D5 | AI 对话形态 | 聊天仅作为 Record/Course 上下文二级功能 | 💬 AI 对话一级入口：FREE / RECORD / LIBRARY_ITEM / COURSE / ALL 五档范围；LIBRARY_ITEM 仅从资料详情创建，运行时强制条目范围；自由聊天不进 Learning Evidence 链（决策 #22/#24/#60） |
+| D6 | 后端技术栈 | 早期 Java / Spring 设想 | Tauri sidecar（Python 进程内）FastAPI + LangChain / LangGraph / DeepAgents + SQLite（WAL）本地数据目录为唯一事实源（技术栈 v4.6） |
 | D7 | 异步与缓存 | Redis/Redisson + RabbitMQ（§27.4/§27.5） | 自研 processing_jobs 队列（SQLite 表即队列 + sidecar 进程内 asyncio worker），无 Redis / RabbitMQ / procrastinate（决策 #1） |
-| D8 | 向量检索 | Qdrant（§10.4/§25.3/§27.2） | sqlite-vec（vec0 虚拟表）+ semantic_embeddings 统一表；明确不做 Qdrant / pgvector（技术栈 v4.5） |
-| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v2.9（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
+| D8 | RAG 检索 | 早期独立向量数据库设想 | Segment FTS + Concept 扩展为基线；真实黄金集证明净增益后才在 LibraryRetrievalService 内加入 sqlite-vec；不做独立向量服务（技术栈 v4.6） |
+| D9 | 数据表设计 | 全文 `t_` 前缀表草案（§7.3、§12、§13、§25、§26 等） | 数据模型 v3.0（无前缀 snake_case 定稿）；本文表结构仅作字段语义参考，不得据此建表 |
 | D10 | shares 表 | §25.1 保留 t_share | 不建 shares 表（决策 #15） |
 | D11 | F15 落地 | 不新增表（仅 action_type=PREVIEW） | 依赖资料库来源资产模型（原 course_materials 草案由 §42 统一重审，决策 #12） |
 | D12 | Teach-back 输入 | 语音解释 → ASR（§18.1） | V1 文本先行，语音后补（决策 #19） |
@@ -39,7 +39,7 @@
 | D15 | 优先级与阶段 | §6 S+/A+ 评级、§32 Phase 1~7、§37 P0~P3 | 基线 §4.7 阶段映射（F1=P2 … F16=P6）与 §5.1 阶段规划 |
 | D16 | 产品定位语境 | 毕业设计 / 项目展示 / 比赛（§33） | 开源、面向个人使用（基线头部） |
 
-> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.7》《技术栈设计与审查-v4.5》《KnowRealm-AI-数据模型-v2.9》。
+> 一句话读法：**机制与交互看本文；边界 / 优先级 / 技术选型 / 表结构看三份权威文档**——《KnowRealm-AI-功能需求基线-v2.8》《技术栈设计与审查-v4.6》《KnowRealm-AI-数据模型-v3.0》。
 
 ---
 
@@ -110,7 +110,7 @@ Tutor / Review / Quiz / Teach-back / Challenge
 
 # 2. 现有 PRD 能力：保持不变的基线
 
-> ⚠️ **历史快照（见 §0 对齐声明 D2）**：本章描述的是本文写作时点的旧项目形态（微信小程序 / Spring Boot / MinIO 等）。现行产品形态与功能范围以《功能需求基线 v2.7》§4 为准，**不得把本章当作现行功能清单**。本章的现存价值仅在于说明"M1~M6 模块边界被 Learning Brain 扩展复用"这一结构关系。
+> ⚠️ **历史快照（见 §0 对齐声明 D2）**：本章仅用于说明早期 M1~M6 模块如何被 Learning Brain 复用，不是现行功能清单。现行产品形态与功能范围以《功能需求基线 v2.8》§4 为准。
 
 以下能力视为已经实现，扩展设计必须建立在这些能力上，不重复建设。
 
@@ -619,7 +619,7 @@ Course Concept Graph                         Learning Evidence
 
 # 7. F1 — Transcript Segment + Evidence Timeline
 
-> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v2.9》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
+> **✅ 已实施回写（2026-09-10，F1 六票 + 07 补票完结）**：本章为草案，表结构权威见《数据模型 v3.0》§4.5（无 `t_` 前缀；四表为派生定位/引用结构，无软删列；转写分片时间戳列可空 = 无时间轴来源）。与草案的定案差异：
 >
 > - **术语定名「来源时间轴」（Source Timeline）**：本章 "Evidence Timeline" 废弃——Evidence 一词专属「学习证据」（Learning Evidence）；
 > - **交付边界**：本期 = 数据地基（四表 + 切分管道 + 存量回填）+ 来源时间轴前端；不含音频回放、不含 AI 产物 graph prompt 引用改造、不动搜索索引；
@@ -978,7 +978,7 @@ Course Brain 不是“知识图谱”的另一个名字。
 ```text
 Course Brain
 ├── Course Knowledge Graph
-├── Course Semantic Memory
+├── Course RAG Corpus
 ├── Cross-record Retrieval
 └── Concept Evolution
 ```
@@ -1089,32 +1089,16 @@ evidence_count
 created_at
 ```
 
-## 10.4 Course Semantic Memory
+## 10.4 Course RAG Corpus
 
-推荐使用扩展文档中建议的 Qdrant。
+Course RAG Corpus 是可回溯的检索语料，不是第二套“记忆”：
 
-索引对象：
+- Transcript Segment / Document Segment 是可引用 Evidence；
+- 已确认 Knowledge Point、AI Summary 和 Concept 只用于导航、查询扩展或匹配提示，不得冒充原文引用；
+- 草稿、候选 Concept 和已软删除来源不进入可引用集合；
+- 基线检索为 Segment FTS + CONFIRMED Concept 扩展；只在真实黄金集证明词汇错配且向量有净增益时，才在同一 `LibraryRetrievalService` 内加入 sqlite-vec。
 
-- Transcript Segment；
-- Document Segment；
-- AI Summary 可用于导航，但不作为原始 Evidence；
-- Knowledge Point；
-- Concept Description。
-
-Qdrant payload 建议：
-
-```text
-user_id
-course_id
-record_id
-file_id
-segment_id
-source_type
-concept_ids
-created_at
-```
-
-查询必须先按 `user_id + course_id` 过滤，保证数据隔离。
+本地单用户不存在 `user_id` 过滤维度。隔离由运行时强制的 `LIBRARY_ITEM` / `RECORD` / `COURSE` / `ALL` 范围、软删除与归档护栏共同保证。
 
 ## 10.5 Course-level RAG
 
@@ -1129,9 +1113,9 @@ Question
    ↓
 Query Rewrite
    ↓
-Course Filter
+Runtime Scope Filter
    ↓
-Qdrant Retrieval
+LibraryRetrievalService
    ↓
 Evidence Rerank
    ↓
@@ -1222,7 +1206,7 @@ MISCONCEPTION_RISK
 
 # 12. F6 — Learning Event + Learning Evidence
 
-> **✅ 已实施回写（2026-09-14，learning-evidence 四票完结，ADR-0021）**：本章为草案，表结构权威见《数据模型 v2.9》。与草案的定案差异：
+> **✅ 已实施回写（2026-09-14，learning-evidence 四票完结，ADR-0021）**：本章为草案，表结构权威见《数据模型 v3.0》。与草案的定案差异：
 >
 > - **四事件先行**（总结确认 / 知识点确认 / 逐题作答 / 交卷），与业务动作同事务写入，统一经 `learning.events.write_learning_event`；幂等键形制 `{event-slug}:{source-id}`（独立 `idempotency_key` 列设想未采用，`event_id` 为 uuid4）；
 > - **消费为独立 asyncio 水位循环**：不入 processing_jobs；水位 = SQLite 隐式 rowid 单调扫描、禁 NOT EXISTS、失败 3 次跳过不建死信表；
@@ -2704,13 +2688,13 @@ t_concept_relation
 t_record_concept
 ```
 
-Qdrant：
+RAG Corpus / 可重建索引：
 
 ```text
-Transcript Segment Vector
-Document Segment Vector
-Knowledge Point Vector
-Concept Vector
+Transcript Segment FTS
+Document Segment FTS
+Concept Hint / Query Expansion
+semantic_embeddings（仅真实黄金集触发）
 ```
 
 ---
@@ -2804,120 +2788,33 @@ t_source_anchor
 
 # 27. 技术实现建议
 
-> ⚠️ **历史快照（见 §0 对齐声明 D6/D7/D8/D13）**：本章 27.1~27.5 与 27.9 的技术选型（Java 系栈 / Qdrant / Redis / RabbitMQ / OTel+Langfuse）**已全部作废**，现行技术选型以《技术栈设计与审查-v4.5》为准。本章仅 27.6（FSRS 分阶段）、27.7（ECharts）、27.8（一期不做 TTS）的方向性结论仍有效。
+> 以下结论与《技术栈设计与审查-v4.6》一致：只引入当前垂直闭环需要的部件。
 
-> 以下技术以现有 PRD 与原扩展设计为基础，不为了“技术炫技”强行增加中间件。
+## 27.1 应用与事实存储
 
-## 27.1 继续使用的现有技术
+- Tauri 2 + React/TypeScript 承载 Desktop UI，FastAPI sidecar 承载本地业务与 AI 能力；
+- `knowrealm.db` 是业务事实唯一来源，原始文件与来源快照位于用户可见数据目录；
+- `langgraph.db` 仅保存 Graph Checkpoint / 运行态，不保存课程事实、学习者记忆或未决业务提案。
 
-```text
-Java 17
-Spring Boot 3.4.5
-Spring AI 1.1.5
-Spring AI Alibaba Agent Framework
-DashScope / qwen-plus
-MyBatis-Plus
-MySQL
-Redis / Redisson
-MinIO
-Tencent ASR
-SSE
-Sa-Token
-```
+## 27.2 RAG 与索引
 
----
+- `LibraryRetrievalService` 统一执行范围过滤、Segment FTS、Concept 扩展、Source Anchor 回链与可选 sqlite-vec；
+- Agent 只暴露一个 `search_library(query)`，不直接操作 FTS、向量表或业务表；
+- Neo4j、Qdrant、ElasticSearch 不引入；实际数据规模或评测结果证明 SQLite 方案不足时再重评。
 
-## 27.2 Qdrant：推荐在 Course Brain 阶段引入
+## 27.3 确定性业务与 Agent 编排
 
-用途：
+- 入库、解析、分片、索引、生命周期、导出恢复由 Feature Service + JobRunner 处理；
+- LangChain 承载模型、工具与结构化输出，LangGraph 只用于需要分支、循环或 interrupt 的流程，DeepAgents 仅承载查询改写、多轮检索与回答等不确定任务；
+- Agent 写动作先落 `agent_proposals`，用户确认后由领域 Service 执行。
 
-- Cross-record RAG；
-- Transcript Segment Retrieval；
-- Document Retrieval；
-- Evidence Retrieval；
-- Course Semantic Memory。
+## 27.4 异步任务
 
-不把 Qdrant 当主数据库。
+`processing_jobs` + sidecar 进程内 asyncio worker 继续承载可重试的后台任务，不引入 Redis、RabbitMQ 或 Celery。纯确定性转换保持幂等；不为毫秒级 Event → Evidence 消费强行入队。
 
-MySQL：
+## 27.5 本地可观测
 
-> 事实与关系。
-
-Qdrant：
-
-> 语义召回。
-
----
-
-## 27.3 Neo4j：暂不作为必选
-
-第一阶段：
-
-```text
-t_concept
-t_concept_relation
-```
-
-足够。
-
-当出现大量：
-
-```text
-三层前置查询
-学习路径搜索
-复杂图路径分析
-共同薄弱依赖分析
-```
-
-再考虑 Neo4j。
-
----
-
-## 27.4 Redis
-
-继续用于：
-
-- Cache；
-- Lock；
-- Agent 临时状态；
-- 高频 Course Brain 缓存；
-- Autopilot 首页推荐缓存；
-- Learning Profile 缓存。
-
-不承担长期事实存储。
-
----
-
-## 27.5 RabbitMQ / 异步任务
-
-如果当前项目已经具备异步任务体系，建议用于：
-
-```text
-Transcript Segment Embedding
-Concept Extraction
-Course Brain Re-index
-Learning Event Consumption
-Evidence Builder
-Mastery Recalculation
-Misconception Detection
-Passport Snapshot
-```
-
-推荐事件流程：
-
-```text
-业务事务提交
-   ↓
-保存 Learning Event
-   ↓
-异步消费
-   ↓
-生成 Evidence
-   ↓
-更新 Mastery
-```
-
-需要保证幂等。
+`llm_call_logs` 与结构化业务日志记录 model、prompt_version、token、latency、stategraph_node、retrieval_count、evidence_count 与 proposal 接受率。LangSmith 仅作开发者可选调试，默认关闭，上传前必须获得同意。
 
 ---
 
@@ -2945,9 +2842,7 @@ Passport Snapshot
 - Learner Profile；
 - Passport。
 
-微信小程序端按当前技术体系使用适配方案。
-
-Desktop 端后续可以直接使用 ECharts Web。
+Desktop 端复用现有 ECharts 能力，不另建可视化栈。
 
 ---
 
@@ -2969,27 +2864,7 @@ AI Tutor Voice
 
 ## 27.9 AI Observability
 
-Agent 增加后建议加入：
-
-```text
-Micrometer
-OpenTelemetry
-Langfuse（可选）
-```
-
-追踪：
-
-```text
-model
-prompt_version
-token
-latency
-stategraph_node
-retrieval_count
-evidence_count
-action_accept_rate
-recommendation_success_rate
-```
+观测口径已收口至 §27.5，本节不再引入第二套方案。
 
 ---
 
@@ -3228,7 +3103,7 @@ Learning Profile
 1. Concept；
 2. Concept Relation；
 3. Knowledge Point → Concept Resolution；
-4. Qdrant；
+4. LibraryRetrievalService（Segment FTS + Concept 扩展，条件式 sqlite-vec）；
 5. Course-level RAG；
 6. Evidence Chain；
 7. Knowledge GPS v1；
@@ -3308,7 +3183,7 @@ Learning Profile
 
 ## 创新 1：Evidence-driven Course Brain
 
-> 将课堂录音、文档、知识点转化为可追溯的课程语义记忆和 Concept Graph。
+> 将课堂录音、文档、知识点转化为可追溯的课程 RAG 语料和 Concept Graph。
 
 ---
 
@@ -3392,13 +3267,14 @@ Learning Profile
 Learning Brain 会比当前 PRD 保存更多行为数据，因此需要额外注意：
 
 1. Learning Event 只能用于学习功能；
-2. Course Brain Retrieval 必须带 `user_id` 数据隔离；
+2. Course Brain Retrieval 必须由运行时强制 `LIBRARY_ITEM` / `RECORD` / `COURSE` / `ALL` 范围；
 3. Study Pod 不可直接暴露对方完整 Learning Profile；
 4. Misconception 属于系统推测，前端应使用“可能”“待验证”等措辞；
 5. Learner Digital Twin 中的推测属性必须带 Confidence；
-6. 用户删除课程/Record 后，应明确对应 Segment、Anchor、Vector、Evidence 的清理策略；
-7. Qdrant 向量删除应与 MySQL 软删除/物理删除策略保持一致；
-8. 不在日志中保存完整课堂转写、Teach-back 全文或敏感聊天内容。
+6. 用户删除课程/Record/LibraryItem 后，应明确 Segment、Anchor、可重建索引与 Evidence 的生命周期；
+7. 资料条目软删除或归档后不得再召回；有活跃 Record 引用时禁止物理删除；
+8. 不在日志中保存完整课堂转写、Teach-back 全文或敏感聊天内容；
+9. 将来源片段或最小 Learner Context 发往外部模型前必须告知并征得同意，更换供应商后重新确认。
 
 ---
 
@@ -3462,11 +3338,11 @@ Mastery Update
 
 # 38. 来源与设计边界说明
 
-- 现有业务基线来自旧《AI课堂助手 PRD v2.1》（该文档已删除，有效内容现以《KnowRealm-AI-功能需求基线 v2.7》为准）。
+- 现行业务基线以《KnowRealm-AI-功能需求基线 v2.8》为准。
 - 原创新方向来自 `AI课堂助手-创新功能扩展设计-v1-去除排行榜.md`。
 - 本最终版对原扩展文档做了结构收敛与歧义消除，包括：
   - Knowledge Point 与 Concept 分层；
-  - Course Brain 拆分为 Knowledge Graph + Semantic Memory；
+  - Course Brain 拆分为 Knowledge Graph + RAG Corpus；
   - Learning Event 与 Learning Evidence 分层；
   - Mastery 统一写入口；
   - Misconception 增加 SUSPECTED / CONFIRMED / RESOLVED / DISMISSED；
@@ -3484,7 +3360,7 @@ Mastery Update
 
 # 39. 技术评估结论（2026-09-08 评审，2026-09-14 随交付同步）
 
-> **评估性质**：基于《功能需求基线 v2.7》决策 #1~#59、代码库实现现状（backend 19 个 feature-first 模块、21 张迁移、Summary / ReviewMaterial / Chat 三图在产——chat 以 deepagents 骨架装配（ADR-0018）、`learning_events` 四事件写入 + 独立消费循环已落地（ADR-0021））与《chatgpt根据需求文档和扩展功能文档给出的结论.md》，对扩展方向、Agent 架构演进、新业务方向与技术栈的核验裁定。本章为评审记录：**优先级 / 技术选型 / 表结构的权威仍在三份权威文档**，本章结论与之冲突时以权威文档为准（目前零冲突）。
+> **评估性质**：本章记录 2026-09-08~14 的阶段性 Agent 架构评估。现行边界已按《功能需求基线 v2.8》决策 #60/#61、ADR-0024/0025 与本文 §42/§43 更新；优先级、技术选型与表结构仍以三份权威文档为准。
 
 ## 39.1 ChatGPT 方案核验
 
@@ -3494,7 +3370,7 @@ Mastery Update
 
 | 建议 | 核验结果 | 处置 |
 |---|---|---|
-| Learning Memory Layer（长期学习习惯记忆） | 部分新增——F10.4 已有 `observed_learning_preference`，缺"容易忘什么/惯常混淆什么"的沉淀 | 并入 P4 LearnerProfileService（视图 + 一张轻表）；禁止演化为第二套 Evidence |
+| Learning Memory Layer（长期学习习惯记忆） | 已定稿为 Learner Memory V1 | 复用 `learner_preferences`，由 LearnerProfileService 聚合偏好、Misconception 与 Goal；禁止演化为第二套 Evidence 或通用 memories 表 |
 | Knowledge Transfer Detection（知识迁移检测） | **设计已有，ChatGPT 漏看**：mastery 表 `transfer_score`、`TRANSFER` evidence 类型、F13 Transfer Challenge 三处已覆盖 | 无需新增，按 P4/P5 既定设计实施 |
 | Learning Journey Timeline（学习成长时间线） | 好主意且低成本——本质是 `learning_events` 的时间轴回放 UI | 排 P6/P7，与 Passport 同期产出，不提前 |
 
@@ -3515,8 +3391,8 @@ Mastery Update
 |---|---|---|
 | ReAct Agent | ✅ 已有 | chat 以 deepagents 骨架装配 `create_agent` 循环（#53；ADR-0018） |
 | Agent Tools | ✅ 已落地（P2） | `search_transcript`（2026-09-13，分片级 FTS）+ `web_search`（2026-09-14，Tavily，#53）均已上线；工具=普通 Python 函数 + Pydantic 同源 schema；按域隔离遵守红线 #11（工具仅聊天域，Summary/Tutor/TeachBack 禁联网） |
-| RAG | ✅ 已规划 | FTS5+jieba 已交付；sqlite-vec + 混合检索 P2；课程级 RAG P3；不引新框架 |
-| Memory | ✅ 分层落地 | 三层：chat memory（已有，逐轮重建）→ learner state（P4 业务表）→ 学习习惯记忆（39.1 并入 LearnerProfileService）；不引 mem0/letta 类记忆框架（单用户场景 SQLite 业务表即记忆） |
+| RAG | ✅ 已定稿 | `LibraryRetrievalService` 统一 FTS+Concept 基线、范围与引用回链；sqlite-vec 只在真实黄金集证明净增益后加入同一检索层 |
+| Memory | ✅ Learner Memory V1 已定稿 | Chat history 仍由业务表逐轮重建；跨会话长期记忆复用 `learner_preferences` 并聚合 Misconception/Goal，只允许用户显式或经确认提案写入；不引 mem0/letta 或 DeepAgents Store 作业务事实源 |
 | Plan-and-Execute | ✅ 域内实现（P6） | Autopilot Graph 本质即此模式 + HITL；候选动作打分是确定性规则（红线 #8），自制域逻辑不套库模板 |
 | Reflection | ⚠️ 域内轻量已有，通用机制延后 | 域内反思已设计：Misconception 验证环、Summary 反馈循环、评分低置信复核（#20）；通用反思循环 token 成本翻倍，BYO-key 用户敏感，仅在评测证明必要处引入 |
 | Skills 技能系统 | ❌ 不做通用框架 | YAGNI——七类 prompt + 结构化输出 + prompt_version 已是轻量形态；用户自定义学习模式以"场景包"承载（39.3），不做开发者级 skill 框架 |
@@ -3554,7 +3430,7 @@ Mastery Update
 | LlamaIndex | 不引 | 需求面 = 课程级/全局 RAG，LangChain retriever + sqlite-vec 完全覆盖；两框架 = 两套抽象重复造轮子。重评触发：复杂多格式文档索引管道且 LangChain 侧明显吃力 |
 | DeepAgents | ✅ 已引入（chat 骨架，ADR-0018） | 仅取 create_agent + 中间件装配形态；子 agent / 虚拟文件系统规划不采用（红线 #2 禁超级 Graph） |
 | Pydantic AI | 不引 | 双 agent 框架违反单栈纪律；其类型安全优势已由 Pydantic 同源 Schema 覆盖；保持观察 |
-| 向量数据库 | sqlite-vec（已定案） | Qdrant/pgvector 在不做清单；个人学习数据量远达不到 SQLite 不适区 |
+| 向量检索 | sqlite-vec（条件能力） | Qdrant/pgvector 在不做清单；先用 FTS+Concept，只有真实黄金集证明词汇错配且向量有可测净增益时才启用 |
 | 工作流引擎（Temporal 等） | 否决 | processing_jobs 自研队列已过后端轮子审计（单人单进程下分布式编排是负资产） |
 | 消息队列（Redis/RabbitMQ/Celery） | 否决 | 不做清单明列；事件传播 = SQLite 表 + 进程内 asyncio（#1） |
 | 独立搜索引擎（ES） | 否决 | FTS5+jieba 已交付；trigram → sqlite-vec 演进路线已定 |
@@ -3610,7 +3486,7 @@ Mastery Update
 |---|---|---|
 | Agent Tools | ✅ 立即做 | 第一工具 `search_transcript`（2026-09-13 已实施：分片级 FTS + 挂载内单工具；原"直接包装 `SearchService.search`"设想据两代码事实修正，见 §40.3 A1 行）；工具引用结果落 `citations_json` 契约复用前端；挂载会话超 30k 转写保留"降级塞摘要"保底，细节由 agent 主动检索找回 |
 | RAG | ✅ 已规划 | FTS5 已覆盖关键词检索，向量不急于上——BM25+jieba 对中文学习语料够用；sqlite-vec 等"同义改写问不出"成为真实抱怨再进（#24 `semantic_embeddings.course_id` 可空已预留） |
-| Memory | ✅ 分层，不引框架 | 现状 = 逐轮重放业务表（最近 N 轮 + 字符预算窗口），**跨会话零记忆**；最小可行增量：学习偏好沉淀进 profile（SQLite 业务表即记忆，否决 mem0/letta） |
+| Memory | ✅ Learner Memory V1 | 逐轮聊天重放与长期 Learner Memory 分离；后者复用 `learner_preferences` + LearnerProfileService，可见、可编辑、可删除，普通聊天不静默抽取（否决 mem0/letta） |
 | Agent Workflow | ✅ 域内 graph | 现有 3 graph 的"确定性 Service 与 Graph 分离"模式正确；Autopilot 的 Plan-and-Execute 留 P6，勿提前 |
 | MCP | ⚠️ 延后 | 维持 §39.2 判断，触发条件具体化：**自研工具 ≥3 个且工具调用轨迹评测通过后**再评估 MCP client；MCP server 不做 |
 | Multi-Agent / Skills 框架 | ❌ 否决 | 多 graph 经 DB 共享状态优于运行时 agent 通信（红线 #2）；用户自定义学习模式走场景包机制（§39.3），不做开发者级 skill 框架 |
@@ -3623,7 +3499,7 @@ Mastery Update
 
 | # | 功能 | 基线对应 | 价值 | 难度 | 落地要点 |
 |---|---|---|---|---|---|
-| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v2.9 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
+| A0 | F1 Segment + Source Anchor（P2 数据地基第一步，2026-09-09 定为先做） | F1（§7）/ §37 P0 第一项 / §39.5 P2 首位 | ★★★ | 中 | 迁移 0019 起：transcript_segments（句子级）、document_segments、source_anchors、source_anchor_links 四张新表（数据模型 v3.0 §4.5，**已实施**——2026-09-10 六票+07 补票完结，见 §7 回写；learning_evidence 随 A3）；转写定稿 / 文档导入时切分写入 + 存量回填；引用从"80 字摘录"升级为转写时间戳 / 文档页码定位（前端跳转高亮已有）；是 A3 的数据前置 |
 | A1 | Chat 检索工具（Agent 第一工具） | 基线 §4.7"检索为第一工具"（#53） | ★★★ | 中低 | **已实施（2026-09-13，A1+A2 三票完结）**：实现形态定为「分片级 FTS 索引 + 挂载内单工具 `search_transcript`」（迁移 0020 `segment_search_index`，jieba 分词 + BM25；命中回业务表取逐字原文，无分片记录退化为全文子串）。与 §40.2 原设想「直接包装全局 `SearchService.search`」的差异源于两处代码事实：全局索引 snippet 产自 jieba token 串（非逐字原文，无法通过引用逐字校验）、索引 body 截断在 30,000 字符（覆盖不了 >30k 转写痛点）；`search_library` 留给 B2 连同跨记录范围胶囊一并设计。>30k 降级材料保留保底，`CHAT_PROMPT_VERSION` bump v3 |
 | A2 | 工具调用的前端呈现 | ——（基线未细化的实施项） | ★★★ | 中 | **已实施（2026-09-13）**：SSE 增 `tool_call` / `tool_result` 事件（消息流内检索状态卡「正在检索 → 命中 n 条 / 失败」，多次检索逐条陈列）；过程态与流式文本同生命周期、done / 中断后消失，不持久化（历史消息仍只有正文与引用）；右栏工具开关已由 B1 接真（2026-09-14，联网搜索按会话记忆） |
 | A3 | 事件消费框架 + Evidence Builder 最小版 | Phase 2 Learning Evidence | ★★★ | 中 | **已实施（2026-09-14，learning-evidence 四票完结，ADR-0021）**：四事件（总结确认 / 知识点确认 / 逐题作答 / 交卷）与业务动作同事务写入（统一经 `learning.events.write_learning_event`，幂等键 `{event-slug}:{source-id}`）；消费为独立 asyncio 水位循环——原「复用 JobRunner」设想按 ADR-0021 修正为不入 processing_jobs（毫秒级纯函数转换，领取协议属过度设计），水位 = SQLite 隐式 rowid 单调扫描（`learning_events.id` 是 uuid4 非单调）、禁 NOT EXISTS、event_id 预查幂等 + 唯一约束兜底、失败 3 次跳过不建死信表；映射集中声明（QUIZ 0.9/0.8、CONFIRMED → USER_CONFIRMATION 0.3·0.4/0.7、交卷不产证据防双计）；证据可由事件流清空重放再生；learning 域薄只读查询按记录/课程取证据流（Mastery / 学习上下文中间件共同底座）；零 LLM / 零前端 / 零新 API；concept_id / source_anchor_id 恒 NULL 留 P3/P5 |
@@ -3664,7 +3540,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 第 4.5 步 B6 对话转学习资产 V1（基线 Phase 2 已定项，B2 价值闭环） ← ✅ 已完成（2026-09-15，见 §40.3 B6 行）
 + 插入步  F4 Course Brain / Concept V1（原 P3，提前实施，ADR-0022） ← ✅ 已完成（2026-09-16，见 §40.3 B7 行）
 第 5 步   B5 sqlite-vec 混合检索（CB-01 合成评测全过 → 维持延后，真实语料吃力时进）
-其后      ~~Concept Mastery 收尾~~ ✅ 已完结（2026-09-18，concept-mastery-v1 六票，ADR-0023，数据模型 v2.9）→ 资料库 V1 + 网页剪藏首适配器（§41/§42）→ 长内容与其他知识起点；B3 继续压后
+其后      ~~Concept Mastery 收尾~~ ✅ 已完结（2026-09-18，concept-mastery-v1 六票，ADR-0023，数据模型 v3.0）→ 资料库 V1 + 网页剪藏首适配器 + Learner Memory V1（§41/§42/§43）→ 长内容与其他知识起点；B3 继续压后
 ```
 
 > 2026-09-16 补记：F4 Course Brain / Concept V1 由 P3 提前实施并完结（原计划序列「其后 → P3 Course Brain」已兑现完毕），数据模型随之升 v2.8（§4.6 三表标已实施）；B5 的升级前置评测（CB-01）已先行完成，结论与升级路径见 §40.3 B5 行。
@@ -3685,9 +3561,9 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 ## 41.1 波次与排序定案
 
 1. **开工时机**：Concept Mastery V1 六票（`.scratch/concept-mastery-v1/`）完结合并后开工本波次，不与在途工作交错。
-2. **第一外部版本 = 资料库 V1 + 网页剪藏首适配器**：资料库不是先造空框架，也不是等所有入口完成后补；内部依赖顺序为「来源资产契约 → 入库/分片/索引/生命周期 → 网页剪藏纵向验证 → 资料库工作台与 RAG Agent 验收」，完整范围见 §42。网页剪藏仍沿用基线 P2 定项：PRD L3 已定「贴 URL → sidecar 抓正文（readability）→ 文档管线」、R10 已定失败降级手动粘贴、`CaptureType.CLIP` 已预留。V1 只存提取后正文快照 + 来源元数据（URL/标题/域名/抓取时间，回跳原网页走系统浏览器），**不存原始 HTML**。抓取采用浏览器式请求头、超时与有限重试；硬反爬站点不引入破解手段，失败降级手动粘贴。浏览器扩展、页面版本对比留后续。
+2. **第一外部版本 = 资料库 V1 + 网页剪藏首适配器 + Learner Memory V1**：资料库不是先造空框架，也不是等所有入口完成后补；内部依赖顺序见 §42.13 七张纵向工单。网页剪藏为受限 HTTP(S) 抓取：`httpx` 获取原始字节，`trafilatura 2.2.x` 抽取正文与元数据，只存清洗后正文快照和 URL/标题/域名/抓取时间，不保存原始 HTML，不执行 JS、不抓子资源、不绕过登录或反爬；失败降级手动粘贴。浏览器扩展、页面版本对比留后续。
 3. **第二站 = 长内容**：`ai-summary/03`（>30k 总结 map-reduce，唯一实质性旧票）作为前置票先做，随后做书籍导入模式（见 §41.2）；书籍与后续起点复用 §42 的来源资产接口，不另建导入孤岛。论文（8~30 页）单 Record 管线现状即可承载，不阻塞。
-4. **B3 Tutor 场景包继续压后**（消费端增强，等 Mastery 真实使用反馈再定形态）；B5 sqlite-vec 维持延后不变（触发条件见 §40.3 B5 行）。
+4. **B3 Tutor 场景包继续压后**（消费端增强，等 Mastery 真实使用反馈再定形态）；B5 sqlite-vec 进入资料库工单 01 的条件门禁：若真实语料出现词汇不重合召回失败，且混合召回相对 FTS+Concept 有可测净增益，则在 V1 发布前实施，否则继续不建。
 5. 其后按序：**课程大纲初始化**（大纲/教材目录 → 建知识空间并建议导入材料，「空间初始化器」非新实体）→ **问题驱动研究会话**（复用自由对话 + web_search + 跨记录引用 + B6 对话转资产，增加「收集来源建立知识空间」出口，不上通用自主 Agent）→ 视频 / 仓库 / 文件夹等再决策。
 
 ## 41.2 大 PDF 书籍：拆章多 Record（关键架构定案）
@@ -3705,9 +3581,9 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 - **不翻案视频导入**（基线维持「不做」；本地视频→ffmpeg 提音轨→ASR 的窄票等核心闭环被真实使用后再决策）。
 - 不为书 / 论文 / 视频建独立领域模块、不新增第二套知识容器、不先造通用 Connector/Plugin 框架、不把静态解析 Agent 化；资料库是来源资产目录与检索入口，不取代唯一知识容器 Course（与归档文档第六节一致）。
 
-# 42. 资产库 / 资料库与 RAG Agent 完整能力（2026-09-17 决策补充）
+# 42. 资产库 / 资料库与 RAG Agent 完整能力（2026-09-18 grill 定稿）
 
-> **决策结论**：当前 `/library` 只是基于 `SearchService` 的跨课程搜索视图，`search_library` 只是课程 / 全部资料会话中的分片检索工具；二者不等于已经具备“资料来源统一入库、生命周期治理、RAG 语料管理与 Agent 消费”的完整资料库。资料库 V1 必须在 Concept Mastery V1 收尾后、其他知识起点之前开发，并与网页剪藏作为同一个外部版本交付。内部先建立最小来源资产接口，再用网页剪藏验证，禁止先造没有真实适配器的通用框架。
+> **决策结论**：当前 `/library` 只是基于 `SearchService` 的跨课程搜索视图，`search_library` 只是 COURSE / ALL 会话中的分片检索工具；二者不等于已经具备“资料来源统一入库、生命周期治理、RAG 语料管理与 Agent 消费”的完整资料库。经 Q1~Q42 定稿，资料库 V1 与网页剪藏、Learner Memory V1 作为一个外部版本交付，内部拆七张纵向工单；权威边界见 PRD v2.8、数据模型 v3.0、技术栈 v4.6 与 ADR-0024/0025。
 
 ## 42.1 定位与领域边界
 
@@ -3734,6 +3610,7 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 | 单个网页 / 论文 / 文件 | 一个资料条目 | 通常一个 Record | 资料入库后进入现有文档管线 |
 | 一本书 / 大 PDF / EPUB | 一个资料条目 | 按章多个 Record | 复用 §41.2 拆章规则 |
 | 一门课程 | 一个 Course + 多个资料条目 | 按材料 / 章节生成多个 Record | 课程初始化器只编排，不新建容器类型 |
+| 一个项目 / 工作主题 | 一个 CAREER / INTEREST 知识空间 + 多个资料条目 | 会议、文档、代码说明、复盘各自形成 Record | 复用 Course 容器与资料关系，不新建 Project 知识容器 |
 | 一个问题 / 研究主题 | 研究会话先检索外部来源 | 用户确认的来源才进入资料库并派生 Record | 禁止搜索结果静默入库 |
 | 音频 / 录音 / 粘贴 / 速记 | 现有正式来源文件或文本来源 | 沿用现有 Record | 通过存量回填进入统一浏览，不重写处理链 |
 | RSS / 频道 / 仓库 / 网站 | 持续来源 | 每次确认的版本或增量产生 Record | V1 不做，留后续同步适配器 |
@@ -3760,23 +3637,26 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 ### 资料库工作台
 
 - `/library` 从“输入关键词才有结果”的搜索壳升级为默认可浏览的资料工作台。
-- 提供全部 / 网页 / 文档 / 音频 / 书籍 / 文本视图，以及 Course、处理可用性、归档状态和时间筛选；筛选条件进入 URL search params。
+- 左侧二级导航采用扁平三组：智能视图（全部 / 最近 / 收藏 / 待整理 / 归档 / 资料条目回收站）、领域分类（资料来源 / 学习记录 / 学习资产）、最近 Course + 查看全部；Course 仅是筛选器，不展开文件夹树。
+- 顶部一级分类固定为“全部 / 资料来源 / 学习记录 / 学习资产”；来源类型、资产类型、Course、处理可用性、归档状态和时间进入二级筛选，筛选条件进入 URL search params。V1 不展示未支持的视频 / 图片入口。
 - 主区支持紧凑列表 / 网格，详情检查器展示来源元数据、本地路径、派生 Record、索引状态、错误与可用动作。
 - 支持打开 Record、定位原文、用系统浏览器打开 URL、在 Explorer 中显示本地文件。
 - 页面继续遵循固定工作区约束：整页不纵向滚动，仅列表和详情检查器各自滚动。
-- 批量操作 V1 只做归类、归档与删除；标签体系、智能收藏夹和自由文件夹树后置。
+- “全部”可以联邦展示异构对象，但只有语义一致的同类选择才开放归类、归档、删除等生命周期动作；跨类型公共动作只保留打开、收藏等安全能力。
+- 详情检查器按对象动态展示：资料条目看安全预览 / 来源 / 处理与 RAG 状态 / 派生 Record；Record 看来源与学习资产；学习资产看所属 Record 与 Source Anchor。“AI 解读”复用现有聊天；不提供讨论页签，不复制现有完整编辑器。
+- V1 不做自由文件夹树；标签进入后续，收藏 / 最近 / 待整理都是 Smart View，不是新容器。
 
-## 42.4 推荐数据模型
+## 42.4 数据模型定案
 
-现有 `course_materials` 只是尚未实施的 P5 课程文件草案，`document_segments.course_material_id` 与 `source_anchors.course_material_id` 也只是无外键预留。资料库开工时应在权威数据模型中将该草案**替换为通用来源资产模型**，不得同时建设 `course_materials` 与另一套全局资料表。
+现有 `course_materials` 只是尚未实施的 P5 课程文件草案，已在数据模型 v3.0 中由通用来源资产模型取代；不得同时建设同义的课程资料表与全局资料表。
 
-推荐采用两个最小事实表（最终表名与迁移编号在 spec 阶段冻结）：
+来源身份采用两个最小事实表；迁移编号在工单 01 冻结：
 
 ### `library_items`
 
 | 字段组 | 语义 |
 |---|---|
-| `id` / `course_id?` | 来源身份；允许 Inbox / 全局资料不归属 Course |
+| `id` / `course_id?` | 来源身份；允许 Inbox / 全局资料不归属 Course，Course 删除时置空而非级联删来源 |
 | `source_type` | AUDIO / DOCUMENT / WEB / BOOK / TEXT；V1 固定枚举 |
 | `title` / `origin_uri?` | 用户可编辑标题与原始 URL / 导入路径标识 |
 | `local_path?` / `mime_type?` / `file_size?` | 数据目录内正式快照；纯文本可无文件 |
@@ -3796,10 +3676,12 @@ Mastery Engine + fsrs 遗忘调度（黄金样本先行）、学习习惯记忆�
 配套调整：
 
 - `document_segments` 与 `source_anchors` 的预留 `course_material_id` 在迁移中统一重命名 / 替换为 `library_item_id` 并补外键；不保留同义双列。
+- `source_anchors.course_id` 调整为可空，允许全局 / 未归类来源拥有真实锚点；不得为通过约束伪造 Course。
 - 存量 `record_files` 继续作为 Record 正式来源文件；通过幂等回填创建资料条目与关联，不迁移或复制原文件字节。
 - 无 `record_files` 的 PASTE / QUICK_NOTE 生成文本型资料条目；一个 `MULTI_SOURCE` Record 可关联多个资料条目。
 - 物理文件清理由现有 tombstone / retention 纪律执行；存在活动 Record 关联时不得误删其唯一正式来源文件。
 - `search_index` 保持资产级导航搜索，`segment_search_index` 保持 RAG 片段检索；不合表。
+- 整理、研究入库和记忆写入建议统一进入轻量 `agent_proposals`；提案创建不改变事实，用户确认后由对应领域 Service 执行。它不是 LangGraph Checkpoint，也不要求 Agent 长时间暂停等待。
 
 ## 42.5 RAG 检索模块
 
@@ -3821,13 +3703,19 @@ search(scope, query, filters, limit) -> RetrievalResult
 → 组装 Source Anchor、来源标题与定位信息
 ```
 
-`RetrievalResult` 至少包含：`library_item_id`、可选 `record_id`、来源标题、逐字 quote、受限上下文窗口、anchor / segment id、页码或时间戳、来源类型与召回通道。分数只用于排序，不作为用户可见“可信度”。
+`RetrievalResult` 明确分三类：
+
+- `evidence_hits`：带逐字 quote、Source Anchor、segment id、页码 / 时间戳的可引用来源命中；
+- `asset_matches`：LibraryItem / Record / 已确认学习资产的导航命中，不直接充当事实引用；
+- `concept_hints`：CONFIRMED Concept 的术语理解与查询扩展提示，不直接充当事实引用。
+
+每个 evidence hit 至少包含 `library_item_id`、可选 `record_id`、来源标题、逐字 quote、受限上下文窗口、anchor / segment id、定位信息、来源类型与召回通道。分数只用于排序，不作为用户可见“可信度”。
 
 关键纪律：
 
 - 最终引用必须来自当前未删除的业务 Segment / Source Anchor，禁止引用 FTS token 串、Embedding、Concept 描述或 AI 摘要。
-- COURSE 范围只能读取该 Course 的资料和 Record；ALL 才能读取 Inbox / 全局范围，必须有“跨课程不泄漏”自动化用例。
-- 现有 `search_library` 不再自行拼接 Concept 与分片召回逻辑，迁移为调用 `LibraryRetrievalService.search()`；`search_transcript` 保留单 Record 专用接口。
+- LIBRARY_ITEM 只能读取该资料及其关联 Record；RECORD 强制 `record_id`；COURSE 只能读取该 Course 的资料和 Record；ALL 才能读取未归类 / 全局范围。每种挂载范围都必须有“不越界”自动化用例。
+- 现有 `search_library` 不再自行拼接 Concept 与分片召回逻辑，迁移为调用 `LibraryRetrievalService.search()`；`search_transcript` 的单记录实现可作为迁移期内部复用代码，但不再作为第二个模型可见工具。
 - RAG V1 继续以 FTS + Concept 扩展为默认方案。sqlite-vec 仍遵循 B5 触发条件：真实语料出现词汇不重合导致的召回失败且黄金样本证明向量有净增益后才实施；资料库不能以“先上向量库”作为开工前置。
 - Embedding 是可删除、可重建的派生数据；模型 / 维度 / 内容版本必须可识别，来源删除、归档或内容换版后不得继续召回旧向量。
 
@@ -3835,11 +3723,12 @@ search(scope, query, filters, limit) -> RetrievalResult
 
 ### V1：受控只读能力
 
-- COURSE / ALL 会话继续只挂一个模型可见工具 `search_library(query)`；作用域由会话运行时绑定，模型不能自行扩大。
+- RECORD / LIBRARY_ITEM / COURSE / ALL 会话统一只挂一个模型可见工具 `search_library(query)`；作用域与目标 id 由会话运行时绑定，模型不能自行扩大。
+- LIBRARY_ITEM 是第五种 Chat Scope，仅从资料详情“AI 解读”创建，不放进全局范围切换按钮；资料条目关联多个 Record 时仍以 library_item_id 为授权边界。
 - 工具内部消费 `LibraryRetrievalService`，返回结构化命中、逐字引用与定位，不把 SQL、文件路径或索引实现暴露给模型。
 - Agent 可以多轮改写关键词、缩小查询、比较不同来源；每轮工具调用次数、每次命中数和总上下文字符均设预算。
 - SSE 继续复用 `tool_call` / `tool_result` 呈现检索过程；最终回答沿用现有跨记录引用校验与来源跳转。
-- 本地资料无命中时明确说明，不得用联网结果冒充本地资料；开启 `web_search` 时，网络来源与资料库来源保持不同 citation 类型。
+- 所有挂载范围都是证据约束承诺：无可引用命中时必须明确说明“当前资料中未找到”，不得用模型常识补成资料事实。通用知识走 FREE；开启 `web_search` 时，网络来源与资料库来源保持不同 citation 类型，不能互相冒充。
 
 ### V1.1：研究会话的受控写动作
 
@@ -3853,7 +3742,7 @@ web_search 找到候选来源
 → 完成后才能被 search_library 检索
 ```
 
-- Agent 只有“提出入库 / 归类 / 重新抓取建议”的能力；任何写动作必须经过 HITL，最终由资料库业务接口执行。
+- Agent 只有“提出入库 / 归类 / 重新抓取建议”的能力；提案写入 `agent_proposals`，任何事实变更必须经过 HITL，最终由资料库业务接口执行。Graph 无需跨小时 / 跨天保持暂停。
 - 搜索结果摘要不是资料事实，未成功抓取并形成本地快照前不得进入 RAG，也不得生成 Source Anchor。
 - 禁止 Agent 直接写业务表、修改本地任意路径、静默批量抓取或自动订阅来源。
 
@@ -3874,11 +3763,11 @@ ingest(request) -> LibraryItem + ProcessingJob
 V1 实际 Adapter：
 
 1. **ExistingCaptureAdapter**：幂等映射现有录音、音频、文档、粘贴、速记，不重跑已成功处理链。
-2. **WebClipAdapter**：URL 校验、抓取、正文净化、正文快照落盘、元数据提取与失败降级。
+2. **WebClipAdapter**：按 `docs/research/web-clip-extraction-library-research-2026-09-17.md` 实施 httpx 受限抓取 + trafilatura 2.2.x 正文 / 元数据提取；以原始 bytes 做编码识别，保存净化后的 Markdown / 纯文本正文快照；提取为空或质量门禁失败时降级手动粘贴。不执行 JS、不加载第三方子资源、不绕过登录墙。
 3. **FileAdapter**：复用现有文档 / 音频导入校验与落盘；资料库只编排，不复制解析实现。
 4. **BookAdapter**：在 `ai-summary/03` 完成后加入，按 §41.2 拆章并建立一个资料条目到多个 Record 的关联。
 
-只有当第三个真实 Adapter 证明存在相同扩展点时，才提取公开 Connector / Plugin 接口；V1 的 Adapter 保持模块内部接口。
+只有当第三个真实新 Adapter 证明存在相同扩展点时，才提取公开 Connector / Plugin 接口；存量捕获映射不算新 Adapter 证据。V1 的 Adapter 保持模块内部接口。
 
 ## 42.8 API 与前端交互
 
@@ -3895,8 +3784,24 @@ V1 实际 Adapter：
 - “添加资料”是统一入口，先选择网页、文件或文本；书籍模式在长内容阶段出现。
 - 导入立即创建可见条目；处理未完成时显示确定性状态和重试入口，不用无限 spinner。
 - 详情检查器明确区分“原始来源”“派生学习记录”“RAG 可用性”，避免把已导入误解为已生成全部学习资产。
-- 删除前展示会受影响的派生 Record 与索引；默认软删且可恢复，物理清理由保留期任务处理。
-- 资料库内“询问 AI”新建 COURSE / ALL 范围会话，不新增第二套聊天界面。
+- 删除前展示关联 Record，但资料软删不级联它们；资料条目回收站提供 30 天内恢复，Record / 学习资产删除仍沿用既有规则，不假装全部对象都可恢复。
+- 资料条目“AI 解读”新建 LIBRARY_ITEM 范围会话；Record 与学习资产进入 RECORD 范围；不新增第二套聊天界面或持久化“解读文档”。
+- 图 1 的“相关内容”映射为对象关系与来源锚点，“AI 解读”映射为范围会话；“讨论”不在范围。图中的文件夹树改为扁平 Smart View + Course 筛选，视频 / 图片等未实现类型不展示。
+
+图 1 控件与底层能力的对应关系：
+
+| 图 1 控件 | V1 行为 | 底层边界 |
+|---|---|---|
+| 新建 | 新建文本资料或进入捕获入口 | `ingest(request)`；纯确定性业务 |
+| 导入 | 文件 / URL / 文本三类入库 | 内部 Adapter + JobRunner；不暴露 Connector SDK |
+| AI 整理 | 先显示确定性重复 / 错误检查，再给出结构化标题与 Course 建议，由用户逐项确认 | `agent_proposals(ORGANIZE)` + 领域 Service；V1 不建议标签、不自动改事实 |
+| 当前列表内搜索 | 搜标题、来源与现有元数据，切换分类 / 筛选 | 导航 FTS / 普通查询；不是 RAG 回答 |
+| 详情 | 安全预览、来源元数据、处理 / RAG 可用性与生命周期动作 | LibraryItem / Job / Segment 聚合读取 |
+| 相关内容 | LibraryItem ↔ Record ↔ 学习资产与 Source Anchor 关系 | 业务关系查询，不调用 LLM |
+| AI 解读 | 新建绑定当前对象的范围会话 | `search_library(query)` + 运行时 Scope |
+| 讨论 | 不提供 | 无对应领域能力，避免复制协作系统 |
+
+截图中的来源列表“标签”列在 LibraryItem V1 改为 Course / RAG 可用性；只有本来就有标签的学习资产行可展示其既有标签，不能为了还原画面先造 LibraryItem 标签系统。
 
 ## 42.9 安全、隐私与本地优先
 
@@ -3907,13 +3812,16 @@ V1 实际 Adapter：
 - 日志只记录 item / job / adapter id、阶段、耗时与稳定错误码，不记录完整正文、敏感 URL 查询参数、文件路径或供应商原始响应。
 - 离线时资料浏览、全文检索、来源定位和导出仍可用；需要联网 / 模型的抓取、Embedding 或 AI 回答明确降级。
 - 数据导出 / 导入与滚动备份必须包含资料条目、关联关系和本地快照；Embedding 等派生索引可以重建，不作为不可替代备份内容。
+- 第一次范围问答前说明外部模型可能接收相关来源片段与最小必要 Learner Memory，并取得绑定供应商身份的 External Processing Consent；地址或密钥变化后重新确认。用户可单独关闭长期记忆外发而不影响本地检索。
+- Agent / 工具追踪默认只落本地结构化摘要；LangSmith 仅开发者显式开启，默认关闭且不是产品依赖，任何用户内容上传另行取得同意。
 
 ## 42.10 生命周期语义
 
 - **归档**：条目仍保留快照、锚点和派生 Record，但默认不出现在活动资料列表；是否参与 RAG 由显式 `include_archived=false` 统一过滤，Agent 不可绕过。
 - **软删**：资料条目立即退出资料列表和独立来源召回；已派生 Record 不自动级联删除，避免一次删除扩大为学习资产丢失。Record 已持有的正式来源文件和 Segment 仍按 Record 生命周期工作。
-- **恢复**：恢复条目后校验本地快照与 content_hash；索引缺失则进入幂等重建。
-- **重新抓取 / 导入**：创建新内容版本并显式预览影响，V1 不自动覆盖。版本模型在需要首次网页刷新时随票冻结；在此之前只允许“另存为新条目”。
+- **恢复**：LibraryItem 是本波次唯一新增恢复 UI 的对象；软删后 30 天内可从“资料条目回收站”恢复，恢复时校验本地快照与 content_hash，索引缺失则进入幂等重建。Record / 学习资产删除规则不随本波次扩张。
+- **重复**：内容哈希相同必须提示已有条目，由用户打开已有或继续保留；不静默合并。
+- **重新抓取 / 导入**：同 URL / 路径内容发生变化时，V1 创建新的 LibraryItem，不覆盖旧快照、不建版本表；后台监控与版本对比留到出现首次持续来源需求后再设计。
 - **Course 移动**：更新资料条目归属时重新计算可见范围；派生 Record 不静默跨 Course 移动，必须由用户单独确认。
 - **物理清理**：只有保留期届满且不存在仍引用该唯一文件的活动 Record / 条目时执行；失败可重试并记录结构化错误。
 
@@ -3924,48 +3832,113 @@ V1 实际 Adapter：
 1. 同一来源重复导入不产生无提示的重复事实；存量回填可重复运行。
 2. 任一 RAG 可用来源都能从资料库打开原件 / 快照，并跳到其派生 Record。
 3. `search_library` 命中引用能逐字回查当前 Segment，页码 / 时间戳 / URL 定位正确。
-4. COURSE 查询零跨课程泄漏；归档、软删与失败来源零错误召回。
+4. COURSE 查询零跨课程泄漏；归档、软删与失败 LibraryItem 不得以该来源身份召回；仍被活动 Record 使用的内容只允许按 Record 生命周期独立召回。
 5. FTS + Concept 基线记录 Recall@K、MRR、无答案准确率与引用正确率；未达到预先冻结阈值才评估 sqlite-vec。
 6. Agent 工具轨迹可断言查询、命中数、失败降级与最终 citation；工具失败不炸毁整轮对话。
 7. sidecar 重启后处理中任务按既有恢复纪律收敛，索引重建幂等。
 8. Windows / Tauri 真机验证本地文件打开、Explorer 定位、系统浏览器回跳、亮暗主题和窄窗局部滚动；浏览器模拟不能替代该门禁。
 9. 数据目录导出 → 空库恢复后，资料条目、快照、关联与引用仍可用；派生索引允许启动重建。
+10. 以下硬门禁必须为零：范围泄漏、无法逐字回查的引用、归档 / 删除来源错误召回、导入 / 迁移 / 重启丢失来源、未经确认写入事实 / 长期记忆、未经同意外发片段 / 记忆。
+11. 离线或 LLM / Embedding 不可用时，浏览、预览、本地 FTS、来源定位、生命周期与记忆管理继续可用；AI 能力明确降级、不生成伪结果。若 sqlite-vec 已启用，已有向量可继续本地检索，新内容标记待补建并由 FTS 承接。
+12. 第一次应用新 Schema 前创建独立升级前数据库快照；Schema 失败停止升级并保留旧数据。Schema Migration 不扫描 / 哈希历史文件，存量资料映射与索引补建由可恢复、幂等且可见进度的后台 Job 执行。
 
-## 42.12 一个外部版本、六张纵向工单
+## 42.12 一个外部版本、七张纵向工单
 
 资料库 V1 对外一次性交付，不发布只有表或只有 UI 的半成品；内部按以下依赖顺序拆票：
 
-1. **契约与评测地基**：冻结 LibraryItem / Record / Course 关系、删除语义、RAG 结果结构、真实查询样本；回写 PRD / 数据模型 / CONTEXT，必要时新增 ADR。
-2. **存量资料可见闭环**：迁移与幂等回填；现有文档 / 音频 / 文本可在 `/library` 浏览、筛选、打开并显示 RAG 可用性。
+1. **契约与评测地基**：冻结 LibraryItem / Record / Course 关系、删除语义、RAG 结果结构、真实查询样本、sqlite-vec 触发阈值；实现前核对 ADR-0024/0025 与权威文档。
+2. **Schema、存量回填与基础工作台**：Schema Migration + 独立升级前快照；历史文件哈希、资料映射、关联与索引补建走幂等后台 Job；现有文档 / 音频 / 文本可在 `/library` 浏览、筛选、打开并显示 RAG 可用性。
 3. **网页剪藏闭环**：安全抓取、正文快照、分片索引、来源回跳、失败粘贴降级与工作台状态全部接真。
-4. **RAG Agent 闭环**：`LibraryRetrievalService` 统一检索；现有 `search_library` 改由其消费；COURSE / ALL 多轮问答、工具过程与逐字引用验收。
-5. **生命周期闭环**：重复提示、归类、归档 / 恢复、删除、重试、索引重建、重启恢复与数据目录导出恢复。
-6. **发布收尾**：OpenAPI 类型、中文 / 英文文案、评测基线、全栈自动化、真机清单与 `PROJECT_PROGRESS.md` 同步；验收后再进入 `ai-summary/03` 与书籍 Adapter。
+4. **RAG Agent 闭环**：`LibraryRetrievalService` 统一检索；现有 `search_library` 改由其消费；LIBRARY_ITEM / COURSE / ALL 多轮问答、工具过程、严格无证据降级与逐字引用验收。
+5. **生命周期与提案闭环**：重复提示、归类、归档 / 恢复、删除、重试、索引重建、`agent_proposals`、重启恢复与数据目录导出恢复。
+6. **Learner Memory V1**：`learner_preferences`、LearnerProfileService、学习画像“AI 记忆”、对话记忆提案与外发开关形成独立纵向闭环；不复制 Mastery / Misconception / Goal。
+7. **发布收尾**：OpenAPI 类型、中文 / 英文文案、黄金集门禁、全栈自动化、Windows / Tauri 真机清单与 `PROJECT_PROGRESS.md` 同步；验收后再进入 `ai-summary/03` 与书籍 Adapter。
 
 依赖关系：
 
 ```text
-01 → 02 → 03 → 04 → 05 → 06
+01 → 02 → 03 → 04 → 05 → 06 → 07
 ```
 
-允许 03 与 04 在 02 完成后内部并行实现，但对外仍以 06 完成作为资料库 V1 可发布判据。
+允许 03 / 04 在 02 后并行；06 在 01 后可独立推进，但必须在 07 集成验收。对外仍以 07 完成作为本波次可发布判据。
 
 ## 42.13 文档与决策门禁
 
-本节补充的是已接受的产品方向与完整开发边界，但当前权威文档仍存在旧口径，**不得直接按本节建表**。工单 01 必须一次性消除以下冲突：
+本轮已同步 PRD v2.8、数据模型 v3.0、技术栈 v4.6、`CONTEXT.md`、ADR-0024/0025 与 `PROJECT_PROGRESS.md`。工单 01 不再重新讨论已定产品边界，只冻结迁移编号、OpenAPI Schema、黄金集与可执行验收阈值。若实现发现事实与文档冲突，必须先回到 ADR 评审，不得默默偏离。
 
-- `CONTEXT.md` 当前把 Library 限定为跨课程搜索视图，需要改为“来源资产目录 + 统一浏览 / 检索入口”，同时保留 Course 唯一知识容器红线。
-- 功能基线决策 #12 的 `course_materials` 与数据模型 v2.9 的 P5 课程级草案，需要改为通用资料来源模型，或给出保留原名仍能覆盖全局资料的明确理由。
-- 数据模型中的 `document_segments/source_anchors.course_material_id` 预留列必须与最终来源资产表同名、加外键并同步所有交叉引用；历史变更记录保持史实不改。
-- §41 的“网页剪藏第一票”已在本次修订为“资料库 V1 + 网页剪藏第一外部版本”；`PROJECT_PROGRESS.md` 必须使用同一顺序。
-- 若表名、Course 可空语义、存量回填或删除规则改变既有 ADR，应新增递增编号 ADR，不得默默覆盖。
+历史版本变更记录中的 `course_materials`、四档 Chat Scope、Qdrant / 默认 sqlite-vec 等文字属于当时史实，不追改；当前正文不得继续把它们当现行方案。
 
 ## 42.14 明确不做（资料库 V1）
 
 - 不创建第二套知识空间、目录树、Notion 式页面系统或块编辑器。
 - 不开发通用 Connector SDK、插件市场、MCP server、Multi-Agent 抓取团队或独立爬虫服务。
+- 不为不同来源类型建立 SubAgent，不在 V1 新增 Skills；只有独立上下文窗口 / 并行收益经评测成立后才启用 DeepAgents 对应扩展点。
 - 不支持登录墙破解、验证码绕过、反爬对抗、整站镜像或未经用户确认的批量抓取。
 - 不后台监控网页 / 仓库 / 文件夹变化，不自动覆盖来源版本。
 - 不因“RAG”名义强制引入 sqlite-vec、LanceDB、Qdrant、ElasticSearch 或云端向量服务。
 - 不让 Agent 直接写资料库或执行任意文件 / Shell 操作；写动作始终经过业务接口与 HITL。
 - 不把 Summary、Concept 描述或 AI 综合文本回灌为来源事实，也不把资料导入本身计为 Mastery Evidence。
+- 不从普通聊天静默提取长期记忆，不建立通用 `memories` 表，不用 DeepAgents Store / LangGraph Checkpoint 保存业务长期事实。
+
+## 42.15 LangChain / LangGraph / DeepAgents 职责定案
+
+| 能力 | 负责人 | 原因 |
+|---|---|---|
+| 入库、抓取、解析、转写、分片、索引、回填、生命周期 | 普通领域 Service + JobRunner | 确定性、可重试、可审计，不需要 Agent 决策 |
+| RAG 召回、作用域、去重、排序、Source Anchor | LibraryRetrievalService | 一个深模块隐藏 FTS / Concept / 条件向量细节，避免每个工具重复实现 |
+| 多轮查询改写、检索策略、证据比较、回答生成 | DeepAgents Chat Agent | 这是需要模型判断与循环的部分；只暴露 `search_library(query)` |
+| 当前运行内分支、循环、暂停 / 恢复 | LangGraph / DeepAgents 图 | 复用框架状态机与 Checkpoint，不自造 Agent Loop |
+| 跨重启业务建议 | agent_proposals + REST + 领域 Service | 需要列表、审核、恢复和审计，不让 Graph 长时间悬挂 |
+| Learner Memory | learner_preferences + LearnerProfileService | 是用户可治理的业务事实，不是 Agent 内部状态 |
+
+当前 Chat 使用 `create_deep_agent` 已足够；V1 不新增 SubAgents、Skills、Filesystem Backend 或 StoreBackend。DeepAgents 的扩展点保留，但只有真实场景和评测证明收益后才打开，不能用“未来可能需要”作为开发理由。
+
+# 43. Learner Memory V1（2026-09-18 grill 定稿）
+
+## 43.1 为什么本波次必须实施
+
+现有 Chat 通过业务表逐轮重建对话上下文，LangGraph Checkpoint 在生成前后清理，只承担当前运行态；项目没有真正的跨会话学习者记忆。F10 Learner Digital Twin 已规划学习偏好、目标、误区、近期证据与掌握度聚合，因此本波次不能继续只写“未来 Memory”，但也不应引入 mem0 / Letta 或通用黑盒 Store。
+
+Learner Memory V1 的目标不是“记住所有聊天”，而是让 Tutor、Planner、Research Agent 等后续能力稳定读取少量、明确、可纠正的学习者事实。
+
+## 43.2 事实源与数据边界
+
+- `learner_preferences` 是单例长期记忆表，只保存用户显式学习偏好与经确认的观察学习偏好；实际表名沿用当前数据模型，不新建同义 `learner_profiles` 或通用 `memories` 表。
+- `user_concept_mastery`、`misconceptions`、`learning_goals`、`learning_evidence` 保持各自事实源；Learner Memory 不复制它们。
+- `LearnerProfileService` 按任务聚合上述事实，生成限长、可重建的 Learner Context。全局学习偏好可以跨 Agent 使用；Course 会话只增加该课程的目标、掌握度、误区与近期证据；ALL 按任务查询相关范围，不默认塞入完整历史。
+- Chat messages 是会话事实，不自动升级为长期记忆；LangGraph Checkpoint / DeepAgents Store 不承载业务长期记忆。
+
+## 43.3 写入与 HITL
+
+只有两类入口可以创建长期记忆：
+
+1. 用户在学习画像主动填写或修改显式偏好；
+2. 结构化学习证据推导出观察偏好，或用户明确说“记住……”，Agent 创建 MEMORY 类型提案。
+
+普通聊天不得静默抽取。观察偏好必须带置信度、证据计数与时间，经用户确认后由 LearnerProfileService 写入；用户显式偏好优先，观察结果不得覆盖。拒绝提案不改变事实；所有事实支持查看、纠正与删除。
+
+## 43.4 读取与 Agent 使用
+
+Agent 运行前由确定性中间层按任务请求 Learner Context，模型不能扩大范围或读取完整数据库。注入遵循“最小必要”：只给当前任务实际需要的偏好与学习状态，并受字符预算约束。UI 可查看本轮使用了哪些记忆；关闭“在 AI 中使用长期记忆”后，记忆仍留在本地并可管理，但不发送给外部模型。
+
+学习者上下文只影响解释方式、示例选择、复习建议与计划建议，不得直接改变 Mastery、Evidence、Quiz 判分或其他确定性数值。
+
+## 43.5 UI 对应
+
+“学习画像”增加“AI 记忆”区域：
+
+- 显式偏好：直接查看、编辑、删除；
+- 观察偏好：展示置信度、证据数量、确认时间与纠正 / 删除入口；
+- 对话中 MEMORY 提案使用就地确认卡片；
+- 展示长期记忆外发开关和最近一次使用说明。
+
+Learner Memory 不出现在资产库，不表现为 LibraryItem，也不与界面偏好、窗口记忆混用。
+
+## 43.6 隐私、导出与验收
+
+- 第一次向外部模型发送 Learner Context 前取得绑定供应商身份的 External Processing Consent；供应商地址或密钥变化后重新确认。
+- 全量导出 / 导入与升级前快照必须包含 learner_preferences；待确认 / 已拒绝提案不是不可替代数据。
+- 硬门禁：未经确认零写入、关闭外发后零发送、Course 状态零越界、删除后零再次注入、普通聊天零静默记忆。
+- 无网络或 LLM 不可用时，记忆查看、编辑、删除继续可用；只禁用需要模型的提案解释与 Agent 使用。
+
+V1 明确不做自由文本情节记忆、自动总结全部聊天、人格推断、跨设备云画像或记忆向量库。只有当结构化长期记忆无法覆盖真实场景且有可验证需求时，再评估 DeepAgents Store 或新的记忆类型。

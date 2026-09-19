@@ -1,6 +1,6 @@
-# KnowRealm-AI 数据模型 v2.9
+# KnowRealm-AI 数据模型 v3.0
 
-> **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.7》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.5.md`。
+> **文档定位**：KnowRealm-AI 的**唯一数据模型基线**，与《功能需求基线 v2.8》配套。表设计冲突已按功能基线 §10 决策记录定稿；技术栈约束见 `技术栈设计与审查-v4.6.md`。
 > **核心原则（v2.0 范式，ADR-0001 / 决策 #55）**：
 > - **SQLite（knowrealm.db，WAL）= 唯一业务事实源**——全部业务实体、学习状态、向量、技术任务状态
 > - **LangGraph Checkpoint（langgraph.db，独立文件）= Agent 运行态**（框架自管，非业务事实）
@@ -8,6 +8,7 @@
 >
 > 本文只做设计，不含迁移 SQL，不开始实现。
 > **编写日期**：2026-08-17
+> **变更记录**：v3.0（2026-09-18）**资料库 / RAG Agent 与 Learner Memory V1 评审定稿（ADR-0024/0025）**——未实施的 `course_materials` 草案被 `library_items` + `library_item_records` 通用来源资产模型替换，`document_segments` / `source_anchors` / `semantic_embeddings` 的预留 `course_material_id` 统一改为 `library_item_id`；`chat_sessions` 规划 `LIBRARY_ITEM` 精确范围与 `library_item_id`；新增轻量 `agent_proposals` 承载整理、记忆和研究入库提案，业务提案不寄存在 LangGraph Checkpoint；`learner_preferences` 冻结为长期记忆 V1 的单例事实表，Mastery / Misconception / Goal 保持各自事实源，由 LearnerProfileService 聚合。sqlite-vec 改为真实语料评测触发，不再是资料库开工前置。正式表设计口径由 42 张调整为 **44 张**，已实施仍为 27 张；本版只定设计，不声明迁移已实施。
 > **变更记录**：v2.9（2026-09-18）**Concept Mastery V1 已实施（迁移 0024/0025，concept-mastery-v1 plan，ADR-0023）**——§4.3 **quizzes** 增可空 `concept_id`（REFERENCES concepts ON DELETE SET NULL + 索引；一题至多一个主概念：生成只从同课程 CONFIRMED 概念建议、服务端校验、作答前可改/清空、首答后应用层锁定、Event 固化；存量行 NULL 不回填，2026-08-25「不建 concept_id」草案口径就此作废）；§4.7 **user_concept_mastery** 首张落地（Learner Brain 域 P4 提前）：course_id（FK CASCADE）/ concept_id **UNIQUE**（FK CASCADE）/ mastery_score 与 mastery_confidence 可空 0~1 CHECK / 证据三计数 ≥0 CHECK / last_practiced_at / last_verified_at / **algorithm_version** / updated_at——**只建 V1 真实使用列**，草案中的 memory_strength / transfer_score / reasoning_score / next_review_at / last_learned_at 不建（Forgetting / Transfer / Reasoning 落地时再迁移）；唯一写入口 = Mastery Engine（确定性纯函数 12 条窗口四条半衰，ADR-0023），快照由有效 Quiz Evidence 全量重建，<3 条 = NOT_ENOUGH_DATA 分数置空。正式表设计口径 42 张不变，**已实施 27 张**（截至迁移 0025）。
 > **变更记录**：v2.8（2026-09-16）**F4 Course Brain V1 已实施（迁移 0023，course-brain-v1 plan，ADR-0022）**——§4.6 concepts / concept_relations / record_concepts 三表标注**已实施**（无 deleted_at：ARCHIVED 即退役语义；normalized_name = 应用层确定性函数：strip → 空白折叠 → 全角转半角 → casefold；record_concepts 草案中的 importance 列未建，概念重要度只在 concepts.importance）；`source_anchor_links.resource_type` 值域扩 `'CONCEPT'`（rename→重建→拷贝→drop，0017 同款）；**更正**：「SQLite 无部分唯一索引」论断有误——CONFIRMED 唯一由部分唯一索引 `UNIQUE ... WHERE status='CONFIRMED'` 库级兜底（0017 已有先例）；semantic_embeddings / vec0 **维持未建**（CB-01 合成评测四维全过 → sqlite-vec 延后，见 `docs/evaluation/course-brain-retrieval-baseline.md`）；正式表设计口径 42 张不变，已实施 26 张（另有 search_index / segment_search_index 两张 FTS 衍生索引表，纪律不计正式表数）。
 > **变更记录**：v2.7（2026-09-14）**B2 跨记录/课程级问答已实施（迁移 0022，cross-record-qa plan）**——§4.4 chat_sessions 增 `scope` 列（TEXT NOT NULL DEFAULT 'FREE'，CHECK ∈ FREE/RECORD/COURSE/ALL；存量回填 record_id 非空→RECORD）：显式四档会话范围，与 mode 轴正交（mode 恒 ASK，交互形态留给 B3）；course_id 列自此启用语义（COURSE 会话=挂载课程；RECORD 会话维持随 record 派生；课程软删→会话只读，course_deleted 运行时推导，对齐 record_deleted 先例）；citations_json record 条目增 `record_title` （标题快照，跨记录引用归属由校验器裁定；历史行无此键→null，前端降级展示）。
@@ -47,18 +48,19 @@
 | 域 | 表 | 建表阶段 |
 |----|----|---------|
 | 档案（1） | profile | P0 |
-| 课程与记录（7） | courses, records, record_files, transcripts, recording_sessions, course_materials*, record_markers | P0×5 / P5 / P2 |
+| 课程、记录与资料（8） | courses, records, record_files, transcripts, recording_sessions, library_items, library_item_records, record_markers | P0×5 / 本波次×2 / P2 |
 | AI 产出（8） | ai_summaries, knowledge_points, quizzes, quiz_tests, quiz_test_items, review_materials, todo_items, record_analyses | P1×7 / P3 |
 | 对话（2） | chat_sessions, chat_messages | P1 |
 | 学习数据基础（6） | transcript_segments, document_segments, source_anchors, source_anchor_links, learning_events, learning_evidence | P2（learning_events 提前 **P1**，#33） |
 | Course Brain（4） | concepts, concept_relations, record_concepts, semantic_embeddings（+vec0 虚拟表） | **P3×3 已实施**（0023）/ P2 未建 |
 | Learner Brain（5） | user_concept_mastery*, misconceptions, misconception_evidence, review_schedules, learner_preferences | **user_concept_mastery 已实施**（0025，P4 提前）/ 其余 P4 |
+| Agent 提案（1） | agent_proposals | 本波次 |
 | Adaptive / Planner（6） | teach_back_attempts, learning_goals, learning_plans, learning_plan_items, learning_agent_actions, learning_agent_feedback | P5 / P6×5 |
 | Outcome（1） | learning_passport_snapshots | P7 |
 | 基础设施（2） | processing_jobs（兼任务队列）, llm_call_logs | P0 |
 | 暂缓 | ~~shares~~（不建，分享=Markdown 本地导出）、study_pods 系列（P8） | — |
 
-正式表合计 **42 张**（v2.0：-user_settings +recording_sessions；表名 user_concept_mastery 为历史命名，语义=概念掌握度，更名成本大于收益，保留）。**已实施 27 张**（截至迁移 0025：上述未建项为 course_materials / record_markers / record_analyses / semantic_embeddings、misconceptions / misconception_evidence / learner_preferences 及 P5~P7 全部）；另有 `search_index` / `segment_search_index` 两张 FTS 衍生索引表，可再生不计正式表数（ADR-0016 纪律）。**Wave A 基线 15 张**：profile / courses / records / record_files / transcripts / recording_sessions / processing_jobs / llm_call_logs / ai_summaries / knowledge_points / quizzes / todo_items / chat_sessions / chat_messages / learning_events。
+正式表合计 **44 张**（v3.0：`course_materials` 以 `library_items` + `library_item_records` 替换，净增 1；新增 `agent_proposals`，净增 1；表名 user_concept_mastery 为历史命名，语义=概念掌握度，更名成本大于收益，保留）。**已实施 27 张**（截至迁移 0025；本版新增 / 替换模型均未实施）；另有 `search_index` / `segment_search_index` 两张 FTS 衍生索引表，可再生不计正式表数（ADR-0016 纪律）。**Wave A 基线 15 张**：profile / courses / records / record_files / transcripts / recording_sessions / processing_jobs / llm_call_logs / ai_summaries / knowledge_points / quizzes / todo_items / chat_sessions / chat_messages / learning_events。
 
 ## 4. 表设计
 
@@ -144,14 +146,34 @@ CHECK：`learning_context='SCHOOL' → education_stage 非空；learning_context
 | state | TEXT | RECORDING / PAUSED / FINALIZING / DONE；进入 FINALIZING 后分片清单封口，不得追加或重排 |
 | chunk_paths | TEXT | JSON 有序数组——cache/staging/ 分片清单（崩溃恢复与 03→04 交接用）；04 原子注册最终 Ogg 后才清理对应文件 |
 
-**course_materials** — 课程级资料（P5，〔软删〕）
+**library_items** — 用户拥有的原始资料条目（本波次规划，〔软删〕）
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id / course_id | TEXT | |
-| linked_record_id | TEXT | 可空 |
-| purpose | TEXT | COURSEWARE / PREVIEW / REFERENCE |
-| file_path / original_name / mime_type / file_size / content_hash | 同 record_files | |
-| processing_status | TEXT | |
+| id | TEXT | PK |
+| course_id | TEXT | FK ON DELETE SET NULL，可空；为空表示未归类 / 全局资料。移动资料不静默移动关联 Record |
+| source_type | TEXT | AUDIO / DOCUMENT / WEB / BOOK / TEXT |
+| title | TEXT | 用户可编辑标题，NOT NULL |
+| origin_uri | TEXT | 可空；原始 URL 或导入来源标识，只用于出处，不作为离线依赖；日志不得记录敏感查询参数 |
+| local_path | TEXT | 可空；数据目录内正式快照相对路径。已有 `record_files` 原件只复用，不复制字节；纯文本可直接复用正式文本来源 |
+| mime_type / file_size | TEXT / INTEGER | 可空；file_size ≥0 |
+| content_hash | TEXT | NOT NULL；相同哈希触发重复提示但不设 UNIQUE，用户可选择继续保留 |
+| fetched_at | TEXT | 网页抓取时间，可空 |
+| metadata_json | TEXT | 按 source_type 经 Pydantic 判别校验的来源专属小字段 |
+| schema_version | INTEGER | metadata_json 结构版本，≥1 |
+| status | TEXT | ACTIVE / ARCHIVED；解析、分片、索引等技术状态不复制到本表 |
+| created_at / updated_at / deleted_at | TEXT | 软删 30 天内可从资料条目回收站恢复 |
+
+索引：`(course_id, updated_at desc)`、`(source_type, updated_at desc)`、`(status, updated_at desc)`、`(content_hash)`。
+
+**library_item_records** — 资料条目与 Record 多对多关系（本波次规划）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| library_item_id / record_id | TEXT | 联合 PK；FK 均 ON DELETE CASCADE |
+| role | TEXT | PRIMARY / SUPPLEMENTAL |
+| sequence_no | INTEGER | ≥0；同一资料拆多个 Record 时保持章节 / 内容顺序 |
+| created_at | TEXT | |
+
+一个 LibraryItem 可按章派生多个 Record；一个 MULTI_SOURCE Record 可关联多个 LibraryItem。资料软删、归档或移动 Course 均不级联改变 Record 生命周期或 Course 归属。
 
 **record_markers** — 课堂实时标记（P2）
 | 字段 | 类型 | 说明 |
@@ -272,10 +294,10 @@ analysis_type（COURSEWARE_DIFF / EXAM_FOCUS / OTHER）、version_no（(record_i
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | TEXT | PK |
-| course_id | TEXT | **可空**——COURSE 会话 = 挂载课程（B2 启用语义）；RECORD 会话随 record 填其课程；FREE/ALL 为空。**课程软删→会话只读（course_deleted 运行时推导，不落列，对齐 record_deleted 先例）** |
-| record_id / concept_id | TEXT | 可空（**挂载失效态运行时推导，不落列**——v1.11 裁决：JOIN records.deleted_at 判断） |
+| course_id | TEXT | **可空**——COURSE 会话 = 挂载课程；RECORD 会话随 record 填其课程；LIBRARY_ITEM 可快照条目当前课程但检索授权始终以 library_item_id 为准；FREE/ALL 为空。**课程软删→会话只读（course_deleted 运行时推导，不落列，对齐 record_deleted 先例）** |
+| record_id / concept_id / library_item_id | TEXT | 可空；LIBRARY_ITEM 仅由资料详情创建并必须填写 library_item_id。**挂载失效态运行时推导，不落列**：分别回查 Record / LibraryItem 当前生命周期 |
 | mode | TEXT | ASK / COURSE_QA / SOCRATIC_TUTOR / TEACH_BACK |
-| scope | TEXT | NOT NULL DEFAULT 'FREE'，CHECK ∈ FREE / RECORD / COURSE / ALL（B2 迁移 0022；存量回填 record_id 非空→RECORD）。**范围会话内不可变**；与 mode 轴正交（mode 恒 ASK，B3 启用）。COURSE=该课程全部未软删记录、ALL=全部未软删记录（含收件箱） |
+| scope | TEXT | NOT NULL DEFAULT 'FREE'，CHECK ∈ FREE / RECORD / LIBRARY_ITEM / COURSE / ALL（LIBRARY_ITEM 本波次规划）。**范围会话内不可变**；与 mode 轴正交（mode 恒 ASK，B3 启用）。LIBRARY_ITEM=单资料及其关联 Record，COURSE=该课程全部未软删资料与记录，ALL=全部未软删资料与记录（含未归类内容） |
 | title | TEXT | 可空——默认取首条用户消息截断，重命名覆盖 |
 | updated_at | TEXT | |
 
@@ -287,7 +309,7 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 | id / session_id | TEXT | |
 | role | TEXT | USER / ASSISTANT / SYSTEM / TOOL |
 | content | TEXT | |
-| citations_json | TEXT | 引用条目数组（答案溯源）。**B1 起按条目判别化（2026-09-14 就地补记，零表变更不升版）**：record 条目 `{index, source:"record", record_id, quote≤80}`（历史行无 source 键按 "record" 读取，逐字校验契约不变；B2 起跨记录条目另携 `record_title` 标题快照——归属由校验器按「（来源：标题）」裁定，历史行无此键按 null 读取、前端降级展示）；web 条目 `{index, source:"web", url, title}`（联网搜索来源，仅非空检查、不逐字校验） |
+| citations_json | TEXT | 引用条目数组（答案溯源）。record 条目 `{index, source:"record", record_id, record_title?, quote≤80, anchor_id?}`；library 条目 `{index, source:"library", library_item_id, title, quote≤80, anchor_id}`，两者都必须回业务 Segment 逐字校验并定位；web 条目 `{index, source:"web", url, title}` 仅非空检查。历史行无 source 键仍按 record 读取 |
 | model | TEXT | 可空 |
 | token_usage_json | TEXT | JSON，可空 |
 | created_at | TEXT | 索引 (session_id, created_at) |
@@ -314,7 +336,7 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 |---|---|---|
 | id / course_id | TEXT | course_id **可空**（收件箱导入未归类） |
 | record_id | TEXT | 可空 |
-| record_file_id / course_material_id | TEXT | 二者**必须且只能一个非空**（CHECK）；course_material 路径列预留未启用——course_materials 表 P5 未建、本列暂无外键，其落地时补约束，本期恒走 record_file_id |
+| record_file_id / library_item_id | TEXT | 至少一个非空；library_item_id 为本波次新增 FK，允许直接来源分片与复用 record_file 的关联分片共存，写路径须避免为同一正文重复建 Segment |
 | sequence_no / page_no / section_title | INTEGER / INTEGER / TEXT | sequence_no 记录内全局连续；page_no 可空（PDF 逐页提取、页码 1 起；DOCX/txt/md 为 NULL）；section_title 可空 |
 | content / start_offset / end_offset / content_hash | TEXT / INTEGER / INTEGER / TEXT | start_offset / end_offset 可空，为相对文档全文 content 的字符偏移 |
 
@@ -323,29 +345,20 @@ Record Chat、Course Chat、自由聊天、Tutor、Teach-back 共用此模型，
 **source_anchors** — 来源锚点（已实施，空表零写入者）
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id / course_id | TEXT | course_id NOT NULL |
+| id / course_id | TEXT | course_id 可空；全局 / 未归类 LibraryItem 的锚点不伪造课程归属 |
 | source_type | TEXT | AUDIO_SEGMENT / DOCUMENT_SEGMENT / USER_NOTE / CHAT_MESSAGE（CHECK） |
 | source_id | TEXT | |
-| record_id / record_file_id / course_material_id / transcript_segment_id / document_segment_id | TEXT | 可空；CHECK 精确类型匹配：AUDIO_SEGMENT 必挂 transcript_segment_id、DOCUMENT_SEGMENT 必挂 document_segment_id（比"至少关联一个 Segment"的字面更严，§10 同步） |
+| record_id / record_file_id / library_item_id / transcript_segment_id / document_segment_id | TEXT | 可空；CHECK 精确类型匹配：AUDIO_SEGMENT 必挂 transcript_segment_id、DOCUMENT_SEGMENT 必挂 document_segment_id；资料来源锚点同时保存 library_item_id 以支持无 Record 来源回跳 |
 | start_offset / end_offset / page_no | INTEGER | 可空 |
 
 **source_anchor_links** — 多来源关联（多态，已实施）
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | TEXT | PK |
-| resource_type | TEXT | SUMMARY / KNOWLEDGE_POINT / QUIZ / MISCONCEPTION / CHAT_MESSAGE / RECORD_ANALYSIS（CHECK） |
+| resource_type | TEXT | SUMMARY / KNOWLEDGE_POINT / QUIZ / MISCONCEPTION / CHAT_MESSAGE / RECORD_ANALYSIS / CONCEPT（CHECK） |
 | resource_id | TEXT | |
 | source_anchor_id | TEXT | FK 级联删除 |
 | relation_type | TEXT | SUPPORTS / PRIMARY / CONTRADICTS / REFERENCES（CHECK） |
-
-**source_anchor_links** — 多来源关联（多态）
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| id | TEXT | PK |
-| resource_type | TEXT | SUMMARY / KNOWLEDGE_POINT / QUIZ / MISCONCEPTION / CHAT_MESSAGE / RECORD_ANALYSIS |
-| resource_id | TEXT | |
-| source_anchor_id | TEXT | FK |
-| relation_type | TEXT | SUPPORTS / PRIMARY / CONTRADICTS / REFERENCES |
 
 唯一约束 `(resource_type, resource_id, source_anchor_id, relation_type)`。实体表上的 `source_anchor_id` 仅为可选主锚点。
 
@@ -389,9 +402,10 @@ id、course_id（FK CASCADE）、source_concept_id / target_concept_id（FK CASC
 **semantic_embeddings** — 统一向量索引（**未实施**；CB-01 合成评测四维全过 → sqlite-vec 延后，见 `docs/evaluation/course-brain-retrieval-baseline.md`；升级路径 = concepts.terms 同义词列 / query-time LLM 扩展 / CB-VEC 票）
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| id | TEXT | PK（同时为向量表 rowid 锚，见下） |
+| rowid | INTEGER | PRIMARY KEY；与 vec0 虚拟表 rowid 显式一致，作为可重建索引内部键 |
+| id | TEXT | UNIQUE NOT NULL；应用层逻辑 id，不承担 vec0 整数键职责 |
 | course_id | TEXT | **可空**——未分类/Inbox 内容照常入索引；@全部资料全局 RAG 即全库检索 |
-| record_id / record_file_id / course_material_id | TEXT | 可空 |
+| library_item_id / record_id / record_file_id | TEXT | 可空；向量若经评测启用，必须能回到 LibraryItem 与当前业务 Segment |
 | source_type | TEXT | TRANSCRIPT_SEGMENT / DOCUMENT_SEGMENT / KNOWLEDGE_POINT / CONCEPT |
 | source_id | TEXT | |
 | content_hash | TEXT | 内容变更检测（hash 变则重嵌入） |
@@ -399,7 +413,7 @@ id、course_id（FK CASCADE）、source_concept_id / target_concept_id（FK CASC
 | metadata_json | TEXT | |
 | deleted_at | TEXT | 软删标记，检索必过滤 |
 
-配套 **vec0 虚拟表** `semantic_embeddings_vec(rowid, embedding float[1024])`——rowid 与上表 INTEGER rowid 关联；KNN 查询 + `deleted_at IS NULL` 前置过滤在检索封装层实现（个人万级 segment 暴力 KNN 足够，无需 ANN 索引）。统一表的意义：向量生命周期（嵌入/失效/删除）单一管理，与业务软删策略一致；**向量随 db 文件一体备份/导出/迁移——sqlite-vec 单文件红利（#55）**。
+配套 **vec0 虚拟表** `semantic_embeddings_vec(rowid, embedding float[1024])`——rowid 与上表显式 INTEGER PRIMARY KEY 一致；KNN 查询后必须回元数据表做作用域、生命周期与来源类型过滤，再回业务 Segment 取逐字引用。Knowledge Point / Concept 向量命中只能进入 `asset_matches` / `concept_hints`，不得成为 `evidence_hits`。统一表的意义是让向量失效与删除只有一个管理入口；它仍是可重建派生索引。
 
 ### 4.7 Learner Brain 域（P4）
 
@@ -416,8 +430,9 @@ type（KNOWLEDGE_GAP / MISCONCEPTION / MEMORY_DECAY / REASONING_GAP / PREREQUISI
 scheduler_type（RULE_V1 / FSRS）、stability / difficulty / retrievability 可空、last_review_at / next_review_at / last_result / review_count、priority_score。
 
 **learner_preferences** — 单行表
-user_selected_preference（JSON）、observed_learning_preference（JSON）、observed_confidence（0~1）、evidence_count、last_observed_at。
-推测偏好不得覆盖用户选择。
+id（固定 `me`）、user_selected_preference（JSON）、observed_learning_preference（JSON）、observed_confidence（0~1）、evidence_count、last_observed_at、updated_at。用户显式选择可直接编辑；观察偏好只可由结构化学习证据或用户明确“记住”产生提案，确认后写入。推测偏好不得覆盖用户选择；普通聊天不得静默提取。
+
+Learner Memory V1 不复制 `user_concept_mastery`、`misconceptions` 或 `learning_goals`。`LearnerProfileService` 按任务与会话范围聚合偏好、掌握度、误区、近期 Evidence 与目标，生成限长的可重建 Learner Context；Course 状态不得越界注入。设置页单独控制是否允许把长期记忆发送给外部 LLM。
 
 ### 4.8 Adaptive / Planner 域
 
@@ -437,14 +452,31 @@ user_selected_preference（JSON）、observed_learning_preference（JSON）、ob
 
 **learning_passport_snapshots**（P7）：snapshot_type（MONTHLY / SEMESTER / PRE_EXAM / COURSE_COMPLETED / MANUAL）、snapshot_date、mastered_count / learning_count / at_risk_count、summary_json、evidence_summary_json。
 
-### 4.10 基础设施域
+### 4.10 Agent 提案域
+
+**agent_proposals** — 可跨重启审核的业务提案（本波次规划）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | TEXT | PK |
+| proposal_type | TEXT | ORGANIZE / MEMORY / RESEARCH_INGEST，V1 固定枚举 |
+| status | TEXT | PENDING / APPLIED / REJECTED / FAILED |
+| session_id / message_id | TEXT | 可空；提案来自对话时记录来源，不作为执行授权 |
+| target_type / target_id | TEXT | 可空；目标 LibraryItem、Course 或 LearnerPreference |
+| payload_json | TEXT | 按 proposal_type 经 Pydantic 判别校验的建议内容；禁止放任意 SQL / 文件路径 / Shell 命令 |
+| evidence_refs_json | TEXT | 可空；观察偏好等提案的结构化证据引用与计数 |
+| error_code | TEXT | 可空；应用失败时保留稳定错误码供重试或拒绝 |
+| created_at / decided_at | TEXT | decided_at 在应用或拒绝时填写 |
+
+提案创建不改变业务事实；用户确认后由对应领域 Service 执行并原子更新状态。它不是 LangGraph Interrupt 或 Checkpoint，不能被 Agent 当作直接写库通道。
+
+### 4.11 基础设施域
 
 **processing_jobs** — 技术任务状态 + **任务队列本体（v2.0 自研队列，#1/#55）**（P0）
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | TEXT | PK |
-| record_id | TEXT | 可空 |
-| job_type | TEXT | ASR / AUDIO_TRANSCODE / DOCUMENT_PARSE / EMBEDDING / CONCEPT_EXTRACTION / SUMMARY / CLEANUP / BACKUP_EXPORT / … |
+| record_id / library_item_id | TEXT | 可空；资料入库、网页抓取、回填或索引任务可直接关联 library_item_id |
+| job_type | TEXT | ASR / AUDIO_TRANSCODE / DOCUMENT_PARSE / WEB_FETCH / LIBRARY_BACKFILL / INDEX_REBUILD / EMBEDDING / CONCEPT_EXTRACTION / SUMMARY / CLEANUP / BACKUP_EXPORT / … |
 | status | TEXT | PENDING / RUNNING / SUCCEEDED / FAILED / CANCELLED |
 | progress | REAL | 0~1 |
 | attempts / max_attempts | INTEGER | 当前重试轮次的尝试次数/上限；DOCUMENT_PARSE 与 ASR 安全瞬态故障每轮最多 3 次，首次执行计入；等待条件不计数 |
@@ -473,6 +505,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 ├── langgraph.db                   # LangGraph Checkpoint（SqliteSaver 自管，非业务事实）
 ├── files/                         # 存档原件（明文，#49）
 │   ├── {record_id}/{file_id}.{ext}
+│   ├── library/{library_item_id}/source.{ext} # 新资料正式快照；已有 record_file 原件只引用不复制
 │   └── avatars/…
 ├── cache/                         # 可清可重建：转码产物、ASR 片、staging/ 录音分片（最终 Ogg 原子注册后删）
 ├── exports/                       # 全量导出 zip 输出（db 快照 + files + config，默认不含密钥）
@@ -496,23 +529,31 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 | 场景 | 机制 |
 |------|------|
 | 日常防损 | app 启动时 `VACUUM INTO` 快照 db → `backups/`（每日一份 × 7 自动清理）；WAL 模式 |
-| 全量导出（V1，Wave B） | zip = db 快照（VACUUM INTO）+ files/ + config/（**默认不含 providers.json，可选勾选含**）；输出至 exports/ 与用户选定位置 |
+| 全量导出（V1，Wave B） | zip = db 快照（VACUUM INTO）+ files/ + config/（**默认不含 providers.json，可选勾选含**）；必须包含资料条目、关联、本地快照和 Learner Memory 业务事实；输出至 exports/ 与用户选定位置 |
 | 换机恢复 | 新机首启 → 选空数据目录 → 从导出包导入 → 校验落位（向量索引在 db 内，一体迁移） |
 | 快照备份（P2） | 可选配置 WebDAV/S3 → 定期单向推送导出 zip；**无回写路径**（红线 #1） |
 | 冲突处理 | 同一数据目录的操作系统排他锁保证单写者；第二个 sidecar 在迁移/worker 前失败并提示目录正被使用。进程退出或崩溃由 OS 自动释放锁；原 409/乐观锁机制随同步概念删除 |
+
+### 7.1 本波次升级与存量回填
+
+1. 升级前先对 `knowrealm.db` 做独立 `VACUUM INTO` 快照，成功后才执行 schema migration；schema migration 失败即停止启动并保留快照，不启动 worker。
+2. migration 只创建 / 调整表、约束与索引，不在启动事务内扫描并重写全部存量 Record。
+3. 启动成功后由 `LIBRARY_BACKFILL` 后台任务按稳定游标幂等建立 LibraryItem 与 `library_item_records` 关系；存量 Record 在未回填期间继续按原路径可用。
+4. 回填失败只记录稳定错误码并允许重试；不得删除、移动或改写旧 `record_files`、Transcript、Segment 与 Record 关系。索引失败可由 `INDEX_REBUILD` 重建，不影响业务事实。
 
 ## 8. 功能 → 业务实体 → 数据表映射
 
 | 功能 | 业务实体 | 表 | 阶段 |
 |------|---------|-----|------|
-| 首启三步（目录/key/角色卡） | — | config/ + profile | MVP |
+| 首启四步（语言/目录/key/角色卡） | — | config/ + profile | MVP |
 | 偏好设置 | — | config/settings.json | MVP |
 | 学习统计 | —（聚合） | records/quizzes/chat_messages 等聚合查询 | MVP |
 | 课程管理 | Course | courses | MVP |
 | 收件箱 Inbox | Record（course_id 为空） | records（course_id NULL） | MVP |
 | ⚡速记 | Record(NOTE)+Transcript | records(QUICK_NOTE, NOTE)、transcripts | MVP |
 | 📋粘贴长文本 | Record+Transcript | records(PASTE)、transcripts | MVP |
-| 🔗网页剪藏 | Record+Transcript | records(CLIP)、transcripts、processing_jobs(FETCH_PAGE) | P2 |
+| 统一资料库 | LibraryItem + Record 关系 | library_items、library_item_records | 本波次规划 |
+| 🔗网页剪藏 | LibraryItem + 可选 Record/Transcript | library_items(WEB)、records(CLIP)、transcripts、processing_jobs(WEB_FETCH) | 本波次规划 |
 | 课堂录音（会话） | Record+RecordingSession | records、recording_sessions | MVP |
 | 录音/导入文件 | RecordFile | record_files + files/ 目录 | MVP |
 | 音频转码任务 | Job | processing_jobs(AUDIO_TRANSCODE) | MVP |
@@ -525,7 +566,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 | 模拟测试 | QuizTest | quiz_tests、quiz_test_items | MVP |
 | 复习资料 | ReviewMaterial | review_materials | MVP |
 | Todo | TodoItem | todo_items | MVP |
-| 💬 AI 对话（自由/挂载） | ChatSession/Message | chat_sessions、chat_messages | MVP |
+| 💬 AI 对话（自由/挂载） | ChatSession/Message | chat_sessions、chat_messages（本波次增加 LIBRARY_ITEM 范围） | MVP / 本波次扩展 |
 | 对话转学习资产 | KP/Quiz | knowledge_points / quizzes + source_anchor_links(CHAT_MESSAGE) | P2 |
 | Concept 掌握度（Knowledge GPS / 脑图标记） | Mastery | user_concept_mastery + learning_evidence（只读聚合） | P2 已实施（V1） |
 | 状态通知 | — | records.status + processing_jobs（sidecar SSE） | MVP |
@@ -537,8 +578,8 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 | 文档分片 | DocumentSegment | document_segments | P2 |
 | 课堂标记 | Marker | record_markers | P2 |
 | 学习事件/证据 | Event/Evidence | learning_events、learning_evidence | MVP(四事件) / P2(evidence) |
-| 语义检索 | Embedding | semantic_embeddings + vec0 | P2 |
-| @全部资料全局 RAG | —（RAG） | semantic_embeddings | P2 |
+| 资料库 RAG | —（检索服务） | LibraryItem + Segment FTS + Concept；semantic_embeddings + vec0 仅在真实评测触发后加入 | 本波次规划 |
+| @全部资料全局 RAG | —（RAG） | LibraryRetrievalService（ALL 作用域） | 本波次规划 |
 | 概念图谱 | Concept | concepts、concept_relations、record_concepts | P3 |
 | 课件差异分析 | RecordAnalysis | record_analyses | P3 |
 | Course Chat | ChatSession | chat_sessions(COURSE_QA) | P3 |
@@ -546,11 +587,12 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 | 掌握度 | Mastery | user_concept_mastery（Mastery Engine 唯一写入） | P4 |
 | 误区诊断 | Misconception | misconceptions、misconception_evidence | P4 |
 | 遗忘/复习调度 | ReviewSchedule | review_schedules | P4 |
-| 数字孪生 | —（运行时视图） | 聚合 + learner_preferences | P4 |
+| Learner Memory V1 / 数字孪生 | —（运行时视图） | learner_preferences + Mastery / Misconception / Goal 聚合 | 本波次规划 / P4 扩展 |
+| Agent 业务提案 | AgentProposal | agent_proposals | 本波次规划 |
 | Socratic Tutor | ChatSession | chat_sessions(SOCRATIC_TUTOR) | P5 |
 | Teach-back | TeachBackAttempt | teach_back_attempts | P5 |
 | 自适应测验 | QuizTest | quiz_tests(ADAPTIVE) | P5 |
-| 课前预习 | CourseMaterial | course_materials、learning_plan_items(PREVIEW) | P5 |
+| 课前预习 | LibraryItem | library_items、learning_plan_items(PREVIEW) | P5 |
 | 学习目标/计划 | Goal/Plan | learning_goals、learning_plans、learning_plan_items | P6 |
 | Autopilot | AgentAction | learning_agent_actions、learning_agent_feedback | P6 |
 | Learning Passport | Snapshot | learning_passport_snapshots | P7 |
@@ -562,9 +604,16 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 
 1. 软删：record 及其全部子资产（files/transcript/segments/anchors/summaries/kp/quizzes/todo），同事务将该 Record 的 PENDING/RUNNING processing_jobs 置为 CANCELLED，已终态 Job 保留原状态，并立即清理该 Record 的 cache 暂存；worker 每次写前校验 deleted_at，迟到结果不得写回——**chat_sessions/chat_messages 不级联**：挂载会话保留可读、标记"原记录已删除"失效态（运行时推导，v1.11），仅显式删会话才删消息（#40）
 2. 文件：`files/{record_id}/` 目录异步物理删除（30 天批次）
-3. 向量：`semantic_embeddings.deleted_at` 标记 → 同批次物理清理（含 vec0 行）；**业务行软删 30 天后异步物理清理**（V1 无恢复 UI，#41）
+3. 向量：若已启用，`semantic_embeddings.deleted_at` 标记 → 同批次物理清理（含 vec0 行）；一般业务行仍按 30 天异步清理。LibraryItem 是本波次唯一新增恢复 UI 的对象，30 天内可从资料条目回收站恢复
 4. 学习状态：该 Record 产生的 learning_evidence 按 record_id **排除出掌握度计算**（行保留作审计），受影响 Concept 由 Mastery Engine 异步重算（#18）
 5. 删除 Course：级联其下全部 Record 走上述链路；Concept 及 Mastery 状态同规则重算
+
+LibraryItem 生命周期独立于 Record / 学习资产：
+
+1. 归档或软删 LibraryItem 不级联删除、归档或移动关联 Record；`LibraryRetrievalService` 不再召回该 LibraryItem 自身，但仍可通过未删除 Record 的 Segment 回答并引用 Record。
+2. 资料条目回收站只展示 LibraryItem，保留 30 天；Record 与学习资产沿用各自既有删除行为，不混入该回收站。
+3. 仍有未删除 Record 引用时禁止物理删除 LibraryItem；30 天到期只清理无活跃引用的条目与其独占快照。复用 `record_files` 的原件不得因 LibraryItem 清理被删除。
+4. LibraryItem 所属 Course 被删除时仅将 `library_items.course_id` 置空；关联 Record 的 Course 与生命周期不受影响。
 
 ## 10. 数据库完整性约束清单（CHECK 摘要）
 
@@ -572,7 +621,7 @@ request_id、graph_name、graph_node、model、prompt_version、embedding_model�
 0 ≤ mastery_score / mastery_confidence / memory_strength / confidence / weight / quality_score / progress ≤ 1
 0 ≤ priority ≤ 100        duration_ms ≥ 0        file_size ≥ 0
 sequence_no ≥ 0           evidence_count ≥ 0     attempts ≥ 0
-document_segments: (record_file_id IS NULL) ≠ (course_material_id IS NULL)
+document_segments: record_file_id / library_item_id 至少一个非空；同一正文不得重复建 Segment
 source_anchors: AUDIO_SEGMENT 必挂 transcript_segment_id、DOCUMENT_SEGMENT 必挂 document_segment_id（精确类型匹配，v2.4 收紧）
 learning_events.idempotency_key 全表唯一
 record_id+version_no、concept_id（mastery/review）、goal_id+plan_version 等复合唯一（见各表）
@@ -585,10 +634,10 @@ record_id+version_no、concept_id（mastery/review）、goal_id+plan_version 等
 |------|------|
 | P0（**Wave A 基线含 P1 前排表共 15 张**） | profile、courses、records、record_files、transcripts、recording_sessions、processing_jobs、llm_call_logs、ai_summaries、knowledge_points、quizzes、todo_items、chat_sessions、chat_messages、learning_events |
 | P1 补（Wave B） | quiz_tests、quiz_test_items、review_materials |
-| P2 | transcript_segments、document_segments、source_anchors、source_anchor_links、record_markers、learning_evidence、semantic_embeddings（+vec0） |
+| P2 / 本波次 | transcript_segments、document_segments、source_anchors、source_anchor_links、record_markers、learning_evidence；library_items、library_item_records、agent_proposals；semantic_embeddings（+vec0）仅评测触发 |
 | P3 | concepts、concept_relations、record_concepts（**三表已实施 0023，提前于 P2 系列表部分落地后**）、record_analyses（未建） |
-| P4 | user_concept_mastery、misconceptions、misconception_evidence、review_schedules、learner_preferences |
-| P5 | teach_back_attempts、course_materials |
+| P4 | user_concept_mastery、misconceptions、misconception_evidence、review_schedules；learner_preferences 随 Learner Memory V1 提前到本波次 |
+| P5 | teach_back_attempts |
 | P6 | learning_goals、learning_plans、learning_plan_items、learning_agent_actions、learning_agent_feedback |
 | P7 | learning_passport_snapshots |
 | 暂缓 | ~~shares~~（不建）、study_pods 系列（P8） |

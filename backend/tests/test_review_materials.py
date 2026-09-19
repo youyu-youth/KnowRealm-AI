@@ -9,6 +9,7 @@ import aiosqlite
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic import BaseModel
 from sqlalchemy import text
 
 from app.db.migrations import run_migrations, supported_user_version
@@ -47,9 +48,35 @@ class FakeReviewMaterialModel:
         self.prompts.append(prompt)
         self.started.set()
         await self.release.wait()
+        # 服务层按 ReviewMaterialDraft 校验（与生产 parsed 一致传 dict）
+        output = (
+            self.output.model_dump() if isinstance(self.output, BaseModel) else self.output
+        )
         return ReviewMaterialModelResult(
-            output=self.output,
+            output=output,
             token_usage={"total_tokens": 77},
+        )
+
+
+class RetryThenValidReviewMaterialModel(FakeReviewMaterialModel):
+    """首次调用返回违规输出，第二次起返回合规输出（模拟纠偏重试后成功）。"""
+
+    def __init__(self, invalid: object, valid: object) -> None:
+        super().__init__(invalid)
+        self._valid = valid
+
+    async def generate(
+        self,
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        prompt: str,
+    ) -> ReviewMaterialModelResult:
+        if self.prompts:
+            self.output = self._valid
+        return await super().generate(
+            base_url=base_url, api_key=api_key, model=model, prompt=prompt
         )
 
 
@@ -329,7 +356,7 @@ async def test_first_generation_is_single_active_and_readable(tmp_path: Path) ->
             ).fetchone()
         assert row is not None
         assert row[0] == "qwen-plus"
-        assert row[1] == "review_v1"
+        assert row[1] == "review_v2"
         assert json.loads(cast(str, row[2])) == {"total_tokens": 77}
         assert cast(int, row[3]) >= 0
 
@@ -442,6 +469,55 @@ async def test_invalid_output_fails_without_writing_material(tmp_path: Path) -> 
         )
         assert read_out["review_material"] is None
         assert read_out["action_required"] == "RETRY"
+
+
+@pytest.mark.anyio
+async def test_invalid_output_corrective_retry_recovers(tmp_path: Path) -> None:
+    invalid_output = {
+        "quick_review": "合法速记",
+        "key_list": ["合法重点"],
+        "mind_map_markdown": "一、进程调度\n二、调度算法",
+    }
+    model = RetryThenValidReviewMaterialModel(invalid_output, valid_review_material())
+    async with running_review_app(tmp_path / "KnowRealm", model) as (app, client):
+        await configure_llm(client)
+        record_id = await create_completed_record(app, client)
+        assert (
+            await client.post(f"/api/records/{record_id}/review-material-jobs")
+        ).status_code == 202
+
+        material = await wait_for_review_material(client, record_id)
+
+        assert material["quick_review"] == valid_review_material().quick_review
+        assert len(model.prompts) == 2
+        assert "未通过结构校验" in model.prompts[1]
+        assert model.prompts[1].startswith(model.prompts[0])
+
+
+@pytest.mark.anyio
+async def test_overlong_key_items_are_split_deterministically(tmp_path: Path) -> None:
+    long_item = "掌握Agent核心概念" + "，包括记忆与工具调用" * 8
+    assert len(long_item) > 80
+    model = FakeReviewMaterialModel(
+        {
+            "quick_review": "合法速记",
+            "key_list": [long_item, "短要点"],
+            "mind_map_markdown": "# 进程调度\n- 调度目标",
+        }
+    )
+    async with running_review_app(tmp_path / "KnowRealm", model) as (app, client):
+        await configure_llm(client)
+        record_id = await create_completed_record(app, client)
+        assert (
+            await client.post(f"/api/records/{record_id}/review-material-jobs")
+        ).status_code == 202
+
+        material = await wait_for_review_material(client, record_id)
+
+        keys = cast(list[str], material["key_list"])
+        assert all(1 <= len(item) <= 80 for item in keys)
+        assert len(keys) > 2
+        assert keys[-1] == "短要点"
 
 
 @pytest.mark.anyio
@@ -558,7 +634,7 @@ async def test_adjust_creates_new_version_and_supersedes_previous(tmp_path: Path
         assert v2["version_no"] == 2
         assert v2["status"] == "GENERATED"
         assert v2["user_feedback"] == "更简洁"
-        assert v2["prompt_version"] == "review_adjust_v1"
+        assert v2["prompt_version"] == "review_adjust_v2"
 
         versions = await list_review_versions(client, record_id)
         assert [version["version_no"] for version in versions] == [2, 1]

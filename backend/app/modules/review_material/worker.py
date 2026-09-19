@@ -44,7 +44,11 @@ from app.modules.review_material.graph import (
     ReviewMaterialState,
 )
 from app.modules.review_material.models import ReviewMaterial
-from app.modules.review_material.schemas import ReviewMaterialContent, ReviewMaterialStatus
+from app.modules.review_material.schemas import (
+    ReviewMaterialContent,
+    ReviewMaterialDraft,
+    ReviewMaterialStatus,
+)
 from app.modules.settings.config import (
     LlmProviderConfig,
     llm_consent,
@@ -57,9 +61,9 @@ from app.modules.transcript.models import Transcript
 from app.shared.events import RecordInvalidationNotifier
 from app.shared.prompts import CONTENT_LANGUAGE_INSTRUCTION
 
-PROMPT_VERSION = "review_v1"
-ADJUST_PROMPT_VERSION = "review_adjust_v1"
-MAP_PROMPT_VERSION = "review_map_v1"
+PROMPT_VERSION = "review_v2"
+ADJUST_PROMPT_VERSION = "review_adjust_v2"
+MAP_PROMPT_VERSION = "review_map_v2"
 REDUCE_PROMPT_VERSION = "review_reduce_v1"
 MODEL_CONTEXT_TOKENS = 128_000
 MODEL_INPUT_TOKEN_BUDGET = MODEL_CONTEXT_TOKENS - 16_000 - 4_000
@@ -131,6 +135,9 @@ def _base_prompt(ctx: _ClaimedReviewMaterial, transcript: str) -> str:
     return (
         head + "考前速记使用 Markdown；重点清单条数按内容密度决定；大纲只能使用 Markdown "
         "标题与列表行，不得使用代码块或表格。\n"
+        "硬性约束：考前速记与大纲各不超过 5000 字；重点清单 1~50 项、每项 1~80 字；"
+        "大纲每一行只能是 Markdown 标题（# 开头）或列表行（-、*、+ 或阿拉伯数字加 . 开头），"
+        "禁止中文序号、加粗行、代码块与表格；不得输出结构外字段。\n"
         f"学习场景：{ctx.course.learning_context}\n"
         f"教育阶段：{ctx.course.education_stage or '未设置'}\n"
         f"内容深度：{ctx.course.depth or '未设置'}\n"
@@ -267,6 +274,41 @@ async def validate_claim(
 
 
 async def _call(
+    ctx: _ClaimedReviewMaterial,
+    session_factory: async_sessionmaker[AsyncSession],
+    model: ReviewMaterialModel,
+    prompt: str,
+    prompt_version: str,
+) -> ReviewMaterialCallResult:
+    try:
+        result = await _invoke_model(ctx, session_factory, model, prompt, prompt_version)
+        return _normalized(result)
+    except StructuredGenerationError as exc:
+        if exc.code != "LLM_OUTPUT_INVALID":
+            raise
+        # json_schema 不可用的供应商（如 DeepSeek）降级 json_mode 后，模型偶发违反
+        # schema 约束（自定义校验器规则不进 JSON Schema，模型不可见）；携带真实
+        # 校验错误纠偏重试一次，仍失败则按原失败路径记账。
+        reason = str(exc.__cause__)[:500] if exc.__cause__ else "输出结构不符合要求"
+        corrective = (
+            f"{prompt}\n上一次输出未通过结构校验，原因：{reason}。"
+            "请修正以上问题，重新输出一个完整且严格符合结构的 JSON 对象。\n"
+        )
+        result = await _invoke_model(ctx, session_factory, model, corrective, prompt_version)
+        return _normalized(result)
+
+
+def _normalized(result: ReviewMaterialCallResult) -> ReviewMaterialCallResult:
+    """服务层按宽松 Draft 校验（key 项不限长）；此处确定性切分归一到严格契约。"""
+    content = ReviewMaterialContent.from_draft(cast(ReviewMaterialDraft, result.content))
+    return ReviewMaterialCallResult(
+        content=content,
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )
+
+
+async def _invoke_model(
     ctx: _ClaimedReviewMaterial,
     session_factory: async_sessionmaker[AsyncSession],
     model: ReviewMaterialModel,

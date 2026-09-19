@@ -5,6 +5,7 @@ from typing import Protocol, cast
 from uuid import uuid4
 
 import openai
+from langchain_core.exceptions import OutputParserException
 from langchain_openai import ChatOpenAI
 from loguru import logger
 from pydantic import BaseModel, SecretStr, ValidationError
@@ -15,7 +16,7 @@ from app.modules.course_brain.schemas import CourseBrainExtractionBatch
 from app.modules.knowledge_point.schemas import KnowledgePointBatch
 from app.modules.llm.models import LlmCallLog
 from app.modules.quiz.schemas import QuizBatch, ShortAnswerGrade
-from app.modules.review_material.schemas import ReviewMaterialContent
+from app.modules.review_material.schemas import ReviewMaterialContent, ReviewMaterialDraft
 from app.modules.settings.config import LlmProviderConfig
 from app.modules.summary.schemas import SummaryContent
 from app.modules.todo.schemas import TodoBatch
@@ -144,8 +145,13 @@ class _OpenAiCompatibleStructuredModel:
                 # 400 拒绝请求不计费，此降级不构成额外的付费重试。
                 raw_response = await self._generate_json_mode(llm, prompt)
             output = raw_response.get("parsed")
+            parsing_error = raw_response.get("parsing_error")
             raw_message = raw_response.get("raw")
             usage = getattr(raw_message, "usage_metadata", None)
+            if output is None and parsing_error is not None:
+                # include_raw 会吞掉 JSON 解析/schema 违规的真实错误；上抛让
+                # _call_structured_model 按"输出无效"归类（而非误导性的 None 校验）。
+                raise cast(BaseException, parsing_error)
             return StructuredModelResult(
                 output=output,
                 token_usage=cast(dict[str, object], usage) if isinstance(usage, dict) else {},
@@ -201,7 +207,9 @@ class OpenAiCompatibleTodoModel(_OpenAiCompatibleStructuredModel):
 
 class OpenAiCompatibleReviewMaterialModel(_OpenAiCompatibleStructuredModel):
     def __init__(self) -> None:
-        super().__init__(ReviewMaterialContent)
+        # 校验用宽松 Draft（key 项不限长，flash 级模型无法按提示控制每项字数）；
+        # worker._call 调 from_draft 切分归一到严格 ReviewMaterialContent。
+        super().__init__(ReviewMaterialDraft)
 
 
 class OpenAiCompatibleCourseBrainModel(_OpenAiCompatibleStructuredModel):
@@ -298,7 +306,7 @@ async def _call_structured_model(
         )
         token_usage = result.token_usage
         content = output_schema.model_validate(result.output)
-    except ValidationError as exc:
+    except (ValidationError, OutputParserException) as exc:
         error_code = invalid_output_code
         failure = StructuredGenerationError(error_code)
         failure.__cause__ = exc
@@ -318,6 +326,15 @@ async def _call_structured_model(
         error_code=error_code,
     )
     if failure is not None:
+        # 结构化失败此前全程无日志（错误码只进 DB）；真实校验错误内联进消息，
+        # loguru 默认 sink 不渲染 extra kwargs，只记事件名会再次丢失原因。
+        detail = (
+            str(failure.__cause__)[:300] if failure.__cause__ is not None else ""
+        )
+        logger.warning(
+            f"structured_generation_failed graph={graph_name} node={graph_node} "
+            f"error={error_code} detail={detail}"
+        )
         raise failure
     if content is None:
         raise StructuredGenerationError(invalid_output_code)
@@ -472,10 +489,11 @@ async def call_review_material_model(
         graph_name="review-material",
         graph_node="generate",
         prompt_version=prompt_version,
-        output_schema=ReviewMaterialContent,
+        output_schema=ReviewMaterialDraft,
         invalid_output_code="LLM_OUTPUT_INVALID",
     )
     return ReviewMaterialCallResult(
+        # 实际为 ReviewMaterialDraft 实例；调用方（worker._call）确定性归一后使用
         content=cast(ReviewMaterialContent, result.content),
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,

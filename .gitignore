@@ -213,6 +213,7 @@ opencode.jsonc
 img
 
 docs/research
+docs/sessions
 docs/improve-codebase-architecture
 .pytest-tmp
 .pytest-tmp-*

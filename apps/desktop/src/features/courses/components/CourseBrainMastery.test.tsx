@@ -9,6 +9,17 @@ import App from "@/App";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 
+// 与 renderWithQuery 同一约定：测试中禁用重试，失败一次即到达 error 分支。
+// 生产 queryClient 的 retry:2 会让 500 在约 3 秒重试延迟内停留在 pending，
+// 导致错误态用例实际只验证了加载态。
+vi.mock("@/app/queryClient", async () => {
+  const { QueryClient } = await import("@tanstack/react-query");
+  return {
+    createQueryClient: () =>
+      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  };
+});
+
 type CourseDetail = components["schemas"]["CourseDetailOut"];
 type BrainSnapshotOut = components["schemas"]["BrainSnapshotOut"];
 type BrainConceptOut = components["schemas"]["BrainConceptOut"];
@@ -73,36 +84,52 @@ const confirmedConcepts: BrainConceptOut[] = [
   },
 ];
 
-function snapshotOf(status: BrainSnapshotOut["status"]): BrainSnapshotOut {
+const defaultGraphNodes: BrainSnapshotOut["graph"]["nodes"] = [
+  {
+    id: "c1",
+    canonical_name: "进程调度",
+    concept_type: "TERM",
+    importance: 5,
+    occurrence_count: 6,
+    record_count: 3,
+  },
+  {
+    id: "c2",
+    canonical_name: "虚拟内存",
+    concept_type: "PRINCIPLE",
+    importance: 3,
+    occurrence_count: 2,
+    record_count: 1,
+  },
+];
+
+function graphNode(
+  id: string,
+  canonicalName: string,
+): BrainSnapshotOut["graph"]["nodes"][number] {
+  return {
+    id,
+    canonical_name: canonicalName,
+    concept_type: "TERM",
+    importance: 3,
+    occurrence_count: 1,
+    record_count: 1,
+  };
+}
+
+function snapshotOf(
+  status: BrainSnapshotOut["status"],
+  nodes: BrainSnapshotOut["graph"]["nodes"] = defaultGraphNodes,
+): BrainSnapshotOut {
   return {
     course_id: COURSE_ID,
     status,
-    concept_count: 2,
+    concept_count: nodes.length,
     candidate_count: 0,
     stale: false,
     active_job_id: null,
     last_built_at: "2026-09-15T08:00:00.000000Z",
-    graph: {
-      nodes: [
-        {
-          id: "c1",
-          canonical_name: "进程调度",
-          concept_type: "TERM",
-          importance: 5,
-          occurrence_count: 6,
-          record_count: 3,
-        },
-        {
-          id: "c2",
-          canonical_name: "虚拟内存",
-          concept_type: "PRINCIPLE",
-          importance: 3,
-          occurrence_count: 2,
-          record_count: 1,
-        },
-      ],
-      edges: [],
-    },
+    graph: { nodes, edges: [] },
   };
 }
 
@@ -211,10 +238,16 @@ function tooltipTextFor(conceptId: string): string {
 
 describe("Course Brain 非侵入式 Mastery 标记", () => {
   it("列表视图正式概念行显示掌握状态徽章，候选行不显示", async () => {
+    const candidate: BrainConceptOut = {
+      ...confirmedConcepts[0],
+      id: "c9",
+      canonical_name: "TLB",
+      status: "CANDIDATE",
+    };
     server.use(
       http.get(CONCEPTS_URL, ({ request }) =>
         new URL(request.url).searchParams.get("status") === "CANDIDATE"
-          ? HttpResponse.json([])
+          ? HttpResponse.json([candidate])
           : HttpResponse.json(confirmedConcepts),
       ),
     );
@@ -230,7 +263,10 @@ describe("Course Brain 非侵入式 Mastery 标记", () => {
     expect(noDataRow).toHaveTextContent("数据不足");
 
     fireEvent.click(screen.getByRole("button", { name: "待审核候选" }));
-    expect(await screen.findByText("暂无概念")).toBeInTheDocument();
+    const candidateRow = (await screen.findByText("TLB")).closest("button");
+    for (const label of ["数据不足", "待加强", "学习中", "稳定"]) {
+      expect(candidateRow).not.toHaveTextContent(label);
+    }
   });
 
   it("图谱节点 tooltip 与标签携带同一掌握状态", async () => {
@@ -260,6 +296,74 @@ describe("Course Brain 非侵入式 Mastery 标记", () => {
     expect(label).toContain("进程调度");
   });
 
+  it("WEAK 与 LEARNING 状态在列表与图谱中同样呈现", async () => {
+    const weak = conceptMastery({
+      concept_id: "c3",
+      canonical_name: "页表",
+      status: "WEAK",
+      mastery_score: 0.4,
+      confidence: "LOW",
+      evidence_count: 3,
+      positive_evidence_count: 1,
+      negative_evidence_count: 2,
+      last_practiced_at: "2026-09-12T08:00:00.000000Z",
+      last_verified_at: "2026-09-12T08:00:00.000000Z",
+    });
+    const learning = conceptMastery({
+      concept_id: "c4",
+      canonical_name: "死锁",
+      status: "LEARNING",
+      mastery_score: 0.66,
+      confidence: "MEDIUM",
+      evidence_count: 5,
+      positive_evidence_count: 3,
+      negative_evidence_count: 2,
+      last_practiced_at: "2026-09-13T08:00:00.000000Z",
+      last_verified_at: "2026-09-13T08:00:00.000000Z",
+    });
+    server.use(
+      http.get(BRAIN_URL, () =>
+        HttpResponse.json(
+          snapshotOf("READY", [
+            ...defaultGraphNodes,
+            graphNode("c3", "页表"),
+            graphNode("c4", "死锁"),
+          ]),
+        ),
+      ),
+      http.get(CONCEPTS_URL, () =>
+        HttpResponse.json([
+          ...confirmedConcepts,
+          { ...confirmedConcepts[0], id: "c3", canonical_name: "页表" },
+          { ...confirmedConcepts[1], id: "c4", canonical_name: "死锁" },
+        ]),
+      ),
+      http.get(MASTERY_URL, () =>
+        HttpResponse.json({
+          ...courseMastery,
+          status_counts: {
+            not_enough_data: 1,
+            weak: 1,
+            learning: 1,
+            stable: 1,
+          },
+          concepts: [...courseMastery.concepts, weak, learning],
+        }),
+      ),
+    );
+    renderAt(ROUTE_PATH);
+    await screen.findByRole("img", { name: "「操作系统」概念关系图谱" });
+
+    expect(tooltipTextFor("c3")).toContain("掌握状态：待加强");
+    expect(tooltipTextFor("c4")).toContain("掌握状态：学习中");
+
+    fireEvent.click(screen.getByRole("button", { name: "列表" }));
+    const weakRow = (await screen.findByText("页表")).closest("button");
+    expect(weakRow).toHaveTextContent("待加强");
+    const learningRow = screen.getByText("死锁").closest("button");
+    expect(learningRow).toHaveTextContent("学习中");
+  });
+
   it("概念详情面板提供掌握状态与详情入口，复用既有掌握详情弹窗", async () => {
     renderAt(ROUTE_PATH);
     fireEvent.click(await screen.findByRole("button", { name: "列表" }));
@@ -285,6 +389,8 @@ describe("Course Brain 非侵入式 Mastery 标记", () => {
     expect(await screen.findByText("虚拟内存")).toBeInTheDocument();
     expect(screen.queryByText("稳定")).not.toBeInTheDocument();
     expect(screen.queryByText("数据不足")).not.toBeInTheDocument();
+    // 图谱 tooltip 同样不追加掌握状态行（失败降级与列表同一份数据源）。
+    expect(tooltipTextFor("c1")).not.toContain("掌握状态");
 
     fireEvent.click(screen.getByRole("button", { name: /进程调度/ }));
     expect(
@@ -297,6 +403,7 @@ describe("Course Brain 非侵入式 Mastery 标记", () => {
 
   it("零已确认概念时图谱与列表正常渲染且无掌握标记", async () => {
     server.use(
+      http.get(BRAIN_URL, () => HttpResponse.json(snapshotOf("READY", []))),
       http.get(CONCEPTS_URL, () => HttpResponse.json([])),
       http.get(MASTERY_URL, () =>
         HttpResponse.json({
@@ -315,8 +422,13 @@ describe("Course Brain 非侵入式 Mastery 标记", () => {
       ),
     );
     renderAt(ROUTE_PATH);
-    fireEvent.click(await screen.findByRole("button", { name: "列表" }));
 
+    expect(
+      await screen.findByText("确认概念后，正式图谱会在这里生成。"),
+    ).toBeInTheDocument();
+    expect(graphOption).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "列表" }));
     expect(await screen.findByText("暂无概念")).toBeInTheDocument();
     expect(screen.queryByText("稳定")).not.toBeInTheDocument();
   });

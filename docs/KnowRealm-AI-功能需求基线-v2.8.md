@@ -1,15 +1,16 @@
-# KnowRealm-AI 功能需求基线 v2.7
+# KnowRealm-AI 功能需求基线 v2.8
 
 > **文档定位**：KnowRealm-AI 第一版产品需求文档（PRD），覆盖产品定位、功能需求、架构约束、阶段规划与产品决策记录。
 >
 > 配套文档：
-> - 技术选型：`docs/技术栈设计与审查-v4.5.md`
-> - 数据库设计：`docs/KnowRealm-AI-数据模型-v2.9.md`
-> - Learning Brain 扩展设计（F1~F18 机制与交互参考）：`docs/AI课堂助手-功能升级与创新扩展设计.md`
+> - 技术选型：`docs/技术栈设计与审查-v4.6.md`
+> - 数据库设计：`docs/KnowRealm-AI-数据模型-v3.0.md`
+> - Learning Brain 扩展设计（F1~F18 机制与交互参考）：`docs/knowRealm-AI-功能升级与创新扩展设计.md`
 > - 存储范式决策：`docs/adr/0001-local-first-storage.md`
 > **项目定位**：开源、面向个人使用、**本地优先**。所有设计先过两问：**数据是否落在用户可见、可整体搬移的本地目录？这项能力是否要求用户多装任何东西（容器/账号/付费云服务）？**
 > **编写日期**：2026-08-17
 > **实施顺序澄清（2026-08-17）**：桌面工程壳已初始化；开发从可见页面与真实业务纵切开始，不设独立 S0 或全量 Phase 0 前置阶段。录音 POC 随录音功能实施，sidecar 打包冒烟随首次可分发版本实施。
+> **变更记录**：v2.8（2026-09-18）**资产库 / RAG Agent 与 Learner Memory V1 评审定稿（决策 #60/#61，ADR-0024/0025）**——`/library` 从搜索壳升级为“资料来源目录 + Record / 学习资产联邦工作台”，Course 仍是唯一知识容器；通用 LibraryItem 替换 `course_materials` 草案，资料与 Record 为多对多；V1 首适配器为受限 HTTP(S) 网页剪藏，正文抽取采用 trafilatura，失败降级手动粘贴；RAG 统一经 LibraryRetrievalService，模型只见一个 `search_library`，LIBRARY_ITEM / RECORD / COURSE / ALL 范围强制隔离且引用必须逐字回查；sqlite-vec 改为真实黄金集触发的条件能力。Learner Memory V1 复用 learner_preferences 业务表，由 LearnerProfileService 聚合，普通聊天不得静默记忆，Agent 写动作统一形成可持久化提案并经 HITL。一个外部版本按七张纵向工单交付。
 > **变更记录**：v2.7（2026-09-08）**界面语言与内容语言定稿（决策 #59，plan 20 grill）**——界面语言取**中 / 英两档**：新增偏好字段 `language`（缺省 zh，存量升级无感），设置页外观分组两选即时生效，首启向导由三步改**四步**（新增第一步「界面语言」，预选系统语言，跳过=接受预选），首帧语言=本地缓存 ?? 系统语言（偏好到达后校正防闪变），`<html lang>`、系统托盘菜单跟随；**内容语言与界面语言正交**——全部 LLM prompt（总结 / 知识点 / 习题 / 评分 / Todo / 复习资料 / 对话）追加「用与输入内容相同的语言输出」显式指令，生成物跟随材料或提问的语言、不做内容翻译；错误消息双语（错误码附加字段 + 前端码表翻译）随工单 03/04 落 ADR-0017。§4 首启流程行 / 偏好设置行 / #3 / §9.1 信息架构行连锁改写。
 > **变更记录**：v2.6（2026-09-07）**全局搜索引擎定稿（决策 #32 改写，ADR-0016，plan 18 grill 终裁）**——MVP 全文搜索由「LIKE 子串匹配、不引入中文分词」改定为 **SQLite FTS5 + jieba 应用层分词**（统一索引表：title/body/keywords 切词文本 + entity_type/entity_id；BM25 排序；cut_for_search 双侧切词），跳过 LIKE 阶段一步到位（同日三轮选型咨询稿「维持 LIKE MVP」被外部交叉方案 grill 推翻，用户终裁）；索引为普通 FTS5 表、应用层同事务维护（SQLite 触发器执行不了 jieba，external content 表绑定原文列亦不可用），软删不删索引行、查询期回表过滤（含归档课程护栏），启动幂等回填存量并预热词典；检索范围=学习记录（标题+转写全文）、知识点（名称+详情+tags 入 keywords）、课程（名称+hot_words 入 keywords）；FTS5 trigram（2 字中文词命中失效）与 Tantivy（双存储一致性税+中文零增益）维持否决；P2 语义检索（sqlite-vec）不变。§5.1 Wave B 行 / 18 号功能计划连锁改写。
 > **变更记录**：v2.5（2026-09-07）**学习统计口径与范围定稿（#54，plan 17 grill）**——七项指标口径全部定死：累计学习时长=SUM(records.duration_ms) 仅音频类捕获；记录数=软删外全量（含 FAILED/NOTE/收件箱未归类）；课程数含 ARCHIVED；AI 总结次数=ai_summaries 行数（含重新生成版本）；习题生成=quizzes 行数（含历史批次）、习题完成=answered_at 非空（模拟测试交卷不计）；问答轮次=chat_messages USER 行数（过滤软删会话）；一致性原则=删除记录/课程后名下指标同步回落。**趋势图表拉进本功能范围**（原「Wave B 出口线之外后续可加」表述作废）：学习时长趋势折线面积图，真数据按捕获日聚合，近 7 天 / 近 30 天两档（echarts，无假数据）。入口形态由「统计卡片区」改定为**统计带**（趋势图 + 六格指标带单分节，非卡片仪表盘）；§4.1 学习统计行 / §9.1 信息架构行连锁改写。
@@ -113,7 +114,7 @@ Agent 运行态  = LangGraph Checkpoint（langgraph.db，独立文件，非业�
 
 ## 3. 技术基线与架构红线
 
-技术栈详见 `docs/技术栈设计与审查-v4.5.md`，此处仅列结论：Tauri 2 + React/TS + TanStack Router/Query + Zustand；FastAPI **sidecar**（PyInstaller 打包随 `.msi` 分发，UI 走 localhost）+ LangChain/LangGraph + **自研 SQLite 任务队列（processing_jobs 即队列，无任何中间件）**；SQLite（WAL）+ **sqlite-vec**；LLM 默认 DashScope qwen-plus（**可自选任意 OpenAI 兼容端点**）+ text-embedding-v3（V1 固定）；腾讯云 ASR + 随包 ffmpeg（本地执行）；迁移统一 `backend/migrations/*.sql`（user_version 编号）。
+技术栈详见 `docs/技术栈设计与审查-v4.6.md`，此处仅列结论：Tauri 2 + React/TS + TanStack Router/Query + Zustand；FastAPI **sidecar**（PyInstaller 打包随 `.msi` 分发，UI 走 localhost）+ LangChain/LangGraph/DeepAgents + **自研 SQLite 任务队列（processing_jobs 即队列，无任何中间件）**；SQLite（WAL）+ FTS5/jieba，sqlite-vec 仅在真实检索评测证明净增益后启用；LLM 默认 DashScope qwen-plus（**可自选任意 OpenAI 兼容端点**），Embedding 仅随向量召回启用；腾讯云 ASR + 随包 ffmpeg（本地执行）；迁移统一 `backend/migrations/*.sql`（user_version 编号）。
 
 ### 3.1 十二条架构与数据红线
 
@@ -126,9 +127,9 @@ Agent 运行态  = LangGraph Checkpoint（langgraph.db，独立文件，非业�
 7. **Autopilot 只推荐不执行**：任何动作经用户 Accept/Skip/Defer/Adjust 后才运行；不得自动开考、自动生成大量题目、自动认定掌握。
 8. **数值计算与 LLM 分工**：Mastery、遗忘风险、复习优先级、下一题选择由确定性规则计算；LLM 只做内容理解、语义评分、Concept 对齐、诊断解释。
 9. **概念分层与任务分层不可破坏**：KP（Record 级）≠ Concept（Course 级）；Todo / Learning Plan Item / Autopilot Action 三表分立。
-10. **迁移唯一权威** = `backend/migrations/*.sql`（user_version 编号推进）；LangGraph Checkpoint ≠ 业务事实（langgraph.db），长期事实必须落业务表；`record.status` 表达用户可理解业务状态，技术任务状态在 `processing_jobs`。
+10. **迁移唯一权威** = `backend/migrations/*.sql`（user_version 编号推进）；首次应用新 Schema 前必须创建独立升级前数据库快照。Schema 迁移不得扫描 / 哈希历史文件；内容回填由可恢复、幂等的后台 Job 执行。LangGraph Checkpoint ≠ 业务事实，长期事实必须落业务表；`record.status` 表达用户可理解业务状态，技术任务状态在 `processing_jobs`。
 11. **Agent 工具仅限聊天域**：联网搜索等工具只进入聊天会话（自由聊天默认可用、挂载会话可选）；Summary / Tutor / TeachBack Graph **禁止联网工具**，产出只基于用户资料——总结与教学的可信度根基（#53）。
-12. **数据外呼白名单（v2.0）**：个人数据离开本机仅限三类显式通道——LLM/Embedding/ASR API 调用、P2 剪藏正文抓取、P2 快照备份推送；此外禁止任何出网传输。供应商密钥不出本机（导出包默认不含）。
+12. **数据外呼白名单（v2.8）**：个人数据离开本机仅限 LLM/Embedding/ASR API 调用、受限网页正文抓取、可选快照备份推送与用户明确开启的联网搜索；此外禁止任何出网传输。首次范围问答必须说明可能发送相关来源片段与最小必要学习者记忆并取得供应商绑定同意；长期记忆外发可单独关闭，供应商地址或密钥变化后重新确认。供应商密钥不出本机（导出包默认不含）。
 
 ---
 
@@ -145,6 +146,7 @@ Agent 运行态  = LangGraph Checkpoint（langgraph.db，独立文件，非业�
 | 数据目录管理 | 设置页：打开数据目录 / 更改数据目录（移动+重启）/ **全量导出**（zip：db 快照 + files + config，默认不含密钥，可选勾选含）/ 从导出包导入（换机恢复） | MVP（导出/导入 Wave B） |
 | 学习统计 | **统计带**（#54，Wave B）：上「学习趋势」折线面积图（真数据按捕获日聚合音频时长，近 7 天 / 近 30 天两档，echarts）+ 下六格指标带（累计学习时长 / 记录数 / 课程数 / AI 总结次数 / 习题（已作答 / 生成）/ 问答轮次）——**由业务表实时聚合，不建独立事实表、无缓存**。口径（v2.5 定稿）：学习时长 = SUM(records.duration_ms) 仅音频类；记录数 = 软删外全量（含 FAILED / NOTE / 收件箱未归类）；课程数含 ARCHIVED；AI 总结次数 = ai_summaries 行数（含重新生成版本）；习题生成 = quizzes 行数（含历史批次），完成 = answered_at 非空（模拟测试交卷不计）；问答轮次 = chat_messages USER 行数（过滤软删会话）；**删除记录 / 课程后名下指标同步回落**。入口 = "今日"页底部（不新增左栏项） | MVP |
 | 偏好设置 | **单一本地配置 `config/settings.json`（v2.0 合并原 user_settings/local_settings，无漫游概念）**：深色模式（LIGHT/DARK/SYSTEM）、字体大小、时区（默认取 OS，复习提醒 P4 生效）、界面语言（#59，中文/English 两档，向导询问+设置页可改）、关窗行为（默认驻留托盘）/ 开机自启（默认关）/ 速记快捷键（默认 Ctrl+Alt+N 可改）/ 上次学习场景 / 习题数量 / 窗口记忆 | MVP |
+| AI 记忆 | 学习画像中的独立区域：查看、编辑、删除显式偏好与已确认观察偏好；观察偏好显示置信度、证据数量、确认时间；对话中的记忆提案就地确认 / 拒绝，并能查看本轮使用了哪些记忆；可单独关闭长期记忆外发 | 资料库同波次独立工单 |
 | 服务与用量 | **健康检查面板**（各外部服务状态与缺 key 提示，#38）+ **近 30 天 token 用量与调用次数**（llm_call_logs 聚合、按 model 分组；不做计价展示）——设置页"服务与用量"分区 | MVP（Wave B） |
 
 ### 4.2 M2 — 课程管理
@@ -165,7 +167,7 @@ Agent 运行态  = LangGraph Checkpoint（langgraph.db，独立文件，非业�
 |------|------|------|---------|-------------|------|
 | L1 | ⚡ 速记/闪念 | 全局快捷键（默认 Ctrl+Alt+N，可自定义）→ 输入框（一句话~几段） | Inbox（NOTE 状态） | **无**——纯存储，手动升级制 | MVP |
 | L2 | 📋 粘贴长文本 | 粘贴框 → 直接成 Record | Inbox 或选定课程 | **选定课程=直接进总结管线；未选课=仅存储**（等同速记，手动升级，#29） | MVP |
-| L3 | 🔗 网页剪藏 | 贴 URL → sidecar 抓正文（readability）→ 文档管线 | Inbox 或选定课程 | 同 L2 | P2 |
+| L3 | 🔗 网页剪藏 | 贴 HTTP(S) URL → sidecar 受限抓取 → trafilatura 提取正文 → 保存净化正文快照 → 统一入库 / 文档管线；不执行 JS、不加载子资源、不绕过登录墙，失败降级手动粘贴 | 未归类资料或选定课程 | 入库本身不消费 LLM；派生 Record 后按现有规则处理 | 资料库 V1 首适配器 |
 | L4 | 🎵 音频导入 / ▶ 课堂录音 | 现有流程 | Inbox 或选定课程 | ASR → 总结管线 | MVP |
 | L5 | 📄 文档导入 | 现有流程 | Inbox 或选定课程 | 解析 → 总结管线 | MVP |
 
@@ -175,6 +177,17 @@ Agent 运行态  = LangGraph Checkpoint（langgraph.db，独立文件，非业�
 - **未归类内容不自动消费 token**（#29）：速记（NOTE 状态）与未选课粘贴均为纯存储，手动点"生成学习资产"才进入总结 HITL 管线
 - 已选课程的录音/导入/粘贴仍走原即时管线（不强制先进 Inbox）
 - **实施边界（#57/#58）**：plan 05 的单文档纵切要求选择 ACTIVE 课程；plan 04 的 audio-only/录音可不选课，但批次只要含 document 就必须选择 ACTIVE 课程；未选课文档及未选课混合批次仍由 plan 11 定稿，04/05 不提前创建不可重新发现的 Inbox Record。
+
+**资料库 V1（决策 #60）**：
+
+- `/library` 默认可浏览，联邦展示资料来源、Record 与学习资产，但 LibraryItem 只表示原始来源；Course 仍是唯一知识容器，不做文件夹树。
+- 二级导航为智能视图（全部 / 最近 / 收藏 / 待整理 / 归档 / 资料条目回收站）、领域分类和 Course 筛选；顶部分类固定为“全部 / 资料来源 / 学习记录 / 学习资产”。
+- 详情检查器按对象显示来源预览、关系、RAG 可用性与操作；“AI 解读”复用现有聊天。资料条目进入 LIBRARY_ITEM 范围，Record / 学习资产进入 RECORD 范围；不提供讨论页签。
+- “AI 整理”V1 只做确定性重复 / 错误检查 + 结构化标题 / Course 建议，必须逐项确认后由业务 Service 应用；标签建议留后续。
+- 一个 LibraryItem 可派生多个 Record，一个 Record 可关联多个 LibraryItem。现有 `record_files` 原件直接复用，不复制字节；新外部文件先复制到数据目录后处理。
+- 同内容哈希导入必须提示，不静默合并；同 URL / 路径内容变化在 V1 另建资料条目，不建版本系统、不后台监控。
+- LibraryItem 的 ACTIVE / ARCHIVED / deleted_at 是生命周期事实；解析、分片、索引与失败状态从 processing_jobs / Segment 派生。资料软删不级联 Record，30 天内可恢复。
+- UI 批量动作只在所选对象语义一致时开放；跨类型安全公共动作仅限收藏 / 打开等，不把异构对象强行共用删除语义。
 
 #### 4.3.1 录音
 
@@ -256,11 +269,11 @@ DRAFT → CONTENT_PROCESSING（本地转码 + ASR 提交/轮询 或 文档解析
 
 | 能力 | 需求 | 优先级 |
 |------|------|--------|
-| **AI 对话（ChatGPT 式一级入口）** | 左栏一级入口：会话列表（新建/历史/重命名/删除）+ SSE 流式；**纯通用聊天**（系统提示注入用户角色 + 自我介绍）与**挂载上下文**（@记录=Record Chat、@课程=Course Chat、**@全部资料=全局 RAG**〔个人量级 sqlite-vec 全局检索〕）模式可切换；自由聊天不建向量索引、不进 Learning Evidence 链（红线 #5）；P5 起 Tutor/Teach-back 会话同界面以模式呈现 | MVP（@课程挂载 P3 生效；@全部资料 P2 生效） |
-| Record Chat | 基于当前 Record（转写/总结/片段/知识点）多轮对话；SSE 流式（首事件 ≤3s）；Chat Memory（近 10 轮）；**MVP 上下文组装（#39）：转写全文常驻 + 溢出按对话轮数递减（保留摘要+知识点+近 3 轮引用的转写段）；P2 起改为摘要+知识点常驻 + 按问题向量检索转写片段**；答案携带引用（Source Anchor，可点击跳转课堂时间点） | MVP（溯源 P2） |
+| **AI 对话（ChatGPT 式一级入口）** | 左栏一级入口：会话列表（新建/历史/重命名/删除）+ SSE 流式；范围为 FREE / RECORD / LIBRARY_ITEM / COURSE / ALL。LIBRARY_ITEM 仅从资料详情创建，不出现在全局范围切换按钮。所有挂载范围均由运行时强制过滤：无可引用证据时明确说明，不得用模型常识补成资料事实；联网结果与本地引用分型展示。自由聊天不进 Learning Evidence 链 | MVP / 资料库 V1 扩展 |
+| Record Chat | 基于当前 Record（转写/总结/片段/知识点）多轮对话；SSE 流式（首事件 ≤3s）；Chat Memory（近 10 轮）；**MVP 上下文组装（#39）：转写全文常驻 + 溢出按对话轮数递减（保留摘要+知识点+近 3 轮引用的转写段）；P2 起统一经 LibraryRetrievalService 按 RECORD 范围检索 Segment，FTS+Concept 为基线、sqlite-vec 仅评测触发**；答案携带引用（Source Anchor，可点击跳转课堂时间点） | MVP（溯源 P2） |
 | 对话转学习资产 | 聊明白后一键"存为知识点 / 生成习题"挂到某课程，形成问→懂→沉淀闭环；转换产物复用现有表，对话片段经 Source Anchor（USER_NOTE / CHAT_MESSAGE）溯源 | P2 |
 | 知识点解释 | 点击知识点进入针对该知识点的教学式对话 | MVP（简化）/P5（Tutor 完整版） |
-| Course Chat | 课程级 RAG 问答——query 理解 → 范围过滤 → sqlite-vec 召回 → 上下文构建 → LLM → 答案+来源；**与 Record Chat 共用 chat_sessions/chat_messages，不建第二套消息模型**（mode 区分） | P3 |
+| Course Chat | 课程级 RAG 问答——query 理解 → 强制范围过滤 → Segment FTS + Concept 扩展，真实评测触发时追加 sqlite-vec → 上下文构建 → LLM → 答案+来源；**与其他范围共用 chat_sessions/chat_messages，不建第二套消息模型** | P3 / 资料库 V1 统一检索 |
 | 工具扩展（联网搜索，#53） | Chat 实现为 **LangGraph agent 循环**（检索为第一工具——单工具时行为等同纯 RAG 管线）；**P2 落地 web_search**：SearchProvider 抽象，默认 Tavily（免费档），预留博查/智谱国产替代；无 key 按 #38 降级（搜索置灰，聊天照常）；搜索来源经 citations_json 引用；仅聊天域可用（红线 #11） | P2 |
 
 ### 4.6 M6 — 消息与状态通知
@@ -277,12 +290,12 @@ DRAFT → CONTENT_PROCESSING（本地转码 + ASR 提交/轮询 或 文档解析
 | F1 Segment+证据时间轴 | 句子级 Segment 持久化（record/file 双时间轴）；AI 结论可回跳原声 | P2 |
 | F2 课堂标记 | 录音中 ⭐/❓/📝 快速标记；CONFUSED 仅主观信号，经验证才影响状态 | P2 |
 | F6 Event+Evidence | 全部学习行为统一事件化（幂等）；Evidence 分层 | P2 |
-| F4 Course Brain | Concept 图谱（concepts/concept_relations/record_concepts）+ 语义记忆（semantic_embeddings + sqlite-vec）；V1 无 Neo4j。**V1 已实施（2026-09-16，原 P3 提前，ADR-0022）：迁移 0023 三表 + 构建 Worker + 审核闭环 + B2 检索增强 + 前端主页面；语义记忆（semantic_embeddings/sqlite-vec）经 CB-01 评测延后不进 V1** | ~~P3~~ 已提前实施 |
+| F4 Course Brain | Concept 图谱（concepts/concept_relations/record_concepts）+ 可追溯课程 RAG 语料；V1 无 Neo4j。**V1 已实施（2026-09-16，原 P3 提前，ADR-0022）**：迁移 0023 三表 + 构建 Worker + 审核闭环 + B2 检索增强 + 前端主页面；semantic_embeddings/sqlite-vec 经 CB-01 评测延后，仅在资料库真实黄金集证明净增益后加入 | ~~P3~~ 已提前实施 |
 | F5 Knowledge GPS | 掌握度地图；节点状态六枚举，禁止只按 Mastery 数字着色。**V1 已实施（2026-09-18，ADR-0023）：真实概念掌握列表（四态 + 覆盖率 + 状态分布，V1 四态枚举）、按状态筛选、详情弹窗与 Evidence 下钻、概览分布卡；六枚举完整形态留给 Forgetting/Misconception** | ~~P3~~ 已提前实施（V1） |
 | F7 Mastery | 可解释确定性算法（quiz/recall/teach_back/transfer 四分量 × 正确性/难度/新近度/权重）；带 confidence 与 evidence_count。**V1 已实施（2026-09-18，ADR-0023）：仅消费验证性 Quiz Evidence（主概念归属 + 可判定结果），12 条窗口序位加权纯函数引擎 + 版本化派生快照，确认总结/知识点不抬分，不随时间衰减；recall/teach_back/transfer 分量待对应功能** | ~~P4~~ 已提前实施（V1） |
 | F8 Misconception | SUSPECTED→验证→CONFIRMED/DISMISSED→纠错→RESOLVED；带置信度与证据计数 | P4 |
 | F9 遗忘雷达 | V1 规则公式 priority = importance × forgetting_risk × (1-mastery) × exam_weight；V2 再评估 FSRS；复习须有 Recall 验证 | P4 |
-| F10 Digital Twin | 运行时视图（非大 JSON 表），聚合 Mastery/Memory/Misconception/偏好；推测项必带 confidence | P4 |
+| F10 Digital Twin / Learner Memory | 运行时视图（非大 JSON 表），由 LearnerProfileService 聚合 Mastery、Misconception、Goal、近期 Evidence 与 `learner_preferences`。长期记忆 V1 只含显式偏好和经证据确认的观察偏好；普通聊天不静默提取，写入必须经记忆提案 + HITL，支持查看、纠正、删除和关闭外发 | 资料库同波次独立工单 / P4 扩展 |
 | F11 Socratic Tutor | 苏格拉底式诊断-提问-评估循环（LangGraph Tutor Graph） | P5 |
 | F12 Teach-back | 讲给 AI 听：覆盖率/遗漏/混淆分析 → 追问 → 验证 → Evidence；**V1 文本输入先行，语音后补** | P5 |
 | F13 自适应测验 | 依掌握度+置信+前答+误区候选选题；规则优先选库、库不足才 LLM 生成 | P5 |
@@ -303,7 +316,7 @@ DRAFT → CONTENT_PROCESSING（本地转码 + ASR 提交/轮询 或 文档解析
 | **首个真实功能里程碑（Wave A-0）** | 工作台壳、导航、路由与真实空态；最小课程；单文件 TXT/MD/PDF 导入→Transcript→AI 总结→HITL 确认；单一 active LLM Provider；由首次消费者带入数据目录、SQLite 迁移、localhost API 加固、最小 worker 与日志 | 真实文件经本地 API 落盘并完成总结确认；错误可恢复；`SUMMARY_READY` 跨重启可继续；不以 mock 数据或静态页面冒充功能完成 |
 | **Phase 1 = MVP · Wave A（学习闭环主干）** | 课程 CRUD；录音/导入（统一转码 #31）；ASR+文档解析；Transcript（整段）；总结+HITL（长转写分级 #36）；知识点/习题/Todo/Markdown 导出；**AI 对话一级入口（自由聊天 + @记录挂载，SSE；上下文组装 #39）**；速记/粘贴捕获 + **Inbox 最小闭环**（#29/#30）；learning_events 四事件（#43） | **一节真实课堂（录音或导入）当日走通：转写 → 总结确认 → 知识点确认 → 习题作答 → 导出 .md；未归类内容可归类升级进同一闭环** |
 | **Phase 1 = MVP · Wave B（工作台完善）** | 模拟测试（简答 AI 评分 + 低置信复核标记）；复习资料；Inbox 整理增强（批量/筛选）；命令面板 Ctrl+K（FTS5 全文搜索，#32）；学习统计；设置完善/深色模式；空态引导卡（#42）；无 key 降级 + 健康检查面板（#38）；**全量数据导出/导入** | **本基线 §4.1~§4.6 MVP 项全量可用 + 工作台形态达成** |
-| Phase 2 学习数据基础 | Transcript/Document Segment、Source Anchor、Marker、Learning Evidence（Learning Event 已提前至 MVP，#33）、**sqlite-vec 语义检索**、**网页剪藏（正文抓取）**、**对话转学习资产**、**@全部资料全局 RAG**、**英文内容支持**、**Chat 联网搜索工具（Tavily，#53）**、**可选快照备份（WebDAV/S3，单向推送）** | AI 结论可回跳课堂原声 |
+| Phase 2 学习数据基础 | Transcript/Document Segment、Source Anchor、Marker、Learning Evidence（Learning Event 已提前至 MVP，#33）；**资料库 V1 + 网页剪藏 + LibraryRetrievalService + LIBRARY_ITEM/COURSE/ALL RAG + Learner Memory V1**；sqlite-vec 由真实黄金集条件触发；对话转学习资产、英文内容、Chat 联网搜索、可选快照备份 | 来源可治理、回答可回查、Agent 可跨会话使用经确认的最小学习者记忆 |
 | Phase 3 Course Brain | Concept 抽取与消歧（**V1 已提前实施，2026-09-16**：构建/审核/图谱/课程对话检索增强，「讲过几次 X」已可答且带来源）、课程级 RAG 深化、课件 Diff；**Knowledge GPS v1 已提前实施（2026-09-18，见 F5/F7 行）** | "讲过几次 X"可答且带来源（**V1 已达成**） |
 | Phase 4 Learner Brain | ~~Mastery~~（**V1 已提前实施，2026-09-18**）、Forgetting（V1 规则）、Misconception、Digital Twin v1 | 事件→证据→掌握度闭环（**证据侧已达成**） |
 | Phase 5 Adaptive | Socratic Tutor、Teach-back、自适应测验+Transfer、Memory Rescue、课前预习 | 三种学习模式产生 Evidence |
@@ -405,7 +418,7 @@ P2 快照备份：可选配置 WebDAV/S3 → 定期单向推送导出 zip；永�
 |----|------|
 | 认证 | **无登录、无账号**（本地单用户，#55）；桌面端**永不强制登录**，未来"账号"仅作可选云身份层（Q15/ADR-0014）；如需防他人开启，依赖 OS 用户账户（多人共用一台电脑=各自 OS 账户天然隔离：`desktop.json` 与默认数据目录均按用户分置）；应用锁（本地 PIN/Windows Hello）P3+ 可选评估 |
 | 数据隔离 | 无 RLS（本地单用户库）；sidecar 仅监听 `127.0.0.1`；UI 不直读/直写数据目录与数据库文件（一切经 sidecar API，单写者） |
-| 检索隔离 | 向量检索**恒定强制前置过滤 `deleted_at IS NULL`**；course_id/record_id 仅课程/记录范围检索时附加；禁止裸向量查询（#28 v2.0 版） |
+| 检索隔离 | 所有 RAG 召回先按 FREE / RECORD / LIBRARY_ITEM / COURSE / ALL 运行时范围与生命周期过滤；归档 / 软删 LibraryItem 不得独立召回，COURSE 不含全局未归类资料。FTS、Concept 与条件向量共用同一过滤和回链逻辑；禁止裸索引 / 裸向量查询 |
 | 文件存储 | 数据目录 `files/` 明文存放原始音频与文档（数据可见哲学，对齐 Obsidian；静态加密 V1 不做，SQLCipher P3+ 评估） |
 | 通信边界 | UI ↔ sidecar 仅 localhost，**随机端口 + 启动令牌校验**（壳 spawn 时注入，中间件校验请求头，#56）；**数据外呼白名单见红线 #12**：LLM/Embedding/ASR API、P2 剪藏抓取、P2 快照备份——此外任何数据不出本机。ASR 首次外发独立同意：原始导入文件/WebM 不外发，仅转码音频片段发送腾讯云 |
 | 日志隐私 | 禁止记录音频字节、原始/转码路径、SDK 原始请求响应、完整转写/Teach-back/敏感对话、密钥/Authorization/Token、可访问音频 URL；可记录内部 record/job/file ID、阶段、耗时、model/prompt_version、稳定 error_code |
@@ -460,8 +473,8 @@ P2 快照备份：可选配置 WebDAV/S3 → 定期单向推送导出 zip；永�
 └──────────┴─────────────────────────────────────────────────┘
 收件箱 Inbox：未分类捕获时间流 → 归类 / 升级 / 删除（MVP）
 知识空间：Overview / Records / Course Brain(V1 已实施) / Knowledge GPS(P3) / Course Chat(P3)
-资产库 Library：跨课程统一检索（MVP=记录/知识点全文搜索；P2+=向量语义检索）
-学习画像(P7)：Activity / Mastery / Forgetting / Misconception / Passport
+资产库 Library：资料来源目录 + Record / 学习资产联邦工作台；智能视图、类型/Course 筛选、详情检查器与受控 AI 解读
+学习画像：Activity / Mastery / AI 记忆 / Forgetting / Misconception / Passport（按阶段接真）
 Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知识点 / 习题 / 复习 / Todo / Ask AI
 命令面板 Ctrl+K：开始录音 / 新速记 / 搜索一切资产 / 跳转课程与记录（MVP）
 设置：档案与供应商(档案/供应商卡/数据目录/全量导出) / 偏好(界面语言/主题/字号/快捷键/托盘行为) / 服务与用量(健康检查+token 用量)〔"数据与隐私"细化 P2〕
@@ -503,7 +516,7 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 9 | 分享 | **Desktop V1 不做分享；Markdown 本地导出（#15）** | 分享卡片为小程序形态能力 |
 | 10 | 迁移唯一权威（v2.0 改写） | **`backend/migrations/*.sql`（user_version 编号推进）**；LangGraph Checkpoint ≠ 业务事实（langgraph.db 独立文件） | Supabase CLI 随范式移除；SQL 文件目录保住"迁移单一权威"精神 |
 | 11 | 密钥存储（v2.0 改写） | **供应商密钥明文存 `config/providers.json`**（可见、可随勾选进导出包；文档明示风险）；P3+ 评估 Windows 凭据管理器 | 无 token/会话可存；对齐同类工具（cc-switch/Cherry Studio）通行做法 |
-| 12 | 新增表 | course_materials / record_analyses / source_anchor_links / semantic_embeddings / processing_jobs / learner_preferences **采纳**；~~user_settings~~（v2.0 并入 config 文件） | 均为既有功能所必需 |
+| 12 | 新增表（v2.8 改写） | 未实施的 `course_materials` 草案由 `library_items` + `library_item_records` 替换；新增 `agent_proposals`；record_analyses / source_anchor_links / semantic_embeddings / processing_jobs / learner_preferences 保留，其中 semantic_embeddings 仅评测触发；~~user_settings~~ 并入 config 文件 | 来源资产覆盖全局 / 未归类与多对多 Record；业务提案、长期记忆各有明确事实源 |
 | 13 | 性能表述 | **弱化 ASR SLA**（作监控目标而非绝对承诺） | 供应商指标不可本地承诺 |
 | 14 | V1 平台范围 | **Windows 唯一首发平台** | WKWebView 不支持 webm/opus 录制 |
 | 15 | 分享/导出形态 | **Markdown 本地导出（MVP）** | 桌面文件系统天然支持 |
@@ -515,7 +528,7 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 21 | 产品形态/入口 | **个人学习工作台**：五级捕获入口、收件箱 Inbox、今日焦点/资产库/命令面板；速记手动升级制；剪藏 P2 | 同类开源无"捕获+组织+学习状态"一体化；轻捕获降摩擦 |
 | 22 | 独立 AI 聊天界面 | **💬 AI 对话一级入口**：会话列表 + 自由聊天/挂载上下文双模式；自由聊天不建索引、不进 Evidence 链 | "打开即聊天"是 AI 产品事实心智 |
 | 23 | 目标用户范围 | **泛化为"一切学习知识的人"**；courses `learning_context` + `education_stage`/`depth`；UI 术语泛称；英文内容 P2；不做视频导入与会议笔记 | 工作台化后产品形态自然溢出学生场景 |
-| 24 | 个人知识库能力 | `semantic_embeddings.course_id` 可空（Inbox 内容入向量索引）；@全部资料全局 RAG（P2）；课程=唯一知识容器 | 泛化用户群的资料常不属任何"课"；个人量级全局检索无压力 |
+| 24 | 个人知识库能力（v2.8 改写） | `library_items.course_id` 可空；@全部资料 RAG 经 LibraryRetrievalService 检索开放 RAG Corpus；课程仍是唯一知识容器。FTS + Concept 为基线，sqlite-vec 仅在黄金集证明词汇错配净增益后加入 | 未归类资料是一等来源，但资料库不能演化为第二套知识空间 |
 | 25 | 部署与外部依赖（v2.0 改写） | **零部署**：安装 `.msi` 即用；外部依赖 = DashScope（或自选 OpenAI 兼容 LLM）+ 腾讯云 ASR（+P2 可选 Tavily / WebDAV·S3）；各自备 key、可缺省降级（#38） | 作者本人是第一用户，开源供愿意自备密钥的同类人；无容器/账号/付费云服务 |
 | 26 | MVP 交付结构 | **Wave A / Wave B 双波次**，各自设验收线 | 单人项目分波降风险 |
 | 27 | 性能指标（v2.0 改写） | 普通接口 P95 ≤300ms（localhost，首个真实闭环回填）；Chat 首 token ≤3s；Summary 硬条件（2s 返回 job_id；90s 超时 FAILED） | 本地通信无网络变量，指标可硬 |
@@ -523,7 +536,7 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 29 | 未归类内容 AI 处理 | **未选课不自动消费 token**；**升级强制先归类 ACTIVE 课程**；05 不实现未选课文档，入口及状态由 11 承接 | AI 上下文硬依赖；省 token；避免创建当前 UI 无法重新发现的 Record |
 | 30 | 录音交互流程 | 开始前最小对话框；结束自动进**本地处理队列**；未选课录音 ASR 照做、停 SUMMARY_PENDING | ASR 是事实记录与课程无关 |
 | 31 | 音频转码范围 | **全部音频统一 ffmpeg → ogg-opus@16kHz** 再进 ASR（v2.0 本地执行） | 单一管线、体积可控 |
-| 32 | 全文搜索（MVP） | **SQLite FTS5 + jieba 应用层分词**（统一索引表、BM25，v2.6 跳过 LIKE 阶段，ADR-0016）；P2 向量语义检索接管（sqlite-vec） | 检索质量与排序一步到位；jieba 纯 Python 零传递依赖、分词在应用层，不破坏本地优先 |
+| 32 | 全文 / RAG 检索（v2.8 改写） | **SQLite FTS5 + jieba 应用层分词**继续承载导航与 Segment 基线召回；Concept 只做查询扩展，最终引用必须回业务 Segment。sqlite-vec 不“接管”检索，仅在真实黄金集证明 Recall/MRR 净增益后作为 LibraryRetrievalService 内部并行召回通道 | 避免先上向量库；索引都是可重建定位结构，不是引用事实 |
 | 33 | 简答评分置信度 & 事件提前 | confidence 仅 UI 复核标记，禁止参与掌握度计算；**learning_events 提前至 MVP 建表** | 模型自评不可靠；否则做题历史永久丢失 |
 | 34 | 文档一致性回写（v2.0 改写） | 状态机统一 **8 态**（含 NOTE，UPLOADING 消解） | 全文档对齐现行决策 |
 | 35 | 前后端边界（v2.2 补充） | **UI 仅经 localhost sidecar API**；不直读/直写数据目录与数据库文件；同一数据目录由 sidecar 持有进程生命周期操作系统排他锁，确保最多一个写者 | 收敛写入口，保住"一个事实源一份写入逻辑"；避免多应用实例抢占任务与迁移 |
@@ -532,11 +545,11 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 38 | 无 key 降级（v2.3 补充） | **功能级降级 + 启动健康检查面板**：缺 LLM key 时对应 AI 入口置灰；缺腾讯 key、离线或未同意时仍可捕获/导入/转码，ASR Job 进入不耗 attempts 的 PENDING 等待并在条件满足后自动继续。首个 AI 闭环先实现就地恢复，完整健康面板在 Wave B；不做月度 token 熔断 | 等待条件不是业务失败；本地素材不能因云服务缺失丢失 |
 | 39 | Record Chat MVP 上下文 | **转写全文常驻** + 溢出按轮数递减；P2 起改摘要+检索 | MVP 无向量；细节追问必须转写在上下文 |
 | 40 | 删 Record × 对话 | **不级联删 chat**：会话保留可读、挂载标失效态 | 对话有独立价值 |
-| 41 | 软删语义 | V1 无恢复 UI、删除弹窗明示"不可恢复"；删除 Record 时非终态 Job→CANCELLED，已终态 Job 不改写；**业务行与文件软删 30 天后异步物理清理**（与向量清理同批次） | 无恢复入口的软删等价硬删且数据永久堆积；取消不能伪装成失败 |
+| 41 | 软删语义（v2.8 补充） | Record / 学习资产维持既有删除语义；删除 Record 时非终态 Job→CANCELLED，已终态 Job 不改写。**LibraryItem 是本波次唯一新增恢复 UI 的对象**：软删后退出独立召回，30 天内可从“资料条目回收站”恢复且不级联 Record；到期且无活动引用才物理清理 | 不为资料库顺手扩建全对象恢复系统；来源恢复不应破坏派生学习事实 |
 | 42 | 空态引导 | 各空区域**引导卡**；不做向导流程、不做示例数据 | 示例数据污染真实学习数据 |
 | 43 | MVP 事件范围 | 落地 **SUMMARY_CONFIRMED / KNOWLEDGE_CONFIRMED / QUIZ_ANSWERED / QUIZ_TEST_COMPLETED** 四事件（幂等键规则生效） | 其余枚举对应功能 P4+ 才有写入方 |
 | 44 | 导入上限（v2.3 补充） | **录音会话 ≤3h；一个 Capture Batch 全部音频总时长 ≤5h**；不设文件数/原件体积硬限，正式注册前整批校验至少 2× 原件总字节可用空间；腾讯本地 ASR 片严格 `<5MB` | 防多文件绕过费用/时延边界；本地存储与供应商传输限制分别表达 |
-| 45 | 英文支持边界 | **英文文本 V1 原样处理、AI 输出中文**；文档 Transcript V1 不做语言猜测，`language=und`；P2"英文支持"仅指 ASR 英文语音 + 输出语言可选 | 程序员粘贴英文文档是 V1 主路径；源文本语言不能被错误标成 zh-CN |
+| 45 | 英文支持边界（v2.7 改写） | 英文文本 V1 原样处理；文档 Transcript V1 不做语言猜测，`language=und`。AI 生成物跟随输入材料语言，对话跟随当前提问语言，不随界面语言翻译；P2“英文支持”仅新增 ASR 英文语音 | 程序员粘贴英文文档是 V1 主路径；内容语言与界面语言正交（#59） |
 | 46 | AI 评测落地 | **按阶段拆分**：MVP 总结黄金样本 20 条 + 人工 checklist；其余随阶段补建 | 一次建全套既做不了也不必要 |
 | 47 | 分发与更新 | **GitHub Releases 手动 `.msi`**（v2.0 含 sidecar，体积 +150~250MB）；打包、安装与冷启动冒烟在首次可分发里程碑执行，不阻塞此前页面与业务闭环；应用内"检查更新"仅链接跳转；Tauri updater 后置 | updater 需更新服务器与签名基建 |
 | 48 | 阶段启动门槛 | **每阶段（P2 起）启动前先补详细设计评审再开工** | 摘要级 PRD 覆盖不到实现细节 |
@@ -546,11 +559,13 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | 52 | 用户角色 | 档案层 `profile.primary_role`（四选一）+ `about_me`（≤200 字）；首启一次性角色卡（可跳过）；建课程按角色预选默认场景；**自由聊天系统提示注入角色+自我介绍**；"角色改变语气与默认值，不改变能力集" | 自由聊天个性化锚点；课程级权威不变 |
 | 53 | Agent 工具域 | **工具仅限聊天域**（红线 #11）；**Wave A Chat 以 LangGraph agent 循环实现**（检索为第一工具）；**P2 落地 web_search**：SearchProvider 抽象，默认 Tavily，预留博查/智谱；无 key 按 #38 降级 | 纯管线实现会导致 P2 加工具=重构 |
 | 54 | 终审修补包（v2.3 补充） | **登录终态部分作废（#55 取代）**；维持项：音频时长见 #44；热词=课程手动列表（≤100 词，Job 创建时冻结）；处理中删除竞态（每步写前校验 deleted_at，非终态 Job→CANCELLED）；Capture Batch 提交封口，提交后不可追加/重排；统计与角色卡边界不变；~~signed URL~~ 作废 | 原 A 案登录为云端前提；封口批次使聚合完成条件唯一 |
-| 55 | **存储范式（v2.2 补充，ADR-0001）** | **本地磁盘 = 唯一业务事实源**（数据目录：SQLite + files/，用户可见可搬移）；后端 = Tauri sidecar（PyInstaller 随 .msi，UI 走 localhost），同一数据目录由进程生命周期排他锁保证最多一个 sidecar；**LLM 自选任意 OpenAI 兼容端点**（DashScope 默认预设，供应商卡交互），Embedding V1 固定 text-embedding-v3，ASR 腾讯；云端降级为可选增强——V1 全量导出、P2 可选快照备份（WebDAV/S3 单向）、**双向同步永不做**；Supabase 全家桶除名；登录作废、首启三步；多设备=导出→导入；状态机 8 态；user_id 列全删；数据目录布局定稿（knowrealm.db/files/cache/exports/backups/config + langgraph.db）；启动滚动备份（每日×7）；导出默认不含密钥；静态加密 V1 不做 | v1.x"云端唯一事实源"源于先选 Supabase 后谈定位的顺序错误；free 档装不下（50MB 单文件 vs 3h 录音）、东京机房代理依赖、Pro $25/月、自部署须跑 docker——对"开源、个人使用"全是不符点；BYO-key 本地桌面是同类开源主流（Obsidian/思源/AnythingLLM 桌面版/Jan/Cherry Studio）；课堂录音不可再生故 P2 保留可选异地备份；决策时点代码沉没成本≈0 |
+| 55 | **存储范式（v2.8 补充，ADR-0001）** | **本地磁盘 = 唯一业务事实源**（SQLite + files/，用户可见可搬移）；sidecar 是唯一写者；LLM 自选任意 OpenAI 兼容端点，Embedding 仅在 sqlite-vec 评测触发后启用，ASR 腾讯；全量导出与可选单向快照备份保留，双向同步永不做；无登录，首启四步；资料、学习者记忆和 Agent 提案均落 knowrealm.db，Checkpoint 只保存运行态 | 本地业务事实可查看、可迁移、可恢复；向量和 Graph State 都不是不可替代事实 |
 | 56 | 后端通信形态（v2.1 定稿） | **维持 FastAPI sidecar（localhost HTTP+SSE）**；否决自造 Rust/stdio 双协议层（两套手写契约、无 OpenAPI 类型生成、SSE 自造）与全 Rust 重写（LangGraph interrupt/HITL 无 Rust 等价物=核心差异化不可迁移，PyMuPDF/LangChain 生态全弃）；**localhost 加固随首个 localhost API 同步落地**：随机端口（壳分配注入）+ 一次性启动令牌（中间件校验请求头）+ 仅绑 127.0.0.1，不作为页面开发前的独立阶段 | 本机回环 HTTP 单次调用 ~0.1–1ms，相对 LLM/ffmpeg/ASR 的秒~分钟级耗时是噪声——性能不构成区分度，区分度在契约维护：40+ 端点 OpenAPI codegen 单一事实源 + Pydantic 同源 Schema（API 请求响应与 LLM 结构化输出共用一套）+ UniApp 端未来契约复用（§1.3）；完整对比入技术栈 v4.3 §二 |
 | 57 | 文档导入实施合同（v2.2） | 05=单文件 TXT/MD/PDF/DOCX、ACTIVE 课程、Transcript+SUMMARY_PENDING；06=Summary/HITL；04=多文件/音频混合/SSE；11=未选课文档/Inbox。相同文件可重复导入；导入成功直达 Transcript；确定性解析失败不可重试；处理中课程归档不丢弃已受理解析，06 触发 AI 前再校验 ACTIVE | 消除 05 对 04/06/11 的循环出口与不可验收范围；保持首个真实纵切诚实可关闭 |
 | 58 | 音频导入与转写合同（v2.3，ADR-0002~0006） | 04=封口 Capture Batch、MULTI_SOURCE、随包 ffmpeg、本地 `<5MB` 腾讯切片、可恢复 ASR Job、Record 级 SSE 通知+REST、整批 Transcript 原子发布与版本化编辑；03=录音 staging/恢复/finalize；06=完整总结出口。未同意/缺 key/离线等待不失败；原件不外发，转码音频须独立同意；不引入 COS、父 Job、切片表或 V1 Segment | 在本地优先、供应商限制、隐私、费用与最小实现之间形成可验收边界 |
 | 59 | **界面语言与内容语言（v2.7 补充）** | 界面语言=**中 / English 两档**：偏好字段 `language` 缺省 **zh**（存量升级无感），设置页外观分组两选即改即存、即时生效无需重启；首帧=本地缓存 ?? 系统语言（偏好到达后校正，防异步窗口闪变）；首启向导改**四步**，第一步选语言（预选系统语言，跳过=接受预选，完成时写入偏好）；`<html lang>` 与系统托盘菜单跟随；en 资源与 zh 逐 key 对齐（fallback=zh）。**内容语言与界面语言正交**：全部 LLM prompt 追加「用与输入内容相同的语言输出」显式指令——生成物跟随输入材料、对话逐条跟随用户提问、评分跟随题目；已生成内容永不随界面语言翻译，不做内容翻译。错误消息双语经错误码附加字段 + 前端码表翻译实现（ADR-0017，工单 03/04） | 「给一切学习知识的人」的定位要求非中文用户有选择权；语言偏好与主题同级属外观偏好；首帧缓存保证英文系统上的存量中文用户升级无感（首帧校正回中文只闪一次）；内容语言不信任模型隐式模仿、显式指令固化 | 
+| 60 | **资产库 / RAG Agent（v2.8）** | LibraryItem 只表示原始来源；Record 与学习资产保持独立实体并在 `/library` 联邦展示。Course 是唯一知识容器，无文件夹树。确定性入库 / 生命周期由 Service + JobRunner 负责，LibraryRetrievalService 负责召回与锚点，DeepAgents 只负责查询改写、多轮检索与回答。Agent 仅能产生持久化业务提案，用户确认后由领域 Service 写入 | 统一数据入口而不把全部对象压成一种表；避免重复 parser / 队列 / 索引与 Agent 直写事实 |
+| 61 | **Learner Memory V1（v2.8）** | `learner_preferences` 保存显式偏好与经确认的观察偏好；Mastery / Misconception / Goal 保持各自事实源，由 LearnerProfileService 按任务聚合。普通聊天不静默记忆；记忆提案经 HITL；学习画像支持查看、纠正、删除和关闭长期记忆外发。LangGraph Checkpoint / DeepAgents Store 不承载业务长期记忆 | 跨会话个性化必须可解释、可治理、可导出，不能成为黑盒画像 |
 
 ---
 
@@ -577,9 +592,9 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 | R5 | 3 小时长录音稳定性（系统休眠/WebView 节流/磁盘占满） | 高 | 分片落盘、防休眠、磁盘防呆、POC 验证 |
 | R6 | LangChain/LangGraph 1.x API 变动 | 中 | 锁版本；仅用四个子包 |
 | R7 | LLM 输出质量漂移（自选端点尤甚） | 中 | 固定评测集（以 qwen-plus 为基准）+ prompt 版本化 + llm_call_logs 追踪；文档声明评测基线只对默认预设负责 |
-| R8 | sqlite-vec 成熟度/性能（生态弱于 pgvector） | 低 | 个人万级 segment KNN 足够；量级余量大 |
+| R8 | sqlite-vec 召回净增益不足或 Embedding 外呼成本高 | 中 | 默认不上；工单 01 冻结真实黄金集，仅在词汇不重合失败且相对 FTS+Concept 的 Recall/MRR 有可测净增益时启用；仍强制作用域与 deleted_at 过滤 |
 | R9 | 腾讯云 ASR SDK 同步阻塞 | 中 | 仅在 worker 任务内使用，不进 API 主进程 |
-| R10 | 网页剪藏（P2）依赖目标站可达性与正文解析质量 | 中 | readability 容错 + 失败降级"手动粘贴"；仅 httpx 服务端抓取 |
+| R10 | 网页剪藏依赖目标站可达性与正文解析质量 | 中 | httpx 受限抓取 + trafilatura 2.2.x 正文/元数据提取 + 两级失败检测；失败降级手动粘贴，不执行 JS、不做反爬对抗 |
 | R11 | 多应用实例同时打开同一数据目录，抢占迁移或 processing_jobs | 高 | sidecar 在迁移和 worker 启动前获取操作系统非阻塞排他锁；失败实例明确提示目录正被使用并退出；进程退出/崩溃由 OS 自动释放锁 |
 
 ---
@@ -625,7 +640,12 @@ Record 详情：Summary(默认,HITL) / Transcript Timeline / Evidence(P2) / 知�
 
 **Phase 2+（随阶段验收）**
 
-- [ ] 检索恒定强制 deleted_at 过滤，范围字段按需附加；向量删除与业务删除一致（#28）
+- [ ] FREE / RECORD / LIBRARY_ITEM / COURSE / ALL 作用域无泄漏；所有本地引用逐字命中有效 Segment + Source Anchor，无证据时明确回答“当前资料中未找到”
+- [ ] LibraryItem 归档 / 软删后不再独立召回且不级联 Record；有活动 Record 引用时不能物理删除；资料条目回收站 30 天恢复成立
+- [ ] schema migration 前独立快照；存量关系由幂等后台 Job 回填，失败可重试且旧 Record / 文件 / Segment 继续可用
+- [ ] Agent 只能创建持久化提案；未经确认不得整理、研究入库或写 Learner Memory，拒绝 / 删除后不得继续生效
+- [ ] 长期记忆可查看、编辑、删除并显示使用情况；关闭外发或更换供应商未重新同意时，不向外部模型发送来源片段或 Learner Context
+- [ ] 离线时浏览、预览、FTS、来源定位、生命周期与记忆管理可用；LLM / Embedding 能力明确降级且不生成伪结果
 - [ ] 快照备份单向（无任何回写路径）
 - [ ] Mastery 单一写入口；Misconception 默认 SUSPECTED（P4）
 - [ ] Learning Brain 固定评测集随阶段补建（P4 起，#46）
