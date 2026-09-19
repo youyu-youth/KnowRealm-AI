@@ -5,6 +5,8 @@
 > 正本分工：黄金集与检索阈值正本 = `docs/evaluation/library-rag-retrieval-baseline.md`（本文件 §5 只做引用）；OpenAPI 正本 = 实施后由 FastAPI 生成（`pnpm --filter @knowrealm/api-types generate`），本文件 §2 是实施前契约草案。
 >
 > **02 实施记录（2026-09-19）**：§2.2 联邦端点按预留口补充两枚只读——`GET /api/library/records`（跨课程记录行 + `library_item_ids` 回链）与 `GET /api/library/assets`（02=已确认知识点行，含 `detail`）；§2.1 ingest 端点归工单 03 与 WebClipAdapter 同票落地（02 的新写路径 = capture 流程同事务入队 LIBRARY_BACKFILL，新捕获秒级出现在工作台）；§2.3 `PATCH` 02 仅实现 favorite，重命名/归类/归档/删除等随 05。数据模型已升 v3.1（调整 #3 落档）。另两处实施备案：①迁移文件名实际为 `0026_library_foundation.sql`（§1 原文 `_library_rag_foundation` 系草案笔误，DDL 内容零漂移）；②`q` 列表搜索实现为三列 LIKE（标题/origin_uri/metadata_json）——全局 `search_index` FTS 不含 library_items 行，FTS 接入随 04/05 检索域统一时评估，导航级语义（故事 15）已满足。
+>
+> **03 实施记录（2026-09-19）**：①`LIBRARY_ITEM_LIMIT_EXCEEDED` 实施口径=1 MiB（TEXT 请求与 WEB 净化正文同限，对齐既有 `TEXT_TOO_LARGE` 上限）——§2.1 原文「对齐 30k 索引限长」的 30k 是索引 token 限长且属 plan18 未决裁决项，不适合作入库硬上限（正常长文会被拒之门外），按既有上限统一；②TEXT 请求增补 `origin_uri` 可选字段（网页抓取失败→手动粘贴降级闭环携带原 URL，来源可溯），§2.1 text 形状的契约外增补；③WEB 条目 `content_hash` 恒为规范化 URL 哈希（ingest 判重锚，抓取成功不改写为正文哈希——否则同 URL 重复导入会静默建第二条，违「不静默合并」），正文哈希记入 `metadata_json.content_hash`；REFETCH（同 URL 内容变化=新条目）仍归 05；④代理环境（HTTP(S)_PROXY 等存在时）尊重系统代理=可信出口（对齐 B1 trust_env 拍板），直连路径走 DNS guard 钉住解析，两类路径每跳均做目标域名解析预检（代理路径无法钉住代理解析，预检为最小防线）。
 
 
 ---
