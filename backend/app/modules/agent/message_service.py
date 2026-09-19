@@ -225,14 +225,21 @@ async def _load_library_context(
     course_id: str | None,
     library_item_id: str | None = None,
 ) -> LibraryContext:
-    """范围会话的清单上下文（只含标题 + 日期 + 有无转写，不携带正文）。
+    """范围会话的清单上下文（标题 + 日期 + 有无转写）。
 
-    LIBRARY_ITEM：清单 = 该资料关联的学习记录（资料自身在 scope_label 中描述）；
-    COURSE/ALL：清单 = 范围内全部学习记录。
+    LIBRARY_ITEM 档另携挂载条目正文（item_content，各来源段带【来源：标题】头，
+    超过 CHAT_TRANSCRIPT_MAX_CHARS 降级为 None 回退清单 + 检索模式，对齐 RECORD 档）；
+    COURSE/ALL 仅清单（多记录聚合不注入正文）。
     """
     if scope == ChatScope.LIBRARY_ITEM:
         item = await _require_library_item(session, library_item_id)
         rows = await _scope_library_rows(session, scope, item.id)
+        record_materials, item_materials = await _load_scope_materials(session, scope, item.id)
+        parts = [
+            f"【来源：{material.title}】\n{material.transcript}" for material in record_materials
+        ]
+        parts += [f"【来源：{material.title}】\n{material.content}" for material in item_materials]
+        content = "\n\n".join(parts)
         return LibraryContext(
             scope_label=f"资料「{item.title}」及其关联学习记录",
             records=tuple(
@@ -243,6 +250,7 @@ async def _load_library_context(
                 )
                 for _id, title, updated_at, has_transcript in rows
             ),
+            item_content=content if len(content) <= CHAT_TRANSCRIPT_MAX_CHARS else None,
         )
     if scope == ChatScope.COURSE:
         course = await session.get(Course, course_id or "")
@@ -263,81 +271,90 @@ async def _load_library_context(
     )
 
 
+async def _load_scope_materials(
+    session: AsyncSession,
+    scope: ChatScope,
+    scope_id: str | None,
+) -> tuple[list[LibraryRecordMaterial], list[LibraryItemMaterial]]:
+    """范围会话材料查询（条目正文注入与流后引用校验共用）。
+
+    记录材料（个人量级，#24 背书）覆盖转写命中；条目材料覆盖资料直挂分片命中
+    （03 网页剪藏起），两者共同支撑 library 条目的逐字校验与归属裁定。
+    """
+    stmt = (
+        select(Record.id, Record.title, Transcript.content)
+        .join(
+            Transcript,
+            and_(Transcript.record_id == Record.id, Transcript.deleted_at.is_(None)),
+        )
+        .outerjoin(Course, Course.id == Record.course_id)
+        .where(*_scope_record_filters(scope, scope_id))
+        .order_by(Record.updated_at.desc(), Record.id.desc())
+    )
+    rows = (await session.execute(stmt)).all()
+    records = [
+        LibraryRecordMaterial(
+            record_id=str(row.id), title=str(row.title), transcript=str(row.content)
+        )
+        for row in rows
+    ]
+    # 条目材料：COURSE/ALL 取范围内 ACTIVE 条目的直挂分片正文；LIBRARY_ITEM
+    # 只取挂载条目（边界=该资料）。
+    item_stmt = (
+        select(
+            LibraryItem.id,
+            LibraryItem.title,
+            DocumentSegment.content,
+            DocumentSegment.sequence_no,
+        )
+        .join(
+            DocumentSegment,
+            and_(
+                DocumentSegment.library_item_id == LibraryItem.id,
+                DocumentSegment.record_id.is_(None),
+            ),
+        )
+        .where(LibraryItem.deleted_at.is_(None), LibraryItem.status == "ACTIVE")
+    )
+    if scope == ChatScope.LIBRARY_ITEM:
+        item_stmt = item_stmt.where(LibraryItem.id == scope_id)
+    elif scope == ChatScope.COURSE:
+        item_stmt = item_stmt.where(LibraryItem.course_id == scope_id)
+    elif scope == ChatScope.ALL:
+        item_stmt = item_stmt.where(
+            or_(
+                LibraryItem.course_id.is_(None),
+                Course.id.is_not(None),
+            )
+        ).outerjoin(
+            Course, and_(Course.id == LibraryItem.course_id, Course.deleted_at.is_(None))
+        )
+    item_stmt = item_stmt.order_by(
+        LibraryItem.id, DocumentSegment.sequence_no, DocumentSegment.id
+    )
+    item_rows = (await session.execute(item_stmt)).all()
+    contents: dict[str, list[str]] = {}
+    titles: dict[str, str] = {}
+    for row in item_rows:
+        contents.setdefault(str(row.id), []).append(str(row.content))
+        titles[str(row.id)] = str(row.title)
+    items = [
+        LibraryItemMaterial(
+            library_item_id=item_id, title=titles[item_id], content="\n".join(parts)
+        )
+        for item_id, parts in contents.items()
+    ]
+    return records, items
+
+
 async def _load_library_materials(
     session_factory: async_sessionmaker[AsyncSession],
     scope: ChatScope,
     scope_id: str | None,
 ) -> tuple[list[LibraryRecordMaterial], list[LibraryItemMaterial]]:
-    """范围会话引用校验材料：范围内全部未软删记录的转写全文 + 资料条目直挂正文。
-
-    记录材料（个人量级，#24 背书）覆盖转写命中；条目材料覆盖资料直挂分片命中
-    （03 网页剪藏起），两者共同支撑 library 条目的逐字校验与归属裁定。
-    """
+    """范围会话引用校验材料（流式结束后调用，开独立 session 取最新快照）。"""
     async with session_factory() as session:
-        stmt = (
-            select(Record.id, Record.title, Transcript.content)
-            .join(
-                Transcript,
-                and_(Transcript.record_id == Record.id, Transcript.deleted_at.is_(None)),
-            )
-            .outerjoin(Course, Course.id == Record.course_id)
-            .where(*_scope_record_filters(scope, scope_id))
-            .order_by(Record.updated_at.desc(), Record.id.desc())
-        )
-        rows = (await session.execute(stmt)).all()
-        records = [
-            LibraryRecordMaterial(
-                record_id=str(row.id), title=str(row.title), transcript=str(row.content)
-            )
-            for row in rows
-        ]
-        # 条目材料：COURSE/ALL 取范围内 ACTIVE 条目的直挂分片正文；LIBRARY_ITEM
-        # 只取挂载条目（边界=该资料）。
-        item_stmt = (
-            select(
-                LibraryItem.id,
-                LibraryItem.title,
-                DocumentSegment.content,
-                DocumentSegment.sequence_no,
-            )
-            .join(
-                DocumentSegment,
-                and_(
-                    DocumentSegment.library_item_id == LibraryItem.id,
-                    DocumentSegment.record_id.is_(None),
-                ),
-            )
-            .where(LibraryItem.deleted_at.is_(None), LibraryItem.status == "ACTIVE")
-        )
-        if scope == ChatScope.LIBRARY_ITEM:
-            item_stmt = item_stmt.where(LibraryItem.id == scope_id)
-        elif scope == ChatScope.COURSE:
-            item_stmt = item_stmt.where(LibraryItem.course_id == scope_id)
-        elif scope == ChatScope.ALL:
-            item_stmt = item_stmt.where(
-                or_(
-                    LibraryItem.course_id.is_(None),
-                    Course.id.is_not(None),
-                )
-            ).outerjoin(
-                Course, and_(Course.id == LibraryItem.course_id, Course.deleted_at.is_(None))
-            )
-        item_stmt = item_stmt.order_by(
-            LibraryItem.id, DocumentSegment.sequence_no, DocumentSegment.id
-        )
-        item_rows = (await session.execute(item_stmt)).all()
-        contents: dict[str, list[str]] = {}
-        titles: dict[str, str] = {}
-        for row in item_rows:
-            contents.setdefault(str(row.id), []).append(str(row.content))
-            titles[str(row.id)] = str(row.title)
-        items = [
-            LibraryItemMaterial(
-                library_item_id=item_id, title=titles[item_id], content="\n".join(parts)
-            )
-            for item_id, parts in contents.items()
-        ]
-        return records, items
+        return await _load_scope_materials(session, scope, scope_id)
 
 
 async def _session_context(

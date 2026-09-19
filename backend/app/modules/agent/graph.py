@@ -53,7 +53,7 @@ from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v7"
+CHAT_PROMPT_VERSION = "chat-library-scope-v8"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})

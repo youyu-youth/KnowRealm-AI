@@ -460,6 +460,50 @@ class TestBuildContextMessagesLibrary:
         )
         assert "仅作为材料外的补充来源" in str(messages[0].content)
 
+    def test_item_content_injected_with_source_headers(self) -> None:
+        # LIBRARY_ITEM 档正文注入：段头【来源：标题】+ 优先正文指令 + 引用放宽措辞。
+        messages = build_context_messages(
+            [row("u1", ChatRole.USER, "这份资料讲了什么")],
+            library=LibraryContext(
+                scope_label="资料「傅里叶笔记」及其关联学习记录",
+                records=(
+                    LibraryRecordRow(
+                        title="傅里叶笔记", updated_date="2026-09-19", has_transcript=True
+                    ),
+                ),
+                item_content="【来源：傅里叶笔记】\n本讲系统梳理傅里叶级数的展开方法",
+            ),
+        )
+        prompt = str(messages[0].content)
+        assert "资料正文（优先依据正文回答" in prompt
+        assert "【来源：傅里叶笔记】" in prompt
+        assert "本讲系统梳理傅里叶级数的展开方法" in prompt
+        assert "优先依据上方资料正文回答" in prompt
+        assert "逐字来自资料正文或 evidence_hits" in prompt
+
+    def test_item_content_empty_states_pending_hint(self) -> None:
+        # 无可用正文（处理中/失败）：注入未就绪提示，不再让模型回答「未找到」误导。
+        messages = build_context_messages(
+            [row("u1", ChatRole.USER, "讲了什么")],
+            library=LibraryContext(
+                scope_label="资料「傅里叶笔记」及其关联学习记录", records=(), item_content=""
+            ),
+        )
+        prompt = str(messages[0].content)
+        assert "暂无可用正文" in prompt
+        assert "尚未就绪" in prompt
+        assert "资料正文（优先依据正文回答" not in prompt
+
+    def test_item_content_none_keeps_listing_only(self) -> None:
+        # None（非 LIBRARY_ITEM 档 / 超 30k 降级）：清单 + 检索模式与现状一致。
+        messages = build_context_messages(
+            [row("u1", ChatRole.USER, "问")],
+            library=LibraryContext(scope_label="全部资料", records=()),
+        )
+        prompt = str(messages[0].content)
+        assert "资料正文（优先依据正文回答" not in prompt
+        assert "需要资料原文细节时" in prompt
+
 
 class TestParseLibraryCitationReply:
     RECORDS = [
@@ -1620,7 +1664,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v7"
+        assert rows[0][3] == "chat-library-scope-v8"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2227,6 +2271,123 @@ async def test_course_session_streams_library_tool_and_cross_record_citations(
         history = await client.get(f"/api/chat-sessions/{session_id}/messages")
         assistant = next(item for item in history.json() if item["role"] == "ASSISTANT")
         assert assistant["citations"][0]["record_title"] == "第 2 讲 一致性哈希"
+
+
+@pytest.mark.anyio
+async def test_library_item_session_injects_item_content_and_closes_citation_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 资料导入后「AI 解读」直接读到正文：LIBRARY_ITEM 会话 system 注入挂载条目
+    # 转写正文（【来源：标题】段头），概览类提问不再依赖 FTS 检索命中；模型引用
+    # 注入正文摘录时经同源校验材料逐字校验闭环。
+    final_reply = [
+        "这份笔记围绕傅里叶级数展开[1]。",
+        "\n[1] 本讲系统梳理傅里叶级数的展开方法（来源：傅里叶笔记）",
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[final_reply]) as (
+        _app,
+        client,
+        captured,
+    ):
+        accepted = await client.post(
+            "/api/library/ingest",
+            json={
+                "source": "text",
+                "title": "傅里叶笔记",
+                "content": "本讲系统梳理傅里叶级数的展开方法",
+            },
+        )
+        assert accepted.status_code == 202
+        item_id = accepted.json()["item"]["id"]
+        detail = await client.get(f"/api/library/items/{item_id}")
+        record_id = detail.json()["derived_records"][0]["record_id"]
+
+        created = await client.post(
+            "/api/chat-sessions", json={"scope": "LIBRARY_ITEM", "library_item_id": item_id}
+        )
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "这份资料讲了什么？")
+
+        prompt = str(captured[0][0].content)
+        assert "资料正文（优先依据正文回答" in prompt
+        assert "【来源：傅里叶笔记】" in prompt
+        assert "本讲系统梳理傅里叶级数的展开方法" in prompt
+        names = [name for name, _payload in events]
+        assert names[0] == "status" and names[-1] == "done"
+        assert "tool_call" not in names
+        assert [payload for name, payload in events if name == "citation"] == [
+            {
+                "index": 1,
+                "source": "record",
+                "record_id": record_id,
+                "record_title": "傅里叶笔记",
+                "quote": "本讲系统梳理傅里叶级数的展开方法",
+            }
+        ]
+
+
+@pytest.mark.anyio
+async def test_library_item_content_over_budget_degrades_to_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 条目正文超过 30000 字符降级为清单 + 检索模式（对齐 RECORD 档 >30k 分支）。
+    async with streaming_chat_app(
+        tmp_path, monkeypatch, replies=[["资料较长，建议检索。"]]
+    ) as (_app, client, captured):
+        accepted = await client.post(
+            "/api/library/ingest",
+            json={"source": "text", "title": "长文", "content": "长" * 30001},
+        )
+        assert accepted.status_code == 202
+        created = await client.post(
+            "/api/chat-sessions",
+            json={"scope": "LIBRARY_ITEM", "library_item_id": accepted.json()["item"]["id"]},
+        )
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "讲了什么？")
+
+        prompt = str(captured[0][0].content)
+        assert "资料正文（优先依据正文回答" not in prompt
+        assert "共 1 条学习记录" in prompt
+        assert "search_library" in prompt
+        assert [name for name, _payload in events][-1] == "done"
+
+
+@pytest.mark.anyio
+async def test_library_item_without_content_states_pending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # 无可用正文（解析/转写未完成或失败）：注入「尚未就绪」提示替代误导性「未找到」。
+    async with streaming_chat_app(
+        tmp_path, monkeypatch, replies=[["资料正文尚未就绪，请稍后再试。"]]
+    ) as (_app, client, captured):
+        accepted = await client.post(
+            "/api/library/ingest",
+            json={"source": "text", "title": "处理中资料", "content": "临时正文"},
+        )
+        assert accepted.status_code == 202
+        item_id = accepted.json()["item"]["id"]
+        # 模拟正文未就绪：软删 transcript（与加载器 deleted_at 过滤同口径）。
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            await connection.execute("UPDATE transcripts SET deleted_at = '2026-09-19T00:00:00'")
+            await connection.commit()
+
+        created = await client.post(
+            "/api/chat-sessions", json={"scope": "LIBRARY_ITEM", "library_item_id": item_id}
+        )
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+
+        events = await send_message(client, session_id, "这份资料讲了什么？")
+
+        prompt = str(captured[0][0].content)
+        assert "暂无可用正文" in prompt
+        assert "尚未就绪" in prompt
+        assert [name for name, _payload in events][-1] == "done"
 
 
 @pytest.mark.anyio

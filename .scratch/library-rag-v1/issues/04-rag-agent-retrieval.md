@@ -22,3 +22,10 @@
 - 实施要点：`chat_sessions.library_item_id` ORM 补列（0026 已建 DB 列）；`ChatSessionCreate` 校验矩阵扩 LIBRARY_ITEM（其它范围拒绝 library_item_id）；创建守卫 404 `LIBRARY_ITEM_NOT_FOUND` / 409 `LIBRARY_ITEM_ARCHIVED`·`LIBRARY_ITEM_DELETED`，运行时失效 409 `CHAT_LIBRARY_ITEM_UNAVAILABLE`（zh/en 已登记）；`_resolve_agent_config` 收敛为 retrieval×web_search 两轴（MOUNTED 变体删除）；asset_matches V1=LIBRARY_ITEM+RECORD 标题导航命中（type 开放枚举，KNOWLEDGE_POINT 等后续按需）；evidence 的 library_item_id 经 library_item_records 解析代表条目（确定性：sequence_no/创建序首个）。
 - 双轴 review（Standards+Spec）修复已落地：① ALL/LIBRARY_ITEM 档文档分片对软删记录泄漏（record 路径 LEFT JOIN 缺 r.id 防线 / 关联子查询缺 records.deleted_at 过滤），SQL 已修并补失败即红（软删记录文档分片在 ALL/COURSE/LIBRARY_ITEM 三档零召回）；② ChatScope 枚举下沉 library/schemas（agent re-export，消模块环 agent↔library，fastapi.md §1）；③ 概念扩展词单次命中上限显式生效（EXPANSION_PER_TERM_LIMIT）；④ AI 解读按钮对 ARCHIVED 条目前端禁用；顺带修 03 已提交 service.py 一处冗余 cast（pyright 门禁阻塞）。langchain-langgraph.md §7「search_transcript 挂载互斥」现状描述已过时（rules 正本不可改，待用户裁定镜像同步）。
 - 已知行为变化（冻结契约使然）：COURSE/ALL 不再做 B2 迁移期 transcript LIKE 兜底——无分片粘贴/速记记录在这两档不可检索（`test_search_library_degrades_without_concepts` 断言如实返回未找到）；occurrences（「讲过几次」去重计数）随旧载荷移除，指令改为按 evidence_hits 不同来源计数。
+
+## 真机验收修复（2026-09-19）
+
+- 现象：导入资料后发起「AI 解读」，AI 回答「当前资料中未找到可引用的原文内容」。根因：LIBRARY_ITEM 会话 system prompt 只注入标题清单（正文从不注入），模型了解内容的唯一通路是 search_library；概览类提问（「这份资料讲了什么」）经 jieba 多词 AND 的 FTS 几乎必零命中，兜底又只覆盖「无分片记录的整串子串」，于是模型按指令如实回答「未找到」。
+- 修复（对齐 RECORD 档 ≤30k 全文注入 / >30k 降级检索模式）：`LibraryContext.item_content` 三态（非空=正文全文注入〔各来源段带【来源：标题】头〕；空串=暂无正文注入「尚未就绪」提示替代误导性「未找到」；None=非该档或超 `CHAT_TRANSCRIPT_MAX_CHARS` 降级回清单+检索）；`_load_scope_materials` 从 `_load_library_materials` 抽出共用查询（正文注入与流后引用校验同源，逐字校验天然闭环）；引用措辞放宽为「逐字来自资料正文或 evidence_hits」。COURSE/ALL 维持清单+检索（多记录聚合不注入正文）；检索管线/工具预算/兜底逻辑零改动。
+- CHAT_PROMPT_VERSION bump `chat-library-scope-v8`。覆盖场景：文档/网页/音频（处理完成）正文可答可溯源；TEXT 粘贴（无分片永无 FTS）从必失败变可答；导入后立即提问（异步未完成）得到「尚未就绪」而非「未找到」；>30k 资料降级检索。
+- 测试：`TestBuildContextMessagesLibrary` 三态渲染 4 用例 + 集成 3 用例（TEXT ingest 一步种数据：正文注入+引用闭环 / 超 30k 降级 / 软删 transcript 空态提示）；v7 断言同步 v8。门禁：全量 674 绿 + ruff/pyright 零错（`test_text_capture_enqueues_backfill` 全量并发下间歇抖动，单跑与组合复跑均绿，与本次改动无关——不在 text_capture→backfill 路径）。
