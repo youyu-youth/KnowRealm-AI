@@ -250,18 +250,21 @@ def proxy_env_present() -> bool:
     )
 
 
-def _production_transport() -> httpx.AsyncBaseTransport:
-    """生产 transport：环境有代理时尊重系统代理（代理=可信出口）；直连时换
-    DNS guard 连接池（逐连接解析校验 + IP 钉住）。"""
+def production_transport() -> httpx.AsyncBaseTransport:
+    """生产 transport：环境有代理时尊重系统代理（代理=可信出口）；直连时给
+    连接池包 DNS guard（逐连接解析校验 + IP 钉住）。
+
+    guard 包装的是 pool 自建的默认后端（AutoBackend→anyio/trio 真实实现）——
+    httpcore.AsyncNetworkBackend() 是抽象基类（connect_tcp 恒 NotImplementedError），
+    不能当 inner 用。"""
     if proxy_env_present():
         return httpx.AsyncHTTPTransport(trust_env=True)
 
     class _GuardedTransport(httpx.AsyncHTTPTransport):
         def __init__(self) -> None:
             super().__init__()
-            self._pool = httpcore.AsyncConnectionPool(  # type: ignore[reportPrivateUsage]
-                network_backend=GuardedNetworkBackend(httpcore.AsyncNetworkBackend())
-            )
+            pool = self._pool  # type: ignore[reportPrivateUsage]
+            pool._network_backend = GuardedNetworkBackend(pool._network_backend)  # type: ignore[reportPrivateUsage]
 
     return _GuardedTransport()
 
@@ -279,7 +282,7 @@ class WebClipAdapter:
                 transport=self._transport, follow_redirects=False, timeout=timeout
             )
         return httpx.AsyncClient(
-            transport=_production_transport(), follow_redirects=False, timeout=timeout
+            transport=production_transport(), follow_redirects=False, timeout=timeout
         )
 
     async def fetch(self, url: str) -> tuple[bytes, str]:

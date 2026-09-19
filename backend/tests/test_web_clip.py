@@ -5,6 +5,7 @@ import asyncio
 from collections.abc import Callable
 from typing import Any
 
+import httpcore
 import httpx
 import pytest
 
@@ -366,3 +367,30 @@ async def test_dns_preflight_skipped_when_proxy_env_set(
         "https://www.w3cschool.cn/java/"
     )
     assert b"<html>" in raw
+
+
+def testproduction_transport_wraps_pool_default_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """结构断言（不起网络）：直连分支的 pool 默认后端（AutoBackend 真实实现）
+    被 guard 包装——httpcore.AsyncNetworkNetwork 基类当 inner 会恒 NotImplementedError
+    （真机验收实测回归防线）。"""
+    for name in (
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    from app.modules.capture.web_clip import (  # type: ignore[reportPrivateUsage]
+        GuardedNetworkBackend,
+        production_transport,
+    )
+
+    transport = production_transport()
+    pool = transport._pool  # type: ignore[reportPrivateUsage]
+    inner = pool._network_backend  # type: ignore[reportPrivateUsage]
+    assert isinstance(inner, GuardedNetworkBackend)
+    assert type(inner._inner) is not httpcore.AsyncNetworkBackend  # type: ignore[reportPrivateUsage]

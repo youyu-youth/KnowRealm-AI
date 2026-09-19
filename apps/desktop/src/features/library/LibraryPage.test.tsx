@@ -255,6 +255,52 @@ describe("LibraryPage 工作台", () => {
     expect(await screen.findByLabelText("正文")).toBeVisible();
   });
 
+  it("失败条目通用错误码显示任务文案而非 HTTP 500 文案", async () => {
+    mockLibraryEndpoints();
+    const FAILED_GENERIC_ID = "88888888-8888-4888-8888-888888888888";
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/library/items`, () =>
+        HttpResponse.json({
+          items: [
+            itemOut({
+              id: FAILED_GENERIC_ID,
+              source_type: "WEB",
+              title: "内部错误条目",
+              origin_uri: "https://example.com/boom",
+              availability: "FAILED",
+            }),
+          ],
+          total: 1,
+          backfill: null,
+        }),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/library/items/${FAILED_GENERIC_ID}`, () =>
+        HttpResponse.json({
+          ...itemOut({
+            id: FAILED_GENERIC_ID,
+            source_type: "WEB",
+            title: "内部错误条目",
+            availability: "FAILED",
+          }),
+          derived_records: [],
+          segment_count: 0,
+          failed_error_code: "INTERNAL_ERROR",
+        }),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/library/items/${FAILED_GENERIC_ID}/content`,
+        () => HttpResponse.json({ content: "", truncated: false }),
+      ),
+    );
+    renderAt("/library");
+    fireEvent.click(await screen.findByText("内部错误条目"));
+    expect(
+      await screen.findByText(/处理失败，可重新导入或改用手动粘贴/),
+    ).toBeVisible();
+    // 不再泄露 HTTP 500 专用文案（含未插值的请求编号）
+    expect(screen.queryByText(/服务器内部错误/)).not.toBeInTheDocument();
+  });
+
   it("URL 状态恢复：domain=records&view=favorites 直接进入对应视图", async () => {
     mockLibraryEndpoints();
     renderAt("/library?domain=records");

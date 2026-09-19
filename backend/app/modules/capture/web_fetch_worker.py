@@ -260,7 +260,8 @@ def _write_temp(path: Path, payload: bytes) -> None:
 def failure_code(_ctx: ClaimedWebFetch, exc: Exception) -> str | None:
     if isinstance(exc, WebClipError):
         return exc.code
-    logger.error("web_fetch_failed", error_code=ProcessingJobErrorCode.INTERNAL_ERROR)
+    # loguru sink 不渲染 kwargs：错误码内联进消息；exception 附完整堆栈
+    logger.exception(f"web_fetch_failed error_code={ProcessingJobErrorCode.INTERNAL_ERROR}")
     return ProcessingJobErrorCode.INTERNAL_ERROR
 
 
