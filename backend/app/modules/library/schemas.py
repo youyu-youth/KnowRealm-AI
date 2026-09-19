@@ -12,6 +12,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.modules.capture.schemas import CaptureType
+from app.modules.jobs.schemas import ProcessingJobOut
 from app.modules.record.schemas import RecordStatus
 
 
@@ -117,6 +118,33 @@ class LibraryItemPatch(BaseModel):
     favorite: bool | None = None
 
 
+class LibraryIngestSource(StrEnum):
+    WEB = "web"
+    TEXT = "text"
+
+
+class LibraryIngestRequest(BaseModel):
+    """统一入库 JSON 请求（本地文件走 /ingest/file multipart）。
+
+    origin_uri 仅供 TEXT 降级粘贴携带原页面 URL（网页抓取失败闭环），不作抓取目标。
+    """
+
+    source: LibraryIngestSource
+    url: str | None = None
+    title: str | None = None
+    content: str | None = None
+    origin_uri: str | None = None
+    course_id: UUID | None = None
+    allow_duplicate: bool = False
+
+
+class LibraryIngestAccepted(BaseModel):
+    """202 立即建条目：处理状态由列表/详情派生字段轮询（web/file 带 Job 摘要）。"""
+
+    item: LibraryItemOut
+    job: ProcessingJobOut | None = None
+
+
 class DerivedRecordOut(BaseModel):
     record_id: str
     title: str
@@ -129,6 +157,7 @@ class DerivedRecordOut(BaseModel):
 class LibraryItemDetailOut(LibraryItemOut):
     derived_records: list[DerivedRecordOut] = []
     segment_count: int = 0
+    failed_error_code: str | None = None
 
 
 class LibraryItemContentQuery(BaseModel):

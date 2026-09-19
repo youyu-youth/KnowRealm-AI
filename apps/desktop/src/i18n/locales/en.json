@@ -2136,7 +2136,40 @@
       "recordAssetsHint": "Summaries, knowledge points and quizzes live on the record page",
       "openRecord": "Open record page",
       "assetRecord": "Record",
-      "importance": "Importance"
+      "importance": "Importance",
+      "failedHint": "Processing failed. You can re-ingest or paste the content manually",
+      "reingest": "Re-ingest",
+      "manualPaste": "Paste content manually",
+      "openOrigin": "Open source page",
+      "revealFile": "Reveal in file explorer"
+    },
+    "ingest": {
+      "open": "Add material",
+      "title": "Add material",
+      "description": "Save a web page, local file or pasted text into the library",
+      "tabs": {
+        "web": "Web page",
+        "file": "File",
+        "text": "Text"
+      },
+      "urlLabel": "Web URL",
+      "urlPlaceholder": "https://example.com/article",
+      "filePicker": "Choose a file (TXT / MD / PDF / DOCX)",
+      "fileSelected": "Selected: {{name}}",
+      "titleLabel": "Title (optional)",
+      "titlePlaceholder": "Title (optional, defaults to first line)",
+      "contentLabel": "Content",
+      "contentPlaceholder": "Paste or type the content",
+      "downgradeHint": "Saving the content of {{url}} manually",
+      "duplicateHint": "An item with identical content already exists. Open it or keep both",
+      "openExisting": "Open existing item",
+      "keepDuplicate": "Keep both",
+      "submit": "Add",
+      "cancel": "Cancel",
+      "errors": {
+        "noFile": "Choose a file first",
+        "generic": "Failed to ingest, please retry later"
+      }
     }
   },
   "errors": {
@@ -2264,10 +2297,19 @@
     "CHAT_COURSE_UNAVAILABLE": "The mounted course was deleted; this chat is read-only",
     "CHAT_MESSAGE_NOT_FOUND": "Chat message not found",
     "CHAT_MESSAGE_NOT_ASSISTANT": "Only AI answers can be saved as knowledge points",
+    "LIBRARY_INGEST_INVALID_REQUEST": "Invalid ingest request (empty content or missing fields)",
+    "LIBRARY_ITEM_DUPLICATE_CONTENT": "An item with identical content already exists",
+    "LIBRARY_ITEM_LIMIT_EXCEEDED": "Content exceeds the 1 MiB limit",
     "LIBRARY_ITEM_NOT_FOUND": "Library item not found or deleted",
     "LIBRARY_PATCH_EMPTY": "Provide at least one field to update",
     "PROPOSAL_NOT_FOUND": "Proposal not found",
     "PROPOSAL_ALREADY_DECIDED": "Proposal already decided",
-    "PROPOSAL_APPLY_FAILED": "Failed to apply proposal ({{errorCode}})"
+    "PROPOSAL_APPLY_FAILED": "Failed to apply proposal ({{errorCode}})",
+    "WEB_FETCH_BLOCKED_URL": "Target address is in a restricted network range",
+    "WEB_FETCH_CONTENT_TOO_LARGE": "Page content exceeds the size limit",
+    "WEB_FETCH_EXTRACT_FAILED": "Content extraction failed; paste the content manually instead",
+    "WEB_FETCH_INVALID_URL": "Only http(s) URLs are supported",
+    "WEB_FETCH_UNREACHABLE": "Target site is unreachable",
+    "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE": "Unsupported page type"
   }
 }

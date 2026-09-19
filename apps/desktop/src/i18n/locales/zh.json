@@ -2118,7 +2118,40 @@
       "recordAssetsHint": "总结、知识点与习题在记录页查看",
       "openRecord": "打开记录页",
       "assetRecord": "所属记录",
-      "importance": "重要度"
+      "importance": "重要度",
+      "failedHint": "处理失败，可重新导入或改用手动粘贴",
+      "reingest": "重新导入",
+      "manualPaste": "手动粘贴正文",
+      "openOrigin": "打开原网页",
+      "revealFile": "在资源管理器中显示"
+    },
+    "ingest": {
+      "open": "添加资料",
+      "title": "添加资料",
+      "description": "支持网页链接、本地文件与粘贴文本，统一进入资料库",
+      "tabs": {
+        "web": "网页",
+        "file": "文件",
+        "text": "文本"
+      },
+      "urlLabel": "网页地址",
+      "urlPlaceholder": "https://example.com/article",
+      "filePicker": "选择文件（TXT / MD / PDF / DOCX）",
+      "fileSelected": "已选择：{{name}}",
+      "titleLabel": "标题（可选）",
+      "titlePlaceholder": "标题（可选，默认取正文首行）",
+      "contentLabel": "正文",
+      "contentPlaceholder": "粘贴或输入正文内容",
+      "downgradeHint": "将手动保存 {{url}} 的正文",
+      "duplicateHint": "已存在相同内容的资料条目，打开已有或仍然保留双份",
+      "openExisting": "打开已有条目",
+      "keepDuplicate": "仍然保留",
+      "submit": "添加",
+      "cancel": "取消",
+      "errors": {
+        "noFile": "请先选择文件",
+        "generic": "入库失败，请稍后重试"
+      }
     }
   },
   "errors": {
@@ -2246,10 +2279,19 @@
     "CHAT_COURSE_UNAVAILABLE": "挂载课程已删除，对话失效",
     "CHAT_MESSAGE_NOT_FOUND": "对话消息不存在",
     "CHAT_MESSAGE_NOT_ASSISTANT": "仅 AI 回答可保存为知识点",
+    "LIBRARY_INGEST_INVALID_REQUEST": "入库请求无效（正文为空或缺少必要字段）",
+    "LIBRARY_ITEM_DUPLICATE_CONTENT": "已存在相同内容的资料条目",
+    "LIBRARY_ITEM_LIMIT_EXCEEDED": "单条正文超过 1 MiB 上限",
     "LIBRARY_ITEM_NOT_FOUND": "资料条目不存在或已删除",
     "LIBRARY_PATCH_EMPTY": "至少提供一项可更新字段",
     "PROPOSAL_NOT_FOUND": "提案不存在",
     "PROPOSAL_ALREADY_DECIDED": "提案已处理，不能重复操作",
-    "PROPOSAL_APPLY_FAILED": "提案应用失败（{{errorCode}}）"
+    "PROPOSAL_APPLY_FAILED": "提案应用失败（{{errorCode}}）",
+    "WEB_FETCH_BLOCKED_URL": "目标地址属于受限网络范围",
+    "WEB_FETCH_CONTENT_TOO_LARGE": "页面内容超过大小上限",
+    "WEB_FETCH_EXTRACT_FAILED": "正文提取失败，可改用手动粘贴",
+    "WEB_FETCH_INVALID_URL": "仅支持 http(s) 地址",
+    "WEB_FETCH_UNREACHABLE": "目标站点无法访问",
+    "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE": "页面类型不受支持"
   }
 }

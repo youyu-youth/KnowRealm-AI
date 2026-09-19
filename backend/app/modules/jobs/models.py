@@ -14,6 +14,9 @@ class ProcessingJob(Base):
     record_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("records.id", ondelete="CASCADE"), default=None
     )
+    library_item_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("library_items.id", ondelete="CASCADE"), default=None
+    )
     job_type: Mapped[str] = mapped_column(String(30))
     status: Mapped[str] = mapped_column(String(20))
     progress: Mapped[float] = mapped_column(Float, default=0)

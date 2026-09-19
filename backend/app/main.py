@@ -26,6 +26,7 @@ from app.modules.capture import (
     recording_sessions,
     text_captures,
 )
+from app.modules.capture.web_fetch_worker import web_fetch_spec
 from app.modules.course import courses
 from app.modules.course.tombstone_cleanup import DocumentCleanupService
 from app.modules.course_brain import routes as course_brain_routes
@@ -340,6 +341,18 @@ def create_app(
                         "library_backfill",
                         lambda: JobRunner(
                             backfill_spec(session_factory, record_notifier),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
+                    (
+                        "web_fetch",
+                        lambda: JobRunner(
+                            web_fetch_spec(
+                                session_factory,
+                                resolved_data_dir,
+                                record_notifier,
+                            ),
                             session_factory,
                             record_notifier,
                         ),

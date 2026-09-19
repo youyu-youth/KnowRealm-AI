@@ -165,7 +165,7 @@ class LibraryService:
         return [cast(str, row.record_id) for row in rows]
 
     @staticmethod
-    async def _item_out(session: AsyncSession, item: LibraryItem) -> LibraryItemOut:
+    async def item_out(session: AsyncSession, item: LibraryItem) -> LibraryItemOut:
         record_ids = await LibraryService._linked_record_ids(session, item.id)
         availability = await LibraryService._availability_by_item(session, {item.id: record_ids})
         course_names = await LibraryService._course_names(session, {item.course_id})
@@ -260,6 +260,21 @@ class LibraryService:
             await session.execute(_SEGMENT_COUNT_SQL, {"ids": record_ids or ["__none__"]})
         ).all()
         detail.segment_count = sum(cast(int, row.n) for row in seg_rows)
+        if detail.availability == LibraryAvailability.FAILED and record_ids:
+            # 失败原因透出（03）：解析链最新 FAILED 任务的稳定错误码，前端据此给降级引导。
+            detail.failed_error_code = cast(
+                "str | None",
+                await session.scalar(
+                    select(ProcessingJob.error_code)
+                    .where(
+                        ProcessingJob.record_id.in_(record_ids),
+                        ProcessingJob.job_type.in_(_PARSE_JOB_TYPES),
+                        ProcessingJob.status == ProcessingJobStatus.FAILED,
+                    )
+                    .order_by(ProcessingJob.updated_at.desc(), ProcessingJob.id.desc())
+                    .limit(1)
+                ),
+            )
         rows = (
             await session.execute(
                 select(Record, LibraryItemRecord)
@@ -293,7 +308,7 @@ class LibraryService:
             item.favorite = favorite
             # 不 refresh：refresh 会丢弃未 flush 的属性修改；expire_on_commit=False
             # 使提交后属性仍可读。
-        return await LibraryService._item_out(session, item)
+        return await LibraryService.item_out(session, item)
 
     @staticmethod
     async def get_content(session: AsyncSession, item_id: str, limit: int) -> LibraryItemContentOut:
@@ -342,9 +357,7 @@ class LibraryService:
         elif query.course_id is not None:
             stmt = stmt.where(Record.course_id == str(query.course_id))
         if query.q:
-            stmt = stmt.where(
-                Record.title.like(f"%{escape_like(query.q.strip())}%", escape="\\")
-            )
+            stmt = stmt.where(Record.title.like(f"%{escape_like(query.q.strip())}%", escape="\\"))
         stmt = stmt.order_by(Record.updated_at.desc(), Record.id.desc())
         rows = (await session.execute(stmt)).all()
         record_ids = [record.id for record, _course, _linked in rows]

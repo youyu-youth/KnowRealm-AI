@@ -20,6 +20,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "sqlalchemy>=2.0.52",
     "sse-starlette>=3.4.8",
+    "trafilatura>=2.2,<3",
     "tzdata>=2026.3",
     "uvicorn>=0.41.0",
 ]

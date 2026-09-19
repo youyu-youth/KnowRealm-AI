@@ -1,19 +1,31 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
   BookOpen,
+  ExternalLink,
   FileText,
+  FolderSearch,
   Globe,
   Lightbulb,
   Mic,
   LayoutGrid,
   List as ListIcon,
   Loader2,
+  Plus,
+  RotateCcw,
   Star,
   StickyNote,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import {
+  AddLibraryItemDialog,
+  type AddLibraryItemInitial,
+} from "@/features/library/components/AddLibraryItemDialog";
+import { getDataDirectory } from "@/services/tauri/dataDirectory";
+import { openWebUrl } from "@/services/tauri/webLinks";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -435,12 +447,24 @@ function MetaRow({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-function ItemInspector({ itemId }: { itemId: string }) {
+function ItemInspector({
+  itemId,
+  onManualPaste,
+  onReingest,
+}: {
+  itemId: string;
+  onManualPaste: (item: { origin_uri: string | null; title: string }) => void;
+  onReingest: (item: { origin_uri: string | null; title: string }) => void;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const detail = useLibraryItemDetail(itemId);
   const content = useLibraryItemContent(itemId);
   const item = detail.data;
+  const revealSnapshot = async (relPath: string) => {
+    const root = (await getDataDirectory()).replace(/[/\\]+$/, "");
+    await revealItemInDir(`${root}/${relPath}`);
+  };
   if (detail.isPending) {
     return (
       <div className="text-muted-foreground flex items-center gap-2 py-6 text-sm">
@@ -470,6 +494,63 @@ function ItemInspector({ itemId }: { itemId: string }) {
           {t(`library.availability.${item.availability}`)}
         </StatusTag>
       </div>
+
+      {item.availability === "FAILED" ? (
+        <Alert variant="destructive" role="alert">
+          <AlertDescription>
+            {item.failed_error_code
+              ? t(`errors.${item.failed_error_code}`, {
+                  defaultValue: t("library.inspector.failedHint"),
+                })
+              : t("library.inspector.failedHint")}
+          </AlertDescription>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onReingest(item)}
+              disabled={item.source_type !== "WEB"}
+            >
+              <RotateCcw className="size-4" aria-hidden />
+              {t("library.inspector.reingest")}
+            </Button>
+            {item.source_type === "WEB" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onManualPaste(item)}
+              >
+                {t("library.inspector.manualPaste")}
+              </Button>
+            ) : null}
+          </div>
+        </Alert>
+      ) : null}
+
+      {item.origin_uri || item.local_path ? (
+        <div className="flex flex-wrap gap-2">
+          {item.origin_uri ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void openWebUrl(item.origin_uri ?? "")}
+            >
+              <ExternalLink className="size-4" aria-hidden />
+              {t("library.inspector.openOrigin")}
+            </Button>
+          ) : null}
+          {item.local_path ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void revealSnapshot(item.local_path ?? "")}
+            >
+              <FolderSearch className="size-4" aria-hidden />
+              {t("library.inspector.revealFile")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <section>
         <h4 className="text-label text-muted-foreground font-label mb-1">
@@ -674,11 +755,15 @@ function Inspector({
   items,
   records,
   assets,
+  onManualPaste,
+  onReingest,
 }: {
   search: LibrarySearch;
   items: LibraryItemOut[];
   records: LibraryRecordOut[];
   assets: LibraryAssetOut[];
+  onManualPaste: (item: { origin_uri: string | null; title: string }) => void;
+  onReingest: (item: { origin_uri: string | null; title: string }) => void;
 }) {
   const { t } = useTranslation();
   if (!search.sel || !search.selType) {
@@ -689,7 +774,13 @@ function Inspector({
     );
   }
   if (search.selType === "item") {
-    return <ItemInspector itemId={search.sel} />;
+    return (
+      <ItemInspector
+        itemId={search.sel}
+        onManualPaste={onManualPaste}
+        onReingest={onReingest}
+      />
+    );
   }
   if (search.selType === "record") {
     const record = records.find((row) => row.id === search.sel);
@@ -725,6 +816,10 @@ export function LibraryPage({
 }) {
   const { t } = useTranslation();
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [ingestOpen, setIngestOpen] = useState(false);
+  const [ingestInitial, setIngestInitial] = useState<
+    AddLibraryItemInitial | undefined
+  >(undefined);
   const domain = search.domain ?? "all";
   const view = search.view ?? "all";
   const layout = search.layout ?? "list";
@@ -740,8 +835,15 @@ export function LibraryPage({
     }),
     [view, search.sourceType, search.availability, search.courseId, search.q],
   );
+  // 「解析中」条目存在时轮询可用性派生，终态即停（无无限 spinner）。
   const itemsQuery = useLibraryItems(
     domain === "all" || domain === "sources" ? itemsParams : { limit: 1 },
+    {
+      refetchIntervalMs: (data) =>
+        (data?.items ?? []).some((item) => item.availability === "PROCESSING")
+          ? 2000
+          : false,
+    },
   );
   const recordsQuery = useLibraryRecords();
   const assetsQuery = useLibraryAssets();
@@ -750,6 +852,7 @@ export function LibraryPage({
     () => itemsQuery.data?.items ?? [],
     [itemsQuery.data],
   );
+
   const allRecords = useMemo(
     () => recordsQuery.data ?? [],
     [recordsQuery.data],
@@ -799,12 +902,33 @@ export function LibraryPage({
           : allItems.length + filteredRecords.length + filteredAssets.length ===
             0;
 
+  const openIngestDialog = (initial?: AddLibraryItemInitial) => {
+    setIngestInitial(initial);
+    setIngestOpen(true);
+  };
+  const openExistingItem = (itemId: string) => {
+    onSearchChange({ ...search, sel: itemId, selType: "item" });
+    if (window.innerWidth < 1280) setInspectorOpen(true);
+  };
   const inspectorBody = (
     <Inspector
       search={search}
       items={allItems}
       records={allRecords}
       assets={allAssets}
+      onManualPaste={(item) =>
+        openIngestDialog({
+          tab: "text",
+          originUri: item.origin_uri ?? undefined,
+          title: item.title,
+        })
+      }
+      onReingest={(item) =>
+        openIngestDialog({
+          tab: "web",
+          url: item.origin_uri ?? undefined,
+        })
+      }
     />
   );
 
@@ -819,6 +943,10 @@ export function LibraryPage({
             {t("library.description")}
           </p>
         </div>
+        <Button onClick={() => openIngestDialog()}>
+          <Plus className="size-4" aria-hidden />
+          {t("library.ingest.open")}
+        </Button>
         {backfillFailed ? (
           <div
             className="border-danger text-muted-foreground bg-surface-raised flex items-center gap-2 rounded-lg border border-solid px-3 py-1.5 text-sm"
@@ -1093,6 +1221,13 @@ export function LibraryPage({
           {inspectorOpen ? inspectorBody : null}
         </DialogContent>
       </Dialog>
+
+      <AddLibraryItemDialog
+        open={ingestOpen}
+        onOpenChange={setIngestOpen}
+        initial={ingestInitial}
+        onOpenItem={openExistingItem}
+      />
     </section>
   );
 }

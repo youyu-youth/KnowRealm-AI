@@ -38,7 +38,7 @@ SUPPORTED_DOCUMENTS = {
 }
 
 
-def _copy_upload(source: BinaryIO, target: Path) -> tuple[int, str]:
+def copy_upload(source: BinaryIO, target: Path) -> tuple[int, str]:
     source.seek(0)
     size = 0
     digest = hashlib.sha256()
@@ -52,7 +52,7 @@ def _copy_upload(source: BinaryIO, target: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
-def _remove_import_file(path: Path) -> None:
+def remove_import_file(path: Path) -> None:
     path.unlink(missing_ok=True)
     try:
         path.parent.rmdir()
@@ -87,7 +87,7 @@ class DocumentImportService:
         final_path = target_dir / f"{file_id}{extension}"
         try:
             file_size, content_hash = await asyncio.to_thread(
-                _copy_upload, upload.file, temporary_path
+                copy_upload, upload.file, temporary_path
             )
             if file_size == 0:
                 raise CodedHTTPException(
@@ -164,7 +164,7 @@ class DocumentImportService:
         except BaseException:
             for path in (final_path, temporary_path):
                 try:
-                    await asyncio.to_thread(_remove_import_file, path)
+                    await asyncio.to_thread(remove_import_file, path)
                 except OSError:
                     logger.error(
                         "document_import_compensation_failed",

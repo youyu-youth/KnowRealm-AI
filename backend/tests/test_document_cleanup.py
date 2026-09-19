@@ -486,7 +486,7 @@ async def test_compensation_failure_logs_and_leaves_a_proven_cleanup_orphan(
                 raise PermissionError("forced compensation failure")
 
             monkeypatch.setattr(
-                "app.modules.capture.document_import._remove_import_file",
+                "app.modules.capture.document_import.remove_import_file",
                 fail_compensation,
             )
             failed = await client.post(

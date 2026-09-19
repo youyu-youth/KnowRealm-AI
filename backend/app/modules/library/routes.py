@@ -1,16 +1,19 @@
-"""library 域路由：资料条目 / 联邦记录与资产 / agent_proposals 提案端点。"""
+"""library 域路由：资料条目 / 统一入库 / 联邦记录与资产 / agent_proposals 提案端点。"""
 
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.capture.ingest import LibraryIngestService
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import (
     AgentProposalOut,
     LibraryAssetListQuery,
     LibraryAssetOut,
+    LibraryIngestAccepted,
+    LibraryIngestRequest,
     LibraryItemContentOut,
     LibraryItemContentQuery,
     LibraryItemDetailOut,
@@ -33,6 +36,12 @@ _LIBRARY_RESPONSES: dict[int | str, dict[str, Any]] = {
     422: {"model": ErrorResponse},
     500: {"model": ErrorResponse},
 }
+_INGEST_RESPONSES: dict[int | str, dict[str, Any]] = {
+    **_LIBRARY_RESPONSES,
+    400: {"model": ErrorResponse},
+    409: {"model": ErrorResponse},
+    507: {"model": ErrorResponse},
+}
 _PROPOSAL_RESPONSES: dict[int | str, dict[str, Any]] = {
     403: {"model": ErrorResponse},
     404: {"model": ErrorResponse},
@@ -53,6 +62,44 @@ proposals_router = APIRouter(
     dependencies=[Depends(require_launch_token)],
     responses=_PROPOSAL_RESPONSES,
 )
+
+
+@library_router.post(
+    "/ingest",
+    status_code=202,
+    response_model=LibraryIngestAccepted,
+    responses=_INGEST_RESPONSES,
+)
+async def ingest_library_item(
+    request: Request, body: LibraryIngestRequest
+) -> LibraryIngestAccepted:
+    """统一入库（web/text）：立即建条目；web 另建 WEB_FETCH 任务异步抓取净化。"""
+    session_factory = request.app.state.session_factory
+    if body.source.value == "web":
+        return await LibraryIngestService.ingest_web(session_factory, body)
+    return await LibraryIngestService.ingest_text(session_factory, request.app.state.data_dir, body)
+
+
+@library_router.post(
+    "/ingest/file",
+    status_code=202,
+    response_model=LibraryIngestAccepted,
+    responses=_INGEST_RESPONSES,
+)
+async def ingest_library_file(
+    request: Request,
+    file: Annotated[UploadFile, File()],
+    course_id: Annotated[UUID | None, Form()] = None,
+    allow_duplicate: Annotated[bool, Form()] = False,
+) -> LibraryIngestAccepted:
+    """统一入库（本地文件）：复用文档导入校验与解析分片管线，另建资料条目。"""
+    return await LibraryIngestService.ingest_file(
+        request.app.state.session_factory,
+        request.app.state.data_dir,
+        file,
+        str(course_id) if course_id is not None else None,
+        allow_duplicate,
+    )
 
 
 @library_router.get("/items", response_model=LibraryItemListOut)
