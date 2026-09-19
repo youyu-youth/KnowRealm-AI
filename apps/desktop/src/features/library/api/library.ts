@@ -24,6 +24,14 @@ export type LibraryIngestRequest =
   components["schemas"]["LibraryIngestRequest"];
 export type LibraryIngestAccepted =
   components["schemas"]["LibraryIngestAccepted"];
+export type OrganizeScanOut = components["schemas"]["OrganizeScanOut"];
+export type OrganizeProposeOut = components["schemas"]["OrganizeProposeOut"];
+export type AgentProposalOut = components["schemas"]["AgentProposalOut"];
+export type ProposalCreateRequest =
+  components["schemas"]["ProposalCreateRequest"];
+export type ProposalStatus = components["schemas"]["ProposalStatus"];
+export type ProposalType = components["schemas"]["ProposalType"];
+export type LibraryItemPatchBody = components["schemas"]["LibraryItemPatch"];
 
 export type LibraryItemsParams = {
   view?: LibraryView;
@@ -58,11 +66,73 @@ export const libraryApi = {
     apiFetch<components["schemas"]["LibraryItemContentOut"]>(
       `/api/library/items/${itemId}/content`,
     ),
-  patchItem: (itemId: string, body: { favorite?: boolean }) =>
+  patchItem: (itemId: string, body: LibraryItemPatchBody) =>
     apiFetch<LibraryItemOut>(`/api/library/items/${itemId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+    }),
+  archiveItem: (itemId: string) =>
+    apiFetch<LibraryItemOut>(`/api/library/items/${itemId}/archive`, {
+      method: "POST",
+    }),
+  unarchiveItem: (itemId: string) =>
+    apiFetch<LibraryItemOut>(`/api/library/items/${itemId}/unarchive`, {
+      method: "POST",
+    }),
+  deleteItem: (itemId: string) =>
+    apiFetch<LibraryItemOut>(`/api/library/items/${itemId}`, {
+      method: "DELETE",
+    }),
+  purgeItem: (itemId: string) =>
+    apiFetch<null>(`/api/library/items/${itemId}?permanent=true`, {
+      method: "DELETE",
+    }),
+  restoreItem: (itemId: string) =>
+    apiFetch<LibraryItemOut>(`/api/library/items/${itemId}/restore`, {
+      method: "POST",
+    }),
+  retryItem: (itemId: string) =>
+    apiFetch<LibraryItemOut>(`/api/library/items/${itemId}/retry`, {
+      method: "POST",
+    }),
+  refetchItem: (itemId: string) =>
+    apiFetch<LibraryIngestAccepted>(`/api/library/items/${itemId}/refetch`, {
+      method: "POST",
+    }),
+  rebuildItemIndex: (itemId: string) =>
+    apiFetch<{ job_id: string }>(`/api/library/items/${itemId}/rebuild-index`, {
+      method: "POST",
+    }),
+  organizeScan: () =>
+    apiFetch<OrganizeScanOut>("/api/library/organize/scan", {
+      method: "POST",
+    }),
+  organizePropose: () =>
+    apiFetch<OrganizeProposeOut>("/api/library/organize/propose", {
+      method: "POST",
+    }),
+  listProposals: (params: { status?: ProposalStatus } = {}) => {
+    const search = new URLSearchParams();
+    if (params.status) search.set("status", params.status);
+    const query = search.toString();
+    return apiFetch<AgentProposalOut[]>(
+      `/api/proposals${query ? `?${query}` : ""}`,
+    );
+  },
+  createProposal: (body: ProposalCreateRequest) =>
+    apiFetch<AgentProposalOut>("/api/proposals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  confirmProposal: (proposalId: string) =>
+    apiFetch<AgentProposalOut>(`/api/proposals/${proposalId}/confirm`, {
+      method: "POST",
+    }),
+  rejectProposal: (proposalId: string) =>
+    apiFetch<AgentProposalOut>(`/api/proposals/${proposalId}/reject`, {
+      method: "POST",
     }),
   ingest: (body: LibraryIngestRequest) =>
     apiFetch<LibraryIngestAccepted>("/api/library/ingest", {
@@ -144,6 +214,74 @@ export function useToggleFavorite() {
   return useMutation({
     mutationFn: ({ itemId, favorite }: { itemId: string; favorite: boolean }) =>
       libraryApi.patchItem(itemId, { favorite }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: libraryKeys.all });
+    },
+  });
+}
+
+/** 生命周期动作统一 mutation：成功后失效资料库缓存。 */
+export function useLibraryItemAction() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      action,
+      itemId,
+    }: {
+      action:
+        | "archive"
+        | "unarchive"
+        | "delete"
+        | "purge"
+        | "restore"
+        | "retry"
+        | "refetch"
+        | "rebuild-index";
+      itemId: string;
+    }) => {
+      switch (action) {
+        case "archive":
+          await libraryApi.archiveItem(itemId);
+          break;
+        case "unarchive":
+          await libraryApi.unarchiveItem(itemId);
+          break;
+        case "delete":
+          await libraryApi.deleteItem(itemId);
+          break;
+        case "purge":
+          await libraryApi.purgeItem(itemId);
+          break;
+        case "restore":
+          await libraryApi.restoreItem(itemId);
+          break;
+        case "retry":
+          await libraryApi.retryItem(itemId);
+          break;
+        case "refetch":
+          await libraryApi.refetchItem(itemId);
+          break;
+        case "rebuild-index":
+          await libraryApi.rebuildItemIndex(itemId);
+          break;
+      }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: libraryKeys.all });
+    },
+  });
+}
+
+export function useLibraryItemEdit() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      itemId,
+      body,
+    }: {
+      itemId: string;
+      body: LibraryItemPatchBody;
+    }) => libraryApi.patchItem(itemId, body),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: libraryKeys.all });
     },

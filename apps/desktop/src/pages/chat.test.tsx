@@ -1247,6 +1247,84 @@ describe("联网搜索接线（B1）", () => {
     );
     expect(openWebUrl).toHaveBeenCalledTimes(2);
   });
+
+  it("web 引用可发起「建议保存」提案并就地确认入库（零事实变更直至确认）", async () => {
+    const WEB_URL = "https://en.wikipedia.org/wiki/Cache_(computing)";
+    const PROPOSAL_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const created = chatSession(FIRST_SESSION_ID, { scope: "ALL" });
+    let proposalBody: unknown = null;
+    let confirmed = false;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([created]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(created),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json([
+            messageRow("user-row", "USER", "缓存是什么"),
+            {
+              id: "assistant-row",
+              role: "ASSISTANT",
+              content: "缓存是高速临时存储[1]。",
+              model: "stub-chat-model",
+              citations: [
+                { index: 1, source: "web", url: WEB_URL, title: "Cache" },
+              ],
+              created_at: "2026-08-27T08:00:00.000000Z",
+            },
+          ]),
+      ),
+      http.post(`${TEST_SIDECAR_URL}/api/proposals`, async ({ request }) => {
+        proposalBody = await request.json();
+        return HttpResponse.json(
+          {
+            id: PROPOSAL_ID,
+            proposal_type: "RESEARCH_INGEST",
+            status: "PENDING",
+            session_id: null,
+            message_id: null,
+            target_type: null,
+            target_id: null,
+            payload: { url: WEB_URL, title: "Cache" },
+            evidence_refs: null,
+            error_code: null,
+            created_at: "2026-09-19T08:00:00.000000Z",
+            decided_at: null,
+          },
+          { status: 201 },
+        );
+      }),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/proposals/${PROPOSAL_ID}/confirm`,
+        () => {
+          confirmed = true;
+          return HttpResponse.json({ status: "APPLIED" });
+        },
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+
+    // 建议保存 → 创建 RESEARCH_INGEST 提案（未确认前不动资料事实）
+    fireEvent.click(await screen.findByRole("button", { name: "保存为资料" }));
+    await waitFor(() =>
+      expect(proposalBody).toEqual({
+        proposal_type: "RESEARCH_INGEST",
+        payload: { url: WEB_URL, title: "Cache" },
+      }),
+    );
+    // 就地确认卡：确认后才经业务入库
+    expect(await screen.findByText("保存建议待确认")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "确认保存" }));
+    await waitFor(() => expect(confirmed).toBe(true));
+    expect(
+      await screen.findByText("已保存到资料库，抓取在后台进行。"),
+    ).toBeVisible();
+  });
 });
 
 describe("挂载会话失效态", () => {

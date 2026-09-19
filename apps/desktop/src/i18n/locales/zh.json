@@ -1638,7 +1638,13 @@
       "entryWithTitle": "[{{index}}] {{quote}}（来自《{{title}}》）",
       "libraryTag": "资料来源",
       "libraryFromTitle": "资料：{{title}}",
-      "libraryEntry": "[{{index}}] {{quote}}（资料：{{title}}），点击查看资料来源"
+      "libraryEntry": "[{{index}}] {{quote}}（资料：{{title}}），点击查看资料来源",
+      "researchSave": "保存为资料",
+      "researchPending": "保存建议待确认",
+      "researchAccept": "确认保存",
+      "researchReject": "拒绝保存",
+      "researchSaved": "已保存到资料库，抓取在后台进行。",
+      "researchRejected": "已拒绝该保存建议。"
     },
     "recordsTitle": "对话记录",
     "selectSessionTitle": "选择或新建对话",
@@ -2060,7 +2066,9 @@
       "all": "全部",
       "recent": "最近",
       "favorites": "收藏",
-      "needsReview": "待整理"
+      "needsReview": "待整理",
+      "archived": "归档",
+      "trash": "回收站"
     },
     "groups": {
       "smart": "智能视图",
@@ -2133,7 +2141,20 @@
       "revealFile": "在资源管理器中显示",
       "aiInterpret": "AI 解读",
       "aiInterpretPending": "正在创建对话…",
-      "aiInterpretUnavailable": "资料已归档，归档资料暂不支持 AI 解读"
+      "aiInterpretUnavailable": "资料已归档，归档资料暂不支持 AI 解读",
+      "edit": "重命名 / 归类",
+      "archive": "归档",
+      "unarchive": "取消归档",
+      "delete": "删除",
+      "restore": "恢复",
+      "purge": "彻底删除",
+      "trashHint": "30 天内可恢复；保留期届满且无活动引用后将被物理清理。",
+      "deletedAt": "删除于 {{time}}",
+      "retry": "重试",
+      "refetch": "重新抓取",
+      "refetchHint": "重新抓取将创建新条目，不覆盖当前快照。",
+      "refetchDone": "重新抓取已开始，将创建新的资料条目。",
+      "rebuildIndex": "重建索引"
     },
     "ingest": {
       "open": "添加资料",
@@ -2162,6 +2183,52 @@
         "noFile": "请先选择文件",
         "generic": "入库失败，请稍后重试"
       }
+    },
+    "trash": {
+      "banner": "回收站仅收录被删除的资料条目，不含学习记录与学习资产；条目 30 天内可恢复，彻底删除要求无未删除的派生记录。"
+    },
+    "edit": {
+      "title": "编辑资料",
+      "description": "重命名或重新归类；归类不会移动派生记录的课程。",
+      "titleLabel": "标题",
+      "courseLabel": "所属课程",
+      "courseHint": "资料派生的学习记录不会随之移动，需要时可单独调整。",
+      "cancel": "取消",
+      "save": "保存"
+    },
+    "delete": {
+      "title": "删除资料",
+      "description": "移入回收站，30 天内可恢复。",
+      "permanentTitle": "彻底删除资料",
+      "permanentDescription": "删除后不可恢复；仅在没有未删除派生记录时允许。",
+      "derivedRecordsHint": "以下派生记录不会被删除（独立于资料条目）：",
+      "noDerivedRecords": "该资料没有派生记录。",
+      "confirm": "移入回收站",
+      "permanentConfirm": "彻底删除",
+      "cancel": "取消"
+    },
+    "organize": {
+      "open": "AI 整理",
+      "title": "AI 整理",
+      "description": "先展示确定性检查（重复 / 失败），再生成 AI 标题与归类建议，经你逐项确认后应用。",
+      "deterministic": "确定性检查",
+      "noIssues": "未检测到重复或处理失败的条目。",
+      "duplicatesTitle": "{{count}} 组内容重复",
+      "failedTitle": "{{count}} 个条目处理失败",
+      "aiSection": "AI 建议与待审提案",
+      "generate": "生成 AI 建议",
+      "noSuggestions": "没有生成新的建议。",
+      "noProposals": "暂无待审提案。",
+      "pendingList": "待审提案",
+      "accept": "应用",
+      "reject": "拒绝",
+      "withCourse": "含归类建议",
+      "titleOnly": "仅标题建议",
+      "organizeSuggestion": "将标题改为「{{title}}」",
+      "researchIngest": "保存网页「{{title}}」为资料",
+      "error": "生成失败，请稍后重试。",
+      "scanError": "确定性检查失败，请稍后重试。",
+      "unclassifiedCount": "另有 {{count}} 条未归类条目，可生成 AI 归类建议。"
     }
   },
   "errors": {
@@ -2305,6 +2372,15 @@
     "WEB_FETCH_UNSUPPORTED_CONTENT_TYPE": "页面类型不受支持",
     "LIBRARY_ITEM_ARCHIVED": "资料条目已归档，暂不支持发起资料问答",
     "LIBRARY_ITEM_DELETED": "资料条目已删除，暂不支持发起资料问答",
-    "CHAT_LIBRARY_ITEM_UNAVAILABLE": "原资料已删除或归档，对话已失效"
+    "CHAT_LIBRARY_ITEM_UNAVAILABLE": "原资料已删除或归档，对话已失效",
+    "LIBRARY_ITEM_ALREADY_ARCHIVED": "资料条目已归档",
+    "LIBRARY_ITEM_ALREADY_ACTIVE": "资料条目未归档",
+    "LIBRARY_ITEM_NOT_IN_TRASH": "资料条目不在回收站中",
+    "LIBRARY_ITEM_HAS_DERIVED_RECORDS": "存在未删除的派生学习记录，请先处理后再删除资料条目",
+    "LIBRARY_ITEM_SNAPSHOT_INVALID": "快照缺失或内容不一致，无法恢复",
+    "LIBRARY_ITEM_JOB_ACTIVE": "该资料条目已有进行中的处理任务",
+    "LIBRARY_RETRY_NOT_APPLICABLE": "该资料条目没有可重试的失败任务",
+    "LIBRARY_REFETCH_UNSUPPORTED": "仅网页资料支持重新抓取",
+    "PROPOSAL_PAYLOAD_INVALID": "提案载荷不符合该类型的结构要求"
   }
 }

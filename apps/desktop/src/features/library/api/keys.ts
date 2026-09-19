@@ -8,4 +8,7 @@ export const libraryKeys = {
     [...libraryKeys.all, "itemContent", itemId] as const,
   records: () => [...libraryKeys.all, "records"] as const,
   assets: () => [...libraryKeys.all, "assets"] as const,
+  organizeScan: () => [...libraryKeys.all, "organizeScan"] as const,
+  proposals: (status: string) =>
+    [...libraryKeys.all, "proposals", status] as const,
 };

@@ -274,18 +274,20 @@ describe("LibraryPage 工作台", () => {
           backfill: null,
         }),
       ),
-      http.get(`${TEST_SIDECAR_URL}/api/library/items/${FAILED_GENERIC_ID}`, () =>
-        HttpResponse.json({
-          ...itemOut({
-            id: FAILED_GENERIC_ID,
-            source_type: "WEB",
-            title: "内部错误条目",
-            availability: "FAILED",
+      http.get(
+        `${TEST_SIDECAR_URL}/api/library/items/${FAILED_GENERIC_ID}`,
+        () =>
+          HttpResponse.json({
+            ...itemOut({
+              id: FAILED_GENERIC_ID,
+              source_type: "WEB",
+              title: "内部错误条目",
+              availability: "FAILED",
+            }),
+            derived_records: [],
+            segment_count: 0,
+            failed_error_code: "INTERNAL_ERROR",
           }),
-          derived_records: [],
-          segment_count: 0,
-          failed_error_code: "INTERNAL_ERROR",
-        }),
       ),
       http.get(
         `${TEST_SIDECAR_URL}/api/library/items/${FAILED_GENERIC_ID}/content`,
@@ -433,5 +435,188 @@ describe("LibraryPage 工作台", () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/chat/${CHAT_SESSION_ID}`),
     );
+  });
+
+  it("生命周期：检查器提供归档动作并发出归档请求", async () => {
+    mockLibraryEndpoints();
+    let archived = false;
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/library/items/${ITEM_ID}/archive`,
+        () => {
+          archived = true;
+          return HttpResponse.json(itemOut({ status: "ARCHIVED" }));
+        },
+      ),
+    );
+    renderAt("/library");
+    fireEvent.click(await screen.findByText("第3讲 傅里叶变换"));
+    // 左侧导航「归档」视图同名：作用域限定在检查器 aside（DOM 序最后一个
+    // complementary——前一个是应用壳的工作区导航）
+    const inspector =
+      screen.getAllByRole("complementary")[
+        screen.getAllByRole("complementary").length - 1
+      ];
+    expect(inspector).toBeDefined();
+    fireEvent.click(
+      await within(inspector as HTMLElement).findByRole("button", {
+        name: "归档",
+      }),
+    );
+    await waitFor(() => expect(archived).toBe(true));
+  });
+
+  it("删除确认：展示派生记录且明示不级联，确认后发出软删请求", async () => {
+    mockLibraryEndpoints();
+    let deleted = false;
+    server.use(
+      http.delete(`${TEST_SIDECAR_URL}/api/library/items/${ITEM_ID}`, () => {
+        deleted = true;
+        return HttpResponse.json(
+          itemOut({ deleted_at: "2026-09-19T09:00:00.000000Z" }),
+        );
+      }),
+    );
+    renderAt("/library");
+    fireEvent.click(await screen.findByText("第3讲 傅里叶变换"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "删除", hidden: true }),
+    );
+    // 确认对话框展示派生记录与不级联提示（列表行同名：作用域限定在对话框内）
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText(/以下派生记录不会被删除/),
+    ).toBeVisible();
+    expect(await within(dialog).findByText("傅里叶变换入门")).toBeVisible();
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: "移入回收站" }),
+    );
+    await waitFor(() => expect(deleted).toBe(true));
+  });
+
+  it("回收站视图：请求 view=trash、显示提示横幅与恢复/彻底删除动作", async () => {
+    mockLibraryEndpoints();
+    const TRASH_ITEM_ID = "99999999-9999-4999-8999-999999999999";
+    const trashItem = itemOut({
+      id: TRASH_ITEM_ID,
+      title: "已删条目",
+      deleted_at: "2026-09-18T09:00:00.000000Z",
+    });
+    let restored = false;
+    let purged = false;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/library/items`, ({ request }) => {
+        itemRequests.push(request.url);
+        const params = new URL(request.url).searchParams;
+        const list: LibraryItemListOut = {
+          items: params.get("view") === "trash" ? [trashItem] : [],
+          total: params.get("view") === "trash" ? 1 : 0,
+          backfill: null,
+        };
+        return HttpResponse.json(list);
+      }),
+      http.get(`${TEST_SIDECAR_URL}/api/library/items/${TRASH_ITEM_ID}`, () =>
+        HttpResponse.json({
+          ...trashItem,
+          derived_records: [],
+          segment_count: 0,
+        }),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/library/items/${TRASH_ITEM_ID}/content`,
+        () => HttpResponse.json({ content: "", truncated: false }),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/library/items/${TRASH_ITEM_ID}/restore`,
+        () => {
+          restored = true;
+          return HttpResponse.json(itemOut({}));
+        },
+      ),
+      http.delete(
+        `${TEST_SIDECAR_URL}/api/library/items/${TRASH_ITEM_ID}?permanent=true`,
+        () => {
+          purged = true;
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+    renderAt("/library?view=trash&domain=sources");
+    expect(await screen.findByText("已删条目")).toBeVisible();
+    expect(await screen.findByText(/回收站仅收录/)).toBeVisible();
+    await waitFor(() =>
+      expect(itemRequests.some((url) => url.includes("view=trash"))).toBe(true),
+    );
+    fireEvent.click(await screen.findByText("已删条目"));
+    fireEvent.click(await screen.findByRole("button", { name: "恢复" }));
+    await waitFor(() => expect(restored).toBe(true));
+    // 回收站中的删除 = 物理删除（确认对话框二次确认）
+    fireEvent.click(await screen.findByRole("button", { name: "彻底删除" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: "彻底删除" }),
+    );
+    await waitFor(() => expect(purged).toBe(true));
+  });
+
+  it("AI 整理：确定性结果展示与待审提案确认", async () => {
+    mockLibraryEndpoints();
+    const PROPOSAL_ID = "aaaaaaa1-0000-4000-8000-000000000001";
+    let confirmed = false;
+    server.use(
+      http.post(`${TEST_SIDECAR_URL}/api/library/organize/scan`, () =>
+        HttpResponse.json({
+          duplicates: [
+            {
+              content_hash: "dup",
+              items: [itemOut({ title: "重复A" }), itemOut({ title: "重复B" })],
+            },
+          ],
+          failed_items: [],
+          unclassified: [items[1]],
+        }),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/proposals`, ({ request }) => {
+        const status = new URL(request.url).searchParams.get("status");
+        const pending =
+          status === "PENDING"
+            ? [
+                {
+                  id: PROPOSAL_ID,
+                  proposal_type: "ORGANIZE",
+                  status: "PENDING",
+                  session_id: null,
+                  message_id: null,
+                  target_type: "library_item",
+                  target_id: ITEM_UNCLASSIFIED_ID,
+                  payload: {
+                    item_id: ITEM_UNCLASSIFIED_ID,
+                    title: "规范化标题",
+                  },
+                  evidence_refs: null,
+                  error_code: null,
+                  created_at: "2026-09-19T08:00:00.000000Z",
+                  decided_at: null,
+                },
+              ]
+            : [];
+        return HttpResponse.json(pending);
+      }),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/proposals/${PROPOSAL_ID}/confirm`,
+        () => {
+          confirmed = true;
+          return HttpResponse.json({ status: "APPLIED" });
+        },
+      ),
+    );
+    renderAt("/library");
+    fireEvent.click(await screen.findByRole("button", { name: "AI 整理" }));
+    // 确定性检查结果先展示（零 LLM）
+    expect(await screen.findByText(/内容重复/)).toBeVisible();
+    expect(await screen.findByText("重复A / 重复B")).toBeVisible();
+    // 待审提案逐项确认
+    fireEvent.click(await screen.findByRole("button", { name: "应用" }));
+    await waitFor(() => expect(confirmed).toBe(true));
   });
 });

@@ -1,5 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import {
+  Archive,
+  ArchiveRestore,
   BookOpen,
   ExternalLink,
   FileText,
@@ -10,11 +12,15 @@ import {
   LayoutGrid,
   List as ListIcon,
   Loader2,
+  Pencil,
   Plus,
   RotateCcw,
+  RefreshCw,
   Sparkles,
   Star,
   StickyNote,
+  Trash2,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -23,6 +29,9 @@ import {
   AddLibraryItemDialog,
   type AddLibraryItemInitial,
 } from "@/features/library/components/AddLibraryItemDialog";
+import { DeleteItemDialog } from "@/features/library/components/DeleteItemDialog";
+import { EditItemDialog } from "@/features/library/components/EditItemDialog";
+import { OrganizeDialog } from "@/features/library/components/OrganizeDialog";
 import { useCreateChatSession } from "@/features/chat/useCreateChatSession";
 import { revealLibrarySnapshot } from "@/services/tauri/libraryFiles";
 import { openWebUrl } from "@/services/tauri/webLinks";
@@ -50,6 +59,7 @@ import { ToggleChip } from "@/components/common/ToggleChip";
 import { useActiveCourses } from "@/features/courses/api/queries";
 import {
   useLibraryAssets,
+  useLibraryItemAction,
   type LibraryItemsParams,
   useLibraryItemContent,
   useLibraryItemDetail,
@@ -71,7 +81,14 @@ import type {
 const PAGE_SIZE = 50;
 
 const domainValues: LibraryDomain[] = ["all", "sources", "records", "assets"];
-const viewValues: LibraryView[] = ["all", "recent", "favorites", "needsReview"];
+const viewValues: LibraryView[] = [
+  "all",
+  "recent",
+  "favorites",
+  "needsReview",
+  "archived",
+  "trash",
+];
 
 const sourceTypeIcon: Record<string, LucideIcon> = {
   AUDIO: Mic,
@@ -242,14 +259,21 @@ function ItemRow({
   item,
   selected,
   onSelect,
+  hideFavorite = false,
 }: {
   item: LibraryItemOut;
   selected: boolean;
   onSelect: () => void;
+  hideFavorite?: boolean;
 }) {
   const { t } = useTranslation();
   const toggleFavorite = useToggleFavorite();
   const meta = [
+    item.deleted_at
+      ? t("library.inspector.deletedAt", {
+          time: formatDateTime(item.deleted_at),
+        })
+      : null,
     item.course_name ?? t("library.filters.unclassified"),
     t(`library.sourceTypes.${item.source_type}`),
     formatSize(item.file_size),
@@ -279,25 +303,34 @@ function ItemRow({
         <StatusTag tone={availabilityTone[item.availability] ?? "neutral"}>
           {t(`library.availability.${item.availability}`)}
         </StatusTag>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className={
-            item.favorite ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-          }
-          aria-label={t("library.favoriteToggle")}
-          aria-pressed={item.favorite}
-          disabled={toggleFavorite.isPending}
-          onClick={() =>
-            toggleFavorite.mutate({ itemId: item.id, favorite: !item.favorite })
-          }
-        >
-          <Star
+        {hideFavorite ? null : (
+          <Button
+            variant="ghost"
+            size="icon-sm"
             className={
-              item.favorite ? "text-ink fill-current" : "text-muted-foreground"
+              item.favorite
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100"
             }
-          />
-        </Button>
+            aria-label={t("library.favoriteToggle")}
+            aria-pressed={item.favorite}
+            disabled={toggleFavorite.isPending}
+            onClick={() =>
+              toggleFavorite.mutate({
+                itemId: item.id,
+                favorite: !item.favorite,
+              })
+            }
+          >
+            <Star
+              className={
+                item.favorite
+                  ? "text-ink fill-current"
+                  : "text-muted-foreground"
+              }
+            />
+          </Button>
+        )}
       </div>
     </li>
   );
@@ -470,6 +503,29 @@ function ItemInspector({
       scope: "LIBRARY_ITEM",
       library_item_id: itemId,
     });
+  // 生命周期动作（工单 05）：编辑/归档切换/删除/重试/重抓/重建索引/回收站恢复。
+  const lifecycle = useLibraryItemAction();
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const runLifecycle = (
+    action: Parameters<typeof lifecycle.mutate>[0]["action"],
+  ) => {
+    setActionError(null);
+    setActionNotice(null);
+    lifecycle.mutate(
+      { action, itemId },
+      {
+        onError: (error) => setActionError(error.message),
+        onSuccess: () => {
+          if (action === "refetch") {
+            setActionNotice(t("library.inspector.refetchDone"));
+          }
+        },
+      },
+    );
+  };
   if (detail.isPending) {
     return (
       <div className="text-muted-foreground flex items-center gap-2 py-6 text-sm">
@@ -484,6 +540,8 @@ function ItemInspector({
       </p>
     );
   }
+  // 宽松判空：历史 mock/载荷无该字段时视为未删除。
+  const inTrash = item.deleted_at != null;
   return (
     <div className="space-y-4">
       <div className="flex items-start gap-2">
@@ -493,6 +551,11 @@ function ItemInspector({
           <p className="text-muted-foreground text-label">
             {t(`library.sourceTypes.${item.source_type}`)} ·{" "}
             {item.course_name ?? t("library.filters.unclassified")}
+            {inTrash
+              ? ` · ${t("library.inspector.deletedAt", {
+                  time: formatDateTime(item.deleted_at ?? ""),
+                })}`
+              : ""}
           </p>
         </div>
         <StatusTag tone={availabilityTone[item.availability] ?? "neutral"}>
@@ -500,28 +563,131 @@ function ItemInspector({
         </StatusTag>
       </div>
 
-      <div>
-        <Button
-          size="sm"
-          onClick={interpret}
-          disabled={createChatSession.isPending || item.status === "ARCHIVED"}
-          title={
-            item.status === "ARCHIVED"
-              ? t("library.inspector.aiInterpretUnavailable")
-              : undefined
-          }
-        >
-          <Sparkles className="size-4" aria-hidden />
-          {createChatSession.isPending
-            ? t("library.inspector.aiInterpretPending")
-            : t("library.inspector.aiInterpret")}
-        </Button>
-        {createChatSession.isError ? (
-          <p role="alert" className="text-destructive text-label mt-1">
-            {createChatSession.error.message}
+      {inTrash ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => runLifecycle("restore")}
+              disabled={lifecycle.isPending}
+            >
+              <ArchiveRestore className="size-4" aria-hidden />
+              {t("library.inspector.restore")}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setDeleteOpen(true)}
+              disabled={lifecycle.isPending}
+            >
+              <Trash2 className="size-4" aria-hidden />
+              {t("library.inspector.purge")}
+            </Button>
+          </div>
+          <p className="text-muted-foreground text-label">
+            {t("library.inspector.trashHint")}
           </p>
-        ) : null}
-      </div>
+        </div>
+      ) : (
+        <>
+          <div>
+            <Button
+              size="sm"
+              onClick={interpret}
+              disabled={
+                createChatSession.isPending || item.status === "ARCHIVED"
+              }
+              title={
+                item.status === "ARCHIVED"
+                  ? t("library.inspector.aiInterpretUnavailable")
+                  : undefined
+              }
+            >
+              <Sparkles className="size-4" aria-hidden />
+              {createChatSession.isPending
+                ? t("library.inspector.aiInterpretPending")
+                : t("library.inspector.aiInterpret")}
+            </Button>
+            {createChatSession.isError ? (
+              <p role="alert" className="text-destructive text-label mt-1">
+                {createChatSession.error.message}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setEditOpen(true)}
+            >
+              <Pencil className="size-4" aria-hidden />
+              {t("library.inspector.edit")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                runLifecycle(
+                  item.status === "ARCHIVED" ? "unarchive" : "archive",
+                )
+              }
+              disabled={lifecycle.isPending}
+            >
+              {item.status === "ARCHIVED" ? (
+                <ArchiveRestore className="size-4" aria-hidden />
+              ) : (
+                <Archive className="size-4" aria-hidden />
+              )}
+              {item.status === "ARCHIVED"
+                ? t("library.inspector.unarchive")
+                : t("library.inspector.archive")}
+            </Button>
+            {item.source_type === "WEB" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => runLifecycle("refetch")}
+                disabled={lifecycle.isPending}
+                title={t("library.inspector.refetchHint")}
+              >
+                <RefreshCw className="size-4" aria-hidden />
+                {t("library.inspector.refetch")}
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => runLifecycle("rebuild-index")}
+              disabled={lifecycle.isPending}
+            >
+              <Wrench className="size-4" aria-hidden />
+              {t("library.inspector.rebuildIndex")}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setDeleteOpen(true)}
+              disabled={lifecycle.isPending}
+            >
+              <Trash2 className="size-4" aria-hidden />
+              {t("library.inspector.delete")}
+            </Button>
+          </div>
+        </>
+      )}
+
+      {actionNotice ? (
+        <p className="text-label text-muted-foreground" role="status">
+          {actionNotice}
+        </p>
+      ) : null}
+      {actionError || lifecycle.isError ? (
+        <p role="alert" className="text-destructive text-label">
+          {actionError ?? lifecycle.error?.message}
+        </p>
+      ) : null}
 
       {item.availability === "FAILED" ? (
         <Alert variant="destructive" role="alert">
@@ -536,10 +702,18 @@ function ItemInspector({
             <Button
               size="sm"
               variant="outline"
+              onClick={() => runLifecycle("retry")}
+              disabled={lifecycle.isPending}
+            >
+              <RotateCcw className="size-4" aria-hidden />
+              {t("library.inspector.retry")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => onReingest(item)}
               disabled={item.source_type !== "WEB"}
             >
-              <RotateCcw className="size-4" aria-hidden />
               {t("library.inspector.reingest")}
             </Button>
             {item.source_type === "WEB" ? (
@@ -553,6 +727,22 @@ function ItemInspector({
             ) : null}
           </div>
         </Alert>
+      ) : null}
+
+      {editOpen ? (
+        <EditItemDialog
+          open={editOpen}
+          onOpenChange={setEditOpen}
+          item={item}
+        />
+      ) : null}
+      {deleteOpen ? (
+        <DeleteItemDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          item={item}
+          permanent={inTrash}
+        />
       ) : null}
 
       {item.origin_uri || item.local_path ? (
@@ -845,6 +1035,7 @@ export function LibraryPage({
   const { t } = useTranslation();
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [ingestOpen, setIngestOpen] = useState(false);
+  const [organizeOpen, setOrganizeOpen] = useState(false);
   const [ingestInitial, setIngestInitial] = useState<
     AddLibraryItemInitial | undefined
   >(undefined);
@@ -971,10 +1162,16 @@ export function LibraryPage({
             {t("library.description")}
           </p>
         </div>
-        <Button onClick={() => openIngestDialog()}>
-          <Plus className="size-4" aria-hidden />
-          {t("library.ingest.open")}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button onClick={() => openIngestDialog()}>
+            <Plus className="size-4" aria-hidden />
+            {t("library.ingest.open")}
+          </Button>
+          <Button variant="outline" onClick={() => setOrganizeOpen(true)}>
+            <Sparkles className="size-4" aria-hidden />
+            {t("library.organize.open")}
+          </Button>
+        </div>
         {backfillFailed ? (
           <div
             className="border-danger text-muted-foreground bg-surface-raised flex items-center gap-2 rounded-lg border border-solid px-3 py-1.5 text-sm"
@@ -1125,6 +1322,11 @@ export function LibraryPage({
           </div>
 
           <div className="max-h-[calc(100vh-17rem)] overflow-y-auto pr-0.5">
+            {view === "trash" ? (
+              <Alert className="mb-3">
+                <AlertDescription>{t("library.trash.banner")}</AlertDescription>
+              </Alert>
+            ) : null}
             {isListPending ? (
               <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
                 <Spinner className="size-4" /> {t("library.loading")}
@@ -1200,6 +1402,7 @@ export function LibraryPage({
                           search.selType === "item" && search.sel === item.id
                         }
                         onSelect={() => select("item", item.id)}
+                        hideFavorite={view === "trash"}
                       />
                     ))
                   : null}
@@ -1256,6 +1459,8 @@ export function LibraryPage({
         initial={ingestInitial}
         onOpenItem={openExistingItem}
       />
+
+      <OrganizeDialog open={organizeOpen} onOpenChange={setOrganizeOpen} />
     </section>
   );
 }

@@ -1,6 +1,13 @@
 // 资料库 URL search 契约（desktop-react 规则：URL 能表达的筛选/视图全进 searchParams）。
 const libraryDomains = ["all", "sources", "records", "assets"] as const;
-const libraryViews = ["all", "recent", "favorites", "needsReview"] as const;
+const libraryViews = [
+  "all",
+  "recent",
+  "favorites",
+  "needsReview",
+  "archived",
+  "trash",
+] as const;
 const libraryLayouts = ["list", "grid"] as const;
 const librarySourceTypes = [
   "AUDIO",
