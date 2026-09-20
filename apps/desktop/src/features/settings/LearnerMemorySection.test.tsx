@@ -58,9 +58,11 @@ describe("LearnerMemorySection", () => {
     expect(screen.getByText("先看例题")).toBeInTheDocument();
     expect(screen.getByText("解释风格：偏好例子先行")).toBeInTheDocument();
     expect(screen.getByText(/置信度 82%/)).toBeInTheDocument();
-    expect(
-      screen.getByRole("switch", { name: "在 AI 中使用长期记忆" }),
-    ).toBeChecked();
+    const toggle = screen.getByRole("switch", {
+      name: "在 AI 中使用长期记忆",
+    });
+    expect(toggle).toBeChecked();
+    expect(screen.getByText("已开启")).toBeInTheDocument();
   });
 
   it("添加显式偏好即改即存（PUT 全量列表）", async () => {
@@ -70,7 +72,9 @@ describe("LearnerMemorySection", () => {
     // 首次加载无新条目；保存触发失效重取后以服务端事实回显。
     getPreferences
       .mockResolvedValueOnce(preferenceData())
-      .mockResolvedValue(preferenceData({ explicit_items: ["先看例题", "多给反例"] }));
+      .mockResolvedValue(
+        preferenceData({ explicit_items: ["先看例题", "多给反例"] }),
+      );
     renderSection();
     await screen.findByText("先看例题");
     fireEvent.change(screen.getByPlaceholderText(/我喜欢先看例题/), {

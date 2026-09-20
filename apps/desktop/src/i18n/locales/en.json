@@ -1835,6 +1835,8 @@
       "observedRemove": "Remove observed preference \"{{key}}\"",
       "observedTimeUnknown": "unknown time",
       "outboundLabel": "Use long-term memory in AI",
+      "outboundStateOn": "On",
+      "outboundStateOff": "Off",
       "outboundHintOn": "On: when you start a chat, the minimal necessary memory is sent along with the context to the AI service.",
       "outboundHintOff": "Off: memories stay on this device and remain viewable and manageable, but are never sent to the AI service.",
       "outboundConsentStale": "On, but the outbound consent is stale (provider address or key changed). Re-complete the consent in \"AI services\"; until then memories are not sent."

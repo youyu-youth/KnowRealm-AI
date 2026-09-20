@@ -1817,6 +1817,8 @@
       "observedRemove": "删除观察偏好「{{key}}」",
       "observedTimeUnknown": "时间未知",
       "outboundLabel": "在 AI 中使用长期记忆",
+      "outboundStateOn": "已开启",
+      "outboundStateOff": "已关闭",
       "outboundHintOn": "已开启：发起对话时，最小必要的记忆会随上下文一并发送给 AI 服务。",
       "outboundHintOff": "已关闭：记忆仅保留在本机，可继续查看和管理，不会再发送给 AI 服务。",
       "outboundConsentStale": "已开启，但外发同意已失效（供应商地址或密钥变更）。请在「AI 服务」中重新完成连通性同意，重新确认前记忆不会发送。"

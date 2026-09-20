@@ -216,17 +216,6 @@ function ObservedEntries({ data }: { data: LearnerPreferenceOut }) {
                 <span className="text-label text-ink min-w-0 flex-1 break-words">
                   {t("settings.learnerMemory.observedEntry", { key, value })}
                 </span>
-                <span className="text-label text-muted-foreground shrink-0">
-                  {t("settings.learnerMemory.observedMeta", {
-                    confidence: Math.round(
-                      (data.observed_confidence ?? 0) * 100,
-                    ),
-                    evidence: data.evidence_count,
-                    time: data.last_observed_at
-                      ? new Date(data.last_observed_at).toLocaleDateString()
-                      : t("settings.learnerMemory.observedTimeUnknown"),
-                  })}
-                </span>
                 <button
                   type="button"
                   className="hover:bg-surface-raised rounded p-1"
@@ -242,6 +231,18 @@ function ObservedEntries({ data }: { data: LearnerPreferenceOut }) {
             ))}
           </ul>
         )}
+        {/* 置信度/证据数/确认时间是单例表级字段（0026 DDL），列表下方统一展示一次。 */}
+        {entries.length > 0 ? (
+          <p className="text-label text-muted-foreground">
+            {t("settings.learnerMemory.observedMeta", {
+              confidence: Math.round((data.observed_confidence ?? 0) * 100),
+              evidence: data.evidence_count,
+              time: data.last_observed_at
+                ? new Date(data.last_observed_at).toLocaleDateString()
+                : t("settings.learnerMemory.observedTimeUnknown"),
+            })}
+          </p>
+        ) : null}
         {remove.isError ? (
           <p role="alert" className="text-destructive text-label">
             {remove.error.message}
@@ -252,28 +253,23 @@ function ObservedEntries({ data }: { data: LearnerPreferenceOut }) {
   );
 }
 
-/** 长期记忆外发开关：关闭=记忆保留本地、不再注入发给 AI 的内容；本地管理不受影响。 */
+/** 长期记忆外发开关：关闭=记忆保留本地、不再注入发给 AI 的内容；本地管理不受影响。
+ * 控件形态对齐设置页先例（自启动行）：左列 label 经 htmlFor 关联，右列开关 + 状态文字。 */
 function OutboundToggle({ data }: { data: LearnerPreferenceOut }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const toggle = useMutation({
     mutationFn: (enabled: boolean) => learnerMemoryApi.setOutbound(enabled),
-    onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({
-        queryKey: settingsKeys.learnerMemory,
-      });
-      queryClient.setQueryData(
-        settingsKeys.learnerMemory,
-        (current: LearnerPreferenceOut | undefined) =>
-          current ? { ...current, memory_outbound: saved } : current,
-      );
-    },
+    // 失效重取即回显服务端事实（含三态描述文案所需的外发状态）。
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: settingsKeys.learnerMemory }),
   });
   const outbound = data.memory_outbound;
 
   return (
     <SettingsRow
       label={t("settings.learnerMemory.outboundLabel")}
+      htmlFor="learner-memory-outbound"
       description={
         outbound.enabled
           ? outbound.consent_current
@@ -282,13 +278,19 @@ function OutboundToggle({ data }: { data: LearnerPreferenceOut }) {
           : t("settings.learnerMemory.outboundHintOff")
       }
     >
-      <Switch
-        size="sm"
-        checked={outbound.enabled}
-        disabled={toggle.isPending}
-        aria-label={t("settings.learnerMemory.outboundLabel")}
-        onCheckedChange={(checked) => toggle.mutate(Boolean(checked))}
-      />
+      <div className="flex items-center gap-3">
+        <Switch
+          id="learner-memory-outbound"
+          checked={outbound.enabled}
+          disabled={toggle.isPending}
+          onCheckedChange={(checked) => toggle.mutate(Boolean(checked))}
+        />
+        <p className="text-label font-label text-ink">
+          {outbound.enabled
+            ? t("settings.learnerMemory.outboundStateOn")
+            : t("settings.learnerMemory.outboundStateOff")}
+        </p>
+      </div>
       {toggle.isError ? (
         <p role="alert" className="text-destructive text-label">
           {toggle.error.message}
