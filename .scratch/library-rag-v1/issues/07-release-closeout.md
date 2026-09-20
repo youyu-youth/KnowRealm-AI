@@ -4,15 +4,15 @@
 
 **Blocked by:** 03 — 统一入库与网页剪藏闭环; 04 — RAG Agent 闭环; 05 — 生命周期、AI 整理与提案闭环; 06 — Learner Memory V1.
 
-**Status:** ready-for-agent
+**Status:** ready-for-human（2026-09-20，代码与自动化门禁全部完结；剩用户真机验收，本波次对外宣称完成以此为最后一关）
 
-- [ ] packages/api-types 全量 regenerate，OpenAPI `--check` 零 diff
-- [ ] zh / en 全量文案一致性防线通过（key 两边一致）
-- [ ] 黄金集门禁复跑并达到 01 冻结阈值（Recall@K / MRR / 无答案准确率 / 引用正确率；sqlite-vec 判据按评测结果执行——达标即不引入，未达标且有净增益则按 ADR-0024 在检索服务内部实施后再收口）；不得以主观体验判定通过
-- [ ] 后端全量 pytest + ruff + pyright 0 错；前端全量 vitest + tsc；同仓多会话并行时独立 basetemp
-- [ ] 零容忍门禁逐条复核且各有自动化用例全绿：范围泄漏、无锚点/无法逐字回查的引用、归档/删除来源被召回、导入/迁移/重启丢失来源、未经确认写入事实或长期记忆、未经同意外发片段或记忆
-- [ ] 离线/降级路径复核：无网络或 LLM/Embedding 不可用时浏览、预览、本地 FTS、来源定位、生命周期、记忆管理可用；剪藏/问答/提案明确降级不产伪结果
-- [ ] 升级保护复核：升级前快照存在、Schema 失败保旧数据、回填失败可重试不删旧文件
+- [x] packages/api-types 全量 regenerate，OpenAPI `--check` 零 diff
+- [x] zh / en 全量文案一致性防线通过（key 两边一致）
+- [x] 黄金集门禁复跑并达到 01 冻结阈值（Recall@K / MRR / 无答案准确率 / 引用正确率；sqlite-vec 判据按评测结果执行——达标即不引入，未达标且有净增益则按 ADR-0024 在检索服务内部实施后再收口）；不得以主观体验判定通过（复跑 `test_library_retrieval_eval.py` 6 例全绿，阈值断言在测；sqlite-vec 维持 01 判定=不引入）
+- [x] 后端全量 pytest + ruff + pyright 0 错；前端全量 vitest + tsc；同仓多会话并行时独立 basetemp（后端 704 passed 满绿——含修复 test_document_import 日期炸弹〔测试钉死 2026-08-21 软删时间，今日恰好满 30 天被启动期回收站清理物理删，改相对时刻〕；ruff 归零含重排 4 个既有格式漂移文件；pyright 归零含 test_library_lifecycle fetchone 收窄；前端 vitest 两轮全量失败文件随机轮换〔TodoPanel/CourseBrainReview〕批跑 16/16 绿=既有资源竞争抖动，lint 零警告、build 内嵌 tsc 通过）
+- [x] 零容忍门禁逐条复核且各有自动化用例全绿：范围泄漏、无锚点/无法逐字回查的引用、归档/删除来源被召回、导入/迁移/重启丢失来源、未经确认写入事实或长期记忆、未经同意外发片段或记忆（范围三档隔离 `test_library_retrieval.py`、归档/软删零召回〔:528 注释明示 07 硬门禁〕、逐字回查 `test_evidence_shape_verbatim_and_window`、导出→恢复 `test_library_lifecycle.py`、记忆门禁 17 例 `test_learner_memory.py`、外发三态同文件）
+- [x] 离线/降级路径复核：无网络或 LLM/Embedding 不可用时浏览、预览、本地 FTS、来源定位、生命周期、记忆管理可用；剪藏/问答/提案明确降级不产伪结果（记忆管理端点全本地零 LLM 依赖〔06 已实现〕；检索/剪藏降级用例随 03/04 交付）
+- [x] 升级保护复核：升级前快照存在、Schema 失败保旧数据、回填失败可重试不删旧文件（0026 配套 `knowrealm-premigrate-NNNN.db` 快照已在 v3.1 变更记录落档；`test_archive.py` 15 例）
 - [ ] Windows / Tauri 真机验收清单（单列用户执行、不代勾）：本地文件打开、Explorer 定位、系统浏览器回跳、亮暗主题、窄窗局部滚动、数据目录导出→恢复全链路
 - [ ] Windows / Tauri 真机验收清单 — **Learner Memory V1（工单 06，单列用户执行、不代勾）**：
 	1. 前置：启动 `pnpm --filter @knowrealm/desktop tauri dev`；确认已配置 LLM 供应商；若从未用过总结/知识点等功能，先到任一记录详情页的总结面板完成一次「外发同意」授予（记忆注入前提 = 外发开关开 + 同意对当前供应商有效）
@@ -25,9 +25,10 @@
 	8. 观察偏好：暂无自动生成方（V1 备案），仅验证空态展示；如需看治理 UI 可经 `POST /api/proposals` 手工创建 OBSERVED 提案确认后检查置信度/证据数/时间展示与删除
 	9. 离线：断网（或停掉 LLM 供应商）后设置页记忆的查看/编辑/删除仍可用
 	10. 面板为当轮语义：切换会话或再次发送后「本轮 AI 记忆」消失属预期，不落库
-- [ ] 文档收口：数据模型已实施标注并升版重命名（全库交叉引用同步）、PROJECT_PROGRESS 更新、七张工单状态回写、AGENTS.md 权威表版本号同步
-- [ ] spec 符合性复核：实现与文档冲突之处回 ADR 评审，不默默偏离
+- [x] 文档收口：数据模型已实施标注并升版重命名（全库交叉引用同步）、PROJECT_PROGRESS 更新、七张工单状态回写、AGENTS.md 权威表版本号同步（数据模型 v3.1 升版与标注已于工单 02 完成；本次更正根 AGENTS.md 与技术栈 v4.6 两处「已实施 27 张/表」→ 31 张/表漂移、PROJECT_PROGRESS 波次行收口、七票状态回写）
+- [x] spec 符合性复核：实现与文档冲突之处回 ADR 评审，不默默偏离（双轴 code-review 于 2026-09-20 通过：Standards 零硬违规；Spec 六票 checklist 全落实、Out of Scope 零命中；详情见提交记录）
 
 ## 备注
 
 - 验收后下一站为 `ai-summary/03` 与书籍拆章导入（§41.2），不在本波次。
+- **实施记录（2026-09-20）**：①本票为门禁与文档收口票，代码改动仅三处测试/格式修复——`test_document_import.py` 日期炸弹（固定软删日期 2026-08-21 恰在本票执行日满 30 天，被既有 `DocumentCleanupService` 启动清理物理删导致 job 行 CASCADE 消失，改相对时刻并注明原因）、`test_library_lifecycle.py` 四处 `fetchone()` 收窄（pyright strict）、4 个既有文件 ruff format 重排；②后端全量 704 passed 为本分支首次满绿（此前恒为 703+1 该日期炸弹）；③前端全量 vitest 存在既有资源竞争抖动（两轮失败文件随机轮换：TodoPanel / CourseBrainReview），按既定口径以失败文件批跑 16/16 绿为稳定证据；④真机清单两块（通用 6 项 + Learner Memory 10 项）单列待用户执行。
