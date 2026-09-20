@@ -25,12 +25,64 @@ export type ChatToolResultPayload = {
   ok: boolean;
 };
 
+/** 模型经 propose_memory 创建的待确认记忆提案（工单 06，done 载荷透传）。 */
+export type ChatMemoryProposalPayload = {
+  proposalId: string;
+  items: string[];
+};
+
+export type ChatDonePayload = {
+  messageId: string;
+  content: string;
+  /** 本轮实际注入的学习者记忆条目（未注入时缺省）。 */
+  memoryUsed?: string[];
+  /** 本轮新建的 MEMORY 提案（无时缺省）。 */
+  memoryProposals?: ChatMemoryProposalPayload[];
+};
+
+/**
+ * done 载荷的可选扩展字段（工单 06）：本轮注入记忆与新建记忆提案。
+ * 载荷来自后端 JSON，字段形态经防御性收窄，缺省即 undefined（安全省略）。
+ */
+function parseMemoryFields(data: Record<string, unknown>): {
+  memoryUsed?: string[];
+  memoryProposals?: ChatMemoryProposalPayload[];
+} {
+  const memoryUsed = Array.isArray(data.memory_used)
+    ? data.memory_used.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : undefined;
+  if (!Array.isArray(data.memory_proposals)) {
+    return { memoryUsed };
+  }
+  const memoryProposals = data.memory_proposals.flatMap(
+    (item): ChatMemoryProposalPayload[] => {
+      // 收窄理由：载荷未经 schema 校验，逐字段防御；形状不符的提案静默跳过。
+      if (typeof item !== "object" || item === null) return [];
+      const raw = item as Record<string, unknown>;
+      if (typeof raw.proposal_id !== "string" || !Array.isArray(raw.items)) {
+        return [];
+      }
+      return [
+        {
+          proposalId: raw.proposal_id,
+          items: raw.items.filter(
+            (entry): entry is string => typeof entry === "string",
+          ),
+        },
+      ];
+    },
+  );
+  return { memoryUsed, memoryProposals };
+}
+
 export type ChatStreamHandlers = {
   onStatus: () => void;
   onToken: (text: string) => void;
   onToolCall: (payload: ChatToolCallPayload) => void;
   onToolResult: (payload: ChatToolResultPayload) => void;
-  onDone: (payload: { messageId: string; content: string }) => void;
+  onDone: (payload: ChatDonePayload) => void;
   onError: (payload: { code: string; detail: string }) => void;
 };
 
@@ -110,6 +162,7 @@ async function streamMessage(
             handlers.onDone({
               messageId: data.message_id,
               content: data.content,
+              ...parseMemoryFields(data),
             });
           }
           break;

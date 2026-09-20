@@ -7,5 +7,6 @@ export const settingsKeys = {
   webSearchProvider: ["settings", "web-search-provider"] as const,
   preferences: ["settings", "preferences"] as const,
   profile: ["settings", "profile"] as const,
+  learnerMemory: ["settings", "learner-memory"] as const,
   profileAvatar: ["settings", "profile-avatar"] as const,
 };

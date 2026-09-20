@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ChatMessage, ChatSession } from "@/features/chat/api/types";
 import { ChatComposer } from "@/features/chat/ChatComposer";
+import { ChatMemoryPanel } from "@/features/chat/ChatMemoryPanel";
 import { ChatMessageList } from "@/features/chat/ChatMessageList";
 import {
   ChatScopeChips,
@@ -76,8 +77,16 @@ export function ChatConversationView({
   initialPrompt,
 }: ChatConversationViewProps) {
   const { t, i18n } = useTranslation();
-  const { isStreaming, streamedText, streamError, toolActivities, send, stop } =
-    useChatStream(sessionId);
+  const {
+    isStreaming,
+    streamedText,
+    streamError,
+    toolActivities,
+    memoryUsed,
+    memoryProposals,
+    send,
+    stop,
+  } = useChatStream(sessionId);
   const [composerValue, setComposerValue] = useState(initialPrompt ?? "");
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -263,6 +272,9 @@ export function ChatConversationView({
             defaultRecordId={recordId}
           />
         )}
+        {/* 本轮学习者记忆（工单 06）：注入条目与 MEMORY 提案就地确认卡，
+            流结束后展示、下次发送或切换会话即消失（当轮语义，不落库）。 */}
+        <ChatMemoryPanel used={memoryUsed} proposals={memoryProposals} />
         <ChatComposer
           value={composerValue}
           disabled={messages.isPending || scopeUnavailable}

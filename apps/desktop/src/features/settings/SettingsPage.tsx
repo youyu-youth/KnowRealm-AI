@@ -30,6 +30,7 @@ import {
 } from "@/features/settings/SettingsLayout";
 import { PreferencesSection } from "@/features/settings/PreferencesSection";
 import { ProvidersSection } from "@/features/settings/ProvidersSection";
+import { LearnerMemorySection } from "@/features/settings/LearnerMemorySection";
 import { DataDirectorySection } from "@/features/settings/DataDirectorySection";
 import { ROLE_KEYS, isRoleKey, type RoleKey } from "@/features/settings/roles";
 import {
@@ -151,6 +152,7 @@ export function SettingsPage({ section, onSectionChange }: SettingsPageProps) {
         <div className="md:border-border/60 min-w-0 md:border-l md:pl-4">
           <TabsContent value="profile" keepMounted className="min-w-0">
             <ProfileSection />
+            <LearnerMemorySection />
           </TabsContent>
           <TabsContent value="ai" keepMounted className="min-w-0">
             <ProvidersSection />
