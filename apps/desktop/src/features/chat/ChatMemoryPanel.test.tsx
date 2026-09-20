@@ -42,6 +42,14 @@ describe("ChatMemoryPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("本轮零注入（外发关闭/无记忆）展示空态说明", () => {
+    renderWithQuery(<ChatMemoryPanel used={[]} proposals={[]} />);
+    expect(
+      screen.getByRole("region", { name: "本轮 AI 记忆" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("本轮未使用任何记忆。")).toBeInTheDocument();
+  });
+
   it("确认记忆提案调用 confirm 并显示已记住", async () => {
     confirmProposal.mockResolvedValue({ status: "APPLIED" });
     renderWithQuery(

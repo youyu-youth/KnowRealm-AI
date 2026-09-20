@@ -1144,6 +1144,20 @@ async def test_second_send_while_streaming_returns_409(
 
 
 @pytest.mark.anyio
+async def test_done_always_carries_memory_used_field(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """done 恒带 memory_used（工单 06）：零注入时为空数组，前端据其展示
+    「本轮未使用任何记忆」空态，可区分「未询问」与「确认未注入」。"""
+    async with streaming_chat_app(tmp_path, monkeypatch) as (_app, client, _captured):
+        session_id = await create_session(client)
+        events = await send_message(client, session_id, "问题")
+        done_event, done_payload = events[-1]
+        assert done_event == "done"
+        assert done_payload["memory_used"] == []
+
+
+@pytest.mark.anyio
 async def test_provider_failure_emits_error_and_chat_continues(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2340,9 +2354,11 @@ async def test_library_item_content_over_budget_degrades_to_listing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # 条目正文超过 30000 字符降级为清单 + 检索模式（对齐 RECORD 档 >30k 分支）。
-    async with streaming_chat_app(
-        tmp_path, monkeypatch, replies=[["资料较长，建议检索。"]]
-    ) as (_app, client, captured):
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[["资料较长，建议检索。"]]) as (
+        _app,
+        client,
+        captured,
+    ):
         accepted = await client.post(
             "/api/library/ingest",
             json={"source": "text", "title": "长文", "content": "长" * 30001},

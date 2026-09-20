@@ -780,11 +780,14 @@ class ChatMessageService:
                 if chat is not None:
                     chat.updated_at = utcnow()
             # done 载荷扩展（工单 06，可选字段向后兼容）：memory_used=本轮实际
-            # 注入的记忆条目（UI「本轮使用了哪些记忆」）；memory_proposals=模型
-            # 经 propose_memory 创建的待确认提案（前端就地确认卡）。
-            done_payload: dict[str, object] = {"message_id": assistant_id, "content": content}
-            if prompt_context.learner_memories:
-                done_payload["memory_used"] = list(prompt_context.learner_memories)
+            # 注入的记忆条目，恒携带——空数组=本轮零注入（外发关闭/无记忆），
+            # 让前端能区分「未询问」与「确认未注入」并展示空态；
+            # memory_proposals=模型经 propose_memory 创建的待确认提案（就地确认卡）。
+            done_payload: dict[str, object] = {
+                "message_id": assistant_id,
+                "content": content,
+                "memory_used": list(prompt_context.learner_memories),
+            }
             if memory_proposals:
                 done_payload["memory_proposals"] = memory_proposals
             yield _sse("done", done_payload)
