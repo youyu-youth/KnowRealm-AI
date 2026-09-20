@@ -89,11 +89,24 @@ class ChatSessionService:
         session: AsyncSession,
         *,
         scope: ChatScope,
+        mode: ChatMode = ChatMode.ASK,
         record_id: str | None = None,
         course_id: str | None = None,
         library_item_id: str | None = None,
         knowledge_point_id: str | None = None,
     ) -> ChatSession:
+        # 研究会话范围矩阵（研究会话 V1）：只允许 ALL / COURSE / FREE——
+        # RECORD / LIBRARY_ITEM 的单对象边界不是研究语义（422，错误码登记）。
+        if mode == ChatMode.RESEARCH and scope not in (
+            ChatScope.ALL,
+            ChatScope.COURSE,
+            ChatScope.FREE,
+        ):
+            raise CodedHTTPException(
+                code="CHAT_RESEARCH_SCOPE_INVALID",
+                status_code=422,
+                detail="研究会话仅支持全部资料、课程或纯联网范围",
+            )
         async with session.begin():
             record = None
             course = None
@@ -183,7 +196,7 @@ class ChatSessionService:
                 record_id=record_id if scope == ChatScope.RECORD else None,
                 concept_id=None,
                 library_item_id=library_item_id if scope == ChatScope.LIBRARY_ITEM else None,
-                mode=ChatMode.ASK,
+                mode=mode,
                 scope=scope,
                 title=None,
                 created_at=now,

@@ -23,6 +23,7 @@ class ChatMode(StrEnum):
     COURSE_QA = "COURSE_QA"
     SOCRATIC_TUTOR = "SOCRATIC_TUTOR"
     TEACH_BACK = "TEACH_BACK"
+    RESEARCH = "RESEARCH"
 
 
 class ChatRole(StrEnum):
@@ -35,7 +36,9 @@ class ChatRole(StrEnum):
 class ChatSessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    mode: Literal[ChatMode.ASK] = Field(default=ChatMode.ASK, description="会话模式")
+    mode: Literal[ChatMode.ASK, ChatMode.RESEARCH] = Field(
+        default=ChatMode.ASK, description="会话模式（研究会话 V1 起放开 RESEARCH）"
+    )
     scope: ChatScope | None = Field(
         default=None,
         description="会话范围；不传时按 record_id 派生（非空 → RECORD，否则 FREE），旧调用方零破坏",

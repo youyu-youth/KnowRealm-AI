@@ -321,7 +321,8 @@ async def apply_migrations_upto(db_path: Path, upto: int) -> None:
 
 @pytest.mark.anyio
 async def test_migration_upgrade_path_preserves_data(tmp_path: Path) -> None:
-    """0025 旧库带数据升级到 0026：四表重建数据无损、五档 scope 生效、新列就位。"""
+    """0025 旧库带数据升级到当前版本（0026→0027 连续两次 chat_sessions 整表重建）：
+    数据无损、五档 scope 生效、新列就位。"""
     import aiosqlite
 
     db_path = tmp_path / "old.db"
@@ -347,7 +348,7 @@ async def test_migration_upgrade_path_preserves_data(tmp_path: Path) -> None:
         assert version_row is not None
         version = cast(int, version_row[0])
         assert version == supported_user_version()
-        assert version == 26
+        assert version == 27
         session_row = await (
             await connection.execute("SELECT count(*) FROM chat_sessions")
         ).fetchone()
@@ -398,7 +399,7 @@ async def test_pre_upgrade_snapshot_created_once(tmp_path: Path) -> None:
     backups = tmp_path / "backups"
     await apply_migrations_upto(db_path, 25)
     await ensure_pre_upgrade_snapshot(db_path, backups)
-    snapshot = backups / "knowrealm-premigrate-0026.db"
+    snapshot = backups / "knowrealm-premigrate-0027.db"
     assert snapshot.exists()
     first = snapshot.read_bytes()
     await ensure_pre_upgrade_snapshot(db_path, backups)  # 已存在不覆盖（保留首次状态）

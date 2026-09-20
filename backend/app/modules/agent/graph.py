@@ -38,6 +38,13 @@ from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
     NoopSummarizationMiddleware,
 )
+from app.modules.agent.tools.propose_ingest import (
+    PROPOSE_INGEST_TOOL_NAME,
+    ResearchIngestContext,
+    bind_ingest_context,
+    propose_ingest,
+    reset_ingest_context,
+)
 from app.modules.agent.tools.propose_memory import (
     PROPOSE_MEMORY_TOOL_NAME,
     MemoryProposalContext,
@@ -61,6 +68,9 @@ from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import LlmProviderConfig
 
 CHAT_PROMPT_VERSION = "chat-library-scope-v8"
+# 研究会话独立 prompt 版本（研究会话 V1）：在 chat-library-scope-v8 基础上
+# bump，研究语义进版本串；评测黄金集回归随此版本触发。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v9"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
@@ -105,7 +115,21 @@ class ChatMemoryProposalEvent:
     items: list[str]
 
 
-ChatStreamEvent = ChatTokenEvent | ChatToolCallEvent | ChatToolResultEvent | ChatMemoryProposalEvent
+@dataclass(frozen=True)
+class ChatResearchProposalEvent:
+    """入库提案已创建（propose_ingest 成功返回）：done 载荷透传前端确认卡，
+    每项 {proposal_id, url, title}。"""
+
+    proposals: tuple[dict[str, str], ...]
+
+
+ChatStreamEvent = (
+    ChatTokenEvent
+    | ChatToolCallEvent
+    | ChatToolResultEvent
+    | ChatMemoryProposalEvent
+    | ChatResearchProposalEvent
+)
 
 
 # ---------------------------------------------------------------------------
@@ -140,14 +164,20 @@ CHAT_AGENT_CONFIG = AgentConfig()
 LIBRARY_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_library,))
 
 
-def _resolve_agent_config(*, retrieval: bool, web_search_enabled: bool) -> AgentConfig:
-    """按「检索挂载 × web_search」组合出当轮装配：变体维持常量，web_search 生效时
-    在其基础上追加工具（frozen dataclass 实例化）；propose_memory 恒挂载（工单 06：
-    自由与挂载会话都支持用户明确「记住…」，普通聊天零静默提取由 docstring 约束）。"""
+def _resolve_agent_config(
+    *, retrieval: bool, web_search_enabled: bool, research: bool = False
+) -> AgentConfig:
+    """按「检索挂载 × web_search × 研究」组合出当轮装配：变体维持常量，
+    web_search 生效时追加工具（frozen dataclass 实例化）；propose_memory 恒挂载
+    （工单 06：自由与挂载会话都支持用户明确「记住…」，普通聊天零静默提取由
+    docstring 约束）；propose_ingest 仅研究会话挂载（研究会话 V1）。"""
     config = LIBRARY_CHAT_AGENT_CONFIG if retrieval else CHAT_AGENT_CONFIG
     if web_search_enabled:
         config = AgentConfig(tools=(*config.tools, web_search))
-    return AgentConfig(tools=(*config.tools, propose_memory))
+    config = AgentConfig(tools=(*config.tools, propose_memory))
+    if research:
+        config = AgentConfig(tools=(*config.tools, propose_ingest))
+    return config
 
 
 def build_agent(
@@ -306,6 +336,40 @@ def _memory_proposal_event(message: ToolMessage) -> ChatMemoryProposalEvent | No
     )
 
 
+def _research_proposal_event(message: ToolMessage) -> ChatResearchProposalEvent | None:
+    """propose_ingest 的成功返回 → 提案事件（载荷 JSON：{ok, proposals: [...]}）。
+
+    每项收窄为 {proposal_id, url, title} 三键：形状不符的条目丢弃（与前端
+    done 载荷防御性收窄同一口径）。
+    """
+    if not isinstance(message.content, str):
+        return None
+    try:
+        value: object = json.loads(message.content)
+    except ValueError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    payload = cast(dict[str, object], value)
+    raw_proposals = payload.get("proposals")
+    if payload.get("ok") is not True or not isinstance(raw_proposals, list):
+        return None
+    proposals: list[dict[str, str]] = []
+    for item in cast(list[object], raw_proposals):
+        if not isinstance(item, dict):
+            continue
+        entry = cast(dict[str, object], item)
+        proposal_id = entry.get("proposal_id")
+        url = entry.get("url")
+        title = entry.get("title")
+        if not (isinstance(proposal_id, str) and isinstance(url, str) and isinstance(title, str)):
+            continue
+        proposals.append({"proposal_id": proposal_id, "url": url, "title": title})
+    if not proposals:
+        return None
+    return ChatResearchProposalEvent(proposals=tuple(proposals))
+
+
 async def stream_chat_reply(
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -317,16 +381,20 @@ async def stream_chat_reply(
     library: LibrarySearchContext | None = None,
     web_search: SearchProvider | None = None,
     memory: MemoryProposalContext | None = None,
+    ingest: ResearchIngestContext | None = None,
+    prompt_version: str = CHAT_PROMPT_VERSION,
 ) -> AsyncGenerator[ChatStreamEvent, None]:
     """工厂层流式生成路径：建模型 → 清残留 → astream 分发结构化流事件 → 统一埋点。
 
     - 每轮从 chat_messages 重建喂入：轮初清掉上轮/崩溃残留，checkpoint 只承载当轮运行态；
     - 范围会话（library，RECORD/LIBRARY_ITEM/COURSE/ALL）注入 search_library 与
       范围上下文（含本轮工具预算累计器）；web_search 非 None 时挂载联网工具并绑定
-      凭据（每请求组合装配）；自由聊天空配置；
+      凭据（每请求组合装配）；自由聊天空配置；研究会话（ingest 非 None）追加挂载
+      propose_ingest；
     - 事件分发：AIMessageChunk 文本 → token、tool_call_chunks 拼全 → tool_call、
       ToolMessage → tool_result；token 用量跨工具循环累加；
-    - 正常完成埋点（graph_name=chat，仅元数据）并在返回前清理本轮 checkpoint；
+    - 正常完成埋点（graph_name=chat，仅元数据，prompt_version 随会话模式取
+      普通/研究两版）并在返回前清理本轮 checkpoint；
     - 中断（GeneratorExit，客户端断开/用户停止）不落埋点直接终止；
     - 其他异常埋点后重新抛出，由调用方转 error 事件。
     """
@@ -350,6 +418,9 @@ async def stream_chat_reply(
     memory_token: Token[MemoryProposalContext | None] | None = None
     if memory is not None:
         memory_token = bind_memory_context(memory)
+    ingest_token: Token[ResearchIngestContext | None] | None = None
+    if ingest is not None:
+        ingest_token = bind_ingest_context(ingest)
     # 检索归因（CB-08）：本轮资料检索命中合计（None=未检索，0=检索无命中）。
     retrieval_count: int | None = None
     try:
@@ -360,6 +431,7 @@ async def stream_chat_reply(
             config=_resolve_agent_config(
                 retrieval=library_token is not None,
                 web_search_enabled=web_token is not None,
+                research=ingest_token is not None,
             ),
         )
         tool_call_drafts: dict[int, _ToolCallDraft] = {}
@@ -392,6 +464,10 @@ async def stream_chat_reply(
                     proposal_event = _memory_proposal_event(chunk)
                     if proposal_event is not None:
                         yield proposal_event
+                if chunk.name == PROPOSE_INGEST_TOOL_NAME:
+                    research_event = _research_proposal_event(chunk)
+                    if research_event is not None:
+                        yield research_event
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise
@@ -402,7 +478,7 @@ async def stream_chat_reply(
             graph_name="chat",
             graph_node="generate",
             model=provider.model,
-            prompt_version=CHAT_PROMPT_VERSION,
+            prompt_version=prompt_version,
             token_usage=outcome.token_usage,
             latency_ms=max(0, round((perf_counter() - started) * 1000)),
             retrieval_count=retrieval_count,
@@ -421,13 +497,19 @@ async def stream_chat_reply(
                 # SSE 中断（aclose）时生成器 finalization 可能跨执行 context 运行，
                 # reset 校验 token 来源失败；原 context 已随任务销毁，无绑定泄漏。
                 pass
+        if ingest_token is not None:
+            try:
+                reset_ingest_context(ingest_token)
+            except ValueError:
+                # 同 memory：SSE 中断时 token 来源校验可能失败，无绑定泄漏。
+                pass
         await http_client.aclose()
     await write_llm_call_log(
         session_factory=session_factory,
         graph_name="chat",
         graph_node="generate",
         model=provider.model,
-        prompt_version=CHAT_PROMPT_VERSION,
+        prompt_version=prompt_version,
         token_usage=outcome.token_usage,
         latency_ms=max(0, round((perf_counter() - started) * 1000)),
         retrieval_count=retrieval_count,

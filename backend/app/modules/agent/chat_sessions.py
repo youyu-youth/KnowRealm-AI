@@ -44,6 +44,7 @@ async def create_chat_session(
     chat = await ChatSessionService.create(
         session,
         scope=payload.scope or ChatScope.FREE,
+        mode=payload.mode,
         record_id=str(payload.record_id) if payload.record_id is not None else None,
         course_id=str(payload.course_id) if payload.course_id is not None else None,
         library_item_id=(

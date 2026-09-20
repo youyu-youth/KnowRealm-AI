@@ -32,15 +32,19 @@ from app.modules.agent.context import (
     build_context_messages,
 )
 from app.modules.agent.graph import (
+    CHAT_PROMPT_VERSION,
+    CHAT_RESEARCH_PROMPT_VERSION,
     ChatMemoryProposalEvent,
+    ChatResearchProposalEvent,
     ChatStreamOutcome,
     ChatTokenEvent,
     ChatToolCallEvent,
     stream_chat_reply,
 )
 from app.modules.agent.models import ChatMessage, ChatSession
-from app.modules.agent.schemas import ChatRole, ChatScope
+from app.modules.agent.schemas import ChatMode, ChatRole, ChatScope
 from app.modules.agent.session_service import ChatSessionService
+from app.modules.agent.tools.propose_ingest import ResearchIngestContext
 from app.modules.agent.tools.propose_memory import MemoryProposalContext
 from app.modules.agent.tools.search_library import LibrarySearchContext, ToolCallBudget
 from app.modules.course.models import Course
@@ -124,6 +128,7 @@ class SessionPromptContext:
     """喂入 LLM 的上下文与范围会话的引用校验材料。"""
 
     messages: list[AnyMessage]
+    mode: ChatMode = ChatMode.ASK  # 研究会话（RESEARCH）换研究指令与提案工具
     scope: ChatScope = ChatScope.FREE
     transcript: str | None = None  # 挂载会话的当前转写全文；自由聊天为 None
     record_id: str | None = None
@@ -480,6 +485,7 @@ async def _session_context(
         )
         learner_block = learner.text or None
         return SessionPromptContext(
+            mode=chat.mode,
             scope=chat.scope,
             messages=build_context_messages(
                 [
@@ -495,6 +501,7 @@ async def _session_context(
                 library=library_context,
                 web_search=web_search,
                 learner=learner_block,
+                mode=chat.mode,
             ),
             transcript=transcript_text,
             record_id=record_id,
@@ -658,6 +665,8 @@ class ChatMessageService:
             outcome = ChatStreamOutcome()
             parts: list[str] = []
             memory_proposals: list[dict[str, object]] = []
+            research_proposals: list[dict[str, str]] = []
+            research_mode = False
             try:
                 prompt_context = await _session_context(
                     session_factory,
@@ -665,6 +674,7 @@ class ChatMessageService:
                     web_search=accepted.web_search is not None,
                     memory_allowed=accepted.memory_injection_allowed,
                 )
+                research_mode = prompt_context.mode == ChatMode.RESEARCH
                 # 范围会话（RECORD/LIBRARY_ITEM/COURSE/ALL）统一绑定 search_library
                 # 检索上下文：作用域 + 目标 id + 本轮工具预算（每轮新建累计器）。
                 library_binding = (
@@ -683,6 +693,17 @@ class ChatMessageService:
                 memory_binding = MemoryProposalContext(
                     session_factory=session_factory, session_id=session_id
                 )
+                # 入库提案工具的运行期绑定（研究会话 V1）：仅研究会话挂载；
+                # COURSE 范围自动带课程 id，ALL/FREE 落 None 由用户后续整理。
+                ingest_binding = (
+                    ResearchIngestContext(
+                        session_factory=session_factory,
+                        session_id=session_id,
+                        course_id=prompt_context.course_id,
+                    )
+                    if research_mode
+                    else None
+                )
                 async for event in stream_chat_reply(
                     session_factory=session_factory,
                     checkpointer=checkpointer,
@@ -693,6 +714,10 @@ class ChatMessageService:
                     library=library_binding,
                     web_search=accepted.web_search,
                     memory=memory_binding,
+                    ingest=ingest_binding,
+                    prompt_version=(
+                        CHAT_RESEARCH_PROMPT_VERSION if research_mode else CHAT_PROMPT_VERSION
+                    ),
                 ):
                     if isinstance(event, ChatTokenEvent):
                         parts.append(event.text)
@@ -703,6 +728,8 @@ class ChatMessageService:
                         memory_proposals.append(
                             {"proposal_id": event.proposal_id, "items": event.items}
                         )
+                    elif isinstance(event, ChatResearchProposalEvent):
+                        research_proposals.extend(event.proposals)
                     else:
                         yield _sse(
                             "tool_result",
@@ -790,6 +817,8 @@ class ChatMessageService:
             }
             if memory_proposals:
                 done_payload["memory_proposals"] = memory_proposals
+            if research_proposals:
+                done_payload["research_proposals"] = research_proposals
             yield _sse("done", done_payload)
         finally:
             registry.release(session_id)

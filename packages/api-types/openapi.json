@@ -1162,7 +1162,8 @@
           "ASK",
           "COURSE_QA",
           "SOCRATIC_TUTOR",
-          "TEACH_BACK"
+          "TEACH_BACK",
+          "RESEARCH"
         ],
         "title": "ChatMode",
         "type": "string"
@@ -1271,9 +1272,12 @@
             "title": "Library Item Id"
           },
           "mode": {
-            "const": "ASK",
             "default": "ASK",
-            "description": "会话模式",
+            "description": "会话模式（研究会话 V1 起放开 RESEARCH）",
+            "enum": [
+              "ASK",
+              "RESEARCH"
+            ],
             "title": "Mode",
             "type": "string"
           },

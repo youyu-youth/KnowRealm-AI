@@ -2523,7 +2523,7 @@ export interface components {
          * ChatMode
          * @enum {string}
          */
-        ChatMode: "ASK" | "COURSE_QA" | "SOCRATIC_TUTOR" | "TEACH_BACK";
+        ChatMode: "ASK" | "COURSE_QA" | "SOCRATIC_TUTOR" | "TEACH_BACK" | "RESEARCH";
         /** ChatRecordOption */
         ChatRecordOption: {
             /**
@@ -2584,11 +2584,11 @@ export interface components {
             library_item_id?: string | null;
             /**
              * Mode
-             * @description 会话模式
+             * @description 会话模式（研究会话 V1 起放开 RESEARCH）
              * @default ASK
-             * @constant
+             * @enum {string}
              */
-            mode: "ASK";
+            mode: "ASK" | "RESEARCH";
             /**
              * Record Id
              * @description 挂载的学习记录，空为自由聊天
