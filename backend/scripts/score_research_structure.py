@@ -37,7 +37,7 @@ def collect_answers(inputs: list[str]) -> list[Path]:
 def score(text: str) -> tuple[bool, str]:
     """返回 (是否完整, 原因)：五个 `## ` 二级标题须逐字匹配且相对顺序严格递增，
     出现五节之外 / 顺序错乱 / 重复的二级标题都判不完整（`###` 以下不校验）。"""
-    headings = [line.strip() for line in text.splitlines() if line.strip().startswith("##")]
+    headings = [line.strip() for line in text.splitlines() if line.strip().startswith("## ")]
     expected = [f"## {title}" for title in CHAT_RESEARCH_SECTION_TITLES]
     matched = 0
     for heading in headings:
