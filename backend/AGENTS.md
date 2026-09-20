@@ -12,7 +12,7 @@
 | `uv run pytest` | 全量测试；建议 `--basetemp .tmp/pytest-<tag>` 且测完删除（`*.tmp` 已被 gitignore） |
 | `uv run ruff check .` / `uv run ruff format --check .` | lint 与格式门禁（target py312、line-length 100、select E/F/I/B/UP） |
 | `uv run pyright` | strict 模式，include `app` + `tests` |
-| `uv run python -m scripts.export_openapi ../../packages/api-types/openapi.json [--check]` | 导出 / 校验 OpenAPI 契约 |
+| `uv run python -m scripts.export_openapi ../packages/api-types/openapi.json [--check]` | 导出 / 校验 OpenAPI 契约 |
 
 **本地运行没有独立 uvicorn 命令**：由 `pnpm --filter @knowrealm/desktop tauri dev` 拉起（debug 用本目录 `.venv/Scripts/python.exe`），等价于：
 

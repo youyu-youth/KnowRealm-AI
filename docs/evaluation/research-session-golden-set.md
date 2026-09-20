@@ -1,6 +1,6 @@
 # 研究会话黄金集与门禁（research-session-v1）
 
-> 工单 01 ｜ 问题驱动的证据型研究会话 V1 ｜ 2026-09-20 ｜ 决策依据：`.scratch/research-session-v1/spec.md`（grill Q5 定稿：评测资产随票前置）
+> 工单 02 ｜ 问题驱动的证据型研究会话 V1 ｜ 2026-09-20 ｜ 决策依据：`.scratch/research-session-v1/spec.md`（grill Q5 定稿：评测资产随票前置，实际随本票交付）
 > 回归触发：prompt 版本 bump（现值 `chat-research-scope-v9`）或模型变更，沿用项目评测纪律。
 > 执行前提：需配置真实 LLM provider（联网题另需 Tavily key）；回答采集由用户真机执行（沿用「真机验收由用户执行」纪律，agent 不代跑、不代标）。
 

@@ -182,7 +182,7 @@ chat 会话的挂载范围，显式五档——FREE（自由，无挂载）/ REC
 _Avoid_: 会话模式（那是 mode）、@全部资料模式（无此模式，ALL 是范围）
 
 **研究会话（Research Session）**:
-mode=RESEARCH 的会话形态（研究会话 V1）：围绕研究问题（= 会话标题，复用 title）做证据型研究——AI 在资料范围（仅 ALL / COURSE / FREE 三档；FREE = 纯联网）内检索、可叠加联网，按固定五节 Markdown 结构输出（已有证据 / 来源差异 / 冲突与缺口 / 暂定结论 / 建议保存的来源），结论挂引用、无证据如实拒答；发现的外部来源经 propose_ingest 工具生成「建议保存」入库提案，逐条确认后走网页入库链路。零新表（复用 chat_sessions / chat_messages / agent_proposals）。
+mode=RESEARCH 的会话形态（研究会话 V1）：围绕研究问题（即会话标题）做证据型研究——AI 在资料范围（仅 ALL / COURSE / FREE 三档；FREE = 纯联网）内检索、可叠加联网，按固定五节 Markdown 结构输出（已有证据 / 来源差异 / 冲突与缺口 / 暂定结论 / 建议保存的来源），结论挂引用、无证据如实拒答；发现的外部来源生成「建议保存」入库提案，逐条确认后走网页入库链路。
 _Avoid_: 独立 Research 表（不存在）、研究报告（无报告产物，沉淀走知识点与入库提案）、B2 跨记录问答（那是 ASK 范围问答，无五节结构与提案）
 
 **跨记录引用（Cross-Record Citation）**:
