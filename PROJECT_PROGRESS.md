@@ -80,7 +80,7 @@
 **明确待做（已有工单）：**
 
 - ~~`concept-mastery-v1/06`~~（✅ 2026-09-18 完结，ADR-0023）。**Concept Mastery V1 链整体完结**，资料库 V1 + 知识起点扩展波次（扩展文档 §41/§42）已解锁待开工。
-- `ai-summary/03-long-summary-quality-recovery`（`ready-for-agent`，8 项未勾）：>30k 长总结 map-reduce、90s 超时/不自动重试语义、手动重试复用 Job、ACTIVE 校验、llm_call_logs 字段补全、评测样本。⚠️ 这是**唯一一张实质性未做的旧功能票**；现状是 chat 侧对 >30k 转写做降级提示（`agent/context.py` CHAT_TRANSCRIPT_MAX_CHARS=30000），总结侧无长文处理。
+- `ai-summary/03-long-summary-quality-recovery`（**deferred**，2026-09-20 用户拍板先不做）：>30k 长总结 map-reduce、90s 超时/不自动重试语义、手动重试复用 Job、ACTIVE 校验、llm_call_logs 字段补全、评测样本。现状仍是 chat 侧对 >30k 转写做降级提示（`agent/context.py` CHAT_TRANSCRIPT_MAX_CHARS=30000），总结侧无长文处理；重新开工前按当时现状复核票面。
 - `markdown-export/03` 聚合导出（`ready-for-human`，代码完成仅剩用户验收后关票）。
 
 **规划中（未拆票，勿直接开工）：**

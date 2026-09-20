@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 — 调整、确认与跨重启 HITL
 
-**Status:** ready-for-agent
+**Status:** deferred（2026-09-20 用户拍板：先不做，标记过期；票面 8 项 checklist 保持未实施原样，重新开工前需按当时依赖与现状复核票面）
 
 - [ ] 3 万 Unicode code point 以内单次生成；超过阈值按段落顺序贪心分块，单个超长段落硬切，reduce 输入过长时递归归并。
 - [ ] 自动测试证明每个输入片段都参与 map-reduce，边界 30000/30001、长段落和多层 reduce 均无静默截断。
