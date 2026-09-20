@@ -58,7 +58,7 @@ describe("LearnerMemorySection", () => {
     expect(screen.getByText("先看例题")).toBeInTheDocument();
     expect(screen.getByText("解释风格：偏好例子先行")).toBeInTheDocument();
     expect(screen.getByText(/置信度 82%/)).toBeInTheDocument();
-    const toggle = screen.getByRole("switch", {
+    const toggle = screen.getByRole("checkbox", {
       name: "在 AI 中使用长期记忆",
     });
     expect(toggle).toBeChecked();
@@ -117,7 +117,7 @@ describe("LearnerMemorySection", () => {
       },
     );
     renderSection();
-    const toggle = await screen.findByRole("switch", {
+    const toggle = await screen.findByRole("checkbox", {
       name: "在 AI 中使用长期记忆",
     });
     fireEvent.click(toggle);

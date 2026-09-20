@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next";
 import { Plus, X } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import { settingsKeys } from "@/features/settings/api/keys";
 import {
   learnerMemoryApi,
@@ -278,8 +279,10 @@ function OutboundToggle({ data }: { data: LearnerPreferenceOut }) {
           : t("settings.learnerMemory.outboundHintOff")
       }
     >
-      <div className="flex items-center gap-3">
-        <Switch
+      {/* 控件形态对齐「自启动」行（Checkbox+状态文字）：switch 的 unchecked 态
+          在浅色页面上对比度过低（无边界浅灰轨道），不符合设置页可辨识要求。 */}
+      <Field orientation="horizontal" className="min-h-8">
+        <Checkbox
           id="learner-memory-outbound"
           checked={outbound.enabled}
           disabled={toggle.isPending}
@@ -290,7 +293,7 @@ function OutboundToggle({ data }: { data: LearnerPreferenceOut }) {
             ? t("settings.learnerMemory.outboundStateOn")
             : t("settings.learnerMemory.outboundStateOff")}
         </p>
-      </div>
+      </Field>
       {toggle.isError ? (
         <p role="alert" className="text-destructive text-label">
           {toggle.error.message}
