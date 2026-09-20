@@ -32,6 +32,7 @@ from app.modules.agent.context import (
     build_context_messages,
 )
 from app.modules.agent.graph import (
+    ChatMemoryProposalEvent,
     ChatStreamOutcome,
     ChatTokenEvent,
     ChatToolCallEvent,
@@ -40,10 +41,12 @@ from app.modules.agent.graph import (
 from app.modules.agent.models import ChatMessage, ChatSession
 from app.modules.agent.schemas import ChatRole, ChatScope
 from app.modules.agent.session_service import ChatSessionService
+from app.modules.agent.tools.propose_memory import MemoryProposalContext
 from app.modules.agent.tools.search_library import LibrarySearchContext, ToolCallBudget
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
+from app.modules.learner.service import build_learner_context
 from app.modules.library.models import LibraryItem, LibraryItemRecord
 from app.modules.record.models import Record
 from app.modules.record.service import RecordService
@@ -51,8 +54,10 @@ from app.modules.search.integrations.tavily import TavilySearchClient
 from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import (
     LlmProviderConfig,
+    llm_consent,
     load_llm_provider,
     load_web_search_config,
+    memory_outbound_enabled,
 )
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
@@ -102,6 +107,8 @@ class AcceptedMessage:
 
     web_search 为当轮生效的搜索客户端：请求标志开启且已配置可用 key 才非空
     （无 key 时后端无视标志强制不挂工具，B1 双保险）。
+    memory_injection_allowed = 记忆外发开关开启且 LLM 外发同意对当前供应商
+    有效（工单 06）；False 时本轮零记忆注入（硬门禁：关闭外发后零发送）。
     """
 
     session_id: str
@@ -109,6 +116,7 @@ class AcceptedMessage:
     content: str
     provider: LlmProviderConfig
     web_search: SearchProvider | None = None
+    memory_injection_allowed: bool = False
 
 
 @dataclass(frozen=True)
@@ -125,6 +133,12 @@ class SessionPromptContext:
     library: LibraryContext | None = None  # COURSE/ALL/LIBRARY_ITEM 的清单上下文
     library_item_id: str | None = None  # LIBRARY_ITEM 会话挂载的资料条目
     web_search: bool = False  # 本轮联网生效（已含 key 双保险）；自由聊天也可为 True
+    learner: str | None = None  # 本轮注入的学习者记忆块（None=未注入）
+    learner_memories: tuple[str, ...] = ()  # 实际注入的记忆条目（done 透传 UI 展示）
+
+    @property
+    def learner_injected(self) -> bool:
+        return bool(self.learner)
 
     @property
     def should_parse_citations(self) -> bool:
@@ -326,12 +340,8 @@ async def _load_scope_materials(
                 LibraryItem.course_id.is_(None),
                 Course.id.is_not(None),
             )
-        ).outerjoin(
-            Course, and_(Course.id == LibraryItem.course_id, Course.deleted_at.is_(None))
-        )
-    item_stmt = item_stmt.order_by(
-        LibraryItem.id, DocumentSegment.sequence_no, DocumentSegment.id
-    )
+        ).outerjoin(Course, and_(Course.id == LibraryItem.course_id, Course.deleted_at.is_(None)))
+    item_stmt = item_stmt.order_by(LibraryItem.id, DocumentSegment.sequence_no, DocumentSegment.id)
     item_rows = (await session.execute(item_stmt)).all()
     contents: dict[str, list[str]] = {}
     titles: dict[str, str] = {}
@@ -358,7 +368,11 @@ async def _load_library_materials(
 
 
 async def _session_context(
-    session_factory: async_sessionmaker[AsyncSession], session_id: str, *, web_search: bool = False
+    session_factory: async_sessionmaker[AsyncSession],
+    session_id: str,
+    *,
+    web_search: bool = False,
+    memory_allowed: bool = False,
 ) -> SessionPromptContext:
     async with session_factory() as session:
         chat = await ChatSessionService.get(session, session_id)
@@ -456,6 +470,15 @@ async def _session_context(
             else:
                 retrieval_course_id = chat.course_id
                 library_context = await _load_library_context(session, chat.scope, chat.course_id)
+        # 学习者记忆块（工单 06）：确定性聚合，注入范围 = 全局偏好恒可 +
+        # 课程状态仅对应课程范围（scope != ALL 且有边界课程）；关闭外发即零注入。
+        learner = await build_learner_context(
+            session,
+            scope=chat.scope,
+            course_id=retrieval_course_id,
+            injection_allowed=memory_allowed,
+        )
+        learner_block = learner.text or None
         return SessionPromptContext(
             scope=chat.scope,
             messages=build_context_messages(
@@ -471,6 +494,7 @@ async def _session_context(
                 record=record_context,
                 library=library_context,
                 web_search=web_search,
+                learner=learner_block,
             ),
             transcript=transcript_text,
             record_id=record_id,
@@ -478,6 +502,8 @@ async def _session_context(
             library=library_context,
             library_item_id=chat.library_item_id if chat.scope == ChatScope.LIBRARY_ITEM else None,
             web_search=web_search,
+            learner=learner_block,
+            learner_memories=learner.memories,
         )
 
 
@@ -540,6 +566,10 @@ class ChatMessageService:
                 status_code=409,
                 detail="LLM_PROVIDER_UNCONFIGURED：未配置 AI 服务，请先完成供应商配置",
             )
+        # 记忆注入前提（工单 06）：外发开关开启且外发同意对当前供应商有效
+        # （供应商地址/密钥变化后同意失效，重新确认前不发送记忆）。
+        outbound_enabled = await asyncio.to_thread(memory_outbound_enabled, data_dir)
+        _, consent_current = await asyncio.to_thread(llm_consent, data_dir)
         web_search_provider: SearchProvider | None = None
         if web_search:
             config = await asyncio.to_thread(load_web_search_config, data_dir)
@@ -610,6 +640,7 @@ class ChatMessageService:
             content=content,
             provider=provider,
             web_search=web_search_provider,
+            memory_injection_allowed=outbound_enabled and consent_current,
         )
 
     @staticmethod
@@ -626,9 +657,13 @@ class ChatMessageService:
             yield _sse("status", {"phase": STREAM_STATUS_GENERATING})
             outcome = ChatStreamOutcome()
             parts: list[str] = []
+            memory_proposals: list[dict[str, object]] = []
             try:
                 prompt_context = await _session_context(
-                    session_factory, session_id, web_search=accepted.web_search is not None
+                    session_factory,
+                    session_id,
+                    web_search=accepted.web_search is not None,
+                    memory_allowed=accepted.memory_injection_allowed,
                 )
                 # 范围会话（RECORD/LIBRARY_ITEM/COURSE/ALL）统一绑定 search_library
                 # 检索上下文：作用域 + 目标 id + 本轮工具预算（每轮新建累计器）。
@@ -644,6 +679,10 @@ class ChatMessageService:
                     if prompt_context.scope in RETRIEVAL_SCOPES
                     else None
                 )
+                # 记忆提案工具的运行期绑定（工单 06）：溯源到当前会话。
+                memory_binding = MemoryProposalContext(
+                    session_factory=session_factory, session_id=session_id
+                )
                 async for event in stream_chat_reply(
                     session_factory=session_factory,
                     checkpointer=checkpointer,
@@ -653,12 +692,17 @@ class ChatMessageService:
                     outcome=outcome,
                     library=library_binding,
                     web_search=accepted.web_search,
+                    memory=memory_binding,
                 ):
                     if isinstance(event, ChatTokenEvent):
                         parts.append(event.text)
                         yield _sse("token", {"text": event.text})
                     elif isinstance(event, ChatToolCallEvent):
                         yield _sse("tool_call", {"tool": event.tool, "query": event.query})
+                    elif isinstance(event, ChatMemoryProposalEvent):
+                        memory_proposals.append(
+                            {"proposal_id": event.proposal_id, "items": event.items}
+                        )
                     else:
                         yield _sse(
                             "tool_result",
@@ -735,6 +779,14 @@ class ChatMessageService:
                 chat = await ChatSessionService.get(session, session_id)
                 if chat is not None:
                     chat.updated_at = utcnow()
-            yield _sse("done", {"message_id": assistant_id, "content": content})
+            # done 载荷扩展（工单 06，可选字段向后兼容）：memory_used=本轮实际
+            # 注入的记忆条目（UI「本轮使用了哪些记忆」）；memory_proposals=模型
+            # 经 propose_memory 创建的待确认提案（前端就地确认卡）。
+            done_payload: dict[str, object] = {"message_id": assistant_id, "content": content}
+            if prompt_context.learner_memories:
+                done_payload["memory_used"] = list(prompt_context.learner_memories)
+            if memory_proposals:
+                done_payload["memory_proposals"] = memory_proposals
+            yield _sse("done", done_payload)
         finally:
             registry.release(session_id)

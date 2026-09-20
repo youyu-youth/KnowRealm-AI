@@ -6,10 +6,18 @@ RAG 检索经工单 04 的 LibraryRetrievalService，不开公开查询端点。
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 from app.modules.capture.schemas import CaptureType
 from app.modules.jobs.schemas import ProcessingJobOut
@@ -352,6 +360,50 @@ class ResearchIngestPayload(BaseModel):
     url: str
     title: str
     course_id: str | None = None
+
+
+_MEMORY_ITEM_MAX_CHARS = 100
+_MEMORY_ITEMS_MAX_COUNT = 5
+# 观察偏好键/值限长：确定性推断维度的短标签，防自由文本情节记忆（ADR-0025）。
+_MEMORY_ENTRY_MAX_CHARS = 100
+
+MemoryItemText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=_MEMORY_ITEM_MAX_CHARS),
+]
+MemoryEntryText = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=_MEMORY_ENTRY_MAX_CHARS),
+]
+
+
+class MemoryProposalPayload(BaseModel):
+    """MEMORY 提案载荷判别（工单 06）：EXPLICIT=用户明确「记住」的偏好条目；
+    OBSERVED=结构化学习证据推导的观察偏好（必须携带置信度与证据计数）。
+    确认后由 learner 域应用器写入 learner_preferences，创建不改事实。"""
+
+    kind: Literal["EXPLICIT", "OBSERVED"]
+    items: list[MemoryItemText] = Field(default_factory=list)
+    entries: dict[MemoryEntryText, MemoryEntryText] = Field(default_factory=dict)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    evidence_count: int | None = Field(default=None, ge=0)
+
+    @field_validator("items")
+    @classmethod
+    def _limit_items(cls, value: list[str]) -> list[str]:
+        if len(value) > _MEMORY_ITEMS_MAX_COUNT:
+            raise ValueError(f"一次最多记忆 {_MEMORY_ITEMS_MAX_COUNT} 条偏好")
+        return value
+
+    @model_validator(mode="after")
+    def _check_kind_shape(self) -> "MemoryProposalPayload":
+        if self.kind == "EXPLICIT" and not self.items:
+            raise ValueError("EXPLICIT 提案至少携带一条偏好条目")
+        if self.kind == "OBSERVED" and (
+            not self.entries or self.confidence is None or self.evidence_count is None
+        ):
+            raise ValueError("OBSERVED 提案必须携带观察条目、置信度与证据计数")
+        return self
 
 
 class ProposalCreateRequest(BaseModel):

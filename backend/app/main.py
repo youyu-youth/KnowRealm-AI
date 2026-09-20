@@ -41,6 +41,7 @@ from app.modules.jobs import processing_jobs
 from app.modules.jobs.runner import JobRunner, ManagedWorker
 from app.modules.knowledge_point import knowledge_points
 from app.modules.knowledge_point.worker import knowledge_point_spec
+from app.modules.learner import routes as learner_routes
 from app.modules.learning import routes as learning_routes
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.service import MasteryService
@@ -455,6 +456,7 @@ def create_app(
     app.include_router(text_captures.router)
     app.include_router(library_routes.library_router)
     app.include_router(library_routes.proposals_router)
+    app.include_router(learner_routes.learner_router)
     app.include_router(search_routes.router)
     app.include_router(source_anchors.router)
     app.include_router(chat_sessions.router)

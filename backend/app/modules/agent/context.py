@@ -135,8 +135,7 @@ def _library_instructions(library: LibraryContext) -> str:
             "不要回答「当前资料中未找到」误导用户以为资料内容不存在。\n"
         )
     return (
-        intro
-        + "回答规则：\n"
+        intro + "回答规则：\n"
         f"- {detail_rule}"
         "单轮最多检索 6 次、结果超出预算会被截断；换同义词重试不超过 2 次，"
         "之后基于已有结果如实回答；\n"
@@ -202,6 +201,7 @@ def build_context_messages(
     library: LibraryContext | None = None,
     budget: int = CHAT_CONTEXT_CHAR_BUDGET,
     web_search: bool = False,
+    learner: str | None = None,
 ) -> list[AnyMessage]:
     """把会话全部消息行组装为喂入 LLM 的上下文。
 
@@ -209,6 +209,8 @@ def build_context_messages(
     - 课程 / 全部范围（library，与 record 互斥）改用记录标题清单 + 跨记录引用指令；
     - 只保留最近 CHAT_CONTEXT_MAX_TURNS 个完成轮，末尾未获回复的 user（当前提问）额外附加；
     - 超出字符预算时从最旧完成轮继续丢弃，当前提问永不丢弃；
+    - learner 为学习者记忆块（工单 06，确定性中间层构建）：追加在有效 SYSTEM 末尾
+      （语言/联网指引之前），计入预算；
     - web_search 生效时在有效 SYSTEM 末尾追加联网指引（挂载会话带"材料优先"语义）。
     """
     system_row, turns, trailing_user = _split_turns(rows)
@@ -253,9 +255,13 @@ def build_context_messages(
             content=_library_instructions(library),
         )
     # 对话内容语言指令统一附加在有效 SYSTEM 末尾（挂载指令与自由聊天的角色快照都覆盖），
-    # 且在窗口裁剪 / 预算计量之前，保证预算与实际喂入一致；联网指引同样计入预算。
+    # 且在窗口裁剪 / 预算计量之前，保证预算与实际喂入一致；学习者记忆块（learner）
+    # 与联网指引同样计入预算。
     if system_row is not None:
-        content = f"{system_row.content}\n{CHAT_LANGUAGE_INSTRUCTION}"
+        content = system_row.content
+        if learner:
+            content = f"{content}\n{learner}"
+        content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:
             guidance = CHAT_WEB_SEARCH_GUIDANCE
             if record is not None or library is not None:

@@ -20,6 +20,7 @@ from app.db.base import utcnow
 from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import (
     AgentProposalOut,
+    MemoryProposalPayload,
     OrganizePayload,
     ProposalCreateRequest,
     ProposalListQuery,
@@ -37,7 +38,8 @@ _APPLIERS: dict[ProposalType, ProposalApplier] = {}
 _PAYLOAD_SCHEMAS: dict[ProposalType, type[BaseModel]] = {
     ProposalType.ORGANIZE: OrganizePayload,
     ProposalType.RESEARCH_INGEST: ResearchIngestPayload,
-    # MEMORY 的载荷 schema 随工单 06 注册。
+    # MEMORY 的应用器随工单 06 在 learner 域注册（learner/routes 导入即注册）。
+    ProposalType.MEMORY: MemoryProposalPayload,
 }
 
 

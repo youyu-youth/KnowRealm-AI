@@ -312,3 +312,22 @@ def grant_llm_consent(data_dir: Path) -> str | None:
     }
     _write_json(path, settings)
     return granted_at
+
+
+# 长期记忆外发开关（工单 06）：默认开启；关闭=记忆保留本地、不再注入发给 LLM
+# 的上下文，本地查看/编辑/删除与资料检索不受影响。默认值即关（True=开启），
+# 按「settings.json 只存偏离项」惯例，写回默认值时删键。
+def memory_outbound_enabled(data_dir: Path) -> bool:
+    value = _read_json(data_dir / "config" / "settings.json").get("learner_memory_outbound_enabled")
+    return True if not isinstance(value, bool) else value
+
+
+def set_memory_outbound_enabled(data_dir: Path, enabled: bool) -> bool:
+    path = data_dir / "config" / "settings.json"
+    settings = _read_json(path)
+    if enabled:
+        settings.pop("learner_memory_outbound_enabled", None)
+    else:
+        settings["learner_memory_outbound_enabled"] = False
+    _write_json(path, settings)
+    return enabled

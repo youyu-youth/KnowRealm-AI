@@ -38,6 +38,13 @@ from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
     NoopSummarizationMiddleware,
 )
+from app.modules.agent.tools.propose_memory import (
+    PROPOSE_MEMORY_TOOL_NAME,
+    MemoryProposalContext,
+    bind_memory_context,
+    propose_memory,
+    reset_memory_context,
+)
 from app.modules.agent.tools.search_library import (
     LibrarySearchContext,
     bind_library_context,
@@ -90,7 +97,15 @@ class ChatToolResultEvent:
     ok: bool
 
 
-ChatStreamEvent = ChatTokenEvent | ChatToolCallEvent | ChatToolResultEvent
+@dataclass(frozen=True)
+class ChatMemoryProposalEvent:
+    """记忆提案已创建（propose_memory 成功返回）：done 载荷透传前端确认卡。"""
+
+    proposal_id: str
+    items: list[str]
+
+
+ChatStreamEvent = ChatTokenEvent | ChatToolCallEvent | ChatToolResultEvent | ChatMemoryProposalEvent
 
 
 # ---------------------------------------------------------------------------
@@ -127,11 +142,12 @@ LIBRARY_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_library,))
 
 def _resolve_agent_config(*, retrieval: bool, web_search_enabled: bool) -> AgentConfig:
     """按「检索挂载 × web_search」组合出当轮装配：变体维持常量，web_search 生效时
-    在其基础上追加工具（frozen dataclass 实例化）。"""
+    在其基础上追加工具（frozen dataclass 实例化）；propose_memory 恒挂载（工单 06：
+    自由与挂载会话都支持用户明确「记住…」，普通聊天零静默提取由 docstring 约束）。"""
     config = LIBRARY_CHAT_AGENT_CONFIG if retrieval else CHAT_AGENT_CONFIG
     if web_search_enabled:
         config = AgentConfig(tools=(*config.tools, web_search))
-    return config
+    return AgentConfig(tools=(*config.tools, propose_memory))
 
 
 def build_agent(
@@ -266,6 +282,30 @@ def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
     return ChatToolResultEvent(tool=message.name or "", hits=hits, ok=ok)
 
 
+def _memory_proposal_event(message: ToolMessage) -> ChatMemoryProposalEvent | None:
+    """propose_memory 的成功返回 → 提案事件（载荷 JSON：{ok, proposal_id, items}）。"""
+    if not isinstance(message.content, str):
+        return None
+    try:
+        value: object = json.loads(message.content)
+    except ValueError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    payload = cast(dict[str, object], value)
+    proposal_id = payload.get("proposal_id")
+    items = payload.get("items")
+    if payload.get("ok") is not True or not isinstance(proposal_id, str):
+        return None
+    if not isinstance(items, list):
+        return None
+    names = cast(list[object], items)
+    return ChatMemoryProposalEvent(
+        proposal_id=proposal_id,
+        items=[item for item in names if isinstance(item, str)],
+    )
+
+
 async def stream_chat_reply(
     *,
     session_factory: async_sessionmaker[AsyncSession],
@@ -276,6 +316,7 @@ async def stream_chat_reply(
     outcome: ChatStreamOutcome,
     library: LibrarySearchContext | None = None,
     web_search: SearchProvider | None = None,
+    memory: MemoryProposalContext | None = None,
 ) -> AsyncGenerator[ChatStreamEvent, None]:
     """工厂层流式生成路径：建模型 → 清残留 → astream 分发结构化流事件 → 统一埋点。
 
@@ -306,6 +347,9 @@ async def stream_chat_reply(
     web_token: Token[SearchProvider | None] | None = None
     if web_search is not None:
         web_token = bind_web_search(web_search)
+    memory_token: Token[MemoryProposalContext | None] | None = None
+    if memory is not None:
+        memory_token = bind_memory_context(memory)
     # 检索归因（CB-08）：本轮资料检索命中合计（None=未检索，0=检索无命中）。
     retrieval_count: int | None = None
     try:
@@ -344,6 +388,10 @@ async def stream_chat_reply(
                 if not result_event.ok:
                     logger.warning("chat_tool_failed", tool=result_event.tool)
                 yield result_event
+                if chunk.name == PROPOSE_MEMORY_TOOL_NAME:
+                    proposal_event = _memory_proposal_event(chunk)
+                    if proposal_event is not None:
+                        yield proposal_event
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise
@@ -366,6 +414,13 @@ async def stream_chat_reply(
             reset_library_context(library_token)
         if web_token is not None:
             reset_web_search(web_token)
+        if memory_token is not None:
+            try:
+                reset_memory_context(memory_token)
+            except ValueError:
+                # SSE 中断（aclose）时生成器 finalization 可能跨执行 context 运行，
+                # reset 校验 token 来源失败；原 context 已随任务销毁，无绑定泄漏。
+                pass
         await http_client.aclose()
     await write_llm_call_log(
         session_factory=session_factory,

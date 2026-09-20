@@ -2164,11 +2164,12 @@ async def test_scope_mounting_matrix_tool_visibility(
                 assert events[-1][0] == "done"
                 return list(BindRecordingModel.bound)
 
-            # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library。
-            assert await visible(free_id) == []
-            assert await visible(record_session_id) == ["search_library"]
-            assert await visible(course_session_id) == ["search_library"]
-            assert await visible(all_session_id) == ["search_library"]
+            # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library；
+            # propose_memory 恒挂载（工单 06：任意会话支持用户明确「记住…」）。
+            assert await visible(free_id) == ["propose_memory"]
+            assert await visible(record_session_id) == ["search_library", "propose_memory"]
+            assert await visible(course_session_id) == ["search_library", "propose_memory"]
+            assert await visible(all_session_id) == ["search_library", "propose_memory"]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
             save_web_search_provider(
@@ -2177,11 +2178,17 @@ async def test_scope_mounting_matrix_tool_visibility(
             assert await visible(course_session_id, web=True) == [
                 "search_library",
                 "web_search",
+                "propose_memory",
             ]
-            assert await visible(all_session_id, web=True) == ["search_library", "web_search"]
+            assert await visible(all_session_id, web=True) == [
+                "search_library",
+                "web_search",
+                "propose_memory",
+            ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
                 "web_search",
+                "propose_memory",
             ]
 
 

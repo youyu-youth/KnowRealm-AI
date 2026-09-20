@@ -431,6 +431,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/learner/memory-outbound": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Memory Outbound
+         * @description 长期记忆外发开关：关闭=记忆保留本地、不注入发给 LLM 的上下文。
+         */
+        put: operations["put_memory_outbound_api_learner_memory_outbound_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/learner/preferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Learner Preferences
+         * @description 学习画像「AI 记忆」单例视图（惰性建行）。
+         */
+        get: operations["get_learner_preferences_api_learner_preferences_get"];
+        /**
+         * Put Learner Preferences
+         * @description 编辑显式偏好（全量替换、立即生效）；观察偏好不受影响。
+         */
+        put: operations["put_learner_preferences_api_learner_preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/learner/preferences/observed/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Observed Preference
+         * @description 删除单条观察偏好（按 entries 键）；未确认的观察结果随删即失。
+         */
+        delete: operations["delete_observed_preference_api_learner_preferences_observed__key__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/library/assets": {
         parameters: {
             query?: never;
@@ -3165,6 +3229,35 @@ export interface components {
             tags: string[];
         };
         /**
+         * LearnerPreferenceOut
+         * @description 学习画像「AI 记忆」单例视图：显式偏好直编，观察偏好带置信度/证据数/确认时间。
+         */
+        LearnerPreferenceOut: {
+            /** Evidence Count */
+            evidence_count: number;
+            /** Explicit Items */
+            explicit_items: string[];
+            /** Last Observed At */
+            last_observed_at: string | null;
+            memory_outbound: components["schemas"]["MemoryOutboundOut"];
+            /** Observed Confidence */
+            observed_confidence: number | null;
+            /** Observed Entries */
+            observed_entries: {
+                [key: string]: string;
+            };
+            /** Updated At */
+            updated_at: string | null;
+        };
+        /**
+         * LearnerPreferenceUpdate
+         * @description 显式偏好全量替换（契约 §2.5：PUT 立即生效）；观察偏好不经此端点。
+         */
+        LearnerPreferenceUpdate: {
+            /** Items */
+            items: string[];
+        };
+        /**
          * LearningContext
          * @enum {string}
          */
@@ -3575,6 +3668,26 @@ export interface components {
             source_type: "QUIZ_TEST";
             /** Test Id */
             test_id: string;
+        };
+        /**
+         * MemoryOutboundOut
+         * @description 长期记忆外发状态：enabled=独立开关；consent 绑定供应商身份（fingerprint）。
+         */
+        MemoryOutboundOut: {
+            /** Consent Current */
+            consent_current: boolean;
+            /** Consent Granted At */
+            consent_granted_at: string | null;
+            /** Enabled */
+            enabled: boolean;
+        };
+        /**
+         * MemoryOutboundUpdate
+         * @description 外发开关载荷：关闭=记忆保留本地、不注入发给 LLM 的上下文。
+         */
+        MemoryOutboundUpdate: {
+            /** Enabled */
+            enabled: boolean;
         };
         /**
          * MergeDecision
@@ -7073,6 +7186,246 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["InboxRecordOut"][];
                 };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_memory_outbound_api_learner_memory_outbound_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryOutboundUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryOutboundOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_learner_preferences_api_learner_preferences_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearnerPreferenceOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_learner_preferences_api_learner_preferences_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearnerPreferenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearnerPreferenceOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_observed_preference_api_learner_preferences_observed__key__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Forbidden */
             403: {
