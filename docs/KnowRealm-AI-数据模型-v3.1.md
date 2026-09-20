@@ -298,7 +298,7 @@ analysis_type（COURSEWARE_DIFF / EXAM_FOCUS / OTHER）、version_no（(record_i
 | id | TEXT | PK |
 | course_id | TEXT | **可空**——COURSE 会话 = 挂载课程；RECORD 会话随 record 填其课程；LIBRARY_ITEM 可快照条目当前课程但检索授权始终以 library_item_id 为准；FREE/ALL 为空。**课程软删→会话只读（course_deleted 运行时推导，不落列，对齐 record_deleted 先例）** |
 | record_id / concept_id / library_item_id | TEXT | 可空；LIBRARY_ITEM 仅由资料详情创建并必须填写 library_item_id。**挂载失效态运行时推导，不落列**：分别回查 Record / LibraryItem 当前生命周期 |
-| mode | TEXT | ASK / COURSE_QA / SOCRATIC_TUTOR / TEACH_BACK |
+| mode | TEXT | ASK / COURSE_QA / SOCRATIC_TUTOR / TEACH_BACK / RESEARCH（0027 起放开研究会话，创建请求仍仅 ASK \| RESEARCH） |
 | scope | TEXT | NOT NULL DEFAULT 'FREE'，CHECK ∈ FREE / RECORD / LIBRARY_ITEM / COURSE / ALL（LIBRARY_ITEM 本波次规划）。**范围会话内不可变**；与 mode 轴正交（mode 恒 ASK，B3 启用）。LIBRARY_ITEM=单资料及其关联 Record，COURSE=该课程全部未软删资料与记录，ALL=全部未软删资料与记录（含未归类内容） |
 | title | TEXT | 可空——默认取首条用户消息截断，重命名覆盖 |
 | updated_at | TEXT | |
