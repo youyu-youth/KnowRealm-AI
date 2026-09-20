@@ -49,9 +49,7 @@ class FakeReviewMaterialModel:
         self.started.set()
         await self.release.wait()
         # 服务层按 ReviewMaterialDraft 校验（与生产 parsed 一致传 dict）
-        output = (
-            self.output.model_dump() if isinstance(self.output, BaseModel) else self.output
-        )
+        output = self.output.model_dump() if isinstance(self.output, BaseModel) else self.output
         return ReviewMaterialModelResult(
             output=output,
             token_usage={"total_tokens": 77},

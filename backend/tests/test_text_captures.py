@@ -427,8 +427,7 @@ async def test_inbox_entries_include_file_size_and_content_chars(
         batch_id = cast(str, batch.json()["record_id"])
         inbox = await client.get("/api/inbox")
         entries = {
-            cast(str, entry["id"]): entry
-            for entry in cast(list[dict[str, object]], inbox.json())
+            cast(str, entry["id"]): entry for entry in cast(list[dict[str, object]], inbox.json())
         }
         assert entries[note_id]["content_chars"] == len(note_body)
         assert entries[note_id]["file_size_bytes"] is None

@@ -801,13 +801,17 @@ async def test_export_restore_keeps_library(tmp_path: Path) -> None:
     assert (target / snapshot_rel).read_text(encoding="utf-8") == "快照正文"
     async with aiosqlite.connect(target / "knowrealm.db") as connection:
         version = await (await connection.execute("PRAGMA user_version")).fetchone()
+        assert version is not None
         assert cast(int, version[0]) == supported_user_version()
         item_count = await (
             await connection.execute("SELECT count(*) FROM library_items")
         ).fetchone()
+        assert item_count is not None
         link_count = await (
             await connection.execute("SELECT count(*) FROM library_item_records")
         ).fetchone()
+        assert link_count is not None
         uri = await (await connection.execute("SELECT origin_uri FROM library_items")).fetchone()
+        assert uri is not None
     assert item_count[0] == 1 and link_count[0] == 1
     assert uri[0] == "https://example.com/snap"

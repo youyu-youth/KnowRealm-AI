@@ -446,7 +446,8 @@ async def test_restart_recovers_running_jobs_and_keeps_archived_course_transcrip
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = [datetime(2026, 8, 21, tzinfo=UTC)]
+    # 软删时间用相对当前时刻：固定日期会被启动期 30 天回收站清理物理删除（日期炸弹）。
+    clock = [datetime.now(UTC) - timedelta(hours=1)]
     monkeypatch.setattr("app.modules.transcript.document_worker.utcnow", lambda: clock[0])
     data_dir = tmp_path / "KnowRealm"
     async with running_document_app(data_dir) as (_, client):

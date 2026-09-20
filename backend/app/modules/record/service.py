@@ -88,10 +88,7 @@ class RecordService:
             .order_by(Record.created_at.desc(), Record.id.desc())
         )
         rows = (await session.execute(statement)).all()
-        return [
-            (record, file_size, content_chars)
-            for record, file_size, content_chars in rows
-        ]
+        return [(record, file_size, content_chars) for record, file_size, content_chars in rows]
 
     @staticmethod
     async def get_transcript(session: AsyncSession, record_id: str) -> Transcript | None:

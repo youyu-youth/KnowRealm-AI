@@ -98,9 +98,7 @@ def split_key_items(items: list[str]) -> list[str]:
     for raw in items:
         text = raw.strip()
         while len(text) > _KEY_ITEM_MAX_LENGTH:
-            cut = max(
-                text.rfind(ch, 1, _KEY_ITEM_MAX_LENGTH + 1) for ch in _KEY_ITEM_SPLITTERS
-            )
+            cut = max(text.rfind(ch, 1, _KEY_ITEM_MAX_LENGTH + 1) for ch in _KEY_ITEM_SPLITTERS)
             if cut <= 0:
                 cut = _KEY_ITEM_MAX_LENGTH
             piece = text[:cut].strip(_KEY_ITEM_SPLITTERS + " ")
