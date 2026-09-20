@@ -4,7 +4,8 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/test-utils";
-import { ChatMemoryPanel } from "./ChatMemoryPanel";
+import { useChatUiStore } from "@/features/chat/chatUiStore";
+import { ChatMemoryProposalCard } from "./ChatMemoryProposalCard";
 
 const { confirmProposal, rejectProposal } = vi.hoisted(() => ({
   confirmProposal: vi.fn(),
@@ -18,46 +19,48 @@ vi.mock("@/features/library/api/library", () => ({
   },
 }));
 
+const SESSION_ID = "session-1";
+
+function setTurnMemory(
+  proposals: { proposalId: string; items: string[] }[] = [],
+) {
+  useChatUiStore.setState({
+    turnMemory: { sessionId: SESSION_ID, memoryUsed: [], proposals },
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  useChatUiStore.setState({ turnMemory: null });
 });
 
-describe("ChatMemoryPanel", () => {
-  it("本轮无注入且无提案时不渲染", () => {
+describe("ChatMemoryProposalCard", () => {
+  it("当轮无提案时不渲染", () => {
+    setTurnMemory([]);
     const { container } = renderWithQuery(
-      <ChatMemoryPanel used={null} proposals={[]} />,
+      <ChatMemoryProposalCard sessionId={SESSION_ID} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("展示本轮注入的记忆条目", () => {
-    renderWithQuery(
-      <ChatMemoryPanel used={["先看例题", "多给反例"]} proposals={[]} />,
+  it("其他会话的当轮记忆不渲染", () => {
+    useChatUiStore.setState({
+      turnMemory: {
+        sessionId: "session-2",
+        memoryUsed: [],
+        proposals: [{ proposalId: "p-9", items: ["a"] }],
+      },
+    });
+    const { container } = renderWithQuery(
+      <ChatMemoryProposalCard sessionId={SESSION_ID} />,
     );
-    expect(
-      screen.getByRole("region", { name: "本轮 AI 记忆" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("已注入的记忆：先看例题、多给反例"),
-    ).toBeInTheDocument();
-  });
-
-  it("本轮零注入（外发关闭/无记忆）展示空态说明", () => {
-    renderWithQuery(<ChatMemoryPanel used={[]} proposals={[]} />);
-    expect(
-      screen.getByRole("region", { name: "本轮 AI 记忆" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("本轮未使用任何记忆。")).toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("确认记忆提案调用 confirm 并显示已记住", async () => {
     confirmProposal.mockResolvedValue({ status: "APPLIED" });
-    renderWithQuery(
-      <ChatMemoryPanel
-        used={null}
-        proposals={[{ proposalId: "p-1", items: ["先看例题"] }]}
-      />,
-    );
+    setTurnMemory([{ proposalId: "p-1", items: ["先看例题"] }]);
+    renderWithQuery(<ChatMemoryProposalCard sessionId={SESSION_ID} />);
     fireEvent.click(
       screen.getByRole("button", { name: "接受记忆「先看例题」" }),
     );
@@ -69,12 +72,8 @@ describe("ChatMemoryPanel", () => {
 
   it("拒绝记忆提案调用 reject 且不改任何事实", async () => {
     rejectProposal.mockResolvedValue({ status: "REJECTED" });
-    renderWithQuery(
-      <ChatMemoryPanel
-        used={[]}
-        proposals={[{ proposalId: "p-2", items: ["先看例题"] }]}
-      />,
-    );
+    setTurnMemory([{ proposalId: "p-2", items: ["先看例题"] }]);
+    renderWithQuery(<ChatMemoryProposalCard sessionId={SESSION_ID} />);
     fireEvent.click(
       screen.getByRole("button", { name: "拒绝记忆「先看例题」" }),
     );

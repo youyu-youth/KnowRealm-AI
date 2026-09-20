@@ -1644,10 +1644,7 @@
       "researchRejected": "已拒绝该保存建议。"
     },
     "memory": {
-      "panelLabel": "本轮 AI 记忆",
       "panelTitle": "本轮 AI 记忆",
-      "usedPrefix": "已注入的记忆：",
-      "usedSeparator": "、",
       "usedEmpty": "本轮未使用任何记忆。",
       "proposalPrefix": "AI 记忆提案：",
       "proposalAccepted": "已记住，感谢确认。",

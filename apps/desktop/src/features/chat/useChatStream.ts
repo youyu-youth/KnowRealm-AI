@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  chatApi,
-  type ChatMemoryProposalPayload,
-} from "@/features/chat/api/chatSessions";
+import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
+import { useChatUiStore } from "@/features/chat/chatUiStore";
 
 /**
  * 单会话的流式回答状态：发送 / 停止 / 逐字渲染 / 检索过程 / done 后失效重取。
@@ -23,25 +21,21 @@ export function useChatStream(sessionId: string) {
   const [streamedText, setStreamedText] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
   const [toolActivities, setToolActivities] = useState<ChatToolActivity[]>([]);
-  // 本轮学习者记忆（工单 06）：注入条目与待确认提案在流结束后保留展示，
-  // 下次发送 / 停止时清空（当轮语义，不落库）。
-  const [memoryUsed, setMemoryUsed] = useState<string[] | null>(null);
-  const [memoryProposals, setMemoryProposals] = useState<
-    ChatMemoryProposalPayload[]
-  >([]);
   const abortRef = useRef<AbortController | null>(null);
+  // 本轮学习者记忆（工单 06）放 chatUiStore：消息流确认卡与右栏注入展示
+  // 分属不同组件层，done 写入 / 发送与停止时清除（当轮语义，不落库）。
+  const setTurnMemory = useChatUiStore((state) => state.setTurnMemory);
+  const clearTurnMemory = useChatUiStore((state) => state.clearTurnMemory);
 
   useEffect(() => {
     // 切换会话或卸载时中止在途流，防止连接泄漏与串会话渲染。
     return () => abortRef.current?.abort();
   }, [sessionId]);
 
-  // 流式文本、工具过程卡与记忆展示同生命周期：一起置空即回到历史态。
+  // 流式文本与工具过程卡同生命周期：一起置空即回到历史态。
   const clearTransientState = useCallback(() => {
     setStreamedText(null);
     setToolActivities([]);
-    setMemoryUsed(null);
-    setMemoryProposals([]);
   }, []);
 
   const send = useCallback(
@@ -53,8 +47,7 @@ export function useChatStream(sessionId: string) {
       setStreamedText("");
       setStreamError(null);
       setToolActivities([]);
-      setMemoryUsed(null);
-      setMemoryProposals([]);
+      clearTurnMemory(sessionId);
       chatApi
         .streamMessage(
           sessionId,
@@ -84,8 +77,11 @@ export function useChatStream(sessionId: string) {
               // 先清流式临时态（历史重取后消息由 REST 承载），再落本轮记忆展示
               // （done 载荷是本轮注入记忆与待确认提案的唯一来源）。
               clearTransientState();
-              setMemoryUsed(payload.memoryUsed ?? null);
-              setMemoryProposals(payload.memoryProposals ?? []);
+              setTurnMemory({
+                sessionId,
+                memoryUsed: payload.memoryUsed ?? [],
+                proposals: payload.memoryProposals ?? [],
+              });
               // 重取消息历史（assistant 行）、会话列表（活跃度排序）与会话详情（首条消息后标题更新）。
               await queryClient.invalidateQueries({
                 queryKey: chatKeys.messages(sessionId),
@@ -127,21 +123,12 @@ export function useChatStream(sessionId: string) {
           setIsStreaming(false);
         });
     },
-    [clearTransientState, queryClient, sessionId],
+    [clearTransientState, clearTurnMemory, queryClient, sessionId, setTurnMemory],
   );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  return {
-    isStreaming,
-    streamedText,
-    streamError,
-    toolActivities,
-    memoryUsed,
-    memoryProposals,
-    send,
-    stop,
-  };
+  return { isStreaming, streamedText, streamError, toolActivities, send, stop };
 }

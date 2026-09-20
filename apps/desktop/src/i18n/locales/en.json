@@ -1656,10 +1656,7 @@
       "researchRejected": "Save suggestion rejected."
     },
     "memory": {
-      "panelLabel": "AI memory for this turn",
       "panelTitle": "AI memory for this turn",
-      "usedPrefix": "Memories used: ",
-      "usedSeparator": ", ",
       "usedEmpty": "No memory was used in this turn.",
       "proposalPrefix": "AI memory proposal: ",
       "proposalAccepted": "Remembered. Thanks for confirming.",

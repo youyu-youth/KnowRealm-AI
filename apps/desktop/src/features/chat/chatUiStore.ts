@@ -1,4 +1,15 @@
 import { create } from "zustand";
+import type { ChatMemoryProposalPayload } from "@/features/chat/api/chatSessions";
+
+/** 本轮学习者记忆的临时展示态（工单 06）：done 载荷的唯一消费来源，不落库。
+ * 同一时间只保留一条活跃会话的记忆态；切换会话或再次发送即清除。 */
+export type ChatTurnMemory = {
+  sessionId: string;
+  /** 本轮实际注入的记忆条目（空数组 = 确认未注入）。 */
+  memoryUsed: string[];
+  /** 模型本轮新建的待确认 MEMORY 提案。 */
+  proposals: ChatMemoryProposalPayload[];
+};
 
 export const CHAT_TOOL_IDS = [
   "webSearch",
@@ -27,6 +38,10 @@ type ChatUiState = {
   tools: Record<ChatDemoToolId, boolean>;
   /** 联网搜索开关按会话记忆（重启重置）；缺省值经 selectWebSearchEnabled 取「自由 ON / 挂载 OFF」。 */
   webSearchBySession: Record<string, boolean>;
+  /** 本轮学习者记忆（消息流确认卡与右栏注入展示共用，done 时写入）。 */
+  turnMemory: ChatTurnMemory | null;
+  setTurnMemory: (memory: ChatTurnMemory) => void;
+  clearTurnMemory: (sessionId: string) => void;
   toggleFavorite: (sessionId: string) => void;
   toggleTool: (tool: ChatDemoToolId) => void;
   setWebSearchEnabled: (sessionId: string, enabled: boolean) => void;
@@ -40,6 +55,12 @@ export const useChatUiStore = create<ChatUiState>((set) => ({
     documentParse: true,
   },
   webSearchBySession: {},
+  turnMemory: null,
+  setTurnMemory: (memory) => set({ turnMemory: memory }),
+  clearTurnMemory: (sessionId) =>
+    set((state) =>
+      state.turnMemory?.sessionId === sessionId ? { turnMemory: null } : state,
+    ),
   toggleFavorite: (sessionId) =>
     set((state) => {
       const next = new Set(state.favoriteSessionIds);
