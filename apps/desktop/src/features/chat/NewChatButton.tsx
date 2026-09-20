@@ -7,6 +7,7 @@ import {
   Library,
   MessageCircle,
   MessageSquarePlus,
+  Telescope,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CoursePickerDialog } from "@/features/chat/CoursePickerDialog";
 import { RecordMountDialog } from "@/features/chat/RecordMountDialog";
+import { ResearchSessionDialog } from "@/features/chat/ResearchSessionDialog";
 import { useCreateChatSession } from "@/features/chat/useCreateChatSession";
 
 type NewChatButtonProps = {
@@ -24,7 +26,8 @@ type NewChatButtonProps = {
   variant?: "default" | "outline";
 };
 
-/** 新建对话菜单：自由聊天（直达）/ 挂载记录… / 课程问答… / 全部资料（直达）。 */
+/** 新建对话菜单：自由聊天（直达）/ 挂载记录… / 课程问答… / 全部资料（直达）/
+ * 研究会话…。 */
 export function NewChatButton({
   labelKey = "chat.newSession",
   variant = "default",
@@ -32,6 +35,7 @@ export function NewChatButton({
   const { t } = useTranslation();
   const [mountOpen, setMountOpen] = useState(false);
   const [courseOpen, setCourseOpen] = useState(false);
+  const [researchOpen, setResearchOpen] = useState(false);
   const createSession = useCreateChatSession();
 
   return (
@@ -67,6 +71,10 @@ export function NewChatButton({
             <Library aria-hidden="true" />
             {t("chat.newMenu.all")}
           </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setResearchOpen(true)}>
+            <Telescope aria-hidden="true" />
+            {t("chat.newMenu.research")}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       <RecordMountDialog open={mountOpen} onOpenChange={setMountOpen} />
@@ -82,6 +90,10 @@ export function NewChatButton({
             course_id: courseId,
           })
         }
+      />
+      <ResearchSessionDialog
+        open={researchOpen}
+        onOpenChange={setResearchOpen}
       />
     </>
   );

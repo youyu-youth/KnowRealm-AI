@@ -141,6 +141,54 @@ describe("chatApi.streamMessage", () => {
     expect(tokens).toEqual(["命中"]);
   });
 
+  it("done 载荷 research_proposals 防御性收窄：合法条目透传，畸形条目静默跳过", async () => {
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
+        () => {
+          const { stream } = sseBody([
+            'event: status\ndata: {"phase":"generating"}\n\n',
+            'event: done\ndata: {"message_id":"m1","content":"结论","memory_used":[],"research_proposals":[{"proposal_id":"p1","url":"https://a.example.com/1","title":"来源 A"},{"proposal_id":42},{"proposal_id":"p2","url":"https://b.example.com","title":"来源 B","extra":true},"oops"]}\n\n',
+          ]);
+          return new HttpResponse(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        },
+      ),
+    );
+
+    let donePayload:
+      | Parameters<Parameters<typeof chatApi.streamMessage>[2]["onDone"]>[0]
+      | null = null;
+    await chatApi.streamMessage(
+      SESSION_ID,
+      "研究问题",
+      {
+        onStatus: () => undefined,
+        onToken: () => undefined,
+        onToolCall: () => undefined,
+        onToolResult: () => undefined,
+        onDone: (payload) => {
+          donePayload = payload;
+        },
+        onError: () => {
+          throw new Error("不应出现 error 事件");
+        },
+      },
+      undefined,
+    );
+
+    expect(donePayload).toEqual({
+      messageId: "m1",
+      content: "结论",
+      memoryUsed: [],
+      researchProposals: [
+        { proposalId: "p1", url: "https://a.example.com/1", title: "来源 A" },
+        { proposalId: "p2", url: "https://b.example.com", title: "来源 B" },
+      ],
+    });
+  });
+
   it("web_search 标志进请求体：显式 true 与缺省 false", async () => {
     const bodies: unknown[] = [];
     server.use(

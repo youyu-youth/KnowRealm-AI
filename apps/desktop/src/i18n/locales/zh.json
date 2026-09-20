@@ -1763,7 +1763,56 @@
       "free": "自由聊天",
       "record": "挂载记录…",
       "course": "课程问答…",
-      "all": "全部资料问答"
+      "all": "全部资料问答",
+      "research": "研究会话…"
+    },
+    "badge": {
+      "research": "研究"
+    },
+    "research": {
+      "dialogTitle": "新建研究会话",
+      "dialogDescription": "围绕一个问题做证据型研究：检索范围内资料、可联网补充，按固定结构给出证据综合。",
+      "questionLabel": "研究问题",
+      "questionPlaceholder": "例如：transformer 各注意力机制变体的取舍？",
+      "scopeLabel": "资料范围",
+      "scope": {
+        "all": "全部资料",
+        "allDesc": "检索全部未删除的记录与资料",
+        "course": "指定课程",
+        "courseDesc": "只检索所选课程的记录与资料",
+        "free": "纯联网",
+        "freeDesc": "不挂本地资料，证据仅来自联网搜索"
+      },
+      "courseLabel": "选择课程",
+      "webLabel": "联网搜索",
+      "webOnHint": "开启后 AI 可用联网搜索补充外部证据，并建议值得入库的来源。",
+      "webUnavailableHint": "未配置搜索供应商，本次研究会话仅能使用本地资料。",
+      "submit": "开始研究"
+    },
+    "researchSuggestions": {
+      "title": "可以这样开始研究",
+      "compare": {
+        "title": "比较多来源观点",
+        "description": "对比不同来源对同一问题的说法",
+        "prompt": "请研究：不同资料对这一问题的观点有什么异同？按证据整理来源差异。"
+      },
+      "conflict": {
+        "title": "找出冲突与缺口",
+        "description": "标出资料互相矛盾、证据不足之处",
+        "prompt": "请研究：现有资料中哪些说法互相冲突？哪些问题还缺乏证据支撑？"
+      },
+      "survey": {
+        "title": "调研一个问题",
+        "description": "综合已有资料给出暂定结论",
+        "prompt": "请围绕资料研究这个问题，给出暂定结论，并标注每个论断的出处。"
+      }
+    },
+    "researchProposal": {
+      "panelTitle": "AI 建议保存的来源",
+      "accepted": "已确认入库，等待抓取完成。",
+      "rejected": "已拒绝该来源，未入库。",
+      "accept": "保存「{{title}}」到资料库",
+      "reject": "拒绝保存「{{title}}」"
     },
     "coursePicker": {
       "title": "选择课程",
@@ -2387,6 +2436,7 @@
     "CHAT_COURSE_UNAVAILABLE": "挂载课程已删除，对话失效",
     "CHAT_MESSAGE_NOT_FOUND": "对话消息不存在",
     "CHAT_MESSAGE_NOT_ASSISTANT": "仅 AI 回答可保存为知识点",
+    "CHAT_RESEARCH_SCOPE_INVALID": "研究会话仅支持全部资料、课程或纯联网范围",
     "LIBRARY_INGEST_INVALID_REQUEST": "入库请求无效（正文为空或缺少必要字段）",
     "LIBRARY_ITEM_DUPLICATE_CONTENT": "已存在相同内容的资料条目",
     "LIBRARY_ITEM_LIMIT_EXCEEDED": "单条正文超过 1 MiB 上限",

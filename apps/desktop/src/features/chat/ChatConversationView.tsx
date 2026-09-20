@@ -8,6 +8,7 @@ import {
   MoreHorizontal,
   Pencil,
   Star,
+  Telescope,
   Trash2,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -24,6 +25,7 @@ import type { ChatMessage, ChatSession } from "@/features/chat/api/types";
 import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ChatMemoryProposalCard } from "@/features/chat/ChatMemoryProposalCard";
 import { ChatMessageList } from "@/features/chat/ChatMessageList";
+import { ChatResearchProposalCard } from "@/features/chat/ChatResearchProposalCard";
 import {
   ChatScopeChips,
   type ScopeChipId,
@@ -48,6 +50,7 @@ import { cn } from "@/lib/utils";
 
 type ChatConversationViewProps = {
   sessionId: string;
+  mode: ChatSession["mode"];
   title: string;
   hasCustomTitle: boolean;
   updatedAt: string;
@@ -64,6 +67,7 @@ type ChatConversationViewProps = {
 /** 中栏对话区：标题栏 + 范围 chips + 建议卡 + 消息流 + 输入区。 */
 export function ChatConversationView({
   sessionId,
+  mode,
   title,
   hasCustomTitle,
   updatedAt,
@@ -90,11 +94,13 @@ export function ChatConversationView({
     (state) => state.favoriteSessionIds,
   );
   const toggleFavorite = useChatUiStore((state) => state.toggleFavorite);
-  // 联网搜索开关按会话记忆；默认值按范围取（自由 ON / 挂载类范围 OFF，B2 延伸）。
+  const research = mode === "RESEARCH";
+  // 联网搜索开关按会话记忆；默认值研究会话恒 ON，普通会话按范围取
+  // （自由 ON / 挂载类范围 OFF，B2 延伸）。
   const mountedScope = scope !== "FREE";
   const webSearchAvailable = useWebSearchAvailability();
   const webSearchEnabled = useChatUiStore((state) =>
-    selectWebSearchEnabled(state, sessionId, mountedScope),
+    selectWebSearchEnabled(state, sessionId, mountedScope, research),
   );
   const setWebSearchEnabled = useChatUiStore(
     (state) => state.setWebSearchEnabled,
@@ -148,6 +154,12 @@ export function ChatConversationView({
         {t("chat.scope.libraryItem")}
       </span>
     ) : null;
+  const researchBadge = research ? (
+    <span className="bg-chat-accent-soft text-chat-accent flex items-center gap-1 rounded-xs px-1.5 py-px">
+      <Telescope aria-hidden="true" className="size-3" />
+      {t("chat.badge.research")}
+    </span>
+  ) : null;
 
   return (
     <article
@@ -178,6 +190,7 @@ export function ChatConversationView({
                 {t("chat.libraryItemDeleted")}
               </span>
             ) : null}
+            {researchBadge}
             {scopeBadge}
             {formatChatTimestamp(t, i18n.language, updatedAt)}
           </p>
@@ -236,7 +249,9 @@ export function ChatConversationView({
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-6">
-        {showSuggestions ? <ChatSuggestions onPick={setComposerValue} /> : null}
+        {showSuggestions ? (
+          <ChatSuggestions onPick={setComposerValue} research={research} />
+        ) : null}
         {messages.isPending ? (
           <p
             role="status"
@@ -267,6 +282,9 @@ export function ChatConversationView({
         {/* MEMORY 提案就地确认卡（工单 06）：done 后出现，确认/拒绝即定局；
             本轮注入记忆的展示在右栏上下文面板。 */}
         <ChatMemoryProposalCard sessionId={sessionId} />
+        {/* 入库提案就地确认卡（研究会话 V1）：逐条确认/拒绝，确认后走现有
+            网页入库链路；本轮展示为临时态，提案本体跨重启持久。 */}
+        <ChatResearchProposalCard sessionId={sessionId} />
         <ChatComposer
           value={composerValue}
           disabled={messages.isPending || scopeUnavailable}

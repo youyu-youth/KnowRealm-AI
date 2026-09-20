@@ -22,20 +22,49 @@ const SUGGESTIONS = [
   },
 ] as const;
 
+const RESEARCH_SUGGESTIONS = [
+  {
+    id: "researchCompare",
+    titleKey: "chat.researchSuggestions.compare.title",
+    descriptionKey: "chat.researchSuggestions.compare.description",
+    promptKey: "chat.researchSuggestions.compare.prompt",
+  },
+  {
+    id: "researchConflict",
+    titleKey: "chat.researchSuggestions.conflict.title",
+    descriptionKey: "chat.researchSuggestions.conflict.description",
+    promptKey: "chat.researchSuggestions.conflict.prompt",
+  },
+  {
+    id: "researchSurvey",
+    titleKey: "chat.researchSuggestions.survey.title",
+    descriptionKey: "chat.researchSuggestions.survey.description",
+    promptKey: "chat.researchSuggestions.survey.prompt",
+  },
+] as const;
+
 type ChatSuggestionsProps = {
   onPick: (prompt: string) => void;
+  /** 研究会话换研究特化示例（研究会话 V1）。 */
+  research?: boolean;
 };
 
 /** 空会话的提问建议（文案为向导示意，点击后填入输入框，可自由修改再发送）。 */
-export function ChatSuggestions({ onPick }: ChatSuggestionsProps) {
+export function ChatSuggestions({
+  onPick,
+  research = false,
+}: ChatSuggestionsProps) {
   const { t } = useTranslation();
+  const suggestions = research ? RESEARCH_SUGGESTIONS : SUGGESTIONS;
   return (
     <section className="pt-6">
       <p className="text-body-dense text-muted-foreground">
-        {t("chat.suggestions.title")}
+        {research
+          ? t("chat.researchSuggestions.title")
+          : t("chat.suggestions.title")}
       </p>
       <div className="mt-3 grid gap-2 lg:grid-cols-3">
-        {SUGGESTIONS.map((suggestion) => (
+        {suggestions.map((suggestion) => (
           <button
             key={suggestion.id}
             type="button"

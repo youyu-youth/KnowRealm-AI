@@ -1781,7 +1781,56 @@
       "free": "Free chat",
       "record": "Mount a record…",
       "course": "Course Q&A…",
-      "all": "All materials Q&A"
+      "all": "All materials Q&A",
+      "research": "Research session…"
+    },
+    "badge": {
+      "research": "Research"
+    },
+    "research": {
+      "dialogTitle": "New research session",
+      "dialogDescription": "Run evidence-based research on a question: search materials in scope, optionally the web, and get a structured synthesis.",
+      "questionLabel": "Research question",
+      "questionPlaceholder": "e.g. What are the trade-offs between transformer attention variants?",
+      "scopeLabel": "Materials scope",
+      "scope": {
+        "all": "All materials",
+        "allDesc": "Search across all non-deleted records and materials",
+        "course": "Specific course",
+        "courseDesc": "Search only records and materials of the chosen course",
+        "free": "Web only",
+        "freeDesc": "No local materials; evidence comes only from web search"
+      },
+      "courseLabel": "Choose a course",
+      "webLabel": "Web search",
+      "webOnHint": "When enabled, the AI can use web search to add external evidence and suggest sources worth saving.",
+      "webUnavailableHint": "No search provider configured; this research session can only use local materials.",
+      "submit": "Start research"
+    },
+    "researchSuggestions": {
+      "title": "Ways to start your research",
+      "compare": {
+        "title": "Compare sources",
+        "description": "Contrast what different sources say on a question",
+        "prompt": "Please research: how do my materials differ or agree on this question? Organize the differences with evidence."
+      },
+      "conflict": {
+        "title": "Surface conflicts and gaps",
+        "description": "Point out contradictions and missing evidence",
+        "prompt": "Please research: which claims in my materials conflict with each other, and which questions still lack evidence?"
+      },
+      "survey": {
+        "title": "Investigate a question",
+        "description": "Synthesize existing materials into a tentative conclusion",
+        "prompt": "Please research this question across my materials, give a tentative conclusion, and cite the source of every claim."
+      }
+    },
+    "researchProposal": {
+      "panelTitle": "Sources the AI suggests saving",
+      "accepted": "Confirmed; waiting for the fetch to finish.",
+      "rejected": "Rejected; nothing was saved.",
+      "accept": "Save \"{{title}}\" to the library",
+      "reject": "Don't save \"{{title}}\""
     },
     "coursePicker": {
       "title": "Choose a course",
@@ -2405,6 +2454,7 @@
     "CHAT_COURSE_UNAVAILABLE": "The mounted course was deleted; this chat is read-only",
     "CHAT_MESSAGE_NOT_FOUND": "Chat message not found",
     "CHAT_MESSAGE_NOT_ASSISTANT": "Only AI answers can be saved as knowledge points",
+    "CHAT_RESEARCH_SCOPE_INVALID": "Research sessions only support All materials, a course, or web-only scope",
     "LIBRARY_INGEST_INVALID_REQUEST": "Invalid ingest request (empty content or missing fields)",
     "LIBRARY_ITEM_DUPLICATE_CONTENT": "An item with identical content already exists",
     "LIBRARY_ITEM_LIMIT_EXCEEDED": "Content exceeds the 1 MiB limit",

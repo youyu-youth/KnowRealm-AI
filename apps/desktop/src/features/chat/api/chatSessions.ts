@@ -31,6 +31,13 @@ export type ChatMemoryProposalPayload = {
   items: string[];
 };
 
+/** 模型经 propose_ingest 创建的待确认入库提案（研究会话 V1，done 载荷透传）。 */
+export type ChatResearchProposalPayload = {
+  proposalId: string;
+  url: string;
+  title: string;
+};
+
 export type ChatDonePayload = {
   messageId: string;
   content: string;
@@ -38,43 +45,63 @@ export type ChatDonePayload = {
   memoryUsed?: string[];
   /** 本轮新建的 MEMORY 提案（无时缺省）。 */
   memoryProposals?: ChatMemoryProposalPayload[];
+  /** 本轮新建的 RESEARCH_INGEST 入库提案（无时缺省，研究会话）。 */
+  researchProposals?: ChatResearchProposalPayload[];
 };
 
 /**
- * done 载荷的可选扩展字段（工单 06）：本轮注入记忆与新建记忆提案。
- * 载荷来自后端 JSON，字段形态经防御性收窄，缺省即 undefined（安全省略）。
+ * done 载荷的可选扩展字段（工单 06 / 研究会话 V1）：本轮注入记忆与新建提案
+ * （记忆 + 入库）。载荷来自后端 JSON，字段形态经防御性收窄，缺省即 undefined
+ * （安全省略）；形状不符的提案静默跳过。
  */
-function parseMemoryFields(data: Record<string, unknown>): {
+function parseTurnProposalFields(data: Record<string, unknown>): {
   memoryUsed?: string[];
   memoryProposals?: ChatMemoryProposalPayload[];
+  researchProposals?: ChatResearchProposalPayload[];
 } {
+  // 源字段缺席时键省略（缺省即 undefined，向后兼容旧载荷）。
   const memoryUsed = Array.isArray(data.memory_used)
     ? data.memory_used.filter(
         (item): item is string => typeof item === "string",
       )
     : undefined;
-  if (!Array.isArray(data.memory_proposals)) {
-    return { memoryUsed };
-  }
-  const memoryProposals = data.memory_proposals.flatMap(
-    (item): ChatMemoryProposalPayload[] => {
-      // 收窄理由：载荷未经 schema 校验，逐字段防御；形状不符的提案静默跳过。
-      if (typeof item !== "object" || item === null) return [];
-      const raw = item as Record<string, unknown>;
-      if (typeof raw.proposal_id !== "string" || !Array.isArray(raw.items)) {
-        return [];
-      }
-      return [
-        {
-          proposalId: raw.proposal_id,
-          items: raw.items.filter(
-            (entry): entry is string => typeof entry === "string",
-          ),
-        },
-      ];
-    },
+  const memoryProposals = parseProposalList(data.memory_proposals, (raw) =>
+    typeof raw.proposal_id === "string" && Array.isArray(raw.items)
+      ? [
+          {
+            proposalId: raw.proposal_id,
+            items: raw.items.filter(
+              (entry): entry is string => typeof entry === "string",
+            ),
+          },
+        ]
+      : [],
   );
-  return { memoryUsed, memoryProposals };
+  const researchProposals = parseProposalList(data.research_proposals, (raw) =>
+    typeof raw.proposal_id === "string" &&
+    typeof raw.url === "string" &&
+    typeof raw.title === "string"
+      ? [{ proposalId: raw.proposal_id, url: raw.url, title: raw.title }]
+      : [],
+  );
+  return {
+    ...(memoryUsed !== undefined ? { memoryUsed } : {}),
+    ...(Array.isArray(data.memory_proposals) ? { memoryProposals } : {}),
+    ...(Array.isArray(data.research_proposals) ? { researchProposals } : {}),
+  };
+}
+
+function parseProposalList<T>(
+  value: unknown,
+  toPayload: (raw: Record<string, unknown>) => T[],
+): T[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item): T[] => {
+    if (typeof item !== "object" || item === null) return [];
+    return toPayload(item as Record<string, unknown>);
+  });
 }
 
 export type ChatStreamHandlers = {
@@ -162,7 +189,7 @@ async function streamMessage(
             handlers.onDone({
               messageId: data.message_id,
               content: data.content,
-              ...parseMemoryFields(data),
+              ...parseTurnProposalFields(data),
             });
           }
           break;

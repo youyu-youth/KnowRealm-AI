@@ -25,7 +25,12 @@ function setTurnMemory(
   proposals: { proposalId: string; items: string[] }[] = [],
 ) {
   useChatUiStore.setState({
-    turnMemory: { sessionId: SESSION_ID, memoryUsed: [], proposals },
+    turnMemory: {
+      sessionId: SESSION_ID,
+      memoryUsed: [],
+      proposals,
+      researchProposals: [],
+    },
   });
 }
 
@@ -49,6 +54,7 @@ describe("ChatMemoryProposalCard", () => {
         sessionId: "session-2",
         memoryUsed: [],
         proposals: [{ proposalId: "p-9", items: ["a"] }],
+        researchProposals: [],
       },
     });
     const { container } = renderWithQuery(

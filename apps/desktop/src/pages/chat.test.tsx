@@ -379,6 +379,44 @@ describe("AI 对话", () => {
     expect(screen.queryByRole("listitem")).not.toBeInTheDocument();
   });
 
+  it("研究会话在列表行与标题栏展示「研究」徽章，空会话建议卡换研究示例", async () => {
+    const research = chatSession(FIRST_SESSION_ID, {
+      mode: "RESEARCH",
+      scope: "ALL",
+      title: "transformer 变体调研",
+    });
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([research]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () => HttpResponse.json(research),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () => HttpResponse.json([]),
+      ),
+    );
+
+    renderAt("/chat");
+
+    const row = await screen.findByRole("listitem");
+    expect(row).toHaveTextContent("研究");
+
+    // 打开会话：标题栏出现「研究」徽章，建议卡换研究特化示例。
+    fireEvent.click(screen.getByRole("link", { name: /transformer 变体调研/ }));
+    const article = await screen.findByRole("article", {
+      name: /transformer 变体调研/,
+    });
+    expect(within(article).getByText("研究")).toBeVisible();
+    expect(await screen.findByText("可以这样开始研究")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: /比较多来源观点/ }),
+    ).toBeEnabled();
+    expect(screen.queryByText("你可以这样提问")).not.toBeInTheDocument();
+  });
+
   it("会话页对不存在的会话给出诚实状态与返回入口", async () => {
     server.use(
       http.get(

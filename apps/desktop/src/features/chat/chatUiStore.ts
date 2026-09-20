@@ -1,7 +1,11 @@
 import { create } from "zustand";
-import type { ChatMemoryProposalPayload } from "@/features/chat/api/chatSessions";
+import type {
+  ChatMemoryProposalPayload,
+  ChatResearchProposalPayload,
+} from "@/features/chat/api/chatSessions";
 
-/** 本轮学习者记忆的临时展示态（工单 06）：done 载荷的唯一消费来源，不落库。
+/** 本轮学习者记忆与入库提案的临时展示态（工单 06 / 研究会话 V1）：done 载荷的
+ * 唯一消费来源，不落库（提案本体已在 agent_proposals 表跨重启持久）。
  * 同一时间只保留一条活跃会话的记忆态；切换会话或再次发送即清除。 */
 export type ChatTurnMemory = {
   sessionId: string;
@@ -9,6 +13,8 @@ export type ChatTurnMemory = {
   memoryUsed: string[];
   /** 模型本轮新建的待确认 MEMORY 提案。 */
   proposals: ChatMemoryProposalPayload[];
+  /** 模型本轮经 propose_ingest 新建的待确认入库提案（研究会话）。 */
+  researchProposals: ChatResearchProposalPayload[];
 };
 
 export const CHAT_TOOL_IDS = [
@@ -76,11 +82,13 @@ export const useChatUiStore = create<ChatUiState>((set) => ({
     })),
 }));
 
-/** 联网开关当前值：用户拨过按会话记忆，否则按会话类型取默认（自由 ON / 挂载 OFF）。 */
+/** 联网开关当前值：用户拨过按会话记忆，否则按会话类型取默认
+ * （研究会话恒 ON；普通会话自由 ON / 挂载 OFF）。 */
 export function selectWebSearchEnabled(
   state: Pick<ChatUiState, "webSearchBySession">,
   sessionId: string,
   mounted: boolean,
+  research = false,
 ): boolean {
-  return state.webSearchBySession[sessionId] ?? !mounted;
+  return state.webSearchBySession[sessionId] ?? (research || !mounted);
 }

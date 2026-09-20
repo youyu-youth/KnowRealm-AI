@@ -201,6 +201,11 @@ function ChatSessionRow({
                   {t("chat.courseDeleted")}
                 </span>
               ) : null}
+              {session.mode === "RESEARCH" ? (
+                <span className="bg-chat-accent-soft text-chat-accent rounded-xs px-1.5 py-px">
+                  {t("chat.badge.research")}
+                </span>
+              ) : null}
               {scopeLabel ? (
                 <span className="bg-surface-strong text-ink-muted rounded-xs px-1.5 py-px">
                   {scopeLabel}

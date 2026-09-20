@@ -116,6 +116,7 @@ export function ChatWorkspace({
           <ChatConversationView
             key={sessionId}
             sessionId={sessionId}
+            mode={detail.data.mode}
             title={detail.data.title ?? t("chat.untitled")}
             hasCustomTitle={detail.data.title !== null}
             updatedAt={detail.data.updated_at}

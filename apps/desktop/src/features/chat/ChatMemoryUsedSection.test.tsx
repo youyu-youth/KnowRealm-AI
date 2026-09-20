@@ -27,6 +27,7 @@ describe("ChatMemoryUsedSection", () => {
         sessionId: SESSION_ID,
         memoryUsed: ["先看例题", "多给反例"],
         proposals: [],
+        researchProposals: [],
       },
     });
     renderWithQuery(<ChatMemoryUsedSection sessionId={SESSION_ID} />);
@@ -40,7 +41,12 @@ describe("ChatMemoryUsedSection", () => {
 
   it("本轮零注入（外发关闭/无记忆）展示空态说明", () => {
     useChatUiStore.setState({
-      turnMemory: { sessionId: SESSION_ID, memoryUsed: [], proposals: [] },
+      turnMemory: {
+        sessionId: SESSION_ID,
+        memoryUsed: [],
+        proposals: [],
+        researchProposals: [],
+      },
     });
     renderWithQuery(<ChatMemoryUsedSection sessionId={SESSION_ID} />);
     expect(screen.getByText("本轮未使用任何记忆。")).toBeInTheDocument();
@@ -52,6 +58,7 @@ describe("ChatMemoryUsedSection", () => {
         sessionId: "session-2",
         memoryUsed: ["别的会话的记忆"],
         proposals: [],
+        researchProposals: [],
       },
     });
     const { container } = renderWithQuery(
