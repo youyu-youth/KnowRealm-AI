@@ -49,7 +49,11 @@ from app.modules.agent.tools.search_courses import (
     search_courses,
 )
 from app.modules.library.proposals import ProposalService
-from app.modules.library.schemas import ProposalCreateRequest, ProposalType
+from app.modules.library.schemas import (
+    ProposalCreateRequest,
+    ProposalListQuery,
+    ProposalType,
+)
 from app.shared.errors import CodedHTTPException
 
 TOKEN = "test-launch-token"
@@ -597,6 +601,40 @@ async def test_course_create_reject_keeps_no_business_fact(tmp_path: Path) -> No
             with pytest.raises(CodedHTTPException) as exc_info:
                 await ProposalService.confirm(session, proposal.id)
         assert exc_info.value.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_proposal_list_filters_by_session_across_statuses(tmp_path: Path) -> None:
+    """列表按 session_id 过滤且不限状态（工单 02 review）：断线/重启后
+    经既有提案查询恢复本会话全状态提案（含 APPLIED 回执 result）。"""
+    async with bare_db(tmp_path) as session_factory:
+        created: dict[str, str] = {}
+        for session_key in ("sess-1", "sess-2"):
+            async with session_factory() as session:
+                proposal = await ProposalService.create(
+                    session,
+                    ProposalCreateRequest(
+                        proposal_type=ProposalType.COURSE_CREATE,
+                        payload={
+                            "name": f"课程-{session_key}",
+                            "learning_context": "SCHOOL",
+                            "education_stage": "HIGH_SCHOOL",
+                        },
+                        session_id=session_key,
+                    ),
+                )
+            created[session_key] = proposal.id
+        async with session_factory() as session:
+            await ProposalService.confirm(session, created["sess-1"])
+        async with session_factory() as session:
+            listing = await ProposalService.list_proposals(
+                session, ProposalListQuery(session_id="sess-1")
+            )
+        assert [proposal.id for proposal in listing] == [created["sess-1"]]
+        assert listing[0].status.value == "APPLIED"
+        assert listing[0].result is not None
+        assert isinstance(listing[0].result["course_id"], str)
+        assert listing[0].session_id == "sess-1"
 
 
 @pytest.mark.anyio

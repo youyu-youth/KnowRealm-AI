@@ -101,6 +101,8 @@ class ProposalService:
             stmt = stmt.where(AgentProposal.status == query.status.value)
         if query.proposal_type is not None:
             stmt = stmt.where(AgentProposal.proposal_type == query.proposal_type.value)
+        if query.session_id is not None:
+            stmt = stmt.where(AgentProposal.session_id == query.session_id)
         proposals = list((await session.scalars(stmt)).all())
         return [_proposal_out(p) for p in proposals]
 

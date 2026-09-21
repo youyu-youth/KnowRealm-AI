@@ -9124,6 +9124,7 @@ export interface operations {
             query?: {
                 status?: components["schemas"]["ProposalStatus"] | null;
                 proposal_type?: components["schemas"]["ProposalType"] | null;
+                session_id?: string | null;
             };
             header?: {
                 "x-knowrealm-token"?: string | null;

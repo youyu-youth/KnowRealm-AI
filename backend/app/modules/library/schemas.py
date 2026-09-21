@@ -303,6 +303,8 @@ class AgentProposalOut(BaseModel):
 class ProposalListQuery(BaseModel):
     status: ProposalStatus | None = None
     proposal_type: ProposalType | None = None
+    # 会话维度过滤（工单 02 review）：聊天操作提案卡按本会话全状态恢复回执。
+    session_id: str | None = None
 
 
 # ---------------------------------------------------------------------------

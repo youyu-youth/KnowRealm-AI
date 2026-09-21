@@ -13953,6 +13953,22 @@
             }
           },
           {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
             "in": "header",
             "name": "x-knowrealm-token",
             "required": false,
