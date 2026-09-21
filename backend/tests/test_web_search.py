@@ -4,19 +4,22 @@ import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import cast
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.main import create_app
-from app.modules.agent.tools.web_search import (
-    bind_web_search,
-    reset_web_search,
-    web_search,
+from app.modules.agent.runtime import (
+    AgentRuntimeContext,
+    bind_agent_runtime_context,
+    reset_agent_runtime_context,
 )
+from app.modules.agent.tools.web_search import web_search
 from app.modules.search.integrations.tavily import TavilySearchClient
-from app.modules.search.web_search import WebSearchError, WebSearchHit
+from app.modules.search.web_search import SearchProvider, WebSearchError, WebSearchHit
 
 TOKEN = "test-launch-token"
 WEB_SEARCH_URL = "/api/settings/providers/web-search"
@@ -125,11 +128,17 @@ class FakeProvider:
 
 
 async def call_web_search(query: str, provider: object) -> str:
-    token = bind_web_search(provider)  # type: ignore[arg-type]
+    token = bind_agent_runtime_context(
+        AgentRuntimeContext(
+            session_factory=async_sessionmaker(),  # 本用例不触库，仅占位
+            session_id="sess-web",
+            web_search_provider=cast("SearchProvider", provider),
+        )
+    )
     try:
         return await web_search.ainvoke({"query": query})
     finally:
-        reset_web_search(token)
+        reset_agent_runtime_context(token)
 
 
 @pytest.mark.anyio

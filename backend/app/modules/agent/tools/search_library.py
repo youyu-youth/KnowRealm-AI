@@ -1,23 +1,25 @@
 """范围会话的统一检索工具（工单 04：消费 LibraryRetrievalService，chat→library 单向）。
 
 五档挂载会话（RECORD / LIBRARY_ITEM / COURSE / ALL）统一只挂本工具：作用域
-与目标 id 由会话运行时经 ContextVar 绑定，AgentConfig 挂载变体保持常量；
-FREE 不挂任何检索工具。工具预算（contract §3）在此生效：每轮调用次数上限、
-单次载荷截断、累计回喂截断——超限截断并附 truncated 说明，不静默丢弃。
+与目标 id 由统一 Agent 运行时上下文承载（工单 01 起随每轮流式生成绑定，
+见 agent/runtime.py），AgentConfig 挂载变体保持常量；FREE 不挂任何检索工具。
+工具预算（contract §3）在此生效：每轮调用次数上限、单次载荷截断、累计回喂
+截断——超限截断并附 truncated 说明，不静默丢弃。
 
 search_transcript 已退出模型可见工具面（迁移期记录级子串兜底由本工具经
 服务继承）；web_search 为独立联网工具，与本地检索互不冒充。
 """
 
 import json
-from contextvars import ContextVar, Token
-from dataclasses import dataclass, field
 from typing import cast
 
 from langchain_core.tools import tool
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.modules.agent.schemas import ChatScope
+from app.modules.agent.runtime import (
+    MAX_TOOL_CALLS_PER_TURN,
+    ToolCallBudget,
+    current_agent_runtime,
+)
 from app.modules.library.retrieval import (
     # 评测基线（test_library_retrieval_eval）从这里复用冻结值；本模块不再直接消费。
     CONCEPT_MATCH_LIMIT,  # noqa: F401  # pyright: ignore[reportUnusedImport]
@@ -29,43 +31,10 @@ from app.modules.library.retrieval import (
     RetrievalScope,
 )
 
-# 工具预算（contract §3 冻结值）。
-MAX_TOOL_CALLS_PER_TURN = 6
+# 本工具的载荷截断预算（contract §3 冻结值）；调用次数上限与累计器随统一
+# 运行时上下文（MAX_TOOL_CALLS_PER_TURN / ToolCallBudget，见 agent/runtime.py）。
 TOOL_RESULT_MAX_CHARS = 4_000
 TOOL_ROUND_OUTPUT_MAX_CHARS = 12_000
-
-
-@dataclass
-class ToolCallBudget:
-    """每轮（每条用户消息）的检索预算累计器：随上下文每轮重建。"""
-
-    calls_used: int = 0
-    chars_fed: int = 0
-
-
-@dataclass
-class LibrarySearchContext:
-    """范围检索的运行期上下文（每轮生成前绑定，工具执行期读取）。"""
-
-    scope: ChatScope  # RECORD | LIBRARY_ITEM | COURSE | ALL
-    course_id: str | None  # 概念扩展与课程边界（RECORD=记录所属课程，ALL=None）
-    session_factory: async_sessionmaker[AsyncSession]
-    record_id: str | None = None  # RECORD 会话非空
-    library_item_id: str | None = None  # LIBRARY_ITEM 会话非空
-    budget: ToolCallBudget = field(default_factory=ToolCallBudget)
-
-
-_library_context: ContextVar[LibrarySearchContext | None] = ContextVar(
-    "chat_search_library_context", default=None
-)
-
-
-def bind_library_context(context: LibrarySearchContext) -> Token[LibrarySearchContext | None]:
-    return _library_context.set(context)
-
-
-def reset_library_context(token: Token[LibrarySearchContext | None]) -> None:
-    _library_context.reset(token)
 
 
 def _hit_payload(hit: EvidenceHit) -> dict[str, object]:
@@ -180,7 +149,7 @@ async def search_library(query: str) -> str:
     原文引用。没有命中就换同义词重试（不超过 2 次）；范围内确实没有证据时
     如实说明「当前资料中未找到」，不要编造资料中不存在的内容。
     """
-    context = _library_context.get()
+    context = current_agent_runtime()
     if context is None:
         return _payload(message="当前对话未挂载资料范围，无法检索。")
     needle = query.strip()

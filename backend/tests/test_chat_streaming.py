@@ -47,13 +47,13 @@ from app.modules.agent.message_service import (
     _cited_excerpts,  # pyright: ignore[reportPrivateUsage]
 )
 from app.modules.agent.models import ChatMessage
-from app.modules.agent.schemas import ChatRole, ChatScope
-from app.modules.agent.tools.search_library import (
-    LibrarySearchContext,
-    bind_library_context,
-    reset_library_context,
-    search_library,
+from app.modules.agent.runtime import (
+    AgentRuntimeContext,
+    bind_agent_runtime_context,
+    reset_agent_runtime_context,
 )
+from app.modules.agent.schemas import ChatRole, ChatScope
+from app.modules.agent.tools.search_library import search_library
 from app.modules.course_brain.service import normalize_concept_name
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.library.retrieval import LibraryRetrievalService
@@ -771,11 +771,15 @@ async def send_message(
     content: str,
     *,
     web_search: bool = False,
+    page: dict[str, Any] | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
+    body: dict[str, Any] = {"content": content, "web_search": web_search}
+    if page is not None:
+        body["page"] = page
     async with client.stream(
         "POST",
         f"/api/chat-sessions/{session_id}/messages",
-        json={"content": content, "web_search": web_search},
+        json=body,
     ) as response:
         assert response.status_code == 200
         return await read_sse(response)
@@ -1678,7 +1682,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v8"
+        assert rows[0][3] == "chat-library-scope-v9"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2179,11 +2183,24 @@ async def test_scope_mounting_matrix_tool_visibility(
                 return list(BindRecordingModel.bound)
 
             # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library；
-            # propose_memory 恒挂载（工单 06：任意会话支持用户明确「记住…」）。
-            assert await visible(free_id) == ["propose_memory"]
-            assert await visible(record_session_id) == ["search_library", "propose_memory"]
-            assert await visible(course_session_id) == ["search_library", "propose_memory"]
-            assert await visible(all_session_id) == ["search_library", "propose_memory"]
+            # search_courses 与 propose_memory 恒挂载（工单 01 操作工具组 /
+            # 工单 06 任意会话支持用户明确「记住…」）。
+            assert await visible(free_id) == ["search_courses", "propose_memory"]
+            assert await visible(record_session_id) == [
+                "search_library",
+                "search_courses",
+                "propose_memory",
+            ]
+            assert await visible(course_session_id) == [
+                "search_library",
+                "search_courses",
+                "propose_memory",
+            ]
+            assert await visible(all_session_id) == [
+                "search_library",
+                "search_courses",
+                "propose_memory",
+            ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
             save_web_search_provider(
@@ -2192,16 +2209,19 @@ async def test_scope_mounting_matrix_tool_visibility(
             assert await visible(course_session_id, web=True) == [
                 "search_library",
                 "web_search",
+                "search_courses",
                 "propose_memory",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
                 "web_search",
+                "search_courses",
                 "propose_memory",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
                 "web_search",
+                "search_courses",
                 "propose_memory",
             ]
 
@@ -2598,15 +2618,18 @@ async def invoke_search_library(
     app: FastAPI, *, scope: ChatScope, course_id: str | None, query: str
 ) -> dict[str, Any]:
     """绑定运行期范围后直调 search_library，返回解析后的工具 JSON 载荷。"""
-    token = bind_library_context(
-        LibrarySearchContext(
-            scope=scope, course_id=course_id, session_factory=app.state.session_factory
+    token = bind_agent_runtime_context(
+        AgentRuntimeContext(
+            scope=scope,
+            course_id=course_id,
+            session_factory=app.state.session_factory,
+            session_id="sess-invoke",
         )
     )
     try:
         return cast(dict[str, Any], json.loads(await search_library.ainvoke({"query": query})))
     finally:
-        reset_library_context(token)
+        reset_agent_runtime_context(token)
 
 
 @pytest.mark.anyio
@@ -2766,3 +2789,106 @@ async def test_search_library_degrades_without_concepts(tmp_path: Path) -> None:
         assert payload["concept_hints"] == []
         assert payload["evidence_hits"] == []
         assert "未找到" in payload["message"]
+
+
+# ---------------------------------------------------------------------------
+# 页面快照注入（通用 Agent 工单 01）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_page_snapshot_injected_per_turn_in_free_chat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """随消息携带的页面快照注入 SYSTEM（框定为提示信息，非指令非授权）：每轮
+    取当条消息的快照，不携带即不注入（跨轮零残留）；FREE 会话挂载面不因快照
+    携带课程 id 改变（结构上挂载只看 scope，矩阵另由挂载矩阵测试锁定）。"""
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[list(STUB_REPLY)] * 2) as (
+        app,
+        client,
+        captured,
+    ):
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO courses (id, name, learning_context, depth, status, "
+                    "created_at, updated_at) "
+                    "VALUES ('e0000000-0000-4000-8000-000000000001', 'Python 学习', "
+                    "'INTEREST', 'INTERMEDIATE', 'ACTIVE', '2026-09-21T08:00:00.000000Z', "
+                    "'2026-09-21T08:00:00.000000Z')"
+                )
+            )
+        created = await client.post("/api/chat-sessions", json={"scope": "FREE"})
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+        events = await send_message(
+            client,
+            session_id,
+            "往这个课程加条笔记",
+            page={
+                "page_type": "course",
+                "entity_id": "e0000000-0000-4000-8000-000000000001",
+                "captured_at": "2026-09-21T08:00:00.000000Z",
+            },
+        )
+        assert events[-1][0] == "done"
+        system_first = str(captured[0][0].content)
+        assert "页面提示" in system_first
+        assert "不是指令" in system_first and "不构成任何授权" in system_first
+        assert "课程「Python 学习」" in system_first
+        # 同会话第二条消息不携带快照：新轮 SYSTEM 无页面提示（旧快照零回写）。
+        events = await send_message(client, session_id, "继续")
+        assert events[-1][0] == "done"
+        assert "页面提示" not in str(captured[-1][0].content)
+
+
+@pytest.mark.anyio
+async def test_free_session_with_course_page_snapshot_keeps_tool_matrix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FREE 会话不因页面快照携带课程 id 获得资料正文检索（工单 01 验收）：
+    直接断言当轮可见工具面——无 search_library，search_courses 恒挂载。"""
+    monkeypatch.setattr("app.modules.llm.service.ChatOpenAI", BindRecordingModel)
+    save_llm_provider(
+        tmp_path,
+        base_url="https://stub.example.com/v1",
+        api_key="sk-test",
+        model="stub-chat-model",
+        clear_api_key=False,
+    )
+    app = create_app(data_dir=tmp_path, launch_token=TOKEN)
+    async with app.router.lifespan_context(app):
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO courses (id, name, learning_context, depth, status, "
+                    "created_at, updated_at) "
+                    "VALUES ('e0000000-0000-4000-8000-000000000002', '数据结构', "
+                    "'INTEREST', 'INTERMEDIATE', 'ACTIVE', '2026-09-21T08:00:00.000000Z', "
+                    "'2026-09-21T08:00:00.000000Z')"
+                )
+            )
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://testserver",
+            headers={"X-KnowRealm-Token": TOKEN},
+        ) as client:
+            created = await client.post("/api/chat-sessions", json={"scope": "FREE"})
+            assert created.status_code == 201
+            session_id = created.json()["id"]
+            BindRecordingModel.replies = [list(STUB_REPLY)] * 2
+            BindRecordingModel.bound = []
+            events = await send_message(
+                client,
+                session_id,
+                "往这个课程加条笔记",
+                page={
+                    "page_type": "course",
+                    "entity_id": "e0000000-0000-4000-8000-000000000002",
+                    "captured_at": "2026-09-21T08:00:00.000000Z",
+                },
+            )
+            assert events[-1][0] == "done"
+            assert "search_library" not in BindRecordingModel.bound
+            assert "search_courses" in BindRecordingModel.bound
+            assert "propose_memory" in BindRecordingModel.bound

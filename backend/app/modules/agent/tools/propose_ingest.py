@@ -3,18 +3,17 @@
 研究会话中模型经 web_search 发现值得入库的外部来源时调用本工具创建
 RESEARCH_INGEST 提案（创建不改任何事实、不抓取）；提案经前端就地确认卡
 HITL 确认后，由 library 域应用器真实抓取入库。运行期上下文（session_factory
-/ session_id / 范围课程）由会话每轮经 ContextVar 绑定（先例 propose_memory）；
-scope=COURSE 自动带课程 id，ALL/FREE 落 None 由用户后续整理。
+/ session_id / 范围课程）由统一 Agent 运行时上下文承载（工单 01 起，先例
+propose_memory，见 agent/runtime.py）；scope=COURSE 自动带课程 id，ALL/FREE
+落 None 由用户后续整理。
 """
 
 import json
-from contextvars import ContextVar, Token
-from dataclasses import dataclass
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
 
@@ -35,30 +34,8 @@ class IngestSource(BaseModel):
     title: str = Field(min_length=1, max_length=PROPOSE_INGEST_TITLE_MAX_CHARS)
 
 
-@dataclass
-class ResearchIngestContext:
-    """入库提案的运行期绑定：提案溯源到会话（session_id 非授权）；
-    course_id 仅 COURSE 范围会话非空。"""
-
-    session_factory: async_sessionmaker[AsyncSession]
-    session_id: str
-    course_id: str | None = None
-
-
 # 工具名（langchain @tool 注册名 = 函数名）：流式分发按名识别本工具的返回。
 PROPOSE_INGEST_TOOL_NAME = "propose_ingest"
-
-_ingest_context: ContextVar[ResearchIngestContext | None] = ContextVar(
-    "chat_propose_ingest_context", default=None
-)
-
-
-def bind_ingest_context(context: ResearchIngestContext) -> Token[ResearchIngestContext | None]:
-    return _ingest_context.set(context)
-
-
-def reset_ingest_context(token: Token[ResearchIngestContext | None]) -> None:
-    _ingest_context.reset(token)
 
 
 @tool
@@ -69,7 +46,7 @@ async def propose_ingest(sources: list[IngestSource]) -> str:
     不得编造或修改）；一次最多 5 条。创建的是待用户确认的入库提案，用户逐条
     确认后才会真正抓取入库；调用成功后告知用户已生成建议保存提案、等待其确认。
     """
-    context = _ingest_context.get()
+    context = current_agent_runtime()
     if context is None:
         return json.dumps(
             {"ok": False, "error": "RESEARCH_INGEST_CONTEXT_UNBOUND"}, ensure_ascii=False

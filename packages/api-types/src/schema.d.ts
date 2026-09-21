@@ -2492,6 +2492,8 @@ export interface components {
              * @description 用户消息文本
              */
             content: string;
+            /** @description 可选页面快照（提示信息，不构成授权） */
+            page?: components["schemas"]["ChatPageSnapshot"] | null;
             /**
              * Web Search
              * @description 本轮是否允许联网搜索；无 key 时后端强制忽略
@@ -2524,6 +2526,40 @@ export interface components {
          * @enum {string}
          */
         ChatMode: "ASK" | "COURSE_QA" | "SOCRATIC_TUTOR" | "TEACH_BACK" | "RESEARCH";
+        /**
+         * ChatPageSnapshot
+         * @description 随消息携带的轻量页面快照（通用 Agent 工单 01）：仅提示用户当前所在
+         *     页面，不落库、不构成授权、不扩大读取范围。
+         *
+         *     字段分工：page_type 与 entity_id 经后端重校验（失效引用静默丢弃，见
+         *     message_service）后注入模型上下文；selected_id 与 captured_at 只随快照进
+         *     运行时上下文（供后续操作工具按需消费），不进提示文本——对象名与页面
+         *     位置对模型有用，原始选中 id 与客户端时钟是噪音。
+         */
+        ChatPageSnapshot: {
+            /**
+             * Captured At
+             * Format: date-time
+             * @description 快照生成时间（客户端时钟）
+             */
+            captured_at: string;
+            /**
+             * Entity Id
+             * @description 页面当前实体 id（如课程/记录 id）
+             */
+            entity_id?: string | null;
+            /**
+             * Page Type
+             * @description 发送消息时所在页面类型
+             * @enum {string}
+             */
+            page_type: "chat" | "course" | "record" | "library" | "inbox";
+            /**
+             * Selected Id
+             * @description 页面内选中对象 id
+             */
+            selected_id?: string | null;
+        };
         /** ChatRecordOption */
         ChatRecordOption: {
             /**

@@ -2,7 +2,6 @@
 
 import json
 from collections.abc import AsyncGenerator, Sequence
-from contextvars import Token
 from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any, cast
@@ -32,48 +31,48 @@ from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
     CompiledStateGraph,
 )
 from loguru import logger
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
     NoopSummarizationMiddleware,
 )
+from app.modules.agent.runtime import (
+    AgentRuntimeContext,
+    bind_agent_runtime_context,
+    reset_agent_runtime_context,
+)
+from app.modules.agent.schemas import ChatMode, ChatScope
 from app.modules.agent.tools.propose_ingest import (
     PROPOSE_INGEST_TOOL_NAME,
-    ResearchIngestContext,
-    bind_ingest_context,
     propose_ingest,
-    reset_ingest_context,
 )
 from app.modules.agent.tools.propose_memory import (
     PROPOSE_MEMORY_TOOL_NAME,
-    MemoryProposalContext,
-    bind_memory_context,
     propose_memory,
-    reset_memory_context,
 )
-from app.modules.agent.tools.search_library import (
-    LibrarySearchContext,
-    bind_library_context,
-    reset_library_context,
-    search_library,
-)
-from app.modules.agent.tools.web_search import (
-    bind_web_search,
-    reset_web_search,
-    web_search,
-)
+from app.modules.agent.tools.search_courses import search_courses
+from app.modules.agent.tools.search_library import search_library
+from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
-from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v8"
-# 研究会话独立 prompt 版本（研究会话 V1）：在 chat-library-scope-v8 基础上
-# bump，研究语义进版本串；评测黄金集回归随此版本触发。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v9"
+CHAT_PROMPT_VERSION = "chat-library-scope-v9"
+# 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
+# 此版本触发。工单 01 起两版随模型可见面变化（页面提示 + search_courses）同步 bump。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v10"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
+# 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
+# 起从 message_service 收敛到装配层，页面快照不改变挂载矩阵）。
+RETRIEVAL_SCOPES = frozenset(
+    {
+        ChatScope.RECORD,
+        ChatScope.LIBRARY_ITEM,
+        ChatScope.COURSE,
+        ChatScope.ALL,
+    }
+)
 
 
 @dataclass
@@ -160,7 +159,8 @@ class AgentConfig:
 
 CHAT_AGENT_CONFIG = AgentConfig()
 # 检索挂载变体（工单 04）：五档范围会话（RECORD / LIBRARY_ITEM / COURSE / ALL）
-# 统一挂 search_library（作用域由会话运行时经 ContextVar 绑定）；自由聊天空配置。
+# 统一挂 search_library（作用域由统一 Agent 运行时上下文承载，工单 01 起）；
+# 自由聊天空配置。
 LIBRARY_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_library,))
 
 
@@ -168,13 +168,13 @@ def _resolve_agent_config(
     *, retrieval: bool, web_search_enabled: bool, research: bool = False
 ) -> AgentConfig:
     """按「检索挂载 × web_search × 研究」组合出当轮装配：变体维持常量，
-    web_search 生效时追加工具（frozen dataclass 实例化）；propose_memory 恒挂载
-    （工单 06：自由与挂载会话都支持用户明确「记住…」，普通聊天零静默提取由
-    docstring 约束）；propose_ingest 仅研究会话挂载（研究会话 V1）。"""
+    web_search 生效时追加工具（frozen dataclass 实例化）；search_courses 与
+    propose_memory 恒挂载（工单 01 操作工具组：课程查询在全部会话类型可用，
+    先例=记忆提案工具）；propose_ingest 仅研究会话挂载（研究会话 V1）。"""
     config = LIBRARY_CHAT_AGENT_CONFIG if retrieval else CHAT_AGENT_CONFIG
     if web_search_enabled:
         config = AgentConfig(tools=(*config.tools, web_search))
-    config = AgentConfig(tools=(*config.tools, propose_memory))
+    config = AgentConfig(tools=(*config.tools, search_courses, propose_memory))
     if research:
         config = AgentConfig(tools=(*config.tools, propose_ingest))
     return config
@@ -288,8 +288,8 @@ def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
 
     web_search 失败走「错误 JSON 载荷」路径（模型可据此说明、流不中断）：
     ToolMessage status 仍为 success，由载荷内 ok=false 标记失败（B1）。
-    命中数兼容两代载荷键：search_library 的 evidence_hits（工单 04）与
-    web_search 的 hits。
+    命中数兼容各工具载荷键（search_library 的 evidence_hits〔工单 04〕、
+    web_search 的 hits、search_courses 的 courses〔工单 01〕）。
     """
     if message.status == "error":
         return ChatToolResultEvent(tool=message.name or "", hits=0, ok=False)
@@ -301,12 +301,13 @@ def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
         except ValueError:
             payload = None
         if isinstance(payload, dict):
-            value = cast(dict[str, object], payload).get("evidence_hits")
-            if not isinstance(value, list):
-                value = cast(dict[str, object], payload).get("hits")
-            if isinstance(value, list):
-                hits = len(cast(list[object], value))
-            ok_value = cast(dict[str, object], payload).get("ok")
+            body = cast(dict[str, object], payload)
+            for key in ("evidence_hits", "hits", "courses"):
+                value = body.get(key)
+                if isinstance(value, list):
+                    hits = len(cast(list[object], value))
+                    break
+            ok_value = body.get("ok")
             if isinstance(ok_value, bool):
                 ok = ok_value
     return ChatToolResultEvent(tool=message.name or "", hits=hits, ok=ok)
@@ -372,25 +373,20 @@ def _research_proposal_event(message: ToolMessage) -> ChatResearchProposalEvent 
 
 async def stream_chat_reply(
     *,
-    session_factory: async_sessionmaker[AsyncSession],
     checkpointer: BaseCheckpointSaver[str],
     provider: LlmProviderConfig,
     context_messages: Sequence[AnyMessage],
-    session_id: str,
+    runtime: AgentRuntimeContext,
     outcome: ChatStreamOutcome,
-    library: LibrarySearchContext | None = None,
-    web_search: SearchProvider | None = None,
-    memory: MemoryProposalContext | None = None,
-    ingest: ResearchIngestContext | None = None,
     prompt_version: str = CHAT_PROMPT_VERSION,
 ) -> AsyncGenerator[ChatStreamEvent, None]:
     """工厂层流式生成路径：建模型 → 清残留 → astream 分发结构化流事件 → 统一埋点。
 
     - 每轮从 chat_messages 重建喂入：轮初清掉上轮/崩溃残留，checkpoint 只承载当轮运行态；
-    - 范围会话（library，RECORD/LIBRARY_ITEM/COURSE/ALL）注入 search_library 与
-      范围上下文（含本轮工具预算累计器）；web_search 非 None 时挂载联网工具并绑定
-      凭据（每请求组合装配）；自由聊天空配置；研究会话（ingest 非 None）追加挂载
-      propose_ingest；
+    - 统一 Agent 运行时上下文（工单 01）承载全部工具运行期状态并单对绑定/重置：
+      范围会话（scope ∈ RETRIEVAL_SCOPES）注入 search_library，web_search_provider
+      非 None 时挂载联网工具，mode=RESEARCH 追加挂载 propose_ingest，search_courses
+      与 propose_memory 恒挂载（装配组合见 _resolve_agent_config）；
     - 事件分发：AIMessageChunk 文本 → token、tool_call_chunks 拼全 → tool_call、
       ToolMessage → tool_result；token 用量跨工具循环累加；
     - 正常完成埋点（graph_name=chat，仅元数据，prompt_version 随会话模式取
@@ -398,7 +394,7 @@ async def stream_chat_reply(
     - 中断（GeneratorExit，客户端断开/用户停止）不落埋点直接终止；
     - 其他异常埋点后重新抛出，由调用方转 error 事件。
     """
-    thread_id = chat_thread_id(session_id)
+    thread_id = chat_thread_id(runtime.session_id)
     await checkpointer.adelete_thread(thread_id)
     http_client = openai.DefaultAsyncHttpxClient(trust_env=False)
     started = perf_counter()
@@ -406,21 +402,7 @@ async def stream_chat_reply(
     # 其余消息（轮次窗口 + 当前提问）照常作为对话历史喂入。
     system_prompt = next((m for m in context_messages if isinstance(m, SystemMessage)), None)
     input_messages = [m for m in context_messages if not isinstance(m, SystemMessage)]
-    # 范围会话：绑定检索范围与目标 id（RECORD=记录、LIBRARY_ITEM=资料、COURSE=课程、
-    # ALL=全部含未归类），见 LibrarySearchContext；web_search 生效：绑定联网搜索凭据
-    # （无 key 时调用方已强制不传）。
-    library_token: Token[LibrarySearchContext | None] | None = None
-    if library is not None:
-        library_token = bind_library_context(library)
-    web_token: Token[SearchProvider | None] | None = None
-    if web_search is not None:
-        web_token = bind_web_search(web_search)
-    memory_token: Token[MemoryProposalContext | None] | None = None
-    if memory is not None:
-        memory_token = bind_memory_context(memory)
-    ingest_token: Token[ResearchIngestContext | None] | None = None
-    if ingest is not None:
-        ingest_token = bind_ingest_context(ingest)
+    runtime_token = bind_agent_runtime_context(runtime)
     # 检索归因（CB-08）：本轮资料检索命中合计（None=未检索，0=检索无命中）。
     retrieval_count: int | None = None
     try:
@@ -429,9 +411,9 @@ async def stream_chat_reply(
             checkpointer,
             system_prompt=system_prompt,
             config=_resolve_agent_config(
-                retrieval=library_token is not None,
-                web_search_enabled=web_token is not None,
-                research=ingest_token is not None,
+                retrieval=runtime.scope in RETRIEVAL_SCOPES,
+                web_search_enabled=runtime.web_search_provider is not None,
+                research=runtime.mode == ChatMode.RESEARCH,
             ),
         )
         tool_call_drafts: dict[int, _ToolCallDraft] = {}
@@ -474,7 +456,7 @@ async def stream_chat_reply(
     except Exception:
         logger.error("chat_stream_failed", error_code="CHAT_STREAM_FAILED")
         await write_llm_call_log(
-            session_factory=session_factory,
+            session_factory=runtime.session_factory,
             graph_name="chat",
             graph_node="generate",
             model=provider.model,
@@ -486,26 +468,16 @@ async def stream_chat_reply(
         )
         raise
     finally:
-        if library_token is not None:
-            reset_library_context(library_token)
-        if web_token is not None:
-            reset_web_search(web_token)
-        if memory_token is not None:
-            try:
-                reset_memory_context(memory_token)
-            except ValueError:
-                # SSE 中断（aclose）时生成器 finalization 可能跨执行 context 运行，
-                # reset 校验 token 来源失败；原 context 已随任务销毁，无绑定泄漏。
-                pass
-        if ingest_token is not None:
-            try:
-                reset_ingest_context(ingest_token)
-            except ValueError:
-                # 同 memory：SSE 中断时 token 来源校验可能失败，无绑定泄漏。
-                pass
+        try:
+            reset_agent_runtime_context(runtime_token)
+        except ValueError:
+            # SSE 中断（aclose）时生成器 finalization 可能跨执行 context 运行，
+            # reset 校验 token 来源失败；原 context 已随任务销毁，无绑定泄漏
+            # （既有 memory/ingest 绑定先例，工单 01 收敛为单对）。
+            pass
         await http_client.aclose()
     await write_llm_call_log(
-        session_factory=session_factory,
+        session_factory=runtime.session_factory,
         graph_name="chat",
         graph_node="generate",
         model=provider.model,

@@ -34,13 +34,15 @@ from app.modules.agent.context import (
     LibraryRecordRow,
     build_context_messages,
 )
+from app.modules.agent.runtime import (
+    AgentRuntimeContext,
+    bind_agent_runtime_context,
+    reset_agent_runtime_context,
+)
 from app.modules.agent.schemas import ChatMode, ChatRole
 from app.modules.agent.tools.propose_ingest import (
     PROPOSE_INGEST_SOURCES_LIMIT,
-    ResearchIngestContext,
-    bind_ingest_context,
     propose_ingest,
-    reset_ingest_context,
 )
 from app.modules.settings.config import save_llm_provider
 
@@ -261,8 +263,9 @@ async def test_propose_ingest_unbound_is_safe(tmp_path: Path) -> None:
 async def test_propose_ingest_over_limit_rejects_without_rows(tmp_path: Path) -> None:
     """超限拒绝而非截断：零提案落库。"""
     async with bare_db(tmp_path) as session_factory:
-        context = ResearchIngestContext(session_factory=session_factory, session_id="sess-1")
-        token = bind_ingest_context(context)
+        token = bind_agent_runtime_context(
+            AgentRuntimeContext(session_factory=session_factory, session_id="sess-1")
+        )
         try:
             sources = [
                 {"url": f"https://example.com/{i}", "title": f"来源 {i}"}
@@ -270,7 +273,7 @@ async def test_propose_ingest_over_limit_rejects_without_rows(tmp_path: Path) ->
             ]
             payload = await _invoke_propose_ingest(sources)
         finally:
-            reset_ingest_context(token)
+            reset_agent_runtime_context(token)
         async with session_factory() as session:
             rows = (await session.execute(text("SELECT id FROM agent_proposals"))).all()
     assert payload["ok"] is False
@@ -284,12 +287,13 @@ async def test_propose_ingest_creates_pending_proposals_with_course_id(
 ) -> None:
     """COURSE 范围自动带课程 id；提案溯源带 session_id；创建不改事实。"""
     async with bare_db(tmp_path) as session_factory:
-        context = ResearchIngestContext(
-            session_factory=session_factory,
-            session_id="sess-1",
-            course_id=COURSE_A,
+        token = bind_agent_runtime_context(
+            AgentRuntimeContext(
+                session_factory=session_factory,
+                session_id="sess-1",
+                course_id=COURSE_A,
+            )
         )
-        token = bind_ingest_context(context)
         try:
             payload = await _invoke_propose_ingest(
                 [
@@ -298,7 +302,7 @@ async def test_propose_ingest_creates_pending_proposals_with_course_id(
                 ]
             )
         finally:
-            reset_ingest_context(token)
+            reset_agent_runtime_context(token)
         assert payload["ok"] is True
         proposals = cast(list[dict[str, str]], payload["proposals"])
         assert [item["title"] for item in proposals] == ["来源 A", "来源 B"]
@@ -323,16 +327,15 @@ async def test_propose_ingest_creates_pending_proposals_with_course_id(
 @pytest.mark.anyio
 async def test_propose_ingest_all_scope_payload_course_id_none(tmp_path: Path) -> None:
     async with bare_db(tmp_path) as session_factory:
-        context = ResearchIngestContext(
-            session_factory=session_factory, session_id="sess-2", course_id=None
+        token = bind_agent_runtime_context(
+            AgentRuntimeContext(session_factory=session_factory, session_id="sess-2")
         )
-        token = bind_ingest_context(context)
         try:
             payload = await _invoke_propose_ingest(
                 [{"url": "https://example.com/a", "title": "来源 A"}]
             )
         finally:
-            reset_ingest_context(token)
+            reset_agent_runtime_context(token)
         async with session_factory() as session:
             row = (await session.execute(text("SELECT payload_json FROM agent_proposals"))).one()
     body = json.loads(cast(str, row[0]))
@@ -560,5 +563,5 @@ async def test_research_stream_done_carries_research_proposals(
             )
         ).fetchone()
     assert log is not None
-    assert log[0] == "chat-research-scope-v9"
+    assert log[0] == "chat-research-scope-v10"
     assert log[1] is None

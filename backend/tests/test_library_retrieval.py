@@ -23,15 +23,17 @@ from app.modules.agent.citations import (
     LibraryRecordMaterial,
     parse_library_citation_reply,
 )
+from app.modules.agent.runtime import (
+    MAX_TOOL_CALLS_PER_TURN,
+    AgentRuntimeContext,
+    ToolCallBudget,
+    bind_agent_runtime_context,
+    reset_agent_runtime_context,
+)
 from app.modules.agent.schemas import ChatScope
 from app.modules.agent.tools.search_library import (
-    MAX_TOOL_CALLS_PER_TURN,
     TOOL_RESULT_MAX_CHARS,
     TOOL_ROUND_OUTPUT_MAX_CHARS,
-    LibrarySearchContext,
-    ToolCallBudget,
-    bind_library_context,
-    reset_library_context,
     search_library,
 )
 from app.modules.library.retrieval import (
@@ -568,13 +570,14 @@ async def test_evidence_shape_verbatim_and_window(tmp_path: Path) -> None:
 async def test_tool_budget_call_limit_and_truncation(tmp_path: Path) -> None:
     async with retrieval_app(tmp_path) as (app, _client):
         await seed_scope_corpus(app)
-        context = LibrarySearchContext(
+        context = AgentRuntimeContext(
             scope=ChatScope.ALL,
             course_id=None,
             session_factory=app.state.session_factory,
+            session_id="sess-budget",
             budget=ToolCallBudget(),
         )
-        token = bind_library_context(context)
+        token = bind_agent_runtime_context(context)
         try:
             payloads: list[dict[str, Any]] = [
                 cast(
@@ -596,7 +599,7 @@ async def test_tool_budget_call_limit_and_truncation(tmp_path: Path) -> None:
                 json.loads(await search_library.ainvoke({"query": "链式法则"})),
             )
         finally:
-            reset_library_context(token)
+            reset_agent_runtime_context(token)
         assert context.budget.calls_used == MAX_TOOL_CALLS_PER_TURN
         assert seventh["evidence_hits"] == []
         assert "已达上限" in seventh["message"]
@@ -611,13 +614,14 @@ async def test_tool_budget_cumulative_round_cap(tmp_path: Path) -> None:
         await seed_scope_corpus(app)
         budget = ToolCallBudget()
         budget.chars_fed = TOOL_ROUND_OUTPUT_MAX_CHARS  # 模拟本轮累计已满
-        context = LibrarySearchContext(
+        context = AgentRuntimeContext(
             scope=ChatScope.ALL,
             course_id=None,
             session_factory=app.state.session_factory,
+            session_id="sess-budget",
             budget=budget,
         )
-        token = bind_library_context(context)
+        token = bind_agent_runtime_context(context)
         try:
             import json
 
@@ -625,7 +629,7 @@ async def test_tool_budget_cumulative_round_cap(tmp_path: Path) -> None:
                 dict[str, Any], json.loads(await search_library.ainvoke({"query": "链式法则"}))
             )
         finally:
-            reset_library_context(token)
+            reset_agent_runtime_context(token)
         assert payload["evidence_hits"] == []
         assert payload["truncated"] is True
         assert "累计已达上下文预算" in payload["message"]

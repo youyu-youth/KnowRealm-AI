@@ -1,34 +1,21 @@
 """chat 联网搜索工具（B1）：模型自行决定搜索时机与关键词，Tavily 检索网络。
 
-运行期凭据经 ContextVar 每轮生成前绑定（模式同 search_transcript）：仅在
-本轮 web_search 生效时绑定并挂载工具，AgentConfig 常量语义因此维持。请求
-失败不抛错——返回错误 JSON 载荷让模型可向用户说明，流不中断。
+联网凭据由统一 Agent 运行时上下文承载（工单 01 起随每轮流式生成绑定，见
+agent/runtime.py）：仅在供应商非 None 时挂载工具，AgentConfig 常量语义维持。
+请求失败不抛错——返回错误 JSON 载荷让模型可向用户说明，流不中断。
 """
 
 import json
-from contextvars import ContextVar, Token
 
 import httpx
 from langchain_core.tools import tool
 
-from app.modules.search.web_search import SearchProvider, WebSearchError
+from app.modules.agent.runtime import current_agent_runtime
+from app.modules.search.web_search import WebSearchError
 
 WEB_SEARCH_LIMIT = 5
 # 单条 content 摘要截断长度，控制工具结果回喂体积。
 WEB_SEARCH_CONTENT_MAX_CHARS = 400
-
-
-_web_search_context: ContextVar[SearchProvider | None] = ContextVar(
-    "chat_web_search_context", default=None
-)
-
-
-def bind_web_search(provider: SearchProvider) -> Token[SearchProvider | None]:
-    return _web_search_context.set(provider)
-
-
-def reset_web_search(token: Token[SearchProvider | None]) -> None:
-    _web_search_context.reset(token)
 
 
 def _payload(hits: list[dict[str, object]], *, ok: bool = True, message: str = "") -> str:
@@ -47,11 +34,11 @@ async def web_search(query: str) -> str:
     URL 与内容摘要；引用搜索得到的结论时，须在回答末尾引用块中以
     「[n] 标题 — URL」格式注明来源，不要编造搜索结果里不存在的内容。
     """
-    provider = _web_search_context.get()
-    if provider is None:
+    runtime = current_agent_runtime()
+    if runtime is None or runtime.web_search_provider is None:
         return _payload([], ok=False, message="本轮对话未启用联网搜索。")
     try:
-        hits = await provider.search(query, max_results=WEB_SEARCH_LIMIT)
+        hits = await runtime.web_search_provider.search(query, max_results=WEB_SEARCH_LIMIT)
     except WebSearchError as exc:
         return _payload([], ok=False, message=str(exc))
     except httpx.RequestError:

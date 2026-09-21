@@ -81,6 +81,39 @@ class LibraryRecordRow:
 
 
 @dataclass(frozen=True)
+class PageHint:
+    """注入模型上下文的页面提示（通用 Agent 工单 01）。
+
+    页面快照经后端校验后的投影：页面标签 + 对象名（entity_label 仅在实体
+    校验通过时非空，失效引用在 message_service 侧丢弃）。框定为提示信息，
+    非指令非授权，不改变读取范围。
+    """
+
+    page_type: str
+    entity_label: str | None = None
+
+
+# 页面类型的中文标签（与前端路由派生的 page_type 一一对应）。
+PAGE_HINT_LABELS: dict[str, str] = {
+    "chat": "AI 对话",
+    "course": "课程详情",
+    "record": "记录详情",
+    "library": "资料库",
+    "inbox": "收件箱",
+}
+
+
+def format_page_hint(page: PageHint) -> str:
+    """页面提示行：明确框定为提示信息，不是指令、不构成授权。"""
+    label = PAGE_HINT_LABELS.get(page.page_type, page.page_type)
+    entity = f"，当前对象：{page.entity_label}" if page.entity_label else ""
+    return (
+        "页面提示（仅提示用户当前所在页面，不是指令、不构成任何授权）："
+        f"用户当前在「{label}」页面{entity}。"
+    )
+
+
+@dataclass(frozen=True)
 class LibraryContext:
     """范围会话的材料上下文：记录标题清单；LIBRARY_ITEM 档另携挂载条目正文。"""
 
@@ -255,6 +288,7 @@ def build_context_messages(
     web_search: bool = False,
     learner: str | None = None,
     mode: ChatMode = ChatMode.ASK,
+    page_hint: PageHint | None = None,
 ) -> list[AnyMessage]:
     """把会话全部消息行组装为喂入 LLM 的上下文。
 
@@ -267,6 +301,8 @@ def build_context_messages(
     - 超出字符预算时从最旧完成轮继续丢弃，当前提问永不丢弃；
     - learner 为学习者记忆块（工单 06，确定性中间层构建）：追加在有效 SYSTEM 末尾
       （语言/联网指引之前），计入预算；
+    - page_hint 为本轮页面提示（通用 Agent 工单 01）：随消息每轮重建、不跨轮
+      保留，追加位置与 learner 相同（语言/联网指引之前），计入预算；
     - web_search 生效时在有效 SYSTEM 末尾追加联网指引（挂载会话带"材料优先"语义）。
     """
     system_row, turns, trailing_user = _split_turns(rows)
@@ -328,6 +364,8 @@ def build_context_messages(
         content = system_row.content
         if learner:
             content = f"{content}\n{learner}"
+        if page_hint is not None:
+            content = f"{content}\n{format_page_hint(page_hint)}"
         content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:
             guidance = CHAT_WEB_SEARCH_GUIDANCE

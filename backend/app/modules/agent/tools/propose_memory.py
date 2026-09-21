@@ -3,17 +3,16 @@
 用户在对话中明确要求记住某个学习偏好时，模型调用本工具创建 EXPLICIT MEMORY
 提案（创建不改任何事实）；提案经前端就地确认卡 HITL 确认后，由 learner 域
 应用器写入 learner_preferences。普通聊天零静默提取：docstring 明确约束只在
-用户说「记住…」时调用。运行期上下文（session_factory / session_id）由会话
-每轮经 ContextVar 绑定，AgentConfig 变体保持常量（先例 search_library）。
+用户说「记住…」时调用。运行期上下文（session_factory / session_id）由统一
+Agent 运行时上下文承载（工单 01 起，见 agent/runtime.py），AgentConfig 变体
+保持常量（先例 search_library）。
 """
 
 import json
-from contextvars import ContextVar, Token
-from dataclasses import dataclass
 
 from langchain_core.tools import tool
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
 
@@ -23,29 +22,8 @@ PROPOSE_MEMORY_ITEMS_LIMIT = 5
 # 单条偏好限长（对齐 MemoryProposalPayload）。
 PROPOSE_MEMORY_ITEM_MAX_CHARS = 100
 
-
-@dataclass
-class MemoryProposalContext:
-    """记忆提案的运行期绑定：提案溯源到会话（session_id 非授权）。"""
-
-    session_factory: async_sessionmaker[AsyncSession]
-    session_id: str
-
-
 # 工具名（langchain @tool 注册名 = 函数名）：流式分发按名识别本工具的返回。
 PROPOSE_MEMORY_TOOL_NAME = "propose_memory"
-
-_memory_context: ContextVar[MemoryProposalContext | None] = ContextVar(
-    "chat_propose_memory_context", default=None
-)
-
-
-def bind_memory_context(context: MemoryProposalContext) -> Token[MemoryProposalContext | None]:
-    return _memory_context.set(context)
-
-
-def reset_memory_context(token: Token[MemoryProposalContext | None]) -> None:
-    _memory_context.reset(token)
 
 
 @tool
@@ -56,7 +34,7 @@ async def propose_memory(items: list[str]) -> str:
     静默提取聊天内容为记忆。创建的是待用户确认的记忆提案，用户确认后才会
     生效；调用成功后告知用户已生成记忆提案、等待其确认。
     """
-    context = _memory_context.get()
+    context = current_agent_runtime()
     if context is None:
         return json.dumps({"ok": False, "error": "MEMORY_CONTEXT_UNBOUND"}, ensure_ascii=False)
     cleaned = [item.strip() for item in items if item.strip()]

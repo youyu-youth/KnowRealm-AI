@@ -21,12 +21,12 @@ from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.main import create_app
 from app.modules.agent.message_service import ChatMessageService, ChatStreamRegistry
-from app.modules.agent.tools.propose_memory import (
-    MemoryProposalContext,
-    bind_memory_context,
-    propose_memory,
-    reset_memory_context,
+from app.modules.agent.runtime import (
+    AgentRuntimeContext,
+    bind_agent_runtime_context,
+    reset_agent_runtime_context,
 )
+from app.modules.agent.tools.propose_memory import propose_memory
 from app.modules.learner.service import build_learner_context
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ChatScope
@@ -426,12 +426,13 @@ async def test_deleted_memory_is_not_reinjected(tmp_path: Path) -> None:
 async def test_propose_memory_tool_creates_pending_proposal(tmp_path: Path) -> None:
     """工具创建提案不改事实；确认后才写入（经应用器）。"""
     async with bare_db(tmp_path) as session_factory:
-        context = MemoryProposalContext(session_factory=session_factory, session_id="sess-1")
-        token = bind_memory_context(context)
+        token = bind_agent_runtime_context(
+            AgentRuntimeContext(session_factory=session_factory, session_id="sess-1")
+        )
         try:
             raw = await propose_memory.ainvoke({"items": ["先看例题", " "]})
         finally:
-            reset_memory_context(token)
+            reset_agent_runtime_context(token)
         payload = json.loads(raw)
         assert payload["ok"] is True
         assert payload["items"] == ["先看例题"]

@@ -28,6 +28,7 @@ from app.modules.agent.context import (
     ContextRow,
     LibraryContext,
     LibraryRecordRow,
+    PageHint,
     RecordContext,
     build_context_messages,
 )
@@ -42,11 +43,9 @@ from app.modules.agent.graph import (
     stream_chat_reply,
 )
 from app.modules.agent.models import ChatMessage, ChatSession
-from app.modules.agent.schemas import ChatMode, ChatRole, ChatScope
+from app.modules.agent.runtime import AgentRuntimeContext, ToolCallBudget
+from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole, ChatScope
 from app.modules.agent.session_service import ChatSessionService
-from app.modules.agent.tools.propose_ingest import ResearchIngestContext
-from app.modules.agent.tools.propose_memory import MemoryProposalContext
-from app.modules.agent.tools.search_library import LibrarySearchContext, ToolCallBudget
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
@@ -72,16 +71,6 @@ from app.shared.errors import CodedHTTPException
 CHAT_TITLE_MAX_CHARS = 30
 
 STREAM_STATUS_GENERATING = "generating"
-
-# 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library）。
-RETRIEVAL_SCOPES = frozenset(
-    {
-        ChatScope.RECORD,
-        ChatScope.LIBRARY_ITEM,
-        ChatScope.COURSE,
-        ChatScope.ALL,
-    }
-)
 
 
 class ChatStreamRegistry:
@@ -113,6 +102,8 @@ class AcceptedMessage:
     （无 key 时后端无视标志强制不挂工具，B1 双保险）。
     memory_injection_allowed = 记忆外发开关开启且 LLM 外发同意对当前供应商
     有效（工单 06）；False 时本轮零记忆注入（硬门禁：关闭外发后零发送）。
+    page 为随消息携带的页面快照（工单 01）：提示性信息，不落库、不构成授权；
+    注入前经 _validate_page_snapshot 重校验对象存在性。
     """
 
     session_id: str
@@ -121,6 +112,7 @@ class AcceptedMessage:
     provider: LlmProviderConfig
     web_search: SearchProvider | None = None
     memory_injection_allowed: bool = False
+    page: ChatPageSnapshot | None = None
 
 
 @dataclass(frozen=True)
@@ -140,6 +132,10 @@ class SessionPromptContext:
     web_search: bool = False  # 本轮联网生效（已含 key 双保险）；自由聊天也可为 True
     learner: str | None = None  # 本轮注入的学习者记忆块（None=未注入）
     learner_memories: tuple[str, ...] = ()  # 实际注入的记忆条目（done 透传 UI 展示）
+    # 页面快照（工单 01）：page 为重校验后的快照（失效引用已丢弃，进运行时
+    # 上下文）；page_hint 为注入模型上下文的提示投影（含对象名标签）。
+    page: ChatPageSnapshot | None = None
+    page_hint: PageHint | None = None
 
     @property
     def learner_injected(self) -> bool:
@@ -372,12 +368,40 @@ async def _load_library_materials(
         return await _load_scope_materials(session, scope, scope_id)
 
 
+async def _validate_page_snapshot(
+    session: AsyncSession, page: ChatPageSnapshot | None
+) -> tuple[ChatPageSnapshot | None, PageHint | None]:
+    """页面快照后端重校验（工单 01，spec 实施决策 11）：对象不存在/已删除时
+    丢弃引用仅保留页面标签（提示是参考信息，失效即静默降级，不影响发送）；
+    快照不落库、不构成授权、不扩大读取范围。"""
+    if page is None:
+        return None, None
+    entity_label: str | None = None
+    entity_id = page.entity_id
+    if page.page_type == "course" and entity_id is not None:
+        course = await session.get(Course, entity_id)
+        if course is not None and course.deleted_at is None:
+            suffix = "（已归档）" if course.status == "ARCHIVED" else ""
+            entity_label = f"课程「{course.name}」{suffix}"
+        else:
+            entity_id = None
+    elif page.page_type == "record" and entity_id is not None:
+        record = await RecordService.get(session, entity_id)
+        if record is not None:
+            entity_label = f"记录「{record.title}」"
+        else:
+            entity_id = None
+    validated = page if entity_id == page.entity_id else page.model_copy(update={"entity_id": None})
+    return validated, PageHint(page_type=page.page_type, entity_label=entity_label)
+
+
 async def _session_context(
     session_factory: async_sessionmaker[AsyncSession],
     session_id: str,
     *,
     web_search: bool = False,
     memory_allowed: bool = False,
+    page: ChatPageSnapshot | None = None,
 ) -> SessionPromptContext:
     async with session_factory() as session:
         chat = await ChatSessionService.get(session, session_id)
@@ -484,6 +508,7 @@ async def _session_context(
             injection_allowed=memory_allowed,
         )
         learner_block = learner.text or None
+        validated_page, page_hint = await _validate_page_snapshot(session, page)
         return SessionPromptContext(
             mode=chat.mode,
             scope=chat.scope,
@@ -502,6 +527,7 @@ async def _session_context(
                 web_search=web_search,
                 learner=learner_block,
                 mode=chat.mode,
+                page_hint=page_hint,
             ),
             transcript=transcript_text,
             record_id=record_id,
@@ -511,6 +537,8 @@ async def _session_context(
             web_search=web_search,
             learner=learner_block,
             learner_memories=learner.memories,
+            page=validated_page,
+            page_hint=page_hint,
         )
 
 
@@ -561,10 +589,12 @@ class ChatMessageService:
         session_id: str,
         content: str,
         web_search: bool = False,
+        page: ChatPageSnapshot | None = None,
     ) -> AcceptedMessage:
         """受理发送：校验供应商与在途状态，落库 user 行（补答复用原行）。
 
-        web_search 标志仅在已配置可用 key 时生效（无 key 强制不挂工具）。
+        web_search 标志仅在已配置可用 key 时生效（无 key 强制不挂工具）；
+        page 为提示性页面快照，不落库（工单 01）。
         """
         provider = await asyncio.to_thread(load_llm_provider, data_dir)
         if provider is None or not provider.api_key:
@@ -648,6 +678,7 @@ class ChatMessageService:
             provider=provider,
             web_search=web_search_provider,
             memory_injection_allowed=outbound_enabled and consent_current,
+            page=page,
         )
 
     @staticmethod
@@ -673,48 +704,30 @@ class ChatMessageService:
                     session_id,
                     web_search=accepted.web_search is not None,
                     memory_allowed=accepted.memory_injection_allowed,
+                    page=accepted.page,
                 )
                 research_mode = prompt_context.mode == ChatMode.RESEARCH
-                # 范围会话（RECORD/LIBRARY_ITEM/COURSE/ALL）统一绑定 search_library
-                # 检索上下文：作用域 + 目标 id + 本轮工具预算（每轮新建累计器）。
-                library_binding = (
-                    LibrarySearchContext(
-                        scope=prompt_context.scope,
-                        course_id=prompt_context.course_id,
-                        session_factory=session_factory,
-                        record_id=prompt_context.record_id,
-                        library_item_id=prompt_context.library_item_id,
-                        budget=ToolCallBudget(),
-                    )
-                    if prompt_context.scope in RETRIEVAL_SCOPES
-                    else None
-                )
-                # 记忆提案工具的运行期绑定（工单 06）：溯源到当前会话。
-                memory_binding = MemoryProposalContext(
-                    session_factory=session_factory, session_id=session_id
-                )
-                # 入库提案工具的运行期绑定（研究会话 V1）：仅研究会话挂载；
-                # COURSE 范围自动带课程 id，ALL/FREE 落 None 由用户后续整理。
-                ingest_binding = (
-                    ResearchIngestContext(
-                        session_factory=session_factory,
-                        session_id=session_id,
-                        course_id=prompt_context.course_id,
-                    )
-                    if research_mode
-                    else None
+                # 统一 Agent 运行时上下文（工单 01）：会话工厂/会话 id/范围与挂载
+                # 对象/模式/联网供应商/页面快照/工具预算，单对绑定由 stream_chat_reply
+                # 完成；工具挂载矩阵（scope 决定 search_library）不因页面快照改变。
+                runtime = AgentRuntimeContext(
+                    session_factory=session_factory,
+                    session_id=session_id,
+                    scope=prompt_context.scope,
+                    mode=prompt_context.mode,
+                    course_id=prompt_context.course_id,
+                    record_id=prompt_context.record_id,
+                    library_item_id=prompt_context.library_item_id,
+                    web_search_provider=accepted.web_search,
+                    page=prompt_context.page,
+                    budget=ToolCallBudget(),
                 )
                 async for event in stream_chat_reply(
-                    session_factory=session_factory,
                     checkpointer=checkpointer,
                     provider=accepted.provider,
                     context_messages=prompt_context.messages,
-                    session_id=session_id,
+                    runtime=runtime,
                     outcome=outcome,
-                    library=library_binding,
-                    web_search=accepted.web_search,
-                    memory=memory_binding,
-                    ingest=ingest_binding,
                     prompt_version=(
                         CHAT_RESEARCH_PROMPT_VERSION if research_mode else CHAT_PROMPT_VERSION
                     ),

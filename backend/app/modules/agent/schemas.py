@@ -117,10 +117,35 @@ class ChatRecordOption(BaseModel):
     has_transcript: bool = Field(description="存在可用转写时可挂载")
 
 
+class ChatPageSnapshot(BaseModel):
+    """随消息携带的轻量页面快照（通用 Agent 工单 01）：仅提示用户当前所在
+    页面，不落库、不构成授权、不扩大读取范围。
+
+    字段分工：page_type 与 entity_id 经后端重校验（失效引用静默丢弃，见
+    message_service）后注入模型上下文；selected_id 与 captured_at 只随快照进
+    运行时上下文（供后续操作工具按需消费），不进提示文本——对象名与页面
+    位置对模型有用，原始选中 id 与客户端时钟是噪音。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    page_type: Literal["chat", "course", "record", "library", "inbox"] = Field(
+        description="发送消息时所在页面类型"
+    )
+    entity_id: str | None = Field(
+        default=None, max_length=64, description="页面当前实体 id（如课程/记录 id）"
+    )
+    selected_id: str | None = Field(default=None, max_length=64, description="页面内选中对象 id")
+    captured_at: datetime = Field(description="快照生成时间（客户端时钟）")
+
+
 class ChatMessageCreate(BaseModel):
     content: str = Field(min_length=1, max_length=8000, description="用户消息文本")
     web_search: bool = Field(
         default=False, description="本轮是否允许联网搜索；无 key 时后端强制忽略"
+    )
+    page: ChatPageSnapshot | None = Field(
+        default=None, description="可选页面快照（提示信息，不构成授权）"
     )
 
     @field_validator("content")
