@@ -1840,14 +1840,30 @@
       "reject": "Don't save \"{{title}}\""
     },
     "operationProposal": {
-      "panelTitle": "Course creation proposals",
+      "panelTitle": "Operation proposals",
       "accepted": "Course created.",
       "rejected": "Rejected; no course was created.",
       "failed": "The course was not created.",
       "failedDetail": "The course was not created ({{reason}}). You can retry.",
       "accept": "Confirm creating the course",
       "reject": "Don't create the course",
-      "openCourse": "Open course"
+      "openCourse": "Open course",
+      "textRecord": {
+        "targetCourse": "Target course",
+        "content": "Content",
+        "confirmHint": "An AI summary will be generated after saving.",
+        "accepted": "Record saved.",
+        "rejected": "Rejected; the record was not saved.",
+        "failed": "The record was not saved.",
+        "failedDetail": "The record was not saved ({{reason}}). You can retry.",
+        "accept": "Confirm saving the record",
+        "reject": "Don't save the record",
+        "openRecord": "Open record",
+        "summaryJobSubmitted": "The summary job was submitted and is running.",
+        "summaryNotTriggered": "AI summary was not triggered (AI service is not configured or external processing is not consented).",
+        "summaryFailed": "Submitting the summary job failed ({{reason}}). You can retry on the record page.",
+        "courseUnavailable": "The course is no longer available"
+      }
     },
     "coursePicker": {
       "title": "Choose a course",
@@ -2453,6 +2469,7 @@
     "SUMMARY_NOT_GENERABLE": "The summary cannot be generated in the current state.",
     "SUMMARY_STALE": "The summary is an outdated version.",
     "TEXT_TOO_LARGE": "The text exceeds 1 MiB.",
+    "TEXT_RECORD_ADD_SUMMARY_ENQUEUE_FAILED": "Submitting the summary job for the text record failed",
     "TODO_BATCH_ALREADY_ADOPTED": "The batch is already adopted and cannot be discarded.",
     "TODO_BATCH_NOT_FOUND": "The Todo batch does not exist.",
     "TODO_BATCH_SUPERSEDED": "The Todo batch has been replaced by a newer batch.",

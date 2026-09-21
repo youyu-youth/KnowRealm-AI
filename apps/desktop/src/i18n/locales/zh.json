@@ -1820,14 +1820,30 @@
       "reject": "拒绝保存「{{title}}」"
     },
     "operationProposal": {
-      "panelTitle": "课程创建提案",
+      "panelTitle": "操作提案",
       "accepted": "课程已创建。",
       "rejected": "已拒绝，未创建课程。",
       "failed": "课程创建未完成。",
       "failedDetail": "课程创建未完成（{{reason}}），可重试。",
       "accept": "确认创建课程",
       "reject": "拒绝创建课程",
-      "openCourse": "打开课程"
+      "openCourse": "打开课程",
+      "textRecord": {
+        "targetCourse": "目标课程",
+        "content": "正文",
+        "confirmHint": "保存后将尝试生成 AI 总结。",
+        "accepted": "记录已保存。",
+        "rejected": "已拒绝，未保存记录。",
+        "failed": "记录保存未完成。",
+        "failedDetail": "记录保存未完成（{{reason}}），可重试。",
+        "accept": "确认保存记录",
+        "reject": "拒绝保存记录",
+        "openRecord": "打开记录",
+        "summaryJobSubmitted": "总结任务已提交，正在生成。",
+        "summaryNotTriggered": "未触发 AI 总结（AI 服务未配置或未同意外发）。",
+        "summaryFailed": "总结任务提交失败（{{reason}}），可在记录页重试。",
+        "courseUnavailable": "课程已不可用"
+      }
     },
     "coursePicker": {
       "title": "选择课程",
@@ -2433,6 +2449,7 @@
     "SUMMARY_NOT_GENERABLE": "当前状态不能生成总结",
     "SUMMARY_STALE": "总结已是旧版本",
     "TEXT_TOO_LARGE": "正文超过 1 MiB",
+    "TEXT_RECORD_ADD_SUMMARY_ENQUEUE_FAILED": "文本记录的总结任务提交失败",
     "TODO_BATCH_ALREADY_ADOPTED": "批次已采纳，不能丢弃",
     "TODO_BATCH_NOT_FOUND": "Todo 批次不存在",
     "TODO_BATCH_SUPERSEDED": "Todo 批次已被新批次替代",

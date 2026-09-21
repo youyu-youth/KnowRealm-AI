@@ -7,11 +7,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/test-utils";
 import { ChatOperationProposalCard } from "./ChatOperationProposalCard";
 
-const { confirmProposal, rejectProposal, listProposals } = vi.hoisted(() => ({
-  confirmProposal: vi.fn(),
-  rejectProposal: vi.fn(),
-  listProposals: vi.fn(),
-}));
+const { confirmProposal, rejectProposal, listProposals, get } = vi.hoisted(
+  () => ({
+    confirmProposal: vi.fn(),
+    rejectProposal: vi.fn(),
+    listProposals: vi.fn(),
+    get: vi.fn(),
+  }),
+);
 
 vi.mock("@/features/library/api/library", () => ({
   libraryApi: {
@@ -19,6 +22,10 @@ vi.mock("@/features/library/api/library", () => ({
     rejectProposal,
     listProposals,
   },
+}));
+
+vi.mock("@/features/courses/api/courses", () => ({
+  courseApi: { get },
 }));
 
 // 组件级测试没有 RouterProvider：仅把 Link 降级为普通锚点，其余 router 导出保持原样。
@@ -72,6 +79,7 @@ function proposalFixture(
 beforeEach(() => {
   vi.clearAllMocks();
   listProposals.mockResolvedValue([]);
+  get.mockResolvedValue({ id: "course-1", name: "Python 学习" });
 });
 
 describe("ChatOperationProposalCard", () => {
@@ -193,5 +201,122 @@ describe("ChatOperationProposalCard", () => {
     await waitFor(() => {
       expect(container).toBeEmptyDOMElement();
     });
+  });
+});
+
+function textRecordFixture(
+  overrides: Partial<{
+    id: string;
+    status: string;
+    session_id: string | null;
+    error_code: string | null;
+    result: Record<string, string | null> | null;
+  }> = {},
+) {
+  return {
+    id: "p-t1",
+    proposal_type: "TEXT_RECORD_ADD",
+    status: "PENDING",
+    session_id: SESSION_ID,
+    payload: {
+      course_id: "course-1",
+      content: "三角函数积分变换笔记：换元法与分部积分的适用边界。",
+    },
+    result: null,
+    error_code: null,
+    ...overrides,
+  };
+}
+
+describe("ChatOperationProposalCard — TEXT_RECORD_ADD（工单 03）", () => {
+  it("确认卡：目标课程名（既有课程 API）+ 正文摘要 + 明示将尝试生成 AI 总结", async () => {
+    get.mockResolvedValue({ id: "course-1", name: "Python 学习" });
+    listProposals.mockResolvedValue([textRecordFixture()]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("Python 学习")).toBeVisible();
+    expect(
+      screen.getByText("三角函数积分变换笔记：换元法与分部积分的适用边界。"),
+    ).toBeVisible();
+    expect(screen.getByText("保存后将尝试生成 AI 总结。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认保存记录" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "拒绝保存记录" })).toBeEnabled();
+  });
+
+  it("确认调用 confirm 转回执态：记录入口 + 总结任务已提交", async () => {
+    get.mockResolvedValue({ id: "course-1", name: "Python 学习" });
+    confirmProposal.mockResolvedValue({
+      ...textRecordFixture(),
+      status: "APPLIED",
+      result: {
+        record_id: "rec-9",
+        summary_job_id: "job-1",
+        summary_error_code: null,
+      },
+    });
+    listProposals.mockResolvedValue([textRecordFixture()]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认保存记录" }),
+    );
+    expect(await screen.findByText("记录已保存。")).toBeVisible();
+    expect(screen.getByText("总结任务已提交，正在生成。")).toBeVisible();
+    const link = screen.getByRole("link", { name: "打开记录" });
+    expect(link).toHaveAttribute("href", "/records/$recordId");
+  });
+
+  it("回执三态如实区分：未触发 ≠ 提交失败（恢复视图读 result 投影）", async () => {
+    listProposals.mockResolvedValue([
+      textRecordFixture({
+        id: "p-n1",
+        status: "APPLIED",
+        result: {
+          record_id: "rec-1",
+          summary_job_id: null,
+          summary_error_code: null,
+        },
+      }),
+      textRecordFixture({
+        id: "p-n2",
+        status: "APPLIED",
+        result: {
+          record_id: "rec-2",
+          summary_job_id: null,
+          summary_error_code: "TEXT_RECORD_ADD_SUMMARY_ENQUEUE_FAILED",
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findAllByText("记录已保存。")).toHaveLength(2);
+    expect(
+      screen.getByText("未触发 AI 总结（AI 服务未配置或未同意外发）。"),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "总结任务提交失败（文本记录的总结任务提交失败），可在记录页重试。",
+      ),
+    ).toBeVisible();
+  });
+
+  it("重启后恢复 FAILED：失败原因可读且确认按钮保留（重试）", async () => {
+    get.mockResolvedValue({ id: "course-1", name: "Python 学习" });
+    listProposals.mockResolvedValue([
+      textRecordFixture({
+        id: "p-f1",
+        status: "FAILED",
+        error_code: "COURSE_ARCHIVED",
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("记录保存未完成");
+    expect(alert).toHaveTextContent("归档课程不能接受新资料");
+    expect(screen.getByRole("button", { name: "确认保存记录" })).toBeEnabled();
+  });
+
+  it("目标课程已不可读时确认卡如实提示", async () => {
+    get.mockRejectedValue(new Error("404"));
+    listProposals.mockResolvedValue([textRecordFixture()]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("课程已不可用")).toBeVisible();
   });
 });
