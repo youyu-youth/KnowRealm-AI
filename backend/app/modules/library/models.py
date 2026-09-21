@@ -69,6 +69,8 @@ class AgentProposal(Base):
     target_id: Mapped[str | None] = mapped_column(String(36), default=None)
     payload_json: Mapped[str] = mapped_column(Text)
     evidence_refs_json: Mapped[str | None] = mapped_column(Text, default=None)
+    # 操作回执（工单 02）：APPLIED 时由确认事务写入类型化结果，其余状态恒 NULL。
+    result_json: Mapped[str | None] = mapped_column(Text, default=None)
     error_code: Mapped[str | None] = mapped_column(String(60), default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     decided_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)

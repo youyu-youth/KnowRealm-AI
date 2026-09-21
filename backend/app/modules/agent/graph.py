@@ -42,6 +42,10 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.agent.schemas import ChatMode, ChatScope
+from app.modules.agent.tools.create_course import (
+    CREATE_COURSE_TOOL_NAME,
+    create_course,
+)
 from app.modules.agent.tools.propose_ingest import (
     PROPOSE_INGEST_TOOL_NAME,
     propose_ingest,
@@ -56,13 +60,16 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v9"
+CHAT_PROMPT_VERSION = "chat-library-scope-v10"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
-# 此版本触发。工单 01 起两版随模型可见面变化（页面提示 + search_courses）同步 bump。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v10"
+# 此版本触发。工单 01 起两版随模型可见面变化同步 bump（02：操作工具 create_course）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v11"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
+# 操作工具族（工单 02 起）：成功返回经操作提案事件进 done 载荷（确认卡）；
+# 03 的写工具加入同集合。
+OPERATION_TOOL_NAMES = frozenset({CREATE_COURSE_TOOL_NAME})
 # 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
 # 起从 message_service 收敛到装配层，页面快照不改变挂载矩阵）。
 RETRIEVAL_SCOPES = frozenset(
@@ -122,12 +129,22 @@ class ChatResearchProposalEvent:
     proposals: tuple[dict[str, str], ...]
 
 
+@dataclass(frozen=True)
+class ChatOperationProposalEvent:
+    """操作提案已创建（操作工具成功返回，工单 02）：done 载荷透传前端确认卡，
+    每项 {proposal_id, action, payload}（payload 为判别校验后的清洗载荷，
+    确认卡据此预览完整参数）。"""
+
+    proposals: tuple[dict[str, object], ...]
+
+
 ChatStreamEvent = (
     ChatTokenEvent
     | ChatToolCallEvent
     | ChatToolResultEvent
     | ChatMemoryProposalEvent
     | ChatResearchProposalEvent
+    | ChatOperationProposalEvent
 )
 
 
@@ -174,7 +191,10 @@ def _resolve_agent_config(
     config = LIBRARY_CHAT_AGENT_CONFIG if retrieval else CHAT_AGENT_CONFIG
     if web_search_enabled:
         config = AgentConfig(tools=(*config.tools, web_search))
-    config = AgentConfig(tools=(*config.tools, search_courses, propose_memory))
+    # 恒挂载段（操作工具组）：search_courses 课程查询 + propose_memory 记忆提案
+    # + create_course 课程创建提案（工单 02，spec 决策 12：写工具恒挂载全部
+    # 会话类型，目标解析与会话范围解耦）。
+    config = AgentConfig(tools=(*config.tools, search_courses, propose_memory, create_course))
     if research:
         config = AgentConfig(tools=(*config.tools, propose_ingest))
     return config
@@ -371,6 +391,44 @@ def _research_proposal_event(message: ToolMessage) -> ChatResearchProposalEvent 
     return ChatResearchProposalEvent(proposals=tuple(proposals))
 
 
+def _operation_proposal_event(message: ToolMessage) -> ChatOperationProposalEvent | None:
+    """操作工具的成功返回 → 操作提案事件（载荷 JSON：{ok, proposals: [...]}）。
+
+    每项收窄为 {proposal_id, action, payload} 三键：形状不符的条目丢弃（与
+    前端 done 载荷防御性收窄同一口径）。
+    """
+    if not isinstance(message.content, str):
+        return None
+    try:
+        value: object = json.loads(message.content)
+    except ValueError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    payload = cast(dict[str, object], value)
+    raw_proposals = payload.get("proposals")
+    if payload.get("ok") is not True or not isinstance(raw_proposals, list):
+        return None
+    proposals: list[dict[str, object]] = []
+    for item in cast(list[object], raw_proposals):
+        if not isinstance(item, dict):
+            continue
+        entry = cast(dict[str, object], item)
+        proposal_id = entry.get("proposal_id")
+        action = entry.get("action")
+        item_payload = entry.get("payload")
+        if not (
+            isinstance(proposal_id, str)
+            and isinstance(action, str)
+            and isinstance(item_payload, dict)
+        ):
+            continue
+        proposals.append({"proposal_id": proposal_id, "action": action, "payload": item_payload})
+    if not proposals:
+        return None
+    return ChatOperationProposalEvent(proposals=tuple(proposals))
+
+
 async def stream_chat_reply(
     *,
     checkpointer: BaseCheckpointSaver[str],
@@ -386,7 +444,7 @@ async def stream_chat_reply(
     - 统一 Agent 运行时上下文（工单 01）承载全部工具运行期状态并单对绑定/重置：
       范围会话（scope ∈ RETRIEVAL_SCOPES）注入 search_library，web_search_provider
       非 None 时挂载联网工具，mode=RESEARCH 追加挂载 propose_ingest，search_courses
-      与 propose_memory 恒挂载（装配组合见 _resolve_agent_config）；
+      / propose_memory / create_course 恒挂载（装配组合见 _resolve_agent_config）；
     - 事件分发：AIMessageChunk 文本 → token、tool_call_chunks 拼全 → tool_call、
       ToolMessage → tool_result；token 用量跨工具循环累加；
     - 正常完成埋点（graph_name=chat，仅元数据，prompt_version 随会话模式取
@@ -450,6 +508,10 @@ async def stream_chat_reply(
                     research_event = _research_proposal_event(chunk)
                     if research_event is not None:
                         yield research_event
+                if chunk.name in OPERATION_TOOL_NAMES:
+                    operation_event = _operation_proposal_event(chunk)
+                    if operation_event is not None:
+                        yield operation_event
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise

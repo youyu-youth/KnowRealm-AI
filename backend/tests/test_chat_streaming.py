@@ -1682,7 +1682,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v9"
+        assert rows[0][3] == "chat-library-scope-v10"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2183,23 +2183,30 @@ async def test_scope_mounting_matrix_tool_visibility(
                 return list(BindRecordingModel.bound)
 
             # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library；
-            # search_courses 与 propose_memory 恒挂载（工单 01 操作工具组 /
-            # 工单 06 任意会话支持用户明确「记住…」）。
-            assert await visible(free_id) == ["search_courses", "propose_memory"]
+            # search_courses / propose_memory / create_course 恒挂载（工单 01 操作
+            # 工具组 / 02 课程创建提案 / 工单 06 任意会话支持用户明确「记住…」）。
+            assert await visible(free_id) == [
+                "search_courses",
+                "propose_memory",
+                "create_course",
+            ]
             assert await visible(record_session_id) == [
                 "search_library",
                 "search_courses",
                 "propose_memory",
+                "create_course",
             ]
             assert await visible(course_session_id) == [
                 "search_library",
                 "search_courses",
                 "propose_memory",
+                "create_course",
             ]
             assert await visible(all_session_id) == [
                 "search_library",
                 "search_courses",
                 "propose_memory",
+                "create_course",
             ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
@@ -2211,18 +2218,21 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "web_search",
                 "search_courses",
                 "propose_memory",
+                "create_course",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
                 "web_search",
                 "search_courses",
                 "propose_memory",
+                "create_course",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
                 "web_search",
                 "search_courses",
                 "propose_memory",
+                "create_course",
             ]
 
 
@@ -2892,3 +2902,55 @@ async def test_free_session_with_course_page_snapshot_keeps_tool_matrix(
             assert "search_library" not in BindRecordingModel.bound
             assert "search_courses" in BindRecordingModel.bound
             assert "propose_memory" in BindRecordingModel.bound
+
+
+@pytest.mark.anyio
+async def test_create_course_tool_streams_operation_proposal_done_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """操作工具成功 → done 载荷 operation_proposals（零新 SSE 事件类型）；
+    提案落库 PENDING、未确认零课程；FREE 会话恒挂载 create_course。"""
+    replies: list[StubReply] = [
+        ToolCallReply(
+            "create_course",
+            {
+                "name": "现代诗赏析",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        ),
+        ["已为你创建课程提案，请确认。"],
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=replies) as (
+        _app,
+        client,
+        captured_bound,
+    ):
+        created = await client.post("/api/chat-sessions", json={"scope": "FREE"})
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+        events = await send_message(client, session_id, "帮我创建一个课程")
+
+    done = events[-1][1]
+    assert events[-1][0] == "done"
+    proposals = done["operation_proposals"]
+    assert len(proposals) == 1
+    assert proposals[0]["action"] == "create_course"
+    assert proposals[0]["payload"]["name"] == "现代诗赏析"
+    assert proposals[0]["payload"]["depth"] == "BEGINNER"
+    assert isinstance(proposals[0]["proposal_id"], str)
+    # FREE 会话恒挂载操作工具组（spec 决策 12：写工具与范围解耦）。
+    bound_names = [getattr(tool, "name", "") for tool in captured_bound[-1]]
+    assert "create_course" in bound_names
+
+    async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+        proposal_row = await (
+            await connection.execute(
+                "SELECT proposal_type, status FROM agent_proposals WHERE session_id = ?",
+                (session_id,),
+            )
+        ).fetchone()
+        course_count = await (await connection.execute("SELECT count(*) FROM courses")).fetchone()
+    assert proposal_row is not None
+    assert tuple(proposal_row) == ("COURSE_CREATE", "PENDING")
+    assert course_count is not None and course_count[0] == 0

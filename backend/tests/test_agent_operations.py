@@ -1,7 +1,9 @@
-"""通用 Agent 第一阶段工单 01：统一运行时上下文、课程查询工具与页面快照。
+"""通用 Agent 第一阶段工单 01/02：统一运行时上下文、课程查询工具、页面快照与课程创建操作。
 
 - search_courses：候选载荷/场景字段/归档与软删口径/截断明示/预算共享/未绑定分支；
-- 页面快照：后端重校验（存在性/状态、失效降级）与模型上下文注入（框定为提示信息）。
+- 页面快照：后端重校验（存在性/状态、失效降级）与模型上下文注入（框定为提示信息）；
+- create_course（02）：结构化缺失项、每轮操作提案上限、PENDING 提案创建、
+  确认应用（课程 + 索引 + result_json 原子提交）、幂等 409 与操作提案事件解析。
 """
 
 import json
@@ -12,6 +14,8 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from langchain_core.messages import ToolMessage
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -23,10 +27,15 @@ from app.modules.agent.context import (
     build_context_messages,
     format_page_hint,
 )
+from app.modules.agent.graph import (
+    ChatOperationProposalEvent,
+    _operation_proposal_event,  # pyright: ignore[reportPrivateUsage]
+)
 from app.modules.agent.message_service import (
     _validate_page_snapshot,  # pyright: ignore[reportPrivateUsage]
 )
 from app.modules.agent.runtime import (
+    MAX_OPERATION_PROPOSALS_PER_TURN,
     MAX_TOOL_CALLS_PER_TURN,
     AgentRuntimeContext,
     ToolCallBudget,
@@ -34,10 +43,14 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.agent.schemas import ChatPageSnapshot, ChatRole
+from app.modules.agent.tools.create_course import create_course
 from app.modules.agent.tools.search_courses import (
     SEARCH_COURSES_LIMIT,
     search_courses,
 )
+from app.modules.library.proposals import ProposalService
+from app.modules.library.schemas import ProposalCreateRequest, ProposalType
+from app.shared.errors import CodedHTTPException
 
 TOKEN = "test-launch-token"
 NOW = "2026-09-21T08:00:00.000000Z"
@@ -303,3 +316,319 @@ def test_format_page_hint_covers_known_page_types() -> None:
     assert "当前对象" not in format_page_hint(PageHint(page_type="inbox"))
     unknown = format_page_hint(PageHint(page_type="spaces"))
     assert "spaces" in unknown
+
+
+# ---------------------------------------------------------------------------
+# create_course 操作工具（工单 02）：公共提案入口、结构化缺失项与每轮上限
+# ---------------------------------------------------------------------------
+
+
+async def invoke_create_course(
+    session_factory: async_sessionmaker[AsyncSession],
+    args: dict[str, Any] | None = None,
+    *,
+    operations_created: int = 0,
+) -> dict[str, Any]:
+    token = bind_agent_runtime_context(
+        AgentRuntimeContext(
+            session_factory=session_factory,
+            session_id="sess-op",
+            budget=ToolCallBudget(operations_created=operations_created),
+        )
+    )
+    try:
+        raw = await create_course.ainvoke(args or {})
+        return cast("dict[str, Any]", json.loads(raw))
+    finally:
+        reset_agent_runtime_context(token)
+
+
+async def table_count(session_factory: async_sessionmaker[AsyncSession], sql: str) -> int:
+    async with session_factory() as session:
+        return int(cast(int, (await session.execute(text(sql))).scalar_one()))
+
+
+async def proposal_rows(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> list[tuple[str, str, str, str | None]]:
+    """agent_proposals 全行 (id, proposal_type, status, result_json)，按创建时间序。"""
+    async with session_factory() as session:
+        return [
+            (cast(str, row[0]), cast(str, row[1]), cast(str, row[2]), row[3])
+            for row in (
+                await session.execute(
+                    text(
+                        "SELECT id, proposal_type, status, result_json FROM agent_proposals"
+                        " ORDER BY created_at, id"
+                    )
+                )
+            ).all()
+        ]
+
+
+@pytest.mark.anyio
+async def test_create_course_unbound_returns_structured_error() -> None:
+    raw = await create_course.ainvoke({"name": "Python"})
+    payload = dict(json.loads(raw))
+    assert payload["ok"] is False
+    assert payload["error"] == "AGENT_CONTEXT_UNBOUND"
+    assert payload["proposals"] == []
+
+
+def test_create_course_signature_matches_registered_payload_schema() -> None:
+    """薄工具参数面与注册项 payload schema 同源的漂移防线：任一侧字段增删
+    不同步即失败（spec 决策 3「参数 schema 来自注册项」的可验证表达）。"""
+    from app.modules.agent.operations.course_create import CourseCreatePayload
+
+    # langchain 对 args_schema 的类型标注松散（实际是按签名生成的 pydantic 模型类）。
+    args_schema = cast("type[BaseModel]", create_course.args_schema)
+    tool_fields = set(args_schema.model_json_schema().get("properties", {}))
+    assert tool_fields == set(CourseCreatePayload.model_fields)
+
+
+@pytest.mark.anyio
+async def test_create_course_missing_required_lists_missing_fields(tmp_path: Path) -> None:
+    """缺必填：工具返回结构化缺失项（模型转述追问），零提案、零课程。"""
+    async with bare_db(tmp_path) as session_factory:
+        payload = await invoke_create_course(session_factory)
+        assert payload["ok"] is False
+        assert "name" in payload["missing"]
+        assert "learning_context" in payload["missing"]
+        assert payload["proposals"] == []
+        assert await table_count(session_factory, "SELECT count(*) FROM courses") == 0
+        assert await table_count(session_factory, "SELECT count(*) FROM agent_proposals") == 0
+
+
+@pytest.mark.anyio
+async def test_create_course_school_missing_stage_reports_condition_detail(
+    tmp_path: Path,
+) -> None:
+    """条件必填（学业场景须选阶段）：schema 层校验拦截并返回可转述说明。"""
+    async with bare_db(tmp_path) as session_factory:
+        payload = await invoke_create_course(
+            session_factory,
+            {"name": "高中数学", "learning_context": "SCHOOL"},
+        )
+        assert payload["ok"] is False
+        assert payload["detail"] == "学业场景必须选择教育阶段"
+        assert payload["proposals"] == []
+
+
+@pytest.mark.anyio
+async def test_create_course_interest_missing_depth_reports_condition_detail(
+    tmp_path: Path,
+) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        payload = await invoke_create_course(
+            session_factory,
+            {"name": "吉他入门", "learning_context": "INTEREST"},
+        )
+        assert payload["ok"] is False
+        assert payload["detail"] == "职业或兴趣场景必须选择学习深度"
+
+
+@pytest.mark.anyio
+async def test_create_course_success_creates_pending_proposal_without_course(
+    tmp_path: Path,
+) -> None:
+    """齐全参数：创建 PENDING 提案（创建不改业务事实），课程未产生。"""
+    async with bare_db(tmp_path) as session_factory:
+        payload = await invoke_create_course(
+            session_factory,
+            {
+                "name": "高中数学",
+                "learning_context": "SCHOOL",
+                "education_stage": "HIGH_SCHOOL",
+                "course_type": "MAJOR",
+                "description": "高一数学同步",
+            },
+        )
+        assert payload["ok"] is True
+        proposal = payload["proposals"][0]
+        assert isinstance(proposal["proposal_id"], str)
+        assert proposal["action"] == "create_course"
+        assert proposal["status"] == "PENDING"
+        # 学业场景归一化：depth 恒 None（与 HTTP 创建契约同源）。
+        assert proposal["payload"] == {
+            "name": "高中数学",
+            "learning_context": "SCHOOL",
+            "education_stage": "HIGH_SCHOOL",
+            "depth": None,
+            "course_type": "MAJOR",
+            "description": "高一数学同步",
+        }
+        assert await table_count(session_factory, "SELECT count(*) FROM courses") == 0
+        rows = await proposal_rows(session_factory)
+        assert len(rows) == 1
+        assert rows[0][1] == "COURSE_CREATE"
+        assert rows[0][2] == "PENDING"
+
+
+@pytest.mark.anyio
+async def test_create_course_operation_limit_rejects_without_truncation(
+    tmp_path: Path,
+) -> None:
+    """每轮操作提案上限：超限拒绝而非截断。"""
+    async with bare_db(tmp_path) as session_factory:
+        payload = await invoke_create_course(
+            session_factory,
+            {"name": "历史", "learning_context": "INTEREST", "depth": "BEGINNER"},
+            operations_created=MAX_OPERATION_PROPOSALS_PER_TURN,
+        )
+        assert payload["ok"] is False
+        assert payload["error"] == "OPERATION_PROPOSAL_LIMIT"
+        assert payload["proposals"] == []
+        assert await table_count(session_factory, "SELECT count(*) FROM agent_proposals") == 0
+
+
+@pytest.mark.anyio
+async def test_create_course_rejects_unknown_payload_keys(tmp_path: Path) -> None:
+    """COURSE_CREATE 判别 payload 未知键拒绝（经提案创建侧执法）。"""
+    async with bare_db(tmp_path) as session_factory:
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.create(
+                    session,
+                    ProposalCreateRequest(
+                        proposal_type=ProposalType.COURSE_CREATE,
+                        payload={
+                            "name": "X",
+                            "learning_context": "SCHOOL",
+                            "education_stage": "HIGH_SCHOOL",
+                            "malicious": "drop table",
+                        },
+                    ),
+                )
+        assert exc_info.value.code == "PROPOSAL_PAYLOAD_INVALID"
+
+
+# ---------------------------------------------------------------------------
+# COURSE_CREATE 确认与应用（工单 02）：操作回执、原子性与幂等
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_course_create_confirm_applies_writes_result_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    """确认 → 课程创建 + 搜索索引 + APPLIED + result_json 原子提交；双确认 409。"""
+    async with bare_db(tmp_path) as session_factory:
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.COURSE_CREATE,
+                    payload={
+                        "name": "高中物理",
+                        "learning_context": "SCHOOL",
+                        "education_stage": "HIGH_SCHOOL",
+                    },
+                    session_id="sess-1",
+                ),
+            )
+        # 未确认零创建。
+        assert await table_count(session_factory, "SELECT count(*) FROM courses") == 0
+        async with session_factory() as session:
+            applied = await ProposalService.confirm(session, proposal.id)
+        assert applied.status.value == "APPLIED"
+        assert applied.result is not None
+        course_id = applied.result["course_id"]
+        assert isinstance(course_id, str)
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT name, learning_context, education_stage, depth"
+                        " FROM courses WHERE id = :id"
+                    ),
+                    {"id": course_id},
+                )
+            ).one()
+            assert tuple(row) == ("高中物理", "SCHOOL", "HIGH_SCHOOL", None)
+        # 搜索索引同事务写入。
+        indexed = await table_count(
+            session_factory,
+            "SELECT count(*) FROM search_index WHERE entity_type = 'course'"
+            f" AND entity_id = '{course_id}'",
+        )
+        assert indexed == 1
+        # 回执持久化（重启后可查明）。
+        rows = await proposal_rows(session_factory)
+        assert rows[0][2] == "APPLIED"
+        assert json.loads(rows[0][3] or "{}") == {"course_id": course_id}
+        # 幂等：APPLIED 终态双确认 409。
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, proposal.id)
+        assert exc_info.value.status_code == 409
+        assert exc_info.value.code == "PROPOSAL_ALREADY_DECIDED"
+
+
+@pytest.mark.anyio
+async def test_course_create_reject_keeps_no_business_fact(tmp_path: Path) -> None:
+    """拒绝：零业务事实；REJECTED 终态再确认 409。"""
+    async with bare_db(tmp_path) as session_factory:
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.COURSE_CREATE,
+                    payload={
+                        "name": "写作课",
+                        "learning_context": "INTEREST",
+                        "depth": "BEGINNER",
+                    },
+                ),
+            )
+        async with session_factory() as session:
+            rejected = await ProposalService.reject(session, proposal.id)
+        assert rejected.status.value == "REJECTED"
+        assert await table_count(session_factory, "SELECT count(*) FROM courses") == 0
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, proposal.id)
+        assert exc_info.value.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# 操作提案事件解析（工单 02）：done 载荷透传前端确认卡
+# ---------------------------------------------------------------------------
+
+
+def _tool_message(content: str) -> Any:
+    return ToolMessage(content=content, tool_call_id="call-1", name="create_course")
+
+
+def test_operation_proposal_event_narrows_payload_shape() -> None:
+    body = json.dumps(
+        {
+            "ok": True,
+            "proposals": [
+                {
+                    "proposal_id": "p1",
+                    "action": "create_course",
+                    "payload": {"name": "X", "learning_context": "SCHOOL"},
+                    "status": "PENDING",
+                },
+                {"proposal_id": 3},
+            ],
+        },
+        ensure_ascii=False,
+    )
+    event = _operation_proposal_event(_tool_message(body))
+    assert isinstance(event, ChatOperationProposalEvent)
+    assert event.proposals == (
+        {
+            "proposal_id": "p1",
+            "action": "create_course",
+            "payload": {"name": "X", "learning_context": "SCHOOL"},
+        },
+    )
+
+
+def test_operation_proposal_event_ignores_failure_and_malformed() -> None:
+    failure = json.dumps({"ok": False, "missing": ["name"], "proposals": []})
+    assert _operation_proposal_event(_tool_message(failure)) is None
+    assert _operation_proposal_event(_tool_message("not-json")) is None
+    errored = ToolMessage(content="boom", tool_call_id="c2", name="create_course", status="error")
+    assert _operation_proposal_event(errored) is None

@@ -2026,6 +2026,10 @@ export interface components {
                 [key: string]: unknown;
             };
             proposal_type: components["schemas"]["ProposalType"];
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
             /** Session Id */
             session_id: string | null;
             status: components["schemas"]["ProposalStatus"];
@@ -3986,7 +3990,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE";
         /**
          * QuizAction
          * @enum {string}

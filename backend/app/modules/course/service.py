@@ -23,13 +23,22 @@ from app.shared.errors import CodedHTTPException
 
 class CourseService:
     @staticmethod
-    async def create(session: AsyncSession, payload: CourseCreate) -> Course:
+    async def create_core(session: AsyncSession, payload: CourseCreate) -> Course:
+        """课程创建事务内核心（工单 02）：不自行开事务，由调用方拥有事务边界。
+
+        HTTP 路由（CourseService.create）与提案应用器（agent/operations）共用
+        同一核心：业务写入与搜索索引同事务原子提交，校验逻辑零双份漂移。
+        """
         course = Course(**payload.model_dump(mode="json"))
-        async with session.begin():
-            session.add(course)
-            await session.flush()
-            await SearchService.upsert_course_index(session, course.id)
+        session.add(course)
+        await session.flush()
+        await SearchService.upsert_course_index(session, course.id)
         return course
+
+    @staticmethod
+    async def create(session: AsyncSession, payload: CourseCreate) -> Course:
+        async with session.begin():
+            return await CourseService.create_core(session, payload)
 
     @staticmethod
     async def get(session: AsyncSession, course_id: str) -> Course | None:

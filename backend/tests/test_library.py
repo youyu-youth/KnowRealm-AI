@@ -348,7 +348,7 @@ async def test_migration_upgrade_path_preserves_data(tmp_path: Path) -> None:
         assert version_row is not None
         version = cast(int, version_row[0])
         assert version == supported_user_version()
-        assert version == 27
+        assert version == 28
         session_row = await (
             await connection.execute("SELECT count(*) FROM chat_sessions")
         ).fetchone()
@@ -399,7 +399,7 @@ async def test_pre_upgrade_snapshot_created_once(tmp_path: Path) -> None:
     backups = tmp_path / "backups"
     await apply_migrations_upto(db_path, 25)
     await ensure_pre_upgrade_snapshot(db_path, backups)
-    snapshot = backups / "knowrealm-premigrate-0027.db"
+    snapshot = backups / f"knowrealm-premigrate-{supported_user_version():04d}.db"
     assert snapshot.exists()
     first = snapshot.read_bytes()
     await ensure_pre_upgrade_snapshot(db_path, backups)  # 已存在不覆盖（保留首次状态）

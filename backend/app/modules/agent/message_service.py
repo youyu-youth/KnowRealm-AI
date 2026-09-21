@@ -36,6 +36,7 @@ from app.modules.agent.graph import (
     CHAT_PROMPT_VERSION,
     CHAT_RESEARCH_PROMPT_VERSION,
     ChatMemoryProposalEvent,
+    ChatOperationProposalEvent,
     ChatResearchProposalEvent,
     ChatStreamOutcome,
     ChatTokenEvent,
@@ -697,6 +698,7 @@ class ChatMessageService:
             parts: list[str] = []
             memory_proposals: list[dict[str, object]] = []
             research_proposals: list[dict[str, str]] = []
+            operation_proposals: list[dict[str, object]] = []
             research_mode = False
             try:
                 prompt_context = await _session_context(
@@ -743,6 +745,8 @@ class ChatMessageService:
                         )
                     elif isinstance(event, ChatResearchProposalEvent):
                         research_proposals.extend(event.proposals)
+                    elif isinstance(event, ChatOperationProposalEvent):
+                        operation_proposals.extend(event.proposals)
                     else:
                         yield _sse(
                             "tool_result",
@@ -832,6 +836,10 @@ class ChatMessageService:
                 done_payload["memory_proposals"] = memory_proposals
             if research_proposals:
                 done_payload["research_proposals"] = research_proposals
+            # 操作提案（工单 02）：{proposal_id, action, payload}，零新 SSE 事件
+            # 类型（先例：研究提案、记忆提案的完成载荷模式）。
+            if operation_proposals:
+                done_payload["operation_proposals"] = operation_proposals
             yield _sse("done", done_payload)
         finally:
             registry.release(session_id)

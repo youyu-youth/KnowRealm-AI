@@ -43,6 +43,14 @@ _PAYLOAD_SCHEMAS: dict[ProposalType, type[BaseModel]] = {
 }
 
 
+def register_payload_schema(proposal_type: ProposalType, schema: type[BaseModel]) -> None:
+    """注册提案类型的判别 payload schema（工单 02：操作提案随 operations 包导入注册）。
+
+    依赖方向：library 不依赖 agent 域，操作类型的 schema 类定义在 agent/operations、
+    经本函数反向注册（同 register_applier 的先例）。重复注册以最后一次为准。"""
+    _PAYLOAD_SCHEMAS[proposal_type] = schema
+
+
 def register_applier(proposal_type: ProposalType, applier: ProposalApplier) -> None:
     _APPLIERS[proposal_type] = applier
 
@@ -69,6 +77,11 @@ def _proposal_out(proposal: AgentProposal) -> AgentProposalOut:
             out.evidence_refs = json.loads(proposal.evidence_refs_json)
         except ValueError:
             out.evidence_refs = None
+    if proposal.result_json:
+        try:
+            out.result = _as_dict(proposal.result_json)
+        except ValueError:
+            out.result = None
     return out
 
 
@@ -94,6 +107,8 @@ class ProposalService:
     async def confirm(session: AsyncSession, proposal_id: str) -> AgentProposalOut:
         """确认并应用：应用器写入与 APPLIED 同事务；失败独立落 FAILED 后 422。
 
+        应用器返回值是类型化结果投影（操作回执，工单 02：课程创建 →
+        {course_id}），同事务写进 result_json、经输出契约 result 字段透出。
         FAILED 提案可再次确认（工单 05：失败留稳定错误码可重试）——
         APPLIED / REJECTED 是终局，重复确认 409。
         """
@@ -118,10 +133,12 @@ class ProposalService:
                         status_code=422,
                         detail="该提案类型尚未注册应用器",
                     )
-                await applier(session, proposal)
+                result = await applier(session, proposal)
                 proposal.status = ProposalStatus.APPLIED.value
                 proposal.error_code = None
                 proposal.decided_at = utcnow()
+                if result is not None:
+                    proposal.result_json = json.dumps(result, ensure_ascii=False)
         except CodedHTTPException as exc:
             if exc.code in ("PROPOSAL_NOT_FOUND", "PROPOSAL_ALREADY_DECIDED"):
                 raise

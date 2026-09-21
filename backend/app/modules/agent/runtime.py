@@ -21,16 +21,22 @@ class ToolCallBudget:
     """每轮（每条用户消息）的工具调用预算累计器：随运行时上下文每轮重建。
 
     资料检索（search_library）与对象查询（search_courses）共用同一预算
-    （spec 实施决策 16：调用数与字符数累计）。
+    （spec 实施决策 16：调用数与字符数累计）；operations_created 是操作类
+    提案的独立累计（每轮上限 MAX_OPERATION_PROPOSALS_PER_TURN）。
     """
 
     calls_used: int = 0
     chars_fed: int = 0
+    operations_created: int = 0
 
 
 # 每轮工具调用次数上限（contract §3 冻结值；共享预算，执法点在各工具内，
 # 工单 01 起随 ToolCallBudget 收敛到本模块，02/03 操作工具同源引用）。
 MAX_TOOL_CALLS_PER_TURN = 6
+
+# 每轮操作类提案上限（spec 实施决策 16：超限拒绝而非截断——截断会让确认卡
+# 出现用户没见过的操作；量级对齐既有提案工具先例）。
+MAX_OPERATION_PROPOSALS_PER_TURN = 5
 
 
 @dataclass

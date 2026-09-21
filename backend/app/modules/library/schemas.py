@@ -270,6 +270,7 @@ class ProposalType(StrEnum):
     ORGANIZE = "ORGANIZE"
     MEMORY = "MEMORY"
     RESEARCH_INGEST = "RESEARCH_INGEST"
+    COURSE_CREATE = "COURSE_CREATE"
 
 
 class AgentProposalOut(BaseModel):
@@ -284,6 +285,8 @@ class AgentProposalOut(BaseModel):
     target_id: str | None
     payload: dict[str, Any] = {}
     evidence_refs: Any | None = None
+    # 操作回执（工单 02）：APPLIED 提案的类型化结果（课程创建 → {course_id}）。
+    result: dict[str, Any] | None = None
     error_code: str | None
     created_at: datetime
     decided_at: datetime | None

@@ -62,6 +62,18 @@
           "proposal_type": {
             "$ref": "#/components/schemas/ProposalType"
           },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
           "session_id": {
             "anyOf": [
               {
@@ -4833,7 +4845,8 @@
         "enum": [
           "ORGANIZE",
           "MEMORY",
-          "RESEARCH_INGEST"
+          "RESEARCH_INGEST",
+          "COURSE_CREATE"
         ],
         "title": "ProposalType",
         "type": "string"
