@@ -6,17 +6,30 @@
 
 **Blocked by:** 01 页面上下文、统一运行时上下文与课程查询。
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] operations 子包：声明式注册表 + 公共提案入口；create_course 薄工具（docstring 面向模型、参数 schema 来自注册项）；无领域专属公共分支
-- [ ] COURSE_CREATE 判别 payload schema（未知键拒绝）注册进既有提案判别校验表
-- [ ] 课程创建事务内核心抽取：HTTP 路由与提案应用器共用，既有课程路由测试零改动通过（零行为漂移）
-- [ ] 迁移 0028：agent_proposals 增加 result_json（可空）；全库 user_version 硬编码断言同步（先 grep 后改）
-- [ ] 应用器：确认事务内创建课程 + 搜索索引 + APPLIED + result_json（课程 id）原子提交
-- [ ] 幂等：APPLIED/REJECTED 终态双确认 409；未确认零创建；超时后查询可查明
-- [ ] 缺必填时工具返回结构化缺失项说明（模型可转述追问）；用户要求"只保存不总结"类越界能力时如实告知不支持
-- [ ] done 载荷新增 operation_proposals（零新 SSE 事件类型）
-- [ ] 前端确认卡（完整参数预览，读提案 payload）+ 回执卡（APPLIED 后跳转课程入口）；断线/重启经既有提案查询恢复
-- [ ] 每轮操作类提案上限 5 条，超限拒绝不截断
-- [ ] 结果进提案输出契约（AgentProposalOut 扩展）；api-types regenerate；zh/en 文案同步；新错误码登记
-- [ ] 门禁全套过（后端 pytest/ruff/pyright、前端 vitest/lint/build、OpenAPI --check）
+- [x] operations 子包：声明式注册表 + 公共提案入口；create_course 薄工具（docstring 面向模型、参数 schema 来自注册项）；无领域专属公共分支
+- [x] COURSE_CREATE 判别 payload schema（未知键拒绝）注册进既有提案判别校验表
+- [x] 课程创建事务内核心抽取：HTTP 路由与提案应用器共用，既有课程路由测试零改动通过（零行为漂移）
+- [x] 迁移 0028：agent_proposals 增加 result_json（可空）；全库 user_version 硬编码断言同步（先 grep 后改）
+- [x] 应用器：确认事务内创建课程 + 搜索索引 + APPLIED + result_json（课程 id）原子提交
+- [x] 幂等：APPLIED/REJECTED 终态双确认 409；未确认零创建；超时后查询可查明
+- [x] 缺必填时工具返回结构化缺失项说明（模型可转述追问）；用户要求"只保存不总结"类越界能力时如实告知不支持
+- [x] done 载荷新增 operation_proposals（零新 SSE 事件类型）
+- [x] 前端确认卡（完整参数预览，读提案 payload）+ 回执卡（APPLIED 后跳转课程入口）；断线/重启经既有提案查询恢复
+- [x] 每轮操作类提案上限 5 条，超限拒绝不截断
+- [x] 结果进提案输出契约（AgentProposalOut 扩展）；api-types regenerate；zh/en 文案同步；新错误码登记
+- [x] 门禁全套过（后端 pytest/ruff/pyright、前端 vitest/lint/build、OpenAPI --check）
+
+## 实施备注
+
+- **operations 子包**：`agent/operations/registry.py`（`OperationSpec`：action → proposal_type/payload_schema/applier + `register_operation` 同步注册 payload schema 与应用器进提案框架 + 公共入口 `submit_operation_proposal`：schema 校验 → 每轮上限 → ProposalService.create）+ `operations/course_create.py`（`CourseCreatePayload` 继承 HTTP 创建契约 `CourseCreate` 仅收紧 extra=forbid 同源零漂移；应用器经 `CourseService.create_core` 建课、返回结果投影 `{course_id}`；导入即注册）。公共流程零领域专属分支，03 文本记录 = 新注册项 + 新薄工具。
+- **参数面同源**：薄工具签名声明宽松可选参数（spec 决策 9：缺失项在**提案创建时**由注册项 schema 执法并结构化返回 `{ok:false, missing:[...], detail}`，模型转述追问；langchain schema 层硬拦截会拿走这条链路），同源性由防线测试 `test_create_course_signature_matches_registered_payload_schema` 钉住（`@tool(args_schema=…)` 查证过 langchain 官方文档后弃用——硬拦截与决策 9 相悖）。
+- **迁移 0028**：agent_proposals 整表重建（CHECK 放开 `COURSE_CREATE` + 新增 `result_json` 可空列 + json_valid CHECK，0027 先例）；全库 user_version 断言已收敛 `supported_user_version()`（工单 C2），仅 test_library 两处字面量同步（28 + 快照名 f-string 化）。
+- **提案框架扩展**（library 域最小改动）：`register_payload_schema`（library 不依赖 agent，操作类型反向注册，先例 register_applier）+ confirm 中应用器返回值（结果投影）同事务写 `result_json` + `AgentProposalOut.result` 输出。幂等沿用既有终态 409（APPLIED/REJECTED）。
+- **事务核心**：`CourseService.create_core`（不开事务、调用方拥有）+ `create` 包 begin；既有课程路由 14 测试零改动通过（零漂移证明）。
+- **挂载与事件**：create_course 进恒挂载段（spec 决策 12：FREE 可建课，范围只约束资料读取）；`ChatOperationProposalEvent`（`_operation_proposal_event` 收窄 {proposal_id, action, payload}）→ done 载荷 `operation_proposals`（零新 SSE 类型）；prompt bump `chat-library-scope-v10` / `chat-research-scope-v11`。
+- **前端**：`ChatOperationProposalCard`（字段行预览复用 spaces.form/spaces.* 枚举翻译；APPLIED 回执态 `/spaces/$courseId` 跳转；断线/重启经 `libraryKeys.proposals("PENDING")` 既有提案查询恢复、与当轮载荷按 proposal_id 去重合并）；chatUiStore/useChatStream 接线；zh/en 同步。
+- **错误码**：零新增 HTTP 错误码（复用 PROPOSAL_PAYLOAD_INVALID / PROPOSAL_ALREADY_DECIDED / PROPOSAL_APPLY_FAILED 等）；工具载荷内标识（OPERATION_PROPOSAL_LIMIT / AGENT_CONTEXT_UNBOUND）为模型转述用，对齐 RESEARCH_SOURCES_EMPTY 先例不入错误码清单。
+- **门禁**：后端 pytest 全量 744 passed + ruff/format + pyright 0 错 + OpenAPI `--check` 零 diff；前端 vitest 全量 523+（1 失败为 CourseBrainMastery 全量并发既有抖动，单跑 8/8 绿）+ lint + build（内嵌 tsc）+ i18n 一致性防线 + 触及文件 Prettier；api-types regenerate。
+- **双轴 code-review**：Standards 采纳 3（queryKey 收敛 `libraryKeys` 工厂+前缀失效〔连带修复 OrganizeDialog 等既有提案查询缓存失真〕、删 clear/restore_payload_schemas 死代码、`as` 断言补注释）+ Spec 采纳 1（同源防线测试）；备案不采纳 3：工具载荷标识入错误码清单（≠HTTP 错误码，先例一致）、快照断言回退字面量（f-string 与实现同源免每次迁移改测试）、两卡提取公共 hook（数据源不同：operation 卡=当轮+恢复查询合并）。
