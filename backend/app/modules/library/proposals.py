@@ -13,7 +13,8 @@ from typing import Any, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
@@ -105,23 +106,44 @@ class ProposalService:
 
     @staticmethod
     async def confirm(session: AsyncSession, proposal_id: str) -> AgentProposalOut:
-        """确认并应用：应用器写入与 APPLIED 同事务；失败独立落 FAILED 后 422。
+        """确认并应用：原子抢占执行权后，应用器写入与 APPLIED 同事务；失败独立落 FAILED 后 422。
+
+        执行权由一条带终态守卫的 UPDATE 抢占（WHERE status IN (PENDING, FAILED)）：
+        rowcount=1 才执行应用器，=0 说明提案不存在或已被处理（404 / 409）。不能
+        先 SELECT 检查再执行——pysqlite 驱动的 SELECT 不开启事务（SQLAlchemy
+        方言文档明载），两个并发确认会各自读到 PENDING、双双执行应用器产生重复
+        业务事实；UPDATE 的写写串行保证同一提案只有一个请求获得执行权。FAILED
+        提案可再次确认（工单 05：失败留稳定错误码可重试）——APPLIED / REJECTED
+        是终局，重复确认 409。
 
         应用器返回值是类型化结果投影（操作回执，工单 02：课程创建 →
         {course_id}），同事务写进 result_json、经输出契约 result 字段透出。
-        FAILED 提案可再次确认（工单 05：失败留稳定错误码可重试）——
-        APPLIED / REJECTED 是终局，重复确认 409。
         """
         try:
             async with session.begin():
-                proposal = await ProposalService._get(session, proposal_id)
-                decided = (ProposalStatus.PENDING.value, ProposalStatus.FAILED.value)
-                if proposal.status not in decided:
+                claimed = await session.execute(
+                    update(AgentProposal)
+                    .where(
+                        AgentProposal.id == proposal_id,
+                        AgentProposal.status.in_(
+                            [ProposalStatus.PENDING.value, ProposalStatus.FAILED.value]
+                        ),
+                    )
+                    .values(
+                        status=ProposalStatus.APPLIED.value,
+                        error_code=None,
+                        decided_at=utcnow(),
+                    )
+                )
+                if not isinstance(claimed, CursorResult) or claimed.rowcount != 1:
+                    # 不存在 → 404；存在但已是终态或正被并发请求处理 → 409。
+                    await ProposalService._get(session, proposal_id)
                     raise CodedHTTPException(
                         code="PROPOSAL_ALREADY_DECIDED",
                         status_code=409,
                         detail="提案已处理，不能重复确认",
                     )
+                proposal = await ProposalService._get(session, proposal_id)
                 try:
                     proposal_type = ProposalType(proposal.proposal_type)
                 except ValueError:
@@ -134,15 +156,12 @@ class ProposalService:
                         detail="该提案类型尚未注册应用器",
                     )
                 result = await applier(session, proposal)
-                proposal.status = ProposalStatus.APPLIED.value
-                proposal.error_code = None
-                proposal.decided_at = utcnow()
-                if result is not None:
+                if isinstance(result, dict):
                     proposal.result_json = json.dumps(result, ensure_ascii=False)
         except CodedHTTPException as exc:
             if exc.code in ("PROPOSAL_NOT_FOUND", "PROPOSAL_ALREADY_DECIDED"):
                 raise
-            # 应用失败：主事务回滚（应用器部分写入消失），独立小事务保留 FAILED 诊断。
+            # 应用失败：主事务回滚（抢占与应用器部分写入一起消失），独立小事务保留 FAILED 诊断。
             await ProposalService._mark_failed(session, proposal_id, exc.code)
             raise CodedHTTPException(
                 code="PROPOSAL_APPLY_FAILED",

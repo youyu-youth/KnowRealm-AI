@@ -590,6 +590,65 @@ async def test_course_create_reject_keeps_no_business_fact(tmp_path: Path) -> No
         assert exc_info.value.status_code == 409
 
 
+@pytest.mark.anyio
+async def test_course_create_concurrent_confirm_creates_single_course(
+    tmp_path: Path,
+) -> None:
+    """并发双确认（双击/重放的真实并发形态）：恰好一次执行、一门课程、一个 409。
+
+    两个协程经各自独立连接真实并发（aiosqlite 线程），aclose 前的时序不
+    确定——断言的是不变量：终态互斥、业务事实唯一、回执指向唯一课程。
+    """
+    import asyncio
+
+    async with bare_db(tmp_path) as session_factory:
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.COURSE_CREATE,
+                    payload={
+                        "name": "并发物理",
+                        "learning_context": "SCHOOL",
+                        "education_stage": "HIGH_SCHOOL",
+                    },
+                ),
+            )
+
+        async def confirm_once() -> str:
+            try:
+                async with session_factory() as session:
+                    applied = await ProposalService.confirm(session, proposal.id)
+                return applied.status.value
+            except CodedHTTPException as exc:
+                return exc.code
+
+        outcomes = sorted(await asyncio.gather(confirm_once(), confirm_once()))
+        assert outcomes == ["APPLIED", "PROPOSAL_ALREADY_DECIDED"]
+        # 业务事实唯一：无论竞态交错顺序，课程只创建一门。
+        assert await table_count(session_factory, "SELECT count(*) FROM courses") == 1
+        rows = await proposal_rows(session_factory)
+        assert rows[0][2] == "APPLIED"
+        course_id = json.loads(rows[0][3] or "{}")["course_id"]
+        assert (
+            await table_count(
+                session_factory,
+                f"SELECT count(*) FROM courses WHERE id = '{course_id}'",
+            )
+            == 1
+        )
+
+
+@pytest.mark.anyio
+async def test_confirm_unknown_proposal_returns_404(tmp_path: Path) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, "nonexistent-proposal-id")
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.code == "PROPOSAL_NOT_FOUND"
+
+
 # ---------------------------------------------------------------------------
 # 操作提案事件解析（工单 02）：done 载荷透传前端确认卡
 # ---------------------------------------------------------------------------
