@@ -1,18 +1,19 @@
 """操作注册表与公共提案入口（通用 Agent 第一阶段工单 02）：最小公共执行机制。
 
 术语（spec 决策 3）：动作（action）= 模型可调用的工具语义；操作（Operation）
-= 一次受控执行的事实记录（回执）。注册表以稳定动作标识声明提案类型、判别
-payload schema 与应用器（结果投影随应用器返回）；写工具是薄壳（docstring
-面向模型、参数面与注册项 payload schema 同源，校验执法在提案创建时）——
+= 一次受控执行的事实记录（回执）。注册表以稳定动作标识声明提案类型、操作
+级别、判别 payload schema、类型化结果投影与应用器；写工具是薄壳（docstring
+面向模型、参数 schema 由注册项 payload schema 派生，校验执法在提案创建时）——
 公共执行流程零领域专属分支，新写动作 = 一个注册项 + 一个薄工具。
 """
 
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, cast
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.agent.runtime import (
@@ -23,34 +24,80 @@ from app.modules.library.models import AgentProposal
 from app.modules.library.proposals import ProposalService, register_applier, register_payload_schema
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
 
-# 应用器契约（对齐 library.proposals.ProposalApplier）：在调用方确认事务内
-# 执行领域写入、不得自行 begin；返回值即结果投影（操作回执，APPLIED 时由
-# 提案框架同事务写进 result_json）。
-OperationApplier = Callable[[AsyncSession, AgentProposal], Awaitable[dict[str, Any]]]
+# 应用器契约（提案框架 library.proposals.ProposalApplier 的操作侧收窄）：在调用方
+# 确认事务内执行领域写入、不得自行 begin；返回值是类型化结果投影（操作回执，
+# 经类型参数与 result_schema 静态绑定，APPLIED 时由注册表适配器校验并转 dict
+# 同事务写进 result_json）。
+type OperationApplier[R: BaseModel] = Callable[[AsyncSession, AgentProposal], Awaitable[R]]
+
+
+class OperationLevel(StrEnum):
+    """操作级别（设计-4 §6 授权映射表的分级词汇）：声明写操作的风险层级。
+
+    第一阶段仅"请求批准"档（spec 决策 1），级别仅声明、不参与执行分支；
+    第二阶段三档授权按级别决定"落提案等确认"还是"校验通过即执行"。
+    """
+
+    L0 = "L0"  # 读取／检索／导航查询（纯只读工具，不经本注册表）
+    L1 = "L1"  # 单对象创建与可逆修改
+    L2 = "L2"  # 批量创建／移动／归档／跨课程整理
+    L3 = "L3"  # 删除、覆盖正文等破坏性操作
 
 
 @dataclass(frozen=True)
-class OperationSpec:
+class OperationSpec[R: BaseModel]:
     """单个写操作的声明式注册项（课程创建为首个接入动作，文本记录随后复用）。"""
 
     action: str  # 动作标识（= 薄工具函数名，流式分发按名识别）
     proposal_type: ProposalType  # 提案类型（提案框架判别键）
+    level: OperationLevel  # 操作级别（设计-4 §6，第二阶段授权按级分流）
     payload_schema: type[BaseModel]  # 判别 payload schema（未知键拒绝）
-    applier: OperationApplier  # 确认事务内的应用器（返回结果投影）
+    result_schema: type[R]  # 类型化结果投影（操作回执形状，spec 决策 8）
+    applier: OperationApplier[R]  # 确认事务内的应用器（返回结果投影）
 
 
-_OPERATIONS: dict[str, OperationSpec] = {}
+_OPERATIONS: dict[str, OperationSpec[Any]] = {}
 
 
-def register_operation(spec: OperationSpec) -> None:
-    """注册操作项；payload schema 与应用器同步注册进既有提案框架。"""
+def register_operation(spec: OperationSpec[Any]) -> None:
+    """注册操作项；payload schema 与应用器同步注册进既有提案框架。
+
+    应用器经投影适配器包装：返回值先按 result_schema 校验再转 dict 交给提案
+    框架（框架只识别 dict 结果，投影形状漂移在此显式失败而非被静默丢弃）。
+    """
+
+    async def scoped_applier(session: AsyncSession, proposal: AgentProposal) -> dict[str, Any]:
+        result = spec.result_schema.model_validate(await spec.applier(session, proposal))
+        return result.model_dump()
+
     _OPERATIONS[spec.action] = spec
     register_payload_schema(spec.proposal_type, spec.payload_schema)
-    register_applier(spec.proposal_type, spec.applier)
+    register_applier(spec.proposal_type, scoped_applier)
 
 
-def get_operation(action: str) -> OperationSpec | None:
+def get_operation(action: str) -> OperationSpec[Any] | None:
     return _OPERATIONS.get(action)
+
+
+def lenient_tool_args_schema(payload_schema: type[BaseModel]) -> type[BaseModel]:
+    """由注册项 payload schema 派生薄工具的宽松参数 schema（spec 决策 3/9）。
+
+    字段集与类型逐一同源派生（annotation | None、默认 None、保留字段描述），
+    不声明必填——缺失项仍由 payload schema 在提案创建时执法并结构化返回，
+    langchain 层不做硬拦截；未知键拒绝对齐载荷纪律（ADR-0024）。
+    """
+    field_defs: dict[str, Any] = {}
+    for name, field in payload_schema.model_fields.items():
+        annotation = field.annotation
+        # 声明字段的 annotation 恒非 None（pydantic 类型标注可选仅为泛型宽容）。
+        assert annotation is not None
+        field_defs[name] = (annotation | None, Field(default=None, description=field.description))
+    return create_model(
+        f"{payload_schema.__name__}ToolArgs",
+        __module__=payload_schema.__module__,
+        __config__=ConfigDict(extra="forbid"),
+        **field_defs,
+    )
 
 
 def _missing_fields(exc: ValidationError) -> tuple[list[str], str]:

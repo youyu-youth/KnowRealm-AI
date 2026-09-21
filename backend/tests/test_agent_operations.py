@@ -376,14 +376,23 @@ async def test_create_course_unbound_returns_structured_error() -> None:
 
 
 def test_create_course_signature_matches_registered_payload_schema() -> None:
-    """薄工具参数面与注册项 payload schema 同源的漂移防线：任一侧字段增删
-    不同步即失败（spec 决策 3「参数 schema 来自注册项」的可验证表达）。"""
+    """薄工具参数面与注册项 payload schema 同源的漂移防线（spec 决策 3「参数
+    schema 来自注册项」的可验证表达）：字段集、类型与宽松可选性逐字段比对，
+    任一侧字段增删或类型漂移即失败。"""
     from app.modules.agent.operations.course_create import CourseCreatePayload
 
-    # langchain 对 args_schema 的类型标注松散（实际是按签名生成的 pydantic 模型类）。
+    # langchain 对 args_schema 的类型标注松散（实际是 pydantic 模型类）。
     args_schema = cast("type[BaseModel]", create_course.args_schema)
-    tool_fields = set(args_schema.model_json_schema().get("properties", {}))
-    assert tool_fields == set(CourseCreatePayload.model_fields)
+    assert set(args_schema.model_fields) == set(CourseCreatePayload.model_fields)
+    for name, payload_field in CourseCreatePayload.model_fields.items():
+        tool_field = args_schema.model_fields[name]
+        # 宽松派生不变量：类型 = payload 字段类型 | None、默认 None 且非必填
+        # （缺失项执法在提案创建侧，spec 决策 9）。
+        annotation = payload_field.annotation
+        assert annotation is not None
+        assert tool_field.annotation == (annotation | None)
+        assert tool_field.default is None
+        assert not tool_field.is_required()
 
 
 @pytest.mark.anyio

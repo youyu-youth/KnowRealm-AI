@@ -1,12 +1,13 @@
 """创建课程薄工具（通用 Agent 第一阶段工单 02）：操作注册表首个动作的工具壳。
 
 工具语义恒为「创建课程提案」，是否需要用户确认由后端决定（spec 用户故事 19）：
-调用成功 = 创建 PENDING 提案，用户在确认卡确认后课程才真实创建。参数面与
-注册项 payload schema（operations.course_create.CourseCreatePayload）同源——
-同一组字段、类型引用 course 域枚举；必填性与条件校验（学业场景须选阶段、
-职业/兴趣须选深度）由注册项 schema 在提案创建时执法（spec 决策 9：缺必填 →
-创建被拒 → 结构化缺失项返回 → 模型转述追问），故入参声明为可选、不做 langchain
-schema 层硬拦截。
+调用成功 = 创建 PENDING 提案，用户在确认卡确认后课程才真实创建。参数 schema
+由注册项 payload schema（operations.course_create.CourseCreatePayload）经
+registry.lenient_tool_args_schema 派生（spec 决策 3：参数 schema 直接来自注册
+项）——同一组字段与类型、全部可选默认 None；必填性与条件校验（学业场景须选
+阶段、职业/兴趣须选深度）由注册项 schema 在提案创建时执法（spec 决策 9：缺
+必填 → 创建被拒 → 结构化缺失项返回 → 模型转述追问），langchain schema 层
+不做硬拦截。
 """
 
 import json
@@ -14,29 +15,22 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from app.modules.agent.operations.course_create import CREATE_COURSE_ACTION
-from app.modules.agent.operations.registry import submit_operation_proposal
-from app.modules.agent.runtime import current_agent_runtime
-from app.modules.course.schemas import (
-    CourseType,
-    EducationStage,
-    LearningContext,
-    LearningDepth,
+from app.modules.agent.operations.course_create import (
+    CREATE_COURSE_ACTION,
+    CourseCreatePayload,
 )
+from app.modules.agent.operations.registry import (
+    lenient_tool_args_schema,
+    submit_operation_proposal,
+)
+from app.modules.agent.runtime import current_agent_runtime
 
 # 工具名（langchain @tool 注册名 = 函数名）。
 CREATE_COURSE_TOOL_NAME = "create_course"
 
 
-@tool
-async def create_course(
-    name: str | None = None,
-    learning_context: LearningContext | None = None,
-    education_stage: EducationStage | None = None,
-    depth: LearningDepth | None = None,
-    course_type: CourseType | None = None,
-    description: str | None = None,
-) -> str:
+@tool(args_schema=lenient_tool_args_schema(CourseCreatePayload))
+async def create_course(**kwargs: Any) -> str:
     """当用户想创建新课程时使用：收集课程信息并创建一条待用户确认的课程提案。
 
     必填信息：课程名称（name）、学习场景（learning_context，取值 SCHOOL 校园 /
@@ -55,17 +49,9 @@ async def create_course(
             {"ok": False, "error": "AGENT_CONTEXT_UNBOUND", "proposals": []},
             ensure_ascii=False,
         )
-    args: dict[str, Any] = {
-        "name": name,
-        "learning_context": learning_context,
-        "education_stage": education_stage,
-        "depth": depth,
-        "course_type": course_type,
-        "description": description,
-    }
     payload = await submit_operation_proposal(
         runtime,
         CREATE_COURSE_ACTION,
-        {key: value for key, value in args.items() if value is not None},
+        {key: value for key, value in kwargs.items() if value is not None},
     )
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

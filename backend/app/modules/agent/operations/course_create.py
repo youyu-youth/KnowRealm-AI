@@ -5,12 +5,11 @@
 result_json 原子提交）。导入即注册（先例：library/organize、learner/routes）。
 """
 
-from typing import Any
-
-from pydantic import ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.agent.operations.registry import (
+    OperationLevel,
     OperationSpec,
     operation_payload_dict,
     register_operation,
@@ -32,11 +31,17 @@ class CourseCreatePayload(CourseCreate):
     model_config = ConfigDict(extra="forbid")
 
 
-async def apply_course_create(session: AsyncSession, proposal: AgentProposal) -> dict[str, Any]:
+class CourseCreateResult(BaseModel):
+    """COURSE_CREATE 结果投影（操作回执，spec 决策 8：课程创建 → 课程 id）。"""
+
+    course_id: str
+
+
+async def apply_course_create(session: AsyncSession, proposal: AgentProposal) -> CourseCreateResult:
     """COURSE_CREATE 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
-    经课程创建事务内核心建课（与 HTTP 路由共用，校验零双份漂移）；返回结果
-    投影 {course_id}，由提案框架在确认事务内写进 result_json（操作回执）。
+    经课程创建事务内核心建课（与 HTTP 路由共用，校验零双份漂移）；返回类型化
+    结果投影，经注册表适配器校验后在确认事务内写进 result_json（操作回执）。
     """
     try:
         payload = CourseCreate.model_validate(operation_payload_dict(proposal))
@@ -47,14 +52,16 @@ async def apply_course_create(session: AsyncSession, proposal: AgentProposal) ->
             detail="提案载荷不符合该类型的结构要求",
         ) from exc
     course = await CourseService.create_core(session, payload)
-    return {"course_id": course.id}
+    return CourseCreateResult(course_id=course.id)
 
 
 register_operation(
     OperationSpec(
         action=CREATE_COURSE_ACTION,
         proposal_type=ProposalType.COURSE_CREATE,
+        level=OperationLevel.L1,
         payload_schema=CourseCreatePayload,
+        result_schema=CourseCreateResult,
         applier=apply_course_create,
     )
 )
