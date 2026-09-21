@@ -30,6 +30,7 @@ function setTurnMemory(
       memoryUsed: [],
       proposals,
       researchProposals: [],
+      operationProposals: [],
     },
   });
 }
@@ -55,6 +56,7 @@ describe("ChatMemoryProposalCard", () => {
         memoryUsed: [],
         proposals: [{ proposalId: "p-9", items: ["a"] }],
         researchProposals: [],
+        operationProposals: [],
       },
     });
     const { container } = renderWithQuery(

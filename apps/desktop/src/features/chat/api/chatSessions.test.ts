@@ -189,6 +189,61 @@ describe("chatApi.streamMessage", () => {
     });
   });
 
+  it("done 载荷 operation_proposals 防御性收窄：合法条目透传 payload，畸形条目静默跳过", async () => {
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
+        () => {
+          const { stream } = sseBody([
+            'event: status\ndata: {"phase":"generating"}\n\n',
+            'event: done\ndata: {"message_id":"m1","content":"好","operation_proposals":[{"proposal_id":"p1","action":"create_course","payload":{"name":"数学","learning_context":"SCHOOL","education_stage":"HIGH_SCHOOL","depth":null}},{"proposal_id":"p2"},{"payload":{"name":"缺 id"}},7]}\n\n',
+          ]);
+          return new HttpResponse(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        },
+      ),
+    );
+
+    let donePayload:
+      | Parameters<Parameters<typeof chatApi.streamMessage>[2]["onDone"]>[0]
+      | null = null;
+    await chatApi.streamMessage(
+      SESSION_ID,
+      "帮我创建课程",
+      {
+        onStatus: () => undefined,
+        onToken: () => undefined,
+        onToolCall: () => undefined,
+        onToolResult: () => undefined,
+        onDone: (payload) => {
+          donePayload = payload;
+        },
+        onError: () => {
+          throw new Error("不应出现 error 事件");
+        },
+      },
+      undefined,
+    );
+
+    expect(donePayload).toEqual({
+      messageId: "m1",
+      content: "好",
+      operationProposals: [
+        {
+          proposalId: "p1",
+          action: "create_course",
+          payload: {
+            name: "数学",
+            learning_context: "SCHOOL",
+            education_stage: "HIGH_SCHOOL",
+            depth: null,
+          },
+        },
+      ],
+    });
+  });
+
   it("web_search 标志进请求体：显式 true 与缺省 false", async () => {
     const bodies: unknown[] = [];
     server.use(

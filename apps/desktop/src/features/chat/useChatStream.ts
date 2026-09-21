@@ -83,6 +83,7 @@ export function useChatStream(sessionId: string) {
                 memoryUsed: payload.memoryUsed ?? [],
                 proposals: payload.memoryProposals ?? [],
                 researchProposals: payload.researchProposals ?? [],
+                operationProposals: payload.operationProposals ?? [],
               });
               // 重取消息历史（assistant 行）、会话列表（活跃度排序）与会话详情（首条消息后标题更新）。
               await queryClient.invalidateQueries({

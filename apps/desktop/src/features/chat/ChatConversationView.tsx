@@ -25,6 +25,7 @@ import type { ChatMessage, ChatSession } from "@/features/chat/api/types";
 import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ChatMemoryProposalCard } from "@/features/chat/ChatMemoryProposalCard";
 import { ChatMessageList } from "@/features/chat/ChatMessageList";
+import { ChatOperationProposalCard } from "@/features/chat/ChatOperationProposalCard";
 import { ChatResearchProposalCard } from "@/features/chat/ChatResearchProposalCard";
 import {
   ChatScopeChips,
@@ -285,6 +286,9 @@ export function ChatConversationView({
         {/* 入库提案就地确认卡（研究会话 V1）：逐条确认/拒绝，确认后走现有
             网页入库链路；本轮展示为临时态，提案本体跨重启持久。 */}
         <ChatResearchProposalCard sessionId={sessionId} />
+        {/* 课程创建提案就地确认卡（通用 Agent 工单 02）：完整参数预览，确认后
+            真实创建课程并转回执态；断线/重启经提案查询恢复。 */}
+        <ChatOperationProposalCard sessionId={sessionId} />
         <ChatComposer
           value={composerValue}
           disabled={messages.isPending || scopeUnavailable}

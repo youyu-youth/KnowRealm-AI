@@ -1819,6 +1819,14 @@
       "accept": "保存「{{title}}」到资料库",
       "reject": "拒绝保存「{{title}}」"
     },
+    "operationProposal": {
+      "panelTitle": "课程创建提案",
+      "accepted": "课程已创建。",
+      "rejected": "已拒绝，未创建课程。",
+      "accept": "确认创建课程",
+      "reject": "拒绝创建课程",
+      "openCourse": "打开课程"
+    },
     "coursePicker": {
       "title": "选择课程",
       "description": "对话将在该课程的全部记录范围内检索与引用。",

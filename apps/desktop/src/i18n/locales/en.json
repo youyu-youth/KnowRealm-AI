@@ -1839,6 +1839,14 @@
       "accept": "Save \"{{title}}\" to the library",
       "reject": "Don't save \"{{title}}\""
     },
+    "operationProposal": {
+      "panelTitle": "Course creation proposals",
+      "accepted": "Course created.",
+      "rejected": "Rejected; no course was created.",
+      "accept": "Confirm creating the course",
+      "reject": "Don't create the course",
+      "openCourse": "Open course"
+    },
     "coursePicker": {
       "title": "Choose a course",
       "description": "The chat will search and cite across all records in this course.",

@@ -39,6 +39,14 @@ export type ChatResearchProposalPayload = {
   title: string;
 };
 
+/** 模型经操作工具创建的待确认操作提案（工单 02，done 载荷透传）：
+ * payload 为判别校验后的清洗载荷，确认卡据此预览完整参数。 */
+export type ChatOperationProposalPayload = {
+  proposalId: string;
+  action: string;
+  payload: Record<string, unknown>;
+};
+
 export type ChatDonePayload = {
   messageId: string;
   content: string;
@@ -48,6 +56,8 @@ export type ChatDonePayload = {
   memoryProposals?: ChatMemoryProposalPayload[];
   /** 本轮新建的 RESEARCH_INGEST 入库提案（无时缺省，研究会话）。 */
   researchProposals?: ChatResearchProposalPayload[];
+  /** 本轮新建的操作提案（无时缺省，工单 02）。 */
+  operationProposals?: ChatOperationProposalPayload[];
 };
 
 /**
@@ -59,6 +69,7 @@ function parseTurnProposalFields(data: Record<string, unknown>): {
   memoryUsed?: string[];
   memoryProposals?: ChatMemoryProposalPayload[];
   researchProposals?: ChatResearchProposalPayload[];
+  operationProposals?: ChatOperationProposalPayload[];
 } {
   // 源字段缺席时键省略（缺省即 undefined，向后兼容旧载荷）。
   const memoryUsed = Array.isArray(data.memory_used)
@@ -85,10 +96,28 @@ function parseTurnProposalFields(data: Record<string, unknown>): {
       ? [{ proposalId: raw.proposal_id, url: raw.url, title: raw.title }]
       : [],
   );
+  const operationProposals = parseProposalList(
+    data.operation_proposals,
+    (raw) =>
+      typeof raw.proposal_id === "string" &&
+      typeof raw.action === "string" &&
+      typeof raw.payload === "object" &&
+      raw.payload !== null
+        ? [
+            {
+              proposalId: raw.proposal_id,
+              action: raw.action,
+              // 前置守卫已收窄为非空 object，断言仅为表达载荷契约形状。
+              payload: raw.payload as Record<string, unknown>,
+            },
+          ]
+        : [],
+  );
   return {
     ...(memoryUsed !== undefined ? { memoryUsed } : {}),
     ...(Array.isArray(data.memory_proposals) ? { memoryProposals } : {}),
     ...(Array.isArray(data.research_proposals) ? { researchProposals } : {}),
+    ...(Array.isArray(data.operation_proposals) ? { operationProposals } : {}),
   };
 }
 
