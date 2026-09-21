@@ -31,7 +31,6 @@ function setTurnMemory(
       memoryUsed: [],
       proposals: [],
       researchProposals,
-      operationProposals: [],
     },
   });
 }

@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type {
   ChatMemoryProposalPayload,
-  ChatOperationProposalPayload,
   ChatResearchProposalPayload,
 } from "@/features/chat/api/chatSessions";
 
@@ -16,8 +15,6 @@ export type ChatTurnMemory = {
   proposals: ChatMemoryProposalPayload[];
   /** 模型本轮经 propose_ingest 新建的待确认入库提案（研究会话）。 */
   researchProposals: ChatResearchProposalPayload[];
-  /** 模型本轮经操作工具新建的待确认操作提案（工单 02）。 */
-  operationProposals: ChatOperationProposalPayload[];
 };
 
 export const CHAT_TOOL_IDS = [

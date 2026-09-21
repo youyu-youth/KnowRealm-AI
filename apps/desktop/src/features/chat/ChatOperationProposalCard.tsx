@@ -8,18 +8,13 @@ import {
   type AgentProposalOut,
 } from "@/features/library/api/library";
 import { libraryKeys } from "@/features/library/api/keys";
-import { useChatUiStore } from "@/features/chat/chatUiStore";
+import { Button } from "@/components/ui/button";
 
 type ChatOperationProposalCardProps = {
   sessionId: string;
 };
 
 type Decision = "APPLIED" | "REJECTED";
-
-type OperationProposalView = {
-  proposalId: string;
-  payload: Record<string, unknown>;
-};
 
 /** 提案 payload → 确认卡字段行（标签复用新建课程表单文案，枚举值走既有翻译）。 */
 function previewRows(
@@ -57,13 +52,13 @@ function previewRows(
 /** 消息流内的课程创建提案就地确认卡（通用 Agent 第一阶段工单 02）：
  * 模型经 create_course 创建的 COURSE_CREATE 提案，完整参数预览后确认（真实
  * 创建课程）或拒绝（零业务事实）；APPLIED 后转回执态、提供课程入口跳转。
- * 断线/重启后经既有提案查询恢复本会话的待确认提案（提案本体跨重启持久）。 */
+ * 提案本体唯一事实源是服务端（agent_proposals 表）：当轮 done 失效重取与
+ * 断线/重启恢复共用同一查询缓存，前端不另存副本。 */
 export function ChatOperationProposalCard({
   sessionId,
 }: ChatOperationProposalCardProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const turnMemory = useChatUiStore((state) => state.turnMemory);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [appliedCourseIds, setAppliedCourseIds] = useState<
     Record<string, string | null>
@@ -71,48 +66,39 @@ export function ChatOperationProposalCard({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 断线/重启恢复（工单 02）：本会话 PENDING 的 COURSE_CREATE 提案。
-  // queryFn 拉全局 PENDING 提案、组件内按 session 过滤（提案列表端点无会话参数）。
+  // 本会话 PENDING 的 COURSE_CREATE 提案：queryFn 拉全局 PENDING 提案、
+  // 组件内按 session 过滤（提案列表端点无会话参数）。
   const { data: pendingProposals } = useQuery({
     queryKey: libraryKeys.proposals("PENDING"),
     queryFn: () => libraryApi.listProposals({ status: "PENDING" }),
   });
 
-  const proposals = useMemo(() => {
-    const byId = new Map<string, OperationProposalView>();
-    const restored = (pendingProposals ?? []).filter(
-      (proposal: AgentProposalOut) =>
-        proposal.proposal_type === "COURSE_CREATE" &&
-        proposal.session_id === sessionId,
-    );
-    for (const proposal of restored) {
-      byId.set(proposal.id, {
-        proposalId: proposal.id,
-        payload: proposal.payload ?? {},
-      });
-    }
-    const turn =
-      turnMemory?.sessionId === sessionId ? turnMemory.operationProposals : [];
-    for (const proposal of turn) {
-      if (!byId.has(proposal.proposalId)) {
-        byId.set(proposal.proposalId, {
-          proposalId: proposal.proposalId,
-          payload: proposal.payload,
-        });
-      }
-    }
-    return [...byId.values()];
-  }, [pendingProposals, sessionId, turnMemory]);
+  const pending = useMemo(
+    () =>
+      (pendingProposals ?? []).filter(
+        (proposal: AgentProposalOut) =>
+          proposal.proposal_type === "COURSE_CREATE" &&
+          proposal.session_id === sessionId &&
+          decisions[proposal.id] === undefined,
+      ),
+    [pendingProposals, sessionId, decisions],
+  );
 
-  if (proposals.length === 0) {
+  // 回执只依赖本地决定结果、不依赖 PENDING 列表：确认后提案从服务端
+  // PENDING 移除，回执仍在当轮保留（重启后不恢复，按服务端状态重显）。
+  const decided = useMemo(
+    () =>
+      Object.entries(decisions).map(([proposalId, decision]) => ({
+        proposalId,
+        decision,
+        courseId: appliedCourseIds[proposalId],
+      })),
+    [decisions, appliedCourseIds],
+  );
+
+  if (pending.length === 0 && decided.length === 0) {
     return null;
   }
-  const pending = proposals.filter(
-    (proposal) => decisions[proposal.proposalId] === undefined,
-  );
-  const decided = proposals.filter(
-    (proposal) => decisions[proposal.proposalId] !== undefined,
-  );
 
   const decide = (proposalId: string, accept: boolean) => {
     setBusyId(proposalId);
@@ -154,14 +140,11 @@ export function ChatOperationProposalCard({
       <p className="text-label text-muted-foreground">
         {t("chat.operationProposal.panelTitle")}
       </p>
-      {decided.map((proposal) => {
-        const applied =
-          decisions[proposal.proposalId] === "APPLIED" &&
-          appliedCourseIds[proposal.proposalId] !== undefined;
-        const courseId = appliedCourseIds[proposal.proposalId];
+      {decided.map(({ proposalId, decision, courseId }) => {
+        const applied = decision === "APPLIED" && courseId !== undefined;
         return (
           <div
-            key={proposal.proposalId}
+            key={proposalId}
             className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5"
           >
             <p className="text-label text-muted-foreground">
@@ -185,10 +168,10 @@ export function ChatOperationProposalCard({
       })}
       <ul className="flex flex-col gap-1.5">
         {pending.map((proposal) => {
-          const rows = previewRows(proposal.payload, t);
+          const rows = previewRows(proposal.payload ?? {}, t);
           return (
             <li
-              key={proposal.proposalId}
+              key={proposal.id}
               className="bg-surface-subtle flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5"
             >
               <dl className="min-w-0 flex-1">
@@ -203,24 +186,24 @@ export function ChatOperationProposalCard({
                   </div>
                 ))}
               </dl>
-              <button
-                type="button"
-                className="hover:bg-surface-raised rounded p-1"
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 aria-label={t("chat.operationProposal.accept")}
                 disabled={busyId !== null}
-                onClick={() => decide(proposal.proposalId, true)}
+                onClick={() => decide(proposal.id, true)}
               >
                 <Check className="size-3.5" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                className="hover:bg-surface-raised rounded p-1"
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
                 aria-label={t("chat.operationProposal.reject")}
                 disabled={busyId !== null}
-                onClick={() => decide(proposal.proposalId, false)}
+                onClick={() => decide(proposal.id, false)}
               >
                 <X className="size-3.5" aria-hidden="true" />
-              </button>
+              </Button>
             </li>
           );
         })}

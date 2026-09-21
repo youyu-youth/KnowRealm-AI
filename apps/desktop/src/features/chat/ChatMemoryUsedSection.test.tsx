@@ -28,7 +28,6 @@ describe("ChatMemoryUsedSection", () => {
         memoryUsed: ["先看例题", "多给反例"],
         proposals: [],
         researchProposals: [],
-        operationProposals: [],
       },
     });
     renderWithQuery(<ChatMemoryUsedSection sessionId={SESSION_ID} />);
@@ -47,7 +46,6 @@ describe("ChatMemoryUsedSection", () => {
         memoryUsed: [],
         proposals: [],
         researchProposals: [],
-        operationProposals: [],
       },
     });
     renderWithQuery(<ChatMemoryUsedSection sessionId={SESSION_ID} />);
@@ -61,7 +59,6 @@ describe("ChatMemoryUsedSection", () => {
         memoryUsed: ["别的会话的记忆"],
         proposals: [],
         researchProposals: [],
-        operationProposals: [],
       },
     });
     const { container } = renderWithQuery(

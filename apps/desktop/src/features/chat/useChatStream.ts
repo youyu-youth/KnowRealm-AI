@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
+import { libraryKeys } from "@/features/library/api/keys";
 import { useChatUiStore } from "@/features/chat/chatUiStore";
 import { derivePageSnapshot } from "@/features/chat/pageSnapshot";
 
@@ -83,9 +84,9 @@ export function useChatStream(sessionId: string) {
                 memoryUsed: payload.memoryUsed ?? [],
                 proposals: payload.memoryProposals ?? [],
                 researchProposals: payload.researchProposals ?? [],
-                operationProposals: payload.operationProposals ?? [],
               });
-              // 重取消息历史（assistant 行）、会话列表（活跃度排序）与会话详情（首条消息后标题更新）。
+              // 重取消息历史（assistant 行）、会话列表（活跃度排序）与会话详情
+              // （首条消息后标题更新）；操作提案走提案查询恢复（服务端唯一事实源）。
               await queryClient.invalidateQueries({
                 queryKey: chatKeys.messages(sessionId),
               });
@@ -123,6 +124,11 @@ export function useChatStream(sessionId: string) {
           }
         })
         .finally(() => {
+          // 全部流结束路径（done / SSE error / 停止 / 网络断开）统一失效提案
+          // 查询（工单 02 review）：断开仅停止接收，已落库的提案经查询恢复。
+          void queryClient.invalidateQueries({
+            queryKey: [...libraryKeys.all, "proposals"],
+          });
           abortRef.current = null;
           setIsStreaming(false);
         });
