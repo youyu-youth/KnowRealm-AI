@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
 import { useChatUiStore } from "@/features/chat/chatUiStore";
+import { derivePageSnapshot } from "@/features/chat/pageSnapshot";
 
 /**
  * 单会话的流式回答状态：发送 / 停止 / 逐字渲染 / 检索过程 / done 后失效重取。
@@ -101,6 +102,7 @@ export function useChatStream(sessionId: string) {
           },
           controller.signal,
           webSearch,
+          derivePageSnapshot(),
         )
         .catch((error: unknown) => {
           // 用户停止属于预期路径，静默；其余（409 在途、网络失败等）展示可读错误。

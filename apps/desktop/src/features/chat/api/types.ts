@@ -5,6 +5,8 @@ export type ChatMessage = components["schemas"]["ChatMessageOut"];
 export type ChatSessionCreate = components["schemas"]["ChatSessionCreate"];
 export type ChatRecordOption = components["schemas"]["ChatRecordOption"];
 export type ChatCitation = components["schemas"]["ChatCitationOut"];
+/** 随消息携带的页面快照（通用 Agent 工单 01）：提示性信息，不构成授权。 */
+export type ChatPageSnapshot = components["schemas"]["ChatPageSnapshot"];
 /** 对话转知识点（对话转学习资产 V1）请求体与保存产物。 */
 export type ChatKnowledgePointSaveRequest =
   components["schemas"]["ChatKnowledgePointSaveRequest"];

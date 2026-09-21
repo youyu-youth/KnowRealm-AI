@@ -1729,6 +1729,11 @@
           "running": "正在检索学习资料「{{query}}」",
           "hits": "「{{query}}」命中 {{count}} 条",
           "failed": "「{{query}}」检索失败"
+        },
+        "courseSearch": {
+          "running": "正在查找课程「{{query}}」",
+          "hits": "「{{query}}」找到 {{count}} 门课程",
+          "failed": "「{{query}}」课程查询失败"
         }
       },
       "webSearch": {

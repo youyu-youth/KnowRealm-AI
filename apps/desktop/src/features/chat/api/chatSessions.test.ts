@@ -241,6 +241,55 @@ describe("chatApi.streamMessage", () => {
     ]);
   });
 
+  it("page 快照进请求体：传入才携带，缺省不出现该键", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
+        async ({ request }) => {
+          bodies.push(await request.json());
+          const { stream } = sseBody([
+            'event: done\ndata: {"message_id":"m1","content":"好"}\n\n',
+          ]);
+          return new HttpResponse(stream, {
+            headers: { "Content-Type": "text/event-stream" },
+          });
+        },
+      ),
+    );
+
+    const noop = () => undefined;
+    const handlers = {
+      onStatus: noop,
+      onToken: noop,
+      onToolCall: noop,
+      onToolResult: noop,
+      onDone: noop,
+      onError: noop,
+    };
+    await chatApi.streamMessage(
+      SESSION_ID,
+      "带页面",
+      handlers,
+      undefined,
+      false,
+      {
+        page_type: "chat",
+        captured_at: "2026-09-21T08:00:00.000Z",
+      },
+    );
+    await chatApi.streamMessage(SESSION_ID, "无页面", handlers, undefined);
+
+    expect(bodies).toEqual([
+      {
+        content: "带页面",
+        web_search: false,
+        page: { page_type: "chat", captured_at: "2026-09-21T08:00:00.000Z" },
+      },
+      { content: "无页面", web_search: false },
+    ]);
+  });
+
   it("error 事件回调可读错误码；409 由 apiRequest 转为 ApiError", async () => {
     let rejected = false;
     server.use(

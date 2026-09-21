@@ -4,6 +4,7 @@ import {
   BookmarkPlus,
   CircleAlert,
   Globe,
+  GraduationCap,
   Library,
   RotateCcw,
   Search,
@@ -40,17 +41,26 @@ const toolActivityCardClass =
   "bg-surface-subtle text-label flex max-w-full items-center gap-2 rounded-sm px-2.5 py-1.5";
 const toolActivityIconClass = "size-3.5 shrink-0";
 
+/** 专属活动卡的文案键与图标（单一映射，新增工具只改这里）；兜底为通用检索卡。 */
+const TOOL_ACTIVITY_META: Record<
+  string,
+  { copyKey: string; icon: typeof Globe }
+> = {
+  web_search: { copyKey: "chat.tools.activity.webSearch", icon: Globe },
+  search_library: { copyKey: "chat.tools.activity.library", icon: Library },
+  search_courses: {
+    copyKey: "chat.tools.activity.courseSearch",
+    icon: GraduationCap,
+  },
+};
+const TOOL_ACTIVITY_FALLBACK = { copyKey: "chat.tools.activity", icon: Search };
+
 /** 检索过程卡：加载 / 命中 / 失败三态，图标与文字同时表达状态（不只靠颜色）。
- * web_search / search_transcript / search_library 共用卡形态，仅文案与图标分流。 */
+ * 各检索类工具共用卡形态，仅文案与图标经 TOOL_ACTIVITY_META 分流。 */
 function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
   const { t } = useTranslation();
-  const isWeb = activity.tool === "web_search";
-  const isLibrary = activity.tool === "search_library";
-  const copyKey = isWeb
-    ? "chat.tools.activity.webSearch"
-    : isLibrary
-      ? "chat.tools.activity.library"
-      : "chat.tools.activity";
+  const { copyKey, icon: ResultIcon } =
+    TOOL_ACTIVITY_META[activity.tool] ?? TOOL_ACTIVITY_FALLBACK;
   if (activity.result === null) {
     return (
       <li className={toolActivityCardClass}>
@@ -65,7 +75,6 @@ function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
     );
   }
   if (activity.result.ok) {
-    const ResultIcon = isWeb ? Globe : isLibrary ? Library : Search;
     return (
       <li className={toolActivityCardClass}>
         <ResultIcon

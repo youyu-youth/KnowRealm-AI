@@ -1062,6 +1062,7 @@ describe("联网搜索接线（B1）", () => {
       expect(bodies[0]).toEqual({
         content: "最新版本是多少",
         web_search: true,
+        page: { page_type: "chat", captured_at: expect.any(String) },
       }),
     );
 
@@ -1071,7 +1072,11 @@ describe("联网搜索接线（B1）", () => {
     fireEvent.change(input, { target: { value: "不联网问问" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
     await waitFor(() =>
-      expect(bodies[1]).toEqual({ content: "不联网问问", web_search: false }),
+      expect(bodies[1]).toEqual({
+        content: "不联网问问",
+        web_search: false,
+        page: { page_type: "chat", captured_at: expect.any(String) },
+      }),
     );
   });
 
@@ -1121,6 +1126,7 @@ describe("联网搜索接线（B1）", () => {
       expect(bodies[0]).toEqual({
         content: "追问材料外背景",
         web_search: true,
+        page: { page_type: "chat", captured_at: expect.any(String) },
       }),
     );
   });

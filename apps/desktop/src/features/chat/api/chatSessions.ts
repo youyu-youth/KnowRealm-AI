@@ -2,6 +2,7 @@ import { createParser } from "eventsource-parser";
 import type {
   ChatKnowledgePointSaveRequest,
   ChatMessage,
+  ChatPageSnapshot,
   ChatRecordOption,
   ChatSession,
   ChatSessionCreate,
@@ -116,7 +117,8 @@ export type ChatStreamHandlers = {
 /**
  * 发送消息并消费 SSE 回答流（POST 流 + eventsource-parser + AbortController）。
  * 非 2xx 由 apiRequest 统一抛 ApiError（如 409 在途 / 未配置供应商）。
- * webSearch=true 时本轮挂载联网搜索工具（后端无 key 时强制忽略该标志）。
+ * webSearch=true 时本轮挂载联网搜索工具（后端无 key 时强制忽略该标志）；
+ * page 为从当前路由派生的页面快照（工单 01：提示性信息，缺省不发送）。
  * 停止信号经 reader.cancel() 传导并在读结束时转抛 AbortError（不把 signal 交给
  * fetch：jsdom 测试环境的 AbortSignal 与 Node fetch 存在跨 realm 类型冲突）。
  */
@@ -126,13 +128,16 @@ async function streamMessage(
   handlers: ChatStreamHandlers,
   signal: AbortSignal | undefined,
   webSearch = false,
+  page?: ChatPageSnapshot,
 ): Promise<void> {
   if (signal?.aborted) throw abortError();
+  const body: Record<string, unknown> = { content, web_search: webSearch };
+  if (page) body.page = page;
   const response = await apiRequest(
     `/api/chat-sessions/${sessionId}/messages`,
     {
       method: "POST",
-      body: JSON.stringify({ content, web_search: webSearch }),
+      body: JSON.stringify(body),
       headers: { Accept: "text/event-stream" },
     },
   );

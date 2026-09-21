@@ -1747,6 +1747,13 @@
           "running": "Searching your materials for “{{query}}”",
           "hits": "Found {{count}} matches for “{{query}}”",
           "failed": "Search failed for “{{query}}”"
+        },
+        "courseSearch": {
+          "running": "Searching courses for “{{query}}”",
+          "hits": "Found {{count}} courses matching “{{query}}”",
+          "hits_one": "Found {{count}} course matching “{{query}}”",
+          "hits_other": "Found {{count}} courses matching “{{query}}”",
+          "failed": "Course search failed for “{{query}}”"
         }
       },
       "webSearch": {
