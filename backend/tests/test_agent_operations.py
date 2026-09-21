@@ -1,9 +1,12 @@
-"""通用 Agent 第一阶段工单 01/02：统一运行时上下文、课程查询工具、页面快照与课程创建操作。
+"""通用 Agent 第一阶段工单 01/02/03：运行时上下文、课程查询、课程创建与文本记录操作。
 
 - search_courses：候选载荷/场景字段/归档与软删口径/截断明示/预算共享/未绑定分支；
 - 页面快照：后端重校验（存在性/状态、失效降级）与模型上下文注入（框定为提示信息）；
 - create_course（02）：结构化缺失项、每轮操作提案上限、PENDING 提案创建、
-  确认应用（课程 + 索引 + result_json 原子提交）、幂等 409 与操作提案事件解析。
+  确认应用（课程 + 索引 + result_json 原子提交）、幂等 409 与操作提案事件解析；
+- add_text_record_to_course（03）：公共机制复用验证——结构化缺失/超限 detail、
+  确认应用（Record + Transcript + 索引 + 回填 + 总结任务 best-effort）、
+  归档/不存在目标 FAILED 零悬挂、幂等与拒绝零业务事实。
 """
 
 import json
@@ -19,6 +22,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.data_dir import bind_data_dir, unbind_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.modules.agent.context import (
@@ -43,6 +47,7 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.agent.schemas import ChatPageSnapshot, ChatRole
+from app.modules.agent.tools.add_text_record import add_text_record_to_course
 from app.modules.agent.tools.create_course import create_course
 from app.modules.agent.tools.search_courses import (
     SEARCH_COURSES_LIMIT,
@@ -54,6 +59,7 @@ from app.modules.library.schemas import (
     ProposalListQuery,
     ProposalType,
 )
+from app.modules.settings.config import grant_llm_consent, save_llm_provider
 from app.shared.errors import CodedHTTPException
 
 TOKEN = "test-launch-token"
@@ -738,3 +744,314 @@ def test_operation_proposal_event_ignores_failure_and_malformed() -> None:
     assert _operation_proposal_event(_tool_message("not-json")) is None
     errored = ToolMessage(content="boom", tool_call_id="c2", name="create_course", status="error")
     assert _operation_proposal_event(errored) is None
+
+
+# ---------------------------------------------------------------------------
+# add_text_record_to_course 操作工具（工单 03）：复用验证 + 文本记录链
+# ---------------------------------------------------------------------------
+
+
+async def invoke_add_text_record(
+    session_factory: async_sessionmaker[AsyncSession],
+    args: dict[str, Any] | None = None,
+    *,
+    operations_created: int = 0,
+) -> dict[str, Any]:
+    token = bind_agent_runtime_context(
+        AgentRuntimeContext(
+            session_factory=session_factory,
+            session_id="sess-op",
+            budget=ToolCallBudget(operations_created=operations_created),
+        )
+    )
+    try:
+        raw = await add_text_record_to_course.ainvoke(args or {})
+        return cast("dict[str, Any]", json.loads(raw))
+    finally:
+        reset_agent_runtime_context(token)
+
+
+COURSE_ID = "d0000000-0000-4000-8000-000000000101"
+
+
+@pytest.mark.anyio
+async def test_add_text_record_unbound_returns_structured_error() -> None:
+    raw = await add_text_record_to_course.ainvoke({"content": "笔记"})
+    payload = dict(json.loads(raw))
+    assert payload["ok"] is False
+    assert payload["error"] == "AGENT_CONTEXT_UNBOUND"
+    assert payload["proposals"] == []
+
+
+def test_add_text_record_signature_matches_registered_payload_schema() -> None:
+    """薄工具参数面与注册项 payload schema 同源的漂移防线（对齐 02 先例）。"""
+    from app.modules.agent.schemas import TextRecordAddPayload
+
+    args_schema = cast("type[BaseModel]", add_text_record_to_course.args_schema)
+    assert set(args_schema.model_fields) == set(TextRecordAddPayload.model_fields)
+    for name, payload_field in TextRecordAddPayload.model_fields.items():
+        tool_field = args_schema.model_fields[name]
+        annotation = payload_field.annotation
+        assert annotation is not None
+        assert tool_field.annotation == (annotation | None)
+        assert tool_field.default is None
+        assert not tool_field.is_required()
+
+
+@pytest.mark.anyio
+async def test_add_text_record_missing_required_lists_missing_fields(
+    tmp_path: Path,
+) -> None:
+    """缺必填：结构化缺失项（模型转述追问），零提案、零记录。"""
+    async with bare_db(tmp_path) as session_factory:
+        payload = await invoke_add_text_record(session_factory, {"content": "笔记"})
+        assert payload["ok"] is False
+        assert payload["missing"] == ["course_id"]
+        assert payload["proposals"] == []
+        assert await table_count(session_factory, "SELECT count(*) FROM agent_proposals") == 0
+
+
+@pytest.mark.anyio
+async def test_add_text_record_oversized_content_reports_detail(tmp_path: Path) -> None:
+    """正文超 1 MiB：结构化 detail 由模型转述替代路径，零提案。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ID, "Python 学习")
+        payload = await invoke_add_text_record(
+            session_factory,
+            {"course_id": COURSE_ID, "content": "x" * (1024 * 1024 + 1)},
+        )
+        assert payload["ok"] is False
+        assert "1 MiB" in payload["detail"]
+        assert payload["proposals"] == []
+        assert await table_count(session_factory, "SELECT count(*) FROM agent_proposals") == 0
+
+
+@pytest.mark.anyio
+async def test_add_text_record_rejects_unknown_payload_keys(tmp_path: Path) -> None:
+    """TEXT_RECORD_ADD 判别 payload 未知键拒绝（经提案创建侧执法，对齐 02 先例）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ID, "Python 学习")
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.create(
+                    session,
+                    ProposalCreateRequest(
+                        proposal_type=ProposalType.TEXT_RECORD_ADD,
+                        payload={
+                            "course_id": COURSE_ID,
+                            "content": "笔记",
+                            "title": "自定义标题",
+                        },
+                    ),
+                )
+        assert exc_info.value.code == "PROPOSAL_PAYLOAD_INVALID"
+
+
+@pytest.mark.anyio
+async def test_add_text_record_success_creates_pending_proposal_without_record(
+    tmp_path: Path,
+) -> None:
+    """调用成功 = PENDING 提案（payload 固化目标课程），确认前零记录。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ID, "Python 学习")
+        payload = await invoke_add_text_record(
+            session_factory,
+            {"course_id": COURSE_ID, "content": "傅里叶级数展开要点"},
+        )
+        assert payload["ok"] is True
+        [proposal] = payload["proposals"]
+        assert proposal["action"] == "add_text_record_to_course"
+        assert proposal["status"] == "PENDING"
+        assert proposal["payload"] == {"course_id": COURSE_ID, "content": "傅里叶级数展开要点"}
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 0
+
+
+@pytest.mark.anyio
+async def test_text_record_add_confirm_applies_writes_result_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    """确认 → Record(SUMMARY_PENDING) + Transcript + 搜索索引 + APPLIED + result_json
+    原子提交（provider 未配置 → 总结未触发，(None, None)）；双确认 409 零重复。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ID, "Python 学习")
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.TEXT_RECORD_ADD,
+                    payload={"course_id": COURSE_ID, "content": "首行标题\n正文第二行"},
+                    session_id="sess-1",
+                ),
+            )
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 0
+        async with session_factory() as session:
+            applied = await ProposalService.confirm(session, proposal.id)
+        assert applied.status.value == "APPLIED"
+        assert applied.result is not None
+        record_id = applied.result["record_id"]
+        assert isinstance(record_id, str)
+        assert applied.result["summary_job_id"] is None
+        assert applied.result["summary_error_code"] is None
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT course_id, capture_type, title, status FROM records WHERE id = :id"
+                    ),
+                    {"id": record_id},
+                )
+            ).one()
+        assert tuple(row) == (COURSE_ID, "PASTE", "首行标题", "SUMMARY_PENDING")
+        transcripts = await table_count(
+            session_factory,
+            f"SELECT count(*) FROM transcripts WHERE record_id = '{record_id}'",
+        )
+        assert transcripts == 1
+        indexed = await table_count(
+            session_factory,
+            "SELECT count(*) FROM search_index WHERE entity_type = 'record'"
+            f" AND entity_id = '{record_id}'",
+        )
+        assert indexed == 1
+        backfilled = await table_count(
+            session_factory,
+            "SELECT count(*) FROM processing_jobs WHERE job_type = 'LIBRARY_BACKFILL'",
+        )
+        assert backfilled == 1
+        rows = await proposal_rows(session_factory)
+        assert json.loads(rows[0][3] or "{}") == {
+            "record_id": record_id,
+            "summary_job_id": None,
+            "summary_error_code": None,
+        }
+        # 幂等：APPLIED 终态双确认 409，不重复建记录。
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, proposal.id)
+        assert exc_info.value.status_code == 409
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 1
+
+
+@pytest.mark.anyio
+async def test_text_record_add_confirm_with_provider_submits_summary_job(
+    tmp_path: Path,
+) -> None:
+    """provider 已配置并同意：确认事务内 best-effort 提交总结任务，result_json
+    回写真实 job id；记录与 job 同事务原子提交。"""
+    applied = None
+    async with bare_db(tmp_path) as session_factory:
+        (tmp_path / "config").mkdir(exist_ok=True)
+        save_llm_provider(
+            tmp_path,
+            base_url="https://api.example.com",
+            api_key="sk-test",
+            model="test-model",
+            clear_api_key=False,
+        )
+        grant_llm_consent(tmp_path)
+        bind_data_dir(tmp_path)
+        try:
+            await seed_course(session_factory, COURSE_ID, "Python 学习")
+            async with session_factory() as session:
+                proposal = await ProposalService.create(
+                    session,
+                    ProposalCreateRequest(
+                        proposal_type=ProposalType.TEXT_RECORD_ADD,
+                        payload={"course_id": COURSE_ID, "content": "要点笔记"},
+                        session_id="sess-1",
+                    ),
+                )
+            async with session_factory() as session:
+                applied = await ProposalService.confirm(session, proposal.id)
+        finally:
+            unbind_data_dir()
+    assert applied is not None
+    assert applied.status.value == "APPLIED"
+    assert applied.result is not None
+    job_id = applied.result["summary_job_id"]
+    assert isinstance(job_id, str)
+    assert applied.result["summary_error_code"] is None
+
+
+@pytest.mark.anyio
+async def test_text_record_add_confirm_missing_course_fails_without_dangling_record(
+    tmp_path: Path,
+) -> None:
+    """目标课程不存在：确认失败 → 提案 FAILED + 稳定错误码，零悬挂记录。"""
+    async with bare_db(tmp_path) as session_factory:
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.TEXT_RECORD_ADD,
+                    payload={"course_id": COURSE_ID, "content": "笔记"},
+                    session_id="sess-1",
+                ),
+            )
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, proposal.id)
+        assert exc_info.value.code == "PROPOSAL_APPLY_FAILED"
+        assert exc_info.value.params == {"errorCode": "COURSE_NOT_FOUND"}
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 0
+        assert await table_count(session_factory, "SELECT count(*) FROM transcripts") == 0
+        rows = await proposal_rows(session_factory)
+        assert rows[0][2] == "FAILED"
+        async with session_factory() as session:
+            failed_code = (
+                await session.execute(
+                    text("SELECT error_code FROM agent_proposals WHERE id = :id"),
+                    {"id": proposal.id},
+                )
+            ).scalar_one()
+        assert failed_code == "COURSE_NOT_FOUND"
+
+
+@pytest.mark.anyio
+async def test_text_record_add_confirm_archived_course_fails(tmp_path: Path) -> None:
+    """目标课程归档：沿用「归档课程不能接受新资料」语义 → FAILED、零记录。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ID, "Python 学习")
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE courses SET status = 'ARCHIVED' WHERE id = :id"),
+                {"id": COURSE_ID},
+            )
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.TEXT_RECORD_ADD,
+                    payload={"course_id": COURSE_ID, "content": "笔记"},
+                    session_id="sess-1",
+                ),
+            )
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, proposal.id)
+        assert exc_info.value.params == {"errorCode": "COURSE_ARCHIVED"}
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 0
+
+
+@pytest.mark.anyio
+async def test_text_record_add_reject_keeps_no_business_fact(tmp_path: Path) -> None:
+    """拒绝：零业务事实；REJECTED 终态再确认 409。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ID, "Python 学习")
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.TEXT_RECORD_ADD,
+                    payload={"course_id": COURSE_ID, "content": "笔记"},
+                    session_id="sess-1",
+                ),
+            )
+        async with session_factory() as session:
+            rejected = await ProposalService.reject(session, proposal.id)
+        assert rejected.status.value == "REJECTED"
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 0
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, proposal.id)
+        assert exc_info.value.status_code == 409

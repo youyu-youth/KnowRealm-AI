@@ -457,6 +457,33 @@ class SummaryService:
             return None
 
     @staticmethod
+    async def enqueue_if_eligible_in_transaction(
+        session: AsyncSession,
+        data_dir: Path,
+        record_id: str,
+        *,
+        log_event: str,
+        error_code: str,
+    ) -> tuple[str | None, str | None]:
+        """确认事务内 best-effort 提交（通用 Agent 工单 03）：供提案应用器在
+        确认事务内调用——provider/同意检查只读配置文件不入库，job 行随调用方
+        事务提交；异常只记日志与错误码返回，不回滚记录创建（记录创建是事实、
+        总结提交尽力而为）。返回 (summary_job_id, error_code)：
+        provider 未配置或未同意外发 → (None, None)。
+        """
+        try:
+            provider, consent_current = await _provider_state(data_dir)
+            if provider is None or not provider.api_key or not consent_current:
+                return None, None
+            submitted = await SummaryService._enqueue(
+                session, record_id, provider, allow_retry=False
+            )
+            return submitted.job_id, None
+        except Exception:
+            logger.error(log_event, error_code=error_code, record_id=record_id)
+            return None, error_code
+
+    @staticmethod
     async def _enqueue(
         session: AsyncSession,
         record_id: str,

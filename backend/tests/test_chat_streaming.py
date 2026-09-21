@@ -1682,7 +1682,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v10"
+        assert rows[0][3] == "chat-library-scope-v11"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2183,30 +2183,35 @@ async def test_scope_mounting_matrix_tool_visibility(
                 return list(BindRecordingModel.bound)
 
             # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library；
-            # search_courses / propose_memory / create_course 恒挂载（工单 01 操作
-            # 工具组 / 02 课程创建提案 / 工单 06 任意会话支持用户明确「记住…」）。
+            # search_courses / propose_memory / create_course /
+            # add_text_record_to_course 恒挂载（工单 01 操作工具组 / 02 课程创建
+            # 提案 / 03 文本记录提案 / 工单 06 任意会话支持用户明确「记住…」）。
             assert await visible(free_id) == [
                 "search_courses",
                 "propose_memory",
                 "create_course",
+                "add_text_record_to_course",
             ]
             assert await visible(record_session_id) == [
                 "search_library",
                 "search_courses",
                 "propose_memory",
                 "create_course",
+                "add_text_record_to_course",
             ]
             assert await visible(course_session_id) == [
                 "search_library",
                 "search_courses",
                 "propose_memory",
                 "create_course",
+                "add_text_record_to_course",
             ]
             assert await visible(all_session_id) == [
                 "search_library",
                 "search_courses",
                 "propose_memory",
                 "create_course",
+                "add_text_record_to_course",
             ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
@@ -2219,6 +2224,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "propose_memory",
                 "create_course",
+                "add_text_record_to_course",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
@@ -2226,6 +2232,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "propose_memory",
                 "create_course",
+                "add_text_record_to_course",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
@@ -2233,6 +2240,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "propose_memory",
                 "create_course",
+                "add_text_record_to_course",
             ]
 
 

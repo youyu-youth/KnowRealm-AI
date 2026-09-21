@@ -271,6 +271,7 @@ class ProposalType(StrEnum):
     MEMORY = "MEMORY"
     RESEARCH_INGEST = "RESEARCH_INGEST"
     COURSE_CREATE = "COURSE_CREATE"
+    TEXT_RECORD_ADD = "TEXT_RECORD_ADD"
 
 
 class AgentProposalOut(BaseModel):

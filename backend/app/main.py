@@ -13,7 +13,12 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.data_dir import DataDirectoryLock, ensure_data_dir
+from app.core.data_dir import (
+    DataDirectoryLock,
+    bind_data_dir,
+    ensure_data_dir,
+    unbind_data_dir,
+)
 from app.core.version import APP_VERSION
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
@@ -143,6 +148,8 @@ def create_app(
             engine, session_factory = create_database(db_path)
             app.state.session_factory = session_factory
             app.state.data_dir = resolved_data_dir
+            # 进程级绑定（工单 03）：提案应用器读 provider 配置用（app.state 不可达处）。
+            bind_data_dir(resolved_data_dir)
             # 资料库回填任务入队（幂等：已有活动任务则跳过）；失败不阻断启动，
             # capture 流程的同事务入队钩子会兜底。
             try:
@@ -417,6 +424,7 @@ def create_app(
                     await cleanup_task
                     await engine.dispose()
         finally:
+            unbind_data_dir()
             data_directory_lock.release()
 
     app = FastAPI(

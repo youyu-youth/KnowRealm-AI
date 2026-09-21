@@ -4,6 +4,26 @@ from filelock import FileLock, Timeout
 
 DATA_SUBDIRECTORIES = ("files", "cache", "exports", "backups", "config")
 
+# 进程级数据目录绑定（通用 Agent 工单 03）：提案应用器在确认事务内提交总结
+# 任务时需要读 data_dir 下的 provider 配置，而应用器契约只拿得到 session
+# （request.app.state 不可达）。lifespan 启动时绑定一次；测试直调应用器时
+# 由测试自行绑定（未绑定返回 None，总结提交按未触发处理）。
+_bound_data_dir: Path | None = None
+
+
+def bind_data_dir(path: Path) -> None:
+    global _bound_data_dir
+    _bound_data_dir = path
+
+
+def unbind_data_dir() -> None:
+    global _bound_data_dir
+    _bound_data_dir = None
+
+
+def bound_data_dir() -> Path | None:
+    return _bound_data_dir
+
 
 class DataDirectoryInUseError(RuntimeError):
     pass

@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.modules.capture.text_capture import MAX_TEXT_BYTES
 from app.modules.course.schemas import CourseCreate
 from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
 from app.modules.library.schemas import ChatScope
@@ -311,3 +312,38 @@ class CourseCreateResult(BaseModel):
     """COURSE_CREATE 结果投影（操作回执，spec 决策 8：课程创建 → 课程 id）。"""
 
     course_id: str
+
+
+class TextRecordAddPayload(BaseModel):
+    """TEXT_RECORD_ADD 提案判别载荷（工单 03）：目标课程 id + 文本正文。
+
+    course_id 是 search_courses 消歧后固化进提案的目标（spec 决策 9「固定目标」：
+    切页不影响）；正文空/超限在提案创建时结构化拒绝（空 → 缺失项，超限 → 模型级
+    detail），由模型转述（spec 决策 2），领域核心兜底同口径校验。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str = Field(
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+        description="目标课程 id（经 search_courses 查找消歧后取得）",
+    )
+    content: str = Field(min_length=1, description="要保存的文本正文（上限 1 MiB）")
+
+    @model_validator(mode="after")
+    def _content_within_size_limit(self) -> "TextRecordAddPayload":
+        if len(self.content.encode("utf-8")) > MAX_TEXT_BYTES:
+            raise ValueError("正文超过 1 MiB 上限，请改用 TXT 或 MD 文档导入")
+        return self
+
+
+class TextRecordAddResult(BaseModel):
+    """TEXT_RECORD_ADD 结果投影（spec 决策 8/15）：记录 id + 总结任务真实状态。
+
+    summary_job_id 与 summary_error_code 互斥：提交成功 → 任务 id；提交失败 →
+    错误码（记录已保存，不回滚）；均 None → 总结未触发（AI 未配置或未同意外发）。
+    """
+
+    record_id: str
+    summary_job_id: str | None = None
+    summary_error_code: str | None = None

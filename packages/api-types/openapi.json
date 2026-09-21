@@ -4846,7 +4846,8 @@
           "ORGANIZE",
           "MEMORY",
           "RESEARCH_INGEST",
-          "COURSE_CREATE"
+          "COURSE_CREATE",
+          "TEXT_RECORD_ADD"
         ],
         "title": "ProposalType",
         "type": "string"
