@@ -1823,6 +1823,8 @@
       "panelTitle": "课程创建提案",
       "accepted": "课程已创建。",
       "rejected": "已拒绝，未创建课程。",
+      "failed": "课程创建未完成。",
+      "failedDetail": "课程创建未完成（{{reason}}），可重试。",
       "accept": "确认创建课程",
       "reject": "拒绝创建课程",
       "openCourse": "打开课程"

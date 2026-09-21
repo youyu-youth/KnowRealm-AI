@@ -112,9 +112,12 @@ export const libraryApi = {
     apiFetch<OrganizeProposeOut>("/api/library/organize/propose", {
       method: "POST",
     }),
-  listProposals: (params: { status?: ProposalStatus } = {}) => {
+  listProposals: (
+    params: { status?: ProposalStatus; session_id?: string } = {},
+  ) => {
     const search = new URLSearchParams();
     if (params.status) search.set("status", params.status);
+    if (params.session_id) search.set("session_id", params.session_id);
     const query = search.toString();
     return apiFetch<AgentProposalOut[]>(
       `/api/proposals${query ? `?${query}` : ""}`,

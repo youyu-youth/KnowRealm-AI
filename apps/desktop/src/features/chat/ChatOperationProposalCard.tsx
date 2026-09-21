@@ -14,7 +14,11 @@ type ChatOperationProposalCardProps = {
   sessionId: string;
 };
 
-type Decision = "APPLIED" | "REJECTED";
+/** 确认/拒绝成功后的即时覆盖层：免去等 refetch 的空窗闪烁；远端到位后两者一致。 */
+type DecisionOverride = {
+  status: "APPLIED" | "REJECTED";
+  courseId: string | null;
+};
 
 /** 提案 payload → 确认卡字段行（标签复用新建课程表单文案，枚举值走既有翻译）。 */
 function previewRows(
@@ -52,53 +56,52 @@ function previewRows(
 /** 消息流内的课程创建提案就地确认卡（通用 Agent 第一阶段工单 02）：
  * 模型经 create_course 创建的 COURSE_CREATE 提案，完整参数预览后确认（真实
  * 创建课程）或拒绝（零业务事实）；APPLIED 后转回执态、提供课程入口跳转。
- * 提案本体唯一事实源是服务端（agent_proposals 表）：当轮 done 失效重取与
- * 断线/重启恢复共用同一查询缓存，前端不另存副本。 */
+ * 提案本体唯一事实源是服务端（agent_proposals 表）：断线/重启经本会话全状态
+ * 提案查询恢复状态视图（工单 02 review）——APPLIED 的课程入口、FAILED 的
+ * 失败原因与重试、REJECTED 的终态文案均由查询还原，不依赖组件内存。 */
 export function ChatOperationProposalCard({
   sessionId,
 }: ChatOperationProposalCardProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [decisions, setDecisions] = useState<Record<string, Decision>>({});
-  const [appliedCourseIds, setAppliedCourseIds] = useState<
-    Record<string, string | null>
-  >({});
+  const [overrides, setOverrides] = useState<Record<string, DecisionOverride>>(
+    {},
+  );
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 本会话 PENDING 的 COURSE_CREATE 提案：queryFn 拉全局 PENDING 提案、
-  // 组件内按 session 过滤（提案列表端点无会话参数）。
-  const { data: pendingProposals } = useQuery({
-    queryKey: libraryKeys.proposals("PENDING"),
-    queryFn: () => libraryApi.listProposals({ status: "PENDING" }),
+  // 本会话全状态提案（后端 session_id 过滤，工单 02 review）。
+  // staleTime 0 + key 含会话：重启、切回会话、断线后重进一律挂载即拉最新。
+  const { data: sessionProposals } = useQuery({
+    queryKey: libraryKeys.sessionProposals(sessionId),
+    queryFn: () => libraryApi.listProposals({ session_id: sessionId }),
+    staleTime: 0,
   });
 
-  const pending = useMemo(
+  const proposals = useMemo(
     () =>
-      (pendingProposals ?? []).filter(
+      (sessionProposals ?? []).filter(
         (proposal: AgentProposalOut) =>
           proposal.proposal_type === "COURSE_CREATE" &&
-          proposal.session_id === sessionId &&
-          decisions[proposal.id] === undefined,
+          proposal.session_id === sessionId,
       ),
-    [pendingProposals, sessionId, decisions],
+    [sessionProposals, sessionId],
   );
 
-  // 回执只依赖本地决定结果、不依赖 PENDING 列表：确认后提案从服务端
-  // PENDING 移除，回执仍在当轮保留（重启后不恢复，按服务端状态重显）。
-  const decided = useMemo(
-    () =>
-      Object.entries(decisions).map(([proposalId, decision]) => ({
-        proposalId,
-        decision,
-        courseId: appliedCourseIds[proposalId],
-      })),
-    [decisions, appliedCourseIds],
-  );
-
-  if (pending.length === 0 && decided.length === 0) {
+  if (proposals.length === 0) {
     return null;
   }
+  const statusOf = (proposal: AgentProposalOut): AgentProposalOut["status"] =>
+    overrides[proposal.id]?.status ?? proposal.status;
+  const settled = proposals.filter(
+    (proposal) =>
+      statusOf(proposal) === "APPLIED" || statusOf(proposal) === "REJECTED",
+  );
+  // FAILED 保留操作按钮：后端允许对 FAILED 再确认（重试语义，工单 05）。
+  const actionable = proposals.filter(
+    (proposal) =>
+      statusOf(proposal) === "PENDING" || statusOf(proposal) === "FAILED",
+  );
 
   const decide = (proposalId: string, accept: boolean) => {
     setBusyId(proposalId);
@@ -108,27 +111,28 @@ export function ChatOperationProposalCard({
       : libraryApi.rejectProposal(proposalId);
     request
       .then((result) => {
-        if (result.status === "APPLIED") {
-          const courseId =
-            typeof result.result?.course_id === "string"
-              ? result.result.course_id
-              : null;
-          setAppliedCourseIds((current) => ({
-            ...current,
-            [proposalId]: courseId,
-          }));
-        }
-        setDecisions((current) => ({
+        setOverrides((current) => ({
           ...current,
-          [proposalId]: result.status === "APPLIED" ? "APPLIED" : "REJECTED",
+          [proposalId]: {
+            status: result.status === "APPLIED" ? "APPLIED" : "REJECTED",
+            courseId:
+              typeof result.result?.course_id === "string"
+                ? result.result.course_id
+                : null,
+          },
         }));
         void queryClient.invalidateQueries({
           queryKey: [...libraryKeys.all, "proposals"],
         });
       })
-      .catch((exc: unknown) =>
-        setError(exc instanceof Error ? exc.message : String(exc)),
-      )
+      .catch((exc: unknown) => {
+        setError(exc instanceof Error ? exc.message : String(exc));
+        // 确认超时/失败后回查真相（工单 02 review）：请求可能已实际应用
+        // （回执经查询还原），或已落 FAILED（失败原因 + 可重试）。
+        void queryClient.invalidateQueries({
+          queryKey: libraryKeys.sessionProposals(sessionId),
+        });
+      })
       .finally(() => setBusyId(null));
   };
 
@@ -140,11 +144,15 @@ export function ChatOperationProposalCard({
       <p className="text-label text-muted-foreground">
         {t("chat.operationProposal.panelTitle")}
       </p>
-      {decided.map(({ proposalId, decision, courseId }) => {
-        const applied = decision === "APPLIED" && courseId !== undefined;
+      {settled.map((proposal) => {
+        const applied = statusOf(proposal) === "APPLIED";
+        const override = overrides[proposal.id];
+        const courseId = override
+          ? (override.courseId ?? courseIdOf(proposal))
+          : courseIdOf(proposal);
         return (
           <div
-            key={proposalId}
+            key={proposal.id}
             className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5"
           >
             <p className="text-label text-muted-foreground">
@@ -167,13 +175,25 @@ export function ChatOperationProposalCard({
         );
       })}
       <ul className="flex flex-col gap-1.5">
-        {pending.map((proposal) => {
+        {actionable.map((proposal) => {
           const rows = previewRows(proposal.payload ?? {}, t);
           return (
             <li
               key={proposal.id}
               className="bg-surface-subtle flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5"
             >
+              {statusOf(proposal) === "FAILED" ? (
+                <p role="alert" className="text-destructive text-label w-full">
+                  {proposal.error_code
+                    ? t("chat.operationProposal.failedDetail", {
+                        reason: t(
+                          `errors.${proposal.error_code}`,
+                          proposal.error_code,
+                        ),
+                      })
+                    : t("chat.operationProposal.failed")}
+                </p>
+              ) : null}
               <dl className="min-w-0 flex-1">
                 {rows.map((row) => (
                   <div key={row.label} className="flex gap-2">
@@ -215,4 +235,11 @@ export function ChatOperationProposalCard({
       ) : null}
     </section>
   );
+}
+
+/** 回执课程 id：读提案 result_json 的类型化投影（APPLIED 时同事务写入）。 */
+function courseIdOf(proposal: AgentProposalOut): string | null {
+  return typeof proposal.result?.course_id === "string"
+    ? proposal.result.course_id
+    : null;
 }
