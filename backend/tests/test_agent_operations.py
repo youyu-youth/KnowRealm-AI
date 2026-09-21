@@ -383,7 +383,7 @@ def test_create_course_signature_matches_registered_payload_schema() -> None:
     """薄工具参数面与注册项 payload schema 同源的漂移防线（spec 决策 3「参数
     schema 来自注册项」的可验证表达）：字段集、类型与宽松可选性逐字段比对，
     任一侧字段增删或类型漂移即失败。"""
-    from app.modules.agent.operations.course_create import CourseCreatePayload
+    from app.modules.agent.schemas import CourseCreatePayload
 
     # langchain 对 args_schema 的类型标注松散（实际是 pydantic 模型类）。
     args_schema = cast("type[BaseModel]", create_course.args_schema)

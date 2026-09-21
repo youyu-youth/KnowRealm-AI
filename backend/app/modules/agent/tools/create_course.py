@@ -2,7 +2,7 @@
 
 工具语义恒为「创建课程提案」，是否需要用户确认由后端决定（spec 用户故事 19）：
 调用成功 = 创建 PENDING 提案，用户在确认卡确认后课程才真实创建。参数 schema
-由注册项 payload schema（operations.course_create.CourseCreatePayload）经
+由注册项 payload schema（agent.schemas.CourseCreatePayload）经
 registry.lenient_tool_args_schema 派生（spec 决策 3：参数 schema 直接来自注册
 项）——同一组字段与类型、全部可选默认 None；必填性与条件校验（学业场景须选
 阶段、职业/兴趣须选深度）由注册项 schema 在提案创建时执法（spec 决策 9：缺
@@ -15,15 +15,13 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from app.modules.agent.operations.course_create import (
-    CREATE_COURSE_ACTION,
-    CourseCreatePayload,
-)
+from app.modules.agent.operations.course_create import CREATE_COURSE_ACTION
 from app.modules.agent.operations.registry import (
     lenient_tool_args_schema,
     submit_operation_proposal,
 )
 from app.modules.agent.runtime import current_agent_runtime
+from app.modules.agent.schemas import CourseCreatePayload
 
 # 工具名（langchain @tool 注册名 = 函数名）。
 CREATE_COURSE_TOOL_NAME = "create_course"

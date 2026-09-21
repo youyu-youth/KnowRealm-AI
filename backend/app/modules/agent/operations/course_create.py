@@ -3,9 +3,10 @@
 「帮我创建课程」→ 模型经薄工具创建 COURSE_CREATE 提案 → 用户确认卡确认 →
 应用器在确认事务内经课程创建核心建课（业务写入 + 搜索索引 + APPLIED +
 result_json 原子提交）。导入即注册（先例：library/organize、learner/routes）。
+载荷契约（CourseCreatePayload / CourseCreateResult）见 agent/schemas.py。
 """
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.agent.operations.registry import (
@@ -14,6 +15,7 @@ from app.modules.agent.operations.registry import (
     operation_payload_dict,
     register_operation,
 )
+from app.modules.agent.schemas import CourseCreatePayload, CourseCreateResult
 from app.modules.course.schemas import CourseCreate
 from app.modules.course.service import CourseService
 from app.modules.library.models import AgentProposal
@@ -22,19 +24,6 @@ from app.shared.errors import CodedHTTPException
 
 # 工具名（langchain @tool 注册名 = 函数名）：流式分发按名识别本工具的返回。
 CREATE_COURSE_ACTION = "create_course"
-
-
-class CourseCreatePayload(CourseCreate):
-    """COURSE_CREATE 提案判别载荷：字段与校验复用 HTTP 创建契约 CourseCreate
-    （同源零漂移），仅收紧未知键拒绝（extra=forbid，ADR-0024 载荷纪律）。"""
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class CourseCreateResult(BaseModel):
-    """COURSE_CREATE 结果投影（操作回执，spec 决策 8：课程创建 → 课程 id）。"""
-
-    course_id: str
 
 
 async def apply_course_create(session: AsyncSession, proposal: AgentProposal) -> CourseCreateResult:

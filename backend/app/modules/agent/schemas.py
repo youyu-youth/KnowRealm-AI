@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.modules.course.schemas import CourseCreate
 from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
 from app.modules.library.schemas import ChatScope
 
@@ -293,3 +294,20 @@ class ChatMessageOut(BaseModel):
     @field_serializer("created_at")
     def serialize_utc(self, value: datetime) -> str:
         return _iso_utc(value)
+
+
+# ---------------------------------------------------------------------------
+# 操作提案契约（agent/operations 注册消费，先例：library/schemas.py 提案载荷）
+
+
+class CourseCreatePayload(CourseCreate):
+    """COURSE_CREATE 提案判别载荷：字段与校验复用 HTTP 创建契约 CourseCreate
+    （同源零漂移），仅收紧未知键拒绝（extra=forbid，ADR-0024 载荷纪律）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class CourseCreateResult(BaseModel):
+    """COURSE_CREATE 结果投影（操作回执，spec 决策 8：课程创建 → 课程 id）。"""
+
+    course_id: str
