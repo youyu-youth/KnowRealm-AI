@@ -2044,6 +2044,11 @@
       "runToggle": "展开或收起任务的逐项操作",
       "runUntitled": "（无指令摘要）",
       "runDelete": "删除该任务的历史",
+      "runDeleteConfirm": {
+        "title": "删除该任务的历史？",
+        "description": "将删除该任务及其全部操作记录（包含对应撤销与回查能力）；操作提案的审批记录不会被删除。",
+        "confirm": "删除"
+      },
       "runOperationsEmpty": "该任务暂无操作记录。",
       "operationsLabel": "单步操作",
       "operationsHint": "经确认卡执行的单个操作（建课程、加文本记录等）。",

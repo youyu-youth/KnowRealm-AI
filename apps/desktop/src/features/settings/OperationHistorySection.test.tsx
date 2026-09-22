@@ -145,12 +145,18 @@ describe("OperationHistorySection", () => {
     });
   });
 
-  it("单任务删除调用 DELETE 并失效重取", async () => {
+  it("单任务删除经二次确认后调用 DELETE 并失效重取", async () => {
     listRuns.mockResolvedValueOnce([runData()]).mockResolvedValue([]);
     deleteRun.mockResolvedValue(undefined);
     renderWithQuery(<OperationHistorySection />);
     await screen.findByText("把这些条目都归到课程 X");
     fireEvent.click(screen.getByRole("button", { name: "删除该任务的历史" }));
+    // 二次确认：未确认不触发请求。
+    expect(
+      await screen.findByRole("heading", { name: "删除该任务的历史？" }),
+    ).toBeInTheDocument();
+    expect(deleteRun).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^删除$/ }));
     await waitFor(() => {
       expect(deleteRun).toHaveBeenCalledWith("run-1");
     });

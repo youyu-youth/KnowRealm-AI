@@ -2064,6 +2064,11 @@
       "runToggle": "Expand or collapse the task's operations",
       "runUntitled": "(no instruction summary)",
       "runDelete": "Delete this task's history",
+      "runDeleteConfirm": {
+        "title": "Delete this task's history?",
+        "description": "This deletes the task and all of its operation records (including the matching undo and lookup ability); operation proposal approvals are not deleted.",
+        "confirm": "Delete"
+      },
       "runOperationsEmpty": "This task has no operation records.",
       "operationsLabel": "Single-step operations",
       "operationsHint": "Individual operations executed via confirmation cards (create a course, add a text record, etc.).",

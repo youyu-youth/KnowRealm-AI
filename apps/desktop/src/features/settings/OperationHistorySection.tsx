@@ -129,7 +129,7 @@ export function OperationHistorySection() {
 
   const invalidateHistory = () => {
     void queryClient.invalidateQueries({
-      queryKey: ["settings", "operation-runs"],
+      queryKey: settingsKeys.operationRuns,
     });
     void queryClient.invalidateQueries({
       queryKey: settingsKeys.operations,
@@ -217,7 +217,8 @@ export function OperationHistorySection() {
   );
 }
 
-/** 任务（run）列表：状态过滤 + 展开逐操作 + 单任务历史删除（终态守卫在后端）。 */
+/** 任务（run）列表：状态过滤 + 展开逐操作 + 单任务历史删除（二次确认，
+ * 终态守卫在后端）。 */
 function RunsBlock({
   filter,
   onFilterChange,
@@ -228,6 +229,7 @@ function RunsBlock({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
   const runs = useQuery({
     queryKey: [...settingsKeys.operationRuns, filter],
@@ -240,8 +242,9 @@ function RunsBlock({
   const removeRun = useMutation({
     mutationFn: (runId: string) => operationHistoryApi.deleteRun(runId),
     onSuccess: () => {
+      setDeleteTargetId(null);
       void queryClient.invalidateQueries({
-        queryKey: ["settings", "operation-runs"],
+        queryKey: settingsKeys.operationRuns,
       });
     },
   });
@@ -311,7 +314,7 @@ function RunsBlock({
                     className="hover:bg-surface-raised rounded p-1"
                     aria-label={t("settings.operationHistory.runDelete")}
                     disabled={removeRun.isPending}
-                    onClick={() => removeRun.mutate(run.id)}
+                    onClick={() => setDeleteTargetId(run.id)}
                   >
                     <Trash2 className="size-3.5" aria-hidden />
                   </button>
@@ -326,6 +329,49 @@ function RunsBlock({
             {removeRun.error.message}
           </p>
         ) : null}
+
+        {/* 单任务删除二次确认：清理即失去对应 Undo 与回查（spec 用户故事 32）。 */}
+        <Dialog
+          open={deleteTargetId !== null}
+          onOpenChange={(open) => {
+            if (removeRun.isPending) return;
+            if (!open) {
+              removeRun.reset();
+              setDeleteTargetId(null);
+            }
+          }}
+        >
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>
+                {t("settings.operationHistory.runDeleteConfirm.title")}
+              </DialogTitle>
+              <DialogDescription>
+                {t("settings.operationHistory.runDeleteConfirm.description")}
+              </DialogDescription>
+            </DialogHeader>
+            {removeRun.isError ? (
+              <Alert variant="destructive">
+                <AlertDescription>{removeRun.error.message}</AlertDescription>
+              </Alert>
+            ) : null}
+            <DialogFooter>
+              <DialogClose render={<Button variant="outline" />}>
+                {t("settings.operationHistory.purge.cancel")}
+              </DialogClose>
+              <Button
+                variant="destructive"
+                disabled={removeRun.isPending || deleteTargetId === null}
+                onClick={() => {
+                  if (deleteTargetId !== null) removeRun.mutate(deleteTargetId);
+                }}
+              >
+                {removeRun.isPending ? <Spinner aria-hidden="true" /> : null}
+                {t("settings.operationHistory.runDeleteConfirm.confirm")}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </SettingsRow>
   );
