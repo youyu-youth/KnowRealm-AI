@@ -2962,3 +2962,84 @@ async def test_create_course_tool_streams_operation_proposal_done_payload(
     assert proposal_row is not None
     assert tuple(proposal_row) == ("COURSE_CREATE", "PENDING")
     assert course_count is not None and course_count[0] == 0
+
+
+@pytest.mark.anyio
+async def test_interrupted_stream_keeps_pending_operation_proposal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """工单 04：SSE 断开/用户停止后，已产生的待确认操作提案保留（提案写入是
+    独立事务、与流生命周期解耦）、流停止后不再新增提案；保留的提案仍可经
+    确认端点执行（用户故事 13：停止生成后待确认操作仍保留等我决定）。"""
+    replies: list[StubReply] = [
+        ToolCallReply(
+            "create_course",
+            {"name": "中断课", "learning_context": "INTEREST", "depth": "BEGINNER"},
+        ),
+        ["已创建提案。"],
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=replies) as (
+        app,
+        client,
+        _captured,
+    ):
+        created = await client.post("/api/chat-sessions", json={"scope": "FREE"})
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+        accepted = await ChatMessageService.accept(
+            session_factory=app.state.session_factory,
+            data_dir=app.state.data_dir,
+            registry=app.state.chat_stream_registry,
+            session_id=session_id,
+            content="帮我创建一个课程",
+        )
+        stream = ChatMessageService.stream_events(
+            session_factory=app.state.session_factory,
+            checkpointer=app.state.chat_checkpointer,
+            registry=app.state.chat_stream_registry,
+            accepted=accepted,
+        )
+        # 消费到工具结果事件（create_course 已执行、提案已独立事务提交）后
+        # 模拟客户端断开/停止（生成器边界验证，同中断先例）；写操作工具不发
+        # tool_call SSE 事件（提案经 done 载荷透传，02 语义），故序列仅两事件。
+        seen: list[str] = []
+        async for event in stream:
+            seen.append(str(event.event))
+            if event.event == "tool_result":
+                break
+        assert seen == ["status", "tool_result"]
+        await stream.aclose()
+
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            proposal_row = await (
+                await connection.execute(
+                    "SELECT id, status FROM agent_proposals WHERE session_id = ?",
+                    (session_id,),
+                )
+            ).fetchone()
+            counts_row = await (
+                await connection.execute(
+                    "SELECT (SELECT count(*) FROM agent_proposals), (SELECT count(*) FROM courses)"
+                )
+            ).fetchone()
+        assert proposal_row is not None
+        assert counts_row is not None
+        proposal_id, status = str(proposal_row[0]), str(proposal_row[1])
+        proposal_count, course_count = int(counts_row[0]), int(counts_row[1])
+        assert status == "PENDING"
+        # 流已停止：提案恒一条（Agent 不再产生新操作）、确认前零课程。
+        assert proposal_count == 1
+        assert course_count == 0
+        rows = await message_rows(tmp_path, session_id)
+        assert all(role != "ASSISTANT" for role, _content in rows)
+        # 保留的待确认提案仍可决定：确认 → APPLIED + 回执课程。
+        confirmed = await client.post(f"/api/proposals/{proposal_id}/confirm")
+        assert confirmed.status_code == 200
+        body = confirmed.json()
+        assert body["status"] == "APPLIED"
+        assert isinstance(body["result"]["course_id"], str)
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            final_courses = await (
+                await connection.execute("SELECT count(*) FROM courses")
+            ).fetchone()
+        assert final_courses is not None and final_courses[0] == 1

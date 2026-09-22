@@ -7,6 +7,8 @@
 - add_text_record_to_course（03）：公共机制复用验证——结构化缺失/超限 detail、
   确认应用（Record + Transcript + 索引 + 回填 + 总结任务 best-effort）、
   归档/不存在目标 FAILED 零悬挂、幂等与拒绝零业务事实。
+- 综合验收（04）：FAILED 重试恰好一次、应用器故障 FAILED 不谎报回执、
+  公共执行流程零领域 import 的静态防线。
 """
 
 import json
@@ -1171,3 +1173,163 @@ async def test_text_record_add_summary_coded_failure_keeps_record(
         assert receipt["summary_error_code"] == "TEXT_RECORD_ADD_SUMMARY_ENQUEUE_FAILED"
     assert applied is not None
     assert applied.status.value == "APPLIED"
+
+
+# ---------------------------------------------------------------------------
+# 单步可靠性综合验收（工单 04）：失败重试、应用器故障回执、公共流程扩展性防线
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_text_record_add_failed_confirm_retry_applies_exactly_once(
+    tmp_path: Path,
+) -> None:
+    """确认失败（落 FAILED）后重试 → 恰好一条记录、一次 APPLIED、终态 409。
+
+    「确认请求超时/失败后重试不重复创建」的 FAILED 分支；已 APPLIED 分支由
+    幂等 409 与并发双确认测试覆盖（工单 04 验收：目标幂等）。
+    """
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ID, "Python 学习")
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE courses SET status = 'ARCHIVED' WHERE id = :id"),
+                {"id": COURSE_ID},
+            )
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.TEXT_RECORD_ADD,
+                    payload={"course_id": COURSE_ID, "content": "要点笔记"},
+                    session_id="sess-1",
+                ),
+            )
+        # 第一次确认：目标已归档 → 422 + FAILED，记录零产生。
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as first:
+                await ProposalService.confirm(session, proposal.id)
+        assert first.value.params == {"errorCode": "COURSE_ARCHIVED"}
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 0
+        # 目标恢复后重试确认：APPLIED、恰好一条记录（不重复创建）。
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE courses SET status = 'ACTIVE' WHERE id = :id"),
+                {"id": COURSE_ID},
+            )
+        async with session_factory() as session:
+            retried = await ProposalService.confirm(session, proposal.id)
+        assert retried.status.value == "APPLIED"
+        assert retried.result is not None
+        record_id = retried.result["record_id"]
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 1
+        assert (
+            await table_count(
+                session_factory,
+                f"SELECT count(*) FROM records WHERE id = '{record_id}'",
+            )
+            == 1
+        )
+        # 终态后再确认 409，记录仍恰好一条。
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as third:
+                await ProposalService.confirm(session, proposal.id)
+        assert third.value.status_code == 409
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 1
+
+
+@pytest.mark.anyio
+async def test_course_create_applier_failure_marks_failed_without_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """应用器异常 → 提案 FAILED + 稳定错误码，result_json 恒 NULL（回执只在
+    APPLIED 时写入，失败不谎报成功）、零课程（工单 04 验收：一致性）。"""
+    from app.modules.course.service import CourseService
+
+    async def failing_create_core(*args: Any, **kwargs: Any) -> None:
+        raise CodedHTTPException(
+            code="TEST_COURSE_CREATE_FAILURE", status_code=503, detail="注入的应用器故障"
+        )
+
+    monkeypatch.setattr(CourseService, "create_core", failing_create_core)
+
+    async with bare_db(tmp_path) as session_factory:
+        async with session_factory() as session:
+            proposal = await ProposalService.create(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=ProposalType.COURSE_CREATE,
+                    payload={
+                        "name": "故障课",
+                        "learning_context": "INTEREST",
+                        "depth": "BEGINNER",
+                    },
+                    session_id="sess-1",
+                ),
+            )
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, proposal.id)
+        assert exc_info.value.status_code == 422
+        assert exc_info.value.code == "PROPOSAL_APPLY_FAILED"
+        assert exc_info.value.params == {"errorCode": "TEST_COURSE_CREATE_FAILURE"}
+        assert await table_count(session_factory, "SELECT count(*) FROM courses") == 0
+        rows = await proposal_rows(session_factory)
+        assert rows[0][2] == "FAILED"
+        assert rows[0][3] is None
+        async with session_factory() as session:
+            failed_code = (
+                await session.execute(
+                    text("SELECT error_code FROM agent_proposals WHERE id = :id"),
+                    {"id": proposal.id},
+                )
+            ).scalar_one()
+        assert failed_code == "TEST_COURSE_CREATE_FAILURE"
+
+
+def test_operations_common_flow_imports_no_domain_modules() -> None:
+    """公共执行流程无领域专属分支的静态防线（工单 04 验收：扩展性）。
+
+    操作注册表与提案框架（registry / operations.__init__ / library.proposals）
+    不得 import 业务领域模块——领域接入只发生在动作模块（course_create /
+    text_record_add 的应用器）与提案枚举值注册，第三个动作接入时公共流程
+    零改动（用例佐证：03 接入时 registry/proposals 零改动）。领域名集合从
+    app/modules 目录动态枚举，未来模块增减自动适应；相对导入（from ..course
+    …）按首段同样判领域。
+    """
+    import ast
+    import importlib
+
+    from app.modules.agent.operations import registry
+
+    allowed_domains = {"agent", "library"}
+    # registry.__file__ 的 parents：[operations, agent, modules]——parents[2] 即域根目录。
+    modules_root = Path(registry.__file__ or ".").parents[2]
+    domain_names = (
+        {entry.name for entry in modules_root.iterdir() if entry.is_dir()}
+        - allowed_domains
+        - {"__pycache__"}
+    )
+
+    def is_domain(name: str) -> bool:
+        # 绝对导入按 app.modules.<域> 判；裸名/相对形态按首段判。
+        parts = name.split(".")
+        if parts[0] == "app":
+            parts = parts[2:] if parts[1:2] == ["modules"] else []
+        return bool(parts) and parts[0] in domain_names
+
+    modules = [
+        registry,
+        importlib.import_module("app.modules.agent.operations"),
+        importlib.import_module("app.modules.library.proposals"),
+    ]
+    for module in modules:
+        source = Path(cast(str, module.__file__)).read_text(encoding="utf-8")
+        imported: set[str] = set()
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module)
+            elif isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+        domain = {name for name in imported if is_domain(name)}
+        assert not domain, f"{module.__name__} 引入了领域模块：{domain}"
