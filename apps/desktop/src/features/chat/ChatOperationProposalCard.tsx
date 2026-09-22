@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type ComponentType, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowRight, Check, X } from "lucide-react";
@@ -17,21 +17,22 @@ type ChatOperationProposalCardProps = {
   sessionId: string;
 };
 
-/** 本卡涵盖的操作提案类型（02 课程创建 / 03 向课程添加文本记录）。 */
-const OPERATION_PROPOSAL_TYPES = new Set(["COURSE_CREATE", "TEXT_RECORD_ADD"]);
-
 /** 确认/拒绝成功后的即时覆盖层：免去等 refetch 的空窗闪烁；远端到位后两者一致。 */
 type DecisionOverride = {
   status: "APPLIED" | "REJECTED";
   result: Record<string, unknown> | null;
 };
 
-/** 操作卡文案键：按提案类型分发（课程创建走外层键、文本记录走 textRecord 子段）。 */
-function labelKey(proposal: AgentProposalOut, key: string): string {
-  return proposal.proposal_type === "TEXT_RECORD_ADD"
-    ? `chat.operationProposal.textRecord.${key}`
-    : `chat.operationProposal.${key}`;
-}
+type PreviewFieldsProps = {
+  payload: Record<string, unknown>;
+  t: TFunction;
+};
+
+type SettledRowProps = {
+  status: AgentProposalOut["status"];
+  result: Record<string, unknown> | null;
+  t: TFunction;
+};
 
 /** 提案 payload → 课程创建确认卡字段行（标签复用新建课程表单文案，枚举值走既有翻译）。 */
 function previewRows(
@@ -122,50 +123,17 @@ function TextRecordCourseName({ courseId }: { courseId: string }) {
   return <>{query.data?.name ?? courseId}</>;
 }
 
-/** 确认卡字段行组（dl 内）：课程创建 = 完整参数行；文本记录 = 目标课程 + 正文摘要
- * + 明示「保存后将尝试生成 AI 总结」（spec 用户故事 9）。 */
-function ProposalPreviewFields({
-  proposal,
-  t,
-}: {
-  proposal: AgentProposalOut;
-  t: TFunction;
-}) {
-  if (proposal.proposal_type === "TEXT_RECORD_ADD") {
-    const payload = proposal.payload ?? {};
-    const targetCourseId = fieldString(payload, "course_id");
-    const excerpt = contentExcerpt(payload.content);
-    return (
-      <>
-        <div className="flex gap-2">
-          <dt className="text-label text-muted-foreground shrink-0">
-            {t("chat.operationProposal.textRecord.targetCourse")}
-          </dt>
-          <dd className="text-label text-ink min-w-0 break-words">
-            {targetCourseId ? (
-              <TextRecordCourseName courseId={targetCourseId} />
-            ) : null}
-          </dd>
-        </div>
-        {excerpt ? (
-          <div className="flex gap-2">
-            <dt className="text-label text-muted-foreground shrink-0">
-              {t("chat.operationProposal.textRecord.content")}
-            </dt>
-            <dd className="text-label text-ink min-w-0 break-words">
-              {excerpt}
-            </dd>
-          </div>
-        ) : null}
-        <p className="text-label text-muted-foreground">
-          {t("chat.operationProposal.textRecord.confirmHint")}
-        </p>
-      </>
-    );
-  }
+// ---------------------------------------------------------------------------
+// 类型专属卡片行为（03 review 收敛）：文案键、预览字段行与回执行的差异全部
+// 聚合进下方 CARD_BY_TYPE 配置表——第三种操作接入 = 表加一行 + 两个新组件，
+// 分派点零改动（先例：ToolActivityCard 的 TOOL_ACTIVITY_META 单映射）。
+// ---------------------------------------------------------------------------
+
+/** COURSE_CREATE 确认卡预览：完整参数行（枚举值走表单文案翻译）。 */
+function CourseCreatePreviewFields({ payload, t }: PreviewFieldsProps) {
   return (
     <>
-      {previewRows(proposal.payload ?? {}, t).map((row) => (
+      {previewRows(payload, t).map((row) => (
         <div key={row.label} className="flex gap-2">
           <dt className="text-label text-muted-foreground shrink-0">
             {row.label}
@@ -179,49 +147,50 @@ function ProposalPreviewFields({
   );
 }
 
-/** 已决（APPLIED/REJECTED）回执行：按提案类型渲染入口跳转与总结任务真实状态。 */
-function SettledProposalRow({
-  proposal,
-  status,
-  result,
-  t,
-}: {
-  proposal: AgentProposalOut;
-  status: AgentProposalOut["status"];
-  result: Record<string, unknown> | null;
-  t: TFunction;
-}) {
-  const applied = status === "APPLIED";
-  if (proposal.proposal_type === "TEXT_RECORD_ADD") {
-    const recordId = fieldString(result, "record_id");
-    return (
-      <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5">
-        <p className="text-label text-muted-foreground">
-          {t(labelKey(proposal, applied ? "accepted" : "rejected"))}
-        </p>
-        {applied ? (
-          <p className="text-label text-muted-foreground">
-            {summaryStateText(result, t)}
-          </p>
-        ) : null}
-        {applied && recordId ? (
-          <Link
-            to="/records/$recordId"
-            params={{ recordId }}
-            className="text-ink hover:bg-surface-raised text-label flex w-fit items-center gap-1 rounded px-1 py-0.5"
-          >
-            {t("chat.operationProposal.textRecord.openRecord")}
-            <ArrowRight className="size-3.5" aria-hidden="true" />
-          </Link>
-        ) : null}
+/** TEXT_RECORD_ADD 确认卡预览：目标课程 + 正文摘要 + 明示「保存后将尝试生成
+ * AI 总结」（spec 用户故事 9）。 */
+function TextRecordPreviewFields({ payload, t }: PreviewFieldsProps) {
+  const targetCourseId = fieldString(payload, "course_id");
+  const excerpt = contentExcerpt(payload.content);
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.textRecord.targetCourse")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {targetCourseId ? (
+            <TextRecordCourseName courseId={targetCourseId} />
+          ) : null}
+        </dd>
       </div>
-    );
-  }
+      {excerpt ? (
+        <div className="flex gap-2">
+          <dt className="text-label text-muted-foreground shrink-0">
+            {t("chat.operationProposal.textRecord.content")}
+          </dt>
+          <dd className="text-label text-ink min-w-0 break-words">{excerpt}</dd>
+        </div>
+      ) : null}
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.textRecord.confirmHint")}
+      </p>
+    </>
+  );
+}
+
+/** COURSE_CREATE 回执行：课程入口跳转（/spaces 路由 validateSearch 必带 tab）。 */
+function SettledCourseCreateRow({ status, result, t }: SettledRowProps) {
+  const applied = status === "APPLIED";
   const courseId = fieldString(result, "course_id");
   return (
     <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5">
       <p className="text-label text-muted-foreground">
-        {t(labelKey(proposal, applied ? "accepted" : "rejected"))}
+        {t(
+          applied
+            ? "chat.operationProposal.accepted"
+            : "chat.operationProposal.rejected",
+        )}
       </p>
       {applied && courseId ? (
         <Link
@@ -236,6 +205,70 @@ function SettledProposalRow({
       ) : null}
     </div>
   );
+}
+
+/** TEXT_RECORD_ADD 回执行：记录入口 + 总结任务真实状态（三态区分）。 */
+function SettledTextRecordRow({ status, result, t }: SettledRowProps) {
+  const applied = status === "APPLIED";
+  const recordId = fieldString(result, "record_id");
+  return (
+    <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5">
+      <p className="text-label text-muted-foreground">
+        {t(
+          applied
+            ? "chat.operationProposal.textRecord.accepted"
+            : "chat.operationProposal.textRecord.rejected",
+        )}
+      </p>
+      {applied ? (
+        <p className="text-label text-muted-foreground">
+          {summaryStateText(result, t)}
+        </p>
+      ) : null}
+      {applied && recordId ? (
+        <Link
+          to="/records/$recordId"
+          params={{ recordId }}
+          className="text-ink hover:bg-surface-raised text-label flex w-fit items-center gap-1 rounded px-1 py-0.5"
+        >
+          {t("chat.operationProposal.textRecord.openRecord")}
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+/** 类型专属卡片行为表（键 = 提案类型；涵盖类型即本卡过滤集合）。 */
+type OperationCardSpec = {
+  /** 跨类型共用文案键（failed/failedDetail/accept/reject）的类型前缀。 */
+  label: (key: string) => string;
+  /** 确认卡预览字段行（dl 内）。 */
+  PreviewFields: ComponentType<PreviewFieldsProps>;
+  /** APPLIED/REJECTED 回执行。 */
+  SettledRow: ComponentType<SettledRowProps>;
+};
+
+const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
+  COURSE_CREATE: {
+    label: (key) => `chat.operationProposal.${key}`,
+    PreviewFields: CourseCreatePreviewFields,
+    SettledRow: SettledCourseCreateRow,
+  },
+  TEXT_RECORD_ADD: {
+    label: (key) => `chat.operationProposal.textRecord.${key}`,
+    PreviewFields: TextRecordPreviewFields,
+    SettledRow: SettledTextRecordRow,
+  },
+};
+
+/** 本卡涵盖的操作提案类型（02 课程创建 / 03 向课程添加文本记录）＝配置表键。 */
+const OPERATION_PROPOSAL_TYPES = new Set(Object.keys(CARD_BY_TYPE));
+
+/** 操作卡文案键：查类型配置表（共用键的类型前缀分派，03 review 收敛单点）。 */
+function labelKey(proposal: AgentProposalOut, key: string): string {
+  // proposals 已按 OPERATION_PROPOSAL_TYPES（= 表键）过滤，查表恒命中。
+  return CARD_BY_TYPE[proposal.proposal_type].label(key);
 }
 
 /** 待确认/FAILED 可重试行：失败原因 + 参数预览 + 确认/拒绝按钮。 */
@@ -255,6 +288,7 @@ function ActionableProposalRow({
   const reason = proposal.error_code
     ? t(`errors.${proposal.error_code}`, proposal.error_code)
     : null;
+  const PreviewFields = CARD_BY_TYPE[proposal.proposal_type].PreviewFields;
   return (
     <li className="bg-surface-subtle flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5">
       {status === "FAILED" ? (
@@ -265,7 +299,7 @@ function ActionableProposalRow({
         </p>
       ) : null}
       <dl className="min-w-0 flex-1">
-        <ProposalPreviewFields proposal={proposal} t={t} />
+        <PreviewFields payload={proposal.payload ?? {}} t={t} />
       </dl>
       <Button
         variant="ghost"
@@ -382,15 +416,17 @@ export function ChatOperationProposalCard({
       <p className="text-label text-muted-foreground">
         {t("chat.operationProposal.panelTitle")}
       </p>
-      {settled.map((proposal) => (
-        <SettledProposalRow
-          key={proposal.id}
-          proposal={proposal}
-          status={statusOf(proposal)}
-          result={resultOf(proposal)}
-          t={t}
-        />
-      ))}
+      {settled.map((proposal) => {
+        const SettledRow = CARD_BY_TYPE[proposal.proposal_type].SettledRow;
+        return (
+          <SettledRow
+            key={proposal.id}
+            status={statusOf(proposal)}
+            result={resultOf(proposal)}
+            t={t}
+          />
+        );
+      })}
       <ul className="flex flex-col gap-1.5">
         {actionable.map((proposal) => (
           <ActionableProposalRow
