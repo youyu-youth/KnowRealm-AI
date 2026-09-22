@@ -1,5 +1,7 @@
 # backend（FastAPI sidecar）
 
+**开发必读**：开始功能设计、开发和评审前，必须阅读并遵循[根目录 AGENTS.md](../AGENTS.md)的“Agent 自动执行优先（长期架构原则）”。适合 Agent 执行的能力须同时考虑 Tool / API、上下文与参数、自动执行流程及确认权限；复用领域 Service 和受控执行入口。
+
 本地单用户 FastAPI sidecar：SQLAlchemy 2.0 async + aiosqlite + WAL，是 `knowrealm.db` 与数据目录业务文件的唯一写者/协调者。由 Tauri 壳以子进程拉起（127.0.0.1 随机端口 + 一次性启动令牌），不独立部署。
 
 > 编码规范正本是根目录 `.claude/rules/fastapi.md` 与 `data-layer.md`（自动加载，本文不重复）。本文件记录本目录的**命令、结构与已验证现状**；rules 中 LangGraph、sqlite-vec、pydantic-settings 等内容是目标态，差异见文末 Gotchas——按 function plan 推进，勿擅自补实现。

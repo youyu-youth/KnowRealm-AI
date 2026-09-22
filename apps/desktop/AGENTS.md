@@ -1,5 +1,7 @@
 # apps/desktop（@knowrealm/desktop 桌面端）
 
+**开发必读**：开始功能设计、开发和评审前，必须阅读并遵循[根目录 AGENTS.md](../../AGENTS.md)的“Agent 自动执行优先（长期架构原则）”。设计页面操作时同步考虑 AI 对话执行入口、所需上下文、确认交互与结果展示，避免将适合自动执行的能力仅绑定到页面按钮。
+
 Tauri 2 壳 + React 19 + Vite 7 + TanStack Router（file-based）+ Tailwind CSS 4 + shadcn/ui（Base UI 底座，style `base-nova`）。业务数据一律经 localhost sidecar API 读写，UI 不直连数据库。
 
 > 编码规范正本是根目录 `.claude/rules/desktop-*.md`（自动加载，本文不重复）。本文件记录本目录的**命令、结构与已验证现状**；rules 部分内容描述的是目标态，差异见文末 Gotchas——**不要为了对齐 rules 而主动重构现有代码**。

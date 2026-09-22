@@ -1,10 +1,30 @@
-# KnowRealm-AI 产品简介
+# AGENTS.md
 
-**一句话**：开源的个人学习工作台——把课堂录音、音频、文档、粘贴文本和闪念速记统一"捕获"，自动转化为可编辑、可追溯的学习资产（总结 / 知识点 / 习题 / 复习资料），并提供基于内容的 AI 对话问答。
+## 必读：Agent 自动执行优先（长期架构原则）
+
+KnowRealm 是一个面向个人学习与工作的 **通用 Agent 工作台**。
+
+**开始功能设计、开发和评审前必须阅读本节。** 开发大部分功能时，都必须优先考虑该功能是否可以被 Agent 自动理解、调用和执行：用户应能通过 AI 对话表达意图，由 Agent 调用对应 Tool / API 与 Service 完成任务，尽量减少必须手动进入页面、点击按钮才能完成的流程。
+
+对于适合接入 Agent 的功能，设计和开发阶段必须同时明确：
+
+- **能力入口**：需要提供或复用哪些 Tool / API，以及对应的领域 Service。
+- **上下文与参数**：目标对象、作用范围、必填参数，以及信息缺失时的追问和歧义消除方式。
+- **自动执行流程**：从理解意图、调用能力到返回结果的完整路径，以及失败时如何反馈。
+- **确认与权限**：哪些操作需要确认、授权覆盖哪些对象与参数，以及执行端如何校验权限。
+
+**验收要求**：在功能方案或工单中明确 Agent 接入方式；不适合接入或本期暂不接入时，说明原因和范围，不能默认只设计页面操作。
+
+**架构边界**：Agent 与页面操作复用领域 Service 和受控执行入口；确定性业务仍由程序执行，遵循下文“产品 AI 能力实现的相关准则”。自动执行遵循 ADR-0026 及当前已实现的授权机制，保留必要确认和操作回执，页面上下文与模型判断不构成授权。
+
+> **功能设计不仅要考虑“用户怎么操作”，还必须考虑“Agent 怎么自动完成”。**
+
+**一句话**：开源的个人学习工作台——把课堂录音、音频、文档、粘贴文本和闪念速记统一"捕获"，自动转化为可编辑、可追溯的学习资产（总结 / 知识点 / 习题 / 复习资料），提供基于内容的 AI 对话问答；内置通用 Agent，用户通过自然语言描述意图，指挥 Agent 自动化执行任务。
 
 - **给谁用**：一切学习知识的人（学生、程序员、上班族、终身学习者）.
 - **产品定位（本地优先）**：数据全部落在用户可见、可搬移的本地目录；零部署（.msi 即用）、无账号、桌面端永不强制登录（ADR-0014）。**新能力先过两问**：① 数据是否落在本地可见可搬移的目录？② 是否要求用户多装任何东西？
 - **核心闭环**：捕获（录音 / 导入 / 粘贴 / 速记）→ ASR 转写 → AI 总结（人工确认）→ 知识点 / 习题 / Todo → AI 问答
+- **通用 Agent（自动化执行）**：用户通过自然语言描述指挥 Agent 自动化完成任务（受控写路径 + 确认卡 + 回执，见扩展文档 §44 / ADR-0026）
 - **长期方向**：从"学习助手"演进为"个人学习大脑"（掌握度 / 遗忘复习 / 自适应学习）
 
 **权威文档（一切问题先查这里，改动以此为准）**：
@@ -43,6 +63,12 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - 同仓多会话并行时：pytest 各自独立 basetemp（互踩会产生伪失败）、提交点名 add、git mv 后用 `--follow` 核对
 
 
+
+## 技术文档查询 使用 context7 mcp 或相关context7 skills
+
+
+
+
 ## KnowRealm-AI产品AI能力实现的相关准则
 **本规范仅适用于 KnowRealm-AI 产品内部的 AI / Agent 能力调用：**
 
@@ -70,17 +96,14 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
    | 全局 reset / 基础样式      | `styles/globals.css`            |
    | 动画 keyframes             | `styles/animations.css`         |
 
-6. 在涉及到 `langchain `, `langGraph `, `Deep Agents` 编写，设计，搭建时，请参考 `.agents/skills/`  或 `.zcode/skills/` 或  `.claude/skills/ `下有关的skills来进行编写！或者使用 对应的 mcp tools 工具来进行文档的查询，或者参考其他Agent的设计，下面是仓库代码地址：(可以参考Agent架构设计)
-
-   - `E:\workspace\project\agent-project\open-swe`
-   - `E:\workspace\project\agent-project\EvoScientist`
-   - `E:\workspace\project\agent-project\Yuxi`
+6. **（必须遵循）**涉及 `langchain` / `langGraph` / `Deep Agents` 等 Agent 相关代码的编写、设计、搭建时，必须先使用 **langchain mcp 工具**（`langchain-docs`，` langchain-reference`）查询官方文档与 API 参考，**复用现成能力、避免重复造轮子**；或使用 `.agents/skills/` / `.zcode/skills/` / `.claude/skills/` 下的相关 skills（langchain-* / langgraph-* / deep-agents-*）。
 
 7. 编码时必要时遵循 SOLID、KISS、DRY、YAGNI，保持高内聚、低耦合，避免过度设计与无意义抽象。
 
 8. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
 
 9. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
+10.agent相关功能，多使用Middleware等
 
 
 
