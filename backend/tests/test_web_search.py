@@ -68,12 +68,48 @@ async def test_tavily_normal_response_parses_hits_and_request_shape() -> None:
 
 
 @pytest.mark.anyio
-async def test_tavily_non_200_raises_web_search_error() -> None:
+@pytest.mark.parametrize(
+    ("status_code", "error_code", "retryable", "message"),
+    [
+        (401, "WEB_SEARCH_AUTH_FAILED", False, "密钥无效"),
+        (429, "WEB_SEARCH_RATE_LIMITED", True, "请求过于频繁"),
+        (432, "WEB_SEARCH_PLAN_LIMIT_EXCEEDED", False, "套餐额度已用尽"),
+        (433, "WEB_SEARCH_PAYG_LIMIT_EXCEEDED", False, "按量付费额度已用尽"),
+        (500, "WEB_SEARCH_PROVIDER_UNAVAILABLE", True, "暂时不可用"),
+    ],
+)
+async def test_tavily_http_error_mapping(
+    status_code: int, error_code: str, retryable: bool, message: str
+) -> None:
     client = TavilySearchClient(
-        "tvly-key", transport=httpx.MockTransport(lambda request: httpx.Response(401))
+        "tvly-key", transport=httpx.MockTransport(lambda request: httpx.Response(status_code))
     )
-    with pytest.raises(WebSearchError, match="HTTP 401"):
+
+    with pytest.raises(WebSearchError) as raised:
         await client.search("query", max_results=1)
+
+    assert raised.value.code == error_code
+    assert raised.value.retryable is retryable
+    assert message in str(raised.value)
+
+
+@pytest.mark.anyio
+async def test_tavily_terminal_error_is_latched_for_client_lifetime() -> None:
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(432)
+
+    client = TavilySearchClient("tvly-key", transport=httpx.MockTransport(handler))
+
+    for query in ("Spring AI", "Spring AI documentation"):
+        with pytest.raises(WebSearchError) as raised:
+            await client.search(query, max_results=5)
+        assert raised.value.code == "WEB_SEARCH_PLAN_LIMIT_EXCEEDED"
+
+    assert requests == 1
 
 
 @pytest.mark.anyio
@@ -174,11 +210,23 @@ async def test_web_search_tool_empty_hits_carries_retry_message() -> None:
 
 @pytest.mark.anyio
 async def test_web_search_tool_service_error_returns_error_payload() -> None:
-    provider = FakeProvider(error=WebSearchError("搜索服务返回 HTTP 401"))
+    provider = FakeProvider(
+        error=WebSearchError(
+            "Tavily 套餐额度已用尽，请前往 Tavily Dashboard 检查用量或升级套餐。",
+            code="WEB_SEARCH_PLAN_LIMIT_EXCEEDED",
+            retryable=False,
+        )
+    )
     payload = json.loads(await call_web_search("查询", provider))
 
     # 失败不抛错：返回错误载荷（ok=false + message），模型可据此向用户说明。
-    assert payload == {"hits": [], "ok": False, "message": "搜索服务返回 HTTP 401"}
+    assert payload == {
+        "hits": [],
+        "ok": False,
+        "error_code": "WEB_SEARCH_PLAN_LIMIT_EXCEEDED",
+        "retryable": False,
+        "message": "Tavily 套餐额度已用尽，请前往 Tavily Dashboard 检查用量或升级套餐。",
+    }
 
 
 @pytest.mark.anyio
@@ -188,6 +236,8 @@ async def test_web_search_tool_network_error_returns_error_payload() -> None:
 
     assert payload["ok"] is False
     assert payload["hits"] == []
+    assert payload["error_code"] == "WEB_SEARCH_NETWORK_ERROR"
+    assert payload["retryable"] is True
     assert "网络请求失败" in payload["message"]
 
 
@@ -196,6 +246,8 @@ async def test_web_search_tool_unbound_returns_error_payload() -> None:
     payload = json.loads(await web_search.ainvoke({"query": "查询"}))
 
     assert payload["ok"] is False
+    assert payload["error_code"] == "WEB_SEARCH_DISABLED"
+    assert payload["retryable"] is False
     assert "未启用联网搜索" in payload["message"]
 
 
@@ -312,14 +364,20 @@ async def test_web_search_connection_test_maps_service_and_network_errors(
 ) -> None:
     patch_routes_tavily(
         monkeypatch,
-        QueueTransport([httpx.Response(401), httpx.ConnectTimeout("timed out")]),
+        QueueTransport(
+            [httpx.Response(401), httpx.Response(432), httpx.ConnectTimeout("timed out")]
+        ),
     )
     async with running_app(tmp_path / "KnowRealm") as (_app, client):
         await client.put(WEB_SEARCH_URL, json={"provider": "tavily", "api_key": "tvly-secret"})
         service_error = await client.post(f"{WEB_SEARCH_URL}/tests")
+        plan_limit_error = await client.post(f"{WEB_SEARCH_URL}/tests")
         network_error = await client.post(f"{WEB_SEARCH_URL}/tests")
 
     assert service_error.status_code == 502
     assert service_error.json()["code"] == "WEB_SEARCH_TEST_FAILED"
+    assert plan_limit_error.status_code == 502
+    assert plan_limit_error.json()["code"] == "WEB_SEARCH_TEST_FAILED"
+    assert "套餐额度已用尽" in plan_limit_error.json()["detail"]
     assert network_error.status_code == 502
     assert network_error.json()["code"] == "WEB_SEARCH_UNREACHABLE"

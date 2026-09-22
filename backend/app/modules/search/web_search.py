@@ -11,6 +11,17 @@ from typing import Protocol
 class WebSearchError(Exception):
     """搜索服务返回不可用响应（非 200 / 坏 JSON），message 面向模型与用户可读。"""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "WEB_SEARCH_PROVIDER_ERROR",
+        retryable: bool = True,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.retryable = retryable
+
 
 @dataclass(frozen=True)
 class WebSearchHit:

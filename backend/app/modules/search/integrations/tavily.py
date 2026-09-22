@@ -13,6 +13,29 @@ from app.modules.search.web_search import WebSearchError, WebSearchHit
 TAVILY_SEARCH_URL = "https://api.tavily.com/search"
 # 单次搜索请求超时；联网工具在模型循环内同步执行，过长会拖住整轮回答。
 WEB_SEARCH_TIMEOUT_SECONDS = 10.0
+_TERMINAL_STATUS_CODES = frozenset({401, 432, 433})
+_HTTP_ERRORS: dict[int, tuple[str, bool, str]] = {
+    401: (
+        "WEB_SEARCH_AUTH_FAILED",
+        False,
+        "Tavily API 密钥无效，请在设置中重新配置。",
+    ),
+    429: (
+        "WEB_SEARCH_RATE_LIMITED",
+        True,
+        "Tavily 请求过于频繁，请稍后重试。",
+    ),
+    432: (
+        "WEB_SEARCH_PLAN_LIMIT_EXCEEDED",
+        False,
+        "Tavily 套餐额度已用尽，请前往 Tavily Dashboard 检查用量或升级套餐。",
+    ),
+    433: (
+        "WEB_SEARCH_PAYG_LIMIT_EXCEEDED",
+        False,
+        "Tavily 按量付费额度已用尽，请前往 Tavily Dashboard 提高限额。",
+    ),
+}
 
 
 class TavilySearchClient:
@@ -28,8 +51,11 @@ class TavilySearchClient:
         self._api_key = api_key
         self._timeout = timeout
         self._transport = transport
+        self._terminal_error: WebSearchError | None = None
 
     async def search(self, query: str, *, max_results: int) -> list[WebSearchHit]:
+        if self._terminal_error is not None:
+            raise self._terminal_error
         async with httpx.AsyncClient(
             timeout=self._timeout, trust_env=True, transport=self._transport
         ) as client:
@@ -39,7 +65,22 @@ class TavilySearchClient:
                 json={"query": query, "max_results": max_results},
             )
         if response.status_code != 200:
-            raise WebSearchError(f"搜索服务返回 HTTP {response.status_code}")
+            code, retryable, message = _HTTP_ERRORS.get(
+                response.status_code,
+                (
+                    "WEB_SEARCH_PROVIDER_UNAVAILABLE"
+                    if response.status_code >= 500
+                    else "WEB_SEARCH_PROVIDER_ERROR",
+                    response.status_code >= 500,
+                    "Tavily 搜索服务暂时不可用，请稍后重试。"
+                    if response.status_code >= 500
+                    else f"Tavily 搜索服务返回 HTTP {response.status_code}。",
+                ),
+            )
+            error = WebSearchError(message, code=code, retryable=retryable)
+            if response.status_code in _TERMINAL_STATUS_CODES:
+                self._terminal_error = error
+            raise error
         try:
             payload: object = response.json()
         except ValueError as exc:

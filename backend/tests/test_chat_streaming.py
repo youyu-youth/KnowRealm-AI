@@ -1682,7 +1682,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v11"
+        assert rows[0][3] == "chat-library-scope-v12"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -1948,6 +1948,8 @@ async def test_free_chat_web_search_streams_tool_events_and_web_citation(
         # 联网指引进入 system 提示（自由聊天无挂载限定句）。
         prompt = str(captured[0][0].content)
         assert "web_search 工具联网查询" in prompt
+        assert "retryable=false" in prompt
+        assert "不要更换查询词或再次调用" in prompt
         assert "[n] 标题 — URL" in prompt
         assert "仅作为材料外的补充来源" not in prompt
 

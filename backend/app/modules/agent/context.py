@@ -29,6 +29,8 @@ CHAT_WEB_SEARCH_GUIDANCE = (
     "本轮已启用联网搜索：遇到时效性问题或你不确定的内容时，可用 web_search 工具联网查询；"
     "由你自行决定是否搜索与搜索词，可多次搜索。回答实际使用了网络来源时，在正文结束后"
     "另起引用块，网络来源每行一条、以「[n] 标题 — URL」格式列出（此类行无需逐字摘录）。"
+    "工具失败且返回 retryable=false 时，不要更换查询词或再次调用；直接向用户说明 message "
+    "中的配置或额度问题。"
 )
 CHAT_WEB_SEARCH_MOUNTED_GUIDANCE = "回答须优先依据学习材料，网络结果仅作为材料外的补充来源。"
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，

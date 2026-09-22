@@ -64,11 +64,11 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v11"
+CHAT_PROMPT_VERSION = "chat-library-scope-v12"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
-# 此版本触发。工单 01 起两版随模型可见面变化同步 bump（03：操作工具
-# add_text_record_to_course）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v12"
+# 此版本触发。工单 01 起两版随模型可见面变化同步 bump（03：操作工具；本次：
+# Tavily 不可重试错误语义）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v13"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
