@@ -5,6 +5,7 @@ export const SETTINGS_SECTIONS = [
   "desktop",
   "general",
   "data",
+  "operations",
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];

@@ -1873,7 +1873,8 @@
       "appearance": "外观与语言",
       "desktop": "桌面行为",
       "general": "通用偏好",
-      "data": "数据与存储"
+      "data": "数据与存储",
+      "operations": "操作历史"
     },
     "learnerMemory": {
       "title": "AI 记忆",
@@ -2028,6 +2029,66 @@
         "noMatch": "没有匹配的时区"
       },
       "quizCountLegend": "默认习题数量"
+    },
+    "operationHistory": {
+      "title": "操作历史",
+      "description": "Agent 代你执行的操作与任务记录。删除聊天会话不会删除这里的历史；清理已结束任务的历史后将失去对应的撤销与回查能力。",
+      "loading": "正在读取操作历史",
+      "filterLabel": "按状态过滤",
+      "filter": {
+        "all": "全部状态"
+      },
+      "runsLabel": "任务",
+      "runsHint": "批量整理等多步任务（第二阶段上线后出现），展开查看逐项操作。",
+      "runsEmpty": "暂无任务记录。批量整理任务出现后会在这里列出。",
+      "runToggle": "展开或收起任务的逐项操作",
+      "runUntitled": "（无指令摘要）",
+      "runDelete": "删除该任务的历史",
+      "runOperationsEmpty": "该任务暂无操作记录。",
+      "operationsLabel": "单步操作",
+      "operationsHint": "经确认卡执行的单个操作（建课程、加文本记录等）。",
+      "operationsEmpty": "暂无操作记录。在对话中确认 Agent 的操作提案后会在这里出现。",
+      "action": {
+        "create_course": "创建课程",
+        "add_text_record_to_course": "添加文本记录"
+      },
+      "operationStatus": {
+        "PLANNED": "待执行",
+        "SUCCEEDED": "已成功",
+        "FAILED": "失败",
+        "SKIPPED": "已跳过",
+        "CANCELLED": "已取消"
+      },
+      "runStatus": {
+        "RUNNING": "进行中",
+        "WAITING_USER": "等待用户",
+        "WAITING_JOB": "等待任务",
+        "COMPLETED": "已完成",
+        "PARTIAL_COMPLETED": "部分完成",
+        "FAILED": "失败",
+        "CANCELLED": "已取消"
+      },
+      "authMode": {
+        "REQUEST_APPROVAL": "请求批准",
+        "AUTO_APPROVE": "帮我批准",
+        "FULL_ACCESS": "完全访问"
+      },
+      "activityLabel": "模式切换审计",
+      "activityHint": "授权档位切换的审计记录，任何档位下审计链不断。",
+      "activityEmpty": "暂无模式切换记录。",
+      "activity": {
+        "switch": "{{from}} → {{to}}",
+        "globalScope": "全局默认",
+        "sessionScope": "会话内"
+      },
+      "purge": {
+        "button": "清理已结束任务",
+        "pending": "正在清理",
+        "title": "清理已结束任务的历史？",
+        "description": "将删除已结束任务的全部历史记录与已完成的单步操作（包含对应撤销与回查能力）；进行中的任务不受影响，操作提案的审批记录永不删除。",
+        "confirm": "清理",
+        "cancel": "取消"
+      }
     },
     "providers": {
       "sectionTitle": "服务与用量",
@@ -2343,6 +2404,8 @@
     }
   },
   "errors": {
+    "AGENT_RUN_NOT_FOUND": "任务不存在",
+    "AGENT_RUN_NOT_FINISHED": "任务尚未结束，不能清理历史",
     "AI_CONSENT_REQUIRED": "请先同意外部 AI 处理",
     "ASR_KEY_NOT_CONFIGURED": "请先配置腾讯云语音识别密钥",
     "ASR_TEST_FAILED": "腾讯云语音识别凭据测试失败",

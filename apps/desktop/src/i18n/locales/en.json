@@ -1893,7 +1893,8 @@
       "appearance": "Appearance & language",
       "desktop": "Desktop behavior",
       "general": "General preferences",
-      "data": "Data & storage"
+      "data": "Data & storage",
+      "operations": "Operation history"
     },
     "learnerMemory": {
       "title": "AI memory",
@@ -2048,6 +2049,66 @@
         "noMatch": "No matching time zones"
       },
       "quizCountLegend": "Default question count"
+    },
+    "operationHistory": {
+      "title": "Operation history",
+      "description": "Operations and tasks the Agent performed on your behalf. Deleting a chat session does not delete this history; purging finished tasks removes the matching undo and lookup ability.",
+      "loading": "Loading operation history",
+      "filterLabel": "Filter by status",
+      "filter": {
+        "all": "All statuses"
+      },
+      "runsLabel": "Tasks",
+      "runsHint": "Multi-step tasks such as batch organizing (appears once stage two lands); expand to see each operation.",
+      "runsEmpty": "No task records yet. Batch organizing tasks will be listed here.",
+      "runToggle": "Expand or collapse the task's operations",
+      "runUntitled": "(no instruction summary)",
+      "runDelete": "Delete this task's history",
+      "runOperationsEmpty": "This task has no operation records.",
+      "operationsLabel": "Single-step operations",
+      "operationsHint": "Individual operations executed via confirmation cards (create a course, add a text record, etc.).",
+      "operationsEmpty": "No operation records yet. Confirming an Agent operation proposal in chat will show up here.",
+      "action": {
+        "create_course": "Create course",
+        "add_text_record_to_course": "Add text record"
+      },
+      "operationStatus": {
+        "PLANNED": "Planned",
+        "SUCCEEDED": "Succeeded",
+        "FAILED": "Failed",
+        "SKIPPED": "Skipped",
+        "CANCELLED": "Cancelled"
+      },
+      "runStatus": {
+        "RUNNING": "Running",
+        "WAITING_USER": "Waiting for user",
+        "WAITING_JOB": "Waiting for job",
+        "COMPLETED": "Completed",
+        "PARTIAL_COMPLETED": "Partially completed",
+        "FAILED": "Failed",
+        "CANCELLED": "Cancelled"
+      },
+      "authMode": {
+        "REQUEST_APPROVAL": "Request approval",
+        "AUTO_APPROVE": "Auto-approve",
+        "FULL_ACCESS": "Full access"
+      },
+      "activityLabel": "Mode-switch audit",
+      "activityHint": "Audit trail of authorization mode switches; the audit chain never breaks in any mode.",
+      "activityEmpty": "No mode-switch records yet.",
+      "activity": {
+        "switch": "{{from}} → {{to}}",
+        "globalScope": "Global default",
+        "sessionScope": "In session"
+      },
+      "purge": {
+        "button": "Purge finished tasks",
+        "pending": "Purging",
+        "title": "Purge finished task history?",
+        "description": "This deletes all history of finished tasks and completed single-step operations (including the matching undo and lookup ability). Active tasks are unaffected, and operation proposal approvals are never deleted.",
+        "confirm": "Purge",
+        "cancel": "Cancel"
+      }
     },
     "providers": {
       "sectionTitle": "Services & usage",
@@ -2363,6 +2424,8 @@
     }
   },
   "errors": {
+    "AGENT_RUN_NOT_FOUND": "Task not found.",
+    "AGENT_RUN_NOT_FINISHED": "The task has not finished yet; clear its history after it ends.",
     "AI_CONSENT_REQUIRED": "Please consent to external AI processing first.",
     "ASR_KEY_NOT_CONFIGURED": "Configure the Tencent Cloud speech recognition key first.",
     "ASR_TEST_FAILED": "The Tencent Cloud speech recognition credential test failed.",

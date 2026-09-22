@@ -4,6 +4,95 @@
  */
 
 export interface paths {
+    "/api/agent/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Activity */
+        get: operations["list_activity_api_agent_activity_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Operations */
+        get: operations["list_operations_api_agent_operations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_agent_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runs/purge-finished": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Finished
+         * @description 批量清理已结束任务的历史（终态 runs＋终态单步 operations）；提案永不删。
+         */
+        post: operations["purge_finished_api_agent_runs_purge_finished_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_api_agent_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Run History */
+        delete: operations["delete_run_history_api_agent_runs__run_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audio-imports": {
         parameters: {
             query?: never;
@@ -2004,6 +2093,81 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * ActivityScope
+         * @enum {string}
+         */
+        ActivityScope: "GLOBAL" | "SESSION";
+        /**
+         * ActivityType
+         * @enum {string}
+         */
+        ActivityType: "AUTH_MODE_SWITCH";
+        /** AgentActivityOut */
+        AgentActivityOut: {
+            activity_type: components["schemas"]["ActivityType"];
+            /** Created At */
+            created_at: string;
+            from_mode: components["schemas"]["AuthMode"];
+            /** Id */
+            id: string;
+            scope: components["schemas"]["ActivityScope"];
+            /** Session Id */
+            session_id: string | null;
+            to_mode: components["schemas"]["AuthMode"];
+        };
+        /** AgentOperationOut */
+        AgentOperationOut: {
+            /** Action */
+            action: string;
+            /** Attempts */
+            attempts: number;
+            /** Authorization */
+            authorization?: {
+                [key: string]: unknown;
+            } | null;
+            /** Created At */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /** Level */
+            level: string;
+            /**
+             * Payload
+             * @default {}
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Proposal Id */
+            proposal_id: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Run Id */
+            run_id: string | null;
+            /** Snapshot */
+            snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Status */
+            status: string;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Type */
+            target_type: string | null;
+            /** Undo Of */
+            undo_of: string | null;
+            /** Undone By */
+            undone_by: string | null;
+            /** Updated At */
+            updated_at: string;
+        };
         /** AgentProposalOut */
         AgentProposalOut: {
             /** Created At */
@@ -2038,6 +2202,71 @@ export interface components {
             /** Target Type */
             target_type: string | null;
         };
+        /** AgentRunDetailOut */
+        AgentRunDetailOut: {
+            auth_mode: components["schemas"]["AuthMode"];
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /** Created At */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /** Instruction Text */
+            instruction_text: string | null;
+            /**
+             * Operations
+             * @default []
+             */
+            operations: components["schemas"]["AgentOperationOut"][];
+            /** Plan */
+            plan?: {
+                [key: string]: unknown;
+            } | null;
+            /** Plan Version */
+            plan_version: number;
+            /** Proposal Id */
+            proposal_id: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at: string;
+            /** Waiting Reason */
+            waiting_reason: string | null;
+        };
+        /** AgentRunOut */
+        AgentRunOut: {
+            auth_mode: components["schemas"]["AuthMode"];
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /** Created At */
+            created_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /** Id */
+            id: string;
+            /** Instruction Text */
+            instruction_text: string | null;
+            /** Plan */
+            plan?: {
+                [key: string]: unknown;
+            } | null;
+            /** Plan Version */
+            plan_version: number;
+            /** Proposal Id */
+            proposal_id: string | null;
+            /** Session Id */
+            session_id: string | null;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at: string;
+            /** Waiting Reason */
+            waiting_reason: string | null;
+        };
         /** ApplyReviewRequest */
         ApplyReviewRequest: {
             /**
@@ -2055,6 +2284,12 @@ export interface components {
             /** Transcode Job Id */
             transcode_job_id: string;
         };
+        /**
+         * AuthMode
+         * @description 授权档位（ADR-0026；档位执行分流随 02 票落地，本票为授权事实的记录词汇）。
+         * @enum {string}
+         */
+        AuthMode: "REQUEST_APPROVAL" | "AUTO_APPROVE" | "FULL_ACCESS";
         /**
          * BackfillStatusOut
          * @description 回填任务摘要：仅存在任务行时随列表返回，供工作台横幅展示进度。
@@ -3751,6 +3986,11 @@ export interface components {
             target_concept_id: string;
         };
         /**
+         * OperationStatus
+         * @enum {string}
+         */
+        OperationStatus: "PLANNED" | "SUCCEEDED" | "FAILED" | "SKIPPED" | "CANCELLED";
+        /**
          * OrganizeDuplicateGroup
          * @description 确定性重复组：未软删且同 content_hash 的条目（≥2 才成组）。
          */
@@ -3991,6 +4231,13 @@ export interface components {
          * @enum {string}
          */
         ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD";
+        /** PurgeResultOut */
+        PurgeResultOut: {
+            /** Operations Deleted */
+            operations_deleted: number;
+            /** Runs Deleted */
+            runs_deleted: number;
+        };
         /**
          * QuizAction
          * @enum {string}
@@ -4473,6 +4720,11 @@ export interface components {
          * @enum {string}
          */
         ReviewMaterialStatus: "GENERATED" | "CONFIRMED" | "SUPERSEDED";
+        /**
+         * RunStatus
+         * @enum {string}
+         */
+        RunStatus: "RUNNING" | "WAITING_USER" | "WAITING_JOB" | "COMPLETED" | "PARTIAL_COMPLETED" | "FAILED" | "CANCELLED";
         /** SearchCourseItem */
         SearchCourseItem: {
             /** Id */
@@ -4971,6 +5223,422 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_activity_api_agent_activity_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActivityOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_operations_api_agent_operations_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["OperationStatus"] | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOperationOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_runs_api_agent_runs_get: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["RunStatus"] | null;
+                session_id?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    purge_finished_api_agent_runs_purge_finished_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgeResultOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_run_api_agent_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunDetailOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_run_history_api_agent_runs__run_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     import_audio_api_audio_imports_post: {
         parameters: {
             query?: never;

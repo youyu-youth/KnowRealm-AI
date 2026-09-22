@@ -9,4 +9,9 @@ export const settingsKeys = {
   profile: ["settings", "profile"] as const,
   learnerMemory: ["settings", "learner-memory"] as const,
   profileAvatar: ["settings", "profile-avatar"] as const,
+  operationRuns: ["settings", "operation-runs"] as const,
+  operationRunDetail: (runId: string) =>
+    ["settings", "operation-runs", runId] as const,
+  operations: ["settings", "operations"] as const,
+  agentActivity: ["settings", "agent-activity"] as const,
 };

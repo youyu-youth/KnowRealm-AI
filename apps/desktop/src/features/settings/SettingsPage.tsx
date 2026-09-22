@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   Bot,
   Database,
+  History,
   MonitorCog,
   Palette,
   SlidersHorizontal,
@@ -32,6 +33,7 @@ import { PreferencesSection } from "@/features/settings/PreferencesSection";
 import { ProvidersSection } from "@/features/settings/ProvidersSection";
 import { LearnerMemorySection } from "@/features/settings/LearnerMemorySection";
 import { DataDirectorySection } from "@/features/settings/DataDirectorySection";
+import { OperationHistorySection } from "@/features/settings/OperationHistorySection";
 import { ROLE_KEYS, isRoleKey, type RoleKey } from "@/features/settings/roles";
 import {
   isSettingsSection,
@@ -89,6 +91,11 @@ const SETTINGS_NAV_GROUPS = [
         value: "data",
         labelKey: "settings.navigation.data",
         icon: Database,
+      },
+      {
+        value: "operations",
+        labelKey: "settings.navigation.operations",
+        icon: History,
       },
     ],
   },
@@ -160,6 +167,9 @@ export function SettingsPage({ section, onSectionChange }: SettingsPageProps) {
           <PreferencesSection />
           <TabsContent value="data" keepMounted className="min-w-0">
             <DataDirectorySection />
+          </TabsContent>
+          <TabsContent value="operations" className="min-w-0">
+            <OperationHistorySection />
           </TabsContent>
         </div>
       </Tabs>
