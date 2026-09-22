@@ -1295,7 +1295,8 @@ def test_operations_common_flow_imports_no_domain_modules() -> None:
     text_record_add 的应用器）与提案枚举值注册，第三个动作接入时公共流程
     零改动（用例佐证：03 接入时 registry/proposals 零改动）。领域名集合从
     app/modules 目录动态枚举，未来模块增减自动适应；相对导入（from ..course
-    …）按首段同样判领域。
+    …）按首段同样判领域。第二阶段 01 票起 runs 子包（模型 / 服务 / 查询 /
+    清理）同受防线覆盖。
     """
     import ast
     import importlib
@@ -1322,6 +1323,10 @@ def test_operations_common_flow_imports_no_domain_modules() -> None:
         registry,
         importlib.import_module("app.modules.agent.operations"),
         importlib.import_module("app.modules.library.proposals"),
+        importlib.import_module("app.modules.agent.runs.models"),
+        importlib.import_module("app.modules.agent.runs.schemas"),
+        importlib.import_module("app.modules.agent.runs.service"),
+        importlib.import_module("app.modules.agent.runs.routes"),
     ]
     for module in modules:
         source = Path(cast(str, module.__file__)).read_text(encoding="utf-8")

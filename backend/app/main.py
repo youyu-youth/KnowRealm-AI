@@ -24,6 +24,7 @@ from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.modules.agent import chat_sessions
 from app.modules.agent.message_service import ChatStreamRegistry
+from app.modules.agent.runs import routes as agent_runs_routes
 from app.modules.capture import (
     audio_imports,
     capture_batches,
@@ -468,6 +469,7 @@ def create_app(
     app.include_router(search_routes.router)
     app.include_router(source_anchors.router)
     app.include_router(chat_sessions.router)
+    app.include_router(agent_runs_routes.router)
     app.include_router(profile.router)
 
     # 统一 HTTP 错误序列化：{detail, code, params?}（CodedHTTPException 携带码；

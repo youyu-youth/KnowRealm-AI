@@ -171,6 +171,16 @@ class ProposalService:
                 detail=f"提案应用失败：{exc.code}",
                 params={"errorCode": exc.code},
             ) from exc
+        except Exception as exc:
+            # 应用器非编码异常（bug / 环境故障）：原子回滚＝未发生；同样落 FAILED +
+            # INTERNAL 稳定错误码（诊断不断链、FAILED 可重试），对调用方仍是 422。
+            await ProposalService._mark_failed(session, proposal_id, "INTERNAL")
+            raise CodedHTTPException(
+                code="PROPOSAL_APPLY_FAILED",
+                status_code=422,
+                detail="提案应用失败：INTERNAL",
+                params={"errorCode": "INTERNAL"},
+            ) from exc
         refreshed = await ProposalService._get(session, proposal_id)
         return _proposal_out(refreshed)
 
@@ -214,30 +224,55 @@ class ProposalService:
 
     @staticmethod
     async def reject(session: AsyncSession, proposal_id: str) -> AgentProposalOut:
-        """拒绝：只改提案状态，不改任何业务事实。"""
+        """拒绝：只改提案状态，不改任何业务事实。
+
+        执行权由带终态守卫的条件 UPDATE 抢占（confirm 先例）：先读后写在并发
+        确认下会覆盖对方结果——读到 PENDING → 对方已 APPLIED → 本方写 REJECTED
+        覆盖回执。rowcount=0 说明提案不存在（404）或已被处理（409）。
+        """
         async with session.begin():
-            proposal = await ProposalService._get(session, proposal_id)
-            if proposal.status not in (ProposalStatus.PENDING, ProposalStatus.FAILED):
+            claimed = await session.execute(
+                update(AgentProposal)
+                .where(
+                    AgentProposal.id == proposal_id,
+                    AgentProposal.status.in_(
+                        [ProposalStatus.PENDING.value, ProposalStatus.FAILED.value]
+                    ),
+                )
+                .values(status=ProposalStatus.REJECTED.value, decided_at=utcnow())
+            )
+            if not isinstance(claimed, CursorResult) or claimed.rowcount != 1:
+                await ProposalService._get(session, proposal_id)
                 raise CodedHTTPException(
                     code="PROPOSAL_ALREADY_DECIDED",
                     status_code=409,
                     detail="提案已处理，不能重复拒绝",
                 )
-            proposal.status = ProposalStatus.REJECTED.value
-            proposal.decided_at = utcnow()
-        return _proposal_out(proposal)
+        refreshed = await ProposalService._get(session, proposal_id)
+        return _proposal_out(refreshed)
 
     @staticmethod
     async def _mark_failed(session: AsyncSession, proposal_id: str, error_code: str) -> None:
+        """失败回写：条件 UPDATE 抢占（终态守卫）。
+
+        与确认 / 重试并发的先读后写竞态在此消除：提案已被并发请求置 APPLIED
+        时 rowcount=0 静默不覆盖（APPLIED 事实优先，本方事务早已回滚＝未发生）。
+        """
         async with session.begin():
-            proposal = await session.get(AgentProposal, proposal_id)
-            if proposal is not None and proposal.status in (
-                ProposalStatus.PENDING.value,
-                ProposalStatus.FAILED.value,
-            ):
-                proposal.status = ProposalStatus.FAILED.value
-                proposal.error_code = error_code
-                proposal.decided_at = utcnow()
+            await session.execute(
+                update(AgentProposal)
+                .where(
+                    AgentProposal.id == proposal_id,
+                    AgentProposal.status.in_(
+                        [ProposalStatus.PENDING.value, ProposalStatus.FAILED.value]
+                    ),
+                )
+                .values(
+                    status=ProposalStatus.FAILED.value,
+                    error_code=error_code,
+                    decided_at=utcnow(),
+                )
+            )
 
     @staticmethod
     async def _get(session: AsyncSession, proposal_id: str) -> AgentProposal:

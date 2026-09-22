@@ -16,6 +16,7 @@ from typing import Any, cast
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.agent.runs.service import record_confirmed_operation
 from app.modules.agent.runtime import (
     MAX_OPERATION_PROPOSALS_PER_TURN,
     AgentRuntimeContext,
@@ -64,11 +65,22 @@ def register_operation(spec: OperationSpec[Any]) -> None:
 
     应用器经投影适配器包装：返回值先按 result_schema 校验再转 dict 交给提案
     框架（框架只识别 dict 结果，投影形状漂移在此显式失败而非被静默丢弃）。
+    执行成功后同事务回接写 operation 行（spec 决策 4：执行事实唯一源）——
+    run_id 空的单步操作、payload 投影、result 回填、authorization_json
+    授权依据；应用器异常时整个确认事务回滚，operation 不落（未发生）。
     """
 
     async def scoped_applier(session: AsyncSession, proposal: AgentProposal) -> dict[str, Any]:
         result = spec.result_schema.model_validate(await spec.applier(session, proposal))
-        return result.model_dump()
+        result_dict = result.model_dump()
+        await record_confirmed_operation(
+            session,
+            proposal=proposal,
+            action=spec.action,
+            level=spec.level.value,
+            result_dict=result_dict,
+        )
+        return result_dict
 
     _OPERATIONS[spec.action] = spec
     register_payload_schema(spec.proposal_type, spec.payload_schema)
