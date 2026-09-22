@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ChatMessage, ChatSession } from "@/features/chat/api/types";
 import { ChatComposer } from "@/features/chat/ChatComposer";
+import { ChatExecutedOperationCard } from "@/features/chat/ChatExecutedOperationCard";
 import { ChatMemoryProposalCard } from "@/features/chat/ChatMemoryProposalCard";
 import { ChatMessageList } from "@/features/chat/ChatMessageList";
 import { ChatOperationProposalCard } from "@/features/chat/ChatOperationProposalCard";
@@ -105,6 +106,10 @@ export function ChatConversationView({
   );
   const setWebSearchEnabled = useChatUiStore(
     (state) => state.setWebSearchEnabled,
+  );
+  // 会话授权档位覆盖（工单 02）：显式拨过才随消息携带，未拨＝全局默认。
+  const sessionAuthMode = useChatUiStore(
+    (state) => state.authModeBySession[sessionId],
   );
   const scopeUnavailable = recordDeleted || courseDeleted || libraryItemDeleted;
 
@@ -274,7 +279,9 @@ export function ChatConversationView({
             toolActivities={toolActivities}
             isStreaming={isStreaming}
             streamError={streamError}
-            onRetry={(content) => send(content, webSearchEnabled)}
+            onRetry={(content) =>
+              send(content, webSearchEnabled, sessionAuthMode)
+            }
             showEmptyHint={!showSuggestions}
             sessionId={sessionId}
             defaultRecordId={recordId}
@@ -289,6 +296,9 @@ export function ChatConversationView({
         {/* 课程创建提案就地确认卡（通用 Agent 工单 02）：完整参数预览，确认后
             真实创建课程并转回执态；断线/重启经提案查询恢复。 */}
         <ChatOperationProposalCard sessionId={sessionId} />
+        {/* 直执行回执卡（通用 Agent 第二阶段工单 02）：自动档免确认执行的
+            操作呈现授权依据；断线/重启经 operation 查询恢复，清理后降级占位。 */}
+        <ChatExecutedOperationCard sessionId={sessionId} />
         <ChatComposer
           value={composerValue}
           disabled={messages.isPending || scopeUnavailable}
@@ -306,7 +316,7 @@ export function ChatConversationView({
           webSearchAvailable={webSearchAvailable}
           onToggleWebSearch={(next) => setWebSearchEnabled(sessionId, next)}
           onValueChange={setComposerValue}
-          onSend={(content) => send(content, webSearchEnabled)}
+          onSend={(content) => send(content, webSearchEnabled, sessionAuthMode)}
           onStop={stop}
         />
       </div>

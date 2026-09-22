@@ -7,6 +7,7 @@ import {
   History,
   MonitorCog,
   Palette,
+  ShieldCheck,
   SlidersHorizontal,
   UserRound,
 } from "lucide-react";
@@ -33,6 +34,7 @@ import { PreferencesSection } from "@/features/settings/PreferencesSection";
 import { ProvidersSection } from "@/features/settings/ProvidersSection";
 import { LearnerMemorySection } from "@/features/settings/LearnerMemorySection";
 import { DataDirectorySection } from "@/features/settings/DataDirectorySection";
+import { AgentAutomationSection } from "@/features/settings/AgentAutomationSection";
 import { OperationHistorySection } from "@/features/settings/OperationHistorySection";
 import { ROLE_KEYS, isRoleKey, type RoleKey } from "@/features/settings/roles";
 import {
@@ -91,6 +93,11 @@ const SETTINGS_NAV_GROUPS = [
         value: "data",
         labelKey: "settings.navigation.data",
         icon: Database,
+      },
+      {
+        value: "automation",
+        labelKey: "settings.navigation.automation",
+        icon: ShieldCheck,
       },
       {
         value: "operations",
@@ -167,6 +174,9 @@ export function SettingsPage({ section, onSectionChange }: SettingsPageProps) {
           <PreferencesSection />
           <TabsContent value="data" keepMounted className="min-w-0">
             <DataDirectorySection />
+          </TabsContent>
+          <TabsContent value="automation" className="min-w-0">
+            <AgentAutomationSection />
           </TabsContent>
           <TabsContent value="operations" className="min-w-0">
             <OperationHistorySection />

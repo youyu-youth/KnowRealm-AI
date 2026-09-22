@@ -1845,6 +1845,29 @@
         "courseUnavailable": "课程已不可用"
       }
     },
+    "authMode": {
+      "title": "授权模式",
+      "hint": "会话内临时切换，重启应用后回落全局默认。",
+      "placeholder": "选择授权模式",
+      "mode": {
+        "REQUEST_APPROVAL": "写操作先出确认卡，确认后执行。",
+        "AUTO_APPROVE": "低风险操作自动执行；高风险仍确认。",
+        "FULL_ACCESS": "除禁止项外全部自动执行。"
+      }
+    },
+    "executedOperation": {
+      "panelTitle": "已自动执行",
+      "authBasis": "授权依据：{{mode}}",
+      "instruction": "触发指令：「{{excerpt}}」",
+      "finishedAt": "执行时间：{{time}}",
+      "failed": "执行未完成（{{reason}}）。",
+      "failedUnknown": "执行未完成。",
+      "historyPurged": "另有 {{count}} 条回执的历史已被清理。",
+      "action": {
+        "create_course": "创建课程",
+        "add_text_record_to_course": "保存文本记录"
+      }
+    },
     "coursePicker": {
       "title": "选择课程",
       "description": "对话将在该课程的全部记录范围内检索与引用。",
@@ -1874,7 +1897,18 @@
       "desktop": "桌面行为",
       "general": "通用偏好",
       "data": "数据与存储",
+      "automation": "Agent 自动化",
       "operations": "操作历史"
+    },
+    "agentAutomation": {
+      "title": "Agent 自动化",
+      "description": "控制 Agent 写操作的默认授权档位。任何档位下，长期记忆写入、AI 总结与学习资产采纳、外发同意仍走原确认规则；切换只影响新会话，模式切换全程审计。",
+      "modeLegend": "全局默认授权档位",
+      "mode": {
+        "REQUEST_APPROVAL": "每个写操作先出确认卡，确认后才执行。",
+        "AUTO_APPROVE": "低风险操作（如建课）自动执行并给回执；删除等高风险操作仍逐项确认。",
+        "FULL_ACCESS": "除明确禁止的操作外全部自动执行并给回执。"
+      }
     },
     "learnerMemory": {
       "title": "AI 记忆",

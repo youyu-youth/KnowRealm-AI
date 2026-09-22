@@ -22,7 +22,7 @@ export const operationHistoryApi = {
     apiFetch<PurgeResultOut>("/api/agent/runs/purge-finished", {
       method: "POST",
     }),
-  listOperations: (params: { status?: string } = {}) =>
+  listOperations: (params: { status?: string; session_id?: string } = {}) =>
     apiFetch<AgentOperationOut[]>(`/api/agent/operations${buildQuery(params)}`),
   listActivity: () => apiFetch<AgentActivityOut[]>("/api/agent/activity"),
 };

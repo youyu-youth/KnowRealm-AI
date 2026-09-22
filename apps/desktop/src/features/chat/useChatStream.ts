@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import type { AuthMode } from "@/features/agent/api/authMode";
+import { agentKeys } from "@/features/agent/api/authMode";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
 import { libraryKeys } from "@/features/library/api/keys";
@@ -28,6 +30,8 @@ export function useChatStream(sessionId: string) {
   // 分属不同组件层，done 写入 / 发送与停止时清除（当轮语义，不落库）。
   const setTurnMemory = useChatUiStore((state) => state.setTurnMemory);
   const clearTurnMemory = useChatUiStore((state) => state.clearTurnMemory);
+  const setTurnExecuted = useChatUiStore((state) => state.setTurnExecuted);
+  const clearTurnExecuted = useChatUiStore((state) => state.clearTurnExecuted);
 
   useEffect(() => {
     // 切换会话或卸载时中止在途流，防止连接泄漏与串会话渲染。
@@ -41,7 +45,7 @@ export function useChatStream(sessionId: string) {
   }, []);
 
   const send = useCallback(
-    (content: string, webSearch: boolean) => {
+    (content: string, webSearch: boolean, authMode?: AuthMode) => {
       if (abortRef.current) return;
       const controller = new AbortController();
       abortRef.current = controller;
@@ -50,6 +54,7 @@ export function useChatStream(sessionId: string) {
       setStreamError(null);
       setToolActivities([]);
       clearTurnMemory(sessionId);
+      clearTurnExecuted(sessionId);
       chatApi
         .streamMessage(
           sessionId,
@@ -85,6 +90,12 @@ export function useChatStream(sessionId: string) {
                 proposals: payload.memoryProposals ?? [],
                 researchProposals: payload.researchProposals ?? [],
               });
+              if (payload.executedOperations) {
+                setTurnExecuted({
+                  sessionId,
+                  operations: payload.executedOperations,
+                });
+              }
               // 重取消息历史（assistant 行）、会话列表（活跃度排序）与会话详情
               // （首条消息后标题更新）；操作提案走提案查询恢复（服务端唯一事实源）。
               await queryClient.invalidateQueries({
@@ -105,6 +116,7 @@ export function useChatStream(sessionId: string) {
           controller.signal,
           webSearch,
           derivePageSnapshot(),
+          authMode,
         )
         .catch((error: unknown) => {
           // 用户停止属于预期路径，静默；其余（409 在途、网络失败等）展示可读错误。
@@ -125,9 +137,14 @@ export function useChatStream(sessionId: string) {
         })
         .finally(() => {
           // 全部流结束路径（done / SSE error / 停止 / 网络断开）统一失效提案
-          // 查询（工单 02 review）：断开仅停止接收，已落库的提案经查询恢复。
+          // 查询（工单 02 review）：断开仅停止接收，已落库的提案经查询恢复；
+          // 直执行回执（工单 02）同口径——免确认执行已生效，经 operation 查询
+          // 恢复状态视图。
           void queryClient.invalidateQueries({
             queryKey: [...libraryKeys.all, "proposals"],
+          });
+          void queryClient.invalidateQueries({
+            queryKey: agentKeys.sessionOperations(sessionId),
           });
           abortRef.current = null;
           setIsStreaming(false);
@@ -135,9 +152,11 @@ export function useChatStream(sessionId: string) {
     },
     [
       clearTransientState,
+      clearTurnExecuted,
       clearTurnMemory,
       queryClient,
       sessionId,
+      setTurnExecuted,
       setTurnMemory,
     ],
   );

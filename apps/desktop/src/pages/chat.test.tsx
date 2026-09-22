@@ -258,7 +258,11 @@ describe("AI 对话", () => {
       expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
     );
     expect(body).toEqual({ mode: "ASK", record_id: recordId });
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    // 对话框已关闭（挂载选择器消失）；会话右栏的授权模式开关是新常驻 combobox，
+    // 断言收窄到对话框自身。
+    expect(
+      screen.queryByRole("combobox", { name: "挂载学习记录（可选）" }),
+    ).not.toBeInTheDocument();
   });
 
   it("列表按最近更新排序，重命名即时生效且不改变排序", async () => {

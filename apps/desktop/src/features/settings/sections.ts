@@ -5,6 +5,7 @@ export const SETTINGS_SECTIONS = [
   "desktop",
   "general",
   "data",
+  "automation",
   "operations",
 ] as const;
 

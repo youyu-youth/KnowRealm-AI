@@ -17,6 +17,13 @@ const preferencesPayload = {
 export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
   http.get(`${TEST_SIDECAR_URL}/api/inbox`, () => HttpResponse.json([])),
+  // Agent 授权档（工单 02）：聊天页右栏开关与直执行回执卡的默认查询兜底。
+  http.get(`${TEST_SIDECAR_URL}/api/agent/auth-mode`, () =>
+    HttpResponse.json({ auth_mode: "REQUEST_APPROVAL" }),
+  ),
+  http.get(`${TEST_SIDECAR_URL}/api/agent/operations`, () =>
+    HttpResponse.json([]),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
     HttpResponse.json([]),
   ),

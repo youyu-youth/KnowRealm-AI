@@ -1865,6 +1865,29 @@
         "courseUnavailable": "The course is no longer available"
       }
     },
+    "authMode": {
+      "title": "Authorization mode",
+      "hint": "Switch for this chat only; resets to the global default after restart.",
+      "placeholder": "Choose authorization mode",
+      "mode": {
+        "REQUEST_APPROVAL": "Write actions show a confirmation card first.",
+        "AUTO_APPROVE": "Low-risk actions run automatically; risky ones still confirm.",
+        "FULL_ACCESS": "Everything except prohibited actions runs automatically."
+      }
+    },
+    "executedOperation": {
+      "panelTitle": "Executed automatically",
+      "authBasis": "Authorized by: {{mode}}",
+      "instruction": "Triggered by: \"{{excerpt}}\"",
+      "finishedAt": "Executed at: {{time}}",
+      "failed": "Execution did not finish ({{reason}}).",
+      "failedUnknown": "Execution did not finish.",
+      "historyPurged": "History of {{count}} more receipt(s) was purged.",
+      "action": {
+        "create_course": "Create course",
+        "add_text_record_to_course": "Save text record"
+      }
+    },
     "coursePicker": {
       "title": "Choose a course",
       "description": "The chat will search and cite across all records in this course.",
@@ -1894,7 +1917,18 @@
       "desktop": "Desktop behavior",
       "general": "General preferences",
       "data": "Data & storage",
+      "automation": "Agent automation",
       "operations": "Operation history"
+    },
+    "agentAutomation": {
+      "title": "Agent automation",
+      "description": "Controls the default authorization mode for Agent write actions. In every mode, long-term memory writes, AI summaries, learning-asset adoption, and external-processing consent still follow their original confirmation rules; switching only affects new chats, and every switch is audited.",
+      "modeLegend": "Global default authorization mode",
+      "mode": {
+        "REQUEST_APPROVAL": "Every write action shows a confirmation card before it runs.",
+        "AUTO_APPROVE": "Low-risk actions (e.g. creating a course) run automatically with a receipt; destructive actions still confirm one by one.",
+        "FULL_ACCESS": "Everything except explicitly prohibited actions runs automatically with a receipt."
+      }
     },
     "learnerMemory": {
       "title": "AI memory",
