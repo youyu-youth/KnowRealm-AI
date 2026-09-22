@@ -1055,3 +1055,119 @@ async def test_text_record_add_reject_keeps_no_business_fact(tmp_path: Path) -> 
             with pytest.raises(CodedHTTPException) as exc_info:
                 await ProposalService.confirm(session, proposal.id)
         assert exc_info.value.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_text_record_add_summary_flush_failure_isolated_by_savepoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """job 写入的数据库级失败（flush 炸、session 进 rollback-only）经 SAVEPOINT
+    隔离（03 review 修复）：记录与 APPLIED 回执照常提交、result 如实记总结
+    提交失败——不得吞错返回指向不存在记录的半成功回执。"""
+    from app.modules.jobs.models import ProcessingJob
+    from app.modules.summary import service as summary_service
+
+    def bogus_status_job(record_id: str, *, input_json: str, now: datetime) -> ProcessingJob:
+        job = summary_service._new_summary_job(  # pyright: ignore[reportPrivateUsage]
+            record_id, input_json=input_json, now=now
+        )
+        job.status = "BOGUS"  # 违反 processing_jobs.status CHECK → flush 必炸
+        return job
+
+    monkeypatch.setattr(summary_service, "_new_summary_job", bogus_status_job)
+
+    applied = None
+    async with bare_db(tmp_path) as session_factory:
+        (tmp_path / "config").mkdir(exist_ok=True)
+        save_llm_provider(
+            tmp_path,
+            base_url="https://api.example.com",
+            api_key="sk-test",
+            model="test-model",
+            clear_api_key=False,
+        )
+        grant_llm_consent(tmp_path)
+        bind_data_dir(tmp_path)
+        try:
+            await seed_course(session_factory, COURSE_ID, "Python 学习")
+            async with session_factory() as session:
+                proposal = await ProposalService.create(
+                    session,
+                    ProposalCreateRequest(
+                        proposal_type=ProposalType.TEXT_RECORD_ADD,
+                        payload={"course_id": COURSE_ID, "content": "要点笔记"},
+                        session_id="sess-1",
+                    ),
+                )
+            async with session_factory() as session:
+                applied = await ProposalService.confirm(session, proposal.id)
+        finally:
+            unbind_data_dir()
+        # 库内事实：记录真实存在（非半成功回执）、无 SUMMARY job 行、回执记失败码。
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 1
+        assert (
+            await table_count(
+                session_factory,
+                "SELECT count(*) FROM processing_jobs WHERE job_type = 'SUMMARY'",
+            )
+            == 0
+        )
+        rows = await proposal_rows(session_factory)
+        receipt = json.loads(rows[0][3] or "{}")
+        assert receipt["summary_job_id"] is None
+        assert receipt["summary_error_code"] == "TEXT_RECORD_ADD_SUMMARY_ENQUEUE_FAILED"
+    assert applied is not None
+    assert applied.status.value == "APPLIED"
+    assert applied.result is not None
+    assert isinstance(applied.result["record_id"], str)
+
+
+@pytest.mark.anyio
+async def test_text_record_add_summary_coded_failure_keeps_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """总结提交的业务性失败（带码异常，不损坏 session）：记录幸存、result 记
+    总结提交失败错误码（best-effort 语义保持）。"""
+    from app.modules.summary.service import SummaryService
+
+    async def failing_enqueue(*args: Any, **kwargs: Any) -> None:
+        raise CodedHTTPException(
+            code="TRANSCRIPT_NOT_READY", status_code=409, detail="Transcript 尚未生成"
+        )
+
+    monkeypatch.setattr(SummaryService, "_enqueue", failing_enqueue)
+
+    applied = None
+    async with bare_db(tmp_path) as session_factory:
+        (tmp_path / "config").mkdir(exist_ok=True)
+        save_llm_provider(
+            tmp_path,
+            base_url="https://api.example.com",
+            api_key="sk-test",
+            model="test-model",
+            clear_api_key=False,
+        )
+        grant_llm_consent(tmp_path)
+        bind_data_dir(tmp_path)
+        try:
+            await seed_course(session_factory, COURSE_ID, "Python 学习")
+            async with session_factory() as session:
+                proposal = await ProposalService.create(
+                    session,
+                    ProposalCreateRequest(
+                        proposal_type=ProposalType.TEXT_RECORD_ADD,
+                        payload={"course_id": COURSE_ID, "content": "要点笔记"},
+                        session_id="sess-1",
+                    ),
+                )
+            async with session_factory() as session:
+                applied = await ProposalService.confirm(session, proposal.id)
+        finally:
+            unbind_data_dir()
+        assert await table_count(session_factory, "SELECT count(*) FROM records") == 1
+        rows = await proposal_rows(session_factory)
+        receipt = json.loads(rows[0][3] or "{}")
+        assert receipt["summary_job_id"] is None
+        assert receipt["summary_error_code"] == "TEXT_RECORD_ADD_SUMMARY_ENQUEUE_FAILED"
+    assert applied is not None
+    assert applied.status.value == "APPLIED"

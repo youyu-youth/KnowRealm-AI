@@ -466,18 +466,25 @@ class SummaryService:
         error_code: str,
     ) -> tuple[str | None, str | None]:
         """确认事务内 best-effort 提交（通用 Agent 工单 03）：供提案应用器在
-        确认事务内调用——provider/同意检查只读配置文件不入库，job 行随调用方
-        事务提交；异常只记日志与错误码返回，不回滚记录创建（记录创建是事实、
-        总结提交尽力而为）。返回 (summary_job_id, error_code)：
-        provider 未配置或未同意外发 → (None, None)。
+        确认事务内调用——provider/同意检查只读配置文件不入库，job 行经
+        SAVEPOINT 随调用方事务提交；异常只记日志与错误码返回，不回滚记录创建
+        （记录创建是事实、总结提交尽力而为）。返回 (summary_job_id,
+        error_code)：provider 未配置或未同意外发 → (None, None)。
+
+        job 写入包在 begin_nested（SAVEPOINT）内（03 review 修复）：flush 的
+        数据库级失败只回滚到保存点、session 恢复可用，主事务（记录 + APPLIED
+        + 回执）照常提交——否则吞掉 rollback-only 的 session 异常会产出
+        「回执指向不存在记录」的半成功。SAVEPOINT 可靠性经真实 engine 配置
+        探针验证（内层约束失败被隔离、外层提交成功）。
         """
         try:
             provider, consent_current = await _provider_state(data_dir)
             if provider is None or not provider.api_key or not consent_current:
                 return None, None
-            submitted = await SummaryService._enqueue(
-                session, record_id, provider, allow_retry=False
-            )
+            async with session.begin_nested():
+                submitted = await SummaryService._enqueue(
+                    session, record_id, provider, allow_retry=False
+                )
             return submitted.job_id, None
         except Exception:
             logger.error(log_event, error_code=error_code, record_id=record_id)
