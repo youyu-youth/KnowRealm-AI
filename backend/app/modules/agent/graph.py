@@ -142,6 +142,15 @@ class ChatOperationProposalEvent:
     proposals: tuple[dict[str, object], ...]
 
 
+@dataclass(frozen=True)
+class ChatOperationExecutionEvent:
+    """操作直执行回执（操作工具成功返回，第二阶段工单 02）：done 载荷透传
+    前端回执卡，每项含 operation_id / action / level / auth_mode / payload /
+    result（自动档免确认执行，授权依据经操作历史可追溯）。"""
+
+    executions: tuple[dict[str, object], ...]
+
+
 ChatStreamEvent = (
     ChatTokenEvent
     | ChatToolCallEvent
@@ -149,6 +158,7 @@ ChatStreamEvent = (
     | ChatMemoryProposalEvent
     | ChatResearchProposalEvent
     | ChatOperationProposalEvent
+    | ChatOperationExecutionEvent
 )
 
 
@@ -442,6 +452,53 @@ def _operation_proposal_event(message: ToolMessage) -> ChatOperationProposalEven
     return ChatOperationProposalEvent(proposals=tuple(proposals))
 
 
+def _operation_execution_event(message: ToolMessage) -> ChatOperationExecutionEvent | None:
+    """操作工具的直执行返回 → 执行回执事件（载荷 JSON：{ok, executed: {...}}，
+    工单 02 自动档）。executed 六键全为标量/JSON 形状才透传（与提案事件同一
+    防御性收窄口径）。"""
+
+    if not isinstance(message.content, str):
+        return None
+    try:
+        value: object = json.loads(message.content)
+    except ValueError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    payload = cast(dict[str, object], value)
+    executed = payload.get("executed")
+    if payload.get("ok") is not True or not isinstance(executed, dict):
+        return None
+    entry = cast(dict[str, object], executed)
+    operation_id = entry.get("operation_id")
+    action = entry.get("action")
+    level = entry.get("level")
+    auth_mode = entry.get("auth_mode")
+    item_payload = entry.get("payload")
+    result = entry.get("result")
+    if not (
+        isinstance(operation_id, str)
+        and isinstance(action, str)
+        and isinstance(level, str)
+        and isinstance(auth_mode, str)
+        and isinstance(item_payload, dict)
+        and isinstance(result, dict)
+    ):
+        return None
+    return ChatOperationExecutionEvent(
+        executions=(
+            {
+                "operation_id": operation_id,
+                "action": action,
+                "level": level,
+                "auth_mode": auth_mode,
+                "payload": item_payload,
+                "result": result,
+            },
+        )
+    )
+
+
 async def stream_chat_reply(
     *,
     checkpointer: BaseCheckpointSaver[str],
@@ -525,6 +582,9 @@ async def stream_chat_reply(
                     operation_event = _operation_proposal_event(chunk)
                     if operation_event is not None:
                         yield operation_event
+                    execution_event = _operation_execution_event(chunk)
+                    if execution_event is not None:
+                        yield execution_event
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise

@@ -14,7 +14,7 @@ from langchain_core.tools import tool
 
 from app.modules.agent.operations.registry import (
     lenient_tool_args_schema,
-    submit_operation_proposal,
+    submit_operation,
 )
 from app.modules.agent.operations.text_record_add import ADD_TEXT_RECORD_ACTION
 from app.modules.agent.runtime import current_agent_runtime
@@ -43,7 +43,7 @@ async def add_text_record_to_course(**kwargs: Any) -> str:
             {"ok": False, "error": "AGENT_CONTEXT_UNBOUND", "proposals": []},
             ensure_ascii=False,
         )
-    payload = await submit_operation_proposal(
+    payload = await submit_operation(
         runtime,
         ADD_TEXT_RECORD_ACTION,
         {key: value for key, value in kwargs.items() if value is not None},

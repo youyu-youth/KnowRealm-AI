@@ -36,6 +36,7 @@ from app.modules.agent.graph import (
     CHAT_PROMPT_VERSION,
     CHAT_RESEARCH_PROMPT_VERSION,
     ChatMemoryProposalEvent,
+    ChatOperationExecutionEvent,
     ChatOperationProposalEvent,
     ChatResearchProposalEvent,
     ChatStreamOutcome,
@@ -44,6 +45,7 @@ from app.modules.agent.graph import (
     stream_chat_reply,
 )
 from app.modules.agent.models import ChatMessage, ChatSession
+from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runtime import AgentRuntimeContext, ToolCallBudget
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole, ChatScope
 from app.modules.agent.session_service import ChatSessionService
@@ -58,6 +60,7 @@ from app.modules.search.integrations.tavily import TavilySearchClient
 from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import (
     LlmProviderConfig,
+    agent_default_auth_mode,
     llm_consent,
     load_llm_provider,
     load_web_search_config,
@@ -105,6 +108,8 @@ class AcceptedMessage:
     有效（工单 06）；False 时本轮零记忆注入（硬门禁：关闭外发后零发送）。
     page 为随消息携带的页面快照（工单 01）：提示性信息，不落库、不构成授权；
     注入前经 _validate_page_snapshot 重校验对象存在性。
+    auth_mode 为当轮生效授权档（工单 02）：请求会话覆盖优先，否则全局默认
+    （settings.json 偏离项缺省 REQUEST_APPROVAL）；执行端据此分流提交路径。
     """
 
     session_id: str
@@ -114,6 +119,7 @@ class AcceptedMessage:
     web_search: SearchProvider | None = None
     memory_injection_allowed: bool = False
     page: ChatPageSnapshot | None = None
+    auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL
 
 
 @dataclass(frozen=True)
@@ -591,11 +597,13 @@ class ChatMessageService:
         content: str,
         web_search: bool = False,
         page: ChatPageSnapshot | None = None,
+        auth_mode: AuthMode | None = None,
     ) -> AcceptedMessage:
         """受理发送：校验供应商与在途状态，落库 user 行（补答复用原行）。
 
         web_search 标志仅在已配置可用 key 时生效（无 key 强制不挂工具）；
-        page 为提示性页面快照，不落库（工单 01）。
+        page 为提示性页面快照，不落库（工单 01）；auth_mode 为请求携带的
+        会话档位覆盖（工单 02），不携带＝全局默认档。
         """
         provider = await asyncio.to_thread(load_llm_provider, data_dir)
         if provider is None or not provider.api_key:
@@ -604,6 +612,9 @@ class ChatMessageService:
                 status_code=409,
                 detail="LLM_PROVIDER_UNCONFIGURED：未配置 AI 服务，请先完成供应商配置",
             )
+        effective_auth_mode = auth_mode or AuthMode(
+            await asyncio.to_thread(agent_default_auth_mode, data_dir)
+        )
         # 记忆注入前提（工单 06）：外发开关开启且外发同意对当前供应商有效
         # （供应商地址/密钥变化后同意失效，重新确认前不发送记忆）。
         outbound_enabled = await asyncio.to_thread(memory_outbound_enabled, data_dir)
@@ -680,6 +691,7 @@ class ChatMessageService:
             web_search=web_search_provider,
             memory_injection_allowed=outbound_enabled and consent_current,
             page=page,
+            auth_mode=effective_auth_mode,
         )
 
     @staticmethod
@@ -692,6 +704,7 @@ class ChatMessageService:
     ) -> AsyncGenerator[ServerSentEvent, None]:
         """流式生成回答：status → token… → done / error；中断不落库、finally 释放锁。"""
         session_id = accepted.session_id
+        user_row_id = accepted.user_row_id
         try:
             yield _sse("status", {"phase": STREAM_STATUS_GENERATING})
             outcome = ChatStreamOutcome()
@@ -699,6 +712,7 @@ class ChatMessageService:
             memory_proposals: list[dict[str, object]] = []
             research_proposals: list[dict[str, str]] = []
             operation_proposals: list[dict[str, object]] = []
+            executed_operations: list[dict[str, object]] = []
             research_mode = False
             try:
                 prompt_context = await _session_context(
@@ -712,6 +726,8 @@ class ChatMessageService:
                 # 统一 Agent 运行时上下文（工单 01）：会话工厂/会话 id/范围与挂载
                 # 对象/模式/联网供应商/页面快照/工具预算，单对绑定由 stream_chat_reply
                 # 完成；工具挂载矩阵（scope 决定 search_library）不因页面快照改变。
+                # 授权档位与授权依据素材（工单 02）：当轮生效档 + 触发指令摘录 +
+                # 消息引用，直执行回执 authorization_json 消费。
                 runtime = AgentRuntimeContext(
                     session_factory=session_factory,
                     session_id=session_id,
@@ -722,6 +738,9 @@ class ChatMessageService:
                     library_item_id=prompt_context.library_item_id,
                     web_search_provider=accepted.web_search,
                     page=prompt_context.page,
+                    auth_mode=accepted.auth_mode,
+                    instruction_excerpt=accepted.content,
+                    message_id=user_row_id,
                     budget=ToolCallBudget(),
                 )
                 async for event in stream_chat_reply(
@@ -747,6 +766,8 @@ class ChatMessageService:
                         research_proposals.extend(event.proposals)
                     elif isinstance(event, ChatOperationProposalEvent):
                         operation_proposals.extend(event.proposals)
+                    elif isinstance(event, ChatOperationExecutionEvent):
+                        executed_operations.extend(event.executions)
                     else:
                         yield _sse(
                             "tool_result",
@@ -840,6 +861,10 @@ class ChatMessageService:
             # 类型（先例：研究提案、记忆提案的完成载荷模式）。
             if operation_proposals:
                 done_payload["operation_proposals"] = operation_proposals
+            # 直执行回执（第二阶段工单 02）：自动档免确认执行的操作，授权依据
+            # （档位/指令摘录/时间）经 operation 查询可追溯；零新 SSE 事件类型。
+            if executed_operations:
+                done_payload["executed_operations"] = executed_operations
             yield _sse("done", done_payload)
         finally:
             registry.release(session_id)

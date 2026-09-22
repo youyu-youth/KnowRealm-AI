@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatScope
 from app.modules.search.web_search import SearchProvider
 
@@ -59,6 +60,14 @@ class AgentRuntimeContext:
     library_item_id: str | None = None
     web_search_provider: SearchProvider | None = None
     page: ChatPageSnapshot | None = None
+    # 授权档位（工单 02，spec 决策 9/10）：消息流入口解析（全局默认＋请求
+    # 会话覆盖）后的当轮生效档；操作提交路径按它确定性分流，提示词与工具
+    # 描述不随档位改变。
+    auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL
+    # 触发指令摘录与消息引用（工单 02）：直执行回执 authorization_json 的
+    # 授权依据素材，每轮流式生成前由 message_service 填入。
+    instruction_excerpt: str | None = None
+    message_id: str | None = None
     budget: ToolCallBudget = field(default_factory=ToolCallBudget)
 
 

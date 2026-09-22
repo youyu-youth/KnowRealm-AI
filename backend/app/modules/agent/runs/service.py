@@ -22,6 +22,8 @@ from app.modules.agent.runs.models import AgentActivity, AgentOperation, AgentRu
 from app.modules.agent.runs.schemas import (
     OPERATION_TERMINAL_STATUSES,
     RUN_TERMINAL_STATUSES,
+    ActivityScope,
+    ActivityType,
     OperationAuthorization,
     OperationStatus,
 )
@@ -67,6 +69,76 @@ async def record_confirmed_operation(
     session.add(operation)
     await session.flush()
     return operation
+
+
+async def record_direct_execution(
+    session: AsyncSession,
+    *,
+    action: str,
+    level: str,
+    payload_json: str,
+    authorization: OperationAuthorization,
+    result_dict: dict[str, Any] | None,
+    error_code: str | None = None,
+) -> AgentOperation:
+    """自动档直执行写 operation（工单 02，spec 决策 10/11）。
+
+    成功：调用方执行事务内与业务结果同事务提交（SUCCEEDED＋result 回填）；
+    失败：业务事务已回滚（＝未发生），调用方在独立小事务再调本函数落
+    FAILED＋稳定错误码（提案 _mark_failed 先例）。authorization 是直执行
+    的授权依据（档位＋触发指令摘录＋消息引用），单步无 run 时为本行授权
+    事实的唯一载体（ADR-0026）。
+    """
+    now = utcnow()
+    operation = AgentOperation(
+        id=str(uuid4()),
+        run_id=None,
+        proposal_id=None,
+        action=action,
+        level=level,
+        target_type=None,
+        target_id=None,
+        payload_json=payload_json,
+        snapshot_json=None,
+        authorization_json=authorization.model_dump_json(),
+        status=OperationStatus.SUCCEEDED.value
+        if result_dict is not None
+        else OperationStatus.FAILED.value,
+        attempts=1,
+        result_json=json.dumps(result_dict, ensure_ascii=False)
+        if result_dict is not None
+        else None,
+        error_code=error_code,
+        created_at=now,
+        updated_at=now,
+        finished_at=now,
+    )
+    session.add(operation)
+    await session.flush()
+    return operation
+
+
+async def record_auth_mode_switch(
+    session: AsyncSession,
+    *,
+    from_mode: str,
+    to_mode: str,
+    scope: ActivityScope,
+    session_id: str | None = None,
+) -> None:
+    """模式切换审计行（工单 02，spec 决策 22）：from / to / 作用域 / 会话 / 时间。"""
+    session.add(
+        AgentActivity(
+            id=str(uuid4()),
+            activity_type=ActivityType.AUTH_MODE_SWITCH.value,
+            from_mode=from_mode,
+            to_mode=to_mode,
+            scope=scope.value,
+            session_id=session_id,
+            created_at=utcnow(),
+        )
+    )
+    await session.flush()
 
 
 def _json_dict(raw: str | None) -> dict[str, Any] | None:
@@ -165,6 +237,7 @@ class RunHistoryService:
         session: AsyncSession,
         *,
         status: str | None = None,
+        session_id: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -176,6 +249,12 @@ class RunHistoryService:
         )
         if status is not None:
             stmt = stmt.where(AgentOperation.status == status)
+        if session_id is not None:
+            # 会话关联只存在于授权依据列（决策 2 列集无 session_id），JSON1
+            # 投影过滤（json_valid CHECK 保证列恒可解析；迁移 0030 已在用）。
+            stmt = stmt.where(
+                func.json_extract(AgentOperation.authorization_json, "$.session_id") == session_id
+            )
         operations = list((await session.scalars(stmt)).all())
         return [_operation_out(op) for op in operations]
 

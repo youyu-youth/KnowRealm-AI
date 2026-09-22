@@ -21,6 +21,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/auth-mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Auth Mode
+         * @description 当前全局默认授权档（设置页「Agent 自动化」分区与新会话缺省档）。
+         */
+        get: operations["get_auth_mode_api_agent_auth_mode_get"];
+        /**
+         * Put Auth Mode
+         * @description 切换全局默认档：先写审计行、后改 settings.json 偏离项。
+         *
+         *     两步终究非原子，顺序选「审计先行」让失败方向落在安全侧——审计失败
+         *     （DB 故障）时档未变、客户端重试即可；不反向（先改档后审计失败会产生
+         *     档已变而审计链缺行的口径裂缝）。from 后端自读 settings.json 权威值。
+         *     只影响之后的新会话与未携带覆盖的请求。
+         */
+        put: operations["put_auth_mode_api_agent_auth_mode_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/auth-mode/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Session Auth Mode Switch
+         * @description 会话内临时切档的审计行（会话档位在前端内存，本端点只留痕）。
+         *
+         *     会话不存在拒绝写审计（避免悬挂溯源）；from 由客户端按其看到的当前
+         *     生效档上报（会话覆盖 ?? 全局默认，后端无从得知前端内存态）。
+         */
+        post: operations["post_session_auth_mode_switch_api_agent_auth_mode_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/operations": {
         parameters: {
             query?: never;
@@ -2116,6 +2168,32 @@ export interface components {
             session_id: string | null;
             to_mode: components["schemas"]["AuthMode"];
         };
+        /**
+         * AgentAuthModeOut
+         * @description 当前全局默认授权档（settings.json 偏离项，缺省 REQUEST_APPROVAL）。
+         */
+        AgentAuthModeOut: {
+            auth_mode: components["schemas"]["AuthMode"];
+        };
+        /**
+         * AgentAuthModeSessionSwitch
+         * @description 会话内临时切档的审计行（会话档位本身是前端按会话内存，不落库）。
+         *     from 由客户端上报：会话生效档（覆盖 ?? 全局默认）在后端无从得知。
+         */
+        AgentAuthModeSessionSwitch: {
+            from_mode: components["schemas"]["AuthMode"];
+            /** Session Id */
+            session_id: string;
+            to_mode: components["schemas"]["AuthMode"];
+        };
+        /**
+         * AgentAuthModeSwitch
+         * @description 全局默认档切换请求：只声明目标档，from 由后端自读 settings.json
+         *     （审计链权威口径——客户端缓存过期时不上报失真的 from）。
+         */
+        AgentAuthModeSwitch: {
+            to_mode: components["schemas"]["AuthMode"];
+        };
         /** AgentOperationOut */
         AgentOperationOut: {
             /** Action */
@@ -2726,6 +2804,8 @@ export interface components {
         };
         /** ChatMessageCreate */
         ChatMessageCreate: {
+            /** @description 会话授权档位覆盖（前端按会话内存携带）；不携带＝全局默认档 */
+            auth_mode?: components["schemas"]["AuthMode"] | null;
             /**
              * Content
              * @description 用户消息文本
@@ -5293,10 +5373,218 @@ export interface operations {
             };
         };
     };
+    get_auth_mode_api_agent_auth_mode_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAuthModeOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_auth_mode_api_agent_auth_mode_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAuthModeSwitch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentAuthModeOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_session_auth_mode_switch_api_agent_auth_mode_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentAuthModeSessionSwitch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_operations_api_agent_operations_get: {
         parameters: {
             query?: {
                 status?: components["schemas"]["OperationStatus"] | null;
+                session_id?: string | null;
                 limit?: number;
                 offset?: number;
             };

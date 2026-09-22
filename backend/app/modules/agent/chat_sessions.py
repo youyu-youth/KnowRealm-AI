@@ -175,6 +175,7 @@ async def send_chat_message(
         content=payload.content,
         web_search=payload.web_search,
         page=payload.page,
+        auth_mode=payload.auth_mode,
     )
     return EventSourceResponse(
         ChatMessageService.stream_events(

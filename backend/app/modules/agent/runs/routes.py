@@ -88,6 +88,7 @@ async def list_operations(
         for op in await RunHistoryService.list_operations(
             session,
             status=query.status.value if query.status is not None else None,
+            session_id=query.session_id,
             limit=query.limit,
             offset=query.offset,
         )

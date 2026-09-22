@@ -331,3 +331,27 @@ def set_memory_outbound_enabled(data_dir: Path, enabled: bool) -> bool:
         settings["learner_memory_outbound_enabled"] = False
     _write_json(path, settings)
     return enabled
+
+
+# Agent 全局默认授权档（通用 Agent 第二阶段工单 02）：默认 REQUEST_APPROVAL 不写键
+# （偏离项惯例同上）。值域与执法在 agent 域（runs.schemas.AuthMode），本模块只
+# 读写字符串，坏值回落默认档（安全方向）。
+AGENT_DEFAULT_AUTH_MODES = frozenset({"REQUEST_APPROVAL", "AUTO_APPROVE", "FULL_ACCESS"})
+AGENT_DEFAULT_AUTH_MODE_KEY = "agent_default_auth_mode"
+
+
+def agent_default_auth_mode(data_dir: Path) -> str:
+    value = _read_json(data_dir / "config" / "settings.json").get(AGENT_DEFAULT_AUTH_MODE_KEY)
+    if isinstance(value, str) and value in AGENT_DEFAULT_AUTH_MODES:
+        return value
+    return "REQUEST_APPROVAL"
+
+
+def set_agent_default_auth_mode(data_dir: Path, mode: str) -> None:
+    path = data_dir / "config" / "settings.json"
+    settings = _read_json(path)
+    if mode == "REQUEST_APPROVAL":
+        settings.pop(AGENT_DEFAULT_AUTH_MODE_KEY, None)
+    else:
+        settings[AGENT_DEFAULT_AUTH_MODE_KEY] = mode
+    _write_json(path, settings)

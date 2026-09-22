@@ -62,6 +62,59 @@
         "title": "AgentActivityOut",
         "type": "object"
       },
+      "AgentAuthModeOut": {
+        "additionalProperties": false,
+        "description": "当前全局默认授权档（settings.json 偏离项，缺省 REQUEST_APPROVAL）。",
+        "properties": {
+          "auth_mode": {
+            "$ref": "#/components/schemas/AuthMode"
+          }
+        },
+        "required": [
+          "auth_mode"
+        ],
+        "title": "AgentAuthModeOut",
+        "type": "object"
+      },
+      "AgentAuthModeSessionSwitch": {
+        "additionalProperties": false,
+        "description": "会话内临时切档的审计行（会话档位本身是前端按会话内存，不落库）。\nfrom 由客户端上报：会话生效档（覆盖 ?? 全局默认）在后端无从得知。",
+        "properties": {
+          "from_mode": {
+            "$ref": "#/components/schemas/AuthMode"
+          },
+          "session_id": {
+            "maxLength": 36,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "to_mode": {
+            "$ref": "#/components/schemas/AuthMode"
+          }
+        },
+        "required": [
+          "session_id",
+          "from_mode",
+          "to_mode"
+        ],
+        "title": "AgentAuthModeSessionSwitch",
+        "type": "object"
+      },
+      "AgentAuthModeSwitch": {
+        "additionalProperties": false,
+        "description": "全局默认档切换请求：只声明目标档，from 由后端自读 settings.json\n（审计链权威口径——客户端缓存过期时不上报失真的 from）。",
+        "properties": {
+          "to_mode": {
+            "$ref": "#/components/schemas/AuthMode"
+          }
+        },
+        "required": [
+          "to_mode"
+        ],
+        "title": "AgentAuthModeSwitch",
+        "type": "object"
+      },
       "AgentOperationOut": {
         "properties": {
           "action": {
@@ -1590,6 +1643,17 @@
       },
       "ChatMessageCreate": {
         "properties": {
+          "auth_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthMode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "会话授权档位覆盖（前端按会话内存携带）；不携带＝全局默认档"
+          },
           "content": {
             "description": "用户消息文本",
             "maxLength": 8000,
@@ -8351,6 +8415,287 @@
         ]
       }
     },
+    "/api/agent/auth-mode": {
+      "get": {
+        "description": "当前全局默认授权档（设置页「Agent 自动化」分区与新会话缺省档）。",
+        "operationId": "get_auth_mode_api_agent_auth_mode_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAuthModeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Auth Mode",
+        "tags": [
+          "agent-runs"
+        ]
+      },
+      "put": {
+        "description": "切换全局默认档：先写审计行、后改 settings.json 偏离项。\n\n两步终究非原子，顺序选「审计先行」让失败方向落在安全侧——审计失败\n（DB 故障）时档未变、客户端重试即可；不反向（先改档后审计失败会产生\n档已变而审计链缺行的口径裂缝）。from 后端自读 settings.json 权威值。\n只影响之后的新会话与未携带覆盖的请求。",
+        "operationId": "put_auth_mode_api_agent_auth_mode_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAuthModeSwitch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAuthModeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Put Auth Mode",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/agent/auth-mode/sessions": {
+      "post": {
+        "description": "会话内临时切档的审计行（会话档位在前端内存，本端点只留痕）。\n\n会话不存在拒绝写审计（避免悬挂溯源）；from 由客户端按其看到的当前\n生效档上报（会话覆盖 ?? 全局默认，后端无从得知前端内存态）。",
+        "operationId": "post_session_auth_mode_switch_api_agent_auth_mode_sessions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentAuthModeSessionSwitch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Post Session Auth Mode Switch",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
     "/api/agent/operations": {
       "get": {
         "operationId": "list_operations_api_agent_operations_get",
@@ -8369,6 +8714,22 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
             }
           },
           {

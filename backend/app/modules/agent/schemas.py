@@ -14,6 +14,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.modules.agent.runs.schemas import AuthMode
 from app.modules.capture.text_capture import MAX_TEXT_BYTES
 from app.modules.course.schemas import CourseCreate
 from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
@@ -148,6 +149,10 @@ class ChatMessageCreate(BaseModel):
     )
     page: ChatPageSnapshot | None = Field(
         default=None, description="可选页面快照（提示信息，不构成授权）"
+    )
+    auth_mode: AuthMode | None = Field(
+        default=None,
+        description="会话授权档位覆盖（前端按会话内存携带）；不携带＝全局默认档",
     )
 
     @field_validator("content")
