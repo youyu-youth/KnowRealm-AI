@@ -824,6 +824,14 @@ class ChatMessageService:
             for citation in citations:
                 yield _sse("citation", citation)
             assistant_id = str(uuid4())
+            # 直执行回执锚点（工单 02 P2 修复）：随 assistant 行持久化本轮
+            # 直执行 operation_id 列表——清理 operation 后「锚点在、查询空」
+            # 即「历史已清理」占位，跨重启成立（spec 用户故事 33）。
+            executed_anchor_ids = [
+                entry["operation_id"]
+                for entry in executed_operations
+                if isinstance(entry.get("operation_id"), str)
+            ]
             async with session_factory() as session, session.begin():
                 session.add(
                     ChatMessage(
@@ -837,6 +845,11 @@ class ChatMessageService:
                         model=accepted.provider.model,
                         token_usage_json=json.dumps(outcome.token_usage, separators=(",", ":"))
                         if outcome.token_usage
+                        else None,
+                        executed_operations_json=json.dumps(
+                            executed_anchor_ids, separators=(",", ":")
+                        )
+                        if executed_anchor_ids
                         else None,
                         created_at=utcnow(),
                     )

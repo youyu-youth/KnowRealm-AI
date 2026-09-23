@@ -2831,6 +2831,11 @@ export interface components {
             content: string;
             /** Created At */
             created_at: string;
+            /**
+             * Executed Operation Ids
+             * @description 本轮直执行回执锚点（operation_id 列表；详情经操作历史查询）
+             */
+            executed_operation_ids?: string[];
             /** Id */
             id: string;
             /**

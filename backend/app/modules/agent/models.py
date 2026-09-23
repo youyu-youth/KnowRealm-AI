@@ -49,4 +49,7 @@ class ChatMessage(Base):
     citations_json: Mapped[str | None] = mapped_column(Text, default=None)
     model: Mapped[str | None] = mapped_column(Text, default=None)
     token_usage_json: Mapped[str | None] = mapped_column(Text, default=None)
+    # 本轮直执行回执锚点（工单 02 P2 修复）：JSON 数组存 operation_id 列表，
+    # 详情与授权依据以 agent_operations 查询为准（锚点只判定存在性）。
+    executed_operations_json: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)

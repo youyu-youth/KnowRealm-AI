@@ -27,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 import app.modules.agent.operations.course_create  # noqa: F401
 import app.modules.agent.operations.text_record_add  # noqa: F401
 from app.db.engine import create_database
-from app.db.migrations import MIGRATIONS_DIR, run_migrations
+from app.db.migrations import MIGRATIONS_DIR, run_migrations, supported_user_version
 from app.modules.agent.runs.service import RunHistoryService
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
@@ -177,7 +177,7 @@ async def test_migration_0030_new_epoch_and_op_prefix(tmp_path: Path) -> None:
     async with aiosqlite.connect(db_path) as connection:
         version_row = await (await connection.execute("PRAGMA user_version")).fetchone()
         assert version_row is not None
-        assert cast(int, version_row[0]) == 30
+        assert cast(int, version_row[0]) == supported_user_version()
         for table in ("agent_runs", "agent_operations", "agent_activity"):
             exists = await (
                 await connection.execute(

@@ -115,6 +115,18 @@ async def test_mid_stream_upgrade_does_not_widen_current_turn(tmp_path: Path) ->
         assert len(await table_rows(session_factory, "SELECT * FROM agent_operations")) == 1
 
 
+def test_parse_executed_operation_ids_tolerates_bad_values() -> None:
+    """锚点列解析（P2 修复）：正常列表透出、坏值（非 JSON/非数组/非串元素）
+    容忍降级为空——锚点只判定存在性，坏数据不炸消息查询。"""
+    from app.modules.agent.schemas import parse_executed_operation_ids
+
+    assert parse_executed_operation_ids(None) == []
+    assert parse_executed_operation_ids('["op-1","op-2"]') == ["op-1", "op-2"]
+    assert parse_executed_operation_ids('["op-1", 42, null]') == ["op-1"]
+    assert parse_executed_operation_ids("not json") == []
+    assert parse_executed_operation_ids('{"op": 1}') == []
+
+
 @pytest.fixture(scope="module")
 def anyio_backend() -> str:
     return "asyncio"

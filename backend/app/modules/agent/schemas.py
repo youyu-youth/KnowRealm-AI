@@ -279,6 +279,20 @@ def parse_citations(raw: str | None) -> list[ChatCitationOut]:
     return citations
 
 
+def parse_executed_operation_ids(raw: str | None) -> list[str]:
+    """executed_operations_json → 直执行 operation_id 列表（坏数据容忍，
+    与 parse_citations 同口径）；锚点只判定存在性，详情经 agent_operations 查询。"""
+    if raw is None:
+        return []
+    try:
+        value: object = json.loads(raw)
+    except ValueError:
+        return []
+    if not isinstance(value, list):
+        return []
+    return [item for item in cast(list[object], value) if isinstance(item, str)]
+
+
 class ChatMessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -290,11 +304,17 @@ class ChatMessageOut(BaseModel):
     citations: list[ChatCitationOut] = Field(
         default_factory=list[ChatCitationOut], description="回答引用，无引用为空"
     )
+    executed_operations_json: str | None = Field(default=None, exclude=True)
+    executed_operation_ids: list[str] = Field(
+        default_factory=list[str],
+        description="本轮直执行回执锚点（operation_id 列表；详情经操作历史查询）",
+    )
     created_at: datetime
 
     @model_validator(mode="after")
-    def load_citations(self) -> "ChatMessageOut":
+    def load_message_payloads(self) -> "ChatMessageOut":
         self.citations = parse_citations(self.citations_json)
+        self.executed_operation_ids = parse_executed_operation_ids(self.executed_operations_json)
         return self
 
     @field_serializer("created_at")

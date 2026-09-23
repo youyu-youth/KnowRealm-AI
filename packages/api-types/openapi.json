@@ -1703,6 +1703,14 @@
             "title": "Created At",
             "type": "string"
           },
+          "executed_operation_ids": {
+            "description": "本轮直执行回执锚点（operation_id 列表；详情经操作历史查询）",
+            "items": {
+              "type": "string"
+            },
+            "title": "Executed Operation Ids",
+            "type": "array"
+          },
           "id": {
             "title": "Id",
             "type": "string"
