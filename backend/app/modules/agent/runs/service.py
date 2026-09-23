@@ -38,12 +38,14 @@ async def record_confirmed_operation(
     action: str,
     level: str,
     result_dict: dict[str, Any],
+    snapshot_json: str | None = None,
 ) -> AgentOperation:
     """确认事务内回接写 operation（spec 决策 4：执行事实唯一源）。
 
     单步操作不建 run（run_id 空）；失败路径不落 operation（应用器异常时整个
-    确认事务回滚＝未发生，可安全重试）。提案 result_json 是本行结果的
-    单向投影缓存（同事务同值，AgentProposalOut 契约零变化）。
+    确认事务回滚＝未发生，可安全重试）。快照原样随提案行转入 operation
+    （工单 03：Undo 补偿数据）；提案 result_json 是本行结果的单向投影缓存
+    （同事务同值，AgentProposalOut 契约零变化）。
     """
     now = utcnow()
     operation = AgentOperation(
@@ -55,7 +57,7 @@ async def record_confirmed_operation(
         target_type=proposal.target_type,
         target_id=proposal.target_id,
         payload_json=proposal.payload_json,
-        snapshot_json=None,
+        snapshot_json=snapshot_json,
         authorization_json=OperationAuthorization(
             session_id=proposal.session_id, message_id=proposal.message_id
         ).model_dump_json(),
@@ -80,14 +82,15 @@ async def record_direct_execution(
     authorization: OperationAuthorization,
     result_dict: dict[str, Any] | None,
     error_code: str | None = None,
+    snapshot_json: str | None = None,
 ) -> AgentOperation:
     """自动档直执行写 operation（工单 02，spec 决策 10/11）。
 
-    成功：调用方执行事务内与业务结果同事务提交（SUCCEEDED＋result 回填）；
-    失败：业务事务已回滚（＝未发生），调用方在独立小事务再调本函数落
-    FAILED＋稳定错误码（提案 _mark_failed 先例）。authorization 是直执行
-    的授权依据（档位＋触发指令摘录＋消息引用），单步无 run 时为本行授权
-    事实的唯一载体（ADR-0026）。
+    成功：调用方执行事务内与业务结果同事务提交（SUCCEEDED＋result 回填＋
+    执行前快照，工单 03）；失败：业务事务已回滚（＝未发生），调用方在独立
+    小事务再调本函数落 FAILED＋稳定错误码（提案 _mark_failed 先例）。
+    authorization 是直执行的授权依据（档位＋触发指令摘录＋消息引用），单步
+    无 run 时为本行授权事实的唯一载体（ADR-0026）。
     """
     now = utcnow()
     operation = AgentOperation(
@@ -99,7 +102,7 @@ async def record_direct_execution(
         target_type=None,
         target_id=None,
         payload_json=payload_json,
-        snapshot_json=None,
+        snapshot_json=snapshot_json,
         authorization_json=authorization.model_dump_json(),
         status=OperationStatus.SUCCEEDED.value
         if result_dict is not None

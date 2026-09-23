@@ -121,43 +121,59 @@ class LibraryLifecycleService:
         session: AsyncSession, item_id: str, body: LibraryItemPatch
     ) -> LibraryItemOut:
         """重命名 / 归类（null=取消归类）/ 收藏；字段缺省与显式 null 语义不同。"""
-        updates = body.model_dump(exclude_unset=True)
         async with session.begin():
             item = await LibraryService.active_item(session, item_id)
-            if "title" in updates:
-                title = (updates["title"] or "").strip()
-                if not title:
-                    raise CodedHTTPException(
-                        code="LIBRARY_PATCH_EMPTY", status_code=422, detail="标题不能为空"
-                    )
-                item.title = title
-            if "course_id" in updates:
-                course_id = updates["course_id"]
-                if course_id is None:
-                    item.course_id = None
-                else:
-                    await valid_course(session, str(course_id))
-                    item.course_id = str(course_id)
-            if "favorite" in updates:
-                item.favorite = cast(bool, updates["favorite"])
-            item.updated_at = utcnow()
+            await LibraryLifecycleService.patch_core(session, item, body)
         return await LibraryService.item_out(session, item)
+
+    @staticmethod
+    async def patch_core(
+        session: AsyncSession, item: LibraryItem, body: LibraryItemPatch
+    ) -> None:
+        """重命名 / 归类 / 收藏事务内核心（工单 03）：调用方拥有事务边界，
+        HTTP 路由与 Agent 应用器共用同一校验链；updated_at 统一维护
+        （快照纪律显式不变量，spec 决策 12）。"""
+        updates = body.model_dump(exclude_unset=True)
+        if "title" in updates:
+            title = (updates["title"] or "").strip()
+            if not title:
+                raise CodedHTTPException(
+                    code="LIBRARY_PATCH_EMPTY", status_code=422, detail="标题不能为空"
+                )
+            item.title = title
+        if "course_id" in updates:
+            course_id = updates["course_id"]
+            if course_id is None:
+                item.course_id = None
+            else:
+                await valid_course(session, str(course_id))
+                item.course_id = str(course_id)
+        if "favorite" in updates:
+            item.favorite = cast(bool, updates["favorite"])
+        item.updated_at = utcnow()
 
     @staticmethod
     async def set_archived(session: AsyncSession, item_id: str, archived: bool) -> LibraryItemOut:
         async with session.begin():
             item = await LibraryService.active_item(session, item_id)
-            if archived and item.status == "ARCHIVED":
-                raise CodedHTTPException(
-                    code="LIBRARY_ITEM_ALREADY_ARCHIVED", status_code=409, detail="资料条目已归档"
-                )
-            if not archived and item.status == "ACTIVE":
-                raise CodedHTTPException(
-                    code="LIBRARY_ITEM_ALREADY_ACTIVE", status_code=409, detail="资料条目未归档"
-                )
-            item.status = "ARCHIVED" if archived else "ACTIVE"
-            item.updated_at = utcnow()
+            await LibraryLifecycleService.set_archived_core(session, item, archived=archived)
         return await LibraryService.item_out(session, item)
+
+    @staticmethod
+    async def set_archived_core(
+        session: AsyncSession, item: LibraryItem, *, archived: bool
+    ) -> None:
+        """条目归档 / 恢复事务内核心（工单 03）：HTTP 路由与 Agent 应用器共用。"""
+        if archived and item.status == "ARCHIVED":
+            raise CodedHTTPException(
+                code="LIBRARY_ITEM_ALREADY_ARCHIVED", status_code=409, detail="资料条目已归档"
+            )
+        if not archived and item.status == "ACTIVE":
+            raise CodedHTTPException(
+                code="LIBRARY_ITEM_ALREADY_ACTIVE", status_code=409, detail="资料条目未归档"
+            )
+        item.status = "ARCHIVED" if archived else "ACTIVE"
+        item.updated_at = utcnow()
 
     @staticmethod
     async def soft_delete(session: AsyncSession, item_id: str) -> LibraryItemOut:

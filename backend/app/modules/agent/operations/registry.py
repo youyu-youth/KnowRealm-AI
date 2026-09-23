@@ -33,7 +33,7 @@ from app.modules.agent.runtime import (
 )
 from app.modules.library.models import AgentProposal
 from app.modules.library.proposals import ProposalService, register_applier, register_payload_schema
-from app.modules.library.schemas import ProposalCreateRequest, ProposalType
+from app.modules.library.schemas import AgentProposalOut, ProposalCreateRequest, ProposalType
 from app.shared.errors import CodedHTTPException
 
 # 应用器契约（提案框架 library.proposals.ProposalApplier 的操作侧收窄）：在调用方
@@ -41,6 +41,16 @@ from app.shared.errors import CodedHTTPException
 # 经类型参数与 result_schema 静态绑定，APPLIED 时由注册表适配器校验并转 dict
 # 同事务写进 result_json）。
 type OperationApplier[R: BaseModel] = Callable[[AsyncSession, AgentProposal], Awaitable[R]]
+
+# 执行前快照读取器（spec 决策 12）：同事务读当前态产类型化快照。提交时固化进
+# 提案、确认时重读比对重验（不匹配＝目标已变化）、直执行时落 operation 供
+# Undo 补偿——一个函数三用，快照形状由返回的 pydantic 模型声明并判别校验。
+# 参数 Any：各动作以具体 payload 类型声明签名（静态绑定），registry 侧逆变收宽。
+type SnapshotReader = Callable[[AsyncSession, Any], Awaitable[BaseModel]]
+
+# 目标定位器：从已校验 payload 提取 (target_type, target_id) 写进提案与
+# operation 行（操作历史按对象过滤与跳转的定位信息）。
+type TargetResolver = Callable[[Any], tuple[str, str]]
 
 
 class OperationLevel(StrEnum):
@@ -58,7 +68,10 @@ class OperationLevel(StrEnum):
 
 @dataclass(frozen=True)
 class OperationSpec[R: BaseModel]:
-    """单个写操作的声明式注册项（课程创建为首个接入动作，文本记录随后复用）。"""
+    """单个写操作的声明式注册项（课程创建为首个接入动作，文本记录随后复用）。
+
+    快照字段（工单 03，spec 决策 12）仅修改 / 归档类动作声明（capture_state
+    非 None）：创建类动作无「目标已变化」可言，快照恒缺省。"""
 
     action: str  # 动作标识（= 薄工具函数名，流式分发按名识别）
     proposal_type: ProposalType  # 提案类型（提案框架判别键）
@@ -66,6 +79,8 @@ class OperationSpec[R: BaseModel]:
     payload_schema: type[BaseModel]  # 判别 payload schema（未知键拒绝）
     result_schema: type[R]  # 类型化结果投影（操作回执形状，spec 决策 8）
     applier: OperationApplier[R]  # 确认事务内的应用器（返回结果投影）
+    capture_state: SnapshotReader | None = None  # 执行前快照读取器（三用）
+    target_resolver: TargetResolver | None = None  # payload → 目标定位
 
 
 _OPERATIONS: dict[str, OperationSpec[Any]] = {}
@@ -76,12 +91,26 @@ def register_operation(spec: OperationSpec[Any]) -> None:
 
     应用器经投影适配器包装：返回值先按 result_schema 校验再转 dict 交给提案
     框架（框架只识别 dict 结果，投影形状漂移在此显式失败而非被静默丢弃）。
+    修改 / 归档类动作（capture_state 非 None）在应用器前先执行前重验：重读
+    当前态与提交时固化的快照比对，不匹配 → OPERATION_SNAPSHOT_STALE（旧批准
+    作废、需重新预览授权，spec 决策 12）；快照缺失同样失效（保守方向）。
     执行成功后同事务回接写 operation 行（spec 决策 4：执行事实唯一源）——
-    run_id 空的单步操作、payload 投影、result 回填、authorization_json
-    授权依据；应用器异常时整个确认事务回滚，operation 不落（未发生）。
+    run_id 空的单步操作、payload 投影、result 回填、snapshot_json 快照、
+    authorization_json 授权依据；应用器异常时整个确认事务回滚，operation 不落
+    （未发生）。
     """
 
     async def scoped_applier(session: AsyncSession, proposal: AgentProposal) -> dict[str, Any]:
+        snapshot_json = proposal.snapshot_json
+        if spec.capture_state is not None:
+            payload = spec.payload_schema.model_validate(operation_payload_dict(proposal))
+            current_json = (await spec.capture_state(session, payload)).model_dump_json()
+            if snapshot_json is None or snapshot_json != current_json:
+                raise CodedHTTPException(
+                    code="OPERATION_SNAPSHOT_STALE",
+                    status_code=409,
+                    detail="目标已发生变化，提案已失效，请重新预览确认",
+                )
         result = spec.result_schema.model_validate(await spec.applier(session, proposal))
         result_dict = result.model_dump()
         await record_confirmed_operation(
@@ -90,6 +119,7 @@ def register_operation(spec: OperationSpec[Any]) -> None:
             action=spec.action,
             level=spec.level.value,
             result_dict=result_dict,
+            snapshot_json=snapshot_json,
         )
         return result_dict
 
@@ -150,6 +180,21 @@ def operation_payload_dict(proposal: AgentProposal) -> dict[str, Any]:
         return {}
     # 元素类型静态未知（载荷源自 json.loads 的运行时收窄，与 proposals._as_dict 同口径）。
     return cast(dict[str, Any], value) if isinstance(value, dict) else {}
+
+
+def parse_operation_payload[R: BaseModel](
+    proposal: AgentProposal, schema: type[R]
+) -> R:
+    """应用器共用的载荷解析（工单 03）：判别 schema 校验失败统一转
+    PROPOSAL_PAYLOAD_INVALID 稳定错误码（提案 FAILED 可重试）。"""
+    try:
+        return schema.model_validate(operation_payload_dict(proposal))
+    except ValidationError as exc:
+        raise CodedHTTPException(
+            code="PROPOSAL_PAYLOAD_INVALID",
+            status_code=422,
+            detail="提案载荷不符合该类型的结构要求",
+        ) from exc
 
 
 # 触发指令摘录上限：authorization_json 的授权依据素材（spec 用户故事 7：
@@ -219,6 +264,11 @@ async def _execute_operation_directly(
     async with runtime.session_factory() as session:
         try:
             async with session.begin():
+                # 直执行同事务固化快照（直执行无预览等待期，重验天然成立）：
+                # 快照随 operation 落库，供 Undo 补偿与审计（spec 决策 12）。
+                snapshot_json = None
+                if spec.capture_state is not None:
+                    snapshot_json = (await spec.capture_state(session, validated)).model_dump_json()
                 result = spec.result_schema.model_validate(await spec.applier(session, transient))
                 operation = await record_direct_execution(
                     session,
@@ -227,6 +277,7 @@ async def _execute_operation_directly(
                     payload_json=payload_json,
                     authorization=authorization,
                     result_dict=result.model_dump(),
+                    snapshot_json=snapshot_json,
                 )
         except CodedHTTPException as exc:
             async with session.begin():
@@ -304,15 +355,36 @@ async def submit_operation(
     if should_execute_directly(effective_mode, spec.level):
         return await _execute_operation_directly(runtime, spec, validated, effective_mode)
     cleaned_payload = validated.model_dump()
-    async with runtime.session_factory() as session:
-        proposal = await ProposalService.create(
-            session,
-            ProposalCreateRequest(
-                proposal_type=spec.proposal_type,
-                payload=cleaned_payload,
-                session_id=runtime.session_id,
-            ),
-        )
+    target = spec.target_resolver(validated) if spec.target_resolver is not None else None
+    snapshot_json: str | None = None
+    snapshot_failure: CodedHTTPException | None = None
+    proposal: AgentProposalOut | None = None
+    async with runtime.session_factory() as session, session.begin():
+        # 提交时同事务固化执行前快照（spec 决策 12）：目标读取与提案创建
+        # 原子（快照读与落提案之间无并发写窗口）。目标不可达＝结构化返回由
+        # 模型转述，不落提案；捕获面只限快照读取——create_core 的编码异常
+        # （同 schema 已先验、正常不可达）自然传播不被吞成工具载荷。
+        if spec.capture_state is not None:
+            try:
+                snapshot_json = (await spec.capture_state(session, validated)).model_dump_json()
+            except CodedHTTPException as exc:
+                snapshot_failure = exc
+        if snapshot_failure is None:
+            proposal = await ProposalService.create_core(
+                session,
+                ProposalCreateRequest(
+                    proposal_type=spec.proposal_type,
+                    payload=cleaned_payload,
+                    session_id=runtime.session_id,
+                    target_type=target[0] if target is not None else None,
+                    target_id=target[1] if target is not None else None,
+                ),
+                snapshot_json=snapshot_json,
+            )
+    if snapshot_failure is not None:
+        return {"ok": False, "error": snapshot_failure.code, "proposals": []}
+    # snapshot_failure 为 None 时 create_core 必已执行（上面同一分支赋值）。
+    assert proposal is not None
     return {
         "ok": True,
         "proposals": [

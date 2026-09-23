@@ -46,6 +46,18 @@ from app.modules.agent.tools.add_text_record import (
     ADD_TEXT_RECORD_TOOL_NAME,
     add_text_record_to_course,
 )
+from app.modules.agent.tools.archive_course import (
+    ARCHIVE_COURSE_TOOL_NAME,
+    RESTORE_COURSE_TOOL_NAME,
+    archive_course,
+    restore_course,
+)
+from app.modules.agent.tools.archive_library_item import (
+    ARCHIVE_LIBRARY_ITEM_TOOL_NAME,
+    RESTORE_LIBRARY_ITEM_TOOL_NAME,
+    archive_library_item,
+    restore_library_item,
+)
 from app.modules.agent.tools.create_course import (
     CREATE_COURSE_TOOL_NAME,
     create_course,
@@ -60,20 +72,40 @@ from app.modules.agent.tools.propose_memory import (
 )
 from app.modules.agent.tools.search_courses import search_courses
 from app.modules.agent.tools.search_library import search_library
+from app.modules.agent.tools.update_course import (
+    UPDATE_COURSE_TOOL_NAME,
+    update_course,
+)
+from app.modules.agent.tools.update_library_item import (
+    UPDATE_LIBRARY_ITEM_TOOL_NAME,
+    update_library_item,
+)
 from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v12"
+CHAT_PROMPT_VERSION = "chat-library-scope-v13"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
-# 此版本触发。工单 01 起两版随模型可见面变化同步 bump（03：操作工具；本次：
-# Tavily 不可重试错误语义）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v13"
+# 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 03：修改与归档
+# 动作六工具）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v14"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 # 操作工具族（工单 02 起）：成功返回经操作提案事件进 done 载荷（确认卡）。
-OPERATION_TOOL_NAMES = frozenset({CREATE_COURSE_TOOL_NAME, ADD_TEXT_RECORD_TOOL_NAME})
+# 工单 03 追加修改与归档动作（六动作，动作名 = 注册项 action = 工具函数名）。
+OPERATION_TOOL_NAMES = frozenset(
+    {
+        CREATE_COURSE_TOOL_NAME,
+        ADD_TEXT_RECORD_TOOL_NAME,
+        UPDATE_COURSE_TOOL_NAME,
+        ARCHIVE_COURSE_TOOL_NAME,
+        RESTORE_COURSE_TOOL_NAME,
+        UPDATE_LIBRARY_ITEM_TOOL_NAME,
+        ARCHIVE_LIBRARY_ITEM_TOOL_NAME,
+        RESTORE_LIBRARY_ITEM_TOOL_NAME,
+    }
+)
 # 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
 # 起从 message_service 收敛到装配层，页面快照不改变挂载矩阵）。
 RETRIEVAL_SCOPES = frozenset(
@@ -208,7 +240,8 @@ def _resolve_agent_config(
     # 恒挂载段（操作工具组）：search_courses 课程查询 + propose_memory 记忆提案
     # + create_course 课程创建提案 + add_text_record_to_course 文本记录添加提案
     # （工单 02/03，spec 决策 12：写工具恒挂载全部会话类型，目标解析与会话范围
-    # 解耦）。
+    # 解耦）+ 修改与归档动作组（工单 03：update/archive/restore_course 与
+    # update/archive/restore_library_item，L1 级、按档位自动继承直执行分流）。
     config = AgentConfig(
         tools=(
             *config.tools,
@@ -216,6 +249,12 @@ def _resolve_agent_config(
             propose_memory,
             create_course,
             add_text_record_to_course,
+            update_course,
+            archive_course,
+            restore_course,
+            update_library_item,
+            archive_library_item,
+            restore_library_item,
         )
     )
     if research:

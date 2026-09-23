@@ -73,6 +73,11 @@ def _proposal_out(proposal: AgentProposal) -> AgentProposalOut:
         out.payload = _as_dict(proposal.payload_json)
     except ValueError:
         out.payload = {}
+    if proposal.snapshot_json:
+        try:
+            out.snapshot = _as_dict(proposal.snapshot_json)
+        except ValueError:
+            out.snapshot = None
     if proposal.evidence_refs_json:
         try:
             out.evidence_refs = json.loads(proposal.evidence_refs_json)
@@ -188,6 +193,21 @@ class ProposalService:
     async def create(session: AsyncSession, body: ProposalCreateRequest) -> AgentProposalOut:
         """通用提案创建（工单 05）：payload 按 proposal_type 判别校验后落库，
         创建不改任何业务事实。尚未注册 payload schema 的类型（MEMORY）拒绝。"""
+        async with session.begin():
+            return await ProposalService.create_core(session, body)
+
+    @staticmethod
+    async def create_core(
+        session: AsyncSession,
+        body: ProposalCreateRequest,
+        *,
+        snapshot_json: str | None = None,
+    ) -> AgentProposalOut:
+        """提案创建事务内核心（工单 03，create_core 先例）：调用方拥有事务边界，
+        便于操作提交路径在同一事务固化执行前快照（目标读取与提案创建原子）。
+
+        snapshot_json 是已按动作快照 schema 判别校验后的序列化结果，形状执法
+        在操作注册表侧（agent/operations），本框架不感知具体形状。"""
         schema = _PAYLOAD_SCHEMAS.get(body.proposal_type)
         if schema is None:
             raise CodedHTTPException(
@@ -206,21 +226,21 @@ class ProposalService:
         # 落库的是判别校验后的清洗载荷（model_dump）：未知键不持久化，
         # 存储层与 schema 形状一致（ADR-0024 禁任意 SQL/路径/Shell 形状）。
         cleaned_payload = validated.model_dump()
-        async with session.begin():
-            proposal = AgentProposal(
-                id=str(uuid4()),
-                proposal_type=body.proposal_type.value,
-                status=ProposalStatus.PENDING.value,
-                session_id=body.session_id,
-                message_id=body.message_id,
-                target_type=body.target_type,
-                target_id=body.target_id,
-                payload_json=json.dumps(cleaned_payload, ensure_ascii=False),
-                created_at=utcnow(),
-            )
-            session.add(proposal)
-            await session.flush()
-            return _proposal_out(proposal)
+        proposal = AgentProposal(
+            id=str(uuid4()),
+            proposal_type=body.proposal_type.value,
+            status=ProposalStatus.PENDING.value,
+            session_id=body.session_id,
+            message_id=body.message_id,
+            target_type=body.target_type,
+            target_id=body.target_id,
+            payload_json=json.dumps(cleaned_payload, ensure_ascii=False),
+            snapshot_json=snapshot_json,
+            created_at=utcnow(),
+        )
+        session.add(proposal)
+        await session.flush()
+        return _proposal_out(proposal)
 
     @staticmethod
     async def reject(session: AsyncSession, proposal_id: str) -> AgentProposalOut:

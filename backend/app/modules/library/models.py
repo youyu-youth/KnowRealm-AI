@@ -68,6 +68,9 @@ class AgentProposal(Base):
     target_type: Mapped[str | None] = mapped_column(String(30), default=None)
     target_id: Mapped[str | None] = mapped_column(String(36), default=None)
     payload_json: Mapped[str] = mapped_column(Text)
+    # 执行前快照（工单 03，spec 决策 12）：提交时后端同事务固化，确认卡预览、
+    # 执行前重验与 Undo 补偿三用；旧提案（含存量 ORGANIZE）无快照＝NULL。
+    snapshot_json: Mapped[str | None] = mapped_column(Text, default=None)
     evidence_refs_json: Mapped[str | None] = mapped_column(Text, default=None)
     # 操作回执（工单 02）：APPLIED 时由确认事务写入类型化结果，其余状态恒 NULL。
     result_json: Mapped[str | None] = mapped_column(Text, default=None)

@@ -680,6 +680,51 @@ async def test_sidecar_startup_schedules_tombstone_cleanup(tmp_path: Path) -> No
         assert remaining == 0
 
 
+@pytest.mark.anyio
+async def test_archive_and_unarchive_course_endpoints(tmp_path: Path) -> None:
+    """课程归档 / 恢复端点（工单 03，历史推迟决策收口）：状态翻转 + updated_at
+    前进（快照纪律不变量）、幂等守卫 409 稳定错误码。"""
+    data_dir = tmp_path / "KnowRealm"
+    async with course_client(data_dir) as client:
+        headers = {"X-KnowRealm-Token": TOKEN}
+        created = await client.post(
+            "/api/courses",
+            headers=headers,
+            json={
+                "name": "要归档的课",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            },
+        )
+        course_id = created.json()["id"]
+
+        archived = await client.post(f"/api/courses/{course_id}/archive", headers=headers)
+        assert archived.status_code == 200
+        assert archived.json()["status"] == "ARCHIVED"
+        assert archived.json()["updated_at"] > created.json()["updated_at"]
+
+        re_archive = await client.post(f"/api/courses/{course_id}/archive", headers=headers)
+        assert re_archive.status_code == 409
+        assert re_archive.json()["code"] == "COURSE_ALREADY_ARCHIVED"
+
+        restored = await client.post(f"/api/courses/{course_id}/unarchive", headers=headers)
+        assert restored.status_code == 200
+        assert restored.json()["status"] == "ACTIVE"
+        assert restored.json()["updated_at"] > archived.json()["updated_at"]
+
+        re_unarchive = await client.post(
+            f"/api/courses/{course_id}/unarchive", headers=headers
+        )
+        assert re_unarchive.status_code == 409
+        assert re_unarchive.json()["code"] == "COURSE_ALREADY_ACTIVE"
+
+        missing = await client.post(
+            "/api/courses/00000000-0000-4000-8000-00000000dead/archive", headers=headers
+        )
+        assert missing.status_code == 404
+        assert missing.json()["code"] == "COURSE_NOT_FOUND"
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

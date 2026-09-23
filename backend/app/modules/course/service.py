@@ -9,6 +9,7 @@ from app.modules.capture.schemas import RecordingSessionState
 from app.modules.course.models import Course
 from app.modules.course.schemas import (
     CourseCreate,
+    CourseStatus,
     CourseType,
     CourseUpdate,
     EducationStage,
@@ -58,44 +59,93 @@ class CourseService:
             course = await CourseService.get(session, course_id)
             if course is None:
                 return None
-            changes = payload.model_dump(exclude_unset=True)
-            # 显式 null 的 name / learning_context 表示"未修改"，与可清空字段区分。
-            if changes.get("name") is None:
-                changes.pop("name", None)
-            if changes.get("learning_context") is None:
-                changes.pop("learning_context", None)
-            if "hot_words" in changes:
-                changes["hot_words"] = json.dumps(
-                    changes["hot_words"] or [],
-                    ensure_ascii=False,
-                )
-            if changes:
-                final_context = changes.get("learning_context", course.learning_context)
-                if final_context == LearningContext.SCHOOL:
-                    final_stage = changes.get("education_stage", course.education_stage)
-                    if final_stage is None:
-                        raise CodedHTTPException(
-                            code="COURSE_EDUCATION_STAGE_REQUIRED",
-                            status_code=422,
-                            detail="学业场景必须选择教育阶段",
-                        )
-                    changes["education_stage"] = final_stage
-                    changes["depth"] = None
-                else:
-                    final_depth = changes.get("depth", course.depth)
-                    if final_depth is None:
-                        raise CodedHTTPException(
-                            code="COURSE_LEARNING_DEPTH_REQUIRED",
-                            status_code=422,
-                            detail="职业或兴趣场景必须选择学习深度",
-                        )
-                    changes["depth"] = final_depth
-                    changes["education_stage"] = None
-                for field, value in changes.items():
-                    setattr(course, field, value)
-                course.updated_at = utcnow()
-            await session.flush()
-            await SearchService.upsert_course_index(session, course_id)
+            await CourseService.update_core(session, course, payload)
+        return course
+
+    @staticmethod
+    async def update_core(
+        session: AsyncSession, course: Course, payload: CourseUpdate
+    ) -> Course:
+        """课程更新事务内核心（工单 03）：调用方拥有事务边界，HTTP 路由与
+        Agent 应用器共用同一校验链（场景 / 阶段或深度条件校验同源）。
+
+        显式 null 的 name / learning_context 表示"未修改"，与可清空字段区分；
+        所有变更统一维护 updated_at（快照纪律显式不变量，spec 决策 12）。
+        """
+        changes = payload.model_dump(exclude_unset=True)
+        if changes.get("name") is None:
+            changes.pop("name", None)
+        if changes.get("learning_context") is None:
+            changes.pop("learning_context", None)
+        if "hot_words" in changes:
+            changes["hot_words"] = json.dumps(
+                changes["hot_words"] or [],
+                ensure_ascii=False,
+            )
+        if changes:
+            final_context = changes.get("learning_context", course.learning_context)
+            if final_context == LearningContext.SCHOOL:
+                final_stage = changes.get("education_stage", course.education_stage)
+                if final_stage is None:
+                    raise CodedHTTPException(
+                        code="COURSE_EDUCATION_STAGE_REQUIRED",
+                        status_code=422,
+                        detail="学业场景必须选择教育阶段",
+                    )
+                changes["education_stage"] = final_stage
+                changes["depth"] = None
+            else:
+                final_depth = changes.get("depth", course.depth)
+                if final_depth is None:
+                    raise CodedHTTPException(
+                        code="COURSE_LEARNING_DEPTH_REQUIRED",
+                        status_code=422,
+                        detail="职业或兴趣场景必须选择学习深度",
+                    )
+                changes["depth"] = final_depth
+                changes["education_stage"] = None
+            for field, value in changes.items():
+                setattr(course, field, value)
+            course.updated_at = utcnow()
+        await session.flush()
+        await SearchService.upsert_course_index(session, course.id)
+        return course
+
+    @staticmethod
+    async def set_status_core(
+        session: AsyncSession, course: Course, *, archived: bool
+    ) -> Course:
+        """课程归档 / 恢复事务内核心（工单 03，历史推迟决策收口）：状态翻转
+        ＋updated_at 维护。既有 ARCHIVED 三道读取闸门（summary / KP / quiz /
+        todo 校验）零改动——归档只写状态，不级联不删数据；幂等守卫同 library
+        条目口径（重复归档 / 重复恢复 409 稳定错误码）。"""
+        if archived and course.status == CourseStatus.ARCHIVED:
+            raise CodedHTTPException(
+                code="COURSE_ALREADY_ARCHIVED",
+                status_code=409,
+                detail="课程已归档",
+            )
+        if not archived and course.status == CourseStatus.ACTIVE:
+            raise CodedHTTPException(
+                code="COURSE_ALREADY_ACTIVE",
+                status_code=409,
+                detail="课程未归档",
+            )
+        course.status = CourseStatus.ARCHIVED.value if archived else CourseStatus.ACTIVE.value
+        course.updated_at = utcnow()
+        await session.flush()
+        return course
+
+    @staticmethod
+    async def set_status(
+        session: AsyncSession, course_id: str, *, archived: bool
+    ) -> Course | None:
+        """课程归档 / 恢复 HTTP 入口（None = 课程不存在或已删除）。"""
+        async with session.begin():
+            course = await CourseService.get(session, course_id)
+            if course is None:
+                return None
+            await CourseService.set_status_core(session, course, archived=archived)
         return course
 
     @staticmethod

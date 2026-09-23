@@ -272,6 +272,14 @@ class ProposalType(StrEnum):
     RESEARCH_INGEST = "RESEARCH_INGEST"
     COURSE_CREATE = "COURSE_CREATE"
     TEXT_RECORD_ADD = "TEXT_RECORD_ADD"
+    # OP_ 命名空间（迁移 0030 CHECK 通配，类型执法在判别 schema 注册表）：
+    # 工单 03 修改与归档动作，后续新动作按同前缀递增。
+    OP_COURSE_UPDATE = "OP_COURSE_UPDATE"
+    OP_COURSE_ARCHIVE = "OP_COURSE_ARCHIVE"
+    OP_COURSE_RESTORE = "OP_COURSE_RESTORE"
+    OP_LIBRARY_ITEM_UPDATE = "OP_LIBRARY_ITEM_UPDATE"
+    OP_LIBRARY_ITEM_ARCHIVE = "OP_LIBRARY_ITEM_ARCHIVE"
+    OP_LIBRARY_ITEM_RESTORE = "OP_LIBRARY_ITEM_RESTORE"
 
 
 class AgentProposalOut(BaseModel):
@@ -285,6 +293,9 @@ class AgentProposalOut(BaseModel):
     target_type: str | None
     target_id: str | None
     payload: dict[str, Any] = {}
+    # 执行前快照（工单 03，spec 决策 12）：确认卡 before/after 预览读取；
+    # 旧提案（含存量 ORGANIZE / COURSE_CREATE / TEXT_RECORD_ADD）无快照＝None。
+    snapshot: dict[str, Any] | None = None
     evidence_refs: Any | None = None
     # 操作回执（工单 02）：APPLIED 提案的类型化结果（课程创建 → {course_id}）。
     result: dict[str, Any] | None = None

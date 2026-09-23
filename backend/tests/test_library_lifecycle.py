@@ -192,10 +192,14 @@ async def test_lifecycle_endpoints(tmp_path: Path) -> None:
         # 重命名 / 归类 / 取消归类 / 收藏
         renamed = await client.patch(f"/api/library/items/{item_id}", json={"title": "新标题"})
         assert renamed.status_code == 200 and renamed.json()["title"] == "新标题"
+        # updated_at 纪律防线（spec 决策 12）：所有领域写路径必须维护 updated_at
+        # （seed 钉死 NOW，各写操作后严格前进）。
+        assert renamed.json()["updated_at"] > NOW
         moved = await client.patch(
             f"/api/library/items/{item_id}", json={"course_id": COURSE_OTHER}
         )
         assert moved.status_code == 200 and moved.json()["course_id"] == COURSE_OTHER
+        assert moved.json()["updated_at"] > renamed.json()["updated_at"]
         # 派生 Record 不随条目归类静默移动（课程仍是原课程）
         async with session_factory() as session:
             record_course = (
@@ -219,6 +223,7 @@ async def test_lifecycle_endpoints(tmp_path: Path) -> None:
         # 归档 / 恢复：默认视图退出、归档视图可见、重复归档 409
         archived = await client.post(f"/api/library/items/{item_id}/archive")
         assert archived.status_code == 200 and archived.json()["status"] == "ARCHIVED"
+        assert archived.json()["updated_at"] > moved.json()["updated_at"]
         default_list = (await client.get("/api/library/items")).json()
         assert all(item["id"] != item_id for item in default_list["items"])
         archived_list = (await client.get("/api/library/items", params={"view": "archived"})).json()
@@ -228,6 +233,7 @@ async def test_lifecycle_endpoints(tmp_path: Path) -> None:
         assert re_archive.json()["code"] == "LIBRARY_ITEM_ALREADY_ARCHIVED"
         unarchived = await client.post(f"/api/library/items/{item_id}/unarchive")
         assert unarchived.status_code == 200 and unarchived.json()["status"] == "ACTIVE"
+        assert unarchived.json()["updated_at"] > archived.json()["updated_at"]
         re_unarchive = await client.post(f"/api/library/items/{item_id}/unarchive")
         assert re_unarchive.status_code == 409
         assert re_unarchive.json()["code"] == "LIBRARY_ITEM_ALREADY_ACTIVE"
@@ -645,6 +651,101 @@ async def test_organize_propose_confirm_reject(tmp_path: Path) -> None:
         async with session_factory() as session:
             still = await session.get(LibraryItem, item_id)
         assert still is not None and still.title == "规范标题"
+
+
+@pytest.mark.anyio
+async def test_organize_propose_freezes_snapshot_and_stale_recheck(tmp_path: Path) -> None:
+    """ORGANIZE 纪律（工单 03）：propose 同事务固化快照；确认前目标被手动改过
+    → 重验失效（稳定错误码、不覆盖新修改）；正常确认 result 携带 before/after。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ID)
+        item_id = "d0000000-0000-4000-8000-000000000701"
+        await seed_item(session_factory, item_id, course_id=None, title="旧标题")
+
+        async def fake_generate(prompt: str) -> OrganizeSuggestionBatch:
+            return OrganizeSuggestionBatch(
+                suggestions=[OrganizeSuggestion(item_id=item_id, title="建议标题")]
+            )
+
+        proposed = await OrganizeService.propose(session_factory, fake_generate)
+        assert len(proposed.created) == 1
+        first = proposed.created[0]
+        assert first.snapshot is not None
+        assert first.snapshot["title"] == "旧标题"
+        assert first.snapshot["course_id"] is None
+        assert str(first.snapshot["updated_at"]).startswith("2026-09-19T08:00:00")
+
+        # 确认前用户手动改名：确认失效，手动值不被覆盖
+        await run_sql(
+            "UPDATE library_items SET title = :title, updated_at = :later "
+            "WHERE id = :id",
+            {
+                "title": "页面手改",
+                "later": "2026-09-22T08:00:00.000000Z",
+                "id": item_id,
+            },
+            session_factory,
+        )
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as stale:
+                await ProposalService.confirm(session, first.id)
+        assert stale.value.code == "PROPOSAL_APPLY_FAILED"
+        assert stale.value.params == {"errorCode": "OPERATION_SNAPSHOT_STALE"}
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text("SELECT status, error_code FROM agent_proposals WHERE id=:id"),
+                    {"id": first.id},
+                )
+            ).one()
+        assert row[0] == "FAILED" and row[1] == "OPERATION_SNAPSHOT_STALE"
+        async with session_factory() as session:
+            item = await session.get(LibraryItem, item_id)
+        assert item is not None and item.title == "页面手改"
+
+        # 重新生成提案（快照刷新为手动值）→ 正常确认，result 携带 before/after
+        reproposed = await OrganizeService.propose(session_factory, fake_generate)
+        second = reproposed.created[0]
+        assert second.snapshot is not None and second.snapshot["title"] == "页面手改"
+        async with session_factory() as session:
+            confirmed = await ProposalService.confirm(session, second.id)
+        assert confirmed.status.value == "APPLIED"
+        assert confirmed.result == {
+            "item_id": item_id,
+            "before": {"title": "页面手改", "course_id": None},
+            "after": {"title": "建议标题", "course_id": None},
+        }
+
+
+@pytest.mark.anyio
+async def test_organize_legacy_proposal_without_snapshot_still_applies(
+    tmp_path: Path,
+) -> None:
+    """旧待确认提案（无快照）沿用现行确认路径：不重验、正常应用（Q12）。"""
+    async with bare_db(tmp_path) as session_factory:
+        item_id = "d0000000-0000-4000-8000-000000000711"
+        await seed_item(session_factory, item_id, course_id=None, title="存量条目")
+        proposal_id = "d0000000-0000-4000-8000-000000000712"
+        await run_sql(
+            "INSERT INTO agent_proposals (id, proposal_type, status, target_type, target_id, "
+            "payload_json, created_at) VALUES (:id, 'ORGANIZE', 'PENDING', 'library_item', "
+            ":target, :payload, :now)",
+            {
+                "id": proposal_id,
+                "target": item_id,
+                "payload": json.dumps({"item_id": item_id, "title": "新名"}),
+                "now": NOW,
+            },
+            session_factory,
+        )
+        async with session_factory() as session:
+            confirmed = await ProposalService.confirm(session, proposal_id)
+        assert confirmed.status.value == "APPLIED"
+        assert confirmed.result == {
+            "item_id": item_id,
+            "before": {"title": "存量条目", "course_id": None},
+            "after": {"title": "新名", "course_id": None},
+        }
 
 
 @pytest.mark.anyio

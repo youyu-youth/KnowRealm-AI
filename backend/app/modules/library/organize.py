@@ -9,10 +9,12 @@ ProposalService 注册表（routes 导入本模块即完成注册）。
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -46,6 +48,17 @@ from app.shared.errors import CodedHTTPException
 ORGANIZE_PROMPT_VERSION = "library-organize-v1"
 
 OrganizeGenerator = Callable[[str], Awaitable[OrganizeSuggestionBatch]]
+
+
+class OrganizeSnapshot(BaseModel):
+    """ORGANIZE 提案执行前快照（工单 03 纪律，spec 决策 12）：类型不迁操作
+    注册表，快照形状留在本模块；before 值随结果投影透出。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    title: str
+    course_id: str | None = None
 
 
 def _payload_dict(raw: str) -> dict[str, object]:
@@ -169,6 +182,7 @@ class OrganizeService:
         batch = await generate(prompt)
         course_ids = {cast(str, cid) for cid, _name in courses}
         item_ids = {item.id for item in items}
+        item_by_id = {item.id: item for item in items}
         created: list[AgentProposalOut] = []
         skipped: list[str] = []
         now = utcnow()
@@ -186,6 +200,12 @@ class OrganizeService:
                     payload["course_id"] = suggestion.course_id
                 if len(payload) == 1:
                     continue  # 无可应用字段
+                item = item_by_id[suggestion.item_id]
+                snapshot = OrganizeSnapshot(
+                    updated_at=item.updated_at,
+                    title=item.title,
+                    course_id=item.course_id,
+                )
                 proposal = AgentProposal(
                     id=str(uuid4()),
                     proposal_type=ProposalType.ORGANIZE.value,
@@ -193,6 +213,9 @@ class OrganizeService:
                     target_type="library_item",
                     target_id=suggestion.item_id,
                     payload_json=json.dumps(payload, ensure_ascii=False),
+                    # 执行前快照（工单 03 纪律）：提交时同事务固化，确认前
+                    # 手动改过同一对象则应用器重验失效（spec 决策 12）。
+                    snapshot_json=snapshot.model_dump_json(),
                     created_at=now,
                 )
                 session.add(proposal)
@@ -207,6 +230,7 @@ class OrganizeService:
                         target_type=proposal.target_type,
                         target_id=proposal.target_id,
                         payload=payload,
+                        snapshot=snapshot.model_dump(mode="json"),
                         evidence_refs=None,
                         error_code=None,
                         created_at=proposal.created_at,
@@ -216,10 +240,29 @@ class OrganizeService:
         return OrganizeProposeOut(created=created, skipped=skipped)
 
 
-async def apply_organize(session: AsyncSession, proposal: AgentProposal) -> None:
-    """ORGANIZE 应用器：标题 / 归类建议落到条目（确认后原子应用）。"""
+async def apply_organize(session: AsyncSession, proposal: AgentProposal) -> dict[str, object]:
+    """ORGANIZE 应用器：标题 / 归类建议落到条目（确认后原子应用）。
+
+    工单 03 纪律：执行前重验（快照比对，目标已变化 → 稳定错误码失效，旧待确认
+    提案无快照＝沿用现行路径不重验）＋before 快照进结果投影。"""
     payload = OrganizePayload.model_validate(_payload_dict(proposal.payload_json))
     item = await LibraryService.active_item(session, payload.item_id)
+    current = OrganizeSnapshot(
+        updated_at=item.updated_at, title=item.title, course_id=item.course_id
+    )
+    if proposal.snapshot_json is not None:
+        try:
+            frozen = OrganizeSnapshot.model_validate(json.loads(proposal.snapshot_json))
+        except ValueError:
+            frozen = None
+        # 快照损坏按失效处理（保守方向：不覆盖确认后才发生的修改）。
+        if frozen is None or frozen != current:
+            raise CodedHTTPException(
+                code="OPERATION_SNAPSHOT_STALE",
+                status_code=409,
+                detail="目标已发生变化，提案已失效，请重新预览确认",
+            )
+    before = current.model_dump(mode="json", exclude={"updated_at"})
     if payload.title is not None:
         title = payload.title.strip()
         if not title:
@@ -231,6 +274,8 @@ async def apply_organize(session: AsyncSession, proposal: AgentProposal) -> None
         await valid_course(session, payload.course_id)
         item.course_id = payload.course_id
     item.updated_at = utcnow()
+    after = {"title": item.title, "course_id": item.course_id}
+    return {"item_id": payload.item_id, "before": before, "after": after}
 
 
 async def apply_research_ingest(session: AsyncSession, proposal: AgentProposal) -> None:

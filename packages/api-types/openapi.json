@@ -380,6 +380,18 @@
             ],
             "title": "Session Id"
           },
+          "snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot"
+          },
           "status": {
             "$ref": "#/components/schemas/ProposalStatus"
           },
@@ -5418,7 +5430,13 @@
           "MEMORY",
           "RESEARCH_INGEST",
           "COURSE_CREATE",
-          "TEXT_RECORD_ADD"
+          "TEXT_RECORD_ADD",
+          "OP_COURSE_UPDATE",
+          "OP_COURSE_ARCHIVE",
+          "OP_COURSE_RESTORE",
+          "OP_LIBRARY_ITEM_UPDATE",
+          "OP_LIBRARY_ITEM_ARCHIVE",
+          "OP_LIBRARY_ITEM_RESTORE"
         ],
         "title": "ProposalType",
         "type": "string"
@@ -10927,6 +10945,95 @@
         ]
       }
     },
+    "/api/courses/{course_id}/archive": {
+      "post": {
+        "description": "课程归档（工单 03，历史推迟决策收口）：退出日常使用但保留全部数据；\n归档后课程不再接受新资料（既有三道读取闸门）。",
+        "operationId": "archive_course_api_courses__course_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Archive Course",
+        "tags": [
+          "courses"
+        ]
+      }
+    },
     "/api/courses/{course_id}/brain": {
       "get": {
         "operationId": "get_course_brain_api_courses__course_id__brain_get",
@@ -12435,6 +12542,95 @@
         "summary": "List Course Records",
         "tags": [
           "records"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/unarchive": {
+      "post": {
+        "description": "课程恢复（工单 03）：回到正常状态、可继续接受新资料。",
+        "operationId": "unarchive_course_api_courses__course_id__unarchive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Unarchive Course",
+        "tags": [
+          "courses"
         ]
       }
     },

@@ -348,7 +348,7 @@ async def test_migration_upgrade_path_preserves_data(tmp_path: Path) -> None:
         assert version_row is not None
         version = cast(int, version_row[0])
         assert version == supported_user_version()
-        assert version == 31
+        assert version == 32
         session_row = await (
             await connection.execute("SELECT count(*) FROM chat_sessions")
         ).fetchone()

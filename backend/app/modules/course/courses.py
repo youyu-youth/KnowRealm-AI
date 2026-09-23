@@ -79,6 +79,35 @@ async def update_course(
     return CourseOut.model_validate(course)
 
 
+@router.post("/{course_id}/archive", response_model=CourseOut)
+async def archive_course(
+    course_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> CourseOut:
+    """课程归档（工单 03，历史推迟决策收口）：退出日常使用但保留全部数据；
+    归档后课程不再接受新资料（既有三道读取闸门）。"""
+    course = await CourseService.set_status(session, course_id, archived=True)
+    if course is None:
+        raise CodedHTTPException(
+            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+        )
+    return CourseOut.model_validate(course)
+
+
+@router.post("/{course_id}/unarchive", response_model=CourseOut)
+async def unarchive_course(
+    course_id: str,
+    session: AsyncSession = Depends(get_db),
+) -> CourseOut:
+    """课程恢复（工单 03）：回到正常状态、可继续接受新资料。"""
+    course = await CourseService.set_status(session, course_id, archived=False)
+    if course is None:
+        raise CodedHTTPException(
+            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
+        )
+    return CourseOut.model_validate(course)
+
+
 @router.delete("/{course_id}", status_code=204, response_class=Response, response_model=None)
 async def delete_course(
     course_id: str,

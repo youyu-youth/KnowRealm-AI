@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from uuid import UUID
 
 from pydantic import (
@@ -16,7 +16,13 @@ from pydantic import (
 
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.capture.text_capture import MAX_TEXT_BYTES
-from app.modules.course.schemas import CourseCreate
+from app.modules.course.schemas import (
+    CourseCreate,
+    CourseType,
+    EducationStage,
+    LearningContext,
+    LearningDepth,
+)
 from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
 from app.modules.library.schemas import ChatScope
 
@@ -372,3 +378,152 @@ class TextRecordAddResult(BaseModel):
     record_id: str
     summary_job_id: str | None = None
     summary_error_code: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# 修改与归档动作契约（通用 Agent 第二阶段工单 03，spec 决策 12/14）：快照由
+# 后端在提交时同事务读取固化（模型不提供），before/after 进确认卡与回执。
+# ---------------------------------------------------------------------------
+
+_UUID_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+
+
+class CourseStateSnapshot(BaseModel):
+    """course.* 修改 / 归档动作的执行前快照（spec 决策 12）。
+
+    updated_at（微秒精度）＋before 值双保险承载版本依据（不给业务表加 version
+    列）；快照一份三用——确认卡预览投影、执行前重验依据、Undo 补偿数据。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    name: str
+    status: str
+    learning_context: LearningContext
+    education_stage: EducationStage | None = None
+    depth: LearningDepth | None = None
+    course_type: CourseType | None = None
+    description: str | None = None
+
+
+class LibraryItemStateSnapshot(BaseModel):
+    """library_item.* 修改 / 归档动作的执行前快照（同 CourseStateSnapshot）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    title: str
+    course_id: str | None = None
+    status: str
+
+
+class CourseUpdatePayload(BaseModel):
+    """OP_COURSE_UPDATE 提案判别载荷：目标课程 id + 修改字段（spec 用户故事 10）。
+
+    hot_words 是录音设置的手动热词、不接入 Agent；字段级校验（strip / 空白）
+    与场景条件校验（学业须阶段、职业/兴趣须深度）复用 HTTP 契约 CourseUpdate
+    的同源链，在应用器构造时执行。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标课程 id（经 search_courses 查找消歧后取得）",
+    )
+    name: str | None = Field(default=None, min_length=1, max_length=100, description="课程名称")
+    learning_context: LearningContext | None = Field(
+        default=None, description="课程学习场景"
+    )
+    education_stage: EducationStage | None = Field(
+        default=None, description="学业教育阶段"
+    )
+    depth: LearningDepth | None = Field(default=None, description="职业或兴趣学习深度")
+    course_type: CourseType | None = Field(default=None, description="课程类型")
+    description: str | None = Field(default=None, description="课程说明")
+
+    @model_validator(mode="after")
+    def _require_change(self) -> "CourseUpdatePayload":
+        provided = self.model_dump(exclude_unset=True)
+        if set(provided) <= {"course_id"}:
+            raise ValueError("至少提供一个修改字段")
+        return self
+
+
+class CourseUpdateResult(BaseModel):
+    """OP_COURSE_UPDATE 结果投影：被修改字段的 before / after 对照（回执卡）。"""
+
+    course_id: str
+    before: dict[str, Any]
+    after: dict[str, Any]
+
+
+class CourseArchivePayload(BaseModel):
+    """OP_COURSE_ARCHIVE / OP_COURSE_RESTORE 提案判别载荷。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标课程 id（经 search_courses 查找消歧后取得）",
+    )
+
+
+class CourseArchiveResult(BaseModel):
+    """OP_COURSE_ARCHIVE / OP_COURSE_RESTORE 结果投影：执行后状态。"""
+
+    course_id: str
+    status: str
+
+
+class LibraryItemUpdatePayload(BaseModel):
+    """OP_LIBRARY_ITEM_UPDATE 提案判别载荷：标题 / 归类（spec 用户故事 12）。
+
+    course_id 为 None＝不修改归类（收藏与取消归类不接入，走页面路径）；
+    course_id 非 None＝归类到该课程（目标须存在且未归档，领域核心校验）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标资料条目 id（经 search_library 查找消歧后取得）",
+    )
+    title: str | None = Field(default=None, min_length=1, description="条目标题")
+    course_id: str | None = Field(
+        default=None, description="归类目标课程 id；None＝不修改归类"
+    )
+
+    @model_validator(mode="after")
+    def _require_change(self) -> "LibraryItemUpdatePayload":
+        provided = self.model_dump(exclude_unset=True)
+        if set(provided) <= {"item_id"}:
+            raise ValueError("至少提供一个修改字段")
+        return self
+
+
+class LibraryItemUpdateResult(BaseModel):
+    """OP_LIBRARY_ITEM_UPDATE 结果投影：被修改字段的 before / after 对照。"""
+
+    item_id: str
+    before: dict[str, Any]
+    after: dict[str, Any]
+
+
+class LibraryItemArchivePayload(BaseModel):
+    """OP_LIBRARY_ITEM_ARCHIVE / OP_LIBRARY_ITEM_RESTORE 提案判别载荷。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标资料条目 id（经 search_library 查找消歧后取得）",
+    )
+
+
+class LibraryItemArchiveResult(BaseModel):
+    """OP_LIBRARY_ITEM_ARCHIVE / OP_LIBRARY_ITEM_RESTORE 结果投影：执行后状态。"""
+
+    item_id: str
+    status: str
