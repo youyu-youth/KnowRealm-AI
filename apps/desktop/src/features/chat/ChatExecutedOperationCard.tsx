@@ -87,17 +87,27 @@ export function ChatExecutedOperationCard({
   anchorIds,
 }: ChatExecutedOperationCardProps) {
   const { t } = useTranslation();
+  // 请求页大小按锚点数取（上限 200=后端契约），恢复链一次覆盖全部锚点；
+  // 超过 200 锚点的极端长期会话由下方截断兜底处理。
+  const limit = Math.min(200, Math.max(50, anchorIds.length));
   const operations = useQuery({
     queryKey: agentKeys.sessionOperations(sessionId),
     queryFn: () =>
-      operationHistoryApi.listOperations({ session_id: sessionId }),
+      operationHistoryApi.listOperations({ session_id: sessionId, limit }),
+    enabled: anchorIds.length > 0,
     staleTime: 0,
   });
 
+  // 查询未成功完成（首次加载 / 失败）不渲染：占位判定以查询成功为前提，
+  // 避免把加载中或网络失败误报为「历史已清理」（提案卡「失败即无卡」同模式）。
+  if (anchorIds.length === 0 || !operations.isSuccess) {
+    return null;
+  }
+  const fetched = operations.data;
   // 锚点序=执行序；查询详情只渲染直执行路径（proposal_id 空），确认路径
   // 回写行由提案卡承载。
   const byId = new Map(
-    (operations.data ?? [])
+    fetched
       .filter((operation) => operation.proposal_id === null)
       .map((operation) => [operation.id, operation] as const),
   );
@@ -105,9 +115,12 @@ export function ChatExecutedOperationCard({
     const operation = byId.get(id);
     return operation ? [operation] : [];
   });
-  const purgedCount = anchorIds.length - direct.length;
+  // 满页=可能截断（锚点超页大小）：缺席锚点不计占位——宁可不显示占位，
+  // 不把「未取到」错报为「已清理」；命中的锚点照常渲染。
+  const possiblyTruncated = fetched.length >= limit;
+  const purgedCount = possiblyTruncated ? 0 : anchorIds.length - direct.length;
 
-  if (anchorIds.length === 0) {
+  if (direct.length === 0 && purgedCount === 0) {
     return null;
   }
 

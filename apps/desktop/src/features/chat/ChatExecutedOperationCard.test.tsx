@@ -81,10 +81,21 @@ beforeEach(() => {
 });
 
 describe("ChatExecutedOperationCard", () => {
-  it("消息流无锚点时不渲染", () => {
+  it("消息流无锚点时不渲染、不发查询", () => {
     const { container } = renderWithQuery(
       <ChatExecutedOperationCard sessionId={SESSION_ID} anchorIds={[]} />,
     );
+    expect(container).toBeEmptyDOMElement();
+    expect(listOperations).not.toHaveBeenCalled();
+  });
+
+  it("查询失败不渲染：网络失败≠历史已清理，不误报占位", async () => {
+    listOperations.mockRejectedValue(new Error("网络异常"));
+    const { container } = renderWithQuery(
+      <ChatExecutedOperationCard sessionId={SESSION_ID} anchorIds={["op-1"]} />,
+    );
+    await waitFor(() => expect(listOperations).toHaveBeenCalled());
+    // 失败定局后仍无卡、无「历史已清理」。
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -104,6 +115,30 @@ describe("ChatExecutedOperationCard", () => {
     expect(screen.getByText("创建课程")).toBeVisible();
     const link = screen.getByRole("link", { name: "打开课程" });
     expect(link).toHaveAttribute("href", "/spaces/$courseId");
+    // 请求页大小按锚点数取（默认下限 50）。
+    expect(listOperations).toHaveBeenCalledWith({
+      session_id: SESSION_ID,
+      limit: 50,
+    });
+  });
+
+  it("锚点超默认页大小时按锚点数请求", async () => {
+    const many = Array.from({ length: 80 }, (_, index) =>
+      operationFixture({ id: `op-${index}` }),
+    );
+    listOperations.mockResolvedValue(many);
+    renderWithQuery(
+      <ChatExecutedOperationCard
+        sessionId={SESSION_ID}
+        anchorIds={many.map((operation) => operation.id)}
+      />,
+    );
+
+    expect(listOperations).toHaveBeenCalledWith({
+      session_id: SESSION_ID,
+      limit: 80,
+    });
+    expect(await screen.findAllByText("创建课程")).toHaveLength(80);
   });
 
   it("查询有数据但锚点缺席（确认路径回写）不进本卡", async () => {
@@ -112,9 +147,6 @@ describe("ChatExecutedOperationCard", () => {
     ]);
     const { container } = renderWithQuery(
       <ChatExecutedOperationCard sessionId={SESSION_ID} anchorIds={[]} />,
-    );
-    await waitFor(() =>
-      expect(listOperations).toHaveBeenCalledWith({ session_id: SESSION_ID }),
     );
     expect(container).toBeEmptyDOMElement();
   });
@@ -162,5 +194,34 @@ describe("ChatExecutedOperationCard", () => {
 
     expect(await screen.findByText("创建课程")).toBeVisible();
     expect(screen.getByText("另有 1 条回执的历史已被清理。")).toBeVisible();
+  });
+
+  it("满页（可能截断）时缺席锚点不计占位：宁缺勿错报", async () => {
+    // 锚点 51 个、limit 按锚点数取 51，查询回满页 51 条但 op-gone 不在其中；
+    // 满页=可能仍有未取页，「未取到」不判定为「已清理」。
+    const anchorIds = [
+      "op-gone",
+      ...Array.from({ length: 50 }, (_, i) => `op-${i}`),
+    ];
+    listOperations.mockResolvedValue(
+      Array.from({ length: 51 }, (_, index) =>
+        operationFixture({ id: `op-${index}` }),
+      ),
+    );
+    renderWithQuery(
+      <ChatExecutedOperationCard
+        sessionId={SESSION_ID}
+        anchorIds={anchorIds}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(listOperations).toHaveBeenCalledWith({
+        session_id: SESSION_ID,
+        limit: 51,
+      }),
+    );
+    expect(await screen.findAllByText("创建课程")).toHaveLength(50);
+    expect(screen.queryByText(/历史已被清理/)).not.toBeInTheDocument();
   });
 });

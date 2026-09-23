@@ -22,15 +22,19 @@ export const operationHistoryApi = {
     apiFetch<PurgeResultOut>("/api/agent/runs/purge-finished", {
       method: "POST",
     }),
-  listOperations: (params: { status?: string; session_id?: string } = {}) =>
+  listOperations: (
+    params: { status?: string; session_id?: string; limit?: number } = {},
+  ) =>
     apiFetch<AgentOperationOut[]>(`/api/agent/operations${buildQuery(params)}`),
   listActivity: () => apiFetch<AgentActivityOut[]>("/api/agent/activity"),
 };
 
-function buildQuery(params: Record<string, string | undefined>): string {
+function buildQuery(
+  params: Record<string, string | number | undefined>,
+): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value) search.set(key, value);
+    if (value !== undefined && value !== "") search.set(key, String(value));
   }
   const query = search.toString();
   return query ? `?${query}` : "";
