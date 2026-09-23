@@ -757,6 +757,17 @@
       "confirm": "确认删除",
       "deleting": "正在删除课程"
     },
+    "archive": {
+      "action": "归档课程",
+      "restoreAction": "恢复课程",
+      "title": "确认归档课程",
+      "description": "归档“{{name}}”后，它将不再接受新资料；全部数据保留，之后可随时恢复。",
+      "cancel": "取消",
+      "confirm": "确认归档",
+      "archiving": "正在归档课程",
+      "restoreDone": "课程已恢复，可继续接受新资料。",
+      "restoreFailed": "课程恢复失败，请重试。"
+    },
     "records": {
       "title": "学习记录",
       "loading": "正在读取学习记录",
@@ -1843,6 +1854,65 @@
         "summaryNotTriggered": "未触发 AI 总结（AI 服务未配置或未同意外发）。",
         "summaryFailed": "总结任务提交失败（{{reason}}），可在记录页重试。",
         "courseUnavailable": "课程已不可用"
+      },
+      "modify": {
+        "targetCourse": "目标课程",
+        "targetItem": "目标条目"
+      },
+      "courseUpdate": {
+        "accepted": "课程已修改。",
+        "rejected": "已拒绝，未修改课程。",
+        "failed": "课程修改未完成。",
+        "failedDetail": "课程修改未完成（{{reason}}），可重新确认。",
+        "accept": "确认修改课程",
+        "reject": "拒绝修改课程"
+      },
+      "courseArchive": {
+        "accepted": "课程已归档。",
+        "rejected": "已拒绝，未归档课程。",
+        "failed": "课程归档未完成。",
+        "failedDetail": "课程归档未完成（{{reason}}），可重试。",
+        "accept": "确认归档课程",
+        "reject": "拒绝归档课程",
+        "hint": "归档后课程保留全部数据，但不再接受新资料；之后可恢复。"
+      },
+      "courseRestore": {
+        "accepted": "课程已恢复。",
+        "rejected": "已拒绝，未恢复课程。",
+        "failed": "课程恢复未完成。",
+        "failedDetail": "课程恢复未完成（{{reason}}），可重试。",
+        "accept": "确认恢复课程",
+        "reject": "拒绝恢复课程",
+        "hint": "恢复后课程回到正常状态，可继续接受新资料。"
+      },
+      "libraryItemUpdate": {
+        "accepted": "条目已修改。",
+        "rejected": "已拒绝，未修改条目。",
+        "failed": "条目修改未完成。",
+        "failedDetail": "条目修改未完成（{{reason}}），可重新确认。",
+        "accept": "确认修改条目",
+        "reject": "拒绝修改条目",
+        "titleField": "标题",
+        "courseField": "归类课程",
+        "openItem": "打开条目"
+      },
+      "libraryItemArchive": {
+        "accepted": "条目已归档。",
+        "rejected": "已拒绝，未归档条目。",
+        "failed": "条目归档未完成。",
+        "failedDetail": "条目归档未完成（{{reason}}），可重试。",
+        "accept": "确认归档条目",
+        "reject": "拒绝归档条目",
+        "hint": "归档后条目退出默认浏览，学习记录与资产保留；之后可恢复。"
+      },
+      "libraryItemRestore": {
+        "accepted": "条目已恢复。",
+        "rejected": "已拒绝，未恢复条目。",
+        "failed": "条目恢复未完成。",
+        "failedDetail": "条目恢复未完成（{{reason}}），可重试。",
+        "accept": "确认恢复条目",
+        "reject": "拒绝恢复条目",
+        "hint": "恢复后条目回到默认浏览。"
       }
     },
     "authMode": {
@@ -2460,6 +2530,8 @@
     "CHAT_STREAM_FAILED": "回答生成失败，请稍后重试",
     "CHAT_STREAM_IN_PROGRESS": "该对话正在生成回答，请稍候",
     "CORRUPT_AUDIO": "音频已损坏",
+    "COURSE_ALREADY_ACTIVE": "课程未归档",
+    "COURSE_ALREADY_ARCHIVED": "课程已归档",
     "COURSE_ARCHIVED": "归档课程不能接受新资料/生成内容",
     "COURSE_BRAIN_BUILD_IN_PROGRESS": "已有进行中的课程脑图构建任务",
     "COURSE_BRAIN_CONCEPT_EXISTS": "已存在同名概念",
@@ -2577,6 +2649,7 @@
     "LIBRARY_ITEM_NOT_FOUND": "资料条目不存在或已删除",
     "LIBRARY_PATCH_EMPTY": "至少提供一项可更新字段",
     "LEARNER_OBSERVED_KEY_NOT_FOUND": "观察偏好不存在或已删除",
+    "OPERATION_SNAPSHOT_STALE": "目标已发生变化，提案已失效，请重新预览确认",
     "PROPOSAL_NOT_FOUND": "提案不存在",
     "PROPOSAL_ALREADY_DECIDED": "提案已处理，不能重复操作",
     "PROPOSAL_APPLY_FAILED": "提案应用失败（{{errorCode}}）",

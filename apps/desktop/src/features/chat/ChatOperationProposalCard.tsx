@@ -25,6 +25,8 @@ type DecisionOverride = {
 
 type PreviewFieldsProps = {
   payload: Record<string, unknown>;
+  /** 执行前快照（工单 03）：修改类动作 before/after 预览的旧值来源。 */
+  snapshot: Record<string, unknown> | null;
   t: TFunction;
 };
 
@@ -125,9 +127,79 @@ function TextRecordCourseName({ courseId }: { courseId: string }) {
 
 // ---------------------------------------------------------------------------
 // 类型专属卡片行为（03 review 收敛）：文案键、预览字段行与回执行的差异全部
-// 聚合进下方 CARD_BY_TYPE 配置表——第三种操作接入 = 表加一行 + 两个新组件，
+// 聚合进下方 CARD_BY_TYPE 配置表——新操作接入 = 表加一行 + 两个新组件，
 // 分派点零改动（先例：ToolActivityCard 的 TOOL_ACTIVITY_META 单映射）。
 // ---------------------------------------------------------------------------
+
+/** 修改类 before/after 预览的展示值截断（长说明等单行可读）。 */
+function excerpt(value: string, max = 40): string {
+  const flat = value.replace(/\s+/g, " ").trim();
+  return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/** 课程修改字段的展示顺序与枚举翻译（键集 = OP_COURSE_UPDATE 可修改字段）。 */
+const COURSE_FIELD_LABEL_KEYS: Record<string, string> = {
+  name: "spaces.form.name",
+  learning_context: "spaces.form.learningContext",
+  education_stage: "spaces.form.educationStage",
+  depth: "spaces.form.depth",
+  course_type: "spaces.form.courseType",
+  description: "spaces.form.courseDescription",
+};
+
+const COURSE_FIELD_ENUM_PREFIXES: Record<string, string> = {
+  learning_context: "spaces.learningContext.",
+  education_stage: "spaces.educationStage.",
+  depth: "spaces.depth.",
+  course_type: "spaces.courseType.",
+};
+
+function courseFieldDisplay(
+  key: string,
+  value: unknown,
+  t: TFunction,
+): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value);
+  const prefix = COURSE_FIELD_ENUM_PREFIXES[key];
+  return prefix ? t(`${prefix}${text}`) : excerpt(text);
+}
+
+/** 修改类共用的 before → after 行（旧值缺失时仅呈现新值；label 已是翻译文本）。 */
+function BeforeAfterRows({
+  entries,
+}: {
+  entries: { label: string; before: string | null; after: string }[];
+}) {
+  return (
+    <>
+      {entries.map((entry) => (
+        <div
+          key={entry.label}
+          className="flex min-w-0 flex-wrap items-center gap-1.5"
+        >
+          <dt className="text-label text-muted-foreground shrink-0">
+            {entry.label}
+          </dt>
+          {entry.before !== null ? (
+            <>
+              <dd className="text-label text-ink-muted decoration-border-strong break-words line-through">
+                {entry.before}
+              </dd>
+              <ArrowRight
+                className="text-ink-faint size-3 shrink-0"
+                aria-hidden="true"
+              />
+            </>
+          ) : null}
+          <dd className="text-label text-ink min-w-0 break-words">
+            {entry.after}
+          </dd>
+        </div>
+      ))}
+    </>
+  );
+}
 
 /** COURSE_CREATE 确认卡预览：完整参数行（枚举值走表单文案翻译）。 */
 function CourseCreatePreviewFields({ payload, t }: PreviewFieldsProps) {
@@ -145,6 +217,164 @@ function CourseCreatePreviewFields({ payload, t }: PreviewFieldsProps) {
       ))}
     </>
   );
+}
+
+/** OP_COURSE_UPDATE 确认卡预览：目标课程 + 修改字段 before/after（payload
+ * 中非空值字段才是本次要修改的字段，before 读执行前快照）。 */
+function CourseUpdatePreviewFields({
+  payload,
+  snapshot,
+  t,
+}: PreviewFieldsProps) {
+  const entries: { label: string; before: string | null; after: string }[] = [];
+  for (const [key, labelKey] of Object.entries(COURSE_FIELD_LABEL_KEYS)) {
+    const after = courseFieldDisplay(key, payload[key], t);
+    if (after === null) continue;
+    entries.push({
+      label: t(labelKey),
+      before: snapshot ? courseFieldDisplay(key, snapshot[key], t) : null,
+      after,
+    });
+  }
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.modify.targetCourse")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {fieldString(snapshot, "name") ?? fieldString(payload, "course_id")}
+        </dd>
+      </div>
+      <BeforeAfterRows entries={entries} />
+    </>
+  );
+}
+
+/** 课程 / 条目归档与恢复类预览：目标对象行 + 影响提示行。 */
+function StatusChangePreviewFields({
+  targetLabelKey,
+  targetName,
+  hintKey,
+  t,
+}: {
+  targetLabelKey: string;
+  targetName: string | null;
+  hintKey: string;
+  t: TFunction;
+}) {
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t(targetLabelKey)}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {targetName}
+        </dd>
+      </div>
+      <p className="text-label text-muted-foreground">{t(hintKey)}</p>
+    </>
+  );
+}
+
+function CourseArchivePreviewFields({ snapshot }: PreviewFieldsProps) {
+  const { t } = useTranslation();
+  return StatusChangePreviewFields({
+    targetLabelKey: "chat.operationProposal.modify.targetCourse",
+    targetName: fieldString(snapshot, "name"),
+    hintKey: "chat.operationProposal.courseArchive.hint",
+    t,
+  });
+}
+
+function CourseRestorePreviewFields({ snapshot }: PreviewFieldsProps) {
+  const { t } = useTranslation();
+  return StatusChangePreviewFields({
+    targetLabelKey: "chat.operationProposal.modify.targetCourse",
+    targetName: fieldString(snapshot, "name"),
+    hintKey: "chat.operationProposal.courseRestore.hint",
+    t,
+  });
+}
+
+/** OP_LIBRARY_ITEM_UPDATE 确认卡预览：目标条目 + 标题 / 归类 before/after
+ * （课程名经课程 API 按 id 拉取，未归类＝占位文案）。 */
+function LibraryItemUpdatePreviewFields({
+  payload,
+  snapshot,
+  t,
+}: PreviewFieldsProps) {
+  const titleEntries: {
+    label: string;
+    before: string | null;
+    after: string;
+  }[] = [];
+  if (typeof payload.title === "string" && payload.title) {
+    titleEntries.push({
+      label: t("chat.operationProposal.libraryItemUpdate.titleField"),
+      before: snapshot
+        ? excerpt(fieldString(snapshot, "title") ?? "") || null
+        : null,
+      after: excerpt(payload.title),
+    });
+  }
+  const beforeCourseId = fieldString(snapshot, "course_id");
+  const afterCourseId = fieldString(payload, "course_id");
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.modify.targetItem")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {fieldString(snapshot, "title") ?? fieldString(payload, "item_id")}
+        </dd>
+      </div>
+      <BeforeAfterRows entries={titleEntries} />
+      {afterCourseId ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <dt className="text-label text-muted-foreground shrink-0">
+            {t("chat.operationProposal.libraryItemUpdate.courseField")}
+          </dt>
+          {snapshot && beforeCourseId ? (
+            <>
+              <dd className="text-label text-ink-muted decoration-border-strong break-words line-through">
+                <TextRecordCourseName courseId={beforeCourseId} />
+              </dd>
+              <ArrowRight
+                className="text-ink-faint size-3 shrink-0"
+                aria-hidden="true"
+              />
+            </>
+          ) : null}
+          <dd className="text-label text-ink min-w-0 break-words">
+            <TextRecordCourseName courseId={afterCourseId} />
+          </dd>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function LibraryItemArchivePreviewFields({ snapshot }: PreviewFieldsProps) {
+  const { t } = useTranslation();
+  return StatusChangePreviewFields({
+    targetLabelKey: "chat.operationProposal.modify.targetItem",
+    targetName: fieldString(snapshot, "title"),
+    hintKey: "chat.operationProposal.libraryItemArchive.hint",
+    t,
+  });
+}
+
+function LibraryItemRestorePreviewFields({ snapshot }: PreviewFieldsProps) {
+  const { t } = useTranslation();
+  return StatusChangePreviewFields({
+    targetLabelKey: "chat.operationProposal.modify.targetItem",
+    targetName: fieldString(snapshot, "title"),
+    hintKey: "chat.operationProposal.libraryItemRestore.hint",
+    t,
+  });
 }
 
 /** TEXT_RECORD_ADD 确认卡预览：目标课程 + 正文摘要 + 明示「保存后将尝试生成
@@ -239,6 +469,110 @@ function SettledTextRecordRow({ status, result, t }: SettledRowProps) {
   );
 }
 
+/** 修改 / 归档类回执行的共用骨架：结果文案 + 可选目标入口跳转。 */
+function SettledActionRow({
+  appliedTextKey,
+  rejectedTextKey,
+  openLabel,
+  openTo,
+  openParams,
+  openSearch,
+  status,
+  t,
+}: {
+  appliedTextKey: string;
+  rejectedTextKey: string;
+  openLabel: string;
+  openTo: string;
+  openParams: Record<string, string>;
+  openSearch?: Record<string, string>;
+  status: AgentProposalOut["status"];
+  t: TFunction;
+}) {
+  const applied = status === "APPLIED";
+  return (
+    <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5">
+      <p className="text-label text-muted-foreground">
+        {t(applied ? appliedTextKey : rejectedTextKey)}
+      </p>
+      {applied ? (
+        <Link
+          to={openTo}
+          params={openParams}
+          search={openSearch}
+          className="text-ink hover:bg-surface-raised text-label flex w-fit items-center gap-1 rounded px-1 py-0.5"
+        >
+          {openLabel}
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+/** OP_COURSE_UPDATE 回执行：修改结果 + 课程入口跳转。 */
+function SettledCourseUpdateRow({ status, result, t }: SettledRowProps) {
+  const courseId = fieldString(result, "course_id");
+  return (
+    <SettledActionRow
+      status={status}
+      t={t}
+      appliedTextKey="chat.operationProposal.courseUpdate.accepted"
+      rejectedTextKey="chat.operationProposal.courseUpdate.rejected"
+      openLabel={t("chat.operationProposal.openCourse")}
+      openTo="/spaces/$courseId"
+      openParams={courseId ? { courseId } : {}}
+      openSearch={{ tab: "overview" }}
+    />
+  );
+}
+
+/** 课程归档 / 恢复回执行共用（文案键随动作传入）。 */
+function SettledCourseStatusRow({
+  status,
+  result,
+  t,
+  appliedTextKey,
+  rejectedTextKey,
+}: SettledRowProps & { appliedTextKey: string; rejectedTextKey: string }) {
+  const courseId = fieldString(result, "course_id");
+  return (
+    <SettledActionRow
+      status={status}
+      t={t}
+      appliedTextKey={appliedTextKey}
+      rejectedTextKey={rejectedTextKey}
+      openLabel={t("chat.operationProposal.openCourse")}
+      openTo="/spaces/$courseId"
+      openParams={courseId ? { courseId } : {}}
+      openSearch={{ tab: "overview" }}
+    />
+  );
+}
+
+/** 条目修改 / 归档 / 恢复回执行共用：结果 + 资料库条目入口。 */
+function SettledLibraryItemRow({
+  status,
+  result,
+  t,
+  appliedTextKey,
+  rejectedTextKey,
+}: SettledRowProps & { appliedTextKey: string; rejectedTextKey: string }) {
+  const itemId = fieldString(result, "item_id");
+  return (
+    <SettledActionRow
+      status={status}
+      t={t}
+      appliedTextKey={appliedTextKey}
+      rejectedTextKey={rejectedTextKey}
+      openLabel={t("chat.operationProposal.libraryItemUpdate.openItem")}
+      openTo="/library"
+      openParams={{}}
+      openSearch={itemId ? { sel: itemId, selType: "item" } : undefined}
+    />
+  );
+}
+
 /** 类型专属卡片行为表（键 = 提案类型；涵盖类型即本卡过滤集合）。 */
 type OperationCardSpec = {
   /** 跨类型共用文案键（failed/failedDetail/accept/reject）的类型前缀。 */
@@ -260,9 +594,69 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
     PreviewFields: TextRecordPreviewFields,
     SettledRow: SettledTextRecordRow,
   },
+  OP_COURSE_UPDATE: {
+    label: (key) => `chat.operationProposal.courseUpdate.${key}`,
+    PreviewFields: CourseUpdatePreviewFields,
+    SettledRow: SettledCourseUpdateRow,
+  },
+  OP_COURSE_ARCHIVE: {
+    label: (key) => `chat.operationProposal.courseArchive.${key}`,
+    PreviewFields: CourseArchivePreviewFields,
+    SettledRow: (props) => (
+      <SettledCourseStatusRow
+        {...props}
+        appliedTextKey="chat.operationProposal.courseArchive.accepted"
+        rejectedTextKey="chat.operationProposal.courseArchive.rejected"
+      />
+    ),
+  },
+  OP_COURSE_RESTORE: {
+    label: (key) => `chat.operationProposal.courseRestore.${key}`,
+    PreviewFields: CourseRestorePreviewFields,
+    SettledRow: (props) => (
+      <SettledCourseStatusRow
+        {...props}
+        appliedTextKey="chat.operationProposal.courseRestore.accepted"
+        rejectedTextKey="chat.operationProposal.courseRestore.rejected"
+      />
+    ),
+  },
+  OP_LIBRARY_ITEM_UPDATE: {
+    label: (key) => `chat.operationProposal.libraryItemUpdate.${key}`,
+    PreviewFields: LibraryItemUpdatePreviewFields,
+    SettledRow: (props) => (
+      <SettledLibraryItemRow
+        {...props}
+        appliedTextKey="chat.operationProposal.libraryItemUpdate.accepted"
+        rejectedTextKey="chat.operationProposal.libraryItemUpdate.rejected"
+      />
+    ),
+  },
+  OP_LIBRARY_ITEM_ARCHIVE: {
+    label: (key) => `chat.operationProposal.libraryItemArchive.${key}`,
+    PreviewFields: LibraryItemArchivePreviewFields,
+    SettledRow: (props) => (
+      <SettledLibraryItemRow
+        {...props}
+        appliedTextKey="chat.operationProposal.libraryItemArchive.accepted"
+        rejectedTextKey="chat.operationProposal.libraryItemArchive.rejected"
+      />
+    ),
+  },
+  OP_LIBRARY_ITEM_RESTORE: {
+    label: (key) => `chat.operationProposal.libraryItemRestore.${key}`,
+    PreviewFields: LibraryItemRestorePreviewFields,
+    SettledRow: (props) => (
+      <SettledLibraryItemRow
+        {...props}
+        appliedTextKey="chat.operationProposal.libraryItemRestore.accepted"
+        rejectedTextKey="chat.operationProposal.libraryItemRestore.rejected"
+      />
+    ),
+  },
 };
 
-/** 本卡涵盖的操作提案类型（02 课程创建 / 03 向课程添加文本记录）＝配置表键。 */
+/** 本卡涵盖的操作提案类型（02 课程创建 / 03 文本记录 / 03' 修改与归档）＝配置表键。 */
 const OPERATION_PROPOSAL_TYPES = new Set(Object.keys(CARD_BY_TYPE));
 
 /** 操作卡文案键：查类型配置表（共用键的类型前缀分派，03 review 收敛单点）。 */
@@ -299,7 +693,11 @@ function ActionableProposalRow({
         </p>
       ) : null}
       <dl className="min-w-0 flex-1">
-        <PreviewFields payload={proposal.payload ?? {}} t={t} />
+        <PreviewFields
+          payload={proposal.payload ?? {}}
+          snapshot={proposal.snapshot ?? null}
+          t={t}
+        />
       </dl>
       <Button
         variant="ghost"

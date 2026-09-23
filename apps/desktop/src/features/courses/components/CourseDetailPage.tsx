@@ -2,8 +2,9 @@ import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { appToast } from "@/components/common/appToastManager";
 import {
   Sheet,
   SheetBody,
@@ -34,6 +35,7 @@ import { CourseMasteryGpsCard } from "@/features/courses/components/CourseMaster
 import { CourseRecentRecordsCard } from "@/features/courses/components/CourseRecentRecordsCard";
 import { CourseRecommendedPointsCard } from "@/features/courses/components/CourseRecommendedPointsCard";
 import { CourseRecordsPanel } from "@/features/courses/components/CourseRecordsPanel";
+import { ArchiveCourseDialog } from "@/features/courses/components/ArchiveCourseDialog";
 import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDialog";
 import { KnowledgeGpsTab } from "@/features/courses/components/KnowledgeGpsTab";
 import { QuizTestsPanel } from "@/features/quiz-tests/components/QuizTestsPanel";
@@ -59,9 +61,33 @@ export function CourseDetailPage({
 }: CourseDetailPageProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(initialEditing);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const restoreCourse = useMutation({
+    mutationFn: () => courseApi.unarchive(courseId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: courseKeys.detail(courseId),
+          exact: true,
+          refetchType: "none",
+        }),
+        queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
+      ]);
+      appToast.add({ description: t("spaces.archive.restoreDone") });
+    },
+    onError: (error) => {
+      appToast.add({
+        description:
+          error instanceof Error
+            ? error.message
+            : t("spaces.archive.restoreFailed"),
+      });
+    },
+  });
   const course = useQuery({
     queryKey: courseKeys.detail(courseId),
     queryFn: () => courseApi.get(courseId),
@@ -241,6 +267,9 @@ export function CourseDetailPage({
                   records={records.data ?? []}
                   onEdit={() => setEditOpen(true)}
                   onDelete={() => setDeleteOpen(true)}
+                  onArchive={() => setArchiveOpen(true)}
+                  onRestore={() => restoreCourse.mutate()}
+                  restorePending={restoreCourse.isPending}
                 />
               </aside>
             </div>
@@ -339,6 +368,12 @@ export function CourseDetailPage({
                 setInfoOpen(false);
                 setDeleteOpen(true);
               }}
+              onArchive={() => {
+                setInfoOpen(false);
+                setArchiveOpen(true);
+              }}
+              onRestore={() => restoreCourse.mutate()}
+              restorePending={restoreCourse.isPending}
             />
           </SheetBody>
         </SheetContent>
@@ -348,6 +383,11 @@ export function CourseDetailPage({
         course={detail}
         open={editOpen}
         onOpenChange={setEditOpen}
+      />
+      <ArchiveCourseDialog
+        course={detail}
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
       />
       <DeleteCourseDialog
         course={detail}

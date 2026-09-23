@@ -320,3 +320,138 @@ describe("ChatOperationProposalCard — TEXT_RECORD_ADD（工单 03）", () => {
     expect(await screen.findByText("课程已不可用")).toBeVisible();
   });
 });
+
+function courseUpdateFixture(
+  overrides: Partial<{
+    id: string;
+    proposal_type: string;
+    status: string;
+    session_id: string | null;
+    error_code: string | null;
+    payload: Record<string, unknown>;
+    snapshot: Record<string, unknown> | null;
+    result: Record<string, unknown> | null;
+  }> = {},
+) {
+  return {
+    id: "p-u1",
+    proposal_type: "OP_COURSE_UPDATE",
+    status: "PENDING",
+    session_id: SESSION_ID,
+    payload: {
+      course_id: "course-1",
+      name: "Python 进阶",
+      learning_context: null,
+      education_stage: null,
+      depth: null,
+      course_type: null,
+      description: null,
+    },
+    snapshot: {
+      updated_at: "2026-09-21T08:00:00",
+      name: "Python 学习",
+      status: "ACTIVE",
+      learning_context: "INTEREST",
+      education_stage: null,
+      depth: "INTERMEDIATE",
+      course_type: null,
+      description: null,
+    },
+    result: null,
+    error_code: null,
+    ...overrides,
+  };
+}
+
+describe("ChatOperationProposalCard — 修改与归档动作（工单 03'）", () => {
+  it("OP_COURSE_UPDATE 预览：目标课程 + before/after（旧值删除线）", async () => {
+    listProposals.mockResolvedValue([courseUpdateFixture()]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("Python 进阶")).toBeVisible();
+    // 目标行与 before 旧值同文本（快照名）：各出现一次，其中旧值带删除线。
+    const mentions = screen.getAllByText("Python 学习");
+    expect(mentions).toHaveLength(2);
+    expect(mentions[1]).toHaveClass("line-through");
+    expect(screen.getByText("目标课程")).toBeVisible();
+  });
+
+  it("OP_COURSE_UPDATE 确认转回执：修改结果 + 课程入口", async () => {
+    confirmProposal.mockResolvedValue({
+      ...courseUpdateFixture(),
+      status: "APPLIED",
+      result: {
+        course_id: "course-1",
+        before: { name: "Python 学习" },
+        after: { name: "Python 进阶" },
+      },
+    });
+    listProposals.mockResolvedValue([courseUpdateFixture()]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认修改课程" }),
+    );
+    expect(await screen.findByText("课程已修改。")).toBeVisible();
+    expect(screen.getByRole("link", { name: "打开课程" })).toBeVisible();
+  });
+
+  it("快照失效 FAILED：稳定错误码翻译可读且可重试", async () => {
+    listProposals.mockResolvedValue([
+      courseUpdateFixture({
+        status: "FAILED",
+        error_code: "OPERATION_SNAPSHOT_STALE",
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("课程修改未完成");
+    expect(alert).toHaveTextContent("目标已发生变化，提案已失效");
+    expect(screen.getByRole("button", { name: "确认修改课程" })).toBeEnabled();
+  });
+
+  it("OP_COURSE_ARCHIVE 预览：目标课程 + 影响提示行", async () => {
+    listProposals.mockResolvedValue([
+      courseUpdateFixture({
+        id: "p-a1",
+        proposal_type: "OP_COURSE_ARCHIVE",
+        payload: { course_id: "course-1" },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("Python 学习")).toBeVisible();
+    expect(
+      screen.getByText(
+        "归档后课程保留全部数据，但不再接受新资料；之后可恢复。",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认归档课程" })).toBeEnabled();
+  });
+
+  it("OP_LIBRARY_ITEM_UPDATE 预览：目标条目 + 标题 before/after + 归类课程名", async () => {
+    get.mockResolvedValue({ id: "course-2", name: "目标课程" });
+    listProposals.mockResolvedValue([
+      courseUpdateFixture({
+        id: "p-i1",
+        proposal_type: "OP_LIBRARY_ITEM_UPDATE",
+        payload: {
+          item_id: "item-1",
+          title: "新标题",
+          course_id: "course-2",
+        },
+        snapshot: {
+          updated_at: "2026-09-21T08:00:00",
+          title: "生命周期条目",
+          course_id: null,
+          status: "ACTIVE",
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    // 目标行与标题 before 旧值同文本：各一次，其中旧值带删除线。
+    const mentions = await screen.findAllByText("生命周期条目");
+    expect(mentions).toHaveLength(2);
+    expect(mentions[1]).toHaveClass("line-through");
+    expect(screen.getByText("新标题")).toBeVisible();
+    expect(await screen.findByText("目标课程")).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认修改条目" })).toBeEnabled();
+  });
+});

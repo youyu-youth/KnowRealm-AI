@@ -1,4 +1,4 @@
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Pencil, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import type { CourseDetail } from "@/features/courses/api/types";
@@ -19,6 +19,10 @@ type CourseInfoPanelProps = {
   records: RecordOut[];
   onEdit: () => void;
   onDelete: () => void;
+  /** 归档 / 恢复入口（工单 03，同一领域端点）：归档经二次确认由父层弹出。 */
+  onArchive: () => void;
+  onRestore: () => void;
+  restorePending?: boolean;
 };
 
 const MAX_VISIBLE_TAGS = 4;
@@ -29,6 +33,9 @@ export function CourseInfoPanel({
   records,
   onEdit,
   onDelete,
+  onArchive,
+  onRestore,
+  restorePending = false,
 }: CourseInfoPanelProps) {
   const { t } = useTranslation();
   const hotWords = course.hot_words ?? [];
@@ -149,6 +156,25 @@ export function CourseInfoPanel({
       </div>
 
       <div className="border-border-subtle mt-3 border-t pt-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="justify-start"
+          disabled={restorePending}
+          onClick={course.status === "ARCHIVED" ? onRestore : onArchive}
+        >
+          {course.status === "ARCHIVED" ? (
+            <>
+              <ArchiveRestore data-icon="inline-start" aria-hidden="true" />
+              {t("spaces.archive.restoreAction")}
+            </>
+          ) : (
+            <>
+              <Archive data-icon="inline-start" aria-hidden="true" />
+              {t("spaces.archive.action")}
+            </>
+          )}
+        </Button>
         <Button
           variant="ghost"
           size="sm"

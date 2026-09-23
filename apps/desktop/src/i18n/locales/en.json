@@ -758,6 +758,17 @@
       "confirm": "Delete",
       "deleting": "Deleting course"
     },
+    "archive": {
+      "action": "Archive course",
+      "restoreAction": "Restore course",
+      "title": "Archive this course?",
+      "description": "Once “{{name}}” is archived, it no longer accepts new material. All data is kept and it can be restored anytime.",
+      "cancel": "Cancel",
+      "confirm": "Archive",
+      "archiving": "Archiving course",
+      "restoreDone": "Course restored; it can accept new material again.",
+      "restoreFailed": "Restoring the course failed. Please retry."
+    },
     "records": {
       "title": "Records",
       "loading": "Loading Records",
@@ -1863,6 +1874,65 @@
         "summaryNotTriggered": "AI summary was not triggered (AI service is not configured or external processing is not consented).",
         "summaryFailed": "Submitting the summary job failed ({{reason}}). You can retry on the record page.",
         "courseUnavailable": "The course is no longer available"
+      },
+      "modify": {
+        "targetCourse": "Target course",
+        "targetItem": "Target item"
+      },
+      "courseUpdate": {
+        "accepted": "Course updated.",
+        "rejected": "Rejected; the course was not changed.",
+        "failed": "The course change did not complete.",
+        "failedDetail": "The course change did not complete ({{reason}}). You can re-confirm.",
+        "accept": "Confirm course change",
+        "reject": "Don't change the course"
+      },
+      "courseArchive": {
+        "accepted": "Course archived.",
+        "rejected": "Rejected; the course was not archived.",
+        "failed": "Archiving the course did not complete.",
+        "failedDetail": "Archiving the course did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm archiving the course",
+        "reject": "Don't archive the course",
+        "hint": "An archived course keeps all its data but no longer accepts new material; it can be restored later."
+      },
+      "courseRestore": {
+        "accepted": "Course restored.",
+        "rejected": "Rejected; the course was not restored.",
+        "failed": "Restoring the course did not complete.",
+        "failedDetail": "Restoring the course did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm restoring the course",
+        "reject": "Don't restore the course",
+        "hint": "A restored course returns to normal and can accept new material again."
+      },
+      "libraryItemUpdate": {
+        "accepted": "Item updated.",
+        "rejected": "Rejected; the item was not changed.",
+        "failed": "The item change did not complete.",
+        "failedDetail": "The item change did not complete ({{reason}}). You can re-confirm.",
+        "accept": "Confirm item change",
+        "reject": "Don't change the item",
+        "titleField": "Title",
+        "courseField": "Course",
+        "openItem": "Open item"
+      },
+      "libraryItemArchive": {
+        "accepted": "Item archived.",
+        "rejected": "Rejected; the item was not archived.",
+        "failed": "Archiving the item did not complete.",
+        "failedDetail": "Archiving the item did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm archiving the item",
+        "reject": "Don't archive the item",
+        "hint": "An archived item leaves the default view; its records and assets are kept and it can be restored later."
+      },
+      "libraryItemRestore": {
+        "accepted": "Item restored.",
+        "rejected": "Rejected; the item was not restored.",
+        "failed": "Restoring the item did not complete.",
+        "failedDetail": "Restoring the item did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm restoring the item",
+        "reject": "Don't restore the item",
+        "hint": "A restored item returns to the default view."
       }
     },
     "authMode": {
@@ -2480,6 +2550,8 @@
     "CHAT_STREAM_FAILED": "The answer failed to generate. Please try again later.",
     "CHAT_STREAM_IN_PROGRESS": "This chat is already generating an answer. Please wait a moment.",
     "CORRUPT_AUDIO": "The audio is corrupted.",
+    "COURSE_ALREADY_ACTIVE": "The course is not archived.",
+    "COURSE_ALREADY_ARCHIVED": "The course is already archived.",
     "COURSE_ARCHIVED": "Archived courses cannot receive new material or generate content.",
     "COURSE_BRAIN_BUILD_IN_PROGRESS": "A course brain build is already running.",
     "COURSE_BRAIN_CONCEPT_EXISTS": "A concept with the same name already exists.",
@@ -2597,6 +2669,7 @@
     "LIBRARY_ITEM_NOT_FOUND": "Library item not found or deleted",
     "LIBRARY_PATCH_EMPTY": "Provide at least one field to update",
     "LEARNER_OBSERVED_KEY_NOT_FOUND": "Observed preference not found or already removed",
+    "OPERATION_SNAPSHOT_STALE": "The target has changed; the proposal is stale. Please preview and confirm again.",
     "PROPOSAL_NOT_FOUND": "Proposal not found",
     "PROPOSAL_ALREADY_DECIDED": "Proposal already decided",
     "PROPOSAL_APPLY_FAILED": "Failed to apply proposal ({{errorCode}})",

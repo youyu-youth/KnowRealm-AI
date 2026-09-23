@@ -43,6 +43,10 @@ export const courseApi = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  archive: (courseId: string) =>
+    apiFetch<Course>(`/api/courses/${courseId}/archive`, { method: "POST" }),
+  unarchive: (courseId: string) =>
+    apiFetch<Course>(`/api/courses/${courseId}/unarchive`, { method: "POST" }),
   delete: (courseId: string) =>
     apiFetchNoContent(`/api/courses/${courseId}`, { method: "DELETE" }),
 };
