@@ -9,9 +9,12 @@ export const settingsKeys = {
   profile: ["settings", "profile"] as const,
   learnerMemory: ["settings", "learner-memory"] as const,
   profileAvatar: ["settings", "profile-avatar"] as const,
-  operationRuns: ["settings", "operation-runs"] as const,
+  /** status 省略（含全部）时即基础前缀，供 mutation 前缀失效所有过滤变体与详情。 */
+  operationRuns: (status?: string) =>
+    ["settings", "operation-runs", ...(status ? [status] : [])] as const,
   operationRunDetail: (runId: string) =>
     ["settings", "operation-runs", runId] as const,
-  operations: ["settings", "operations"] as const,
+  operations: (status?: string) =>
+    ["settings", "operations", ...(status ? [status] : [])] as const,
   agentActivity: ["settings", "agent-activity"] as const,
 };

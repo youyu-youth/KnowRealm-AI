@@ -165,6 +165,27 @@ describe("OperationHistorySection", () => {
     });
   });
 
+  it("单任务删除后同时失效任务与单步操作列表（后端 FK 级联删其操作）", async () => {
+    listRuns.mockResolvedValueOnce([runData()]).mockResolvedValue([]);
+    listOperations
+      .mockResolvedValueOnce([operationData()])
+      .mockResolvedValue([]);
+    deleteRun.mockResolvedValue(undefined);
+    renderWithQuery(<OperationHistorySection />);
+    await screen.findByText("把这些条目都归到课程 X");
+    expect(listRuns).toHaveBeenCalledTimes(1);
+    expect(listOperations).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "删除该任务的历史" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^删除$/ }));
+    await waitFor(() => {
+      expect(deleteRun).toHaveBeenCalledWith("run-1");
+    });
+    await waitFor(() => {
+      expect(listRuns).toHaveBeenCalledTimes(2);
+      expect(listOperations).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("失败操作展示错误码", async () => {
     listOperations.mockResolvedValue([
       operationData({

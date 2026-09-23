@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
@@ -117,6 +122,17 @@ function statusTone(status: string): string {
   return "text-muted-foreground";
 }
 
+/** 删除/清理后失效全部操作历史查询（无参工厂键=基础前缀，连带各状态
+ * 过滤变体与 run 详情；单 run 删除因后端 FK 级联同样要失效单步操作列表）。 */
+function invalidateHistory(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({
+    queryKey: settingsKeys.operationRuns(),
+  });
+  void queryClient.invalidateQueries({
+    queryKey: settingsKeys.operations(),
+  });
+}
+
 /** 操作历史分区（通用 Agent 第二阶段工单 01）：任务（run）列表展开逐操作、
  * 单步操作条目、模式切换审计与显式清理。Run 推进与模式切换写入随 02/05 票
  * 接入——本阶段 runs / activity 恒空态，操作条目由第一阶段两类动作确认回写。 */
@@ -127,19 +143,10 @@ export function OperationHistorySection() {
   const [runFilter, setRunFilter] = useState<string>(ALL_OPTION);
   const [operationFilter, setOperationFilter] = useState<string>(ALL_OPTION);
 
-  const invalidateHistory = () => {
-    void queryClient.invalidateQueries({
-      queryKey: settingsKeys.operationRuns,
-    });
-    void queryClient.invalidateQueries({
-      queryKey: settingsKeys.operations,
-    });
-  };
-
   const purge = useMutation({
     mutationFn: () => operationHistoryApi.purgeFinished(),
     onSuccess: () => {
-      invalidateHistory();
+      invalidateHistory(queryClient);
       purge.reset();
       setPurgeOpen(false);
     },
@@ -231,21 +238,17 @@ function RunsBlock({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
+  const status = filter === ALL_OPTION ? undefined : filter;
   const runs = useQuery({
-    queryKey: [...settingsKeys.operationRuns, filter],
-    queryFn: () =>
-      operationHistoryApi.listRuns(
-        filter === ALL_OPTION ? {} : { status: filter },
-      ),
+    queryKey: settingsKeys.operationRuns(status),
+    queryFn: () => operationHistoryApi.listRuns(status ? { status } : {}),
   });
 
   const removeRun = useMutation({
     mutationFn: (runId: string) => operationHistoryApi.deleteRun(runId),
     onSuccess: () => {
       setDeleteTargetId(null);
-      void queryClient.invalidateQueries({
-        queryKey: settingsKeys.operationRuns,
-      });
+      invalidateHistory(queryClient);
     },
   });
 
@@ -424,12 +427,10 @@ function OperationsBlock({
   onFilterChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
+  const status = filter === ALL_OPTION ? undefined : filter;
   const operations = useQuery({
-    queryKey: [...settingsKeys.operations, filter],
-    queryFn: () =>
-      operationHistoryApi.listOperations(
-        filter === ALL_OPTION ? {} : { status: filter },
-      ),
+    queryKey: settingsKeys.operations(status),
+    queryFn: () => operationHistoryApi.listOperations(status ? { status } : {}),
   });
 
   return (

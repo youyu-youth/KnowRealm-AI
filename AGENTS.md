@@ -103,7 +103,8 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 8. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
 
 9. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
-10.agent相关功能，多使用Middleware等
+
+10. agent相关功能，多使用Middleware 中间件等 （优先遵循）
 
 
 

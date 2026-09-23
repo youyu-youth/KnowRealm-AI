@@ -49,6 +49,12 @@ app/
 - api 路由前缀：`/api/courses`、`/api/records…`（含 `GET /records/{id}/events` SSE、`/{id}/summary*` 总结读/生成/调整/确认/版本、`/{id}/transcript`、`/{id}/jobs`）、`/api/audio-imports`、`/api/capture-batches`、`/api/chat-sessions`、`/api/document-imports`、`/api/library`、`/api/processing-jobs`、`/api/profile`、`/api/proposals`、`/api/recording-sessions`、`/api/search`、`/api/settings…`（providers/llm 与 external-processing-consents）、`/api/text-captures`、`/api/today/pending-summaries`、`/api/health`。
 - services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（job_runner 骨架 + 十个 worker 执行体、processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation、summary_derivation）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service）；今日待办（today_service）；AI 对话（agent/session_service）；档案（profile_service）；学习证据（learning/consumer / mastery / queries）；资料库（library/service / backfill / proposals）；复习资料（review_material/service）；全局搜索（search/service / tokenizer / web_search / integrations/tavily）；源锚点（source_anchor/source_anchors）。
 
+## agent功能代码编写向导
+
+涉及 `langchain` / `langGraph` / `Deep Agents` 等 Agent 相关代码的编写、设计、搭建时，必须先使用 **langchain mcp 工具**（`langchain-docs`，` langchain-reference`）查询官方文档与 API 参考，**复用现成能力、避免重复造轮子**；或使用 `.agents/skills/` / `.zcode/skills/` / `.claude/skills/` 下的相关 skills（langchain-* / langgraph-* / deep-agents-*）。
+
+**多使用Middleware 中间件等**
+
 ## 关键机制
 
 ### 启动握手（与 Tauri 壳的协议）
