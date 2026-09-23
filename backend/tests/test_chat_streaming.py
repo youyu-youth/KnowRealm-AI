@@ -1682,7 +1682,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v13"
+        assert rows[0][3] == "chat-library-scope-v14"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2189,7 +2189,8 @@ async def test_scope_mounting_matrix_tool_visibility(
             # add_text_record_to_course 恒挂载（工单 01 操作工具组 / 02 课程创建
             # 提案 / 03 文本记录提案 / 工单 06 任意会话支持用户明确「记住…」）
             # + 修改与归档动作六工具（工单 03'：update/archive/restore_course 与
-            # update/archive/restore_library_item，顺序 = 装配段）。
+            # update/archive/restore_library_item）+ 删除与迁移三工具（工单 04：
+            # soft_delete_record / delete_course / move_record_course，顺序 = 装配段）。
             assert await visible(free_id) == [
                 "search_courses",
                 "propose_memory",
@@ -2201,6 +2202,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_library_item",
                 "archive_library_item",
                 "restore_library_item",
+                "soft_delete_record",
+                "delete_course",
+                "move_record_course",
             ]
             assert await visible(record_session_id) == [
                 "search_library",
@@ -2214,6 +2218,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_library_item",
                 "archive_library_item",
                 "restore_library_item",
+                "soft_delete_record",
+                "delete_course",
+                "move_record_course",
             ]
             assert await visible(course_session_id) == [
                 "search_library",
@@ -2227,6 +2234,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_library_item",
                 "archive_library_item",
                 "restore_library_item",
+                "soft_delete_record",
+                "delete_course",
+                "move_record_course",
             ]
             assert await visible(all_session_id) == [
                 "search_library",
@@ -2240,6 +2250,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_library_item",
                 "archive_library_item",
                 "restore_library_item",
+                "soft_delete_record",
+                "delete_course",
+                "move_record_course",
             ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
@@ -2259,6 +2272,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_library_item",
                 "archive_library_item",
                 "restore_library_item",
+                "soft_delete_record",
+                "delete_course",
+                "move_record_course",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
@@ -2273,6 +2289,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_library_item",
                 "archive_library_item",
                 "restore_library_item",
+                "soft_delete_record",
+                "delete_course",
+                "move_record_course",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
@@ -2287,6 +2306,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_library_item",
                 "archive_library_item",
                 "restore_library_item",
+                "soft_delete_record",
+                "delete_course",
+                "move_record_course",
             ]
 
 

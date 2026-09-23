@@ -1,4 +1,6 @@
+import asyncio
 import json
+from collections.abc import Callable, Collection
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +19,7 @@ from app.modules.course.schemas import (
 )
 from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
+from app.modules.learning.service import MasteryService
 from app.modules.record.models import LearningEvent, Record
 from app.modules.search.service import SearchService
 from app.shared.errors import CodedHTTPException
@@ -166,54 +169,103 @@ class CourseService:
         return list((await session.scalars(statement)).all())
 
     @staticmethod
-    async def soft_delete(session: AsyncSession, course_id: str) -> set[str] | None:
-        """软删除课程及其 Record，并返回受影响的 Concept 集合（None = 课程不存在）。
+    async def soft_delete_core(
+        session: AsyncSession, course: Course
+    ) -> "tuple[set[str], int]":
+        """课程软删事务内核心（工单 04 收拢，不得自行 begin）：级联软删记录＋
+        取消非终态任务＋录音会话脱钩；返回（受影响 Concept 集合, 被级联软删的
+        记录条数）——概念由调用方触发 Mastery 重算，计数进回执投影。删除纪律
+        沿用 Record 链。"""
+        affected_concepts = {
+            concept_id
+            for concept_id in (
+                await session.scalars(
+                    select(LearningEvent.concept_id).where(
+                        LearningEvent.course_id == course.id,
+                        LearningEvent.concept_id.is_not(None),
+                    )
+                )
+            ).all()
+            if concept_id is not None
+        }
+        deleted_at = utcnow()
+        record_ids = list(
+            (
+                await session.scalars(
+                    select(Record.id).where(
+                        Record.course_id == course.id,
+                        Record.deleted_at.is_(None),
+                    )
+                )
+            ).all()
+        )
+        await cancel_nonterminal_jobs(
+            session,
+            record_filter=ProcessingJob.record_id.in_(record_ids),
+            now=deleted_at,
+        )
+        await session.execute(
+            update(RecordingSession)
+            .where(
+                RecordingSession.course_id == course.id,
+                RecordingSession.state != RecordingSessionState.DONE,
+            )
+            .values(course_id=None, updated_at=deleted_at)
+        )
+        await session.execute(
+            update(Record)
+            .where(
+                Record.course_id == course.id,
+                Record.deleted_at.is_(None),
+            )
+            .values(deleted_at=deleted_at, updated_at=deleted_at)
+        )
+        course.deleted_at = deleted_at
+        course.updated_at = deleted_at
+        await session.flush()
+        return affected_concepts, len(record_ids)
 
-        删除纪律沿用 Record 链；受影响概念由调用方触发 Mastery 全量重算。
+    @staticmethod
+    async def apply_soft_delete(
+        session: AsyncSession,
+        course: Course,
+        *,
+        schedule_retry: Callable[[Collection[str]], None] | None = None,
+    ) -> "tuple[int, list[asyncio.Task[None]]]":
+        """课程删除领域应用函数（工单 04，spec 决策 15）：调用方拥有事务边界，
+        HTTP 路由与 Agent 应用器共用——级联软删（soft_delete_core）＋掌握度
+        重算＋consumer 重试一体编排；重算经 after_commit 挂钩在事务提交后执行
+        （回滚不触发；失败交 stale 哨兵启动恢复或 schedule_retry 进程内自愈）。
+
+        返回（被级联软删的记录条数, 重算任务容器）：需要同步等待重算完成的
+        调用方（HTTP 删除路由的既有语义）在事务提交后 await 容器元素，Agent
+        确认路径忽略容器由后台执行。
         """
+        affected_concepts, record_count = await CourseService.soft_delete_core(session, course)
+        recompute_tasks = MasteryService.schedule_recompute_after_commit(
+            session, affected_concepts, schedule_retry=schedule_retry
+        )
+        return record_count, recompute_tasks
+
+    @staticmethod
+    async def soft_delete(
+        session: AsyncSession,
+        course_id: str,
+        *,
+        schedule_retry: Callable[[Collection[str]], None] | None = None,
+    ) -> bool:
+        """课程软删 HTTP 入口（False = 课程不存在）：删除与重算编排一体
+        （apply_soft_delete，工单 04 收拢——重算不再留在路由层）；既有路由
+        语义保持同步等待重算完成后再返回。"""
+        recompute_tasks: list[asyncio.Task[None]] = []
         async with session.begin():
             course = await CourseService.get(session, course_id)
             if course is None:
-                return None
-            affected_concepts = {
-                concept_id
-                for concept_id in (
-                    await session.scalars(
-                        select(LearningEvent.concept_id).where(
-                            LearningEvent.course_id == course_id,
-                            LearningEvent.concept_id.is_not(None),
-                        )
-                    )
-                ).all()
-                if concept_id is not None
-            }
-            deleted_at = utcnow()
-            record_ids = select(Record.id).where(
-                Record.course_id == course_id,
-                Record.deleted_at.is_(None),
+                return False
+            _, recompute_tasks = await CourseService.apply_soft_delete(
+                session, course, schedule_retry=schedule_retry
             )
-            await cancel_nonterminal_jobs(
-                session,
-                record_filter=ProcessingJob.record_id.in_(record_ids),
-                now=deleted_at,
-            )
-            await session.execute(
-                update(RecordingSession)
-                .where(
-                    RecordingSession.course_id == course_id,
-                    RecordingSession.state != RecordingSessionState.DONE,
-                )
-                .values(course_id=None, updated_at=deleted_at)
-            )
-            await session.execute(
-                update(Record)
-                .where(
-                    Record.course_id == course_id,
-                    Record.deleted_at.is_(None),
-                )
-                .values(deleted_at=deleted_at, updated_at=deleted_at)
-            )
-            course.deleted_at = deleted_at
-            course.updated_at = deleted_at
-            await session.flush()
-        return affected_concepts
+        # 删除事务已提交（挂钩已把重算任务填入容器），同步等待完成。
+        if recompute_tasks:
+            await recompute_tasks[0]
+        return True

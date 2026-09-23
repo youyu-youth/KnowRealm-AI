@@ -11,7 +11,6 @@ from app.modules.course.schemas import (
     CourseUpdate,
 )
 from app.modules.course.service import CourseService
-from app.modules.learning.service import MasteryService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
@@ -114,15 +113,15 @@ async def delete_course(
     request: Request,
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    affected_concepts = await CourseService.soft_delete(session, course_id)
-    if affected_concepts is None:
+    """课程删除（工单 04 收拢，spec 决策 15）：级联软删＋掌握度重算＋consumer
+    重试一体在领域应用函数编排（apply_soft_delete），路由只传 app 侧依赖。"""
+    deleted = await CourseService.soft_delete(
+        session,
+        course_id,
+        schedule_retry=request.app.state.evidence_consumer.schedule_recompute,
+    )
+    if not deleted:
         raise CodedHTTPException(
             code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
         )
-    # 删除事务已提交；重算失败标 stale 并交 consumer 轮询重试，不回滚删除。
-    failed = await MasteryService.recompute_concepts(
-        request.app.state.session_factory, affected_concepts
-    )
-    if failed:
-        request.app.state.evidence_consumer.schedule_recompute(failed)
     return Response(status_code=204)

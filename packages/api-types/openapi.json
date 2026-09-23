@@ -5436,7 +5436,10 @@
           "OP_COURSE_RESTORE",
           "OP_LIBRARY_ITEM_UPDATE",
           "OP_LIBRARY_ITEM_ARCHIVE",
-          "OP_LIBRARY_ITEM_RESTORE"
+          "OP_LIBRARY_ITEM_RESTORE",
+          "OP_RECORD_SOFT_DELETE",
+          "OP_COURSE_SOFT_DELETE",
+          "OP_RECORD_MOVE_COURSE"
         ],
         "title": "ProposalType",
         "type": "string"
@@ -10684,6 +10687,7 @@
     },
     "/api/courses/{course_id}": {
       "delete": {
+        "description": "课程删除（工单 04 收拢，spec 决策 15）：级联软删＋掌握度重算＋consumer\n重试一体在领域应用函数编排（apply_soft_delete），路由只传 app 侧依赖。",
         "operationId": "delete_course_api_courses__course_id__delete",
         "parameters": [
           {

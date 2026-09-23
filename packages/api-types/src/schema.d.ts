@@ -299,7 +299,11 @@ export interface paths {
         get: operations["get_course_api_courses__course_id__get"];
         put?: never;
         post?: never;
-        /** Delete Course */
+        /**
+         * Delete Course
+         * @description 课程删除（工单 04 收拢，spec 决策 15）：级联软删＋掌握度重算＋consumer
+         *     重试一体在领域应用函数编排（apply_soft_delete），路由只传 app 侧依赖。
+         */
         delete: operations["delete_course_api_courses__course_id__delete"];
         options?: never;
         head?: never;
@@ -4352,7 +4356,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */

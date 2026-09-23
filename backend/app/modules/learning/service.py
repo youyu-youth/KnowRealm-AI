@@ -5,13 +5,14 @@
 本模块不调用 LLM、不读墙钟时间（除写入 updated_at）。
 """
 
+import asyncio
 import json
-from collections.abc import Collection
+from collections.abc import Callable, Collection
 from typing import NamedTuple, cast
 from uuid import uuid4
 
 from loguru import logger
-from sqlalchemy import select, update
+from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
@@ -260,6 +261,52 @@ class MasteryService:
                 )
                 await _mark_snapshot_stale(session_factory, concept_id)
         return failed
+
+    @staticmethod
+    def schedule_recompute_after_commit(
+        session: AsyncSession,
+        concept_ids: Collection[str],
+        *,
+        schedule_retry: Callable[[Collection[str]], None] | None = None,
+    ) -> "list[asyncio.Task[None]]":
+        """把掌握度重算登记为事务提交后动作（删除路径共用，工单 04，spec 决策 15）。
+
+        重算必须读已提交状态：删除事务持写锁时并发新会话会读到旧态（或撞
+        SQLITE_BUSY），经 after_commit 挂钩在提交时调度后台任务——回滚则不触发
+        （未发生＝无需重算），闭包标志位保证同一会话后续提交不重复触发。
+        重算会话由 session.bind 派生（同引擎连接池；Agent 确认路径无 app.state
+        句柄）。schedule_retry 为 None 时（Agent 路径）失败概念由重算内置的
+        stale 哨兵交启动恢复闭环；HTTP 路径传 consumer.schedule_recompute
+        获得 ≤30s 进程内自愈。
+
+        返回任务接收容器（提交后由挂钩填入）：需要同步等待重算完成的调用方
+        （HTTP 删除路由的既有语义）在事务提交后 await 容器元素；后台执行的
+        调用方（Agent 确认路径）忽略即可。
+        """
+        if not concept_ids:
+            return []
+        recompute_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
+            bind=session.bind, expire_on_commit=False
+        )
+        retry = schedule_retry
+        tasks: list[asyncio.Task[None]] = []
+
+        async def _run() -> None:
+            failed = await MasteryService.recompute_concepts(recompute_factory, set(concept_ids))
+            if failed and retry is not None:
+                retry(failed)
+
+        scheduled = False
+
+        def _fire(_: object) -> None:
+            nonlocal scheduled
+            if scheduled:
+                return
+            scheduled = True
+            tasks.append(asyncio.get_running_loop().create_task(_run()))
+
+        event.listen(session.sync_session, "after_commit", _fire)
+        return tasks
 
     @staticmethod
     async def recover_snapshots(

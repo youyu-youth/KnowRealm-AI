@@ -532,3 +532,122 @@ class LibraryItemArchiveResult(BaseModel):
 
     item_id: str
     status: str
+
+
+# ---------------------------------------------------------------------------
+# 删除与跨课迁移契约（通用 Agent 第二阶段工单 04，spec 决策 14/15/17/18）：
+# 删除类快照固化级联影响清单（课程删除＝记录清单与计数、记录删除＝记录级资产
+# 计数），批准后执行前出现实质差异（如新增记录）→ OPERATION_SNAPSHOT_STALE
+# 失效重新授权（spec 决策 12 / 用户故事 15）；迁移快照存原 course_id
+# （06 票 Undo＝反向迁移的补偿数据）。
+# ---------------------------------------------------------------------------
+
+
+class RecordStateSnapshot(BaseModel):
+    """record.move_course 执行前快照（spec 决策 12/17）：原 course_id 是 Undo
+    反向迁移的补偿数据。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    title: str
+    status: str
+    course_id: str | None = None
+
+
+class RecordDeleteSnapshot(BaseModel):
+    """record.soft_delete 执行前快照：updated_at 双保险＋记录级资产计数——
+    预览后资产新增（如知识点确认）属实质差异，重验失效重新授权。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    title: str
+    status: str
+    course_id: str | None = None
+    knowledge_point_count: int
+    quiz_count: int
+    todo_count: int
+    review_material_count: int
+    has_summary: bool
+
+
+class CourseDeleteSnapshotRecord(BaseModel):
+    """课程删除影响清单条目（id+标题，确认卡呈现记录清单）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str
+    title: str
+
+
+class CourseDeleteSnapshot(BaseModel):
+    """course.soft_delete 执行前快照：级联影响清单＝当前记录清单（id 排序保证
+    序列化稳定），批准后新增记录 → 清单差异 → 失效重新预览（Q8 场景）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    name: str
+    status: str
+    records: list[CourseDeleteSnapshotRecord]
+    record_count: int
+
+
+class RecordSoftDeletePayload(BaseModel):
+    """OP_RECORD_SOFT_DELETE 提案判别载荷（L3：任何档位逐项确认）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标学习记录 id（经 search_library 查找消歧后取得）",
+    )
+
+
+class RecordSoftDeleteResult(BaseModel):
+    """OP_RECORD_SOFT_DELETE 结果投影：被删记录 id 与标题（回执卡）。"""
+
+    record_id: str
+    title: str
+
+
+class CourseSoftDeletePayload(BaseModel):
+    """OP_COURSE_SOFT_DELETE 提案判别载荷（L3：任何档位逐项确认）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标课程 id（经 search_courses 查找消歧后取得）",
+    )
+
+
+class CourseSoftDeleteResult(BaseModel):
+    """OP_COURSE_SOFT_DELETE 结果投影：课程 id 与被级联删除的记录数。"""
+
+    course_id: str
+    record_count: int
+
+
+class RecordMoveCoursePayload(BaseModel):
+    """OP_RECORD_MOVE_COURSE 提案判别载荷（L2）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="要迁移的学习记录 id（经 search_library 查找消歧后取得）",
+    )
+    target_course_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标课程 id（经 search_courses 查找消歧后取得）",
+    )
+
+
+class RecordMoveCourseResult(BaseModel):
+    """OP_RECORD_MOVE_COURSE 结果投影：before/after 课程对照（回执卡）。"""
+
+    record_id: str
+    before_course_id: str | None = None
+    after_course_id: str | None = None

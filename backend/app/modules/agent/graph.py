@@ -62,6 +62,14 @@ from app.modules.agent.tools.create_course import (
     CREATE_COURSE_TOOL_NAME,
     create_course,
 )
+from app.modules.agent.tools.delete_course import (
+    DELETE_COURSE_TOOL_NAME,
+    delete_course,
+)
+from app.modules.agent.tools.move_record_course import (
+    MOVE_RECORD_COURSE_TOOL_NAME,
+    move_record_course,
+)
 from app.modules.agent.tools.propose_ingest import (
     PROPOSE_INGEST_TOOL_NAME,
     propose_ingest,
@@ -72,6 +80,10 @@ from app.modules.agent.tools.propose_memory import (
 )
 from app.modules.agent.tools.search_courses import search_courses
 from app.modules.agent.tools.search_library import search_library
+from app.modules.agent.tools.soft_delete_record import (
+    SOFT_DELETE_RECORD_TOOL_NAME,
+    soft_delete_record,
+)
 from app.modules.agent.tools.update_course import (
     UPDATE_COURSE_TOOL_NAME,
     update_course,
@@ -84,16 +96,17 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v13"
+CHAT_PROMPT_VERSION = "chat-library-scope-v14"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
-# 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 03：修改与归档
-# 动作六工具）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v14"
+# 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
+# 迁移三工具）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v15"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 # 操作工具族（工单 02 起）：成功返回经操作提案事件进 done 载荷（确认卡）。
-# 工单 03 追加修改与归档动作（六动作，动作名 = 注册项 action = 工具函数名）。
+# 工单 03 追加修改与归档动作（六动作）、工单 04 追加删除与跨课迁移（三动作），
+# 动作名 = 注册项 action = 工具函数名。
 OPERATION_TOOL_NAMES = frozenset(
     {
         CREATE_COURSE_TOOL_NAME,
@@ -104,6 +117,9 @@ OPERATION_TOOL_NAMES = frozenset(
         UPDATE_LIBRARY_ITEM_TOOL_NAME,
         ARCHIVE_LIBRARY_ITEM_TOOL_NAME,
         RESTORE_LIBRARY_ITEM_TOOL_NAME,
+        SOFT_DELETE_RECORD_TOOL_NAME,
+        DELETE_COURSE_TOOL_NAME,
+        MOVE_RECORD_COURSE_TOOL_NAME,
     }
 )
 # 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
@@ -241,7 +257,9 @@ def _resolve_agent_config(
     # + create_course 课程创建提案 + add_text_record_to_course 文本记录添加提案
     # （工单 02/03，spec 决策 12：写工具恒挂载全部会话类型，目标解析与会话范围
     # 解耦）+ 修改与归档动作组（工单 03：update/archive/restore_course 与
-    # update/archive/restore_library_item，L1 级、按档位自动继承直执行分流）。
+    # update/archive/restore_library_item，L1 级）+ 删除与迁移动作组（工单 04：
+    # soft_delete_record / delete_course（L3 恒确认）与 move_record_course（L2），
+    # 按注册表 level 声明自动继承档位分流）。
     config = AgentConfig(
         tools=(
             *config.tools,
@@ -255,6 +273,9 @@ def _resolve_agent_config(
             update_library_item,
             archive_library_item,
             restore_library_item,
+            soft_delete_record,
+            delete_course,
+            move_record_course,
         )
     )
     if research:

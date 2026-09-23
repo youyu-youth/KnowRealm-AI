@@ -130,54 +130,61 @@ class RecordService:
         )
 
     @staticmethod
+    async def soft_delete_core(session: AsyncSession, record: Record) -> set[str]:
+        """记录软删事务内核心（工单 04，不得自行 begin）：软删记录＋取消非终态
+        任务＋复习资料与 Todo 级联软删；返回受影响 Concept 集合（调用方触发
+        Mastery 重算）。历史 Event/Evidence 原样保留审计价值。"""
+        affected_concepts = {
+            concept_id
+            for concept_id in (
+                await session.scalars(
+                    select(LearningEvent.concept_id).where(
+                        LearningEvent.record_id == record.id,
+                        LearningEvent.concept_id.is_not(None),
+                    )
+                )
+            ).all()
+            if concept_id is not None
+        }
+        deleted_at = utcnow()
+        record.deleted_at = deleted_at
+        record.updated_at = deleted_at
+        await cancel_nonterminal_jobs(
+            session,
+            record_filter=ProcessingJob.record_id == record.id,
+            now=deleted_at,
+        )
+        await session.execute(
+            update(ReviewMaterial)
+            .where(
+                ReviewMaterial.record_id == record.id,
+                ReviewMaterial.deleted_at.is_(None),
+            )
+            .values(deleted_at=deleted_at, updated_at=deleted_at)
+        )
+        await session.execute(
+            update(TodoItem)
+            .where(
+                TodoItem.record_id == record.id,
+                TodoItem.deleted_at.is_(None),
+            )
+            .values(deleted_at=deleted_at, updated_at=deleted_at)
+        )
+        await session.flush()
+        return affected_concepts
+
+    @staticmethod
     async def soft_delete(session: AsyncSession, record_id: str) -> set[str] | None:
         """软删除并返回受影响的 Concept 集合（None = 记录不存在）。
 
-        历史 Event/Evidence 原样保留审计价值；受影响概念由调用方触发
-        Mastery 全量重算（删除事务先行提交，重算失败不回滚删除）。
+        受影响概念由调用方触发 Mastery 全量重算（删除事务先行提交，重算失败
+        不回滚删除）。
         """
         async with session.begin():
             record = await RecordService.get(session, record_id)
             if record is None:
                 return None
-            affected_concepts = {
-                concept_id
-                for concept_id in (
-                    await session.scalars(
-                        select(LearningEvent.concept_id).where(
-                            LearningEvent.record_id == record_id,
-                            LearningEvent.concept_id.is_not(None),
-                        )
-                    )
-                ).all()
-                if concept_id is not None
-            }
-            deleted_at = utcnow()
-            record.deleted_at = deleted_at
-            record.updated_at = deleted_at
-            await cancel_nonterminal_jobs(
-                session,
-                record_filter=ProcessingJob.record_id == record_id,
-                now=deleted_at,
-            )
-            await session.execute(
-                update(ReviewMaterial)
-                .where(
-                    ReviewMaterial.record_id == record_id,
-                    ReviewMaterial.deleted_at.is_(None),
-                )
-                .values(deleted_at=deleted_at, updated_at=deleted_at)
-            )
-            await session.execute(
-                update(TodoItem)
-                .where(
-                    TodoItem.record_id == record_id,
-                    TodoItem.deleted_at.is_(None),
-                )
-                .values(deleted_at=deleted_at, updated_at=deleted_at)
-            )
-            await session.flush()
-        return affected_concepts
+            return await RecordService.soft_delete_core(session, record)
 
     @staticmethod
     async def update_transcript(
