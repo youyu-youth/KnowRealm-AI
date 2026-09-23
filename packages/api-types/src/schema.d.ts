@@ -35,12 +35,7 @@ export interface paths {
         get: operations["get_auth_mode_api_agent_auth_mode_get"];
         /**
          * Put Auth Mode
-         * @description 切换全局默认档：先写审计行、后改 settings.json 偏离项。
-         *
-         *     两步终究非原子，顺序选「审计先行」让失败方向落在安全侧——审计失败
-         *     （DB 故障）时档未变、客户端重试即可；不反向（先改档后审计失败会产生
-         *     档已变而审计链缺行的口径裂缝）。from 后端自读 settings.json 权威值。
-         *     只影响之后的新会话与未携带覆盖的请求。
+         * @description 切换全局默认档（编排见 switch_global_auth_mode，只影响新会话与未携带覆盖的请求）。
          */
         put: operations["put_auth_mode_api_agent_auth_mode_put"];
         post?: never;
@@ -62,9 +57,6 @@ export interface paths {
         /**
          * Post Session Auth Mode Switch
          * @description 会话内临时切档的审计行（会话档位在前端内存，本端点只留痕）。
-         *
-         *     会话不存在拒绝写审计（避免悬挂溯源）；from 由客户端按其看到的当前
-         *     生效档上报（会话覆盖 ?? 全局默认，后端无从得知前端内存态）。
          */
         post: operations["post_session_auth_mode_switch_api_agent_auth_mode_sessions_post"];
         delete?: never;
