@@ -24,6 +24,7 @@
 
 - 双轴 review（Standards/Spec）后修复四项：全局切档 from 改后端自读（审计权威口径）；切档顺序改审计先行（失败=档未变，安全侧）；会话切档端点 204（消除 AgentAuthModeOut 语义误用）；回执卡授权档缺失回退默认档显示。
 - 真机验收修复（1310a01）：会话切档端点改 204 后前端 `postSessionSwitch` 仍用 `apiFetch`（无条件 `.json()` 解析空 body 报 "Unexpected end of JSON input"），改用 `apiFetchNoContent`（chatSessions.delete 先例）；组件测试 mock 了 API 层故自动化未拦截，属 API 实现层笔误。
+- GPT review P1 修复（bf17ac3）：流式生成中途降档不能约束本轮后续工具提交（档位随 runtime 在受理时固化，spec 用户故事 6 缺口）——会话切档端点审计落定后同步写进程内覆盖注册表（`agent/auth_mode.py`，sidecar 单进程先例），`submit_operation` 分流改读生效档＝覆盖档与本轮起点档取更严格者：**降档即时收紧本轮、升档自下一轮生效**（下一轮请求携带新档后两端一致；重启清空注册表＝回落全局默认安全方向）；直执行的 authorization_json 与回执载荷改记执行时实际生效档。断言：流中降档同 runtime 后续提交落提案、流中升档不放宽本轮、端点写注册表。
 - 「历史已清理」占位边界：仅当轮会话内可判定（done 载荷内存态 vs 查询缺席）；跨重启后无消息级持久锚点、已清理回执不显示占位（卡片整体消失）。spec 用户故事 33 的完整跨重启占位需消息流持久化锚点，属后续票范围。
 - 「完全访问下 L3 直执行」真机演示暂不可行（本票无 L3 注册动作，03/04 票注册后自动继承分流矩阵）。
 - 工作区中 OperationHistorySection.tsx / settings keys.ts / AGENTS.md 的未提交改动来自并行会话（01 遗留前端缓存修复），未纳入本票提交。
