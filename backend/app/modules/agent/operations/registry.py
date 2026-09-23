@@ -250,6 +250,7 @@ async def _execute_operation_directly(
     成功 {ok, executed}；失败 {ok: False, error}（模型转述原因）。
     """
     payload_json = validated.model_dump_json()
+    target = spec.target_resolver(validated) if spec.target_resolver is not None else None
     authorization = _direct_authorization(runtime, auth_mode)
     # 应用器契约是 (session, proposal) 且只消费 payload_json（course_create /
     # text_record_add 均然），构造未落库的 transient 提案实例喂给应用器——
@@ -274,6 +275,7 @@ async def _execute_operation_directly(
                     session,
                     action=spec.action,
                     level=spec.level.value,
+                    target=target,
                     payload_json=payload_json,
                     authorization=authorization,
                     result_dict=result.model_dump(),
@@ -285,6 +287,7 @@ async def _execute_operation_directly(
                     session,
                     action=spec.action,
                     level=spec.level.value,
+                    target=target,
                     payload_json=payload_json,
                     authorization=authorization,
                     result_dict=None,
@@ -299,6 +302,7 @@ async def _execute_operation_directly(
                     session,
                     action=spec.action,
                     level=spec.level.value,
+                    target=target,
                     payload_json=payload_json,
                     authorization=authorization,
                     result_dict=None,

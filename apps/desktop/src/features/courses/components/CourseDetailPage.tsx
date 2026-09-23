@@ -73,7 +73,6 @@ export function CourseDetailPage({
         queryClient.invalidateQueries({
           queryKey: courseKeys.detail(courseId),
           exact: true,
-          refetchType: "none",
         }),
         queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
       ]);

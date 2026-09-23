@@ -19,6 +19,7 @@ from app.modules.capture.text_capture import MAX_TEXT_BYTES
 from app.modules.course.schemas import (
     CourseCreate,
     CourseType,
+    CourseUpdate,
     EducationStage,
     LearningContext,
     LearningDepth,
@@ -421,9 +422,8 @@ class LibraryItemStateSnapshot(BaseModel):
 class CourseUpdatePayload(BaseModel):
     """OP_COURSE_UPDATE 提案判别载荷：目标课程 id + 修改字段（spec 用户故事 10）。
 
-    hot_words 是录音设置的手动热词、不接入 Agent；字段级校验（strip / 空白）
-    与场景条件校验（学业须阶段、职业/兴趣须深度）复用 HTTP 契约 CourseUpdate
-    的同源链，在应用器构造时执行。
+    hot_words 是录音设置的手动热词、不接入 Agent；名称在提交时复用 HTTP
+    契约校验，场景条件校验在应用器构造 CourseUpdate 时执行。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -442,6 +442,11 @@ class CourseUpdatePayload(BaseModel):
     depth: LearningDepth | None = Field(default=None, description="职业或兴趣学习深度")
     course_type: CourseType | None = Field(default=None, description="课程类型")
     description: str | None = Field(default=None, description="课程说明")
+
+    @field_validator("name")
+    @classmethod
+    def clean_name(cls, value: str | None) -> str | None:
+        return CourseUpdate.clean_name(value)
 
     @model_validator(mode="after")
     def _require_change(self) -> "CourseUpdatePayload":

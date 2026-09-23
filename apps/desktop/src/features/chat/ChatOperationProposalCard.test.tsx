@@ -394,7 +394,7 @@ describe("ChatOperationProposalCard — 修改与归档动作（工单 03'）", 
     expect(screen.getByRole("link", { name: "打开课程" })).toBeVisible();
   });
 
-  it("快照失效 FAILED：稳定错误码翻译可读且可重试", async () => {
+  it("快照失效 FAILED：提示重新提案，不允许确认原提案", async () => {
     listProposals.mockResolvedValue([
       courseUpdateFixture({
         status: "FAILED",
@@ -405,7 +405,12 @@ describe("ChatOperationProposalCard — 修改与归档动作（工单 03'）", 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("课程修改未完成");
     expect(alert).toHaveTextContent("目标已发生变化，提案已失效");
-    expect(screen.getByRole("button", { name: "确认修改课程" })).toBeEnabled();
+    expect(alert).toHaveTextContent("请在对话中重新提出操作并预览新提案");
+    expect(alert).not.toHaveTextContent("可重新确认");
+    expect(
+      screen.queryByRole("button", { name: "确认修改课程" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "拒绝修改课程" })).toBeEnabled();
   });
 
   it("OP_COURSE_ARCHIVE 预览：目标课程 + 影响提示行", async () => {

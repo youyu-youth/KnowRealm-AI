@@ -654,6 +654,32 @@ async def test_organize_propose_confirm_reject(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_organize_skips_item_changed_during_generation(tmp_path: Path) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        item_id = "d0000000-0000-4000-8000-000000000702"
+        await seed_item(session_factory, item_id, course_id=None, title="原始标题")
+
+        async def fake_generate(prompt: str) -> OrganizeSuggestionBatch:
+            assert "原始标题" in prompt
+            await run_sql(
+                "UPDATE library_items SET title = :title, updated_at = :later WHERE id = :id",
+                {
+                    "title": "页面新标题",
+                    "later": "2026-09-22T08:00:00.000000Z",
+                    "id": item_id,
+                },
+                session_factory,
+            )
+            return OrganizeSuggestionBatch(
+                suggestions=[OrganizeSuggestion(item_id=item_id, title="AI 建议标题")]
+            )
+
+        proposed = await OrganizeService.propose(session_factory, fake_generate)
+        assert proposed.created == []
+        assert proposed.skipped == [item_id]
+
+
+@pytest.mark.anyio
 async def test_organize_propose_freezes_snapshot_and_stale_recheck(tmp_path: Path) -> None:
     """ORGANIZE 纪律（工单 03）：propose 同事务固化快照；确认前目标被手动改过
     → 重验失效（稳定错误码、不覆盖新修改）；正常确认 result 携带 before/after。"""

@@ -2669,7 +2669,7 @@
     "LIBRARY_ITEM_NOT_FOUND": "Library item not found or deleted",
     "LIBRARY_PATCH_EMPTY": "Provide at least one field to update",
     "LEARNER_OBSERVED_KEY_NOT_FOUND": "Observed preference not found or already removed",
-    "OPERATION_SNAPSHOT_STALE": "The target has changed; the proposal is stale. Please preview and confirm again.",
+    "OPERATION_SNAPSHOT_STALE": "The target has changed; this proposal is stale. Ask the Agent to prepare a new proposal, review it, then confirm.",
     "PROPOSAL_NOT_FOUND": "Proposal not found",
     "PROPOSAL_ALREADY_DECIDED": "Proposal already decided",
     "PROPOSAL_APPLY_FAILED": "Failed to apply proposal ({{errorCode}})",

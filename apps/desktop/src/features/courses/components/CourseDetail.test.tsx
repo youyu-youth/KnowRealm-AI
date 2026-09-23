@@ -975,6 +975,49 @@ describe("课程详情与编辑", () => {
     expect(within(infoPanel).getByText("内存")).toBeInTheDocument();
   });
 
+  it("归档与恢复后当前详情页立即显示服务端状态", async () => {
+    let status: CourseDetail["status"] = "ACTIVE";
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...schoolCourse, status }),
+      ),
+      http.post(`${DETAIL_URL}/archive`, () => {
+        status = "ARCHIVED";
+        return HttpResponse.json({ ...schoolCourse, status });
+      }),
+      http.post(`${DETAIL_URL}/unarchive`, () => {
+        status = "ACTIVE";
+        return HttpResponse.json({ ...schoolCourse, status });
+      }),
+    );
+    renderAt(ROUTE_PATH);
+
+    const infoPanel = await screen.findByRole("complementary", {
+      name: "课程信息",
+    });
+    fireEvent.click(
+      within(infoPanel).getByRole("button", { name: "归档课程" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "确认归档" }));
+
+    await waitFor(() => {
+      expect(within(infoPanel).getByText("(ARCHIVED)")).toBeVisible();
+      expect(
+        within(infoPanel).getByRole("button", { name: "恢复课程" }),
+      ).toBeVisible();
+    });
+    fireEvent.click(
+      within(infoPanel).getByRole("button", { name: "恢复课程" }),
+    );
+
+    await waitFor(() => {
+      expect(within(infoPanel).getByText("(ACTIVE)")).toBeVisible();
+      expect(
+        within(infoPanel).getByRole("button", { name: "归档课程" }),
+      ).toBeVisible();
+    });
+  });
+
   it("取消删除不会发请求或改变课程状态", async () => {
     let deleteCalls = 0;
     server.use(

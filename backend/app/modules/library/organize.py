@@ -200,7 +200,22 @@ class OrganizeService:
                     payload["course_id"] = suggestion.course_id
                 if len(payload) == 1:
                     continue  # 无可应用字段
-                item = item_by_id[suggestion.item_id]
+                original = item_by_id[suggestion.item_id]
+                item = await session.scalar(
+                    select(LibraryItem).where(
+                        LibraryItem.id == suggestion.item_id,
+                        LibraryItem.deleted_at.is_(None),
+                        LibraryItem.status == "ACTIVE",
+                    )
+                )
+                if (
+                    item is None
+                    or item.updated_at != original.updated_at
+                    or item.title != original.title
+                    or item.course_id != original.course_id
+                ):
+                    skipped.append(suggestion.item_id)
+                    continue
                 snapshot = OrganizeSnapshot(
                     updated_at=item.updated_at,
                     title=item.title,

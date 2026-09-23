@@ -2649,7 +2649,7 @@
     "LIBRARY_ITEM_NOT_FOUND": "资料条目不存在或已删除",
     "LIBRARY_PATCH_EMPTY": "至少提供一项可更新字段",
     "LEARNER_OBSERVED_KEY_NOT_FOUND": "观察偏好不存在或已删除",
-    "OPERATION_SNAPSHOT_STALE": "目标已发生变化，提案已失效，请重新预览确认",
+    "OPERATION_SNAPSHOT_STALE": "目标已发生变化，提案已失效。请在对话中重新提出操作并预览新提案，确认后才会执行",
     "PROPOSAL_NOT_FOUND": "提案不存在",
     "PROPOSAL_ALREADY_DECIDED": "提案已处理，不能重复操作",
     "PROPOSAL_APPLY_FAILED": "提案应用失败（{{errorCode}}）",

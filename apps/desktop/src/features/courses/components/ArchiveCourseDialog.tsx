@@ -37,7 +37,6 @@ export function ArchiveCourseDialog({
         queryClient.invalidateQueries({
           queryKey: courseKeys.detail(course.id),
           exact: true,
-          refetchType: "none",
         }),
         queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
       ]);

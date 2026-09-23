@@ -324,6 +324,21 @@ async def test_update_course_unknown_target_structured_error(tmp_path: Path) -> 
         ) == 0
 
 
+@pytest.mark.anyio
+async def test_update_course_blank_name_rejected_before_proposal(tmp_path: Path) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        payload = await invoke_tool(
+            update_course,
+            session_factory,
+            {"course_id": COURSE_ID, "name": "   "},
+        )
+        assert payload["ok"] is False
+        assert payload["missing"] == ["name"]
+        assert payload["proposals"] == []
+        assert await scalar(session_factory, "SELECT count(*) FROM agent_proposals") == 0
+
+
 # ---------------------------------------------------------------------------
 # archive / restore_course：归档写路径
 # ---------------------------------------------------------------------------
@@ -503,6 +518,66 @@ async def test_archive_library_item_repeat_marks_failed(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # 直执行继承（工单 03：注册表零改动验证）
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("tool", "args", "target_type", "target_id", "initial_status"),
+    [
+        (
+            update_course,
+            {"course_id": COURSE_ID, "name": "自动档改名"},
+            "course",
+            COURSE_ID,
+            "ACTIVE",
+        ),
+        (archive_course, {"course_id": COURSE_ID}, "course", COURSE_ID, "ACTIVE"),
+        (restore_course, {"course_id": COURSE_ID}, "course", COURSE_ID, "ARCHIVED"),
+        (
+            update_library_item,
+            {"item_id": ITEM_ID, "title": "自动档改名"},
+            "library_item",
+            ITEM_ID,
+            "ACTIVE",
+        ),
+        (archive_library_item, {"item_id": ITEM_ID}, "library_item", ITEM_ID, "ACTIVE"),
+        (restore_library_item, {"item_id": ITEM_ID}, "library_item", ITEM_ID, "ARCHIVED"),
+    ],
+)
+async def test_direct_execution_records_target(
+    tmp_path: Path,
+    tool: Any,
+    args: dict[str, Any],
+    target_type: str,
+    target_id: str,
+    initial_status: str,
+) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        if target_type == "course":
+            await seed_course(session_factory, status=initial_status)
+        else:
+            await seed_item(session_factory, status=initial_status)
+        payload = await invoke_tool(tool, session_factory, args, auth_mode=AuthMode.AUTO_APPROVE)
+        assert payload["ok"] is True
+        assert await row_one(
+            session_factory, "SELECT target_type, target_id FROM agent_operations"
+        ) == (target_type, target_id)
+
+
+@pytest.mark.anyio
+async def test_failed_direct_execution_records_target(tmp_path: Path) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, status="ARCHIVED")
+        payload = await invoke_tool(
+            archive_course,
+            session_factory,
+            {"course_id": COURSE_ID},
+            auth_mode=AuthMode.AUTO_APPROVE,
+        )
+        assert payload["error"] == "COURSE_ALREADY_ARCHIVED"
+        assert await row_one(
+            session_factory, "SELECT status, target_type, target_id FROM agent_operations"
+        ) == ("FAILED", "course", COURSE_ID)
 
 
 @pytest.mark.anyio

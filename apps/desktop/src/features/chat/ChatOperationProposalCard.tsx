@@ -665,7 +665,7 @@ function labelKey(proposal: AgentProposalOut, key: string): string {
   return CARD_BY_TYPE[proposal.proposal_type].label(key);
 }
 
-/** 待确认/FAILED 可重试行：失败原因 + 参数预览 + 确认/拒绝按钮。 */
+/** 待确认/FAILED 行：快照失效只能重新提案，其余失败可重试。 */
 function ActionableProposalRow({
   proposal,
   status,
@@ -682,14 +682,18 @@ function ActionableProposalRow({
   const reason = proposal.error_code
     ? t(`errors.${proposal.error_code}`, proposal.error_code)
     : null;
+  const snapshotStale =
+    status === "FAILED" && proposal.error_code === "OPERATION_SNAPSHOT_STALE";
   const PreviewFields = CARD_BY_TYPE[proposal.proposal_type].PreviewFields;
   return (
     <li className="bg-surface-subtle flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5">
       {status === "FAILED" ? (
         <p role="alert" className="text-destructive text-label w-full">
-          {reason
-            ? t(labelKey(proposal, "failedDetail"), { reason })
-            : t(labelKey(proposal, "failed"))}
+          {snapshotStale
+            ? `${t(labelKey(proposal, "failed"))} ${reason}`
+            : reason
+              ? t(labelKey(proposal, "failedDetail"), { reason })
+              : t(labelKey(proposal, "failed"))}
         </p>
       ) : null}
       <dl className="min-w-0 flex-1">
@@ -699,15 +703,17 @@ function ActionableProposalRow({
           t={t}
         />
       </dl>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label={t(labelKey(proposal, "accept"))}
-        disabled={busy}
-        onClick={() => onDecide(proposal.id, true)}
-      >
-        <Check className="size-3.5" aria-hidden="true" />
-      </Button>
+      {!snapshotStale ? (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={t(labelKey(proposal, "accept"))}
+          disabled={busy}
+          onClick={() => onDecide(proposal.id, true)}
+        >
+          <Check className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
       <Button
         variant="ghost"
         size="icon-xs"
@@ -727,7 +733,7 @@ function ActionableProposalRow({
  * 入口跳转，文本记录提供记录入口 + 总结任务真实状态（已提交 ≠ 未触发 ≠ 提交
  * 失败，spec 决策 15）。提案本体唯一事实源是服务端（agent_proposals 表）：
  * 断线/重启经本会话全状态提案查询恢复状态视图（工单 02 review）——APPLIED 的
- * 回执、FAILED 的失败原因与重试、REJECTED 的终态文案均由查询还原，不依赖组件内存。 */
+ * 回执、FAILED 的失败原因与可用操作、REJECTED 的终态文案均由查询还原，不依赖组件内存。 */
 export function ChatOperationProposalCard({
   sessionId,
 }: ChatOperationProposalCardProps) {
@@ -770,7 +776,7 @@ export function ChatOperationProposalCard({
     (proposal) =>
       statusOf(proposal) === "APPLIED" || statusOf(proposal) === "REJECTED",
   );
-  // FAILED 保留操作按钮：后端允许对 FAILED 再确认（重试语义，工单 05）。
+  // FAILED 保留失败原因；快照失效由行组件隐藏同一提案的确认按钮。
   const actionable = proposals.filter(
     (proposal) =>
       statusOf(proposal) === "PENDING" || statusOf(proposal) === "FAILED",
@@ -798,7 +804,7 @@ export function ChatOperationProposalCard({
       .catch((exc: unknown) => {
         setError(exc instanceof Error ? exc.message : String(exc));
         // 确认超时/失败后回查真相（工单 02 review）：请求可能已实际应用
-        // （回执经查询还原），或已落 FAILED（失败原因 + 可重试）。
+        // （回执经查询还原），或已落 FAILED（失败原因 + 可用操作）。
         void queryClient.invalidateQueries({
           queryKey: libraryKeys.sessionProposals(sessionId),
         });
