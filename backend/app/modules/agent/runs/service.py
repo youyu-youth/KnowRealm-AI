@@ -125,20 +125,23 @@ async def record_auth_mode_switch(
     to_mode: str,
     scope: ActivityScope,
     session_id: str | None = None,
-) -> None:
-    """模式切换审计行（工单 02，spec 决策 22）：from / to / 作用域 / 会话 / 时间。"""
-    session.add(
-        AgentActivity(
-            id=str(uuid4()),
-            activity_type=ActivityType.AUTH_MODE_SWITCH.value,
-            from_mode=from_mode,
-            to_mode=to_mode,
-            scope=scope.value,
-            session_id=session_id,
-            created_at=utcnow(),
-        )
+) -> AgentActivity:
+    """模式切换审计行（工单 02，spec 决策 22）：from / to / 作用域 / 会话 / 时间。
+
+    返回落库行（全局切档编排的失败补偿按 id 定位删除）。
+    """
+    activity = AgentActivity(
+        id=str(uuid4()),
+        activity_type=ActivityType.AUTH_MODE_SWITCH.value,
+        from_mode=from_mode,
+        to_mode=to_mode,
+        scope=scope.value,
+        session_id=session_id,
+        created_at=utcnow(),
     )
+    session.add(activity)
     await session.flush()
+    return activity
 
 
 def _json_dict(raw: str | None) -> dict[str, Any] | None:

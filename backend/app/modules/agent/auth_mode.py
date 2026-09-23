@@ -16,10 +16,14 @@ learner_memory 外发开关先例）；全局与会话切换均写 agent_activit
 """
 
 import asyncio
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from loguru import logger
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.modules.agent.runs.models import AgentActivity
 from app.modules.agent.runs.schemas import (
     ActivityScope,
     AgentAuthModeOut,
@@ -90,6 +94,76 @@ router = APIRouter(
 )
 
 
+# ---------------------------------------------------------------------------
+# 切档编排（service 边界，fastapi.md 薄路由：事务与领域约束不上路由函数）
+
+
+async def switch_global_auth_mode(
+    data_dir: Path,
+    session_factory: async_sessionmaker[AsyncSession],
+    to_mode: AuthMode,
+) -> AuthMode:
+    """全局切档编排：读当前档（审计权威 from）→ 写审计行 → 改 settings 偏离项。
+
+    两步终究非原子，顺序「审计先行」＋settings 写失败补偿删审计：
+    - 审计失败（DB 故障）＝档未变，客户端重试即可（不反向：先改档后审计
+      失败会产生档已变而审计链缺行的口径裂缝）；
+    - settings 写失败＝补偿删除刚写的审计行后整体抛错，不留「未实际生效
+      的切档审计」（补偿再失败仅记日志，残留行语义＝一次未完成的切换）。
+    只影响之后的新会话与未携带覆盖的请求。
+    """
+    from_mode = AuthMode(await asyncio.to_thread(agent_default_auth_mode, data_dir))
+    async with session_factory() as session, session.begin():
+        activity = await record_auth_mode_switch(
+            session,
+            from_mode=from_mode.value,
+            to_mode=to_mode.value,
+            scope=ActivityScope.GLOBAL,
+        )
+    try:
+        await asyncio.to_thread(set_agent_default_auth_mode, data_dir, to_mode.value)
+    except Exception:
+        try:
+            async with session_factory() as session, session.begin():
+                await session.execute(delete(AgentActivity).where(AgentActivity.id == activity.id))
+        except Exception:
+            logger.error("auth_mode_switch_compensation_failed", activity_id=activity.id)
+        raise
+    return to_mode
+
+
+async def record_session_switch_audit(
+    session: AsyncSession,
+    *,
+    session_id: str,
+    from_mode: str,
+    to_mode: str,
+) -> None:
+    """会话切档留痕：会话存在校验＋审计行同事务，随后同步运行时覆盖。
+
+    会话不存在拒绝写审计（避免悬挂溯源）；from 由客户端按其看到的当前
+    生效档上报（会话覆盖 ?? 全局默认，后端无从得知前端内存态）。
+    """
+    # 校验与写入同一事务（Session autobegin：先 SELECT 再显式 begin 会撞
+    # "transaction already begun"，confirm 先例是 begin 内统一做）。
+    async with session.begin():
+        chat = await ChatSessionService.get(session, session_id)
+        if chat is None:
+            raise CodedHTTPException(
+                code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
+            )
+        await record_auth_mode_switch(
+            session,
+            from_mode=from_mode,
+            to_mode=to_mode,
+            scope=ActivityScope.SESSION,
+            session_id=session_id,
+        )
+    # 审计落定后同步运行时覆盖：在途流的后续工具提交立即按新档检查授权
+    # （降档即时收紧；升档经 effective 读取自下一轮放宽）。
+    set_session_auth_override(session_id, AuthMode(to_mode))
+
+
 @router.get("/auth-mode", response_model=AgentAuthModeOut)
 async def get_auth_mode(request: Request) -> AgentAuthModeOut:
     """当前全局默认授权档（设置页「Agent 自动化」分区与新会话缺省档）。"""
@@ -99,27 +173,11 @@ async def get_auth_mode(request: Request) -> AgentAuthModeOut:
 
 @router.put("/auth-mode", response_model=AgentAuthModeOut)
 async def put_auth_mode(body: AgentAuthModeSwitch, request: Request) -> AgentAuthModeOut:
-    """切换全局默认档：先写审计行、后改 settings.json 偏离项。
-
-    两步终究非原子，顺序选「审计先行」让失败方向落在安全侧——审计失败
-    （DB 故障）时档未变、客户端重试即可；不反向（先改档后审计失败会产生
-    档已变而审计链缺行的口径裂缝）。from 后端自读 settings.json 权威值。
-    只影响之后的新会话与未携带覆盖的请求。
-    """
-    from_mode = AuthMode(
-        await asyncio.to_thread(agent_default_auth_mode, request.app.state.data_dir)
+    """切换全局默认档（编排见 switch_global_auth_mode，只影响新会话与未携带覆盖的请求）。"""
+    mode = await switch_global_auth_mode(
+        request.app.state.data_dir, request.app.state.session_factory, body.to_mode
     )
-    async with request.app.state.session_factory() as session, session.begin():
-        await record_auth_mode_switch(
-            session,
-            from_mode=from_mode.value,
-            to_mode=body.to_mode.value,
-            scope=ActivityScope.GLOBAL,
-        )
-    await asyncio.to_thread(
-        set_agent_default_auth_mode, request.app.state.data_dir, body.to_mode.value
-    )
-    return AgentAuthModeOut(auth_mode=body.to_mode)
+    return AgentAuthModeOut(auth_mode=mode)
 
 
 @router.post("/auth-mode/sessions", status_code=204)
@@ -127,26 +185,10 @@ async def post_session_auth_mode_switch(
     body: AgentAuthModeSessionSwitch,
     session: AsyncSession = Depends(get_db),
 ) -> None:
-    """会话内临时切档的审计行（会话档位在前端内存，本端点只留痕）。
-
-    会话不存在拒绝写审计（避免悬挂溯源）；from 由客户端按其看到的当前
-    生效档上报（会话覆盖 ?? 全局默认，后端无从得知前端内存态）。
-    """
-    # 校验与写入同一事务（Session autobegin：先 SELECT 再显式 begin 会撞
-    # "transaction already begun"，confirm 先例是 begin 内统一做）。
-    async with session.begin():
-        chat = await ChatSessionService.get(session, body.session_id)
-        if chat is None:
-            raise CodedHTTPException(
-                code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
-            )
-        await record_auth_mode_switch(
-            session,
-            from_mode=body.from_mode.value,
-            to_mode=body.to_mode.value,
-            scope=ActivityScope.SESSION,
-            session_id=body.session_id,
-        )
-    # 审计落定后同步运行时覆盖：在途流的后续工具提交立即按新档检查授权
-    # （降档即时收紧；升档经 effective 读取自下一轮放宽）。
-    set_session_auth_override(body.session_id, body.to_mode)
+    """会话内临时切档的审计行（会话档位在前端内存，本端点只留痕）。"""
+    await record_session_switch_audit(
+        session,
+        session_id=body.session_id,
+        from_mode=body.from_mode.value,
+        to_mode=body.to_mode.value,
+    )

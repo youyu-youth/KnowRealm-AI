@@ -526,6 +526,42 @@ async def test_global_auth_mode_switch_writes_settings_and_activity(
 
 
 @pytest.mark.anyio
+async def test_global_switch_settings_failure_compensates_audit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """settings 写失败补偿（薄路由修复）：审计行被补偿删除、档未变、请求
+    整体失败——不留「未实际生效的切档审计」。"""
+    from app.modules.agent import auth_mode as auth_mode_module
+
+    def failing_set(data_dir: Path, mode: str) -> None:
+        raise OSError("磁盘写入失败")
+
+    monkeypatch.setattr(auth_mode_module, "set_agent_default_auth_mode", failing_set)
+
+    data_dir = tmp_path / "KnowRealm"
+    async with running_app(data_dir) as (_app, client, session_factory):
+        failed = await client.put(
+            "/api/agent/auth-mode",
+            json={"to_mode": "FULL_ACCESS"},
+        )
+        assert failed.status_code == 500
+        assert await table_rows(session_factory, "SELECT * FROM agent_activity") == []
+        assert AGENT_DEFAULT_AUTH_MODE_KEY not in await read_settings_json(data_dir)
+        # 故障消除后重试：正常落审计＋生效。
+        from app.modules.settings.config import set_agent_default_auth_mode as real_set
+
+        monkeypatch.setattr(auth_mode_module, "set_agent_default_auth_mode", real_set)
+        retried = await client.put(
+            "/api/agent/auth-mode",
+            json={"to_mode": "FULL_ACCESS"},
+        )
+        assert retried.status_code == 200
+        assert len(await table_rows(session_factory, "SELECT * FROM agent_activity")) == 1
+        settings_after_retry = await read_settings_json(data_dir)
+        assert settings_after_retry.get(AGENT_DEFAULT_AUTH_MODE_KEY) == "FULL_ACCESS"
+
+
+@pytest.mark.anyio
 async def test_session_auth_mode_switch_writes_activity_only(tmp_path: Path) -> None:
     """会话切换仅写 activity（scope=SESSION＋会话 id），不改全局默认；
     会话不存在拒绝写审计。"""
