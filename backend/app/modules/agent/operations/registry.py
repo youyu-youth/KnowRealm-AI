@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
+from app.modules.agent.auth_mode import effective_session_auth_mode
 from app.modules.agent.runs.schemas import AuthMode, OperationAuthorization
 from app.modules.agent.runs.service import record_confirmed_operation, record_direct_execution
 from app.modules.agent.runtime import (
@@ -172,13 +173,15 @@ def should_execute_directly(auth_mode: AuthMode, level: OperationLevel) -> bool:
     return True
 
 
-def _direct_authorization(runtime: AgentRuntimeContext) -> OperationAuthorization:
-    """直执行回执的授权依据（ADR-0026）：当轮档位＋触发指令摘录＋消息引用。"""
+def _direct_authorization(
+    runtime: AgentRuntimeContext, auth_mode: AuthMode
+) -> OperationAuthorization:
+    """直执行回执的授权依据（ADR-0026）：执行时生效档＋触发指令摘录＋消息引用。"""
     excerpt = runtime.instruction_excerpt
     if excerpt is not None and len(excerpt) > INSTRUCTION_EXCERPT_MAX_CHARS:
         excerpt = excerpt[:INSTRUCTION_EXCERPT_MAX_CHARS]
     return OperationAuthorization(
-        auth_mode=runtime.auth_mode,
+        auth_mode=auth_mode,
         trigger="AUTO_EXECUTED",
         instruction_excerpt=excerpt,
         session_id=runtime.session_id,
@@ -187,17 +190,22 @@ def _direct_authorization(runtime: AgentRuntimeContext) -> OperationAuthorizatio
 
 
 async def _execute_operation_directly(
-    runtime: AgentRuntimeContext, spec: OperationSpec[Any], validated: BaseModel
+    runtime: AgentRuntimeContext,
+    spec: OperationSpec[Any],
+    validated: BaseModel,
+    auth_mode: AuthMode,
 ) -> dict[str, Any]:
     """自动档直执行（spec 决策 11）：单事务写 operation＋业务结果。
 
-    成功：应用器领域写入与 operation 行（SUCCEEDED＋result 回填＋授权依据）
-    同一事务原子提交；失败：业务事务整体回滚（＝未发生），独立小事务落
-    FAILED operation＋稳定错误码（_mark_failed 先例，诊断不断链）。返回工具
-    JSON 载荷：成功 {ok, executed}；失败 {ok: False, error}（模型转述原因）。
+    auth_mode 是本次提交的生效档（会话覆盖与本轮起点取更严格者），
+    授权依据与回执载荷如实记录执行时实际生效档。成功：应用器领域写入与
+    operation 行（SUCCEEDED＋result 回填＋授权依据）同一事务原子提交；
+    失败：业务事务整体回滚（＝未发生），独立小事务落 FAILED operation＋
+    稳定错误码（_mark_failed 先例，诊断不断链）。返回工具 JSON 载荷：
+    成功 {ok, executed}；失败 {ok: False, error}（模型转述原因）。
     """
     payload_json = validated.model_dump_json()
-    authorization = _direct_authorization(runtime)
+    authorization = _direct_authorization(runtime, auth_mode)
     # 应用器契约是 (session, proposal) 且只消费 payload_json（course_create /
     # text_record_add 均然），构造未落库的 transient 提案实例喂给应用器——
     # 领域应用器零改动、提案路径与直执行路径复用同一执行核心。
@@ -252,7 +260,7 @@ async def _execute_operation_directly(
             "operation_id": operation.id,
             "action": spec.action,
             "level": spec.level.value,
-            "auth_mode": runtime.auth_mode.value,
+            "auth_mode": auth_mode.value,
             "payload": validated.model_dump(),
             "result": result.model_dump(),
         },
@@ -290,8 +298,11 @@ async def submit_operation(
             body["detail"] = detail
         return body
     runtime.budget.operations_created += 1
-    if should_execute_directly(runtime.auth_mode, spec.level):
-        return await _execute_operation_directly(runtime, spec, validated)
+    # 生效档＝会话覆盖与本轮起点档取更严格者（spec 用户故事 6）：流式生成
+    # 中途降档经注册表即时约束本轮后续提交；升档自下一轮（请求携带新档）放宽。
+    effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
+    if should_execute_directly(effective_mode, spec.level):
+        return await _execute_operation_directly(runtime, spec, validated, effective_mode)
     cleaned_payload = validated.model_dump()
     async with runtime.session_factory() as session:
         proposal = await ProposalService.create(

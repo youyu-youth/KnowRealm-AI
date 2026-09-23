@@ -53,6 +53,68 @@ from app.shared.errors import CodedHTTPException
 TOKEN = "test-launch-token"
 
 
+@pytest.mark.anyio
+async def test_mid_stream_downgrade_constrains_current_turn(tmp_path: Path) -> None:
+    """流式生成中途降档约束本轮后续提交（spec 用户故事 6，GPT review P1）：
+    档位随 runtime 在受理时固化，中途切档经会话覆盖注册表传达——同一
+    runtime 的下一次提交立即回落提案等确认。"""
+    from app.modules.agent.auth_mode import (
+        clear_session_auth_override,
+        set_session_auth_override,
+    )
+
+    session_id = "sess-mid-downgrade"
+    async with bare_db(tmp_path) as session_factory:
+        try:
+            auto_payload = await invoke_create_course(
+                session_factory, auth_mode=AuthMode.AUTO_APPROVE, session_id=session_id
+            )
+            assert auto_payload["executed"] is not None
+            # 模拟右栏中途切档（端点审计落定后写运行时覆盖）。
+            set_session_auth_override(session_id, AuthMode.REQUEST_APPROVAL)
+            downgraded_payload = await invoke_create_course(
+                session_factory, auth_mode=AuthMode.AUTO_APPROVE, session_id=session_id
+            )
+        finally:
+            clear_session_auth_override(session_id)
+
+        assert downgraded_payload["ok"] is True
+        assert downgraded_payload["proposals"][0]["status"] == "PENDING"
+        # 本轮恰一次直执行（降档前），降档后零新增 operation。
+        operations = await table_rows(session_factory, "SELECT status FROM agent_operations")
+        assert len(operations) == 1 and operations[0][0] == "SUCCEEDED"
+        assert len(await table_rows(session_factory, "SELECT * FROM courses")) == 1
+
+
+@pytest.mark.anyio
+async def test_mid_stream_upgrade_does_not_widen_current_turn(tmp_path: Path) -> None:
+    """中途升档不放宽本轮（与「升档不自动执行既有动作序列」同一安全精神）：
+    本轮起点默认档 → 流中切完全访问仍落提案；下一轮（请求携带新档）直执行。"""
+    from app.modules.agent.auth_mode import (
+        clear_session_auth_override,
+        set_session_auth_override,
+    )
+
+    session_id = "sess-mid-upgrade"
+    async with bare_db(tmp_path) as session_factory:
+        try:
+            set_session_auth_override(session_id, AuthMode.FULL_ACCESS)
+            current_turn = await invoke_create_course(
+                session_factory,
+                auth_mode=AuthMode.REQUEST_APPROVAL,
+                session_id=session_id,
+            )
+            next_turn = await invoke_create_course(
+                session_factory, auth_mode=AuthMode.FULL_ACCESS, session_id=session_id
+            )
+        finally:
+            clear_session_auth_override(session_id)
+
+        assert current_turn["proposals"][0]["status"] == "PENDING"
+        assert next_turn["executed"] is not None
+        assert len(await table_rows(session_factory, "SELECT * FROM agent_operations")) == 1
+
+
 @pytest.fixture(scope="module")
 def anyio_backend() -> str:
     return "asyncio"
@@ -476,6 +538,21 @@ async def test_session_auth_mode_switch_writes_activity_only(tmp_path: Path) -> 
         )
         assert ok.status_code == 204
         assert AGENT_DEFAULT_AUTH_MODE_KEY not in await read_settings_json(data_dir)
+        # 切档端点同步写运行时覆盖：在途流的后续提交立即按新档检查授权。
+        from app.modules.agent.auth_mode import (
+            clear_session_auth_override,
+            effective_session_auth_mode,
+        )
+
+        try:
+            # 覆盖已写入：同档起点下生效档＝to_mode（收紧语义由工具层
+            # 升/降档用例单独断言）。
+            assert (
+                effective_session_auth_mode("sess-live", AuthMode.AUTO_APPROVE)
+                == AuthMode.AUTO_APPROVE
+            )
+        finally:
+            clear_session_auth_override("sess-live")
         activities = await table_rows(
             session_factory,
             "SELECT activity_type, from_mode, to_mode, scope, session_id FROM agent_activity",
