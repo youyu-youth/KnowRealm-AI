@@ -1,5 +1,5 @@
 import type { components } from "@knowrealm/api-types";
-import { apiFetch } from "@/services/http/client";
+import { apiFetch, apiFetchNoContent } from "@/services/http/client";
 
 export type AuthMode = components["schemas"]["AuthMode"];
 
@@ -32,7 +32,9 @@ export const agentAuthApi = {
       },
     ),
   postSessionSwitch: (sessionId: string, from: AuthMode, to: AuthMode) =>
-    apiFetch<void>("/api/agent/auth-mode/sessions", {
+    // 端点 204 无响应体：apiFetch 会 .json() 解析空 body 抛
+    // "Unexpected end of JSON input"，走 NoContent 变体（chatSessions.delete 先例）。
+    apiFetchNoContent("/api/agent/auth-mode/sessions", {
       method: "POST",
       body: JSON.stringify({
         session_id: sessionId,
