@@ -6,7 +6,6 @@ import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/test-utils";
 import { ChatExecutedOperationCard } from "./ChatExecutedOperationCard";
-import { useChatUiStore } from "./chatUiStore";
 
 const { listOperations } = vi.hoisted(() => ({
   listOperations: vi.fn(),
@@ -79,36 +78,40 @@ function operationFixture(
 beforeEach(() => {
   vi.clearAllMocks();
   listOperations.mockResolvedValue([]);
-  useChatUiStore.setState({ turnExecuted: null });
 });
 
 describe("ChatExecutedOperationCard", () => {
-  it("会话无直执行记录时不渲染", () => {
+  it("消息流无锚点时不渲染", () => {
     const { container } = renderWithQuery(
-      <ChatExecutedOperationCard sessionId={SESSION_ID} />,
+      <ChatExecutedOperationCard sessionId={SESSION_ID} anchorIds={[]} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("呈现直执行回执的授权依据与结果入口", async () => {
+  it("锚点命中查询时呈现授权依据与结果入口", async () => {
     listOperations.mockResolvedValue([operationFixture()]);
-    renderWithQuery(<ChatExecutedOperationCard sessionId={SESSION_ID} />);
+    renderWithQuery(
+      <ChatExecutedOperationCard sessionId={SESSION_ID} anchorIds={["op-1"]} />,
+    );
 
     expect(await screen.findByText("已自动执行")).toBeVisible();
-    // 授权依据：当时档位 + 触发指令摘录（spec 用户故事 7）。
-    expect(screen.getByText("授权依据：帮我批准")).toBeVisible();
-    expect(screen.getByText("触发指令：「帮我建一门物理课」")).toBeVisible();
+    // 授权依据：当时档位 + 触发指令摘录（spec 用户故事 7）；查询异步到位，
+    // 用 findBy 等待（锚点驱动的卡片先渲染壳、详情随后填充）。
+    expect(await screen.findByText("授权依据：帮我批准")).toBeVisible();
+    expect(
+      await screen.findByText("触发指令：「帮我建一门物理课」"),
+    ).toBeVisible();
     expect(screen.getByText("创建课程")).toBeVisible();
     const link = screen.getByRole("link", { name: "打开课程" });
     expect(link).toHaveAttribute("href", "/spaces/$courseId");
   });
 
-  it("确认路径回写的 operation（proposal_id 非空）不进本卡", async () => {
+  it("查询有数据但锚点缺席（确认路径回写）不进本卡", async () => {
     listOperations.mockResolvedValue([
       operationFixture({ proposal_id: "p-1", id: "op-confirmed" }),
     ]);
     const { container } = renderWithQuery(
-      <ChatExecutedOperationCard sessionId={SESSION_ID} />,
+      <ChatExecutedOperationCard sessionId={SESSION_ID} anchorIds={[]} />,
     );
     await waitFor(() =>
       expect(listOperations).toHaveBeenCalledWith({ session_id: SESSION_ID }),
@@ -125,7 +128,9 @@ describe("ChatExecutedOperationCard", () => {
         finished_at: null,
       }),
     ]);
-    renderWithQuery(<ChatExecutedOperationCard sessionId={SESSION_ID} />);
+    renderWithQuery(
+      <ChatExecutedOperationCard sessionId={SESSION_ID} anchorIds={["op-1"]} />,
+    );
 
     await screen.findByText("创建课程");
     expect(
@@ -133,26 +138,29 @@ describe("ChatExecutedOperationCard", () => {
     ).toBeInTheDocument();
   });
 
-  it("本轮有执行而查询缺席时降级「历史已清理」占位", async () => {
-    useChatUiStore.setState({
-      turnExecuted: {
-        sessionId: SESSION_ID,
-        operations: [
-          {
-            operationId: "op-gone",
-            action: "create_course",
-            level: "L1",
-            authMode: "FULL_ACCESS",
-            payload: {},
-            result: { course_id: "c-1" },
-          },
-        ],
-      },
-    });
-    renderWithQuery(<ChatExecutedOperationCard sessionId={SESSION_ID} />);
+  it("锚点在而查询缺席时降级「历史已清理」占位（跨重启持久锚点）", async () => {
+    renderWithQuery(
+      <ChatExecutedOperationCard
+        sessionId={SESSION_ID}
+        anchorIds={["op-gone"]}
+      />,
+    );
 
     expect(
       await screen.findByText("另有 1 条回执的历史已被清理。"),
     ).toBeVisible();
+  });
+
+  it("部分清理：命中锚点渲染回执、缺席锚点计占位", async () => {
+    listOperations.mockResolvedValue([operationFixture()]);
+    renderWithQuery(
+      <ChatExecutedOperationCard
+        sessionId={SESSION_ID}
+        anchorIds={["op-1", "op-gone"]}
+      />,
+    );
+
+    expect(await screen.findByText("创建课程")).toBeVisible();
+    expect(screen.getByText("另有 1 条回执的历史已被清理。")).toBeVisible();
   });
 });

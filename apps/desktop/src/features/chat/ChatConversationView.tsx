@@ -297,8 +297,14 @@ export function ChatConversationView({
             真实创建课程并转回执态；断线/重启经提案查询恢复。 */}
         <ChatOperationProposalCard sessionId={sessionId} />
         {/* 直执行回执卡（通用 Agent 第二阶段工单 02）：自动档免确认执行的
-            操作呈现授权依据；断线/重启经 operation 查询恢复，清理后降级占位。 */}
-        <ChatExecutedOperationCard sessionId={sessionId} />
+            操作呈现授权依据；锚点随 assistant 行持久（清理后降级占位跨重启
+            成立），详情经 operation 查询恢复。 */}
+        <ChatExecutedOperationCard
+          sessionId={sessionId}
+          anchorIds={(messages.data ?? []).flatMap(
+            (message) => message.executed_operation_ids ?? [],
+          )}
+        />
         <ChatComposer
           value={composerValue}
           disabled={messages.isPending || scopeUnavailable}

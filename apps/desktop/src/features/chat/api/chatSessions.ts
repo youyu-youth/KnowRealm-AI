@@ -40,18 +40,6 @@ export type ChatResearchProposalPayload = {
   title: string;
 };
 
-/** 自动档直执行回执条目（通用 Agent 第二阶段工单 02，done 载荷透传）：
- * operation_id 供回执卡跨刷新经 operation 查询恢复；授权依据（档位/指令
- * 摘录/时间）以持久化查询为准，载荷只承载本轮即时渲染。 */
-export type ChatExecutedOperationPayload = {
-  operationId: string;
-  action: string;
-  level: string;
-  authMode: string;
-  payload: Record<string, unknown>;
-  result: Record<string, unknown>;
-};
-
 export type ChatDonePayload = {
   messageId: string;
   content: string;
@@ -61,20 +49,18 @@ export type ChatDonePayload = {
   memoryProposals?: ChatMemoryProposalPayload[];
   /** 本轮新建的 RESEARCH_INGEST 入库提案（无时缺省，研究会话）。 */
   researchProposals?: ChatResearchProposalPayload[];
-  /** 本轮自动档直执行的操作回执（无时缺省）。 */
-  executedOperations?: ChatExecutedOperationPayload[];
 };
 
 /**
  * done 载荷的可选扩展字段（工单 06 / 研究会话 V1）：本轮注入记忆与新建提案
  * （记忆 + 入库）。载荷来自后端 JSON，字段形态经防御性收窄，缺省即 undefined
- * （安全省略）；形状不符的提案静默跳过。
+ * （安全省略）；形状不符的提案静默跳过。直执行回执不在此解析——回执卡以
+ * assistant 行持久锚点 + operation 查询为事实源（工单 02 P2 修复）。
  */
 function parseTurnProposalFields(data: Record<string, unknown>): {
   memoryUsed?: string[];
   memoryProposals?: ChatMemoryProposalPayload[];
   researchProposals?: ChatResearchProposalPayload[];
-  executedOperations?: ChatExecutedOperationPayload[];
 } {
   // 源字段缺席时键省略（缺省即 undefined，向后兼容旧载荷）。
   const memoryUsed = Array.isArray(data.memory_used)
@@ -101,37 +87,11 @@ function parseTurnProposalFields(data: Record<string, unknown>): {
       ? [{ proposalId: raw.proposal_id, url: raw.url, title: raw.title }]
       : [],
   );
-  const executedOperations = parseProposalList(
-    data.executed_operations,
-    (raw) =>
-      typeof raw.operation_id === "string" &&
-      typeof raw.action === "string" &&
-      typeof raw.level === "string" &&
-      typeof raw.auth_mode === "string" &&
-      isRecord(raw.payload) &&
-      isRecord(raw.result)
-        ? [
-            {
-              operationId: raw.operation_id,
-              action: raw.action,
-              level: raw.level,
-              authMode: raw.auth_mode,
-              payload: raw.payload,
-              result: raw.result,
-            },
-          ]
-        : [],
-  );
   return {
     ...(memoryUsed !== undefined ? { memoryUsed } : {}),
     ...(Array.isArray(data.memory_proposals) ? { memoryProposals } : {}),
     ...(Array.isArray(data.research_proposals) ? { researchProposals } : {}),
-    ...(Array.isArray(data.executed_operations) ? { executedOperations } : {}),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 function parseProposalList<T>(

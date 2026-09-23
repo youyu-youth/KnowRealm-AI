@@ -30,8 +30,6 @@ export function useChatStream(sessionId: string) {
   // 分属不同组件层，done 写入 / 发送与停止时清除（当轮语义，不落库）。
   const setTurnMemory = useChatUiStore((state) => state.setTurnMemory);
   const clearTurnMemory = useChatUiStore((state) => state.clearTurnMemory);
-  const setTurnExecuted = useChatUiStore((state) => state.setTurnExecuted);
-  const clearTurnExecuted = useChatUiStore((state) => state.clearTurnExecuted);
 
   useEffect(() => {
     // 切换会话或卸载时中止在途流，防止连接泄漏与串会话渲染。
@@ -54,7 +52,6 @@ export function useChatStream(sessionId: string) {
       setStreamError(null);
       setToolActivities([]);
       clearTurnMemory(sessionId);
-      clearTurnExecuted(sessionId);
       chatApi
         .streamMessage(
           sessionId,
@@ -90,12 +87,6 @@ export function useChatStream(sessionId: string) {
                 proposals: payload.memoryProposals ?? [],
                 researchProposals: payload.researchProposals ?? [],
               });
-              if (payload.executedOperations) {
-                setTurnExecuted({
-                  sessionId,
-                  operations: payload.executedOperations,
-                });
-              }
               // 重取消息历史（assistant 行）、会话列表（活跃度排序）与会话详情
               // （首条消息后标题更新）；操作提案走提案查询恢复（服务端唯一事实源）。
               await queryClient.invalidateQueries({
@@ -152,11 +143,9 @@ export function useChatStream(sessionId: string) {
     },
     [
       clearTransientState,
-      clearTurnExecuted,
       clearTurnMemory,
       queryClient,
       sessionId,
-      setTurnExecuted,
       setTurnMemory,
     ],
   );

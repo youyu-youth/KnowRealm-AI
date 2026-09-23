@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import type { AuthMode } from "@/features/agent/api/authMode";
 import type {
-  ChatExecutedOperationPayload,
   ChatMemoryProposalPayload,
   ChatResearchProposalPayload,
 } from "@/features/chat/api/chatSessions";
@@ -17,14 +16,6 @@ export type ChatTurnMemory = {
   proposals: ChatMemoryProposalPayload[];
   /** 模型本轮经 propose_ingest 新建的待确认入库提案（研究会话）。 */
   researchProposals: ChatResearchProposalPayload[];
-};
-
-/** 本轮直执行回执的临时展示态（通用 Agent 第二阶段工单 02）：done 载荷的消费
- * 来源，事实源是 agent_operations 表（回执卡经会话过滤查询恢复）；本态仅用于
- * 「查询缺席＝历史已清理」占位判定与同轮即时呈现，再次发送即清除。 */
-export type ChatTurnExecuted = {
-  sessionId: string;
-  operations: ChatExecutedOperationPayload[];
 };
 
 export const CHAT_TOOL_IDS = [
@@ -61,10 +52,6 @@ type ChatUiState = {
   turnMemory: ChatTurnMemory | null;
   setTurnMemory: (memory: ChatTurnMemory) => void;
   clearTurnMemory: (sessionId: string) => void;
-  /** 本轮直执行回执（占位判定用，done 时写入）。 */
-  turnExecuted: ChatTurnExecuted | null;
-  setTurnExecuted: (executed: ChatTurnExecuted) => void;
-  clearTurnExecuted: (sessionId: string) => void;
   toggleFavorite: (sessionId: string) => void;
   toggleTool: (tool: ChatDemoToolId) => void;
   setWebSearchEnabled: (sessionId: string, enabled: boolean) => void;
@@ -81,18 +68,10 @@ export const useChatUiStore = create<ChatUiState>((set) => ({
   webSearchBySession: {},
   authModeBySession: {},
   turnMemory: null,
-  turnExecuted: null,
   setTurnMemory: (memory) => set({ turnMemory: memory }),
   clearTurnMemory: (sessionId) =>
     set((state) =>
       state.turnMemory?.sessionId === sessionId ? { turnMemory: null } : state,
-    ),
-  setTurnExecuted: (executed) => set({ turnExecuted: executed }),
-  clearTurnExecuted: (sessionId) =>
-    set((state) =>
-      state.turnExecuted?.sessionId === sessionId
-        ? { turnExecuted: null }
-        : state,
     ),
   toggleFavorite: (sessionId) =>
     set((state) => {

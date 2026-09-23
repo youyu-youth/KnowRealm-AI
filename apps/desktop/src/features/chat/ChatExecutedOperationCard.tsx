@@ -7,10 +7,12 @@ import {
   operationHistoryApi,
   type AgentOperationOut,
 } from "@/features/settings/api/operationHistory";
-import { useChatUiStore } from "@/features/chat/chatUiStore";
 
 type ChatExecutedOperationCardProps = {
   sessionId: string;
+  /** 消息流持久锚点（assistant 行 executed_operation_ids 聚合，时间序）：
+   * 查询命中→正常回执；查询缺席→「历史已清理」占位。 */
+  anchorIds: string[];
 };
 
 /** operation.authorization 的窄化读取（JSON 列，坏值降级为空）。 */
@@ -77,36 +79,35 @@ function ExecutedResultRow({
 
 /** 消息流内的直执行回执卡（通用 Agent 第二阶段工单 02）：自动档免确认执行的
  * 操作呈现授权依据（当时档位、触发指令原文、时间），出问题可追溯（spec 用户
- * 故事 7）。事实源是服务端 agent_operations（按会话过滤）：断线 / 重启经查询
- * 恢复；本轮 done 载荷中的 operation_id 在查询缺席时降级「历史已清理」占位
- * （显式清理不静默吞掉消息流痕迹）。 */
+ * 故事 7）。事实源是服务端：详情经 agent_operations 会话查询恢复（断线 / 重启
+ * 不依赖 SSE），存在性经消息行锚点判定——锚点在、查询空＝历史已清理，降级
+ * 占位跨重启成立（spec 用户故事 33，工单 02 P2 修复）。 */
 export function ChatExecutedOperationCard({
   sessionId,
+  anchorIds,
 }: ChatExecutedOperationCardProps) {
   const { t } = useTranslation();
-  // 本会话直执行 operations（proposal_id 空＝直执行路径；确认路径回写的
-  // operation 由提案卡承载）。staleTime 0 + key 含会话：刷新即拉最新。
   const operations = useQuery({
     queryKey: agentKeys.sessionOperations(sessionId),
     queryFn: () =>
       operationHistoryApi.listOperations({ session_id: sessionId }),
     staleTime: 0,
   });
-  // 当轮 done 载荷（内存态）：仅在「查询缺席但本轮确有执行」时补占位。
-  const turnExecuted = useChatUiStore((state) => state.turnExecuted);
 
-  const direct = (operations.data ?? []).filter(
-    (operation) => operation.proposal_id === null,
+  // 锚点序=执行序；查询详情只渲染直执行路径（proposal_id 空），确认路径
+  // 回写行由提案卡承载。
+  const byId = new Map(
+    (operations.data ?? [])
+      .filter((operation) => operation.proposal_id === null)
+      .map((operation) => [operation.id, operation] as const),
   );
-  const knownIds = new Set(direct.map((operation) => operation.id));
-  const purgedCount =
-    turnExecuted?.sessionId === sessionId
-      ? turnExecuted.operations.filter(
-          (entry) => !knownIds.has(entry.operationId),
-        ).length
-      : 0;
+  const direct = anchorIds.flatMap((id) => {
+    const operation = byId.get(id);
+    return operation ? [operation] : [];
+  });
+  const purgedCount = anchorIds.length - direct.length;
 
-  if (direct.length === 0 && purgedCount === 0) {
+  if (anchorIds.length === 0) {
     return null;
   }
 
