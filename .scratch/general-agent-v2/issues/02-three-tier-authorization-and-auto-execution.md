@@ -26,6 +26,7 @@
 - 真机验收修复（1310a01）：会话切档端点改 204 后前端 `postSessionSwitch` 仍用 `apiFetch`（无条件 `.json()` 解析空 body 报 "Unexpected end of JSON input"），改用 `apiFetchNoContent`（chatSessions.delete 先例）；组件测试 mock 了 API 层故自动化未拦截，属 API 实现层笔误。
 - GPT review P1 修复（bf17ac3）：流式生成中途降档不能约束本轮后续工具提交（档位随 runtime 在受理时固化，spec 用户故事 6 缺口）——会话切档端点审计落定后同步写进程内覆盖注册表（`agent/auth_mode.py`，sidecar 单进程先例），`submit_operation` 分流改读生效档＝覆盖档与本轮起点档取更严格者：**降档即时收紧本轮、升档自下一轮生效**（下一轮请求携带新档后两端一致；重启清空注册表＝回落全局默认安全方向）；直执行的 authorization_json 与回执载荷改记执行时实际生效档。断言：流中降档同 runtime 后续提交落提案、流中升档不放宽本轮、端点写注册表。
 - GPT review P2 修复（迁移 0031）：「历史已清理」占位原依赖当轮内存态（turnExecuted），重启即消失、spec 用户故事 33 部分交付——改为 assistant 行持久锚点：`chat_messages` 新增 `executed_operations_json`（本轮直执行 operation_id 列表，ADD COLUMN 无重建），`ChatMessageOut.executed_operation_ids` 解析（坏值容忍）；回执卡改锚点驱动（锚点命中查询→回执；锚点在查询空→占位，跨重启成立），删除 turnExecuted 内存态与前端 done 载荷 executedOperations 解析（单一事实源，后端 done 键保留）；版本断言同步（test_library 31 / test_agent_runs 动态化）。门禁=后端 801 绿（唯一失败 library 抖动单跑绿）+ruff+pyright 0+OpenAPI regenerate、前端 tsc/eslint/build+回执卡 6 绿（全量并行失败均抖动单跑绿）。
+- GPT review P2 续修（回执卡误报/漏显）：①查询加载中或失败原被当空结果→误报「历史已清理」（挂载闪占位、断网永久误报）——改 `!isSuccess` 不渲染（提案卡「失败即无卡」同模式）；②查询原默认 50 条、超出的旧回执漏显且误判清理——limit 按锚点数请求（clamp 50~200=后端契约 le），满页（可能截断）时缺席锚点不计占位（宁缺勿错报）、命中锚点照常渲染；锚点空跳过查询（enabled）。断言：失败不渲染、limit 透传（50/80/51 三档）、满页兜底不计占位。
 - 「历史已清理」占位边界（已随 GPT review P2 修复消除，见末条）：占位跨重启成立。
 - 「完全访问下 L3 直执行」真机演示暂不可行（本票无 L3 注册动作，03/04 票注册后自动继承分流矩阵）。
 - 工作区中 OperationHistorySection.tsx / settings keys.ts / AGENTS.md 的未提交改动来自并行会话（01 遗留前端缓存修复），未纳入本票提交。
