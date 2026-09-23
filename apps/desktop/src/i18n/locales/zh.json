@@ -1913,6 +1913,42 @@
         "accept": "确认恢复条目",
         "reject": "拒绝恢复条目",
         "hint": "恢复后条目回到默认浏览。"
+      },
+      "recordDelete": {
+        "accepted": "记录已删除。",
+        "rejected": "已拒绝，未删除记录。",
+        "failed": "记录删除未完成。",
+        "failedDetail": "记录删除未完成（{{reason}}），可重试。",
+        "accept": "确认删除记录",
+        "reject": "拒绝删除记录",
+        "targetRecord": "目标记录",
+        "kpCount": "知识点 {{count}} 条",
+        "quizCount": "习题 {{count}} 道",
+        "todoCount": "Todo {{count}} 条",
+        "reviewCount": "复习资料 {{count}} 份",
+        "hint": "删除后该记录及其全部记录级资产（总结、知识点、习题、Todo、复习资料）将一并移除，不可恢复。"
+      },
+      "courseDelete": {
+        "accepted": "课程已删除（含 {{count}} 条记录）。",
+        "rejected": "已拒绝，未删除课程。",
+        "failed": "课程删除未完成。",
+        "failedDetail": "课程删除未完成（{{reason}}），可重试。",
+        "accept": "确认删除课程",
+        "reject": "拒绝删除课程",
+        "recordList": "将一并删除 {{count}} 条记录：{{titles}}",
+        "hint": "删除后课程及其全部记录与记录级资产将一并移除，不可恢复；如只想让课程退出日常使用，请改用归档。"
+      },
+      "recordMove": {
+        "accepted": "记录已迁移。",
+        "rejected": "已拒绝，未迁移记录。",
+        "failed": "记录迁移未完成。",
+        "failedDetail": "记录迁移未完成（{{reason}}），可重试。",
+        "accept": "确认迁移记录",
+        "reject": "拒绝迁移记录",
+        "openRecord": "打开记录",
+        "courseField": "所属课程",
+        "inboxLabel": "收件箱（未归类）",
+        "hint": "记录内容与总结、知识点、Todo、复习资料随记录移动；原课程的历史测试与学习证据保留历史归属。"
       }
     },
     "authMode": {
@@ -2607,7 +2643,9 @@
     "RECORDING_SEALED": "已封口录音不能放弃",
     "RECORDING_TOO_LONG": "录音超过 3 小时",
     "RECORD_ALREADY_CLASSIFIED": "学习记录已归到其他课程，本版本不支持重新归类",
+    "RECORD_ALREADY_IN_COURSE": "记录已在该课程中，无需迁移",
     "RECORD_COURSE_MISSING": "学习记录缺少课程归属",
+    "RECORD_MOVE_JOB_IN_PROGRESS": "记录有正在进行的处理任务，请等待处理完成后再迁移",
     "RECORD_NOT_CLASSIFIABLE": "当前状态不能归类，请等待内容处理完成或先处理失败记录",
     "RECORD_NOT_FOUND": "学习记录不存在或已删除",
     "RECORD_NOT_UPGRADABLE": "当前状态不能升级，请等待内容处理完成或先处理失败记录",

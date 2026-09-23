@@ -377,6 +377,130 @@ function LibraryItemRestorePreviewFields({ snapshot }: PreviewFieldsProps) {
   });
 }
 
+/** 提案快照的数值窄化（记录删除影响计数等，形状漂移返回 null）。 */
+function fieldNumber(
+  source: Record<string, unknown> | null | undefined,
+  key: string,
+): number | null {
+  const value = source?.[key];
+  return typeof value === "number" ? value : null;
+}
+
+/** OP_RECORD_SOFT_DELETE 确认卡预览：目标记录 + 记录级资产计数 + 删除
+ * 不可逆警告（L3 高风险动作，确认卡完整呈现级联影响）。 */
+function RecordSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
+  const countLabels: string[] = [];
+  const countEntries: [string, string][] = [
+    ["knowledge_point_count", "chat.operationProposal.recordDelete.kpCount"],
+    ["quiz_count", "chat.operationProposal.recordDelete.quizCount"],
+    ["todo_count", "chat.operationProposal.recordDelete.todoCount"],
+    ["review_material_count", "chat.operationProposal.recordDelete.reviewCount"],
+  ];
+  for (const [key, labelKey] of countEntries) {
+    const count = fieldNumber(snapshot, key);
+    if (count !== null && count > 0) {
+      countLabels.push(t(labelKey, { count }));
+    }
+  }
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.recordDelete.targetRecord")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {fieldString(snapshot, "title") ?? fieldString(snapshot, "record_id")}
+        </dd>
+      </div>
+      {countLabels.length > 0 ? (
+        <p className="text-label text-muted-foreground">
+          {countLabels.join(" · ")}
+        </p>
+      ) : null}
+      <p className="text-destructive text-label">
+        {t("chat.operationProposal.recordDelete.hint")}
+      </p>
+    </>
+  );
+}
+
+/** OP_COURSE_SOFT_DELETE 确认卡预览：目标课程 + 将删除的记录清单（前几条
+ * 标题与计数）+ 级联删除警告（Q8：批准后新增记录 → 旧批准失效重新预览）。 */
+function CourseSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
+  const rawRecords = snapshot?.records;
+  const records = Array.isArray(rawRecords)
+    ? rawRecords.filter(
+        (item): item is Record<string, unknown> => typeof item === "object" && item !== null,
+      )
+    : [];
+  const recordCount = fieldNumber(snapshot, "record_count") ?? records.length;
+  const shown = records
+    .map((item) => fieldString(item, "title"))
+    .filter((title): title is string => title !== null)
+    .slice(0, 5);
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.modify.targetCourse")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {fieldString(snapshot, "name") ?? fieldString(snapshot, "course_id")}
+        </dd>
+      </div>
+      {recordCount > 0 ? (
+        <p className="text-label text-muted-foreground">
+          {t("chat.operationProposal.courseDelete.recordList", {
+            count: recordCount,
+            titles: shown.join("、"),
+          })}
+        </p>
+      ) : null}
+      <p className="text-destructive text-label">
+        {t("chat.operationProposal.courseDelete.hint")}
+      </p>
+    </>
+  );
+}
+
+/** OP_RECORD_MOVE_COURSE 确认卡预览：目标记录 + 课程 before/after
+ * （原课程未归类＝收件箱占位；课程名经课程 API 按 id 拉取）。 */
+function RecordMovePreviewFields({ payload, snapshot, t }: PreviewFieldsProps) {
+  const afterCourseId = fieldString(payload, "target_course_id");
+  const beforeCourseId = fieldString(snapshot, "course_id");
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.recordDelete.targetRecord")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {fieldString(snapshot, "title") ?? fieldString(snapshot, "record_id")}
+        </dd>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.recordMove.courseField")}
+        </dt>
+        <dd className="text-label text-ink-muted decoration-border-strong break-words line-through">
+          {beforeCourseId ? (
+            <TextRecordCourseName courseId={beforeCourseId} />
+          ) : (
+            t("chat.operationProposal.recordMove.inboxLabel")
+          )}
+        </dd>
+        <ArrowRight className="text-ink-faint size-3 shrink-0" aria-hidden="true" />
+        <dd className="text-label text-ink min-w-0 break-words">
+          {afterCourseId ? <TextRecordCourseName courseId={afterCourseId} /> : null}
+        </dd>
+      </div>
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.recordMove.hint")}
+      </p>
+    </>
+  );
+}
+
 /** TEXT_RECORD_ADD 确认卡预览：目标课程 + 正文摘要 + 明示「保存后将尝试生成
  * AI 总结」（spec 用户故事 9）。 */
 function TextRecordPreviewFields({ payload, t }: PreviewFieldsProps) {
@@ -573,6 +697,45 @@ function SettledLibraryItemRow({
   );
 }
 
+/** 删除类回执行共用（工单 04）：结果文案（可带插值）+ 无目标入口
+ * （目标已删除，无可跳转）。 */
+function SettledDeletedRow({
+  status,
+  t,
+  appliedTextKey,
+  rejectedTextKey,
+  appliedValues,
+}: SettledRowProps & {
+  appliedTextKey: string;
+  rejectedTextKey: string;
+  appliedValues?: Record<string, unknown>;
+}) {
+  const applied = status === "APPLIED";
+  return (
+    <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5">
+      <p className="text-label text-muted-foreground">
+        {t(applied ? appliedTextKey : rejectedTextKey, appliedValues ?? {})}
+      </p>
+    </div>
+  );
+}
+
+/** OP_RECORD_MOVE_COURSE 回执行：迁移结果 + 记录入口。 */
+function SettledRecordMoveRow({ status, result, t }: SettledRowProps) {
+  const recordId = fieldString(result, "record_id");
+  return (
+    <SettledActionRow
+      status={status}
+      t={t}
+      appliedTextKey="chat.operationProposal.recordMove.accepted"
+      rejectedTextKey="chat.operationProposal.recordMove.rejected"
+      openLabel={t("chat.operationProposal.recordMove.openRecord")}
+      openTo="/records/$recordId"
+      openParams={recordId ? { recordId } : {}}
+    />
+  );
+}
+
 /** 类型专属卡片行为表（键 = 提案类型；涵盖类型即本卡过滤集合）。 */
 type OperationCardSpec = {
   /** 跨类型共用文案键（failed/failedDetail/accept/reject）的类型前缀。 */
@@ -653,6 +816,38 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
         rejectedTextKey="chat.operationProposal.libraryItemRestore.rejected"
       />
     ),
+  },
+  OP_RECORD_SOFT_DELETE: {
+    label: (key) => `chat.operationProposal.recordDelete.${key}`,
+    PreviewFields: RecordSoftDeletePreviewFields,
+    SettledRow: (props) => (
+      <SettledDeletedRow
+        {...props}
+        appliedTextKey="chat.operationProposal.recordDelete.accepted"
+        rejectedTextKey="chat.operationProposal.recordDelete.rejected"
+      />
+    ),
+  },
+  OP_COURSE_SOFT_DELETE: {
+    label: (key) => `chat.operationProposal.courseDelete.${key}`,
+    PreviewFields: CourseSoftDeletePreviewFields,
+    SettledRow: ({ status, result, t }) => (
+      <SettledDeletedRow
+        status={status}
+        result={result}
+        t={t}
+        appliedTextKey="chat.operationProposal.courseDelete.accepted"
+        rejectedTextKey="chat.operationProposal.courseDelete.rejected"
+        appliedValues={{
+          count: fieldNumber(result, "record_count") ?? 0,
+        }}
+      />
+    ),
+  },
+  OP_RECORD_MOVE_COURSE: {
+    label: (key) => `chat.operationProposal.recordMove.${key}`,
+    PreviewFields: RecordMovePreviewFields,
+    SettledRow: SettledRecordMoveRow,
   },
 };
 

@@ -1933,6 +1933,42 @@
         "accept": "Confirm restoring the item",
         "reject": "Don't restore the item",
         "hint": "A restored item returns to the default view."
+      },
+      "recordDelete": {
+        "accepted": "Record deleted.",
+        "rejected": "Rejected; the record was not deleted.",
+        "failed": "Deleting the record did not complete.",
+        "failedDetail": "Deleting the record did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm deleting the record",
+        "reject": "Don't delete the record",
+        "targetRecord": "Target record",
+        "kpCount": "{{count}} knowledge points",
+        "quizCount": "{{count}} quizzes",
+        "todoCount": "{{count}} todos",
+        "reviewCount": "{{count}} review materials",
+        "hint": "Deleting removes the record and all of its record-level assets (summary, knowledge points, quizzes, todos, review materials) for good. This cannot be undone."
+      },
+      "courseDelete": {
+        "accepted": "Course deleted (including {{count}} records).",
+        "rejected": "Rejected; the course was not deleted.",
+        "failed": "Deleting the course did not complete.",
+        "failedDetail": "Deleting the course did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm deleting the course",
+        "reject": "Don't delete the course",
+        "recordList": "{{count}} records will be deleted as well: {{titles}}",
+        "hint": "Deleting removes the course and all of its records and record-level assets for good. This cannot be undone. To just retire the course from daily use, archive it instead."
+      },
+      "recordMove": {
+        "accepted": "Record moved.",
+        "rejected": "Rejected; the record was not moved.",
+        "failed": "Moving the record did not complete.",
+        "failedDetail": "Moving the record did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm moving the record",
+        "reject": "Don't move the record",
+        "openRecord": "Open record",
+        "courseField": "Course",
+        "inboxLabel": "Inbox (unfiled)",
+        "hint": "The record's content and assets (summary, knowledge points, todos, review materials) move with it; past tests and learning evidence keep their original course attribution."
       }
     },
     "authMode": {
@@ -2627,6 +2663,8 @@
     "RECORDING_SEALED": "A sealed recording cannot be abandoned.",
     "RECORDING_TOO_LONG": "The recording exceeds 3 hours.",
     "RECORD_ALREADY_CLASSIFIED": "This Record is already assigned to another course; reclassifying is not supported in this version.",
+    "RECORD_ALREADY_IN_COURSE": "The record is already in that course; no move needed.",
+    "RECORD_MOVE_JOB_IN_PROGRESS": "The record has a processing job in progress. Wait for it to finish before moving.",
     "RECORD_COURSE_MISSING": "The Record has no course assigned.",
     "RECORD_NOT_CLASSIFIABLE": "It cannot be classified in its current state. Wait for content processing to finish, or handle the failed Record first.",
     "RECORD_NOT_FOUND": "This Record does not exist or has been deleted.",

@@ -460,3 +460,167 @@ describe("ChatOperationProposalCard — 修改与归档动作（工单 03'）", 
     expect(screen.getByRole("button", { name: "确认修改条目" })).toBeEnabled();
   });
 });
+
+function deleteMoveFixture(
+  overrides: Partial<{
+    id: string;
+    proposal_type: string;
+    status: string;
+    session_id: string | null;
+    error_code: string | null;
+    payload: Record<string, unknown>;
+    snapshot: Record<string, unknown> | null;
+    result: Record<string, unknown> | null;
+  }> = {},
+) {
+  return {
+    id: "p-d1",
+    proposal_type: "OP_RECORD_SOFT_DELETE",
+    status: "PENDING",
+    session_id: SESSION_ID,
+    payload: { record_id: "rec-1" },
+    snapshot: {
+      updated_at: "2026-09-21T08:00:00",
+      title: "第 1 讲 一致性哈希",
+      status: "COMPLETED",
+      course_id: "course-1",
+      knowledge_point_count: 2,
+      quiz_count: 1,
+      todo_count: 0,
+      review_material_count: 0,
+      has_summary: true,
+    },
+    result: null,
+    error_code: null,
+    ...overrides,
+  };
+}
+
+describe("ChatOperationProposalCard — 删除与跨课迁移（工单 04）", () => {
+  it("OP_RECORD_SOFT_DELETE 预览：目标记录 + 资产计数 + 不可逆警告", async () => {
+    listProposals.mockResolvedValue([deleteMoveFixture()]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("第 1 讲 一致性哈希")).toBeVisible();
+    expect(screen.getByText("知识点 2 条 · 习题 1 道")).toBeVisible();
+    expect(
+      screen.getByText(
+        "删除后该记录及其全部记录级资产（总结、知识点、习题、Todo、复习资料）将一并移除，不可恢复。",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认删除记录" })).toBeEnabled();
+  });
+
+  it("OP_RECORD_SOFT_DELETE 确认转回执：无目标入口（记录已删除）", async () => {
+    confirmProposal.mockResolvedValue({
+      ...deleteMoveFixture(),
+      status: "APPLIED",
+      result: { record_id: "rec-1", title: "第 1 讲 一致性哈希" },
+    });
+    listProposals.mockResolvedValue([deleteMoveFixture()]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认删除记录" }),
+    );
+    expect(await screen.findByText("记录已删除。")).toBeVisible();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("OP_COURSE_SOFT_DELETE 预览：记录清单计数 + 级联警告", async () => {
+    listProposals.mockResolvedValue([
+      deleteMoveFixture({
+        id: "p-c1",
+        proposal_type: "OP_COURSE_SOFT_DELETE",
+        payload: { course_id: "course-1" },
+        snapshot: {
+          updated_at: "2026-09-21T08:00:00",
+          name: "Python 学习",
+          status: "ACTIVE",
+          records: [
+            { record_id: "rec-1", title: "第 1 讲" },
+            { record_id: "rec-2", title: "第 2 讲" },
+          ],
+          record_count: 2,
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("Python 学习")).toBeVisible();
+    expect(screen.getByText("将一并删除 2 条记录：第 1 讲、第 2 讲")).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认删除课程" })).toBeEnabled();
+  });
+
+  it("OP_COURSE_SOFT_DELETE 确认转回执：计数如实呈现", async () => {
+    confirmProposal.mockResolvedValue({
+      ...deleteMoveFixture({
+        id: "p-c1",
+        proposal_type: "OP_COURSE_SOFT_DELETE",
+        payload: { course_id: "course-1" },
+      }),
+      status: "APPLIED",
+      result: { course_id: "course-1", record_count: 2 },
+    });
+    listProposals.mockResolvedValue([
+      deleteMoveFixture({
+        id: "p-c1",
+        proposal_type: "OP_COURSE_SOFT_DELETE",
+        payload: { course_id: "course-1" },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(await screen.findByRole("button", { name: "确认删除课程" }));
+    expect(
+      await screen.findByText("课程已删除（含 2 条记录）。"),
+    ).toBeVisible();
+  });
+
+  it("OP_RECORD_MOVE_COURSE 预览：记录 + 课程 before/after + 语义提示", async () => {
+    get.mockResolvedValue({ id: "course-9", name: "分布式系统" });
+    listProposals.mockResolvedValue([
+      deleteMoveFixture({
+        id: "p-m1",
+        proposal_type: "OP_RECORD_MOVE_COURSE",
+        payload: { record_id: "rec-1", target_course_id: "course-9" },
+        snapshot: {
+          updated_at: "2026-09-21T08:00:00",
+          title: "第 1 讲 一致性哈希",
+          status: "COMPLETED",
+          course_id: "course-1",
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("第 1 讲 一致性哈希")).toBeVisible();
+    expect(await screen.findByText("分布式系统")).toBeVisible();
+    expect(screen.getByText("所属课程")).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认迁移记录" })).toBeEnabled();
+  });
+
+  it("OP_RECORD_MOVE_COURSE 确认转回执：记录入口跳转", async () => {
+    get.mockResolvedValue({ id: "course-9", name: "分布式系统" });
+    confirmProposal.mockResolvedValue({
+      ...deleteMoveFixture({
+        id: "p-m1",
+        proposal_type: "OP_RECORD_MOVE_COURSE",
+        payload: { record_id: "rec-1", target_course_id: "course-9" },
+      }),
+      status: "APPLIED",
+      result: {
+        record_id: "rec-1",
+        before_course_id: "course-1",
+        after_course_id: "course-9",
+      },
+    });
+    listProposals.mockResolvedValue([
+      deleteMoveFixture({
+        id: "p-m1",
+        proposal_type: "OP_RECORD_MOVE_COURSE",
+        payload: { record_id: "rec-1", target_course_id: "course-9" },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(await screen.findByRole("button", { name: "确认迁移记录" }));
+    expect(await screen.findByText("记录已迁移。")).toBeVisible();
+    const link = screen.getByRole("link", { name: "打开记录" });
+    expect(link).toHaveAttribute("href", "/records/$recordId");
+  });
+});
