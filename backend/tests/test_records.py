@@ -2,7 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import aiosqlite
 import httpx
@@ -303,6 +303,50 @@ async def test_course_records_api_is_protected_sorted_and_filters_tombstones(
         assert (
             await client.get("/api/courses/not-a-uuid/records", headers=headers)
         ).status_code == 422
+
+
+@pytest.mark.anyio
+async def test_record_move_http_uses_cross_course_service(tmp_path: Path) -> None:
+    async with running_record_app(tmp_path / "KnowRealm") as (app, client):
+        headers = {"X-KnowRealm-Token": TOKEN}
+
+        async def create_course(name: str) -> str:
+            response = await client.post(
+                "/api/courses",
+                headers=headers,
+                json={"name": name, "learning_context": "INTEREST", "depth": "BEGINNER"},
+            )
+            assert response.status_code == 201
+            return str(response.json()["id"])
+
+        source_id = await create_course("原课程")
+        target_id = await create_course("目标课程")
+        record_id = str(uuid4())
+        async with app.state.session_factory() as session, session.begin():
+            session.add(
+                Record(
+                    id=record_id,
+                    course_id=source_id,
+                    capture_type="QUICK_NOTE",
+                    title="待迁移记录",
+                    status="NOTE",
+                    duration_ms=0,
+                    summary_confirmed_at=None,
+                )
+            )
+
+        path = f"/api/records/{record_id}/course"
+        body = {"target_course_id": target_id}
+        assert (await client.patch(path, json=body)).status_code == 403
+        response = await client.patch(path, headers=headers, json=body)
+        assert response.status_code == 200
+        assert response.json()["course_id"] == target_id
+        assert (await client.get(f"/api/courses/{source_id}/records", headers=headers)).json() == []
+        target_records = await client.get(f"/api/courses/{target_id}/records", headers=headers)
+        assert [record["id"] for record in target_records.json()] == [record_id]
+        repeated = await client.patch(path, headers=headers, json=body)
+        assert repeated.status_code == 409
+        assert repeated.json()["code"] == "RECORD_ALREADY_IN_COURSE"
 
 
 @pytest.mark.anyio

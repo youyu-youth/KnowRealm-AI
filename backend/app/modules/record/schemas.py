@@ -56,6 +56,10 @@ class RecordClassificationRequest(BaseModel):
     course_id: UUID
 
 
+class RecordMoveRequest(BaseModel):
+    target_course_id: UUID
+
+
 class RecordUpgradeRequest(BaseModel):
     course_id: UUID | None = None
 

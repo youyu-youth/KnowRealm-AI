@@ -13,9 +13,11 @@ from app.modules.jobs.schemas import RecordJobsOut
 from app.modules.jobs.service import ProcessingJobService
 from app.modules.learning.service import MasteryService
 from app.modules.record.classification import RecordClassificationService
+from app.modules.record.move import RecordMoveService
 from app.modules.record.schemas import (
     InboxRecordOut,
     RecordClassificationRequest,
+    RecordMoveRequest,
     RecordOut,
     RecordStatus,
     RecordUpgradeAccepted,
@@ -194,6 +196,22 @@ async def classify_record(
         session,
         str(record_id),
         str(body.course_id),
+    )
+    return RecordOut.model_validate(record)
+
+
+@router.patch(
+    "/records/{record_id}/course",
+    response_model=RecordOut,
+    responses={409: {"model": ErrorResponse}},
+)
+async def move_record_course(
+    record_id: UUID,
+    body: RecordMoveRequest,
+    session: AsyncSession = Depends(get_db),
+) -> RecordOut:
+    record = await RecordMoveService.move_cross_course(
+        session, str(record_id), str(body.target_course_id)
     )
     return RecordOut.model_validate(record)
 

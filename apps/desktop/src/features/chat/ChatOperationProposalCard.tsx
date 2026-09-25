@@ -390,6 +390,15 @@ function fieldNumber(
  * 不可逆警告（L3 高风险动作，确认卡完整呈现级联影响）。 */
 function RecordSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
   const countLabels: string[] = [];
+  if (typeof snapshot?.has_summary === "boolean") {
+    countLabels.push(
+      t(
+        snapshot.has_summary
+          ? "chat.operationProposal.recordDelete.hasSummary"
+          : "chat.operationProposal.recordDelete.noSummary",
+      ),
+    );
+  }
   const countEntries: [string, string][] = [
     ["knowledge_point_count", "chat.operationProposal.recordDelete.kpCount"],
     ["quiz_count", "chat.operationProposal.recordDelete.quizCount"],
@@ -424,8 +433,8 @@ function RecordSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
   );
 }
 
-/** OP_COURSE_SOFT_DELETE 确认卡预览：目标课程 + 将删除的记录清单（前几条
- * 标题与计数）+ 级联删除警告（Q8：批准后新增记录 → 旧批准失效重新预览）。 */
+/** OP_COURSE_SOFT_DELETE 确认卡预览：目标课程、完整记录清单与计数、
+ * 级联删除警告（Q8：批准后新增记录 → 旧批准失效重新预览）。 */
 function CourseSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
   const rawRecords = snapshot?.records;
   const records = Array.isArray(rawRecords)
@@ -434,10 +443,9 @@ function CourseSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
       )
     : [];
   const recordCount = fieldNumber(snapshot, "record_count") ?? records.length;
-  const shown = records
+  const titles = records
     .map((item) => fieldString(item, "title"))
-    .filter((title): title is string => title !== null)
-    .slice(0, 5);
+    .filter((title): title is string => title !== null);
   return (
     <>
       <div className="flex gap-2">
@@ -449,10 +457,13 @@ function CourseSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
         </dd>
       </div>
       {recordCount > 0 ? (
-        <p className="text-label text-muted-foreground">
+        <p
+          className="text-label text-muted-foreground focus-visible:ring-ring/40 max-h-40 overflow-y-auto break-words focus-visible:ring-3"
+          tabIndex={0}
+        >
           {t("chat.operationProposal.courseDelete.recordList", {
             count: recordCount,
-            titles: shown.join("、"),
+            titles: titles.join("、"),
           })}
         </p>
       ) : null}

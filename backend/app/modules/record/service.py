@@ -6,6 +6,7 @@ from app.modules.capture.models import RecordFile
 from app.modules.course.service import CourseService
 from app.modules.jobs.lifecycle import cancel_nonterminal_jobs
 from app.modules.jobs.models import ProcessingJob
+from app.modules.learning.service import MasteryService
 from app.modules.record.models import LearningEvent, Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.review_material.models import ReviewMaterial
@@ -171,6 +172,7 @@ class RecordService:
             .values(deleted_at=deleted_at, updated_at=deleted_at)
         )
         await session.flush()
+        await MasteryService.mark_snapshots_stale(session, affected_concepts)
         return affected_concepts
 
     @staticmethod

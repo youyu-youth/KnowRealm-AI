@@ -235,6 +235,21 @@ async def _mark_snapshot_stale(
 
 class MasteryService:
     @staticmethod
+    async def mark_snapshots_stale(session: AsyncSession, concept_ids: Collection[str]) -> None:
+        """与删除事实同事务标记待重算；缺失快照由启动恢复自行识别。"""
+        if not concept_ids:
+            return
+        confirmed_ids = select(Concept.id).where(
+            Concept.id.in_(set(concept_ids)),
+            Concept.status == ConceptStatus.CONFIRMED.value,
+        )
+        await session.execute(
+            update(UserConceptMastery)
+            .where(UserConceptMastery.concept_id.in_(confirmed_ids))
+            .values(algorithm_version=STALE_VERSION_MARKER)
+        )
+
+    @staticmethod
     async def recompute_concepts(
         session_factory: async_sessionmaker[AsyncSession], concept_ids: Collection[str]
     ) -> set[str]:

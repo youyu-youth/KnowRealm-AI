@@ -501,13 +501,30 @@ describe("ChatOperationProposalCard — 删除与跨课迁移（工单 04）", (
     listProposals.mockResolvedValue([deleteMoveFixture()]);
     renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
     expect(await screen.findByText("第 1 讲 一致性哈希")).toBeVisible();
-    expect(screen.getByText("知识点 2 条 · 习题 1 道")).toBeVisible();
+    expect(screen.getByText("有总结 · 知识点 2 条 · 习题 1 道")).toBeVisible();
     expect(
       screen.getByText(
         "删除后该记录及其全部记录级资产（总结、知识点、习题、Todo、复习资料）将一并移除，不可恢复。",
       ),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "确认删除记录" })).toBeEnabled();
+  });
+
+  it("OP_RECORD_SOFT_DELETE 预览：没有总结时明确显示", async () => {
+    listProposals.mockResolvedValue([
+      deleteMoveFixture({
+        snapshot: {
+          title: "无总结记录",
+          has_summary: false,
+          knowledge_point_count: 0,
+          quiz_count: 0,
+          todo_count: 0,
+          review_material_count: 0,
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("无总结")).toBeVisible();
   });
 
   it("OP_RECORD_SOFT_DELETE 确认转回执：无目标入口（记录已删除）", async () => {
@@ -525,7 +542,7 @@ describe("ChatOperationProposalCard — 删除与跨课迁移（工单 04）", (
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
-  it("OP_COURSE_SOFT_DELETE 预览：记录清单计数 + 级联警告", async () => {
+  it("OP_COURSE_SOFT_DELETE 预览：完整记录清单 + 级联警告", async () => {
     listProposals.mockResolvedValue([
       deleteMoveFixture({
         id: "p-c1",
@@ -535,17 +552,21 @@ describe("ChatOperationProposalCard — 删除与跨课迁移（工单 04）", (
           updated_at: "2026-09-21T08:00:00",
           name: "Python 学习",
           status: "ACTIVE",
-          records: [
-            { record_id: "rec-1", title: "第 1 讲" },
-            { record_id: "rec-2", title: "第 2 讲" },
-          ],
-          record_count: 2,
+          records: Array.from({ length: 6 }, (_, index) => ({
+            record_id: `rec-${index + 1}`,
+            title: `第 ${index + 1} 讲`,
+          })),
+          record_count: 6,
         },
       }),
     ]);
     renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
     expect(await screen.findByText("Python 学习")).toBeVisible();
-    expect(screen.getByText("将一并删除 2 条记录：第 1 讲、第 2 讲")).toBeVisible();
+    expect(
+      screen.getByText(
+        "将一并删除 6 条记录：第 1 讲、第 2 讲、第 3 讲、第 4 讲、第 5 讲、第 6 讲",
+      ),
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: "确认删除课程" })).toBeEnabled();
   });
 

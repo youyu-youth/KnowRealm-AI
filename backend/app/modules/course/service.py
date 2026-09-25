@@ -176,19 +176,6 @@ class CourseService:
         取消非终态任务＋录音会话脱钩；返回（受影响 Concept 集合, 被级联软删的
         记录条数）——概念由调用方触发 Mastery 重算，计数进回执投影。删除纪律
         沿用 Record 链。"""
-        affected_concepts = {
-            concept_id
-            for concept_id in (
-                await session.scalars(
-                    select(LearningEvent.concept_id).where(
-                        LearningEvent.course_id == course.id,
-                        LearningEvent.concept_id.is_not(None),
-                    )
-                )
-            ).all()
-            if concept_id is not None
-        }
-        deleted_at = utcnow()
         record_ids = list(
             (
                 await session.scalars(
@@ -199,6 +186,21 @@ class CourseService:
                 )
             ).all()
         )
+        # 迁入记录的历史事件仍归原课程；级联删除也要重算那些原课程概念。
+        affected_concepts = {
+            concept_id
+            for concept_id in (
+                await session.scalars(
+                    select(LearningEvent.concept_id).where(
+                        (LearningEvent.course_id == course.id)
+                        | (LearningEvent.record_id.in_(record_ids)),
+                        LearningEvent.concept_id.is_not(None),
+                    )
+                )
+            ).all()
+            if concept_id is not None
+        }
+        deleted_at = utcnow()
         await cancel_nonterminal_jobs(
             session,
             record_filter=ProcessingJob.record_id.in_(record_ids),
@@ -223,6 +225,7 @@ class CourseService:
         course.deleted_at = deleted_at
         course.updated_at = deleted_at
         await session.flush()
+        await MasteryService.mark_snapshots_stale(session, affected_concepts)
         return affected_concepts, len(record_ids)
 
     @staticmethod

@@ -1942,6 +1942,8 @@
         "accept": "Confirm deleting the record",
         "reject": "Don't delete the record",
         "targetRecord": "Target record",
+        "hasSummary": "Has summary",
+        "noSummary": "No summary",
         "kpCount": "{{count}} knowledge points",
         "quizCount": "{{count}} quizzes",
         "todoCount": "{{count}} todos",

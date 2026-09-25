@@ -1922,6 +1922,8 @@
         "accept": "确认删除记录",
         "reject": "拒绝删除记录",
         "targetRecord": "目标记录",
+        "hasSummary": "有总结",
+        "noSummary": "无总结",
         "kpCount": "知识点 {{count}} 条",
         "quizCount": "习题 {{count}} 道",
         "todoCount": "Todo {{count}} 条",

@@ -1265,6 +1265,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/records/{record_id}/course": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Move Record Course */
+        patch: operations["move_record_course_api_records__record_id__course_patch"];
+        trace?: never;
+    };
     "/api/records/{record_id}/document-segments": {
         parameters: {
             query?: never;
@@ -4669,6 +4686,14 @@ export interface components {
             jobs: components["schemas"]["ProcessingJobOut"][];
             /** Progress */
             progress: number;
+        };
+        /** RecordMoveRequest */
+        RecordMoveRequest: {
+            /**
+             * Target Course Id
+             * Format: uuid
+             */
+            target_course_id: string;
         };
         /** RecordOut */
         RecordOut: {
@@ -11452,6 +11477,79 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RecordClassificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    move_record_course_api_records__record_id__course_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordMoveRequest"];
             };
         };
         responses: {

@@ -20,6 +20,7 @@ from sqlalchemy import text
 
 from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
+from app.modules.course.service import CourseService
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.mastery import (
     ALGORITHM_VERSION,
@@ -32,6 +33,8 @@ from app.modules.learning.mastery import (
     confidence_level_of,
 )
 from app.modules.learning.service import MasteryService
+from app.modules.record.move import RecordMoveService
+from app.modules.record.service import RecordService
 
 BASE_TIME = datetime(2026, 9, 1, 8, 0, 0)
 TOKEN = "test-launch-token"
@@ -1041,6 +1044,61 @@ async def test_record_soft_delete_recomputes_affected_concepts_and_keeps_history
 
 
 @pytest.mark.anyio
+async def test_record_delete_commit_without_recompute_recovers_snapshot(tmp_path: Path) -> None:
+    """模拟删除提交后进程退出：未运行重算任务，启动恢复仍能发现旧快照。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, _client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (f"event-crash-{index}", CONCEPT_ID, f"2026-09-0{index + 1}T10:00:00Z")
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+        async with app.state.session_factory() as session:
+            with pytest.raises(RuntimeError, match="abort delete"):
+                async with session.begin():
+                    record = await RecordService.get(session, RECORD_ID)
+                    assert record is not None
+                    await RecordService.soft_delete_core(session, record)
+                    raise RuntimeError("abort delete")
+        async with app.state.session_factory() as session:
+            rolled_back_version = await session.scalar(
+                text("SELECT algorithm_version FROM user_concept_mastery WHERE concept_id = :id"),
+                {"id": CONCEPT_ID},
+            )
+        assert rolled_back_version == ALGORITHM_VERSION
+
+        async with app.state.session_factory() as session:
+            assert await RecordService.soft_delete(session, RECORD_ID) == {CONCEPT_ID}
+        async with app.state.session_factory() as session:
+            before = (
+                await session.execute(
+                    text(
+                        "SELECT algorithm_version, evidence_count FROM user_concept_mastery "
+                        "WHERE concept_id = :id"
+                    ),
+                    {"id": CONCEPT_ID},
+                )
+            ).one()
+        assert tuple(before) == ("stale", 3)
+
+        assert await MasteryService.recover_snapshots(app.state.session_factory) == set()
+        async with app.state.session_factory() as session:
+            after = (
+                await session.execute(
+                    text(
+                        "SELECT algorithm_version, evidence_count FROM user_concept_mastery "
+                        "WHERE concept_id = :id"
+                    ),
+                    {"id": CONCEPT_ID},
+                )
+            ).one()
+        assert tuple(after) == (ALGORITHM_VERSION, 0)
+
+
+@pytest.mark.anyio
 async def test_recompute_failure_marks_stale_and_recovery_rebuilds(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1203,6 +1261,93 @@ async def test_course_soft_delete_recomputes_then_physical_delete_cascades(
     assert snapshot["mastery_score"] is None
     assert snapshot["evidence_count"] == 0
     assert tuple(remaining) == (0, 0)
+
+
+@pytest.mark.anyio
+async def test_course_delete_commit_without_recompute_marks_snapshot(tmp_path: Path) -> None:
+    """课程级联删除提交时，待重算标记与墓碑一起持久化。"""
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, _client):
+        await seed_course_and_concepts(app)
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (f"event-course-crash-{index}", CONCEPT_ID, f"2026-09-0{index + 1}T10:00:00Z")
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+        async with app.state.session_factory() as session, session.begin():
+            course = await CourseService.get(session, COURSE_ID)
+            assert course is not None
+            await CourseService.soft_delete_core(session, course)
+        async with app.state.session_factory() as session:
+            marked = (
+                await session.execute(
+                    text(
+                        "SELECT algorithm_version, evidence_count FROM user_concept_mastery "
+                        "WHERE concept_id = :id"
+                    ),
+                    {"id": CONCEPT_ID},
+                )
+            ).one()
+        assert tuple(marked) == ("stale", 3)
+        assert await MasteryService.recover_snapshots(app.state.session_factory) == set()
+        async with app.state.session_factory() as session:
+            rebuilt = (
+                await session.execute(
+                    text(
+                        "SELECT algorithm_version, evidence_count FROM user_concept_mastery "
+                        "WHERE concept_id = :id"
+                    ),
+                    {"id": CONCEPT_ID},
+                )
+            ).one()
+        assert tuple(rebuilt) == (ALGORITHM_VERSION, 0)
+
+
+@pytest.mark.anyio
+async def test_deleting_destination_course_recomputes_moved_record_history(
+    tmp_path: Path,
+) -> None:
+    """迁入记录被级联删除后，原课程的历史证据退出掌握度有效集合。"""
+    target_course_id = "11111111-1111-4111-8111-111111111112"
+    async with running_mastery_app(tmp_path / "KnowRealm") as (app, client):
+        await seed_course_and_concepts(app)
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text(
+                    "INSERT INTO courses (id, name, learning_context, education_stage, "
+                    "status, created_at, updated_at) VALUES "
+                    "(:id, '目标课程', 'SCHOOL', 'UNDERGRADUATE', 'ACTIVE', :now, :now)"
+                ),
+                {"id": target_course_id, "now": NOW},
+            )
+        await seed_quiz_answer_events(
+            app,
+            events=[
+                (
+                    f"event-moved-{index}",
+                    CONCEPT_ID,
+                    f"2026-09-0{index + 1}T10:00:00.000000Z",
+                )
+                for index in range(3)
+            ],
+        )
+        await app.state.evidence_consumer.run_once()
+        before = await client.get(f"/api/courses/{COURSE_ID}/mastery")
+        async with app.state.session_factory() as session:
+            await RecordMoveService.move_cross_course(session, RECORD_ID, target_course_id)
+        deleted = await client.delete(f"/api/courses/{target_course_id}")
+        after = await client.get(f"/api/courses/{COURSE_ID}/mastery")
+
+    before_row = next(
+        item for item in before.json()["concepts"] if item["concept_id"] == CONCEPT_ID
+    )
+    after_row = next(item for item in after.json()["concepts"] if item["concept_id"] == CONCEPT_ID)
+    assert before_row["evidence_count"] == 3
+    assert deleted.status_code == 204, deleted.text
+    assert after_row["evidence_count"] == 0
+    assert after_row["mastery_score"] is None
 
 
 @pytest.mark.anyio
