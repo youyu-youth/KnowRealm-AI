@@ -138,12 +138,13 @@ async def invoke_plan(
     entries: list[dict[str, Any]],
     *,
     auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL,
+    session_id: str = SESSION_ID,
 ) -> dict[str, Any]:
     """直调计划工具（绑定统一运行时上下文的工具层缝隙，先例：操作工具往返）。"""
     token = bind_agent_runtime_context(
         AgentRuntimeContext(
             session_factory=session_factory,
-            session_id=SESSION_ID,
+            session_id=session_id,
             auth_mode=auth_mode,
             instruction_excerpt="把这些条目归到整理目标课程",
             message_id="msg-1",
@@ -369,6 +370,68 @@ async def test_auto_approve_split_calls_accumulate_toward_threshold(tmp_path: Pa
         assert proposal.target_type == plans.PLAN_TARGET_TYPE
         assert proposal.target_id == first["run"]["run_id"]
         assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 10
+
+
+@pytest.mark.anyio
+async def test_auto_approve_threshold_survives_completed_run(tmp_path: Path) -> None:
+    """阈值会话累计不重置（工单 05 review）：首批 6 项完成（Run 落终态）后再提交
+    6 项，累计 12 > 10 → 仍出计划卡、不新建第二个自动 Run（spec 决策 11：计入
+    已完成项，拆调用 / 分段 / 重启不重置）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 12)
+        entries = [update_entry(index) for index in range(1, 13)]
+        first = await invoke_plan(session_factory, entries[:6], auth_mode=AuthMode.AUTO_APPROVE)
+        assert first["run"]["added_item_count"] == 6
+        assert await advance(session_factory, first["run"]["run_id"]) == "COMPLETED"
+
+        second = await invoke_plan(session_factory, entries[6:], auth_mode=AuthMode.AUTO_APPROVE)
+        assert second["plan_proposal"]["item_count"] == 6
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_runs") == 1
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 6
+        assert await item_row(session_factory, 1) == ("条目1", COURSE_ID, "ACTIVE")
+        assert await item_row(session_factory, 7) == ("条目7", None, "ACTIVE")
+
+
+@pytest.mark.anyio
+async def test_auto_approve_threshold_accumulates_across_completed_runs(tmp_path: Path) -> None:
+    """分段执行不重置（工单 05 review）：6 完成 → 4（累计 10）仍直执行 → 2（累计
+    12）出计划卡——计数跨多个已结束 Run 累计，不是只看最近一个。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 12)
+        entries = [update_entry(index) for index in range(1, 13)]
+        first = await invoke_plan(session_factory, entries[:6], auth_mode=AuthMode.AUTO_APPROVE)
+        assert await advance(session_factory, first["run"]["run_id"]) == "COMPLETED"
+
+        second = await invoke_plan(session_factory, entries[6:10], auth_mode=AuthMode.AUTO_APPROVE)
+        assert second["run"]["added_item_count"] == 4
+        assert await advance(session_factory, second["run"]["run_id"]) == "COMPLETED"
+
+        over = await invoke_plan(session_factory, entries[10:], auth_mode=AuthMode.AUTO_APPROVE)
+        assert "plan_proposal" in over
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_runs") == 2
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 10
+
+
+@pytest.mark.anyio
+async def test_auto_approve_threshold_counts_per_session(tmp_path: Path) -> None:
+    """计数按会话（工单 05 review）：另一会话不背前一会话的已用额度——阈值锚点是
+    本会话的任务链，不是全局计数。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 12)
+        entries = [update_entry(index) for index in range(1, 13)]
+        first = await invoke_plan(session_factory, entries[:6], auth_mode=AuthMode.AUTO_APPROVE)
+        assert await advance(session_factory, first["run"]["run_id"]) == "COMPLETED"
+
+        other = await invoke_plan(
+            session_factory,
+            entries[6:],
+            auth_mode=AuthMode.AUTO_APPROVE,
+            session_id="sess-batch-other",
+        )
+        assert other["run"]["added_item_count"] == 6
 
 
 @pytest.mark.anyio

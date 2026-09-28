@@ -4,8 +4,9 @@
 与逐项执行前快照固化后按「档位 × 阈值 × 已批准集合」确定性分流——
 
 - 请求批准档：落 OP_BATCH 计划卡（整卡一次确认即批次授权，确认前零业务事实）；
-- 帮我批准档：阈值内（同一任务直接业务目标数与写操作数均 ≤10，计入已建/已完成项）
-  直建 Run 并投递 AGENT_RUN 触发 job；超阈值仍出计划卡；
+- 帮我批准档：阈值内（本会话直接业务目标数与写操作数累计 ≤10，计入已建 / 已完成
+  项，拆调用 / 分段 / 重启不重置）直建 Run 并投递 AGENT_RUN 触发 job；超阈值仍出
+  计划卡；
 - 完全访问档：不受阈值限制，但已批准计划（proposal_id 非空）的 Run 执行中新增
   目标超出已批准集合 → 升回确认（spec 用户故事 23）。
 
@@ -58,7 +59,7 @@ from app.modules.agent.runs.schemas import (
     require_plan_out,
 )
 from app.modules.agent.runs.service import (
-    count_run_operations,
+    count_session_operations,
     enqueue_trigger,
     find_active_run,
 )
@@ -529,7 +530,7 @@ def batch_route(
     items: list[BatchPlanItemPayload],
     resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
     covered: dict[tuple[str, str], LiveStep],
-    existing_operation_count: int,
+    session_operation_count: int,
 ) -> BatchRoute:
     """批量提交分流（spec 决策 10/11，纯判定）：直执行 / 计划卡 / 已在计划内。
 
@@ -538,6 +539,10 @@ def batch_route(
     （spec 用户故事 23「改参数后重新确认」）；帮我批准档阈值只决定「一批全新或
     变更目标」能否自动生效，不放宽已运行计划的集合。等待态 Run 只接受显式唤醒
     （继续 / 重试），故经工具追加也转计划卡（确认即显式动作）。
+
+    阈值计数为**会话累计**（`session_operation_count` 含已结束 Run 与已完成项）：
+    首批完成、Run 落终态后不重置（spec 决策 11：计入已完成项，拆调用 / 分段 /
+    重启不重置）；全新计划（无活跃 Run）同样先扣已用额度再判。
     """
     if auth_mode == AuthMode.REQUEST_APPROVAL:
         return BatchRoute.PLAN_CARD
@@ -546,7 +551,10 @@ def batch_route(
         return BatchRoute.PLAN_CARD
     if active is None:
         # 全新计划（无活跃 Run）：帮我批准档仍受阈值约束，超阈值出计划卡。
-        if auth_mode == AuthMode.AUTO_APPROVE and len(items) > AUTO_APPROVE_BATCH_LIMIT:
+        if (
+            auth_mode == AuthMode.AUTO_APPROVE
+            and session_operation_count + len(items) > AUTO_APPROVE_BATCH_LIMIT
+        ):
             return BatchRoute.PLAN_CARD
         return BatchRoute.DIRECT
     actionable = [
@@ -561,7 +569,7 @@ def batch_route(
     if active.proposal_id is not None or auth_mode == AuthMode.FULL_ACCESS:
         # 执行中目标超出固定计划集合（完全访问档亦然，spec 用户故事 23）。
         return BatchRoute.PLAN_CARD
-    if existing_operation_count + len(actionable) > AUTO_APPROVE_BATCH_LIMIT:
+    if session_operation_count + len(actionable) > AUTO_APPROVE_BATCH_LIMIT:
         return BatchRoute.PLAN_CARD
     return BatchRoute.DIRECT
 
@@ -624,7 +632,8 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
                     "error": AGENT_RUN_PLAN_INVALID,
                     "detail": _PLAN_INVALID_DETAIL,
                 }
-        existing_count = await count_run_operations(session, active.id) if active else 0
+        # 阈值计数为会话累计：首批完成（Run 终态）后不重置（spec 决策 11）。
+        session_count = await count_session_operations(session, runtime.session_id)
         covered: dict[tuple[str, str], LiveStep] = (
             await covered_targets(session, active) if active is not None else {}
         )
@@ -634,7 +643,7 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
             items=plan.items,
             resolved=resolved,
             covered=covered,
-            existing_operation_count=existing_count,
+            session_operation_count=session_count,
         )
         if route == BatchRoute.ALREADY_PLANNED:
             assert active is not None

@@ -56,7 +56,7 @@ def _job_run_id_column() -> ColumnElement[Any]:
 async def list_nonterminal_runs(
     session: AsyncSession, session_id: str, *, limit: int | None = None
 ) -> list[AgentRun]:
-    """本会话未结束（非终态）Run，最近在前——「同一任务」锚点与上下文摘要共用。"""
+    """本会话未结束（非终态）Run，最近在前——上下文摘要与活跃 Run 判定共用。"""
     terminal = [status.value for status in RUN_TERMINAL_STATUSES]
     stmt = (
         select(AgentRun)
@@ -69,19 +69,29 @@ async def list_nonterminal_runs(
 
 
 async def find_active_run(session: AsyncSession, session_id: str) -> AgentRun | None:
-    """本会话当前活跃 Run（非终态、最新一个）——批量阈值的「同一任务」锚点：
-    持久行承载（重启不重置）、跨工具调用复用（拆调用不重置，spec 决策 11）。
+    """本会话当前活跃 Run（非终态、最新一个）——计划追加与固定计划约束的锚点
+    （活跃 Run 上新增目标升回确认）；批量阈值的累计口径见
+    :func:`count_session_operations`（不以活跃 Run 为界）。
     """
     runs = await list_nonterminal_runs(session, session_id, limit=1)
     return runs[0] if runs else None
 
 
-async def count_run_operations(session: AsyncSession, run_id: str) -> int:
-    """该 Run 已建 operation 行数（含已完成 / 失败 / 跳过项；重试沿用原行不新增）——
-    帮我批准档阈值的直接业务目标数与写操作数（本阶段批量动作一目标一写操作同值）。"""
+async def count_session_operations(session: AsyncSession, session_id: str) -> int:
+    """本会话全部 Run 的 operation 行数（含终态 Run 与已完成 / 失败 / 跳过项；
+    重试沿用原行不新增）——帮我批准档阈值的直接业务目标数与写操作数（本阶段批量
+    动作一目标一写操作同值）。
+
+    计数按会话累计、不按活跃 Run 划界（spec 决策 11：计入已完成项，拆调用 /
+    分段 / 重启不重置）——首批完成（Run 终态）后再提交同样计入，阈值不因任务
+    落定而重置；单步操作（run_id 空）不属批量计划，不计入。
+    """
     return int(
         await session.scalar(
-            select(func.count()).select_from(AgentOperation).where(AgentOperation.run_id == run_id)
+            select(func.count())
+            .select_from(AgentOperation)
+            .join(AgentRun, AgentRun.id == AgentOperation.run_id)
+            .where(AgentRun.session_id == session_id)
         )
         or 0
     )
