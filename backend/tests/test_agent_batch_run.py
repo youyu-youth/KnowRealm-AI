@@ -30,7 +30,7 @@ from app.db.migrations import run_migrations
 from app.modules.agent.runs import plans
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runs.service import RunControlService, RunHistoryService
-from app.modules.agent.runs.worker import advance_run, agent_run_spec
+from app.modules.agent.runs.worker import advance_run, advance_step, agent_run_spec
 from app.modules.agent.runtime import (
     AgentRuntimeContext,
     ToolCallBudget,
@@ -47,6 +47,7 @@ from app.shared.events import RecordInvalidationNotifier
 NOW = "2026-09-26T08:00:00.000000Z"
 LATER = "2026-09-26T09:00:00.000000Z"
 COURSE_ID = "c0000000-0000-4000-8000-000000000001"
+COURSE_OTHER = "c0000000-0000-4000-8000-000000000002"
 COURSE_MISSING = "c0000000-0000-4000-8000-00000000dead"
 SESSION_ID = "sess-batch"
 RUN_ID = "b0000000-0000-4000-8000-000000000001"
@@ -223,6 +224,23 @@ async def statuses(session_factory: async_sessionmaker[AsyncSession], run_id: st
         status
         for _action, status, _code, _attempts, _result in await step_rows(session_factory, run_id)
     ]
+
+
+async def operation_payloads(
+    session_factory: async_sessionmaker[AsyncSession], run_id: str
+) -> list[dict[str, Any]]:
+    """逐项操作载荷（append 顺序），按计划顺序取详情再映射表行。"""
+    detail = await run_detail(session_factory, run_id)
+    order = [item["id"] for item in cast(list[dict[str, Any]], detail["operations"])]
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                text("SELECT id, payload_json FROM agent_operations WHERE run_id = :run_id"),
+                {"run_id": run_id},
+            )
+        ).all()
+    by_id = {cast(str, row[0]): cast(str, row[1]) for row in rows}
+    return [cast(dict[str, Any], json.loads(by_id[operation_id])) for operation_id in order]
 
 
 async def job_statuses(
@@ -1152,3 +1170,127 @@ async def test_corrupt_plan_confirmation_fails_and_keeps_run_unchanged(tmp_path:
         assert detail["status"] == "RUNNING"
         assert detail["plan_version"] == 1
         assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 2
+
+
+# ---------------------------------------------------------------------------
+# 参数变更重新确认（spec 决策 13 / 用户故事 23）：待执行步骤就地改写，不静默丢弃
+
+
+@pytest.mark.anyio
+async def test_replan_changed_params_replaces_pending_step(tmp_path: Path) -> None:
+    """改参数重新确认：待执行步骤就地改写（同一 operation 身份、计划条目同步），
+    执行按新参数落地——旧参数不执行、不重复建操作（工单 05 review）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_course(session_factory, COURSE_OTHER)
+        await seed_items(session_factory, 1)
+        first = await invoke_plan(session_factory, [update_entry(1)])
+        run_id = await confirm(session_factory, await plan_proposal_id(first))
+
+        second = await invoke_plan(session_factory, [update_entry(1, course_id=COURSE_OTHER)])
+        assert "plan_proposal" in second
+        assert await confirm(session_factory, await plan_proposal_id(second)) == run_id
+
+        # 就地改写：仍是一条操作、载荷与计划条目均为新参数、版本递增。
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 1
+        assert await operation_payloads(session_factory, run_id) == [
+            {"item_id": item_id(1), "title": None, "course_id": COURSE_OTHER}
+        ]
+        detail = await run_detail(session_factory, run_id)
+        assert detail["plan_version"] == 2
+        plan_items = cast(list[dict[str, Any]], cast(dict[str, Any], detail["plan"])["items"])
+        assert plan_items[0]["params"]["course_id"] == COURSE_OTHER
+        # 确认前零业务事实；执行后落在新课程（旧课程从未写入）。
+        assert await item_row(session_factory, 1) == ("条目1", None, "ACTIVE")
+        assert await advance(session_factory, run_id) == "COMPLETED"
+        assert await item_row(session_factory, 1) == ("条目1", COURSE_OTHER, "ACTIVE")
+
+
+@pytest.mark.anyio
+async def test_replan_changed_params_after_success_appends_new_step(tmp_path: Path) -> None:
+    """已成功步骤的参数变更＝新事实：追加新步骤执行（不重做已成功项、不改写历史行）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_course(session_factory, COURSE_OTHER)
+        await seed_items(session_factory, 2)
+        direct = await invoke_plan(
+            session_factory,
+            [update_entry(1), archive_entry(2)],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        assert await advance_step(session_factory, run_id) is True
+        assert await statuses(session_factory, run_id) == ["SUCCEEDED", "PLANNED"]
+
+        changed = await invoke_plan(
+            session_factory,
+            [update_entry(1, course_id=COURSE_OTHER)],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        # 固定计划约束：执行中目标超出已批准集合（对象＋参数）→ 升回确认。
+        assert "plan_proposal" in changed
+        assert await confirm(session_factory, await plan_proposal_id(changed)) == run_id
+
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 3
+        assert await advance(session_factory, run_id) == "COMPLETED"
+        assert await item_row(session_factory, 1) == ("条目1", COURSE_OTHER, "ACTIVE")
+        assert await statuses(session_factory, run_id) == [
+            "SUCCEEDED",
+            "SUCCEEDED",
+            "SUCCEEDED",
+        ]
+
+
+@pytest.mark.anyio
+async def test_replan_changed_params_keeps_dependent_steps_intact(tmp_path: Path) -> None:
+    """参数变更就地改写不破坏依赖：依赖该步骤的后续步骤照常推进（operation 身份与
+    计划位置不变，依赖不指向被取代的旧操作）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_course(session_factory, COURSE_OTHER)
+        await seed_items(session_factory, 2)
+        first = await invoke_plan(
+            session_factory, [update_entry(1), archive_entry(2, depends_on=[0])]
+        )
+        run_id = await confirm(session_factory, await plan_proposal_id(first))
+        second = await invoke_plan(session_factory, [update_entry(1, course_id=COURSE_OTHER)])
+        assert await confirm(session_factory, await plan_proposal_id(second)) == run_id
+
+        assert await advance(session_factory, run_id) == "COMPLETED"
+        assert await statuses(session_factory, run_id) == ["SUCCEEDED", "SUCCEEDED"]
+        assert await item_row(session_factory, 1) == ("条目1", COURSE_OTHER, "ACTIVE")
+        assert await item_row(session_factory, 2) == ("条目2", None, "ARCHIVED")
+
+
+@pytest.mark.anyio
+async def test_auto_approve_changed_params_compares_live_step(tmp_path: Path) -> None:
+    """帮我批准档阈值内：参数变更直接生效（就地改写）；比较对象是「当前活步骤」
+    ——改回原参数同样生效（不会命中更早的历史操作而静默丢弃）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_course(session_factory, COURSE_OTHER)
+        await seed_items(session_factory, 1)
+        direct = await invoke_plan(
+            session_factory, [update_entry(1)], auth_mode=AuthMode.AUTO_APPROVE
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+
+        changed = await invoke_plan(
+            session_factory,
+            [update_entry(1, course_id=COURSE_OTHER)],
+            auth_mode=AuthMode.AUTO_APPROVE,
+        )
+        assert changed["ok"] is True
+        assert changed["run"]["added_item_count"] == 1
+        assert await operation_payloads(session_factory, run_id) == [
+            {"item_id": item_id(1), "title": None, "course_id": COURSE_OTHER}
+        ]
+
+        reverted = await invoke_plan(
+            session_factory, [update_entry(1)], auth_mode=AuthMode.AUTO_APPROVE
+        )
+        assert reverted["ok"] is True
+        assert await operation_payloads(session_factory, run_id) == [
+            {"item_id": item_id(1), "title": None, "course_id": COURSE_ID}
+        ]
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 1

@@ -18,6 +18,7 @@ proposal_id 固化）＋PLANNED operations（逐项快照随行）＋AGENT_RUN �
 """
 
 import json
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal, cast
 
@@ -277,58 +278,125 @@ def run_planned_targets(run: AgentRun) -> set[tuple[str, str]]:
     }
 
 
-async def covered_targets(session: AsyncSession, run: AgentRun) -> dict[tuple[str, str], str]:
-    """已覆盖目标（(动作, 目标) → 既有 operation id）：待执行（PLANNED）与已成功
-    （SUCCEEDED）的操作目标。失败 / 跳过项不算覆盖——重新预览授权后允许为该目标
-    新建操作（冲突解决的唯一路径：旧批准的快照已失效，重试沿用旧快照仍会失效）。
-    operation id 供新增项的依赖重映射（依赖已被覆盖的步骤时直接挂到既有操作上）。"""
+@dataclass(frozen=True)
+class LiveStep:
+    """同一 (动作, 目标) 的既有活步骤：待执行（PLANNED）优先，否则最近一次已成功
+    （SUCCEEDED）。params 承载「已批准集合」里的参数部分（spec 决策 13），用于判定
+    本次提交是重复覆盖还是参数变更。"""
+
+    operation_id: str
+    params: dict[str, Any]
+    status: str
+
+
+def _stored_params(payload_json: str) -> dict[str, Any]:
+    """既有操作载荷参数（坏值＝空：与任何新参数都不同 → 走变更路径，不静默丢弃）。"""
+    try:
+        value: object = json.loads(payload_json)
+    except ValueError:
+        return {}
+    return cast(dict[str, Any], value) if isinstance(value, dict) else {}
+
+
+async def covered_targets(session: AsyncSession, run: AgentRun) -> dict[tuple[str, str], LiveStep]:
+    """每个 (动作, 目标) 的既有活步骤（待执行优先，否则最近一次已成功）。
+
+    失败 / 跳过项不算活步骤——重新预览授权后允许为该目标新建操作（冲突解决的唯一
+    路径：旧批准的快照已失效，重试沿用旧快照仍会失效）。参数一致的项＝已覆盖（不
+    重复建操作、不重做已成功项）；参数不一致＝重新确认过的变更，按活步骤状态就地
+    改写（待执行）或追加新步骤（已成功）——不能只看 (动作, 目标) 就把变更丢弃
+    （spec 用户故事 23「改参数后重新确认」，工单 05 review）。
+    """
     covered = {
         OperationStatus.PLANNED.value,
         OperationStatus.SUCCEEDED.value,
     }
     rows = (
         await session.execute(
-            select(AgentOperation.action, AgentOperation.target_id, AgentOperation.id).where(
+            select(
+                AgentOperation.action,
+                AgentOperation.target_id,
+                AgentOperation.id,
+                AgentOperation.payload_json,
+                AgentOperation.status,
+            )
+            .where(
                 AgentOperation.run_id == run.id,
                 AgentOperation.status.in_(covered),
                 AgentOperation.target_id.is_not(None),
             )
+            .order_by(AgentOperation.created_at, AgentOperation.id)
         )
     ).all()
-    return {
-        (cast(str, action), cast(str, target)): cast(str, operation_id)
-        for action, target, operation_id in rows
-    }
+    steps: dict[tuple[str, str], LiveStep] = {}
+    for action, target, operation_id, payload_json, status in rows:
+        key = (cast(str, action), cast(str, target))
+        previous = steps.get(key)
+        if previous is not None and previous.status == OperationStatus.PLANNED.value:
+            continue  # 待执行步骤优先（同一目标至多一条），更晚的已成功历史不覆盖它
+        steps[key] = LiveStep(
+            operation_id=cast(str, operation_id),
+            params=_stored_params(cast(str, payload_json)),
+            status=cast(str, status),
+        )
+    return steps
+
+
+def _covered_unchanged(
+    item: BatchPlanItemPayload,
+    params: dict[str, Any],
+    covered: dict[tuple[str, str], LiveStep],
+) -> bool:
+    """该项是否已被既有活步骤以**相同参数**覆盖（「已在计划中」判定）。
+
+    参数变更不算「已在计划中」——它是本次重新确认的修改，按档位与固定计划约束处理。
+    """
+    step = covered.get((item.action.value, item.item_id))
+    return step is not None and step.params == params
 
 
 def pending_plan_batch(
     payload: BatchPlanPayload,
     snapshot: BatchPlanSnapshot,
     resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
-    covered: dict[tuple[str, str], str],
+    covered: dict[tuple[str, str], LiveStep],
 ) -> tuple[
     BatchPlanPayload,
     BatchPlanSnapshot,
     list[tuple[OperationSpec[Any], dict[str, Any]]],
     list[int],
     dict[int, str],
+    dict[int, str],
 ]:
-    """剔除已覆盖项的待执行子批（幂等口径：同一目标不重复建操作、不重做已成功项）。
+    """待执行子批与既有活步骤的分类（幂等口径＋参数变更口径）。
+
+    逐项分类（spec 决策 13：已批准集合＝对象集合＋参数＋版本）：
+    - 无活步骤 → 待执行子批（新建操作）；
+    - 活步骤参数一致 → 已覆盖（不重复建操作、不重做已成功项），依赖经 preset 映射
+      到既有 operation id；
+    - 活步骤参数不一致 → 本次重新确认的变更（spec 用户故事 23）：待执行（PLANNED）
+      的就地改写（replaced，未执行＝无历史要保，身份与计划位置不变）；已成功
+      （SUCCEEDED）的作为新步骤追加（不改写已执行的历史行）。
 
     返回（子批载荷、子批快照、子批解析、子批在原文中的索引、已覆盖项索引→既有
-    operation id）。依赖索引仍按**原始提交顺序**表达：新增项依赖被剔除项时，
-    依赖经后者映射到既有 operation id（推进依赖判定同口径）。
+    operation id、参数变更项索引→既有 operation id）。依赖索引仍按**原始提交顺序**
+    表达：新增项依赖被剔除项时，依赖经后者映射到既有 operation id（推进依赖判定
+    同口径）。
     """
-    keep = [
-        index
-        for index, item in enumerate(payload.items)
-        if (item.action.value, item.item_id) not in covered
-    ]
-    preset = {
-        index: covered[(item.action.value, item.item_id)]
-        for index, item in enumerate(payload.items)
-        if (item.action.value, item.item_id) in covered
-    }
+    keep: list[int] = []
+    preset: dict[int, str] = {}
+    replaced: dict[int, str] = {}
+    for index, item in enumerate(payload.items):
+        step = covered.get((item.action.value, item.item_id))
+        if step is None:
+            keep.append(index)
+        elif step.params == resolved[index][1]:
+            preset[index] = step.operation_id
+        elif step.status == OperationStatus.PLANNED.value:
+            keep.append(index)
+            replaced[index] = step.operation_id
+        else:
+            keep.append(index)
     subset = payload.model_copy(update={"items": [payload.items[index] for index in keep]})
     return (
         subset,
@@ -338,6 +406,7 @@ def pending_plan_batch(
         [resolved[index] for index in keep],
         keep,
         preset,
+        replaced,
     )
 
 
@@ -352,6 +421,7 @@ async def append_plan_operations(
     proposal_id: str | None,
     submitted_indexes: list[int] | None = None,
     preset_dependencies: dict[int, str] | None = None,
+    replaced_operation_ids: dict[int, str] | None = None,
 ) -> list[BatchPlanItemOut]:
     """计划项 → PLANNED operations（计划顺序即推进顺序）＋ 计划投影写回 run。
 
@@ -359,6 +429,12 @@ async def append_plan_operations(
     已覆盖项时经 preset_dependencies 挂到既有操作上）；重规划延展时新批追加在
     既有计划之后，版本随之递增（已批准集合是「对象集合＋参数＋版本」的组合，
     spec 用户故事 23）。
+
+    参数变更项（replaced_operation_ids：原始提交索引 → 既有待执行 operation id）
+    就地改写该步骤的载荷 / 快照 / 授权依据：未执行＝无历史要保，身份与计划位置
+    不变（依赖它的步骤不受影响），计划条目参数同步更新；已成功步骤的变更不走此
+    路径（由调用方分类后作为新条目追加）。返回值含新建与就地改写两类条目（调用方
+    以条数呈现本次实际生效的项）。
 
     写入口径严格读既有计划：损坏即拒绝追加（降级为空基线会把新计划写成「只剩
     本批」的残缺集合、索引失真，旧步骤的排序与依赖一并丢失；工单 05 review）。
@@ -368,13 +444,32 @@ async def append_plan_operations(
         plan = require_plan_out(run.plan_json, run.plan_version)
     except PlanCorruptError as exc:
         raise _plan_invalid() from exc
+    entry_by_operation = {entry.operation_id: entry for entry in plan.items}
     base_index = len(plan.items)
     appended: list[BatchPlanItemOut] = []
+    new_entries: list[BatchPlanItemOut] = []
+    updated_params: dict[str, dict[str, Any]] = {}
+    replacements = replaced_operation_ids or {}
     dependency_ids: dict[int, str] = dict(preset_dependencies or {})
     indexes = (
         submitted_indexes if submitted_indexes is not None else list(range(len(payload.items)))
     )
     for index, (item, (spec, params)) in enumerate(zip(payload.items, resolved, strict=True)):
+        existing_id = replacements.get(indexes[index])
+        if existing_id is not None:
+            operation = await session.get(AgentOperation, existing_id)
+            assert operation is not None
+            operation.payload_json = json.dumps(params, ensure_ascii=False, separators=(",", ":"))
+            operation.snapshot_json = json.dumps(
+                snapshot.items[index].state, ensure_ascii=False, separators=(",", ":")
+            )
+            operation.authorization_json = authorization.model_dump_json()
+            operation.proposal_id = proposal_id
+            operation.updated_at = now
+            dependency_ids[indexes[index]] = operation.id
+            updated_params[operation.id] = params
+            appended.append(entry_by_operation[operation.id].model_copy(update={"params": params}))
+            continue
         validated = spec.payload_schema.model_validate(params)
         target = spec.target_resolver(validated) if spec.target_resolver is not None else None
         operation = AgentOperation(
@@ -400,22 +495,28 @@ async def append_plan_operations(
         session.add(operation)
         await session.flush()
         dependency_ids[indexes[index]] = operation.id
-        appended.append(
-            BatchPlanItemOut(
-                index=base_index + index,
-                action=item.action,
-                item_id=item.item_id,
-                params=params,
-                operation_id=operation.id,
-                depends_on=[
-                    dependency_ids[dependency]
-                    for dependency in item.depends_on
-                    if dependency in dependency_ids
-                ],
-            )
+        entry = BatchPlanItemOut(
+            index=base_index + index,
+            action=item.action,
+            item_id=item.item_id,
+            params=params,
+            operation_id=operation.id,
+            depends_on=[
+                dependency_ids[dependency]
+                for dependency in item.depends_on
+                if dependency in dependency_ids
+            ],
         )
+        new_entries.append(entry)
+        appended.append(entry)
+    items = [
+        entry.model_copy(update={"params": updated_params[entry.operation_id]})
+        if entry.operation_id in updated_params
+        else entry
+        for entry in plan.items
+    ]
     run.plan_json = BatchPlanOut(
-        plan_version=payload.plan_version, items=[*plan.items, *appended]
+        plan_version=payload.plan_version, items=[*items, *new_entries]
     ).model_dump_json()
     run.updated_at = now
     return appended
@@ -427,15 +528,16 @@ def batch_route(
     active: AgentRun | None,
     items: list[BatchPlanItemPayload],
     resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
-    covered: dict[tuple[str, str], str],
+    covered: dict[tuple[str, str], LiveStep],
     existing_operation_count: int,
 ) -> BatchRoute:
     """批量提交分流（spec 决策 10/11，纯判定）：直执行 / 计划卡 / 已在计划内。
 
-    执行中（存在活跃 Run）新增目标一律升回确认：计划的对象集合＋参数＋版本即
-    授权范围，超出范围的新目标在完全访问档同样需要重新确认（spec 用户故事 23）；
-    帮我批准档阈值只决定「一批全新目标」能否自动建单，不放宽已运行计划的集合。
-    等待态 Run 只接受显式唤醒（继续 / 重试），故经工具追加也转计划卡（确认即显式动作）。
+    执行中（存在活跃 Run）需要动作的项一律升回确认：计划的对象集合＋参数＋版本即
+    授权范围，超出范围的新目标与**参数变更**在完全访问档同样需要重新确认
+    （spec 用户故事 23「改参数后重新确认」）；帮我批准档阈值只决定「一批全新或
+    变更目标」能否自动生效，不放宽已运行计划的集合。等待态 Run 只接受显式唤醒
+    （继续 / 重试），故经工具追加也转计划卡（确认即显式动作）。
     """
     if auth_mode == AuthMode.REQUEST_APPROVAL:
         return BatchRoute.PLAN_CARD
@@ -447,15 +549,19 @@ def batch_route(
         if auth_mode == AuthMode.AUTO_APPROVE and len(items) > AUTO_APPROVE_BATCH_LIMIT:
             return BatchRoute.PLAN_CARD
         return BatchRoute.DIRECT
-    new_items = [item for item in items if (item.action.value, item.item_id) not in covered]
-    if not new_items:
+    actionable = [
+        item
+        for item, (_spec, params) in zip(items, resolved, strict=True)
+        if not _covered_unchanged(item, params, covered)
+    ]
+    if not actionable:
         return BatchRoute.ALREADY_PLANNED
     if active.status != RunStatus.RUNNING.value:
         return BatchRoute.PLAN_CARD
     if active.proposal_id is not None or auth_mode == AuthMode.FULL_ACCESS:
         # 执行中目标超出固定计划集合（完全访问档亦然，spec 用户故事 23）。
         return BatchRoute.PLAN_CARD
-    if existing_operation_count + len(new_items) > AUTO_APPROVE_BATCH_LIMIT:
+    if existing_operation_count + len(actionable) > AUTO_APPROVE_BATCH_LIMIT:
         return BatchRoute.PLAN_CARD
     return BatchRoute.DIRECT
 
@@ -519,7 +625,7 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
                     "detail": _PLAN_INVALID_DETAIL,
                 }
         existing_count = await count_run_operations(session, active.id) if active else 0
-        covered: dict[tuple[str, str], str] = (
+        covered: dict[tuple[str, str], LiveStep] = (
             await covered_targets(session, active) if active is not None else {}
         )
         route = batch_route(
@@ -545,10 +651,16 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
                 "instruction_text": runtime.instruction_excerpt,
             }
         )
-        # 幂等口径：已覆盖项不重复建操作（直执行与确认路径都只落待执行子批）。
-        batch, batch_snapshot, batch_resolved, batch_indexes, preset = pending_plan_batch(
-            payload, snapshot, resolved, covered
-        )
+        # 幂等口径：已覆盖项（参数一致）不重复建操作；参数变更项就地改写既有待执行
+        # 步骤（直执行与确认路径都只落待执行子批）。
+        (
+            batch,
+            batch_snapshot,
+            batch_resolved,
+            batch_indexes,
+            preset,
+            replaced,
+        ) = pending_plan_batch(payload, snapshot, resolved, covered)
         if route == BatchRoute.DIRECT:
             if active is None:
                 run = await create_run(
@@ -577,6 +689,7 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
                 proposal_id=None,
                 submitted_indexes=batch_indexes,
                 preset_dependencies=preset,
+                replaced_operation_ids=replaced,
             )
             await enqueue_trigger(session, run.id)
             return _run_tool_payload(run, added_item_count=len(appended))
@@ -640,12 +753,18 @@ async def apply_batch_plan(session: AsyncSession, proposal: AgentProposal) -> di
     # 计划版本以 Run 上生效的版本为准（延展时可能被提升为单调递增版本），
     # 保证 run.plan_json 与「已批准集合」的版本口径一致。
     payload = payload.model_copy(update={"plan_version": run.plan_version})
-    # 幂等口径与直执行同源：已覆盖项不重复建操作（同一目标不重做已成功项、
-    # 不重复计数）；失败 / 跳过项不算覆盖——重新预览授权后仍会落新操作。
+    # 幂等口径与直执行同源：参数一致的已覆盖项不重复建操作（同一目标不重做已成功项、
+    # 不重复计数）；参数变更项就地改写待执行步骤或作为新步骤追加（spec 用户故事 23
+    # 「改参数后重新确认」）；失败 / 跳过项不算覆盖——重新预览授权后仍会落新操作。
     covered = await covered_targets(session, run)
-    batch, batch_snapshot, batch_resolved, batch_indexes, preset = pending_plan_batch(
-        payload, snapshot, resolved, covered
-    )
+    (
+        batch,
+        batch_snapshot,
+        batch_resolved,
+        batch_indexes,
+        preset,
+        replaced,
+    ) = pending_plan_batch(payload, snapshot, resolved, covered)
     await verify_plan_snapshots(session, batch_resolved, batch_snapshot)
     appended = await append_plan_operations(
         session,
@@ -662,6 +781,7 @@ async def apply_batch_plan(session: AsyncSession, proposal: AgentProposal) -> di
         proposal_id=proposal.id,
         submitted_indexes=batch_indexes,
         preset_dependencies=preset,
+        replaced_operation_ids=replaced,
     )
     await enqueue_trigger(session, run.id)
     return BatchPlanResult(
