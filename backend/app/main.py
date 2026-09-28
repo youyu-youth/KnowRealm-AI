@@ -26,6 +26,7 @@ from app.modules.agent import chat_sessions
 from app.modules.agent.auth_mode import router as agent_auth_mode_router
 from app.modules.agent.message_service import ChatStreamRegistry
 from app.modules.agent.runs import routes as agent_runs_routes
+from app.modules.agent.runs.worker import agent_run_spec
 from app.modules.capture import (
     audio_imports,
     capture_batches,
@@ -386,6 +387,16 @@ def create_app(
                         "library_index_rebuild",
                         lambda: JobRunner(
                             index_rebuild_spec(session_factory, record_notifier),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
+                    # Run 推进（工单 05）：AGENT_RUN 触发 job 是无状态触发器，
+                    # Run 状态是唯一事实源（不引入第二套调度器）。
+                    (
+                        "agent_run",
+                        lambda: JobRunner(
+                            agent_run_spec(session_factory, record_notifier),
                             session_factory,
                             record_notifier,
                         ),

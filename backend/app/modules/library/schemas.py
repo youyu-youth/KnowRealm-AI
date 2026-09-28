@@ -273,7 +273,9 @@ class ProposalType(StrEnum):
     COURSE_CREATE = "COURSE_CREATE"
     TEXT_RECORD_ADD = "TEXT_RECORD_ADD"
     # OP_ 命名空间（迁移 0030 CHECK 通配，类型执法在判别 schema 注册表）：
-    # 工单 03 修改与归档动作、工单 04 删除与跨课迁移，后续新动作按同前缀递增。
+    # 工单 03 修改与归档动作、工单 04 删除与跨课迁移，后续新动作按同前缀递增；
+    # 工单 05 OP_BATCH 是批次授权载体（计划卡：对象集合＋逐项参数＋计划版本，
+    # 确认后建 Run 与 PLANNED operations，不落单步 operation）。
     OP_COURSE_UPDATE = "OP_COURSE_UPDATE"
     OP_COURSE_ARCHIVE = "OP_COURSE_ARCHIVE"
     OP_COURSE_RESTORE = "OP_COURSE_RESTORE"
@@ -283,6 +285,7 @@ class ProposalType(StrEnum):
     OP_RECORD_SOFT_DELETE = "OP_RECORD_SOFT_DELETE"
     OP_COURSE_SOFT_DELETE = "OP_COURSE_SOFT_DELETE"
     OP_RECORD_MOVE_COURSE = "OP_RECORD_MOVE_COURSE"
+    OP_BATCH = "OP_BATCH"
 
 
 class AgentProposalOut(BaseModel):

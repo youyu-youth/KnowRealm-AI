@@ -33,7 +33,9 @@ from app.modules.agent.citations import (
     parse_library_citation_reply,
 )
 from app.modules.agent.context import (
+    CHAT_BATCH_PLAN_GUIDANCE,
     CHAT_CONTEXT_CHAR_BUDGET,
+    CHAT_LANGUAGE_INSTRUCTION,
     ChatContextTooLargeError,
     ContextRow,
     LibraryContext,
@@ -168,8 +170,10 @@ class TestBuildContextMessages:
 
         assert len(messages) == 3
         assert isinstance(messages[0], SystemMessage)
-        # 有效 SYSTEM 消息末尾统一携带对话内容语言指令（决策 #59）。
-        assert messages[0].content == "你是学习助手\n回答使用与用户最新提问相同的语言。"
+        # 有效 SYSTEM 消息末尾统一携带批量整理指引与对话内容语言指令（决策 #59）。
+        assert messages[0].content == (
+            f"你是学习助手\n{CHAT_BATCH_PLAN_GUIDANCE}\n{CHAT_LANGUAGE_INSTRUCTION}"
+        )
         assert messages[0].id == "sys"
         assert isinstance(messages[1], HumanMessage)
         assert isinstance(messages[2], AIMessage)
@@ -212,10 +216,12 @@ class TestBuildContextMessages:
         assert "中断的问题" in contents
 
     def test_budget_drops_oldest_turns_until_within_budget(self) -> None:
-        # 每轮 6 字符（"问题N"+"回答N"），SYSTEM 快照含语言指令 19 字符：budget=37 恰容 3 轮。
+        # 每轮 6 字符（"问题N"+"回答N"），SYSTEM 快照含语言指令与批量指引：
+        # budget 取 3 轮轮身 + 快照 + 1，保证恰好容纳 3 轮。
+        system_len = len("\n".join(["S", CHAT_BATCH_PLAN_GUIDANCE, CHAT_LANGUAGE_INSTRUCTION]))
         messages = build_context_messages(
             [row("sys", ChatRole.SYSTEM, "S"), *chat_rows(5)],
-            budget=37,
+            budget=system_len + 3 * 6 + 1,
         )
 
         contents = [message.content for message in messages]
@@ -247,7 +253,7 @@ class TestBuildContextMessages:
         )
 
         assert [message.content for message in messages] == [
-            "S\n回答使用与用户最新提问相同的语言。",
+            "\n".join(["S", CHAT_BATCH_PLAN_GUIDANCE, CHAT_LANGUAGE_INSTRUCTION]),
             "问题",
             "回答",
         ]
@@ -1682,7 +1688,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v14"
+        assert rows[0][3] == "chat-library-scope-v15"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2102,10 +2108,11 @@ async def test_prompt_byte_identical_when_web_search_off(
         session_id = await create_session(client)
         await send_message(client, session_id, "问题")
 
-        # 关闭标志：提示与现状逐字一致（中性快照 + 语言指令，无联网指引）。
+        # 关闭标志：提示与现状逐字一致（中性快照 + 批量指引 + 语言指令，无联网指引）。
         assert str(captured[0][0].content) == (
             "你是 KnowRealm 学习助手。用户尚未建立档案，请以中性、通用的语气回答。\n"
-            "回答使用与用户最新提问相同的语言。"
+            f"{CHAT_BATCH_PLAN_GUIDANCE}\n"
+            f"{CHAT_LANGUAGE_INSTRUCTION}"
         )
 
         # 挂载会话同样只在标志开启时注入联网指引。
@@ -2190,7 +2197,8 @@ async def test_scope_mounting_matrix_tool_visibility(
             # 提案 / 03 文本记录提案 / 工单 06 任意会话支持用户明确「记住…」）
             # + 修改与归档动作六工具（工单 03'：update/archive/restore_course 与
             # update/archive/restore_library_item）+ 删除与迁移三工具（工单 04：
-            # soft_delete_record / delete_course / move_record_course，顺序 = 装配段）。
+            # soft_delete_record / delete_course / move_record_course）+ 批量整理
+            # 计划工具（工单 05：plan_batch_operations，顺序 = 装配段）。
             assert await visible(free_id) == [
                 "search_courses",
                 "propose_memory",
@@ -2205,6 +2213,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "soft_delete_record",
                 "delete_course",
                 "move_record_course",
+                "plan_batch_operations",
             ]
             assert await visible(record_session_id) == [
                 "search_library",
@@ -2221,6 +2230,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "soft_delete_record",
                 "delete_course",
                 "move_record_course",
+                "plan_batch_operations",
             ]
             assert await visible(course_session_id) == [
                 "search_library",
@@ -2237,6 +2247,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "soft_delete_record",
                 "delete_course",
                 "move_record_course",
+                "plan_batch_operations",
             ]
             assert await visible(all_session_id) == [
                 "search_library",
@@ -2253,6 +2264,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "soft_delete_record",
                 "delete_course",
                 "move_record_course",
+                "plan_batch_operations",
             ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
@@ -2275,6 +2287,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "soft_delete_record",
                 "delete_course",
                 "move_record_course",
+                "plan_batch_operations",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
@@ -2292,6 +2305,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "soft_delete_record",
                 "delete_course",
                 "move_record_course",
+                "plan_batch_operations",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
@@ -2309,6 +2323,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "soft_delete_record",
                 "delete_course",
                 "move_record_course",
+                "plan_batch_operations",
             ]
 
 

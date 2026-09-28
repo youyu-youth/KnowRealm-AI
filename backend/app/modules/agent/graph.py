@@ -70,6 +70,7 @@ from app.modules.agent.tools.move_record_course import (
     MOVE_RECORD_COURSE_TOOL_NAME,
     move_record_course,
 )
+from app.modules.agent.tools.plan_batch_operations import plan_batch_operations
 from app.modules.agent.tools.propose_ingest import (
     PROPOSE_INGEST_TOOL_NAME,
     propose_ingest,
@@ -96,11 +97,11 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v14"
+CHAT_PROMPT_VERSION = "chat-library-scope-v15"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
-# 迁移三工具）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v15"
+# 迁移三工具；工单 05：批量整理计划工具与批量指引）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v16"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
@@ -259,7 +260,9 @@ def _resolve_agent_config(
     # 解耦）+ 修改与归档动作组（工单 03：update/archive/restore_course 与
     # update/archive/restore_library_item，L1 级）+ 删除与迁移动作组（工单 04：
     # soft_delete_record / delete_course（L3 恒确认）与 move_record_course（L2），
-    # 按注册表 level 声明自动继承档位分流）。
+    # 按注册表 level 声明自动继承档位分流）+ 批量整理计划工具（工单 05：一次
+    # 提交多条整理目标，出计划卡或直建 Run 由后端档位与阈值判定——计划卡经既有
+    # 提案查询就地呈现，不进 done 载荷，故不入 OPERATION_TOOL_NAMES）。
     config = AgentConfig(
         tools=(
             *config.tools,
@@ -276,6 +279,7 @@ def _resolve_agent_config(
             soft_delete_record,
             delete_course,
             move_record_course,
+            plan_batch_operations,
         )
     )
     if research:

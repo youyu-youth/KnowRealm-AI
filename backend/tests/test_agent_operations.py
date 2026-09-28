@@ -1297,13 +1297,18 @@ def test_operations_common_flow_imports_no_domain_modules() -> None:
     app/modules 目录动态枚举，未来模块增减自动适应；相对导入（from ..course
     …）按首段同样判领域。第二阶段 01 票起 runs 子包（模型 / 服务 / 查询 /
     清理）同受防线覆盖。
+
+    jobs 是执行基础设施而非业务领域（WorkerSpec 声明式执行体与触发 job 由全部
+    worker 共用；05 票起 runs 推进 worker 与唤醒路径经它接入 JobRunner），故与
+    agent / library 一并放行；course / record / capture / quiz 等业务领域依旧
+    禁止——新动作接入仍只发生在动作模块。
     """
     import ast
     import importlib
 
     from app.modules.agent.operations import registry
 
-    allowed_domains = {"agent", "library"}
+    allowed_domains = {"agent", "library", "jobs"}
     # registry.__file__ 的 parents：[operations, agent, modules]——parents[2] 即域根目录。
     modules_root = Path(registry.__file__ or ".").parents[2]
     domain_names = (
@@ -1327,6 +1332,8 @@ def test_operations_common_flow_imports_no_domain_modules() -> None:
         importlib.import_module("app.modules.agent.runs.schemas"),
         importlib.import_module("app.modules.agent.runs.service"),
         importlib.import_module("app.modules.agent.runs.routes"),
+        importlib.import_module("app.modules.agent.runs.plans"),
+        importlib.import_module("app.modules.agent.runs.worker"),
     ]
     for module in modules:
         source = Path(cast(str, module.__file__)).read_text(encoding="utf-8")

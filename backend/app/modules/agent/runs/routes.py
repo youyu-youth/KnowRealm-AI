@@ -1,7 +1,8 @@
-"""操作历史查询与清理端点（spec 决策 21；设置页「操作历史」分区消费）。
+"""操作历史查询与清理端点（spec 决策 21；设置页「操作历史」分区消费）
+＋ Run 唤醒与取消端点（工单 05：继续指令 / 失败项重试 / 取消，spec 决策 7）。
 
-Run 推进与 activity 写入随 02/05 票接入；本票阶段 runs / activity 恒空态，
-operations 由第一阶段两类动作确认执行回写。
+唤醒仅由显式动作触发并经原子抢占；推进由 AGENT_RUN 触发 job 内的 worker 完成，
+端点只改 Run 状态并投递触发（不承载任务状态，spec 决策 6）。
 """
 
 from uuid import UUID
@@ -19,7 +20,7 @@ from app.modules.agent.runs.schemas import (
     PurgeResultOut,
     RunListQuery,
 )
-from app.modules.agent.runs.service import RunHistoryService
+from app.modules.agent.runs.service import RunControlService, RunHistoryService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 
@@ -76,6 +77,41 @@ async def delete_run_history(
 async def purge_finished(session: AsyncSession = Depends(get_db)) -> PurgeResultOut:
     """批量清理已结束任务的历史（终态 runs＋终态单步 operations）；提案永不删。"""
     return PurgeResultOut.model_validate(await RunHistoryService.purge_finished(session))
+
+
+@router.post("/runs/{run_id}/cancel", response_model=AgentRunOut)
+async def cancel_run(
+    run_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> AgentRunOut:
+    """取消任务（显式动作）：已结束拒绝；等待态就地落 CANCELLED，运行态由推进
+    每步检查后收尾——取消后不再新增动作、已提交结果保留（不冒充撤销）。"""
+    return AgentRunOut.model_validate(await RunControlService.cancel_run(session, str(run_id)))
+
+
+@router.post("/runs/{run_id}/resume", response_model=AgentRunOut)
+async def resume_run(
+    run_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> AgentRunOut:
+    """继续指令（显式唤醒）：仅等待态可继续，原子抢占 WAITING_USER → RUNNING
+    并重投触发；不自动重试失败项（重试是独立显式动作）。"""
+    return AgentRunOut.model_validate(await RunControlService.resume_run(session, str(run_id)))
+
+
+@router.post("/runs/{run_id}/operations/{operation_id}/retry", response_model=AgentRunOut)
+async def retry_run_operation(
+    run_id: UUID,
+    operation_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> AgentRunOut:
+    """失败 / 跳过项重试（沿用原 operation 身份，attempts 递增）：依赖该项而
+    跳过的后续步骤一并恢复待执行，并唤醒任务继续推进。"""
+    return AgentRunOut.model_validate(
+        await RunControlService.retry_operation(
+            session, run_id=str(run_id), operation_id=str(operation_id)
+        )
+    )
 
 
 @router.get("/operations", response_model=list[AgentOperationOut])

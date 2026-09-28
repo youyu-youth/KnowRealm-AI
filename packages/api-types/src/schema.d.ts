@@ -137,6 +137,69 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Run
+         * @description 取消任务（显式动作）：已结束拒绝；等待态就地落 CANCELLED，运行态由推进
+         *     每步检查后收尾——取消后不再新增动作、已提交结果保留（不冒充撤销）。
+         */
+        post: operations["cancel_run_api_agent_runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runs/{run_id}/operations/{operation_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Run Operation
+         * @description 失败 / 跳过项重试（沿用原 operation 身份，attempts 递增）：依赖该项而
+         *     跳过的后续步骤一并恢复待执行，并唤醒任务继续推进。
+         */
+        post: operations["retry_run_operation_api_agent_runs__run_id__operations__operation_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runs/{run_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Run
+         * @description 继续指令（显式唤醒）：仅等待态可继续，原子抢占 WAITING_USER → RUNNING
+         *     并重投触发；不自动重试失败项（重试是独立显式动作）。
+         */
+        post: operations["resume_run_api_agent_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audio-imports": {
         parameters: {
             query?: never;
@@ -4306,7 +4369,7 @@ export interface components {
          * ProcessingJobType
          * @enum {string}
          */
-        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING" | "REVIEW_MATERIAL_GENERATION" | "CONCEPT_EXTRACTION" | "WEB_FETCH" | "LIBRARY_BACKFILL" | "INDEX_REBUILD";
+        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING" | "REVIEW_MATERIAL_GENERATION" | "CONCEPT_EXTRACTION" | "WEB_FETCH" | "LIBRARY_BACKFILL" | "INDEX_REBUILD" | "AGENT_RUN";
         /**
          * ProcessingJobWaitingReason
          * @enum {string}
@@ -4373,7 +4436,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -5950,6 +6013,214 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_run_api_agent_runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_run_operation_api_agent_runs__run_id__operations__operation_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                run_id: string;
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    resume_run_api_agent_runs__run_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRunOut"];
+                };
             };
             /** @description Forbidden */
             403: {

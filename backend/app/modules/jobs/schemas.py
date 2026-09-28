@@ -18,6 +18,9 @@ class ProcessingJobType(StrEnum):
     WEB_FETCH = "WEB_FETCH"
     LIBRARY_BACKFILL = "LIBRARY_BACKFILL"
     INDEX_REBUILD = "INDEX_REBUILD"
+    # 通用 Agent 第二阶段工单 05：Run 推进触发 job（无状态触发器，input 仅
+    # run_id；任务状态以 agent_runs 为唯一事实源，job 不承载任务状态）。
+    AGENT_RUN = "AGENT_RUN"
 
 
 class ProcessingJobStatus(StrEnum):

@@ -182,9 +182,7 @@ def operation_payload_dict(proposal: AgentProposal) -> dict[str, Any]:
     return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
-def parse_operation_payload[R: BaseModel](
-    proposal: AgentProposal, schema: type[R]
-) -> R:
+def parse_operation_payload[R: BaseModel](proposal: AgentProposal, schema: type[R]) -> R:
     """应用器共用的载荷解析（工单 03）：判别 schema 校验失败统一转
     PROPOSAL_PAYLOAD_INVALID 稳定错误码（提案 FAILED 可重试）。"""
     try:
@@ -200,6 +198,26 @@ def parse_operation_payload[R: BaseModel](
 # 触发指令摘录上限：authorization_json 的授权依据素材（spec 用户故事 7：
 # 回执可追溯「当时档位、触发指令原文、时间」，截断防超长指令全文入库）。
 INSTRUCTION_EXCERPT_MAX_CHARS = 200
+
+
+async def run_operation_applier(
+    session: AsyncSession, spec: OperationSpec[Any], payload_json: str
+) -> BaseModel:
+    """按操作载荷执行注册项应用器（调用方事务内、不得自行 begin）。
+
+    直执行（单步自动档）与 Run 推进（批次逐项）共用同一执行核心：应用器契约是
+    ``(session, proposal)`` 且只消费 payload_json（course_create / text_record_add
+    均然），因此构造未落库的 transient 提案实例喂入——领域应用器零改动，返回值
+    按 result_schema 校验（投影形状漂移在此显式失败而非被静默丢弃）。
+    """
+    transient = AgentProposal(
+        id=str(uuid4()),
+        proposal_type=spec.proposal_type.value,
+        status="PENDING",
+        payload_json=payload_json,
+        created_at=utcnow(),
+    )
+    return spec.result_schema.model_validate(await spec.applier(session, transient))
 
 
 def should_execute_directly(auth_mode: AuthMode, level: OperationLevel) -> bool:
@@ -252,16 +270,6 @@ async def _execute_operation_directly(
     payload_json = validated.model_dump_json()
     target = spec.target_resolver(validated) if spec.target_resolver is not None else None
     authorization = _direct_authorization(runtime, auth_mode)
-    # 应用器契约是 (session, proposal) 且只消费 payload_json（course_create /
-    # text_record_add 均然），构造未落库的 transient 提案实例喂给应用器——
-    # 领域应用器零改动、提案路径与直执行路径复用同一执行核心。
-    transient = AgentProposal(
-        id=str(uuid4()),
-        proposal_type=spec.proposal_type.value,
-        status="PENDING",
-        payload_json=payload_json,
-        created_at=utcnow(),
-    )
     async with runtime.session_factory() as session:
         try:
             async with session.begin():
@@ -270,7 +278,7 @@ async def _execute_operation_directly(
                 snapshot_json = None
                 if spec.capture_state is not None:
                     snapshot_json = (await spec.capture_state(session, validated)).model_dump_json()
-                result = spec.result_schema.model_validate(await spec.applier(session, transient))
+                result = await run_operation_applier(session, spec, payload_json)
                 operation = await record_direct_execution(
                     session,
                     action=spec.action,

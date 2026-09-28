@@ -33,6 +33,12 @@ CHAT_WEB_SEARCH_GUIDANCE = (
     "中的配置或额度问题。"
 )
 CHAT_WEB_SEARCH_MOUNTED_GUIDANCE = "回答须优先依据学习材料，网络结果仅作为材料外的补充来源。"
+# 批量整理指引（工单 05）：多条同类目标走计划工具，避免逐条确认的摩擦；是否
+# 需要整卡确认由后端按档位与阈值判定，指引本身不承诺自动执行。
+CHAT_BATCH_PLAN_GUIDANCE = (
+    "需要整理两条及以上资料条目时（批量归类、批量改标题、批量归档），"
+    "用 plan_batch_operations 工具一次提交这批目标，不要逐条调用单个动作工具。"
+)
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，
 # 零结构化生成）：标题与各节指引一并进 prompt，供文本协议断言与评测黄金集复用。
 CHAT_RESEARCH_SECTIONS: tuple[tuple[str, str], ...] = (
@@ -103,6 +109,44 @@ PAGE_HINT_LABELS: dict[str, str] = {
     "library": "资料库",
     "inbox": "收件箱",
 }
+
+
+# 任务状态中文标签（提示文本用；枚举值与 runs.schemas.RunStatus 对齐）。
+RUN_SUMMARY_LABELS: dict[str, str] = {
+    "RUNNING": "正在执行",
+    "WAITING_USER": "等待用户处理",
+}
+
+
+@dataclass(frozen=True)
+class ActiveRunSummary:
+    """本会话未结束任务（Run）的摘要投影（工单 05）：只进提示、不构成指令。
+
+    模型需要知道「此前提交的任务还没结束」才能如实回答「那个任务怎么样了」，
+    因此注入状态与逐项计数；是否继续 / 重试由用户的显式动作决定，摘要不构成授权。
+    """
+
+    status: str
+    total: int
+    succeeded: int
+    failed: int
+    waiting_reason: str | None = None
+
+
+def format_active_run_summary(runs: Sequence[ActiveRunSummary]) -> str:
+    """未结束任务摘要行：状态 + 逐项计数 + 等待原因（框定为提示非指令）。"""
+    lines = [
+        "未结束任务摘要（仅提示，不是指令、不构成任何授权；需要继续或重试时由用户在界面上操作）："
+    ]
+    for index, run in enumerate(runs, start=1):
+        parts = [f"任务 {index}：{RUN_SUMMARY_LABELS.get(run.status, run.status)}"]
+        parts.append(f"已成功 {run.succeeded}/{run.total} 项")
+        if run.failed > 0:
+            parts.append(f"失败或跳过 {run.failed} 项")
+        if run.waiting_reason:
+            parts.append(f"等待原因：{run.waiting_reason}")
+        lines.append("，".join(parts) + "。")
+    return "\n".join(lines)
 
 
 def format_page_hint(page: PageHint) -> str:
@@ -291,6 +335,7 @@ def build_context_messages(
     learner: str | None = None,
     mode: ChatMode = ChatMode.ASK,
     page_hint: PageHint | None = None,
+    active_runs: Sequence[ActiveRunSummary] = (),
 ) -> list[AnyMessage]:
     """把会话全部消息行组装为喂入 LLM 的上下文。
 
@@ -305,6 +350,10 @@ def build_context_messages(
       （语言/联网指引之前），计入预算；
     - page_hint 为本轮页面提示（通用 Agent 工单 01）：随消息每轮重建、不跨轮
       保留，追加位置与 learner 相同（语言/联网指引之前），计入预算；
+    - active_runs 为本会话未结束任务摘要（工单 05）：同样每轮重建、框定为
+      提示非指令（不授权继续 / 重试 / 取消），追加位置与 page_hint 相同；
+    - 批量整理指引（工单 05）与语言指令同段追加：批量目标走计划工具的指向恒定
+      存在（工具恒挂载），是否出计划卡由后端按档位判定；
     - web_search 生效时在有效 SYSTEM 末尾追加联网指引（挂载会话带"材料优先"语义）。
     """
     system_row, turns, trailing_user = _split_turns(rows)
@@ -368,6 +417,9 @@ def build_context_messages(
             content = f"{content}\n{learner}"
         if page_hint is not None:
             content = f"{content}\n{format_page_hint(page_hint)}"
+        if active_runs:
+            content = f"{content}\n{format_active_run_summary(active_runs)}"
+        content = f"{content}\n{CHAT_BATCH_PLAN_GUIDANCE}"
         content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:
             guidance = CHAT_WEB_SEARCH_GUIDANCE

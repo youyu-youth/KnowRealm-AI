@@ -24,6 +24,7 @@ from app.modules.agent.citations import (
 )
 from app.modules.agent.context import (
     CHAT_TRANSCRIPT_MAX_CHARS,
+    ActiveRunSummary,
     ChatContextTooLargeError,
     ContextRow,
     LibraryContext,
@@ -45,7 +46,9 @@ from app.modules.agent.graph import (
     stream_chat_reply,
 )
 from app.modules.agent.models import ChatMessage, ChatSession
-from app.modules.agent.runs.schemas import AuthMode
+from app.modules.agent.runs.models import AgentOperation
+from app.modules.agent.runs.schemas import AuthMode, OperationStatus
+from app.modules.agent.runs.service import list_nonterminal_runs
 from app.modules.agent.runtime import AgentRuntimeContext, ToolCallBudget
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole, ChatScope
 from app.modules.agent.session_service import ChatSessionService
@@ -73,6 +76,8 @@ from app.shared.errors import CodedHTTPException
 
 # 会话标题默认取首条用户消息的截断长度。
 CHAT_TITLE_MAX_CHARS = 30
+# 未结束任务摘要条数上限（工单 05：只提示最近几条，避免提示块随任务数膨胀）。
+ACTIVE_RUN_SUMMARY_LIMIT = 3
 
 STREAM_STATUS_GENERATING = "generating"
 
@@ -402,6 +407,53 @@ async def _validate_page_snapshot(
     return validated, PageHint(page_type=page.page_type, entity_label=entity_label)
 
 
+@dataclass
+class _RunCounts:
+    """任务逐项计数聚合（摘要投影用：已成功 / 失败或跳过 / 合计）。"""
+
+    total: int = 0
+    succeeded: int = 0
+    failed: int = 0
+
+
+async def _active_run_summaries(session: AsyncSession, session_id: str) -> list[ActiveRunSummary]:
+    """本会话未结束任务摘要（工单 05，上限 3 条，最近在前）。
+
+    只读投影：状态 + 逐项计数（已成功 / 失败或跳过）+ 等待原因。任务状态以
+    agent_runs 为唯一事实源（断线 / 重启后同样可查），注入文本框定为提示非指令。
+    """
+    runs = await list_nonterminal_runs(session, session_id, limit=ACTIVE_RUN_SUMMARY_LIMIT)
+    if not runs:
+        return []
+    counts = {run.id: _RunCounts() for run in runs}
+    operations = (
+        await session.execute(
+            select(AgentOperation.run_id, AgentOperation.status).where(
+                AgentOperation.run_id.in_([run.id for run in runs])
+            )
+        )
+    ).all()
+    for run_id, status in operations:
+        bucket = counts.get(cast(str, run_id))
+        if bucket is None:
+            continue
+        bucket.total += 1
+        if status == OperationStatus.SUCCEEDED.value:
+            bucket.succeeded += 1
+        elif status in (OperationStatus.FAILED.value, OperationStatus.SKIPPED.value):
+            bucket.failed += 1
+    return [
+        ActiveRunSummary(
+            status=run.status,
+            total=counts[run.id].total,
+            succeeded=counts[run.id].succeeded,
+            failed=counts[run.id].failed,
+            waiting_reason=run.waiting_reason,
+        )
+        for run in runs
+    ]
+
+
 async def _session_context(
     session_factory: async_sessionmaker[AsyncSession],
     session_id: str,
@@ -516,6 +568,7 @@ async def _session_context(
         )
         learner_block = learner.text or None
         validated_page, page_hint = await _validate_page_snapshot(session, page)
+        active_runs = await _active_run_summaries(session, session_id)
         return SessionPromptContext(
             mode=chat.mode,
             scope=chat.scope,
@@ -535,6 +588,7 @@ async def _session_context(
                 learner=learner_block,
                 mode=chat.mode,
                 page_hint=page_hint,
+                active_runs=active_runs,
             ),
             transcript=transcript_text,
             record_id=record_id,
