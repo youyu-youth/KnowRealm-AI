@@ -27,6 +27,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
+from app.modules.agent.auth_mode import (
+    clear_session_auth_override,
+    record_session_switch_audit,
+    set_session_auth_override,
+)
 from app.modules.agent.runs import plans
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runs.service import RunControlService, RunHistoryService
@@ -187,6 +192,26 @@ async def plan_proposal_id(result: dict[str, Any]) -> str:
 
 async def advance(session_factory: async_sessionmaker[AsyncSession], run_id: str) -> str:
     return await advance_run(session_factory, run_id)
+
+
+async def switch_session_mode(
+    session_factory: async_sessionmaker[AsyncSession], *, from_mode: AuthMode, to_mode: AuthMode
+) -> None:
+    """会话切档（走真实编排：审计行落定后写运行时覆盖）——调用方负责
+    clear_session_auth_override 清理进程级注册表。"""
+    await run_sql(
+        "INSERT OR IGNORE INTO chat_sessions (id, mode, scope, created_at, updated_at)"
+        " VALUES (:id, 'ASK', 'FREE', :now, :now)",
+        {"id": SESSION_ID, "now": NOW},
+        session_factory,
+    )
+    async with session_factory() as session:
+        await record_session_switch_audit(
+            session,
+            session_id=SESSION_ID,
+            from_mode=from_mode.value,
+            to_mode=to_mode.value,
+        )
 
 
 async def run_detail(
@@ -1486,3 +1511,101 @@ async def test_writeback_keeps_waiting_and_settled_runs_without_new_trigger(
         assert detail["status"] == "WAITING_USER"
         detail = await run_detail(session_factory, done_run)
         assert detail["status"] == "COMPLETED"
+
+
+# 同进程降档约束（工单 05 review）：推进每步授权重检叠加会话覆盖（取更严格者）
+
+
+@pytest.mark.anyio
+async def test_live_downgrade_constrains_running_steps(tmp_path: Path) -> None:
+    """同进程降档即时约束后续步骤（工单 05 review）：FULL_ACCESS 直建 Run 后会话
+    降为请求批准，推进到首步即 OPERATION_APPROVAL_REQUIRED 转等待、零业务事实；
+    切回档位后重试失败项可继续完成（重启后覆盖为空＝仅固化依据，不在此列）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 2)
+        direct = await invoke_plan(
+            session_factory, [update_entry(1), archive_entry(2)], auth_mode=AuthMode.FULL_ACCESS
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        try:
+            await switch_session_mode(
+                session_factory, from_mode=AuthMode.FULL_ACCESS, to_mode=AuthMode.REQUEST_APPROVAL
+            )
+            assert await advance(session_factory, run_id) == "WAITING_USER"
+            detail = await run_detail(session_factory, run_id)
+            assert detail["waiting_reason"] == "OPERATION_APPROVAL_REQUIRED"
+            steps = await step_rows(session_factory, run_id)
+            assert [(action, status, code) for action, status, code, _a, _r in steps] == [
+                ("update_library_item", "FAILED", "OPERATION_APPROVAL_REQUIRED"),
+                ("archive_library_item", "PLANNED", None),
+            ]
+            # 零业务事实：降档后一步都没落库。
+            assert await item_row(session_factory, 1) == ("条目1", None, "ACTIVE")
+            assert await item_row(session_factory, 2) == ("条目2", None, "ACTIVE")
+
+            # 恢复路径：切回档位（会话覆盖升回）后重试失败项 → 继续完成。
+            set_session_auth_override(SESSION_ID, AuthMode.FULL_ACCESS)
+            failed_id = cast(str, detail["operations"][0]["id"])
+            async with session_factory() as session:
+                retried = await RunControlService.retry_operation(
+                    session, run_id=run_id, operation_id=failed_id
+                )
+            assert retried["status"] == "RUNNING"
+            assert await advance(session_factory, run_id) == "COMPLETED"
+            assert await statuses(session_factory, run_id) == ["SUCCEEDED", "SUCCEEDED"]
+            assert await item_row(session_factory, 1) == ("条目1", COURSE_ID, "ACTIVE")
+            assert await item_row(session_factory, 2) == ("条目2", None, "ARCHIVED")
+        finally:
+            clear_session_auth_override(SESSION_ID)
+
+
+@pytest.mark.anyio
+async def test_live_downgrade_resume_does_not_bypass(tmp_path: Path) -> None:
+    """显式继续 ≠ 重新授权：降档未解除时「继续」唤醒推进，下一步仍被授权重检
+    拦下（步骤 FAILED + Run 回到等待，零业务事实）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 2)
+        direct = await invoke_plan(
+            session_factory, [update_entry(1), archive_entry(2)], auth_mode=AuthMode.FULL_ACCESS
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        try:
+            await switch_session_mode(
+                session_factory, from_mode=AuthMode.FULL_ACCESS, to_mode=AuthMode.REQUEST_APPROVAL
+            )
+            assert await advance(session_factory, run_id) == "WAITING_USER"
+
+            async with session_factory() as session:
+                resumed = await RunControlService.resume_run(session, run_id)
+            assert resumed["status"] == "RUNNING"
+            assert await advance(session_factory, run_id) == "WAITING_USER"
+            detail = await run_detail(session_factory, run_id)
+            assert detail["waiting_reason"] == "OPERATION_APPROVAL_REQUIRED"
+            assert await statuses(session_factory, run_id) == ["FAILED", "FAILED"]
+            assert await item_row(session_factory, 1) == ("条目1", None, "ACTIVE")
+            assert await item_row(session_factory, 2) == ("条目2", None, "ACTIVE")
+        finally:
+            clear_session_auth_override(SESSION_ID)
+
+
+@pytest.mark.anyio
+async def test_live_downgrade_keeps_confirmed_plan_running(tmp_path: Path) -> None:
+    """显式批准保留（spec Q3）：计划卡确认即批次授权——降档后确认的计划卡照常
+    推进完成（proposal_id 非空的 Run 不因降档停摆，防授权重检过度扩张）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 11)
+        entries = [update_entry(index) for index in range(1, 12)]
+        card = await invoke_plan(session_factory, entries, auth_mode=AuthMode.AUTO_APPROVE)
+        assert "plan_proposal" in card
+        try:
+            await switch_session_mode(
+                session_factory, from_mode=AuthMode.AUTO_APPROVE, to_mode=AuthMode.REQUEST_APPROVAL
+            )
+            run_id = await confirm(session_factory, await plan_proposal_id(card))
+            assert await advance(session_factory, run_id) == "COMPLETED"
+            assert await statuses(session_factory, run_id) == ["SUCCEEDED"] * 11
+        finally:
+            clear_session_auth_override(SESSION_ID)

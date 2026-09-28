@@ -7,7 +7,9 @@ JobRunner 内以 ``WorkerSpec`` 声明式接入（ADR-0012）：触发 job 是�
 逐 operation 一事务原子执行（业务写与 operation 终态同事务；失败整体回滚＝
 未发生，再以独立小事务落 FAILED＋稳定错误码——直执行先例）：
 
-- 每步前重检取消 / 授权 / 版本（快照重验）；
+- 每步前重检取消 / 授权 / 版本（快照重验）；授权＝Run 固化依据叠加同进程会话
+  覆盖取更严格者——同进程降档即时约束后续步骤（升档不放宽；重启后覆盖为空＝
+  仅固化依据）；
 - 部分失败：独立项继续；依赖失败项（或跳过项）的后续步骤置 SKIPPED；
 - 冲突（OPERATION_SNAPSHOT_STALE）与需确认（OPERATION_APPROVAL_REQUIRED）
   转 WAITING_USER 保留已成功结果，等用户显式处理后唤醒；
@@ -36,6 +38,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
+from app.modules.agent.auth_mode import effective_session_auth_mode
 from app.modules.agent.operations.registry import (
     OperationSpec,
     get_operation,
@@ -172,17 +175,22 @@ async def _operation_stale(
 
 
 def _authorized(run: AgentRun, spec: OperationSpec[Any]) -> bool:
-    """每步前授权重检（spec 决策 6/9）：按 Run 固化的授权依据执法，不回放会话
-    档位（跨重启接续按固化依据＋每步重验）。
+    """每步前授权重检（spec 决策 6/9、用户故事 6）：按 Run 固化依据执法，并叠加
+    同进程会话覆盖取更严格者——同进程降档即时约束后续步骤（继续 / 重试不构成
+    重新授权）；升档不放宽。覆盖为空（未切过档 / 重启后）＝仅固化依据，跨重启
+    接续不回放会话档位。
 
     - 已批准计划（proposal_id 非空）：对象集合＋参数＋版本即授权，操作只从计划
-      建立，恒在已批准集合内；
-    - 档位授权 Run（proposal_id 空）：按固化档位的分流规则复核该操作级别；档位
-      已不允许自动执行该级别 → 授权失效，转等待用户确认。
+      建立，恒在已批准集合内（显式批准保留，spec Q3）；
+    - 档位授权 Run（proposal_id 空）：按固化档与会话覆盖中更严格者的分流规则复核
+      该操作级别；已不允许自动执行该级别 → 授权失效，转等待用户确认。
     """
     if run.proposal_id is not None:
         return True
-    return should_execute_directly(AuthMode(run.auth_mode), spec.level)
+    mode = AuthMode(run.auth_mode)
+    if run.session_id is not None:
+        mode = effective_session_auth_mode(run.session_id, mode)
+    return should_execute_directly(mode, spec.level)
 
 
 def _append_attempt(operation: AgentOperation, error_code: str, *, now: datetime) -> None:

@@ -64,12 +64,16 @@ def clear_session_auth_override(session_id: str) -> None:
 
 
 def effective_session_auth_mode(session_id: str, turn_mode: AuthMode) -> AuthMode:
-    """提交路径的生效档：覆盖档与本轮起点档取更严格者。
+    """生效档：覆盖档与传入档取更严格者。
 
-    无覆盖（未切过档 / 重启后）＝本轮起点档，与每轮请求携带语义一致；
-    中途降档即时收紧（用户故事 6「后续动作重新检查授权」）；中途升档
-    不放宽本轮（与「升档不自动执行既有动作序列」同一安全精神），下一轮
-    请求携带新档后生效。
+    无覆盖（未切过档 / 重启后）＝传入档，与每轮请求携带语义一致；中途降档
+    即时收紧（用户故事 6「后续动作重新检查授权」）；中途升档不放宽本轮
+    （与「升档不自动执行既有动作序列」同一安全精神），下一轮请求携带新档后
+    生效。
+
+    两个读取方同源：工具提交路径传入本轮起点档（registry.submit_operation /
+    plans.submit_batch_plan）；推进 worker 每步授权重检传入 Run 固化档
+    （worker._authorized）——同进程降档同样即时约束运行中任务的后续步骤。
     """
     override = _SESSION_AUTH_OVERRIDES.get(session_id)
     if override is None:
