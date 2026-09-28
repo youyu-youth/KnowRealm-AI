@@ -6,7 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, Trash2, Undo2 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -396,10 +396,18 @@ function OperationsBlock({
   onFilterChange: (value: string) => void;
 }) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const status = filter === ALL_OPTION ? undefined : filter;
   const operations = useQuery({
     queryKey: settingsKeys.operations(status),
     queryFn: () => operationHistoryApi.listOperations(status ? { status } : {}),
+  });
+
+  // 撤销是 UI 显式动作＝用户授权（工单 06）：操作历史的单步撤销入口。
+  const undo = useMutation({
+    mutationFn: (operationId: string) =>
+      operationHistoryApi.undoOperation(operationId),
+    onSuccess: () => invalidateHistory(queryClient),
   });
 
   return (
@@ -433,7 +441,17 @@ function OperationsBlock({
         ) : (
           <ul className="flex flex-col gap-1.5">
             {operations.data.map((operation) => (
-              <OperationRow key={operation.id} operation={operation} />
+              <OperationRow
+                key={operation.id}
+                operation={operation}
+                undoPending={undo.isPending}
+                undoError={
+                  undo.isError && undo.variables === operation.id
+                    ? undo.error.message
+                    : null
+                }
+                onUndo={(operationId) => undo.mutate(operationId)}
+              />
             ))}
           </ul>
         )}
@@ -442,12 +460,27 @@ function OperationsBlock({
   );
 }
 
-/** 单条操作行：动作 / 目标 / 状态 / 结果 / 错误码 / 时间（工单验收字段）。 */
-function OperationRow({ operation }: { operation: AgentOperationOut }) {
+/** 单条操作行：动作 / 目标 / 状态 / 结果 / 错误码 / 撤销入口 / 时间（工单验收字段）。
+ * 撤销按钮只对成功且可撤销且未撤销的行出现（工单 06；run 内行经任务面板整批撤销）。 */
+function OperationRow({
+  operation,
+  undoPending,
+  undoError,
+  onUndo,
+}: {
+  operation: AgentOperationOut;
+  undoPending: boolean;
+  undoError: string | null;
+  onUndo: (operationId: string) => void;
+}) {
   const { t } = useTranslation();
   const target = describeTarget(operation);
+  const undoableRow =
+    operation.status === "SUCCEEDED" &&
+    operation.undoable &&
+    operation.undone_by === null;
   return (
-    <li className="bg-surface-subtle flex items-center gap-2 rounded-md px-2.5 py-1.5">
+    <li className="bg-surface-subtle flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5">
       <span className="text-label font-label text-ink min-w-0 truncate">
         {t(`settings.operationHistory.action.${operation.action}`)}
       </span>
@@ -463,14 +496,35 @@ function OperationRow({ operation }: { operation: AgentOperationOut }) {
       >
         {t(`settings.operationHistory.operationStatus.${operation.status}`)}
       </span>
+      {operation.undone_by ? (
+        <span className="text-label text-muted-foreground shrink-0">
+          {t("agent.run.undoneMark")}
+        </span>
+      ) : null}
       {operation.error_code ? (
         <span className="text-destructive text-label shrink-0">
           {operation.error_code}
         </span>
       ) : null}
+      {undoableRow ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={undoPending}
+          onClick={() => onUndo(operation.id)}
+        >
+          <Undo2 className="size-3.5" aria-hidden="true" />
+          {t("chat.executedOperation.undo")}
+        </Button>
+      ) : null}
       <span className="text-label text-muted-foreground shrink-0">
         {formatRunTime(operation.created_at)}
       </span>
+      {undoError ? (
+        <p role="alert" className="text-destructive text-label w-full">
+          {undoError}
+        </p>
+      ) : null}
     </li>
   );
 }

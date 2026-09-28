@@ -298,6 +298,32 @@ function CourseRestorePreviewFields({ snapshot }: PreviewFieldsProps) {
   });
 }
 
+/** OP_UNDO 确认卡预览（工单 06）：撤销哪个操作（id 缩写）＋目标当前名（快照，
+ * 撤销时将恢复该操作执行前的值；确认前目标被改 → 撤销前重验拒绝）。 */
+function UndoPreviewFields({ payload, snapshot, t }: PreviewFieldsProps) {
+  const operationId = fieldString(payload, "operation_id");
+  return StatusChangePreviewFields({
+    targetLabelKey: "chat.operationProposal.undo.target",
+    targetName:
+      fieldString(snapshot, "title") ??
+      fieldString(snapshot, "name") ??
+      (operationId ? `#${operationId.slice(0, 8)}` : null),
+    hintKey: "chat.operationProposal.undo.hint",
+    t,
+  });
+}
+
+/** OP_UNDO 回执行：已撤销（补偿操作已执行）/ 已取消撤销。 */
+function SettledUndoRow({ status, t }: SettledRowProps) {
+  return (
+    <p className="text-label text-muted-foreground w-full">
+      {status === "APPLIED"
+        ? t("chat.operationProposal.undo.accepted")
+        : t("chat.operationProposal.undo.rejected")}
+    </p>
+  );
+}
+
 /** OP_LIBRARY_ITEM_UPDATE 确认卡预览：目标条目 + 标题 / 归类 before/after
  * （课程名经课程 API 按 id 拉取，未归类＝占位文案）。 */
 function LibraryItemUpdatePreviewFields({
@@ -403,7 +429,10 @@ function RecordSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
     ["knowledge_point_count", "chat.operationProposal.recordDelete.kpCount"],
     ["quiz_count", "chat.operationProposal.recordDelete.quizCount"],
     ["todo_count", "chat.operationProposal.recordDelete.todoCount"],
-    ["review_material_count", "chat.operationProposal.recordDelete.reviewCount"],
+    [
+      "review_material_count",
+      "chat.operationProposal.recordDelete.reviewCount",
+    ],
   ];
   for (const [key, labelKey] of countEntries) {
     const count = fieldNumber(snapshot, key);
@@ -439,7 +468,8 @@ function CourseSoftDeletePreviewFields({ snapshot, t }: PreviewFieldsProps) {
   const rawRecords = snapshot?.records;
   const records = Array.isArray(rawRecords)
     ? rawRecords.filter(
-        (item): item is Record<string, unknown> => typeof item === "object" && item !== null,
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null,
       )
     : [];
   const recordCount = fieldNumber(snapshot, "record_count") ?? records.length;
@@ -500,9 +530,14 @@ function RecordMovePreviewFields({ payload, snapshot, t }: PreviewFieldsProps) {
             t("chat.operationProposal.recordMove.inboxLabel")
           )}
         </dd>
-        <ArrowRight className="text-ink-faint size-3 shrink-0" aria-hidden="true" />
+        <ArrowRight
+          className="text-ink-faint size-3 shrink-0"
+          aria-hidden="true"
+        />
         <dd className="text-label text-ink min-w-0 break-words">
-          {afterCourseId ? <TextRecordCourseName courseId={afterCourseId} /> : null}
+          {afterCourseId ? (
+            <TextRecordCourseName courseId={afterCourseId} />
+          ) : null}
         </dd>
       </div>
       <p className="text-label text-muted-foreground">
@@ -859,6 +894,11 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
     label: (key) => `chat.operationProposal.recordMove.${key}`,
     PreviewFields: RecordMovePreviewFields,
     SettledRow: SettledRecordMoveRow,
+  },
+  OP_UNDO: {
+    label: (key) => `chat.operationProposal.undo.${key}`,
+    PreviewFields: UndoPreviewFields,
+    SettledRow: SettledUndoRow,
   },
 };
 

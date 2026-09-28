@@ -1971,6 +1971,16 @@
         "courseField": "Course",
         "inboxLabel": "Inbox (unfiled)",
         "hint": "The record's content and assets (summary, knowledge points, todos, review materials) move with it; past tests and learning evidence keep their original course attribution."
+      },
+      "undo": {
+        "accepted": "Undone.",
+        "rejected": "Undo cancelled.",
+        "failed": "Undo did not complete.",
+        "failedDetail": "Undo did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm undo",
+        "reject": "Cancel undo",
+        "target": "Undo target",
+        "hint": "Confirming will undo this operation and restore its pre-execution values; the undo is refused if the target was modified afterwards."
       }
     },
     "authMode": {
@@ -1991,6 +2001,10 @@
       "failed": "Execution did not finish ({{reason}}).",
       "failedUnknown": "Execution did not finish.",
       "historyPurged": "History of {{count}} more receipt(s) was purged.",
+      "undo": "Undo",
+      "retry": "Retry",
+      "undone": "This operation has been undone.",
+      "undoBadge": "Undo compensation",
       "action": {
         "create_course": "Create course",
         "add_text_record_to_course": "Save text record"
@@ -2761,6 +2775,12 @@
     "AGENT_RUN_OPERATION_NOT_FOUND": "The step does not exist in this task",
     "AGENT_RUN_OPERATION_NOT_RETRYABLE": "Only failed or skipped steps can be retried",
     "AGENT_RUN_PLAN_INVALID": "The task plan data is corrupted and cannot run; please recreate the task",
+    "AGENT_OPERATION_NOT_FOUND": "Operation not found",
+    "OPERATION_NOT_UNDOABLE": "This operation cannot be undone",
+    "OPERATION_ALREADY_UNDONE": "This operation has already been undone",
+    "OPERATION_UNDO_CONFLICT": "The target changed after the operation ran; undo was refused to avoid overwriting later edits",
+    "OPERATION_NOT_RETRYABLE": "Only failed operations can be retried",
+    "OPERATION_TRANSIENT_ERROR": "Automatic retries for a transient failure (e.g. database busy) are exhausted; retry manually later",
     "AGENT_RUN_FAILED": "The task failed to advance; please retry later",
     "OPERATION_APPROVAL_REQUIRED": "This step needs confirmation; the task is paused",
     "OPERATION_DEPENDENCY_FAILED": "A prerequisite step failed, so this step was skipped"
@@ -2774,6 +2794,9 @@
       "resume": "Continue",
       "retry": "Retry",
       "cancel": "Cancel task",
+      "undoBatch": "Undo all ({{count}})",
+      "undoBadge": "Undo compensation",
+      "undoneMark": "Undone",
       "staleHint": "The item changed; please reorganize it"
     }
   }

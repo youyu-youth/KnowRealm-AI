@@ -1,12 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight, RotateCcw, ShieldCheck, Undo2 } from "lucide-react";
 import { agentKeys } from "@/features/agent/api/authMode";
 import {
   operationHistoryApi,
   type AgentOperationOut,
 } from "@/features/settings/api/operationHistory";
+import { Button } from "@/components/ui/button";
 
 type ChatExecutedOperationCardProps = {
   sessionId: string;
@@ -87,6 +88,7 @@ export function ChatExecutedOperationCard({
   anchorIds,
 }: ChatExecutedOperationCardProps) {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   // 请求页大小按锚点数取（上限 200=后端契约），恢复链一次覆盖全部锚点；
   // 超过 200 锚点的极端长期会话由下方截断兜底处理。
   const limit = Math.min(200, Math.max(50, anchorIds.length));
@@ -96,6 +98,27 @@ export function ChatExecutedOperationCard({
       operationHistoryApi.listOperations({ session_id: sessionId, limit }),
     enabled: anchorIds.length > 0,
     staleTime: 0,
+  });
+
+  // 撤销与重试是 UI 显式动作＝用户授权（工单 06）：成功后失效会话操作查询，
+  // 回执行随补偿 / 重试结果就地刷新。
+  const undo = useMutation({
+    mutationFn: (operationId: string) =>
+      operationHistoryApi.undoOperation(operationId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: agentKeys.sessionOperations(sessionId),
+      });
+    },
+  });
+  const retry = useMutation({
+    mutationFn: (operationId: string) =>
+      operationHistoryApi.retryOperation(operationId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: agentKeys.sessionOperations(sessionId),
+      });
+    },
   });
 
   // 查询未成功完成（首次加载 / 失败）不渲染：占位判定以查询成功为前提，
@@ -135,6 +158,14 @@ export function ChatExecutedOperationCard({
       {direct.map((operation) => {
         const authorization = authorizationOf(operation);
         const succeeded = operation.status === "SUCCEEDED";
+        const undone = operation.undone_by !== null;
+        // 撤销按钮状态（工单 06）：成功且可撤销且未被撤销；不可撤销时不渲染
+        // 按钮（原因在操作历史可见），已撤销显示标记；补偿行（undo_of 非空）
+        // 仍可再撤销（恢复到撤销前）。
+        const undoableRow = succeeded && operation.undoable && !undone;
+        // 重试按钮状态：直执行失败项（提案路径失败走提案卡重试）。
+        const retryableRow =
+          operation.status === "FAILED" && operation.proposal_id === null;
         // 授权档缺失（坏 JSON）时按后端默认档口径回显，不渲染空键名。
         const authModeValue =
           fieldString(authorization, "auth_mode") ?? "REQUEST_APPROVAL";
@@ -152,6 +183,11 @@ export function ChatExecutedOperationCard({
                 `chat.executedOperation.action.${operation.action}`,
                 operation.action,
               )}
+              {operation.undo_of ? (
+                <span className="text-label text-muted-foreground">
+                  {t("chat.executedOperation.undoBadge")}
+                </span>
+              ) : null}
             </p>
             <p className="text-label text-muted-foreground">
               {t("chat.executedOperation.authBasis", {
@@ -192,6 +228,42 @@ export function ChatExecutedOperationCard({
                 result={operation.result ?? null}
                 t={t}
               />
+            ) : null}
+            {undone ? (
+              <p className="text-label text-muted-foreground">
+                {t("chat.executedOperation.undone")}
+              </p>
+            ) : null}
+            {undoableRow || retryableRow ? (
+              <div className="flex items-center gap-2">
+                {undoableRow ? (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={undo.isPending}
+                    onClick={() => undo.mutate(operation.id)}
+                  >
+                    <Undo2 data-icon="inline-start" aria-hidden="true" />
+                    {t("chat.executedOperation.undo")}
+                  </Button>
+                ) : null}
+                {retryableRow ? (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={retry.isPending}
+                    onClick={() => retry.mutate(operation.id)}
+                  >
+                    <RotateCcw data-icon="inline-start" aria-hidden="true" />
+                    {t("chat.executedOperation.retry")}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+            {undo.isError && undo.variables === operation.id ? (
+              <p role="alert" className="text-destructive text-label">
+                {undo.error.message}
+              </p>
             ) : null}
           </div>
         );

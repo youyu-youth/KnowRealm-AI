@@ -1951,6 +1951,16 @@
         "courseField": "所属课程",
         "inboxLabel": "收件箱（未归类）",
         "hint": "记录内容与总结、知识点、Todo、复习资料随记录移动；原课程的历史测试与学习证据保留历史归属。"
+      },
+      "undo": {
+        "accepted": "已撤销。",
+        "rejected": "已取消撤销。",
+        "failed": "撤销未完成。",
+        "failedDetail": "撤销未完成（{{reason}}），可重试。",
+        "accept": "确认撤销",
+        "reject": "取消撤销",
+        "target": "撤销目标",
+        "hint": "确认后将撤销该操作并恢复其执行前的值；目标在执行后被修改过时撤销会被拒绝。"
       }
     },
     "authMode": {
@@ -1971,6 +1981,10 @@
       "failed": "执行未完成（{{reason}}）。",
       "failedUnknown": "执行未完成。",
       "historyPurged": "另有 {{count}} 条回执的历史已被清理。",
+      "undo": "撤销",
+      "retry": "重试",
+      "undone": "该操作已撤销。",
+      "undoBadge": "撤销补偿",
       "action": {
         "create_course": "创建课程",
         "add_text_record_to_course": "保存文本记录"
@@ -2741,6 +2755,12 @@
     "AGENT_RUN_OPERATION_NOT_FOUND": "任务中的操作不存在",
     "AGENT_RUN_OPERATION_NOT_RETRYABLE": "仅失败或跳过的步骤可以重试",
     "AGENT_RUN_PLAN_INVALID": "任务计划数据已损坏，无法继续执行，请重新创建任务",
+    "AGENT_OPERATION_NOT_FOUND": "操作不存在",
+    "OPERATION_NOT_UNDOABLE": "该操作不提供撤销",
+    "OPERATION_ALREADY_UNDONE": "该操作已被撤销",
+    "OPERATION_UNDO_CONFLICT": "目标在操作执行后已被修改，撤销被拒绝以避免覆盖后续修改",
+    "OPERATION_NOT_RETRYABLE": "仅失败的操作可以重试",
+    "OPERATION_TRANSIENT_ERROR": "瞬时故障自动重试已耗尽（如数据库忙），可稍后手动重试",
     "AGENT_RUN_FAILED": "任务推进失败，请稍后重试",
     "OPERATION_APPROVAL_REQUIRED": "该步骤需要确认后才能执行，任务已暂停",
     "OPERATION_DEPENDENCY_FAILED": "前置步骤未成功，本步骤已跳过"
@@ -2754,6 +2774,9 @@
       "resume": "继续",
       "retry": "重试",
       "cancel": "取消任务",
+      "undoBatch": "整批撤销（{{count}} 项）",
+      "undoBadge": "撤销补偿",
+      "undoneMark": "已撤销",
       "staleHint": "目标已变化，请重新整理该项"
     }
   }

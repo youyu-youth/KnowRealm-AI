@@ -21,7 +21,8 @@ import { Spinner } from "@/components/ui/spinner";
  * 唯一事实源是服务端的 agent_runs / agent_operations：断线、切页、重启后经查询
  * 恢复同一视图（不做 SSE 追加态）；推进中按 2s 轮询刷新（CourseBrain BUILDING
  * 先例），终态停轮询。按钮全部是显式动作——「继续」只对等待态开放，「重试」
- * 只对失败 / 跳过项开放，取消不冒充撤销（已提交结果保留）。 */
+ * 只对失败 / 跳过项开放，取消不冒充撤销（已提交结果保留）；终态任务的「整批
+ * 撤销」（工单 06）按依赖逆序补偿、补偿行就地下现在列表中。 */
 export function AgentRunProgress({ runId }: { runId: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -48,6 +49,10 @@ export function AgentRunProgress({ runId }: { runId: string }) {
       operationHistoryApi.retryRunOperation(runId, operationId),
     onSuccess: invalidate,
   });
+  const undoRun = useMutation({
+    mutationFn: () => operationHistoryApi.undoRun(runId),
+    onSuccess: invalidate,
+  });
 
   const data = run.data;
   if (data === undefined) {
@@ -68,6 +73,13 @@ export function AgentRunProgress({ runId }: { runId: string }) {
   const waiting = isRunWaiting(data.status);
   const active = isRunActive(data.status);
   const busy = act.isPending || retry.isPending;
+  // 整批撤销（工单 06）：终态任务且存在可撤销的成功项（未被撤销）。
+  const undoableSteps = operations.filter(
+    (operation) =>
+      operation.status === "SUCCEEDED" &&
+      operation.undoable &&
+      operation.undone_by === null,
+  );
 
   return (
     <div className="flex flex-col gap-2">
@@ -100,6 +112,16 @@ export function AgentRunProgress({ runId }: { runId: string }) {
             onClick={() => act.mutate("cancel")}
           >
             {t("agent.run.cancel")}
+          </Button>
+        ) : null}
+        {!active && undoableSteps.length > 0 ? (
+          <Button
+            size="xs"
+            variant="outline"
+            disabled={undoRun.isPending}
+            onClick={() => undoRun.mutate()}
+          >
+            {t("agent.run.undoBatch", { count: undoableSteps.length })}
           </Button>
         ) : null}
       </div>
@@ -136,11 +158,16 @@ export function AgentRunProgress({ runId }: { runId: string }) {
           {retry.error.message}
         </p>
       ) : null}
+      {undoRun.isError ? (
+        <p role="alert" className="text-destructive text-label">
+          {undoRun.error.message}
+        </p>
+      ) : null}
     </div>
   );
 }
 
-/** 单个步骤行：动作 / 目标 / 状态 / 失败原因 / 重试。目标名称取快照标题
+/** 单个步骤行：动作 / 目标 / 状态 / 失败原因 / 重试 / 撤销标记。目标名称取快照标题
  * （提交时固化，快照缺失则退回目标 id 缩写——不造假名）。 */
 function RunStepRow({
   operation,
@@ -176,6 +203,17 @@ function RunStepRow({
       >
         {t(`settings.operationHistory.operationStatus.${operation.status}`)}
       </span>
+      {operation.undo_of ? (
+        // 补偿行（批次撤销产生）：徽章标示，撤销后逐项呈现（工单 06）。
+        <span className="text-label text-muted-foreground shrink-0">
+          {t("agent.run.undoBadge")}
+        </span>
+      ) : null}
+      {operation.undone_by ? (
+        <span className="text-label text-muted-foreground shrink-0">
+          {t("agent.run.undoneMark")}
+        </span>
+      ) : null}
       {operation.error_code ? (
         <span className="text-destructive text-label shrink-0">
           {t(`errors.${operation.error_code}`, operation.error_code)}

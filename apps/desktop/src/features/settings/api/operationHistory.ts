@@ -6,6 +6,7 @@ export type AgentRunDetailOut = components["schemas"]["AgentRunDetailOut"];
 export type AgentOperationOut = components["schemas"]["AgentOperationOut"];
 export type AgentActivityOut = components["schemas"]["AgentActivityOut"];
 export type PurgeResultOut = components["schemas"]["PurgeResultOut"];
+export type RunUndoResultOut = components["schemas"]["RunUndoResultOut"];
 
 /** 任务状态分类（呈现与轮询共用；终态判定与后端 RUN_TERMINAL_STATUSES 对齐）。 */
 export const RUN_TERMINAL_STATUSES = [
@@ -54,9 +55,11 @@ export function formatRunTime(iso: string | null): string {
   return iso === null ? "" : new Date(iso).toLocaleString();
 }
 
-/** 操作历史与任务推进 API（工单 01 查询 / 清理；工单 05 唤醒与取消）。
- * 唤醒仅由显式动作触发：继续（resumeRun）与失败项重试（retryRunOperation）
- * 都走原子抢占，取消（cancelRun）持久化后由推进每步检查。 */
+/** 操作历史与任务推进 API（工单 01 查询 / 清理；工单 05 唤醒与取消；工单 06
+ * 撤销与重试）。唤醒仅由显式动作触发：继续（resumeRun）与失败项重试
+ * （retryRunOperation）都走原子抢占，取消（cancelRun）持久化后由推进每步
+ * 检查；撤销（undoOperation / undoRun）是 UI 显式动作＝用户授权直接建补偿
+ * operation；单步失败重试（retryOperation）沿用原 operation 身份。 */
 export const operationHistoryApi = {
   listRuns: (params: { status?: string; session_id?: string } = {}) =>
     apiFetch<AgentRunOut[]>(`/api/agent/runs${buildQuery(params)}`),
@@ -83,6 +86,21 @@ export const operationHistoryApi = {
   retryRunOperation: (runId: string, operationId: string) =>
     apiFetch<AgentRunOut>(
       `/api/agent/runs/${encodeURIComponent(runId)}/operations/${encodeURIComponent(operationId)}/retry`,
+      { method: "POST" },
+    ),
+  undoRun: (runId: string) =>
+    apiFetch<RunUndoResultOut>(
+      `/api/agent/runs/${encodeURIComponent(runId)}/undo`,
+      { method: "POST" },
+    ),
+  undoOperation: (operationId: string) =>
+    apiFetch<AgentOperationOut>(
+      `/api/agent/operations/${encodeURIComponent(operationId)}/undo`,
+      { method: "POST" },
+    ),
+  retryOperation: (operationId: string) =>
+    apiFetch<AgentOperationOut>(
+      `/api/agent/operations/${encodeURIComponent(operationId)}/retry`,
       { method: "POST" },
     ),
   listOperations: (

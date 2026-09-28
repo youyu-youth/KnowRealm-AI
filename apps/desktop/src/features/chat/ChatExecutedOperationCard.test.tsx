@@ -2,17 +2,19 @@
 
 import "@testing-library/jest-dom/vitest";
 import type { ReactNode } from "react";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/test-utils";
 import { ChatExecutedOperationCard } from "./ChatExecutedOperationCard";
 
-const { listOperations } = vi.hoisted(() => ({
+const { listOperations, undoOperation, retryOperation } = vi.hoisted(() => ({
   listOperations: vi.fn(),
+  undoOperation: vi.fn(),
+  retryOperation: vi.fn(),
 }));
 
 vi.mock("@/features/settings/api/operationHistory", () => ({
-  operationHistoryApi: { listOperations },
+  operationHistoryApi: { listOperations, undoOperation, retryOperation },
 }));
 
 // 组件级测试没有 RouterProvider：仅把 Link 降级为普通锚点，其余 router 导出保持原样。
@@ -43,6 +45,10 @@ function operationFixture(
     error_code: string | null;
     authorization: Record<string, unknown> | null;
     finished_at: string | null;
+    undoable: boolean;
+    undo_reason: string | null;
+    undone_by: string | null;
+    undo_of: string | null;
   }> = {},
 ) {
   return {
@@ -66,6 +72,8 @@ function operationFixture(
     attempts: 1,
     result: { course_id: "course-9" },
     error_code: null,
+    undoable: false,
+    undo_reason: null,
     undo_of: null,
     undone_by: null,
     created_at: "2026-09-23T08:00:00.000000Z",
@@ -223,5 +231,63 @@ describe("ChatExecutedOperationCard", () => {
     );
     expect(await screen.findAllByText("创建课程")).toHaveLength(50);
     expect(screen.queryByText(/历史已被清理/)).not.toBeInTheDocument();
+  });
+
+  it("可撤销的成功行呈现撤销按钮，点击调撤销端点（工单 06）", async () => {
+    listOperations.mockResolvedValue([
+      operationFixture({ id: "op-undoable", undoable: true }),
+    ]);
+    renderWithQuery(
+      <ChatExecutedOperationCard
+        sessionId={SESSION_ID}
+        anchorIds={["op-undoable"]}
+      />,
+    );
+
+    const undoButton = await screen.findByRole("button", { name: /撤销/ });
+    expect(undoButton).toBeVisible();
+    undoOperation.mockResolvedValue(operationFixture({ id: "comp-1" }));
+    fireEvent.click(undoButton);
+    await waitFor(() =>
+      expect(undoOperation).toHaveBeenCalledWith("op-undoable"),
+    );
+  });
+
+  it("已撤销行显示标记不显示按钮；不可撤销行无按钮；失败行呈现重试", async () => {
+    listOperations.mockResolvedValue([
+      operationFixture({
+        id: "op-undone",
+        undoable: true,
+        undone_by: "comp-1",
+      }),
+      operationFixture({ id: "op-plain", undoable: false }),
+      operationFixture({
+        id: "op-failed",
+        status: "FAILED",
+        result: null,
+        error_code: "COURSE_DUPLICATE_NAME",
+        finished_at: null,
+      }),
+    ]);
+    renderWithQuery(
+      <ChatExecutedOperationCard
+        sessionId={SESSION_ID}
+        anchorIds={["op-undone", "op-plain", "op-failed"]}
+      />,
+    );
+
+    expect(await screen.findByText("该操作已撤销。")).toBeVisible();
+    // 仅失败行有重试按钮（撤销按钮不出现：已撤销 / 不可撤销 / 失败态均无）。
+    const retryButton = screen.getByRole("button", { name: /重试/ });
+    expect(
+      screen.queryByRole("button", { name: /^撤销$/ }),
+    ).not.toBeInTheDocument();
+    retryOperation.mockResolvedValue(
+      operationFixture({ id: "op-failed", status: "SUCCEEDED" }),
+    );
+    fireEvent.click(retryButton);
+    await waitFor(() =>
+      expect(retryOperation).toHaveBeenCalledWith("op-failed"),
+    );
   });
 });
