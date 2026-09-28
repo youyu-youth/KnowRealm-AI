@@ -39,6 +39,14 @@ CHAT_BATCH_PLAN_GUIDANCE = (
     "需要整理两条及以上资料条目时（批量归类、批量改标题、批量归档），"
     "用 plan_batch_operations 工具一次提交这批目标，不要逐条调用单个动作工具。"
 )
+# 对象枚举指引（插队票 08）：整理 / 修改前先列目标（先列后改），limit 跟随
+# 用户话术（要全部省略、要 N 传 N）；三工具统一形态，规则学一次用三处。
+CHAT_ENUMERATION_GUIDANCE = (
+    "整理或修改对象前，先用枚举工具看清目标：列全部课程用 search_courses"
+    "（省略 query），列课程下记录用 list_course_records，列资料库条目用"
+    " list_library_items；limit 按用户话术传——用户要全部就省略，明确要"
+    " N 条就传 N。"
+)
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，
 # 零结构化生成）：标题与各节指引一并进 prompt，供文本协议断言与评测黄金集复用。
 CHAT_RESEARCH_SECTIONS: tuple[tuple[str, str], ...] = (
@@ -352,8 +360,8 @@ def build_context_messages(
       保留，追加位置与 learner 相同（语言/联网指引之前），计入预算；
     - active_runs 为本会话未结束任务摘要（工单 05）：同样每轮重建、框定为
       提示非指令（不授权继续 / 重试 / 取消），追加位置与 page_hint 相同；
-    - 批量整理指引（工单 05）与语言指令同段追加：批量目标走计划工具的指向恒定
-      存在（工具恒挂载），是否出计划卡由后端按档位判定；
+    - 对象枚举指引（插队票 08）与批量整理指引（工单 05）同段追加：先列后改的
+      指向恒定存在（枚举与计划工具恒挂载），是否出计划卡由后端按档位判定；
     - web_search 生效时在有效 SYSTEM 末尾追加联网指引（挂载会话带"材料优先"语义）。
     """
     system_row, turns, trailing_user = _split_turns(rows)
@@ -419,6 +427,7 @@ def build_context_messages(
             content = f"{content}\n{format_page_hint(page_hint)}"
         if active_runs:
             content = f"{content}\n{format_active_run_summary(active_runs)}"
+        content = f"{content}\n{CHAT_ENUMERATION_GUIDANCE}"
         content = f"{content}\n{CHAT_BATCH_PLAN_GUIDANCE}"
         content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:

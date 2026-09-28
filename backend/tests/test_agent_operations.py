@@ -1,6 +1,9 @@
 """通用 Agent 第一阶段工单 01/02/03：运行时上下文、课程查询、课程创建与文本记录操作。
 
 - search_courses：候选载荷/场景字段/归档与软删口径/截断明示/预算共享/未绑定分支；
+- 对象枚举（插队票 08）：search_courses 枚举分支（query 省略=全部+limit 统一形态）、
+  list_course_records / list_library_items（行契约/三维过滤/limit/硬上限/
+  课程不存在指引/预算执法）；
 - 页面快照：后端重校验（存在性/状态、失效降级）与模型上下文注入（框定为提示信息）；
 - create_course（02）：结构化缺失项、每轮操作提案上限、PENDING 提案创建、
   确认应用（课程 + 索引 + result_json 原子提交）、幂等 409 与操作提案事件解析；
@@ -51,6 +54,12 @@ from app.modules.agent.runtime import (
 from app.modules.agent.schemas import ChatPageSnapshot, ChatRole
 from app.modules.agent.tools.add_text_record import add_text_record_to_course
 from app.modules.agent.tools.create_course import create_course
+from app.modules.agent.tools.list_course_records import list_course_records
+from app.modules.agent.tools.list_library_items import list_library_items
+from app.modules.agent.tools.listing import (
+    LIST_HARD_LIMIT,
+    resolve_list_limit,
+)
 from app.modules.agent.tools.search_courses import (
     SEARCH_COURSES_LIMIT,
     search_courses,
@@ -124,6 +133,83 @@ async def invoke_search_courses(
         reset_agent_runtime_context(token)
 
 
+async def invoke_bound_tool(
+    tool_obj: object, args: dict[str, Any], session_factory: async_sessionmaker[AsyncSession]
+) -> dict[str, Any]:
+    """对象查询工具族共用调用壳：绑定运行时后 ainvoke 并解析 JSON 载荷。"""
+    token = bind_agent_runtime_context(
+        AgentRuntimeContext(session_factory=session_factory, session_id="sess-op")
+    )
+    try:
+        raw = await cast("Any", tool_obj).ainvoke(args)
+        return cast("dict[str, Any]", json.loads(raw))
+    finally:
+        reset_agent_runtime_context(token)
+
+
+async def seed_record(
+    session_factory: async_sessionmaker[AsyncSession],
+    record_id: str,
+    course_id: str,
+    *,
+    title: str,
+    capture_type: str = "AUDIO_IMPORT",
+    status: str = "SUMMARY_READY",
+    created_at: str = NOW,
+    deleted: bool = False,
+) -> None:
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO records (id, course_id, capture_type, title, status, "
+                "duration_ms, created_at, updated_at, deleted_at) "
+                "VALUES (:id, :course, :type, :title, :status, 0, :created, :created, :deleted)"
+            ),
+            {
+                "id": record_id,
+                "course": course_id,
+                "type": capture_type,
+                "title": title,
+                "status": status,
+                "created": created_at,
+                "deleted": NOW if deleted else None,
+            },
+        )
+
+
+async def seed_library_item(
+    session_factory: async_sessionmaker[AsyncSession],
+    item_id: str,
+    *,
+    title: str,
+    source_type: str = "WEB",
+    course_id: str | None = None,
+    status: str = "ACTIVE",
+    deleted: bool = False,
+    updated_at: str = NOW,
+) -> None:
+    async with session_factory() as session, session.begin():
+        await session.execute(
+            text(
+                "INSERT INTO library_items (id, course_id, source_type, title, content_hash, "
+                "metadata_json, status, created_at, updated_at, deleted_at) "
+                "VALUES (:id, :course, :type, :title, :hash, '{}', :status, :now, "
+                ":updated, :deleted)"
+            ),
+            {
+                "id": item_id,
+                "course": course_id,
+                "type": source_type,
+                "title": title,
+                "hash": f"hash-{item_id}",
+                "status": status,
+                "now": NOW,
+                "updated": updated_at,
+                "deleted": NOW if deleted else None,
+            },
+        )
+
+
 @pytest.fixture(scope="module")
 def anyio_backend() -> str:
     return "asyncio"
@@ -144,11 +230,14 @@ async def test_search_courses_unbound_returns_structured_error() -> None:
 
 
 @pytest.mark.anyio
-async def test_search_courses_empty_query_rejected(tmp_path: Path) -> None:
+async def test_search_courses_blank_query_enumerates_all(tmp_path: Path) -> None:
+    """空白 query 视为省略 = 枚举全部（插队票 08 改写既有空查询拒绝用例）。"""
     async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, "d0000000-0000-4000-8000-000000000001", "Python 学习")
         payload = await invoke_search_courses(session_factory, "  ")
-    assert payload["ok"] is False
-    assert "不能为空" in str(payload["message"])
+    assert payload["ok"] is True
+    assert payload["total"] == 1
+    assert payload["courses"][0]["name"] == "Python 学习"
 
 
 @pytest.mark.anyio
@@ -247,7 +336,371 @@ async def test_search_courses_shares_budget_with_retrieval(tmp_path: Path) -> No
 
 
 # ---------------------------------------------------------------------------
-# 页面快照：后端重校验与提示注入
+# 对象枚举（插队票 08）：search_courses 枚举分支 / list_course_records / list_library_items
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_list_limit_unified_shape() -> None:
+    """limit 统一形态（Q29/Q30）：省略=全部（硬上限）、指定照传同受上限、非正数拒绝。"""
+    assert resolve_list_limit(None) == LIST_HARD_LIMIT
+    assert resolve_list_limit(5) == 5
+    assert resolve_list_limit(LIST_HARD_LIMIT + 50) == LIST_HARD_LIMIT
+    assert resolve_list_limit(0) is None
+    assert resolve_list_limit(-1) is None
+
+
+@pytest.mark.anyio
+async def test_search_courses_enumerates_all_when_query_omitted(tmp_path: Path) -> None:
+    """query 省略 = 枚举全部（更新时间降序）+ total 透出；软删课程排除。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(
+            session_factory,
+            "d0000000-0000-4000-8000-000000000001",
+            "线性代数",
+            updated_at="2026-09-01T08:00:00.000000Z",
+        )
+        await seed_course(
+            session_factory,
+            "d0000000-0000-4000-8000-000000000002",
+            "Python 学习",
+            updated_at="2026-09-20T08:00:00.000000Z",
+        )
+        await seed_course(
+            session_factory,
+            "d0000000-0000-4000-8000-000000000003",
+            "已删课程",
+            deleted=True,
+        )
+        payload = await invoke_bound_tool(search_courses, {}, session_factory)
+    assert payload["ok"] is True
+    assert payload["total"] == 2
+    assert "truncated" not in payload
+    assert [course["name"] for course in payload["courses"]] == ["Python 学习", "线性代数"]
+
+
+@pytest.mark.anyio
+async def test_search_courses_enumeration_limit_and_truncation(tmp_path: Path) -> None:
+    """limit 跟随话术：指定 N 照传、超限 total+truncated+如实转述指引；非法值结构化拒绝。"""
+    async with bare_db(tmp_path) as session_factory:
+        for index in range(3):
+            await seed_course(
+                session_factory,
+                f"d0000000-0000-4000-8000-{index:012d}",
+                f"课程 {index}",
+                updated_at=f"2026-09-{index + 1:02d}T08:00:00.000000Z",
+            )
+        limited = await invoke_bound_tool(search_courses, {"limit": 2}, session_factory)
+        invalid = await invoke_bound_tool(search_courses, {"limit": 0}, session_factory)
+    assert limited["ok"] is True
+    assert limited["total"] == 3
+    assert len(limited["courses"]) == 2
+    assert limited["truncated"] is True
+    assert "共 3 条，仅列前 2 条" in str(limited["message"])
+    assert invalid["ok"] is False
+    assert "正整数" in str(invalid["message"])
+
+
+@pytest.mark.anyio
+async def test_search_courses_enumeration_hard_limit_protects_all(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """省略 limit 的「全部」语义受硬上限保护（缩小上限验证真实截断路径）。"""
+    monkeypatch.setattr("app.modules.agent.tools.listing.LIST_HARD_LIMIT", 2)
+    async with bare_db(tmp_path) as session_factory:
+        for index in range(3):
+            await seed_course(
+                session_factory,
+                f"d0000000-0000-4000-8000-{index:012d}",
+                f"课程 {index}",
+            )
+        payload = await invoke_bound_tool(search_courses, {}, session_factory)
+    assert payload["total"] == 3
+    assert len(payload["courses"]) == 2
+    assert payload["truncated"] is True
+    assert "仅列前 2 条" in str(payload["message"])
+
+
+@pytest.mark.anyio
+async def test_search_courses_enumeration_empty_reports_honestly(tmp_path: Path) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        payload = await invoke_bound_tool(search_courses, {}, session_factory)
+    assert payload["ok"] is True
+    assert payload["total"] == 0
+    assert payload["courses"] == []
+    assert "还没有任何课程" in str(payload["message"])
+
+
+@pytest.mark.anyio
+async def test_list_course_records_unbound_returns_structured_error() -> None:
+    raw = await list_course_records.ainvoke({"course_id": "d0000000-0000-4000-8000-000000000001"})
+    payload = dict(json.loads(raw))
+    assert payload["ok"] is False
+    assert payload["error"] == "AGENT_CONTEXT_UNBOUND"
+    assert payload["records"] == []
+
+
+@pytest.mark.anyio
+async def test_list_course_records_returns_fields_desc_by_created(tmp_path: Path) -> None:
+    """记录行契约（Q32）：id/标题/来源类型/状态/创建时间；创建时间降序；软删排除。"""
+    course_id = "d0000000-0000-4000-8000-000000000001"
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, course_id, "Python 学习")
+        await seed_record(
+            session_factory,
+            "e0000000-0000-4000-8000-000000000001",
+            course_id,
+            title="第 1 讲",
+            capture_type="RECORDING",
+            created_at="2026-09-01T08:00:00.000000Z",
+        )
+        await seed_record(
+            session_factory,
+            "e0000000-0000-4000-8000-000000000002",
+            course_id,
+            title="文档导入",
+            capture_type="DOCUMENT_IMPORT",
+            status="SUMMARY_PENDING",
+            created_at="2026-09-10T08:00:00.000000Z",
+        )
+        await seed_record(
+            session_factory,
+            "e0000000-0000-4000-8000-000000000003",
+            course_id,
+            title="已删记录",
+            deleted=True,
+        )
+        payload = await invoke_bound_tool(
+            list_course_records, {"course_id": course_id}, session_factory
+        )
+    assert payload["ok"] is True
+    assert payload["total"] == 2
+    assert "truncated" not in payload
+    first, second = payload["records"]
+    assert first["id"] == "e0000000-0000-4000-8000-000000000002"
+    assert first["title"] == "文档导入"
+    assert first["capture_type"] == "DOCUMENT_IMPORT"
+    assert first["status"] == "SUMMARY_PENDING"
+    assert first["created_at"] == "2026-09-10 08:00"
+    assert second["capture_type"] == "RECORDING"
+
+
+@pytest.mark.anyio
+async def test_list_course_records_course_not_found_guides_back(tmp_path: Path) -> None:
+    """课程不存在 = 结构化未找到 + 指引回 search_courses（禁猜 id 纪律）。"""
+    async with bare_db(tmp_path) as session_factory:
+        payload = await invoke_bound_tool(
+            list_course_records,
+            {"course_id": "d0000000-0000-4000-8000-000000dead"},
+            session_factory,
+        )
+    assert payload["ok"] is False
+    assert payload["records"] == []
+    assert "search_courses" in str(payload["message"])
+    assert "不要猜测" in str(payload["message"])
+
+
+@pytest.mark.anyio
+async def test_list_course_records_limit_truncation_and_invalid(tmp_path: Path) -> None:
+    course_id = "d0000000-0000-4000-8000-000000000001"
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, course_id, "Python 学习")
+        for index in range(3):
+            await seed_record(
+                session_factory,
+                f"e0000000-0000-4000-8000-{index:012d}",
+                course_id,
+                title=f"记录 {index}",
+                created_at=f"2026-09-{index + 1:02d}T08:00:00.000000Z",
+            )
+        limited = await invoke_bound_tool(
+            list_course_records, {"course_id": course_id, "limit": 2}, session_factory
+        )
+        invalid = await invoke_bound_tool(
+            list_course_records, {"course_id": course_id, "limit": -1}, session_factory
+        )
+    assert limited["ok"] is True
+    assert limited["total"] == 3
+    assert len(limited["records"]) == 2
+    assert limited["truncated"] is True
+    assert "共 3 条，仅列前 2 条" in str(limited["message"])
+    assert invalid["ok"] is False
+    assert "正整数" in str(invalid["message"])
+
+
+@pytest.mark.anyio
+async def test_list_course_records_budget_enforcement(tmp_path: Path) -> None:
+    """计入统一每轮预算：达上限后拒绝执行（不触库）。"""
+    async with bare_db(tmp_path) as session_factory:
+        budget = ToolCallBudget()
+        budget.calls_used = MAX_TOOL_CALLS_PER_TURN
+        token = bind_agent_runtime_context(
+            AgentRuntimeContext(
+                session_factory=session_factory, session_id="sess-op", budget=budget
+            )
+        )
+        try:
+            raw = await list_course_records.ainvoke(
+                {"course_id": "d0000000-0000-4000-8000-000000000001"}
+            )
+        finally:
+            reset_agent_runtime_context(token)
+        payload = dict(json.loads(raw))
+    assert payload["records"] == []
+    assert "已达上限" in str(payload["message"])
+    assert budget.calls_used == MAX_TOOL_CALLS_PER_TURN
+
+
+@pytest.mark.anyio
+async def test_list_library_items_unbound_returns_structured_error() -> None:
+    raw = await list_library_items.ainvoke({})
+    payload = dict(json.loads(raw))
+    assert payload["ok"] is False
+    assert payload["error"] == "AGENT_CONTEXT_UNBOUND"
+    assert payload["items"] == []
+
+
+@pytest.mark.anyio
+async def test_list_library_items_lists_all_default_view(tmp_path: Path) -> None:
+    """条目行契约（Q32）：id/标题/source_type/归属课程名/更新时间 + total；
+    默认视图排除归档与软删（复用 LibraryService.list_items 语义）。"""
+    course_id = "d0000000-0000-4000-8000-000000000001"
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, course_id, "Python 学习")
+        await seed_library_item(
+            session_factory,
+            "f0000000-0000-4000-8000-000000000001",
+            title="网页剪藏",
+            source_type="WEB",
+            course_id=course_id,
+            updated_at="2026-09-20T08:00:00.000000Z",
+        )
+        await seed_library_item(
+            session_factory,
+            "f0000000-0000-4000-8000-000000000002",
+            title="未归类速记",
+            source_type="TEXT",
+            updated_at="2026-09-19T08:00:00.000000Z",
+        )
+        await seed_library_item(
+            session_factory,
+            "f0000000-0000-4000-8000-000000000003",
+            title="已归档条目",
+            status="ARCHIVED",
+        )
+        await seed_library_item(
+            session_factory,
+            "f0000000-0000-4000-8000-000000000004",
+            title="已删条目",
+            deleted=True,
+        )
+        payload = await invoke_bound_tool(list_library_items, {}, session_factory)
+    assert payload["ok"] is True
+    assert payload["total"] == 2
+    first, second = payload["items"]
+    assert first["id"] == "f0000000-0000-4000-8000-000000000001"
+    assert first["title"] == "网页剪藏"
+    assert first["source_type"] == "WEB"
+    assert first["course_name"] == "Python 学习"
+    assert first["updated_at"] == "2026-09-20 08:00"
+    assert second["course_name"] is None
+
+
+@pytest.mark.anyio
+async def test_list_library_items_filters_three_dimensions(tmp_path: Path) -> None:
+    """三维可选过滤（Q26）：source_type / course_id / q，全省略 = 列全部。"""
+    course_id = "d0000000-0000-4000-8000-000000000001"
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, course_id, "Python 学习")
+        await seed_library_item(
+            session_factory,
+            "f0000000-0000-4000-8000-000000000001",
+            title="网页剪藏 A",
+            source_type="WEB",
+            course_id=course_id,
+        )
+        await seed_library_item(
+            session_factory,
+            "f0000000-0000-4000-8000-000000000002",
+            title="课堂文档 B",
+            source_type="DOCUMENT",
+            course_id=course_id,
+        )
+        await seed_library_item(
+            session_factory,
+            "f0000000-0000-4000-8000-000000000003",
+            title="速记 C",
+            source_type="TEXT",
+        )
+        by_source = await invoke_bound_tool(
+            list_library_items, {"source_type": "WEB"}, session_factory
+        )
+        by_course = await invoke_bound_tool(
+            list_library_items, {"course_id": course_id}, session_factory
+        )
+        by_query = await invoke_bound_tool(list_library_items, {"q": "文档"}, session_factory)
+    assert [item["title"] for item in by_source["items"]] == ["网页剪藏 A"]
+    assert by_course["total"] == 2
+    assert [item["title"] for item in by_query["items"]] == ["课堂文档 B"]
+
+
+@pytest.mark.anyio
+async def test_list_library_items_invalid_args_structured_rejection(tmp_path: Path) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        bad_source = await invoke_bound_tool(
+            list_library_items, {"source_type": "VIDEO"}, session_factory
+        )
+        bad_course = await invoke_bound_tool(
+            list_library_items, {"course_id": "not-a-uuid"}, session_factory
+        )
+        bad_limit = await invoke_bound_tool(list_library_items, {"limit": 0}, session_factory)
+    assert bad_source["ok"] is False
+    assert "AUDIO / DOCUMENT / WEB / BOOK / TEXT" in str(bad_source["message"])
+    assert bad_course["ok"] is False
+    assert "course_id 格式不正确" in str(bad_course["message"])
+    assert bad_limit["ok"] is False
+    assert "正整数" in str(bad_limit["message"])
+
+
+@pytest.mark.anyio
+async def test_list_library_items_limit_truncation(tmp_path: Path) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        for index in range(3):
+            await seed_library_item(
+                session_factory,
+                f"f0000000-0000-4000-8000-{index:012d}",
+                title=f"条目 {index}",
+                updated_at=f"2026-09-{index + 1:02d}T08:00:00.000000Z",
+            )
+        payload = await invoke_bound_tool(list_library_items, {"limit": 2}, session_factory)
+    assert payload["ok"] is True
+    assert payload["total"] == 3
+    assert len(payload["items"]) == 2
+    assert payload["truncated"] is True
+    assert "共 3 条，仅列前 2 条" in str(payload["message"])
+
+
+@pytest.mark.anyio
+async def test_list_library_items_budget_enforcement(tmp_path: Path) -> None:
+    """计入统一每轮预算：达上限后拒绝执行（不触库）。"""
+    async with bare_db(tmp_path) as session_factory:
+        budget = ToolCallBudget()
+        budget.calls_used = MAX_TOOL_CALLS_PER_TURN
+        token = bind_agent_runtime_context(
+            AgentRuntimeContext(
+                session_factory=session_factory, session_id="sess-op", budget=budget
+            )
+        )
+        try:
+            raw = await list_library_items.ainvoke({})
+        finally:
+            reset_agent_runtime_context(token)
+        payload = dict(json.loads(raw))
+    assert payload["items"] == []
+    assert "已达上限" in str(payload["message"])
+
+
+# ---------------------------------------------------------------------------
+# 页面快照：后端重校验和提示注入
 # ---------------------------------------------------------------------------
 
 

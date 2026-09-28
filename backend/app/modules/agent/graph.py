@@ -66,6 +66,8 @@ from app.modules.agent.tools.delete_course import (
     DELETE_COURSE_TOOL_NAME,
     delete_course,
 )
+from app.modules.agent.tools.list_course_records import list_course_records
+from app.modules.agent.tools.list_library_items import list_library_items
 from app.modules.agent.tools.move_record_course import (
     MOVE_RECORD_COURSE_TOOL_NAME,
     move_record_course,
@@ -97,11 +99,12 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v15"
+CHAT_PROMPT_VERSION = "chat-library-scope-v16"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
-# 迁移三工具；工单 05：批量整理计划工具与批量指引）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v16"
+# 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
+# 指引）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v17"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
@@ -254,7 +257,9 @@ def _resolve_agent_config(
     config = LIBRARY_CHAT_AGENT_CONFIG if retrieval else CHAT_AGENT_CONFIG
     if web_search_enabled:
         config = AgentConfig(tools=(*config.tools, web_search))
-    # 恒挂载段（操作工具组）：search_courses 课程查询 + propose_memory 记忆提案
+    # 恒挂载段（操作工具组）：search_courses 课程查询 + list_course_records /
+    # list_library_items 对象枚举（插队票 08：只读查询工具，无 operation 事实、
+    # 不进 OPERATION_TOOL_NAMES）+ propose_memory 记忆提案
     # + create_course 课程创建提案 + add_text_record_to_course 文本记录添加提案
     # （工单 02/03，spec 决策 12：写工具恒挂载全部会话类型，目标解析与会话范围
     # 解耦）+ 修改与归档动作组（工单 03：update/archive/restore_course 与
@@ -267,6 +272,8 @@ def _resolve_agent_config(
         tools=(
             *config.tools,
             search_courses,
+            list_course_records,
+            list_library_items,
             propose_memory,
             create_course,
             add_text_record_to_course,
