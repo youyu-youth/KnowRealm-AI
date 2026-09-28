@@ -35,6 +35,7 @@
 - 前端：`AgentRunProgress` 为对话计划卡、会话任务面板与设置页操作历史共用的任务进度组件（推进中 2s 轮询、终态停；快照失效步骤给出「重新整理该项」提示而非只留重试按钮）；run 查询键与呈现助手（状态色 / 时间格式 / 可重试判定）收敛到 `features/settings/api/operationHistory.ts`，`settingsKeys` 的 run 键删除以免同一资源两份缓存。
 - prompt bump `chat-library-scope-v15` / `chat-research-scope-v16`（新增批量整理指引＋工具可见面变化）；`build_context_messages` 的 SYSTEM 末尾新增批量指引与任务摘要两段，三处逐字断言与工具可见矩阵同步更新。
 - code-review 双轴结论（Standards / Spec）：采纳 spec 轴 3 项实质问题（混合批重复建操作、完全访问档固定计划约束、等待态追加不唤醒）与 2 项稳健性（版本单调、取消守卫），采纳 standards 轴 3 项（重复呈现助手收敛、未结束任务查询共用、`[0]/[1]/[2]` 位置语义改聚合类型）＋删除冗余迁移版本断言（新迁移零断言同步）；judgement call 未采纳两项并说明：OP_BATCH 载荷在前端手写 TS 形状（后端载荷为自由 dict，无生成对应物，与 `AgentOperationOut.payload` 同口径）、run 查询全前缀失效（计划卡的新 Run 事先不可知，前缀失效是既有先例）。
+- review 追加修复（P1：确认卡未完整展示授权参数）：归类目标显示课程名（复用 `useCourseNames` 共用缓存；查不到回落 id 缩写 `#xxxxxxxx`，不造假名）；多依赖完整列出（i18next `list(style: narrow)` 格式化，zh「1、3」/ en「1, 3」），不再只显示首项；zh/en 键同步，回归用例覆盖「已知课程名 / 未知课程回落 id / 多依赖」三条路径。授权参数因此始终可见——确认卡批准的对象与参数范围与实际执行一致。
 
 **用户真机验收（单列，不代勾）：**
 
