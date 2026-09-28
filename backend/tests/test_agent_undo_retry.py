@@ -891,6 +891,44 @@ async def test_standalone_retry_guards(tmp_path: Path) -> None:
         assert exc.value.code == "OPERATION_NOT_RETRYABLE"
 
 
+@pytest.mark.anyio
+async def test_direct_failure_receipt_anchors_failed_operation(
+    tmp_path: Path,
+) -> None:
+    """直执行失败载荷携带 operation_id（工单 06 review 修复）：真实失败回执的
+    id 与落库 FAILED 行一致，且经 graph 事件解析产锚点事件——消息流回执卡的
+    手动重试入口据此真实可达（此前锚点只覆盖成功路径，按钮为死代码）。"""
+    from langchain_core.messages import ToolMessage
+
+    from app.modules.agent.graph import _operation_execution_event
+
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ARCHIVED, status="ARCHIVED")
+        await seed_item(session_factory, 1)
+        receipt = await invoke_tool(
+            update_library_item,
+            session_factory,
+            {"item_id": item_id(1), "course_id": COURSE_ARCHIVED},
+        )
+        assert receipt["ok"] is False
+        failed_row = (await operation_rows(session_factory))[-1]
+        assert failed_row["status"] == "FAILED"
+        # 失败回执携带 FAILED 行 id（消息流锚点与模型引用的定位依据）。
+        assert receipt["operation_id"] == failed_row["id"]
+
+        event = _operation_execution_event(
+            ToolMessage(
+                content=json.dumps(receipt, ensure_ascii=False),
+                name="update_library_item",
+                tool_call_id="tc-1",
+            )
+        )
+        assert event is not None
+        assert event.executions[0]["operation_id"] == failed_row["id"]
+        assert event.executions[0]["failed"] is True
+        assert event.executions[0]["error"] == receipt["error"]
+
+
 # ---------------------------------------------------------------------------
 # 语义分离与对账
 

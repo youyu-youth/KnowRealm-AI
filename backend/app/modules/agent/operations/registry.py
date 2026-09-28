@@ -373,12 +373,17 @@ async def _execute_operation_directly(
     operation 行（SUCCEEDED＋result 回填＋授权依据）同一事务原子提交；
     失败：业务事务整体回滚（＝未发生），独立小事务落 FAILED operation＋
     稳定错误码（_mark_failed 先例，诊断不断链）。返回工具 JSON 载荷：
-    成功 {ok, executed}；失败 {ok: False, error}（模型转述原因）。
+    成功 {ok, executed}；失败 {ok: False, error, operation_id}（模型转述
+    原因，operation_id 供消息流锚点与手动重试定位）。
 
     瞬时故障自动重试（工单 06，spec 决策 20）：SQLITE_BUSY 等锁竞争在原
     operation 身份下小睡重试 ≤2 次（attempts／attempts_json 如实累计），
     每轮重走快照固化（同步路径无等待期，重验天然成立）；耗尽落 FAILED＋
     OPERATION_TRANSIENT_ERROR。业务拒绝（CodedHTTPException）不自动重试。
+
+    失败载荷携带 operation_id（工单 06 review 修复）：FAILED 行已在独立小
+    事务落库，id 随载荷返回——消息流锚点据此定位失败回执，回执卡的手动
+    重试入口才真实可达（否则锚点只覆盖成功路径）。
     """
     payload_json = validated.model_dump_json()
     target = spec.target_resolver(validated) if spec.target_resolver is not None else None
@@ -416,7 +421,7 @@ async def _execute_operation_directly(
                     )
             except CodedHTTPException as exc:
                 async with session.begin():
-                    await record_direct_execution(
+                    failed = await record_direct_execution(
                         session,
                         action=spec.action,
                         level=spec.level.value,
@@ -429,7 +434,7 @@ async def _execute_operation_directly(
                         attempts=1 + attempt,
                         attempts_json=_final_attempts_json(transient_history, attempt, exc.code),
                     )
-                return {"ok": False, "error": exc.code, "executed": None}
+                return {"ok": False, "error": exc.code, "operation_id": failed.id}
             except OperationalError as exc:
                 if is_transient_exception(exc) and attempt < TRANSIENT_MAX_RETRIES:
                     attempt += 1
@@ -443,7 +448,7 @@ async def _execute_operation_directly(
                     await asyncio.sleep(0.05 * attempt)
                     continue
                 async with session.begin():
-                    await record_direct_execution(
+                    failed = await record_direct_execution(
                         session,
                         action=spec.action,
                         level=spec.level.value,
@@ -457,12 +462,16 @@ async def _execute_operation_directly(
                             transient_history, attempt, OPERATION_TRANSIENT_ERROR
                         ),
                     )
-                return {"ok": False, "error": OPERATION_TRANSIENT_ERROR, "executed": None}
+                return {
+                    "ok": False,
+                    "error": OPERATION_TRANSIENT_ERROR,
+                    "operation_id": failed.id,
+                }
             except Exception:
                 # 非编码异常（bug / 环境故障）：原子回滚＝未发生，落 INTERNAL 稳定
                 # 错误码（先例：提案框架非编码异常路径）。
                 async with session.begin():
-                    await record_direct_execution(
+                    failed = await record_direct_execution(
                         session,
                         action=spec.action,
                         level=spec.level.value,
@@ -474,7 +483,7 @@ async def _execute_operation_directly(
                         attempts=1 + attempt,
                         attempts_json=_final_attempts_json(transient_history, attempt, "INTERNAL"),
                     )
-                return {"ok": False, "error": "INTERNAL", "executed": None}
+                return {"ok": False, "error": "INTERNAL", "operation_id": failed.id}
             break  # 成功（各失败分支均已在 except 内返回）
     return {
         "ok": True,

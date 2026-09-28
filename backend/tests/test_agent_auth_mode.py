@@ -441,8 +441,18 @@ def test_operation_execution_event_parses_executed_payload() -> None:
     assert event.executions[0]["auth_mode"] == "AUTO_APPROVE"
 
 
+def test_operation_execution_event_parses_failed_payload() -> None:
+    # 失败也锚定（工单 06 review 修复）：FAILED 行 id 进锚点，回执卡可查可重试。
+    content = json.dumps({"ok": False, "error": "COURSE_ARCHIVED", "operation_id": "op-9"})
+    event = _operation_execution_event(_tool_message(content))
+    assert event is not None
+    assert event.executions[0]["operation_id"] == "op-9"
+    assert event.executions[0]["failed"] is True
+    assert event.executions[0]["error"] == "COURSE_ARCHIVED"
+
+
 def test_operation_execution_event_drops_malformed_payload() -> None:
-    # ok=False（直执行失败）与缺键形状均不产事件（失败经 tool_result 通道呈现）。
+    # 缺 operation_id 的失败（如撤销工具失败不落行）与缺键形状均不产事件。
     assert _operation_execution_event(_tool_message('{"ok": false}')) is None
     assert (
         _operation_execution_event(

@@ -202,9 +202,10 @@ class ChatOperationProposalEvent:
 
 @dataclass(frozen=True)
 class ChatOperationExecutionEvent:
-    """操作直执行回执（操作工具成功返回，第二阶段工单 02）：done 载荷透传
-    前端回执卡，每项含 operation_id / action / level / auth_mode / payload /
-    result（自动档免确认执行，授权依据经操作历史可追溯）。"""
+    """操作直执行回执（第二阶段工单 02）：done 载荷透传前端回执卡，成功项含
+    operation_id / action / level / auth_mode / payload / result（自动档免确认
+    执行，授权依据经操作历史可追溯）；失败项 {operation_id, failed, error}
+    （工单 06 review 修复：FAILED 行锚点进 assistant 行，回执卡可查可重试）。"""
 
     executions: tuple[dict[str, object], ...]
 
@@ -533,7 +534,9 @@ def _operation_proposal_event(message: ToolMessage) -> ChatOperationProposalEven
 def _operation_execution_event(message: ToolMessage) -> ChatOperationExecutionEvent | None:
     """操作工具的直执行返回 → 执行回执事件（载荷 JSON：{ok, executed: {...}}，
     工单 02 自动档）。executed 六键全为标量/JSON 形状才透传（与提案事件同一
-    防御性收窄口径）。"""
+    防御性收窄口径）。失败载荷 {ok: False, error, operation_id} 同样产事件
+    （工单 06 review 修复）：FAILED 行已落库，id 进 assistant 行锚点后回执卡
+    才能呈现失败原因与手动重试——此前锚点只覆盖成功，重试入口不可达。"""
 
     if not isinstance(message.content, str):
         return None
@@ -544,8 +547,18 @@ def _operation_execution_event(message: ToolMessage) -> ChatOperationExecutionEv
     if not isinstance(value, dict):
         return None
     payload = cast(dict[str, object], value)
+    if payload.get("ok") is not True:
+        # 失败分支：operation_id 缺席（如撤销工具失败不落行）不产事件。
+        operation_id = payload.get("operation_id")
+        if not isinstance(operation_id, str):
+            return None
+        entry: dict[str, object] = {"operation_id": operation_id, "failed": True}
+        error = payload.get("error")
+        if isinstance(error, str):
+            entry["error"] = error
+        return ChatOperationExecutionEvent(executions=(entry,))
     executed = payload.get("executed")
-    if payload.get("ok") is not True or not isinstance(executed, dict):
+    if not isinstance(executed, dict):
         return None
     entry = cast(dict[str, object], executed)
     operation_id = entry.get("operation_id")
