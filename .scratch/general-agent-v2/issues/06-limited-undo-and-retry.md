@@ -34,6 +34,8 @@
 - **真机验收反馈补丁（同日）**：默认档（请求批准）确认路径的消息流回执行无撤销入口（按钮当时只在直执行回执卡与操作历史）——`ChatOperationProposalCard` 的 APPLIED 回执行补 `ProposalUndoEntry`（经会话 operations 查询按 `proposal_id` 关联定位 operation 行，成功且可撤销且未撤销 → 撤销按钮；已撤销 → 标记；与直执行回执卡共用 `agentKeys.sessionOperations` 查询键与撤销端点，零后端改动、零新文案键），测试 +2。
 - **双轴 code-review 修复**：i18n 键对齐（undo.applied→accepted）、_undo_reason 类型标注收紧、retry 并发兜底（不 500）、迁移 undo 收件箱分支补 job 守卫、直执行失败 attempts_json 补最终尝试、操作历史单步撤销按钮（工单「操作历史按钮」入口补全）。
 - **review P1 修复——失败回执锚点断链（同日）**：直执行失败虽落 FAILED operation 行，但三处叠加使回执卡重试按钮在真实流程恒不可达（原测试用人造锚点未覆盖闭环）——工具载荷 `{ok: False, executed: None}` 不携带 id、`_operation_execution_event` 只认 ok=True、assistant 行锚点仅从成功事件提取；操作历史亦无单步重试入口。修复：registry 三处失败分支载荷带 `operation_id`；graph 失败分支产 `{operation_id, failed, error}` 锚点事件（撤销工具失败不落行、无 id，天然不误锚）；操作历史行补重试按钮（FAILED 且 run_id 空，与后端 OPERATION_NOT_RETRYABLE 守卫同口径；复用 `chat.executedOperation.retry` 文案零新键）。测试：真实失败回执→id 与 FAILED 行一致→事件解析闭环（+1）、失败载荷事件契约（+1）、操作历史重试入口（前端 +1）。
+- **review P2 修复×2（次日）——批次撤销失败留痕**：undo_run 单项补偿失败原先只写进 HTTP 响应（前端 onSuccess 仅失效查询丢弃载荷），事务整体回滚零持久化——刷新后原行仍 SUCCEEDED 无失败痕迹，违反「逐项结果如实呈现」。修复：except 分支独立小事务落 FAILED 补偿行（undo_of 挂原行、error_code 记原因、原行保持 SUCCEEDED 无 undone_by 可再撤销）；配套防误用守卫——RunControlService.retry_operation 拒绝 undo_of 非空行（重试会按其 payload 重放正向操作语义；PARTIAL_COMPLETED 任务可重开推进故路径真实）、任务面板补偿行不渲染重试按钮（后端同口径）。测试：如实呈现用例补持久化断言 + 重试守卫用例 + 前端 AgentRunProgress 新测试文件（补偿行无重试按钮/失败原因可见）。
+- **review P2 修复——不可撤销原因未呈现（次日）**：后端 AgentOperationOut.undo_reason 零前端消费方，回执卡/操作历史/任务面板对不可撤销成功行只隐藏按钮（回执卡注释「原因在操作历史可见」系虚假声明），不符 spec 故事 28「明确告知原因，而不是默默失败」。修复：三处 UI 对 SUCCEEDED 且 !undoable 且未撤销且 undo_reason 非空的行就地呈现 `不可撤销：{reason}`（新键 chat.executedOperation.notUndoable zh/en）。测试：三个前端测试文件各 +1 用例。
 
 **用户真机验收（单列，不代勾）：**
 
