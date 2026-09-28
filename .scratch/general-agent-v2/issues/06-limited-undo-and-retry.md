@@ -33,6 +33,7 @@
 - **测试**：`test_agent_undo_retry.py` 22 用例（undo 链/冲突/不可撤销原因/重复撤销/批次逆序与单项如实/收件箱守卫/Agent 工具三档/worker 与直执行自动重试/单步手动重试与快照失效守卫/取消不补偿/崩溃对账）；连坐更新 test_chat_streaming（工具面+prompt 断言）、test_research_session（prompt 版本）、ChatExecutedOperationCard.test（+2 前端用例）。
 - **真机验收反馈补丁（同日）**：默认档（请求批准）确认路径的消息流回执行无撤销入口（按钮当时只在直执行回执卡与操作历史）——`ChatOperationProposalCard` 的 APPLIED 回执行补 `ProposalUndoEntry`（经会话 operations 查询按 `proposal_id` 关联定位 operation 行，成功且可撤销且未撤销 → 撤销按钮；已撤销 → 标记；与直执行回执卡共用 `agentKeys.sessionOperations` 查询键与撤销端点，零后端改动、零新文案键），测试 +2。
 - **双轴 code-review 修复**：i18n 键对齐（undo.applied→accepted）、_undo_reason 类型标注收紧、retry 并发兜底（不 500）、迁移 undo 收件箱分支补 job 守卫、直执行失败 attempts_json 补最终尝试、操作历史单步撤销按钮（工单「操作历史按钮」入口补全）。
+- **review P1 修复——失败回执锚点断链（同日）**：直执行失败虽落 FAILED operation 行，但三处叠加使回执卡重试按钮在真实流程恒不可达（原测试用人造锚点未覆盖闭环）——工具载荷 `{ok: False, executed: None}` 不携带 id、`_operation_execution_event` 只认 ok=True、assistant 行锚点仅从成功事件提取；操作历史亦无单步重试入口。修复：registry 三处失败分支载荷带 `operation_id`；graph 失败分支产 `{operation_id, failed, error}` 锚点事件（撤销工具失败不落行、无 id，天然不误锚）；操作历史行补重试按钮（FAILED 且 run_id 空，与后端 OPERATION_NOT_RETRYABLE 守卫同口径；复用 `chat.executedOperation.retry` 文案零新键）。测试：真实失败回执→id 与 FAILED 行一致→事件解析闭环（+1）、失败载荷事件契约（+1）、操作历史重试入口（前端 +1）。
 
 **用户真机验收（单列，不代勾）：**
 
