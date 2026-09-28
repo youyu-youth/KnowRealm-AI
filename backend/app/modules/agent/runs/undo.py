@@ -175,6 +175,11 @@ class UndoService:
         """run 级批次 Undo（POST runs/{id}/undo）：按依赖逆序补偿全部可撤销
         成功项，逐项独立小事务（单项补偿失败不谎报整体成功、不阻断其余项），
         结果如实呈现。终态守卫：任务尚未结束（仍在推进 / 等待）不可整批撤销。
+
+        失败留痕（工单 06 review P2 修复）：补偿失败整体回滚＝业务未发生，
+        但失败结果不能只活在 HTTP 响应里——独立小事务落 FAILED 补偿行
+        （undo_of 挂原行、error_code 记失败原因），刷新后 run 展开仍可见；
+        原行保持 SUCCEEDED 且无 undone_by，可再次发起撤销。
         """
         async with session:
             run = await session.get(AgentRun, run_id)
@@ -227,6 +232,29 @@ class UndoService:
             except CodedHTTPException as exc:
                 item = item.model_copy(update={"status": "FAILED", "error_code": exc.code})
                 failed += 1
+                now = utcnow()
+                async with session.begin():
+                    session.add(
+                        AgentOperation(
+                            id=str(uuid4()),
+                            run_id=operation.run_id,
+                            proposal_id=None,
+                            action=operation.action,
+                            level=operation.level,
+                            target_type=operation.target_type,
+                            target_id=operation.target_id,
+                            payload_json=operation.payload_json,
+                            snapshot_json=None,
+                            authorization_json=_user_undo_authorization().model_dump_json(),
+                            status=OperationStatus.FAILED.value,
+                            attempts=1,
+                            error_code=exc.code,
+                            undo_of=operation.id,
+                            created_at=now,
+                            updated_at=now,
+                            finished_at=now,
+                        )
+                    )
             items.append(item)
         return RunUndoResultOut(
             run_id=run_id,

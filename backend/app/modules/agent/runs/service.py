@@ -679,7 +679,9 @@ class RunControlService:
         """失败 / 跳过项重试（沿用原 operation 身份，attempts 递增）并唤醒。
 
         依赖该项而跳过的后续步骤一并恢复为待执行（阻塞原因已修复）——不重复
-        已成功项；终态 Run 与未失败项拒绝（稳定错误码）。
+        已成功项；终态 Run 与未失败项拒绝（稳定错误码）。补偿行（undo_of
+        非空，批次撤销的留痕 / 补偿）拒绝：重试会按其 payload 重放正向操作
+        语义，失败补偿的正确路径是重新发起撤销（工单 06 review P2）。
         """
         now = utcnow()
         async with session.begin():
@@ -690,6 +692,12 @@ class RunControlService:
                     code="AGENT_RUN_OPERATION_NOT_FOUND",
                     status_code=404,
                     detail="任务中的操作不存在",
+                )
+            if operation.undo_of is not None:
+                raise CodedHTTPException(
+                    code="AGENT_RUN_OPERATION_NOT_RETRYABLE",
+                    status_code=409,
+                    detail="补偿操作不能经任务重试，请重新发起撤销",
                 )
             if operation.status not in (
                 OperationStatus.FAILED.value,

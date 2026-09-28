@@ -598,7 +598,8 @@ async def test_run_batch_undo_reverses_in_dependency_order(tmp_path: Path) -> No
 @pytest.mark.anyio
 async def test_run_undo_reports_item_failures_honestly(tmp_path: Path) -> None:
     """单项补偿失败不谎报整体成功：被手动改过的项 FAILED（CONFLICT）、
-    其余项照常补偿、目标状态不被覆盖。"""
+    其余项照常补偿、目标状态不被覆盖；失败补偿独立小事务留痕（undo_of
+    挂原行、error_code 记原因），刷新后 run 展开仍可见（review P2）。"""
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory)
         await seed_course(session_factory, COURSE_OTHER, name="用户手改目标课程")
@@ -627,6 +628,63 @@ async def test_run_undo_reports_item_failures_honestly(tmp_path: Path) -> None:
         assert failed.error_code == "OPERATION_UNDO_CONFLICT"
         assert (await item_row(session_factory, 1))[1] is None  # 成功项恢复
         assert (await item_row(session_factory, 2))[1] == COURSE_OTHER  # 不覆盖
+        # 失败留痕持久化：FAILED 补偿行 undo_of 挂原行、错误码可查；原行保持
+        # SUCCEEDED 且无 undone_by（可再次发起撤销）。
+        rows = await operation_rows(session_factory, "run_id = :rid", {"rid": run_id})
+        originals = {row["id"]: row for row in rows if row["undo_of"] is None}
+        compensations = [row for row in rows if row["undo_of"] is not None]
+        failed_rows = [row for row in compensations if row["status"] == "FAILED"]
+        assert len(failed_rows) == 1
+        assert failed_rows[0]["error_code"] == "OPERATION_UNDO_CONFLICT"
+        conflicted_original = originals[failed_rows[0]["undo_of"]]
+        assert conflicted_original["status"] == "SUCCEEDED"
+        assert conflicted_original["undone_by"] is None
+        succeeded_compensations = [row for row in compensations if row["status"] == "SUCCEEDED"]
+        assert len(succeeded_compensations) == 1
+        assert (
+            originals[succeeded_compensations[0]["undo_of"]]["undone_by"]
+            == succeeded_compensations[0]["id"]
+        )
+
+
+@pytest.mark.anyio
+async def test_retry_rejects_compensation_rows(tmp_path: Path) -> None:
+    """任务重试拒绝补偿行（undo_of 非空）：重试会按其 payload 重放正向操作
+    语义，失败补偿的正确路径是重新发起撤销（review P2 守卫）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_course(session_factory, COURSE_OTHER, name="用户手改目标课程")
+        await seed_item(session_factory, 1)
+        run_id = await run_batch_and_complete(
+            session_factory,
+            [{"action": "update_library_item", "item_id": item_id(1), "course_id": COURSE_ID}],
+        )
+        # 批次后手动改归类 → 撤销失败留痕 FAILED 补偿行。
+        await run_sql(
+            "UPDATE library_items SET course_id = :course, updated_at = :later WHERE id = :id",
+            {"id": item_id(1), "course": COURSE_OTHER, "later": "2026-09-28T10:00:00.000000Z"},
+            session_factory,
+        )
+        async with session_factory() as session:
+            await UndoService.undo_run(session, run_id)
+        failed_compensation = next(
+            row
+            for row in await operation_rows(session_factory, "run_id = :rid", {"rid": run_id})
+            if row["undo_of"] is not None and row["status"] == "FAILED"
+        )
+        # 部分完成任务可重开推进（_require_live_run 放行），但补偿行仍须拒绝。
+        await run_sql(
+            "UPDATE agent_runs SET status = 'PARTIAL_COMPLETED' WHERE id = :id",
+            {"id": run_id},
+            session_factory,
+        )
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc:
+                await RunControlService.retry_operation(
+                    session, run_id=run_id, operation_id=failed_compensation["id"]
+                )
+        assert exc.value.code == "AGENT_RUN_OPERATION_NOT_RETRYABLE"
+        assert "补偿" in exc.value.detail
 
 
 @pytest.mark.anyio
