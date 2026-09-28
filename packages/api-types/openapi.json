@@ -125,6 +125,21 @@
             "title": "Attempts",
             "type": "integer"
           },
+          "attempts_history": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempts History"
+          },
           "authorization": {
             "anyOf": [
               {
@@ -259,6 +274,22 @@
               }
             ],
             "title": "Undo Of"
+          },
+          "undo_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undo Reason"
+          },
+          "undoable": {
+            "default": false,
+            "title": "Undoable",
+            "type": "boolean"
           },
           "undone_by": {
             "anyOf": [
@@ -5441,7 +5472,8 @@
           "OP_RECORD_SOFT_DELETE",
           "OP_COURSE_SOFT_DELETE",
           "OP_RECORD_MOVE_COURSE",
-          "OP_BATCH"
+          "OP_BATCH",
+          "OP_UNDO"
         ],
         "title": "ProposalType",
         "type": "string"
@@ -7056,6 +7088,85 @@
         ],
         "title": "RunStatus",
         "type": "string"
+      },
+      "RunUndoItemOut": {
+        "additionalProperties": false,
+        "description": "批次撤销的逐项结果（工单 06：单项补偿失败不谎报整体成功）。",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "compensation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compensation Id"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "action",
+          "status"
+        ],
+        "title": "RunUndoItemOut",
+        "type": "object"
+      },
+      "RunUndoResultOut": {
+        "additionalProperties": false,
+        "description": "run 级批次 Undo 回执：按依赖逆序补偿、逐项结果如实呈现。",
+        "properties": {
+          "failed_count": {
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunUndoItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "undone_count": {
+            "title": "Undone Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "undone_count",
+          "failed_count"
+        ],
+        "title": "RunUndoResultOut",
+        "type": "object"
       },
       "SearchCourseItem": {
         "properties": {
@@ -8889,6 +9000,206 @@
         ]
       }
     },
+    "/api/agent/operations/{operation_id}/retry": {
+      "post": {
+        "description": "单步（直执行）失败操作手动重试：沿用原 operation 身份（attempts 递增）\n同步重执行，执行前快照重验；run 内操作走任务面板重试（会重开推进）。",
+        "operationId": "retry_operation_api_agent_operations__operation_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentOperationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Retry Operation",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/agent/operations/{operation_id}/undo": {
+      "post": {
+        "description": "撤销单个操作（UI 显式动作＝用户授权）：校验终态 SUCCEEDED、未被撤销、\n撤销前重验版本（不覆盖后续修改）后建补偿 operation（undo_of 关联）同步\n执行；撤销后原操作标记 undone_by、历史保留。",
+        "operationId": "undo_operation_api_agent_operations__operation_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Operation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentOperationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Undo Operation",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
     "/api/agent/runs": {
       "get": {
         "operationId": "list_runs_api_agent_runs_get",
@@ -9621,6 +9932,106 @@
           }
         },
         "summary": "Resume Run",
+        "tags": [
+          "agent-runs"
+        ]
+      }
+    },
+    "/api/agent/runs/{run_id}/undo": {
+      "post": {
+        "description": "run 级批次撤销（UI 显式动作＝用户授权）：按依赖逆序补偿全部可撤销\n成功项，逐项结果如实呈现（单项补偿失败不谎报整体成功）；任务尚未结束\n拒绝（撤销不与推进并发）。",
+        "operationId": "undo_run_api_agent_runs__run_id__undo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunUndoResultOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Undo Run",
         "tags": [
           "agent-runs"
         ]

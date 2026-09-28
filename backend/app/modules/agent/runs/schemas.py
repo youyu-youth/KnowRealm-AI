@@ -265,16 +265,34 @@ class OperationAuthorization(BaseModel):
     确认路径：档位恒 REQUEST_APPROVAL、trigger=USER_CONFIRMED_PROPOSAL、
     指令摘录为空（提案框架未携带触发指令原文）；直执行（工单 02）沿同列
     回填 trigger=AUTO_EXECUTED、当轮档位与触发指令摘录。单步无 run 时
-    本列是授权事实的唯一载体。
+    本列是授权事实的唯一载体。UI 显式撤销（工单 06）trigger=USER_UNDO
+    ——按钮点击即用户授权直接建补偿 operation，不经提案档位。
     """
 
     model_config = ConfigDict(extra="forbid")
 
     auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL
-    trigger: Literal["USER_CONFIRMED_PROPOSAL", "AUTO_EXECUTED"] = "USER_CONFIRMED_PROPOSAL"
+    trigger: Literal["USER_CONFIRMED_PROPOSAL", "AUTO_EXECUTED", "USER_UNDO"] = (
+        "USER_CONFIRMED_PROPOSAL"
+    )
     instruction_excerpt: str | None = None
     session_id: str | None = None
     message_id: str | None = None
+
+
+class UndoOperationPayload(BaseModel):
+    """OP_UNDO 提案判别载荷（工单 06，spec 决策 19）：撤销目标的原 operation id。
+
+    经 Agent 的 undo 工具在默认档落提案（走三档授权）；operation_id 由模型
+    从此前的执行回执（operation_id 键）取得。快照＝提交时原操作目标的当前
+    态（确认卡预览用；确认时撤销前重验由补偿器执法）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="要撤销的操作 id（此前操作回执中的 operation_id）",
+    )
 
 
 class AgentOperationOut(BaseModel):
@@ -292,8 +310,11 @@ class AgentOperationOut(BaseModel):
     authorization: dict[str, Any] | None = None
     status: str
     attempts: int
+    attempts_history: list[dict[str, Any]] | None = None
     result: dict[str, Any] | None = None
     error_code: str | None
+    undoable: bool = False
+    undo_reason: str | None = None
     undo_of: str | None
     undone_by: str | None
     created_at: datetime
@@ -379,6 +400,29 @@ class ActivityListQuery(BaseModel):
 class PurgeResultOut(BaseModel):
     runs_deleted: int
     operations_deleted: int
+
+
+class RunUndoItemOut(BaseModel):
+    """批次撤销的逐项结果（工单 06：单项补偿失败不谎报整体成功）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    operation_id: str
+    action: str
+    status: str
+    error_code: str | None = None
+    compensation_id: str | None = None
+
+
+class RunUndoResultOut(BaseModel):
+    """run 级批次 Undo 回执：按依赖逆序补偿、逐项结果如实呈现。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    undone_count: int
+    failed_count: int
+    items: list[RunUndoItemOut] = Field(default_factory=list[RunUndoItemOut])
 
 
 # ---------------------------------------------------------------------------

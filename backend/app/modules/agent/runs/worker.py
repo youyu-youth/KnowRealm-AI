@@ -35,13 +35,17 @@ from typing import Any, cast
 
 from loguru import logger
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.modules.agent.auth_mode import effective_session_auth_mode
 from app.modules.agent.operations.registry import (
+    OPERATION_TRANSIENT_ERROR,
+    TRANSIENT_MAX_RETRIES,
     OperationSpec,
     get_operation,
+    is_transient_exception,
     run_operation_applier,
     should_execute_directly,
 )
@@ -59,9 +63,11 @@ from app.modules.agent.runs.schemas import (
 )
 from app.modules.agent.runs.service import (
     AGENT_RUN_JOB_TYPE,
+    append_attempt,
     cancel_pending_operations,
     enqueue_trigger,
     list_run_operations,
+    operation_snapshot_stale,
     order_run_operations,
     settle_run,
 )
@@ -152,28 +158,6 @@ def _operation_params(operation: AgentOperation) -> dict[str, Any]:
     return cast(dict[str, Any], value)
 
 
-async def _operation_stale(
-    session: AsyncSession,
-    spec: OperationSpec[Any],
-    operation: AgentOperation,
-    params: dict[str, Any],
-) -> bool:
-    """每步前版本重验（spec 决策 12）：当前态与固化快照不一致即失效（缺失 /
-    坏值同样失效＝保守方向）。快照按字典比对（不依赖序列化字节一致）。"""
-    if spec.capture_state is None:
-        return False
-    if operation.snapshot_json is None:
-        return True
-    try:
-        stored: object = json.loads(operation.snapshot_json)
-    except ValueError:
-        return True
-    current = (
-        await spec.capture_state(session, spec.payload_schema.model_validate(params))
-    ).model_dump(mode="json")
-    return current != stored
-
-
 def _authorized(run: AgentRun, spec: OperationSpec[Any]) -> bool:
     """每步前授权重检（spec 决策 6/9、用户故事 6）：按 Run 固化依据执法，并叠加
     同进程会话覆盖取更严格者——同进程降档即时约束后续步骤（继续 / 重试不构成
@@ -193,20 +177,6 @@ def _authorized(run: AgentRun, spec: OperationSpec[Any]) -> bool:
     return should_execute_directly(mode, spec.level)
 
 
-def _append_attempt(operation: AgentOperation, error_code: str, *, now: datetime) -> None:
-    """逐次尝试错误历史（attempts_json）：失败尝试留痕，重试沿用原 operation 身份。"""
-    history: list[object] = []
-    if operation.attempts_json:
-        try:
-            parsed: object = json.loads(operation.attempts_json)
-        except ValueError:
-            parsed = None
-        if isinstance(parsed, list):
-            history = cast(list[object], parsed)
-    history.append({"attempt": operation.attempts, "error_code": error_code, "at": now.isoformat()})
-    operation.attempts_json = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
-
-
 def _mark_operation(
     operation: AgentOperation,
     status: OperationStatus,
@@ -222,7 +192,7 @@ def _mark_operation(
     operation.updated_at = now
     operation.finished_at = now
     if error_code is not None:
-        _append_attempt(operation, error_code, now=now)
+        append_attempt(operation, error_code, now=now)
 
 
 def _wait_for_user(run: AgentRun, error_code: str, *, now: datetime) -> None:
@@ -259,6 +229,33 @@ def _dependency_blocked(dependencies: list[str], statuses: dict[str, str]) -> bo
     return any(
         statuses.get(dependency) != OperationStatus.SUCCEEDED.value for dependency in dependencies
     )
+
+
+async def _record_step_retry(
+    session_factory: async_sessionmaker[AsyncSession], run_id: str, operation_id: str
+) -> bool:
+    """瞬时失败记账（独立小事务，工单 06 spec 决策 20）：attempts 递增＋
+    attempts_json 留痕、状态保持 PLANNED（交回推进循环重试，下轮从头重检
+    取消 / 授权 / 版本）。返回 False＝重试额度耗尽（调用方转失败记账）。"""
+    now = utcnow()
+    async with session_factory() as session, session.begin():
+        operation = await session.get(AgentOperation, operation_id)
+        if (
+            operation is None
+            or operation.status != OperationStatus.PLANNED.value
+            or operation.attempts >= 1 + TRANSIENT_MAX_RETRIES
+        ):
+            return False
+        operation.attempts += 1
+        operation.updated_at = now
+        append_attempt(operation, OPERATION_TRANSIENT_ERROR, now=now)
+        logger.info(
+            "agent_run_step_transient_retry",
+            run_id=run_id,
+            step_id=operation_id,
+            attempt=operation.attempts,
+        )
+        return True
 
 
 async def _record_step_failure(
@@ -354,7 +351,7 @@ async def advance_step(session_factory: async_sessionmaker[AsyncSession], run_id
                     )
                     return False
                 params = _operation_params(operation)
-                if await _operation_stale(session, spec, operation, params):
+                if await operation_snapshot_stale(session, spec, operation, params):
                     _mark_operation(
                         operation,
                         OperationStatus.FAILED,
@@ -381,6 +378,26 @@ async def advance_step(session_factory: async_sessionmaker[AsyncSession], run_id
                 "agent_run_step_failed", run_id=run_id, step_id=operation_id, error_code=exc.code
             )
             return exc.code not in WAITABLE_OPERATION_ERROR_CODES
+        except OperationalError as exc:
+            # 瞬时故障（SQLITE_BUSY 等锁竞争，工单 06 spec 决策 20）：原 operation
+            # 身份下自动重试 ≤2 次——业务事务已回滚＝未发生，独立小事务记账
+            # （attempts 递增留痕、保持 PLANNED）后交回推进循环；重试轮从头重检
+            # 取消 / 授权 / 版本。耗尽按独立项失败落 FAILED 继续推进其余步骤；
+            # 非瞬时 OperationalError 上抛（系统性故障口径不变）。
+            assert operation_id is not None
+            if not is_transient_exception(exc):
+                raise
+            if await _record_step_retry(session_factory, run_id, operation_id):
+                return True
+            await _record_step_failure(
+                session_factory, run_id, operation_id, OPERATION_TRANSIENT_ERROR
+            )
+            logger.info(
+                "agent_run_step_transient_exhausted",
+                run_id=run_id,
+                step_id=operation_id,
+            )
+            return True
 
 
 async def advance_run(session_factory: async_sessionmaker[AsyncSession], run_id: str) -> str:

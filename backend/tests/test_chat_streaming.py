@@ -37,6 +37,7 @@ from app.modules.agent.context import (
     CHAT_CONTEXT_CHAR_BUDGET,
     CHAT_ENUMERATION_GUIDANCE,
     CHAT_LANGUAGE_INSTRUCTION,
+    CHAT_UNDO_GUIDANCE,
     ChatContextTooLargeError,
     ContextRow,
     LibraryContext,
@@ -175,7 +176,7 @@ class TestBuildContextMessages:
         assert messages[0].content == (
             "你是学习助手\n"
             f"{CHAT_ENUMERATION_GUIDANCE}\n"
-            f"{CHAT_BATCH_PLAN_GUIDANCE}\n{CHAT_LANGUAGE_INSTRUCTION}"
+            f"{CHAT_BATCH_PLAN_GUIDANCE}\n{CHAT_UNDO_GUIDANCE}\n{CHAT_LANGUAGE_INSTRUCTION}"
         )
         assert messages[0].id == "sys"
         assert isinstance(messages[1], HumanMessage)
@@ -227,6 +228,7 @@ class TestBuildContextMessages:
                     "S",
                     CHAT_ENUMERATION_GUIDANCE,
                     CHAT_BATCH_PLAN_GUIDANCE,
+                    CHAT_UNDO_GUIDANCE,
                     CHAT_LANGUAGE_INSTRUCTION,
                 ]
             )
@@ -270,6 +272,7 @@ class TestBuildContextMessages:
                     "S",
                     CHAT_ENUMERATION_GUIDANCE,
                     CHAT_BATCH_PLAN_GUIDANCE,
+                    CHAT_UNDO_GUIDANCE,
                     CHAT_LANGUAGE_INSTRUCTION,
                 ]
             ),
@@ -1707,7 +1710,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v16"
+        assert rows[0][3] == "chat-library-scope-v17"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2132,6 +2135,7 @@ async def test_prompt_byte_identical_when_web_search_off(
             "你是 KnowRealm 学习助手。用户尚未建立档案，请以中性、通用的语气回答。\n"
             f"{CHAT_ENUMERATION_GUIDANCE}\n"
             f"{CHAT_BATCH_PLAN_GUIDANCE}\n"
+            f"{CHAT_UNDO_GUIDANCE}\n"
             f"{CHAT_LANGUAGE_INSTRUCTION}"
         )
 
@@ -2237,6 +2241,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "undo_operation",
             ]
             assert await visible(record_session_id) == [
                 "search_library",
@@ -2256,6 +2261,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "undo_operation",
             ]
             assert await visible(course_session_id) == [
                 "search_library",
@@ -2275,6 +2281,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "undo_operation",
             ]
             assert await visible(all_session_id) == [
                 "search_library",
@@ -2294,6 +2301,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "undo_operation",
             ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
@@ -2319,6 +2327,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "undo_operation",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
@@ -2339,6 +2348,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "undo_operation",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
@@ -2359,6 +2369,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "undo_operation",
             ]
 
 

@@ -47,6 +47,13 @@ CHAT_ENUMERATION_GUIDANCE = (
     " list_library_items；limit 按用户话术传——用户要全部就省略，明确要"
     " N 条就传 N。"
 )
+# 撤销指引（工单 06）：用户要求撤销时传回执中的 operation_id（补偿语义，
+# 取消不冒充撤销；不可撤销动作会返回明确原因由你转述）。
+CHAT_UNDO_GUIDANCE = (
+    "用户要求撤销此前已执行的操作时，用 undo_operation 工具并传该操作回执中"
+    "的 operation_id；被拒绝时如实转述原因（如目标已被后续修改、该操作不可"
+    "撤销），不要试图绕过。"
+)
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，
 # 零结构化生成）：标题与各节指引一并进 prompt，供文本协议断言与评测黄金集复用。
 CHAT_RESEARCH_SECTIONS: tuple[tuple[str, str], ...] = (
@@ -362,6 +369,7 @@ def build_context_messages(
       提示非指令（不授权继续 / 重试 / 取消），追加位置与 page_hint 相同；
     - 对象枚举指引（插队票 08）与批量整理指引（工单 05）同段追加：先列后改的
       指向恒定存在（枚举与计划工具恒挂载），是否出计划卡由后端按档位判定；
+    - 撤销指引（工单 06）同段追加：撤销工具恒挂载，补偿语义与拒绝原因转述；
     - web_search 生效时在有效 SYSTEM 末尾追加联网指引（挂载会话带"材料优先"语义）。
     """
     system_row, turns, trailing_user = _split_turns(rows)
@@ -429,6 +437,7 @@ def build_context_messages(
             content = f"{content}\n{format_active_run_summary(active_runs)}"
         content = f"{content}\n{CHAT_ENUMERATION_GUIDANCE}"
         content = f"{content}\n{CHAT_BATCH_PLAN_GUIDANCE}"
+        content = f"{content}\n{CHAT_UNDO_GUIDANCE}"
         content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:
             guidance = CHAT_WEB_SEARCH_GUIDANCE

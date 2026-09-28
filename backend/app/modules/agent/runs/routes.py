@@ -1,8 +1,11 @@
 """操作历史查询与清理端点（spec 决策 21；设置页「操作历史」分区消费）
-＋ Run 唤醒与取消端点（工单 05：继续指令 / 失败项重试 / 取消，spec 决策 7）。
+＋ Run 唤醒与取消端点（工单 05：继续指令 / 失败项重试 / 取消，spec 决策 7）
+＋ 有限 Undo 与重试端点（工单 06，spec 决策 19/20：单步撤销 / 批次撤销 /
+单步手动重试）。
 
 唤醒仅由显式动作触发并经原子抢占；推进由 AGENT_RUN 触发 job 内的 worker 完成，
-端点只改 Run 状态并投递触发（不承载任务状态，spec 决策 6）。
+端点只改 Run 状态并投递触发（不承载任务状态，spec 决策 6）。撤销端点是 UI
+显式动作＝用户授权（直接建补偿 operation，trigger=USER_UNDO）。
 """
 
 from uuid import UUID
@@ -10,6 +13,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.agent.runs.retry import retry_standalone_operation
 from app.modules.agent.runs.schemas import (
     ActivityListQuery,
     AgentActivityOut,
@@ -19,8 +23,10 @@ from app.modules.agent.runs.schemas import (
     OperationListQuery,
     PurgeResultOut,
     RunListQuery,
+    RunUndoResultOut,
 )
 from app.modules.agent.runs.service import RunControlService, RunHistoryService
+from app.modules.agent.runs.undo import UndoService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 
@@ -111,6 +117,42 @@ async def retry_run_operation(
         await RunControlService.retry_operation(
             session, run_id=str(run_id), operation_id=str(operation_id)
         )
+    )
+
+
+@router.post("/runs/{run_id}/undo", response_model=RunUndoResultOut)
+async def undo_run(
+    run_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> RunUndoResultOut:
+    """run 级批次撤销（UI 显式动作＝用户授权）：按依赖逆序补偿全部可撤销
+    成功项，逐项结果如实呈现（单项补偿失败不谎报整体成功）；任务尚未结束
+    拒绝（撤销不与推进并发）。"""
+    return RunUndoResultOut.model_validate(await UndoService.undo_run(session, str(run_id)))
+
+
+@router.post("/operations/{operation_id}/undo", response_model=AgentOperationOut)
+async def undo_operation(
+    operation_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> AgentOperationOut:
+    """撤销单个操作（UI 显式动作＝用户授权）：校验终态 SUCCEEDED、未被撤销、
+    撤销前重验版本（不覆盖后续修改）后建补偿 operation（undo_of 关联）同步
+    执行；撤销后原操作标记 undone_by、历史保留。"""
+    return AgentOperationOut.model_validate(
+        await UndoService.undo_operation(session, str(operation_id))
+    )
+
+
+@router.post("/operations/{operation_id}/retry", response_model=AgentOperationOut)
+async def retry_operation(
+    operation_id: UUID,
+    session: AsyncSession = Depends(get_db),
+) -> AgentOperationOut:
+    """单步（直执行）失败操作手动重试：沿用原 operation 身份（attempts 递增）
+    同步重执行，执行前快照重验；run 内操作走任务面板重试（会重开推进）。"""
+    return AgentOperationOut.model_validate(
+        await retry_standalone_operation(session, str(operation_id))
     )
 
 

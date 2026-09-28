@@ -13,7 +13,7 @@
 
 import json
 from datetime import datetime
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
 from sqlalchemy import delete, func, select, update
@@ -40,8 +40,51 @@ from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.library.models import AgentProposal
 from app.shared.errors import CodedHTTPException
 
+if TYPE_CHECKING:
+    # 仅类型标注（运行时导入会构成 registry↔service 环：registry 引用本模块的
+    # operation 回写函数）。
+    from app.modules.agent.operations.registry import OperationSpec
+
 # AGENT_RUN 触发 job 的类型值（Run 推进 worker 的 job_type；无状态触发器）。
 AGENT_RUN_JOB_TYPE = ProcessingJobType.AGENT_RUN
+
+
+def append_attempt(operation: AgentOperation, error_code: str, *, now: datetime) -> None:
+    """逐次尝试错误历史（attempts_json）：失败尝试留痕，重试沿用原 operation
+    身份（工单 06，spec 决策 20；推进 worker 与手动重试共用口径）。"""
+    history: list[object] = []
+    if operation.attempts_json:
+        try:
+            parsed: object = json.loads(operation.attempts_json)
+        except ValueError:
+            parsed = None
+        if isinstance(parsed, list):
+            history = cast("list[object]", parsed)
+    history.append({"attempt": operation.attempts, "error_code": error_code, "at": now.isoformat()})
+    operation.attempts_json = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
+
+
+async def operation_snapshot_stale(
+    session: AsyncSession,
+    spec: "OperationSpec[Any]",
+    operation: AgentOperation,
+    params: dict[str, Any],
+) -> bool:
+    """执行前快照重验（spec 决策 12，推进 worker 每步与手动重试共用的口径）：
+    当前态与固化快照不一致即失效（缺失 / 坏值同样失效＝保守方向）。快照按
+    字典比对（不依赖序列化字节一致）。"""
+    if spec.capture_state is None:
+        return False
+    if operation.snapshot_json is None:
+        return True
+    try:
+        stored: object = json.loads(operation.snapshot_json)
+    except ValueError:
+        return True
+    current = (
+        await spec.capture_state(session, spec.payload_schema.model_validate(params))
+    ).model_dump(mode="json")
+    return current != stored
 
 
 def _job_run_id_column() -> ColumnElement[Any]:
@@ -228,6 +271,8 @@ async def record_direct_execution(
     result_dict: dict[str, Any] | None,
     error_code: str | None = None,
     snapshot_json: str | None = None,
+    attempts: int = 1,
+    attempts_json: str | None = None,
 ) -> AgentOperation:
     """自动档直执行写 operation（工单 02，spec 决策 10/11）。
 
@@ -235,7 +280,8 @@ async def record_direct_execution(
     执行前快照，工单 03）；失败：业务事务已回滚（＝未发生），调用方在独立
     小事务再调本函数落 FAILED＋稳定错误码（提案 _mark_failed 先例）。
     authorization 是直执行的授权依据（档位＋触发指令摘录＋消息引用），单步
-    无 run 时为本行授权事实的唯一载体（ADR-0026）。
+    无 run 时为本行授权事实的唯一载体（ADR-0026）。attempts／attempts_json
+    随瞬时自动重试累计（工单 06，spec 决策 20：重试沿用原 operation 身份）。
     """
     now = utcnow()
     operation = AgentOperation(
@@ -252,7 +298,8 @@ async def record_direct_execution(
         status=OperationStatus.SUCCEEDED.value
         if result_dict is not None
         else OperationStatus.FAILED.value,
-        attempts=1,
+        attempts=attempts,
+        attempts_json=attempts_json,
         result_json=json.dumps(result_dict, ensure_ascii=False)
         if result_dict is not None
         else None,
@@ -292,6 +339,17 @@ async def record_auth_mode_switch(
     return activity
 
 
+def _json_list(raw: str | None) -> list[dict[str, Any]] | None:
+    """attempts_json 列的投影（逐次尝试错误历史，坏值降级为 None 不炸查询）。"""
+    if raw is None:
+        return None
+    try:
+        value: object = json.loads(raw)
+    except ValueError:
+        return None
+    return cast("list[dict[str, Any]]", value) if isinstance(value, list) else None
+
+
 def _json_dict(raw: str | None) -> dict[str, Any] | None:
     if raw is None:
         return None
@@ -302,8 +360,16 @@ def _json_dict(raw: str | None) -> dict[str, Any] | None:
     return cast("dict[str, Any]", value) if isinstance(value, dict) else None
 
 
-def _operation_out(operation: AgentOperation) -> dict[str, Any]:
-    """行→输出投影（JSON 列解析为 dict，坏值降级为空/None 不炸查询）。"""
+def operation_out(operation: AgentOperation) -> dict[str, Any]:
+    """行→输出投影（JSON 列解析为 dict，坏值降级为空/None 不炸查询）。
+
+    可撤销性从注册表派生（工单 06：可撤销性在注册项声明，工具结果与回执
+    透出）——函数内 import 规避 service↔registry 循环依赖（registry 引用
+    本模块的 operation 回写函数）。"""
+    from app.modules.agent.operations.registry import get_operation
+
+    spec = get_operation(operation.action)
+    undoable = spec is not None and spec.undoer is not None
     return {
         "id": operation.id,
         "run_id": operation.run_id,
@@ -317,14 +383,23 @@ def _operation_out(operation: AgentOperation) -> dict[str, Any]:
         "authorization": _json_dict(operation.authorization_json),
         "status": operation.status,
         "attempts": operation.attempts,
+        "attempts_history": _json_list(operation.attempts_json),
         "result": _json_dict(operation.result_json),
         "error_code": operation.error_code,
+        "undoable": undoable,
+        "undo_reason": None if undoable else _undo_reason(spec),
         "undo_of": operation.undo_of,
         "undone_by": operation.undone_by,
         "created_at": operation.created_at,
         "updated_at": operation.updated_at,
         "finished_at": operation.finished_at,
     }
+
+
+def _undo_reason(spec: "OperationSpec[Any] | None") -> str:
+    """不可撤销原因（注册项声明；未注册动作的兜底文案）。"""
+    reason = getattr(spec, "undo_reason", None) if spec is not None else None
+    return str(reason) if reason else "该操作不提供撤销"
 
 
 def _run_out(run: AgentRun) -> dict[str, Any]:
@@ -375,7 +450,7 @@ class RunHistoryService:
         operations = order_run_operations(
             await list_run_operations(session, run_id), run.plan_json, run.plan_version
         )
-        return {**_run_out(run), "operations": [_operation_out(op) for op in operations]}
+        return {**_run_out(run), "operations": [operation_out(op) for op in operations]}
 
     @staticmethod
     async def list_operations(
@@ -401,7 +476,7 @@ class RunHistoryService:
                 func.json_extract(AgentOperation.authorization_json, "$.session_id") == session_id
             )
         operations = list((await session.scalars(stmt)).all())
-        return [_operation_out(op) for op in operations]
+        return [operation_out(op) for op in operations]
 
     @staticmethod
     async def list_activity(

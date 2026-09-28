@@ -82,6 +82,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/operations/{operation_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Operation
+         * @description 单步（直执行）失败操作手动重试：沿用原 operation 身份（attempts 递增）
+         *     同步重执行，执行前快照重验；run 内操作走任务面板重试（会重开推进）。
+         */
+        post: operations["retry_operation_api_agent_operations__operation_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/operations/{operation_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Operation
+         * @description 撤销单个操作（UI 显式动作＝用户授权）：校验终态 SUCCEEDED、未被撤销、
+         *     撤销前重验版本（不覆盖后续修改）后建补偿 operation（undo_of 关联）同步
+         *     执行；撤销后原操作标记 undone_by、历史保留。
+         */
+        post: operations["undo_operation_api_agent_operations__operation_id__undo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/runs": {
         parameters: {
             query?: never;
@@ -194,6 +237,28 @@ export interface paths {
          *     并重投触发；不自动重试失败项（重试是独立显式动作）。
          */
         post: operations["resume_run_api_agent_runs__run_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/runs/{run_id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undo Run
+         * @description run 级批次撤销（UI 显式动作＝用户授权）：按依赖逆序补偿全部可撤销
+         *     成功项，逐项结果如实呈现（单项补偿失败不谎报整体成功）；任务尚未结束
+         *     拒绝（撤销不与推进并发）。
+         */
+        post: operations["undo_run_api_agent_runs__run_id__undo_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2317,6 +2382,10 @@ export interface components {
             action: string;
             /** Attempts */
             attempts: number;
+            /** Attempts History */
+            attempts_history?: {
+                [key: string]: unknown;
+            }[] | null;
             /** Authorization */
             authorization?: {
                 [key: string]: unknown;
@@ -2358,6 +2427,13 @@ export interface components {
             target_type: string | null;
             /** Undo Of */
             undo_of: string | null;
+            /** Undo Reason */
+            undo_reason?: string | null;
+            /**
+             * Undoable
+             * @default false
+             */
+            undoable: boolean;
             /** Undone By */
             undone_by: string | null;
             /** Updated At */
@@ -4436,7 +4512,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -4939,6 +5015,36 @@ export interface components {
          * @enum {string}
          */
         RunStatus: "RUNNING" | "WAITING_USER" | "WAITING_JOB" | "COMPLETED" | "PARTIAL_COMPLETED" | "FAILED" | "CANCELLED";
+        /**
+         * RunUndoItemOut
+         * @description 批次撤销的逐项结果（工单 06：单项补偿失败不谎报整体成功）。
+         */
+        RunUndoItemOut: {
+            /** Action */
+            action: string;
+            /** Compensation Id */
+            compensation_id?: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Operation Id */
+            operation_id: string;
+            /** Status */
+            status: string;
+        };
+        /**
+         * RunUndoResultOut
+         * @description run 级批次 Undo 回执：按依赖逆序补偿、逐项结果如实呈现。
+         */
+        RunUndoResultOut: {
+            /** Failed Count */
+            failed_count: number;
+            /** Items */
+            items?: components["schemas"]["RunUndoItemOut"][];
+            /** Run Id */
+            run_id: string;
+            /** Undone Count */
+            undone_count: number;
+        };
         /** SearchCourseItem */
         SearchCourseItem: {
             /** Id */
@@ -5786,6 +5892,144 @@ export interface operations {
             };
         };
     };
+    retry_operation_api_agent_operations__operation_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOperationOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    undo_operation_api_agent_operations__operation_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                operation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOperationOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_runs_api_agent_runs_get: {
         parameters: {
             query?: {
@@ -6220,6 +6464,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgentRunOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    undo_run_api_agent_runs__run_id__undo_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunUndoResultOut"];
                 };
             };
             /** @description Forbidden */

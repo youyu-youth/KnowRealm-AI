@@ -95,5 +95,6 @@ register_operation(
         applier=apply_course_soft_delete,
         capture_state=capture_course_delete_state,
         target_resolver=resolve_course_delete_target,
+        undo_reason="课程删除（含级联删除记录）不可撤销：影响面大且暂无恢复入口",
     )
 )

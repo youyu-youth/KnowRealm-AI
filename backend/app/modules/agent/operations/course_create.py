@@ -52,5 +52,6 @@ register_operation(
         payload_schema=CourseCreatePayload,
         result_schema=CourseCreateResult,
         applier=apply_course_create,
+        undo_reason="创建类动作不在首批撤销范围，如需移除请在知识空间手动删除",
     )
 )

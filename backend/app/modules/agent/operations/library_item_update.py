@@ -4,6 +4,9 @@
 薄工具创建 OP_LIBRARY_ITEM_UPDATE 提案（提交时同事务固化执行前快照）→ 确认卡
 before/after 预览 → 确认 → 执行前重验后经 lifecycle 事务内核心落库（与 HTTP
 路由共用同一校验链；收藏不接入，spec 决策 14）。载荷契约见 agent/schemas.py。
+
+工单 06：本动作可撤销——补偿器 undo_update_library_item（重命名 / 归类的
+Undo，恢复快照 before 值）。
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
+    UndoOperationResult,
+    assert_undo_state,
     parse_operation_payload,
+    parse_undo_basis,
     register_operation,
 )
+from app.modules.agent.runs.models import AgentOperation
 from app.modules.agent.schemas import (
     LibraryItemArchivePayload,
     LibraryItemStateSnapshot,
@@ -77,6 +84,32 @@ async def apply_library_item_update(
     )
 
 
+async def undo_update_library_item(
+    session: AsyncSession, original: AgentOperation
+) -> UndoOperationResult:
+    """update_library_item 补偿器（工单 06）：重命名 / 归类的 Undo。
+
+    撤销前重验：条目当前 title / course_id 必须等于原操作执行后的预期态
+    （payload 变换应用到快照）——期间被手动改过 → OPERATION_UNDO_CONFLICT
+    （不覆盖后续修改）；恢复＝把原载荷修改过的字段写回快照 before 值。"""
+    payload, snapshot = parse_undo_basis(
+        original, LibraryItemUpdatePayload, LibraryItemStateSnapshot
+    )
+    item = await LibraryService.active_item(session, payload.item_id)
+    expected = {
+        "title": payload.title if payload.title is not None else snapshot.title,
+        "course_id": (payload.course_id if payload.course_id is not None else snapshot.course_id),
+    }
+    assert_undo_state(expected, {"title": item.title, "course_id": item.course_id})
+    restore = {
+        key: getattr(snapshot, key)
+        for key in LIBRARY_ITEM_UPDATE_FIELDS
+        if getattr(payload, key) is not None
+    }
+    await LibraryLifecycleService.patch_core(session, item, LibraryItemPatch(**restore))
+    return UndoOperationResult(restored=restore)
+
+
 register_operation(
     OperationSpec(
         action=UPDATE_LIBRARY_ITEM_ACTION,
@@ -87,5 +120,6 @@ register_operation(
         applier=apply_library_item_update,
         capture_state=capture_library_item_state,
         target_resolver=resolve_library_item_target,
+        undoer=undo_update_library_item,
     )
 )

@@ -433,12 +433,8 @@ class CourseUpdatePayload(BaseModel):
         description="目标课程 id（经 search_courses 查找消歧后取得）",
     )
     name: str | None = Field(default=None, min_length=1, max_length=100, description="课程名称")
-    learning_context: LearningContext | None = Field(
-        default=None, description="课程学习场景"
-    )
-    education_stage: EducationStage | None = Field(
-        default=None, description="学业教育阶段"
-    )
+    learning_context: LearningContext | None = Field(default=None, description="课程学习场景")
+    education_stage: EducationStage | None = Field(default=None, description="学业教育阶段")
     depth: LearningDepth | None = Field(default=None, description="职业或兴趣学习深度")
     course_type: CourseType | None = Field(default=None, description="课程类型")
     description: str | None = Field(default=None, description="课程说明")
@@ -496,9 +492,7 @@ class LibraryItemUpdatePayload(BaseModel):
         description="目标资料条目 id（经 search_library 查找消歧后取得）",
     )
     title: str | None = Field(default=None, min_length=1, description="条目标题")
-    course_id: str | None = Field(
-        default=None, description="归类目标课程 id；None＝不修改归类"
-    )
+    course_id: str | None = Field(default=None, description="归类目标课程 id；None＝不修改归类")
 
     @model_validator(mode="after")
     def _require_change(self) -> "LibraryItemUpdatePayload":

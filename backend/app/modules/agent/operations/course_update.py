@@ -5,6 +5,8 @@ OP_COURSE_UPDATE 提案（提交时同事务固化执行前快照）→ 确认�
 用户确认 → 应用器先执行前重验（快照比对，不匹配＝目标已变化失效），再经课程
 更新事务内核心落库（与 HTTP 路由共用同一校验链）。快照一份三用：预览、重验、
 Undo 补偿（spec 决策 12）。载荷契约见 agent/schemas.py。
+
+工单 06：本动作可撤销——补偿器 undo_update_course（恢复快照 before 值）。
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,9 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
+    UndoOperationResult,
+    assert_undo_state,
     parse_operation_payload,
+    parse_undo_basis,
     register_operation,
 )
+from app.modules.agent.runs.models import AgentOperation
 from app.modules.agent.schemas import (
     CourseArchivePayload,
     CourseStateSnapshot,
@@ -78,9 +84,7 @@ def resolve_course_target(
     return "course", payload.course_id
 
 
-async def apply_course_update(
-    session: AsyncSession, proposal: AgentProposal
-) -> CourseUpdateResult:
+async def apply_course_update(session: AsyncSession, proposal: AgentProposal) -> CourseUpdateResult:
     """OP_COURSE_UPDATE 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
     执行前重验已由注册表适配器统一完成（快照比对）；此处经课程更新事务内核心
@@ -110,6 +114,47 @@ async def apply_course_update(
     )
 
 
+async def undo_update_course(
+    session: AsyncSession, original: AgentOperation
+) -> UndoOperationResult:
+    """update_course 补偿器（工单 06）：恢复原载荷修改字段的快照 before 值。
+
+    撤销前重验：课程当前字段必须等于原操作执行后的预期态——payload 值覆盖
+    快照对应字段（工具面滤 None，payload 非 None 字段＝原操作改过的字段），
+    且 education_stage / depth 按 update_core 联动规则推导（任何 update 都会
+    重算这对联动字段，执行后态恒为联动结果）。期间被手动改过 →
+    OPERATION_UNDO_CONFLICT（不覆盖后续修改）。恢复＝payload 修改字段＋联动
+    对写回快照值（快照本身是联动一致态，update_core 再联动一次幂等）。
+    """
+    payload, snapshot = parse_undo_basis(original, CourseUpdatePayload, CourseStateSnapshot)
+    course = await CourseService.get(session, payload.course_id)
+    if course is None:
+        raise CodedHTTPException(
+            code="OPERATION_UNDO_CONFLICT",
+            status_code=409,
+            detail="课程已不存在或已删除，无法撤销",
+        )
+    expected: dict[str, object] = {}
+    for field in COURSE_UPDATE_FIELDS:
+        value = getattr(payload, field)
+        expected[field] = value if value is not None else getattr(snapshot, field)
+    # 联动推导（与 update_core 同规则）：SCHOOL 保留 education_stage 清 depth，
+    # 其余场景反之——原操作执行后这对字段必为联动结果。
+    if expected["learning_context"] == LearningContext.SCHOOL:
+        expected["depth"] = None
+    else:
+        expected["education_stage"] = None
+    current = {field: getattr(course, field) for field in COURSE_UPDATE_FIELDS}
+    assert_undo_state(dict(expected), current)
+    provided = {
+        field: getattr(snapshot, field)
+        for field in COURSE_UPDATE_FIELDS
+        if getattr(payload, field) is not None or field in ("education_stage", "depth")
+    }
+    await CourseService.update_core(session, course, CourseUpdate(**provided))
+    return UndoOperationResult(restored=provided)
+
+
 register_operation(
     OperationSpec(
         action=UPDATE_COURSE_ACTION,
@@ -120,5 +165,6 @@ register_operation(
         applier=apply_course_update,
         capture_state=capture_course_state,
         target_resolver=resolve_course_target,
+        undoer=undo_update_course,
     )
 )

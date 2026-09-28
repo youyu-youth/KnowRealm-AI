@@ -87,6 +87,10 @@ from app.modules.agent.tools.soft_delete_record import (
     SOFT_DELETE_RECORD_TOOL_NAME,
     soft_delete_record,
 )
+from app.modules.agent.tools.undo_operation import (
+    UNDO_OPERATION_TOOL_NAME,
+    undo_operation,
+)
 from app.modules.agent.tools.update_course import (
     UPDATE_COURSE_TOOL_NAME,
     update_course,
@@ -99,18 +103,19 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v16"
+CHAT_PROMPT_VERSION = "chat-library-scope-v17"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
-# 指引）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v17"
+# 指引；工单 06：撤销工具）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v18"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 # 操作工具族（工单 02 起）：成功返回经操作提案事件进 done 载荷（确认卡）。
 # 工单 03 追加修改与归档动作（六动作）、工单 04 追加删除与跨课迁移（三动作），
-# 动作名 = 注册项 action = 工具函数名。
+# 动作名 = 注册项 action = 工具函数名；工单 06 追加撤销工具（直执行回执与
+# 正向操作同形，undo 提案返回 proposals 键，两种载荷事件天然分发）。
 OPERATION_TOOL_NAMES = frozenset(
     {
         CREATE_COURSE_TOOL_NAME,
@@ -124,6 +129,7 @@ OPERATION_TOOL_NAMES = frozenset(
         SOFT_DELETE_RECORD_TOOL_NAME,
         DELETE_COURSE_TOOL_NAME,
         MOVE_RECORD_COURSE_TOOL_NAME,
+        UNDO_OPERATION_TOOL_NAME,
     }
 )
 # 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
@@ -287,6 +293,7 @@ def _resolve_agent_config(
             delete_course,
             move_record_course,
             plan_batch_operations,
+            undo_operation,
         )
     )
     if research:

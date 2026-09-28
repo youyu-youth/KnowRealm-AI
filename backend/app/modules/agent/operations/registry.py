@@ -13,6 +13,7 @@ operation＋业务结果，失败独立小事务落 FAILED＋稳定错误码（�
 _mark_failed 先例）。
 """
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -21,10 +22,12 @@ from typing import Any, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.modules.agent.auth_mode import effective_session_auth_mode
+from app.modules.agent.runs.models import AgentOperation
 from app.modules.agent.runs.schemas import AuthMode, OperationAuthorization
 from app.modules.agent.runs.service import record_confirmed_operation, record_direct_execution
 from app.modules.agent.runtime import (
@@ -51,6 +54,75 @@ type SnapshotReader = Callable[[AsyncSession, Any], Awaitable[BaseModel]]
 # 目标定位器：从已校验 payload 提取 (target_type, target_id) 写进提案与
 # operation 行（操作历史按对象过滤与跳转的定位信息）。
 type TargetResolver = Callable[[Any], tuple[str, str]]
+
+# 补偿器契约（工单 06，spec 决策 19）：在调用方事务内执行补偿写入、不得自行
+# begin。入参是原 operation 行（payload_json / snapshot_json 即补偿依据——
+# 快照的 before 值就是恢复目标）；内部先做撤销前重验（目标当前态必须等于
+# 原操作执行后的预期态，否则 OPERATION_UNDO_CONFLICT＝不覆盖后续修改），
+# 再经领域核心恢复 before 值，返回恢复结果投影。
+type OperationUndoer = Callable[[AsyncSession, AgentOperation], Awaitable["UndoOperationResult"]]
+
+
+class UndoOperationResult(BaseModel):
+    """补偿操作的结果投影（undo_of 补偿行的 result_json）。"""
+
+    restored: dict[str, Any] = Field(
+        default_factory=dict[str, Any], description="恢复的字段值（before ← 执行后值）"
+    )
+
+
+# 瞬时故障自动重试上限（spec 决策 20）：初试后至多自动重试 2 次，attempts 上界 3。
+TRANSIENT_MAX_RETRIES = 2
+# 瞬时故障耗尽 / 留痕的稳定错误码（attempts_json 逐次尝试历史同码）。
+OPERATION_TRANSIENT_ERROR = "OPERATION_TRANSIENT_ERROR"
+
+
+def is_transient_exception(exc: BaseException) -> bool:
+    """瞬时故障分类（spec 决策 20）：SQLITE_BUSY / 锁竞争（SQLite 单写者下唯一
+    现实的瞬时故障形态）。参数 / 领域 / 版本 / 权限错误是 CodedHTTPException，
+    不经本分类、不自动重试。"""
+    if not isinstance(exc, OperationalError):
+        return False
+    message = str(exc.orig if exc.orig is not None else exc).lower()
+    return "locked" in message or "busy" in message
+
+
+def undo_conflict(detail: str) -> CodedHTTPException:
+    """撤销前重验失败的稳定拒绝（spec 决策 19：undo 前重验版本与依赖、不覆盖
+    用户后续修改——目标已偏离原操作执行后的预期态）。"""
+    return CodedHTTPException(
+        code="OPERATION_UNDO_CONFLICT",
+        status_code=409,
+        detail=detail,
+    )
+
+
+def assert_undo_state(
+    expected: dict[str, Any],
+    current: dict[str, Any],
+) -> None:
+    """撤销前重验的通用比对（各动作 undoer 共用）：目标当前态必须等于原操作
+    执行后的预期态（payload 变换应用到快照的推导结果），不一致＝已被后续
+    修改，拒绝撤销（用户真机验收：期间又手动改过名 → 撤销明确拒绝并说明）。"""
+    mismatched = sorted(key for key, value in expected.items() if current.get(key) != value)
+    if mismatched:
+        raise undo_conflict(
+            f"目标在操作执行后已被修改（{'、'.join(mismatched)}），撤销被拒绝以避免覆盖后续修改"
+        )
+
+
+def parse_undo_basis[R: BaseModel, S: BaseModel](
+    original: AgentOperation, payload_schema: type[R], snapshot_schema: type[S]
+) -> tuple[R, S]:
+    """undoer 共用：解析原操作的载荷与执行前快照（快照缺失 / 坏值＝补偿依据
+    损坏，保守拒绝撤销——快照是恢复值的唯一来源）。"""
+    try:
+        payload = payload_schema.model_validate(json.loads(original.payload_json))
+        assert original.snapshot_json is not None  # 快照列可空：None 同样按损坏拒绝
+        snapshot = snapshot_schema.model_validate(json.loads(original.snapshot_json))
+    except (ValueError, ValidationError) as exc:
+        raise undo_conflict("原操作的补偿依据（快照）已损坏，无法撤销") from exc
+    return payload, snapshot
 
 
 class OperationLevel(StrEnum):
@@ -81,6 +153,11 @@ class OperationSpec[R: BaseModel]:
     applier: OperationApplier[R]  # 确认事务内的应用器（返回结果投影）
     capture_state: SnapshotReader | None = None  # 执行前快照读取器（三用）
     target_resolver: TargetResolver | None = None  # payload → 目标定位
+    # 可撤销性声明（工单 06，spec 决策 19）：undoer 非 None＝可撤销（补偿器，
+    # 快照 before 值即恢复目标）；None＝不可撤销，undo_reason 是明确告知的原因
+    # （记录软删 / 课程删除 / 创建类不在首批），工具结果与回执透出。
+    undoer: OperationUndoer | None = None
+    undo_reason: str | None = None
 
 
 _OPERATIONS: dict[str, OperationSpec[Any]] = {}
@@ -236,10 +313,12 @@ def should_execute_directly(auth_mode: AuthMode, level: OperationLevel) -> bool:
     return True
 
 
-def _direct_authorization(
+def direct_authorization(
     runtime: AgentRuntimeContext, auth_mode: AuthMode
 ) -> OperationAuthorization:
-    """直执行回执的授权依据（ADR-0026）：执行时生效档＋触发指令摘录＋消息引用。"""
+    """直执行回执的授权依据（ADR-0026）：执行时生效档＋触发指令摘录＋消息引用。
+
+    工单 06 起 undo 直执行路径共用（撤销回执同样可追溯授权依据）。"""
     excerpt = runtime.instruction_excerpt
     if excerpt is not None and len(excerpt) > INSTRUCTION_EXCERPT_MAX_CHARS:
         excerpt = excerpt[:INSTRUCTION_EXCERPT_MAX_CHARS]
@@ -250,6 +329,35 @@ def _direct_authorization(
         session_id=runtime.session_id,
         message_id=runtime.message_id,
     )
+
+
+async def _failure_snapshot(
+    session: AsyncSession, spec: OperationSpec[Any], validated: BaseModel
+) -> str | None:
+    """失败记账小事务内补固化执行前快照（工单 06）：主事务回滚后目标态＝初试
+    执行前态；目标不可达（如已删除）时快照缺席，重试由快照重验保守拒绝。"""
+    if spec.capture_state is None:
+        return None
+    try:
+        return (await spec.capture_state(session, validated)).model_dump_json()
+    except CodedHTTPException:
+        return None
+
+
+def _final_attempts_json(
+    transient_history: list[dict[str, Any]], attempt: int, error_code: str
+) -> str:
+    """失败落定时补记最终尝试（工单 06：attempts_json 逐次尝试错误历史可查，
+    与推进 worker 的 append_attempt 同形）。"""
+    history = [
+        *transient_history,
+        {
+            "attempt": 1 + attempt,
+            "error_code": error_code,
+            "at": utcnow().isoformat(),
+        },
+    ]
+    return json.dumps(history, ensure_ascii=False, separators=(",", ":"))
 
 
 async def _execute_operation_directly(
@@ -266,57 +374,108 @@ async def _execute_operation_directly(
     失败：业务事务整体回滚（＝未发生），独立小事务落 FAILED operation＋
     稳定错误码（_mark_failed 先例，诊断不断链）。返回工具 JSON 载荷：
     成功 {ok, executed}；失败 {ok: False, error}（模型转述原因）。
+
+    瞬时故障自动重试（工单 06，spec 决策 20）：SQLITE_BUSY 等锁竞争在原
+    operation 身份下小睡重试 ≤2 次（attempts／attempts_json 如实累计），
+    每轮重走快照固化（同步路径无等待期，重验天然成立）；耗尽落 FAILED＋
+    OPERATION_TRANSIENT_ERROR。业务拒绝（CodedHTTPException）不自动重试。
     """
     payload_json = validated.model_dump_json()
     target = spec.target_resolver(validated) if spec.target_resolver is not None else None
-    authorization = _direct_authorization(runtime, auth_mode)
+    authorization = direct_authorization(runtime, auth_mode)
     async with runtime.session_factory() as session:
-        try:
-            async with session.begin():
-                # 直执行同事务固化快照（直执行无预览等待期，重验天然成立）：
-                # 快照随 operation 落库，供 Undo 补偿与审计（spec 决策 12）。
-                snapshot_json = None
-                if spec.capture_state is not None:
-                    snapshot_json = (await spec.capture_state(session, validated)).model_dump_json()
-                result = await run_operation_applier(session, spec, payload_json)
-                operation = await record_direct_execution(
-                    session,
-                    action=spec.action,
-                    level=spec.level.value,
-                    target=target,
-                    payload_json=payload_json,
-                    authorization=authorization,
-                    result_dict=result.model_dump(),
-                    snapshot_json=snapshot_json,
-                )
-        except CodedHTTPException as exc:
-            async with session.begin():
-                await record_direct_execution(
-                    session,
-                    action=spec.action,
-                    level=spec.level.value,
-                    target=target,
-                    payload_json=payload_json,
-                    authorization=authorization,
-                    result_dict=None,
-                    error_code=exc.code,
-                )
-            return {"ok": False, "error": exc.code, "executed": None}
-        except Exception:
-            # 非编码异常（bug / 环境故障）：原子回滚＝未发生，落 INTERNAL 稳定
-            # 错误码（先例：提案框架非编码异常路径）。
-            async with session.begin():
-                await record_direct_execution(
-                    session,
-                    action=spec.action,
-                    level=spec.level.value,
-                    target=target,
-                    payload_json=payload_json,
-                    authorization=authorization,
-                    result_dict=None,
-                    error_code="INTERNAL",
-                )
-            return {"ok": False, "error": "INTERNAL", "executed": None}
+        attempt = 0
+        transient_history: list[dict[str, Any]] = []
+        while True:
+            attempts_json = (
+                json.dumps(transient_history, ensure_ascii=False, separators=(",", ":"))
+                if transient_history
+                else None
+            )
+            try:
+                async with session.begin():
+                    # 直执行同事务固化快照（直执行无预览等待期，重验天然成立）：
+                    # 快照随 operation 落库，供 Undo 补偿与审计（spec 决策 12）。
+                    snapshot_json = None
+                    if spec.capture_state is not None:
+                        snapshot_json = (
+                            await spec.capture_state(session, validated)
+                        ).model_dump_json()
+                    result = await run_operation_applier(session, spec, payload_json)
+                    operation = await record_direct_execution(
+                        session,
+                        action=spec.action,
+                        level=spec.level.value,
+                        target=target,
+                        payload_json=payload_json,
+                        authorization=authorization,
+                        result_dict=result.model_dump(),
+                        snapshot_json=snapshot_json,
+                        attempts=1 + attempt,
+                        attempts_json=attempts_json,
+                    )
+            except CodedHTTPException as exc:
+                async with session.begin():
+                    await record_direct_execution(
+                        session,
+                        action=spec.action,
+                        level=spec.level.value,
+                        target=target,
+                        payload_json=payload_json,
+                        authorization=authorization,
+                        result_dict=None,
+                        error_code=exc.code,
+                        snapshot_json=await _failure_snapshot(session, spec, validated),
+                        attempts=1 + attempt,
+                        attempts_json=_final_attempts_json(transient_history, attempt, exc.code),
+                    )
+                return {"ok": False, "error": exc.code, "executed": None}
+            except OperationalError as exc:
+                if is_transient_exception(exc) and attempt < TRANSIENT_MAX_RETRIES:
+                    attempt += 1
+                    transient_history.append(
+                        {
+                            "attempt": attempt,
+                            "error_code": OPERATION_TRANSIENT_ERROR,
+                            "at": utcnow().isoformat(),
+                        }
+                    )
+                    await asyncio.sleep(0.05 * attempt)
+                    continue
+                async with session.begin():
+                    await record_direct_execution(
+                        session,
+                        action=spec.action,
+                        level=spec.level.value,
+                        target=target,
+                        payload_json=payload_json,
+                        authorization=authorization,
+                        result_dict=None,
+                        error_code=OPERATION_TRANSIENT_ERROR,
+                        attempts=1 + attempt,
+                        attempts_json=_final_attempts_json(
+                            transient_history, attempt, OPERATION_TRANSIENT_ERROR
+                        ),
+                    )
+                return {"ok": False, "error": OPERATION_TRANSIENT_ERROR, "executed": None}
+            except Exception:
+                # 非编码异常（bug / 环境故障）：原子回滚＝未发生，落 INTERNAL 稳定
+                # 错误码（先例：提案框架非编码异常路径）。
+                async with session.begin():
+                    await record_direct_execution(
+                        session,
+                        action=spec.action,
+                        level=spec.level.value,
+                        target=target,
+                        payload_json=payload_json,
+                        authorization=authorization,
+                        result_dict=None,
+                        error_code="INTERNAL",
+                        attempts=1 + attempt,
+                        attempts_json=_final_attempts_json(transient_history, attempt, "INTERNAL"),
+                    )
+                return {"ok": False, "error": "INTERNAL", "executed": None}
+            break  # 成功（各失败分支均已在 except 内返回）
     return {
         "ok": True,
         "executed": {

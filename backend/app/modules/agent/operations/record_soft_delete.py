@@ -36,18 +36,18 @@ from app.shared.errors import CodedHTTPException
 SOFT_DELETE_RECORD_ACTION = "soft_delete_record"
 
 # 记录级资产表共形集合（均有 record_id + deleted_at 列），供计数收窄类型。
-_RecordScopedModel = type[KnowledgePoint] | type[Quiz] | type[TodoItem] | type[
-    ReviewMaterial
-] | type[AiSummary]
+_RecordScopedModel = (
+    type[KnowledgePoint] | type[Quiz] | type[TodoItem] | type[ReviewMaterial] | type[AiSummary]
+)
 
 
-async def _alive_count(
-    session: AsyncSession, model: _RecordScopedModel, record_id: str
-) -> int:
+async def _alive_count(session: AsyncSession, model: _RecordScopedModel, record_id: str) -> int:
     """该记录名下未软删的资产行数（各资产表均有 record_id + deleted_at 列）。"""
     return int(
         await session.scalar(
-            select(func.count()).select_from(model).where(
+            select(func.count())
+            .select_from(model)
+            .where(
                 model.record_id == record_id,
                 model.deleted_at.is_(None),
             )
@@ -110,5 +110,6 @@ register_operation(
         applier=apply_record_soft_delete,
         capture_state=capture_record_delete_state,
         target_resolver=resolve_record_target,
+        undo_reason="记录删除不可撤销：删除会影响记录级资产与学习证据链，且暂无恢复入口",
     )
 )

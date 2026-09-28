@@ -87,5 +87,6 @@ register_operation(
         payload_schema=TextRecordAddPayload,
         result_schema=TextRecordAddResult,
         applier=apply_text_record_add,
+        undo_reason="创建类动作不在首批撤销范围，如需移除请在记录页手动删除",
     )
 )
