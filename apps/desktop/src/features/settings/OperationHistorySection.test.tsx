@@ -16,6 +16,8 @@ const {
   cancelRun,
   resumeRun,
   retryRunOperation,
+  undoOperation,
+  retryOperation,
 } = vi.hoisted(() => ({
   listRuns: vi.fn(),
   getRun: vi.fn(),
@@ -26,6 +28,8 @@ const {
   cancelRun: vi.fn(),
   resumeRun: vi.fn(),
   retryRunOperation: vi.fn(),
+  undoOperation: vi.fn(),
+  retryOperation: vi.fn(),
 }));
 
 // 模块级工具（isRunActive 等）随实际实现保留，只替换 api 对象（工单 05：
@@ -47,6 +51,8 @@ vi.mock("@/features/settings/api/operationHistory", async (importOriginal) => {
       cancelRun,
       resumeRun,
       retryRunOperation,
+      undoOperation,
+      retryOperation,
     },
   };
 });
@@ -222,5 +228,40 @@ describe("OperationHistorySection", () => {
     expect(await screen.findByText("添加文本记录")).toBeInTheDocument();
     expect(screen.getByText("失败")).toBeInTheDocument();
     expect(screen.getByText("COURSE_NOT_FOUND")).toBeInTheDocument();
+  });
+
+  it("直执行失败行提供单步重试入口，run 内失败行不提供（工单 06 review）", async () => {
+    listOperations.mockResolvedValue([
+      operationData({
+        id: "op-f",
+        action: "add_text_record_to_course",
+        status: "FAILED",
+        error_code: "COURSE_NOT_FOUND",
+        result: null,
+        proposal_id: null,
+        payload: { course_id: "c-1", content: "x" },
+      }),
+      operationData({
+        id: "op-rf",
+        action: "update_library_item",
+        status: "FAILED",
+        error_code: "INTERNAL",
+        result: null,
+        run_id: "run-1",
+        payload: {},
+      }),
+    ]);
+    retryOperation.mockResolvedValue(
+      operationData({ id: "op-f", status: "SUCCEEDED", error_code: null }),
+    );
+    renderWithQuery(<OperationHistorySection />);
+    expect(await screen.findByText("添加文本记录")).toBeInTheDocument();
+    // 仅直执行失败行（run_id 空）有一个重试按钮；run 内行走任务面板。
+    const retryButtons = screen.getAllByRole("button", { name: "重试" });
+    expect(retryButtons).toHaveLength(1);
+    fireEvent.click(retryButtons[0]);
+    await waitFor(() => {
+      expect(retryOperation).toHaveBeenCalledWith("op-f");
+    });
   });
 });

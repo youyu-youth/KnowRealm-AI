@@ -6,7 +6,13 @@ import {
 } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, Trash2, Undo2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  RotateCcw,
+  Trash2,
+  Undo2,
+} from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -410,6 +416,14 @@ function OperationsBlock({
     onSuccess: () => invalidateHistory(queryClient),
   });
 
+  // 失败单步的手动重试入口（工单 06 review 修复）：消息流失败回执之外的
+  // 第二入口；run 内失败行走任务面板重试（后端同口径守卫）。
+  const retry = useMutation({
+    mutationFn: (operationId: string) =>
+      operationHistoryApi.retryOperation(operationId),
+    onSuccess: () => invalidateHistory(queryClient),
+  });
+
   return (
     <SettingsRow
       label={t("settings.operationHistory.operationsLabel")}
@@ -451,6 +465,13 @@ function OperationsBlock({
                     : null
                 }
                 onUndo={(operationId) => undo.mutate(operationId)}
+                retryPending={retry.isPending}
+                retryError={
+                  retry.isError && retry.variables === operation.id
+                    ? retry.error.message
+                    : null
+                }
+                onRetry={(operationId) => retry.mutate(operationId)}
               />
             ))}
           </ul>
@@ -460,18 +481,26 @@ function OperationsBlock({
   );
 }
 
-/** 单条操作行：动作 / 目标 / 状态 / 结果 / 错误码 / 撤销入口 / 时间（工单验收字段）。
- * 撤销按钮只对成功且可撤销且未撤销的行出现（工单 06；run 内行经任务面板整批撤销）。 */
+/** 单条操作行：动作 / 目标 / 状态 / 结果 / 错误码 / 撤销与重试入口 / 时间（工单
+ * 验收字段）。撤销按钮只对成功且可撤销且未撤销的行出现；重试按钮只对直执行
+ * 失败行出现（工单 06 review 修复；run 内行经任务面板重试，确认路径失败不落
+ * operation 行）。 */
 function OperationRow({
   operation,
   undoPending,
   undoError,
   onUndo,
+  retryPending,
+  retryError,
+  onRetry,
 }: {
   operation: AgentOperationOut;
   undoPending: boolean;
   undoError: string | null;
   onUndo: (operationId: string) => void;
+  retryPending: boolean;
+  retryError: string | null;
+  onRetry: (operationId: string) => void;
 }) {
   const { t } = useTranslation();
   const target = describeTarget(operation);
@@ -479,6 +508,8 @@ function OperationRow({
     operation.status === "SUCCEEDED" &&
     operation.undoable &&
     operation.undone_by === null;
+  const retryableRow =
+    operation.status === "FAILED" && operation.run_id === null;
   return (
     <li className="bg-surface-subtle flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5">
       <span className="text-label font-label text-ink min-w-0 truncate">
@@ -506,6 +537,17 @@ function OperationRow({
           {operation.error_code}
         </span>
       ) : null}
+      {retryableRow ? (
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={retryPending}
+          onClick={() => onRetry(operation.id)}
+        >
+          <RotateCcw className="size-3.5" aria-hidden="true" />
+          {t("chat.executedOperation.retry")}
+        </Button>
+      ) : null}
       {undoableRow ? (
         <Button
           size="xs"
@@ -523,6 +565,11 @@ function OperationRow({
       {undoError ? (
         <p role="alert" className="text-destructive text-label w-full">
           {undoError}
+        </p>
+      ) : null}
+      {retryError ? (
+        <p role="alert" className="text-destructive text-label w-full">
+          {retryError}
         </p>
       ) : null}
     </li>
