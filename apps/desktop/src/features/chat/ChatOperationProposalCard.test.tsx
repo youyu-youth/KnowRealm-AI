@@ -7,14 +7,21 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/test-utils";
 import { ChatOperationProposalCard } from "./ChatOperationProposalCard";
 
-const { confirmProposal, rejectProposal, listProposals, get } = vi.hoisted(
-  () => ({
-    confirmProposal: vi.fn(),
-    rejectProposal: vi.fn(),
-    listProposals: vi.fn(),
-    get: vi.fn(),
-  }),
-);
+const {
+  confirmProposal,
+  rejectProposal,
+  listProposals,
+  get,
+  listOperations,
+  undoOperation,
+} = vi.hoisted(() => ({
+  confirmProposal: vi.fn(),
+  rejectProposal: vi.fn(),
+  listProposals: vi.fn(),
+  get: vi.fn(),
+  listOperations: vi.fn(),
+  undoOperation: vi.fn(),
+}));
 
 vi.mock("@/features/library/api/library", () => ({
   libraryApi: {
@@ -22,6 +29,10 @@ vi.mock("@/features/library/api/library", () => ({
     rejectProposal,
     listProposals,
   },
+}));
+
+vi.mock("@/features/settings/api/operationHistory", () => ({
+  operationHistoryApi: { listOperations, undoOperation },
 }));
 
 vi.mock("@/features/courses/api/courses", () => ({
@@ -62,6 +73,8 @@ function proposalFixture(
     session_id: string | null;
     error_code: string | null;
     result: Record<string, string> | null;
+    proposal_type: string;
+    payload: Record<string, unknown>;
   }> = {},
 ) {
   return {
@@ -76,9 +89,47 @@ function proposalFixture(
   };
 }
 
+/** 确认路径回写的 operation 行（proposal_id 关联，工单 06 补充）。 */
+function operationFixture(
+  overrides: Partial<{
+    id: string;
+    proposal_id: string | null;
+    status: string;
+    undoable: boolean;
+    undone_by: string | null;
+  }> = {},
+) {
+  return {
+    id: "op-1",
+    run_id: null,
+    proposal_id: "p-1",
+    action: "update_library_item",
+    level: "L1",
+    target_type: "library_item",
+    target_id: null,
+    payload: {},
+    snapshot: null,
+    authorization: null,
+    status: "SUCCEEDED",
+    attempts: 1,
+    attempts_history: null,
+    result: null,
+    error_code: null,
+    undoable: true,
+    undo_reason: null,
+    undo_of: null,
+    undone_by: null,
+    created_at: "2026-09-28T08:00:00.000000Z",
+    updated_at: "2026-09-28T08:00:00.000000Z",
+    finished_at: "2026-09-28T08:00:01.000000Z",
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   listProposals.mockResolvedValue([]);
+  listOperations.mockResolvedValue([]);
   get.mockResolvedValue({ id: "course-1", name: "Python 学习" });
 });
 
@@ -588,7 +639,9 @@ describe("ChatOperationProposalCard — 删除与跨课迁移（工单 04）", (
       }),
     ]);
     renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
-    fireEvent.click(await screen.findByRole("button", { name: "确认删除课程" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认删除课程" }),
+    );
     expect(
       await screen.findByText("课程已删除（含 2 条记录）。"),
     ).toBeVisible();
@@ -639,9 +692,68 @@ describe("ChatOperationProposalCard — 删除与跨课迁移（工单 04）", (
       }),
     ]);
     renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
-    fireEvent.click(await screen.findByRole("button", { name: "确认迁移记录" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认迁移记录" }),
+    );
     expect(await screen.findByText("记录已迁移。")).toBeVisible();
     const link = screen.getByRole("link", { name: "打开记录" });
     expect(link).toHaveAttribute("href", "/records/$recordId");
+  });
+
+  it("APPLIED 回执行呈现撤销入口：点击调撤销端点（工单 06 补充）", async () => {
+    listProposals.mockResolvedValue([
+      deleteMoveFixture({
+        id: "p-u1",
+        proposal_type: "OP_LIBRARY_ITEM_UPDATE",
+        payload: { item_id: "item-1", title: "java 高级教程928" },
+        status: "APPLIED",
+        result: { item_id: "item-1" },
+      }),
+    ]);
+    listOperations.mockResolvedValue([
+      operationFixture({ id: "op-u1", proposal_id: "p-u1" }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+
+    expect(await screen.findByText("条目已修改。")).toBeVisible();
+    const undoButton = screen.getByRole("button", { name: "撤销" });
+    expect(undoButton).toBeVisible();
+    undoOperation.mockResolvedValue(operationFixture({ id: "comp-1" }));
+    fireEvent.click(undoButton);
+    await waitFor(() => expect(undoOperation).toHaveBeenCalledWith("op-u1"));
+  });
+
+  it("已撤销的回执行显示标记不显示按钮；无关联 operation 行不渲染入口", async () => {
+    listProposals.mockResolvedValue([
+      deleteMoveFixture({
+        id: "p-u1",
+        proposal_type: "OP_LIBRARY_ITEM_UPDATE",
+        payload: { item_id: "item-1", title: "java 高级教程928" },
+        status: "APPLIED",
+        result: { item_id: "item-1" },
+      }),
+      deleteMoveFixture({
+        id: "p-u2",
+        proposal_type: "OP_LIBRARY_ITEM_ARCHIVE",
+        payload: { item_id: "item-2" },
+        status: "APPLIED",
+        result: { item_id: "item-2" },
+      }),
+    ]);
+    // p-u1 已撤销（undone_by 非空）；p-u2 无关联行（历史数据/查询缺席）。
+    listOperations.mockResolvedValue([
+      operationFixture({
+        id: "op-u1",
+        proposal_id: "p-u1",
+        undone_by: "comp-1",
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+
+    expect(await screen.findByText("条目已修改。")).toBeVisible();
+    expect(screen.getByText("该操作已撤销。")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "撤销" }),
+    ).not.toBeInTheDocument();
   });
 });

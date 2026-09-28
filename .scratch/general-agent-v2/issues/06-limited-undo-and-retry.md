@@ -31,6 +31,7 @@
 - **裁决备案——条目软删 Undo 不可达**：spec 决策 19 列「条目软删（回收站恢复链）」，但条目软删未注册为 Agent 操作（工单 03 注册清单与 spec 决策 14 均无此动作，走 HTTP 页面路径），当前不存在可撤销的条目软删 operation 行；回收站恢复链（lifecycle.restore）持续可用。未来若注册 `soft_delete_library_item` 动作，其 undoer 即 `LibraryLifecycleService.restore`。
 - **错误码 +6**：AGENT_OPERATION_NOT_FOUND / OPERATION_NOT_UNDOABLE / OPERATION_ALREADY_UNDONE / OPERATION_UNDO_CONFLICT / OPERATION_NOT_RETRYABLE / OPERATION_TRANSIENT_ERROR（zh/en＋清单登记；AGENT_RUN_NOT_FINISHED 描述补撤销语义）。prompt bump v17/v18（chat-library-scope-v17 / chat-research-scope-v18，CHAT_UNDO_GUIDANCE 入 context）。
 - **测试**：`test_agent_undo_retry.py` 22 用例（undo 链/冲突/不可撤销原因/重复撤销/批次逆序与单项如实/收件箱守卫/Agent 工具三档/worker 与直执行自动重试/单步手动重试与快照失效守卫/取消不补偿/崩溃对账）；连坐更新 test_chat_streaming（工具面+prompt 断言）、test_research_session（prompt 版本）、ChatExecutedOperationCard.test（+2 前端用例）。
+- **真机验收反馈补丁（同日）**：默认档（请求批准）确认路径的消息流回执行无撤销入口（按钮当时只在直执行回执卡与操作历史）——`ChatOperationProposalCard` 的 APPLIED 回执行补 `ProposalUndoEntry`（经会话 operations 查询按 `proposal_id` 关联定位 operation 行，成功且可撤销且未撤销 → 撤销按钮；已撤销 → 标记；与直执行回执卡共用 `agentKeys.sessionOperations` 查询键与撤销端点，零后端改动、零新文案键），测试 +2。
 - **双轴 code-review 修复**：i18n 键对齐（undo.applied→accepted）、_undo_reason 类型标注收紧、retry 并发兜底（不 500）、迁移 undo 收件箱分支补 job 守卫、直执行失败 attempts_json 补最终尝试、操作历史单步撤销按钮（工单「操作历史按钮」入口补全）。
 
 **用户真机验收（单列，不代勾）：**

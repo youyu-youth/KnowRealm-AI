@@ -1,7 +1,7 @@
 import { type ComponentType, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Check, X } from "lucide-react";
+import { ArrowRight, Check, Undo2, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -9,6 +9,11 @@ import {
   type AgentProposalOut,
 } from "@/features/library/api/library";
 import { libraryKeys } from "@/features/library/api/keys";
+import { agentKeys } from "@/features/agent/api/authMode";
+import {
+  operationHistoryApi,
+  type AgentOperationOut,
+} from "@/features/settings/api/operationHistory";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
 import { Button } from "@/components/ui/button";
@@ -911,6 +916,57 @@ function labelKey(proposal: AgentProposalOut, key: string): string {
   return CARD_BY_TYPE[proposal.proposal_type].label(key);
 }
 
+/** 提案回执行的撤销入口（工单 06 补充：确认路径的消息流撤销）。
+ *
+ * 依据＝确认事务内回写的 operation 行（proposal_id 关联）：成功且可撤销且
+ * 未撤销 → 「撤销」按钮；已撤销 → 标记（补偿行不进本卡，标记经 undone_by
+ * 派生）；REJECTED / 无关联行（历史数据、查询缺席）不渲染——入口仍可在
+ * 设置 → 操作历史找到。 */
+function ProposalUndoEntry({
+  operation,
+  pending,
+  error,
+  onUndo,
+}: {
+  operation: AgentOperationOut | null;
+  pending: boolean;
+  error: string | null;
+  onUndo: (operationId: string) => void;
+}) {
+  const { t } = useTranslation();
+  if (operation === null || operation.status !== "SUCCEEDED") {
+    return null;
+  }
+  if (operation.undone_by !== null) {
+    return (
+      <span className="text-label text-muted-foreground shrink-0">
+        {t("chat.executedOperation.undone")}
+      </span>
+    );
+  }
+  if (!operation.undoable) {
+    return null;
+  }
+  return (
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <Button
+        size="xs"
+        variant="ghost"
+        disabled={pending}
+        onClick={() => onUndo(operation.id)}
+      >
+        <Undo2 data-icon="inline-start" aria-hidden="true" />
+        {t("chat.executedOperation.undo")}
+      </Button>
+      {error ? (
+        <p role="alert" className="text-destructive text-label">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** 待确认/FAILED 行：快照失效只能重新提案，其余失败可重试。 */
 function ActionableProposalRow({
   proposal,
@@ -999,6 +1055,35 @@ export function ChatOperationProposalCard({
     staleTime: 0,
   });
 
+  // 确认路径回写的 operation 行（proposal_id 关联，工单 06 补充：提案回执行的
+  // 撤销入口）。与直执行回执卡共用同一查询键（缓存一致，撤销后一次失效双卡同步）。
+  const { data: sessionOperations } = useQuery({
+    queryKey: agentKeys.sessionOperations(sessionId),
+    queryFn: () =>
+      operationHistoryApi.listOperations({ session_id: sessionId, limit: 200 }),
+    staleTime: 0,
+  });
+  const operationByProposal = useMemo(() => {
+    const map = new Map<string, AgentOperationOut>();
+    for (const operation of sessionOperations ?? []) {
+      if (operation.proposal_id !== null) {
+        map.set(operation.proposal_id, operation);
+      }
+    }
+    return map;
+  }, [sessionOperations]);
+
+  // 撤销是 UI 显式动作＝用户授权（工单 06）：沿用直执行回执卡同一模式。
+  const undo = useMutation({
+    mutationFn: (operationId: string) =>
+      operationHistoryApi.undoOperation(operationId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: agentKeys.sessionOperations(sessionId),
+      });
+    },
+  });
+
   const proposals = useMemo(
     () =>
       (sessionProposals ?? []).filter(
@@ -1068,13 +1153,29 @@ export function ChatOperationProposalCard({
       </p>
       {settled.map((proposal) => {
         const SettledRow = CARD_BY_TYPE[proposal.proposal_type].SettledRow;
+        const operation = operationByProposal.get(proposal.id) ?? null;
         return (
-          <SettledRow
-            key={proposal.id}
-            status={statusOf(proposal)}
-            result={resultOf(proposal)}
-            t={t}
-          />
+          <div key={proposal.id} className="flex flex-wrap items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <SettledRow
+                status={statusOf(proposal)}
+                result={resultOf(proposal)}
+                t={t}
+              />
+            </div>
+            <ProposalUndoEntry
+              operation={operation}
+              pending={undo.isPending}
+              error={
+                undo.isError &&
+                operation !== null &&
+                undo.variables === operation.id
+                  ? undo.error.message
+                  : null
+              }
+              onUndo={(operationId) => undo.mutate(operationId)}
+            />
+          </div>
         );
       })}
       <ul className="flex flex-col gap-1.5">
