@@ -1294,3 +1294,132 @@ async def test_auto_approve_changed_params_compares_live_step(tmp_path: Path) ->
             {"item_id": item_id(1), "title": None, "course_id": COURSE_ID}
         ]
         assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 1
+
+
+# ---------------------------------------------------------------------------
+# 触发交接（工单 05 review）：显式唤醒落在旧 job 收尾窗口时不得丢触发
+
+
+@pytest.mark.anyio
+async def test_writeback_hands_off_trigger_after_resume_in_flight_window(tmp_path: Path) -> None:
+    """丢触发竞态（工单 05 review）：旧 job 仍 RUNNING 时「继续」的投递被守卫跳过，
+    旧 job 收尾必须补投触发——否则 Run=RUNNING 且活动触发为 0，悬挂到重启恢复。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 2)
+        direct = await invoke_plan(
+            session_factory, [archive_entry(1), archive_entry(2)], auth_mode=AuthMode.AUTO_APPROVE
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        spec = agent_run_spec(session_factory, RecordInvalidationNotifier())
+        runner = JobRunner(spec, session_factory, RecordInvalidationNotifier())
+        # 旧 worker 领取触发（job → RUNNING），随后推进遇冲突转等待：推进事务已提交、
+        # 收尾未到——正是竞态窗口。
+        ctx = await runner.claim_one()
+        assert ctx is not None
+        await project_stale(session_factory, 2)
+        assert await advance(session_factory, run_id) == "WAITING_USER"
+
+        # 用户「继续」落在窗口内：Run 抢占为 RUNNING，但守卫看到旧 job RUNNING
+        # → 不投递（竞态前置，本修复要兜住的场景）。
+        async with session_factory() as session:
+            resumed = await RunControlService.resume_run(session, run_id)
+        assert resumed["status"] == "RUNNING"
+        assert await job_statuses(session_factory) == [("AGENT_RUN", "RUNNING")]
+
+        # 旧 worker 收尾：补投新触发（不再留下无触发的 RUNNING 任务）。
+        assert await spec.writeback(ctx, "WAITING_USER") is True
+        assert await job_statuses(session_factory) == [
+            ("AGENT_RUN", "SUCCEEDED"),
+            ("AGENT_RUN", "PENDING"),
+        ]
+
+        # 新触发被真实消费并推进到终态（端到端：不再悬挂）。
+        assert await runner.process_one() is True
+        assert await job_statuses(session_factory) == [
+            ("AGENT_RUN", "SUCCEEDED"),
+            ("AGENT_RUN", "SUCCEEDED"),
+        ]
+        detail = await run_detail(session_factory, run_id)
+        assert detail["status"] == "PARTIAL_COMPLETED"
+
+
+@pytest.mark.anyio
+async def test_writeback_hands_off_trigger_after_retry_in_flight_window(tmp_path: Path) -> None:
+    """同一竞态的另一入口：失败项重试在旧 job 仍 RUNNING 时投递被跳过，
+    收尾同样补投触发（Run 由等待态重开）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 2)
+        direct = await invoke_plan(
+            session_factory, [archive_entry(1), archive_entry(2)], auth_mode=AuthMode.AUTO_APPROVE
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        spec = agent_run_spec(session_factory, RecordInvalidationNotifier())
+        runner = JobRunner(spec, session_factory, RecordInvalidationNotifier())
+        ctx = await runner.claim_one()
+        assert ctx is not None
+        await project_stale(session_factory, 2)
+        assert await advance(session_factory, run_id) == "WAITING_USER"
+
+        detail = await run_detail(session_factory, run_id)
+        failed_id = next(
+            operation["id"]
+            for operation in cast(list[dict[str, Any]], detail["operations"])
+            if operation["status"] == "FAILED"
+        )
+        async with session_factory() as session:
+            retried = await RunControlService.retry_operation(
+                session, run_id=run_id, operation_id=failed_id
+            )
+        assert retried["status"] == "RUNNING"
+        assert await job_statuses(session_factory) == [("AGENT_RUN", "RUNNING")]
+
+        assert await spec.writeback(ctx, "WAITING_USER") is True
+        assert await job_statuses(session_factory) == [
+            ("AGENT_RUN", "SUCCEEDED"),
+            ("AGENT_RUN", "PENDING"),
+        ]
+
+
+@pytest.mark.anyio
+async def test_writeback_keeps_waiting_and_settled_runs_without_new_trigger(
+    tmp_path: Path,
+) -> None:
+    """收尾交接只在 Run 仍 RUNNING 时补投：等待态（只接受显式唤醒）与已终态
+    不产生多余触发。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 3)
+        spec = agent_run_spec(session_factory, RecordInvalidationNotifier())
+        runner = JobRunner(spec, session_factory, RecordInvalidationNotifier())
+        # 已终态 Run：全部成功（先建，避免后续提交被活跃 Run 约束转计划卡）。
+        done_direct = await invoke_plan(
+            session_factory, [archive_entry(3)], auth_mode=AuthMode.AUTO_APPROVE
+        )
+        done_run = cast(str, done_direct["run"]["run_id"])
+        done_ctx = await runner.claim_one()
+        assert done_ctx is not None
+        assert await advance(session_factory, done_run) == "COMPLETED"
+        # 等待态 Run：冲突转等待后旧 worker 收尾。
+        waiting_direct = await invoke_plan(
+            session_factory, [archive_entry(1), archive_entry(2)], auth_mode=AuthMode.AUTO_APPROVE
+        )
+        waiting_run = cast(str, waiting_direct["run"]["run_id"])
+        waiting_ctx = await runner.claim_one()
+        assert waiting_ctx is not None
+        await project_stale(session_factory, 2)
+        assert await advance(session_factory, waiting_run) == "WAITING_USER"
+
+        assert await spec.writeback(done_ctx, "COMPLETED") is True
+        assert await spec.writeback(waiting_ctx, "WAITING_USER") is True
+
+        # 各自只有一条触发（无补投），Run 状态不变（等待态不被偷偷唤醒）。
+        assert await job_statuses(session_factory) == [
+            ("AGENT_RUN", "SUCCEEDED"),
+            ("AGENT_RUN", "SUCCEEDED"),
+        ]
+        detail = await run_detail(session_factory, waiting_run)
+        assert detail["status"] == "WAITING_USER"
+        detail = await run_detail(session_factory, done_run)
+        assert detail["status"] == "COMPLETED"

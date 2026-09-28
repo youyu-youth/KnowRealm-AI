@@ -14,6 +14,10 @@ JobRunner 内以 ``WorkerSpec`` 声明式接入（ADR-0012）：触发 job 是�
 - 终态判定：全部成功＝COMPLETED；存在失败 / 跳过项＝PARTIAL_COMPLETED；
   取消＝CANCELLED；系统性故障由失败记账落 FAILED。
 
+触发交接（工单 05 review）：job 收尾时 Run 仍 RUNNING 即补投触发——显式唤醒可能
+落在「推进已停止、job 未收尾」的窗口里被 enqueue_trigger 的守卫跳过；不补投会留下
+「RUNNING 且无活动触发」的悬挂任务。
+
 计划结构损坏（run.plan_json 非法 JSON / 形状不符）：执行口径严格读计划，整任务
 停止并落 AGENT_RUN_PLAN_INVALID（未执行项 SKIPPED）——不得降级为空计划继续执行
 （排序与依赖判定会静默失效，工单 05 review）。
@@ -393,7 +397,14 @@ async def writeback(
     run_status: str,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> bool:
-    """触发 job 收尾：记 Run 落定状态（job 是无状态触发器，不承载任务状态）。"""
+    """触发 job 收尾：记 Run 落定状态（job 是无状态触发器，不承载任务状态）。
+
+    收尾兼做**触发交接**（工单 05 review）：显式唤醒（继续 / 重试 / 计划追加）可能
+    落在本 job 收尾前的窗口——那时 :func:`enqueue_trigger` 看到本 job 仍 RUNNING
+    而跳过投递；Run 若已被重新置为 RUNNING（推进事务已提交、job 未收尾）就必须在
+    这里补投，否则留下「RUNNING 且无活动触发」的悬挂任务（只能等重启恢复）。
+    先 flush 落定 job，守卫与部分唯一索引才都看到它不再是活动触发。
+    """
     async with session_factory() as session, session.begin():
         job = await session.get(ProcessingJob, ctx.job_id)
         if job is None or job.status != ProcessingJobStatus.RUNNING:
@@ -409,6 +420,11 @@ async def writeback(
         job.error_message = None
         job.finished_at = now
         job.updated_at = now
+        await session.flush()
+        run = await session.get(AgentRun, ctx.run_id)
+        if run is not None and run.status == RunStatus.RUNNING.value:
+            await enqueue_trigger(session, run.id)
+            logger.info("agent_run_trigger_handoff", run_id=run.id)
     return True
 
 
