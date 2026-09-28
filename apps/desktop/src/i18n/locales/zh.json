@@ -1985,6 +1985,7 @@
       "retry": "重试",
       "undone": "该操作已撤销。",
       "undoBadge": "撤销补偿",
+      "notUndoable": "不可撤销：{{reason}}",
       "action": {
         "create_course": "创建课程",
         "add_text_record_to_course": "保存文本记录"

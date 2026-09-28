@@ -290,4 +290,31 @@ describe("ChatExecutedOperationCard", () => {
       expect(retryOperation).toHaveBeenCalledWith("op-failed"),
     );
   });
+
+  it("不可撤销行就地呈现原因（spec 用户故事 28，review P2）", async () => {
+    listOperations.mockResolvedValue([
+      operationFixture({
+        id: "op-delete",
+        action: "delete_course",
+        undoable: false,
+        undo_reason:
+          "课程删除（含级联删除记录）不可撤销：影响面大且暂无恢复入口",
+      }),
+    ]);
+    renderWithQuery(
+      <ChatExecutedOperationCard
+        sessionId={SESSION_ID}
+        anchorIds={["op-delete"]}
+      />,
+    );
+
+    expect(
+      await screen.findByText(
+        "不可撤销：课程删除（含级联删除记录）不可撤销：影响面大且暂无恢复入口",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /^撤销$/ }),
+    ).not.toBeInTheDocument();
+  });
 });

@@ -264,4 +264,25 @@ describe("OperationHistorySection", () => {
       expect(retryOperation).toHaveBeenCalledWith("op-f");
     });
   });
+
+  it("不可撤销的成功行就地呈现原因（spec 用户故事 28，review P2）", async () => {
+    listOperations.mockResolvedValue([
+      operationData({
+        id: "op-del",
+        action: "delete_course",
+        undoable: false,
+        undo_reason:
+          "课程删除（含级联删除记录）不可撤销：影响面大且暂无恢复入口",
+      }),
+    ]);
+    renderWithQuery(<OperationHistorySection />);
+    expect(
+      await screen.findByText(
+        "不可撤销：课程删除（含级联删除记录）不可撤销：影响面大且暂无恢复入口",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "撤销" }),
+    ).not.toBeInTheDocument();
+  });
 });

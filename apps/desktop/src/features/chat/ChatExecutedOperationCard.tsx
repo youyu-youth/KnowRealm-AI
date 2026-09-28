@@ -160,8 +160,8 @@ export function ChatExecutedOperationCard({
         const succeeded = operation.status === "SUCCEEDED";
         const undone = operation.undone_by !== null;
         // 撤销按钮状态（工单 06）：成功且可撤销且未被撤销；不可撤销时不渲染
-        // 按钮（原因在操作历史可见），已撤销显示标记；补偿行（undo_of 非空）
-        // 仍可再撤销（恢复到撤销前）。
+        // 按钮（原因就地呈现，spec 用户故事 28），已撤销显示标记；补偿行
+        // （undo_of 非空）仍可再撤销（恢复到撤销前）。
         const undoableRow = succeeded && operation.undoable && !undone;
         // 重试按钮状态：直执行失败项（提案路径失败走提案卡重试）。
         const retryableRow =
@@ -232,6 +232,15 @@ export function ChatExecutedOperationCard({
             {undone ? (
               <p className="text-label text-muted-foreground">
                 {t("chat.executedOperation.undone")}
+              </p>
+            ) : null}
+            {succeeded && !operation.undoable && operation.undo_reason ? (
+              // 不可撤销原因如实呈现（spec 用户故事 28）：不只隐藏按钮，
+              // 让用户知道为什么这项操作没有撤销入口。
+              <p className="text-label text-muted-foreground">
+                {t("chat.executedOperation.notUndoable", {
+                  reason: operation.undo_reason,
+                })}
               </p>
             ) : null}
             {undoableRow || retryableRow ? (

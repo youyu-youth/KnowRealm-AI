@@ -226,7 +226,23 @@ function RunStepRow({
           {t("agent.run.staleHint")}
         </span>
       ) : null}
-      {canRetry && isStepRetryable(operation.status) ? (
+      {operation.status === "SUCCEEDED" &&
+      !operation.undoable &&
+      operation.undone_by === null &&
+      operation.undo_reason ? (
+        // 不可撤销原因如实呈现（spec 用户故事 28）：批次撤销跳过该项时
+        // 用户能从行内知道为什么。
+        <p className="text-label text-muted-foreground w-full">
+          {t("chat.executedOperation.notUndoable", {
+            reason: operation.undo_reason,
+          })}
+        </p>
+      ) : null}
+      {canRetry &&
+      operation.undo_of === null &&
+      isStepRetryable(operation.status) ? (
+        // 补偿行（undo_of 非空，含批次撤销的失败留痕）不参与正向重试——
+        // 失败补偿的正确路径是重新发起撤销（后端同口径守卫）。
         <Button
           size="xs"
           variant="ghost"

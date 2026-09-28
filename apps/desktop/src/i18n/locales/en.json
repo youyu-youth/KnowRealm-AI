@@ -2005,6 +2005,7 @@
       "retry": "Retry",
       "undone": "This operation has been undone.",
       "undoBadge": "Undo compensation",
+      "notUndoable": "Not undoable: {{reason}}",
       "action": {
         "create_course": "Create course",
         "add_text_record_to_course": "Save text record"

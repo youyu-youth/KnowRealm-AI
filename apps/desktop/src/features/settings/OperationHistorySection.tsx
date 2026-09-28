@@ -482,9 +482,9 @@ function OperationsBlock({
 }
 
 /** 单条操作行：动作 / 目标 / 状态 / 结果 / 错误码 / 撤销与重试入口 / 时间（工单
- * 验收字段）。撤销按钮只对成功且可撤销且未撤销的行出现；重试按钮只对直执行
- * 失败行出现（工单 06 review 修复；run 内行经任务面板重试，确认路径失败不落
- * operation 行）。 */
+ * 验收字段）。撤销按钮只对成功且可撤销且未撤销的行出现（不可撤销原因就地
+ * 呈现，spec 用户故事 28）；重试按钮只对直执行失败行出现（工单 06 review
+ * 修复；run 内行经任务面板重试，确认路径失败不落 operation 行）。 */
 function OperationRow({
   operation,
   undoPending,
@@ -562,6 +562,16 @@ function OperationRow({
       <span className="text-label text-muted-foreground shrink-0">
         {formatRunTime(operation.created_at)}
       </span>
+      {operation.status === "SUCCEEDED" &&
+      !operation.undoable &&
+      operation.undone_by === null &&
+      operation.undo_reason ? (
+        <p className="text-label text-muted-foreground w-full">
+          {t("chat.executedOperation.notUndoable", {
+            reason: operation.undo_reason,
+          })}
+        </p>
+      ) : null}
       {undoError ? (
         <p role="alert" className="text-destructive text-label w-full">
           {undoError}
