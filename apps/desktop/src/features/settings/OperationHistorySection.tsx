@@ -28,9 +28,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { agentKeys } from "@/features/agent/api/authMode";
+import { AgentRunProgress } from "@/features/agent/AgentRunProgress";
 import { settingsKeys } from "@/features/settings/api/keys";
 import {
+  formatRunTime,
+  isRunActive,
   operationHistoryApi,
+  runStatusTone,
   type AgentOperationOut,
 } from "@/features/settings/api/operationHistory";
 import {
@@ -111,23 +116,10 @@ function StatusFilterSelect({
   );
 }
 
-/** 操作状态 → 展示色（成功=强调绿语义、失败=警示红、未决/跳过=中性）。 */
-function statusTone(status: string): string {
-  if (status === "SUCCEEDED" || status === "COMPLETED") {
-    return "text-success-foreground";
-  }
-  if (status === "FAILED") {
-    return "text-destructive";
-  }
-  return "text-muted-foreground";
-}
-
 /** 删除/清理后失效全部操作历史查询（无参工厂键=基础前缀，连带各状态
  * 过滤变体与 run 详情；单 run 删除因后端 FK 级联同样要失效单步操作列表）。 */
 function invalidateHistory(queryClient: QueryClient) {
-  void queryClient.invalidateQueries({
-    queryKey: settingsKeys.operationRuns(),
-  });
+  void queryClient.invalidateQueries({ queryKey: agentKeys.runs() });
   void queryClient.invalidateQueries({
     queryKey: settingsKeys.operations(),
   });
@@ -240,8 +232,13 @@ function RunsBlock({
 
   const status = filter === ALL_OPTION ? undefined : filter;
   const runs = useQuery({
-    queryKey: settingsKeys.operationRuns(status),
+    queryKey: agentKeys.runs(status),
     queryFn: () => operationHistoryApi.listRuns(status ? { status } : {}),
+    // 未结束任务轮询刷新（推进由后台 worker 逐项完成，页面轮询承接进展）。
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((run) => isRunActive(run.status))
+        ? 3000
+        : false,
   });
 
   const removeRun = useMutation({
@@ -301,7 +298,7 @@ function RunsBlock({
                     )}
                   </button>
                   <span
-                    className={`text-label font-label min-w-24 ${statusTone(run.status)}`}
+                    className={`text-label font-label min-w-24 ${runStatusTone(run.status)}`}
                   >
                     {t(`settings.operationHistory.runStatus.${run.status}`)}
                   </span>
@@ -310,7 +307,7 @@ function RunsBlock({
                       t("settings.operationHistory.runUntitled")}
                   </span>
                   <span className="text-label text-muted-foreground shrink-0">
-                    {formatTime(run.created_at)}
+                    {formatRunTime(run.created_at)}
                   </span>
                   <button
                     type="button"
@@ -380,41 +377,13 @@ function RunsBlock({
   );
 }
 
-/** 展开的任务详情：逐操作行（复用单步操作行组件）。 */
+/** 展开的任务详情（工单 05 接真）：计划版本 / 逐项结果 / 等待原因与显式唤醒
+ * 按钮——与对话内计划卡共用同一进度组件（同一 Run 查询键，缓存一致）。 */
 function RunDetail({ runId }: { runId: string }) {
-  const { t } = useTranslation();
-  const detail = useQuery({
-    queryKey: settingsKeys.operationRunDetail(runId),
-    queryFn: () => operationHistoryApi.getRun(runId),
-  });
-
-  if (detail.isPending) {
-    return (
-      <p role="status" className="text-label text-muted-foreground px-8 py-2">
-        <Spinner aria-hidden="true" /> {t("settings.operationHistory.loading")}
-      </p>
-    );
-  }
-  if (detail.isError) {
-    return (
-      <p role="alert" className="text-destructive text-label px-8 py-2">
-        {detail.error.message}
-      </p>
-    );
-  }
-  if (detail.data.operations.length === 0) {
-    return (
-      <p className="text-label text-muted-foreground px-8 py-2">
-        {t("settings.operationHistory.runOperationsEmpty")}
-      </p>
-    );
-  }
   return (
-    <ul className="border-border/60 flex flex-col gap-1 border-t px-6 py-2">
-      {detail.data.operations.map((operation) => (
-        <OperationRow key={operation.id} operation={operation} />
-      ))}
-    </ul>
+    <div className="border-border/60 border-t px-6 py-2">
+      <AgentRunProgress runId={runId} />
+    </div>
   );
 }
 
@@ -490,7 +459,7 @@ function OperationRow({ operation }: { operation: AgentOperationOut }) {
         <span className="min-w-0 flex-1" />
       )}
       <span
-        className={`text-label font-label min-w-16 ${statusTone(operation.status)}`}
+        className={`text-label font-label min-w-16 ${runStatusTone(operation.status)}`}
       >
         {t(`settings.operationHistory.operationStatus.${operation.status}`)}
       </span>
@@ -500,7 +469,7 @@ function OperationRow({ operation }: { operation: AgentOperationOut }) {
         </span>
       ) : null}
       <span className="text-label text-muted-foreground shrink-0">
-        {formatTime(operation.created_at)}
+        {formatRunTime(operation.created_at)}
       </span>
     </li>
   );
@@ -562,7 +531,7 @@ function ActivityBlock() {
                     : t("settings.operationHistory.activity.globalScope")}
                 </span>
                 <span className="text-label text-muted-foreground shrink-0">
-                  {formatTime(entry.created_at)}
+                  {formatRunTime(entry.created_at)}
                 </span>
               </li>
             ))}
@@ -575,8 +544,4 @@ function ActivityBlock() {
       </div>
     </SettingsRow>
   );
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleString();
 }

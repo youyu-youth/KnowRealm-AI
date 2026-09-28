@@ -1989,7 +1989,23 @@
       "courseDeletedHint": "课程已删除，对话已失效，无法继续发送。",
       "libraryItemDeletedHint": "原资料已删除或归档，对话已失效，无法继续发送。"
     },
-    "libraryItemDeleted": "原资料已删除或归档"
+    "libraryItemDeleted": "原资料已删除或归档",
+    "batchPlan": {
+      "panelTitle": "批量整理计划",
+      "itemCount": "共 {{count}} 项",
+      "version": "计划版本 v{{version}}",
+      "replanHint": "计划已更新，需重新确认后才执行",
+      "hint": "整卡一次确认即授权本批次；逐项执行，单项失败不影响其余独立步骤。",
+      "accept": "确认执行本计划",
+      "reject": "拒绝",
+      "accepted": "计划已确认，任务开始执行。",
+      "rejected": "已拒绝，本批次未执行任何操作。",
+      "failed": "计划未能确认。",
+      "failedDetail": "计划未能确认（{{reason}}），可重试或重新整理。",
+      "dependsOn": "依赖第 {{index}} 项",
+      "paramTitle": "标题：{{title}}",
+      "paramCourse": "归类到课程"
+    }
   },
   "settings": {
     "title": "设置",
@@ -2197,7 +2213,16 @@
       "operationsEmpty": "暂无操作记录。在对话中确认 Agent 的操作提案后会在这里出现。",
       "action": {
         "create_course": "创建课程",
-        "add_text_record_to_course": "添加文本记录"
+        "add_text_record_to_course": "添加文本记录",
+        "update_course": "修改课程",
+        "archive_course": "归档课程",
+        "restore_course": "恢复课程",
+        "update_library_item": "修改资料条目",
+        "archive_library_item": "归档资料条目",
+        "restore_library_item": "恢复资料条目",
+        "soft_delete_record": "删除学习记录",
+        "delete_course": "删除课程",
+        "move_record_course": "迁移记录到课程"
       },
       "operationStatus": {
         "PLANNED": "待执行",
@@ -2710,6 +2735,25 @@
     "LIBRARY_ITEM_JOB_ACTIVE": "该资料条目已有进行中的处理任务",
     "LIBRARY_RETRY_NOT_APPLICABLE": "该资料条目没有可重试的失败任务",
     "LIBRARY_REFETCH_UNSUPPORTED": "仅网页资料支持重新抓取",
-    "PROPOSAL_PAYLOAD_INVALID": "提案载荷不符合该类型的结构要求"
+    "PROPOSAL_PAYLOAD_INVALID": "提案载荷不符合该类型的结构要求",
+    "AGENT_RUN_ALREADY_FINISHED": "任务已结束，不能取消或重试",
+    "AGENT_RUN_NOT_WAITING": "任务当前不在等待用户处理，无需继续",
+    "AGENT_RUN_OPERATION_NOT_FOUND": "任务中的操作不存在",
+    "AGENT_RUN_OPERATION_NOT_RETRYABLE": "仅失败或跳过的步骤可以重试",
+    "AGENT_RUN_FAILED": "任务推进失败，请稍后重试",
+    "OPERATION_APPROVAL_REQUIRED": "该步骤需要确认后才能执行，任务已暂停",
+    "OPERATION_DEPENDENCY_FAILED": "前置步骤未成功，本步骤已跳过"
+  },
+  "agent": {
+    "run": {
+      "panelTitle": "Agent 任务",
+      "progress": "已完成 {{done}}/{{total}} 项",
+      "waiting": "等待处理：{{reason}}",
+      "instruction": "触发指令：「{{text}}」",
+      "resume": "继续",
+      "retry": "重试",
+      "cancel": "取消任务",
+      "staleHint": "目标已变化，请重新整理该项"
+    }
   }
 }

@@ -137,6 +137,9 @@ export function useChatStream(sessionId: string) {
           void queryClient.invalidateQueries({
             queryKey: agentKeys.sessionOperations(sessionId),
           });
+          // 任务（run）查询同口径（工单 05）：批量计划卡 / 会话任务面板经持久化
+          // 查询恢复——计划卡提案与直建 Run 都在本轮落库，流结束即拉最新。
+          void queryClient.invalidateQueries({ queryKey: agentKeys.runs() });
           abortRef.current = null;
           setIsStreaming(false);
         });

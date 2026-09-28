@@ -2009,7 +2009,23 @@
       "courseDeletedHint": "The course was deleted; this chat is read-only.",
       "libraryItemDeletedHint": "The source material was deleted or archived; this chat is read-only."
     },
-    "libraryItemDeleted": "Source material deleted or archived"
+    "libraryItemDeleted": "Source material deleted or archived",
+    "batchPlan": {
+      "panelTitle": "Batch organize plan",
+      "itemCount": "{{count}} item(s)",
+      "version": "Plan version v{{version}}",
+      "replanHint": "The plan changed and needs confirmation again",
+      "hint": "Confirming the whole card authorizes this batch; items run one by one and a failure does not block other independent steps.",
+      "accept": "Confirm and run this plan",
+      "reject": "Reject",
+      "accepted": "Plan confirmed, the task is running.",
+      "rejected": "Rejected; nothing in this batch was executed.",
+      "failed": "The plan could not be confirmed.",
+      "failedDetail": "The plan could not be confirmed ({{reason}}). Retry or reorganize.",
+      "dependsOn": "Depends on item {{index}}",
+      "paramTitle": "Title: {{title}}",
+      "paramCourse": "Move to course"
+    }
   },
   "settings": {
     "title": "Settings",
@@ -2217,7 +2233,16 @@
       "operationsEmpty": "No operation records yet. Confirming an Agent operation proposal in chat will show up here.",
       "action": {
         "create_course": "Create course",
-        "add_text_record_to_course": "Add text record"
+        "add_text_record_to_course": "Add text record",
+        "update_course": "Update course",
+        "archive_course": "Archive course",
+        "restore_course": "Restore course",
+        "update_library_item": "Update library item",
+        "archive_library_item": "Archive library item",
+        "restore_library_item": "Restore library item",
+        "soft_delete_record": "Delete record",
+        "delete_course": "Delete course",
+        "move_record_course": "Move record to course"
       },
       "operationStatus": {
         "PLANNED": "Planned",
@@ -2730,6 +2755,25 @@
     "LIBRARY_ITEM_JOB_ACTIVE": "A processing job is already running for this material",
     "LIBRARY_RETRY_NOT_APPLICABLE": "No failed job to retry for this material",
     "LIBRARY_REFETCH_UNSUPPORTED": "Only web materials support refetching",
-    "PROPOSAL_PAYLOAD_INVALID": "The proposal payload does not match the expected structure"
+    "PROPOSAL_PAYLOAD_INVALID": "The proposal payload does not match the expected structure",
+    "AGENT_RUN_ALREADY_FINISHED": "The task has finished; it cannot be cancelled or retried",
+    "AGENT_RUN_NOT_WAITING": "The task is not waiting for you, nothing to continue",
+    "AGENT_RUN_OPERATION_NOT_FOUND": "The step does not exist in this task",
+    "AGENT_RUN_OPERATION_NOT_RETRYABLE": "Only failed or skipped steps can be retried",
+    "AGENT_RUN_FAILED": "The task failed to advance; please retry later",
+    "OPERATION_APPROVAL_REQUIRED": "This step needs confirmation; the task is paused",
+    "OPERATION_DEPENDENCY_FAILED": "A prerequisite step failed, so this step was skipped"
+  },
+  "agent": {
+    "run": {
+      "panelTitle": "Agent tasks",
+      "progress": "{{done}}/{{total}} done",
+      "waiting": "Waiting for you: {{reason}}",
+      "instruction": "Triggered by: \"{{text}}\"",
+      "resume": "Continue",
+      "retry": "Retry",
+      "cancel": "Cancel task",
+      "staleHint": "The item changed; please reorganize it"
+    }
   }
 }

@@ -44,9 +44,17 @@ export const agentAuthApi = {
     }),
 };
 
-/** agent 域查询键：全局默认档与会话直执行回执（回执卡恢复链数据源）。 */
+/** agent 域查询键：全局默认档、会话直执行回执与任务（run）进度。
+ * 任务键集中在 agent 域（对话计划卡 / 会话任务面板 / 设置页操作历史共用同一
+ * 资源与缓存，避免同一 Run 在两个键下各存一份）。 */
 export const agentKeys = {
   authMode: ["agent", "auth-mode"] as const,
   sessionOperations: (sessionId: string) =>
     ["agent", "operations", sessionId] as const,
+  /** status 省略即基础前缀（含全部过滤变体与详情），供前缀失效复用。 */
+  runs: (status?: string) =>
+    ["agent", "runs", ...(status ? [status] : [])] as const,
+  sessionRuns: (sessionId: string) =>
+    ["agent", "runs", "session", sessionId] as const,
+  runDetail: (runId: string) => ["agent", "runs", "detail", runId] as const,
 };

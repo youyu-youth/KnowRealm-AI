@@ -13,6 +13,9 @@ const {
   purgeFinished,
   listOperations,
   listActivity,
+  cancelRun,
+  resumeRun,
+  retryRunOperation,
 } = vi.hoisted(() => ({
   listRuns: vi.fn(),
   getRun: vi.fn(),
@@ -20,18 +23,33 @@ const {
   purgeFinished: vi.fn(),
   listOperations: vi.fn(),
   listActivity: vi.fn(),
+  cancelRun: vi.fn(),
+  resumeRun: vi.fn(),
+  retryRunOperation: vi.fn(),
 }));
 
-vi.mock("@/features/settings/api/operationHistory", () => ({
-  operationHistoryApi: {
-    listRuns,
-    getRun,
-    deleteRun,
-    purgeFinished,
-    listOperations,
-    listActivity,
-  },
-}));
+// 模块级工具（isRunActive 等）随实际实现保留，只替换 api 对象（工单 05：
+// 轮询判定与唤醒按钮共用同一模块导出的纯函数）。
+vi.mock("@/features/settings/api/operationHistory", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/features/settings/api/operationHistory")
+    >();
+  return {
+    ...actual,
+    operationHistoryApi: {
+      listRuns,
+      getRun,
+      deleteRun,
+      purgeFinished,
+      listOperations,
+      listActivity,
+      cancelRun,
+      resumeRun,
+      retryRunOperation,
+    },
+  };
+});
 
 function operationData(overrides: Record<string, unknown> = {}) {
   return {
@@ -120,6 +138,9 @@ describe("OperationHistorySection", () => {
     );
     expect(await screen.findByText("创建课程")).toBeInTheDocument();
     expect(getRun).toHaveBeenCalledWith("run-1");
+    // 展开即任务进度（工单 05）：逐项计数与计划版本呈现。
+    expect(screen.getByText("已完成 1/1 项")).toBeInTheDocument();
+    expect(screen.getByText("计划版本 v1")).toBeInTheDocument();
   });
 
   it("批量清理：二次确认后调用清理并失效重取", async () => {

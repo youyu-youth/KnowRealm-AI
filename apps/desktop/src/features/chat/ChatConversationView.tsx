@@ -22,6 +22,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ChatMessage, ChatSession } from "@/features/chat/api/types";
+import { ChatBatchPlanCard } from "@/features/chat/ChatBatchPlanCard";
+import { ChatBatchRunCard } from "@/features/chat/ChatBatchRunCard";
 import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ChatExecutedOperationCard } from "@/features/chat/ChatExecutedOperationCard";
 import { ChatMemoryProposalCard } from "@/features/chat/ChatMemoryProposalCard";
@@ -305,6 +307,12 @@ export function ChatConversationView({
             (message) => message.executed_operation_ids ?? [],
           )}
         />
+        {/* 批量整理计划卡（通用 Agent 第二阶段工单 05）：OP_BATCH 整卡确认即
+            批次授权，确认后就地转任务进度（逐项结果 + 继续 / 重试 / 取消）。 */}
+        <ChatBatchPlanCard sessionId={sessionId} />
+        {/* 会话任务面板（工单 05）：档位直执行路径（无计划卡）的批量任务进度，
+            未结束的自动执行任务在此呈现，完成后归入设置页操作历史。 */}
+        <ChatBatchRunCard sessionId={sessionId} />
         <ChatComposer
           value={composerValue}
           disabled={messages.isPending || scopeUnavailable}
