@@ -95,3 +95,18 @@ grill 全部收敛后形成冻结 spec 与逐闭环工单，同步权威文档�
 - **Q20 动作清单与课程归档去留**：L1=课程修改（复用 CourseService.update）、条目重命名/归类/归档/恢复；L2=Record 跨课迁移、条目批量归类/归档（计划卡）；L3=Record 软删、课程软删（删除编排收拢 course 域应用函数）；Record 重命名无领域端点、登记缺口本期不做；课程归档建议随本期收口（翻案历史推迟决策，待用户拍板，备选=维持推迟）。
 - **Q21 历史保留细节**：默认永久保留、无自动过期（本地优先，Undo 依赖历史）；「清理已结束任务历史」入口在操作历史页、仅终态 run 可清；清理后消息流回执卡降级为「历史已清理」占位（不删消息）；runs/operations 在 SQLite 内随全量导出/备份自动包含。
 - **Q22 最小重构与模块归属**：新代码落 agent/runs/ 子包（models/service/worker/queries），operations 不动；课程删除编排收拢为 course 域应用函数（soft_delete+重算+重试一体，create_core 先例，路由换用零行为变化）；ORGANIZE 类型不迁 operations（兼容零 churn），应用器补执行前重验 + before 快照（Q12 纪律）；提案框架留 library 不动。
+
+## 插队票：对象查询工具族扩展（2026-09-28，Q23～Q32 定稿）
+
+用户答复 Q23~Q28 按推荐、Q25 改「按需列出」、Q29~Q32 按推荐。背景：批量整理链路（工单 05）缺目标枚举前置——模型无法先看到「课程下有哪些记录 / 资料库有哪些条目」；底层查询三件全部现成（`CourseService.list(q=None)` / `RecordService.list_for_course` / `LibraryService.list_items`）。
+
+- **Q23 范围与定位**：对象查询工具族扩展，全部只读 L0、零提案零授权零快照，恒挂载全部会话类型（search_courses 先例），计入统一每轮 6 次预算与字符累计；前端零改动（无新 SSE 事件 / 卡片）。
+- **Q24 列课程路径**：扩展现有 `search_courses`（query 改可选，省略=枚举全部课程按更新时间降序；有关键词行为不变，同名消歧上限 8 不变），不新增 list_courses——课程族单一工具（spec 决策 14）。
+- **Q25 按需列出**：数量由用户话术决定（要全部给全部、要 20 给 20），落地为 `limit` 可选参数（见 Q29 形态）。
+- **Q26 资料库过滤维度**：暴露 source_type（AUDIO/DOCUMENT/WEB/BOOK/TEXT）+ course_id + q（标题搜索）三维可选、全省略=列全部；availability 不进 V1（派生计算重、场景窄）。
+- **Q27 排期**：插队先行（独立小票 08，置于 06 之前），与 Undo 零耦合；开工前置=工作区工单 05 阈值口径修复先行提交（同仓多会话纪律）。
+- **Q28 补充功能取舍**：V1 只做点名三能力 + 记录状态字段并入列表返回；学习资产查询 / 记录正文通读（token 成本高且有 30k 降级）/ 掌握度统计查询 / 操作历史查询全部留待真实场景驱动再议（YAGNI）。
+- **Q29 limit 形态**：`limit` 可选；省略或「列出所有」→ 返回全部，受硬上限 100 保护（每条约 100 字符，100 条≈10k 贴每轮 12k 字符预算）；指定数字照传；超上限返回前 N + `total` + `truncated`，模型如实转述不静默丢弃。
+- **Q30 三工具统一**：search_courses 枚举分支 / list_course_records / list_library_items 统一 limit 形态（省略=全部≤100、total+truncated 透出），模型学一次规则用三处；固定上限仅保留在关键词消歧分支（8 条）。
+- **Q31 工单落位**：`.scratch/general-agent-v2/issues/08-agent-query-tools.md`，实施顺序=05 修复提交 → 08 → 06 → 07（07 验收纳入 08 新工具）；范围=后端 2 新工具 + search_courses 扩展 + prompt bump（普通/研究各 +1）+ 测试 + CONTEXT.md 词条扩充；单会话规模直连 implement。
+- **Q32 命名与返回面**：`list_course_records`（id/标题/来源类型/总结状态/创建时间）、`list_library_items`（id/标题/source_type/归属课程名/更新时间/total）；search_courses 枚举载荷与现有关键词分支字段一致（id/名称/状态/学习场景/阶段或深度/更新时间）；两新工具为只读工具、不进操作注册表。
