@@ -151,7 +151,10 @@ def order_run_operations(
 ) -> list[AgentOperation]:
     """按计划顺序排序：步骤顺序的权威来源是计划（spec 决策 13「逐项列出」）——
     同一批提交的操作 created_at 相同，仅靠时间序会打平。不在计划内的操作
-    （异常数据）保持原相对顺序排在末尾。"""
+    （异常数据）保持原相对顺序排在末尾。
+
+    读取 / 展示口径（坏计划降级为时间序，不炸查询）；执行路径不受其影响——
+    worker 在排序前已严格校验计划（工单 05 review）。"""
     order = {
         item.operation_id: item.index for item in parse_plan_out(plan_json, plan_version).items
     }
@@ -649,7 +652,11 @@ class RunControlService:
 async def _blocked_by(
     session: AsyncSession, run: AgentRun, operation_id: str
 ) -> list[AgentOperation]:
-    """依赖该项（传递）而被跳过的步骤：重试时一并恢复为待执行。"""
+    """依赖该项（传递）而被跳过的步骤：重试时一并恢复为待执行。
+
+    读取口径与 order_run_operations 同源（坏计划降级为「无依赖」）；重试即便
+    放行也执行不了——worker 会在推进前严格校验计划并落 AGENT_RUN_PLAN_INVALID
+    （工单 05 review），此处不重复拦截（前端重试失败无错误呈现，拦截反而静默）。"""
     plan = parse_plan_out(run.plan_json, run.plan_version)
     reverse: dict[str, list[str]] = {}
     for block_id, dependencies in plan_dependencies(plan).items():

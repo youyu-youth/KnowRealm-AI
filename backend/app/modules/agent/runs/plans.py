@@ -37,6 +37,7 @@ from app.modules.agent.operations.registry import (
 )
 from app.modules.agent.runs.models import AgentOperation, AgentRun
 from app.modules.agent.runs.schemas import (
+    AGENT_RUN_PLAN_INVALID,
     AUTO_APPROVE_BATCH_LIMIT,
     RUN_TERMINAL_STATUSES,
     AuthMode,
@@ -50,8 +51,10 @@ from app.modules.agent.runs.schemas import (
     BatchPlanSnapshot,
     OperationAuthorization,
     OperationStatus,
+    PlanCorruptError,
     RunStatus,
     parse_plan_out,
+    require_plan_out,
 )
 from app.modules.agent.runs.service import (
     count_run_operations,
@@ -101,6 +104,17 @@ def _snapshot_stale() -> CodedHTTPException:
         code="OPERATION_SNAPSHOT_STALE",
         status_code=409,
         detail="目标已发生变化，提案已失效，请重新预览确认",
+    )
+
+
+# 计划损坏（run.plan_json 结构非法）的稳定拒绝文案：写入口径（CodedHTTPException）
+# 与工具载荷共用同一句；坏计划不得被降级当作空基线继续追加（工单 05 review）。
+_PLAN_INVALID_DETAIL = "任务计划数据已损坏，无法在其上继续追加，请重新创建任务"
+
+
+def _plan_invalid() -> CodedHTTPException:
+    return CodedHTTPException(
+        code=AGENT_RUN_PLAN_INVALID, status_code=409, detail=_PLAN_INVALID_DETAIL
     )
 
 
@@ -345,9 +359,16 @@ async def append_plan_operations(
     已覆盖项时经 preset_dependencies 挂到既有操作上）；重规划延展时新批追加在
     既有计划之后，版本随之递增（已批准集合是「对象集合＋参数＋版本」的组合，
     spec 用户故事 23）。
+
+    写入口径严格读既有计划：损坏即拒绝追加（降级为空基线会把新计划写成「只剩
+    本批」的残缺集合、索引失真，旧步骤的排序与依赖一并丢失；工单 05 review）。
     """
     now = utcnow()
-    base_index = len(parse_plan_out(run.plan_json, run.plan_version).items)
+    try:
+        plan = require_plan_out(run.plan_json, run.plan_version)
+    except PlanCorruptError as exc:
+        raise _plan_invalid() from exc
+    base_index = len(plan.items)
     appended: list[BatchPlanItemOut] = []
     dependency_ids: dict[int, str] = dict(preset_dependencies or {})
     indexes = (
@@ -393,7 +414,6 @@ async def append_plan_operations(
                 ],
             )
         )
-    plan = parse_plan_out(run.plan_json, run.plan_version)
     run.plan_json = BatchPlanOut(
         plan_version=payload.plan_version, items=[*plan.items, *appended]
     ).model_dump_json()
@@ -487,6 +507,17 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     async with runtime.session_factory() as session, session.begin():
         active = await find_active_run(session, runtime.session_id)
+        if active is not None:
+            try:
+                require_plan_out(active.plan_json, active.plan_version)
+            except PlanCorruptError:
+                # 活跃任务计划损坏：不追加、也不落新计划卡（确认同样会被拒），
+                # 结构化返回原因由模型转述（先例：目标不可达的拒绝）。
+                return {
+                    "ok": False,
+                    "error": AGENT_RUN_PLAN_INVALID,
+                    "detail": _PLAN_INVALID_DETAIL,
+                }
         existing_count = await count_run_operations(session, active.id) if active else 0
         covered: dict[tuple[str, str], str] = (
             await covered_targets(session, active) if active is not None else {}

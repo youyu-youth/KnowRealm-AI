@@ -9,7 +9,9 @@
   （版本递增、依赖解析为 operation id）；
 - 推进：逐项原子执行、部分失败独立继续、依赖失败后续跳过、冲突转等待（Q1 场景：
   重启接续、重新预览授权后继续、已成功项零重做）、取消停止且已提交保留、失败项
-  重试（原身份 attempts 递增）＋依赖项恢复、重启重投不重做、领取守卫只认 RUNNING。
+  重试（原身份 attempts 递增）＋依赖项恢复、重启重投不重做、领取守卫只认 RUNNING；
+- 损坏计划（工单 05 review）：执行路径停止并落 AGENT_RUN_PLAN_INVALID（零业务
+  事实、未执行项 SKIPPED）、取消不依赖计划仍收尾、写路径拒绝在坏计划上追加。
 """
 
 import json
@@ -36,7 +38,7 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.agent.tools.plan_batch_operations import plan_batch_operations
-from app.modules.jobs.runner import CancelClaim
+from app.modules.jobs.runner import CancelClaim, JobRunner
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
@@ -1007,3 +1009,146 @@ async def test_cancel_rejects_finished_run(tmp_path: Path) -> None:
             async with session_factory() as session:
                 await RunControlService.cancel_run(session, run_id)
         assert exc.value.code == "AGENT_RUN_ALREADY_FINISHED"
+
+
+# ---------------------------------------------------------------------------
+# 损坏计划（工单 05 review）：执行停止落稳定错误、取消不依赖计划、写路径拒绝追加
+
+
+async def corrupt_plan(session_factory: async_sessionmaker[AsyncSession], run_id: str) -> None:
+    """模拟 run.plan_json 结构损坏（形状不符 BatchPlanOut）：计划投影不再可信。"""
+    await run_sql(
+        "UPDATE agent_runs SET plan_json = :bad WHERE id = :id",
+        {"bad": '{"plan_version": 1, "items": [{"broken": true}]}', "id": run_id},
+        session_factory,
+    )
+
+
+async def job_error_codes(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> list[tuple[str, str, str | None]]:
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT job_type, status, error_code FROM processing_jobs"
+                    " ORDER BY created_at, id"
+                )
+            )
+        ).all()
+    return [(cast(str, row[0]), cast(str, row[1]), row[2]) for row in rows]
+
+
+@pytest.mark.anyio
+async def test_corrupt_plan_stops_run_with_stable_error(tmp_path: Path) -> None:
+    """计划损坏：推进停止、零业务事实、Run FAILED、未执行项 SKIPPED、job 记
+    AGENT_RUN_PLAN_INVALID（不得降级为空计划继续执行——依赖判定会静默失效）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 2)
+        direct = await invoke_plan(
+            session_factory,
+            [archive_entry(1), archive_entry(2)],
+            auth_mode=AuthMode.AUTO_APPROVE,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        await corrupt_plan(session_factory, run_id)
+
+        runner = JobRunner(
+            agent_run_spec(session_factory, RecordInvalidationNotifier()),
+            session_factory,
+            RecordInvalidationNotifier(),
+        )
+        assert await runner.process_one() is True
+
+        # 一条操作都没执行：业务事实零变化。
+        assert await item_row(session_factory, 1) == ("条目1", None, "ACTIVE")
+        assert await item_row(session_factory, 2) == ("条目2", None, "ACTIVE")
+        detail = await run_detail(session_factory, run_id)
+        assert detail["status"] == "FAILED"
+        assert await statuses(session_factory, run_id) == ["SKIPPED", "SKIPPED"]
+        assert await job_error_codes(session_factory) == [
+            ("AGENT_RUN", "FAILED", "AGENT_RUN_PLAN_INVALID")
+        ]
+
+
+@pytest.mark.anyio
+async def test_cancel_on_corrupt_plan_still_cancels(tmp_path: Path) -> None:
+    """取消不依赖计划：计划损坏时用户取消仍按用户动作收尾（CANCELLED），
+    不误报任务失败。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 2)
+        direct = await invoke_plan(
+            session_factory,
+            [archive_entry(1), archive_entry(2)],
+            auth_mode=AuthMode.AUTO_APPROVE,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        await corrupt_plan(session_factory, run_id)
+        async with session_factory() as session:
+            await RunControlService.cancel_run(session, run_id)
+
+        assert await advance(session_factory, run_id) == "CANCELLED"
+        assert await statuses(session_factory, run_id) == ["CANCELLED", "CANCELLED"]
+        assert await item_row(session_factory, 1) == ("条目1", None, "ACTIVE")
+
+
+@pytest.mark.anyio
+async def test_corrupt_plan_rejects_plan_append(tmp_path: Path) -> None:
+    """写路径拒绝在损坏计划上追加：工具结构化拒绝且零写入（不新建 Run、
+    不增操作、不改状态）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 3)
+        direct = await invoke_plan(
+            session_factory,
+            [archive_entry(1), archive_entry(2)],
+            auth_mode=AuthMode.AUTO_APPROVE,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        await corrupt_plan(session_factory, run_id)
+
+        rejected = await invoke_plan(
+            session_factory, [archive_entry(3)], auth_mode=AuthMode.AUTO_APPROVE
+        )
+        assert rejected["ok"] is False
+        assert rejected["error"] == "AGENT_RUN_PLAN_INVALID"
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_runs") == 1
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 2
+        detail = await run_detail(session_factory, run_id)
+        assert detail["status"] == "RUNNING"
+        assert detail["plan_version"] == 1
+
+
+@pytest.mark.anyio
+async def test_corrupt_plan_confirmation_fails_and_keeps_run_unchanged(tmp_path: Path) -> None:
+    """计划卡确认：目标 Run 计划损坏 → 应用器拒绝 → 提案 FAILED（稳定错误码），
+    确认事务整体回滚（版本不递增、不唤醒、不新增操作）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 3)
+        first = await invoke_plan(session_factory, [archive_entry(1), archive_entry(2)])
+        run_id = await confirm(session_factory, await plan_proposal_id(first))
+        second = await invoke_plan(session_factory, [archive_entry(3)])
+        second_id = await plan_proposal_id(second)
+        await corrupt_plan(session_factory, run_id)
+
+        with pytest.raises(CodedHTTPException) as exc:
+            await confirm(session_factory, second_id)
+        assert exc.value.code == "PROPOSAL_APPLY_FAILED"
+        assert exc.value.params == {"errorCode": "AGENT_RUN_PLAN_INVALID"}
+
+        async with session_factory() as session:
+            proposal = (
+                await session.execute(
+                    text("SELECT status, error_code FROM agent_proposals WHERE id = :id"),
+                    {"id": second_id},
+                )
+            ).one()
+        assert (proposal[0], proposal[1]) == ("FAILED", "AGENT_RUN_PLAN_INVALID")
+        # 运行未受影响：版本不递增（确认事务已回滚）、不新增操作。
+        detail = await run_detail(session_factory, run_id)
+        assert detail["status"] == "RUNNING"
+        assert detail["plan_version"] == 1
+        assert await count_rows(session_factory, "SELECT count(*) FROM agent_operations") == 2

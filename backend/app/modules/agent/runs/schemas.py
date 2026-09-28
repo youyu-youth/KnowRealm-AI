@@ -91,6 +91,10 @@ WAITABLE_OPERATION_ERROR_CODES = frozenset(
 # 依赖项未成功时置 SKIPPED 的错误码（依赖阻塞，spec 决策 8）。
 OPERATION_DEPENDENCY_FAILED = "OPERATION_DEPENDENCY_FAILED"
 
+# run.plan_json 结构损坏时的稳定错误码（工单 05 review）：损坏计划让推进顺序与
+# 依赖判定静默失效——执行 / 写入路径必须显式失败，不得降级为空计划继续。
+AGENT_RUN_PLAN_INVALID = "AGENT_RUN_PLAN_INVALID"
+
 # 批量计划规模上限（单张计划卡项数上限；AUTO_APPROVE 的自动执行阈值见下）。
 MAX_BATCH_PLAN_ITEMS = 50
 
@@ -215,13 +219,30 @@ class BatchPlanOut(BaseModel):
     items: list[BatchPlanItemOut] = Field(default_factory=list[BatchPlanItemOut])
 
 
-def parse_plan_out(plan_json: str | None, plan_version: int) -> BatchPlanOut:
-    """run.plan_json → 计划投影（坏值降级为空计划，不阻断推进与查询）。"""
+class PlanCorruptError(Exception):
+    """run.plan_json 结构损坏（非法 JSON 或不符合 BatchPlanOut 形状）。
+
+    执行 / 写入路径必须显式失败：损坏计划会让推进顺序与依赖判定静默失效，
+    继续推进＝在失去依赖约束的对象集合上写业务事实；读取 / 展示路径
+    （parse_plan_out）沿用降级口径，不阻断查询。
+    """
+
+
+def require_plan_out(plan_json: str | None, plan_version: int) -> BatchPlanOut:
+    """执行 / 写入口径：坏值抛 PlanCorruptError（plan_json 为空＝尚无计划，合法）。"""
     if plan_json is None:
         return BatchPlanOut(plan_version=plan_version, items=[])
     try:
         return BatchPlanOut.model_validate(json.loads(plan_json))
-    except (ValueError, ValidationError):
+    except (ValueError, ValidationError) as exc:
+        raise PlanCorruptError(plan_version) from exc
+
+
+def parse_plan_out(plan_json: str | None, plan_version: int) -> BatchPlanOut:
+    """读取 / 展示口径：坏值降级为空计划（不阻断查询与呈现）。"""
+    try:
+        return require_plan_out(plan_json, plan_version)
+    except PlanCorruptError:
         return BatchPlanOut(plan_version=plan_version, items=[])
 
 

@@ -14,6 +14,10 @@ JobRunner 内以 ``WorkerSpec`` 声明式接入（ADR-0012）：触发 job 是�
 - 终态判定：全部成功＝COMPLETED；存在失败 / 跳过项＝PARTIAL_COMPLETED；
   取消＝CANCELLED；系统性故障由失败记账落 FAILED。
 
+计划结构损坏（run.plan_json 非法 JSON / 形状不符）：执行口径严格读计划，整任务
+停止并落 AGENT_RUN_PLAN_INVALID（未执行项 SKIPPED）——不得降级为空计划继续执行
+（排序与依赖判定会静默失效，工单 05 review）。
+
 循环有界：每一步必定落定一个操作（成功 / 失败 / 跳过）或转入等待 / 终态，
 步数上界＝操作数＋1，无死循环可能。
 """
@@ -36,13 +40,15 @@ from app.modules.agent.operations.registry import (
 )
 from app.modules.agent.runs.models import AgentOperation, AgentRun
 from app.modules.agent.runs.schemas import (
+    AGENT_RUN_PLAN_INVALID,
     OPERATION_DEPENDENCY_FAILED,
     WAITABLE_OPERATION_ERROR_CODES,
     AuthMode,
     OperationStatus,
+    PlanCorruptError,
     RunStatus,
-    parse_plan_out,
     plan_dependencies,
+    require_plan_out,
 )
 from app.modules.agent.runs.service import (
     AGENT_RUN_JOB_TYPE,
@@ -274,15 +280,20 @@ async def advance_step(session_factory: async_sessionmaker[AsyncSession], run_id
                 run = await session.get(AgentRun, run_id)
                 if run is None or run.status != RunStatus.RUNNING.value:
                     return False
-                operations = order_run_operations(
-                    await list_run_operations(session, run_id), run.plan_json, run.plan_version
-                )
                 if run.cancel_requested:
-                    # 取消：不新增动作、已提交结果保留（spec 用户故事 26）。
+                    # 取消：不新增动作、已提交结果保留（spec 用户故事 26）。取消
+                    # 不读计划（不推进任何步骤，坏的 plan_json 也不影响收尾）。
                     cancelled = await cancel_pending_operations(session, run)
                     settle_run(run, RunStatus.CANCELLED)
                     logger.info("agent_run_cancelled", run_id=run_id, cancelled=cancelled)
                     return False
+                # 执行口径严格读计划：损坏即上抛（失败记账落 AGENT_RUN_PLAN_INVALID、
+                # Run FAILED、未执行项 SKIPPED），绝不降级为空计划继续执行（排序与
+                # 依赖判定会静默失效，spec 决策 8/13）。
+                plan = require_plan_out(run.plan_json, run.plan_version)
+                operations = order_run_operations(
+                    await list_run_operations(session, run_id), run.plan_json, run.plan_version
+                )
                 pending = [
                     operation
                     for operation in operations
@@ -297,9 +308,7 @@ async def advance_step(session_factory: async_sessionmaker[AsyncSession], run_id
                 now = utcnow()
                 statuses = {item.id: item.status for item in operations}
                 if _dependency_blocked(
-                    plan_dependencies(parse_plan_out(run.plan_json, run.plan_version)).get(
-                        operation.id, []
-                    ),
+                    plan_dependencies(plan).get(operation.id, []),
                     statuses,
                 ):
                     _mark_operation(
@@ -403,7 +412,11 @@ async def writeback(
     return True
 
 
-def failure_code(_ctx: _ClaimedRun, _exc: Exception) -> str | None:
+def failure_code(ctx: _ClaimedRun, exc: Exception) -> str | None:
+    """系统性故障码：计划损坏单独成码（稳定可诊断），其余归 AGENT_RUN_FAILED。"""
+    if isinstance(exc, PlanCorruptError):
+        logger.warning("agent_run_plan_corrupt", run_id=ctx.run_id)
+        return AGENT_RUN_PLAN_INVALID
     return AGENT_RUN_FAILED
 
 
