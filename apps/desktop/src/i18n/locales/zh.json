@@ -2740,6 +2740,7 @@
     "AGENT_RUN_NOT_WAITING": "任务当前不在等待用户处理，无需继续",
     "AGENT_RUN_OPERATION_NOT_FOUND": "任务中的操作不存在",
     "AGENT_RUN_OPERATION_NOT_RETRYABLE": "仅失败或跳过的步骤可以重试",
+    "AGENT_RUN_PLAN_INVALID": "任务计划数据已损坏，无法继续执行，请重新创建任务",
     "AGENT_RUN_FAILED": "任务推进失败，请稍后重试",
     "OPERATION_APPROVAL_REQUIRED": "该步骤需要确认后才能执行，任务已暂停",
     "OPERATION_DEPENDENCY_FAILED": "前置步骤未成功，本步骤已跳过"

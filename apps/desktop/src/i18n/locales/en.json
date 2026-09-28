@@ -2760,6 +2760,7 @@
     "AGENT_RUN_NOT_WAITING": "The task is not waiting for you, nothing to continue",
     "AGENT_RUN_OPERATION_NOT_FOUND": "The step does not exist in this task",
     "AGENT_RUN_OPERATION_NOT_RETRYABLE": "Only failed or skipped steps can be retried",
+    "AGENT_RUN_PLAN_INVALID": "The task plan data is corrupted and cannot run; please recreate the task",
     "AGENT_RUN_FAILED": "The task failed to advance; please retry later",
     "OPERATION_APPROVAL_REQUIRED": "This step needs confirmation; the task is paused",
     "OPERATION_DEPENDENCY_FAILED": "A prerequisite step failed, so this step was skipped"
