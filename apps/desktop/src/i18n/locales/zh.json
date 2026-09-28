@@ -2002,9 +2002,9 @@
       "rejected": "已拒绝，本批次未执行任何操作。",
       "failed": "计划未能确认。",
       "failedDetail": "计划未能确认（{{reason}}），可重试或重新整理。",
-      "dependsOn": "依赖第 {{index}} 项",
+      "dependsOn": "依赖第 {{indexes, list(style: narrow)}} 项",
       "paramTitle": "标题：{{title}}",
-      "paramCourse": "归类到课程"
+      "paramCourse": "归类到课程：{{course}}"
     }
   },
   "settings": {

@@ -5,6 +5,7 @@ import type { TFunction } from "i18next";
 import { Check, X } from "lucide-react";
 
 import { AgentRunProgress } from "@/features/agent/AgentRunProgress";
+import { useCourseNames } from "@/features/chat/useCourseNames";
 import {
   libraryApi,
   type AgentProposalOut,
@@ -14,6 +15,11 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
 const BATCH_PROPOSAL_TYPE = "OP_BATCH";
+
+/** id 缩写兜底（课程名等查不到时显示，不造假名）。 */
+function shortId(id: string): string {
+  return `#${id.slice(0, 8)}`;
+}
 
 type PlanItem = {
   action?: string;
@@ -42,7 +48,7 @@ function planItemTitle(
   if (item.title?.trim()) {
     return item.title;
   }
-  return item.item_id ? `#${item.item_id.slice(0, 8)}` : "";
+  return item.item_id ? shortId(item.item_id) : "";
 }
 
 /** 批量整理计划卡（通用 Agent 第二阶段工单 05）：OP_BATCH 提案 = 批次授权载体。
@@ -54,6 +60,7 @@ function planItemTitle(
 export function ChatBatchPlanCard({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const courseNames = useCourseNames();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [overrides, setOverrides] = useState<
@@ -123,6 +130,7 @@ export function ChatBatchPlanCard({ sessionId }: { sessionId: string }) {
                 <ActionablePlan
                   proposal={proposal}
                   busy={busyId !== null}
+                  courseNames={courseNames}
                   onDecide={decide}
                   t={t}
                 />
@@ -146,11 +154,13 @@ export function ChatBatchPlanCard({ sessionId }: { sessionId: string }) {
 function ActionablePlan({
   proposal,
   busy,
+  courseNames,
   onDecide,
   t,
 }: {
   proposal: AgentProposalOut;
   busy: boolean;
+  courseNames: Map<string, string>;
   onDecide: (proposalId: string, accept: boolean) => void;
   t: TFunction;
 }) {
@@ -209,6 +219,7 @@ function ActionablePlan({
             key={`${item.action}-${item.item_id}-${index}`}
             item={item}
             target={planItemTitle(proposal, item, index)}
+            courseNames={courseNames}
             t={t}
           />
         ))}
@@ -220,19 +231,26 @@ function ActionablePlan({
   );
 }
 
-/** 逐项目标行：动作 + 目标（快照标题优先）+ 参数 + 依赖。 */
+/** 逐项目标行：动作 + 目标（快照标题优先）+ 参数（归类课程名查不到时回落 id
+ * 缩写）+ 依赖（全部列出）。 */
 function PlanItemRow({
   item,
   target,
+  courseNames,
   t,
 }: {
   item: PlanItem;
   target: string;
+  courseNames: Map<string, string>;
   t: TFunction;
 }) {
+  // 授权参数必须可见：课程名解析失败（未加载 / 课程不在列表）回落 id 缩写。
+  const courseLabel = item.course_id
+    ? (courseNames.get(item.course_id) ?? shortId(item.course_id))
+    : "";
   const params = [
     item.title ? t("chat.batchPlan.paramTitle", { title: item.title }) : "",
-    item.course_id ? t("chat.batchPlan.paramCourse") : "",
+    courseLabel ? t("chat.batchPlan.paramCourse", { course: courseLabel }) : "",
   ].filter(Boolean);
   return (
     <li className="flex flex-wrap items-center gap-2">
@@ -250,7 +268,7 @@ function PlanItemRow({
       {item.depends_on && item.depends_on.length > 0 ? (
         <span className="text-label text-muted-foreground shrink-0">
           {t("chat.batchPlan.dependsOn", {
-            index: (item.depends_on[0] ?? 0) + 1,
+            indexes: item.depends_on.map((index) => String(index + 1)),
           })}
         </span>
       ) : null}

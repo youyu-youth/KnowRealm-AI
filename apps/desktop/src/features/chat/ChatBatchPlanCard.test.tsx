@@ -14,6 +14,7 @@ const {
   resumeRun,
   retryRunOperation,
   cancelRun,
+  listCourses,
 } = vi.hoisted(() => ({
   listProposals: vi.fn(),
   confirmProposal: vi.fn(),
@@ -22,6 +23,11 @@ const {
   resumeRun: vi.fn(),
   retryRunOperation: vi.fn(),
   cancelRun: vi.fn(),
+  listCourses: vi.fn(),
+}));
+
+vi.mock("@/features/courses/api/courses", () => ({
+  courseApi: { list: listCourses },
 }));
 
 vi.mock("@/features/library/api/library", async (importOriginal) => {
@@ -173,6 +179,7 @@ function runDetail(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   listProposals.mockResolvedValue([]);
+  listCourses.mockResolvedValue([{ id: "course-1", name: "高等数学" }]);
 });
 
 describe("ChatBatchPlanCard", () => {
@@ -189,12 +196,67 @@ describe("ChatBatchPlanCard", () => {
     expect(screen.getByText("条目二")).toBeInTheDocument();
     expect(screen.getByText("修改资料条目")).toBeInTheDocument();
     expect(screen.getByText("归档资料条目")).toBeInTheDocument();
+    // 授权参数可见：归类目标显示课程名，依赖显示计划内序号。
+    expect(screen.getByText("归类到课程：高等数学")).toBeInTheDocument();
     expect(screen.getByText("依赖第 1 项")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "确认执行本计划" }));
     await waitFor(() => {
       expect(confirmProposal).toHaveBeenCalledWith("plan-1");
     });
+  });
+
+  it("授权参数完整可见：多依赖全部列出、课程名查不到时回落 id 缩写", async () => {
+    const unknownCourseId = "99999999-aaaa-bbbb-cccc-dddddddddddd";
+    listProposals.mockResolvedValue([
+      planProposal({
+        payload: {
+          items: [
+            {
+              action: "update_library_item",
+              item_id: "item-1",
+              course_id: unknownCourseId,
+            },
+            { action: "archive_library_item", item_id: "item-2" },
+            {
+              action: "archive_library_item",
+              item_id: "item-3",
+              depends_on: [0, 1],
+            },
+          ],
+          plan_version: 1,
+          auth_mode: "REQUEST_APPROVAL",
+          instruction_text: "把这些条目归档",
+        },
+        snapshot: {
+          plan_version: 1,
+          items: [
+            {
+              action: "update_library_item",
+              item_id: "item-1",
+              state: { title: "条目一" },
+            },
+            {
+              action: "archive_library_item",
+              item_id: "item-2",
+              state: { title: "条目二" },
+            },
+            {
+              action: "archive_library_item",
+              item_id: "item-3",
+              state: { title: "条目三" },
+            },
+          ],
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatBatchPlanCard sessionId={SESSION_ID} />);
+
+    expect(
+      await screen.findByText(`归类到课程：#${unknownCourseId.slice(0, 8)}`),
+    ).toBeInTheDocument();
+    expect(screen.getByText("依赖第 1、2 项")).toBeInTheDocument();
+    expect(screen.getByText("共 3 项")).toBeInTheDocument();
   });
 
   it("计划修改后版本递增并提示需重新确认", async () => {

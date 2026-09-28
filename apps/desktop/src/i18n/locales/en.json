@@ -2022,9 +2022,9 @@
       "rejected": "Rejected; nothing in this batch was executed.",
       "failed": "The plan could not be confirmed.",
       "failedDetail": "The plan could not be confirmed ({{reason}}). Retry or reorganize.",
-      "dependsOn": "Depends on item {{index}}",
+      "dependsOn": "Depends on item(s) {{indexes, list(style: narrow)}}",
       "paramTitle": "Title: {{title}}",
-      "paramCourse": "Move to course"
+      "paramCourse": "Move to course: {{course}}"
     }
   },
   "settings": {
