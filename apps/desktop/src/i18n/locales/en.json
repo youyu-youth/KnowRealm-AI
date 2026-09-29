@@ -1632,6 +1632,12 @@
     "stop": "Stop",
     "streamingStatus": "Generating response",
     "emptyConversation": "Ask the AI your first question",
+    "planDraftJson": {
+      "streaming": "Preparing structured data…",
+      "summary": "The AI returned structured learning-plan draft data ({{count}} items, not active).",
+      "hint": "This reply produced no confirmation card; to create a plan, please ask again in chat.",
+      "expand": "View raw data"
+    },
     "interruptedDescription": "The previous answer was interrupted; no partial content was kept.",
     "retryAnswer": "Regenerate response",
     "recordDeleted": "Source Record deleted",
@@ -2022,6 +2028,7 @@
       },
       "planFields": {
         "minutesValue": "{{count}} min",
+        "reasonLabel": "Reason: ",
         "itemType": {
           "STUDY_RECORD": "Study material",
           "PRACTICE_QUIZ": "Practice quiz",
@@ -2037,7 +2044,8 @@
         "failedDetail": "Learning plan confirmation did not complete ({{reason}}); you can retry.",
         "accept": "Confirm learning plan",
         "reject": "Discard learning plan",
-        "hint": "Read-only draft preview; confirming saves the plan. To adjust, ask in chat to regenerate.",
+        "regenerate": "Regenerate draft",
+        "hint": "Read-only draft preview; confirming saves the plan. Not satisfied? Hit regenerate for a fresh draft.",
         "scheduleSummary": "{{count}} items · ~{{minutes}} min · scheduled {{from}} ~ {{to}}",
         "scheduleEmpty": "The draft has no plan items.",
         "unnamedPhase": "Untitled phase"

@@ -1620,6 +1620,12 @@
     "stop": "停止",
     "streamingStatus": "正在生成回答",
     "emptyConversation": "向 AI 提出第一个问题吧",
+    "planDraftJson": {
+      "streaming": "正在准备结构化数据…",
+      "summary": "AI 返回了学习计划草案的结构化数据（共 {{count}} 项，未生效）。",
+      "hint": "这条回复没有生成确认卡；如需生成学习计划，请在对话中重新发起请求。",
+      "expand": "查看原始数据"
+    },
     "interruptedDescription": "上一条提问的回答被中断，没有保留半截内容。",
     "retryAnswer": "重新生成回答",
     "recordDeleted": "原记录已删除",
@@ -2002,6 +2008,7 @@
       },
       "planFields": {
         "minutesValue": "{{count}} 分钟",
+        "reasonLabel": "理由：",
         "itemType": {
           "STUDY_RECORD": "学资料",
           "PRACTICE_QUIZ": "做习题",
@@ -2017,7 +2024,8 @@
         "failedDetail": "学习计划确认未完成（{{reason}}），可重试。",
         "accept": "确认学习计划",
         "reject": "放弃学习计划",
-        "hint": "草案为只读预览；确认后计划保存生效，想调整可在对话中说明重新生成。",
+        "regenerate": "重新生成草案",
+        "hint": "草案为只读预览；确认后计划保存生效，不满意可点「重新生成」重排一份。",
         "scheduleSummary": "共 {{count}} 项 · 约 {{minutes}} 分钟 · 排期 {{from}} ~ {{to}}",
         "scheduleEmpty": "草案没有计划项。",
         "unnamedPhase": "未命名阶段"

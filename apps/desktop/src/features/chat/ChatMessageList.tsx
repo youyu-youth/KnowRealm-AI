@@ -14,6 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { ChatMessage } from "@/features/chat/api/types";
 import { ChatMarkdown } from "@/features/chat/ChatMarkdown";
+import {
+  isJsonObjectPrefix,
+  matchPlanDraftJson,
+  type PlanDraftJsonMatch,
+} from "@/features/chat/planDraftJson";
 import { SaveKnowledgePointDialog } from "@/features/chat/SaveKnowledgePointDialog";
 import type { ChatToolActivity } from "@/features/chat/useChatStream";
 
@@ -103,6 +108,30 @@ function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
   );
 }
 
+/** 计划草案 JSON 折叠块（工单 02 真机验收兜底）：模型把草案参数粘到正文时，
+ * 不再裸渲染 JSON——摘要行 + 可展开原始数据；引导用户重新发起以获得确认卡。 */
+function PlanDraftJsonBlock({ match }: { match: PlanDraftJsonMatch }) {
+  const { t } = useTranslation();
+  return (
+    <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-3 py-2">
+      <p className="text-label text-ink">
+        {t("chat.planDraftJson.summary", { count: match.itemCount })}
+      </p>
+      <p className="text-label text-muted-foreground">
+        {t("chat.planDraftJson.hint")}
+      </p>
+      <details>
+        <summary className="text-label text-muted-foreground cursor-pointer">
+          {t("chat.planDraftJson.expand")}
+        </summary>
+        <pre className="text-label text-ink-muted mt-1.5 overflow-x-auto break-all whitespace-pre-wrap">
+          {match.raw}
+        </pre>
+      </details>
+    </div>
+  );
+}
+
 export function ChatMessageList({
   messages,
   streamingText,
@@ -155,10 +184,17 @@ export function ChatMessageList({
               </li>
             ) : (
               <li key={message.id} className="flex min-w-0 flex-col gap-3">
-                <ChatMarkdown
-                  content={message.content}
-                  citations={message.citations ?? []}
-                />
+                {(() => {
+                  const planDraft = matchPlanDraftJson(message.content);
+                  return planDraft !== null ? (
+                    <PlanDraftJsonBlock match={planDraft} />
+                  ) : (
+                    <ChatMarkdown
+                      content={message.content}
+                      citations={message.citations ?? []}
+                    />
+                  );
+                })()}
                 {/* 对话转知识点（对话转学习资产 V1）：messages 里的回答均已落库，可直接保存。 */}
                 <Button
                   variant="ghost"
@@ -189,11 +225,20 @@ export function ChatMessageList({
                 </ul>
               ) : null}
               {streamingText ? (
-                <ChatMarkdown
-                  content={streamingText}
-                  citations={[]}
-                  streaming
-                />
+                isJsonObjectPrefix(streamingText) ? (
+                  <p
+                    role="status"
+                    className="text-body text-muted-foreground animate-pulse"
+                  >
+                    {t("chat.planDraftJson.streaming")}
+                  </p>
+                ) : (
+                  <ChatMarkdown
+                    content={streamingText}
+                    citations={[]}
+                    streaming
+                  />
+                )
               ) : (
                 <p
                   role="status"
