@@ -1043,6 +1043,69 @@ async def test_standalone_retry_guards(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_concurrent_manual_retry_executes_business_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """交错的两个手动重试只执行一次业务（review P1）：预检（FAILED 态）与
+    执行分属两事务，双方都能通过预检——执行事务内条件 UPDATE 原子抢占，
+    后到者被拒并返回先行者的既有结果（业务恰好一次、无重复副作用）。"""
+    import asyncio
+
+    from app.modules.agent.runs import retry as retry_module
+
+    a_in_applier = asyncio.Event()
+    release_a = asyncio.Event()
+    calls = 0
+
+    async def slow_applier(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+        nonlocal calls
+        calls += 1
+        a_in_applier.set()
+        await release_a.wait()
+        from app.modules.agent.schemas import LibraryItemUpdateResult
+
+        return LibraryItemUpdateResult(item_id=item_id(1), before={}, after={})
+
+    monkeypatch.setattr(retry_module, "run_operation_applier", slow_applier)
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, COURSE_ARCHIVED, status="ARCHIVED")
+        await seed_item(session_factory, 1)
+        failed_receipt = await invoke_tool(
+            update_library_item,
+            session_factory,
+            {"item_id": item_id(1), "course_id": COURSE_ARCHIVED},
+        )
+        assert failed_receipt["ok"] is False
+        op_id = failed_receipt["operation_id"]
+        # 修复冲突（恢复课程 ACTIVE）使重试可成功。
+        await run_sql(
+            "UPDATE courses SET status = 'ACTIVE' WHERE id = :id",
+            {"id": COURSE_ARCHIVED},
+            session_factory,
+        )
+
+        async with session_factory() as session_a, session_factory() as session_b:
+            task_a = asyncio.create_task(retry_standalone_operation(session_a, op_id))
+            # A 已抢占并在业务执行中（未提交）；B 此刻通过预检（库内仍 FAILED），
+            # 其执行事务的抢占 UPDATE 在 WAL 写锁上等待 A 的提交态重估。
+            await a_in_applier.wait()
+            task_b = asyncio.create_task(retry_standalone_operation(session_b, op_id))
+            await asyncio.sleep(0.05)
+            release_a.set()
+            result_a = await task_a
+            result_b = await task_b
+
+        assert calls == 1  # 后到者被抢占拒绝，业务恰好执行一次
+        assert result_a["status"] == "SUCCEEDED"
+        assert result_b["status"] == "SUCCEEDED"
+        assert result_b["result"] == result_a["result"]  # B 返回 A 的既有结果
+        rows = await operation_rows(session_factory)
+        assert len(rows) == 1
+        assert rows[0]["status"] == "SUCCEEDED"
+        assert rows[0]["attempts"] == 2  # 首试＋唯一一次重试（原身份）
+
+
+@pytest.mark.anyio
 async def test_direct_failure_receipt_anchors_failed_operation(
     tmp_path: Path,
 ) -> None:

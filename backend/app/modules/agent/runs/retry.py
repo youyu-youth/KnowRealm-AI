@@ -8,12 +8,19 @@ runs/{id}/operations/{op}/retry 端点（重试会重开推进）。
 执行前快照重验（service.operation_snapshot_stale，与推进 worker 同口径）：
 目标已变 → FAILED＋OPERATION_SNAPSHOT_STALE（旧批准失效，需重新发起操作，
 不覆盖用户后续修改）。失败尝试经 append_attempt 留痕 attempts_json。
+
+并发抢占（工单 06 review P1 修复）：预检（404／run 守卫／FAILED 态）与
+执行分属两事务，交错的两个重试都能通过预检——执行事务内以条件 UPDATE
+原子抢占（confirm 先例：rowcount 判定）：仅当仍处 FAILED 才取得执行权
+（WAL 写锁串行化，输家的条件在赢家的提交态上重估），输家如实返回当前
+投影（已成功＝既有结果），业务恰好执行一次。
 """
 
 import json
 from typing import Any, cast
 from uuid import UUID
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
@@ -46,7 +53,9 @@ async def retry_standalone_operation(
     """单步（直执行）失败操作手动重试：沿用原身份同步重执行（attempts 递增）。
 
     返回重试后的 operation 投影（成功＝SUCCEEDED＋新 result；失败＝FAILED＋
-    稳定错误码，如实呈现重试结局）。run 内操作与非失败态拒绝（稳定错误码）。
+    稳定错误码，如实呈现重试结局）。run 内操作与非失败态拒绝（稳定错误码）；
+    并发交错的输家在执行事务内被原子抢占，返回先行者的既有投影（业务恰好
+    执行一次）。
     """
     operation_id = str(operation_id)
     async with session:
@@ -77,6 +86,20 @@ async def retry_standalone_operation(
         )
     try:
         async with session.begin():
+            # 原子抢占：仅当仍处 FAILED 才取得执行权——交错的并发重试后到者
+            # 在此被拒（rowcount=0），如实返回当前投影（已成功＝既有结果）。
+            claim = await session.execute(
+                update(AgentOperation)
+                .where(
+                    AgentOperation.id == operation_id,
+                    AgentOperation.status == OperationStatus.FAILED.value,
+                )
+                .values(updated_at=utcnow())
+            )
+            if claim.rowcount != 1:
+                current = await session.get(AgentOperation, operation_id)
+                assert current is not None
+                return operation_out(current)
             operation = await session.get(AgentOperation, operation_id)
             assert operation is not None
             if await operation_snapshot_stale(
