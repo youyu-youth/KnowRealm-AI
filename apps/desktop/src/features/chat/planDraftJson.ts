@@ -1,14 +1,17 @@
 /**
- * 计划草案 JSON 正文剥离（工单 02 真机验收修复，二轮）。
+ * 计划草案 JSON 正文剥离（工单 02 真机验收修复，三轮定稿）。
  *
- * 真机观察：模型（提示词禁令之后仍会）在构造 confirm_plan 的超长参数时，
- * 先把草案 JSON 完整输出到正文、再输出中文复述——前导 JSON + 中文复述的
- * 混合形态。本模块做确定性前导剥离：字符串感知的括号配平找到顶层对象
- * 边界，解析成功且形如草案（顶层非空 phases[].items）即剥掉前导 JSON，
- * 只保留剩余中文；剩余为空（正文整体即 JSON）时由折叠块兜底呈现。
+ * 真机三轮观察：模型（提示词禁令无效）在构造 confirm_plan 的超长参数时把
+ * 参数 JSON 混入正文流，**位置不固定**——JSON 独占正文 / JSON 在前中文在
+ * 后 / 中文在前 JSON 在后都出现过。因此本模块按**形状**而非**位置**锚定：
+ * 全文扫描所有平衡闭合的顶层 `{...}` 块（含 ```json 围栏），命中草案专属
+ * 形状（解析成功且顶层非空 phases[].items）即从渲染文本中移除，剩余中文
+ * 照常渲染；防误伤完全由形状保证（正常回答里的普通 JSON 顶层不会是
+ * phases 草案结构）。流式期间：已闭合命中段实时移除；未闭合的开放段从其
+ * 起点截断不透出（闭合后再判定，非草案形状则恢复显示）。
  */
 
-/** 计数顶层对象包含的计划项（phases[].items 长度合计）；非草案形状返回 null。 */
+/** 计数草案计划项（phases[].items 长度合计）；非草案形状返回 null。 */
 function countPlanItems(parsed: unknown): number | null {
   if (typeof parsed !== "object" || parsed === null) {
     return null;
@@ -31,15 +34,24 @@ function countPlanItems(parsed: unknown): number | null {
   return itemCount;
 }
 
+/** 候选 JSON 解析 + 草案形状校验；命中返回计划项数，否则 null。 */
+function parsePlanDraft(candidate: string): number | null {
+  try {
+    return countPlanItems(JSON.parse(candidate));
+  } catch {
+    return null;
+  }
+}
+
 /**
- * 字符串/转义感知地找顶层 JSON 对象的闭括号结束位置（含该 `}` 的下一字符
- * 索引）；未闭合（流式进行中）返回 null。文本必须以 `{` 开头。
+ * 从 `text[from]`（必须是 `{`）出发做字符串/转义感知的括号配平，返回闭括号
+ * 的下一字符索引；未闭合返回 null。
  */
-function findTopLevelObjectEnd(text: string): number | null {
+function matchObject(text: string, from: number): number | null {
   let depth = 0;
   let inString = false;
   let escaped = false;
-  for (let index = 0; index < text.length; index += 1) {
+  for (let index = from; index < text.length; index += 1) {
     const char = text[index];
     if (inString) {
       if (escaped) {
@@ -65,97 +77,176 @@ function findTopLevelObjectEnd(text: string): number | null {
   return null;
 }
 
-/** 解析候选 JSON 并校验草案形状；命中返回计划项数，否则 null。 */
-function parsePlanDraft(candidate: string): number | null {
-  try {
-    return countPlanItems(JSON.parse(candidate));
-  } catch {
-    return null;
+/** 顶层 JSON 块扫描结果：平衡块区间 + 首个未闭合开放块的起点。 */
+type BlockScan = {
+  blocks: { start: number; end: number }[];
+  openStart: number | null;
+};
+
+/** 扫描文本中所有顶层 `{...}` 平衡块（字符串感知；字符串内的花括号不参与配平）。 */
+function scanTopLevelBlocks(text: string): BlockScan {
+  const blocks: { start: number; end: number }[] = [];
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] === "{") {
+      const end = matchObject(text, index);
+      if (end === null) {
+        return { blocks, openStart: index };
+      }
+      blocks.push({ start: index, end });
+      index = end;
+    } else {
+      index += 1;
+    }
   }
+  return { blocks, openStart: null };
 }
 
-export type PlanDraftSplit = {
-  /** 前导草案 JSON 原文（剩余为空时的折叠块展示用）。 */
-  json: string;
-  /** 计划项总数（phases[].items 长度合计）。 */
-  itemCount: number;
-  /** JSON 之后的剩余文本（trim；正文整体即 JSON 时为空串）。 */
+/** 围栏块区间（含 ``` 标记）：已闭合围栏整体区间 + 未闭合围栏起点。 */
+type FenceScan = BlockScan;
+
+/** 扫描 ``` 围栏块（```json 或裸 ```，含标记整段）；未闭合围栏记 openStart。 */
+function scanFences(text: string): FenceScan {
+  const blocks: { start: number; end: number }[] = [];
+  let index = text.indexOf("```");
+  while (index !== -1) {
+    const closing = text.indexOf("```", index + 3);
+    if (closing === -1) {
+      return { blocks, openStart: index };
+    }
+    blocks.push({ start: index, end: closing + 3 });
+    index = text.indexOf("```", closing + 3);
+  }
+  return { blocks, openStart: null };
+}
+
+/** 围栏内容 JSON（剥 ```json 语言标记行）。 */
+function fenceCandidate(
+  text: string,
+  block: { start: number; end: number },
+): string {
+  return text
+    .slice(block.start + 3, block.end - 3)
+    .replace(/^json[^\n]*\n/, "")
+    .trim();
+}
+
+/** 命中的移除段：区间 + 草案 JSON 原文与项数。 */
+type Removal = { start: number; end: number; json: string; itemCount: number };
+
+/**
+ * 收集全部应移除的草案段（位置无关）：围栏内 JSON 命中则整段围栏移除；
+ * 裸顶层块命中则移除该块。openFrom 非 null 时给出首个开放段（围栏或裸块）
+ * 起点，供流式截断。
+ */
+function collectRemovals(text: string): {
+  removals: Removal[];
+  openFrom: number | null;
+} {
+  const removals: Removal[] = [];
+  const openStarts: number[] = [];
+  const fences = scanFences(text);
+  if (fences.openStart !== null) {
+    openStarts.push(fences.openStart);
+  }
+  for (const fence of fences.blocks) {
+    const candidate = fenceCandidate(text, fence);
+    const itemCount = parsePlanDraft(candidate);
+    if (itemCount !== null) {
+      removals.push({ ...fence, json: candidate, itemCount });
+    }
+  }
+  // 裸块只在围栏外扫描：围栏区间内的块不重复判定（围栏不命中时其内容原样保留）。
+  const scan = scanTopLevelBlocks(text);
+  if (scan.openStart !== null) {
+    openStarts.push(scan.openStart);
+  }
+  for (const block of scan.blocks) {
+    const insideFence = fences.blocks.some(
+      (fence) => block.start >= fence.start && block.end <= fence.end,
+    );
+    if (insideFence) {
+      continue;
+    }
+    const candidate = text.slice(block.start, block.end);
+    const itemCount = parsePlanDraft(candidate);
+    if (itemCount !== null) {
+      removals.push({ ...block, json: candidate, itemCount });
+    }
+  }
+  removals.sort((a, b) => a.start - b.start);
+  const openFrom = openStarts.length > 0 ? Math.min(...openStarts) : null;
+  return { removals, openFrom };
+}
+
+/** 按移除段/截断点拼接剩余文本（移除段外扩吞掉紧邻空白，避免残留空行）。 */
+function remainder(
+  text: string,
+  removals: Removal[],
+  truncateFrom: number | null,
+): string {
+  const cuts: { start: number; end: number }[] = removals.map((removal) => ({
+    start: removal.start,
+    end: removal.end,
+  }));
+  if (truncateFrom !== null) {
+    cuts.push({ start: truncateFrom, end: text.length });
+  }
+  let result = "";
+  let cursor = 0;
+  for (const cut of cuts) {
+    result += text.slice(cursor, cut.start);
+    cursor = Math.max(cursor, cut.end);
+  }
+  result += text.slice(cursor);
+  return result
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export type PlanDraftStripped = {
+  /** 移除全部草案段后的剩余文本（trim；正文整体即草案时空串）。 */
   rest: string;
+  /** 命中的草案段（正常至多一个；折叠块展示与摘要用）。 */
+  blocks: { json: string; itemCount: number }[];
 };
 
 /**
- * 前导草案 JSON 剥离：正文以草案 JSON 开头（裸 `{` 或 ```json 围栏，其后可
- * 跟任意中文）即命中。整体是普通 JSON / JSON 出现在正文中后段 / 非草案
- * 形状（无 phases）均不命中，交回正常渲染。
+ * 位置无关的草案剥离：移除正文中所有草案形状的 JSON 段（围栏或裸块，任意
+ * 位置）；无命中返回 null（原文照常渲染，防误伤由形状保证）。
  */
-export function splitPlanDraftJson(text: string): PlanDraftSplit | null {
-  const trimmed = text.trim();
-  let jsonCandidate: string | null = null;
-  let rest = "";
-  if (trimmed.startsWith("```")) {
-    const closing = trimmed.indexOf("```", 3);
-    if (closing === -1) {
-      return null;
-    }
-    jsonCandidate = trimmed
-      .slice(3, closing)
-      .replace(/^json\s*/, "")
-      .trim();
-    rest = trimmed.slice(closing + 3).trim();
-  } else if (trimmed.startsWith("{")) {
-    const end = findTopLevelObjectEnd(trimmed);
-    if (end === null) {
-      return null;
-    }
-    jsonCandidate = trimmed.slice(0, end);
-    rest = trimmed.slice(end).trim();
-  } else {
+export function stripPlanDraftBlocks(text: string): PlanDraftStripped | null {
+  const { removals, openFrom } = collectRemovals(text);
+  if (removals.length === 0) {
     return null;
   }
-  const itemCount = parsePlanDraft(jsonCandidate);
-  if (itemCount === null) {
-    return null;
-  }
-  return { json: jsonCandidate, itemCount, rest };
-}
-
-/** 兼容整体形态：正文整体（或整体围栏包裹）是草案 JSON 时的折叠块输入。 */
-export function matchPlanDraftJson(text: string): {
-  raw: string;
-  itemCount: number;
-} | null {
-  const split = splitPlanDraftJson(text);
-  if (split === null || split.rest !== "") {
-    return null;
-  }
-  return { raw: split.json, itemCount: split.itemCount };
+  return {
+    rest: remainder(text, removals, openFrom),
+    blocks: removals.map(({ json, itemCount }) => ({ json, itemCount })),
+  };
 }
 
 export type StreamingTextView =
-  /** 前导 JSON 仍在流式产出（未闭合/围栏未闭合/刚闭合等待后续文本）。 */
+  /** 前部文本被全部移除/截断（JSON 产出中），显示占位。 */
   | { kind: "pending" }
-  /** 可渲染的正文文本（剥离后的剩余中文，或判定未命中的原文回放）。 */
+  /** 可渲染的正文文本（移除草案段与开放段截断之后）。 */
   | { kind: "text"; text: string };
 
 /**
- * 流式视图：前导 JSON 流式期间收敛为占位态，闭合后把剩余文本交给正常
- * 流式渲染（中文打字可见）；JSON 刚闭合尚无剩余文本时保持占位（流结束后
- * 由静态分支的折叠块兜底，避免闪现）。
+ * 流式视图（位置无关）：已闭合命中段实时移除；未闭合的开放段（围栏或裸
+ * `{`）从其起点截断——JSON 打字期间不透出；闭合且命中则保持移除，闭合但
+ * 非草案形状（罕见）在下一次计算中自然恢复显示。
  */
 export function planDraftStreamingView(text: string): StreamingTextView {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("```") && !trimmed.slice(3).includes("```")) {
-    return { kind: "pending" };
-  }
-  if (trimmed.startsWith("{") && findTopLevelObjectEnd(trimmed) === null) {
-    return { kind: "pending" };
-  }
-  const split = splitPlanDraftJson(trimmed);
-  if (split === null) {
+  const { removals, openFrom } = collectRemovals(text);
+  if (removals.length === 0 && openFrom === null) {
+    // 无命中无开放段：原文照常渲染（不经过空白压缩，保持正常回答原样）。
     return { kind: "text", text };
   }
-  if (split.rest === "") {
-    return { kind: "pending" };
+  const visible = remainder(text, removals, openFrom);
+  if (visible !== "") {
+    return { kind: "text", text: visible };
   }
-  return { kind: "text", text: split.rest };
+  return { kind: "pending" };
 }

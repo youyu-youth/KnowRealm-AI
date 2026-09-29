@@ -82,6 +82,36 @@ describe("ChatMessageList — 计划草案 JSON 正文兜底（工单 02 真机�
     expect(screen.queryByText("查看原始数据")).not.toBeInTheDocument();
   });
 
+  it("中文在前 + JSON 在后（真机三轮形态）：剥掉 JSON 只渲染中文", () => {
+    renderWithQuery(
+      <ChatMessageList
+        {...BASE}
+        messages={[
+          assistantMessage(`我先确认目标，再重新生成草案。${DRAFT_JSON}`),
+        ]}
+        streamingText={null}
+      />,
+    );
+    expect(
+      screen.getByText("我先确认目标，再重新生成草案。"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\"phases\"/)).not.toBeInTheDocument();
+    expect(screen.queryByText("查看原始数据")).not.toBeInTheDocument();
+  });
+
+  it("流式中段出现 JSON：前部中文照常渲染、JSON 起点后截断", () => {
+    renderWithQuery(
+      <ChatMessageList
+        {...BASE}
+        messages={[]}
+        streamingText={'我先确认目标。{"phases":[{"title":"第一'}
+        isStreaming
+      />,
+    );
+    expect(screen.getByText("我先确认目标。")).toBeInTheDocument();
+    expect(screen.queryByText(/phases/)).not.toBeInTheDocument();
+  });
+
   it("正常中文正文照常渲染（不走折叠块）", () => {
     renderWithQuery(
       <ChatMessageList

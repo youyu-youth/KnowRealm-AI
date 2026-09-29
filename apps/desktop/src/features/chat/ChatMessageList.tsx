@@ -16,7 +16,7 @@ import type { ChatMessage } from "@/features/chat/api/types";
 import { ChatMarkdown } from "@/features/chat/ChatMarkdown";
 import {
   planDraftStreamingView,
-  splitPlanDraftJson,
+  stripPlanDraftBlocks,
 } from "@/features/chat/planDraftJson";
 import { SaveKnowledgePointDialog } from "@/features/chat/SaveKnowledgePointDialog";
 import type { ChatToolActivity } from "@/features/chat/useChatStream";
@@ -190,21 +190,24 @@ export function ChatMessageList({
             ) : (
               <li key={message.id} className="flex min-w-0 flex-col gap-3">
                 {(() => {
-                  const split = splitPlanDraftJson(message.content);
-                  if (split !== null && split.rest !== "") {
-                    // 前导草案 JSON + 中文复述的混合形态：剥掉 JSON 只渲染中文。
+                  const stripped = stripPlanDraftBlocks(message.content);
+                  if (stripped !== null && stripped.rest !== "") {
+                    // 草案 JSON（任意位置）+ 中文复述：移除 JSON 段只渲染中文。
                     return (
                       <ChatMarkdown
-                        content={split.rest}
+                        content={stripped.rest}
                         citations={message.citations ?? []}
                       />
                     );
                   }
-                  if (split !== null) {
+                  if (stripped !== null) {
                     return (
                       <PlanDraftJsonBlock
-                        raw={split.json}
-                        itemCount={split.itemCount}
+                        raw={stripped.blocks[0].json}
+                        itemCount={stripped.blocks.reduce(
+                          (total, block) => total + block.itemCount,
+                          0,
+                        )}
                       />
                     );
                   }
