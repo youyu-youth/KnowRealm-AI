@@ -1777,16 +1777,20 @@ def test_operations_common_flow_imports_no_domain_modules() -> None:
             parts = parts[2:] if parts[1:2] == ["modules"] else []
         return bool(parts) and parts[0] in domain_names
 
+    runs_package = "app.modules.agent.runs"
     modules = [
         registry,
         importlib.import_module("app.modules.agent.operations"),
         importlib.import_module("app.modules.library.proposals"),
-        importlib.import_module("app.modules.agent.runs.models"),
-        importlib.import_module("app.modules.agent.runs.schemas"),
-        importlib.import_module("app.modules.agent.runs.service"),
-        importlib.import_module("app.modules.agent.runs.routes"),
-        importlib.import_module("app.modules.agent.runs.plans"),
-        importlib.import_module("app.modules.agent.runs.worker"),
+        importlib.import_module(f"{runs_package}.models"),
+        importlib.import_module(f"{runs_package}.schemas"),
+        importlib.import_module(f"{runs_package}.service"),
+        importlib.import_module(f"{runs_package}.routes"),
+        importlib.import_module(f"{runs_package}.plans"),
+        importlib.import_module(f"{runs_package}.worker"),
+        # 工单 06 新增的撤销与重试子模块同受防线覆盖（工单 07 收口补入清单）。
+        importlib.import_module(f"{runs_package}.undo"),
+        importlib.import_module(f"{runs_package}.retry"),
     ]
     for module in modules:
         source = Path(cast(str, module.__file__)).read_text(encoding="utf-8")

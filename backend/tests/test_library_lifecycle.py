@@ -86,6 +86,13 @@ async def run_sql(
         await session.execute(text(sql), params)
 
 
+async def operation_count(session_factory: async_sessionmaker[AsyncSession]) -> int:
+    """新纪元操作事实计数：旧类型提案（ORGANIZE 等）不经注册表、恒为零。"""
+    sql = "SELECT count(*) FROM agent_operations"
+    async with session_factory() as session:
+        return int(cast(int, (await session.execute(text(sql))).scalar_one()))
+
+
 async def seed_course(session_factory: async_sessionmaker[AsyncSession], course_id: str) -> None:
     await run_sql(
         "INSERT INTO courses (id, name, learning_context, depth, status, created_at, "
@@ -703,8 +710,7 @@ async def test_organize_propose_freezes_snapshot_and_stale_recheck(tmp_path: Pat
 
         # 确认前用户手动改名：确认失效，手动值不被覆盖
         await run_sql(
-            "UPDATE library_items SET title = :title, updated_at = :later "
-            "WHERE id = :id",
+            "UPDATE library_items SET title = :title, updated_at = :later WHERE id = :id",
             {
                 "title": "页面手改",
                 "later": "2026-09-22T08:00:00.000000Z",
@@ -772,6 +778,53 @@ async def test_organize_legacy_proposal_without_snapshot_still_applies(
             "before": {"title": "存量条目", "course_id": None},
             "after": {"title": "新名", "course_id": None},
         }
+
+
+@pytest.mark.anyio
+async def test_organize_stays_on_confirmation_path_under_auto_mode(
+    tmp_path: Path,
+) -> None:
+    """旧类型提案不进自动执行（工单 07 兼容回归）：ORGANIZE 不经操作注册表，
+    全局自动档生效下提案仍落 PENDING 等确认、切档不触碰既有待决行，确认沿用
+    现行路径成功且零 operation 行（不在直执行通道）。"""
+    from app.modules.settings.config import set_agent_default_auth_mode
+
+    async with bare_db(tmp_path) as session_factory:
+        item_id = "d0000000-0000-4000-8000-000000000721"
+        await seed_item(session_factory, item_id, course_id=None, title="自动档条目")
+
+        async def fake_generate(prompt: str) -> OrganizeSuggestionBatch:
+            return OrganizeSuggestionBatch(
+                suggestions=[OrganizeSuggestion(item_id=item_id, title="整理后标题")]
+            )
+
+        # 默认档下产生待确认提案，随后用户把全局默认档切到自动档。
+        proposed = await OrganizeService.propose(session_factory, fake_generate)
+        assert len(proposed.created) == 1
+        first = proposed.created[0]
+        set_agent_default_auth_mode(tmp_path, "AUTO_APPROVE")
+
+        # 切档不自动执行既有待决行（升档只影响后续新提交）。
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text("SELECT status FROM agent_proposals WHERE id=:id"),
+                    {"id": first.id},
+                )
+            ).one()
+        assert row[0] == "PENDING"
+        assert await operation_count(session_factory) == 0, (
+            "ORGANIZE 不经注册表，任何档位不产生 operation 事实"
+        )
+
+        # 确认沿用现行路径：APPLIED、before/after 投影、零 operation 行。
+        async with session_factory() as session:
+            confirmed = await ProposalService.confirm(session, first.id)
+        assert confirmed.status.value == "APPLIED"
+        assert confirmed.result is not None
+        assert confirmed.result["before"]["title"] == "自动档条目"
+        assert confirmed.result["after"]["title"] == "整理后标题"
+        assert await operation_count(session_factory) == 0
 
 
 @pytest.mark.anyio

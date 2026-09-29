@@ -907,6 +907,60 @@ async def test_recovery_requeues_running_run_without_active_trigger(tmp_path: Pa
 
 
 @pytest.mark.anyio
+async def test_crash_mid_run_restart_reconciles_and_resumes_without_redo(
+    tmp_path: Path,
+) -> None:
+    """执行中崩溃后重启对账（工单 07 验收）：operation 行＝事实锚点——崩溃瞬间
+    已提交行如实反映已执行 / 未执行分布与业务事实；重启恢复只续未完成步骤，
+    已成功项不重做（attempts 恒 1、无新行）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_items(session_factory, 3)
+        direct = await invoke_plan(
+            session_factory,
+            [archive_entry(1), archive_entry(2), archive_entry(3)],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+
+        # 执行中崩溃：第一步已提交、后两步未执行时进程消失
+        # （模拟：单步推进成功后触发 job 随进程中断翻 FAILED）。
+        assert await advance_step(session_factory, run_id) is True
+        await run_sql(
+            "UPDATE processing_jobs SET status = 'FAILED', finished_at = :later"
+            " WHERE job_type = 'AGENT_RUN'",
+            {"later": LATER},
+            session_factory,
+        )
+
+        # 重启对账：凭 operation 行查明每个动作是否已执行（行在＝已执行、
+        # 行未落定＝未发生，业务写与 operation 同事务）。
+        assert await statuses(session_factory, run_id) == [
+            "SUCCEEDED",
+            "PLANNED",
+            "PLANNED",
+        ]
+        assert await item_row(session_factory, 1) == ("条目1", None, "ARCHIVED")
+        assert await item_row(session_factory, 2) == ("条目2", None, "ACTIVE")
+        assert await item_row(session_factory, 3) == ("条目3", None, "ACTIVE")
+
+        # 重启恢复：RUNNING 且无活动触发 job 的 Run 重投触发，续跑只补未完成。
+        spec = agent_run_spec(session_factory, RecordInvalidationNotifier())
+        await spec.recover_interrupted()
+        assert await advance(session_factory, run_id) == "COMPLETED"
+        steps = await step_rows(session_factory, run_id)
+        assert [status for _action, status, _c, _a, _r in steps] == [
+            "SUCCEEDED",
+            "SUCCEEDED",
+            "SUCCEEDED",
+        ]
+        # 已成功项不重做：重做会递增 attempts 或产生新行，此处三行三次尝试各 1。
+        assert [attempts for _action, _s, _c, attempts, _r in steps] == [1, 1, 1]
+        assert await item_row(session_factory, 2) == ("条目2", None, "ARCHIVED")
+        assert await item_row(session_factory, 3) == ("条目3", None, "ARCHIVED")
+
+
+@pytest.mark.anyio
 async def test_claim_guard_only_accepts_running_runs(tmp_path: Path) -> None:
     """领取守卫：等待 / 终态 Run 的残留触发被作废（推进只认 RUNNING）；同一 Run
     至多一个活动触发 job 由部分唯一索引在存储层保证。"""

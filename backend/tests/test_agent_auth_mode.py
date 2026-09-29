@@ -359,14 +359,15 @@ async def test_downgrade_rechecks_authorization_next_turn(tmp_path: Path) -> Non
 
 
 @pytest.mark.anyio
-async def test_memory_proposal_unchanged_under_auto_mode(tmp_path: Path) -> None:
-    """长期 Memory 写入在任何档位走原确认规则（spec 用户故事 9）：AUTO_APPROVE
-    下 propose_memory 仍落 PENDING 记忆提案，不经直执行。"""
+@pytest.mark.parametrize("mode", [AuthMode.AUTO_APPROVE, AuthMode.FULL_ACCESS])
+async def test_memory_proposal_unchanged_under_auto_mode(tmp_path: Path, mode: AuthMode) -> None:
+    """长期 Memory 写入在任何档位走原确认规则（spec 用户故事 9）：两自动档下
+    propose_memory 仍落 PENDING 记忆提案，不经直执行（工单 07 补 AUTO 档钉子）。"""
     async with bare_db(tmp_path) as session_factory:
         runtime = AgentRuntimeContext(
             session_factory=session_factory,
             session_id="sess-memory",
-            auth_mode=AuthMode.FULL_ACCESS,
+            auth_mode=mode,
         )
         token = bind_agent_runtime_context(runtime)
         try:

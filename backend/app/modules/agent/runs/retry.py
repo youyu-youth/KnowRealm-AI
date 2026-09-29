@@ -21,6 +21,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from sqlalchemy import update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
@@ -96,7 +97,7 @@ async def retry_standalone_operation(
                 )
                 .values(updated_at=utcnow())
             )
-            if claim.rowcount != 1:
+            if not isinstance(claim, CursorResult) or claim.rowcount != 1:
                 current = await session.get(AgentOperation, operation_id)
                 assert current is not None
                 return operation_out(current)

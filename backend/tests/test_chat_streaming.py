@@ -3172,3 +3172,82 @@ async def test_interrupted_stream_keeps_pending_operation_proposal(
                 await connection.execute("SELECT count(*) FROM courses")
             ).fetchone()
         assert final_courses is not None and final_courses[0] == 1
+
+
+@pytest.mark.anyio
+async def test_interrupted_stream_keeps_direct_execution_recoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """工单 07：SSE 断开不改变已提交的直执行事实——operation 行与业务写同事务，
+    断流后经持久化查询（回执卡恢复链数据源）恢复一致；直执行恰一次（无第二条
+    行、零提案）。对照上例（提案版中断）：提案保留待决，本例操作已发生且可查。"""
+    from app.modules.agent.runs.schemas import AuthMode
+
+    replies: list[StubReply] = [
+        ToolCallReply(
+            "create_course",
+            {"name": "直执行断流课", "learning_context": "INTEREST", "depth": "BEGINNER"},
+        ),
+        ["课程已创建。"],
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=replies) as (
+        app,
+        client,
+        _captured,
+    ):
+        created = await client.post("/api/chat-sessions", json={"scope": "FREE"})
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+        accepted = await ChatMessageService.accept(
+            session_factory=app.state.session_factory,
+            data_dir=app.state.data_dir,
+            registry=app.state.chat_stream_registry,
+            session_id=session_id,
+            content="帮我创建一个课程",
+            auth_mode=AuthMode.AUTO_APPROVE,
+        )
+        stream = ChatMessageService.stream_events(
+            session_factory=app.state.session_factory,
+            checkpointer=app.state.chat_checkpointer,
+            registry=app.state.chat_stream_registry,
+            accepted=accepted,
+        )
+        # 消费到工具结果事件（直执行已完成、operation 与课程同事务提交）后
+        # 模拟客户端断开/超时（生成器边界验证，同上例中断先例）。
+        seen: list[str] = []
+        async for event in stream:
+            seen.append(str(event.event))
+            if event.event == "tool_result":
+                break
+        assert seen == ["status", "tool_result"]
+        await stream.aclose()
+
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            operation_rows = await (
+                await connection.execute(
+                    "SELECT action, status, proposal_id, run_id FROM agent_operations"
+                )
+            ).fetchall()
+            counts_row = await (
+                await connection.execute(
+                    "SELECT (SELECT count(*) FROM courses), (SELECT count(*) FROM agent_proposals)"
+                )
+            ).fetchone()
+        assert counts_row is not None
+        # 直执行恰一次：一门课程、一条 SUCCEEDED 单步行、零提案。
+        assert tuple(counts_row) == (1, 0)
+        assert [tuple(row) for row in operation_rows] == [
+            ("create_course", "SUCCEEDED", None, None)
+        ]
+        rows = await message_rows(tmp_path, session_id)
+        assert all(role != "ASSISTANT" for role, _content in rows)
+
+        # 断线后经持久化查询恢复一致（不依赖 SSE 仍在连接）：会话过滤命中该行，
+        # 授权依据携带档位——回执卡恢复链数据源口径。
+        recovered = await client.get("/api/agent/operations", params={"session_id": session_id})
+        assert recovered.status_code == 200
+        items = recovered.json()
+        assert len(items) == 1
+        assert items[0]["action"] == "create_course"
+        assert items[0]["status"] == "SUCCEEDED"
+        assert items[0]["authorization"]["auth_mode"] == "AUTO_APPROVE"

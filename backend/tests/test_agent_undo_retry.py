@@ -420,9 +420,12 @@ async def test_undo_move_record_to_inbox_guards_running_jobs(tmp_path: Path) -> 
             with pytest.raises(CodedHTTPException) as exc:
                 await UndoService.undo_operation(session, receipt["executed"]["operation_id"])
         assert exc.value.code == "RECORD_MOVE_JOB_IN_PROGRESS"
-        assert await scalar(
-            session_factory, "SELECT course_id FROM records WHERE id = :id", id=RECORD_ID
-        ) == COURSE_ID
+        assert (
+            await scalar(
+                session_factory, "SELECT course_id FROM records WHERE id = :id", id=RECORD_ID
+            )
+            == COURSE_ID
+        )
 
         # 任务终态后撤销成功：恢复为收件箱（course_id 空）。
         await run_sql(
@@ -908,6 +911,7 @@ async def test_direct_retry_rejects_target_drift(
     spec = get_operation("update_library_item")
     assert spec is not None
     original_capture = spec.capture_state
+    assert original_capture is not None
     capture_calls = 0
 
     async def drifting_capture(session: AsyncSession, payload: Any) -> Any:
@@ -1274,7 +1278,9 @@ async def test_direct_failure_receipt_anchors_failed_operation(
     手动重试入口据此真实可达（此前锚点只覆盖成功路径，按钮为死代码）。"""
     from langchain_core.messages import ToolMessage
 
-    from app.modules.agent.graph import _operation_execution_event
+    from app.modules.agent.graph import (
+        _operation_execution_event,  # pyright: ignore[reportPrivateUsage]
+    )
 
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory, COURSE_ARCHIVED, status="ARCHIVED")
