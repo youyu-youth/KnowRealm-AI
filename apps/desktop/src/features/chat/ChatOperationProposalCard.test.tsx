@@ -75,6 +75,7 @@ function proposalFixture(
     result: Record<string, string> | null;
     proposal_type: string;
     payload: Record<string, unknown>;
+    snapshot: Record<string, unknown> | null;
   }> = {},
 ) {
   return {
@@ -85,6 +86,7 @@ function proposalFixture(
     payload: SCHOOL_PAYLOAD,
     result: null,
     error_code: null,
+    snapshot: null,
     ...overrides,
   };
 }
@@ -789,5 +791,130 @@ describe("ChatOperationProposalCard — 删除与跨课迁移（工单 04）", (
     expect(
       screen.queryByRole("button", { name: "撤销" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("ChatOperationProposalCard — 学习目标（第三阶段工单 01）", () => {
+  it("OP_GOAL_CREATE 预览：目标课程（快照名）+ 类型/标题/期限/投入与单 ACTIVE 提示", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-g1",
+        proposal_type: "OP_GOAL_CREATE",
+        payload: {
+          course_id: "course-1",
+          goal_type: "SKILL",
+          title: "四周内学会 Agent 工程",
+          target_date: "2026-10-27",
+          daily_minutes: 60,
+          target_score: null,
+        },
+        snapshot: { updated_at: "2026-09-29T00:00:00Z", name: "Agent 工程" },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("Agent 工程")).toBeVisible();
+    expect(screen.getByText("技能掌握")).toBeVisible();
+    expect(screen.getByText("四周内学会 Agent 工程")).toBeVisible();
+    expect(screen.getByText("2026-10-27")).toBeVisible();
+    expect(screen.getByText("每天 60 分钟")).toBeVisible();
+    expect(
+      screen.getByText("确认后目标生效；同一课程同时只有一个进行中目标。"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认创建目标" })).toBeEnabled();
+  });
+
+  it("OP_GOAL_CREATE 确认转回执：课程入口（course_id 在结果投影里）", async () => {
+    confirmProposal.mockResolvedValue({
+      ...proposalFixture({
+        id: "p-g1",
+        proposal_type: "OP_GOAL_CREATE",
+        payload: { course_id: "course-1", goal_type: "SKILL", title: "目标" },
+      }),
+      status: "APPLIED",
+      result: { goal_id: "goal-1", course_id: "course-1" },
+    });
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-g1",
+        proposal_type: "OP_GOAL_CREATE",
+        payload: { course_id: "course-1", goal_type: "SKILL", title: "目标" },
+        snapshot: { updated_at: "2026-09-29T00:00:00Z", name: "Agent 工程" },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认创建目标" }),
+    );
+    expect(await screen.findByText("学习目标已创建。")).toBeVisible();
+    expect(screen.getByRole("link", { name: "打开课程" })).toBeVisible();
+  });
+
+  it("OP_GOAL_UPDATE 预览：目标标题 + 期限/投入 before/after + 状态流转终态提示", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-g2",
+        proposal_type: "OP_GOAL_UPDATE",
+        payload: {
+          goal_id: "goal-1",
+          title: null,
+          target_date: "2026-11-30",
+          daily_minutes: 90,
+          target_score: null,
+          status: null,
+        },
+        snapshot: {
+          updated_at: "2026-09-29T00:00:00Z",
+          title: "四周内学会 Agent 工程",
+          goal_type: "SKILL",
+          status: "ACTIVE",
+          target_date: "2026-10-27",
+          daily_minutes: 60,
+          target_score: null,
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("四周内学会 Agent 工程")).toBeVisible();
+    // before 旧值删除线 + after 新值。
+    expect(screen.getByText("2026-11-30")).toBeVisible();
+    const oldDate = screen.getByText("2026-10-27");
+    expect(oldDate).toHaveClass("line-through");
+    const oldMinutes = screen.getByText("每天 60 分钟");
+    expect(oldMinutes).toHaveClass("line-through");
+    expect(screen.getByText("每天 90 分钟")).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认更新目标" })).toBeEnabled();
+  });
+
+  it("OP_GOAL_UPDATE 状态流转预览：完成行 + 终态提示", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-g3",
+        proposal_type: "OP_GOAL_UPDATE",
+        payload: {
+          goal_id: "goal-1",
+          title: null,
+          target_date: null,
+          daily_minutes: null,
+          target_score: null,
+          status: "COMPLETED",
+        },
+        snapshot: {
+          updated_at: "2026-09-29T00:00:00Z",
+          title: "四周内学会 Agent 工程",
+          goal_type: "SKILL",
+          status: "ACTIVE",
+          target_date: null,
+          daily_minutes: 60,
+          target_score: null,
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("四周内学会 Agent 工程")).toBeVisible();
+    expect(screen.getByText("状态变更")).toBeVisible();
+    expect(screen.getByText("标记完成")).toBeVisible();
+    expect(
+      screen.getByText("完成与归档是终态：确认后目标不再接受修改。"),
+    ).toBeVisible();
   });
 });

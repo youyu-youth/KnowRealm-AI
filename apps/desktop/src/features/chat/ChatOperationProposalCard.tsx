@@ -787,6 +787,162 @@ function SettledRecordMoveRow({ status, result, t }: SettledRowProps) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// 学习目标卡（通用 Agent 第三阶段工单 01）：goalFields 块承载共用字段标签
+// 与目标类型枚举翻译，创建 / 更新两卡同源（先例：modify.targetCourse）。
+// ---------------------------------------------------------------------------
+
+/** 目标字段键集 = OP_GOAL_CREATE / OP_GOAL_UPDATE 共用的展示字段。 */
+const GOAL_FIELD_LABEL_KEYS: Record<string, string> = {
+  title: "chat.operationProposal.goalFields.title",
+  target_date: "chat.operationProposal.goalFields.targetDate",
+  daily_minutes: "chat.operationProposal.goalFields.dailyMinutes",
+  target_score: "chat.operationProposal.goalFields.targetScore",
+};
+
+function goalFieldDisplay(
+  key: string,
+  value: unknown,
+  t: TFunction,
+): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (key === "daily_minutes") {
+    return t("chat.operationProposal.goalFields.dailyMinutesValue", {
+      count: Number(value),
+    });
+  }
+  return excerpt(String(value));
+}
+
+/** OP_GOAL_CREATE 确认卡预览：目标课程（快照名）+ 类型 / 标题 / 期限 / 投入 / 分数。 */
+function GoalCreatePreviewFields({ payload, snapshot, t }: PreviewFieldsProps) {
+  const goalType = fieldString(payload, "goal_type");
+  const rows: { label: string; value: string }[] = [
+    {
+      label: t("chat.operationProposal.goalFields.type"),
+      value: goalType
+        ? t(`chat.operationProposal.goalFields.goalType.${goalType}`)
+        : "",
+    },
+    {
+      label: t("chat.operationProposal.goalFields.title"),
+      value: excerpt(fieldString(payload, "title") ?? "", 60) || "",
+    },
+  ];
+  for (const key of ["target_date", "daily_minutes", "target_score"] as const) {
+    const display = goalFieldDisplay(key, payload[key], t);
+    if (display !== null) {
+      rows.push({ label: t(GOAL_FIELD_LABEL_KEYS[key]), value: display });
+    }
+  }
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.goalFields.targetCourse")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {fieldString(snapshot, "name") ?? fieldString(payload, "course_id")}
+        </dd>
+      </div>
+      {rows.map((row) => (
+        <div key={row.label} className="flex gap-2">
+          <dt className="text-label text-muted-foreground shrink-0">
+            {row.label}
+          </dt>
+          <dd className="text-label text-ink min-w-0 break-words">
+            {row.value}
+          </dd>
+        </div>
+      ))}
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.goalCreate.hint")}
+      </p>
+    </>
+  );
+}
+
+/** OP_GOAL_UPDATE 确认卡预览：目标标题（快照）+ 修改字段 before/after + 状态流转行。 */
+function GoalUpdatePreviewFields({ payload, snapshot, t }: PreviewFieldsProps) {
+  const entries: { label: string; before: string | null; after: string }[] = [];
+  for (const [key, labelKey] of Object.entries(GOAL_FIELD_LABEL_KEYS)) {
+    const after = goalFieldDisplay(key, payload[key], t);
+    if (after === null) continue;
+    entries.push({
+      label: t(labelKey),
+      before: snapshot ? goalFieldDisplay(key, snapshot[key], t) : null,
+      after,
+    });
+  }
+  const status = fieldString(payload, "status");
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.goalUpdate.targetGoal")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {excerpt(fieldString(snapshot, "title") ?? "", 60) ||
+            fieldString(payload, "goal_id")}
+        </dd>
+      </div>
+      <BeforeAfterRows entries={entries} />
+      {status ? (
+        <div className="flex gap-2">
+          <dt className="text-label text-muted-foreground shrink-0">
+            {t("chat.operationProposal.goalUpdate.statusField")}
+          </dt>
+          <dd className="text-label text-ink min-w-0 break-words">
+            {t(
+              status === "COMPLETED"
+                ? "chat.operationProposal.goalUpdate.statusCompleted"
+                : "chat.operationProposal.goalUpdate.statusArchived",
+            )}
+          </dd>
+        </div>
+      ) : null}
+      {status ? (
+        <p className="text-label text-muted-foreground">
+          {t("chat.operationProposal.goalUpdate.hint")}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** OP_GOAL_CREATE 回执行：结果文案 + 课程入口跳转（course_id 在结果投影里）。 */
+function SettledGoalCreateRow({ status, result, t }: SettledRowProps) {
+  const courseId = fieldString(result, "course_id");
+  return (
+    <SettledActionRow
+      status={status}
+      t={t}
+      appliedTextKey="chat.operationProposal.goalCreate.accepted"
+      rejectedTextKey="chat.operationProposal.goalCreate.rejected"
+      openLabel={t("chat.operationProposal.openCourse")}
+      openTo="/spaces/$courseId"
+      openParams={courseId ? { courseId } : {}}
+      openSearch={{ tab: "overview" }}
+    />
+  );
+}
+
+/** OP_GOAL_UPDATE 回执行：结果文案（目标暂无独立页面，计划 Tab 随后续工单接入）。 */
+function SettledGoalUpdateRow({ status, t }: SettledRowProps) {
+  const applied = status === "APPLIED";
+  return (
+    <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5">
+      <p className="text-label text-muted-foreground">
+        {t(
+          applied
+            ? "chat.operationProposal.goalUpdate.accepted"
+            : "chat.operationProposal.goalUpdate.rejected",
+        )}
+      </p>
+    </div>
+  );
+}
+
 /** 类型专属卡片行为表（键 = 提案类型；涵盖类型即本卡过滤集合）。 */
 type OperationCardSpec = {
   /** 跨类型共用文案键（failed/failedDetail/accept/reject）的类型前缀。 */
@@ -899,6 +1055,16 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
     label: (key) => `chat.operationProposal.recordMove.${key}`,
     PreviewFields: RecordMovePreviewFields,
     SettledRow: SettledRecordMoveRow,
+  },
+  OP_GOAL_CREATE: {
+    label: (key) => `chat.operationProposal.goalCreate.${key}`,
+    PreviewFields: GoalCreatePreviewFields,
+    SettledRow: SettledGoalCreateRow,
+  },
+  OP_GOAL_UPDATE: {
+    label: (key) => `chat.operationProposal.goalUpdate.${key}`,
+    PreviewFields: GoalUpdatePreviewFields,
+    SettledRow: SettledGoalUpdateRow,
   },
   OP_UNDO: {
     label: (key) => `chat.operationProposal.undo.${key}`,

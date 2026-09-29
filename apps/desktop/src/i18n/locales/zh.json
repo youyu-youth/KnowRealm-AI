@@ -1952,6 +1952,44 @@
         "inboxLabel": "收件箱（未归类）",
         "hint": "记录内容与总结、知识点、Todo、复习资料随记录移动；原课程的历史测试与学习证据保留历史归属。"
       },
+      "goalFields": {
+        "targetCourse": "目标课程",
+        "type": "目标类型",
+        "title": "目标标题",
+        "targetDate": "期限",
+        "dailyMinutes": "每日投入",
+        "dailyMinutesValue": "每天 {{count}} 分钟",
+        "targetScore": "目标分数",
+        "goalType": {
+          "SKILL": "技能掌握",
+          "EXAM": "考试备考",
+          "PROJECT": "项目实战",
+          "READING": "阅读计划",
+          "CUSTOM": "自定义"
+        }
+      },
+      "goalCreate": {
+        "accepted": "学习目标已创建。",
+        "rejected": "已拒绝，未创建学习目标。",
+        "failed": "学习目标创建未完成。",
+        "failedDetail": "学习目标创建未完成（{{reason}}），可重试。",
+        "accept": "确认创建目标",
+        "reject": "拒绝创建目标",
+        "hint": "确认后目标生效；同一课程同时只有一个进行中目标。"
+      },
+      "goalUpdate": {
+        "accepted": "学习目标已更新。",
+        "rejected": "已拒绝，未更新学习目标。",
+        "failed": "学习目标更新未完成。",
+        "failedDetail": "学习目标更新未完成（{{reason}}），可重试。",
+        "accept": "确认更新目标",
+        "reject": "拒绝更新目标",
+        "targetGoal": "目标",
+        "statusField": "状态变更",
+        "statusCompleted": "标记完成",
+        "statusArchived": "归档目标",
+        "hint": "完成与归档是终态：确认后目标不再接受修改。"
+      },
       "undo": {
         "accepted": "已撤销。",
         "rejected": "已取消撤销。",
@@ -2621,6 +2659,9 @@
     "COURSE_EDUCATION_STAGE_REQUIRED": "学业场景必须选择教育阶段",
     "COURSE_LEARNING_DEPTH_REQUIRED": "职业或兴趣场景必须选择学习深度",
     "COURSE_NOT_FOUND": "课程不存在或已删除",
+    "GOAL_ACTIVE_EXISTS": "该知识空间已有进行中的学习目标，请先完成或归档旧目标",
+    "GOAL_NOT_ACTIVE": "目标已完结或归档，只有进行中的目标可以修改",
+    "GOAL_NOT_FOUND": "学习目标不存在",
     "DOCUMENT_EMPTY": "文件不能为空",
     "DOCUMENT_FORMAT_UNSUPPORTED": "仅支持 TXT、MD、PDF 或 DOCX 文件",
     "EMPTY_BATCH": "至少选择一个来源",

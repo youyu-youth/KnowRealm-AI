@@ -1972,6 +1972,44 @@
         "inboxLabel": "Inbox (unfiled)",
         "hint": "The record's content and assets (summary, knowledge points, todos, review materials) move with it; past tests and learning evidence keep their original course attribution."
       },
+      "goalFields": {
+        "targetCourse": "Target course",
+        "type": "Goal type",
+        "title": "Goal title",
+        "targetDate": "Deadline",
+        "dailyMinutes": "Daily commitment",
+        "dailyMinutesValue": "{{count}} minutes per day",
+        "targetScore": "Target score",
+        "goalType": {
+          "SKILL": "Skill mastery",
+          "EXAM": "Exam preparation",
+          "PROJECT": "Project practice",
+          "READING": "Reading plan",
+          "CUSTOM": "Custom"
+        }
+      },
+      "goalCreate": {
+        "accepted": "Learning goal created.",
+        "rejected": "Rejected; the learning goal was not created.",
+        "failed": "Creating the learning goal did not complete.",
+        "failedDetail": "Creating the learning goal did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm creating the goal",
+        "reject": "Don't create the goal",
+        "hint": "The goal takes effect after confirmation; a course has at most one active goal at a time."
+      },
+      "goalUpdate": {
+        "accepted": "Learning goal updated.",
+        "rejected": "Rejected; the learning goal was not updated.",
+        "failed": "Updating the learning goal did not complete.",
+        "failedDetail": "Updating the learning goal did not complete ({{reason}}). You can retry.",
+        "accept": "Confirm updating the goal",
+        "reject": "Don't update the goal",
+        "targetGoal": "Goal",
+        "statusField": "Status change",
+        "statusCompleted": "Mark as completed",
+        "statusArchived": "Archive the goal",
+        "hint": "Completion and archiving are final states: the goal no longer accepts changes afterwards."
+      },
       "undo": {
         "accepted": "Undone.",
         "rejected": "Undo cancelled.",
@@ -2641,6 +2679,9 @@
     "COURSE_EDUCATION_STAGE_REQUIRED": "A school context requires an education stage.",
     "COURSE_LEARNING_DEPTH_REQUIRED": "A work or hobby context requires a learning depth.",
     "COURSE_NOT_FOUND": "This course does not exist or has been deleted.",
+    "GOAL_ACTIVE_EXISTS": "This course space already has an active learning goal; complete or archive the old goal first.",
+    "GOAL_NOT_ACTIVE": "The goal is completed or archived; only active goals can be changed.",
+    "GOAL_NOT_FOUND": "The learning goal does not exist.",
     "DOCUMENT_EMPTY": "The file is empty.",
     "DOCUMENT_FORMAT_UNSUPPORTED": "Only TXT, MD, PDF, or DOCX files are supported.",
     "EMPTY_BATCH": "Select at least one source.",
