@@ -195,11 +195,14 @@ class ProposalService:
                         else None
                     )
                     if validator is None:
-                        raise CodedHTTPException(
+                        # 与编辑校验失败同口径：原样透出、不落 FAILED（提案
+                        # 本身无恙，仅本次请求的编辑载荷不被该类型受理）。
+                        edit_failure = CodedHTTPException(
                             code="PROPOSAL_EDIT_NOT_SUPPORTED",
                             status_code=422,
                             detail="该提案类型不支持确认前编辑",
                         )
+                        raise edit_failure
                     try:
                         cleaned = await validator(session, proposal, edited_payload)
                     except CodedHTTPException as exc:

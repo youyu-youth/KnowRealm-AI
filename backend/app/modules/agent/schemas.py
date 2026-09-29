@@ -28,9 +28,9 @@ from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
 from app.modules.learning_plan.schemas import (
     GoalType,
     PlanConfirmCore,
+    PlanItemUpdate,
     PlanRegenerateCore,
     clean_goal_title,
-    clean_plan_text,
 )
 from app.modules.library.schemas import ChatScope
 
@@ -834,32 +834,21 @@ class PlanConfirmStateSnapshot(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class PlanItemUpdatePayload(BaseModel):
-    """OP_PLAN_ITEM_UPDATE 提案判别载荷（L1）：就地修改当前版本计划项。
+class PlanItemUpdatePayload(PlanItemUpdate):
+    """OP_PLAN_ITEM_UPDATE 提案判别载荷（L1）：领域编辑契约 + item_id 定位。
 
-    工具面滤 None（模型无法传显式 null）：非 None 字段＝本次要修改的字段；
-    至少一个修改字段。用户经 Agent 的编辑与页面直改同置 user_locked。
-    """
-
-    model_config = ConfigDict(extra="forbid")
+    字段、约束与清洗全量继承领域 PlanItemUpdate（含「至少一个修改字段」
+    验证器），与页面 PATCH 路径同一契约；用户经 Agent 的编辑与页面直改
+    同置 user_locked。工具面滤 None（模型无法传显式 null）。"""
 
     item_id: str = Field(
         pattern=_UUID_PATTERN,
         description="目标计划项 id（get_plan 取得）",
     )
-    scheduled_date: date | None = Field(default=None, description="排期日期（YYYY-MM-DD，按日）")
-    estimated_minutes: int | None = Field(default=None, gt=0, le=600, description="预估投入分钟数")
-    content: str | None = Field(
-        default=None, min_length=1, max_length=200, description="计划项内容"
-    )
-
-    @field_validator("content")
-    @classmethod
-    def clean_content(cls, value: str | None) -> str | None:
-        return clean_plan_text(value, "计划项内容不能为空白") if value is not None else None
 
     @model_validator(mode="after")
-    def _require_change(self) -> "PlanItemUpdatePayload":
+    def _require_change_field(self) -> "PlanItemUpdatePayload":
+        # 父类验证器不知 item_id：仅传定位键（无实际修改字段）在此拒绝。
         if set(self.model_dump(exclude_unset=True)) <= {"item_id"}:
             raise ValueError("至少提供一个修改字段")
         return self

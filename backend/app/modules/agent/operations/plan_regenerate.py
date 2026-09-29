@@ -12,6 +12,7 @@ from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.agent.operations.plan_confirm import (
+    require_active_goal,
     require_concepts_visible,
     require_records_visible,
 )
@@ -27,7 +28,7 @@ from app.modules.agent.schemas import (
     PlanRegenerateStateSnapshot,
 )
 from app.modules.course.service import CourseService
-from app.modules.learning_plan.service import GoalService, PlanService
+from app.modules.learning_plan.service import PlanService
 from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
@@ -47,17 +48,7 @@ async def capture_plan_regenerate_state(
     - 快照 = 目标约束字段 + 当前 ACTIVE 计划身份（确认前目标被改或版本被
       并发处理 → 快照比对失效重新生成）。
     """
-    goal = await GoalService.get(session, payload.goal_id)
-    if goal is None:
-        raise CodedHTTPException(
-            code="GOAL_NOT_FOUND", status_code=404, detail="目标不存在或所属课程已删除"
-        )
-    if goal.status != "ACTIVE":
-        raise CodedHTTPException(
-            code="GOAL_NOT_ACTIVE",
-            status_code=409,
-            detail="目标已完结或归档，只有进行中的目标可以重生成计划",
-        )
+    goal = await require_active_goal(session, payload.goal_id)
     active = await PlanService.get_active_for_goal(session, goal.id)
     if active is None:
         raise CodedHTTPException(
@@ -91,17 +82,7 @@ async def apply_plan_regenerate(
     """OP_PLAN_REGENERATE 应用器（调用方事务内）：旧版 SUPERSEDED + 新版本
     落库（锁定项原样带入，状态归 PENDING），返回换代事实投影。"""
     payload = parse_operation_payload(proposal, PlanRegeneratePayload)
-    goal = await GoalService.get(session, payload.goal_id)
-    if goal is None:
-        raise CodedHTTPException(
-            code="GOAL_NOT_FOUND", status_code=404, detail="目标不存在或所属课程已删除"
-        )
-    if goal.status != "ACTIVE":
-        raise CodedHTTPException(
-            code="GOAL_NOT_ACTIVE",
-            status_code=409,
-            detail="目标已完结或归档，只有进行中的目标可以重生成计划",
-        )
+    goal = await require_active_goal(session, payload.goal_id)
     superseded = await PlanService.get_active_for_goal(session, goal.id)
     plan = await PlanService.regenerate_core(session, goal, payload)
     items = [item for phase in payload.phases for item in phase.items if item.user_locked]

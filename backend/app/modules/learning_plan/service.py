@@ -6,6 +6,7 @@ JOIN 过滤，不写级联），恢复课程即恢复——与 Record 同模式�
 """
 
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime
 from typing import cast
 
@@ -15,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utcnow
 from app.modules.course.models import Course
 from app.modules.course.service import CourseService
+from app.modules.learning_plan.audit import record_manual_audit
 from app.modules.learning_plan.models import LearningGoal, LearningPlan, LearningPlanItem
 from app.modules.learning_plan.schemas import (
     GoalCreateCore,
@@ -463,9 +465,16 @@ class PlanItemService:
         session: AsyncSession, item: LearningPlanItem, payload: PlanItemUpdate
     ) -> LearningPlanItem:
         """就地编辑事务内核心（日期 / 时长 / 内容）：用户手动编辑即置
-        user_locked（spec 用户故事 15，重生成原样保留不被 AI 重排）。"""
+        user_locked（spec 用户故事 15，重生成原样保留不被 AI 重排）。
+
+        显式 null 字段忽略（三个字段均非空语义，直调 API 的 null 载荷不落
+        NOT NULL 列炸 500；Agent 路径工具面已滤 None，同口径兜底）。"""
         await PlanItemService._require_item_plan_active(session, item)
-        changes = payload.model_dump(exclude_unset=True, mode="json")
+        changes = {
+            key: value
+            for key, value in payload.model_dump(exclude_unset=True, mode="json").items()
+            if value is not None
+        }
         if changes:
             for field, value in changes.items():
                 setattr(item, field, value)
@@ -473,6 +482,129 @@ class PlanItemService:
             item.updated_at = utcnow()
         await session.flush()
         return item
+
+    @staticmethod
+    async def _load_active_item_in_course(
+        session: AsyncSession,
+        *,
+        course_id: str,
+        plan_id: str,
+        item_id: str,
+    ) -> LearningPlanItem:
+        """页面直改入口共用的装载链：归属（课程软删 / 路径错配 404）→
+        ACTIVE 版本（历史版本只读 409）→ 项存在（404）。"""
+        found = await PlanService.get_with_goal(session, plan_id, expected_course_id=course_id)
+        if found is None:
+            raise CodedHTTPException(
+                code="PLAN_NOT_FOUND",
+                status_code=404,
+                detail="学习计划不存在或所属课程已删除",
+            )
+        plan, _goal = found
+        PlanItemService.require_active_plan(plan)
+        item = await PlanItemService.get_for_plan(session, plan.id, item_id)
+        if item is None:
+            raise CodedHTTPException(
+                code="PLAN_ITEM_NOT_FOUND", status_code=404, detail="计划项不存在"
+            )
+        return item
+
+    @staticmethod
+    async def _apply_manual_change(
+        session: AsyncSession,
+        *,
+        course_id: str,
+        plan_id: str,
+        item_id: str,
+        action: str,
+        audit_payload: dict[str, object],
+        apply: Callable[[LearningPlanItem], Awaitable[None]],
+    ) -> PlanItemOut:
+        """页面直改共用执行（调用方开事务）：装载链 → 领域核心 → USER_MANUAL
+        审计行（spec「每次改动落 Operation 审计」），投影事务内构造。"""
+        item = await PlanItemService._load_active_item_in_course(
+            session, course_id=course_id, plan_id=plan_id, item_id=item_id
+        )
+        await apply(item)
+        projection = item_out(item)
+        await record_manual_audit(
+            session,
+            action=action,
+            target=("plan_item", item.id),
+            payload={"item_id": item.id, **audit_payload},
+            result=projection.model_dump(mode="json"),
+        )
+        return projection
+
+    @staticmethod
+    async def update(
+        session: AsyncSession,
+        *,
+        course_id: str,
+        plan_id: str,
+        item_id: str,
+        payload: PlanItemUpdate,
+    ) -> PlanItemOut:
+        """HTTP 页面入口：就地编辑（即时生效 + user_locked + USER_MANUAL 审计）。"""
+        changes = {
+            key: value
+            for key, value in payload.model_dump(exclude_unset=True, mode="json").items()
+            if value is not None
+        }
+
+        async def apply(item: LearningPlanItem) -> None:
+            await PlanItemService.update_core(session, item, payload)
+
+        async with session.begin():
+            return await PlanItemService._apply_manual_change(
+                session,
+                course_id=course_id,
+                plan_id=plan_id,
+                item_id=item_id,
+                action="update_plan_item",
+                audit_payload={"changes": changes},
+                apply=apply,
+            )
+
+    @staticmethod
+    async def complete(
+        session: AsyncSession, *, course_id: str, plan_id: str, item_id: str
+    ) -> PlanItemOut:
+        """HTTP 页面入口：勾选完成（DONE + completed_at + USER_MANUAL 审计）。"""
+
+        async def apply(item: LearningPlanItem) -> None:
+            await PlanItemService.complete_core(session, item)
+
+        async with session.begin():
+            return await PlanItemService._apply_manual_change(
+                session,
+                course_id=course_id,
+                plan_id=plan_id,
+                item_id=item_id,
+                action="complete_plan_item",
+                audit_payload={},
+                apply=apply,
+            )
+
+    @staticmethod
+    async def skip(
+        session: AsyncSession, *, course_id: str, plan_id: str, item_id: str
+    ) -> PlanItemOut:
+        """HTTP 页面入口：跳过（SKIPPED + USER_MANUAL 审计）。"""
+
+        async def apply(item: LearningPlanItem) -> None:
+            await PlanItemService.skip_core(session, item)
+
+        async with session.begin():
+            return await PlanItemService._apply_manual_change(
+                session,
+                course_id=course_id,
+                plan_id=plan_id,
+                item_id=item_id,
+                action="skip_plan_item",
+                audit_payload={},
+                apply=apply,
+            )
 
     @staticmethod
     async def complete_core(session: AsyncSession, item: LearningPlanItem) -> LearningPlanItem:

@@ -63,6 +63,7 @@ NOW = TODAY.isoformat() + "T08:00:00.000000Z"
 COURSE_ID = "c0000000-0000-4000-8000-000000000001"
 GOAL_ID = "90000000-0000-4000-8000-000000000001"
 RECORD_ID = "a0000000-0000-4000-8000-000000000001"
+RECORD_OTHER_COURSE = "a0000000-0000-4000-8000-000000000002"
 UNKNOWN_ID = "90000000-0000-4000-8000-00000000dead"
 PLAN_ID = "70000000-0000-4000-8000-000000000001"
 ITEM_ID = "d0000000-0000-4000-8000-000000000001"
@@ -610,6 +611,14 @@ async def test_routes_plan_history_and_item_mutation(tmp_path: Path) -> None:
         assert skipped.json()["status"] == "SKIPPED"
         assert skipped.json()["completed_at"] is None
 
+        # 显式 null 字段被忽略（三字段均非空语义，不撞 NOT NULL 列炸 500）。
+        nullish = await client.patch(
+            f"/api/courses/{COURSE_ID}/plans/{PLAN_ID}/items/{ITEM_ID_2}",
+            json={"content": "改写后的任务", "estimated_minutes": None},
+        )
+        assert nullish.status_code == 200
+        assert nullish.json()["estimated_minutes"] == 30
+
         # 每次改动各落一条 USER_MANUAL operation（action 与授权触发器如实）。
         async with session_factory() as session:
             rows = (
@@ -624,6 +633,7 @@ async def test_routes_plan_history_and_item_mutation(tmp_path: Path) -> None:
             "update_plan_item",
             "complete_plan_item",
             "skip_plan_item",
+            "update_plan_item",
         ]
         for row in rows:
             assert row[1] == "L1" and row[2] == "plan_item"
@@ -734,9 +744,7 @@ async def test_plan_item_tools_auto_approve_direct_execution(tmp_path: Path) -> 
 
 
 @pytest.mark.anyio
-async def test_regenerate_tool_end_to_end(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_regenerate_tool_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory)
         await seed_goal(session_factory)
@@ -940,3 +948,77 @@ async def test_confirm_plan_edit_validation_rejects_out_of_bounds(tmp_path: Path
         async with session_factory() as session:
             confirmed = await ProposalService.confirm(session, proposal_id)
         assert confirmed.status.value == "APPLIED"
+
+
+@pytest.mark.anyio
+async def test_confirm_edit_rejected_for_non_editable_type(tmp_path: Path) -> None:
+    """非计划类提案携带编辑载荷确认 → PROPOSAL_EDIT_NOT_SUPPORTED（零业务写）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+
+        from app.modules.agent.tools.create_goal import create_goal
+
+        result = await invoke_tool(
+            create_goal,
+            session_factory,
+            {"course_id": COURSE_ID, "goal_type": "SKILL", "title": "学会 X"},
+        )
+        proposal_id = result["proposals"][0]["proposal_id"]
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as excinfo:
+                await ProposalService.confirm(session, proposal_id, {"goal_type": "EXAM"})
+        assert excinfo.value.code == "PROPOSAL_EDIT_NOT_SUPPORTED"
+        status = await scalar(
+            session_factory,
+            "SELECT status FROM agent_proposals WHERE id = :id",
+            {"id": proposal_id},
+        )
+        assert status == "PENDING"
+
+
+@pytest.mark.anyio
+async def test_confirm_plan_edit_rejects_invisible_record_and_stays_pending(
+    tmp_path: Path,
+) -> None:
+    """编辑载荷改坏 record_id（直调 API 构造）→ 编辑校验拦截，提案保持
+    PENDING（不落 FAILED），业务表零写入（工单 03 review 修复回归）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_goal(session_factory)
+        await seed_record(session_factory)
+
+        payload = {
+            "goal_id": GOAL_ID,
+            "phases": [
+                {
+                    "title": "第一阶段",
+                    "items": [
+                        {
+                            "action_type": "STUDY_RECORD",
+                            "content": "任务 1",
+                            "estimated_minutes": 60,
+                            "reason": "理由 1",
+                            "record_id": RECORD_ID,
+                            "concept_id": None,
+                            "scheduled_date": TODAY.isoformat(),
+                        }
+                    ],
+                }
+            ],
+        }
+        result = await invoke_tool(confirm_plan, session_factory, payload)
+        proposal_id = result["proposals"][0]["proposal_id"]
+
+        edited = json.loads(json.dumps(payload))
+        edited["phases"][0]["items"][0]["record_id"] = RECORD_OTHER_COURSE
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as excinfo:
+                await ProposalService.confirm(session, proposal_id, edited)
+        assert excinfo.value.code == "PLAN_DRAFT_INVALID"
+        status = await scalar(
+            session_factory,
+            "SELECT status FROM agent_proposals WHERE id = :id",
+            {"id": proposal_id},
+        )
+        assert status == "PENDING"
+        assert await table_count(session_factory, "learning_plans") == 0

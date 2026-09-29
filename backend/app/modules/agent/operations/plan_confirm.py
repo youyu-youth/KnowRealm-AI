@@ -48,6 +48,23 @@ from app.shared.errors import CodedHTTPException
 CONFIRM_PLAN_ACTION = "confirm_plan"
 
 
+async def require_active_goal(session: AsyncSession, goal_id: str) -> LearningGoal:
+    """计划域动作共用的目标装载（工单 03 收敛）：不可达 404 / 非进行中 409，
+    capture / 提交执法 / 编辑校验 / 应用器各路同口径。"""
+    goal = await GoalService.get(session, goal_id)
+    if goal is None:
+        raise CodedHTTPException(
+            code="GOAL_NOT_FOUND", status_code=404, detail="目标不存在或所属课程已删除"
+        )
+    if goal.status != "ACTIVE":
+        raise CodedHTTPException(
+            code="GOAL_NOT_ACTIVE",
+            status_code=409,
+            detail="目标已完结或归档，只有进行中的目标可以操作学习计划",
+        )
+    return goal
+
+
 async def capture_plan_confirm_state(
     session: AsyncSession, payload: PlanConfirmPayload
 ) -> PlanConfirmStateSnapshot:
@@ -58,17 +75,7 @@ async def capture_plan_confirm_state(
     - STUDY_RECORD 引用的记录不属于本课程或不可见 → PLAN_DRAFT_INVALID；
     - REVIEW_CONCEPT 引用的概念不属于本课程或已归档 → PLAN_DRAFT_INVALID。
     """
-    goal = await GoalService.get(session, payload.goal_id)
-    if goal is None:
-        raise CodedHTTPException(
-            code="GOAL_NOT_FOUND", status_code=404, detail="目标不存在或所属课程已删除"
-        )
-    if goal.status != "ACTIVE":
-        raise CodedHTTPException(
-            code="GOAL_NOT_ACTIVE",
-            status_code=409,
-            detail="目标已完结或归档，只有进行中的目标可以制定计划",
-        )
+    goal = await require_active_goal(session, payload.goal_id)
     await PlanService.require_no_active(session, goal.id)
     await require_records_visible(session, goal.course_id, payload)
     await require_concepts_visible(session, goal.course_id, payload)
@@ -93,11 +100,7 @@ async def validate_plan_confirm_submission(
     合法自由，其边界由 validate_plan_draft_edit 承担（日期落在 [提交日, 期限]
     内即可）；目标态变化已由快照比对覆盖。
     """
-    goal = await GoalService.get(session, payload.goal_id)
-    if goal is None:
-        raise CodedHTTPException(
-            code="GOAL_NOT_FOUND", status_code=404, detail="目标不存在或所属课程已删除"
-        )
+    goal = await require_active_goal(session, payload.goal_id)
     _require_schedule_matches(payload, goal, datetime.now(UTC).date())
 
 
@@ -105,13 +108,13 @@ async def validate_plan_draft_edit(
     session: AsyncSession, proposal: AgentProposal, edited_payload: dict[str, object]
 ) -> dict[str, object]:
     """确认卡编辑载荷校验（工单 03，spec 用户故事 9）：schema 执法 + 日期
-    边界（不早于今天、不晚于目标期限），返回清洗后的载荷写入提案行——
-    确认卡所见（编辑后）与落库所写保持同一份。
+    边界（不早于今天、不晚于目标期限）+ 引用可见性，返回清洗后的载荷写入
+    提案行——确认卡所见（编辑后）与落库所写保持同一份。全部在此拦截 =
+    编辑非法时提案保持 PENDING（不落 FAILED），用户修正编辑后可再确认。
 
     编辑后的排期不要求与确定性铺排逐位一致（那是模型转述漂移的提交时
     防线）；每日总量与 daily_minutes 的一致性同样不强制——显式编辑即用户
-    主权，边界只保「不落在区间外」。
-    """
+    主权，边界只保「不落在区间外」。"""
     try:
         payload = PlanConfirmPayload.model_validate(edited_payload)
     except ValidationError as exc:
@@ -120,17 +123,9 @@ async def validate_plan_draft_edit(
             status_code=422,
             detail="编辑后的草案结构无效，请检查日期、时长与内容",
         ) from exc
-    goal = await GoalService.get(session, payload.goal_id)
-    if goal is None:
-        raise CodedHTTPException(
-            code="GOAL_NOT_FOUND", status_code=404, detail="目标不存在或所属课程已删除"
-        )
-    if goal.status != "ACTIVE":
-        raise CodedHTTPException(
-            code="GOAL_NOT_ACTIVE",
-            status_code=409,
-            detail="目标已完结或归档，只有进行中的目标可以制定计划",
-        )
+    goal = await require_active_goal(session, payload.goal_id)
+    await require_records_visible(session, goal.course_id, payload)
+    await require_concepts_visible(session, goal.course_id, payload)
     today = datetime.now(UTC).date()
     deadline = date.fromisoformat(goal.target_date) if goal.target_date is not None else None
     for item in (i for phase in payload.phases for i in phase.items):

@@ -758,8 +758,8 @@ export interface paths {
         head?: never;
         /**
          * Update Plan Item Row
-         * @description 就地编辑计划项（日期 / 时长 / 内容，仅当前生效版本）：即时生效，
-         *     Service 置 user_locked（重生成原样保留）。
+         * @description 就地编辑计划项（日期 / 时长 / 内容，仅当前生效版本）：即时生效 +
+         *     user_locked + USER_MANUAL 审计（事务与领域约束在 Service）。
          */
         patch: operations["update_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__patch"];
         trace?: never;
