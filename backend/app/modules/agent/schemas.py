@@ -25,7 +25,7 @@ from app.modules.course.schemas import (
     LearningDepth,
 )
 from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
-from app.modules.learning_plan.schemas import GoalType
+from app.modules.learning_plan.schemas import GoalType, clean_goal_title
 from app.modules.library.schemas import ChatScope
 
 
@@ -693,10 +693,7 @@ class GoalCreatePayload(BaseModel):
     @field_validator("title")
     @classmethod
     def clean_title(cls, value: str) -> str:
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("目标标题不能为空白")
-        return cleaned
+        return clean_goal_title(value)
 
 
 class GoalCreateResult(BaseModel):
@@ -762,12 +759,7 @@ class GoalUpdatePayload(BaseModel):
     @field_validator("title")
     @classmethod
     def clean_title(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("目标标题不能为空白")
-        return cleaned
+        return clean_goal_title(value) if value is not None else None
 
     @model_validator(mode="after")
     def _require_change(self) -> "GoalUpdatePayload":

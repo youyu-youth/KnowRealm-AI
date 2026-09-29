@@ -13,7 +13,6 @@ search_courses 消歧固化 course_id → 薄工具创建 OP_GOAL_CREATE 提案 
 确认（spec 用户故事 6：AI 推断范围必须经用户确认才生效）。
 """
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.agent.operations.registry import (
@@ -28,8 +27,7 @@ from app.modules.agent.schemas import (
     GoalCreateStateSnapshot,
 )
 from app.modules.course.service import CourseService
-from app.modules.learning_plan.models import LearningGoal
-from app.modules.learning_plan.schemas import GoalCreateCore, GoalScopeSource, GoalStatus
+from app.modules.learning_plan.schemas import GoalCreateCore, GoalScopeSource
 from app.modules.learning_plan.service import GoalService
 from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
@@ -48,18 +46,7 @@ async def capture_goal_create_state(
         raise CodedHTTPException(
             code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
         )
-    active = await session.scalar(
-        select(LearningGoal.id).where(
-            LearningGoal.course_id == course.id,
-            LearningGoal.status == GoalStatus.ACTIVE.value,
-        )
-    )
-    if active is not None:
-        raise CodedHTTPException(
-            code="GOAL_ACTIVE_EXISTS",
-            status_code=409,
-            detail="该知识空间已有进行中的学习目标，请先完成或归档旧目标",
-        )
+    await GoalService.require_no_active(session, course.id)
     return GoalCreateStateSnapshot(updated_at=course.updated_at, name=course.name)
 
 
@@ -71,7 +58,10 @@ async def apply_goal_create(session: AsyncSession, proposal: AgentProposal) -> G
     """OP_GOAL_CREATE 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
     执行前重验（课程可达 + 快照比对）已由注册表适配器完成；此处经领域核心
-    落库，scope 固化 AI_INFERRED + 已确认（确认卡即用户确认）。
+    落库。scope 固化 AI_INFERRED + scope_confirmed=True——默认档经确认卡
+    （卡上确认即用户确认，spec 用户故事 6）；自动档直执行＝用户对该档位的
+    预授权（ADR-0026，与其他写动作同口径），确认事实由 operation 行的
+    authorization_json 承载。
     """
     payload = parse_operation_payload(proposal, GoalCreatePayload)
     course = await CourseService.get(session, payload.course_id)

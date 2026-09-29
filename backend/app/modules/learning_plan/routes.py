@@ -73,7 +73,7 @@ async def update_course_goal(
     payload: GoalUpdate,
     session: AsyncSession = Depends(get_db),
 ) -> GoalOut:
-    goal = await GoalService.update(session, goal_id, payload)
+    goal = await GoalService.update(session, goal_id, payload, expected_course_id=course_id)
     if goal is None:
         raise CodedHTTPException(code="GOAL_NOT_FOUND", status_code=404, detail="学习目标不存在")
     return GoalOut.model_validate(goal)
@@ -85,7 +85,9 @@ async def complete_course_goal(
     goal_id: str,
     session: AsyncSession = Depends(get_db),
 ) -> GoalOut:
-    goal = await GoalService.set_status(session, goal_id, GoalStatus.COMPLETED)
+    goal = await GoalService.set_status(
+        session, goal_id, GoalStatus.COMPLETED, expected_course_id=course_id
+    )
     if goal is None:
         raise CodedHTTPException(code="GOAL_NOT_FOUND", status_code=404, detail="学习目标不存在")
     return GoalOut.model_validate(goal)
@@ -97,7 +99,9 @@ async def archive_course_goal(
     goal_id: str,
     session: AsyncSession = Depends(get_db),
 ) -> GoalOut:
-    goal = await GoalService.set_status(session, goal_id, GoalStatus.ARCHIVED)
+    goal = await GoalService.set_status(
+        session, goal_id, GoalStatus.ARCHIVED, expected_course_id=course_id
+    )
     if goal is None:
         raise CodedHTTPException(code="GOAL_NOT_FOUND", status_code=404, detail="学习目标不存在")
     return GoalOut.model_validate(goal)

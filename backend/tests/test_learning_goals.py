@@ -501,6 +501,26 @@ async def test_goal_routes_not_found_and_course_soft_delete(tmp_path: Path) -> N
         assert missing_goal.status_code == 404
         assert missing_goal.json()["code"] == "GOAL_NOT_FOUND"
 
+        # 嵌套路径归属校验：A 课路径不能改动 B 课的目标（错配按不可见处理）。
+        other = await client.post(
+            "/api/courses",
+            json={"name": "另一门课", "learning_context": "INTEREST", "depth": "BEGINNER"},
+        )
+        other_id = other.json()["id"]
+        mismatched = await client.patch(
+            f"/api/courses/{other_id}/goals/{goal.json()['id']}",
+            json={"daily_minutes": 30},
+        )
+        assert mismatched.status_code == 404
+        assert mismatched.json()["code"] == "GOAL_NOT_FOUND"
+        mismatched_complete = await client.post(
+            f"/api/courses/{other_id}/goals/{goal.json()['id']}/complete"
+        )
+        assert mismatched_complete.status_code == 404
+        # 目标事实未被错配路径触碰。
+        untouched = await client.get(f"/api/courses/{course_id}/goals")
+        assert [row["status"] for row in untouched.json()] == ["ACTIVE"]
+
         # 课程软删 → 目标查询不可见（404，与课程缺失同码）；恢复即恢复。
         soft_deleted = await client.delete(f"/api/courses/{course_id}")
         assert soft_deleted.status_code in (200, 204)

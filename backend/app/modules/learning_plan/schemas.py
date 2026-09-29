@@ -21,6 +21,15 @@ def _serialize_utc(value: datetime) -> str:
     return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
+def clean_goal_title(value: str) -> str:
+    """目标标题清洗（领域 schema 与 Agent 载荷 schema 共用）：去首尾空白、
+    空白即拒；可选字段由调用方先判 None。"""
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("目标标题不能为空白")
+    return cleaned
+
+
 class GoalType(StrEnum):
     SKILL = "SKILL"
     EXAM = "EXAM"
@@ -65,10 +74,7 @@ class GoalCreate(BaseModel):
     @field_validator("title")
     @classmethod
     def clean_title(cls, value: str) -> str:
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("目标标题不能为空白")
-        return cleaned
+        return clean_goal_title(value)
 
 
 class GoalUpdate(BaseModel):
@@ -86,12 +92,7 @@ class GoalUpdate(BaseModel):
     @field_validator("title")
     @classmethod
     def clean_title(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        cleaned = value.strip()
-        if not cleaned:
-            raise ValueError("目标标题不能为空白")
-        return cleaned
+        return clean_goal_title(value) if value is not None else None
 
 
 class GoalOut(BaseModel):

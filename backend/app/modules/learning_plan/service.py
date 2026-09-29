@@ -32,18 +32,15 @@ def _require_active(goal: LearningGoal) -> None:
 
 class GoalService:
     @staticmethod
-    async def create_core(
-        session: AsyncSession, course: Course, payload: GoalCreateCore
-    ) -> LearningGoal:
-        """目标创建事务内核心：单空间单 ACTIVE 校验＋scope 确认不变量。
+    async def require_no_active(session: AsyncSession, course_id: str) -> None:
+        """单空间单 ACTIVE 校验（唯一入口，创建核心与 Agent 提交期检查共用）。
 
-        单 ACTIVE 在应用层先给出可转述的稳定错误码（提示先完成或归档旧目标），
-        部分唯一索引兜底并发写入；AI_INFERRED 未确认在 GoalCreateCore schema
-        校验即拒绝（不进本方法）。
+        应用层先给出可转述的稳定错误码（提示先完成或归档旧目标），部分唯一
+        索引兜底并发写入。
         """
         existing = await session.scalar(
             select(LearningGoal.id).where(
-                LearningGoal.course_id == course.id,
+                LearningGoal.course_id == course_id,
                 LearningGoal.status == GoalStatus.ACTIVE.value,
             )
         )
@@ -53,6 +50,16 @@ class GoalService:
                 status_code=409,
                 detail="该知识空间已有进行中的学习目标，请先完成或归档旧目标",
             )
+
+    @staticmethod
+    async def create_core(
+        session: AsyncSession, course: Course, payload: GoalCreateCore
+    ) -> LearningGoal:
+        """目标创建事务内核心：单空间单 ACTIVE 校验＋scope 确认不变量。
+
+        AI_INFERRED 未确认在 GoalCreateCore schema 校验即拒绝（不进本方法）。
+        """
+        await GoalService.require_no_active(session, course.id)
         goal = LearningGoal(
             course_id=course.id,
             **payload.model_dump(mode="json"),
@@ -132,22 +139,38 @@ class GoalService:
 
     @staticmethod
     async def update(
-        session: AsyncSession, goal_id: str, payload: GoalUpdate
+        session: AsyncSession,
+        goal_id: str,
+        payload: GoalUpdate,
+        *,
+        expected_course_id: str | None = None,
     ) -> LearningGoal | None:
-        """HTTP 编辑入口（None = 目标不存在或课程已软删）。"""
+        """HTTP 编辑入口（None = 目标不存在 / 课程已软删 / 嵌套路径课程不匹配）。
+
+        expected_course_id 是嵌套路由的路径归属校验：路径课程与目标实际归属
+        不一致时按不可见处理（404），Agent 路径按 goal_id 直达不传。
+        """
         async with session.begin():
             goal = await GoalService.get(session, goal_id)
-            if goal is None:
+            if goal is None or (
+                expected_course_id is not None and goal.course_id != expected_course_id
+            ):
                 return None
             return await GoalService.update_core(session, goal, payload)
 
     @staticmethod
     async def set_status(
-        session: AsyncSession, goal_id: str, status: GoalStatus
+        session: AsyncSession,
+        goal_id: str,
+        status: GoalStatus,
+        *,
+        expected_course_id: str | None = None,
     ) -> LearningGoal | None:
-        """HTTP 完成 / 归档入口（None = 目标不存在或课程已软删）。"""
+        """HTTP 完成 / 归档入口（None 语义同 update：不存在 / 软删 / 归属不匹配）。"""
         async with session.begin():
             goal = await GoalService.get(session, goal_id)
-            if goal is None:
+            if goal is None or (
+                expected_course_id is not None and goal.course_id != expected_course_id
+            ):
                 return None
             return await GoalService.set_status_core(session, goal, status)
