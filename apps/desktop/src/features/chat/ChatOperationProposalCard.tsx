@@ -943,6 +943,150 @@ function SettledGoalUpdateRow({ status, t }: SettledRowProps) {
   );
 }
 
+/** 提案 payload / 快照的对象数组窄化（形状漂移时返回空数组兜底）。 */
+function arrayField(
+  source: Record<string, unknown> | null | undefined,
+  key: string,
+): Record<string, unknown>[] {
+  const value = source?.[key];
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is Record<string, unknown> =>
+          typeof item === "object" && item !== null,
+      )
+    : [];
+}
+
+const PLAN_ITEM_TYPE_KEYS: Record<string, string> = {
+  STUDY_RECORD: "chat.operationProposal.planFields.itemType.STUDY_RECORD",
+  PRACTICE_QUIZ: "chat.operationProposal.planFields.itemType.PRACTICE_QUIZ",
+  REVIEW_CONCEPT: "chat.operationProposal.planFields.itemType.REVIEW_CONCEPT",
+  CUSTOM: "chat.operationProposal.planFields.itemType.CUSTOM",
+};
+
+/** OP_PLAN_CONFIRM 确认卡预览（工单 02，只读草案）：目标 / 课程 / 排期概览 +
+ * 分阶段计划项（日期 · 内容 · 时长 · 类型徽标）。可编辑卡随工单 03 升级。 */
+function PlanConfirmPreviewFields({
+  payload,
+  snapshot,
+  t,
+}: PreviewFieldsProps) {
+  const phases = arrayField(payload, "phases");
+  const items = phases.flatMap((phase) => arrayField(phase, "items"));
+  const dates = items
+    .map((item) => fieldString(item, "scheduled_date"))
+    .filter((value): value is string => value !== null)
+    .sort();
+  const totalMinutes = items.reduce(
+    (total, item) => total + (fieldNumber(item, "estimated_minutes") ?? 0),
+    0,
+  );
+  return (
+    <div className="flex w-full flex-col gap-1.5">
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <span className="text-label text-ink min-w-0 font-medium break-words">
+          {excerpt(fieldString(snapshot, "title") ?? "", 60) ||
+            fieldString(payload, "goal_id")}
+        </span>
+        <span className="text-label text-muted-foreground">
+          {fieldString(snapshot, "course_name") ?? ""}
+        </span>
+      </div>
+      <p className="text-label text-muted-foreground">
+        {dates.length > 0
+          ? t("chat.operationProposal.planConfirm.scheduleSummary", {
+              count: items.length,
+              minutes: totalMinutes,
+              from: dates[0],
+              to: dates[dates.length - 1],
+            })
+          : t("chat.operationProposal.planConfirm.scheduleEmpty")}
+      </p>
+      {phases.map((phase, phaseIndex) => (
+        <div key={phaseIndex} className="flex flex-col gap-1">
+          <p className="text-label text-ink-muted font-medium">
+            {excerpt(fieldString(phase, "title") ?? "", 40) ||
+              t("chat.operationProposal.planConfirm.unnamedPhase")}
+          </p>
+          <ul className="flex flex-col gap-1">
+            {arrayField(phase, "items").map((item, itemIndex) => {
+              const itemType = fieldString(item, "action_type");
+              const minutes = fieldNumber(item, "estimated_minutes");
+              return (
+                <li
+                  key={itemIndex}
+                  className="text-label text-ink-muted flex flex-wrap items-baseline gap-x-1.5"
+                >
+                  <span className="text-ink-faint tabular-nums">
+                    {fieldString(item, "scheduled_date")?.slice(5) ?? ""}
+                  </span>
+                  <span className="min-w-0 break-words">
+                    {excerpt(fieldString(item, "content") ?? "", 60)}
+                  </span>
+                  {minutes !== null ? (
+                    <span className="text-ink-faint shrink-0">
+                      {t("chat.operationProposal.planFields.minutesValue", {
+                        count: minutes,
+                      })}
+                    </span>
+                  ) : null}
+                  {itemType !== null && PLAN_ITEM_TYPE_KEYS[itemType] ? (
+                    <span className="text-ink-faint shrink-0">
+                      {t(PLAN_ITEM_TYPE_KEYS[itemType])}
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.planConfirm.hint")}
+      </p>
+    </div>
+  );
+}
+
+/** OP_PLAN_CONFIRM 回执行：结果文案（版本 / 项数）+ 课程入口（计划 Tab 随工单 04）。 */
+function SettledPlanConfirmRow({ status, result, t }: SettledRowProps) {
+  if (status !== "APPLIED") {
+    return (
+      <div className="bg-surface-subtle rounded-md px-2.5 py-1.5">
+        <p className="text-label text-muted-foreground">
+          {t("chat.operationProposal.planConfirm.rejected")}
+        </p>
+      </div>
+    );
+  }
+  const courseId = fieldString(result, "course_id");
+  const version = fieldNumber(result, "plan_version");
+  const count = fieldNumber(result, "item_count");
+  return (
+    <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5">
+      <p className="text-label text-muted-foreground">
+        {version !== null && count !== null
+          ? t("chat.operationProposal.planConfirm.accepted", {
+              version,
+              count,
+            })
+          : t("chat.operationProposal.planConfirm.acceptedFallback")}
+      </p>
+      {courseId ? (
+        <Link
+          to="/spaces/$courseId"
+          params={{ courseId }}
+          search={{ tab: "overview" }}
+          className="text-ink hover:bg-surface-raised text-label flex w-fit items-center gap-1 rounded px-1 py-0.5"
+        >
+          <ArrowRight data-icon="inline-start" aria-hidden="true" />
+          {t("chat.operationProposal.openCourse")}
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
 /** 类型专属卡片行为表（键 = 提案类型；涵盖类型即本卡过滤集合）。 */
 type OperationCardSpec = {
   /** 跨类型共用文案键（failed/failedDetail/accept/reject）的类型前缀。 */
@@ -1065,6 +1209,11 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
     label: (key) => `chat.operationProposal.goalUpdate.${key}`,
     PreviewFields: GoalUpdatePreviewFields,
     SettledRow: SettledGoalUpdateRow,
+  },
+  OP_PLAN_CONFIRM: {
+    label: (key) => `chat.operationProposal.planConfirm.${key}`,
+    PreviewFields: PlanConfirmPreviewFields,
+    SettledRow: SettledPlanConfirmRow,
   },
   OP_UNDO: {
     label: (key) => `chat.operationProposal.undo.${key}`,

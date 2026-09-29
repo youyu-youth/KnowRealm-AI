@@ -1999,6 +1999,28 @@
         "reject": "取消撤销",
         "target": "撤销目标",
         "hint": "确认后将撤销该操作并恢复其执行前的值；目标在执行后被修改过时撤销会被拒绝。"
+      },
+      "planFields": {
+        "minutesValue": "{{count}} 分钟",
+        "itemType": {
+          "STUDY_RECORD": "学资料",
+          "PRACTICE_QUIZ": "做习题",
+          "REVIEW_CONCEPT": "复习概念",
+          "CUSTOM": "自由任务"
+        }
+      },
+      "planConfirm": {
+        "accepted": "学习计划已生效（第 {{version}} 版 · {{count}} 项）。",
+        "acceptedFallback": "学习计划已生效。",
+        "rejected": "已放弃，学习计划未保存。",
+        "failed": "学习计划确认未完成。",
+        "failedDetail": "学习计划确认未完成（{{reason}}），可重试。",
+        "accept": "确认学习计划",
+        "reject": "放弃学习计划",
+        "hint": "草案为只读预览；确认后计划保存生效，想调整可在对话中说明重新生成。",
+        "scheduleSummary": "共 {{count}} 项 · 约 {{minutes}} 分钟 · 排期 {{from}} ~ {{to}}",
+        "scheduleEmpty": "草案没有计划项。",
+        "unnamedPhase": "未命名阶段"
       }
     },
     "authMode": {
@@ -2805,7 +2827,11 @@
     "OPERATION_TRANSIENT_ERROR": "瞬时故障自动重试已耗尽（如数据库忙），可稍后手动重试",
     "AGENT_RUN_FAILED": "任务推进失败，请稍后重试",
     "OPERATION_APPROVAL_REQUIRED": "该步骤需要确认后才能执行，任务已暂停",
-    "OPERATION_DEPENDENCY_FAILED": "前置步骤未成功，本步骤已跳过"
+    "OPERATION_DEPENDENCY_FAILED": "前置步骤未成功，本步骤已跳过",
+    "PLAN_ACTIVE_EXISTS": "该目标已有进行中的学习计划，调整或重生成随后续版本提供",
+    "PLAN_SCHEDULE_INFEASIBLE": "计划总量超出目标期限内的可投入容量，请精简草案或调整目标",
+    "PLAN_SCHEDULE_INVALID": "草案排期与目标约束不符，请按期望日期修正后重新提交",
+    "PLAN_DRAFT_INVALID": "草案引用了无效的学习对象，请修正后重新提交"
   },
   "agent": {
     "run": {

@@ -2019,6 +2019,28 @@
         "reject": "Cancel undo",
         "target": "Undo target",
         "hint": "Confirming will undo this operation and restore its pre-execution values; the undo is refused if the target was modified afterwards."
+      },
+      "planFields": {
+        "minutesValue": "{{count}} min",
+        "itemType": {
+          "STUDY_RECORD": "Study material",
+          "PRACTICE_QUIZ": "Practice quiz",
+          "REVIEW_CONCEPT": "Review concept",
+          "CUSTOM": "Custom task"
+        }
+      },
+      "planConfirm": {
+        "accepted": "Learning plan is now active (v{{version}} · {{count}} items).",
+        "acceptedFallback": "Learning plan is now active.",
+        "rejected": "Discarded; the learning plan was not saved.",
+        "failed": "Learning plan confirmation did not complete.",
+        "failedDetail": "Learning plan confirmation did not complete ({{reason}}); you can retry.",
+        "accept": "Confirm learning plan",
+        "reject": "Discard learning plan",
+        "hint": "Read-only draft preview; confirming saves the plan. To adjust, ask in chat to regenerate.",
+        "scheduleSummary": "{{count}} items · ~{{minutes}} min · scheduled {{from}} ~ {{to}}",
+        "scheduleEmpty": "The draft has no plan items.",
+        "unnamedPhase": "Untitled phase"
       }
     },
     "authMode": {
@@ -2825,7 +2847,11 @@
     "OPERATION_TRANSIENT_ERROR": "Automatic retries for a transient failure (e.g. database busy) are exhausted; retry manually later",
     "AGENT_RUN_FAILED": "The task failed to advance; please retry later",
     "OPERATION_APPROVAL_REQUIRED": "This step needs confirmation; the task is paused",
-    "OPERATION_DEPENDENCY_FAILED": "A prerequisite step failed, so this step was skipped"
+    "OPERATION_DEPENDENCY_FAILED": "A prerequisite step failed, so this step was skipped",
+    "PLAN_ACTIVE_EXISTS": "This goal already has an active learning plan; adjusting or regenerating arrives in a later version",
+    "PLAN_SCHEDULE_INFEASIBLE": "Total plan time exceeds the capacity before the goal deadline; trim the draft or adjust the goal",
+    "PLAN_SCHEDULE_INVALID": "Draft schedule does not match the goal constraints; fix it per the expected dates and resubmit",
+    "PLAN_DRAFT_INVALID": "The draft references an invalid study target; fix it and resubmit"
   },
   "agent": {
     "run": {

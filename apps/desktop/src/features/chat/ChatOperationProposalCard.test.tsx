@@ -918,3 +918,131 @@ describe("ChatOperationProposalCard — 学习目标（第三阶段工单 01）"
     ).toBeVisible();
   });
 });
+
+describe("ChatOperationProposalCard — 学习计划确认（第三阶段工单 02）", () => {
+  const PLAN_PAYLOAD = {
+    goal_id: "goal-1",
+    phases: [
+      {
+        title: "第一阶段",
+        items: [
+          {
+            action_type: "STUDY_RECORD",
+            content: "精读第 1 讲",
+            estimated_minutes: 60,
+            reason: "建立基础",
+            record_id: "record-1",
+            concept_id: null,
+            scheduled_date: "2026-01-05",
+          },
+          {
+            action_type: "CUSTOM",
+            content: "整理笔记",
+            estimated_minutes: 30,
+            reason: "巩固记忆",
+            record_id: null,
+            concept_id: null,
+            scheduled_date: "2026-01-06",
+          },
+        ],
+      },
+    ],
+  };
+  const PLAN_SNAPSHOT = {
+    updated_at: "2026-09-29T00:00:00Z",
+    title: "四周内学会 Agent 工程",
+    target_date: "2026-10-27",
+    daily_minutes: 60,
+    course_name: "Agent 工程",
+  };
+
+  it("OP_PLAN_CONFIRM 预览：目标 / 课程 / 排期概览 + 分阶段计划项（只读草案）", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("四周内学会 Agent 工程")).toBeVisible();
+    expect(screen.getByText("Agent 工程")).toBeVisible();
+    expect(
+      screen.getByText("共 2 项 · 约 90 分钟 · 排期 2026-01-05 ~ 2026-01-06"),
+    ).toBeVisible();
+    expect(screen.getByText("第一阶段")).toBeVisible();
+    expect(screen.getByText("精读第 1 讲")).toBeVisible();
+    expect(screen.getByText("整理笔记")).toBeVisible();
+    expect(screen.getByText("60 分钟")).toBeVisible();
+    expect(screen.getByText("学资料")).toBeVisible();
+    expect(screen.getByText("自由任务")).toBeVisible();
+    expect(
+      screen.getByText(
+        "草案为只读预览；确认后计划保存生效，想调整可在对话中说明重新生成。",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认学习计划" })).toBeEnabled();
+  });
+
+  it("OP_PLAN_CONFIRM 确认转回执：版本与项数 + 课程入口", async () => {
+    confirmProposal.mockResolvedValue({
+      ...proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+      }),
+      status: "APPLIED",
+      result: {
+        plan_id: "plan-1",
+        goal_id: "goal-1",
+        course_id: "course-1",
+        plan_version: 1,
+        item_count: 2,
+        first_date: "2026-01-05",
+        last_date: "2026-01-06",
+      },
+    });
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "确认学习计划" }),
+    );
+    expect(
+      await screen.findByText("学习计划已生效（第 1 版 · 2 项）。"),
+    ).toBeVisible();
+    expect(screen.getByText("打开课程")).toBeVisible();
+  });
+
+  it("OP_PLAN_CONFIRM 拒绝转回执：未保存文案", async () => {
+    rejectProposal.mockResolvedValue({
+      ...proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+      }),
+      status: "REJECTED",
+      result: null,
+    });
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "放弃学习计划" }),
+    );
+    expect(await screen.findByText("已放弃，学习计划未保存。")).toBeVisible();
+  });
+});
