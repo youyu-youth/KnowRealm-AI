@@ -60,6 +60,28 @@ describe("ChatMessageList — 计划草案 JSON 正文兜底（工单 02 真机�
     expect(screen.getByText(/\"phases\"/)).not.toBeVisible();
   });
 
+  it("前导 JSON + 中文复述的混合形态：剥掉 JSON 只渲染中文（真机二轮修复）", () => {
+    renderWithQuery(
+      <ChatMessageList
+        {...BASE}
+        messages={[
+          assistantMessage(
+            `${DRAFT_JSON}\n已按目标「redis基础学习」生成计划草案，共 5 个阶段、38 项，请过目。`,
+          ),
+        ]}
+        streamingText={null}
+      />,
+    );
+    // 中文复述正常渲染。
+    expect(
+      screen.getByText(/已按目标「redis基础学习」生成计划草案/),
+    ).toBeInTheDocument();
+    // 前导 JSON 不出现在渲染结果中。
+    expect(screen.queryByText(/\"phases\"/)).not.toBeInTheDocument();
+    // 混合形态不出现折叠块入口。
+    expect(screen.queryByText("查看原始数据")).not.toBeInTheDocument();
+  });
+
   it("正常中文正文照常渲染（不走折叠块）", () => {
     renderWithQuery(
       <ChatMessageList
