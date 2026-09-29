@@ -207,14 +207,14 @@ flowchart TD
 - **任务 Run**：目标、上下文快照、授权范围、计划版本、当前状态。
 - **操作 Operation**：动作参数、目标 ID、幂等键、结果、关联 Job、错误和撤销信息。
 
-**V1 不建独立的 agent_runs 表。** Run 的最小形态 = 编排型 job（JobRunner）+ batch_id 分组 + `agent_proposals` 执行结果回写（applied_at / result / batch_id），三者已能支撑「确认后的批量计划一口气执行 + 崩溃恢复 + 操作历史」。独立 Run／Operation 表的引入由触发器决定：出现第一个需要 Job 中途暂停等待用户补充、且跨重启接续的多步任务场景时，再按届时积累的真实场景设计表结构，避免过早冻结。
+**Run／Operation 独立表已启用（第二阶段触发条件兑现）。** V1 曾以「编排型 job（JobRunner）＋ batch_id 分组＋ `agent_proposals` 执行结果回写」为 Run 最小形态、不建独立表；第二阶段的批量整理出现了首个需要 Job 中途暂停等待用户补充（冲突转 WAITING_USER）、且跨重启接续的多步任务场景，触发条件兑现——迁移 0030 落地 `agent_runs` / `agent_operations` / `agent_activity` 三表（2026-09-29 收口，实施细节见 `.scratch/general-agent-v2/`）：Operation 是执行事实唯一源（提案 result 降级为单向投影缓存）；Run 推进由 JobRunner 内 AGENT_RUN 触发 job 承担，job 是无状态触发器、Run 状态是唯一事实源。
 
 两个事实源与 `agent_proposals` 的分工：
 
 | 事实源 | 承载 | 时机 |
 | --- | --- | --- |
 | `agent_proposals` | 审批事实：意图、判别 payload、PENDING／APPLIED／REJECTED／FAILED | 请求批准档（确认前） |
-| Operation 回执（V1 落在 proposals 回写与 job 记录） | 执行事实：幂等键、授权依据（模式＋指令原文）、结果对象 ID、Job ID、错误 | 确认后，或帮我批准／完全访问档直接执行后 |
+| Operation（`agent_operations` 行，授权依据与快照随行） | 执行事实：幂等键、授权依据（模式＋指令原文）、结果对象 ID、Job ID、错误、撤销链 | 确认后，或帮我批准／完全访问档直接执行后；批量任务以 Run（`agent_runs`）聚合逐 Operation 推进 |
 
 一张确认卡对应一个 Operation 批次；请求批准档「提案→确认→执行」两段事实以 proposal id 关联。解析等长任务继续复用 JobRunner。计划中的已执行步骤关联 Operation，未执行步骤可以调整。
 
