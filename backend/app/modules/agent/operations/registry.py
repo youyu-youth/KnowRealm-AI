@@ -401,7 +401,9 @@ async def _execute_operation_directly(
     授权依据与回执载荷如实记录执行时实际生效档。成功：应用器领域写入与
     operation 行（SUCCEEDED＋result 回填＋授权依据）同一事务原子提交；
     失败：业务事务整体回滚（＝未发生），独立小事务落 FAILED operation＋
-    稳定错误码（_mark_failed 先例，诊断不断链）。返回工具 JSON 载荷：
+    稳定错误码（_mark_failed 先例，诊断不断链；**各失败分支统一补固化
+    执行前快照**——快照缺席会让修改类操作的手动重试被保守拒绝，无法
+    恢复）。返回工具 JSON 载荷：
     成功 {ok, executed}；失败 {ok: False, error, operation_id}（模型转述
     原因，operation_id 供消息流锚点与手动重试定位）。
 
@@ -443,6 +445,7 @@ async def _execute_operation_directly(
                         authorization=authorization,
                         result_dict=None,
                         error_code="OPERATION_APPROVAL_REQUIRED",
+                        snapshot_json=await _failure_snapshot(session, spec, validated),
                         attempts=1 + attempt,
                         attempts_json=_final_attempts_json(
                             transient_history, attempt, "OPERATION_APPROVAL_REQUIRED"
@@ -533,6 +536,10 @@ async def _execute_operation_directly(
                         authorization=authorization,
                         result_dict=None,
                         error_code=OPERATION_TRANSIENT_ERROR,
+                        # 失败记账统一保留执行基线（review P2）：重试轮版本
+                        # 重验通过＝目标未变，回滚后当前态＝初试前态——快照
+                        # 缺席会让手动重试被快照重验保守拒绝（无法恢复）。
+                        snapshot_json=await _failure_snapshot(session, spec, validated),
                         attempts=1 + attempt,
                         attempts_json=_final_attempts_json(
                             transient_history, attempt, OPERATION_TRANSIENT_ERROR
@@ -545,7 +552,7 @@ async def _execute_operation_directly(
                 }
             except Exception:
                 # 非编码异常（bug / 环境故障）：原子回滚＝未发生，落 INTERNAL 稳定
-                # 错误码（先例：提案框架非编码异常路径）。
+                # 错误码（先例：提案框架非编码异常路径）；快照同口径保留。
                 async with session.begin():
                     failed = await record_direct_execution(
                         session,
@@ -556,6 +563,7 @@ async def _execute_operation_directly(
                         authorization=authorization,
                         result_dict=None,
                         error_code="INTERNAL",
+                        snapshot_json=await _failure_snapshot(session, spec, validated),
                         attempts=1 + attempt,
                         attempts_json=_final_attempts_json(transient_history, attempt, "INTERNAL"),
                     )

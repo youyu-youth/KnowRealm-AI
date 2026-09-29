@@ -943,6 +943,48 @@ async def test_direct_retry_rejects_target_drift(
 
 
 @pytest.mark.anyio
+async def test_transient_exhausted_keeps_snapshot_for_manual_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """瞬时耗尽的失败记账保留执行基线（review P2）：锁故障耗尽落 FAILED
+    时快照在场，故障解除后手动重试可恢复（修复前快照为空 → 重试恒
+    OPERATION_SNAPSHOT_STALE 死循环）。"""
+    from app.modules.agent.operations import registry as registry_module
+    from app.modules.agent.schemas import LibraryItemUpdateResult
+
+    calls = 0
+
+    async def always_locked_then_healed(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls <= 1 + 2:  # 首试＋两次自动重试全部锁死 → 耗尽
+            raise locked_error()
+        return LibraryItemUpdateResult(item_id=item_id(1), before={}, after={})
+
+    monkeypatch.setattr(registry_module, "run_operation_applier", always_locked_then_healed)
+    async with bare_db(tmp_path) as session_factory:
+        await seed_item(session_factory, 1)
+        receipt = await invoke_tool(
+            update_library_item,
+            session_factory,
+            {"item_id": item_id(1), "title": "新标题"},
+        )
+        assert receipt["ok"] is False
+        assert receipt["error"] == "OPERATION_TRANSIENT_ERROR"
+        rows = await operation_rows(session_factory)
+        failed_row = rows[-1]
+        assert failed_row["status"] == "FAILED"
+        assert failed_row["attempts"] == 3  # 首试＋两次自动重试耗尽
+        # 执行基线在场（修复前此处为 None）。
+        assert failed_row["snapshot_json"] is not None
+
+        # 故障解除（calls 已过耗尽阈值）后手动重试：恢复成功。
+        async with session_factory() as session:
+            result = await retry_standalone_operation(session, failed_row["id"])
+        assert result["status"] == "SUCCEEDED"
+
+
+@pytest.mark.anyio
 async def test_standalone_manual_retry_reuses_identity(tmp_path: Path) -> None:
     """失败项手动重试沿用原 operation 身份：修复后重试成功、attempts 递增、
     业务恰好生效一次（无重复副作用）。"""
