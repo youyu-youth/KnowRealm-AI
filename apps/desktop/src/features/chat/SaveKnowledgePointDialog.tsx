@@ -40,7 +40,7 @@ type SaveKnowledgePointDialogProps = {
 /**
  * 对话转知识点（对话转学习资产 V1）：把一条 AI 回答保存为目标记录的知识点。
  * 目标记录候选 = record-options 中已归类课程者（未归类记录无法建立锚点溯源）；
- * 详情预填聚焦摘要（首段 + 引用句），用户编辑确认后提交。
+ * 详情预填完整正文（剥离草案 JSON、去 markdown 标记），用户编辑确认后提交。
  */
 export function SaveKnowledgePointDialog({
   message,

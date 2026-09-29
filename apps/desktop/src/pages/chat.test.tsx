@@ -1790,7 +1790,7 @@ describe("对话转知识点（对话转学习资产 V1）", () => {
     renderAt(`/chat/${FIRST_SESSION_ID}`);
   }
 
-  it("AI 回答可保存为知识点：默认挂载记录、预填聚焦摘要、请求体完整", async () => {
+  it("AI 回答可保存为知识点：默认挂载记录、预填完整正文、请求体完整", async () => {
     const bodies: object[] = [];
     server.use(
       http.post(
@@ -1826,7 +1826,7 @@ describe("对话转知识点（对话转学习资产 V1）", () => {
     expect(saveButton).toHaveLength(1);
     fireEvent.click(saveButton[0]);
 
-    // Dialog 打开：详情预填聚焦摘要（首段去标题标记 + 引用句去角标）。
+    // Dialog 打开：详情预填完整正文（标题去标记 + 引用角标去除）。
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText("详情")).toHaveValue(
       "AOF 持久化\n\n写入以追加方式进行。",
