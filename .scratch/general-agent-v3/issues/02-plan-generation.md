@@ -22,7 +22,7 @@
 
 1. **草案确认机制＝操作提案复用**：`confirm_plan` 注册为 L2 写操作（OP_PLAN_CONFIRM，0030 CHECK 通配零迁移），提交即落提案＝草案确认卡（只读预览），确认走既有 `/api/proposals/{id}/confirm`。「草案不持久化」语义 = learning_plans / learning_plan_items 仅确认时写入（提案是待确认载体非半成品计划数据，与全部写动作同一机制）；「放弃」= 既有拒绝按钮；「重新生成」= 放弃后在对话中再要求（卡片三按钮中的第三action以 hint 文案承载，可编辑卡随工单 03）。L2 语义下 AUTO_APPROVE 档仍落确认卡（草案卡即确认闸门）、FULL_ACCESS 直执行。
 2. **模型转述草案为载荷本体**：generate 返回草案 JSON → 模型原样传给 confirm_plan（载荷=草案全文）。确认卡所见（payload 预览）与落库所写（applier 消费同一载荷）天然一致；模型转述漂移由提交时**排期重算比对**拦截（PLAN_SCHEDULE_INVALID 附期望日期，模型自纠重交），STUDY_RECORD 的 record_id 越界由归属校验拦截（PLAN_DRAFT_INVALID）。
-3. **日期不进 LLM 契约**：PlanDraft 只含阶段/项序/时长/理由；日期由 `scheduling.pack_schedule` 纯函数按顺序贪心铺排（每日预算 = 目标 daily_minutes，缺省默认 120；单项超整日预算独占一天为显式豁免；期限容量不足抛 ScheduleInfeasible → 工具转 PLAN_SCHEDULE_INFEASIBLE 附容量数学，生成 prompt 同时给出容量提示引导模型排量）。黄金样本手算测试四例 + 不可行两例。
+3. **日期不进 LLM 契约**：PlanDraft 只含阶段/项序/时长/理由；日期由 `scheduling.pack_schedule` 纯函数按顺序贪心铺排（每日预算 = 目标 daily_minutes，缺省默认 120；期限容量不足或**单项时长超每日预算**均抛 ScheduleInfeasible → 工具转 PLAN_SCHEDULE_INFEASIBLE 附原因文案，生成 prompt 同时给出容量与单项预算提示引导模型排量）。黄金样本手算测试四例 + 不可行两例。**修复备案（09-29 review）**：原实现「单项超整日预算独占一天为显式豁免」击穿 spec「每日总量与 daily_minutes 相容」（期限当天 + 单项 600 分钟可提交），已改为不可行拒绝，回归测试锚定两复现场景；prompt 版本 bump learning-plan-v2。
 4. **无资料路径**：课程可见记录为零时切 PlanSuggestions 输出（建议内容 + 资料缺口），工具返回结构化建议由模型在对话转述并引导补充资料（spec 用户故事 8；「对话卡」以模型转述承载，不新建卡片类型）。
 5. **资料上下文复用现有查询**：记录标题 + 已确认总结摘要（ai_summaries CONFIRMED）+ `LibraryRetrievalService.search`（COURSE 范围、目标标题为查询词）逐字引文；LLM 调用期间不持 DB 连接（资料先提取后调用）。
 6. **runtime 扩展**：AgentRuntimeContext 新增 llm_provider（accept 时已校验的聊天供应商，与主模型同源）；generate 工具内 LLM 失败复用 StructuredGenerationError 稳定错误码（LLM_OUTPUT_INVALID / PROVIDER_REQUEST_FAILED）。
@@ -31,6 +31,9 @@
 9. **版本语义**：confirm_core 版本号 = 现有最大版本 + 1（首次恒 1；旧版进终态后递增，重生成 SUPERSEDED 链路随工单 03）。effective_from = 确认落库日（UTC）。
 10. **评测骨架**：docs/evaluation/plan-generation-{checklist,samples}.md + backend/scripts/score_plan_generation.py（机械项：排期逐位复算/不超期限/结构完整，与 pack_schedule 同源；人工 rubric：资料贴合度/理由可解释性）；回归触发 = learning-plan-v1（生成 prompt 独立版本串）或模型变更。
 11. **prompt 双轨 bump**：chat-library-scope-v18→v19、chat-research-scope-v19→v20（CHAT_PLAN_GUIDANCE 进两模式系统提示）；挂载矩阵 7 处工具列表 + 3 处指引组合断言同步。
+12. **真机验收修复（草案 JSON 出现在聊天正文）**：用户真机复现——模型把 confirm_plan 的参数 JSON（草案全文）粘贴到回复正文而非走工具调用（确认卡未出现、正文被截断）。两层修复：①提示词层（chat prompt v20/v21）：generate_learning_plan / confirm_plan 工具指引与 CHAT_PLAN_GUIDANCE 明确「复述草案用简洁中文列表（每行：日期、内容、时长、理由），草案 JSON 只进工具参数、严禁在正文输出 JSON 或代码块」；②前端确定性兜底（不改落库只改展示）：新增 `planDraftJson.ts` 判定（正文整体可解析、顶层非空 phases[].items 专属形状，误伤≈0），命中时 ChatMessageList 以折叠块渲染（摘要行+可展开原始数据+重新发起引导），流式起势（`{`/```json 开头）先收敛为「正在准备结构化数据…」占位；判定与渲染 12 测试。备案：若提示词修复后仍频发，根治架构为服务端草案暂存（confirm_plan 只传 draft_id、模型不再复制大 JSON），属 02 已定案设计变更，届时随工单 03 提请决策。
+12. **修复备案（09-29 review）**：确认卡计划项原实现 content 截 60 字且不渲染 reason，违反 spec 用户故事 10（逐项理由可见）与「确认位置核对完整载荷」——已改为内容全文 + 「理由：」次行全文展示（schema 上限 200/300 字有界，无需折叠交互），i18n 双侧补 reasonLabel；阶段标题/目标标题的展示截断维持既有惯例未动。
+13. **修复备案（09-29 review）**：第三动作「重新生成」由 hint 文案升级为真按钮（原备注 1 的降级被 review 推翻）——CARD_BY_TYPE 配置表新增 regenerateMessage 声明点（仅 plan 类型），按钮=先 reject 旧草案（REJECTED 终态失效、回执如实呈现「已放弃」）再经父级 onSendMessage 代发「请基于课程资料为目标 {goal_id} 重新生成一份学习计划草案」，Agent 收到后重跑 generate 产新提案卡；未传发送回调（prop 门控）或非 plan 类型不渲染按钮；hint 文案同步更新。
 
 ## 用户真机验收清单（不代勾）
 
