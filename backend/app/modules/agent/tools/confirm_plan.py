@@ -29,8 +29,9 @@ async def confirm_plan(**kwargs: Any) -> str:
     参数 = generate_learning_plan 返回的 plan 字段原样：goal_id 与 phases
     （每项含 action_type / content / estimated_minutes / reason / record_id /
     scheduled_date）。必须逐字段照抄草案、不加改动不删项——确认卡展示的与
-    落库写入的是同一份载荷，改动会破坏一致性。用户在确认卡确认后计划才
-    生效；排期与目标不符时工具会返回期望日期，按其修正后重交。
+    落库写入的是同一份载荷，改动会破坏一致性。草案 JSON 只通过本工具的参数
+    传递，不要在回复正文输出 JSON 或代码块。用户在确认卡确认后计划才生效；
+    排期与目标不符时工具会返回期望日期，按其修正后重交。
     """
     runtime = current_agent_runtime()
     if runtime is None:

@@ -33,10 +33,12 @@ async def generate_learning_plan(goal_id: str) -> str:
 
     必须传 goal_id（先用 list_goals 确认，目标要先存在）。基于课程已有资料
     生成阶段划分、逐项内容、时长与理由，日期由系统按顺序与每日预算铺排；
-    课程还没有资料时返回建议学习内容与资料缺口清单。草案未保存——拿到
-    草案后先向用户完整复述（阶段、每项内容、日期、时长、理由），用户认可
-    后把草案原样（逐字段不加改动）传给 confirm_plan 提交确认卡；用户想调整
-    就按新要求重新生成。
+    课程还没有资料时返回建议学习内容与资料缺口清单。草案未保存——拿到草案
+    后先用简洁的中文列表向用户复述（每行：日期、内容、时长、理由，按阶段
+    分组），用户认可后把草案原样（逐字段不加改动）传给 confirm_plan 的参数
+    提交确认卡。**草案 JSON 只进 confirm_plan 的工具参数，严禁把 JSON 或
+    代码块原文输出到回复正文**——正文里用户只需要可读的中文复述；用户想
+    调整就按新要求重新生成。
     """
     runtime = current_agent_runtime()
     if runtime is None:
@@ -92,9 +94,8 @@ async def generate_learning_plan(goal_id: str) -> str:
                 "ok": False,
                 "error": "PLAN_SCHEDULE_INFEASIBLE",
                 "message": (
-                    f"草案总量 {exc.required_minutes} 分钟超出期限容量"
-                    f" {exc.capacity_minutes} 分钟（期限 {exc.deadline.isoformat()}）。"
-                    "请生成更精简的草案，或建议用户延长期限 / 提高每日投入。"
+                    f"{exc}。请修正草案（精简总量 / 拆分超预算单项），"
+                    "或建议用户延长期限、提高每日投入。"
                 ),
             },
             ensure_ascii=False,
@@ -123,9 +124,10 @@ async def generate_learning_plan(goal_id: str) -> str:
         "total_estimated_minutes": outcome.total_minutes,
         "materials_used": outcome.materials_used,
         "message": (
-            f"{draft_summary(outcome.plan)}。请向用户完整复述草案（阶段、每项内容、"
-            "日期、时长、理由），用户认可后把草案原样传给 confirm_plan 提交确认；"
-            "草案关闭即弃、不会自动保存。"
+            f"{draft_summary(outcome.plan)}。请用简洁的中文列表向用户复述草案"
+            "（每行：日期、内容、时长、理由，按阶段分组），用户认可后把草案"
+            "原样传给 confirm_plan 的参数提交确认——草案 JSON 只进工具参数，"
+            "不要在回复正文输出 JSON 或代码块；草案关闭即弃、不会自动保存。"
         ),
     }
     payload = json.dumps(body, ensure_ascii=False, separators=(",", ":"))

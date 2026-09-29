@@ -121,13 +121,14 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v19"
+CHAT_PROMPT_VERSION = "chat-library-scope-v20"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
 # 指引；工单 06：撤销工具；第三阶段工单 01：学习目标工具与目标制定指引；
-# 工单 02：学习计划三工具与计划生成指引）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v20"
+# 工单 02：学习计划三工具与计划生成指引；02 真机验收修复：计划指引禁止
+# 正文输出草案 JSON）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v21"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
