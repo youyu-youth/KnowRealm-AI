@@ -223,9 +223,10 @@ class ProposalService:
                 status_code=422,
                 detail="提案载荷不符合该类型的结构要求",
             ) from exc
-        # 落库的是判别校验后的清洗载荷（model_dump）：未知键不持久化，
-        # 存储层与 schema 形状一致（ADR-0024 禁任意 SQL/路径/Shell 形状）。
-        cleaned_payload = validated.model_dump()
+        # 落库的是判别校验后的清洗载荷：未知键不持久化，存储层与 schema 形状
+        # 一致（ADR-0024 禁任意 SQL/路径/Shell 形状）；mode="json" 保证
+        # payload_json TEXT 列恒为可序列化 JSON（date 等按 ISO 字符串下行）。
+        cleaned_payload = validated.model_dump(mode="json")
         proposal = AgentProposal(
             id=str(uuid4()),
             proposal_type=body.proposal_type.value,

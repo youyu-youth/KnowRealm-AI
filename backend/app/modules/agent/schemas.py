@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any, Literal, cast
 from uuid import UUID
@@ -25,6 +25,7 @@ from app.modules.course.schemas import (
     LearningDepth,
 )
 from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
+from app.modules.learning_plan.schemas import GoalType
 from app.modules.library.schemas import ChatScope
 
 
@@ -654,5 +655,134 @@ class RecordMoveCourseResult(BaseModel):
     record_id: str
     before_course_id: str | None = None
     after_course_id: str | None = None
+    # 执行后版本戳（undo 前重验版本用，同 CourseUpdateResult）。
+    after_updated_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# 学习目标契约（通用 Agent 第三阶段工单 01，spec 用户故事 1~6）：目标挂单个
+# 知识空间，AI 推断的目标范围经确认卡确认后生效（scope_source=AI_INFERRED +
+# scope_confirmed=True 由应用器固化——确认卡即用户确认，spec 用户故事 6）。
+# ---------------------------------------------------------------------------
+
+
+class GoalCreatePayload(BaseModel):
+    """OP_GOAL_CREATE 提案判别载荷（L1）：目标课程 + 目标参数。
+
+    course_id / goal_type / title 必填（缺失 → 结构化缺失项由模型转述追问，
+    同 create_course 口径）；期限与每日投入可选（模型按指引先追问，用户明确
+    表示没有时可不传）。日期为 YYYY-MM-DD。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标知识空间 id（经 search_courses 查找消歧后取得）",
+    )
+    goal_type: GoalType = Field(description="目标类型")
+    title: str = Field(min_length=1, max_length=200, description="目标标题")
+    target_date: date | None = Field(
+        default=None, description="期限（YYYY-MM-DD，按日）；用户明确表示无期限时不传"
+    )
+    daily_minutes: int | None = Field(
+        default=None, gt=0, le=24 * 60, description="计划每日投入分钟数"
+    )
+    target_score: float | None = Field(default=None, ge=0, le=100, description="目标分数（可选）")
+
+    @field_validator("title")
+    @classmethod
+    def clean_title(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("目标标题不能为空白")
+        return cleaned
+
+
+class GoalCreateResult(BaseModel):
+    """OP_GOAL_CREATE 结果投影（操作回执）：目标 id + 课程入口（course_id）。"""
+
+    goal_id: str
+    course_id: str
+
+
+class GoalCreateStateSnapshot(BaseModel):
+    """goal.create 执行前快照：课程身份＋版本戳（确认前课程被改 → 失效重确认）。
+
+    单 ACTIVE 冲突（提交时已存在进行中目标）在快照读取器直接拒绝（零提案，
+    模型即时转述「先完成或归档旧目标」）——创建类动作携带快照的原因正是
+    这个状态依赖：课程创建等无状态创建动作沿用恒缺省。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    name: str
+
+
+class GoalStateSnapshot(BaseModel):
+    """goal.update 执行前快照（spec 决策 12 同口径）：updated_at 双保险＋
+    before 值（确认卡预览 / 执行前重验 / 后续 Undo 补偿数据三用）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    title: str
+    goal_type: GoalType
+    status: str
+    target_date: date | None = None
+    daily_minutes: int | None = None
+    target_score: float | None = None
+
+
+class GoalUpdatePayload(BaseModel):
+    """OP_GOAL_UPDATE 提案判别载荷（L1）：编辑字段或状态流转（完成 / 归档）。
+
+    工具面滤 None（模型无法传显式 null）：非 None 字段＝本次要修改的字段；
+    status 仅接受 COMPLETED / ARCHIVED（终态单向流转）。编辑与状态流转均
+    只对 ACTIVE 目标开放（领域核心校验）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标学习目标 id（经 list_goals 查找取得）",
+    )
+    title: str | None = Field(default=None, min_length=1, max_length=200, description="目标标题")
+    target_date: date | None = Field(default=None, description="期限（YYYY-MM-DD，按日）")
+    daily_minutes: int | None = Field(
+        default=None, gt=0, le=24 * 60, description="计划每日投入分钟数"
+    )
+    target_score: float | None = Field(default=None, ge=0, le=100, description="目标分数（可选）")
+    status: Literal["COMPLETED", "ARCHIVED"] | None = Field(
+        default=None, description="状态流转：COMPLETED 完成 / ARCHIVED 归档（终态单向）"
+    )
+
+    @field_validator("title")
+    @classmethod
+    def clean_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("目标标题不能为空白")
+        return cleaned
+
+    @model_validator(mode="after")
+    def _require_change(self) -> "GoalUpdatePayload":
+        provided = self.model_dump(exclude_unset=True)
+        if set(provided) <= {"goal_id"}:
+            raise ValueError("至少提供一个修改字段或状态")
+        return self
+
+
+class GoalUpdateResult(BaseModel):
+    """OP_GOAL_UPDATE 结果投影：被修改字段的 before / after 对照（回执卡）。"""
+
+    goal_id: str
+    before: dict[str, Any]
+    after: dict[str, Any]
+    after_status: str = Field(description="执行后目标状态（完成 / 归档流转的回执事实）")
     # 执行后版本戳（undo 前重验版本用，同 CourseUpdateResult）。
     after_updated_at: datetime | None = None

@@ -597,6 +597,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{course_id}/goals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Course Goals */
+        get: operations["list_course_goals_api_courses__course_id__goals_get"];
+        put?: never;
+        /**
+         * Create Course Goal
+         * @description 页面入口创建目标：恒为用户确认范围（spec：AI 推断范围只经 Agent 确认卡）。
+         */
+        post: operations["create_course_goal_api_courses__course_id__goals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/goals/{goal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Course Goal */
+        patch: operations["update_course_goal_api_courses__course_id__goals__goal_id__patch"];
+        trace?: never;
+    };
+    "/api/courses/{course_id}/goals/{goal_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive Course Goal */
+        post: operations["archive_course_goal_api_courses__course_id__goals__goal_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/goals/{goal_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete Course Goal */
+        post: operations["complete_course_goal_api_courses__course_id__goals__goal_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/mastery": {
         parameters: {
             query?: never;
@@ -3659,6 +3731,112 @@ export interface components {
             granted_at: string | null;
         };
         /**
+         * GoalCreate
+         * @description HTTP 创建契约：页面 / Agent 应用器共用领域核心，本 schema 是页面入口。
+         *
+         *     页面创建恒为用户确认范围（scope_source=USER_CONFIRMED）；Agent 路径的
+         *     AI_INFERRED + 确认卡语义由应用器经领域核心参数传入，不走本 schema。
+         */
+        GoalCreate: {
+            /**
+             * Daily Minutes
+             * @description 计划每日投入分钟数
+             */
+            daily_minutes?: number | null;
+            /** @description 目标类型 */
+            goal_type: components["schemas"]["GoalType"];
+            /**
+             * Target Date
+             * @description 期限（按日）
+             */
+            target_date?: string | null;
+            /**
+             * Target Score
+             * @description 目标分数（如考试目标分，可选）
+             */
+            target_score?: number | null;
+            /**
+             * Title
+             * @description 目标标题
+             */
+            title: string;
+        };
+        /** GoalOut */
+        GoalOut: {
+            /** Course Id */
+            course_id: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Daily Minutes
+             * @description 计划每日投入分钟数
+             */
+            daily_minutes?: number | null;
+            goal_type: components["schemas"]["GoalType"];
+            /** Id */
+            id: string;
+            /** Scope Confirmed */
+            scope_confirmed: boolean;
+            scope_source: components["schemas"]["GoalScopeSource"];
+            status: components["schemas"]["GoalStatus"];
+            /**
+             * Target Date
+             * @description 期限（按日）
+             */
+            target_date?: string | null;
+            /**
+             * Target Score
+             * @description 目标分数（可选）
+             */
+            target_score?: number | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /**
+         * GoalScopeSource
+         * @description 目标范围来源（spec 决策：AI_INFERRED 必须用户确认才生效）。
+         * @enum {string}
+         */
+        GoalScopeSource: "USER_CONFIRMED" | "COURSE_SELECTION" | "AI_INFERRED";
+        /**
+         * GoalStatus
+         * @enum {string}
+         */
+        GoalStatus: "ACTIVE" | "COMPLETED" | "ARCHIVED";
+        /**
+         * GoalType
+         * @enum {string}
+         */
+        GoalType: "SKILL" | "EXAM" | "PROJECT" | "READING" | "CUSTOM";
+        /**
+         * GoalUpdate
+         * @description 目标编辑契约（期限 / 每日投入 / 标题 / 目标分数）：仅 ACTIVE 目标可改。
+         */
+        GoalUpdate: {
+            /**
+             * Daily Minutes
+             * @description 计划每日投入分钟数
+             */
+            daily_minutes?: number | null;
+            /**
+             * Target Date
+             * @description 期限（按日）
+             */
+            target_date?: string | null;
+            /**
+             * Target Score
+             * @description 目标分数（可选）
+             */
+            target_score?: number | null;
+            /**
+             * Title
+             * @description 目标标题
+             */
+            title?: string | null;
+        };
+        /**
          * InboxRecordOut
          * @description 收件箱条目：RecordOut + 列表展示用元信息。
          *
@@ -4512,7 +4690,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -8372,6 +8550,362 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BrainRelationOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_course_goals_api_courses__course_id__goals_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_course_goal_api_courses__course_id__goals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoalCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_course_goal_api_courses__course_id__goals__goal_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GoalUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_course_goal_api_courses__course_id__goals__goal_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    complete_course_goal_api_courses__course_id__goals__goal_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                goal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GoalOut"];
                 };
             };
             /** @description Forbidden */

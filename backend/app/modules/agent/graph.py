@@ -62,11 +62,17 @@ from app.modules.agent.tools.create_course import (
     CREATE_COURSE_TOOL_NAME,
     create_course,
 )
+from app.modules.agent.tools.create_goal import (
+    CREATE_GOAL_TOOL_NAME,
+    create_goal,
+)
 from app.modules.agent.tools.delete_course import (
     DELETE_COURSE_TOOL_NAME,
     delete_course,
 )
+from app.modules.agent.tools.get_goal import get_goal
 from app.modules.agent.tools.list_course_records import list_course_records
+from app.modules.agent.tools.list_goals import list_goals
 from app.modules.agent.tools.list_library_items import list_library_items
 from app.modules.agent.tools.move_record_course import (
     MOVE_RECORD_COURSE_TOOL_NAME,
@@ -95,6 +101,10 @@ from app.modules.agent.tools.update_course import (
     UPDATE_COURSE_TOOL_NAME,
     update_course,
 )
+from app.modules.agent.tools.update_goal import (
+    UPDATE_GOAL_TOOL_NAME,
+    update_goal,
+)
 from app.modules.agent.tools.update_library_item import (
     UPDATE_LIBRARY_ITEM_TOOL_NAME,
     update_library_item,
@@ -103,12 +113,12 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v17"
+CHAT_PROMPT_VERSION = "chat-library-scope-v18"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
-# 指引；工单 06：撤销工具）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v18"
+# 指引；工单 06：撤销工具；第三阶段工单 01：学习目标工具与目标制定指引）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v19"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
@@ -130,6 +140,8 @@ OPERATION_TOOL_NAMES = frozenset(
         DELETE_COURSE_TOOL_NAME,
         MOVE_RECORD_COURSE_TOOL_NAME,
         UNDO_OPERATION_TOOL_NAME,
+        CREATE_GOAL_TOOL_NAME,
+        UPDATE_GOAL_TOOL_NAME,
     }
 )
 # 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
@@ -275,12 +287,16 @@ def _resolve_agent_config(
     # 按注册表 level 声明自动继承档位分流）+ 批量整理计划工具（工单 05：一次
     # 提交多条整理目标，出计划卡或直建 Run 由后端档位与阈值判定——计划卡经既有
     # 提案查询就地呈现，不进 done 载荷，故不入 OPERATION_TOOL_NAMES）。
+    # 第三阶段工单 01：学习目标域四工具（list_goals / get_goal 只读查询 +
+    # create_goal / update_goal 写操作，写动作名 = 注册项 action = 工具函数名）。
     config = AgentConfig(
         tools=(
             *config.tools,
             search_courses,
             list_course_records,
             list_library_items,
+            list_goals,
+            get_goal,
             propose_memory,
             create_course,
             add_text_record_to_course,
@@ -295,6 +311,8 @@ def _resolve_agent_config(
             move_record_course,
             plan_batch_operations,
             undo_operation,
+            create_goal,
+            update_goal,
         )
     )
     if research:

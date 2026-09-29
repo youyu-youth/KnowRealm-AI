@@ -53,6 +53,7 @@ from app.modules.learner import routes as learner_routes
 from app.modules.learning import routes as learning_routes
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.service import MasteryService
+from app.modules.learning_plan import routes as learning_plan_routes
 from app.modules.library import routes as library_routes
 from app.modules.library.backfill import backfill_spec, ensure_backfill_enqueued
 from app.modules.library.index_rebuild_worker import index_rebuild_spec
@@ -459,6 +460,7 @@ def create_app(
     app.include_router(courses.router)
     app.include_router(course_brain_routes.router)
     app.include_router(learning_routes.router)
+    app.include_router(learning_plan_routes.router)
     app.include_router(audio_imports.router)
     app.include_router(capture_batches.router)
     app.include_router(settings_routes.router)

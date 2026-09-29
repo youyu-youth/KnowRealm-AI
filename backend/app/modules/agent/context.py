@@ -54,6 +54,16 @@ CHAT_UNDO_GUIDANCE = (
     "的 operation_id；被拒绝时如实转述原因（如目标已被后续修改、该操作不可"
     "撤销），不要试图绕过。"
 )
+# 学习目标制定指引（第三阶段工单 01，spec 用户故事 2/3/6）：追问缺失项、
+# 无空间先建、单空间单 ACTIVE 语义；AI 推断的目标范围经确认卡确认后生效。
+CHAT_GOAL_GUIDANCE = (
+    "用户想制定学习目标时：先用 search_courses 确认目标课程，没有合适课程"
+    "就先与用户确认新建课程再定目标；用户没说期限或每日投入时先追问，明确"
+    "表示没有才省略。查看目标用 list_goals（改目标前先列目标），制定用"
+    " create_goal、调整或完成/归档用 update_goal——目标经用户确认后才生效；"
+    "同一课程同时只有一个进行中目标，已有进行中目标时如实转述提示（先完成"
+    "或归档旧目标），不要擅自替用户归档。"
+)
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，
 # 零结构化生成）：标题与各节指引一并进 prompt，供文本协议断言与评测黄金集复用。
 CHAT_RESEARCH_SECTIONS: tuple[tuple[str, str], ...] = (
@@ -438,6 +448,7 @@ def build_context_messages(
         content = f"{content}\n{CHAT_ENUMERATION_GUIDANCE}"
         content = f"{content}\n{CHAT_BATCH_PLAN_GUIDANCE}"
         content = f"{content}\n{CHAT_UNDO_GUIDANCE}"
+        content = f"{content}\n{CHAT_GOAL_GUIDANCE}"
         content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:
             guidance = CHAT_WEB_SEARCH_GUIDANCE

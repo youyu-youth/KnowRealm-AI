@@ -618,7 +618,9 @@ async def submit_operation(
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     if should_execute_directly(effective_mode, spec.level):
         return await _execute_operation_directly(runtime, spec, validated, effective_mode)
-    cleaned_payload = validated.model_dump()
+    # mode="json"：载荷进 payload_json / 工具返回 / 确认卡事件统一 JSON 安全
+    # （date 等类型按 ISO 字符串下行；既有动作字段为 str/枚举，输出等价）。
+    cleaned_payload = validated.model_dump(mode="json")
     target = spec.target_resolver(validated) if spec.target_resolver is not None else None
     snapshot_json: str | None = None
     snapshot_failure: CodedHTTPException | None = None

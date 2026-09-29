@@ -36,6 +36,7 @@ from app.modules.agent.context import (
     CHAT_BATCH_PLAN_GUIDANCE,
     CHAT_CONTEXT_CHAR_BUDGET,
     CHAT_ENUMERATION_GUIDANCE,
+    CHAT_GOAL_GUIDANCE,
     CHAT_LANGUAGE_INSTRUCTION,
     CHAT_UNDO_GUIDANCE,
     ChatContextTooLargeError,
@@ -176,7 +177,8 @@ class TestBuildContextMessages:
         assert messages[0].content == (
             "你是学习助手\n"
             f"{CHAT_ENUMERATION_GUIDANCE}\n"
-            f"{CHAT_BATCH_PLAN_GUIDANCE}\n{CHAT_UNDO_GUIDANCE}\n{CHAT_LANGUAGE_INSTRUCTION}"
+            f"{CHAT_BATCH_PLAN_GUIDANCE}\n{CHAT_UNDO_GUIDANCE}\n{CHAT_GOAL_GUIDANCE}\n"
+            f"{CHAT_LANGUAGE_INSTRUCTION}"
         )
         assert messages[0].id == "sys"
         assert isinstance(messages[1], HumanMessage)
@@ -229,6 +231,7 @@ class TestBuildContextMessages:
                     CHAT_ENUMERATION_GUIDANCE,
                     CHAT_BATCH_PLAN_GUIDANCE,
                     CHAT_UNDO_GUIDANCE,
+                    CHAT_GOAL_GUIDANCE,
                     CHAT_LANGUAGE_INSTRUCTION,
                 ]
             )
@@ -273,6 +276,7 @@ class TestBuildContextMessages:
                     CHAT_ENUMERATION_GUIDANCE,
                     CHAT_BATCH_PLAN_GUIDANCE,
                     CHAT_UNDO_GUIDANCE,
+                    CHAT_GOAL_GUIDANCE,
                     CHAT_LANGUAGE_INSTRUCTION,
                 ]
             ),
@@ -1710,7 +1714,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v17"
+        assert rows[0][3] == "chat-library-scope-v18"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2136,6 +2140,7 @@ async def test_prompt_byte_identical_when_web_search_off(
             f"{CHAT_ENUMERATION_GUIDANCE}\n"
             f"{CHAT_BATCH_PLAN_GUIDANCE}\n"
             f"{CHAT_UNDO_GUIDANCE}\n"
+            f"{CHAT_GOAL_GUIDANCE}\n"
             f"{CHAT_LANGUAGE_INSTRUCTION}"
         )
 
@@ -2216,7 +2221,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 return list(BindRecordingModel.bound)
 
             # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library；
-            # search_courses / list_course_records / list_library_items / propose_memory
+            # search_courses / list_course_records / list_library_items / list_goals /
+            # get_goal（第三阶段工单 01 目标查询）/ propose_memory
             # / create_course / add_text_record_to_course 恒挂载（工单 01 操作工具组 /
             # 插队票 08 对象枚举 / 02 课程创建提案 / 03 文本记录提案 / 工单 06 任意
             # 会话支持用户明确「记住…」）
@@ -2228,6 +2234,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "list_goals",
+                "get_goal",
                 "propose_memory",
                 "create_course",
                 "add_text_record_to_course",
@@ -2242,12 +2250,16 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "move_record_course",
                 "plan_batch_operations",
                 "undo_operation",
+                "create_goal",
+                "update_goal",
             ]
             assert await visible(record_session_id) == [
                 "search_library",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "list_goals",
+                "get_goal",
                 "propose_memory",
                 "create_course",
                 "add_text_record_to_course",
@@ -2262,12 +2274,16 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "move_record_course",
                 "plan_batch_operations",
                 "undo_operation",
+                "create_goal",
+                "update_goal",
             ]
             assert await visible(course_session_id) == [
                 "search_library",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "list_goals",
+                "get_goal",
                 "propose_memory",
                 "create_course",
                 "add_text_record_to_course",
@@ -2282,12 +2298,16 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "move_record_course",
                 "plan_batch_operations",
                 "undo_operation",
+                "create_goal",
+                "update_goal",
             ]
             assert await visible(all_session_id) == [
                 "search_library",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "list_goals",
+                "get_goal",
                 "propose_memory",
                 "create_course",
                 "add_text_record_to_course",
@@ -2302,6 +2322,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "move_record_course",
                 "plan_batch_operations",
                 "undo_operation",
+                "create_goal",
+                "update_goal",
             ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
@@ -2314,6 +2336,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "list_goals",
+                "get_goal",
                 "propose_memory",
                 "create_course",
                 "add_text_record_to_course",
@@ -2328,6 +2352,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "move_record_course",
                 "plan_batch_operations",
                 "undo_operation",
+                "create_goal",
+                "update_goal",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
@@ -2335,6 +2361,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "list_goals",
+                "get_goal",
                 "propose_memory",
                 "create_course",
                 "add_text_record_to_course",
@@ -2349,6 +2377,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "move_record_course",
                 "plan_batch_operations",
                 "undo_operation",
+                "create_goal",
+                "update_goal",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
@@ -2356,6 +2386,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "list_goals",
+                "get_goal",
                 "propose_memory",
                 "create_course",
                 "add_text_record_to_course",
@@ -2370,6 +2402,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "move_record_course",
                 "plan_batch_operations",
                 "undo_operation",
+                "create_goal",
+                "update_goal",
             ]
 
 

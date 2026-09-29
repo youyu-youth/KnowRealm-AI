@@ -288,6 +288,9 @@ class ProposalType(StrEnum):
     OP_RECORD_MOVE_COURSE = "OP_RECORD_MOVE_COURSE"
     OP_BATCH = "OP_BATCH"
     OP_UNDO = "OP_UNDO"
+    # 第三阶段工单 01：学习目标创建与修改（目标域写动作，确认卡 + 三档授权）。
+    OP_GOAL_CREATE = "OP_GOAL_CREATE"
+    OP_GOAL_UPDATE = "OP_GOAL_UPDATE"
 
 
 class AgentProposalOut(BaseModel):
