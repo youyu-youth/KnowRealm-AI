@@ -458,6 +458,9 @@ class CourseUpdateResult(BaseModel):
     course_id: str
     before: dict[str, Any]
     after: dict[str, Any]
+    # 执行后版本戳（工单 06 review：undo 前重验版本用，spec 决策 19）——
+    # 领域写统一维护 updated_at，此后目标被任何写碰过即偏离，撤销拒。
+    after_updated_at: datetime | None = None
 
 
 class CourseArchivePayload(BaseModel):
@@ -476,6 +479,8 @@ class CourseArchiveResult(BaseModel):
 
     course_id: str
     status: str
+    # 执行后版本戳（undo 前重验版本用，同 CourseUpdateResult）。
+    after_updated_at: datetime | None = None
 
 
 class LibraryItemUpdatePayload(BaseModel):
@@ -508,6 +513,8 @@ class LibraryItemUpdateResult(BaseModel):
     item_id: str
     before: dict[str, Any]
     after: dict[str, Any]
+    # 执行后版本戳（undo 前重验版本用，同 CourseUpdateResult）。
+    after_updated_at: datetime | None = None
 
 
 class LibraryItemArchivePayload(BaseModel):
@@ -526,6 +533,8 @@ class LibraryItemArchiveResult(BaseModel):
 
     item_id: str
     status: str
+    # 执行后版本戳（undo 前重验版本用，同 CourseUpdateResult）。
+    after_updated_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -645,3 +654,5 @@ class RecordMoveCourseResult(BaseModel):
     record_id: str
     before_course_id: str | None = None
     after_course_id: str | None = None
+    # 执行后版本戳（undo 前重验版本用，同 CourseUpdateResult）。
+    after_updated_at: datetime | None = None

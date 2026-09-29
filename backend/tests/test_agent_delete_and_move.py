@@ -565,11 +565,12 @@ async def test_move_record_freezes_original_course_and_moves_on_confirm(
         operation = await operation_row(session_factory, proposal["proposal_id"])
         assert operation is not None
         assert operation["level"] == "L2"
-        assert operation["result"] == {
-            "record_id": RECORD_ID,
-            "before_course_id": COURSE_ID,
-            "after_course_id": TARGET_COURSE,
-        }
+        result = operation["result"]
+        assert result["record_id"] == RECORD_ID
+        assert result["before_course_id"] == COURSE_ID
+        assert result["after_course_id"] == TARGET_COURSE
+        # 执行后版本戳（undo 版本重验用）随 result 固化。
+        assert result["after_updated_at"] is not None
 
 
 @pytest.mark.anyio

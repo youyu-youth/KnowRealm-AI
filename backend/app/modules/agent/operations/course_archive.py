@@ -21,6 +21,7 @@ from app.modules.agent.operations.registry import (
     OperationSpec,
     UndoOperationResult,
     assert_undo_state,
+    assert_undo_version,
     parse_operation_payload,
     parse_undo_basis,
     register_operation,
@@ -56,7 +57,11 @@ async def _apply_course_status(
             code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
         )
     await CourseService.set_status_core(session, course, archived=archived)
-    return CourseArchiveResult(course_id=payload.course_id, status=course.status)
+    return CourseArchiveResult(
+        course_id=payload.course_id,
+        status=course.status,
+        after_updated_at=course.updated_at,
+    )
 
 
 async def apply_course_archive(
@@ -74,9 +79,12 @@ async def apply_course_restore(
 async def _undo_course_status(
     session: AsyncSession, original: AgentOperation, *, archived: bool
 ) -> UndoOperationResult:
-    """课程归档 / 恢复的共用补偿器：预期当前状态＝原操作执行结果，恢复＝
-    反向翻转（set_status_core，与 HTTP / Agent 正向路径同一核心）。"""
-    payload, snapshot = parse_undo_basis(original, CourseArchivePayload, CourseStateSnapshot)
+    """课程归档 / 恢复的共用补偿器：预期当前状态＝原操作执行结果（字段态
+    ＋版本戳两道重验，改走又改回同状态仍拒），恢复＝反向翻转
+    （set_status_core，与 HTTP / Agent 正向路径同一核心）。"""
+    payload, snapshot, result = parse_undo_basis(
+        original, CourseArchivePayload, CourseStateSnapshot, CourseArchiveResult
+    )
     course = await CourseService.get(session, payload.course_id)
     if course is None:
         raise CodedHTTPException(
@@ -85,6 +93,7 @@ async def _undo_course_status(
             detail="课程已不存在或已删除，无法撤销",
         )
     assert_undo_state({"status": "ARCHIVED" if archived else "ACTIVE"}, {"status": course.status})
+    assert_undo_version(result.after_updated_at, course.updated_at)
     await CourseService.set_status_core(session, course, archived=not archived)
     return UndoOperationResult(restored={"status": snapshot.status})
 

@@ -16,6 +16,7 @@ from app.modules.agent.operations.registry import (
     OperationSpec,
     UndoOperationResult,
     assert_undo_state,
+    assert_undo_version,
     parse_operation_payload,
     parse_undo_basis,
     register_operation,
@@ -110,7 +111,8 @@ async def apply_course_update(session: AsyncSession, proposal: AgentProposal) ->
     return CourseUpdateResult(
         course_id=payload.course_id,
         before={key: before[key] for key in before if before[key] != after[key]},
-        after={key: after[key] for key in after if before[key] != after[key]},
+        after={key: after[key] for key in before if before[key] != after[key]},
+        after_updated_at=course.updated_at,
     )
 
 
@@ -126,7 +128,9 @@ async def undo_update_course(
     OPERATION_UNDO_CONFLICT（不覆盖后续修改）。恢复＝payload 修改字段＋联动
     对写回快照值（快照本身是联动一致态，update_core 再联动一次幂等）。
     """
-    payload, snapshot = parse_undo_basis(original, CourseUpdatePayload, CourseStateSnapshot)
+    payload, snapshot, result = parse_undo_basis(
+        original, CourseUpdatePayload, CourseStateSnapshot, CourseUpdateResult
+    )
     course = await CourseService.get(session, payload.course_id)
     if course is None:
         raise CodedHTTPException(
@@ -146,6 +150,7 @@ async def undo_update_course(
         expected["education_stage"] = None
     current = {field: getattr(course, field) for field in COURSE_UPDATE_FIELDS}
     assert_undo_state(dict(expected), current)
+    assert_undo_version(result.after_updated_at, course.updated_at)
     provided = {
         field: getattr(snapshot, field)
         for field in COURSE_UPDATE_FIELDS

@@ -629,10 +629,11 @@ async def test_advance_executes_all_steps_and_completes(tmp_path: Path) -> None:
         assert await item_row(session_factory, 2) == ("条目2", None, "ARCHIVED")
         updated = cast(dict[str, Any], json.loads(cast(str, steps[0][4])))
         assert cast(dict[str, Any], updated["after"])["course_id"] == COURSE_ID
-        assert cast(dict[str, Any], json.loads(cast(str, steps[1][4]))) == {
-            "item_id": item_id(2),
-            "status": "ARCHIVED",
-        }
+        archived_result = cast(dict[str, Any], json.loads(cast(str, steps[1][4])))
+        assert archived_result["item_id"] == item_id(2)
+        assert archived_result["status"] == "ARCHIVED"
+        # 执行后版本戳（undo 版本重验用）随 result 固化。
+        assert archived_result["after_updated_at"] is not None
 
 
 @pytest.mark.anyio

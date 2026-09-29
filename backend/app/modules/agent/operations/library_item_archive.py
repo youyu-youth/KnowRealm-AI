@@ -19,6 +19,7 @@ from app.modules.agent.operations.registry import (
     OperationSpec,
     UndoOperationResult,
     assert_undo_state,
+    assert_undo_version,
     parse_operation_payload,
     parse_undo_basis,
     register_operation,
@@ -49,7 +50,11 @@ async def _apply_library_item_status(
     payload = parse_operation_payload(proposal, LibraryItemArchivePayload)
     item = await LibraryService.active_item(session, payload.item_id)
     await LibraryLifecycleService.set_archived_core(session, item, archived=archived)
-    return LibraryItemArchiveResult(item_id=payload.item_id, status=item.status)
+    return LibraryItemArchiveResult(
+        item_id=payload.item_id,
+        status=item.status,
+        after_updated_at=item.updated_at,
+    )
 
 
 async def apply_library_item_archive(
@@ -67,13 +72,15 @@ async def apply_library_item_restore(
 async def _undo_library_item_status(
     session: AsyncSession, original: AgentOperation, *, archived: bool
 ) -> UndoOperationResult:
-    """条目归档 / 恢复的共用补偿器：预期当前状态＝原操作执行结果，恢复＝
-    反向翻转（set_archived_core，与 HTTP / Agent 正向路径同一核心）。"""
-    payload, snapshot = parse_undo_basis(
-        original, LibraryItemArchivePayload, LibraryItemStateSnapshot
+    """条目归档 / 恢复的共用补偿器：预期当前状态＝原操作执行结果（字段态
+    ＋版本戳两道重验，改走又改回同状态仍拒），恢复＝反向翻转
+    （set_archived_core，与 HTTP / Agent 正向路径同一核心）。"""
+    payload, snapshot, result = parse_undo_basis(
+        original, LibraryItemArchivePayload, LibraryItemStateSnapshot, LibraryItemArchiveResult
     )
     item = await LibraryService.active_item(session, payload.item_id)
     assert_undo_state({"status": "ARCHIVED" if archived else "ACTIVE"}, {"status": item.status})
+    assert_undo_version(result.after_updated_at, item.updated_at)
     await LibraryLifecycleService.set_archived_core(session, item, archived=not archived)
     return UndoOperationResult(restored={"status": snapshot.status})
 

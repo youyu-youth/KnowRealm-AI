@@ -17,6 +17,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, cast
 from uuid import uuid4
@@ -111,18 +112,45 @@ def assert_undo_state(
         )
 
 
-def parse_undo_basis[R: BaseModel, S: BaseModel](
-    original: AgentOperation, payload_schema: type[R], snapshot_schema: type[S]
-) -> tuple[R, S]:
-    """undoer 共用：解析原操作的载荷与执行前快照（快照缺失 / 坏值＝补偿依据
-    损坏，保守拒绝撤销——快照是恢复值的唯一来源）。"""
+def _utc_normalized(value: datetime) -> datetime:
+    """版本比对前的 UTC 归一化：内存值 / result JSON 解析值 tz-aware，而
+    ISODateTime 存储往返（regexp 无时区组）读回 naive——直接 == 恒 False。"""
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(UTC).replace(tzinfo=None)
+
+
+def assert_undo_version(stamped: datetime | None, current: datetime) -> None:
+    """撤销前重验的第二道：目标版本比对（spec 决策 19「undo 前重验版本」）。
+
+    字段值比较拦不住「改走又改回」——值复原但用户已重新确认该值，恢复旧值
+    仍是覆盖。领域写统一维护 updated_at（快照纪律显式不变量），执行后版本
+    戳随 result 固化（after_updated_at）：此后目标被任何写碰过即偏离。
+    stamped 为 None（版本戳落地前的工单 06 旧数据）降级为仅字段比较——
+    产品未发布，旧行仅用户验收数据，平滑降级不回退既有可撤销性。
+    """
+    if stamped is not None and _utc_normalized(stamped) != _utc_normalized(current):
+        raise undo_conflict("目标在操作执行后已被修改（版本已变），撤销被拒绝以避免覆盖后续修改")
+
+
+def parse_undo_basis[R: BaseModel, S: BaseModel, T: BaseModel](
+    original: AgentOperation,
+    payload_schema: type[R],
+    snapshot_schema: type[S],
+    result_schema: type[T],
+) -> tuple[R, S, T]:
+    """undoer 共用：解析原操作的载荷、执行前快照与执行结果（快照 / result
+    缺失或坏值＝补偿依据损坏，保守拒绝撤销——快照是恢复值的唯一来源，
+    result 固化执行后版本戳）。"""
     try:
         payload = payload_schema.model_validate(json.loads(original.payload_json))
         assert original.snapshot_json is not None  # 快照列可空：None 同样按损坏拒绝
         snapshot = snapshot_schema.model_validate(json.loads(original.snapshot_json))
+        assert original.result_json is not None  # SUCCEEDED 行 result 必在
+        result = result_schema.model_validate(json.loads(original.result_json))
     except (ValueError, ValidationError) as exc:
         raise undo_conflict("原操作的补偿依据（快照）已损坏，无法撤销") from exc
-    return payload, snapshot
+    return payload, snapshot, result
 
 
 class OperationLevel(StrEnum):
@@ -189,7 +217,8 @@ def register_operation(spec: OperationSpec[Any]) -> None:
                     detail="目标已发生变化，提案已失效，请重新预览确认",
                 )
         result = spec.result_schema.model_validate(await spec.applier(session, proposal))
-        result_dict = result.model_dump()
+        # mode="json"：result 含执行后版本戳（datetime）——JSON 安全投影。
+        result_dict = result.model_dump(mode="json")
         await record_confirmed_operation(
             session,
             proposal=proposal,
@@ -461,7 +490,7 @@ async def _execute_operation_directly(
                         target=target,
                         payload_json=payload_json,
                         authorization=authorization,
-                        result_dict=result.model_dump(),
+                        result_dict=result.model_dump(mode="json"),
                         snapshot_json=snapshot_json,
                         attempts=1 + attempt,
                         attempts_json=attempts_json,
@@ -539,8 +568,8 @@ async def _execute_operation_directly(
             "action": spec.action,
             "level": spec.level.value,
             "auth_mode": auth_mode.value,
-            "payload": validated.model_dump(),
-            "result": result.model_dump(),
+            "payload": validated.model_dump(mode="json"),
+            "result": result.model_dump(mode="json"),
         },
     }
 

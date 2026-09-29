@@ -20,6 +20,7 @@ from app.modules.agent.operations.registry import (
     OperationSpec,
     UndoOperationResult,
     assert_undo_state,
+    assert_undo_version,
     parse_operation_payload,
     parse_undo_basis,
     register_operation,
@@ -82,6 +83,7 @@ async def apply_record_move_course(
         record_id=payload.record_id,
         before_course_id=before_course_id,
         after_course_id=record.course_id,
+        after_updated_at=record.updated_at,
     )
 
 
@@ -90,11 +92,15 @@ async def undo_move_record_course(
 ) -> UndoOperationResult:
     """move_record_course 补偿器（工单 06，spec 决策 19）：反向迁移过全部校验。
 
-    撤销前重验：记录当前课程必须是原操作的目标课程（payload.target_course_id）。
-    恢复＝迁移回快照的原 course_id（经 move_cross_course_core 完整校验链：目标
-    课程存在且 ACTIVE、无进行中任务）；原课程为收件箱（course_id 空）时轻量
-    恢复为未归类（无目标课程校验可过，维护 updated_at＋索引重建同口径）。"""
-    payload, snapshot = parse_undo_basis(original, RecordMoveCoursePayload, RecordStateSnapshot)
+    撤销前重验两道：记录当前课程必须是原操作的目标课程（payload.
+    target_course_id），且目标版本等于 result 固化的执行后版本戳（改走又
+    改回＝字段复原但版本已变，仍拒）。恢复＝迁移回快照的原 course_id（经
+    move_cross_course_core 完整校验链：目标课程存在且 ACTIVE、无进行中
+    任务）；原课程为收件箱（course_id 空）时轻量恢复为未归类（无目标课程
+    校验可过，维护 updated_at＋索引重建同口径）。"""
+    payload, snapshot, result = parse_undo_basis(
+        original, RecordMoveCoursePayload, RecordStateSnapshot, RecordMoveCourseResult
+    )
     record = await RecordService.get(session, payload.record_id)
     if record is None:
         raise CodedHTTPException(
@@ -103,6 +109,7 @@ async def undo_move_record_course(
             detail="学习记录已不存在或已删除，无法撤销",
         )
     assert_undo_state({"course_id": payload.target_course_id}, {"course_id": record.course_id})
+    assert_undo_version(result.after_updated_at, record.updated_at)
     if snapshot.course_id is None:
         # 恢复到收件箱（无目标课程可校验）：仍过「无进行中任务」守卫
         # （与正向迁移同口径，决策 17），再轻量恢复＋索引重建。

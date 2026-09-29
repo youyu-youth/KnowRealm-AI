@@ -1009,6 +1009,124 @@ async def test_standalone_retry_stale_after_target_changed(tmp_path: Path) -> No
 
 
 @pytest.mark.anyio
+async def test_undo_rejects_same_value_reversion(tmp_path: Path) -> None:
+    """版本重验（spec 决策 19，review P1）：改走再改回同值——字段态复原但
+    目标版本已变（用户已重新确认该值），撤销拒绝、不覆盖。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_item(session_factory, 1)
+        receipt = await invoke_tool(
+            update_library_item, session_factory, {"item_id": item_id(1), "title": "New"}
+        )
+        assert receipt["ok"] is True
+        op_id = receipt["executed"]["operation_id"]
+        # 用户改走再改回同值：title 复原、updated_at 两次推进。
+        await run_sql(
+            "UPDATE library_items SET title = 'Other', updated_at = :t WHERE id = :id",
+            {"id": item_id(1), "t": "2026-09-29T09:00:00.000000Z"},
+            session_factory,
+        )
+        await run_sql(
+            "UPDATE library_items SET title = 'New', updated_at = :t WHERE id = :id",
+            {"id": item_id(1), "t": "2026-09-29T09:00:01.000000Z"},
+            session_factory,
+        )
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc:
+                await UndoService.undo_operation(session, op_id)
+        assert exc.value.code == "OPERATION_UNDO_CONFLICT"
+        assert (await item_row(session_factory, 1))[0] == "New"  # 不覆盖用户确认值
+
+
+@pytest.mark.anyio
+async def test_undo_course_update_rejects_same_value_reversion(
+    tmp_path: Path,
+) -> None:
+    """课程改名同场景：版本已变即拒（course.* 与条目同口径）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory, name="旧课名")
+        receipt = await invoke_tool(
+            update_course, session_factory, {"course_id": COURSE_ID, "name": "New"}
+        )
+        assert receipt["ok"] is True
+        op_id = receipt["executed"]["operation_id"]
+        await run_sql(
+            "UPDATE courses SET name = 'Other', updated_at = :t WHERE id = :id",
+            {"id": COURSE_ID, "t": "2026-09-29T09:00:00.000000Z"},
+            session_factory,
+        )
+        await run_sql(
+            "UPDATE courses SET name = 'New', updated_at = :t WHERE id = :id",
+            {"id": COURSE_ID, "t": "2026-09-29T09:00:01.000000Z"},
+            session_factory,
+        )
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc:
+                await UndoService.undo_operation(session, op_id)
+        assert exc.value.code == "OPERATION_UNDO_CONFLICT"
+        assert (
+            await scalar(session_factory, "SELECT name FROM courses WHERE id = :id", id=COURSE_ID)
+        ) == "New"
+
+
+@pytest.mark.anyio
+async def test_undo_move_rejects_same_value_reversion(tmp_path: Path) -> None:
+    """迁移同场景：移走再移回（course_id 复原、版本已变）→ 撤销拒绝。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_course(session_factory, COURSE_OTHER, name="目标课程")
+        await seed_record(session_factory)  # 原在 COURSE_ID
+        receipt = await invoke_tool(
+            move_record_course,
+            session_factory,
+            {"record_id": RECORD_ID, "target_course_id": COURSE_OTHER},
+        )
+        assert receipt["ok"] is True
+        op_id = receipt["executed"]["operation_id"]
+        await run_sql(
+            "UPDATE records SET course_id = :course, updated_at = :t WHERE id = :id",
+            {"id": RECORD_ID, "course": COURSE_ID, "t": "2026-09-29T09:00:00.000000Z"},
+            session_factory,
+        )
+        await run_sql(
+            "UPDATE records SET course_id = :course, updated_at = :t WHERE id = :id",
+            {"id": RECORD_ID, "course": COURSE_OTHER, "t": "2026-09-29T09:00:01.000000Z"},
+            session_factory,
+        )
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc:
+                await UndoService.undo_operation(session, op_id)
+        assert exc.value.code == "OPERATION_UNDO_CONFLICT"
+        assert (
+            await scalar(
+                session_factory, "SELECT course_id FROM records WHERE id = :id", id=RECORD_ID
+            )
+        ) == COURSE_OTHER  # 不覆盖用户确认的归属
+
+
+@pytest.mark.anyio
+async def test_undo_downgrades_to_field_check_without_stamp(tmp_path: Path) -> None:
+    """降级路径：result 无版本戳（版本戳落地前的旧行）→ 仅字段比较放行，
+    既有可撤销性不回退。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_item(session_factory, 1)
+        receipt = await invoke_tool(
+            update_library_item, session_factory, {"item_id": item_id(1), "title": "新标题"}
+        )
+        assert receipt["ok"] is True
+        op_id = receipt["executed"]["operation_id"]
+        await run_sql(
+            "UPDATE agent_operations SET result_json ="
+            " json_remove(result_json, '$.after_updated_at')"
+            " WHERE id = :id",
+            {"id": op_id},
+            session_factory,
+        )
+        async with session_factory() as session:
+            await UndoService.undo_operation(session, op_id)
+        assert (await item_row(session_factory, 1))[0] == "条目1"  # 恢复快照旧名
+
+
+@pytest.mark.anyio
 async def test_standalone_retry_guards(tmp_path: Path) -> None:
     """守卫：不存在 404；非失败态拒绝；run 内操作指引走任务面板。"""
     async with bare_db(tmp_path) as session_factory:

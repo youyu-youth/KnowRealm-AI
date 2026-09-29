@@ -16,6 +16,7 @@ from app.modules.agent.operations.registry import (
     OperationSpec,
     UndoOperationResult,
     assert_undo_state,
+    assert_undo_version,
     parse_operation_payload,
     parse_undo_basis,
     register_operation,
@@ -80,7 +81,8 @@ async def apply_library_item_update(
     return LibraryItemUpdateResult(
         item_id=payload.item_id,
         before={key: before[key] for key in before if before[key] != after[key]},
-        after={key: after[key] for key in after if before[key] != after[key]},
+        after={key: after[key] for key in before if before[key] != after[key]},
+        after_updated_at=item.updated_at,
     )
 
 
@@ -89,11 +91,13 @@ async def undo_update_library_item(
 ) -> UndoOperationResult:
     """update_library_item 补偿器（工单 06）：重命名 / 归类的 Undo。
 
-    撤销前重验：条目当前 title / course_id 必须等于原操作执行后的预期态
-    （payload 变换应用到快照）——期间被手动改过 → OPERATION_UNDO_CONFLICT
-    （不覆盖后续修改）；恢复＝把原载荷修改过的字段写回快照 before 值。"""
-    payload, snapshot = parse_undo_basis(
-        original, LibraryItemUpdatePayload, LibraryItemStateSnapshot
+    撤销前重验两道：条目当前 title / course_id 必须等于原操作执行后的预期态
+    （payload 变换应用到快照），且目标版本等于 result 固化的执行后版本戳
+    （改走又改回＝值复原但版本已变，仍拒绝，spec 决策 19）——期间被手动
+    改过 → OPERATION_UNDO_CONFLICT（不覆盖后续修改）；恢复＝把原载荷修改
+    过的字段写回快照 before 值。"""
+    payload, snapshot, result = parse_undo_basis(
+        original, LibraryItemUpdatePayload, LibraryItemStateSnapshot, LibraryItemUpdateResult
     )
     item = await LibraryService.active_item(session, payload.item_id)
     expected = {
@@ -101,6 +105,7 @@ async def undo_update_library_item(
         "course_id": (payload.course_id if payload.course_id is not None else snapshot.course_id),
     }
     assert_undo_state(expected, {"title": item.title, "course_id": item.course_id})
+    assert_undo_version(result.after_updated_at, item.updated_at)
     restore = {
         key: getattr(snapshot, key)
         for key in LIBRARY_ITEM_UPDATE_FIELDS

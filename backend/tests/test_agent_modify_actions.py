@@ -398,10 +398,12 @@ async def test_restore_course_confirm_returns_active(tmp_path: Path) -> None:
             session_factory, f"SELECT status FROM courses WHERE id = '{COURSE_ID}'"
         ) == "ACTIVE"
         operation = await operation_row(session_factory, proposal_id)
-        assert operation is not None and operation["result"] == {
-            "course_id": COURSE_ID,
-            "status": "ACTIVE",
-        }
+        assert operation is not None
+        result = operation["result"]
+        assert result["course_id"] == COURSE_ID
+        assert result["status"] == "ACTIVE"
+        # 执行后版本戳（undo 版本重验用）随 result 固化。
+        assert result["after_updated_at"] is not None
 
 
 # ---------------------------------------------------------------------------
