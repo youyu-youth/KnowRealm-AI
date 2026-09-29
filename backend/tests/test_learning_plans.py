@@ -5,7 +5,7 @@
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -59,7 +59,10 @@ from app.modules.settings.config import LlmProviderConfig
 from app.shared.errors import CodedHTTPException
 
 TOKEN = "test-launch-token"
-NOW = "2026-09-29T08:00:00.000000Z"
+# 时间锚相对运行日（排期重算锚 = 提交日，钉死日历会在非当日运行时全量漂移；
+# 07 日期炸弹先例）。seed 的时间戳日期与 packed_payload 起点、断言共用 TODAY。
+TODAY = datetime.now(UTC).date()
+NOW = TODAY.isoformat() + "T08:00:00.000000Z"
 COURSE_ID = "c0000000-0000-4000-8000-000000000001"
 GOAL_ID = "90000000-0000-4000-8000-000000000001"
 RECORD_ID = "a0000000-0000-4000-8000-000000000001"
@@ -127,11 +130,39 @@ async def seed_course(session_factory: async_sessionmaker[AsyncSession]) -> None
     )
 
 
+OTHER_COURSE_ID = "c0000000-0000-4000-8000-0000000000ff"
+CONCEPT_ID = "b0000000-0000-4000-8000-000000000001"
+CONCEPT_ARCHIVED_ID = "b0000000-0000-4000-8000-000000000002"
+CONCEPT_OTHER_COURSE_ID = "b0000000-0000-4000-8000-000000000003"
+
+
+async def seed_concept(
+    session_factory: async_sessionmaker[AsyncSession],
+    concept_id: str,
+    *,
+    course_id: str = COURSE_ID,
+    status: str = "CONFIRMED",
+) -> None:
+    await run_sql(
+        "INSERT INTO concepts (id, course_id, canonical_name, normalized_name, "
+        "status, created_at, updated_at) VALUES (:id, :course_id, :name, :name, "
+        ":status, :now, :now)",
+        {
+            "id": concept_id,
+            "course_id": course_id,
+            "name": f"概念 {concept_id[:8]}",
+            "status": status,
+            "now": NOW,
+        },
+        session_factory,
+    )
+
+
 async def seed_goal(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     status: str = "ACTIVE",
-    target_date: str = "2026-10-27",
+    target_date: str | None = None,
     daily_minutes: int = 60,
 ) -> None:
     await run_sql(
@@ -143,7 +174,7 @@ async def seed_goal(
             "id": GOAL_ID,
             "course_id": COURSE_ID,
             "status": status,
-            "target_date": target_date,
+            "target_date": target_date or (TODAY + timedelta(days=28)).isoformat(),
             "daily_minutes": daily_minutes,
             "now": NOW,
         },
@@ -309,18 +340,18 @@ async def invoke_plan_tool(
 
 def packed_payload(
     *,
-    start: str = "2026-09-29",
+    start: str | None = None,
     minutes: tuple[int, ...] = (60, 30, 45),
     record_ids: tuple[str | None, ...] = (RECORD_ID, None, None),
     goal_id: str = GOAL_ID,
 ) -> dict[str, Any]:
     """黄金样本载荷：按 60 分钟 / 日预算手算铺排（60→D1；30→D2；45→D3）。
-    锚点默认 = 目标 updated_at 同日（排期起点不得早于目标定版日）。"""
+    锚点默认 = 提交日 TODAY（重算锚 = 提交日，相对运行日防日历漂移）。"""
     dates = pack_schedule(
         list(minutes),
         ScheduleConstraints(
-            start_date=date.fromisoformat(start),
-            deadline=date(2026, 10, 27),
+            start_date=date.fromisoformat(start) if start is not None else TODAY,
+            deadline=TODAY + timedelta(days=28),
             daily_minutes=60,
         ),
     )
@@ -729,9 +760,9 @@ async def test_confirm_core_creates_active_plan_and_items(tmp_path: Path) -> Non
         rows = await item_rows(session_factory, plan.id)
         assert [row["priority"] for row in rows] == [0, 1, 2]
         assert [row["scheduled_date"] for row in rows] == [
-            "2026-09-29",
-            "2026-09-30",
-            "2026-10-01",
+            TODAY.isoformat(),
+            (TODAY + timedelta(days=1)).isoformat(),
+            (TODAY + timedelta(days=2)).isoformat(),
         ]
         assert rows[0]["record_id"] == RECORD_ID
         assert rows[0]["action_type"] == "STUDY_RECORD"
@@ -832,8 +863,8 @@ async def test_confirm_plan_proposal_confirm_applies(tmp_path: Path) -> None:
             "last_date",
         }
         assert confirmed.result["item_count"] == 3
-        assert confirmed.result["first_date"] == "2026-09-29"
-        assert confirmed.result["last_date"] == "2026-10-01"
+        assert confirmed.result["first_date"] == TODAY.isoformat()
+        assert confirmed.result["last_date"] == (TODAY + timedelta(days=2)).isoformat()
 
         plans = await plan_rows(session_factory)
         assert len(plans) == 1 and plans[0]["status"] == "ACTIVE"
@@ -907,42 +938,65 @@ async def test_confirm_plan_submit_rejections(tmp_path: Path) -> None:
         assert result["ok"] is False
         assert result["error"] == "PLAN_DRAFT_INVALID"
 
+        # 概念引用越界（提交时拒绝，防确认落库才炸 INTERNAL 且重试无法自纠）：
+        # 编造 / 他课 / 已归档概念均拒；本课正常概念通过并可确认落库。
+        payload = packed_payload(record_ids=(None, None, None))
+        payload["phases"][0]["items"][0]["concept_id"] = UNKNOWN_ID
+        result = await invoke_plan_tool(confirm_plan, session_factory, payload)
+        assert result["ok"] is False
+        assert result["error"] == "PLAN_DRAFT_INVALID"
+        assert UNKNOWN_ID in result["detail"]
+
+        await run_sql(
+            "INSERT INTO courses (id, name, learning_context, depth, status, created_at, "
+            "updated_at) VALUES (:id, '他课', 'INTEREST', 'BEGINNER', 'ACTIVE', :now, :now)",
+            {"id": OTHER_COURSE_ID, "now": NOW},
+            session_factory,
+        )
+        await seed_concept(session_factory, CONCEPT_ARCHIVED_ID, status="ARCHIVED")
+        await seed_concept(session_factory, CONCEPT_OTHER_COURSE_ID, course_id=OTHER_COURSE_ID)
+        for concept_id in (CONCEPT_ARCHIVED_ID, CONCEPT_OTHER_COURSE_ID):
+            payload = packed_payload(record_ids=(None, None, None))
+            payload["phases"][0]["items"][0]["concept_id"] = concept_id
+            result = await invoke_plan_tool(confirm_plan, session_factory, payload)
+            assert result["ok"] is False
+            assert result["error"] == "PLAN_DRAFT_INVALID"
+
+        await seed_concept(session_factory, CONCEPT_ID)
+        payload = packed_payload(record_ids=(None, None, None))
+        payload["phases"][0]["items"][0]["concept_id"] = CONCEPT_ID
+        result = await invoke_plan_tool(confirm_plan, session_factory, payload)
+        assert result["ok"] is True
+        async with session_factory() as session:
+            confirmed = await ProposalService.confirm(
+                session, result["proposals"][0]["proposal_id"]
+            )
+        assert confirmed.status.value == "APPLIED"
+        await run_sql("DELETE FROM learning_plans", {}, session_factory)
+
         # 排期漂移：中间项日期与确定性铺排不一致（detail 附期望日期供模型自纠）。
         payload = packed_payload()
-        payload["phases"][0]["items"][1]["scheduled_date"] = "2026-01-05"
+        payload["phases"][0]["items"][1]["scheduled_date"] = (TODAY + timedelta(days=7)).isoformat()
         result = await invoke_plan_tool(confirm_plan, session_factory, payload)
         assert result["ok"] is False
         assert result["error"] == "PLAN_SCHEDULE_INVALID"
-        assert "2026-09-30" in result["detail"]
+        assert (TODAY + timedelta(days=1)).isoformat() in result["detail"]
 
-        # 排期起点早于目标定版日（updated_at）→ 拒绝（回挪起点虚增期限容量）。
-        payload = packed_payload(start="2026-01-05")
+        # 排期起点回挪（Codex 复现回归锚）：重算锚 = 提交日，首日早于提交日
+        # 的载荷拒绝（原 goal.updated_at 锚可回挪虚增期限容量）。
+        payload = packed_payload(start=(TODAY - timedelta(days=9)).isoformat())
         result = await invoke_plan_tool(confirm_plan, session_factory, payload)
         assert result["ok"] is False
         assert result["error"] == "PLAN_SCHEDULE_INVALID"
-        assert "早于目标当前版本" in result["detail"]
+        assert TODAY.isoformat() in result["detail"]
 
-        # 总量超期限：手写越界排期（锚定末日 + 三项 60 分钟，重算铺不开）。
-        payload = {
-            "goal_id": GOAL_ID,
-            "phases": [
-                {
-                    "title": "第一阶段",
-                    "items": [
-                        {
-                            "action_type": "CUSTOM",
-                            "content": f"任务 {index + 1}",
-                            "estimated_minutes": 60,
-                            "reason": f"理由 {index + 1}",
-                            "record_id": None,
-                            "concept_id": None,
-                            "scheduled_date": day,
-                        }
-                        for index, day in enumerate(("2026-10-26", "2026-10-27", "2026-10-28"))
-                    ],
-                }
-            ],
-        }
+        # 总量超期限：目标改近期限（明日截止、容量 2×60=120 < 总量 135），重算铺不开。
+        await run_sql(
+            "UPDATE learning_goals SET target_date = :target WHERE id = :id",
+            {"target": (TODAY + timedelta(days=1)).isoformat(), "id": GOAL_ID},
+            session_factory,
+        )
+        payload = packed_payload()
         result = await invoke_plan_tool(confirm_plan, session_factory, payload)
         assert result["ok"] is False
         assert result["error"] == "PLAN_SCHEDULE_INFEASIBLE"

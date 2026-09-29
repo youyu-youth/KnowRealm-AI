@@ -12,7 +12,7 @@ L2（计划头 + 批量项创建）：AUTO_APPROVE 档仍落确认卡（spec「�
 模型修正后重交）。重生成（新版本 + SUPERSEDED）随工单 03，不在本动作面。
 """
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +29,8 @@ from app.modules.agent.schemas import (
     PlanConfirmStateSnapshot,
 )
 from app.modules.course.service import CourseService
+from app.modules.course_brain.models import Concept
+from app.modules.course_brain.schemas import ConceptStatus
 from app.modules.learning_plan.generation import constraints_for
 from app.modules.learning_plan.models import LearningGoal
 from app.modules.learning_plan.scheduling import ScheduleInfeasible, pack_schedule
@@ -50,7 +52,8 @@ async def capture_plan_confirm_state(
     - 目标不可达 / 非进行中 → GOAL_NOT_FOUND / GOAL_NOT_ACTIVE；
     - 已有进行中计划 → PLAN_ACTIVE_EXISTS（重生成随工单 03）；
     - STUDY_RECORD 引用的记录不属于本课程或不可见 → PLAN_DRAFT_INVALID；
-    - 排期重算与载荷日期不一致（模型转述漂移 / 目标约束变化）→
+    - REVIEW_CONCEPT 引用的概念不属于本课程或已归档 → PLAN_DRAFT_INVALID；
+    - 排期重算与载荷日期不一致（模型转述草案漂移 / 目标约束变化）→
       PLAN_SCHEDULE_INVALID 并附期望日期（模型修正后重交）。
     """
     goal = await GoalService.get(session, payload.goal_id)
@@ -66,7 +69,8 @@ async def capture_plan_confirm_state(
         )
     await PlanService.require_no_active(session, goal.id)
     await _require_records_visible(session, goal.course_id, payload)
-    _require_schedule_matches(payload, goal)
+    await _require_concepts_visible(session, goal.course_id, payload)
+    _require_schedule_matches(payload, goal, datetime.now(UTC).date())
     course = await CourseService.get(session, goal.course_id)
     return PlanConfirmStateSnapshot(
         updated_at=goal.updated_at,
@@ -112,29 +116,63 @@ async def _require_records_visible(
         )
 
 
-def _require_schedule_matches(payload: PlanConfirmPayload, goal: LearningGoal) -> None:
+async def _require_concepts_visible(
+    session: AsyncSession, course_id: str, payload: PlanConfirmPayload
+) -> None:
+    """REVIEW_CONCEPT 的 concept_id 必须是本课程未归档概念（防模型编造引用）。
+
+    与 record_id 同口径的提交时校验：编造 / 他课 / 已归档概念在此拒绝并附
+    可修正的领域错误（PLAN_DRAFT_INVALID），而不是等确认落库撞 FK 炸成
+    INTERNAL（载荷已定、重试必再失败、模型无法自纠）。
+    """
+    concept_ids = {
+        item.concept_id
+        for phase in payload.phases
+        for item in phase.items
+        if item.concept_id is not None
+    }
+    if not concept_ids:
+        return
+    visible = set(
+        (
+            await session.scalars(
+                select(Concept.id).where(
+                    Concept.id.in_(concept_ids),
+                    Concept.course_id == course_id,
+                    Concept.status != ConceptStatus.ARCHIVED.value,
+                )
+            )
+        ).all()
+    )
+    missing = sorted(concept_ids - visible)
+    if missing:
+        raise CodedHTTPException(
+            code="PLAN_DRAFT_INVALID",
+            status_code=422,
+            detail=(
+                "草案引用了不属于本课程或已归档的概念（"
+                + "、".join(missing)
+                + "），请修正后重新提交"
+            ),
+            params={"conceptIds": ", ".join(missing)},
+        )
+
+
+def _require_schedule_matches(payload: PlanConfirmPayload, goal: LearningGoal, today: date) -> None:
     """排期确定性重算比对（spec：日期铺排由确定性校验承担）。
 
-    锚点 = 草案首日（跨天确认时以生成日为基线仍逐位一致），但**不得早于目标
-    当前版本的 updated_at 日期**——草案只会在目标定型后生成，起点早于该日 =
-    模型编造（回挪起点会虚增期限容量，破坏「每日总量与 daily_minutes 相容」
-    的容量口径）。
+    锚点 = **提交日**（capture 传入的 today，可信生成日期）：草案提案活不过
+    下一条用户消息（弃置语义），generate 与 confirm_plan 同轮流执行、两者
+    today 一致——载荷日期必须与「从提交日起铺排」逐位一致；起点回挪（虚增
+    期限容量，原 goal.updated_at 锚的漏洞）或起点后移（模型私选起点）都由
+    比对直接拒绝并附期望日期。跨午夜的极端时序会拒掉合法草案，但拒错方向
+    安全：错误附期望日期，模型按期望重交即自愈。
     """
     minutes = [item.estimated_minutes for phase in payload.phases for item in phase.items]
     claimed = [item.scheduled_date for phase in payload.phases for item in phase.items]
     assert claimed, "schema 保证至少一个计划项"
-    floor = goal.updated_at.date()
-    if claimed[0] < floor:
-        raise CodedHTTPException(
-            code="PLAN_SCHEDULE_INVALID",
-            status_code=422,
-            detail=(
-                f"草案排期起点早于目标当前版本（{floor.isoformat()}），"
-                "起点不得早于目标定版日，请修正后重新提交"
-            ),
-        )
     try:
-        expected = pack_schedule(minutes, constraints_for(goal, claimed[0]))
+        expected = pack_schedule(minutes, constraints_for(goal, today))
     except ScheduleInfeasible as exc:
         raise CodedHTTPException(
             code="PLAN_SCHEDULE_INFEASIBLE",
