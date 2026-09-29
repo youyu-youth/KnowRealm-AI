@@ -920,8 +920,9 @@ function labelKey(proposal: AgentProposalOut, key: string): string {
  *
  * 依据＝确认事务内回写的 operation 行（proposal_id 关联）：成功且可撤销且
  * 未撤销 → 「撤销」按钮；已撤销 → 标记（补偿行不进本卡，标记经 undone_by
- * 派生）；REJECTED / 无关联行（历史数据、查询缺席）不渲染——入口仍可在
- * 设置 → 操作历史找到。 */
+ * 派生）；不可撤销 → 就地呈现原因（spec 用户故事 28，与直执行回执卡/操作
+ * 历史同口径）；REJECTED / 无关联行（历史数据、查询缺席）不渲染——入口
+ * 仍可在设置 → 操作历史找到。 */
 function ProposalUndoEntry({
   operation,
   pending,
@@ -945,7 +946,18 @@ function ProposalUndoEntry({
     );
   }
   if (!operation.undoable) {
-    return null;
+    // 创建类等不可撤销动作：不渲染按钮（spec 决策 19 首批范围），原因如实
+    // 呈现（undo_reason 缺省的防御行除外）。
+    if (operation.undo_reason === null) {
+      return null;
+    }
+    return (
+      <p className="text-label text-muted-foreground w-full">
+        {t("chat.executedOperation.notUndoable", {
+          reason: operation.undo_reason,
+        })}
+      </p>
+    );
   }
   return (
     <div className="flex shrink-0 flex-col items-end gap-1">

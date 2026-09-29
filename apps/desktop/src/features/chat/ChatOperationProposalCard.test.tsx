@@ -93,9 +93,11 @@ function proposalFixture(
 function operationFixture(
   overrides: Partial<{
     id: string;
+    action: string;
     proposal_id: string | null;
     status: string;
     undoable: boolean;
+    undo_reason: string | null;
     undone_by: string | null;
   }> = {},
 ) {
@@ -752,6 +754,38 @@ describe("ChatOperationProposalCard — 删除与跨课迁移（工单 04）", (
 
     expect(await screen.findByText("条目已修改。")).toBeVisible();
     expect(screen.getByText("该操作已撤销。")).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "撤销" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("不可撤销的回执行就地呈现原因（spec 用户故事 28，创建类无按钮）", async () => {
+    listProposals.mockResolvedValue([
+      deleteMoveFixture({
+        id: "p-text",
+        proposal_type: "TEXT_RECORD_ADD",
+        payload: { course_id: "c-1", content: "新特性" },
+        status: "APPLIED",
+        result: { record_id: "r-1" },
+      }),
+    ]);
+    // 保存文本记录＝创建类动作：undoable=false＋注册项声明的原因。
+    listOperations.mockResolvedValue([
+      operationFixture({
+        id: "op-text",
+        action: "add_text_record_to_course",
+        proposal_id: "p-text",
+        undoable: false,
+        undo_reason: "创建类动作不在首批撤销范围，如需移除请在记录页手动删除",
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+
+    expect(
+      await screen.findByText(
+        "不可撤销：创建类动作不在首批撤销范围，如需移除请在记录页手动删除",
+      ),
+    ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "撤销" }),
     ).not.toBeInTheDocument();
