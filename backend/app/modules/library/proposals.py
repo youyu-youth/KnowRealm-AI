@@ -273,6 +273,28 @@ class ProposalService:
         return _proposal_out(refreshed)
 
     @staticmethod
+    async def discard_session_plan_drafts(session: AsyncSession, chat_session_id: str) -> None:
+        """弃置会话内待确认的计划草案提案（spec「确认卡关闭即弃」，用户故事 11）。
+
+        新用户消息 = 话题翻篇：本会话 PENDING / FAILED 的 OP_PLAN_CONFIRM 提案
+        批量置 REJECTED 终态（计划业务表零写入不变，草案经重新生成即可恢复）。
+        仅草案类提案随话题弃置；其余操作提案（课程创建等用户发起的动作）跨
+        消息保留待确认。调用方事务内执行（_mark_failed 先例）；与确认并发的
+        竞态由 PENDING / FAILED 条件守卫消除（已 APPLIED 的行不受影响）。
+        """
+        await session.execute(
+            update(AgentProposal)
+            .where(
+                AgentProposal.session_id == chat_session_id,
+                AgentProposal.proposal_type == ProposalType.OP_PLAN_CONFIRM.value,
+                AgentProposal.status.in_(
+                    [ProposalStatus.PENDING.value, ProposalStatus.FAILED.value]
+                ),
+            )
+            .values(status=ProposalStatus.REJECTED.value, decided_at=utcnow())
+        )
+
+    @staticmethod
     async def _mark_failed(session: AsyncSession, proposal_id: str, error_code: str) -> None:
         """失败回写：条件 UPDATE 抢占（终态守卫）。
 

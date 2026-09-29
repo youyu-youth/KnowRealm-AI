@@ -3236,6 +3236,87 @@ async def test_interrupted_stream_keeps_pending_operation_proposal(
 
 
 @pytest.mark.anyio
+async def test_new_user_message_discards_pending_plan_drafts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """spec 用户故事 11「确认卡关闭即弃」：新用户消息 = 话题翻篇，本会话
+    PENDING 计划草案提案批量置 REJECTED（learning_plans 零写入不变）；其余
+    操作提案与其他会话的草案不受影响；补答（复用原 user 行）不是翻篇。"""
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=[list(STUB_REPLY)] * 3) as (
+        app,
+        client,
+        _captured,
+    ):
+        session_id = await create_session(client)
+
+        async def seed_proposal(proposal_id: str, proposal_type: str, chat_session_id: str) -> None:
+            async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+                await connection.execute(
+                    "INSERT INTO agent_proposals"
+                    " (id, proposal_type, status, session_id, payload_json, created_at)"
+                    " VALUES (?, ?, 'PENDING', ?, '{}',"
+                    " strftime('%Y-%m-%dT%H:%M:%S', 'now'))",
+                    (proposal_id, proposal_type, chat_session_id),
+                )
+                await connection.commit()
+
+        async def status_of(proposal_id: str) -> str | None:
+            async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+                row = await (
+                    await connection.execute(
+                        "SELECT status FROM agent_proposals WHERE id = ?",
+                        (proposal_id,),
+                    )
+                ).fetchone()
+            return None if row is None else str(row[0])
+
+        await seed_proposal("draft-1", "OP_PLAN_CONFIRM", session_id)
+        await seed_proposal("other-1", "OP_COURSE_ARCHIVE", session_id)
+        await seed_proposal("draft-other-session", "OP_PLAN_CONFIRM", "sess-other")
+
+        # 新消息（话题翻篇）：本会话草案弃置，其余操作提案与其他会话草案保留。
+        events = await send_message(client, session_id, "换个话题聊点别的")
+        assert events[-1][0] == "done"
+        assert await status_of("draft-1") == "REJECTED"
+        assert await status_of("other-1") == "PENDING"
+        assert await status_of("draft-other-session") == "PENDING"
+
+        # 弃置不产生半成品计划数据：计划业务表零写入。
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            plans = await (
+                await connection.execute("SELECT count(*) FROM learning_plans")
+            ).fetchone()
+        assert plans is not None and plans[0] == 0
+
+        # 补答（流中断后重发同一内容，复用原 user 行）不是翻篇：中断落库的
+        # USER 行之后 seed 新草案，重发不触发弃置。
+        accepted = await ChatMessageService.accept(
+            session_factory=app.state.session_factory,
+            data_dir=app.state.data_dir,
+            registry=app.state.chat_stream_registry,
+            session_id=session_id,
+            content="会被中断的问题",
+        )
+        stream = ChatMessageService.stream_events(
+            session_factory=app.state.session_factory,
+            checkpointer=app.state.chat_checkpointer,
+            registry=app.state.chat_stream_registry,
+            accepted=accepted,
+        )
+        assert (await anext(stream)).event == "status"
+        await stream.aclose()
+        await seed_proposal("draft-2", "OP_PLAN_CONFIRM", session_id)
+        await ChatMessageService.accept(
+            session_factory=app.state.session_factory,
+            data_dir=app.state.data_dir,
+            registry=app.state.chat_stream_registry,
+            session_id=session_id,
+            content="会被中断的问题",
+        )
+        assert await status_of("draft-2") == "PENDING"
+
+
+@pytest.mark.anyio
 async def test_interrupted_stream_keeps_direct_execution_recoverable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -57,6 +57,7 @@ from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
 from app.modules.learner.service import build_learner_context
 from app.modules.library.models import LibraryItem, LibraryItemRecord
+from app.modules.library.proposals import ProposalService
 from app.modules.record.models import Record
 from app.modules.record.service import RecordService
 from app.modules.search.integrations.tavily import TavilySearchClient
@@ -730,6 +731,11 @@ class ChatMessageService:
                             created_at=utcnow(),
                         )
                     )
+                    # 确认卡关闭即弃（spec 用户故事 11）：新消息 = 话题翻篇，
+                    # 本会话待确认计划草案提案随本次发送批量弃置（REJECTED
+                    # 终态、计划业务表零写入；补答复用原行不弃置）。同事务内，
+                    # 之后模型在本轮提交的新草案提案不受影响。
+                    await ProposalService.discard_session_plan_drafts(session, session_id)
                 if chat.title is None:
                     chat.title = content[:CHAT_TITLE_MAX_CHARS]
                 chat.updated_at = utcnow()
