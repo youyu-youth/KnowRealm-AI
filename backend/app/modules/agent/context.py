@@ -64,6 +64,17 @@ CHAT_GOAL_GUIDANCE = (
     "同一课程同时只有一个进行中目标，已有进行中目标时如实转述提示（先完成"
     "或归档旧目标），不要擅自替用户归档。"
 )
+# 学习计划生成指引（第三阶段工单 02，spec 用户故事 7~11）：草案只读不落库、
+# 确认卡即确认闸门、无资料路径转述建议与缺口。
+CHAT_PLAN_GUIDANCE = (
+    "用户想生成学习计划时：先确认目标存在（list_goals / get_goal，无目标先"
+    "走目标制定），再用 generate_learning_plan 生成草案；拿到草案先向用户"
+    "完整复述（阶段、每项内容、日期、时长、理由），用户认可后把草案原样传给"
+    " confirm_plan 提交确认卡——用户确认前计划不会保存，草案关闭即弃，想调整"
+    "就按新要求重新生成，不要在草案之外自行编造或删改计划项。课程还没有资料"
+    "时工具会返回建议学习内容与资料缺口，如实转述并引导先补充资料。查看已有"
+    "计划用 get_plan。"
+)
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，
 # 零结构化生成）：标题与各节指引一并进 prompt，供文本协议断言与评测黄金集复用。
 CHAT_RESEARCH_SECTIONS: tuple[tuple[str, str], ...] = (
@@ -449,6 +460,7 @@ def build_context_messages(
         content = f"{content}\n{CHAT_BATCH_PLAN_GUIDANCE}"
         content = f"{content}\n{CHAT_UNDO_GUIDANCE}"
         content = f"{content}\n{CHAT_GOAL_GUIDANCE}"
+        content = f"{content}\n{CHAT_PLAN_GUIDANCE}"
         content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:
             guidance = CHAT_WEB_SEARCH_GUIDANCE

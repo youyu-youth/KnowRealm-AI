@@ -5719,7 +5719,8 @@
           "OP_BATCH",
           "OP_UNDO",
           "OP_GOAL_CREATE",
-          "OP_GOAL_UPDATE"
+          "OP_GOAL_UPDATE",
+          "OP_PLAN_CONFIRM"
         ],
         "title": "ProposalType",
         "type": "string"

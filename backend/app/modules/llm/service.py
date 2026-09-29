@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.base import utcnow
 from app.modules.course_brain.schemas import CourseBrainExtractionBatch
 from app.modules.knowledge_point.schemas import KnowledgePointBatch
+from app.modules.learning_plan.schemas import PlanDraft, PlanSuggestions
 from app.modules.library.schemas import OrganizeSuggestionBatch
 from app.modules.llm.models import LlmCallLog
 from app.modules.quiz.schemas import QuizBatch, ShortAnswerGrade
@@ -81,6 +82,20 @@ class CourseBrainCallResult:
     latency_ms: int
 
 
+@dataclass(frozen=True)
+class PlanDraftCallResult:
+    content: PlanDraft
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
+@dataclass(frozen=True)
+class PlanSuggestionsCallResult:
+    content: PlanSuggestions
+    token_usage: dict[str, object]
+    latency_ms: int
+
+
 class StructuredModel(Protocol):
     async def generate(
         self,
@@ -100,6 +115,8 @@ TodoModel = StructuredModel
 ReviewMaterialModel = StructuredModel
 ReviewMaterialModelResult = StructuredModelResult
 CourseBrainModel = StructuredModel
+PlanDraftModel = StructuredModel
+PlanSuggestionsModel = StructuredModel
 
 
 class StructuredGenerationError(Exception):
@@ -221,6 +238,20 @@ class OpenAiCompatibleCourseBrainModel(_OpenAiCompatibleStructuredModel):
 class OpenAiCompatibleOrganizeModel(_OpenAiCompatibleStructuredModel):
     def __init__(self) -> None:
         super().__init__(OrganizeSuggestionBatch)
+
+
+class OpenAiCompatiblePlanDraftModel(_OpenAiCompatibleStructuredModel):
+    """学习计划草案生成（第三阶段工单 02）：阶段 / 项序 / 时长 / 理由。"""
+
+    def __init__(self) -> None:
+        super().__init__(PlanDraft)
+
+
+class OpenAiCompatiblePlanSuggestionsModel(_OpenAiCompatibleStructuredModel):
+    """纯目标起点（无资料）的建议与资料缺口生成（工单 02，spec 用户故事 8）。"""
+
+    def __init__(self) -> None:
+        super().__init__(PlanSuggestions)
 
 
 def build_chat_model(
@@ -551,3 +582,59 @@ async def call_organize_model(
         invalid_output_code="LLM_OUTPUT_INVALID",
     )
     return cast(OrganizeSuggestionBatch, result.content)
+
+
+async def call_plan_draft_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    plan_draft_model: PlanDraftModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> PlanDraftCallResult:
+    """学习计划草案生成（第三阶段工单 02）：结构化输出 = 阶段 + 逐项参数。
+
+    日期不进 LLM 契约——排期由 learning_plan.scheduling 确定性铺排。"""
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=plan_draft_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="learning-plan",
+        graph_node="generate",
+        prompt_version=prompt_version,
+        output_schema=PlanDraft,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+    )
+    return PlanDraftCallResult(
+        content=cast(PlanDraft, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )
+
+
+async def call_plan_suggestions_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    plan_suggestions_model: PlanSuggestionsModel,
+    provider: LlmProviderConfig,
+    prompt: str,
+    prompt_version: str,
+) -> PlanSuggestionsCallResult:
+    """无资料路径建议生成（工单 02）：建议学习内容 + 资料缺口清单。"""
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=plan_suggestions_model,
+        provider=provider,
+        prompt=prompt,
+        graph_name="learning-plan",
+        graph_node="suggest",
+        prompt_version=prompt_version,
+        output_schema=PlanSuggestions,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+    )
+    return PlanSuggestionsCallResult(
+        content=cast(PlanSuggestions, result.content),
+        token_usage=result.token_usage,
+        latency_ms=result.latency_ms,
+    )

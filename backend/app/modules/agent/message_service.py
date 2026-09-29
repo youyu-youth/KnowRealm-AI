@@ -791,6 +791,7 @@ class ChatMessageService:
                     record_id=prompt_context.record_id,
                     library_item_id=prompt_context.library_item_id,
                     web_search_provider=accepted.web_search,
+                    llm_provider=accepted.provider,
                     page=prompt_context.page,
                     auth_mode=accepted.auth_mode,
                     instruction_excerpt=accepted.content,

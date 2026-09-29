@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatScope
 from app.modules.search.web_search import SearchProvider
+from app.modules.settings.config import LlmProviderConfig
 
 
 @dataclass
@@ -59,6 +60,10 @@ class AgentRuntimeContext:
     record_id: str | None = None
     library_item_id: str | None = None
     web_search_provider: SearchProvider | None = None
+    # 聊天供应商（工单 02）：generate_learning_plan 等工具内 LLM 结构化生成用，
+    # 与聊天主模型同源同配置；accept 已校验配置可用，此处恒非 None（测试上下文
+    # 可缺省，工具侧自行结构化拒绝）。
+    llm_provider: LlmProviderConfig | None = None
     page: ChatPageSnapshot | None = None
     # 授权档位（工单 02，spec 决策 9/10）：消息流入口解析（全局默认＋请求
     # 会话覆盖）后的当轮生效档；操作提交路径按它确定性分流，提示词与工具

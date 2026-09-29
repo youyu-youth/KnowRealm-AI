@@ -28,3 +28,55 @@ class LearningGoal(Base):
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+
+
+class LearningPlan(Base):
+    """学习计划版本：挂学习目标，(goal_id, plan_version) 唯一、同目标同时至多
+    一条 ACTIVE（部分唯一索引）。effective_from = 确认落库日；换代 / 完结时由
+    Service 写 effective_to（重生成随工单 03 启用）。
+    """
+
+    __tablename__ = "learning_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    goal_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("learning_goals.id", ondelete="CASCADE")
+    )
+    plan_version: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
+    effective_from: Mapped[str] = mapped_column(String(10))
+    effective_to: Mapped[str | None] = mapped_column(String(10), default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+
+
+class LearningPlanItem(Base):
+    """计划项：四类动作按日排期；reason_json 存逐项生成理由；user_locked 由
+    Service 在用户手动编辑时置 true（重生成原样保留，随工单 03 启用）。
+
+    record_id / concept_id 物理删除置空（软删由查询期过滤，与 Record 同模式）。
+    """
+
+    __tablename__ = "learning_plan_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    plan_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("learning_plans.id", ondelete="CASCADE")
+    )
+    action_type: Mapped[str] = mapped_column(String(20))
+    content: Mapped[str] = mapped_column(Text)
+    record_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("records.id", ondelete="SET NULL"), default=None
+    )
+    concept_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("concepts.id", ondelete="SET NULL"), default=None
+    )
+    phase_title: Mapped[str] = mapped_column(Text)
+    priority: Mapped[int] = mapped_column(Integer)
+    estimated_minutes: Mapped[int | None] = mapped_column(Integer, default=None)
+    scheduled_date: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(20), default="PENDING")
+    user_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason_json: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)

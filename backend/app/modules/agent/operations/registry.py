@@ -648,7 +648,16 @@ async def submit_operation(
                 snapshot_json=snapshot_json,
             )
     if snapshot_failure is not None:
-        return {"ok": False, "error": snapshot_failure.code, "proposals": []}
+        # 快照读取器的拒绝载荷附带 detail（工单 02 起）：模型可据此转述原因或
+        # 自纠（如 PLAN_SCHEDULE_INVALID 附期望日期）；缺省 detail 仅错误码。
+        body: dict[str, Any] = {
+            "ok": False,
+            "error": snapshot_failure.code,
+            "proposals": [],
+        }
+        if snapshot_failure.detail:
+            body["detail"] = snapshot_failure.detail
+        return body
     # snapshot_failure 为 None 时 create_core 必已执行（上面同一分支赋值）。
     assert proposal is not None
     return {

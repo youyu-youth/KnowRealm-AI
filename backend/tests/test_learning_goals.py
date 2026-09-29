@@ -585,7 +585,8 @@ async def test_create_goal_single_active_rejected_at_submit(tmp_path: Path) -> N
             session_factory,
             {"course_id": COURSE_ID, "goal_type": "EXAM", "title": "备考"},
         )
-        assert result == {"ok": False, "error": "GOAL_ACTIVE_EXISTS", "proposals": []}
+        assert result["ok"] is False and result["error"] == "GOAL_ACTIVE_EXISTS"
+        assert result["proposals"] == []
         assert await proposal_ids(session_factory) == []
 
 
@@ -606,7 +607,8 @@ async def test_create_goal_course_missing_rejected_at_submit(tmp_path: Path) -> 
             session_factory,
             {"course_id": UNKNOWN_ID, "goal_type": "SKILL", "title": "目标"},
         )
-        assert result == {"ok": False, "error": "COURSE_NOT_FOUND", "proposals": []}
+        assert result["ok"] is False and result["error"] == "COURSE_NOT_FOUND"
+        assert result["proposals"] == []
 
 
 @pytest.mark.anyio

@@ -58,6 +58,10 @@ from app.modules.agent.tools.archive_library_item import (
     archive_library_item,
     restore_library_item,
 )
+from app.modules.agent.tools.confirm_plan import (
+    CONFIRM_PLAN_TOOL_NAME,
+    confirm_plan,
+)
 from app.modules.agent.tools.create_course import (
     CREATE_COURSE_TOOL_NAME,
     create_course,
@@ -70,7 +74,11 @@ from app.modules.agent.tools.delete_course import (
     DELETE_COURSE_TOOL_NAME,
     delete_course,
 )
+from app.modules.agent.tools.generate_learning_plan import (
+    generate_learning_plan,
+)
 from app.modules.agent.tools.get_goal import get_goal
+from app.modules.agent.tools.get_plan import get_plan
 from app.modules.agent.tools.list_course_records import list_course_records
 from app.modules.agent.tools.list_goals import list_goals
 from app.modules.agent.tools.list_library_items import list_library_items
@@ -113,12 +121,13 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v18"
+CHAT_PROMPT_VERSION = "chat-library-scope-v19"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
-# 指引；工单 06：撤销工具；第三阶段工单 01：学习目标工具与目标制定指引）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v19"
+# 指引；工单 06：撤销工具；第三阶段工单 01：学习目标工具与目标制定指引；
+# 工单 02：学习计划三工具与计划生成指引）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v20"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
@@ -142,6 +151,7 @@ OPERATION_TOOL_NAMES = frozenset(
         UNDO_OPERATION_TOOL_NAME,
         CREATE_GOAL_TOOL_NAME,
         UPDATE_GOAL_TOOL_NAME,
+        CONFIRM_PLAN_TOOL_NAME,
     }
 )
 # 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
@@ -289,6 +299,8 @@ def _resolve_agent_config(
     # 提案查询就地呈现，不进 done 载荷，故不入 OPERATION_TOOL_NAMES）。
     # 第三阶段工单 01：学习目标域四工具（list_goals / get_goal 只读查询 +
     # create_goal / update_goal 写操作，写动作名 = 注册项 action = 工具函数名）。
+    # 工单 02：学习计划域三工具（get_plan / generate_learning_plan 只读 +
+    # confirm_plan 写操作——L2 草案确认卡，AUTO_APPROVE 档仍落卡等确认）。
     config = AgentConfig(
         tools=(
             *config.tools,
@@ -297,6 +309,8 @@ def _resolve_agent_config(
             list_library_items,
             list_goals,
             get_goal,
+            get_plan,
+            generate_learning_plan,
             propose_memory,
             create_course,
             add_text_record_to_course,
@@ -313,6 +327,7 @@ def _resolve_agent_config(
             undo_operation,
             create_goal,
             update_goal,
+            confirm_plan,
         )
     )
     if research:

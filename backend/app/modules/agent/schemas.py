@@ -25,7 +25,11 @@ from app.modules.course.schemas import (
     LearningDepth,
 )
 from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
-from app.modules.learning_plan.schemas import GoalType, clean_goal_title
+from app.modules.learning_plan.schemas import (
+    GoalType,
+    PlanConfirmCore,
+    clean_goal_title,
+)
 from app.modules.library.schemas import ChatScope
 
 
@@ -778,3 +782,44 @@ class GoalUpdateResult(BaseModel):
     after_status: str = Field(description="执行后目标状态（完成 / 归档流转的回执事实）")
     # 执行后版本戳（undo 前重验版本用，同 CourseUpdateResult）。
     after_updated_at: datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# 学习计划确认契约（通用 Agent 第三阶段工单 02，spec 用户故事 7~11）：草案由
+# generate_learning_plan 生成（只读零落库）→ 模型经 confirm_plan 原样提交 →
+# OP_PLAN_CONFIRM 提案卡（只读草案预览）→ 用户确认落库为 ACTIVE 版本。载荷即
+# 草案全文——确认卡所见（payload 预览）与落库所写（applier 消费同一载荷）一致。
+# ---------------------------------------------------------------------------
+
+
+class PlanConfirmPayload(PlanConfirmCore):
+    """OP_PLAN_CONFIRM 提案判别载荷（L2：计划头 + 批量计划项创建）。
+
+    phases / scheduled_date 形状由领域 schema 执法；排期与目标的期限 / 预算
+    一致性在快照读取器重算比对（模型转述漂移 → 结构化拒绝零提案）。
+    """
+
+
+class PlanConfirmResult(BaseModel):
+    """OP_PLAN_CONFIRM 结果投影（操作回执）：计划 id / 版本 / 规模 / 排期区间。"""
+
+    plan_id: str
+    goal_id: str
+    course_id: str
+    plan_version: int
+    item_count: int
+    first_date: date | None = Field(default=None, description="排期首日")
+    last_date: date | None = Field(default=None, description="排期末日")
+
+
+class PlanConfirmStateSnapshot(BaseModel):
+    """plan.confirm 执行前快照：目标身份 + 排期约束字段（确认前目标被改 →
+    快照比对失效重新生成草案：期限 / 每日投入变化会让既排日期失真）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    title: str
+    target_date: date | None = None
+    daily_minutes: int | None = None
+    course_name: str

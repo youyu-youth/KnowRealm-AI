@@ -1,21 +1,29 @@
-"""学习目标领域 Service（工单 01）：创建 / 编辑 / 完成 / 归档与查询。
+"""学习目标与学习计划领域 Service（工单 01/02）：目标 CRUD 与计划确认 / 查询。
 
 事务内核心（*_core）由 HTTP 路由与 Agent 操作应用器共用，调用方拥有事务
-边界（先例：CourseService）；课程软删后目标查询不可见（查询期 JOIN 过滤，
-不写级联），恢复课程即恢复——与 Record 同模式。
+边界（先例：CourseService）；课程软删后目标与计划随空间查询不可见（查询期
+JOIN 过滤，不写级联），恢复课程即恢复——与 Record 同模式。
 """
 
-from sqlalchemy import select
+import json
+from datetime import UTC, date
+from typing import cast
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.modules.course.models import Course
 from app.modules.course.service import CourseService
-from app.modules.learning_plan.models import LearningGoal
+from app.modules.learning_plan.models import LearningGoal, LearningPlan, LearningPlanItem
 from app.modules.learning_plan.schemas import (
     GoalCreateCore,
     GoalStatus,
     GoalUpdate,
+    PlanConfirmCore,
+    PlanItemOut,
+    PlanOut,
+    PlanStatus,
 )
 from app.shared.errors import CodedHTTPException
 
@@ -174,3 +182,151 @@ class GoalService:
             ):
                 return None
             return await GoalService.set_status_core(session, goal, status)
+
+
+class PlanService:
+    """学习计划领域 Service（工单 02）：确认落库与只读查询。
+
+    草案生成在 generation.PlanGenerationService（零业务写）；本服务只在
+    用户经确认卡确认后写 learning_plans / learning_plan_items（同一目标
+    同时至多一个 ACTIVE 版本，部分唯一索引兜底并发）。
+    """
+
+    @staticmethod
+    async def require_no_active(session: AsyncSession, goal_id: str) -> None:
+        """同目标单 ACTIVE 计划校验（唯一入口）：应用层稳定错误码 + 索引兜底。"""
+        existing = await session.scalar(
+            select(LearningPlan.id).where(
+                LearningPlan.goal_id == goal_id,
+                LearningPlan.status == PlanStatus.ACTIVE.value,
+            )
+        )
+        if existing is not None:
+            raise CodedHTTPException(
+                code="PLAN_ACTIVE_EXISTS",
+                status_code=409,
+                detail="该目标已有进行中的学习计划；调整或重生成随后续版本提供",
+            )
+
+    @staticmethod
+    async def confirm_core(
+        session: AsyncSession, goal: LearningGoal, payload: PlanConfirmCore
+    ) -> LearningPlan:
+        """确认落库事务内核心：新版本号 + 计划头 + 逐项写入（调用方事务内）。
+
+        版本号 = 该目标现有最大版本 + 1（工单 02 首次确认恒为 1；重生成
+        SUPERSEDED 旧版随工单 03 启用）；effective_from = 落库日（UTC）。
+        项 reason 经 reason_json 持久化；priority 按阶段顺序全局递增。
+        """
+        await PlanService.require_no_active(session, goal.id)
+        next_version = 1 + (
+            await session.scalar(
+                select(func.max(LearningPlan.plan_version)).where(LearningPlan.goal_id == goal.id)
+            )
+            or 0
+        )
+        plan = LearningPlan(
+            goal_id=goal.id,
+            plan_version=next_version,
+            status=PlanStatus.ACTIVE.value,
+            effective_from=utcnow().astimezone(UTC).date().isoformat(),
+        )
+        session.add(plan)
+        await session.flush()
+        now = utcnow()
+        priority = 0
+        for phase in payload.phases:
+            for item in phase.items:
+                session.add(
+                    LearningPlanItem(
+                        plan_id=plan.id,
+                        action_type=item.action_type.value,
+                        content=item.content,
+                        record_id=item.record_id,
+                        concept_id=item.concept_id,
+                        phase_title=phase.title,
+                        priority=priority,
+                        estimated_minutes=item.estimated_minutes,
+                        scheduled_date=item.scheduled_date.isoformat(),
+                        status="PENDING",
+                        user_locked=False,
+                        reason_json=json.dumps({"reason": item.reason}, ensure_ascii=False),
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                priority += 1
+        await session.flush()
+        return plan
+
+    @staticmethod
+    async def get_active_for_goal(session: AsyncSession, goal_id: str) -> LearningPlan | None:
+        """目标的 ACTIVE 计划（无则 None；目标不可达经 GoalService.get 前置）。"""
+        return await session.scalar(
+            select(LearningPlan)
+            .where(
+                LearningPlan.goal_id == goal_id,
+                LearningPlan.status == PlanStatus.ACTIVE.value,
+            )
+            .order_by(LearningPlan.plan_version.desc())
+        )
+
+    @staticmethod
+    async def list_items(session: AsyncSession, plan_id: str) -> list[LearningPlanItem]:
+        """计划项按 priority 升序（阶段分组由消费方按 phase_title 聚合）。"""
+        return list(
+            (
+                await session.scalars(
+                    select(LearningPlanItem)
+                    .where(LearningPlanItem.plan_id == plan_id)
+                    .order_by(LearningPlanItem.priority)
+                )
+            ).all()
+        )
+
+    @staticmethod
+    def plan_out(plan: LearningPlan, items: list[LearningPlanItem], *, course_id: str) -> PlanOut:
+        """计划 + 项 → 只读投影（reason_json 解析失败降级 None，不炸查询）。"""
+        return PlanOut(
+            id=plan.id,
+            goal_id=plan.goal_id,
+            course_id=course_id,
+            plan_version=plan.plan_version,
+            status=PlanStatus(plan.status),
+            effective_from=date.fromisoformat(plan.effective_from),
+            effective_to=(
+                date.fromisoformat(plan.effective_to) if plan.effective_to is not None else None
+            ),
+            items=[
+                PlanItemOut(
+                    id=item.id,
+                    action_type=item.action_type,  # type: ignore[arg-type]
+                    content=item.content,
+                    record_id=item.record_id,
+                    concept_id=item.concept_id,
+                    phase_title=item.phase_title,
+                    priority=item.priority,
+                    estimated_minutes=item.estimated_minutes,
+                    scheduled_date=date.fromisoformat(item.scheduled_date),
+                    status=item.status,
+                    user_locked=item.user_locked,
+                    reason=_reason_of(item.reason_json),
+                )
+                for item in items
+            ],
+        )
+
+
+def _reason_of(reason_json: str | None) -> str | None:
+    """reason_json → reason 字段（形状漂移时 None，与提案载荷防御性解析同口径）。"""
+    if reason_json is None:
+        return None
+    try:
+        value: object = json.loads(reason_json)
+    except ValueError:
+        return None
+    if isinstance(value, dict):
+        data = cast("dict[str, object]", value)
+        reason = data.get("reason")
+        return reason if isinstance(reason, str) else None
+    return None
