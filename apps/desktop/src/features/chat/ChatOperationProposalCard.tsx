@@ -21,6 +21,7 @@ import {
   planDraftItemCount,
   type DraftEditorProps,
 } from "@/features/chat/PlanDraftEditor";
+import { PLAN_ITEM_TYPE_KEYS } from "@/features/chat/planItemTypes";
 import { Button } from "@/components/ui/button";
 
 type ChatOperationProposalCardProps = {
@@ -975,13 +976,6 @@ function arrayField(
       )
     : [];
 }
-
-const PLAN_ITEM_TYPE_KEYS: Record<string, string> = {
-  STUDY_RECORD: "chat.operationProposal.planFields.itemType.STUDY_RECORD",
-  PRACTICE_QUIZ: "chat.operationProposal.planFields.itemType.PRACTICE_QUIZ",
-  REVIEW_CONCEPT: "chat.operationProposal.planFields.itemType.REVIEW_CONCEPT",
-  CUSTOM: "chat.operationProposal.planFields.itemType.CUSTOM",
-};
 
 /** OP_PLAN_CONFIRM / OP_PLAN_REGENERATE 共用的阶段计划项渲染：排期概览 +
  * 分阶段计划项（日期 · 内容全文 · 时长 · 类型徽标 · 逐项理由——spec 用户故事
