@@ -51,7 +51,7 @@ from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 
 # 生成 prompt 版本（评测黄金集回归触发点，随模型可见面变化 bump）。
-PLAN_PROMPT_VERSION = "learning-plan-v1"
+PLAN_PROMPT_VERSION = "learning-plan-v2"
 
 # 生成上下文预算：单条总结摘要 / 单条引文截断与资料条数上限（防 prompt 膨胀）。
 SUMMARY_EXCERPT_MAX_CHARS = 500
@@ -222,7 +222,8 @@ class PlanGenerationService:
             "（为什么这样安排，60 字内）；",
             "3. action_type=STUDY_RECORD 且【课程资料】中有对应资料时，"
             "把该资料的 record_id 原样填入 record_id 字段（没有就省略，不要编造）；",
-            "4. 计划应贴着资料内容与目标期限，总量不超过排期约束中的容量。",
+            "4. 计划应贴着资料内容与目标期限，总量不超过排期约束中的容量；"
+            "单个计划项的预估时长不得超过每日预算（计划项不跨日拆分）。",
         ]
         return "\n".join(lines)
 

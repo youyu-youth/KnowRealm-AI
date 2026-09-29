@@ -1,7 +1,7 @@
 import { type ComponentType, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, Check, Undo2, X } from "lucide-react";
+import { ArrowRight, Check, RefreshCw, Undo2, X } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import {
@@ -20,6 +20,9 @@ import { Button } from "@/components/ui/button";
 
 type ChatOperationProposalCardProps = {
   sessionId: string;
+  /** 父级聊天发送（重新生成入口代发指令消息）：传入时 plan 草案卡渲染第三按钮
+   * （放弃旧草案 + 让 Agent 重排一份；旧草案以 REJECTED 终态失效）。 */
+  onSendMessage?: (text: string) => void;
 };
 
 /** 确认/拒绝成功后的即时覆盖层：免去等 refetch 的空窗闪烁；远端到位后两者一致。 */
@@ -965,7 +968,9 @@ const PLAN_ITEM_TYPE_KEYS: Record<string, string> = {
 };
 
 /** OP_PLAN_CONFIRM 确认卡预览（工单 02，只读草案）：目标 / 课程 / 排期概览 +
- * 分阶段计划项（日期 · 内容 · 时长 · 类型徽标）。可编辑卡随工单 03 升级。 */
+ * 分阶段计划项（日期 · 内容全文 · 时长 · 类型徽标 · 逐项理由——spec 用户故事
+ * 10 要求理由可见，内容与理由有 schema 长度上限（200/300），全文展示无需折叠）。
+ * 可编辑卡随工单 03 升级。 */
 function PlanConfirmPreviewFields({
   payload,
   snapshot,
@@ -1012,27 +1017,36 @@ function PlanConfirmPreviewFields({
             {arrayField(phase, "items").map((item, itemIndex) => {
               const itemType = fieldString(item, "action_type");
               const minutes = fieldNumber(item, "estimated_minutes");
+              const reason = fieldString(item, "reason");
               return (
                 <li
                   key={itemIndex}
-                  className="text-label text-ink-muted flex flex-wrap items-baseline gap-x-1.5"
+                  className="text-label text-ink-muted flex flex-col gap-0.5"
                 >
-                  <span className="text-ink-faint tabular-nums">
-                    {fieldString(item, "scheduled_date")?.slice(5) ?? ""}
-                  </span>
-                  <span className="min-w-0 break-words">
-                    {excerpt(fieldString(item, "content") ?? "", 60)}
-                  </span>
-                  {minutes !== null ? (
-                    <span className="text-ink-faint shrink-0">
-                      {t("chat.operationProposal.planFields.minutesValue", {
-                        count: minutes,
-                      })}
+                  <span className="flex flex-wrap items-baseline gap-x-1.5">
+                    <span className="text-ink-faint tabular-nums">
+                      {fieldString(item, "scheduled_date")?.slice(5) ?? ""}
                     </span>
-                  ) : null}
-                  {itemType !== null && PLAN_ITEM_TYPE_KEYS[itemType] ? (
-                    <span className="text-ink-faint shrink-0">
-                      {t(PLAN_ITEM_TYPE_KEYS[itemType])}
+                    <span className="min-w-0 break-words">
+                      {fieldString(item, "content") ?? ""}
+                    </span>
+                    {minutes !== null ? (
+                      <span className="text-ink-faint shrink-0">
+                        {t("chat.operationProposal.planFields.minutesValue", {
+                          count: minutes,
+                        })}
+                      </span>
+                    ) : null}
+                    {itemType !== null && PLAN_ITEM_TYPE_KEYS[itemType] ? (
+                      <span className="text-ink-faint shrink-0">
+                        {t(PLAN_ITEM_TYPE_KEYS[itemType])}
+                      </span>
+                    ) : null}
+                  </span>
+                  {reason !== null ? (
+                    <span className="text-ink-faint break-words">
+                      {t("chat.operationProposal.planFields.reasonLabel") +
+                        reason}
                     </span>
                   ) : null}
                 </li>
@@ -1095,6 +1109,8 @@ type OperationCardSpec = {
   PreviewFields: ComponentType<PreviewFieldsProps>;
   /** APPLIED/REJECTED 回执行。 */
   SettledRow: ComponentType<SettledRowProps>;
+  /** 第三动作「重新生成」（可选）：按载荷构造代发指令消息，null = 不渲染按钮。 */
+  regenerateMessage?: (payload: Record<string, unknown>) => string | null;
 };
 
 const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
@@ -1214,6 +1230,13 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
     label: (key) => `chat.operationProposal.planConfirm.${key}`,
     PreviewFields: PlanConfirmPreviewFields,
     SettledRow: SettledPlanConfirmRow,
+    // 重新生成入口（spec 工单 02 三动作）：放弃旧草案 + 代发指令让 Agent 重排。
+    regenerateMessage: (payload) => {
+      const goalId = fieldString(payload, "goal_id");
+      return goalId !== null
+        ? `请基于课程资料为目标 ${goalId} 重新生成一份学习计划草案`
+        : null;
+    },
   },
   OP_UNDO: {
     label: (key) => `chat.operationProposal.undo.${key}`,
@@ -1300,12 +1323,15 @@ function ActionableProposalRow({
   status,
   busy,
   onDecide,
+  onRegenerate,
   t,
 }: {
   proposal: AgentProposalOut;
   status: AgentProposalOut["status"];
   busy: boolean;
   onDecide: (proposalId: string, accept: boolean) => void;
+  /** 重新生成（可选，类型配置声明第三动作时传入）：放弃本草案 + 代发指令。 */
+  onRegenerate?: (proposalId: string, message: string) => void;
   t: TFunction;
 }) {
   const reason = proposal.error_code
@@ -1313,7 +1339,12 @@ function ActionableProposalRow({
     : null;
   const snapshotStale =
     status === "FAILED" && proposal.error_code === "OPERATION_SNAPSHOT_STALE";
-  const PreviewFields = CARD_BY_TYPE[proposal.proposal_type].PreviewFields;
+  const spec = CARD_BY_TYPE[proposal.proposal_type];
+  const PreviewFields = spec.PreviewFields;
+  const regenerateMessage =
+    onRegenerate !== undefined && spec.regenerateMessage !== undefined
+      ? spec.regenerateMessage(proposal.payload ?? {})
+      : null;
   return (
     <li className="bg-surface-subtle flex flex-wrap items-center gap-2 rounded-md px-2.5 py-1.5">
       {status === "FAILED" ? (
@@ -1352,6 +1383,17 @@ function ActionableProposalRow({
       >
         <X className="size-3.5" aria-hidden="true" />
       </Button>
+      {regenerateMessage !== null ? (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={t(labelKey(proposal, "regenerate"))}
+          disabled={busy}
+          onClick={() => onRegenerate?.(proposal.id, regenerateMessage)}
+        >
+          <RefreshCw className="size-3.5" aria-hidden="true" />
+        </Button>
+      ) : null}
     </li>
   );
 }
@@ -1365,6 +1407,7 @@ function ActionableProposalRow({
  * 回执、FAILED 的失败原因与可用操作、REJECTED 的终态文案均由查询还原，不依赖组件内存。 */
 export function ChatOperationProposalCard({
   sessionId,
+  onSendMessage,
 }: ChatOperationProposalCardProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -1470,6 +1513,32 @@ export function ChatOperationProposalCard({
       .finally(() => setBusyId(null));
   };
 
+  // 重新生成（类型配置声明第三动作时可用）：旧草案先落 REJECTED 终态失效
+  // （零业务写入、回执如实呈现「已放弃」），再代发指令让 Agent 重排一份。
+  const regenerate = (proposalId: string, message: string) => {
+    setBusyId(proposalId);
+    setError(null);
+    libraryApi
+      .rejectProposal(proposalId)
+      .then(() => {
+        setOverrides((current) => ({
+          ...current,
+          [proposalId]: { status: "REJECTED", result: null },
+        }));
+        void queryClient.invalidateQueries({
+          queryKey: [...libraryKeys.all, "proposals"],
+        });
+        onSendMessage?.(message);
+      })
+      .catch((exc: unknown) => {
+        setError(exc instanceof Error ? exc.message : String(exc));
+        void queryClient.invalidateQueries({
+          queryKey: libraryKeys.sessionProposals(sessionId),
+        });
+      })
+      .finally(() => setBusyId(null));
+  };
+
   return (
     <section
       aria-label={t("chat.operationProposal.panelTitle")}
@@ -1513,6 +1582,7 @@ export function ChatOperationProposalCard({
             status={statusOf(proposal)}
             busy={busyId !== null}
             onDecide={decide}
+            onRegenerate={onSendMessage !== undefined ? regenerate : undefined}
             t={t}
           />
         ))}

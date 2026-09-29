@@ -139,10 +139,7 @@ def _require_schedule_matches(payload: PlanConfirmPayload, goal: LearningGoal) -
         raise CodedHTTPException(
             code="PLAN_SCHEDULE_INFEASIBLE",
             status_code=422,
-            detail=(
-                f"计划总量 {exc.required_minutes} 分钟超出期限容量"
-                f" {exc.capacity_minutes} 分钟，请精简草案或建议用户调整目标"
-            ),
+            detail=f"{exc}，请修正草案（精简总量 / 拆分超预算单项）或建议用户调整目标",
         ) from exc
     if expected != claimed:
         raise CodedHTTPException(

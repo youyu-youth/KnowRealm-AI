@@ -296,8 +296,14 @@ export function ChatConversationView({
             网页入库链路；本轮展示为临时态，提案本体跨重启持久。 */}
         <ChatResearchProposalCard sessionId={sessionId} />
         {/* 课程创建提案就地确认卡（通用 Agent 工单 02）：完整参数预览，确认后
-            真实创建课程并转回执态；断线/重启经提案查询恢复。 */}
-        <ChatOperationProposalCard sessionId={sessionId} />
+            真实创建课程并转回执态；断线/重启经提案查询恢复。计划草案卡的
+            「重新生成」经父级发送代发指令（放弃旧草案 + Agent 重排一份）。 */}
+        <ChatOperationProposalCard
+          sessionId={sessionId}
+          onSendMessage={(text) =>
+            send(text, webSearchEnabled, sessionAuthMode)
+          }
+        />
         {/* 直执行回执卡（通用 Agent 第二阶段工单 02）：自动档免确认执行的
             操作呈现授权依据；锚点随 assistant 行持久（清理后降级占位跨重启
             成立），详情经 operation 查询恢复。 */}

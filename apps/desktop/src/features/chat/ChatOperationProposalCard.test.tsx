@@ -977,12 +977,107 @@ describe("ChatOperationProposalCard — 学习计划确认（第三阶段工单 
     expect(screen.getByText("60 分钟")).toBeVisible();
     expect(screen.getByText("学资料")).toBeVisible();
     expect(screen.getByText("自由任务")).toBeVisible();
+    // spec 用户故事 10：逐项生成理由在确认位置可见。
+    expect(screen.getByText("理由：建立基础")).toBeVisible();
+    expect(screen.getByText("理由：巩固记忆")).toBeVisible();
     expect(
       screen.getByText(
-        "草案为只读预览；确认后计划保存生效，想调整可在对话中说明重新生成。",
+        "草案为只读预览；确认后计划保存生效，不满意可点「重新生成」重排一份。",
       ),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "确认学习计划" })).toBeEnabled();
+  });
+
+  it("OP_PLAN_CONFIRM 重新生成：放弃旧草案（REJECTED 终态）+ 代发重排指令", async () => {
+    const onSendMessage = vi.fn();
+    rejectProposal.mockResolvedValue(
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+      }),
+    );
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(
+      <ChatOperationProposalCard
+        sessionId={SESSION_ID}
+        onSendMessage={onSendMessage}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "重新生成草案" }),
+    );
+    await waitFor(() => {
+      expect(rejectProposal).toHaveBeenCalledWith("p-p1");
+      expect(onSendMessage).toHaveBeenCalledWith(
+        "请基于课程资料为目标 goal-1 重新生成一份学习计划草案",
+      );
+    });
+    // 旧草案以 REJECTED 终态失效，回执如实呈现「已放弃」。
+    expect(await screen.findByText("已放弃，学习计划未保存。")).toBeVisible();
+    expect(confirmProposal).not.toHaveBeenCalled();
+  });
+
+  it("OP_PLAN_CONFIRM 重新生成按钮：未传发送回调时不渲染（prop 门控）", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(
+      await screen.findByRole("button", { name: "确认学习计划" }),
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: "重新生成草案" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("OP_PLAN_CONFIRM 预览：计划项内容与理由展示全文，不截断", async () => {
+    const longContent =
+      "通读官方文档的快速入门与核心概念章节并整理思维导图".repeat(4);
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: {
+          ...PLAN_PAYLOAD,
+          phases: [
+            {
+              title: "第一阶段",
+              items: [
+                {
+                  action_type: "CUSTOM",
+                  content: longContent,
+                  estimated_minutes: 45,
+                  reason: "先建立整体框架再深入细节，避免一开始陷入局部。",
+                  record_id: null,
+                  concept_id: null,
+                  scheduled_date: "2026-01-05",
+                },
+              ],
+            },
+          ],
+        },
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    // 超过旧截断上限（60 字）的内容全文可见（含尾部文字、无省略号截断）。
+    expect(await screen.findByText(longContent)).toBeVisible();
+    expect(
+      screen.getByText("理由：先建立整体框架再深入细节，避免一开始陷入局部。"),
+    ).toBeVisible();
   });
 
   it("OP_PLAN_CONFIRM 确认转回执：版本与项数 + 课程入口", async () => {

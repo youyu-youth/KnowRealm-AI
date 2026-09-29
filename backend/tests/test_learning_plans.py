@@ -5,7 +5,7 @@
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any, cast
 
@@ -510,7 +510,7 @@ async def test_plan_unique_constraints_enforced(tmp_path: Path) -> None:
 def test_pack_schedule_golden_samples() -> None:
     start = date(2026, 1, 5)
 
-    # 样本一：预算 60，[60, 30, 45] → 60 独占 D1；30 上 D2；45 超 30 余量上 D3。
+    # 样本一：预算 60，[60, 30, 45] → 60 装满 D1；30 上 D2；45 超 30 余量上 D3。
     dates = pack_schedule([60, 30, 45], ScheduleConstraints(start_date=start, daily_minutes=60))
     assert [d.day - start.day for d in dates] == [0, 1, 2]
 
@@ -518,13 +518,37 @@ def test_pack_schedule_golden_samples() -> None:
     dates = pack_schedule([30, 30], ScheduleConstraints(start_date=start, daily_minutes=60))
     assert dates == [start, start]
 
-    # 样本三：单项超整日预算 → 独占一天（项级最小粒度），下一项从新一天开始。
-    dates = pack_schedule([90, 30], ScheduleConstraints(start_date=start, daily_minutes=60))
-    assert dates == [start, start + timedelta(days=1)]
+    # 样本三：单项超每日预算 → 不可行（计划项不跨日拆分，无法与每日总量相容）。
+    with pytest.raises(ScheduleInfeasible) as excinfo:
+        pack_schedule([90, 30], ScheduleConstraints(start_date=start, daily_minutes=60))
+    assert "单项时长 90 分钟超过每日预算 60 分钟" in str(excinfo.value)
 
     # 样本四：跨日累计：[30, 30, 30] 预算 60 → 前两项 D1，第三项 D2。
     dates = pack_schedule([30, 30, 30], ScheduleConstraints(start_date=start, daily_minutes=60))
     assert [d.day - start.day for d in dates] == [0, 0, 1]
+
+
+def test_pack_schedule_item_over_daily_budget_infeasible() -> None:
+    """回归：单项超预算曾按「独占一天」豁免放行（每日总量相容被击穿）。"""
+    # 期限当天 + 单项 600 分钟：日期不超期限，但当日总量 600 与预算 30 不相容。
+    with pytest.raises(ScheduleInfeasible) as excinfo:
+        pack_schedule(
+            [600],
+            ScheduleConstraints(
+                start_date=date(2026, 9, 29), deadline=date(2026, 9, 29), daily_minutes=30
+            ),
+        )
+    assert excinfo.value.required_minutes == 600
+    assert excinfo.value.capacity_minutes == 30
+
+    # 宽松期限变体：容量 900 足够，仍须拒绝（每日总量相容与期限容量无关）。
+    with pytest.raises(ScheduleInfeasible):
+        pack_schedule(
+            [600, 30],
+            ScheduleConstraints(
+                start_date=date(2026, 9, 29), deadline=date(2026, 10, 28), daily_minutes=30
+            ),
+        )
 
 
 def test_pack_schedule_deadline_infeasible() -> None:

@@ -14,10 +14,19 @@ DEFAULT_DAILY_MINUTES = 120
 
 
 class ScheduleInfeasible(Exception):
-    """草案在期限与预算约束下铺不开（总量超过期限容量）。"""
+    """草案在期限与预算约束下铺不开（总量超期限容量 / 单项超每日预算）。"""
 
-    def __init__(self, *, required_minutes: int, capacity_minutes: int, deadline: date) -> None:
-        super().__init__(f"计划总量 {required_minutes} 分钟超出期限容量 {capacity_minutes} 分钟")
+    def __init__(
+        self,
+        *,
+        required_minutes: int,
+        capacity_minutes: int,
+        deadline: date,
+        detail: str | None = None,
+    ) -> None:
+        super().__init__(
+            detail or f"计划总量 {required_minutes} 分钟超出期限容量 {capacity_minutes} 分钟"
+        )
         self.required_minutes = required_minutes
         self.capacity_minutes = capacity_minutes
         self.deadline = deadline
@@ -35,18 +44,30 @@ class ScheduleConstraints:
 def pack_schedule(minutes: list[int], constraints: ScheduleConstraints) -> list[date]:
     """按顺序贪心铺排：逐项累计当日用量，超出预算即翻日；翻过期限即不可行。
 
-    单项时长超过整日预算时独占一天（项级最小粒度，不拆项）；此时当日总量
-    大于预算是显式豁免，下一项从新的一天开始。返回与入参同序的排期日期。
+    单项时长超过每日预算时直接判不可行：计划项不跨日拆分，任何铺排都无法
+    让当日总量与 daily_minutes 相容（spec「每日总量与 daily_minutes 相容」）。
+    返回与入参同序的排期日期。
     """
     if constraints.daily_minutes < 1:
         raise ValueError("每日预算必须是正整数")
     if any(value < 1 for value in minutes):
         raise ValueError("计划项时长必须是正整数")
+    over = next((value for value in minutes if value > constraints.daily_minutes), None)
+    if over is not None:
+        raise ScheduleInfeasible(
+            required_minutes=over,
+            capacity_minutes=constraints.daily_minutes,
+            deadline=constraints.deadline or constraints.start_date,
+            detail=(
+                f"单项时长 {over} 分钟超过每日预算 {constraints.daily_minutes} 分钟"
+                "（计划项不跨日拆分），请拆分计划项或调整时长"
+            ),
+        )
     dates: list[date] = []
     day = constraints.start_date
     used = 0
     for value in minutes:
-        if used > 0 and used + value > constraints.daily_minutes:
+        if used + value > constraints.daily_minutes:
             day = day + timedelta(days=1)
             used = 0
         if constraints.deadline is not None and day > constraints.deadline:
