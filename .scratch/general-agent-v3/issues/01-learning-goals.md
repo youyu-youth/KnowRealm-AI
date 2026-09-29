@@ -25,6 +25,8 @@
 5. **撤销不在本票范围**：两注册项声明 undo_reason（补偿器留后续票）；UI 经既有 ProposalUndoEntry 就地呈现原因。
 6. **公共流程 1 词修复**：`submit_operation` 与 `ProposalService.create_core` 的载荷清洗 `model_dump()` → `model_dump(mode="json")`——date 类型进 payload_json TEXT 列的序列化缺口在两处单点修复（既有动作字段为 str/枚举，输出逐字等价，全量测试佐证）。
 7. **测试常量坑**：UUID pattern 是十六进制校验，goal 测试 id 用 `g` 前缀会被拒（`c` 是合法 hex）；同仓惯例 `9` 前缀。
+8. **双轴 code-review 修复（已并入）**：①错误码清单 docs/后端错误码清单.md 补登三码（ADR-0017 权威清单，随票登记惯例）；②嵌套路由归属校验——PATCH/complete/archive 的路径 course_id 与目标实际归属错配按 404 GOAL_NOT_FOUND 处理（GoalService.update/set_status 增 expected_course_id 可选参数，Agent 路径按 goal_id 直达不传），补跨课错配测试；③单 ACTIVE 校验提取 GoalService.require_no_active 唯一入口（创建核心与 Agent 提交期检查共用）；④clean_goal_title 共享验证器收敛四处重复。
+9. **review 备案不修项**：COURSE_SELECTION 暂无生产者（spec 值域原文保留，未来课程选择推荐入口可用）；编辑字段含 title/target_score（US5「目标可编辑」泛指＋计划 Tab 展示需要，票面括号举例非穷尽）；GoalStateSnapshot.status 用 str 与 CourseStateSnapshot 先例一致；直执行档 scope_confirmed=True＝三档预授权口径（注释已备案，确认事实由 authorization_json 承载）。
 
 ## 用户真机验收清单（不代勾）
 
