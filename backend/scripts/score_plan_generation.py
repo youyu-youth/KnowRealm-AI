@@ -9,8 +9,8 @@
 1. 排期逐位等于确定性铺排（顺序 + 每日预算 + 首日锚定，与
    learning_plan.scheduling.pack_schedule 同源）；
 2. 全部排期不超目标期限（无期限跳过该项）；
-3. 结构完整：阶段 ≥1、每项 action_type 合法且 content / reason /
-   estimated_minutes 非空。
+3. 结构完整：生产 Schema（PlanConfirmPayload）同口径校验 + 阶段 2~5
+   （checklist §2 结构完整率；Schema 只保证非空不覆盖本项）。
 
 输出逐文件判定与整体通过率（门禁 100%）；资料贴合度与理由可解释性按
 checklist §2 rubric 人工评，本脚本不覆盖。
@@ -22,6 +22,9 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
+from app.modules.agent.schemas import PlanConfirmPayload
 from app.modules.learning_plan.scheduling import (
     DEFAULT_DAILY_MINUTES,
     ScheduleConstraints,
@@ -31,8 +34,6 @@ from app.modules.learning_plan.scheduling import (
 
 EXIT_PASS = 0
 EXIT_FAIL = 1
-
-_ACTION_TYPES = {"STUDY_RECORD", "PRACTICE_QUIZ", "REVIEW_CONCEPT", "CUSTOM"}
 
 
 def collect_cases(inputs: list[str]) -> list[Path]:
@@ -55,34 +56,21 @@ def score(case: dict[str, Any]) -> tuple[bool, str]:
     plan = case.get("plan")
     if not isinstance(goal, dict) or not isinstance(plan, dict):
         return False, "缺少 goal / plan 结构"
-    phases = plan.get("phases")
-    if not isinstance(phases, list) or not phases:
-        return False, "没有阶段（phases 为空）"
 
-    items: list[dict[str, Any]] = []
-    for phase in phases:
-        if not isinstance(phase, dict) or not str(phase.get("title") or "").strip():
-            return False, "存在无标题阶段"
-        phase_items = phase.get("items")
-        if not isinstance(phase_items, list) or not phase_items:
-            return False, "存在空阶段（无计划项）"
-        for item in phase_items:
-            if not isinstance(item, dict):
-                return False, "计划项形状非法"
-            if item.get("action_type") not in _ACTION_TYPES:
-                return False, f"action_type 非法：{item.get('action_type')}"
-            if not str(item.get("content") or "").strip():
-                return False, "计划项 content 为空"
-            if not str(item.get("reason") or "").strip():
-                return False, "计划项 reason 为空（理由缺失）"
-            minutes = item.get("estimated_minutes")
-            if not isinstance(minutes, int) or minutes < 1:
-                return False, "estimated_minutes 非法"
-            if not str(item.get("scheduled_date") or "").strip():
-                return False, "计划项 scheduled_date 为空"
-            items.append(item)
-    if not items:
-        return False, "草案没有计划项"
+    # 结构完整：生产 Schema 同口径（model_validate_json 与 LLM 输出解析同路，
+    # 类型 / 枚举 / 长度 / 日期全查——str(…) 判空会把整数文本误判 PASS）。
+    try:
+        PlanConfirmPayload.model_validate_json(json.dumps(plan, ensure_ascii=False))
+    except ValidationError as exc:
+        first = exc.errors()[0]
+        loc = ".".join(str(part) for part in first["loc"])
+        return False, f"载荷不符合生产 Schema（{loc}: {first['msg']}）"
+    phases = plan["phases"]
+    # 评测特有约束：阶段 2~5（生成 prompt 契约，checklist §2 结构完整率；
+    # Schema 只保证 1~8 非空，不覆盖本项）。
+    if not 2 <= len(phases) <= 5:
+        return False, f"阶段数 {len(phases)} 不在 2~5"
+    items: list[dict[str, Any]] = [item for phase in phases for item in phase["items"]]
 
     daily = goal.get("daily_minutes")
     daily = daily if isinstance(daily, int) and daily > 0 else DEFAULT_DAILY_MINUTES
