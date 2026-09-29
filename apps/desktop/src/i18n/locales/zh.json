@@ -2025,10 +2025,53 @@
         "accept": "确认学习计划",
         "reject": "放弃学习计划",
         "regenerate": "重新生成草案",
-        "hint": "草案为只读预览；确认后计划保存生效，不满意可点「重新生成」重排一份。",
+        "hint": "确认后按当前内容保存生效；不满意可直接编辑上面的草案，或点「重新生成」重排一份。",
         "scheduleSummary": "共 {{count}} 项 · 约 {{minutes}} 分钟 · 排期 {{from}} ~ {{to}}",
         "scheduleEmpty": "草案没有计划项。",
         "unnamedPhase": "未命名阶段"
+      },
+      "planEdit": {
+        "hint": "确认前可调整：修改日期或时长、删除计划项、上下移动调整顺序；确认后按编辑结果保存。",
+        "dateAria": "排期日期",
+        "minutesAria": "预估时长（分钟）",
+        "moveUp": "上移",
+        "moveDown": "下移",
+        "remove": "删除此项",
+        "emptyDraft": "至少保留一个计划项才能确认。"
+      },
+      "planItemUpdate": {
+        "accepted": "计划项已修改（确认后为用户锁定项，重新生成时原样保留）。",
+        "rejected": "已取消，计划项未修改。",
+        "failed": "计划项修改未完成。",
+        "failedDetail": "计划项修改未完成（{{reason}}），可重试。",
+        "accept": "确认修改计划项",
+        "reject": "取消修改",
+        "targetItem": "目标计划项",
+        "dateField": "排期日期",
+        "minutesField": "预估时长",
+        "contentField": "内容",
+        "hint": "修改确认后立即生效，该项标记为用户锁定（重新生成计划时原样保留）。"
+      },
+      "planItemComplete": {
+        "accepted": "计划项已完成。",
+        "rejected": "已取消，计划项未标记完成。",
+        "failed": "计划项完成未成功。",
+        "failedDetail": "计划项完成未成功（{{reason}}），可重试。",
+        "accept": "确认完成计划项",
+        "reject": "取消完成",
+        "targetItem": "目标计划项",
+        "hint": "完成只记录执行事实，不会直接提高概念掌握度。"
+      },
+      "planRegenerate": {
+        "accepted": "学习计划已重排为新版本（第 {{version}} 版 · {{count}} 项）。",
+        "acceptedFallback": "学习计划已重排为新版本。",
+        "rejected": "已取消，沿用当前版本。",
+        "failed": "学习计划重排未完成。",
+        "failedDetail": "学习计划重排未完成（{{reason}}），可重试。",
+        "accept": "确认重排学习计划",
+        "reject": "取消重排",
+        "hint": "确认后新版本生效、旧版本只读保留；带「保留」标记的是你手动锁定过的项，原样带入不被重排。",
+        "lockedBadge": "保留"
       }
     },
     "authMode": {
@@ -2839,7 +2882,12 @@
     "PLAN_ACTIVE_EXISTS": "该目标已有进行中的学习计划，调整或重生成随后续版本提供",
     "PLAN_SCHEDULE_INFEASIBLE": "计划总量超出目标期限内的可投入容量，请精简草案或调整目标",
     "PLAN_SCHEDULE_INVALID": "草案排期与目标约束不符，请按期望日期修正后重新提交",
-    "PLAN_DRAFT_INVALID": "草案引用了无效的学习对象，请修正后重新提交"
+    "PLAN_DRAFT_INVALID": "草案引用了无效的学习对象，请修正后重新提交",
+    "PLAN_NOT_FOUND": "学习计划不存在或所属课程已删除",
+    "PLAN_ITEM_NOT_FOUND": "计划项不存在或所属课程已删除",
+    "PLAN_VERSION_NOT_ACTIVE": "只有当前生效版本的计划项可以修改，历史版本只读",
+    "PLAN_REGENERATE_NO_MATERIALS": "课程当前没有可用资料，无法重新生成计划；请先补充资料或逐项调整现有计划",
+    "PROPOSAL_EDIT_NOT_SUPPORTED": "该提案类型不支持确认前编辑"
   },
   "agent": {
     "run": {

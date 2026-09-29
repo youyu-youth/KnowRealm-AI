@@ -16,6 +16,11 @@ import {
 } from "@/features/settings/api/operationHistory";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
+import {
+  PlanDraftEditor,
+  planDraftItemCount,
+  type DraftEditorProps,
+} from "@/features/chat/PlanDraftEditor";
 import { Button } from "@/components/ui/button";
 
 type ChatOperationProposalCardProps = {
@@ -930,19 +935,30 @@ function SettledGoalCreateRow({ status, result, t }: SettledRowProps) {
   );
 }
 
-/** OP_GOAL_UPDATE 回执行：结果文案（目标暂无独立页面，计划 Tab 随后续工单接入）。 */
-function SettledGoalUpdateRow({ status, t }: SettledRowProps) {
-  const applied = status === "APPLIED";
+/** 纯文案回执行共用（工单 03）：结果两态文案随类型传入。 */
+function SettledTextRow({
+  appliedTextKey,
+  rejectedTextKey,
+  status,
+  t,
+}: SettledRowProps & { appliedTextKey: string; rejectedTextKey: string }) {
   return (
     <div className="bg-surface-subtle flex flex-col gap-1.5 rounded-md px-2.5 py-1.5">
       <p className="text-label text-muted-foreground">
-        {t(
-          applied
-            ? "chat.operationProposal.goalUpdate.accepted"
-            : "chat.operationProposal.goalUpdate.rejected",
-        )}
+        {t(status === "APPLIED" ? appliedTextKey : rejectedTextKey)}
       </p>
     </div>
+  );
+}
+
+/** OP_GOAL_UPDATE 回执行：结果文案（目标暂无独立页面，计划 Tab 随后续工单接入）。 */
+function SettledGoalUpdateRow(props: SettledRowProps) {
+  return (
+    <SettledTextRow
+      {...props}
+      appliedTextKey="chat.operationProposal.goalUpdate.accepted"
+      rejectedTextKey="chat.operationProposal.goalUpdate.rejected"
+    />
   );
 }
 
@@ -967,15 +983,15 @@ const PLAN_ITEM_TYPE_KEYS: Record<string, string> = {
   CUSTOM: "chat.operationProposal.planFields.itemType.CUSTOM",
 };
 
-/** OP_PLAN_CONFIRM 确认卡预览（工单 02，只读草案）：目标 / 课程 / 排期概览 +
+/** OP_PLAN_CONFIRM / OP_PLAN_REGENERATE 共用的阶段计划项渲染：排期概览 +
  * 分阶段计划项（日期 · 内容全文 · 时长 · 类型徽标 · 逐项理由——spec 用户故事
- * 10 要求理由可见，内容与理由有 schema 长度上限（200/300），全文展示无需折叠）。
- * 可编辑卡随工单 03 升级。 */
-function PlanConfirmPreviewFields({
+ * 10 要求理由可见；锁定项带保留标记）。 */
+function PlanPhasesPreview({
   payload,
   snapshot,
   t,
-}: PreviewFieldsProps) {
+  lockedBadge = false,
+}: PreviewFieldsProps & { lockedBadge?: boolean }) {
   const phases = arrayField(payload, "phases");
   const items = phases.flatMap((phase) => arrayField(phase, "items"));
   const dates = items
@@ -1018,6 +1034,7 @@ function PlanConfirmPreviewFields({
               const itemType = fieldString(item, "action_type");
               const minutes = fieldNumber(item, "estimated_minutes");
               const reason = fieldString(item, "reason");
+              const locked = item.user_locked === true;
               return (
                 <li
                   key={itemIndex}
@@ -1042,6 +1059,11 @@ function PlanConfirmPreviewFields({
                         {t(PLAN_ITEM_TYPE_KEYS[itemType])}
                       </span>
                     ) : null}
+                    {lockedBadge && locked ? (
+                      <span className="text-ink-faint shrink-0">
+                        {t("chat.operationProposal.planRegenerate.lockedBadge")}
+                      </span>
+                    ) : null}
                   </span>
                   {reason !== null ? (
                     <span className="text-ink-faint break-words">
@@ -1055,10 +1077,115 @@ function PlanConfirmPreviewFields({
           </ul>
         </div>
       ))}
+    </div>
+  );
+}
+
+/** OP_PLAN_CONFIRM 确认卡预览（只读态：快照失效行回退渲染；可编辑态由
+ * PlanDraftEditor 承载，工单 03）。 */
+function PlanConfirmPreviewFields(props: PreviewFieldsProps) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex w-full flex-col gap-1.5">
+      <PlanPhasesPreview {...props} />
       <p className="text-label text-muted-foreground">
         {t("chat.operationProposal.planConfirm.hint")}
       </p>
     </div>
+  );
+}
+
+/** OP_PLAN_REGENERATE 确认卡预览（工单 03）：新版本全貌 + 锁定项保留标记。 */
+function PlanRegeneratePreviewFields(props: PreviewFieldsProps) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex w-full flex-col gap-1.5">
+      <PlanPhasesPreview {...props} lockedBadge />
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.planRegenerate.hint")}
+      </p>
+    </div>
+  );
+}
+
+/** 计划项字段展示值（OP_PLAN_ITEM_UPDATE before/after 行共用）。 */
+function planItemFieldDisplay(
+  key: string,
+  value: unknown,
+  t: TFunction,
+): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (key === "estimated_minutes") {
+    return t("chat.operationProposal.planFields.minutesValue", {
+      count: Number(value),
+    });
+  }
+  return excerpt(String(value));
+}
+
+const PLAN_ITEM_FIELD_LABEL_KEYS: Record<string, string> = {
+  scheduled_date: "chat.operationProposal.planItemUpdate.dateField",
+  estimated_minutes: "chat.operationProposal.planItemUpdate.minutesField",
+  content: "chat.operationProposal.planItemUpdate.contentField",
+};
+
+/** OP_PLAN_ITEM_UPDATE 确认卡预览：目标计划项（快照内容）+ 修改字段
+ * before/after（payload 非空字段 = 本次要改的字段，before 读执行前快照）。 */
+function PlanItemUpdatePreviewFields({
+  payload,
+  snapshot,
+  t,
+}: PreviewFieldsProps) {
+  const entries: { label: string; before: string | null; after: string }[] = [];
+  for (const [key, labelKey] of Object.entries(PLAN_ITEM_FIELD_LABEL_KEYS)) {
+    const after = planItemFieldDisplay(key, payload[key], t);
+    if (after === null) continue;
+    entries.push({
+      label: t(labelKey),
+      before: snapshot ? planItemFieldDisplay(key, snapshot[key], t) : null,
+      after,
+    });
+  }
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.planItemUpdate.targetItem")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {excerpt(fieldString(snapshot, "content") ?? "") ||
+            fieldString(payload, "item_id")}
+        </dd>
+      </div>
+      <BeforeAfterRows entries={entries} />
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.planItemUpdate.hint")}
+      </p>
+    </>
+  );
+}
+
+/** OP_PLAN_ITEM_COMPLETE 确认卡预览：目标计划项 + 完成语义提示。 */
+function PlanItemCompletePreviewFields({
+  payload,
+  snapshot,
+  t,
+}: PreviewFieldsProps) {
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.planItemComplete.targetItem")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {excerpt(fieldString(snapshot, "content") ?? "") ||
+            fieldString(payload, "item_id")}
+        </dd>
+      </div>
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.planItemComplete.hint")}
+      </p>
+    </>
   );
 }
 
@@ -1111,6 +1238,9 @@ type OperationCardSpec = {
   SettledRow: ComponentType<SettledRowProps>;
   /** 第三动作「重新生成」（可选）：按载荷构造代发指令消息，null = 不渲染按钮。 */
   regenerateMessage?: (payload: Record<string, unknown>) => string | null;
+  /** 可编辑草案（可选，工单 03）：待确认行渲染编辑器替代只读预览，确认时
+   * 携带编辑后载荷（服务端校验边界）。 */
+  DraftEditor?: ComponentType<DraftEditorProps>;
 };
 
 const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
@@ -1237,6 +1367,35 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
         ? `请基于课程资料为目标 ${goalId} 重新生成一份学习计划草案`
         : null;
     },
+    // 确认卡可编辑（工单 03，spec 用户故事 9）：改日期 / 时长 / 删项 / 排序。
+    DraftEditor: PlanDraftEditor,
+  },
+  OP_PLAN_ITEM_UPDATE: {
+    label: (key) => `chat.operationProposal.planItemUpdate.${key}`,
+    PreviewFields: PlanItemUpdatePreviewFields,
+    SettledRow: (props) => (
+      <SettledTextRow
+        {...props}
+        appliedTextKey="chat.operationProposal.planItemUpdate.accepted"
+        rejectedTextKey="chat.operationProposal.planItemUpdate.rejected"
+      />
+    ),
+  },
+  OP_PLAN_ITEM_COMPLETE: {
+    label: (key) => `chat.operationProposal.planItemComplete.${key}`,
+    PreviewFields: PlanItemCompletePreviewFields,
+    SettledRow: (props) => (
+      <SettledTextRow
+        {...props}
+        appliedTextKey="chat.operationProposal.planItemComplete.accepted"
+        rejectedTextKey="chat.operationProposal.planItemComplete.rejected"
+      />
+    ),
+  },
+  OP_PLAN_REGENERATE: {
+    label: (key) => `chat.operationProposal.planRegenerate.${key}`,
+    PreviewFields: PlanRegeneratePreviewFields,
+    SettledRow: SettledPlanConfirmRow,
   },
   OP_UNDO: {
     label: (key) => `chat.operationProposal.undo.${key}`,
@@ -1317,7 +1476,8 @@ function ProposalUndoEntry({
   );
 }
 
-/** 待确认/FAILED 行：快照失效只能重新提案，其余失败可重试。 */
+/** 待确认/FAILED 行：快照失效只能重新提案，其余失败可重试；声明可编辑草案的
+ * 类型（工单 03）渲染编辑器，确认时携带编辑后载荷。 */
 function ActionableProposalRow({
   proposal,
   status,
@@ -1329,7 +1489,11 @@ function ActionableProposalRow({
   proposal: AgentProposalOut;
   status: AgentProposalOut["status"];
   busy: boolean;
-  onDecide: (proposalId: string, accept: boolean) => void;
+  onDecide: (
+    proposalId: string,
+    accept: boolean,
+    editedPayload?: Record<string, unknown>,
+  ) => void;
   /** 重新生成（可选，类型配置声明第三动作时传入）：放弃本草案 + 代发指令。 */
   onRegenerate?: (proposalId: string, message: string) => void;
   t: TFunction;
@@ -1341,6 +1505,11 @@ function ActionableProposalRow({
     status === "FAILED" && proposal.error_code === "OPERATION_SNAPSHOT_STALE";
   const spec = CARD_BY_TYPE[proposal.proposal_type];
   const PreviewFields = spec.PreviewFields;
+  const DraftEditor = spec.DraftEditor;
+  // 编辑态（null = 未编辑，确认时发原载荷）：行按 proposal.id key 隔离。
+  const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
+  const draftEmpty =
+    draft !== null && planDraftItemCount(draft) === 0 && !snapshotStale;
   const regenerateMessage =
     onRegenerate !== undefined && spec.regenerateMessage !== undefined
       ? spec.regenerateMessage(proposal.payload ?? {})
@@ -1356,20 +1525,31 @@ function ActionableProposalRow({
               : t(labelKey(proposal, "failed"))}
         </p>
       ) : null}
-      <dl className="min-w-0 flex-1">
-        <PreviewFields
-          payload={proposal.payload ?? {}}
-          snapshot={proposal.snapshot ?? null}
-          t={t}
-        />
-      </dl>
+      {DraftEditor !== undefined && !snapshotStale ? (
+        <div className="min-w-0 flex-1">
+          <DraftEditor
+            payload={draft ?? proposal.payload ?? {}}
+            snapshot={proposal.snapshot ?? null}
+            onChange={setDraft}
+            t={t}
+          />
+        </div>
+      ) : (
+        <dl className="min-w-0 flex-1">
+          <PreviewFields
+            payload={proposal.payload ?? {}}
+            snapshot={proposal.snapshot ?? null}
+            t={t}
+          />
+        </dl>
+      )}
       {!snapshotStale ? (
         <Button
           variant="ghost"
           size="icon-xs"
           aria-label={t(labelKey(proposal, "accept"))}
-          disabled={busy}
-          onClick={() => onDecide(proposal.id, true)}
+          disabled={busy || draftEmpty}
+          onClick={() => onDecide(proposal.id, true, draft ?? undefined)}
         >
           <Check className="size-3.5" aria-hidden="true" />
         </Button>
@@ -1483,11 +1663,15 @@ export function ChatOperationProposalCard({
       statusOf(proposal) === "PENDING" || statusOf(proposal) === "FAILED",
   );
 
-  const decide = (proposalId: string, accept: boolean) => {
+  const decide = (
+    proposalId: string,
+    accept: boolean,
+    editedPayload?: Record<string, unknown>,
+  ) => {
     setBusyId(proposalId);
     setError(null);
     const request: Promise<AgentProposalOut> = accept
-      ? libraryApi.confirmProposal(proposalId)
+      ? libraryApi.confirmProposal(proposalId, editedPayload)
       : libraryApi.rejectProposal(proposalId);
     request
       .then((result) => {

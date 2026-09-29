@@ -703,6 +703,107 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{course_id}/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Course Plans
+         * @description 目标的计划版本列表（新版本在前；历史版本只读，供计划 Tab 切换查看）。
+         */
+        get: operations["list_course_plans_api_courses__course_id__plans_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/plans/{plan_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Course Plan
+         * @description 计划版本详情（含全部计划项与进度状态，任意版本只读）。
+         */
+        get: operations["get_course_plan_api_courses__course_id__plans__plan_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Plan Item Row
+         * @description 就地编辑计划项（日期 / 时长 / 内容，仅当前生效版本）：即时生效，
+         *     Service 置 user_locked（重生成原样保留）。
+         */
+        patch: operations["update_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Plan Item Row
+         * @description 勾选完成：DONE + 完成时间戳（学习时长统计口径，不进学习证据链）。
+         */
+        post: operations["complete_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip Plan Item Row
+         * @description 跳过计划项：SKIPPED，清完成时间戳（跳过不进学习时长统计）。
+         */
+        post: operations["skip_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__skip_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/quiz-tests": {
         parameters: {
             query?: never;
@@ -1267,7 +1368,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm Proposal */
+        /**
+         * Confirm Proposal
+         * @description 确认提案；body.payload 可携带确认卡上编辑后的草案载荷（工单 03，
+         *     仅计划草案受理——确认卡所见即落库所写）。
+         */
         post: operations["confirm_proposal_api_proposals__proposal_id__confirm_post"];
         delete?: never;
         options?: never;
@@ -4485,6 +4590,134 @@ export interface components {
             /** Unclassified */
             unclassified: components["schemas"]["LibraryItemOut"][];
         };
+        /**
+         * PlanItemOut
+         * @description 计划项投影（get_plan 工具与计划 Tab 路由共用）。
+         */
+        PlanItemOut: {
+            action_type: components["schemas"]["PlanItemType"];
+            /**
+             * Completed At
+             * @description 完成时间戳（仅 DONE）
+             */
+            completed_at?: string | null;
+            /** Concept Id */
+            concept_id?: string | null;
+            /** Content */
+            content: string;
+            /** Estimated Minutes */
+            estimated_minutes?: number | null;
+            /** Id */
+            id: string;
+            /** Phase Title */
+            phase_title: string;
+            /** Priority */
+            priority: number;
+            /** Reason */
+            reason?: string | null;
+            /** Record Id */
+            record_id?: string | null;
+            /**
+             * Scheduled Date
+             * Format: date
+             */
+            scheduled_date: string;
+            status: components["schemas"]["PlanItemStatus"];
+            /** User Locked */
+            user_locked: boolean;
+        };
+        /**
+         * PlanItemStatus
+         * @description 计划项状态：PENDING 待执行 / DONE 已完成 / SKIPPED 已跳过。
+         *
+         *     完成不产 learning_event、不直接动 Concept Mastery（spec「完成语义边界」）；
+         *     学习时长统计由 completed_at 时间戳单独承载。
+         * @enum {string}
+         */
+        PlanItemStatus: "PENDING" | "DONE" | "SKIPPED";
+        /**
+         * PlanItemType
+         * @description 计划项动作四类（spec 领域模型定稿）：学习资料 / 做习题 / 复习概念 / 自由任务。
+         * @enum {string}
+         */
+        PlanItemType: "STUDY_RECORD" | "PRACTICE_QUIZ" | "REVIEW_CONCEPT" | "CUSTOM";
+        /**
+         * PlanItemUpdate
+         * @description 计划项就地编辑契约（日期 / 时长 / 内容）：至少一项，仅当前生效版本可改。
+         *
+         *     用户手动编辑过的项由 Service 置 user_locked（重生成原样保留，spec 用户
+         *     故事 15）。
+         */
+        PlanItemUpdate: {
+            /**
+             * Content
+             * @description 计划项内容
+             */
+            content?: string | null;
+            /**
+             * Estimated Minutes
+             * @description 预估投入分钟数
+             */
+            estimated_minutes?: number | null;
+            /**
+             * Scheduled Date
+             * @description 排期日期（按日）
+             */
+            scheduled_date?: string | null;
+        };
+        /**
+         * PlanOut
+         * @description 计划版本投影（只读消费面；progress 派生项数由调用方按需扩展）。
+         */
+        PlanOut: {
+            /** Course Id */
+            course_id: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+            /** Goal Id */
+            goal_id: string;
+            /** Id */
+            id: string;
+            /** Items */
+            items: components["schemas"]["PlanItemOut"][];
+            /** Plan Version */
+            plan_version: number;
+            status: components["schemas"]["PlanStatus"];
+        };
+        /**
+         * PlanStatus
+         * @enum {string}
+         */
+        PlanStatus: "ACTIVE" | "SUPERSEDED" | "COMPLETED";
+        /**
+         * PlanVersionOut
+         * @description 计划版本摘要（历史版本列表，项明细走版本详情端点）。
+         */
+        PlanVersionOut: {
+            /** Course Id */
+            course_id: string;
+            /**
+             * Effective From
+             * Format: date
+             */
+            effective_from: string;
+            /** Effective To */
+            effective_to?: string | null;
+            /** Goal Id */
+            goal_id: string;
+            /** Id */
+            id: string;
+            /** Item Count */
+            item_count: number;
+            /** Plan Version */
+            plan_version: number;
+            status: components["schemas"]["PlanStatus"];
+        };
         /** PreferencesOut */
         PreferencesOut: {
             /** Autostart */
@@ -4663,6 +4896,22 @@ export interface components {
             primary_role: components["schemas"]["PrimaryRole"];
         };
         /**
+         * ProposalConfirmBody
+         * @description 确认请求体（工单 03，可选）：确认卡上编辑后的草案载荷。
+         *
+         *     仅注册了草案编辑校验器的提案类型受理（当前 = OP_PLAN_CONFIRM 计划草案）；
+         *     省略 body = 原载荷确认（既有行为不变）。
+         */
+        ProposalConfirmBody: {
+            /**
+             * Payload
+             * @description 编辑后的提案载荷全文
+             */
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * ProposalCreateRequest
          * @description 通用提案创建（05）：payload 按 proposal_type 判别校验后落库，不改事实。
          */
@@ -4690,7 +4939,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_PLAN_CONFIRM";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -9079,6 +9328,364 @@ export interface operations {
             };
         };
     };
+    list_course_plans_api_courses__course_id__plans_get: {
+        parameters: {
+            query: {
+                goal_id: string;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanVersionOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_course_plan_api_courses__course_id__plans__plan_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                plan_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanItemUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanItemOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    complete_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                plan_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanItemOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    skip_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__skip_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                plan_id: string;
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanItemOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_quiz_tests_api_courses__course_id__quiz_tests_get: {
         parameters: {
             query?: never;
@@ -11537,7 +12144,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ProposalConfirmBody"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

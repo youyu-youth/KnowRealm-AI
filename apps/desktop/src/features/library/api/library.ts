@@ -129,9 +129,15 @@ export const libraryApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
-  confirmProposal: (proposalId: string) =>
+  confirmProposal: (proposalId: string, editedPayload?: object) =>
     apiFetch<AgentProposalOut>(`/api/proposals/${proposalId}/confirm`, {
       method: "POST",
+      ...(editedPayload === undefined
+        ? {}
+        : {
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ payload: editedPayload }),
+          }),
     }),
   rejectProposal: (proposalId: string) =>
     apiFetch<AgentProposalOut>(`/api/proposals/${proposalId}/reject`, {

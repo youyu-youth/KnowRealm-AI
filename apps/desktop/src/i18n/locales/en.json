@@ -2045,10 +2045,53 @@
         "accept": "Confirm learning plan",
         "reject": "Discard learning plan",
         "regenerate": "Regenerate draft",
-        "hint": "Read-only draft preview; confirming saves the plan. Not satisfied? Hit regenerate for a fresh draft.",
+        "hint": "Confirming saves the plan as shown; edit the draft above directly, or hit regenerate for a fresh one.",
         "scheduleSummary": "{{count}} items · ~{{minutes}} min · scheduled {{from}} ~ {{to}}",
         "scheduleEmpty": "The draft has no plan items.",
         "unnamedPhase": "Untitled phase"
+      },
+      "planEdit": {
+        "hint": "Adjust before confirming: change dates or durations, remove items, or reorder; confirming saves your edits.",
+        "dateAria": "Scheduled date",
+        "minutesAria": "Estimated minutes",
+        "moveUp": "Move up",
+        "moveDown": "Move down",
+        "remove": "Remove this item",
+        "emptyDraft": "Keep at least one plan item to confirm."
+      },
+      "planItemUpdate": {
+        "accepted": "Plan item updated (now user-locked; kept as-is when regenerating).",
+        "rejected": "Cancelled; the plan item was not changed.",
+        "failed": "Plan item update did not complete.",
+        "failedDetail": "Plan item update did not complete ({{reason}}); you can retry.",
+        "accept": "Confirm plan item update",
+        "reject": "Cancel update",
+        "targetItem": "Target plan item",
+        "dateField": "Scheduled date",
+        "minutesField": "Estimated duration",
+        "contentField": "Content",
+        "hint": "The change takes effect after confirmation and marks the item as user-locked (kept as-is when regenerating)."
+      },
+      "planItemComplete": {
+        "accepted": "Plan item completed.",
+        "rejected": "Cancelled; the plan item was not marked complete.",
+        "failed": "Completing the plan item did not succeed.",
+        "failedDetail": "Completing the plan item did not succeed ({{reason}}); you can retry.",
+        "accept": "Confirm completing plan item",
+        "reject": "Cancel completion",
+        "targetItem": "Target plan item",
+        "hint": "Completion only records the fact; it does not directly raise concept mastery."
+      },
+      "planRegenerate": {
+        "accepted": "Learning plan regenerated as a new version (v{{version}} · {{count}} items).",
+        "acceptedFallback": "Learning plan regenerated as a new version.",
+        "rejected": "Cancelled; the current version stays active.",
+        "failed": "Learning plan regeneration did not complete.",
+        "failedDetail": "Learning plan regeneration did not complete ({{reason}}); you can retry.",
+        "accept": "Confirm regenerating plan",
+        "reject": "Cancel regeneration",
+        "hint": "Confirming activates the new version and keeps the old one read-only; items marked \"kept\" are your locked items, carried over untouched.",
+        "lockedBadge": "kept"
       }
     },
     "authMode": {
@@ -2859,7 +2902,12 @@
     "PLAN_ACTIVE_EXISTS": "This goal already has an active learning plan; adjusting or regenerating arrives in a later version",
     "PLAN_SCHEDULE_INFEASIBLE": "Total plan time exceeds the capacity before the goal deadline; trim the draft or adjust the goal",
     "PLAN_SCHEDULE_INVALID": "Draft schedule does not match the goal constraints; fix it per the expected dates and resubmit",
-    "PLAN_DRAFT_INVALID": "The draft references an invalid study target; fix it and resubmit"
+    "PLAN_DRAFT_INVALID": "The draft references an invalid study target; fix it and resubmit",
+    "PLAN_NOT_FOUND": "Learning plan not found or its course has been deleted",
+    "PLAN_ITEM_NOT_FOUND": "Plan item not found or its course has been deleted",
+    "PLAN_VERSION_NOT_ACTIVE": "Only items in the currently active plan version can be modified; past versions are read-only",
+    "PLAN_REGENERATE_NO_MATERIALS": "The course has no usable materials to regenerate the plan; add materials first or adjust items individually",
+    "PROPOSAL_EDIT_NOT_SUPPORTED": "This proposal type does not support editing before confirmation"
   },
   "agent": {
     "run": {

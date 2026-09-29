@@ -956,7 +956,7 @@ describe("ChatOperationProposalCard — 学习计划确认（第三阶段工单 
     course_name: "Agent 工程",
   };
 
-  it("OP_PLAN_CONFIRM 预览：目标 / 课程 / 排期概览 + 分阶段计划项（只读草案）", async () => {
+  it("OP_PLAN_CONFIRM 预览：目标 / 课程 / 排期概览 + 分阶段计划项（可编辑草案，工单 03）", async () => {
     listProposals.mockResolvedValue([
       proposalFixture({
         id: "p-p1",
@@ -974,18 +974,256 @@ describe("ChatOperationProposalCard — 学习计划确认（第三阶段工单 
     expect(screen.getByText("第一阶段")).toBeVisible();
     expect(screen.getByText("精读第 1 讲")).toBeVisible();
     expect(screen.getByText("整理笔记")).toBeVisible();
-    expect(screen.getByText("60 分钟")).toBeVisible();
     expect(screen.getByText("学资料")).toBeVisible();
     expect(screen.getByText("自由任务")).toBeVisible();
     // spec 用户故事 10：逐项生成理由在确认位置可见。
     expect(screen.getByText("理由：建立基础")).toBeVisible();
     expect(screen.getByText("理由：巩固记忆")).toBeVisible();
+    // 工单 03：草案卡可编辑（日期 / 时长 / 删项 / 排序）。
+    const dates = screen.getAllByLabelText("排期日期");
+    expect(dates).toHaveLength(2);
+    expect(dates[0]).toHaveValue("2026-01-05");
+    expect(screen.getAllByLabelText("预估时长（分钟）")[0]).toHaveValue(60);
+    const moveUp = screen.getAllByRole("button", { name: "上移" });
+    const moveDown = screen.getAllByRole("button", { name: "下移" });
+    expect(moveUp[0]).toBeDisabled();
+    expect(moveUp[1]).toBeEnabled();
+    expect(moveDown[0]).toBeEnabled();
+    expect(moveDown[1]).toBeDisabled();
+    expect(screen.getByRole("button", { name: "确认学习计划" })).toBeEnabled();
+  });
+
+  it("草案编辑：改日期 / 改时长后确认携带编辑载荷（工单 03）", async () => {
+    confirmProposal.mockResolvedValue({
+      ...proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+      }),
+      status: "APPLIED",
+      result: { plan_version: 1, item_count: 2, course_id: "course-9" },
+    });
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    const dateInputs = await screen.findAllByLabelText("排期日期");
+    fireEvent.change(dateInputs[0], {
+      target: { value: "2026-01-07" },
+    });
+    fireEvent.change(screen.getAllByLabelText("预估时长（分钟）")[1], {
+      target: { value: "45" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认学习计划" }));
+    await waitFor(() => {
+      expect(confirmProposal).toHaveBeenCalledWith("p-p1", {
+        goal_id: "goal-1",
+        phases: [
+          {
+            title: "第一阶段",
+            items: [
+              {
+                action_type: "STUDY_RECORD",
+                content: "精读第 1 讲",
+                estimated_minutes: 60,
+                reason: "建立基础",
+                record_id: "record-1",
+                concept_id: null,
+                scheduled_date: "2026-01-07",
+              },
+              {
+                action_type: "CUSTOM",
+                content: "整理笔记",
+                estimated_minutes: 45,
+                reason: "巩固记忆",
+                record_id: null,
+                concept_id: null,
+                scheduled_date: "2026-01-06",
+              },
+            ],
+          },
+        ],
+      });
+    });
+  });
+
+  it("草案编辑：删项与排序进入编辑载荷；未编辑确认发原载荷", async () => {
+    confirmProposal.mockResolvedValue({
+      ...proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+      }),
+      status: "APPLIED",
+      result: { plan_version: 1, item_count: 1 },
+    });
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    // 下移首项（顺序交换为 整理笔记 → 精读第 1 讲）+ 删除当前末项（精读第 1 讲）。
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "下移" }))[0],
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "删除此项" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "确认学习计划" }));
+    await waitFor(() => {
+      const call = confirmProposal.mock.calls[0];
+      expect(call?.[0]).toBe("p-p1");
+      const payload = call?.[1] as Record<string, unknown>;
+      const items = (
+        payload.phases as { items: Record<string, unknown>[] }[]
+      )[0].items;
+      expect(items).toHaveLength(1);
+      expect(items[0]?.content).toBe("整理笔记");
+    });
+  });
+
+  it("草案编辑：删光计划项后确认被禁用并提示（服务端 schema 同口径兜底）", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-p1",
+        proposal_type: "OP_PLAN_CONFIRM",
+        payload: PLAN_PAYLOAD,
+        snapshot: PLAN_SNAPSHOT,
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    // 逐次重查询点击（删除后列表重渲染，旧按钮引用会失效）。
+    for (let index = 0; index < 2; index += 1) {
+      fireEvent.click(
+        (await screen.findAllByRole("button", { name: "删除此项" }))[0],
+      );
+    }
+    expect(
+      await screen.findByText("至少保留一个计划项才能确认。"),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认学习计划" })).toBeDisabled();
+    expect(confirmProposal).not.toHaveBeenCalled();
+  });
+
+  it("OP_PLAN_ITEM_UPDATE 预览：目标项 + 修改字段 before/after", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-u1",
+        proposal_type: "OP_PLAN_ITEM_UPDATE",
+        payload: {
+          item_id: "item-1",
+          scheduled_date: "2026-01-08",
+          estimated_minutes: 90,
+        },
+        snapshot: {
+          item_id: "item-1",
+          plan_id: "plan-1",
+          plan_version: 1,
+          plan_status: "ACTIVE",
+          goal_status: "ACTIVE",
+          phase_title: "第一阶段",
+          content: "精读第 1 讲",
+          scheduled_date: "2026-01-05",
+          estimated_minutes: 60,
+          status: "PENDING",
+          user_locked: false,
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("精读第 1 讲")).toBeVisible();
+    expect(screen.getByText("2026-01-05")).toHaveClass("line-through");
+    expect(screen.getByText("2026-01-08")).toBeVisible();
+    expect(screen.getByText("60 分钟")).toHaveClass("line-through");
+    expect(screen.getByText("90 分钟")).toBeVisible();
     expect(
       screen.getByText(
-        "草案为只读预览；确认后计划保存生效，不满意可点「重新生成」重排一份。",
+        "修改确认后立即生效，该项标记为用户锁定（重新生成计划时原样保留）。",
       ),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "确认学习计划" })).toBeEnabled();
+  });
+
+  it("OP_PLAN_ITEM_COMPLETE 预览：目标项 + 完成语义提示", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-c1",
+        proposal_type: "OP_PLAN_ITEM_COMPLETE",
+        payload: { item_id: "item-1" },
+        snapshot: {
+          item_id: "item-1",
+          plan_id: "plan-1",
+          plan_version: 1,
+          plan_status: "ACTIVE",
+          goal_status: "ACTIVE",
+          phase_title: "第一阶段",
+          content: "精读第 1 讲",
+          scheduled_date: "2026-01-05",
+          estimated_minutes: 60,
+          status: "PENDING",
+          user_locked: false,
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("精读第 1 讲")).toBeVisible();
+    expect(
+      screen.getByText("完成只记录执行事实，不会直接提高概念掌握度。"),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "确认完成计划项" }),
+    ).toBeEnabled();
+  });
+
+  it("OP_PLAN_REGENERATE 预览：新版本全貌 + 锁定项保留标记", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        id: "p-g1",
+        proposal_type: "OP_PLAN_REGENERATE",
+        payload: {
+          goal_id: "goal-1",
+          phases: [
+            {
+              title: "第一阶段",
+              items: [
+                {
+                  action_type: "STUDY_RECORD",
+                  content: "精读第 1 讲",
+                  estimated_minutes: 60,
+                  reason: "建立基础",
+                  record_id: "record-1",
+                  concept_id: null,
+                  scheduled_date: "2026-01-05",
+                  user_locked: true,
+                },
+              ],
+            },
+          ],
+        },
+        snapshot: {
+          ...PLAN_SNAPSHOT,
+          active_plan_version: 1,
+          active_plan_updated_at: "2026-09-29T00:00:00Z",
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("精读第 1 讲")).toBeVisible();
+    expect(screen.getAllByText("保留")).toHaveLength(1);
+    expect(
+      screen.getByText(
+        "确认后新版本生效、旧版本只读保留；带「保留」标记的是你手动锁定过的项，原样带入不被重排。",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "确认重排学习计划" }),
+    ).toBeEnabled();
   });
 
   it("OP_PLAN_CONFIRM 重新生成：放弃旧草案（REJECTED 终态）+ 代发重排指令", async () => {

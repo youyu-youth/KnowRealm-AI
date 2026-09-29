@@ -5134,6 +5134,304 @@
         "title": "OrganizeScanOut",
         "type": "object"
       },
+      "PlanItemOut": {
+        "description": "计划项投影（get_plan 工具与计划 Tab 路由共用）。",
+        "properties": {
+          "action_type": {
+            "$ref": "#/components/schemas/PlanItemType"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "完成时间戳（仅 DONE）",
+            "title": "Completed At"
+          },
+          "concept_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Id"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "estimated_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Minutes"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "phase_title": {
+            "title": "Phase Title",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          },
+          "scheduled_date": {
+            "format": "date",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlanItemStatus"
+          },
+          "user_locked": {
+            "title": "User Locked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "action_type",
+          "content",
+          "phase_title",
+          "priority",
+          "scheduled_date",
+          "status",
+          "user_locked"
+        ],
+        "title": "PlanItemOut",
+        "type": "object"
+      },
+      "PlanItemStatus": {
+        "description": "计划项状态：PENDING 待执行 / DONE 已完成 / SKIPPED 已跳过。\n\n完成不产 learning_event、不直接动 Concept Mastery（spec「完成语义边界」）；\n学习时长统计由 completed_at 时间戳单独承载。",
+        "enum": [
+          "PENDING",
+          "DONE",
+          "SKIPPED"
+        ],
+        "title": "PlanItemStatus",
+        "type": "string"
+      },
+      "PlanItemType": {
+        "description": "计划项动作四类（spec 领域模型定稿）：学习资料 / 做习题 / 复习概念 / 自由任务。",
+        "enum": [
+          "STUDY_RECORD",
+          "PRACTICE_QUIZ",
+          "REVIEW_CONCEPT",
+          "CUSTOM"
+        ],
+        "title": "PlanItemType",
+        "type": "string"
+      },
+      "PlanItemUpdate": {
+        "additionalProperties": false,
+        "description": "计划项就地编辑契约（日期 / 时长 / 内容）：至少一项，仅当前生效版本可改。\n\n用户手动编辑过的项由 Service 置 user_locked（重生成原样保留，spec 用户\n故事 15）。",
+        "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "计划项内容",
+            "title": "Content"
+          },
+          "estimated_minutes": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 600.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "预估投入分钟数",
+            "title": "Estimated Minutes"
+          },
+          "scheduled_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "排期日期（按日）",
+            "title": "Scheduled Date"
+          }
+        },
+        "title": "PlanItemUpdate",
+        "type": "object"
+      },
+      "PlanOut": {
+        "description": "计划版本投影（只读消费面；progress 派生项数由调用方按需扩展）。",
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "goal_id": {
+            "title": "Goal Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlanItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "plan_version": {
+            "title": "Plan Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlanStatus"
+          }
+        },
+        "required": [
+          "id",
+          "goal_id",
+          "course_id",
+          "plan_version",
+          "status",
+          "effective_from",
+          "items"
+        ],
+        "title": "PlanOut",
+        "type": "object"
+      },
+      "PlanStatus": {
+        "enum": [
+          "ACTIVE",
+          "SUPERSEDED",
+          "COMPLETED"
+        ],
+        "title": "PlanStatus",
+        "type": "string"
+      },
+      "PlanVersionOut": {
+        "description": "计划版本摘要（历史版本列表，项明细走版本详情端点）。",
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "goal_id": {
+            "title": "Goal Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "plan_version": {
+            "title": "Plan Version",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PlanStatus"
+          }
+        },
+        "required": [
+          "id",
+          "goal_id",
+          "course_id",
+          "plan_version",
+          "status",
+          "effective_from",
+          "item_count"
+        ],
+        "title": "PlanVersionOut",
+        "type": "object"
+      },
       "PreferencesOut": {
         "properties": {
           "autostart": {
@@ -5627,6 +5925,23 @@
         "title": "ProfileUpdate",
         "type": "object"
       },
+      "ProposalConfirmBody": {
+        "additionalProperties": false,
+        "description": "确认请求体（工单 03，可选）：确认卡上编辑后的草案载荷。\n\n仅注册了草案编辑校验器的提案类型受理（当前 = OP_PLAN_CONFIRM 计划草案）；\n省略 body = 原载荷确认（既有行为不变）。",
+        "properties": {
+          "payload": {
+            "additionalProperties": true,
+            "description": "编辑后的提案载荷全文",
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "payload"
+        ],
+        "title": "ProposalConfirmBody",
+        "type": "object"
+      },
       "ProposalCreateRequest": {
         "description": "通用提案创建（05）：payload 按 proposal_type 判别校验后落库，不改事实。",
         "properties": {
@@ -5720,7 +6035,10 @@
           "OP_UNDO",
           "OP_GOAL_CREATE",
           "OP_GOAL_UPDATE",
-          "OP_PLAN_CONFIRM"
+          "OP_PLAN_CONFIRM",
+          "OP_PLAN_ITEM_UPDATE",
+          "OP_PLAN_ITEM_COMPLETE",
+          "OP_PLAN_REGENERATE"
         ],
         "title": "ProposalType",
         "type": "string"
@@ -13776,6 +14094,588 @@
         ]
       }
     },
+    "/api/courses/{course_id}/plans": {
+      "get": {
+        "description": "目标的计划版本列表（新版本在前；历史版本只读，供计划 Tab 切换查看）。",
+        "operationId": "list_course_plans_api_courses__course_id__plans_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "goal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Goal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlanVersionOut"
+                  },
+                  "title": "Response List Course Plans Api Courses  Course Id  Plans Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Course Plans",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/plans/{plan_id}": {
+      "get": {
+        "description": "计划版本详情（含全部计划项与进度状态，任意版本只读）。",
+        "operationId": "get_course_plan_api_courses__course_id__plans__plan_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Course Plan",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}": {
+      "patch": {
+        "description": "就地编辑计划项（日期 / 时长 / 内容，仅当前生效版本）：即时生效，\nService 置 user_locked（重生成原样保留）。",
+        "operationId": "update_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanItemUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Update Plan Item Row",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}/complete": {
+      "post": {
+        "description": "勾选完成：DONE + 完成时间戳（学习时长统计口径，不进学习证据链）。",
+        "operationId": "complete_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__complete_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Complete Plan Item Row",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
+    "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}/skip": {
+      "post": {
+        "description": "跳过计划项：SKIPPED，清完成时间戳（跳过不进学习时长统计）。",
+        "operationId": "skip_plan_item_row_api_courses__course_id__plans__plan_id__items__item_id__skip_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Skip Plan Item Row",
+        "tags": [
+          "goals"
+        ]
+      }
+    },
     "/api/courses/{course_id}/quiz-tests": {
       "get": {
         "operationId": "list_quiz_tests_api_courses__course_id__quiz_tests_get",
@@ -17456,6 +18356,7 @@
     },
     "/api/proposals/{proposal_id}/confirm": {
       "post": {
+        "description": "确认提案；body.payload 可携带确认卡上编辑后的草案载荷（工单 03，\n仅计划草案受理——确认卡所见即落库所写）。",
         "operationId": "confirm_proposal_api_proposals__proposal_id__confirm_post",
         "parameters": [
           {
@@ -17485,6 +18386,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ProposalConfirmBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
