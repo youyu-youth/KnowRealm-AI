@@ -378,8 +378,12 @@ async def _execute_operation_directly(
 
     瞬时故障自动重试（工单 06，spec 决策 20）：SQLITE_BUSY 等锁竞争在原
     operation 身份下小睡重试 ≤2 次（attempts／attempts_json 如实累计），
-    每轮重走快照固化（同步路径无等待期，重验天然成立）；耗尽落 FAILED＋
-    OPERATION_TRANSIENT_ERROR。业务拒绝（CodedHTTPException）不自动重试。
+    **每轮重验授权与版本**（与推进 worker 同口径）——重试轮先重检会话
+    覆盖档位（同进程降档即时约束，不满足直执行 → FAILED＋
+    OPERATION_APPROVAL_REQUIRED），再比对快照与首次尝试基线（锁竞争窗口
+    内目标被修改 → FAILED＋OPERATION_SNAPSHOT_STALE，不覆盖手改）；耗尽
+    落 FAILED＋OPERATION_TRANSIENT_ERROR。业务拒绝（CodedHTTPException）
+    不自动重试。取消（spec 决策 20 第三项）为 run 概念，直执行无 run 不适用。
 
     失败载荷携带 operation_id（工单 06 review 修复）：FAILED 行已在独立小
     事务落库，id 随载荷返回——消息流锚点据此定位失败回执，回执卡的手动
@@ -388,10 +392,38 @@ async def _execute_operation_directly(
     payload_json = validated.model_dump_json()
     target = spec.target_resolver(validated) if spec.target_resolver is not None else None
     authorization = direct_authorization(runtime, auth_mode)
+    # 首次尝试的执行前快照＝重试轮版本重验基线（首试事务回滚不吞该值）。
+    baseline_snapshot: str | None = None
     async with runtime.session_factory() as session:
         attempt = 0
         transient_history: list[dict[str, Any]] = []
         while True:
+            if attempt > 0 and not should_execute_directly(
+                effective_session_auth_mode(runtime.session_id, runtime.auth_mode),
+                spec.level,
+            ):
+                # 重试轮授权重检（spec 决策 20）：会话在锁竞争窗口内降档 →
+                # 原授权失效，停止重试（worker _authorized 同口径）。
+                async with session.begin():
+                    failed = await record_direct_execution(
+                        session,
+                        action=spec.action,
+                        level=spec.level.value,
+                        target=target,
+                        payload_json=payload_json,
+                        authorization=authorization,
+                        result_dict=None,
+                        error_code="OPERATION_APPROVAL_REQUIRED",
+                        attempts=1 + attempt,
+                        attempts_json=_final_attempts_json(
+                            transient_history, attempt, "OPERATION_APPROVAL_REQUIRED"
+                        ),
+                    )
+                return {
+                    "ok": False,
+                    "error": "OPERATION_APPROVAL_REQUIRED",
+                    "operation_id": failed.id,
+                }
             attempts_json = (
                 json.dumps(transient_history, ensure_ascii=False, separators=(",", ":"))
                 if transient_history
@@ -399,13 +431,28 @@ async def _execute_operation_directly(
             )
             try:
                 async with session.begin():
-                    # 直执行同事务固化快照（直执行无预览等待期，重验天然成立）：
-                    # 快照随 operation 落库，供 Undo 补偿与审计（spec 决策 12）。
+                    # 直执行同事务固化快照：快照随 operation 落库，供 Undo 补偿
+                    # 与审计（spec 决策 12）；重试轮与首次基线比对＝版本重验。
                     snapshot_json = None
                     if spec.capture_state is not None:
                         snapshot_json = (
                             await spec.capture_state(session, validated)
                         ).model_dump_json()
+                        if (
+                            attempt > 0
+                            and baseline_snapshot is not None
+                            and snapshot_json != baseline_snapshot
+                        ):
+                            # 锁竞争窗口内目标已偏离首试前态（用户手改等）：
+                            # 版本冲突不自动重试（spec 决策 20），交由下方
+                            # CodedHTTPException 分支统一落 FAILED＋STABLE。
+                            raise CodedHTTPException(
+                                code="OPERATION_SNAPSHOT_STALE",
+                                status_code=409,
+                                detail="目标在自动重试期间被修改，请重新发起操作",
+                            )
+                    if attempt == 0:
+                        baseline_snapshot = snapshot_json
                     result = await run_operation_applier(session, spec, payload_json)
                     operation = await record_direct_execution(
                         session,

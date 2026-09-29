@@ -845,6 +845,99 @@ async def test_direct_execution_transient_retry(
         assert len(json.loads(rows[0]["attempts_json"] or "[]")) == 2
 
 
+@pytest.mark.anyio
+async def test_direct_retry_rechecks_auth_on_downgrade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """重试轮授权重检（spec 决策 20）：首试遇锁后会话降档 → 停止重试、
+    FAILED＋OPERATION_APPROVAL_REQUIRED、第二轮不执行业务写。"""
+    from app.modules.agent.auth_mode import (
+        clear_session_auth_override,
+        set_session_auth_override,
+    )
+    from app.modules.agent.operations import registry as registry_module
+
+    calls = 0
+
+    async def locked_and_downgraded(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+        nonlocal calls
+        calls += 1
+        # 首试即遇锁；模拟用户在重试窗口内把会话降回默认档。
+        set_session_auth_override(SESSION_ID, AuthMode.REQUEST_APPROVAL)
+        raise locked_error()
+
+    monkeypatch.setattr(registry_module, "run_operation_applier", locked_and_downgraded)
+    try:
+        async with bare_db(tmp_path) as session_factory:
+            await seed_item(session_factory, 1)
+            receipt = await invoke_tool(
+                update_library_item,
+                session_factory,
+                {"item_id": item_id(1), "title": "新标题"},
+            )
+            assert receipt["ok"] is False
+            assert receipt["error"] == "OPERATION_APPROVAL_REQUIRED"
+            # 第二轮在授权重检处拦截，业务写不再执行。
+            assert calls == 1
+            rows = await operation_rows(session_factory)
+            assert rows[0]["status"] == "FAILED"
+            assert rows[0]["error_code"] == "OPERATION_APPROVAL_REQUIRED"
+            assert rows[0]["attempts"] == 2  # 首试＋降档拦截轮
+    finally:
+        clear_session_auth_override(SESSION_ID)
+
+
+@pytest.mark.anyio
+async def test_direct_retry_rejects_target_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """重试轮版本重验（spec 决策 20）：锁竞争窗口内目标被手改（快照偏离
+    首试基线）→ FAILED＋OPERATION_SNAPSHOT_STALE，不覆盖手改。"""
+    from app.modules.agent.operations import registry as registry_module
+    from app.modules.agent.operations.registry import get_operation
+
+    calls = 0
+
+    async def always_locked(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+        nonlocal calls
+        calls += 1
+        raise locked_error()
+
+    monkeypatch.setattr(registry_module, "run_operation_applier", always_locked)
+    # 冻结 dataclass：经 object.__setattr__ 挂钩快照采集，第二轮模拟目标漂移。
+    spec = get_operation("update_library_item")
+    assert spec is not None
+    original_capture = spec.capture_state
+    capture_calls = 0
+
+    async def drifting_capture(session: AsyncSession, payload: Any) -> Any:
+        nonlocal capture_calls
+        capture_calls += 1
+        snapshot = await original_capture(session, payload)
+        if capture_calls > 1:
+            return snapshot.model_copy(update={"title": "用户手改标题"})
+        return snapshot
+
+    object.__setattr__(spec, "capture_state", drifting_capture)
+    try:
+        async with bare_db(tmp_path) as session_factory:
+            await seed_item(session_factory, 1)
+            receipt = await invoke_tool(
+                update_library_item,
+                session_factory,
+                {"item_id": item_id(1), "title": "新标题"},
+            )
+            assert receipt["ok"] is False
+            assert receipt["error"] == "OPERATION_SNAPSHOT_STALE"
+            assert calls == 1  # 第二轮在版本重验处拦截
+            rows = await operation_rows(session_factory)
+            assert rows[0]["status"] == "FAILED"
+            assert rows[0]["error_code"] == "OPERATION_SNAPSHOT_STALE"
+            assert rows[0]["attempts"] == 2
+    finally:
+        object.__setattr__(spec, "capture_state", original_capture)
+
+
 # ---------------------------------------------------------------------------
 # 手动重试（单步）
 
