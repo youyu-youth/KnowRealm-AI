@@ -23,11 +23,13 @@ from app.modules.agent.operations.registry import (
     register_operation,
 )
 from app.modules.agent.schemas import (
+    PlanLockedItemStamp,
     PlanRegeneratePayload,
     PlanRegenerateResult,
     PlanRegenerateStateSnapshot,
 )
 from app.modules.course.service import CourseService
+from app.modules.learning_plan.models import LearningGoal, LearningPlan
 from app.modules.learning_plan.service import PlanService
 from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
@@ -37,27 +39,15 @@ from app.shared.errors import CodedHTTPException
 REGENERATE_PLAN_ACTION = "regenerate_plan"
 
 
-async def capture_plan_regenerate_state(
-    session: AsyncSession, payload: PlanRegeneratePayload
+async def build_plan_regenerate_snapshot(
+    session: AsyncSession, goal: LearningGoal, active: LearningPlan
 ) -> PlanRegenerateStateSnapshot:
-    """状态读取与结构化校验（提交与确认两路共用）：
-
-    - 目标不可达 / 非进行中 → GOAL_NOT_FOUND / GOAL_NOT_ACTIVE；
-    - 无生效计划 → PLAN_NOT_FOUND（应走 generate_learning_plan 首次生成）；
-    - 草案部分引用越界（record / concept）→ PLAN_DRAFT_INVALID；
-    - 快照 = 目标约束字段 + 当前 ACTIVE 计划身份（确认前目标被改或版本被
-      并发处理 → 快照比对失效重新生成）。
-    """
-    goal = await require_active_goal(session, payload.goal_id)
-    active = await PlanService.get_active_for_goal(session, goal.id)
-    if active is None:
-        raise CodedHTTPException(
-            code="PLAN_NOT_FOUND",
-            status_code=404,
-            detail="该目标还没有生效的学习计划，请先用 generate_learning_plan 生成并确认",
-        )
-    await require_records_visible(session, goal.course_id, payload)
-    await require_concepts_visible(session, goal.course_id, payload)
+    """快照组装（提交重验 / 确认比对 / 工具派生基线三路共用）：目标约束字段 +
+    ACTIVE 计划身份 + 锁定项版本戳（按 item_id 排序保证序列化稳定）。"""
+    locked = sorted(
+        (item for item in await PlanService.list_items(session, active.id) if item.user_locked),
+        key=lambda item: item.id,
+    )
     course = await CourseService.get(session, goal.course_id)
     return PlanRegenerateStateSnapshot(
         updated_at=goal.updated_at,
@@ -69,7 +59,34 @@ async def capture_plan_regenerate_state(
         course_name=course.name if course is not None else goal.course_id,
         active_plan_version=active.plan_version,
         active_plan_updated_at=active.updated_at,
+        locked_items=[
+            PlanLockedItemStamp(item_id=item.id, updated_at=item.updated_at) for item in locked
+        ],
     )
+
+
+async def capture_plan_regenerate_state(
+    session: AsyncSession, payload: PlanRegeneratePayload
+) -> PlanRegenerateStateSnapshot:
+    """状态读取与结构化校验（提交与确认两路共用）：
+
+    - 目标不可达 / 非进行中 → GOAL_NOT_FOUND / GOAL_NOT_ACTIVE；
+    - 无生效计划 → PLAN_NOT_FOUND（应走 generate_learning_plan 首次生成）；
+    - 草案部分引用越界（record / concept）→ PLAN_DRAFT_INVALID；
+    - 快照 = 目标约束字段 + 当前 ACTIVE 计划身份 + 锁定项版本戳（载荷派生后
+      目标被改、版本被并发处理或锁定项变化 → 比对失效重新生成）。
+    """
+    goal = await require_active_goal(session, payload.goal_id)
+    active = await PlanService.get_active_for_goal(session, goal.id)
+    if active is None:
+        raise CodedHTTPException(
+            code="PLAN_NOT_FOUND",
+            status_code=404,
+            detail="该目标还没有生效的学习计划，请先用 generate_learning_plan 生成并确认",
+        )
+    await require_records_visible(session, goal.course_id, payload)
+    await require_concepts_visible(session, goal.course_id, payload)
+    return await build_plan_regenerate_snapshot(session, goal, active)
 
 
 def resolve_plan_regenerate_target(payload: PlanRegeneratePayload) -> tuple[str, str]:

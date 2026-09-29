@@ -915,9 +915,21 @@ class PlanRegeneratePayload(PlanRegenerateCore):
     """
 
 
+class PlanLockedItemStamp(BaseModel):
+    """锁定项版本戳（重生成快照）：计划头身份不随项级写入变化，项级编辑 /
+    完成 / 跳过均只维护 item.updated_at——锁定集或其内容在载荷派生后变化，
+    凭戳使快照比对可感。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str
+    updated_at: datetime
+
+
 class PlanRegenerateStateSnapshot(BaseModel):
-    """plan.regenerate 执行前快照：目标约束字段 + 当前 ACTIVE 计划身份（确认前
-    目标被改或版本被并发处理 → 快照比对失效重新生成）。"""
+    """plan.regenerate 执行前快照：目标约束字段 + 当前 ACTIVE 计划身份 + 锁定项
+    版本戳（载荷派生后目标被改、版本被并发处理或锁定项变化 → 比对失效重新
+    生成）。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -928,6 +940,7 @@ class PlanRegenerateStateSnapshot(BaseModel):
     course_name: str
     active_plan_version: int
     active_plan_updated_at: datetime
+    locked_items: list[PlanLockedItemStamp]
 
 
 class PlanRegenerateResult(BaseModel):

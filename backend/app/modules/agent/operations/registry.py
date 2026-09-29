@@ -403,6 +403,8 @@ async def _execute_operation_directly(
     spec: OperationSpec[Any],
     validated: BaseModel,
     auth_mode: AuthMode,
+    *,
+    basis_json: str | None = None,
 ) -> dict[str, Any]:
     """自动档直执行（spec 决策 11）：单事务写 operation＋业务结果。
 
@@ -434,6 +436,9 @@ async def _execute_operation_directly(
     authorization = direct_authorization(runtime, auth_mode)
     # 首次尝试的执行前快照＝重试轮版本重验基线（首试事务回滚不吞该值）。
     baseline_snapshot: str | None = None
+    # 派生基线失效标记：FAILED 行快照须存基线而非当前态（重试重验 vs 基线
+    # 恒失效），否则手动重试会在变更后状态上重放旧载荷。
+    basis_stale = False
     async with runtime.session_factory() as session:
         attempt = 0
         transient_history: list[dict[str, Any]] = []
@@ -493,6 +498,16 @@ async def _execute_operation_directly(
                                 status_code=409,
                                 detail="目标在自动重试期间被修改，请重新发起操作",
                             )
+                        if attempt == 0 and basis_json is not None and snapshot_json != basis_json:
+                            # 派生基线（载荷派生时刻快照，LLM 调用前固化）已偏离
+                            # 当前态：旧载荷不得执行；置 basis_stale 使 FAILED 行
+                            # 快照存基线（重试重验恒失效，引导重新发起）。
+                            basis_stale = True
+                            raise CodedHTTPException(
+                                code="OPERATION_SNAPSHOT_STALE",
+                                status_code=409,
+                                detail="生成期间目标或计划已被修改，请重新发起操作",
+                            )
                     if attempt == 0:
                         baseline_snapshot = snapshot_json
                     if spec.submission_validator is not None:
@@ -521,7 +536,11 @@ async def _execute_operation_directly(
                         authorization=authorization,
                         result_dict=None,
                         error_code=exc.code,
-                        snapshot_json=await _failure_snapshot(session, spec, validated),
+                        snapshot_json=(
+                            basis_json
+                            if basis_stale and basis_json is not None
+                            else await _failure_snapshot(session, spec, validated)
+                        ),
                         attempts=1 + attempt,
                         attempts_json=_final_attempts_json(transient_history, attempt, exc.code),
                     )
@@ -595,10 +614,20 @@ async def _execute_operation_directly(
 
 
 async def submit_operation(
-    runtime: AgentRuntimeContext, action: str, args: dict[str, Any]
+    runtime: AgentRuntimeContext,
+    action: str,
+    args: dict[str, Any],
+    *,
+    basis_json: str | None = None,
 ) -> dict[str, Any]:
     """操作类写工具的公共提交入口（spec 决策 10）：校验 → 每轮上限执法 →
     按当轮授权档位分流（默认档落提案＝现状零变化，自动档直执行）。
+
+    basis_json（可选）＝载荷派生基线：载荷派生自外部过程（如 LLM 调用）
+    之前的数据库状态时，工具在该时刻固化的 capture_state 快照——提交时与
+    当前态比对，偏离 → OPERATION_SNAPSHOT_STALE 结构化拒绝（旧载荷不得
+    绑定新快照通过确认）；相等时提案快照即基线，确认比对口径覆盖
+    「派生 → 确认」全窗口。
 
     返回工具 JSON 载荷：
     - 校验失败 → {ok: False, missing: [...], detail?}（模型转述追问缺失项）；
@@ -629,7 +658,9 @@ async def submit_operation(
     # 中途降档经注册表即时约束本轮后续提交；升档自下一轮（请求携带新档）放宽。
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     if should_execute_directly(effective_mode, spec.level):
-        return await _execute_operation_directly(runtime, spec, validated, effective_mode)
+        return await _execute_operation_directly(
+            runtime, spec, validated, effective_mode, basis_json=basis_json
+        )
     # mode="json"：载荷进 payload_json / 工具返回 / 确认卡事件统一 JSON 安全
     # （date 等类型按 ISO 字符串下行；既有动作字段为 str/枚举，输出等价）。
     cleaned_payload = validated.model_dump(mode="json")
@@ -645,7 +676,17 @@ async def submit_operation(
         if spec.capture_state is not None or spec.submission_validator is not None:
             try:
                 if spec.capture_state is not None:
-                    snapshot_json = (await spec.capture_state(session, validated)).model_dump_json()
+                    current_json = (await spec.capture_state(session, validated)).model_dump_json()
+                    # 派生基线执法（LLM 窗口竞态）：basis_json 是载荷派生时刻
+                    # 固化的快照，与提交事务内当前态比对——LLM 期间目标约束、
+                    # 版本或锁定项被并发修改 → 拒绝落提案；相等时快照即基线。
+                    if basis_json is not None and basis_json != current_json:
+                        raise CodedHTTPException(
+                            code="OPERATION_SNAPSHOT_STALE",
+                            status_code=409,
+                            detail="生成期间目标或计划已被修改，请重新发起操作",
+                        )
+                    snapshot_json = current_json
                 if spec.submission_validator is not None:
                     await spec.submission_validator(session, validated)
             except CodedHTTPException as exc:

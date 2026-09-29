@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.engine import create_database
 from app.db.migrations import run_migrations, supported_user_version
+from app.modules.agent.runs.retry import retry_standalone_operation
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runtime import (
     AgentRuntimeContext,
@@ -40,6 +41,7 @@ from app.modules.learning_plan.scheduling import (
     pack_schedule_with_fixed,
 )
 from app.modules.learning_plan.schemas import (
+    GoalUpdate,
     PlanConfirmCore,
     PlanItemType,
     PlanItemUpdate,
@@ -825,6 +827,148 @@ async def test_regenerate_tool_end_to_end(tmp_path: Path, monkeypatch: pytest.Mo
         assert locked[0].content == "锁定任务"
         assert locked[0].scheduled_date == TODAY.isoformat()
         assert locked[0].status == "PENDING"
+
+
+def llm_window_draft() -> PlanConfirmCore:
+    """LLM 窗口竞态测试共用的草案替身（与 end_to_end 同形状）。"""
+    return PlanConfirmCore.model_validate(
+        {
+            "goal_id": GOAL_ID,
+            "phases": [
+                {
+                    "title": "新草案阶段",
+                    "items": [
+                        {
+                            "action_type": "CUSTOM",
+                            "content": "新任务",
+                            "estimated_minutes": 60,
+                            "reason": "重排安排",
+                            "record_id": None,
+                            "concept_id": None,
+                            "scheduled_date": TODAY.isoformat(),
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+
+@pytest.mark.anyio
+async def test_regenerate_tool_rejects_llm_window_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """LLM 窗口竞态：生成期间用户就地编辑一项（update_core 置 user_locked，
+    项级写入不触计划头身份字段）→ 派生基线偏离当前态 → 拒绝落提案，
+    旧载荷不得绑定新快照丢失窗口内的锁定编辑（spec 用户故事 15）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_goal(session_factory)
+        await seed_record(session_factory)
+        await seed_plan(session_factory)
+        await seed_item(session_factory, ITEM_ID, user_locked=True, minutes=45, content="锁定任务")
+        await seed_item(session_factory, ITEM_ID_2, priority=1, minutes=30)
+        draft = llm_window_draft()
+
+        async def fake_generate_with_mutation(**kwargs: Any) -> PlanGenerationOutcome:
+            async with session_factory() as session, session.begin():
+                item = await PlanItemService.get_for_plan(session, PLAN_ID, ITEM_ID_2)
+                assert item is not None
+                await PlanItemService.update_core(
+                    session, item, PlanItemUpdate(estimated_minutes=40)
+                )
+            return PlanGenerationOutcome(
+                kind="DRAFT", plan=draft, total_minutes=60, materials_used=1
+            )
+
+        monkeypatch.setattr(
+            PlanGenerationService, "generate", staticmethod(fake_generate_with_mutation)
+        )
+        result = await invoke_tool(regenerate_plan, session_factory, {"goal_id": GOAL_ID})
+        assert result["ok"] is False
+        assert result["error"] == "OPERATION_SNAPSHOT_STALE"
+        assert result["proposals"] == []
+        # 竞态被拦截而非静默丢锁：零提案、零新版本。
+        assert await table_count(session_factory, "agent_proposals") == 0
+        assert await table_count(session_factory, "learning_plans") == 1
+
+
+@pytest.mark.anyio
+async def test_regenerate_confirm_stale_after_locked_item_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """提交后确认前编辑锁定项 → 锁定项版本戳使快照比对失效：确认拒绝、
+    原版本不被旧载荷换代覆盖（spec 用户故事 15「锁定项原样保留」）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_goal(session_factory)
+        await seed_record(session_factory)
+        await seed_plan(session_factory)
+        await seed_item(session_factory, ITEM_ID, user_locked=True, minutes=45, content="锁定任务")
+
+        async def fake_generate_draft(**kwargs: Any) -> PlanGenerationOutcome:
+            return PlanGenerationOutcome(
+                kind="DRAFT", plan=llm_window_draft(), total_minutes=60, materials_used=1
+            )
+
+        monkeypatch.setattr(PlanGenerationService, "generate", staticmethod(fake_generate_draft))
+        result = await invoke_tool(regenerate_plan, session_factory, {"goal_id": GOAL_ID})
+        assert result["ok"] is True, result
+        proposal = result["proposals"][0]
+
+        # 确认前用户编辑了锁定项（item.updated_at 变化 → 版本戳失效）。
+        async with session_factory() as session, session.begin():
+            item = await PlanItemService.get_for_plan(session, PLAN_ID, ITEM_ID)
+            assert item is not None
+            await PlanItemService.update_core(session, item, PlanItemUpdate(estimated_minutes=50))
+
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as excinfo:
+                await ProposalService.confirm(session, proposal["proposal_id"])
+        assert excinfo.value.code == "PROPOSAL_APPLY_FAILED"
+        assert excinfo.value.params == {"errorCode": "OPERATION_SNAPSHOT_STALE"}
+        assert (await load_plan(session_factory, PLAN_ID))["status"] == "ACTIVE"
+        assert await table_count(session_factory, "learning_plans") == 1
+
+
+@pytest.mark.anyio
+async def test_regenerate_direct_execution_stale_basis_blocks_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FULL_ACCESS 直执行同样执法派生基线：LLM 窗口目标约束被改 → FAILED＋
+    失败快照存基线 → 手动重试重验（当前态 vs 基线）恒失效，不重放旧载荷。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_goal(session_factory)
+        await seed_record(session_factory)
+        await seed_plan(session_factory)
+        await seed_item(session_factory, ITEM_ID, user_locked=True, minutes=45, content="锁定任务")
+
+        async def fake_generate_with_goal_change(**kwargs: Any) -> PlanGenerationOutcome:
+            async with session_factory() as session, session.begin():
+                goal = await GoalService.get(session, GOAL_ID)
+                assert goal is not None
+                await GoalService.update_core(session, goal, GoalUpdate(daily_minutes=120))
+            return PlanGenerationOutcome(
+                kind="DRAFT", plan=llm_window_draft(), total_minutes=60, materials_used=1
+            )
+
+        monkeypatch.setattr(
+            PlanGenerationService, "generate", staticmethod(fake_generate_with_goal_change)
+        )
+        result = await invoke_tool(
+            regenerate_plan,
+            session_factory,
+            {"goal_id": GOAL_ID},
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        assert result["ok"] is False
+        assert result["error"] == "OPERATION_SNAPSHOT_STALE"
+
+        async with session_factory() as session:
+            retried = await retry_standalone_operation(session, result["operation_id"])
+        assert retried["error_code"] == "OPERATION_SNAPSHOT_STALE"
+        assert await table_count(session_factory, "learning_plans") == 1
 
 
 # ---------------------------------------------------------------------------

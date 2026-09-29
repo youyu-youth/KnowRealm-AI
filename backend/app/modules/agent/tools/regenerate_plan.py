@@ -4,7 +4,9 @@
 不被 AI 重排）→ LLM 为其余部分产出新草案（生成上下文含锁定项清单，避免
 重复安排）→ 确定性排期器在「每日预算 − 锁定占用」的剩余容量内铺排 →
 组装 L2 换代载荷提交确认卡（载荷由工具构造、不经模型转述）。确认后旧版
-SUPERSEDED 只读保留、新版本生效（spec 用户故事 15~16）。
+SUPERSEDED 只读保留、新版本生效（spec 用户故事 15~16）。载荷派生基线在
+LLM 调用前固化，提交时比对——窗口内目标 / 版本 / 锁定项被并发修改则拒绝
+提交，不覆盖新状态。
 """
 
 import json
@@ -14,7 +16,10 @@ from itertools import groupby
 from langchain_core.tools import tool
 from loguru import logger
 
-from app.modules.agent.operations.plan_regenerate import REGENERATE_PLAN_ACTION
+from app.modules.agent.operations.plan_regenerate import (
+    REGENERATE_PLAN_ACTION,
+    build_plan_regenerate_snapshot,
+)
 from app.modules.agent.operations.registry import submit_operation
 from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
 from app.modules.learning_plan.generation import (
@@ -141,6 +146,12 @@ async def regenerate_plan(goal_id: str) -> str:
             evidence = await PlanGenerationService.retrieve_evidence(
                 session, goal.course_id, goal.title
             )
+            # 载荷派生基线（LLM 前固化，窗口竞态防线）：提交时与当前态比对，
+            # 偏离即拒绝——旧载荷不得绑定新快照丢失窗口内的锁定编辑
+            # （spec 用户故事 15「锁定项原样保留」）。
+            basis_json = (
+                await build_plan_regenerate_snapshot(session, goal, active)
+            ).model_dump_json()
         # LLM 调用期间不占 DB 连接（与 generate_learning_plan 同模式）。
         if not materials:
             return _structured_failure(
@@ -196,7 +207,10 @@ async def regenerate_plan(goal_id: str) -> str:
         logger.warning("regenerate_plan_failed", error_code="PLAN_REGENERATE_FAILED")
         return json.dumps({"ok": False, "error": "PLAN_REGENERATE_FAILED"}, ensure_ascii=False)
     result = await submit_operation(
-        runtime, REGENERATE_PLAN_ACTION, payload.model_dump(mode="json")
+        runtime,
+        REGENERATE_PLAN_ACTION,
+        payload.model_dump(mode="json"),
+        basis_json=basis_json,
     )
     return json.dumps(result, ensure_ascii=False, separators=(",", ":"))
 
