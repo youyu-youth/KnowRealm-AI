@@ -56,6 +56,12 @@ type SnapshotReader = Callable[[AsyncSession, Any], Awaitable[BaseModel]]
 # operation 行（操作历史按对象过滤与跳转的定位信息）。
 type TargetResolver = Callable[[Any], tuple[str, str]]
 
+# 提交时载荷执法钩子（工单 03）：承载只在提交时刻有意义的载荷一致性校验
+# （如计划草案排期重算比对——拦截模型转述漂移）；确认时不重跑——目标态
+# 变化已由快照比对覆盖，重跑会误伤用户在确认卡上的合法编辑。参数 Any：
+# 各动作以具体 payload 类型声明签名（静态绑定），registry 侧逆变收宽。
+type SubmissionValidator = Callable[[AsyncSession, Any], Awaitable[None]]
+
 # 补偿器契约（工单 06，spec 决策 19）：在调用方事务内执行补偿写入、不得自行
 # begin。入参是原 operation 行（payload_json / snapshot_json 即补偿依据——
 # 快照的 before 值就是恢复目标）；内部先做撤销前重验（目标当前态必须等于
@@ -181,6 +187,9 @@ class OperationSpec[R: BaseModel]:
     applier: OperationApplier[R]  # 确认事务内的应用器（返回结果投影）
     capture_state: SnapshotReader | None = None  # 执行前快照读取器（三用）
     target_resolver: TargetResolver | None = None  # payload → 目标定位
+    # 提交时载荷执法（工单 03）：提交与直执行两路调用，确认时不重跑（用户
+    # 编辑合法性的边界由确认路径的类型专属校验器承担）。
+    submission_validator: SubmissionValidator | None = None
     # 可撤销性声明（工单 06，spec 决策 19）：undoer 非 None＝可撤销（补偿器，
     # 快照 before 值即恢复目标）；None＝不可撤销，undo_reason 是明确告知的原因
     # （记录软删 / 课程删除 / 创建类不在首批），工具结果与回执透出。
@@ -465,6 +474,7 @@ async def _execute_operation_directly(
                 async with session.begin():
                     # 直执行同事务固化快照：快照随 operation 落库，供 Undo 补偿
                     # 与审计（spec 决策 12）；重试轮与首次基线比对＝版本重验。
+                    # 提交时执法（工单 03）与快照同路：直执行＝模型提交时刻。
                     snapshot_json = None
                     if spec.capture_state is not None:
                         snapshot_json = (
@@ -485,6 +495,8 @@ async def _execute_operation_directly(
                             )
                     if attempt == 0:
                         baseline_snapshot = snapshot_json
+                    if spec.submission_validator is not None:
+                        await spec.submission_validator(session, validated)
                     result = await run_operation_applier(session, spec, payload_json)
                     operation = await record_direct_execution(
                         session,
@@ -628,11 +640,14 @@ async def submit_operation(
     async with runtime.session_factory() as session, session.begin():
         # 提交时同事务固化执行前快照（spec 决策 12）：目标读取与提案创建
         # 原子（快照读与落提案之间无并发写窗口）。目标不可达＝结构化返回由
-        # 模型转述，不落提案；捕获面只限快照读取——create_core 的编码异常
-        # （同 schema 已先验、正常不可达）自然传播不被吞成工具载荷。
-        if spec.capture_state is not None:
+        # 模型转述，不落提案；捕获面只限快照读取与提交时执法——create_core
+        # 的编码异常（同 schema 已先验、正常不可达）自然传播不被吞成工具载荷。
+        if spec.capture_state is not None or spec.submission_validator is not None:
             try:
-                snapshot_json = (await spec.capture_state(session, validated)).model_dump_json()
+                if spec.capture_state is not None:
+                    snapshot_json = (await spec.capture_state(session, validated)).model_dump_json()
+                if spec.submission_validator is not None:
+                    await spec.submission_validator(session, validated)
             except CodedHTTPException as exc:
                 snapshot_failure = exc
         if snapshot_failure is None:

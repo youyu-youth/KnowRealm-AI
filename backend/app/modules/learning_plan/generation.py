@@ -85,6 +85,15 @@ class EvidenceDigest:
 
 
 @dataclass(frozen=True)
+class LockedDigest:
+    """重生成时原样保留的用户锁定项摘要（生成上下文提示用，工单 03）。"""
+
+    scheduled_date: str  # ISO 日期串（ORM 列形态）
+    content: str
+    minutes: int
+
+
+@dataclass(frozen=True)
 class PlanGenerationOutcome:
     """生成结果：DRAFT=带日期草案（确认载荷形状）／SUGGESTIONS=建议与缺口。"""
 
@@ -170,6 +179,7 @@ class PlanGenerationService:
         materials: list[MaterialDigest],
         evidence: list[EvidenceDigest],
         constraints: ScheduleConstraints,
+        locked_items: list[LockedDigest] | None = None,
     ) -> str:
         lines = [
             "你是学习计划设计师。基于以下学习目标与课程资料生成学习计划草案。",
@@ -200,6 +210,16 @@ class PlanGenerationService:
             lines.append(
                 f"- 无期限；每日预算：{constraints.daily_minutes} 分钟，按合理节奏安排总量"
             )
+        if locked_items:
+            lines += [
+                "",
+                "【用户锁定的保留计划项（已固定安排，不要重复安排相同内容）】",
+            ]
+            for locked in locked_items:
+                lines.append(
+                    f"- {locked.scheduled_date}：{locked.content}"
+                    f"（{locked.minutes} 分钟，原样保留）"
+                )
         lines += ["", "【课程资料】"]
         if materials:
             for material in materials:
@@ -282,12 +302,15 @@ class PlanGenerationService:
         evidence: list[EvidenceDigest],
         draft_model: PlanDraftModel | None = None,
         suggestions_model: PlanSuggestionsModel | None = None,
+        locked_items: list[LockedDigest] | None = None,
     ) -> PlanGenerationOutcome:
         """按资料有无分流的生成入口（调用方不持 DB 会话，LLM 调用期间零连接占用）。
 
         草案路径返回确认载荷形状（含排期日期）与总量；无资料路径返回建议与
-        缺口。LLM 失败抛 StructuredGenerationError（稳定错误码），总量铺不开
-        抛 ScheduleInfeasible，均由 Agent 工具转结构化载荷。
+        缺口。locked_items（重生成，工单 03）仅进生成提示（告知模型已有固定
+        安排、避免重复），锁定项的容量感知铺排由调用方承担。LLM 失败抛
+        StructuredGenerationError（稳定错误码），总量铺不开抛
+        ScheduleInfeasible，均由 Agent 工具转结构化载荷。
         """
         if not materials:
             result = await call_plan_suggestions_model(
@@ -306,7 +329,7 @@ class PlanGenerationService:
             plan_draft_model=draft_model or OpenAiCompatiblePlanDraftModel(),
             provider=provider,
             prompt=PlanGenerationService.build_draft_prompt(
-                goal, today, materials, evidence, constraints
+                goal, today, materials, evidence, constraints, locked_items
             ),
             prompt_version=PLAN_PROMPT_VERSION,
         )

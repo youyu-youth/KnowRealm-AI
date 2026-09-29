@@ -266,13 +266,14 @@ class OperationAuthorization(BaseModel):
     指令摘录为空（提案框架未携带触发指令原文）；直执行（工单 02）沿同列
     回填 trigger=AUTO_EXECUTED、当轮档位与触发指令摘录。单步无 run 时
     本列是授权事实的唯一载体。UI 显式撤销（工单 06）trigger=USER_UNDO
-    ——按钮点击即用户授权直接建补偿 operation，不经提案档位。
+    ——按钮点击即用户授权直接建补偿 operation，不经提案档位。页面直改
+    学习计划项（工单 03）trigger=USER_MANUAL——同样的用户显式动作口径。
     """
 
     model_config = ConfigDict(extra="forbid")
 
     auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL
-    trigger: Literal["USER_CONFIRMED_PROPOSAL", "AUTO_EXECUTED", "USER_UNDO"] = (
+    trigger: Literal["USER_CONFIRMED_PROPOSAL", "AUTO_EXECUTED", "USER_UNDO", "USER_MANUAL"] = (
         "USER_CONFIRMED_PROPOSAL"
     )
     instruction_excerpt: str | None = None

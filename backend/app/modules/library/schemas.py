@@ -293,6 +293,10 @@ class ProposalType(StrEnum):
     OP_GOAL_UPDATE = "OP_GOAL_UPDATE"
     # 第三阶段工单 02：学习计划确认（L2 批量创建：计划头 + 计划项；草案确认卡）。
     OP_PLAN_CONFIRM = "OP_PLAN_CONFIRM"
+    # 第三阶段工单 03：计划项编辑 / 完成与重生成（L1 就地写 + L2 换代）。
+    OP_PLAN_ITEM_UPDATE = "OP_PLAN_ITEM_UPDATE"
+    OP_PLAN_ITEM_COMPLETE = "OP_PLAN_ITEM_COMPLETE"
+    OP_PLAN_REGENERATE = "OP_PLAN_REGENERATE"
 
 
 class AgentProposalOut(BaseModel):
@@ -445,3 +449,14 @@ class ProposalCreateRequest(BaseModel):
     message_id: str | None = None
     target_type: str | None = None
     target_id: str | None = None
+
+
+class ProposalConfirmBody(BaseModel):
+    """确认请求体（工单 03，可选）：确认卡上编辑后的草案载荷。
+
+    仅注册了草案编辑校验器的提案类型受理（当前 = OP_PLAN_CONFIRM 计划草案）；
+    省略 body = 原载荷确认（既有行为不变）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    payload: dict[str, Any] = Field(description="编辑后的提案载荷全文")

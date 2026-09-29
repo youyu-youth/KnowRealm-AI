@@ -56,6 +56,21 @@ def register_applier(proposal_type: ProposalType, applier: ProposalApplier) -> N
     _APPLIERS[proposal_type] = applier
 
 
+# 确认卡可编辑草案（工单 03）：确认请求可携带用户编辑后的载荷，仅声明可编辑
+# 的提案类型受理——类型专属校验器验证编辑边界并返回清洗后的载荷写入提案行
+# （确认卡所见即落库所写）。依赖方向同 register_applier（agent 侧反向注册）。
+DraftEditValidator = Callable[
+    [AsyncSession, AgentProposal, dict[str, Any]], Awaitable[dict[str, Any]]
+]
+_DRAFT_EDIT_VALIDATORS: dict[ProposalType, DraftEditValidator] = {}
+
+
+def register_draft_edit_validator(
+    proposal_type: ProposalType, validator: DraftEditValidator
+) -> None:
+    _DRAFT_EDIT_VALIDATORS[proposal_type] = validator
+
+
 def clear_appliers() -> dict[ProposalType, ProposalApplier]:
     """清空注册表并返回原内容（测试隔离用：恢复时传回 register）。"""
     snapshot = dict(_APPLIERS)
@@ -112,7 +127,11 @@ class ProposalService:
         return [_proposal_out(p) for p in proposals]
 
     @staticmethod
-    async def confirm(session: AsyncSession, proposal_id: str) -> AgentProposalOut:
+    async def confirm(
+        session: AsyncSession,
+        proposal_id: str,
+        edited_payload: dict[str, Any] | None = None,
+    ) -> AgentProposalOut:
         """确认并应用：原子抢占执行权后，应用器写入与 APPLIED 同事务；失败独立落 FAILED 后 422。
 
         执行权由一条带终态守卫的 UPDATE 抢占（WHERE status IN (PENDING, FAILED)）：
@@ -123,9 +142,16 @@ class ProposalService:
         提案可再次确认（工单 05：失败留稳定错误码可重试）——APPLIED / REJECTED
         是终局，重复确认 409。
 
+        edited_payload（工单 03，确认卡可编辑草案）：用户在确认卡上编辑后的
+        载荷，仅注册了草案编辑校验器的类型受理（PROPOSAL_EDIT_NOT_SUPPORTED
+        拒绝其余类型）——校验通过后写入提案行再应用，确认卡所见与落库所写是
+        同一份。编辑校验失败原样透出原因（如 PLAN_DRAFT_INVALID），事务回滚、
+        提案保持 PENDING，用户修正编辑后可再次确认。
+
         应用器返回值是类型化结果投影（操作回执，工单 02：课程创建 →
         {course_id}），同事务写进 result_json、经输出契约 result 字段透出。
         """
+        edit_failure: CodedHTTPException | None = None
         try:
             async with session.begin():
                 claimed = await session.execute(
@@ -162,12 +188,36 @@ class ProposalService:
                         status_code=422,
                         detail="该提案类型尚未注册应用器",
                     )
+                if edited_payload is not None:
+                    validator = (
+                        _DRAFT_EDIT_VALIDATORS.get(proposal_type)
+                        if proposal_type is not None
+                        else None
+                    )
+                    if validator is None:
+                        raise CodedHTTPException(
+                            code="PROPOSAL_EDIT_NOT_SUPPORTED",
+                            status_code=422,
+                            detail="该提案类型不支持确认前编辑",
+                        )
+                    try:
+                        cleaned = await validator(session, proposal, edited_payload)
+                    except CodedHTTPException as exc:
+                        # 编辑校验失败 ≠ 应用失败：不落 FAILED（提案保持 PENDING
+                        # 可再次确认），错误原样透出供用户修正编辑。
+                        edit_failure = exc
+                        raise
+                    proposal.payload_json = json.dumps(
+                        cleaned, ensure_ascii=False, separators=(",", ":")
+                    )
                 result = await applier(session, proposal)
                 if isinstance(result, dict):
                     proposal.result_json = json.dumps(result, ensure_ascii=False)
         except CodedHTTPException as exc:
             if exc.code in ("PROPOSAL_NOT_FOUND", "PROPOSAL_ALREADY_DECIDED"):
                 raise
+            if edit_failure is not None:
+                raise edit_failure from exc
             # 应用失败：主事务回滚（抢占与应用器部分写入一起消失），独立小事务保留 FAILED 诊断。
             await ProposalService._mark_failed(session, proposal_id, exc.code)
             raise CodedHTTPException(

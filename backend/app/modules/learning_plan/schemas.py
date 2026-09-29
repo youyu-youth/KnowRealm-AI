@@ -162,6 +162,18 @@ class PlanItemType(StrEnum):
     CUSTOM = "CUSTOM"
 
 
+class PlanItemStatus(StrEnum):
+    """计划项状态：PENDING 待执行 / DONE 已完成 / SKIPPED 已跳过。
+
+    完成不产 learning_event、不直接动 Concept Mastery（spec「完成语义边界」）；
+    学习时长统计由 completed_at 时间戳单独承载。
+    """
+
+    PENDING = "PENDING"
+    DONE = "DONE"
+    SKIPPED = "SKIPPED"
+
+
 _UUID_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 
 
@@ -288,7 +300,7 @@ class PlanConfirmCore(BaseModel):
 
 
 class PlanItemOut(BaseModel):
-    """计划项投影（get_plan 工具与后续计划 Tab 路由共用）。"""
+    """计划项投影（get_plan 工具与计划 Tab 路由共用）。"""
 
     id: str
     action_type: PlanItemType
@@ -299,9 +311,14 @@ class PlanItemOut(BaseModel):
     priority: int
     estimated_minutes: int | None = None
     scheduled_date: date
-    status: str
+    status: PlanItemStatus
     user_locked: bool
+    completed_at: datetime | None = Field(default=None, description="完成时间戳（仅 DONE）")
     reason: str | None = None
+
+    @field_serializer("completed_at")
+    def serialize_completed_at(self, value: datetime | None) -> str | None:
+        return None if value is None else _serialize_utc(value)
 
 
 class PlanOut(BaseModel):
@@ -315,3 +332,80 @@ class PlanOut(BaseModel):
     effective_from: date
     effective_to: date | None = None
     items: list[PlanItemOut]
+
+
+class PlanVersionOut(BaseModel):
+    """计划版本摘要（历史版本列表，项明细走版本详情端点）。"""
+
+    id: str
+    goal_id: str
+    course_id: str
+    plan_version: int
+    status: PlanStatus
+    effective_from: date
+    effective_to: date | None = None
+    item_count: int
+
+
+# ---------------------------------------------------------------------------
+# 计划执行与调整（工单 03）：项级编辑 / 完成 / 跳过与重生成载荷。
+# ---------------------------------------------------------------------------
+
+
+class PlanItemUpdate(BaseModel):
+    """计划项就地编辑契约（日期 / 时长 / 内容）：至少一项，仅当前生效版本可改。
+
+    用户手动编辑过的项由 Service 置 user_locked（重生成原样保留，spec 用户
+    故事 15）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    scheduled_date: date | None = Field(default=None, description="排期日期（按日）")
+    estimated_minutes: int | None = Field(default=None, gt=0, le=600, description="预估投入分钟数")
+    content: str | None = Field(
+        default=None, min_length=1, max_length=200, description="计划项内容"
+    )
+
+    @field_validator("content")
+    @classmethod
+    def _clean_content(cls, value: str | None) -> str | None:
+        return clean_plan_text(value, "计划项内容不能为空白") if value is not None else None
+
+    @model_validator(mode="after")
+    def _require_any_field(self) -> "PlanItemUpdate":
+        if not self.model_dump(exclude_unset=True):
+            raise ValueError("至少提供一个修改字段")
+        return self
+
+
+class PlanRegenerateItem(PlanConfirmItem):
+    """重生成载荷计划项：确认项 + user_locked 标记（锁定项由工具从旧版本原样
+    复制，非锁定项来自 LLM 草案——载荷由工具确定性构造，不经模型转述）。"""
+
+    user_locked: bool = Field(default=False, description="用户锁定项（原样保留不被 AI 重排）")
+
+
+class PlanRegeneratePhase(BaseModel):
+    """重生成载荷阶段（形状同确认阶段，项带锁定标记）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=1, max_length=60, description="阶段标题")
+    items: list[PlanRegenerateItem] = Field(min_length=1, max_length=15, description="本阶段计划项")
+
+    @field_validator("title")
+    @classmethod
+    def _clean_title(cls, value: str) -> str:
+        return clean_plan_text(value, "阶段标题不能为空白")
+
+
+class PlanRegenerateCore(BaseModel):
+    """重生成载荷领域核心：goal + 带锁定标记的阶段草案（新版本全量项）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal_id: str = Field(pattern=_UUID_PATTERN, description="目标学习目标 id")
+    phases: list[PlanRegeneratePhase] = Field(
+        min_length=1, max_length=9, description="阶段（含锁定保留组）"
+    )

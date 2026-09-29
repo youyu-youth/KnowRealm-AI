@@ -28,7 +28,9 @@ from app.modules.knowledge_point.schemas import KnowledgePointWriteRequest
 from app.modules.learning_plan.schemas import (
     GoalType,
     PlanConfirmCore,
+    PlanRegenerateCore,
     clean_goal_title,
+    clean_plan_text,
 )
 from app.modules.library.schemas import ChatScope
 
@@ -823,3 +825,133 @@ class PlanConfirmStateSnapshot(BaseModel):
     target_date: date | None = None
     daily_minutes: int | None = None
     course_name: str
+
+
+# ---------------------------------------------------------------------------
+# 计划执行与调整契约（通用 Agent 第三阶段工单 03，spec 用户故事 12~17）：
+# 项级编辑 / 完成（L1 就地写当前版本）与重生成（L2 换代：新版本 + SUPERSEDED
+# + user_locked 原样保留）。完成不产 learning_event、不动 Concept Mastery。
+# ---------------------------------------------------------------------------
+
+
+class PlanItemUpdatePayload(BaseModel):
+    """OP_PLAN_ITEM_UPDATE 提案判别载荷（L1）：就地修改当前版本计划项。
+
+    工具面滤 None（模型无法传显式 null）：非 None 字段＝本次要修改的字段；
+    至少一个修改字段。用户经 Agent 的编辑与页面直改同置 user_locked。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="目标计划项 id（get_plan 取得）",
+    )
+    scheduled_date: date | None = Field(default=None, description="排期日期（YYYY-MM-DD，按日）")
+    estimated_minutes: int | None = Field(default=None, gt=0, le=600, description="预估投入分钟数")
+    content: str | None = Field(
+        default=None, min_length=1, max_length=200, description="计划项内容"
+    )
+
+    @field_validator("content")
+    @classmethod
+    def clean_content(cls, value: str | None) -> str | None:
+        return clean_plan_text(value, "计划项内容不能为空白") if value is not None else None
+
+    @model_validator(mode="after")
+    def _require_change(self) -> "PlanItemUpdatePayload":
+        if set(self.model_dump(exclude_unset=True)) <= {"item_id"}:
+            raise ValueError("至少提供一个修改字段")
+        return self
+
+
+class PlanItemStateSnapshot(BaseModel):
+    """plan_item.update / complete 执行前快照：计划项当前态 + 所在版本与目标
+    状态（确认前项被并发修改或版本被换代 → 快照比对失效重新确认）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str
+    plan_id: str
+    plan_version: int
+    plan_status: str
+    goal_status: str
+    phase_title: str
+    content: str
+    scheduled_date: date
+    estimated_minutes: int | None = None
+    status: str
+    user_locked: bool
+
+
+class PlanItemUpdateResult(BaseModel):
+    """OP_PLAN_ITEM_UPDATE 结果投影：修改字段 before / after + 锁定事实。"""
+
+    item_id: str
+    plan_id: str
+    goal_id: str
+    before: dict[str, Any]
+    after: dict[str, Any]
+    user_locked: bool = Field(description="手动编辑后置位（重生成原样保留）")
+
+
+class PlanItemCompletePayload(BaseModel):
+    """OP_PLAN_ITEM_COMPLETE 提案判别载荷（L1）：勾选完成。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="要完成的计划项 id（get_plan 取得）",
+    )
+
+
+class PlanItemCompleteResult(BaseModel):
+    """OP_PLAN_ITEM_COMPLETE 结果投影：完成事实与完成时间戳。"""
+
+    item_id: str
+    plan_id: str
+    goal_id: str
+    status: str = Field(description="执行后项状态（DONE）")
+    completed_at: datetime | None = Field(
+        default=None, description="完成时间戳（学习时长统计口径，不进学习证据链）"
+    )
+
+
+class PlanRegeneratePayload(PlanRegenerateCore):
+    """OP_PLAN_REGENERATE 提案判别载荷（L2 换代）。
+
+    载荷由 regenerate_plan 工具确定性构造（锁定项从旧版本行原样复制 + LLM
+    草案经排期器铺排），不经模型转述——确认卡所见与落库所写是同一份。
+    """
+
+
+class PlanRegenerateStateSnapshot(BaseModel):
+    """plan.regenerate 执行前快照：目标约束字段 + 当前 ACTIVE 计划身份（确认前
+    目标被改或版本被并发处理 → 快照比对失效重新生成）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime
+    title: str
+    target_date: date | None = None
+    daily_minutes: int | None = None
+    course_name: str
+    active_plan_version: int
+    active_plan_updated_at: datetime
+
+
+class PlanRegenerateResult(BaseModel):
+    """OP_PLAN_REGENERATE 结果投影：新版本身份 + 换代事实 + 保留项计数。"""
+
+    plan_id: str
+    goal_id: str
+    course_id: str
+    plan_version: int
+    superseded_version: int | None = Field(
+        default=None, description="被换代的旧版本号（此前无生效计划则为 None）"
+    )
+    item_count: int
+    locked_count: int = Field(description="原样带入的用户锁定项数")
+    first_date: date | None = Field(default=None, description="新版本排期首日")
+    last_date: date | None = Field(default=None, description="新版本排期末日")

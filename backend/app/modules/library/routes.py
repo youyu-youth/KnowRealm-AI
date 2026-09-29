@@ -28,6 +28,7 @@ from app.modules.library.schemas import (
     LibraryRecordOut,
     OrganizeProposeOut,
     OrganizeScanOut,
+    ProposalConfirmBody,
     ProposalCreateRequest,
     ProposalListQuery,
 )
@@ -301,9 +302,15 @@ async def list_proposals(
 
 @proposals_router.post("/{proposal_id}/confirm", response_model=AgentProposalOut)
 async def confirm_proposal(
-    proposal_id: UUID, session: Annotated[AsyncSession, Depends(get_db)]
+    proposal_id: UUID,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    body: ProposalConfirmBody | None = None,
 ) -> AgentProposalOut:
-    return await ProposalService.confirm(session, str(proposal_id))
+    """确认提案；body.payload 可携带确认卡上编辑后的草案载荷（工单 03，
+    仅计划草案受理——确认卡所见即落库所写）。"""
+    return await ProposalService.confirm(
+        session, str(proposal_id), body.payload if body is not None else None
+    )
 
 
 @proposals_router.post("/{proposal_id}/reject", response_model=AgentProposalOut)

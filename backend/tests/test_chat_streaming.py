@@ -1718,7 +1718,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v20"
+        assert rows[0][3] == "chat-library-scope-v21"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2261,6 +2261,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "create_goal",
                 "update_goal",
                 "confirm_plan",
+                "update_plan_item",
+                "complete_plan_item",
+                "regenerate_plan",
             ]
             assert await visible(record_session_id) == [
                 "search_library",
@@ -2288,6 +2291,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "create_goal",
                 "update_goal",
                 "confirm_plan",
+                "update_plan_item",
+                "complete_plan_item",
+                "regenerate_plan",
             ]
             assert await visible(course_session_id) == [
                 "search_library",
@@ -2315,6 +2321,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "create_goal",
                 "update_goal",
                 "confirm_plan",
+                "update_plan_item",
+                "complete_plan_item",
+                "regenerate_plan",
             ]
             assert await visible(all_session_id) == [
                 "search_library",
@@ -2342,6 +2351,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "create_goal",
                 "update_goal",
                 "confirm_plan",
+                "update_plan_item",
+                "complete_plan_item",
+                "regenerate_plan",
             ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
@@ -2375,6 +2387,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "create_goal",
                 "update_goal",
                 "confirm_plan",
+                "update_plan_item",
+                "complete_plan_item",
+                "regenerate_plan",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
@@ -2403,6 +2418,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "create_goal",
                 "update_goal",
                 "confirm_plan",
+                "update_plan_item",
+                "complete_plan_item",
+                "regenerate_plan",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
@@ -2431,6 +2449,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "create_goal",
                 "update_goal",
                 "confirm_plan",
+                "update_plan_item",
+                "complete_plan_item",
+                "regenerate_plan",
             ]
 
 

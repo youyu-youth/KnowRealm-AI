@@ -42,11 +42,22 @@ class ScheduleConstraints:
 
 
 def pack_schedule(minutes: list[int], constraints: ScheduleConstraints) -> list[date]:
-    """按顺序贪心铺排：逐项累计当日用量，超出预算即翻日；翻过期限即不可行。
+    """按顺序贪心铺排（无锁定占用的薄包装，行为与工单 02 逐位一致）。"""
+    return pack_schedule_with_fixed(minutes, [], constraints)
+
+
+def pack_schedule_with_fixed(
+    minutes: list[int],
+    fixed: list[tuple[date, int]],
+    constraints: ScheduleConstraints,
+) -> list[date]:
+    """带锁定占用的顺序贪心铺排（工单 03 重生成）：fixed 是原样带入的锁定项
+    （日期 + 时长），草案项在「每日预算 − 当日锁定占用」的剩余容量内按顺序
+    铺排；翻过期限即不可行（锁定项自身不受期限约束——已定事实原样保留）。
 
     单项时长超过每日预算时直接判不可行：计划项不跨日拆分，任何铺排都无法
     让当日总量与 daily_minutes 相容（spec「每日总量与 daily_minutes 相容」）。
-    返回与入参同序的排期日期。
+    返回与入参 minutes 同序的排期日期。
     """
     if constraints.daily_minutes < 1:
         raise ValueError("每日预算必须是正整数")
@@ -63,21 +74,25 @@ def pack_schedule(minutes: list[int], constraints: ScheduleConstraints) -> list[
                 "（计划项不跨日拆分），请拆分计划项或调整时长"
             ),
         )
+    usage: dict[date, int] = {}
+    locked_total = 0
+    for day, value in fixed:
+        usage[day] = usage.get(day, 0) + value
+        locked_total += value
     dates: list[date] = []
     day = constraints.start_date
-    used = 0
     for value in minutes:
-        if used + value > constraints.daily_minutes:
+        while value > constraints.daily_minutes - usage.get(day, 0):
             day = day + timedelta(days=1)
-            used = 0
-        if constraints.deadline is not None and day > constraints.deadline:
-            raise ScheduleInfeasible(
-                required_minutes=sum(minutes),
-                capacity_minutes=capacity_minutes(constraints),
-                deadline=constraints.deadline,
-            )
+            if constraints.deadline is not None and day > constraints.deadline:
+                # 容量诊断只扣锁定占用（草案已放置部分不是容量减项）。
+                raise ScheduleInfeasible(
+                    required_minutes=sum(minutes),
+                    capacity_minutes=capacity_minutes(constraints) - locked_total,
+                    deadline=constraints.deadline,
+                )
         dates.append(day)
-        used += value
+        usage[day] = usage.get(day, 0) + value
     return dates
 
 

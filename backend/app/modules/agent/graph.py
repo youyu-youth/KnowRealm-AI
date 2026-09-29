@@ -58,6 +58,10 @@ from app.modules.agent.tools.archive_library_item import (
     archive_library_item,
     restore_library_item,
 )
+from app.modules.agent.tools.complete_plan_item import (
+    COMPLETE_PLAN_ITEM_TOOL_NAME,
+    complete_plan_item,
+)
 from app.modules.agent.tools.confirm_plan import (
     CONFIRM_PLAN_TOOL_NAME,
     confirm_plan,
@@ -95,6 +99,10 @@ from app.modules.agent.tools.propose_memory import (
     PROPOSE_MEMORY_TOOL_NAME,
     propose_memory,
 )
+from app.modules.agent.tools.regenerate_plan import (
+    REGENERATE_PLAN_TOOL_NAME,
+    regenerate_plan,
+)
 from app.modules.agent.tools.search_courses import search_courses
 from app.modules.agent.tools.search_library import search_library
 from app.modules.agent.tools.soft_delete_record import (
@@ -117,25 +125,30 @@ from app.modules.agent.tools.update_library_item import (
     UPDATE_LIBRARY_ITEM_TOOL_NAME,
     update_library_item,
 )
+from app.modules.agent.tools.update_plan_item import (
+    UPDATE_PLAN_ITEM_TOOL_NAME,
+    update_plan_item,
+)
 from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v20"
+CHAT_PROMPT_VERSION = "chat-library-scope-v21"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
 # 指引；工单 06：撤销工具；第三阶段工单 01：学习目标工具与目标制定指引；
 # 工单 02：学习计划三工具与计划生成指引；02 真机验收修复：计划指引禁止
-# 正文输出草案 JSON）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v21"
+# 正文输出草案 JSON；工单 03：计划调整 / 完成 / 重生成三工具与指引）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v22"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 # 操作工具族（工单 02 起）：成功返回经操作提案事件进 done 载荷（确认卡）。
 # 工单 03 追加修改与归档动作（六动作）、工单 04 追加删除与跨课迁移（三动作），
 # 动作名 = 注册项 action = 工具函数名；工单 06 追加撤销工具（直执行回执与
-# 正向操作同形，undo 提案返回 proposals 键，两种载荷事件天然分发）。
+# 正向操作同形，undo 提案返回 proposals 键，两种载荷事件天然分发）；
+# 第三阶段工单 03 追加计划项编辑 / 完成与重生成三动作。
 OPERATION_TOOL_NAMES = frozenset(
     {
         CREATE_COURSE_TOOL_NAME,
@@ -153,6 +166,9 @@ OPERATION_TOOL_NAMES = frozenset(
         CREATE_GOAL_TOOL_NAME,
         UPDATE_GOAL_TOOL_NAME,
         CONFIRM_PLAN_TOOL_NAME,
+        UPDATE_PLAN_ITEM_TOOL_NAME,
+        COMPLETE_PLAN_ITEM_TOOL_NAME,
+        REGENERATE_PLAN_TOOL_NAME,
     }
 )
 # 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
@@ -302,6 +318,8 @@ def _resolve_agent_config(
     # create_goal / update_goal 写操作，写动作名 = 注册项 action = 工具函数名）。
     # 工单 02：学习计划域三工具（get_plan / generate_learning_plan 只读 +
     # confirm_plan 写操作——L2 草案确认卡，AUTO_APPROVE 档仍落卡等确认）。
+    # 工单 03：计划调整三工具（update_plan_item / complete_plan_item L1 就地
+    # 写 + regenerate_plan L2 换代确认卡）。
     config = AgentConfig(
         tools=(
             *config.tools,
@@ -329,6 +347,9 @@ def _resolve_agent_config(
             create_goal,
             update_goal,
             confirm_plan,
+            update_plan_item,
+            complete_plan_item,
+            regenerate_plan,
         )
     )
     if research:

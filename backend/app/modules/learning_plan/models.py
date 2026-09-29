@@ -52,7 +52,8 @@ class LearningPlan(Base):
 
 class LearningPlanItem(Base):
     """计划项：四类动作按日排期；reason_json 存逐项生成理由；user_locked 由
-    Service 在用户手动编辑时置 true（重生成原样保留，随工单 03 启用）。
+    Service 在用户手动编辑时置 true（重生成原样保留，工单 03）。completed_at
+    仅 DONE 时写入（学习时长统计口径，不进学习证据链）；跳过不写。
 
     record_id / concept_id 物理删除置空（软删由查询期过滤，与 Record 同模式）。
     """
@@ -77,6 +78,7 @@ class LearningPlanItem(Base):
     scheduled_date: Mapped[str] = mapped_column(String(10))
     status: Mapped[str] = mapped_column(String(20), default="PENDING")
     user_locked: Mapped[bool] = mapped_column(Boolean, default=False)
+    completed_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
     reason_json: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
