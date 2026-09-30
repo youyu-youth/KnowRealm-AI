@@ -1093,7 +1093,7 @@ async def test_generate_tool_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPat
             generate_learning_plan, session_factory, {"goal_id": GOAL_ID}
         )
         assert result["ok"] is True
-        assert result["plan"]["phases"][0]["items"][0]["scheduled_date"] == "2026-09-29"
+        assert result["plan"]["phases"][0]["items"][0]["scheduled_date"] == TODAY.isoformat()
         assert result["total_estimated_minutes"] == 135
         assert "confirm_plan" in result["message"]
 
