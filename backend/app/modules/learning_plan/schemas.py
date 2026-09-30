@@ -406,6 +406,9 @@ class PlanRegenerateCore(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     goal_id: str = Field(pattern=_UUID_PATTERN, description="目标学习目标 id")
+    # 上限 = 草案阶段（PlanConfirmCore ≤8）+ 锁定保留组（原计划阶段 ≤8）的
+    # 拼接上限：两份各自合法的数据直接相加，单侧上限会误杀合法多阶段锁定
+    # 计划的重生成（锁定项可分布在原计划每个阶段）。
     phases: list[PlanRegeneratePhase] = Field(
-        min_length=1, max_length=9, description="阶段（含锁定保留组）"
+        min_length=1, max_length=16, description="阶段（锁定保留组在前 + 新草案阶段在后）"
     )

@@ -971,6 +971,86 @@ async def test_regenerate_direct_execution_stale_basis_blocks_retry(
         assert await table_count(session_factory, "learning_plans") == 1
 
 
+@pytest.mark.anyio
+async def test_regenerate_multi_phase_locked_plan_over_schema_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """多阶段锁定计划重生成不被载荷阶段上限误杀：5 锁定阶段 + 5 草案阶段
+    = 10 阶段（> 单侧草案上限 8）→ 端到端成功，锁定组在前原样保留。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_goal(session_factory)
+        await seed_record(session_factory)
+        await seed_plan(session_factory)
+        # 5 个锁定项分散在 5 个阶段（锁定项可分布在原计划每个阶段），
+        # 各占 D1~D5 每天 45 分钟（60/日预算 → 草案 60 分钟项落 D6~D10）。
+        for index in range(5):
+            await seed_item(
+                session_factory,
+                f"d0000000-0000-4000-8000-00000000010{index}",
+                phase_title=f"锁定阶段 {index + 1}",
+                priority=index,
+                minutes=45,
+                scheduled_date=(TODAY + timedelta(days=index)).isoformat(),
+                user_locked=True,
+                content=f"锁定任务 {index + 1}",
+            )
+
+        draft = PlanConfirmCore.model_validate(
+            {
+                "goal_id": GOAL_ID,
+                "phases": [
+                    {
+                        "title": f"新阶段 {index + 1}",
+                        "items": [
+                            {
+                                "action_type": "CUSTOM",
+                                "content": f"新任务 {index + 1}",
+                                "estimated_minutes": 60,
+                                "reason": "重排安排",
+                                "record_id": None,
+                                "concept_id": None,
+                                "scheduled_date": TODAY.isoformat(),
+                            }
+                        ],
+                    }
+                    for index in range(5)
+                ],
+            }
+        )
+
+        async def fake_generate_draft(**kwargs: Any) -> PlanGenerationOutcome:
+            return PlanGenerationOutcome(
+                kind="DRAFT", plan=draft, total_minutes=300, materials_used=1
+            )
+
+        monkeypatch.setattr(PlanGenerationService, "generate", staticmethod(fake_generate_draft))
+        result = await invoke_tool(regenerate_plan, session_factory, {"goal_id": GOAL_ID})
+        assert result["ok"] is True, result
+        proposal = result["proposals"][0]
+
+        # 载荷 10 阶段：前 5 锁定组（原样）+ 后 5 草案阶段。
+        phases = proposal["payload"]["phases"]
+        assert len(phases) == 10
+        assert [phase["title"] for phase in phases[:5]] == [
+            f"锁定阶段 {index + 1}" for index in range(5)
+        ]
+        assert all(item["user_locked"] is True for phase in phases[:5] for item in phase["items"])
+        assert [phase["title"] for phase in phases[5:]] == [
+            f"新阶段 {index + 1}" for index in range(5)
+        ]
+        assert all(item["user_locked"] is False for phase in phases[5:] for item in phase["items"])
+
+        async with session_factory() as session:
+            confirmed = await ProposalService.confirm(session, proposal["proposal_id"])
+        assert confirmed.status.value == "APPLIED"
+        assert confirmed.result is not None
+        assert confirmed.result["plan_version"] == 2
+        assert confirmed.result["item_count"] == 10
+        assert confirmed.result["locked_count"] == 5
+        assert (await load_plan(session_factory, PLAN_ID))["status"] == "SUPERSEDED"
+
+
 # ---------------------------------------------------------------------------
 # 确认卡可编辑：edited_payload 落库、编辑校验拒绝（提案保持 PENDING）、
 # 不支持编辑的类型拒绝。
