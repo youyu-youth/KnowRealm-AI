@@ -21,7 +21,10 @@ import {
   planDraftItemCount,
   type DraftEditorProps,
 } from "@/features/chat/PlanDraftEditor";
-import { PLAN_ITEM_TYPE_KEYS } from "@/features/chat/planItemTypes";
+import {
+  PLAN_ITEM_TYPE_KEYS,
+  isPlanItemType,
+} from "@/features/chat/planItemTypes";
 import { Button } from "@/components/ui/button";
 
 type ChatOperationProposalCardProps = {
@@ -1048,7 +1051,7 @@ function PlanPhasesPreview({
                         })}
                       </span>
                     ) : null}
-                    {itemType !== null && PLAN_ITEM_TYPE_KEYS[itemType] ? (
+                    {itemType !== null && isPlanItemType(itemType) ? (
                       <span className="text-ink-faint shrink-0">
                         {t(PLAN_ITEM_TYPE_KEYS[itemType])}
                       </span>

@@ -29,6 +29,7 @@ export type OrganizeProposeOut = components["schemas"]["OrganizeProposeOut"];
 export type AgentProposalOut = components["schemas"]["AgentProposalOut"];
 export type ProposalCreateRequest =
   components["schemas"]["ProposalCreateRequest"];
+export type ProposalConfirmBody = components["schemas"]["ProposalConfirmBody"];
 export type ProposalStatus = components["schemas"]["ProposalStatus"];
 export type ProposalType = components["schemas"]["ProposalType"];
 export type LibraryItemPatchBody = components["schemas"]["LibraryItemPatch"];
@@ -131,7 +132,7 @@ export const libraryApi = {
     }),
   confirmProposal: (
     proposalId: string,
-    editedPayload?: Record<string, unknown>,
+    editedPayload?: ProposalConfirmBody["payload"],
   ) =>
     apiFetch<AgentProposalOut>(`/api/proposals/${proposalId}/confirm`, {
       method: "POST",
@@ -139,7 +140,9 @@ export const libraryApi = {
         ? {}
         : {
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ payload: editedPayload }),
+            body: JSON.stringify({
+              payload: editedPayload,
+            } satisfies ProposalConfirmBody),
           }),
     }),
   rejectProposal: (proposalId: string) =>

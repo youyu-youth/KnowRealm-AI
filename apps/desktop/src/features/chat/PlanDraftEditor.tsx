@@ -2,7 +2,10 @@ import type { TFunction } from "i18next";
 import { ArrowDown, ArrowUp, PencilLine, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PLAN_ITEM_TYPE_KEYS } from "@/features/chat/planItemTypes";
+import {
+  PLAN_ITEM_TYPE_KEYS,
+  isPlanItemType,
+} from "@/features/chat/planItemTypes";
 
 /** 确认卡草案编辑器（通用 Agent 第三阶段工单 03，spec 用户故事 9）：
  * 改日期 / 改时长 / 删项 / 排序四操作，确认时按编辑结果落库（服务端校验
@@ -177,7 +180,7 @@ export function PlanDraftEditor({
                 <span className="min-w-0 flex-1 break-words">
                   {typeof item.content === "string" ? item.content : ""}
                 </span>
-                {PLAN_ITEM_TYPE_KEYS[itemType] ? (
+                {isPlanItemType(itemType) ? (
                   <span className="text-ink-faint shrink-0">
                     {t(PLAN_ITEM_TYPE_KEYS[itemType])}
                   </span>
