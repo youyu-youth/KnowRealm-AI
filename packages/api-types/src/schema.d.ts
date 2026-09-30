@@ -2466,6 +2466,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/today/plan-items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Due Plan Items
+         * @description 今日待学的计划项（跨空间，工单 04）：排期日 ≤ 今天且未完成，含逾期限期
+         *     催办；勾选完成走课程嵌套计划项端点（与计划 Tab 状态一致）。
+         */
+        get: operations["list_due_plan_items_api_today_plan_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/today/stats": {
         parameters: {
             query?: never;
@@ -5708,6 +5729,49 @@ export interface components {
             /** Course Id */
             course_id?: string | null;
         };
+        /**
+         * TodayPlanItemOut
+         * @description 今日待学的计划项投影（跨空间）：排期日 ≤ 今天且未完成的 ACTIVE 计划项。
+         *
+         *     勾选完成走课程嵌套的计划项端点（item_id + plan_id + course_id 三元组即
+         *     完整定位）；goal_title / course_name 供分组标注来源。
+         */
+        TodayPlanItemOut: {
+            action_type: components["schemas"]["PlanItemType"];
+            /** Content */
+            content: string;
+            /** Course Id */
+            course_id: string;
+            /**
+             * Course Name
+             * @description 来源知识空间名（跨空间并列标注）
+             */
+            course_name: string;
+            /**
+             * Estimated Minutes
+             * @description 预估投入分钟数
+             */
+            estimated_minutes?: number | null;
+            /** Goal Id */
+            goal_id: string;
+            /** Goal Title */
+            goal_title: string;
+            /** Item Id */
+            item_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /**
+             * Scheduled Date
+             * Format: date
+             * @description 排期日期（早于今天即逾期）
+             */
+            scheduled_date: string;
+            /**
+             * User Locked
+             * @description 用户锁定项（重生成原样保留）
+             */
+            user_locked: boolean;
+        };
         /** TodayStatsOut */
         TodayStatsOut: {
             /**
@@ -5768,7 +5832,7 @@ export interface components {
             date: string;
             /**
              * Total Ms
-             * @description 当日学习时长（毫秒），无学习为 0
+             * @description 当日学习时长（毫秒）＝记录捕获时长＋当日完成计划项的预估时长，无学习为 0
              */
             total_ms: number;
         };
@@ -17392,6 +17456,55 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodaySummaryTodoOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_due_plan_items_api_today_plan_items_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayPlanItemOut"][];
                 };
             };
             /** @description Forbidden */

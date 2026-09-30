@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.today.schemas import TodayStatsOut, TodaySummaryTodoOut, TodayTrendPointOut
+from app.modules.today.schemas import (
+    TodayPlanItemOut,
+    TodayStatsOut,
+    TodaySummaryTodoOut,
+    TodayTrendPointOut,
+)
 from app.modules.today.service import TodayService
 from app.shared.deps import get_db, require_launch_token
 from app.shared.errors import CodedHTTPException
@@ -24,6 +29,15 @@ async def list_pending_summaries(
     session: AsyncSession = Depends(get_db),
 ) -> list[TodaySummaryTodoOut]:
     return await TodayService.list_pending_summaries(session)
+
+
+@router.get("/plan-items", response_model=list[TodayPlanItemOut])
+async def list_due_plan_items(
+    session: AsyncSession = Depends(get_db),
+) -> list[TodayPlanItemOut]:
+    """今日待学的计划项（跨空间，工单 04）：排期日 ≤ 今天且未完成，含逾期限期
+    催办；勾选完成走课程嵌套计划项端点（与计划 Tab 状态一致）。"""
+    return await TodayService.list_due_plan_items(session)
 
 
 @router.get("/stats", response_model=TodayStatsOut)

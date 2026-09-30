@@ -22,7 +22,6 @@ from app.modules.agent.operations.plan_regenerate import (
 )
 from app.modules.agent.operations.registry import submit_operation
 from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
-from app.modules.agent.tools.time_utils import local_today
 from app.modules.learning_plan.generation import (
     LockedDigest,
     PlanGenerationService,
@@ -31,6 +30,7 @@ from app.modules.learning_plan.generation import (
 from app.modules.learning_plan.models import LearningPlanItem
 from app.modules.learning_plan.scheduling import (
     ScheduleInfeasible,
+    local_today,
     pack_schedule_with_fixed,
 )
 from app.modules.learning_plan.schemas import (

@@ -1,9 +1,10 @@
 """时间工具族共享纯函数助手（Agent 时间能力 v1）。
 
 get_current_time / convert_time / shift_datetime / diff_datetime 四个工具与
-system prompt 时间提示行共用的解析、格式化与本地日期锚点逻辑（共享 helper
-先例 = tools/listing.py）。全部为无副作用纯函数，可脱离 LLM 单独测试；
-时间计算均由 Python 确定性执行，LLM 只负责理解意图与组装参数。
+system prompt 时间提示行共用的解析与格式化逻辑（共享 helper 先例 =
+tools/listing.py）。全部为无副作用纯函数，可脱离 LLM 单独测试；时间计算均由
+Python 确定性执行，LLM 只负责理解意图与组装参数。计划日期锚点 local_today
+在领域侧 learning_plan/scheduling.py（今日端点共用同源锚点）。
 """
 
 from datetime import date, datetime, tzinfo
@@ -20,16 +21,11 @@ def timezone_label(tz: tzinfo) -> str:
     return str(tz)
 
 
-def local_today() -> date:
-    """学习计划铺排的提交日本地锚点：系统本地日期。
-
-    三处消费（generate_learning_plan / regenerate_plan / plan_confirm 校验）
-    统一经本函数取锚点保证同源自洽——流外确认链（确认卡端点 → proposal 框架
-    → submission_validator）不可达 data_dir，锚点不读偏好时区（时间提示行与
-    时间工具默认时区才读，见 settings.config.resolve_user_timezone）；默认
-    用户（timezone=null）两口径一致，显式设置跨时区的差异为已知边界。
-    """
-    return datetime.now().astimezone().date()
+def require_aware(dt: datetime) -> tzinfo:
+    """收窄 datetime.tzinfo 的 Optional 存根：时间工具族只接收 aware 时刻
+    （入口 aware 化见 parse_datetime_arg），调用方经本助手取非空时区。"""
+    assert dt.tzinfo is not None  # 运行时契约收窄（undo.py 先例）
+    return dt.tzinfo
 
 
 def parse_datetime_arg(value: str, default_tz: tzinfo) -> datetime:
@@ -60,7 +56,7 @@ def format_time_hint(now: datetime) -> str:
     return (
         "时间提示：当前时间 "
         f"{now.strftime('%Y-%m-%d %H:%M:%S')}"
-        f"（{weekday_label(now.date())}，{timezone_label(now.tzinfo)}）。"
+        f"（{weekday_label(now.date())}，{timezone_label(require_aware(now))}）。"
         "本行是本轮消息组装时刻的快照；回答需要当下精确时间或时区换算时，"
         "调用 get_current_time 等时间工具获取。"
     )
@@ -74,6 +70,6 @@ def time_payload(dt: datetime) -> dict[str, object]:
         "date": dt.strftime("%Y-%m-%d"),
         "time": dt.strftime("%H:%M:%S"),
         "weekday": weekday_label(dt.date()),
-        "timezone": timezone_label(dt.tzinfo),
+        "timezone": timezone_label(require_aware(dt)),
         "utc_offset": f"{offset[:3]}:{offset[3:]}" if offset else "+00:00",
     }

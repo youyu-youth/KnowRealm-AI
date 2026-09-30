@@ -8404,6 +8404,80 @@
         "title": "TextCaptureCreate",
         "type": "object"
       },
+      "TodayPlanItemOut": {
+        "description": "今日待学的计划项投影（跨空间）：排期日 ≤ 今天且未完成的 ACTIVE 计划项。\n\n勾选完成走课程嵌套的计划项端点（item_id + plan_id + course_id 三元组即\n完整定位）；goal_title / course_name 供分组标注来源。",
+        "properties": {
+          "action_type": {
+            "$ref": "#/components/schemas/PlanItemType"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "course_name": {
+            "description": "来源知识空间名（跨空间并列标注）",
+            "title": "Course Name",
+            "type": "string"
+          },
+          "estimated_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "预估投入分钟数",
+            "title": "Estimated Minutes"
+          },
+          "goal_id": {
+            "title": "Goal Id",
+            "type": "string"
+          },
+          "goal_title": {
+            "title": "Goal Title",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "scheduled_date": {
+            "description": "排期日期（早于今天即逾期）",
+            "format": "date",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "user_locked": {
+            "description": "用户锁定项（重生成原样保留）",
+            "title": "User Locked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_id",
+          "plan_id",
+          "course_id",
+          "course_name",
+          "goal_id",
+          "goal_title",
+          "action_type",
+          "content",
+          "scheduled_date",
+          "user_locked"
+        ],
+        "title": "TodayPlanItemOut",
+        "type": "object"
+      },
       "TodayStatsOut": {
         "properties": {
           "ai_summary_count": {
@@ -8495,7 +8569,7 @@
             "type": "string"
           },
           "total_ms": {
-            "description": "当日学习时长（毫秒），无学习为 0",
+            "description": "当日学习时长（毫秒）＝记录捕获时长＋当日完成计划项的预估时长，无学习为 0",
             "title": "Total Ms",
             "type": "integer"
           }
@@ -26157,6 +26231,80 @@
           }
         },
         "summary": "List Pending Summaries",
+        "tags": [
+          "today"
+        ]
+      }
+    },
+    "/api/today/plan-items": {
+      "get": {
+        "description": "今日待学的计划项（跨空间，工单 04）：排期日 ≤ 今天且未完成，含逾期限期\n催办；勾选完成走课程嵌套计划项端点（与计划 Tab 状态一致）。",
+        "operationId": "list_due_plan_items_api_today_plan_items_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TodayPlanItemOut"
+                  },
+                  "title": "Response List Due Plan Items Api Today Plan Items Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Due Plan Items",
         "tags": [
           "today"
         ]

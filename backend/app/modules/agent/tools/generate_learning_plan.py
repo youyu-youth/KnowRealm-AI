@@ -14,12 +14,11 @@ from langchain_core.tools import tool
 from loguru import logger
 
 from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
-from app.modules.agent.tools.time_utils import local_today
 from app.modules.learning_plan.generation import (
     PlanGenerationService,
     draft_summary,
 )
-from app.modules.learning_plan.scheduling import ScheduleInfeasible
+from app.modules.learning_plan.scheduling import ScheduleInfeasible, local_today
 from app.modules.learning_plan.service import GoalService, PlanService
 from app.modules.llm.service import StructuredGenerationError
 from app.shared.errors import CodedHTTPException

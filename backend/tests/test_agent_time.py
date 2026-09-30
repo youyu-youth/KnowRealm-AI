@@ -33,13 +33,13 @@ from app.modules.agent.tools.get_current_time import get_current_time
 from app.modules.agent.tools.shift_datetime import shift_datetime
 from app.modules.agent.tools.time_utils import (
     format_time_hint,
-    local_today,
     parse_datetime_arg,
     resolve_timezone_arg,
     time_payload,
     timezone_label,
     weekday_label,
 )
+from app.modules.learning_plan.scheduling import local_today
 from app.modules.settings.config import resolve_user_timezone
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
@@ -207,8 +207,11 @@ async def test_convert_time_tokyo_to_new_york_before_dst_end(tmp_path: Path) -> 
     """东京 10-01 09:00（EDT 期内）= 纽约 09-30 20:00（UTC-4）。"""
     payload = await invoke_time_tool(
         convert_time,
-        {"datetime_value": "2026-10-01T09:00:00", "to_timezone": "America/New_York",
-         "from_timezone": "Asia/Tokyo"},
+        {
+            "datetime_value": "2026-10-01T09:00:00",
+            "to_timezone": "America/New_York",
+            "from_timezone": "Asia/Tokyo",
+        },
         tmp_path,
     )
     assert payload["ok"] is True
@@ -221,8 +224,11 @@ async def test_convert_time_after_dst_switch(tmp_path: Path) -> None:
     = 纽约 10-31 20:00（UTC-4）。"""
     payload = await invoke_time_tool(
         convert_time,
-        {"datetime_value": "2026-11-01T09:00:00", "to_timezone": "America/New_York",
-         "from_timezone": "Asia/Tokyo"},
+        {
+            "datetime_value": "2026-11-01T09:00:00",
+            "to_timezone": "America/New_York",
+            "from_timezone": "Asia/Tokyo",
+        },
         tmp_path,
     )
     assert payload["ok"] is True
@@ -233,8 +239,11 @@ async def test_convert_time_after_dst_switch(tmp_path: Path) -> None:
 async def test_convert_time_aware_input_ignores_from_timezone(tmp_path: Path) -> None:
     payload = await invoke_time_tool(
         convert_time,
-        {"datetime_value": "2026-10-01T09:00:00+08:00", "to_timezone": "Asia/Tokyo",
-         "from_timezone": "America/New_York"},
+        {
+            "datetime_value": "2026-10-01T09:00:00+08:00",
+            "to_timezone": "Asia/Tokyo",
+            "from_timezone": "America/New_York",
+        },
         tmp_path,
     )
     assert cast("dict[str, Any]", payload["result"])["datetime"] == "2026-10-01T10:00:00+09:00"

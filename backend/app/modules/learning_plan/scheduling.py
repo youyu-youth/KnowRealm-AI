@@ -7,10 +7,21 @@ daily_minutes 相容）——脚本优先、LLM 次之：LLM 只产出阶段 / �
 """
 
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 # 目标未填每日投入时的默认日预算（文档化常量：排期仍需一个确定性预算值）。
 DEFAULT_DAILY_MINUTES = 120
+
+
+def local_today() -> date:
+    """学习计划日期语义的本地锚点：系统本地日期。
+
+    铺排（生成 / 重生成）、提交校验与今日待学查询（scheduled_date ≤ 今天）
+    统一经本函数取锚点保证同源自洽——今日端点在 today 模块（agent/today 均
+    下游），锚点落领域侧供两侧共用；默认用户（timezone=null）与偏好时区两
+    口径一致，显式设置跨时区的差异为已知边界。
+    """
+    return datetime.now().astimezone().date()
 
 
 class ScheduleInfeasible(Exception):

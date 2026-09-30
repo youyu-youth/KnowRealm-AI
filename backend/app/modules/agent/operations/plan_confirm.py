@@ -30,13 +30,12 @@ from app.modules.agent.schemas import (
     PlanConfirmResult,
     PlanConfirmStateSnapshot,
 )
-from app.modules.agent.tools.time_utils import local_today
 from app.modules.course.service import CourseService
 from app.modules.course_brain.models import Concept
 from app.modules.course_brain.schemas import ConceptStatus
 from app.modules.learning_plan.generation import constraints_for
 from app.modules.learning_plan.models import LearningGoal
-from app.modules.learning_plan.scheduling import ScheduleInfeasible, pack_schedule
+from app.modules.learning_plan.scheduling import ScheduleInfeasible, local_today, pack_schedule
 from app.modules.learning_plan.schemas import PlanConfirmCore, PlanRegenerateCore
 from app.modules.learning_plan.service import GoalService, PlanService
 from app.modules.library.models import AgentProposal
