@@ -10,7 +10,7 @@ LLM 调用前固化，提交时比对——窗口内目标 / 版本 / 锁定项�
 """
 
 import json
-from datetime import UTC, date, datetime
+from datetime import date
 from itertools import groupby
 
 from langchain_core.tools import tool
@@ -22,6 +22,7 @@ from app.modules.agent.operations.plan_regenerate import (
 )
 from app.modules.agent.operations.registry import submit_operation
 from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.tools.time_utils import local_today
 from app.modules.learning_plan.generation import (
     LockedDigest,
     PlanGenerationService,
@@ -121,7 +122,7 @@ async def regenerate_plan(goal_id: str) -> str:
     runtime.budget.calls_used += 1
     if runtime.llm_provider is None or not runtime.llm_provider.api_key:
         return json.dumps({"ok": False, "error": "LLM_PROVIDER_UNCONFIGURED"}, ensure_ascii=False)
-    today = datetime.now(UTC).date()
+    today = local_today()
     try:
         async with runtime.session_factory() as session:
             goal = await GoalService.get(session, goal_id)

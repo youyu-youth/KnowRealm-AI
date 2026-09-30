@@ -66,6 +66,7 @@ from app.modules.agent.tools.confirm_plan import (
     CONFIRM_PLAN_TOOL_NAME,
     confirm_plan,
 )
+from app.modules.agent.tools.convert_time import convert_time
 from app.modules.agent.tools.create_course import (
     CREATE_COURSE_TOOL_NAME,
     create_course,
@@ -78,9 +79,11 @@ from app.modules.agent.tools.delete_course import (
     DELETE_COURSE_TOOL_NAME,
     delete_course,
 )
+from app.modules.agent.tools.diff_datetime import diff_datetime
 from app.modules.agent.tools.generate_learning_plan import (
     generate_learning_plan,
 )
+from app.modules.agent.tools.get_current_time import get_current_time
 from app.modules.agent.tools.get_goal import get_goal
 from app.modules.agent.tools.get_plan import get_plan
 from app.modules.agent.tools.list_course_records import list_course_records
@@ -105,6 +108,7 @@ from app.modules.agent.tools.regenerate_plan import (
 )
 from app.modules.agent.tools.search_courses import search_courses
 from app.modules.agent.tools.search_library import search_library
+from app.modules.agent.tools.shift_datetime import shift_datetime
 from app.modules.agent.tools.soft_delete_record import (
     SOFT_DELETE_RECORD_TOOL_NAME,
     soft_delete_record,
@@ -133,14 +137,15 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v21"
+CHAT_PROMPT_VERSION = "chat-library-scope-v22"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
 # 指引；工单 06：撤销工具；第三阶段工单 01：学习目标工具与目标制定指引；
 # 工单 02：学习计划三工具与计划生成指引；02 真机验收修复：计划指引禁止
-# 正文输出草案 JSON；工单 03：计划调整 / 完成 / 重生成三工具与指引）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v22"
+# 正文输出草案 JSON；工单 03：计划调整 / 完成 / 重生成三工具与指引；
+# 时间能力 v1：时间提示行 + 时间工具族四工具）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v23"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
@@ -305,7 +310,9 @@ def _resolve_agent_config(
         config = AgentConfig(tools=(*config.tools, web_search))
     # 恒挂载段（操作工具组）：search_courses 课程查询 + list_course_records /
     # list_library_items 对象枚举（插队票 08：只读查询工具，无 operation 事实、
-    # 不进 OPERATION_TOOL_NAMES）+ propose_memory 记忆提案
+    # 不进 OPERATION_TOOL_NAMES）+ 时间工具族（时间能力 v1：get_current_time /
+    # convert_time / shift_datetime / diff_datetime 四只读工具，无 operation 事实）
+    # + propose_memory 记忆提案
     # + create_course 课程创建提案 + add_text_record_to_course 文本记录添加提案
     # （工单 02/03，spec 决策 12：写工具恒挂载全部会话类型，目标解析与会话范围
     # 解耦）+ 修改与归档动作组（工单 03：update/archive/restore_course 与
@@ -326,6 +333,10 @@ def _resolve_agent_config(
             search_courses,
             list_course_records,
             list_library_items,
+            get_current_time,
+            convert_time,
+            shift_datetime,
+            diff_datetime,
             list_goals,
             get_goal,
             get_plan,

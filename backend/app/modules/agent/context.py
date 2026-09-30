@@ -380,6 +380,7 @@ def build_context_messages(
     mode: ChatMode = ChatMode.ASK,
     page_hint: PageHint | None = None,
     active_runs: Sequence[ActiveRunSummary] = (),
+    time_hint: str | None = None,
 ) -> list[AnyMessage]:
     """把会话全部消息行组装为喂入 LLM 的上下文。
 
@@ -390,6 +391,9 @@ def build_context_messages(
       整体让位创建时的角色快照；
     - 只保留最近 CHAT_CONTEXT_MAX_TURNS 个完成轮，末尾未获回复的 user（当前提问）额外附加；
     - 超出字符预算时从最旧完成轮继续丢弃，当前提问永不丢弃；
+    - time_hint 为时间提示行（时间能力 v1）：用户时区的当前时间快照，随消息
+      每轮重建、不落库（SYSTEM 行落库跨轮重建，时间写进去隔天即陈旧，故与
+      page_hint 同走动态段），追加在动态段最前，计入预算；
     - learner 为学习者记忆块（工单 06，确定性中间层构建）：追加在有效 SYSTEM 末尾
       （语言/联网指引之前），计入预算；
     - page_hint 为本轮页面提示（通用 Agent 工单 01）：随消息每轮重建、不跨轮
@@ -458,6 +462,8 @@ def build_context_messages(
     # 与联网指引同样计入预算。
     if system_row is not None:
         content = system_row.content
+        if time_hint is not None:
+            content = f"{content}\n{time_hint}"
         if learner:
             content = f"{content}\n{learner}"
         if page_hint is not None:

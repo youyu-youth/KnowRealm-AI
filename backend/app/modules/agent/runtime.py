@@ -9,6 +9,7 @@ propose_ingest），随操作工具族上线收敛为单对 bind/reset，消除�
 
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
+from datetime import tzinfo
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -73,6 +74,9 @@ class AgentRuntimeContext:
     # 授权依据素材，每轮流式生成前由 message_service 填入。
     instruction_excerpt: str | None = None
     message_id: str | None = None
+    # 用户时区（时间能力 v1）：accept 从偏好解析（timezone 优先、未设置回退
+    # 系统本地），时间工具族的默认时区；None=测试上下文缺省，工具侧回退 UTC。
+    user_timezone: tzinfo | None = None
     budget: ToolCallBudget = field(default_factory=ToolCallBudget)
 
 

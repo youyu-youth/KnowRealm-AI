@@ -4,10 +4,11 @@ import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, tzinfo
 from hashlib import sha256
 from pathlib import Path
 from typing import cast
+from zoneinfo import ZoneInfo
 
 from app.modules.settings.schemas import QUIZ_COUNT_CHOICES, is_valid_shortcut, is_valid_timezone
 
@@ -355,3 +356,15 @@ def set_agent_default_auth_mode(data_dir: Path, mode: str) -> None:
     else:
         settings[AGENT_DEFAULT_AUTH_MODE_KEY] = mode
     _write_json(path, settings)
+
+
+# Agent 时间能力的用户时区（时间能力 v1）：偏好 timezone（IANA 名，null=跟随
+# 系统）优先，未设置或坏值回退系统本地。系统本地回退在 Windows 上是固定偏移的
+# timezone 对象（非 ZoneInfo、无 IANA 名），展示名由消费方 timezone_label 处理；
+# 学习计划铺排锚点不读偏好（流外确认链不可达 data_dir），统一走 local_today()
+# 系统本地口径（agent/tools/time_utils.py），默认用户（timezone=null）两口径一致。
+def resolve_user_timezone(data_dir: Path) -> tzinfo:
+    timezone = _read_json(data_dir / "config" / "settings.json").get("timezone")
+    if isinstance(timezone, str) and is_valid_timezone(timezone):
+        return ZoneInfo(timezone)
+    return datetime.now().astimezone().tzinfo

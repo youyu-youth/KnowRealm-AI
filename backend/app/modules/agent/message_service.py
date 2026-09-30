@@ -4,6 +4,7 @@ import asyncio
 import json
 from collections.abc import AsyncGenerator, Mapping
 from dataclasses import dataclass
+from datetime import datetime, tzinfo
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
@@ -52,6 +53,7 @@ from app.modules.agent.runs.service import list_nonterminal_runs
 from app.modules.agent.runtime import AgentRuntimeContext, ToolCallBudget
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole, ChatScope
 from app.modules.agent.session_service import ChatSessionService
+from app.modules.agent.tools.time_utils import format_time_hint
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
@@ -69,6 +71,7 @@ from app.modules.settings.config import (
     load_llm_provider,
     load_web_search_config,
     memory_outbound_enabled,
+    resolve_user_timezone,
 )
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
@@ -116,6 +119,8 @@ class AcceptedMessage:
     注入前经 _validate_page_snapshot 重校验对象存在性。
     auth_mode 为当轮生效授权档（工单 02）：请求会话覆盖优先，否则全局默认
     （settings.json 偏离项缺省 REQUEST_APPROVAL）；执行端据此分流提交路径。
+    user_timezone 为用户时区（时间能力 v1）：受理时从偏好解析（timezone
+    优先、未设置回退系统本地），时间提示行与时间工具族消费。
     """
 
     session_id: str
@@ -126,6 +131,7 @@ class AcceptedMessage:
     memory_injection_allowed: bool = False
     page: ChatPageSnapshot | None = None
     auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL
+    user_timezone: tzinfo | None = None
 
 
 @dataclass(frozen=True)
@@ -462,6 +468,7 @@ async def _session_context(
     web_search: bool = False,
     memory_allowed: bool = False,
     page: ChatPageSnapshot | None = None,
+    user_timezone: tzinfo | None = None,
 ) -> SessionPromptContext:
     async with session_factory() as session:
         chat = await ChatSessionService.get(session, session_id)
@@ -570,6 +577,10 @@ async def _session_context(
         learner_block = learner.text or None
         validated_page, page_hint = await _validate_page_snapshot(session, page)
         active_runs = await _active_run_summaries(session, session_id)
+        # 时间提示行（时间能力 v1）：用户时区当前时间快照，与页面提示同款每轮重建。
+        time_hint = (
+            format_time_hint(datetime.now(user_timezone)) if user_timezone is not None else None
+        )
         return SessionPromptContext(
             mode=chat.mode,
             scope=chat.scope,
@@ -590,6 +601,7 @@ async def _session_context(
                 mode=chat.mode,
                 page_hint=page_hint,
                 active_runs=active_runs,
+                time_hint=time_hint,
             ),
             transcript=transcript_text,
             record_id=record_id,
@@ -670,6 +682,9 @@ class ChatMessageService:
         effective_auth_mode = auth_mode or AuthMode(
             await asyncio.to_thread(agent_default_auth_mode, data_dir)
         )
+        # 用户时区（时间能力 v1）：时间提示行与时间工具族消费，随消息每轮重读
+        # （偏好改时区后下一轮即生效，与页面提示同款不跨轮）。
+        user_timezone = await asyncio.to_thread(resolve_user_timezone, data_dir)
         # 记忆注入前提（工单 06）：外发开关开启且外发同意对当前供应商有效
         # （供应商地址/密钥变化后同意失效，重新确认前不发送记忆）。
         outbound_enabled = await asyncio.to_thread(memory_outbound_enabled, data_dir)
@@ -752,6 +767,7 @@ class ChatMessageService:
             memory_injection_allowed=outbound_enabled and consent_current,
             page=page,
             auth_mode=effective_auth_mode,
+            user_timezone=user_timezone,
         )
 
     @staticmethod
@@ -781,6 +797,7 @@ class ChatMessageService:
                     web_search=accepted.web_search is not None,
                     memory_allowed=accepted.memory_injection_allowed,
                     page=accepted.page,
+                    user_timezone=accepted.user_timezone,
                 )
                 research_mode = prompt_context.mode == ChatMode.RESEARCH
                 # 统一 Agent 运行时上下文（工单 01）：会话工厂/会话 id/范围与挂载
@@ -802,6 +819,7 @@ class ChatMessageService:
                     auth_mode=accepted.auth_mode,
                     instruction_excerpt=accepted.content,
                     message_id=user_row_id,
+                    user_timezone=accepted.user_timezone,
                     budget=ToolCallBudget(),
                 )
                 async for event in stream_chat_reply(

@@ -1718,7 +1718,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v21"
+        assert rows[0][3] == "chat-library-scope-v22"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2138,9 +2138,14 @@ async def test_prompt_byte_identical_when_web_search_off(
         session_id = await create_session(client)
         await send_message(client, session_id, "问题")
 
-        # 关闭标志：提示与现状逐字一致（中性快照 + 枚举/批量指引 + 语言指令，无联网指引）。
-        assert str(captured[0][0].content) == (
-            "你是 KnowRealm 学习助手。用户尚未建立档案，请以中性、通用的语气回答。\n"
+        # 关闭标志：提示与现状逐字一致（中性快照 + 时间提示行 + 枚举/批量指引 +
+        # 语言指令，无联网指引）。时间提示行含动态时间戳（时间能力 v1），单独
+        # 剥离断言形状，其余部分保持逐字比对。
+        role_line, time_line, rest = str(captured[0][0].content).split("\n", 2)
+        assert role_line == "你是 KnowRealm 学习助手。用户尚未建立档案，请以中性、通用的语气回答。"
+        assert time_line.startswith("时间提示：当前时间 ")
+        assert "get_current_time" in time_line
+        assert rest == (
             f"{CHAT_ENUMERATION_GUIDANCE}\n"
             f"{CHAT_BATCH_PLAN_GUIDANCE}\n"
             f"{CHAT_UNDO_GUIDANCE}\n"
@@ -2226,7 +2231,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 return list(BindRecordingModel.bound)
 
             # 检索工具按 scope 互斥挂载：FREE 无、RECORD=transcript、COURSE/ALL=library；
-            # search_courses / list_course_records / list_library_items / list_goals /
+            # search_courses / list_course_records / list_library_items / 时间工具族
+            # 四工具（时间能力 v1，恒挂载）/ list_goals /
             # get_goal（第三阶段工单 01 目标查询）/ propose_memory
             # / create_course / add_text_record_to_course 恒挂载（工单 01 操作工具组 /
             # 插队票 08 对象枚举 / 02 课程创建提案 / 03 文本记录提案 / 工单 06 任意
@@ -2240,6 +2246,10 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "get_current_time",
+                "convert_time",
+                "shift_datetime",
+                "diff_datetime",
                 "list_goals",
                 "get_goal",
                 "get_plan",
@@ -2270,6 +2280,10 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "get_current_time",
+                "convert_time",
+                "shift_datetime",
+                "diff_datetime",
                 "list_goals",
                 "get_goal",
                 "get_plan",
@@ -2300,6 +2314,10 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "get_current_time",
+                "convert_time",
+                "shift_datetime",
+                "diff_datetime",
                 "list_goals",
                 "get_goal",
                 "get_plan",
@@ -2330,6 +2348,10 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "get_current_time",
+                "convert_time",
+                "shift_datetime",
+                "diff_datetime",
                 "list_goals",
                 "get_goal",
                 "get_plan",
@@ -2366,6 +2388,10 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "get_current_time",
+                "convert_time",
+                "shift_datetime",
+                "diff_datetime",
                 "list_goals",
                 "get_goal",
                 "get_plan",
@@ -2397,6 +2423,10 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "get_current_time",
+                "convert_time",
+                "shift_datetime",
+                "diff_datetime",
                 "list_goals",
                 "get_goal",
                 "get_plan",
@@ -2428,6 +2458,10 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
+                "get_current_time",
+                "convert_time",
+                "shift_datetime",
+                "diff_datetime",
                 "list_goals",
                 "get_goal",
                 "get_plan",

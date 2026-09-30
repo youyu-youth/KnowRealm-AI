@@ -13,7 +13,7 @@ L2（计划头 + 批量项创建）：AUTO_APPROVE 档仍落确认卡（spec「�
 plan_regenerate（工单 03），不在本动作面。
 """
 
-from datetime import UTC, date, datetime
+from datetime import date
 
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -30,6 +30,7 @@ from app.modules.agent.schemas import (
     PlanConfirmResult,
     PlanConfirmStateSnapshot,
 )
+from app.modules.agent.tools.time_utils import local_today
 from app.modules.course.service import CourseService
 from app.modules.course_brain.models import Concept
 from app.modules.course_brain.schemas import ConceptStatus
@@ -101,7 +102,7 @@ async def validate_plan_confirm_submission(
     内即可）；目标态变化已由快照比对覆盖。
     """
     goal = await require_active_goal(session, payload.goal_id)
-    _require_schedule_matches(payload, goal, datetime.now(UTC).date())
+    _require_schedule_matches(payload, goal, local_today())
 
 
 async def validate_plan_draft_edit(
@@ -137,7 +138,7 @@ async def validate_plan_draft_edit(
     goal = await require_active_goal(session, payload.goal_id)
     await require_records_visible(session, goal.course_id, payload)
     await require_concepts_visible(session, goal.course_id, payload)
-    today = datetime.now(UTC).date()
+    today = local_today()
     deadline = date.fromisoformat(goal.target_date) if goal.target_date is not None else None
     for item in (i for phase in payload.phases for i in phase.items):
         if item.scheduled_date < today:

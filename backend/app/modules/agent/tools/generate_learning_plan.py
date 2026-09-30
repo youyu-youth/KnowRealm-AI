@@ -9,12 +9,12 @@
 """
 
 import json
-from datetime import UTC, datetime
 
 from langchain_core.tools import tool
 from loguru import logger
 
 from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.tools.time_utils import local_today
 from app.modules.learning_plan.generation import (
     PlanGenerationService,
     draft_summary,
@@ -79,7 +79,7 @@ async def generate_learning_plan(goal_id: str) -> str:
             session_factory=runtime.session_factory,
             goal=goal,
             provider=runtime.llm_provider,
-            today=datetime.now(UTC).date(),
+            today=local_today(),
             materials=materials,
             evidence=evidence,
         )
