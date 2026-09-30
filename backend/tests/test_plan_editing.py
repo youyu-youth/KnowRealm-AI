@@ -621,6 +621,15 @@ async def test_routes_plan_history_and_item_mutation(tmp_path: Path) -> None:
         assert nullish.status_code == 200
         assert nullish.json()["estimated_minutes"] == 30
 
+        # 全 null 载荷＝零修改语义 → 422 拒绝：不得 200＋数据未变＋
+        # SUCCEEDED 审计的虚假改动事实（spec 用户故事 14 成对语义；下方
+        # 审计行断言不含本次尝试＝零审计）。
+        all_null = await client.patch(
+            f"/api/courses/{COURSE_ID}/plans/{PLAN_ID}/items/{ITEM_ID_2}",
+            json={"estimated_minutes": None},
+        )
+        assert all_null.status_code == 422
+
         # 每次改动各落一条 USER_MANUAL operation（action 与授权触发器如实）。
         async with session_factory() as session:
             rows = (

@@ -374,8 +374,17 @@ class PlanItemUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _require_any_field(self) -> "PlanItemUpdate":
-        if not self.model_dump(exclude_unset=True):
-            raise ValueError("至少提供一个修改字段")
+        # 显式 null 无修改语义（三字段均非空语义，Service 滤 None）：不构成
+        # 「提供了修改字段」——全 null 载荷与空载荷同样拒绝，防 PATCH 直调
+        # 得到 200＋零改动＋SUCCEEDED 审计的虚假事实（spec 用户故事 14 的
+        # 「改动生效」与「有审计」成对出现）。
+        provided = {
+            key: value
+            for key, value in self.model_dump(exclude_unset=True).items()
+            if value is not None
+        }
+        if not provided:
+            raise ValueError("至少提供一个非空修改字段")
         return self
 
 
