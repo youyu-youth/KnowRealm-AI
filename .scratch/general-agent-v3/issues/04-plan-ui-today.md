@@ -26,6 +26,7 @@
 9. **MSW 默认 handlers 补 /api/today/plan-items → []**：否则所有渲染今日页的存量测试撞未处理请求、TodayTodos 渲染错误 alert 回归 TodayStatsBand 断言（实测踩中）。
 10. **存量 pyright 三错顺手归零**：时间能力 v1 遗留（time_utils timezone_label 两处 + config.resolve_user_timezone 返回值 Optional 存根）——time_utils 加 require_aware 收窄助手（undo.py assert 收窄先例），config 就地 assert（settings 平台模块不得 import agent）。
 11. **门禁**：后端 1030 绿（首跑 1028+1 环境抖动单跑绿）+ ruff/format/pyright 0；前端新增 10 用例（LearningPlanTab 6 + TodayTodos 4）+ 全量 633；全量并发下 TodoPanel/CourseBrainTab/QuizTests 存在历史性抖动（单跑全绿确认非回归）；OpenAPI regenerate + tsc + prettier 改动文件通过。
+12. **双轴 review 修复五项（已补回归测试）**：①今日页勾选完成后趋势/统计当场刷新（useCompletePlanItem 成功再失效 todayKeys.all——「完成时间戳进入今日学习时长」当次上抬不等重进页面；learningPlanKeys 抽独立 api/keys.ts 纯键模块，today/api/keys.planItems 改引 learningPlanKeys.all，两侧纯键互引不成环）②编辑行无变更禁用保存（不发会被 _require_any_field 拒绝的空载荷）③两处 `as string` 补 enabled 收窄注释（desktop-react §2）④版本 Select label 三元抽 versionLabel(version, t) 一份两用（hook 不进 map 回调）⑤TodayTodos 复用导出的 toastMutationError、isOverdue/formatDueLabel 收敛 startOfDay 单口径。评审另指 total_learning_ms（仅音频）与趋势（双源）两口径并存——OpenAPI 已标注、属既有语义边界，工单不扩面。
 
 ## 用户真机验收清单
 
