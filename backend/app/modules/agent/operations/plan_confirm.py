@@ -107,10 +107,10 @@ async def validate_plan_confirm_submission(
 async def validate_plan_draft_edit(
     session: AsyncSession, proposal: AgentProposal, edited_payload: dict[str, object]
 ) -> dict[str, object]:
-    """确认卡编辑载荷校验（工单 03，spec 用户故事 9）：schema 执法 + 日期
-    边界（不早于今天、不晚于目标期限）+ 引用可见性，返回清洗后的载荷写入
-    提案行——确认卡所见（编辑后）与落库所写保持同一份。全部在此拦截 =
-    编辑非法时提案保持 PENDING（不落 FAILED），用户修正编辑后可再确认。
+    """确认卡编辑载荷校验（工单 03，spec 用户故事 9）：schema 执法 + 目标
+    锁死 + 日期边界（不早于今天、不晚于目标期限）+ 引用可见性，返回清洗后
+    的载荷写入提案行——确认卡所见（编辑后）与落库所写保持同一份。全部在此
+    拦截 = 编辑非法时提案保持 PENDING（不落 FAILED），用户修正编辑后可再确认。
 
     编辑后的排期不要求与确定性铺排逐位一致（那是模型转述漂移的提交时
     防线）；每日总量与 daily_minutes 的一致性同样不强制——显式编辑即用户
@@ -123,6 +123,17 @@ async def validate_plan_draft_edit(
             status_code=422,
             detail="编辑后的草案结构无效，请检查日期、时长与内容",
         ) from exc
+    # goal_id 不可编辑（spec 用户故事 9 的编辑范围 = 改日期 / 时长 / 删项 /
+    # 排序）：换了目标时可见性与期限会按新目标误校验、审计 target 仍记原
+    # 目标——下游快照比对虽拦得住落库，但提案会被污染成 FAILED＋误导性的
+    # STALE（编辑非法应保持 PENDING），故在编辑校验器内直接拒绝。
+    original = parse_operation_payload(proposal, PlanConfirmPayload)
+    if payload.goal_id != original.goal_id:
+        raise CodedHTTPException(
+            code="PLAN_DRAFT_INVALID",
+            status_code=422,
+            detail="确认卡编辑不能变更学习目标，请保持原目标或重新发起计划制定",
+        )
     goal = await require_active_goal(session, payload.goal_id)
     await require_records_visible(session, goal.course_id, payload)
     await require_concepts_visible(session, goal.course_id, payload)

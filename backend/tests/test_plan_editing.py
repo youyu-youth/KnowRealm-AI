@@ -1175,6 +1175,64 @@ async def test_confirm_plan_edit_validation_rejects_out_of_bounds(tmp_path: Path
 
 
 @pytest.mark.anyio
+async def test_confirm_plan_edit_rejects_goal_swap_and_stays_pending(
+    tmp_path: Path,
+) -> None:
+    """确认卡编辑换目标（goal_id 篡改为另一目标）→ 编辑校验器拒绝
+    （PLAN_DRAFT_INVALID）且提案保持 PENDING；不锁死时可见性 / 期限会按
+    新目标误校验、审计 target 与实际写入目标失真，且唯一兜底的快照比对
+    会把提案污染成 FAILED＋误导性 STALE（spec 用户故事 9 编辑范围不含
+    换目标）。校验先于目标装载 → 目标不可达也以「不能变更目标」拒绝。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await seed_goal(session_factory)
+        await seed_record(session_factory)
+
+        payload = {
+            "goal_id": GOAL_ID,
+            "phases": [
+                {
+                    "title": "第一阶段",
+                    "items": [
+                        {
+                            "action_type": "CUSTOM",
+                            "content": "任务 1",
+                            "estimated_minutes": 60,
+                            "reason": "理由 1",
+                            "record_id": None,
+                            "concept_id": None,
+                            "scheduled_date": TODAY.isoformat(),
+                        }
+                    ],
+                }
+            ],
+        }
+        result = await invoke_tool(confirm_plan, session_factory, payload)
+        proposal_id = result["proposals"][0]["proposal_id"]
+
+        swapped = json.loads(json.dumps(payload))
+        swapped["goal_id"] = UNKNOWN_ID
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as excinfo:
+                await ProposalService.confirm(session, proposal_id, swapped)
+        assert excinfo.value.code == "PLAN_DRAFT_INVALID"
+        assert "不能变更学习目标" in excinfo.value.detail
+        status = await scalar(
+            session_factory,
+            "SELECT status FROM agent_proposals WHERE id = :id",
+            {"id": proposal_id},
+        )
+        assert status == "PENDING"
+        assert await table_count(session_factory, "learning_plans") == 0
+
+        # 原载荷确认不受影响（PENDING 可恢复）。
+        async with session_factory() as session:
+            confirmed = await ProposalService.confirm(session, proposal_id)
+        assert confirmed.status.value == "APPLIED"
+        assert confirmed.result is not None and confirmed.result["goal_id"] == GOAL_ID
+
+
+@pytest.mark.anyio
 async def test_confirm_edit_rejected_for_non_editable_type(tmp_path: Path) -> None:
     """非计划类提案携带编辑载荷确认 → PROPOSAL_EDIT_NOT_SUPPORTED（零业务写）。"""
     async with bare_db(tmp_path) as session_factory:
