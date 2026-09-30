@@ -147,14 +147,22 @@ describe("今日待学双源清单", () => {
     ).toHaveAttribute("href", `/records/${todo.record_id}`);
   });
 
-  it("勾选完成直接作用于计划项（与计划 Tab 同一端点）", async () => {
+  it("勾选完成直接作用于计划项（与计划 Tab 同一端点），统计当场刷新", async () => {
     let remaining = 1;
     let completeCalls = 0;
+    let trendCalls = 0;
     server.use(
       http.get(PENDING_URL, () => HttpResponse.json([])),
       http.get(PLAN_ITEMS_URL, () =>
         HttpResponse.json(remaining > 0 ? [planItem] : []),
       ),
+      // 完成时间戳进入今日学习时长：失效 today 缓存后趋势须当场重拉（不等重进页面）。
+      http.get(`${TEST_SIDECAR_URL}/api/today/stats/trend`, ({ request }) => {
+        if (new URL(request.url).searchParams.get("days") === "30") {
+          trendCalls += 1;
+        }
+        return HttpResponse.json([]);
+      }),
       http.post(
         `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}/plans/${planItem.plan_id}/items/item-1/complete`,
         () => {
@@ -170,6 +178,8 @@ describe("今日待学双源清单", () => {
     const checkbox = await screen.findByRole("checkbox", {
       name: "完成计划项「通读 LCEL 转写笔记」",
     });
+    await waitFor(() => expect(trendCalls).toBeGreaterThan(0));
+    const trendCallsBeforeComplete = trendCalls;
     fireEvent.click(checkbox);
 
     await waitFor(() => expect(completeCalls).toBe(1));
@@ -180,6 +190,9 @@ describe("今日待学双源清单", () => {
           name: "完成计划项「通读 LCEL 转写笔记」",
         }),
       ).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(trendCalls).toBeGreaterThan(trendCallsBeforeComplete),
     );
   });
 

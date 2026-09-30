@@ -359,6 +359,8 @@ describe("学习计划 Tab", () => {
     const minutes = await screen.findByRole("spinbutton", {
       name: "预估分钟数",
     });
+    // 未改任何字段时保存禁用（不发会被后端拒绝的空载荷）。
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
     fireEvent.change(minutes, { target: { value: "45" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 

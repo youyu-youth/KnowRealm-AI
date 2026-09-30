@@ -27,6 +27,7 @@ import {
   type PlanDetail,
   type PlanItem,
   type PlanItemUpdateBody,
+  type PlanVersion,
 } from "@/features/learningPlan/api/learningPlan";
 import {
   PLAN_ITEM_TYPE_KEYS,
@@ -163,17 +164,7 @@ function GoalWorkspace({
             ) : null}
           </div>
           <Select
-            items={versions.data.map((version) => ({
-              value: version.id,
-              label:
-                version.status === "ACTIVE"
-                  ? t("learningPlan.version.activeOption", {
-                      version: version.plan_version,
-                    })
-                  : t("learningPlan.version.historyOption", {
-                      version: version.plan_version,
-                    }),
-            }))}
+            items={versions.data.map((version) => versionLabel(version, t))}
             value={currentPlanId ?? undefined}
             onValueChange={(value) => setSelectedPlanId(String(value))}
           >
@@ -187,13 +178,7 @@ function GoalWorkspace({
             <SelectContent>
               {versions.data.map((version) => (
                 <SelectItem key={version.id} value={version.id}>
-                  {version.status === "ACTIVE"
-                    ? t("learningPlan.version.activeOption", {
-                        version: version.plan_version,
-                      })
-                    : t("learningPlan.version.historyOption", {
-                        version: version.plan_version,
-                      })}
+                  {versionLabel(version, t).label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -436,6 +421,17 @@ function PlanItemEditRow({
   );
   const [content, setContent] = useState(item.content);
 
+  // 仅提交变更字段（PATCH 至少一字段）：无变更时禁用保存，不发会被后端
+  // _require_any_field 拒绝的空载荷。
+  const changes: PlanItemUpdateBody = {
+    ...(date !== item.scheduled_date ? { scheduled_date: date } : {}),
+    ...(minutes !== "" && Number(minutes) !== item.estimated_minutes
+      ? { estimated_minutes: Number(minutes) }
+      : {}),
+    ...(content.trim() !== item.content ? { content: content.trim() } : {}),
+  };
+  const hasChanges = Object.keys(changes).length > 0;
+
   return (
     <div className="grid gap-2">
       <Input
@@ -465,20 +461,8 @@ function PlanItemEditRow({
         <div className="ml-auto flex items-center gap-1">
           <Button
             size="sm"
-            disabled={savePending || !content.trim() || !date}
-            onClick={() =>
-              onSave({
-                ...(date !== item.scheduled_date
-                  ? { scheduled_date: date }
-                  : {}),
-                ...(minutes !== "" && Number(minutes) !== item.estimated_minutes
-                  ? { estimated_minutes: Number(minutes) }
-                  : {}),
-                ...(content.trim() !== item.content
-                  ? { content: content.trim() }
-                  : {}),
-              })
-            }
+            disabled={savePending || !content.trim() || !date || !hasChanges}
+            onClick={() => onSave(changes)}
           >
             {t("learningPlan.edit.save")}
           </Button>
@@ -596,10 +580,7 @@ function GuideCard({
       <p className="text-body text-ink-muted max-w-reading mx-auto mt-2">
         {description}
       </p>
-      <Link
-        to="/chat"
-        className={buttonVariants({ className: "mt-6" })}
-      >
+      <Link to="/chat" className={buttonVariants({ className: "mt-6" })}>
         <Bot aria-hidden="true" className="size-4" />
         {action}
       </Link>
@@ -661,6 +642,24 @@ function groupByPhase(items: PlanItem[]): Array<[string, PlanItem[]]> {
   return phases;
 }
 
+/** 版本选项文案（Select items 与 SelectItem 共用一份，防两处改漏）。 */
+function versionLabel(
+  version: PlanVersion,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): { value: string; label: string } {
+  return {
+    value: version.id,
+    label:
+      version.status === "ACTIVE"
+        ? t("learningPlan.version.activeOption", {
+            version: version.plan_version,
+          })
+        : t("learningPlan.version.historyOption", {
+            version: version.plan_version,
+          }),
+  };
+}
+
 function formatShortDate(value: string, language: string | undefined): string {
   const date = new Date(`${value}T00:00:00`);
   const sameYear = date.getFullYear() === new Date().getFullYear();
@@ -671,7 +670,9 @@ function formatShortDate(value: string, language: string | undefined): string {
   }).format(date);
 }
 
-function toastMutationError(error: unknown, fallback: string) {
+/** 计划项写动作失败回执（计划 Tab 与今日页双源共用）：后端错误码文案优先，
+ * 无码回退调用方给的场景文案。 */
+export function toastMutationError(error: unknown, fallback: string) {
   appToast.add({
     description:
       error instanceof ApiError && error.message ? error.message : fallback,

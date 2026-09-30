@@ -4,12 +4,11 @@ import { ArrowRight, CalendarClock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { StatusTag } from "@/components/common/StatusTag";
-import { appToast } from "@/components/common/appToastManager";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCompletePlanItem } from "@/features/learningPlan/api/learningPlan";
+import { toastMutationError } from "@/features/learningPlan/components/LearningPlanTab";
 import { todayApi, type TodaySummaryTodo } from "@/features/today/api/today";
 import { todayKeys } from "@/features/today/api/keys";
-import { ApiError } from "@/services/http/client";
 
 type TodayTodosProps = {
   summaries: TodaySummaryTodo[] | undefined;
@@ -105,12 +104,10 @@ export function TodayTodos({
                         },
                         {
                           onError: (error) =>
-                            appToast.add({
-                              description:
-                                error instanceof ApiError && error.message
-                                  ? error.message
-                                  : t("learningPlan.mutationFailed"),
-                            }),
+                            toastMutationError(
+                              error,
+                              t("learningPlan.mutationFailed"),
+                            ),
                         },
                       )
                     }
@@ -200,15 +197,18 @@ export function TodayTodos({
   );
 }
 
+// 排期日是按日字符串：与「今日零点」直接比 Date 即得两档判断（逾期 / 即今天）。
+function startOfDay(value: Date): number {
+  return new Date(
+    value.getFullYear(),
+    value.getMonth(),
+    value.getDate(),
+  ).getTime();
+}
+
 function isOverdue(scheduledDate: string): boolean {
-  const today = new Date();
-  const due = new Date(`${scheduledDate}T00:00:00`);
   return (
-    due.getFullYear() < today.getFullYear() ||
-    (due.getFullYear() === today.getFullYear() &&
-      (due.getMonth() < today.getMonth() ||
-        (due.getMonth() === today.getMonth() &&
-          due.getDate() < today.getDate())))
+    startOfDay(new Date(`${scheduledDate}T00:00:00`)) < startOfDay(new Date())
   );
 }
 
@@ -219,12 +219,7 @@ function formatDueLabel(
   t: (key: string) => string,
 ): string {
   const due = new Date(`${scheduledDate}T00:00:00`);
-  const today = new Date();
-  if (
-    due.getFullYear() === today.getFullYear() &&
-    due.getMonth() === today.getMonth() &&
-    due.getDate() === today.getDate()
-  ) {
+  if (startOfDay(due) === startOfDay(new Date())) {
     return t("today.planTodos.today");
   }
   return new Intl.DateTimeFormat(language, {

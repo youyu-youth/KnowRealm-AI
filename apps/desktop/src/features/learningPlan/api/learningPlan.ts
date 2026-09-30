@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { components } from "@knowrealm/api-types";
+import { learningPlanKeys } from "@/features/learningPlan/api/keys";
+import { todayKeys } from "@/features/today/api/keys";
 import { apiFetch } from "@/services/http/client";
 
 export type LearningGoal = components["schemas"]["GoalOut"];
@@ -8,19 +10,6 @@ export type PlanVersion = components["schemas"]["PlanVersionOut"];
 export type PlanDetail = components["schemas"]["PlanOut"];
 export type PlanItem = components["schemas"]["PlanItemOut"];
 export type PlanItemUpdateBody = components["schemas"]["PlanItemUpdate"];
-
-// 写操作统一失效整个 learningPlan 域：完成/编辑/跳过会同时改变版本详情与
-// 今日待学列表（今日页勾选与计划 Tab 状态一致），按前缀失效比逐键枚举更不易漏
-// （courseBrain 先例）。
-export const learningPlanKeys = {
-  all: ["learningPlan"] as const,
-  goals: (courseId: string) =>
-    [...learningPlanKeys.all, courseId, "goals"] as const,
-  versions: (courseId: string, goalId: string) =>
-    [...learningPlanKeys.all, courseId, "versions", goalId] as const,
-  plan: (courseId: string, planId: string) =>
-    [...learningPlanKeys.all, courseId, "plan", planId] as const,
-};
 
 export const learningPlanApi = {
   listGoals: (courseId: string) =>
@@ -67,6 +56,7 @@ export function useLearningGoals(courseId: string) {
 export function usePlanVersions(courseId: string, goalId: string | null) {
   return useQuery({
     queryKey: learningPlanKeys.versions(courseId, goalId ?? ""),
+    // enabled 已保证 goalId 非空（courseBrain.ts 同款收窄）。
     queryFn: () => learningPlanApi.listVersions(courseId, goalId as string),
     enabled: goalId != null,
   });
@@ -75,6 +65,7 @@ export function usePlanVersions(courseId: string, goalId: string | null) {
 export function usePlanDetail(courseId: string, planId: string | null) {
   return useQuery({
     queryKey: learningPlanKeys.plan(courseId, planId ?? ""),
+    // enabled 已保证 planId 非空（courseBrain.ts 同款收窄）。
     queryFn: () => learningPlanApi.plan(courseId, planId as string),
     enabled: planId != null,
   });
@@ -100,6 +91,7 @@ export function useUpdatePlanItem(courseId: string) {
 
 export function useCompletePlanItem() {
   const invalidate = useInvalidateLearningPlan();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       courseId,
@@ -110,7 +102,12 @@ export function useCompletePlanItem() {
       planId: string;
       itemId: string;
     }) => learningPlanApi.completeItem(courseId, planId, itemId),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      // 完成时间戳进入今日学习时长统计（工单 04）：今日页勾选后趋势/统计
+      // 当场刷新上抬，不待重进页面。today/api/keys 无反向依赖、不构成环。
+      void queryClient.invalidateQueries({ queryKey: todayKeys.all });
+    },
   });
 }
 
