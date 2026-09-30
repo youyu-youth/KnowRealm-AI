@@ -90,6 +90,9 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/today/pending-summaries`, () =>
     HttpResponse.json([]),
   ),
+  http.get(`${TEST_SIDECAR_URL}/api/today/plan-items`, () =>
+    HttpResponse.json([]),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/today/stats`, () =>
     HttpResponse.json({
       total_learning_ms: 0,

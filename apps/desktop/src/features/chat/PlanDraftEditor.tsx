@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import {
   PLAN_ITEM_TYPE_KEYS,
   isPlanItemType,
-} from "@/features/chat/planItemTypes";
+} from "@/features/learningPlan/planItemTypes";
 
 /** 确认卡草案编辑器（通用 Agent 第三阶段工单 03，spec 用户故事 9）：
  * 改日期 / 改时长 / 删项 / 排序四操作，确认时按编辑结果落库（服务端校验

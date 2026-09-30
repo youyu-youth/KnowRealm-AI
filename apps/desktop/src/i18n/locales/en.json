@@ -119,6 +119,16 @@
     "todoTitle": "Summaries awaiting confirmation",
     "todoListLabel": "List of summaries awaiting confirmation",
     "todoAction": "Confirm now",
+    "planTodos": {
+      "groupLabel": "Learning plan",
+      "recordGroupLabel": "Record todos",
+      "listLabel": "Today's plan items",
+      "completeLabel": "Complete plan item \"{{content}}\"",
+      "minutes": "{{minutes}} min",
+      "scheduledTitle": "Scheduled date",
+      "today": "Today",
+      "overdue": "Overdue"
+    },
     "overview": {
       "chainTitle": "Today's learning chain",
       "chain": {
@@ -239,6 +249,70 @@
       "askPlaceholder": "Ask a question, or @ a course / material",
       "achievementTitle": "Learning achievements",
       "reviewProgress": "View learning progress"
+    }
+  },
+  "learningPlan": {
+    "loading": "Loading learning plan…",
+    "errorTitle": "Failed to load learning plan",
+    "errorDescription": "Something went wrong while loading the learning plan:",
+    "retry": "Retry",
+    "mutationFailed": "The change didn't take effect, please retry",
+    "guide": {
+      "chatHint": "Just tell the agent your goal in chat — it will ask and fill in the details"
+    },
+    "emptyGoal": {
+      "title": "No active learning goal",
+      "description": "Set a learning goal (type, deadline, daily time) for this space to give your learning direction. The recommended path is telling the agent your goal in chat; this tab then carries daily execution and manual adjustments.",
+      "cta": "Set a goal in chat"
+    },
+    "emptyPlan": {
+      "title": "No learning plan yet",
+      "description": "Ask the agent to draft a learning plan from the materials in this space and confirm it to start; you can also describe the goal first to get suggested content and material gaps.",
+      "cta": "Draft a plan in chat"
+    },
+    "goalType": {
+      "SKILL": "Skill",
+      "EXAM": "Exam",
+      "PROJECT": "Project",
+      "READING": "Reading",
+      "CUSTOM": "Custom"
+    },
+    "goalCard": {
+      "label": "Learning goal card",
+      "activeGoal": "Active",
+      "deadline": "Deadline",
+      "dailyMinutes": "Daily time",
+      "dailyMinutesValue": "{{minutes}} min/day",
+      "unset": "Not set",
+      "progress": "Progress",
+      "progressValue": "{{done}}/{{total}} items",
+      "progressEmpty": "No plan"
+    },
+    "version": {
+      "sectionLabel": "Plan versions",
+      "sectionTitle": "Plan items",
+      "selectLabel": "Switch plan version",
+      "readonly": "History · read-only",
+      "activeOption": "v{{version}} · active",
+      "historyOption": "v{{version}} · history"
+    },
+    "item": {
+      "completeLabel": "Complete \"{{content}}\"",
+      "minutes": "{{minutes}} min",
+      "locked": "Locked",
+      "lockedTitle": "Edited by you: kept as-is when the plan is regenerated",
+      "done": "Done",
+      "skipped": "Skipped",
+      "edit": "Edit",
+      "skip": "Skip"
+    },
+    "edit": {
+      "contentLabel": "Item content",
+      "dateLabel": "Scheduled date",
+      "minutesLabel": "Estimated minutes",
+      "minutesPlaceholder": "min",
+      "save": "Save",
+      "cancel": "Cancel"
     }
   },
   "spaces": {
@@ -391,6 +465,7 @@
       "tabs": {
         "overview": "Overview",
         "chain": "Learning Chain",
+        "plan": "Plan",
         "records": "Records",
         "tests": "Mock Tests",
         "map": "Mind Map",

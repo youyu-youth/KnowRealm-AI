@@ -119,6 +119,16 @@
     "todoTitle": "等待确认的总结",
     "todoListLabel": "待确认总结列表",
     "todoAction": "去确认",
+    "planTodos": {
+      "groupLabel": "学习计划",
+      "recordGroupLabel": "记录待办",
+      "listLabel": "今日待学计划项列表",
+      "completeLabel": "完成计划项「{{content}}」",
+      "minutes": "{{minutes}} 分钟",
+      "scheduledTitle": "排期日期",
+      "today": "今天",
+      "overdue": "逾期"
+    },
     "overview": {
       "chainTitle": "今日学习链",
       "chain": {
@@ -239,6 +249,70 @@
       "askPlaceholder": "输入问题，或 @ 课程 / 资料",
       "achievementTitle": "学习成就",
       "reviewProgress": "查看学习进度"
+    }
+  },
+  "learningPlan": {
+    "loading": "正在加载学习计划…",
+    "errorTitle": "学习计划加载失败",
+    "errorDescription": "读取学习计划时出现问题，请重试：",
+    "retry": "重试",
+    "mutationFailed": "操作未生效，请重试",
+    "guide": {
+      "chatHint": "在对话中直接说出你的目标即可，Agent 会帮你补全细节"
+    },
+    "emptyGoal": {
+      "title": "还没有进行中的学习目标",
+      "description": "为这个知识空间设定学习目标（类型、期限、每日投入），让学习有方向。推荐在对话中告诉 Agent 你的目标，由它追问并补全细节；本页随后承接日常执行与手动调整。",
+      "cta": "去对话设定目标"
+    },
+    "emptyPlan": {
+      "title": "还没有学习计划",
+      "description": "让 Agent 基于空间里的资料生成学习计划草案，确认后即可开始执行；也可以只描述目标，先拿到建议学习内容与资料缺口清单。",
+      "cta": "去对话生成计划"
+    },
+    "goalType": {
+      "SKILL": "技能",
+      "EXAM": "考试",
+      "PROJECT": "项目",
+      "READING": "阅读",
+      "CUSTOM": "自定义"
+    },
+    "goalCard": {
+      "label": "学习目标卡",
+      "activeGoal": "进行中",
+      "deadline": "期限",
+      "dailyMinutes": "每日投入",
+      "dailyMinutesValue": "{{minutes}} 分钟／天",
+      "unset": "未设置",
+      "progress": "整体进度",
+      "progressValue": "{{done}}/{{total}} 项",
+      "progressEmpty": "暂无计划"
+    },
+    "version": {
+      "sectionLabel": "计划版本区",
+      "sectionTitle": "计划项",
+      "selectLabel": "切换计划版本",
+      "readonly": "历史版本 · 只读",
+      "activeOption": "第 {{version}} 版 · 生效中",
+      "historyOption": "第 {{version}} 版 · 历史"
+    },
+    "item": {
+      "completeLabel": "完成「{{content}}」",
+      "minutes": "{{minutes}} 分钟",
+      "locked": "锁定",
+      "lockedTitle": "你编辑过的项：重生成计划时原样保留",
+      "done": "已完成",
+      "skipped": "已跳过",
+      "edit": "编辑",
+      "skip": "跳过"
+    },
+    "edit": {
+      "contentLabel": "计划项内容",
+      "dateLabel": "排期日期",
+      "minutesLabel": "预估分钟数",
+      "minutesPlaceholder": "分钟",
+      "save": "保存",
+      "cancel": "取消"
     }
   },
   "spaces": {
@@ -391,6 +465,7 @@
       "tabs": {
         "overview": "概览",
         "chain": "学习链",
+        "plan": "计划",
         "records": "学习记录",
         "tests": "模拟测试",
         "map": "课程脑图",

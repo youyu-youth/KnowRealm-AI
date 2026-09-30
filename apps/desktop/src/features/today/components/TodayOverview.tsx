@@ -8,7 +8,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { todayKeys } from "@/features/today/api/keys";
 import { todayApi } from "@/features/today/api/today";
-import { TodaySummaryTodos } from "@/features/today/components/TodaySummaryTodos";
+import { TodayTodos } from "@/features/today/components/TodayTodos";
 import { cn } from "@/lib/utils";
 
 const sampleActions = [
@@ -134,11 +134,11 @@ export function TodayOverview() {
             to="/inbox"
             action={t("today.overview.openInbox")}
           />
-          <TodaySummaryTodos
-            data={pending.data}
-            isPending={pending.isPending}
-            isError={pending.isError}
-            onRetry={() => void pending.refetch()}
+          <TodayTodos
+            summaries={pending.data}
+            isSummariesPending={pending.isPending}
+            isSummariesError={pending.isError}
+            onRetrySummaries={() => void pending.refetch()}
           />
           <ul className="divide-border-subtle mt-2 divide-y">
             {sampleActions.map(([key, tone]) => (

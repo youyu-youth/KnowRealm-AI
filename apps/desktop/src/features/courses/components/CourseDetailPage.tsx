@@ -38,6 +38,7 @@ import { CourseRecordsPanel } from "@/features/courses/components/CourseRecordsP
 import { ArchiveCourseDialog } from "@/features/courses/components/ArchiveCourseDialog";
 import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDialog";
 import { KnowledgeGpsTab } from "@/features/courses/components/KnowledgeGpsTab";
+import { LearningPlanTab } from "@/features/learningPlan/components/LearningPlanTab";
 import { QuizTestsPanel } from "@/features/quiz-tests/components/QuizTestsPanel";
 
 type CourseDetailPageProps = {
@@ -208,6 +209,9 @@ export function CourseDetailPage({
               <TabsTrigger value="chain">
                 {t("spaces.detail.tabs.chain")}
               </TabsTrigger>
+              <TabsTrigger value="plan">
+                {t("spaces.detail.tabs.plan")}
+              </TabsTrigger>
               <TabsTrigger value="records">
                 {t("spaces.detail.tabs.records")}
               </TabsTrigger>
@@ -282,6 +286,17 @@ export function CourseDetailPage({
           <div className="px-content">
             <div className="max-w-workbench mx-auto pt-5 pb-8">
               <CourseLearningChainTab course={detail} />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent
+          value="plan"
+          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-content">
+            <div className="max-w-workbench mx-auto pt-5 pb-8">
+              <LearningPlanTab courseId={courseId} />
             </div>
           </div>
         </TabsContent>

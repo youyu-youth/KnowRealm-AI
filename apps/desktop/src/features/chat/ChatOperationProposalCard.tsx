@@ -24,7 +24,7 @@ import {
 import {
   PLAN_ITEM_TYPE_KEYS,
   isPlanItemType,
-} from "@/features/chat/planItemTypes";
+} from "@/features/learningPlan/planItemTypes";
 import { Button } from "@/components/ui/button";
 
 type ChatOperationProposalCardProps = {
