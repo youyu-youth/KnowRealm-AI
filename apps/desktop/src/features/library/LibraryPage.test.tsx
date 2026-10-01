@@ -559,6 +559,89 @@ describe("LibraryPage 工作台", () => {
     await waitFor(() => expect(purged).toBe(true));
   });
 
+  it("彻底删除前置拦截：有未删派生记录时禁用确认并提供跳转删除路径", async () => {
+    mockLibraryEndpoints();
+    const BLOCKED_ITEM_ID = "88888888-8888-4888-8888-888888888888";
+    const blockedRecordId = "88888888-8888-4888-8888-888888888801";
+    let purged = false;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/library/items`, () =>
+        HttpResponse.json({
+          items: [
+            itemOut({
+              id: BLOCKED_ITEM_ID,
+              title: "带记录的已删条目",
+              deleted_at: "2026-09-18T09:00:00.000000Z",
+            }),
+          ],
+          total: 1,
+          backfill: null,
+        }),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/library/items/${BLOCKED_ITEM_ID}`, () =>
+        HttpResponse.json({
+          ...itemOut({
+            id: BLOCKED_ITEM_ID,
+            title: "带记录的已删条目",
+            deleted_at: "2026-09-18T09:00:00.000000Z",
+          }),
+          derived_records: [
+            {
+              record_id: blockedRecordId,
+              title: "派生学习记录甲",
+              status: "COMPLETED",
+              capture_type: "DOCUMENT_IMPORT",
+              role: "PRIMARY",
+              sequence_no: 0,
+            },
+          ],
+          segment_count: 3,
+        }),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/library/items/${BLOCKED_ITEM_ID}/content`,
+        () => HttpResponse.json({ content: "", truncated: false }),
+      ),
+      http.delete(
+        `${TEST_SIDECAR_URL}/api/library/items/${BLOCKED_ITEM_ID}?permanent=true`,
+        () => {
+          purged = true;
+          return new HttpResponse(null, { status: 204 });
+        },
+      ),
+    );
+    renderAt("/library?view=trash&domain=sources");
+    fireEvent.click(await screen.findByText("带记录的已删条目"));
+    fireEvent.click(await screen.findByRole("button", { name: "彻底删除" }));
+
+    // 前置拦截：提示可操作路径、确认禁用（不撞 409）、记录行可跳转删除。
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByText(/彻底删除前需先删除以下派生学习记录/),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole("button", {
+        name: "打开记录《派生学习记录甲》",
+      }),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole("button", { name: "彻底删除" }),
+      ).toBeDisabled(),
+    );
+    expect(purged).toBe(false);
+
+    // 跳转删除路径：点记录行关闭对话框并进入记录详情页。
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "打开记录《派生学习记录甲》",
+      }),
+    );
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/records/${blockedRecordId}`),
+    );
+  });
+
   it("AI 整理：确定性结果展示与待审提案确认", async () => {
     mockLibraryEndpoints();
     const PROPOSAL_ID = "aaaaaaa1-0000-4000-8000-000000000001";

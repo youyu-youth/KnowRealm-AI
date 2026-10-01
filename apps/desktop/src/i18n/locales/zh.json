@@ -2815,6 +2815,8 @@
       "permanentTitle": "彻底删除资料",
       "permanentDescription": "删除后不可恢复；仅在没有未删除派生记录时允许。",
       "derivedRecordsHint": "以下派生记录不会被删除（独立于资料条目）：",
+      "permanentDerivedHint": "彻底删除前需先删除以下派生学习记录（点击前往记录页删除，删除后回来即可彻底删除）：",
+      "openRecord": "打开记录《{{title}}》",
       "noDerivedRecords": "该资料没有派生记录。",
       "confirm": "移入回收站",
       "permanentConfirm": "彻底删除",

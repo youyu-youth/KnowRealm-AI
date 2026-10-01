@@ -2835,6 +2835,8 @@
       "permanentTitle": "Delete Permanently",
       "permanentDescription": "This cannot be undone; allowed only when no undeleted derived records remain.",
       "derivedRecordsHint": "The following derived records will NOT be deleted (they are independent of this material):",
+      "permanentDerivedHint": "Delete the following derived learning records first (click one to open its record page and delete it, then come back to purge):",
+      "openRecord": "Open record \"{{title}}\"",
       "noDerivedRecords": "This material has no derived records.",
       "confirm": "Move to Trash",
       "permanentConfirm": "Delete Permanently",
