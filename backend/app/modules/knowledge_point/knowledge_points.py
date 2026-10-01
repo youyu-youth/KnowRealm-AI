@@ -11,6 +11,7 @@ from app.modules.knowledge_point.schemas import (
     KnowledgePointWriteRequest,
 )
 from app.modules.knowledge_point.service import KnowledgePointService
+from app.modules.library.shared_refs import REQUEST_COURSE_ID
 from app.shared.deps import get_db, require_launch_token
 from app.shared.schemas import ErrorResponse
 
@@ -101,11 +102,13 @@ async def submit_knowledge_point_job(
     record_id: UUID,
     request: Request,
     session: AsyncSession = Depends(get_db),
+    course_id: REQUEST_COURSE_ID = None,
 ) -> KnowledgePointJobAccepted:
     job_id = await KnowledgePointService.submit(
         session,
         request.app.state.data_dir,
         str(record_id),
+        request_course_id=None if course_id is None else str(course_id),
     )
     return KnowledgePointJobAccepted(job_id=job_id)
 

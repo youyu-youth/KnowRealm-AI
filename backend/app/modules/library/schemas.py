@@ -297,6 +297,9 @@ class ProposalType(StrEnum):
     OP_PLAN_ITEM_UPDATE = "OP_PLAN_ITEM_UPDATE"
     OP_PLAN_ITEM_COMPLETE = "OP_PLAN_ITEM_COMPLETE"
     OP_PLAN_REGENERATE = "OP_PLAN_REGENERATE"
+    # 第三阶段工单 05：共享来源引用增删（L1 写动作；引用不触原资料）。
+    OP_SHARED_REF_ADD = "OP_SHARED_REF_ADD"
+    OP_SHARED_REF_REMOVE = "OP_SHARED_REF_REMOVE"
 
 
 class AgentProposalOut(BaseModel):
@@ -460,3 +463,32 @@ class ProposalConfirmBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     payload: dict[str, Any] = Field(description="编辑后的提案载荷全文")
+
+
+class SharedRefOut(BaseModel):
+    """共享引用行（工单 05）：available 为查询期派生（条目软删 / 非 ACTIVE 即
+    False，展示「来源已删除」；回收站恢复自动复活，不存状态字段）。"""
+
+    course_id: str
+    library_item_id: str
+    title: str
+    source_type: str
+    owner_course_id: str | None = Field(description="条目归属课程 id（未归类为 None）")
+    owner_course_name: str | None = None
+    available: bool
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def _ser_created(self, value: datetime) -> str:
+        return _utc(value)
+
+
+class SharedRefAdd(BaseModel):
+    """添加共享引用请求体。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    library_item_id: str = Field(
+        pattern=r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+        description="被引用的资料条目 id",
+    )

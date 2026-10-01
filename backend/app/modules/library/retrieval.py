@@ -51,8 +51,27 @@ _ITEM_RECORD_FILTER_DOC = (
     "JOIN records lr ON lr.id = lir.record_id AND lr.deleted_at IS NULL "
     "WHERE lir.library_item_id = :library_item_id) AND r.id IS NOT NULL"
 )
-_COURSE_FILTER = "r.course_id = :course_id"
-_COURSE_FILTER_DOC = "ds.record_id IS NOT NULL AND r.id IS NOT NULL AND r.course_id = :course_id"
+# 共享引用覆盖（工单 05）：被引用资料的 Record（经条目关联）与条目本身纳入
+# COURSE 检索范围；条目存活过滤（软删即失效、恢复即复活，查询期派生）内联
+# 于此，record 存活由消费 SQL 的 JOIN r.deleted_at IS NULL 行级保证。
+_SHARED_RECORD_IDS_SQL = (
+    "SELECT lir.record_id FROM library_item_records lir "
+    "JOIN course_shared_refs csr ON csr.library_item_id = lir.library_item_id "
+    "JOIN library_items li ON li.id = lir.library_item_id "
+    "AND li.status = 'ACTIVE' AND li.deleted_at IS NULL "
+    "WHERE csr.course_id = :course_id"
+)
+_SHARED_ITEM_IDS_SQL = (
+    "SELECT csr.library_item_id FROM course_shared_refs csr "
+    "JOIN library_items li ON li.id = csr.library_item_id "
+    "AND li.status = 'ACTIVE' AND li.deleted_at IS NULL "
+    "WHERE csr.course_id = :course_id"
+)
+_COURSE_FILTER = f"(r.course_id = :course_id OR r.id IN ({_SHARED_RECORD_IDS_SQL}))"
+_COURSE_FILTER_DOC = (
+    f"ds.record_id IS NOT NULL AND r.id IS NOT NULL "
+    f"AND (r.course_id = :course_id OR r.id IN ({_SHARED_RECORD_IDS_SQL}))"
+)
 # ALL：未归类记录直过，已归类须课程未软删（口径对齐 B2 记录清单过滤器）。
 _ALL_RECORD_ALIVE = (
     "(r.id IS NOT NULL AND (r.course_id IS NULL OR EXISTS ("
@@ -64,9 +83,10 @@ _ALL_FILTER_DOC = f"ds.record_id IS NOT NULL AND {_ALL_RECORD_ALIVE}"
 # 课程存活或未归类（LIBRARY_ITEM 由条目身份保证、COURSE 由条目课程边界保证）。
 _ITEM_DIRECT_LIB = "ds.library_item_id = :library_item_id"
 _ITEM_DIRECT_COURSE = (
-    "ds.library_item_id IN (SELECT li.id FROM library_items li "
+    "(ds.library_item_id IN (SELECT li.id FROM library_items li "
     "WHERE li.course_id = :course_id AND li.status = 'ACTIVE' "
-    "AND li.deleted_at IS NULL)"
+    "AND li.deleted_at IS NULL) "
+    f"OR ds.library_item_id IN ({_SHARED_ITEM_IDS_SQL}))"
 )
 _ITEM_DIRECT_ALL = (
     "ds.library_item_id IN (SELECT li.id FROM library_items li "
@@ -225,6 +245,9 @@ class EvidenceHit:
     locator: dict[str, object] = field(default_factory=dict[str, object])
     source_type: str = "TEXT"
     channel: str = "fts"
+    # 共享来源标志（工单 05）：命中宿主不属于 scope 课程、经共享引用覆盖时置
+    # True（引用行标注「共享来源」）；仅 COURSE 档判定。
+    shared_source: bool = False
 
 
 @dataclass(frozen=True)
@@ -345,7 +368,12 @@ class LibraryRetrievalService:
                 session, scope, needle, limit
             )
         return RetrievalResult(
-            evidence_hits=await LibraryRetrievalService._compose_evidence(session, recalled, limit),
+            evidence_hits=await LibraryRetrievalService._compose_evidence(
+                session,
+                recalled,
+                limit,
+                course_id=scope.course_id if scope.scope == ChatScope.COURSE else None,
+            ),
             asset_matches=await LibraryRetrievalService._asset_matches(session, scope, needle),
             concept_hints=[
                 ConceptHint(
@@ -487,9 +515,16 @@ class LibraryRetrievalService:
 
     @staticmethod
     async def _compose_evidence(
-        session: AsyncSession, recalls: list[_SegmentRecall], limit: int
+        session: AsyncSession,
+        recalls: list[_SegmentRecall],
+        limit: int,
+        course_id: str | None = None,
     ) -> list[EvidenceHit]:
-        """召回行 → 逐字 evidence：定位字段、来源类型、代表资料身份与相邻窗口。"""
+        """召回行 → 逐字 evidence：定位字段、来源类型、代表资料身份与相邻窗口。
+
+        course_id 非 None（COURSE 档，工单 05）时判定共享来源：命中宿主的归属
+        课程 ≠ scope 课程（含未归类）＝共享命中，shared_source 置 True。
+        """
         record_ids = sorted(
             {
                 cast(str, recall.row.record_id)
@@ -504,6 +539,37 @@ class LibraryRetrievalService:
                 item_by_record.setdefault(
                     cast(str, link.rid), (cast(str, link.id), cast(str, link.source_type))
                 )
+        # 命中宿主的课程归属映射（共享判定用）：record 宿主 + 条目直挂宿主。
+        record_course: dict[str, str | None] = {}
+        item_course: dict[str, str | None] = {}
+        if course_id is not None:
+            if record_ids:
+                rows = await session.execute(
+                    text("SELECT id, course_id FROM records WHERE id IN :ids").bindparams(
+                        bindparam("ids", expanding=True)
+                    ),
+                    {"ids": record_ids},
+                )
+                record_course = {
+                    cast(str, row[0]): cast("str | None", row[1]) for row in rows.all()
+                }
+            host_item_ids = sorted(
+                {
+                    cast(str, recall.row.library_item_id)
+                    for recall in recalls
+                    if getattr(recall.row, "library_item_id", None) is not None
+                }
+            )
+            if host_item_ids:
+                rows = await session.execute(
+                    text("SELECT id, course_id FROM library_items WHERE id IN :ids").bindparams(
+                        bindparam("ids", expanding=True)
+                    ),
+                    {"ids": host_item_ids},
+                )
+                item_course = {
+                    cast(str, row[0]): cast("str | None", row[1]) for row in rows.all()
+                }
         evidence: list[EvidenceHit] = []
         for recall in recalls[:limit]:
             row = recall.row
@@ -518,6 +584,14 @@ class LibraryRetrievalService:
                 source_type = _SOURCE_TYPE_BY_CAPTURE.get(
                     capture_types.get(record_id or "", ""), "TEXT"
                 )
+            # 共享判定（工单 05）：按命中宿主归属（record 宿主优先，直挂分片
+            # 无 record 时按条目归属）；代表条目只是身份回填不参与判定。
+            shared_source = False
+            if course_id is not None:
+                if record_id is not None:
+                    shared_source = record_course.get(record_id) != course_id
+                elif library_item_id is not None:
+                    shared_source = item_course.get(library_item_id) != course_id
             locator: dict[str, object] = {}
             time_range = _format_time_range(
                 cast("int | None", getattr(row, "record_start_ms", None)),
@@ -543,6 +617,7 @@ class LibraryRetrievalService:
                     locator=locator,
                     source_type=source_type,
                     channel=recall.channel,
+                    shared_source=shared_source,
                 )
             )
         return evidence
@@ -649,7 +724,9 @@ class LibraryRetrievalService:
                 "WHERE r.id = :record_id)"
             ),
             ChatScope.LIBRARY_ITEM: "li.id = :library_item_id",
-            ChatScope.COURSE: "li.course_id = :course_id",
+            ChatScope.COURSE: (
+                f"(li.course_id = :course_id OR li.id IN ({_SHARED_ITEM_IDS_SQL}))"
+            ),
             ChatScope.ALL: "TRUE",
         }[scope]
         return text(
@@ -667,7 +744,10 @@ class LibraryRetrievalService:
                 "records.id IN (SELECT lir.record_id FROM library_item_records lir "
                 "WHERE lir.library_item_id = :library_item_id)"
             ),
-            ChatScope.COURSE: "records.course_id = :course_id",
+            ChatScope.COURSE: (
+                f"(records.course_id = :course_id "
+                f"OR records.id IN ({_SHARED_RECORD_IDS_SQL}))"
+            ),
             ChatScope.ALL: (
                 "(records.course_id IS NULL OR EXISTS (SELECT 1 FROM courses c "
                 "WHERE c.id = records.course_id AND c.deleted_at IS NULL))"

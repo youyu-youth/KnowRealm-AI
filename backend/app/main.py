@@ -55,6 +55,7 @@ from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.service import MasteryService
 from app.modules.learning_plan import routes as learning_plan_routes
 from app.modules.library import routes as library_routes
+from app.modules.library import shared_refs_routes
 from app.modules.library.backfill import backfill_spec, ensure_backfill_enqueued
 from app.modules.library.index_rebuild_worker import index_rebuild_spec
 from app.modules.library.lifecycle import LibraryLifecycleService
@@ -479,6 +480,7 @@ def create_app(
     app.include_router(text_captures.router)
     app.include_router(library_routes.library_router)
     app.include_router(library_routes.proposals_router)
+    app.include_router(shared_refs_routes.router)
     app.include_router(learner_routes.learner_router)
     app.include_router(search_routes.router)
     app.include_router(source_anchors.router)

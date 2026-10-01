@@ -55,6 +55,25 @@ class LibraryItemRecord(Base):
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
 
 
+class CourseSharedRef(Base):
+    """共享来源引用（工单 05）：course ↔ library_item 多对多，保归属复用。
+
+    失效为查询期派生（条目软删即失效、恢复即复活），本表不存状态；条目物理
+    删除 FK CASCADE 清理引用，归属迁移不触本表。
+    """
+
+    __tablename__ = "course_shared_refs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    course_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("courses.id", ondelete="CASCADE")
+    )
+    library_item_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("library_items.id", ondelete="CASCADE")
+    )
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+
+
 class AgentProposal(Base):
     """可跨重启审核的业务提案：创建不改事实，确认后由领域 Service 原子应用。"""
 

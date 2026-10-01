@@ -16,6 +16,7 @@ from app.modules.course.models import Course
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.learning.events import write_learning_event
+from app.modules.library.shared_refs import guard_asset_generation
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.settings.config import (
@@ -212,7 +213,10 @@ class SummaryService:
         session: AsyncSession,
         data_dir: Path,
         record_id: str,
+        request_course_id: str | None = None,
     ) -> SubmittedSummaryJob:
+        """生成入口；request_course_id（工单 05）＝请求方知识空间上下文，共享
+        引用资料只读（SHARED_REF_ASSET_READ_ONLY），缺省＝原空间视角放行。"""
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
             raise CodedHTTPException(
@@ -223,6 +227,7 @@ class SummaryService:
                 code="AI_CONSENT_REQUIRED", status_code=409, detail="请先同意发送 Transcript"
             )
         async with session.begin():
+            await guard_asset_generation(session, record_id, request_course_id)
             return await SummaryService._enqueue(
                 session,
                 record_id,

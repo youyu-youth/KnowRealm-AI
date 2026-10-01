@@ -43,11 +43,16 @@ class ParsedReply:
 
 @dataclass(frozen=True)
 class LibraryRecordMaterial:
-    """跨记录引用校验材料：记录标题与转写全文（标题定位和逐字校验的根基）。"""
+    """跨记录引用校验材料：记录标题与转写全文（标题定位和逐字校验的根基）。
+
+    shared（工单 05）：材料来自共享引用覆盖（归属他空间），引用条目带
+    「共享来源」标注（前端徽章依据）。
+    """
 
     record_id: str
     title: str
     transcript: str
+    shared: bool = False
 
 
 @dataclass(frozen=True)
@@ -57,6 +62,7 @@ class LibraryItemMaterial:
     library_item_id: str
     title: str
     content: str
+    shared: bool = False
 
 
 def _normalize_for_align(text: str) -> str:
@@ -116,13 +122,16 @@ def _web_entry(index: int, text: str) -> dict[str, int | str] | None:
 
 
 def _library_item_entry(index: int, quote: str, item: LibraryItemMaterial) -> dict[str, int | str]:
-    return {
+    entry: dict[str, int | str] = {
         "index": index,
         "source": "library",
         "library_item_id": item.library_item_id,
         "title": item.title,
         "quote": quote,
     }
+    if item.shared:
+        entry["shared"] = True
+    return entry
 
 
 def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> ParsedReply:
@@ -186,13 +195,16 @@ def _split_trailing_citation_lines(text: str) -> tuple[list[str], list[tuple[int
 def _library_record_entry(
     index: int, quote: str, record: LibraryRecordMaterial
 ) -> dict[str, int | str]:
-    return {
+    entry: dict[str, int | str] = {
         "index": index,
         "source": "record",
         "record_id": record.record_id,
         "record_title": record.title,
         "quote": quote,
     }
+    if record.shared:
+        entry["shared"] = True
+    return entry
 
 
 def parse_library_citation_reply(

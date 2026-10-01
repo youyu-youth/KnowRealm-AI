@@ -60,6 +60,10 @@ from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
 from app.modules.learner.service import build_learner_context
 from app.modules.library.models import LibraryItem, LibraryItemRecord
 from app.modules.library.proposals import ProposalService
+from app.modules.library.shared_refs import (
+    shared_alive_item_ids,
+    shared_alive_record_ids,
+)
 from app.modules.record.models import Record
 from app.modules.record.service import RecordService
 from app.modules.search.integrations.tavily import TavilySearchClient
@@ -205,10 +209,17 @@ async def _require_library_item(session: AsyncSession, item_id: str | None) -> L
 
 def _scope_record_filters(scope: ChatScope, scope_id: str | None) -> list[Any]:
     """范围条件（scope_id 语义按 scope：COURSE=课程 id、LIBRARY_ITEM=资料条目 id）：
-    COURSE = 该课程全部未软删记录；ALL = 全部未软删记录（含收件箱，软删课程下的
-    记录随课程排除，口径同 record_options）；LIBRARY_ITEM = 该资料关联的未软删记录。"""
+    COURSE = 该课程全部未软删记录 + 共享引用覆盖的存活资料记录（工单 05）；
+    ALL = 全部未软删记录（含收件箱，软删课程下的记录随课程排除，口径同
+    record_options）；LIBRARY_ITEM = 该资料关联的未软删记录。"""
     if scope == ChatScope.COURSE:
-        return [Record.deleted_at.is_(None), Record.course_id == scope_id]
+        return [
+            Record.deleted_at.is_(None),
+            or_(
+                Record.course_id == scope_id,
+                Record.id.in_(shared_alive_record_ids(cast(str, scope_id))),
+            ),
+        ]
     if scope == ChatScope.LIBRARY_ITEM:
         return [
             Record.deleted_at.is_(None),
@@ -314,9 +325,11 @@ async def _load_scope_materials(
 
     记录材料（个人量级，#24 背书）覆盖转写命中；条目材料覆盖资料直挂分片命中
     （03 网页剪藏起），两者共同支撑 library 条目的逐字校验与归属裁定。
+    COURSE 档纳入共享引用覆盖的资料（工单 05），shared 标注归属他空间的材料
+    （引用行「共享来源」徽章依据）。
     """
     stmt = (
-        select(Record.id, Record.title, Transcript.content)
+        select(Record.id, Record.title, Record.course_id, Transcript.content)
         .join(
             Transcript,
             and_(Transcript.record_id == Record.id, Transcript.deleted_at.is_(None)),
@@ -328,16 +341,20 @@ async def _load_scope_materials(
     rows = (await session.execute(stmt)).all()
     records = [
         LibraryRecordMaterial(
-            record_id=str(row.id), title=str(row.title), transcript=str(row.content)
+            record_id=str(row.id),
+            title=str(row.title),
+            transcript=str(row.content),
+            shared=scope == ChatScope.COURSE and row.course_id != scope_id,
         )
         for row in rows
     ]
-    # 条目材料：COURSE/ALL 取范围内 ACTIVE 条目的直挂分片正文；LIBRARY_ITEM
-    # 只取挂载条目（边界=该资料）。
+    # 条目材料：COURSE/ALL 取范围内 ACTIVE 条目的直挂分片正文（COURSE 含共享
+    # 引用条目，工单 05）；LIBRARY_ITEM 只取挂载条目（边界=该资料）。
     item_stmt = (
         select(
             LibraryItem.id,
             LibraryItem.title,
+            LibraryItem.course_id,
             DocumentSegment.content,
             DocumentSegment.sequence_no,
         )
@@ -353,7 +370,12 @@ async def _load_scope_materials(
     if scope == ChatScope.LIBRARY_ITEM:
         item_stmt = item_stmt.where(LibraryItem.id == scope_id)
     elif scope == ChatScope.COURSE:
-        item_stmt = item_stmt.where(LibraryItem.course_id == scope_id)
+        item_stmt = item_stmt.where(
+            or_(
+                LibraryItem.course_id == scope_id,
+                LibraryItem.id.in_(shared_alive_item_ids(cast(str, scope_id))),
+            )
+        )
     elif scope == ChatScope.ALL:
         item_stmt = item_stmt.where(
             or_(
@@ -365,12 +387,17 @@ async def _load_scope_materials(
     item_rows = (await session.execute(item_stmt)).all()
     contents: dict[str, list[str]] = {}
     titles: dict[str, str] = {}
+    item_shared: dict[str, bool] = {}
     for row in item_rows:
         contents.setdefault(str(row.id), []).append(str(row.content))
         titles[str(row.id)] = str(row.title)
+        item_shared[str(row.id)] = scope == ChatScope.COURSE and row.course_id != scope_id
     items = [
         LibraryItemMaterial(
-            library_item_id=item_id, title=titles[item_id], content="\n".join(parts)
+            library_item_id=item_id,
+            title=titles[item_id],
+            content="\n".join(parts),
+            shared=item_shared[item_id],
         )
         for item_id, parts in contents.items()
     ]

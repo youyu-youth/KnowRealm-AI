@@ -258,6 +258,11 @@ class ChatCitationOut(BaseModel):
     anchor_id: str | None = Field(
         default=None, description="来源锚点 ID（预留：锚点写入者产生，当前为空）"
     )
+    shared: bool | None = Field(
+        default=None,
+        description="共享来源标志（工单 05）：命中经共享引用覆盖的归属他空间资料时为 true，"
+        "前端展示「共享来源」徽章；历史行与本地资料为空",
+    )
 
     @model_validator(mode="after")
     def require_fields_for_source(self) -> "ChatCitationOut":
@@ -957,3 +962,54 @@ class PlanRegenerateResult(BaseModel):
     locked_count: int = Field(description="原样带入的用户锁定项数")
     first_date: date | None = Field(default=None, description="新版本排期首日")
     last_date: date | None = Field(default=None, description="新版本排期末日")
+
+
+# ---------------------------------------------------------------------------
+# 共享来源引用动作契约（通用 Agent 第三阶段工单 05）：course ↔ library_item
+# 多对多；add / remove 为 L1 写动作（确认卡 + 三档授权），引用增删不触原资料。
+# ---------------------------------------------------------------------------
+
+
+class SharedRefPayload(BaseModel):
+    """OP_SHARED_REF_ADD / OP_SHARED_REF_REMOVE 提案判别载荷。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    course_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="引用落点课程 id（经 search_courses 查找消歧后取得）",
+    )
+    library_item_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="被引用的资料条目 id（可先用 list_library_items / search_library 查找）",
+    )
+
+
+class SharedRefResult(BaseModel):
+    """OP_SHARED_REF_ADD / OP_SHARED_REF_REMOVE 结果投影（回执卡）。"""
+
+    course_id: str
+    library_item_id: str
+    title: str = Field(description="被引用资料条目标题（执行时快照）")
+
+
+class SharedRefAddStateSnapshot(BaseModel):
+    """shared_ref.add 执行前快照：课程与条目双目标态（确认窗口内任一方变化
+    → OPERATION_SNAPSHOT_STALE 重新确认）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    course_updated_at: datetime
+    course_name: str
+    item_title: str
+    item_owner_course_id: str | None = Field(
+        default=None, description="条目归属课程 id（未归档归属 None）"
+    )
+
+
+class SharedRefRemoveStateSnapshot(BaseModel):
+    """shared_ref.remove 执行前快照：引用行存在性依据（条目标题供确认卡预览）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    item_title: str

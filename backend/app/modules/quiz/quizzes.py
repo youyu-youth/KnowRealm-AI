@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.library.shared_refs import REQUEST_COURSE_ID
 from app.modules.quiz.schemas import (
     QuizConceptUpdateRequest,
     QuizConflictResponse,
@@ -59,12 +60,14 @@ async def submit_quiz_job(
     body: QuizGenerateRequest,
     request: Request,
     session: AsyncSession = Depends(get_db),
+    course_id: REQUEST_COURSE_ID = None,
 ) -> QuizJobAccepted:
     job_id = await QuizService.submit(
         session,
         request.app.state.data_dir,
         str(record_id),
         body,
+        request_course_id=None if course_id is None else str(course_id),
     )
     await request.app.state.record_notifier.notify(str(record_id))
     return QuizJobAccepted(job_id=job_id)

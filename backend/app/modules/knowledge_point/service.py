@@ -27,6 +27,7 @@ from app.modules.knowledge_point.schemas import (
     KnowledgePointWriteRequest,
 )
 from app.modules.learning.events import write_learning_event
+from app.modules.library.shared_refs import assert_asset_generation_allowed
 from app.modules.record.models import LearningEvent, Record
 from app.modules.search.service import SearchService
 from app.modules.settings.config import (
@@ -325,7 +326,10 @@ class KnowledgePointService:
         session: AsyncSession,
         data_dir: Path,
         record_id: str,
+        request_course_id: str | None = None,
     ) -> str:
+        """生成入口；request_course_id（工单 05）＝请求方知识空间上下文，共享
+        引用资料只读（SHARED_REF_ASSET_READ_ONLY），缺省＝原空间视角放行。"""
         provider, consent_current = await _provider_state(data_dir)
         if provider is None or not provider.api_key:
             raise CodedHTTPException(
@@ -338,6 +342,7 @@ class KnowledgePointService:
         try:
             async with session.begin():
                 record = await _get_record(session, record_id)
+                await assert_asset_generation_allowed(session, record, request_course_id)
                 course = await session.get(Course, record.course_id) if record.course_id else None
                 if (
                     course is None

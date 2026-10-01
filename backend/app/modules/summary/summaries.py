@@ -3,6 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.library.shared_refs import REQUEST_COURSE_ID
 from app.modules.summary.schemas import (
     SummaryAdjustRequest,
     SummaryConfirmOut,
@@ -47,8 +48,14 @@ async def submit_summary(
     record_id: UUID,
     request: Request,
     session: AsyncSession = Depends(get_db),
+    course_id: REQUEST_COURSE_ID = None,
 ) -> SummaryJobAccepted:
-    submitted = await SummaryService.submit(session, request.app.state.data_dir, str(record_id))
+    submitted = await SummaryService.submit(
+        session,
+        request.app.state.data_dir,
+        str(record_id),
+        request_course_id=None if course_id is None else str(course_id),
+    )
     return SummaryJobAccepted(job_id=submitted.job_id)
 
 
