@@ -1018,3 +1018,31 @@ class SharedRefRemoveStateSnapshot(BaseModel):
     ref_id: str
     course_name: str
     item_title: str
+
+
+class LibraryItemIngestPayload(BaseModel):
+    """ingest_library_item 提案判别载荷（第三阶段工单 06）：URL 导入资料库。
+
+    计划内步骤动作（07 多资料 Run 的地基）：course_id 可为空或引用注入后的
+    实际值（引用解析在推进 worker，payload 层只见终值）；url 校验复用
+    create_web_ingest_rows 的统一入库口径。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1, description="要导入的网页地址（http/https 公网地址）")
+    title: str | None = Field(default=None, description="展示标题（缺省用域名）")
+    course_id: str | None = Field(
+        default=None, description="归类课程 id（可为空＝未归类；可经计划引用注入）"
+    )
+
+
+class LibraryItemIngestResult(BaseModel):
+    """ingest_library_item 结果投影（工单 06）：导入即入库（Record + 条目 +
+    WEB_FETCH 任务同事务），真实抓取由 web_fetch_worker 异步完成——
+    awaited_job_id 是 Run 等待转移的核对对象（spec M2 执行闭环）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    library_item_id: str
+    record_id: str
+    awaited_job_id: str = Field(description="等待的后台抓取任务 id（WEB_FETCH）")

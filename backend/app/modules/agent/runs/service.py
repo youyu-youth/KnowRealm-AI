@@ -569,9 +569,14 @@ async def _require_run(session: AsyncSession, run_id: str) -> AgentRun:
 
 
 async def _require_active_run(session: AsyncSession, run_id: str) -> AgentRun:
-    """取消的 Run 守卫：只有未收尾的任务（进行中 / 等待用户）可以取消。"""
+    """取消的 Run 守卫：只有未收尾的任务（进行中 / 等待用户 / 等待后台 job）
+    可以取消。"""
     run = await _require_run(session, run_id)
-    if run.status not in (RunStatus.RUNNING.value, RunStatus.WAITING_USER.value):
+    if run.status not in (
+        RunStatus.RUNNING.value,
+        RunStatus.WAITING_USER.value,
+        RunStatus.WAITING_JOB.value,
+    ):
         raise CodedHTTPException(
             code="AGENT_RUN_ALREADY_FINISHED",
             status_code=409,
@@ -610,10 +615,11 @@ async def cancel_pending_operations(session: AsyncSession, run: AgentRun) -> int
 
 
 def settle_run(run: AgentRun, status: RunStatus, *, now: datetime | None = None) -> None:
-    """落 Run 终态（推进终态判定与取消共用；清等待原因）。"""
+    """落 Run 终态（推进终态判定与取消共用；清等待原因与等待 job）。"""
     moment = utcnow() if now is None else now
     run.status = status.value
     run.waiting_reason = None
+    run.waiting_job_id = None
     run.finished_at = moment
     run.updated_at = moment
 
@@ -629,14 +635,17 @@ class RunControlService:
         """取消（持久化端点）：置 cancel_requested；推进中由 worker 每步检查后
         收尾，等待态无 worker 在跑则就地落 CANCELLED（不新增动作、已提交保留）。
 
-        已收尾的任务（部分完成 / 失败 / 完成 / 已取消）拒绝取消——终局不可改，
-        取消不冒充撤销；重试失败项另有端点（会重开推进）。
+        等待后台 job（WAITING_JOB，工单 06）的取消同「等待用户」就地收尾：未
+        执行步骤置 CANCELLED、已提交的后台 job（如网页抓取）不杀保留回执、
+        PENDING 触发 job 由领取闸门静默作废；断开 SSE / 关页面不是业务取消
+        （推进独立于连接，二阶段语义）。已收尾的任务（部分完成 / 失败 / 完成 /
+        已取消）拒绝取消——终局不可改，取消不冒充撤销；重试失败项另有端点。
         """
         async with session.begin():
             run = await _require_active_run(session, run_id)
             run.cancel_requested = True
             run.updated_at = utcnow()
-            if run.status == RunStatus.WAITING_USER.value:
+            if run.status in (RunStatus.WAITING_USER.value, RunStatus.WAITING_JOB.value):
                 await cancel_pending_operations(session, run)
                 settle_run(run, RunStatus.CANCELLED)
             else:

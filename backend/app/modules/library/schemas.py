@@ -300,6 +300,9 @@ class ProposalType(StrEnum):
     # 第三阶段工单 05：共享来源引用增删（L1 写动作；引用不触原资料）。
     OP_SHARED_REF_ADD = "OP_SHARED_REF_ADD"
     OP_SHARED_REF_REMOVE = "OP_SHARED_REF_REMOVE"
+    # 第三阶段工单 06：资料导入步骤（计划内动作，提交后台解析 job 后 Run 转等待；
+    # 无独立薄工具，正常不产生单步提案）。
+    OP_LIBRARY_ITEM_INGEST = "OP_LIBRARY_ITEM_INGEST"
 
 
 class AgentProposalOut(BaseModel):

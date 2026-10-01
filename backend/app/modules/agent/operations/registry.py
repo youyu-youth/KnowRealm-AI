@@ -195,6 +195,11 @@ class OperationSpec[R: BaseModel]:
     # （记录软删 / 课程删除 / 创建类不在首批），工具结果与回执透出。
     undoer: OperationUndoer | None = None
     undo_reason: str | None = None
+    # 后台 job 等待声明（第三阶段工单 06，M2 执行闭环）：应用器会提交后台 job 且
+    # result 含 awaited_job_id 字段时置 True——Run 推进到该步骤成功后转
+    # WAITING_JOB（waiting_job_id = result.awaited_job_id），job 终态核对后续跑 /
+    # 失败。单步路径（直执行 / 提案确认）无 Run，声明无效果。
+    waits_for_job: bool = False
 
 
 _OPERATIONS: dict[str, OperationSpec[Any]] = {}

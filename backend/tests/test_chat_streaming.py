@@ -39,6 +39,7 @@ from app.modules.agent.context import (
     CHAT_GOAL_GUIDANCE,
     CHAT_LANGUAGE_INSTRUCTION,
     CHAT_PLAN_GUIDANCE,
+    CHAT_RUN_BINDING_GUIDANCE,
     CHAT_SHARED_REF_GUIDANCE,
     CHAT_UNDO_GUIDANCE,
     ChatContextTooLargeError,
@@ -182,6 +183,7 @@ class TestBuildContextMessages:
             f"{CHAT_BATCH_PLAN_GUIDANCE}\n{CHAT_UNDO_GUIDANCE}\n{CHAT_GOAL_GUIDANCE}\n"
             f"{CHAT_PLAN_GUIDANCE}\n"
             f"{CHAT_SHARED_REF_GUIDANCE}\n"
+            f"{CHAT_RUN_BINDING_GUIDANCE}\n"
             f"{CHAT_LANGUAGE_INSTRUCTION}"
         )
         assert messages[0].id == "sys"
@@ -238,6 +240,7 @@ class TestBuildContextMessages:
                     CHAT_GOAL_GUIDANCE,
                     CHAT_PLAN_GUIDANCE,
                     CHAT_SHARED_REF_GUIDANCE,
+                    CHAT_RUN_BINDING_GUIDANCE,
                     CHAT_LANGUAGE_INSTRUCTION,
                 ]
             )
@@ -285,6 +288,7 @@ class TestBuildContextMessages:
                     CHAT_GOAL_GUIDANCE,
                     CHAT_PLAN_GUIDANCE,
                     CHAT_SHARED_REF_GUIDANCE,
+                    CHAT_RUN_BINDING_GUIDANCE,
                     CHAT_LANGUAGE_INSTRUCTION,
                 ]
             ),
@@ -1725,7 +1729,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v23"
+        assert rows[0][3] == "chat-library-scope-v24"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2162,6 +2166,7 @@ async def test_prompt_byte_identical_when_web_search_off(
             f"{CHAT_GOAL_GUIDANCE}\n"
             f"{CHAT_PLAN_GUIDANCE}\n"
             f"{CHAT_SHARED_REF_GUIDANCE}\n"
+            f"{CHAT_RUN_BINDING_GUIDANCE}\n"
             f"{CHAT_LANGUAGE_INSTRUCTION}"
         )
 

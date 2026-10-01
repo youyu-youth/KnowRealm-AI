@@ -93,6 +93,19 @@ CHAT_SHARED_REF_GUIDANCE = (
     "查看与移除引用用 list_shared_refs / remove_shared_ref，移除不影响原资料。"
     "已归属当前课程的资料无需引用（会被拒绝）。"
 )
+# 长任务计划指引（第三阶段工单 06，spec M2 执行闭环）：计划可含创建类步骤
+# （建课 / URL 导入）；后步参数可引用前步输出（字段路径引用注入）；导入步骤
+# 提交后台抓取任务后 Run 转等待、完成后自动接续，不需要用户逐步确认。
+CHAT_RUN_BINDING_GUIDANCE = (
+    "plan_batch_operations 的计划里可以有创建类步骤：create_course（新建课程，"
+    "参数 name、learning_context）和 ingest_library_item（导入网页资料，参数"
+    " url）。后一步的参数可以引用前一步的输出：把参数值写成对象"
+    ' {"step": 步骤序号, "field": "输出字段"}，例如先建课（第 0 步输出'
+    " course_id）再把导入资料归到这门新课时，导入步骤的 course_id 写"
+    ' {"step": 0, "field": "course_id"}。导入网页的步骤提交后会等待后台'
+    "抓取完成再自动继续（任务面板会显示等待中），期间不需要用户确认，如实"
+    "告知用户任务在后台进行即可，不要声称已经抓取完成。"
+)
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，
 # 零结构化生成）：标题与各节指引一并进 prompt，供文本协议断言与评测黄金集复用。
 CHAT_RESEARCH_SECTIONS: tuple[tuple[str, str], ...] = (
@@ -486,6 +499,7 @@ def build_context_messages(
         content = f"{content}\n{CHAT_GOAL_GUIDANCE}"
         content = f"{content}\n{CHAT_PLAN_GUIDANCE}"
         content = f"{content}\n{CHAT_SHARED_REF_GUIDANCE}"
+        content = f"{content}\n{CHAT_RUN_BINDING_GUIDANCE}"
         content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:
             guidance = CHAT_WEB_SEARCH_GUIDANCE

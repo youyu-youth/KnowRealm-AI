@@ -9,7 +9,7 @@
 import json
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import (
     BaseModel,
@@ -41,7 +41,9 @@ class AuthMode(StrEnum):
 class RunStatus(StrEnum):
     RUNNING = "RUNNING"
     WAITING_USER = "WAITING_USER"
-    WAITING_JOB = "WAITING_JOB"  # 第三阶段预留，本阶段无写入者
+    # 工单 06 激活：步骤提交后台 job（资料解析等）后 Run 转等待，推进 worker
+    # 领取触发 job 时核对 waiting_job_id 终态决定续跑 / 失败（M2 执行闭环）。
+    WAITING_JOB = "WAITING_JOB"
     COMPLETED = "COMPLETED"
     PARTIAL_COMPLETED = "PARTIAL_COMPLETED"
     FAILED = "FAILED"
@@ -95,6 +97,14 @@ OPERATION_DEPENDENCY_FAILED = "OPERATION_DEPENDENCY_FAILED"
 # 依赖判定静默失效——执行 / 写入路径必须显式失败，不得降级为空计划继续。
 AGENT_RUN_PLAN_INVALID = "AGENT_RUN_PLAN_INVALID"
 
+# 步骤提交的后台 job 终态为失败时的稳定错误码（工单 06）：等待步骤翻 FAILED 用
+# （job 自身 error_code 保留在 job 行，attempts 留痕携带原码可诊断）。
+AGENT_RUN_WAITING_JOB_FAILED = "AGENT_RUN_WAITING_JOB_FAILED"
+
+# Run 转入 WAITING_JOB 时的 waiting_reason 稳定码（工单 06）：前端等待态呈现
+# （「后台任务执行中，完成后自动继续」），区别于 WAITING_USER 的用户处理码。
+AGENT_RUN_WAITING_JOB_PENDING = "AGENT_RUN_WAITING_JOB_PENDING"
+
 # 批量计划规模上限（单张计划卡项数上限；AUTO_APPROVE 的自动执行阈值见下）。
 MAX_BATCH_PLAN_ITEMS = 50
 
@@ -110,33 +120,102 @@ class BatchPlanAction(StrEnum):
     """计划项动作（值 = 操作注册表动作名，spec 决策 14：L2 批量归类 / 归档
     编排既有 L1 动作，不另立动作类型）。
 
-    白名单枚举本阶段只含资料条目两类批量动作；新批量能力 = 扩展本枚举 ＋
-    在 plans.BATCH_PLAN_ACTIONS 建立到注册表动作的映射 ＋ 逐项参数列补字段。
+    白名单枚举声明可进计划的动作；新批量能力 = 扩展本枚举 ＋ 在
+    plans.BATCH_PLAN_ACTIONS 建立到注册表动作的映射 ＋ 逐项参数列补字段。
+    工单 06 起纳入创建类动作（建课 / 资料导入——导入步骤提交后台解析 job 后
+    Run 转等待，供结果绑定与长任务场景消费）。
     """
 
     UPDATE_LIBRARY_ITEM = "update_library_item"
     ARCHIVE_LIBRARY_ITEM = "archive_library_item"
+    CREATE_COURSE = "create_course"
+    INGEST_LIBRARY_ITEM = "ingest_library_item"
+
+
+class StepOutputRef(BaseModel):
+    """前一步骤输出的字段路径引用（工单 06 结果绑定注入）。
+
+    参数值不写死，而是指向计划内更早步骤的结果字段（如建课步骤的
+    ``course_id``）；执行时由推进 worker 解析为实际值并回填操作载荷。
+    引用即依赖：归一化后自动并入 depends_on（源步骤未成功本步骤跳过），
+    依赖本身仍只表达先后与成功。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    step: int = Field(ge=0, description="来源步骤在本计划内的索引（必须更早）")
+    field: str = Field(min_length=1, description="来源步骤结果的字段路径（点路径，如 course_id）")
+
+
+def _referenced_steps(item: "BatchPlanItemPayload") -> set[int]:
+    """计划项参数字段中全部输出引用的来源步骤索引（payload 结构校验用）。"""
+    steps: set[int] = set()
+    for name in type(item).model_fields:
+        value = getattr(item, name)
+        if isinstance(value, StepOutputRef):
+            steps.add(value.step)
+    return steps
+
+
+def params_output_refs(params: dict[str, Any]) -> dict[str, StepOutputRef]:
+    """操作载荷参数（dict 形态）中的输出引用：字段名 → 引用。
+
+    绑定注入的统一检测口径（worker 解析 / plans 判别校验共用）：识别
+    ``{"step": int, "field": str}`` 形状；坏形状不在此拦截，交由
+    StepOutputRef 判别（调用方落稳定失败码）。
+    """
+    refs: dict[str, StepOutputRef] = {}
+    for name, value in params.items():
+        if isinstance(value, dict):
+            candidate = cast("dict[str, Any]", value)
+            if {"step", "field"} <= candidate.keys():
+                refs[name] = StepOutputRef.model_validate(candidate)
+    return refs
 
 
 class BatchPlanItemPayload(BaseModel):
     """计划项（对象集合的逐项条目，spec 决策 13）。
 
     逐项参数以扁平列声明（update 动作消费 title / course_id，archive 动作只消费
-    item_id）：可复用的无缝形状是「各动作参数 schema 字段的并集」，真实执法在
+    item_id，create_course 消费 name，ingest 消费 url / title / course_id）：
+    可复用的无缝形状是「各动作参数 schema 字段的并集」，真实执法在
     提交/确认时按动作判别 schema 校验（registry），本层只做计划结构校验。
+    创建类动作（create_course / ingest_library_item）无既有目标，item_id 为空；
+    course_id 允许 StepOutputRef 引用（执行时注入实际值）。
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    action: BatchPlanAction = Field(description="计划项动作")
-    item_id: str = Field(
-        pattern=_UUID_PATTERN, description="目标资料条目 id（经 search_library 消歧后取得）"
+    action: BatchPlanAction
+    item_id: str | None = Field(
+        default=None,
+        pattern=_UUID_PATTERN,
+        description="目标资料条目 id（update / archive 必填；创建类动作为空）",
     )
     title: str | None = Field(
         default=None, min_length=1, description="条目新标题（归类动作不使用）"
     )
-    course_id: str | None = Field(
-        default=None, pattern=_UUID_PATTERN, description="归类目标课程 id（改标题不需要）"
+    course_id: str | StepOutputRef | None = Field(
+        default=None, description="归类目标课程 id，或指向建课步骤输出的引用"
+    )
+    name: str | None = Field(
+        default=None, min_length=1, description="新建课程名称（create_course）"
+    )
+    learning_context: str | None = Field(
+        default=None,
+        description="新建课程学习场景（create_course 必填：SCHOOL / CAREER / INTEREST）",
+    )
+    education_stage: str | None = Field(
+        default=None,
+        description=("学业教育阶段（SCHOOL 场景必填：如 HIGH_SCHOOL / UNDERGRADUATE / GRADUATE）"),
+    )
+    depth: str | None = Field(
+        default=None,
+        description="学习深度（CAREER / INTEREST 场景必填，如 BEGINNER / INTERMEDIATE / ADVANCED）",
+    )
+    description: str | None = Field(default=None, description="新建课程说明（create_course 可选）")
+    url: str | None = Field(
+        default=None, min_length=1, description="导入网页地址（ingest_library_item）"
     )
     depends_on: list[int] = Field(
         default_factory=list[int],
@@ -165,24 +244,35 @@ class BatchPlanPayload(BaseModel):
     def _validate_plan_structure(self) -> "BatchPlanPayload":
         seen: set[tuple[str, str]] = set()
         for index, item in enumerate(self.items):
+            # 引用即依赖（工单 06 结果绑定）：引用的来源步骤自动并入 depends_on，
+            # 推进依赖判定与终态口径零改动地覆盖「值未就绪」的情形。
+            referenced = _referenced_steps(item)
+            for step in referenced:
+                if step < 0 or step >= index:
+                    raise ValueError("输出引用的来源步骤必须是本计划内更早的步骤")
+            item.depends_on = list(dict.fromkeys([*item.depends_on, *sorted(referenced)]))
             for dependency in item.depends_on:
                 if dependency < 0 or dependency >= index:
                     raise ValueError("依赖项索引必须是本计划内更早的步骤")
-            key = (item.action.value, item.item_id)
-            if key in seen:
-                raise ValueError("同一计划内同一动作的同一目标不能重复")
-            seen.add(key)
+            # 重复目标检查只针对既有目标的动作（item_id 空＝创建类步骤，多资料
+            # 场景天然多次创建；创建类幂等由 07 工单的多资料 Run 收口）。
+            if item.item_id is not None:
+                key = (item.action.value, item.item_id)
+                if key in seen:
+                    raise ValueError("同一计划内同一动作的同一目标不能重复")
+                seen.add(key)
         return self
 
 
 class BatchPlanItemSnapshot(BaseModel):
     """逐项执行前快照（spec 决策 12 的一份三用：确认卡预览 / 执行前重验 /
-    Undo 补偿数据）：提交时同事务读取的目标当前态。"""
+    Undo 补偿数据）：提交时同事务读取的目标当前态。创建类步骤（item_id 空）
+    与含输出引用的项无快照（state 恒空，工单 06）。"""
 
     model_config = ConfigDict(extra="forbid")
 
     action: BatchPlanAction
-    item_id: str
+    item_id: str | None = Field(default=None, description="目标资料条目 id（创建类步骤为空）")
     state: dict[str, Any] = Field(description="该动作 capture_state 的类型化快照投影")
 
 
@@ -197,13 +287,14 @@ class BatchPlanSnapshot(BaseModel):
 
 class BatchPlanItemOut(BaseModel):
     """run.plan_json 的计划项投影：逐项参数＋已建 operation 引用＋依赖的
-    operation id（推进 worker 依赖判定与前端逐项呈现共用）。"""
+    operation id（推进 worker 依赖判定与前端逐项呈现共用）。创建类步骤
+    item_id 为空（无既有目标，工单 06）。"""
 
     model_config = ConfigDict(extra="forbid")
 
     index: int = Field(ge=0)
     action: BatchPlanAction
-    item_id: str
+    item_id: str | None = Field(default=None, description="目标资料条目 id（创建类为空）")
     params: dict[str, Any] = Field(default_factory=dict[str, Any])
     operation_id: str
     depends_on: list[str] = Field(default_factory=list[str])

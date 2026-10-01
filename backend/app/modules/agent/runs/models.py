@@ -1,7 +1,8 @@
 """执行事实三表 ORM 模型（迁移 0030，spec 决策 2/3/22）。
 
 - AgentRun：批次执行单元。session_id 仅溯源（无 FK——删除聊天会话不删除
-  任务历史，spec 决策 22）；WAITING_JOB 为第三阶段预留枚举、本阶段无写入者。
+  任务历史，spec 决策 22）；WAITING_JOB 自工单 06 起有写入者：步骤提交后台
+  job 后 Run 转等待，waiting_job_id 记录所等待 job（核对终态分流用）。
 - AgentOperation：执行事实唯一源。单步操作 run_id 空；不持久化 RUNNING
   （每个操作一个原子事务，崩溃=未发生）；undo_of / undone_by 自引用为
   Undo 补偿链（工单 06 消费）。
@@ -29,6 +30,7 @@ class AgentRun(Base):
     plan_json: Mapped[str | None] = mapped_column(Text, default=None)
     plan_version: Mapped[int] = mapped_column(Integer, default=1)
     waiting_reason: Mapped[str | None] = mapped_column(Text, default=None)
+    waiting_job_id: Mapped[str | None] = mapped_column(String(36), default=None)
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
