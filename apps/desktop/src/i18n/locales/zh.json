@@ -2494,7 +2494,8 @@
         "restore_library_item": "恢复资料条目",
         "soft_delete_record": "删除学习记录",
         "delete_course": "删除课程",
-        "move_record_course": "迁移记录到课程"
+        "move_record_course": "迁移记录到课程",
+        "ingest_library_item": "导入网页资料"
       },
       "operationStatus": {
         "PLANNED": "待执行",
@@ -3022,6 +3023,8 @@
     "AGENT_RUN_OPERATION_NOT_FOUND": "任务中的操作不存在",
     "AGENT_RUN_OPERATION_NOT_RETRYABLE": "仅失败或跳过的步骤可以重试",
     "AGENT_RUN_PLAN_INVALID": "任务计划数据已损坏，无法继续执行，请重新创建任务",
+    "AGENT_RUN_WAITING_JOB_PENDING": "后台任务执行中，完成后将自动继续",
+    "AGENT_RUN_WAITING_JOB_FAILED": "步骤等待的后台任务失败了，请处理后重试",
     "AGENT_OPERATION_NOT_FOUND": "操作不存在",
     "OPERATION_NOT_UNDOABLE": "该操作不提供撤销",
     "OPERATION_ALREADY_UNDONE": "该操作已被撤销",

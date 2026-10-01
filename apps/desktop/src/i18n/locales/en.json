@@ -2514,7 +2514,8 @@
         "restore_library_item": "Restore library item",
         "soft_delete_record": "Delete record",
         "delete_course": "Delete course",
-        "move_record_course": "Move record to course"
+        "move_record_course": "Move record to course",
+        "ingest_library_item": "Ingest web page"
       },
       "operationStatus": {
         "PLANNED": "Planned",
@@ -3042,6 +3043,8 @@
     "AGENT_RUN_OPERATION_NOT_FOUND": "The step does not exist in this task",
     "AGENT_RUN_OPERATION_NOT_RETRYABLE": "Only failed or skipped steps can be retried",
     "AGENT_RUN_PLAN_INVALID": "The task plan data is corrupted and cannot run; please recreate the task",
+    "AGENT_RUN_WAITING_JOB_PENDING": "A background job is running; the task will continue automatically when it finishes",
+    "AGENT_RUN_WAITING_JOB_FAILED": "The background job this step was waiting for failed; resolve it and retry",
     "AGENT_OPERATION_NOT_FOUND": "Operation not found",
     "OPERATION_NOT_UNDOABLE": "This operation cannot be undone",
     "OPERATION_ALREADY_UNDONE": "This operation has already been undone",
