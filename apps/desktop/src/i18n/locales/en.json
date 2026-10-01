@@ -251,6 +251,44 @@
       "reviewProgress": "View learning progress"
     }
   },
+  "sharedRefs": {
+    "loading": "Loading shared materials…",
+    "errorTitle": "Failed to load shared materials",
+    "errorDescription": "Something went wrong while loading shared references:",
+    "retry": "Retry",
+    "readonlyNotice": {
+      "title": "Shared materials are read-only",
+      "description": "Referenced material content enters this space's Q&A and search; summaries, knowledge points and quizzes can only be generated in the material's original space—this space consumes shared materials read-only."
+    },
+    "list": {
+      "sectionLabel": "Shared materials list",
+      "sectionTitle": "Referenced external materials",
+      "owner": "Owner: {{course}}",
+      "unclassified": "Uncategorized",
+      "sourceDeleted": "Source deleted"
+    },
+    "empty": {
+      "title": "No external materials referenced yet",
+      "description": "Reference materials from other knowledge spaces into this space: they stay in their original space while their content enters this space's Q&A and search."
+    },
+    "add": {
+      "open": "Add reference",
+      "title": "Reference external material",
+      "description": "Pick a material to reference into this space: ownership stays put, no duplicate ingestion.",
+      "loading": "Loading selectable materials…",
+      "loadFailed": "Failed to load selectable materials, close and retry.",
+      "noCandidates": "No referenceable materials: the library has no items owned by other spaces or unclassified.",
+      "cancel": "Cancel",
+      "confirm": "Reference",
+      "submitting": "Adding…",
+      "failed": "Adding the reference did not take effect, please retry"
+    },
+    "remove": {
+      "label": "Remove reference to \"{{title}}\"",
+      "action": "Remove",
+      "failed": "Removing the reference did not take effect, please retry"
+    }
+  },
   "learningPlan": {
     "loading": "Loading learning plan…",
     "errorTitle": "Failed to load learning plan",
@@ -473,6 +511,7 @@
         "overview": "Overview",
         "chain": "Learning Chain",
         "plan": "Plan",
+        "shared": "Shared",
         "records": "Records",
         "tests": "Mock Tests",
         "map": "Mind Map",
@@ -1747,6 +1786,7 @@
       "libraryTag": "Material source",
       "libraryFromTitle": "Material: {{title}}",
       "libraryEntry": "[{{index}}] {{quote}} (material: {{title}}), click to open the material",
+      "sharedSource": "Shared source",
       "researchSave": "Save as Material",
       "researchPending": "Save suggestion pending confirmation",
       "researchAccept": "Confirm Save",
@@ -2163,6 +2203,27 @@
         "reject": "Cancel completion",
         "targetItem": "Target plan item",
         "hint": "Completion only records the fact; it does not directly raise concept mastery."
+      },
+      "sharedRefAdd": {
+        "accepted": "Shared reference added.",
+        "rejected": "Cancelled; the shared reference was not added.",
+        "failed": "Adding the shared reference did not succeed.",
+        "failedDetail": "Adding the shared reference did not succeed ({{reason}}); you can retry.",
+        "accept": "Confirm adding shared reference",
+        "reject": "Cancel adding",
+        "targetCourse": "Target course",
+        "targetItem": "Referenced material",
+        "hint": "The material's content enters this course's Q&A and search (marked as shared source); this course consumes it read-only—no summaries, knowledge points or quizzes."
+      },
+      "sharedRefRemove": {
+        "accepted": "Shared reference removed.",
+        "rejected": "Cancelled; the shared reference is kept.",
+        "failed": "Removing the shared reference did not succeed.",
+        "failedDetail": "Removing the shared reference did not succeed ({{reason}}); you can retry.",
+        "accept": "Confirm removing shared reference",
+        "reject": "Cancel removal",
+        "targetItem": "Material of the removed reference",
+        "hint": "Removing only unreferences it for this course; the original material, its ownership and assets are untouched."
       },
       "planRegenerate": {
         "accepted": "Learning plan regenerated as a new version (v{{version}} · {{count}} items).",
@@ -2837,6 +2898,10 @@
     "GOAL_ACTIVE_EXISTS": "This course space already has an active learning goal; complete or archive the old goal first.",
     "GOAL_NOT_ACTIVE": "The goal is completed or archived; only active goals can be changed.",
     "GOAL_NOT_FOUND": "The learning goal does not exist.",
+    "SHARED_REF_ASSET_READ_ONLY": "Shared references are read-only: summaries, knowledge points and quizzes can only be generated in the material's original space",
+    "SHARED_REF_DUPLICATE": "This material is already referenced by this knowledge space",
+    "SHARED_REF_ITEM_OWNED": "This material already belongs to this knowledge space; no reference needed",
+    "SHARED_REF_NOT_FOUND": "The shared reference does not exist or has been removed",
     "DOCUMENT_EMPTY": "The file is empty.",
     "DOCUMENT_FORMAT_UNSUPPORTED": "Only TXT, MD, PDF, or DOCX files are supported.",
     "EMPTY_BATCH": "Select at least one source.",

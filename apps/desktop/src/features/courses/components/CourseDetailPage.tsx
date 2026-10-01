@@ -40,6 +40,7 @@ import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDi
 import { KnowledgeGpsTab } from "@/features/courses/components/KnowledgeGpsTab";
 import { LearningPlanTab } from "@/features/learningPlan/components/LearningPlanTab";
 import { QuizTestsPanel } from "@/features/quiz-tests/components/QuizTestsPanel";
+import { SharedRefsTab } from "@/features/sharedRefs/components/SharedRefsTab";
 
 type CourseDetailPageProps = {
   courseId: string;
@@ -212,6 +213,9 @@ export function CourseDetailPage({
               <TabsTrigger value="plan">
                 {t("spaces.detail.tabs.plan")}
               </TabsTrigger>
+              <TabsTrigger value="shared">
+                {t("spaces.detail.tabs.shared")}
+              </TabsTrigger>
               <TabsTrigger value="records">
                 {t("spaces.detail.tabs.records")}
               </TabsTrigger>
@@ -297,6 +301,17 @@ export function CourseDetailPage({
           <div className="px-content">
             <div className="max-w-workbench mx-auto pt-5 pb-8">
               <LearningPlanTab courseId={courseId} />
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent
+          value="shared"
+          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+        >
+          <div className="px-content">
+            <div className="max-w-workbench mx-auto pt-5 pb-8">
+              <SharedRefsTab courseId={courseId} />
             </div>
           </div>
         </TabsContent>

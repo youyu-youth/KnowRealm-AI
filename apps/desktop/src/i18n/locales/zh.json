@@ -251,6 +251,44 @@
       "reviewProgress": "查看学习进度"
     }
   },
+  "sharedRefs": {
+    "loading": "正在加载共享资料…",
+    "errorTitle": "共享资料加载失败",
+    "errorDescription": "读取共享引用时出现问题，请重试：",
+    "retry": "重试",
+    "readonlyNotice": {
+      "title": "共享资料只读",
+      "description": "被引用资料的内容进入本空间的问答与检索；但总结、知识点、习题等资产只能在资料原空间生成，本空间对引用资料只读。"
+    },
+    "list": {
+      "sectionLabel": "共享资料清单",
+      "sectionTitle": "引用的外部资料",
+      "owner": "归属：{{course}}",
+      "unclassified": "未归类",
+      "sourceDeleted": "来源已删除"
+    },
+    "empty": {
+      "title": "还没有引用外部资料",
+      "description": "把其他知识空间的资料引用到本空间共享使用：资料仍归属原空间，内容进入本空间问答与检索。"
+    },
+    "add": {
+      "open": "添加引用",
+      "title": "引用外部资料",
+      "description": "选择一份资料引用到本空间：原归属不变、不重复入库。",
+      "loading": "正在加载可选资料…",
+      "loadFailed": "可选资料加载失败，请关闭后重试。",
+      "noCandidates": "暂无可引用的资料：资料库中没有归属其他空间或未归类的条目。",
+      "cancel": "取消",
+      "confirm": "引用",
+      "submitting": "正在添加…",
+      "failed": "添加引用未生效，请重试"
+    },
+    "remove": {
+      "label": "移除对《{{title}}》的引用",
+      "action": "移除",
+      "failed": "移除引用未生效，请重试"
+    }
+  },
   "learningPlan": {
     "loading": "正在加载学习计划…",
     "errorTitle": "学习计划加载失败",
@@ -473,6 +511,7 @@
         "overview": "概览",
         "chain": "学习链",
         "plan": "计划",
+        "shared": "共享资料",
         "records": "学习记录",
         "tests": "模拟测试",
         "map": "课程脑图",
@@ -1735,6 +1774,7 @@
       "libraryTag": "资料来源",
       "libraryFromTitle": "资料：{{title}}",
       "libraryEntry": "[{{index}}] {{quote}}（资料：{{title}}），点击查看资料来源",
+      "sharedSource": "共享来源",
       "researchSave": "保存为资料",
       "researchPending": "保存建议待确认",
       "researchAccept": "确认保存",
@@ -2143,6 +2183,27 @@
         "reject": "取消完成",
         "targetItem": "目标计划项",
         "hint": "完成只记录执行事实，不会直接提高概念掌握度。"
+      },
+      "sharedRefAdd": {
+        "accepted": "共享引用已添加。",
+        "rejected": "已取消，未添加共享引用。",
+        "failed": "添加共享引用未成功。",
+        "failedDetail": "添加共享引用未成功（{{reason}}），可重试。",
+        "accept": "确认添加共享引用",
+        "reject": "取消添加",
+        "targetCourse": "引用落点课程",
+        "targetItem": "被引用资料",
+        "hint": "资料内容将进入本课程问答检索（标注共享来源）；本课程对它只读，不能生成总结、知识点或习题。"
+      },
+      "sharedRefRemove": {
+        "accepted": "共享引用已移除。",
+        "rejected": "已取消，共享引用保留。",
+        "failed": "移除共享引用未成功。",
+        "failedDetail": "移除共享引用未成功（{{reason}}），可重试。",
+        "accept": "确认移除共享引用",
+        "reject": "取消移除",
+        "targetItem": "被移除引用的资料",
+        "hint": "移除只解除本课程的引用，原资料内容、归属与资产不受影响。"
       },
       "planRegenerate": {
         "accepted": "学习计划已重排为新版本（第 {{version}} 版 · {{count}} 项）。",
@@ -2817,6 +2878,10 @@
     "GOAL_ACTIVE_EXISTS": "该知识空间已有进行中的学习目标，请先完成或归档旧目标",
     "GOAL_NOT_ACTIVE": "目标已完结或归档，只有进行中的目标可以修改",
     "GOAL_NOT_FOUND": "学习目标不存在",
+    "SHARED_REF_ASSET_READ_ONLY": "共享来源引用只读：总结、知识点、习题等资产只能在资料原知识空间生成",
+    "SHARED_REF_DUPLICATE": "该资料已被本知识空间引用",
+    "SHARED_REF_ITEM_OWNED": "该资料已归属本知识空间，无需引用",
+    "SHARED_REF_NOT_FOUND": "共享引用不存在或已删除",
     "DOCUMENT_EMPTY": "文件不能为空",
     "DOCUMENT_FORMAT_UNSUPPORTED": "仅支持 TXT、MD、PDF 或 DOCX 文件",
     "EMPTY_BATCH": "至少选择一个来源",

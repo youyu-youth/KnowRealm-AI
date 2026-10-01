@@ -1186,6 +1186,63 @@ function PlanItemCompletePreviewFields({
   );
 }
 
+/** OP_SHARED_REF_ADD 确认卡预览：落点课程 + 被引用资料（快照）+ 只读边界提示。 */
+function SharedRefAddPreviewFields({
+  payload,
+  snapshot,
+  t,
+}: PreviewFieldsProps) {
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.sharedRefAdd.targetCourse")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {excerpt(fieldString(snapshot, "course_name") ?? "") ||
+            fieldString(payload, "course_id")}
+        </dd>
+      </div>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.sharedRefAdd.targetItem")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {excerpt(fieldString(snapshot, "item_title") ?? "") ||
+            fieldString(payload, "library_item_id")}
+        </dd>
+      </div>
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.sharedRefAdd.hint")}
+      </p>
+    </>
+  );
+}
+
+/** OP_SHARED_REF_REMOVE 确认卡预览：被移除引用的资料（快照）+ 原资料不动提示。 */
+function SharedRefRemovePreviewFields({
+  payload,
+  snapshot,
+  t,
+}: PreviewFieldsProps) {
+  return (
+    <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.sharedRefRemove.targetItem")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {excerpt(fieldString(snapshot, "item_title") ?? "") ||
+            fieldString(payload, "library_item_id")}
+        </dd>
+      </div>
+      <p className="text-label text-muted-foreground">
+        {t("chat.operationProposal.sharedRefRemove.hint")}
+      </p>
+    </>
+  );
+}
+
 /** OP_PLAN_CONFIRM 回执行：结果文案（版本 / 项数）+ 课程入口（计划 Tab 随工单 04）。 */
 function SettledPlanConfirmRow({ status, result, t }: SettledRowProps) {
   if (status !== "APPLIED") {
@@ -1393,6 +1450,28 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
     label: (key) => `chat.operationProposal.planRegenerate.${key}`,
     PreviewFields: PlanRegeneratePreviewFields,
     SettledRow: SettledPlanConfirmRow,
+  },
+  OP_SHARED_REF_ADD: {
+    label: (key) => `chat.operationProposal.sharedRefAdd.${key}`,
+    PreviewFields: SharedRefAddPreviewFields,
+    SettledRow: (props) => (
+      <SettledTextRow
+        {...props}
+        appliedTextKey="chat.operationProposal.sharedRefAdd.accepted"
+        rejectedTextKey="chat.operationProposal.sharedRefAdd.rejected"
+      />
+    ),
+  },
+  OP_SHARED_REF_REMOVE: {
+    label: (key) => `chat.operationProposal.sharedRefRemove.${key}`,
+    PreviewFields: SharedRefRemovePreviewFields,
+    SettledRow: (props) => (
+      <SettledTextRow
+        {...props}
+        appliedTextKey="chat.operationProposal.sharedRefRemove.accepted"
+        rejectedTextKey="chat.operationProposal.sharedRefRemove.rejected"
+      />
+    ),
   },
   OP_UNDO: {
     label: (key) => `chat.operationProposal.undo.${key}`,

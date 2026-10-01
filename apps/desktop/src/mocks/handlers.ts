@@ -17,6 +17,10 @@ const preferencesPayload = {
 export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
   http.get(`${TEST_SIDECAR_URL}/api/inbox`, () => HttpResponse.json([])),
+  // 共享引用清单（工单 05）：课程详情共享 Tab 的默认查询兜底（空清单）。
+  http.get(`${TEST_SIDECAR_URL}/api/courses/:courseId/shared-refs`, () =>
+    HttpResponse.json([]),
+  ),
   // Agent 授权档（工单 02）：聊天页右栏开关与直执行回执卡的默认查询兜底。
   http.get(`${TEST_SIDECAR_URL}/api/agent/auth-mode`, () =>
     HttpResponse.json({ auth_mode: "REQUEST_APPROVAL" }),

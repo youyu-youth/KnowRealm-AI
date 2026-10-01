@@ -5,6 +5,7 @@ import {
   Check,
   FileText,
   Globe,
+  Share2,
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -68,6 +69,14 @@ function CitationItem({ citation }: { citation: ChatCitation }) {
     ? (citation.title ?? null)
     : null;
   const isWeb = isWebCitation(citation);
+  // 共享来源标志（工单 05）：命中经共享引用覆盖的归属他空间资料。
+  const sharedTag =
+    citation.shared === true && !isWeb ? (
+      <span className="text-chat-accent ml-1 inline-flex items-center gap-0.5">
+        <Share2 className="size-3" aria-hidden="true" />
+        {t("chat.citation.sharedSource")}
+      </span>
+    ) : null;
 
   const main = isWeb ? (
     <>
@@ -89,6 +98,7 @@ function CitationItem({ citation }: { citation: ChatCitation }) {
         {libraryTitle
           ? t("chat.citation.libraryFromTitle", { title: libraryTitle })
           : t("chat.citation.libraryTag")}
+        {sharedTag}
       </span>
     </>
   ) : (
@@ -101,6 +111,7 @@ function CitationItem({ citation }: { citation: ChatCitation }) {
         {recordTitle
           ? t("chat.citation.recordFromTitle", { title: recordTitle })
           : t("chat.citation.recordTag")}
+        {sharedTag}
       </span>
     </>
   );

@@ -2,17 +2,12 @@
   "components": {
     "schemas": {
       "ActivityScope": {
-        "enum": [
-          "GLOBAL",
-          "SESSION"
-        ],
+        "enum": ["GLOBAL", "SESSION"],
         "title": "ActivityScope",
         "type": "string"
       },
       "ActivityType": {
-        "enum": [
-          "AUTH_MODE_SWITCH"
-        ],
+        "enum": ["AUTH_MODE_SWITCH"],
         "title": "ActivityType",
         "type": "string"
       },
@@ -70,9 +65,7 @@
             "$ref": "#/components/schemas/AuthMode"
           }
         },
-        "required": [
-          "auth_mode"
-        ],
+        "required": ["auth_mode"],
         "title": "AgentAuthModeOut",
         "type": "object"
       },
@@ -93,11 +86,7 @@
             "$ref": "#/components/schemas/AuthMode"
           }
         },
-        "required": [
-          "session_id",
-          "from_mode",
-          "to_mode"
-        ],
+        "required": ["session_id", "from_mode", "to_mode"],
         "title": "AgentAuthModeSessionSwitch",
         "type": "object"
       },
@@ -109,9 +98,7 @@
             "$ref": "#/components/schemas/AuthMode"
           }
         },
-        "required": [
-          "to_mode"
-        ],
+        "required": ["to_mode"],
         "title": "AgentAuthModeSwitch",
         "type": "object"
       },
@@ -739,9 +726,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "decisions"
-        ],
+        "required": ["decisions"],
         "title": "ApplyReviewRequest",
         "type": "object"
       },
@@ -760,21 +745,13 @@
             "type": "string"
           }
         },
-        "required": [
-          "record_id",
-          "transcode_job_id",
-          "asr_job_id"
-        ],
+        "required": ["record_id", "transcode_job_id", "asr_job_id"],
         "title": "AudioImportAccepted",
         "type": "object"
       },
       "AuthMode": {
         "description": "授权档位（ADR-0026；档位执行分流随 02 票落地，本票为授权事实的记录词汇）。",
-        "enum": [
-          "REQUEST_APPROVAL",
-          "AUTO_APPROVE",
-          "FULL_ACCESS"
-        ],
+        "enum": ["REQUEST_APPROVAL", "AUTO_APPROVE", "FULL_ACCESS"],
         "title": "AuthMode",
         "type": "string"
       },
@@ -801,10 +778,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "status",
-          "progress"
-        ],
+        "required": ["status", "progress"],
         "title": "BackfillStatusOut",
         "type": "object"
       },
@@ -830,12 +804,7 @@
             "$ref": "#/components/schemas/RecordingChunkTargetState"
           }
         },
-        "required": [
-          "file",
-          "sequence_no",
-          "duration_ms",
-          "target_state"
-        ],
+        "required": ["file", "sequence_no", "duration_ms", "target_state"],
         "title": "Body_append_recording_chunk_api_recording_sessions__recording_session_id__chunks_post",
         "type": "object"
       },
@@ -904,9 +873,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_import_audio_api_audio_imports_post",
         "type": "object"
       },
@@ -930,9 +897,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_import_document_api_document_imports_post",
         "type": "object"
       },
@@ -961,9 +926,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_ingest_library_file_api_library_ingest_file_post",
         "type": "object"
       },
@@ -975,9 +938,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "title": "BrainBuildAcceptedOut",
         "type": "object"
       },
@@ -1014,9 +975,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "BrainConceptCreate",
         "type": "object"
       },
@@ -1319,10 +1278,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "nodes",
-          "edges"
-        ],
+        "required": ["nodes", "edges"],
         "title": "BrainGraphOut",
         "type": "object"
       },
@@ -1402,11 +1358,7 @@
         "type": "object"
       },
       "BrainRelationStatus": {
-        "enum": [
-          "CANDIDATE",
-          "CONFIRMED",
-          "DISMISSED"
-        ],
+        "enum": ["CANDIDATE", "CONFIRMED", "DISMISSED"],
         "title": "BrainRelationStatus",
         "type": "string"
       },
@@ -1475,14 +1427,7 @@
         "type": "object"
       },
       "BrainStatus": {
-        "enum": [
-          "EMPTY",
-          "BUILDING",
-          "REVIEW",
-          "READY",
-          "STALE",
-          "FAILED"
-        ],
+        "enum": ["EMPTY", "BUILDING", "REVIEW", "READY", "STALE", "FAILED"],
         "title": "BrainStatus",
         "type": "string"
       },
@@ -1500,10 +1445,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "record_id",
-          "job_ids"
-        ],
+        "required": ["record_id", "job_ids"],
         "title": "CaptureBatchAccepted",
         "type": "object"
       },
@@ -1591,14 +1533,22 @@
             "description": "被引用记录的标题快照（跨记录引用），历史行为空",
             "title": "Record Title"
           },
+          "shared": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "共享来源标志（工单 05）：命中经共享引用覆盖的归属他空间资料时为 true，前端展示「共享来源」徽章；历史行与本地资料为空",
+            "title": "Shared"
+          },
           "source": {
             "default": "record",
             "description": "来源类型",
-            "enum": [
-              "record",
-              "web",
-              "library"
-            ],
+            "enum": ["record", "web", "library"],
             "title": "Source",
             "type": "string"
           },
@@ -1627,9 +1577,7 @@
             "title": "Url"
           }
         },
-        "required": [
-          "index"
-        ],
+        "required": ["index"],
         "title": "ChatCitationOut",
         "type": "object"
       },
@@ -1722,9 +1670,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "content"
-        ],
+        "required": ["content"],
         "title": "ChatMessageCreate",
         "type": "object"
       },
@@ -1774,12 +1720,7 @@
             "$ref": "#/components/schemas/ChatRole"
           }
         },
-        "required": [
-          "id",
-          "role",
-          "content",
-          "created_at"
-        ],
+        "required": ["id", "role", "content", "created_at"],
         "title": "ChatMessageOut",
         "type": "object"
       },
@@ -1819,13 +1760,7 @@
           },
           "page_type": {
             "description": "发送消息时所在页面类型",
-            "enum": [
-              "chat",
-              "course",
-              "record",
-              "library",
-              "inbox"
-            ],
+            "enum": ["chat", "course", "record", "library", "inbox"],
             "title": "Page Type",
             "type": "string"
           },
@@ -1843,10 +1778,7 @@
             "title": "Selected Id"
           }
         },
-        "required": [
-          "page_type",
-          "captured_at"
-        ],
+        "required": ["page_type", "captured_at"],
         "title": "ChatPageSnapshot",
         "type": "object"
       },
@@ -1880,34 +1812,18 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title",
-          "course_id",
-          "has_transcript"
-        ],
+        "required": ["id", "title", "course_id", "has_transcript"],
         "title": "ChatRecordOption",
         "type": "object"
       },
       "ChatRole": {
-        "enum": [
-          "USER",
-          "ASSISTANT",
-          "SYSTEM",
-          "TOOL"
-        ],
+        "enum": ["USER", "ASSISTANT", "SYSTEM", "TOOL"],
         "title": "ChatRole",
         "type": "string"
       },
       "ChatScope": {
         "description": "会话挂载范围（工单 04 起五档，ADR-0024）：FREE 自由 / RECORD 单记录 /\nLIBRARY_ITEM 单资料 / COURSE 课程 / ALL 全部资料。\n\nchat 与 library 两域的共享契约（LIBRARY_ITEM/COURSE/ALL 的检索边界由\nLibraryRetrievalService 解释），故落 library 域定义、agent 域 re-export\n消费（法定方向 agent→library，避免模块环）。与 mode 轴正交（mode 恒 ASK）；\n范围会话内不可变；LIBRARY_ITEM 仅由资料详情「AI 解读」入口创建、不进\n全局范围切换。",
-        "enum": [
-          "FREE",
-          "RECORD",
-          "LIBRARY_ITEM",
-          "COURSE",
-          "ALL"
-        ],
+        "enum": ["FREE", "RECORD", "LIBRARY_ITEM", "COURSE", "ALL"],
         "title": "ChatScope",
         "type": "string"
       },
@@ -1956,10 +1872,7 @@
           "mode": {
             "default": "ASK",
             "description": "会话模式（研究会话 V1 起放开 RESEARCH）",
-            "enum": [
-              "ASK",
-              "RESEARCH"
-            ],
+            "enum": ["ASK", "RESEARCH"],
             "title": "Mode",
             "type": "string"
           },
@@ -2080,12 +1993,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "mode",
-          "created_at",
-          "updated_at"
-        ],
+        "required": ["id", "mode", "created_at", "updated_at"],
         "title": "ChatSessionOut",
         "type": "object"
       },
@@ -2100,9 +2008,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "title"
-        ],
+        "required": ["title"],
         "title": "ChatSessionRename",
         "type": "object"
       },
@@ -2216,11 +2122,7 @@
             "title": "Start Ms"
           }
         },
-        "required": [
-          "anchor_id",
-          "source_type",
-          "relation_type"
-        ],
+        "required": ["anchor_id", "source_type", "relation_type"],
         "title": "ConceptAnchorSourceOut",
         "type": "object"
       },
@@ -2283,11 +2185,7 @@
             "description": "掌握度快照（口径与课程列表一致）"
           }
         },
-        "required": [
-          "snapshot",
-          "algorithm_version",
-          "evidences"
-        ],
+        "required": ["snapshot", "algorithm_version", "evidences"],
         "title": "ConceptMasteryDetailOut",
         "type": "object"
       },
@@ -2392,11 +2290,7 @@
         "type": "object"
       },
       "ConceptSource": {
-        "enum": [
-          "AI_EXTRACTED",
-          "USER_CONFIRMED",
-          "SYSTEM"
-        ],
+        "enum": ["AI_EXTRACTED", "USER_CONFIRMED", "SYSTEM"],
         "title": "ConceptSource",
         "type": "string"
       },
@@ -2421,20 +2315,12 @@
             "type": "array"
           }
         },
-        "required": [
-          "concept_id",
-          "anchors",
-          "knowledge_points"
-        ],
+        "required": ["concept_id", "anchors", "knowledge_points"],
         "title": "ConceptSourcesOut",
         "type": "object"
       },
       "ConceptStatus": {
-        "enum": [
-          "CANDIDATE",
-          "CONFIRMED",
-          "ARCHIVED"
-        ],
+        "enum": ["CANDIDATE", "CONFIRMED", "ARCHIVED"],
         "title": "ConceptStatus",
         "type": "string"
       },
@@ -2466,10 +2352,7 @@
             "title": "New Name"
           }
         },
-        "required": [
-          "decision_type",
-          "concept_id"
-        ],
+        "required": ["decision_type", "concept_id"],
         "title": "ConfirmDecision",
         "type": "object"
       },
@@ -2488,10 +2371,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "decision_type",
-          "relation_id"
-        ],
+        "required": ["decision_type", "relation_id"],
         "title": "ConfirmRelationDecision",
         "type": "object"
       },
@@ -2554,10 +2434,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name",
-          "learning_context"
-        ],
+        "required": ["name", "learning_context"],
         "title": "CourseCreate",
         "type": "object"
       },
@@ -2776,19 +2653,12 @@
         "type": "object"
       },
       "CourseStatus": {
-        "enum": [
-          "ACTIVE",
-          "ARCHIVED"
-        ],
+        "enum": ["ACTIVE", "ARCHIVED"],
         "title": "CourseStatus",
         "type": "string"
       },
       "CourseType": {
-        "enum": [
-          "MAJOR",
-          "GENERAL",
-          "ELECTIVE"
-        ],
+        "enum": ["MAJOR", "GENERAL", "ELECTIVE"],
         "title": "CourseType",
         "type": "string"
       },
@@ -2891,9 +2761,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file_name"
-        ],
+        "required": ["file_name"],
         "title": "DataDirectoryExportOut",
         "type": "object"
       },
@@ -2918,9 +2786,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "empty_library"
-        ],
+        "required": ["empty_library"],
         "title": "DataDirectoryLibraryStateOut",
         "type": "object"
       },
@@ -2975,10 +2841,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "decision_type",
-          "concept_id"
-        ],
+        "required": ["decision_type", "concept_id"],
         "title": "DismissDecision",
         "type": "object"
       },
@@ -2997,10 +2860,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "decision_type",
-          "relation_id"
-        ],
+        "required": ["decision_type", "relation_id"],
         "title": "DismissRelationDecision",
         "type": "object"
       },
@@ -3015,10 +2875,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "record_id",
-          "job_id"
-        ],
+        "required": ["record_id", "job_id"],
         "title": "DocumentImportAccepted",
         "type": "object"
       },
@@ -3138,10 +2995,7 @@
             "title": "Params"
           }
         },
-        "required": [
-          "detail",
-          "code"
-        ],
+        "required": ["detail", "code"],
         "title": "ErrorResponse",
         "type": "object"
       },
@@ -3159,9 +3013,7 @@
             "title": "Granted At"
           }
         },
-        "required": [
-          "granted_at"
-        ],
+        "required": ["granted_at"],
         "title": "ExternalProcessingConsentOut",
         "type": "object"
       },
@@ -3222,10 +3074,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "goal_type",
-          "title"
-        ],
+        "required": ["goal_type", "title"],
         "title": "GoalCreate",
         "type": "object"
       },
@@ -3318,31 +3167,17 @@
       },
       "GoalScopeSource": {
         "description": "目标范围来源（spec 决策：AI_INFERRED 必须用户确认才生效）。",
-        "enum": [
-          "USER_CONFIRMED",
-          "COURSE_SELECTION",
-          "AI_INFERRED"
-        ],
+        "enum": ["USER_CONFIRMED", "COURSE_SELECTION", "AI_INFERRED"],
         "title": "GoalScopeSource",
         "type": "string"
       },
       "GoalStatus": {
-        "enum": [
-          "ACTIVE",
-          "COMPLETED",
-          "ARCHIVED"
-        ],
+        "enum": ["ACTIVE", "COMPLETED", "ARCHIVED"],
         "title": "GoalStatus",
         "type": "string"
       },
       "GoalType": {
-        "enum": [
-          "SKILL",
-          "EXAM",
-          "PROJECT",
-          "READING",
-          "CUSTOM"
-        ],
+        "enum": ["SKILL", "EXAM", "PROJECT", "READING", "CUSTOM"],
         "title": "GoalType",
         "type": "string"
       },
@@ -3498,12 +3333,7 @@
         "type": "object"
       },
       "KnowledgePointAction": {
-        "enum": [
-          "NONE",
-          "GENERATE",
-          "CONFIRM",
-          "RETRY"
-        ],
+        "enum": ["NONE", "GENERATE", "CONFIRM", "RETRY"],
         "title": "KnowledgePointAction",
         "type": "string"
       },
@@ -3528,26 +3358,17 @@
             "type": "string"
           }
         },
-        "required": [
-          "chat_session_id"
-        ],
+        "required": ["chat_session_id"],
         "title": "KnowledgePointChatSourceOut",
         "type": "object"
       },
       "KnowledgePointGenerationStatus": {
-        "enum": [
-          "DRAFT",
-          "ACTIVE",
-          "SUPERSEDED"
-        ],
+        "enum": ["DRAFT", "ACTIVE", "SUPERSEDED"],
         "title": "KnowledgePointGenerationStatus",
         "type": "string"
       },
       "KnowledgePointInputMode": {
-        "enum": [
-          "FULL_TRANSCRIPT",
-          "SUMMARY_ONLY"
-        ],
+        "enum": ["FULL_TRANSCRIPT", "SUMMARY_ONLY"],
         "title": "KnowledgePointInputMode",
         "type": "string"
       },
@@ -3558,9 +3379,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "title": "KnowledgePointJobAccepted",
         "type": "object"
       },
@@ -3698,10 +3517,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "items",
-          "action_required"
-        ],
+        "required": ["items", "action_required"],
         "title": "KnowledgePointReadOut",
         "type": "object"
       },
@@ -3740,12 +3556,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "name",
-          "detail",
-          "tags",
-          "importance"
-        ],
+        "required": ["name", "detail", "tags", "importance"],
         "title": "KnowledgePointWriteRequest",
         "type": "object"
       },
@@ -3833,27 +3644,17 @@
             "type": "array"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "LearnerPreferenceUpdate",
         "type": "object"
       },
       "LearningContext": {
-        "enum": [
-          "SCHOOL",
-          "CAREER",
-          "INTEREST"
-        ],
+        "enum": ["SCHOOL", "CAREER", "INTEREST"],
         "title": "LearningContext",
         "type": "string"
       },
       "LearningDepth": {
-        "enum": [
-          "BEGINNER",
-          "INTERMEDIATE",
-          "ADVANCED"
-        ],
+        "enum": ["BEGINNER", "INTERMEDIATE", "ADVANCED"],
         "title": "LearningDepth",
         "type": "string"
       },
@@ -3942,12 +3743,7 @@
       },
       "LibraryAvailability": {
         "description": "派生可用性（02 口径，04 检索服务落地后复核）：\n\nPROCESSING=关联记录有未终态的解析/转写/ASR 任务；FAILED=解析链终态失败且\n无分片；RETRIEVABLE=有关联分片（TEXT 条目转写正文亦可经子串兜底检索）；\nEMPTY=尚无可检索内容。",
-        "enum": [
-          "PROCESSING",
-          "RETRIEVABLE",
-          "FAILED",
-          "EMPTY"
-        ],
+        "enum": ["PROCESSING", "RETRIEVABLE", "FAILED", "EMPTY"],
         "title": "LibraryAvailability",
         "type": "string"
       },
@@ -3968,9 +3764,7 @@
             ]
           }
         },
-        "required": [
-          "item"
-        ],
+        "required": ["item"],
         "title": "LibraryIngestAccepted",
         "type": "object"
       },
@@ -4042,17 +3836,12 @@
             "title": "Url"
           }
         },
-        "required": [
-          "source"
-        ],
+        "required": ["source"],
         "title": "LibraryIngestRequest",
         "type": "object"
       },
       "LibraryIngestSource": {
-        "enum": [
-          "web",
-          "text"
-        ],
+        "enum": ["web", "text"],
         "title": "LibraryIngestSource",
         "type": "string"
       },
@@ -4067,10 +3856,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "content",
-          "truncated"
-        ],
+        "required": ["content", "truncated"],
         "title": "LibraryItemContentOut",
         "type": "object"
       },
@@ -4278,10 +4064,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "items",
-          "total"
-        ],
+        "required": ["items", "total"],
         "title": "LibraryItemListOut",
         "type": "object"
       },
@@ -4573,13 +4356,7 @@
         "type": "string"
       },
       "LibrarySourceType": {
-        "enum": [
-          "AUDIO",
-          "DOCUMENT",
-          "WEB",
-          "BOOK",
-          "TEXT"
-        ],
+        "enum": ["AUDIO", "DOCUMENT", "WEB", "BOOK", "TEXT"],
         "title": "LibrarySourceType",
         "type": "string"
       },
@@ -4601,10 +4378,7 @@
             "title": "Granted At"
           }
         },
-        "required": [
-          "granted_at",
-          "current"
-        ],
+        "required": ["granted_at", "current"],
         "title": "LlmConsentOut",
         "type": "object"
       },
@@ -4634,12 +4408,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "base_url",
-          "model",
-          "has_api_key",
-          "api_key_hint"
-        ],
+        "required": ["base_url", "model", "has_api_key", "api_key_hint"],
         "title": "LlmProviderOut",
         "type": "object"
       },
@@ -4656,9 +4425,7 @@
             ]
           }
         },
-        "required": [
-          "provider"
-        ],
+        "required": ["provider"],
         "title": "LlmProviderStateOut",
         "type": "object"
       },
@@ -4673,10 +4440,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "ok",
-          "model"
-        ],
+        "required": ["ok", "model"],
         "title": "LlmProviderTestOut",
         "type": "object"
       },
@@ -4706,10 +4470,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "base_url",
-          "model"
-        ],
+        "required": ["base_url", "model"],
         "title": "LlmProviderUpdate",
         "type": "object"
       },
@@ -4728,11 +4489,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "date",
-          "total_tokens",
-          "call_count"
-        ],
+        "required": ["date", "total_tokens", "call_count"],
         "title": "LlmUsageDailyPointOut",
         "type": "object"
       },
@@ -4791,19 +4548,12 @@
             "type": "array"
           }
         },
-        "required": [
-          "items",
-          "daily"
-        ],
+        "required": ["items", "daily"],
         "title": "LlmUsageOut",
         "type": "object"
       },
       "MasteryConfidence": {
-        "enum": [
-          "LOW",
-          "MEDIUM",
-          "HIGH"
-        ],
+        "enum": ["LOW", "MEDIUM", "HIGH"],
         "title": "MasteryConfidence",
         "type": "string"
       },
@@ -4860,12 +4610,7 @@
             "title": "Source"
           }
         },
-        "required": [
-          "evidence_id",
-          "score",
-          "result",
-          "occurred_at"
-        ],
+        "required": ["evidence_id", "score", "result", "occurred_at"],
         "title": "MasteryEvidenceOut",
         "type": "object"
       },
@@ -4891,22 +4636,13 @@
             "type": "string"
           }
         },
-        "required": [
-          "record_id",
-          "record_title",
-          "quiz_id"
-        ],
+        "required": ["record_id", "record_title", "quiz_id"],
         "title": "MasteryQuizSourceOut",
         "type": "object"
       },
       "MasteryStatus": {
         "description": "V1 四态：AT_RISK / MISCONCEPTION_RISK 留给 Forgetting 与 Misconception。",
-        "enum": [
-          "NOT_ENOUGH_DATA",
-          "WEAK",
-          "LEARNING",
-          "STABLE"
-        ],
+        "enum": ["NOT_ENOUGH_DATA", "WEAK", "LEARNING", "STABLE"],
         "title": "MasteryStatus",
         "type": "string"
       },
@@ -4929,12 +4665,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "not_enough_data",
-          "weak",
-          "learning",
-          "stable"
-        ],
+        "required": ["not_enough_data", "weak", "learning", "stable"],
         "title": "MasteryStatusCountsOut",
         "type": "object"
       },
@@ -4963,9 +4694,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "test_id"
-        ],
+        "required": ["test_id"],
         "title": "MasteryTestSourceOut",
         "type": "object"
       },
@@ -4992,11 +4721,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "enabled",
-          "consent_granted_at",
-          "consent_current"
-        ],
+        "required": ["enabled", "consent_granted_at", "consent_current"],
         "title": "MemoryOutboundOut",
         "type": "object"
       },
@@ -5008,9 +4733,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "enabled"
-        ],
+        "required": ["enabled"],
         "title": "MemoryOutboundUpdate",
         "type": "object"
       },
@@ -5035,22 +4758,12 @@
             "type": "string"
           }
         },
-        "required": [
-          "decision_type",
-          "concept_id",
-          "target_concept_id"
-        ],
+        "required": ["decision_type", "concept_id", "target_concept_id"],
         "title": "MergeDecision",
         "type": "object"
       },
       "OperationStatus": {
-        "enum": [
-          "PLANNED",
-          "SUCCEEDED",
-          "FAILED",
-          "SKIPPED",
-          "CANCELLED"
-        ],
+        "enum": ["PLANNED", "SUCCEEDED", "FAILED", "SKIPPED", "CANCELLED"],
         "title": "OperationStatus",
         "type": "string"
       },
@@ -5069,10 +4782,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "content_hash",
-          "items"
-        ],
+        "required": ["content_hash", "items"],
         "title": "OrganizeDuplicateGroup",
         "type": "object"
       },
@@ -5095,9 +4805,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "created"
-        ],
+        "required": ["created"],
         "title": "OrganizeProposeOut",
         "type": "object"
       },
@@ -5126,11 +4834,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "duplicates",
-          "failed_items",
-          "unclassified"
-        ],
+        "required": ["duplicates", "failed_items", "unclassified"],
         "title": "OrganizeScanOut",
         "type": "object"
       },
@@ -5240,22 +4944,13 @@
       },
       "PlanItemStatus": {
         "description": "计划项状态：PENDING 待执行 / DONE 已完成 / SKIPPED 已跳过。\n\n完成不产 learning_event、不直接动 Concept Mastery（spec「完成语义边界」）；\n学习时长统计由 completed_at 时间戳单独承载。",
-        "enum": [
-          "PENDING",
-          "DONE",
-          "SKIPPED"
-        ],
+        "enum": ["PENDING", "DONE", "SKIPPED"],
         "title": "PlanItemStatus",
         "type": "string"
       },
       "PlanItemType": {
         "description": "计划项动作四类（spec 领域模型定稿）：学习资料 / 做习题 / 复习概念 / 自由任务。",
-        "enum": [
-          "STUDY_RECORD",
-          "PRACTICE_QUIZ",
-          "REVIEW_CONCEPT",
-          "CUSTOM"
-        ],
+        "enum": ["STUDY_RECORD", "PRACTICE_QUIZ", "REVIEW_CONCEPT", "CUSTOM"],
         "title": "PlanItemType",
         "type": "string"
       },
@@ -5368,11 +5063,7 @@
         "type": "object"
       },
       "PlanStatus": {
-        "enum": [
-          "ACTIVE",
-          "SUPERSEDED",
-          "COMPLETED"
-        ],
+        "enum": ["ACTIVE", "SUPERSEDED", "COMPLETED"],
         "title": "PlanStatus",
         "type": "string"
       },
@@ -5439,27 +5130,17 @@
             "type": "boolean"
           },
           "close_behavior": {
-            "enum": [
-              "TRAY",
-              "EXIT"
-            ],
+            "enum": ["TRAY", "EXIT"],
             "title": "Close Behavior",
             "type": "string"
           },
           "font_scale": {
-            "enum": [
-              "S",
-              "M",
-              "L"
-            ],
+            "enum": ["S", "M", "L"],
             "title": "Font Scale",
             "type": "string"
           },
           "language": {
-            "enum": [
-              "zh",
-              "en"
-            ],
+            "enum": ["zh", "en"],
             "title": "Language",
             "type": "string"
           },
@@ -5483,11 +5164,7 @@
             "type": "integer"
           },
           "theme": {
-            "enum": [
-              "LIGHT",
-              "DARK",
-              "SYSTEM"
-            ],
+            "enum": ["LIGHT", "DARK", "SYSTEM"],
             "title": "Theme",
             "type": "string"
           },
@@ -5535,10 +5212,7 @@
           "close_behavior": {
             "anyOf": [
               {
-                "enum": [
-                  "TRAY",
-                  "EXIT"
-                ],
+                "enum": ["TRAY", "EXIT"],
                 "type": "string"
               },
               {
@@ -5551,11 +5225,7 @@
           "font_scale": {
             "anyOf": [
               {
-                "enum": [
-                  "S",
-                  "M",
-                  "L"
-                ],
+                "enum": ["S", "M", "L"],
                 "type": "string"
               },
               {
@@ -5568,10 +5238,7 @@
           "language": {
             "anyOf": [
               {
-                "enum": [
-                  "zh",
-                  "en"
-                ],
+                "enum": ["zh", "en"],
                 "type": "string"
               },
               {
@@ -5608,11 +5275,7 @@
           "quiz_last_count": {
             "anyOf": [
               {
-                "enum": [
-                  3,
-                  5,
-                  10
-                ],
+                "enum": [3, 5, 10],
                 "type": "integer"
               },
               {
@@ -5625,11 +5288,7 @@
           "theme": {
             "anyOf": [
               {
-                "enum": [
-                  "LIGHT",
-                  "DARK",
-                  "SYSTEM"
-                ],
+                "enum": ["LIGHT", "DARK", "SYSTEM"],
                 "type": "string"
               },
               {
@@ -5656,12 +5315,7 @@
         "type": "object"
       },
       "PrimaryRole": {
-        "enum": [
-          "STUDENT",
-          "DEVELOPER",
-          "OFFICE_WORKER",
-          "OTHER"
-        ],
+        "enum": ["STUDENT", "DEVELOPER", "OFFICE_WORKER", "OTHER"],
         "title": "PrimaryRole",
         "type": "string"
       },
@@ -5798,20 +5452,12 @@
             "type": "string"
           }
         },
-        "required": [
-          "record_id"
-        ],
+        "required": ["record_id"],
         "title": "ProcessingJobRetryRequest",
         "type": "object"
       },
       "ProcessingJobStatus": {
-        "enum": [
-          "PENDING",
-          "RUNNING",
-          "SUCCEEDED",
-          "FAILED",
-          "CANCELLED"
-        ],
+        "enum": ["PENDING", "RUNNING", "SUCCEEDED", "FAILED", "CANCELLED"],
         "title": "ProcessingJobStatus",
         "type": "string"
       },
@@ -5836,11 +5482,7 @@
         "type": "string"
       },
       "ProcessingJobWaitingReason": {
-        "enum": [
-          "CONSENT_REQUIRED",
-          "ASR_KEY_REQUIRED",
-          "OFFLINE"
-        ],
+        "enum": ["CONSENT_REQUIRED", "ASR_KEY_REQUIRED", "OFFLINE"],
         "title": "ProcessingJobWaitingReason",
         "type": "string"
       },
@@ -5919,9 +5561,7 @@
             "description": "角色四选一"
           }
         },
-        "required": [
-          "primary_role"
-        ],
+        "required": ["primary_role"],
         "title": "ProfileUpdate",
         "type": "object"
       },
@@ -5936,9 +5576,7 @@
             "type": "object"
           }
         },
-        "required": [
-          "payload"
-        ],
+        "required": ["payload"],
         "title": "ProposalConfirmBody",
         "type": "object"
       },
@@ -5998,20 +5636,12 @@
             "title": "Target Type"
           }
         },
-        "required": [
-          "proposal_type",
-          "payload"
-        ],
+        "required": ["proposal_type", "payload"],
         "title": "ProposalCreateRequest",
         "type": "object"
       },
       "ProposalStatus": {
-        "enum": [
-          "PENDING",
-          "APPLIED",
-          "REJECTED",
-          "FAILED"
-        ],
+        "enum": ["PENDING", "APPLIED", "REJECTED", "FAILED"],
         "title": "ProposalStatus",
         "type": "string"
       },
@@ -6038,7 +5668,9 @@
           "OP_PLAN_CONFIRM",
           "OP_PLAN_ITEM_UPDATE",
           "OP_PLAN_ITEM_COMPLETE",
-          "OP_PLAN_REGENERATE"
+          "OP_PLAN_REGENERATE",
+          "OP_SHARED_REF_ADD",
+          "OP_SHARED_REF_REMOVE"
         ],
         "title": "ProposalType",
         "type": "string"
@@ -6054,28 +5686,17 @@
             "type": "integer"
           }
         },
-        "required": [
-          "runs_deleted",
-          "operations_deleted"
-        ],
+        "required": ["runs_deleted", "operations_deleted"],
         "title": "PurgeResultOut",
         "type": "object"
       },
       "QuizAction": {
-        "enum": [
-          "NONE",
-          "GENERATE",
-          "ADOPT",
-          "RETRY"
-        ],
+        "enum": ["NONE", "GENERATE", "ADOPT", "RETRY"],
         "title": "QuizAction",
         "type": "string"
       },
       "QuizAnswerResult": {
-        "enum": [
-          "CORRECT",
-          "WRONG"
-        ],
+        "enum": ["CORRECT", "WRONG"],
         "title": "QuizAnswerResult",
         "type": "string"
       },
@@ -6118,19 +5739,12 @@
             "type": "string"
           }
         },
-        "required": [
-          "detail",
-          "blocked_reason"
-        ],
+        "required": ["detail", "blocked_reason"],
         "title": "QuizConflictResponse",
         "type": "object"
       },
       "QuizDifficulty": {
-        "enum": [
-          "EASY",
-          "MEDIUM",
-          "HARD"
-        ],
+        "enum": ["EASY", "MEDIUM", "HARD"],
         "title": "QuizDifficulty",
         "type": "string"
       },
@@ -6147,28 +5761,17 @@
           },
           "total_count": {
             "description": "总题数档位",
-            "enum": [
-              3,
-              5,
-              10
-            ],
+            "enum": [3, 5, 10],
             "title": "Total Count",
             "type": "integer"
           }
         },
-        "required": [
-          "question_types",
-          "total_count"
-        ],
+        "required": ["question_types", "total_count"],
         "title": "QuizGenerateRequest",
         "type": "object"
       },
       "QuizGenerationStatus": {
-        "enum": [
-          "DRAFT",
-          "ACTIVE",
-          "SUPERSEDED"
-        ],
+        "enum": ["DRAFT", "ACTIVE", "SUPERSEDED"],
         "title": "QuizGenerationStatus",
         "type": "string"
       },
@@ -6179,9 +5782,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "title": "QuizJobAccepted",
         "type": "object"
       },
@@ -6209,9 +5810,7 @@
             "title": "Answer"
           }
         },
-        "required": [
-          "answer"
-        ],
+        "required": ["answer"],
         "title": "QuizObjectiveAnswerRequest",
         "type": "object"
       },
@@ -6462,10 +6061,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "items",
-          "action_required"
-        ],
+        "required": ["items", "action_required"],
         "title": "QuizReadOut",
         "type": "object"
       },
@@ -6475,9 +6071,7 @@
             "$ref": "#/components/schemas/QuizAnswerResult"
           }
         },
-        "required": [
-          "result"
-        ],
+        "required": ["result"],
         "title": "QuizSelfAssessmentRequest",
         "type": "object"
       },
@@ -6491,9 +6085,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "answer"
-        ],
+        "required": ["answer"],
         "title": "QuizShortAnswerRequest",
         "type": "object"
       },
@@ -6595,18 +6187,12 @@
             "type": "string"
           }
         },
-        "required": [
-          "item_id",
-          "answer"
-        ],
+        "required": ["item_id", "answer"],
         "title": "QuizTestAnswerRequest",
         "type": "object"
       },
       "QuizTestBlockedReason": {
-        "enum": [
-          "COURSE_ARCHIVED",
-          "NO_AVAILABLE_QUIZZES"
-        ],
+        "enum": ["COURSE_ARCHIVED", "NO_AVAILABLE_QUIZZES"],
         "title": "QuizTestBlockedReason",
         "type": "string"
       },
@@ -6620,10 +6206,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "detail",
-          "blocked_reason"
-        ],
+        "required": ["detail", "blocked_reason"],
         "title": "QuizTestConflictOut",
         "type": "object"
       },
@@ -6645,12 +6228,7 @@
             "$ref": "#/components/schemas/QuizTestSummaryOut"
           }
         },
-        "required": [
-          "test",
-          "requested_count",
-          "selected_count",
-          "shortage"
-        ],
+        "required": ["test", "requested_count", "selected_count", "shortage"],
         "title": "QuizTestCreateOut",
         "type": "object"
       },
@@ -6666,19 +6244,12 @@
             "type": "array"
           },
           "total_count": {
-            "enum": [
-              5,
-              10,
-              20
-            ],
+            "enum": [5, 10, 20],
             "title": "Total Count",
             "type": "integer"
           }
         },
-        "required": [
-          "question_types",
-          "total_count"
-        ],
+        "required": ["question_types", "total_count"],
         "title": "QuizTestCreateRequest",
         "type": "object"
       },
@@ -6954,11 +6525,7 @@
         "type": "object"
       },
       "QuizTestItemResult": {
-        "enum": [
-          "CORRECT",
-          "WRONG",
-          "PARTIAL"
-        ],
+        "enum": ["CORRECT", "WRONG", "PARTIAL"],
         "title": "QuizTestItemResult",
         "type": "string"
       },
@@ -6982,17 +6549,12 @@
             "type": "array"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "QuizTestListOut",
         "type": "object"
       },
       "QuizTestMode": {
-        "enum": [
-          "MOCK",
-          "ADAPTIVE"
-        ],
+        "enum": ["MOCK", "ADAPTIVE"],
         "title": "QuizTestMode",
         "type": "string"
       },
@@ -7095,9 +6657,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "course_id"
-        ],
+        "required": ["course_id"],
         "title": "RecordClassificationRequest",
         "type": "object"
       },
@@ -7115,10 +6675,7 @@
             "type": "number"
           }
         },
-        "required": [
-          "jobs",
-          "progress"
-        ],
+        "required": ["jobs", "progress"],
         "title": "RecordJobsOut",
         "type": "object"
       },
@@ -7130,9 +6687,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "target_course_id"
-        ],
+        "required": ["target_course_id"],
         "title": "RecordMoveRequest",
         "type": "object"
       },
@@ -7232,10 +6787,7 @@
             "title": "Summary Job Id"
           }
         },
-        "required": [
-          "record",
-          "summary_job_id"
-        ],
+        "required": ["record", "summary_job_id"],
         "title": "RecordUpgradeAccepted",
         "type": "object"
       },
@@ -7278,21 +6830,12 @@
             "$ref": "#/components/schemas/RecordingSessionOut"
           }
         },
-        "required": [
-          "session",
-          "sequence_no",
-          "content_hash",
-          "can_continue"
-        ],
+        "required": ["session", "sequence_no", "content_hash", "can_continue"],
         "title": "RecordingChunkAccepted",
         "type": "object"
       },
       "RecordingChunkTargetState": {
-        "enum": [
-          "RECORDING",
-          "PAUSED",
-          "FINALIZING"
-        ],
+        "enum": ["RECORDING", "PAUSED", "FINALIZING"],
         "title": "RecordingChunkTargetState",
         "type": "string"
       },
@@ -7381,20 +6924,12 @@
         "type": "object"
       },
       "RecordingSessionState": {
-        "enum": [
-          "RECORDING",
-          "PAUSED",
-          "FINALIZING",
-          "DONE"
-        ],
+        "enum": ["RECORDING", "PAUSED", "FINALIZING", "DONE"],
         "title": "RecordingSessionState",
         "type": "string"
       },
       "RecordingSessionTargetState": {
-        "enum": [
-          "RECORDING",
-          "FINALIZING"
-        ],
+        "enum": ["RECORDING", "FINALIZING"],
         "title": "RecordingSessionTargetState",
         "type": "string"
       },
@@ -7404,9 +6939,7 @@
             "$ref": "#/components/schemas/RecordingSessionTargetState"
           }
         },
-        "required": [
-          "target_state"
-        ],
+        "required": ["target_state"],
         "title": "RecordingSessionUpdate",
         "type": "object"
       },
@@ -7431,9 +6964,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "feedback"
-        ],
+        "required": ["feedback"],
         "title": "ReviewMaterialAdjustRequest",
         "type": "object"
       },
@@ -7474,11 +7005,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "quick_review",
-          "key_list",
-          "mind_map_markdown"
-        ],
+        "required": ["quick_review", "key_list", "mind_map_markdown"],
         "title": "ReviewMaterialContent",
         "type": "object"
       },
@@ -7489,9 +7016,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "title": "ReviewMaterialJobAccepted",
         "type": "object"
       },
@@ -7625,19 +7150,12 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "review_material",
-          "action_required"
-        ],
+        "required": ["review_material", "action_required"],
         "title": "ReviewMaterialReadOut",
         "type": "object"
       },
       "ReviewMaterialStatus": {
-        "enum": [
-          "GENERATED",
-          "CONFIRMED",
-          "SUPERSEDED"
-        ],
+        "enum": ["GENERATED", "CONFIRMED", "SUPERSEDED"],
         "title": "ReviewMaterialStatus",
         "type": "string"
       },
@@ -7693,11 +7211,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "operation_id",
-          "action",
-          "status"
-        ],
+        "required": ["operation_id", "action", "status"],
         "title": "RunUndoItemOut",
         "type": "object"
       },
@@ -7725,11 +7239,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "run_id",
-          "undone_count",
-          "failed_count"
-        ],
+        "required": ["run_id", "undone_count", "failed_count"],
         "title": "RunUndoResultOut",
         "type": "object"
       },
@@ -7752,12 +7262,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title",
-          "snippet",
-          "updated_at"
-        ],
+        "required": ["id", "title", "snippet", "updated_at"],
         "title": "SearchCourseItem",
         "type": "object"
       },
@@ -7832,11 +7337,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "courses",
-          "records",
-          "knowledge_points"
-        ],
+        "required": ["courses", "records", "knowledge_points"],
         "title": "SearchOut",
         "type": "object"
       },
@@ -7871,14 +7372,86 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "title",
-          "snippet",
-          "course_name",
-          "updated_at"
-        ],
+        "required": ["id", "title", "snippet", "course_name", "updated_at"],
         "title": "SearchRecordItem",
+        "type": "object"
+      },
+      "SharedRefAdd": {
+        "additionalProperties": false,
+        "description": "添加共享引用请求体。",
+        "properties": {
+          "library_item_id": {
+            "description": "被引用的资料条目 id",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "title": "Library Item Id",
+            "type": "string"
+          }
+        },
+        "required": ["library_item_id"],
+        "title": "SharedRefAdd",
+        "type": "object"
+      },
+      "SharedRefOut": {
+        "description": "共享引用行（工单 05）：available 为查询期派生（条目软删 / 非 ACTIVE 即\nFalse，展示「来源已删除」；回收站恢复自动复活，不存状态字段）。",
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "library_item_id": {
+            "title": "Library Item Id",
+            "type": "string"
+          },
+          "owner_course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "条目归属课程 id（未归类为 None）",
+            "title": "Owner Course Id"
+          },
+          "owner_course_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Course Name"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id",
+          "library_item_id",
+          "title",
+          "source_type",
+          "owner_course_id",
+          "available",
+          "created_at"
+        ],
+        "title": "SharedRefOut",
         "type": "object"
       },
       "SourceAnchorOut": {
@@ -8041,19 +7614,12 @@
             "type": "string"
           }
         },
-        "required": [
-          "summary_id",
-          "feedback"
-        ],
+        "required": ["summary_id", "feedback"],
         "title": "SummaryAdjustRequest",
         "type": "object"
       },
       "SummaryBlockedReason": {
-        "enum": [
-          "COURSE_REQUIRED",
-          "COURSE_ARCHIVED",
-          "TRANSCRIPT_NOT_READY"
-        ],
+        "enum": ["COURSE_REQUIRED", "COURSE_ARCHIVED", "TRANSCRIPT_NOT_READY"],
         "title": "SummaryBlockedReason",
         "type": "string"
       },
@@ -8067,10 +7633,7 @@
             "$ref": "#/components/schemas/SummaryOut"
           }
         },
-        "required": [
-          "summary",
-          "record_status"
-        ],
+        "required": ["summary", "record_status"],
         "title": "SummaryConfirmOut",
         "type": "object"
       },
@@ -8082,9 +7645,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "summary_id"
-        ],
+        "required": ["summary_id"],
         "title": "SummaryConfirmRequest",
         "type": "object"
       },
@@ -8095,9 +7656,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "title": "SummaryJobAccepted",
         "type": "object"
       },
@@ -8215,10 +7774,7 @@
             ]
           }
         },
-        "required": [
-          "summary",
-          "action_required"
-        ],
+        "required": ["summary", "action_required"],
         "title": "SummaryReadOut",
         "type": "object"
       },
@@ -8243,10 +7799,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "heading",
-          "points"
-        ],
+        "required": ["heading", "points"],
         "title": "SummarySection",
         "type": "object"
       },
@@ -8272,11 +7825,7 @@
             "title": "Secret Id Hint"
           }
         },
-        "required": [
-          "region",
-          "has_credentials",
-          "secret_id_hint"
-        ],
+        "required": ["region", "has_credentials", "secret_id_hint"],
         "title": "TencentAsrProviderOut",
         "type": "object"
       },
@@ -8293,9 +7842,7 @@
             ]
           }
         },
-        "required": [
-          "provider"
-        ],
+        "required": ["provider"],
         "title": "TencentAsrProviderStateOut",
         "type": "object"
       },
@@ -8325,9 +7872,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "region"
-        ],
+        "required": ["region"],
         "title": "TencentAsrProviderUpdate",
         "type": "object"
       },
@@ -8342,10 +7887,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "ok",
-          "region"
-        ],
+        "required": ["ok", "region"],
         "title": "TencentAsrTestOut",
         "type": "object"
       },
@@ -8367,10 +7909,7 @@
             "title": "Summary Job Id"
           }
         },
-        "required": [
-          "record_id",
-          "summary_job_id"
-        ],
+        "required": ["record_id", "summary_job_id"],
         "title": "TextCaptureAccepted",
         "type": "object"
       },
@@ -8397,10 +7936,7 @@
             "title": "Course Id"
           }
         },
-        "required": [
-          "capture_type",
-          "content"
-        ],
+        "required": ["capture_type", "content"],
         "title": "TextCaptureCreate",
         "type": "object"
       },
@@ -8574,20 +8110,12 @@
             "type": "integer"
           }
         },
-        "required": [
-          "date",
-          "total_ms"
-        ],
+        "required": ["date", "total_ms"],
         "title": "TodayTrendPointOut",
         "type": "object"
       },
       "TodoAction": {
-        "enum": [
-          "NONE",
-          "GENERATE",
-          "ADOPT",
-          "RETRY"
-        ],
+        "enum": ["NONE", "GENERATE", "ADOPT", "RETRY"],
         "title": "TodoAction",
         "type": "string"
       },
@@ -8612,19 +8140,12 @@
             "type": "string"
           }
         },
-        "required": [
-          "detail",
-          "blocked_reason"
-        ],
+        "required": ["detail", "blocked_reason"],
         "title": "TodoConflictResponse",
         "type": "object"
       },
       "TodoGenerationStatus": {
-        "enum": [
-          "DRAFT",
-          "ACTIVE",
-          "SUPERSEDED"
-        ],
+        "enum": ["DRAFT", "ACTIVE", "SUPERSEDED"],
         "title": "TodoGenerationStatus",
         "type": "string"
       },
@@ -8635,9 +8156,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "job_id"
-        ],
+        "required": ["job_id"],
         "title": "TodoJobAccepted",
         "type": "object"
       },
@@ -8770,26 +8289,17 @@
             "type": "array"
           }
         },
-        "required": [
-          "items",
-          "action_required"
-        ],
+        "required": ["items", "action_required"],
         "title": "TodoReadOut",
         "type": "object"
       },
       "TodoSource": {
-        "enum": [
-          "AI",
-          "MANUAL"
-        ],
+        "enum": ["AI", "MANUAL"],
         "title": "TodoSource",
         "type": "string"
       },
       "TodoStatus": {
-        "enum": [
-          "TODO",
-          "DONE"
-        ],
+        "enum": ["TODO", "DONE"],
         "title": "TodoStatus",
         "type": "string"
       },
@@ -8799,9 +8309,7 @@
             "$ref": "#/components/schemas/TodoStatus"
           }
         },
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "title": "TodoToggleRequest",
         "type": "object"
       },
@@ -8815,17 +8323,12 @@
             "type": "string"
           }
         },
-        "required": [
-          "content"
-        ],
+        "required": ["content"],
         "title": "TodoWriteRequest",
         "type": "object"
       },
       "TranscriptAvailability": {
-        "enum": [
-          "NOT_READY",
-          "READY"
-        ],
+        "enum": ["NOT_READY", "READY"],
         "title": "TranscriptAvailability",
         "type": "string"
       },
@@ -8878,10 +8381,7 @@
             ]
           }
         },
-        "required": [
-          "status",
-          "transcript"
-        ],
+        "required": ["status", "transcript"],
         "title": "TranscriptReadOut",
         "type": "object"
       },
@@ -8988,10 +8488,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "content",
-          "expected_source_version"
-        ],
+        "required": ["content", "expected_source_version"],
         "title": "TranscriptUpdateRequest",
         "type": "object"
       },
@@ -9017,11 +8514,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "provider",
-          "has_api_key",
-          "api_key_hint"
-        ],
+        "required": ["provider", "has_api_key", "api_key_hint"],
         "title": "WebSearchProviderOut",
         "type": "object"
       },
@@ -9038,9 +8531,7 @@
             ]
           }
         },
-        "required": [
-          "provider"
-        ],
+        "required": ["provider"],
         "title": "WebSearchProviderStateOut",
         "type": "object"
       },
@@ -9079,10 +8570,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "ok",
-          "provider"
-        ],
+        "required": ["ok", "provider"],
         "title": "WebSearchTestOut",
         "type": "object"
       }
@@ -9205,9 +8693,7 @@
           }
         },
         "summary": "List Activity",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/auth-mode": {
@@ -9295,9 +8781,7 @@
           }
         },
         "summary": "Get Auth Mode",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       },
       "put": {
         "description": "切换全局默认档（编排见 switch_global_auth_mode，只影响新会话与未携带覆盖的请求）。",
@@ -9393,9 +8877,7 @@
           }
         },
         "summary": "Put Auth Mode",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/auth-mode/sessions": {
@@ -9486,9 +8968,7 @@
           }
         },
         "summary": "Post Session Auth Mode Switch",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/operations": {
@@ -9634,9 +9114,7 @@
           }
         },
         "summary": "List Operations",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/operations/{operation_id}/retry": {
@@ -9734,9 +9212,7 @@
           }
         },
         "summary": "Retry Operation",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/operations/{operation_id}/undo": {
@@ -9834,9 +9310,7 @@
           }
         },
         "summary": "Undo Operation",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/runs": {
@@ -9982,9 +9456,7 @@
           }
         },
         "summary": "List Runs",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/runs/purge-finished": {
@@ -10072,9 +9544,7 @@
           }
         },
         "summary": "Purge Finished",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/runs/{run_id}": {
@@ -10164,9 +9634,7 @@
           }
         },
         "summary": "Delete Run History",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       },
       "get": {
         "operationId": "get_run_api_agent_runs__run_id__get",
@@ -10261,9 +9729,7 @@
           }
         },
         "summary": "Get Run",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/runs/{run_id}/cancel": {
@@ -10361,9 +9827,7 @@
           }
         },
         "summary": "Cancel Run",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/runs/{run_id}/operations/{operation_id}/retry": {
@@ -10471,9 +9935,7 @@
           }
         },
         "summary": "Retry Run Operation",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/runs/{run_id}/resume": {
@@ -10571,9 +10033,7 @@
           }
         },
         "summary": "Resume Run",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/agent/runs/{run_id}/undo": {
@@ -10671,9 +10131,7 @@
           }
         },
         "summary": "Undo Run",
-        "tags": [
-          "agent-runs"
-        ]
+        "tags": ["agent-runs"]
       }
     },
     "/api/audio-imports": {
@@ -10800,9 +10258,7 @@
           }
         },
         "summary": "Import Audio",
-        "tags": [
-          "audio-imports"
-        ]
+        "tags": ["audio-imports"]
       }
     },
     "/api/capture-batches": {
@@ -10928,9 +10384,7 @@
           }
         },
         "summary": "Create Capture Batch",
-        "tags": [
-          "capture-batches"
-        ]
+        "tags": ["capture-batches"]
       }
     },
     "/api/chat-sessions": {
@@ -11021,9 +10475,7 @@
           }
         },
         "summary": "List Chat Sessions",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       },
       "post": {
         "operationId": "create_chat_session_api_chat_sessions_post",
@@ -11118,9 +10570,7 @@
           }
         },
         "summary": "Create Chat Session",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       }
     },
     "/api/chat-sessions/record-options": {
@@ -11211,9 +10661,7 @@
           }
         },
         "summary": "List Chat Record Options",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       }
     },
     "/api/chat-sessions/{session_id}": {
@@ -11303,9 +10751,7 @@
           }
         },
         "summary": "Delete Chat Session",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       },
       "get": {
         "operationId": "get_chat_session_api_chat_sessions__session_id__get",
@@ -11400,9 +10846,7 @@
           }
         },
         "summary": "Get Chat Session",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       },
       "patch": {
         "operationId": "rename_chat_session_api_chat_sessions__session_id__patch",
@@ -11507,9 +10951,7 @@
           }
         },
         "summary": "Rename Chat Session",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       }
     },
     "/api/chat-sessions/{session_id}/messages": {
@@ -11610,9 +11052,7 @@
           }
         },
         "summary": "List Chat Messages",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       },
       "post": {
         "description": "发送用户消息并流式返回回答（SSE：status → token… → done / error）。",
@@ -11711,9 +11151,7 @@
           }
         },
         "summary": "Send Chat Message",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       }
     },
     "/api/chat-sessions/{session_id}/messages/{message_id}/knowledge-points": {
@@ -11831,9 +11269,7 @@
           }
         },
         "summary": "Save Chat Message As Knowledge Point",
-        "tags": [
-          "chat-sessions"
-        ]
+        "tags": ["chat-sessions"]
       }
     },
     "/api/courses": {
@@ -11969,9 +11405,7 @@
           }
         },
         "summary": "List Courses",
-        "tags": [
-          "courses"
-        ]
+        "tags": ["courses"]
       },
       "post": {
         "operationId": "create_course_api_courses_post",
@@ -12056,9 +11490,7 @@
           }
         },
         "summary": "Create Course",
-        "tags": [
-          "courses"
-        ]
+        "tags": ["courses"]
       }
     },
     "/api/courses/{course_id}": {
@@ -12138,9 +11570,7 @@
           }
         },
         "summary": "Delete Course",
-        "tags": [
-          "courses"
-        ]
+        "tags": ["courses"]
       },
       "get": {
         "operationId": "get_course_api_courses__course_id__get",
@@ -12224,9 +11654,7 @@
           }
         },
         "summary": "Get Course",
-        "tags": [
-          "courses"
-        ]
+        "tags": ["courses"]
       },
       "patch": {
         "operationId": "update_course_api_courses__course_id__patch",
@@ -12320,9 +11748,7 @@
           }
         },
         "summary": "Update Course",
-        "tags": [
-          "courses"
-        ]
+        "tags": ["courses"]
       }
     },
     "/api/courses/{course_id}/archive": {
@@ -12409,9 +11835,7 @@
           }
         },
         "summary": "Archive Course",
-        "tags": [
-          "courses"
-        ]
+        "tags": ["courses"]
       }
     },
     "/api/courses/{course_id}/brain": {
@@ -12507,9 +11931,7 @@
           }
         },
         "summary": "Get Course Brain",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       }
     },
     "/api/courses/{course_id}/brain/apply-review": {
@@ -12615,9 +12037,7 @@
           }
         },
         "summary": "Apply Course Brain Review",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       }
     },
     "/api/courses/{course_id}/brain/builds": {
@@ -12713,9 +12133,7 @@
           }
         },
         "summary": "Trigger Course Brain Build",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       }
     },
     "/api/courses/{course_id}/brain/concepts": {
@@ -12853,9 +12271,7 @@
           }
         },
         "summary": "List Course Brain Concepts",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       },
       "post": {
         "operationId": "create_course_brain_concept_api_courses__course_id__brain_concepts_post",
@@ -12959,9 +12375,7 @@
           }
         },
         "summary": "Create Course Brain Concept",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       }
     },
     "/api/courses/{course_id}/brain/concepts/{concept_id}": {
@@ -13066,9 +12480,7 @@
           }
         },
         "summary": "Get Course Brain Concept",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       }
     },
     "/api/courses/{course_id}/brain/concepts/{concept_id}/archive": {
@@ -13173,9 +12585,7 @@
           }
         },
         "summary": "Archive Course Brain Concept",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       }
     },
     "/api/courses/{course_id}/brain/concepts/{concept_id}/sources": {
@@ -13280,9 +12690,7 @@
           }
         },
         "summary": "Get Course Brain Concept Sources",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       }
     },
     "/api/courses/{course_id}/brain/relations": {
@@ -13420,9 +12828,7 @@
           }
         },
         "summary": "List Course Brain Relations",
-        "tags": [
-          "course-brain"
-        ]
+        "tags": ["course-brain"]
       }
     },
     "/api/courses/{course_id}/goals": {
@@ -13522,9 +12928,7 @@
           }
         },
         "summary": "List Course Goals",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       },
       "post": {
         "description": "页面入口创建目标：恒为用户确认范围（spec：AI 推断范围只经 Agent 确认卡）。",
@@ -13629,9 +13033,7 @@
           }
         },
         "summary": "Create Course Goal",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/goals/{goal_id}": {
@@ -13746,9 +13148,7 @@
           }
         },
         "summary": "Update Course Goal",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/goals/{goal_id}/archive": {
@@ -13853,9 +13253,7 @@
           }
         },
         "summary": "Archive Course Goal",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/goals/{goal_id}/complete": {
@@ -13960,9 +13358,7 @@
           }
         },
         "summary": "Complete Course Goal",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/mastery": {
@@ -14066,9 +13462,7 @@
           }
         },
         "summary": "Get Course Mastery",
-        "tags": [
-          "mastery"
-        ]
+        "tags": ["mastery"]
       }
     },
     "/api/courses/{course_id}/mastery/concepts/{concept_id}": {
@@ -14163,9 +13557,7 @@
           }
         },
         "summary": "Get Concept Mastery Detail",
-        "tags": [
-          "mastery"
-        ]
+        "tags": ["mastery"]
       }
     },
     "/api/courses/{course_id}/plans": {
@@ -14276,9 +13668,7 @@
           }
         },
         "summary": "List Course Plans",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/plans/{plan_id}": {
@@ -14384,9 +13774,7 @@
           }
         },
         "summary": "Get Course Plan",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}": {
@@ -14511,9 +13899,7 @@
           }
         },
         "summary": "Update Plan Item Row",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}/complete": {
@@ -14628,9 +14014,7 @@
           }
         },
         "summary": "Complete Plan Item Row",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/plans/{plan_id}/items/{item_id}/skip": {
@@ -14745,9 +14129,7 @@
           }
         },
         "summary": "Skip Plan Item Row",
-        "tags": [
-          "goals"
-        ]
+        "tags": ["goals"]
       }
     },
     "/api/courses/{course_id}/quiz-tests": {
@@ -14834,9 +14216,7 @@
           }
         },
         "summary": "List Quiz Tests",
-        "tags": [
-          "quiz-tests"
-        ]
+        "tags": ["quiz-tests"]
       },
       "post": {
         "operationId": "create_quiz_test_api_courses__course_id__quiz_tests_post",
@@ -14949,9 +14329,7 @@
           }
         },
         "summary": "Create Quiz Test",
-        "tags": [
-          "quiz-tests"
-        ]
+        "tags": ["quiz-tests"]
       }
     },
     "/api/courses/{course_id}/records": {
@@ -15042,9 +14420,313 @@
           }
         },
         "summary": "List Course Records",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
+      }
+    },
+    "/api/courses/{course_id}/shared-refs": {
+      "get": {
+        "description": "本空间引用清单（available=False 行展示「来源已删除」，仍可删除引用）。",
+        "operationId": "list_course_shared_refs_api_courses__course_id__shared_refs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SharedRefOut"
+                  },
+                  "title": "Response List Course Shared Refs Api Courses  Course Id  Shared Refs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Course Shared Refs",
+        "tags": ["shared-refs"]
+      },
+      "post": {
+        "description": "引用一份归属他空间的资料：原归属不变、不重复入库。",
+        "operationId": "add_course_shared_ref_api_courses__course_id__shared_refs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedRefAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedRefOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Add Course Shared Ref",
+        "tags": ["shared-refs"]
+      }
+    },
+    "/api/courses/{course_id}/shared-refs/{library_item_id}": {
+      "delete": {
+        "description": "删除引用行（原资料不动）。",
+        "operationId": "remove_course_shared_ref_api_courses__course_id__shared_refs__library_item_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "course_id",
+            "required": true,
+            "schema": {
+              "title": "Course Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "library_item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Library Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Remove Course Shared Ref",
+        "tags": ["shared-refs"]
       }
     },
     "/api/courses/{course_id}/unarchive": {
@@ -15131,9 +14813,7 @@
           }
         },
         "summary": "Unarchive Course",
-        "tags": [
-          "courses"
-        ]
+        "tags": ["courses"]
       }
     },
     "/api/document-imports": {
@@ -15250,9 +14930,7 @@
           }
         },
         "summary": "Import Document",
-        "tags": [
-          "document-imports"
-        ]
+        "tags": ["document-imports"]
       }
     },
     "/api/health": {
@@ -15403,9 +15081,7 @@
           }
         },
         "summary": "List Inbox Records",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/learner/memory-outbound": {
@@ -15493,9 +15169,7 @@
           }
         },
         "summary": "Put Memory Outbound",
-        "tags": [
-          "learner"
-        ]
+        "tags": ["learner"]
       }
     },
     "/api/learner/preferences": {
@@ -15573,9 +15247,7 @@
           }
         },
         "summary": "Get Learner Preferences",
-        "tags": [
-          "learner"
-        ]
+        "tags": ["learner"]
       },
       "put": {
         "description": "编辑显式偏好（全量替换、立即生效）；观察偏好不受影响。",
@@ -15661,9 +15333,7 @@
           }
         },
         "summary": "Put Learner Preferences",
-        "tags": [
-          "learner"
-        ]
+        "tags": ["learner"]
       }
     },
     "/api/learner/preferences/observed/{key}": {
@@ -15743,9 +15413,7 @@
           }
         },
         "summary": "Delete Observed Preference",
-        "tags": [
-          "learner"
-        ]
+        "tags": ["learner"]
       }
     },
     "/api/library/assets": {
@@ -15859,9 +15527,7 @@
           }
         },
         "summary": "List Library Assets",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/ingest": {
@@ -15979,9 +15645,7 @@
           }
         },
         "summary": "Ingest Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/ingest/file": {
@@ -16099,9 +15763,7 @@
           }
         },
         "summary": "Ingest Library File",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items": {
@@ -16285,9 +15947,7 @@
           }
         },
         "summary": "List Library Items",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items/{item_id}": {
@@ -16398,9 +16058,7 @@
           }
         },
         "summary": "Delete Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       },
       "get": {
         "operationId": "get_library_item_api_library_items__item_id__get",
@@ -16485,9 +16143,7 @@
           }
         },
         "summary": "Get Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       },
       "patch": {
         "description": "重命名（title）/ 归类（course_id，null=取消归类）/ 收藏（favorite）。",
@@ -16593,9 +16249,7 @@
           }
         },
         "summary": "Patch Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items/{item_id}/archive": {
@@ -16693,9 +16347,7 @@
           }
         },
         "summary": "Archive Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items/{item_id}/content": {
@@ -16794,9 +16446,7 @@
           }
         },
         "summary": "Get Library Item Content",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items/{item_id}/rebuild-index": {
@@ -16898,9 +16548,7 @@
           }
         },
         "summary": "Rebuild Library Item Index",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items/{item_id}/refetch": {
@@ -16998,9 +16646,7 @@
           }
         },
         "summary": "Refetch Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items/{item_id}/restore": {
@@ -17098,9 +16744,7 @@
           }
         },
         "summary": "Restore Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items/{item_id}/retry": {
@@ -17198,9 +16842,7 @@
           }
         },
         "summary": "Retry Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/items/{item_id}/unarchive": {
@@ -17297,9 +16939,7 @@
           }
         },
         "summary": "Unarchive Library Item",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/organize/propose": {
@@ -17397,9 +17037,7 @@
           }
         },
         "summary": "Propose Library Organize",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/organize/scan": {
@@ -17497,9 +17135,7 @@
           }
         },
         "summary": "Scan Library Organize",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/library/records": {
@@ -17623,9 +17259,7 @@
           }
         },
         "summary": "List Library Records",
-        "tags": [
-          "library"
-        ]
+        "tags": ["library"]
       }
     },
     "/api/processing-jobs/{job_id}": {
@@ -17722,9 +17356,7 @@
           }
         },
         "summary": "Get Processing Job",
-        "tags": [
-          "processing-jobs"
-        ]
+        "tags": ["processing-jobs"]
       }
     },
     "/api/processing-jobs/{job_id}/retries": {
@@ -17831,9 +17463,7 @@
           }
         },
         "summary": "Retry Processing Job",
-        "tags": [
-          "processing-jobs"
-        ]
+        "tags": ["processing-jobs"]
       }
     },
     "/api/profile": {
@@ -17900,9 +17530,7 @@
           }
         },
         "summary": "Read Profile",
-        "tags": [
-          "profile"
-        ]
+        "tags": ["profile"]
       },
       "put": {
         "operationId": "update_profile_api_profile_put",
@@ -17977,9 +17605,7 @@
           }
         },
         "summary": "Update Profile",
-        "tags": [
-          "profile"
-        ]
+        "tags": ["profile"]
       }
     },
     "/api/profile/avatar": {
@@ -18039,9 +17665,7 @@
           }
         },
         "summary": "Delete Avatar",
-        "tags": [
-          "profile"
-        ]
+        "tags": ["profile"]
       },
       "get": {
         "operationId": "read_avatar_api_profile_avatar_get",
@@ -18114,9 +17738,7 @@
           }
         },
         "summary": "Read Avatar",
-        "tags": [
-          "profile"
-        ]
+        "tags": ["profile"]
       },
       "put": {
         "operationId": "put_avatar_api_profile_avatar_put",
@@ -18184,9 +17806,7 @@
           }
         },
         "summary": "Put Avatar",
-        "tags": [
-          "profile"
-        ]
+        "tags": ["profile"]
       }
     },
     "/api/proposals": {
@@ -18325,9 +17945,7 @@
           }
         },
         "summary": "List Proposals",
-        "tags": [
-          "proposals"
-        ]
+        "tags": ["proposals"]
       },
       "post": {
         "description": "创建提案（不改事实）：payload 按 proposal_type 判别校验。\n\n当前消费方：研究会话对 web_search 候选来源的「建议保存」（RESEARCH_INGEST）。",
@@ -18423,9 +18041,7 @@
           }
         },
         "summary": "Create Proposal",
-        "tags": [
-          "proposals"
-        ]
+        "tags": ["proposals"]
       }
     },
     "/api/proposals/{proposal_id}/confirm": {
@@ -18540,9 +18156,7 @@
           }
         },
         "summary": "Confirm Proposal",
-        "tags": [
-          "proposals"
-        ]
+        "tags": ["proposals"]
       }
     },
     "/api/proposals/{proposal_id}/reject": {
@@ -18639,9 +18253,7 @@
           }
         },
         "summary": "Reject Proposal",
-        "tags": [
-          "proposals"
-        ]
+        "tags": ["proposals"]
       }
     },
     "/api/quiz-tests/{test_id}": {
@@ -18738,9 +18350,7 @@
           }
         },
         "summary": "Get Quiz Test",
-        "tags": [
-          "quiz-tests"
-        ]
+        "tags": ["quiz-tests"]
       }
     },
     "/api/quiz-tests/{test_id}/abandon": {
@@ -18837,9 +18447,7 @@
           }
         },
         "summary": "Abandon Quiz Test",
-        "tags": [
-          "quiz-tests"
-        ]
+        "tags": ["quiz-tests"]
       }
     },
     "/api/quiz-tests/{test_id}/answers": {
@@ -18956,9 +18564,7 @@
           }
         },
         "summary": "Answer Quiz Test Item",
-        "tags": [
-          "quiz-tests"
-        ]
+        "tags": ["quiz-tests"]
       }
     },
     "/api/quiz-tests/{test_id}/regrade": {
@@ -19055,9 +18661,7 @@
           }
         },
         "summary": "Regrade Quiz Test",
-        "tags": [
-          "quiz-tests"
-        ]
+        "tags": ["quiz-tests"]
       }
     },
     "/api/quiz-tests/{test_id}/submit": {
@@ -19154,9 +18758,7 @@
           }
         },
         "summary": "Submit Quiz Test",
-        "tags": [
-          "quiz-tests"
-        ]
+        "tags": ["quiz-tests"]
       }
     },
     "/api/recording-sessions": {
@@ -19267,9 +18869,7 @@
           }
         },
         "summary": "List Recording Sessions",
-        "tags": [
-          "recording-sessions"
-        ]
+        "tags": ["recording-sessions"]
       },
       "post": {
         "operationId": "create_recording_session_api_recording_sessions_post",
@@ -19384,9 +18984,7 @@
           }
         },
         "summary": "Create Recording Session",
-        "tags": [
-          "recording-sessions"
-        ]
+        "tags": ["recording-sessions"]
       }
     },
     "/api/recording-sessions/{recording_session_id}": {
@@ -19496,9 +19094,7 @@
           }
         },
         "summary": "Abandon Recording Session",
-        "tags": [
-          "recording-sessions"
-        ]
+        "tags": ["recording-sessions"]
       },
       "patch": {
         "operationId": "update_recording_session_api_recording_sessions__recording_session_id__patch",
@@ -19623,9 +19219,7 @@
           }
         },
         "summary": "Update Recording Session",
-        "tags": [
-          "recording-sessions"
-        ]
+        "tags": ["recording-sessions"]
       }
     },
     "/api/recording-sessions/{recording_session_id}/chunks": {
@@ -19752,9 +19346,7 @@
           }
         },
         "summary": "Append Recording Chunk",
-        "tags": [
-          "recording-sessions"
-        ]
+        "tags": ["recording-sessions"]
       }
     },
     "/api/records/{record_id}": {
@@ -19834,9 +19426,7 @@
           }
         },
         "summary": "Delete Record",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       },
       "get": {
         "operationId": "get_record_api_records__record_id__get",
@@ -19921,9 +19511,7 @@
           }
         },
         "summary": "Get Record",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/records/{record_id}/classification": {
@@ -20030,9 +19618,7 @@
           }
         },
         "summary": "Classify Record",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/records/{record_id}/course": {
@@ -20139,9 +19725,7 @@
           }
         },
         "summary": "Move Record Course",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/records/{record_id}/document-segments": {
@@ -20232,9 +19816,7 @@
           }
         },
         "summary": "Get Record Document Segments",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/records/{record_id}/events": {
@@ -20314,9 +19896,7 @@
           }
         },
         "summary": "Stream Record Events",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/records/{record_id}/jobs": {
@@ -20403,9 +19983,7 @@
           }
         },
         "summary": "Get Record Jobs",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/records/{record_id}/knowledge-point-batches/{batch_id}/confirmations": {
@@ -20512,9 +20090,7 @@
           }
         },
         "summary": "Confirm Knowledge Point Batch",
-        "tags": [
-          "knowledge-points"
-        ]
+        "tags": ["knowledge-points"]
       }
     },
     "/api/records/{record_id}/knowledge-point-batches/{batch_id}/discards": {
@@ -20621,9 +20197,7 @@
           }
         },
         "summary": "Discard Knowledge Point Batch",
-        "tags": [
-          "knowledge-points"
-        ]
+        "tags": ["knowledge-points"]
       }
     },
     "/api/records/{record_id}/knowledge-point-jobs": {
@@ -20638,6 +20212,25 @@
               "format": "uuid",
               "title": "Record Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产）",
+            "in": "query",
+            "name": "course_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产）",
+              "title": "Course Id"
             }
           },
           {
@@ -20720,9 +20313,7 @@
           }
         },
         "summary": "Submit Knowledge Point Job",
-        "tags": [
-          "knowledge-points"
-        ]
+        "tags": ["knowledge-points"]
       }
     },
     "/api/records/{record_id}/knowledge-points": {
@@ -20836,9 +20427,7 @@
           }
         },
         "summary": "Get Knowledge Points",
-        "tags": [
-          "knowledge-points"
-        ]
+        "tags": ["knowledge-points"]
       },
       "post": {
         "operationId": "create_knowledge_point_api_records__record_id__knowledge_points_post",
@@ -20943,9 +20532,7 @@
           }
         },
         "summary": "Create Knowledge Point",
-        "tags": [
-          "knowledge-points"
-        ]
+        "tags": ["knowledge-points"]
       }
     },
     "/api/records/{record_id}/knowledge-points/{item_id}": {
@@ -21045,9 +20632,7 @@
           }
         },
         "summary": "Delete Knowledge Point",
-        "tags": [
-          "knowledge-points"
-        ]
+        "tags": ["knowledge-points"]
       },
       "patch": {
         "operationId": "update_knowledge_point_api_records__record_id__knowledge_points__item_id__patch",
@@ -21162,9 +20747,7 @@
           }
         },
         "summary": "Update Knowledge Point",
-        "tags": [
-          "knowledge-points"
-        ]
+        "tags": ["knowledge-points"]
       }
     },
     "/api/records/{record_id}/quiz-batches/{batch_id}/confirmations": {
@@ -21271,9 +20854,7 @@
           }
         },
         "summary": "Adopt Quiz Batch",
-        "tags": [
-          "quizzes"
-        ]
+        "tags": ["quizzes"]
       }
     },
     "/api/records/{record_id}/quiz-batches/{batch_id}/discards": {
@@ -21380,9 +20961,7 @@
           }
         },
         "summary": "Discard Quiz Batch",
-        "tags": [
-          "quizzes"
-        ]
+        "tags": ["quizzes"]
       }
     },
     "/api/records/{record_id}/quiz-jobs": {
@@ -21397,6 +20976,25 @@
               "format": "uuid",
               "title": "Record Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产）",
+            "in": "query",
+            "name": "course_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产）",
+              "title": "Course Id"
             }
           },
           {
@@ -21489,9 +21087,7 @@
           }
         },
         "summary": "Submit Quiz Job",
-        "tags": [
-          "quizzes"
-        ]
+        "tags": ["quizzes"]
       }
     },
     "/api/records/{record_id}/quizzes": {
@@ -21605,9 +21201,7 @@
           }
         },
         "summary": "Get Quizzes",
-        "tags": [
-          "quizzes"
-        ]
+        "tags": ["quizzes"]
       }
     },
     "/api/records/{record_id}/quizzes/{quiz_id}/answers": {
@@ -21732,9 +21326,7 @@
           }
         },
         "summary": "Answer Quiz",
-        "tags": [
-          "quizzes"
-        ]
+        "tags": ["quizzes"]
       }
     },
     "/api/records/{record_id}/quizzes/{quiz_id}/concept": {
@@ -21851,9 +21443,7 @@
           }
         },
         "summary": "Set Quiz Concept",
-        "tags": [
-          "quizzes"
-        ]
+        "tags": ["quizzes"]
       }
     },
     "/api/records/{record_id}/quizzes/{quiz_id}/self-assessments": {
@@ -21970,9 +21560,7 @@
           }
         },
         "summary": "Self Assess Short Quiz",
-        "tags": [
-          "quizzes"
-        ]
+        "tags": ["quizzes"]
       }
     },
     "/api/records/{record_id}/review-material": {
@@ -22069,9 +21657,7 @@
           }
         },
         "summary": "Get Review Material",
-        "tags": [
-          "review-materials"
-        ]
+        "tags": ["review-materials"]
       },
       "patch": {
         "operationId": "edit_review_material_api_records__record_id__review_material_patch",
@@ -22176,9 +21762,7 @@
           }
         },
         "summary": "Edit Review Material",
-        "tags": [
-          "review-materials"
-        ]
+        "tags": ["review-materials"]
       }
     },
     "/api/records/{record_id}/review-material-adjustments": {
@@ -22285,9 +21869,7 @@
           }
         },
         "summary": "Adjust Review Material",
-        "tags": [
-          "review-materials"
-        ]
+        "tags": ["review-materials"]
       }
     },
     "/api/records/{record_id}/review-material-confirmations": {
@@ -22384,9 +21966,7 @@
           }
         },
         "summary": "Confirm Review Material",
-        "tags": [
-          "review-materials"
-        ]
+        "tags": ["review-materials"]
       }
     },
     "/api/records/{record_id}/review-material-jobs": {
@@ -22483,9 +22063,7 @@
           }
         },
         "summary": "Submit Review Material",
-        "tags": [
-          "review-materials"
-        ]
+        "tags": ["review-materials"]
       }
     },
     "/api/records/{record_id}/review-materials": {
@@ -22586,9 +22164,7 @@
           }
         },
         "summary": "List Review Materials",
-        "tags": [
-          "review-materials"
-        ]
+        "tags": ["review-materials"]
       }
     },
     "/api/records/{record_id}/source-anchors": {
@@ -22679,9 +22255,7 @@
           }
         },
         "summary": "List Record Source Anchors",
-        "tags": [
-          "source-anchors"
-        ]
+        "tags": ["source-anchors"]
       }
     },
     "/api/records/{record_id}/summaries": {
@@ -22782,9 +22356,7 @@
           }
         },
         "summary": "List Summaries",
-        "tags": [
-          "summaries"
-        ]
+        "tags": ["summaries"]
       }
     },
     "/api/records/{record_id}/summaries/{summary_id}": {
@@ -22891,9 +22463,7 @@
           }
         },
         "summary": "Get Summary Version",
-        "tags": [
-          "summaries"
-        ]
+        "tags": ["summaries"]
       }
     },
     "/api/records/{record_id}/summary": {
@@ -22990,9 +22560,7 @@
           }
         },
         "summary": "Get Summary",
-        "tags": [
-          "summaries"
-        ]
+        "tags": ["summaries"]
       }
     },
     "/api/records/{record_id}/summary-adjustments": {
@@ -23099,9 +22667,7 @@
           }
         },
         "summary": "Adjust Summary",
-        "tags": [
-          "summaries"
-        ]
+        "tags": ["summaries"]
       }
     },
     "/api/records/{record_id}/summary-confirmations": {
@@ -23208,9 +22774,7 @@
           }
         },
         "summary": "Confirm Summary",
-        "tags": [
-          "summaries"
-        ]
+        "tags": ["summaries"]
       }
     },
     "/api/records/{record_id}/summary-jobs": {
@@ -23225,6 +22789,25 @@
               "format": "uuid",
               "title": "Record Id",
               "type": "string"
+            }
+          },
+          {
+            "description": "请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产）",
+            "in": "query",
+            "name": "course_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产）",
+              "title": "Course Id"
             }
           },
           {
@@ -23307,9 +22890,7 @@
           }
         },
         "summary": "Submit Summary",
-        "tags": [
-          "summaries"
-        ]
+        "tags": ["summaries"]
       }
     },
     "/api/records/{record_id}/todo-batches/{batch_id}/confirmations": {
@@ -23416,9 +22997,7 @@
           }
         },
         "summary": "Adopt Todo Batch",
-        "tags": [
-          "todos"
-        ]
+        "tags": ["todos"]
       }
     },
     "/api/records/{record_id}/todo-batches/{batch_id}/discards": {
@@ -23515,9 +23094,7 @@
           }
         },
         "summary": "Discard Todo Batch",
-        "tags": [
-          "todos"
-        ]
+        "tags": ["todos"]
       }
     },
     "/api/records/{record_id}/todo-jobs": {
@@ -23604,9 +23181,7 @@
           }
         },
         "summary": "Submit Todo Job",
-        "tags": [
-          "todos"
-        ]
+        "tags": ["todos"]
       }
     },
     "/api/records/{record_id}/todos": {
@@ -23710,9 +23285,7 @@
           }
         },
         "summary": "Get Todos",
-        "tags": [
-          "todos"
-        ]
+        "tags": ["todos"]
       },
       "post": {
         "operationId": "create_todo_api_records__record_id__todos_post",
@@ -23807,9 +23380,7 @@
           }
         },
         "summary": "Create Todo",
-        "tags": [
-          "todos"
-        ]
+        "tags": ["todos"]
       }
     },
     "/api/records/{record_id}/todos/{todo_id}": {
@@ -23899,9 +23470,7 @@
           }
         },
         "summary": "Delete Todo",
-        "tags": [
-          "todos"
-        ]
+        "tags": ["todos"]
       },
       "patch": {
         "operationId": "update_todo_api_records__record_id__todos__todo_id__patch",
@@ -24006,9 +23575,7 @@
           }
         },
         "summary": "Update Todo",
-        "tags": [
-          "todos"
-        ]
+        "tags": ["todos"]
       }
     },
     "/api/records/{record_id}/todos/{todo_id}/toggles": {
@@ -24115,9 +23682,7 @@
           }
         },
         "summary": "Toggle Todo",
-        "tags": [
-          "todos"
-        ]
+        "tags": ["todos"]
       }
     },
     "/api/records/{record_id}/transcript": {
@@ -24204,9 +23769,7 @@
           }
         },
         "summary": "Get Record Transcript",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       },
       "patch": {
         "operationId": "update_record_transcript_api_records__record_id__transcript_patch",
@@ -24301,9 +23864,7 @@
           }
         },
         "summary": "Update Record Transcript",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/records/{record_id}/transcript/segments": {
@@ -24394,9 +23955,7 @@
           }
         },
         "summary": "Get Record Transcript Segments",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/records/{record_id}/upgrade": {
@@ -24503,9 +24062,7 @@
           }
         },
         "summary": "Upgrade Record",
-        "tags": [
-          "records"
-        ]
+        "tags": ["records"]
       }
     },
     "/api/search": {
@@ -24599,9 +24156,7 @@
           }
         },
         "summary": "Search",
-        "tags": [
-          "search"
-        ]
+        "tags": ["search"]
       }
     },
     "/api/settings/data-directory/export": {
@@ -24688,9 +24243,7 @@
           }
         },
         "summary": "Export Data Directory",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/data-directory/library-state": {
@@ -24767,9 +24320,7 @@
           }
         },
         "summary": "Get Data Directory Library State",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/external-processing-consents/llm": {
@@ -24846,9 +24397,7 @@
           }
         },
         "summary": "Get Llm Consent",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       },
       "post": {
         "operationId": "post_llm_consent_api_settings_external_processing_consents_llm_post",
@@ -24923,9 +24472,7 @@
           }
         },
         "summary": "Post Llm Consent",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/external-processing-consents/tencent-asr": {
@@ -25002,9 +24549,7 @@
           }
         },
         "summary": "Get Tencent Asr Consent",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       },
       "post": {
         "operationId": "grant_tencent_asr_consent_api_settings_external_processing_consents_tencent_asr_post",
@@ -25079,9 +24624,7 @@
           }
         },
         "summary": "Grant Tencent Asr Consent",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/preferences": {
@@ -25158,9 +24701,7 @@
           }
         },
         "summary": "Get Preferences",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       },
       "put": {
         "operationId": "put_preferences_api_settings_preferences_put",
@@ -25245,9 +24786,7 @@
           }
         },
         "summary": "Put Preferences",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/providers/llm": {
@@ -25324,9 +24863,7 @@
           }
         },
         "summary": "Get Llm Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       },
       "put": {
         "operationId": "put_llm_provider_api_settings_providers_llm_put",
@@ -25411,9 +24948,7 @@
           }
         },
         "summary": "Put Llm Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/providers/llm/tests": {
@@ -25490,9 +25025,7 @@
           }
         },
         "summary": "Test Llm Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/providers/tencent-asr": {
@@ -25569,9 +25102,7 @@
           }
         },
         "summary": "Get Tencent Asr Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       },
       "put": {
         "operationId": "put_tencent_asr_provider_api_settings_providers_tencent_asr_put",
@@ -25656,9 +25187,7 @@
           }
         },
         "summary": "Put Tencent Asr Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/providers/tencent-asr/tests": {
@@ -25735,9 +25264,7 @@
           }
         },
         "summary": "Test Tencent Asr Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/providers/web-search": {
@@ -25814,9 +25341,7 @@
           }
         },
         "summary": "Get Web Search Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       },
       "put": {
         "operationId": "put_web_search_provider_api_settings_providers_web_search_put",
@@ -25901,9 +25426,7 @@
           }
         },
         "summary": "Put Web Search Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/providers/web-search/tests": {
@@ -25980,9 +25503,7 @@
           }
         },
         "summary": "Test Web Search Provider",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/settings/usage/llm": {
@@ -26059,9 +25580,7 @@
           }
         },
         "summary": "Get Llm Usage",
-        "tags": [
-          "settings"
-        ]
+        "tags": ["settings"]
       }
     },
     "/api/text-captures": {
@@ -26158,9 +25677,7 @@
           }
         },
         "summary": "Create Text Capture",
-        "tags": [
-          "text-captures"
-        ]
+        "tags": ["text-captures"]
       }
     },
     "/api/today/pending-summaries": {
@@ -26231,9 +25748,7 @@
           }
         },
         "summary": "List Pending Summaries",
-        "tags": [
-          "today"
-        ]
+        "tags": ["today"]
       }
     },
     "/api/today/plan-items": {
@@ -26305,9 +25820,7 @@
           }
         },
         "summary": "List Due Plan Items",
-        "tags": [
-          "today"
-        ]
+        "tags": ["today"]
       }
     },
     "/api/today/stats": {
@@ -26374,9 +25887,7 @@
           }
         },
         "summary": "Get Stats",
-        "tags": [
-          "today"
-        ]
+        "tags": ["today"]
       }
     },
     "/api/today/stats/trend": {
@@ -26456,9 +25967,7 @@
           }
         },
         "summary": "Get Stats Trend",
-        "tags": [
-          "today"
-        ]
+        "tags": ["today"]
       }
     }
   }

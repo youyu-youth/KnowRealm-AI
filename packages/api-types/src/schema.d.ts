@@ -839,6 +839,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/courses/{course_id}/shared-refs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Course Shared Refs
+         * @description 本空间引用清单（available=False 行展示「来源已删除」，仍可删除引用）。
+         */
+        get: operations["list_course_shared_refs_api_courses__course_id__shared_refs_get"];
+        put?: never;
+        /**
+         * Add Course Shared Ref
+         * @description 引用一份归属他空间的资料：原归属不变、不重复入库。
+         */
+        post: operations["add_course_shared_ref_api_courses__course_id__shared_refs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/courses/{course_id}/shared-refs/{library_item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Course Shared Ref
+         * @description 删除引用行（原资料不动）。
+         */
+        delete: operations["remove_course_shared_ref_api_courses__course_id__shared_refs__library_item_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses/{course_id}/unarchive": {
         parameters: {
             query?: never;
@@ -3144,6 +3188,11 @@ export interface components {
              */
             record_title?: string | null;
             /**
+             * Shared
+             * @description 共享来源标志（工单 05）：命中经共享引用覆盖的归属他空间资料时为 true，前端展示「共享来源」徽章；历史行与本地资料为空
+             */
+            shared?: boolean | null;
+            /**
              * Source
              * @description 来源类型
              * @default record
@@ -4960,7 +5009,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -5549,6 +5598,43 @@ export interface components {
             title: string;
             /** Updated At */
             updated_at: string;
+        };
+        /**
+         * SharedRefAdd
+         * @description 添加共享引用请求体。
+         */
+        SharedRefAdd: {
+            /**
+             * Library Item Id
+             * @description 被引用的资料条目 id
+             */
+            library_item_id: string;
+        };
+        /**
+         * SharedRefOut
+         * @description 共享引用行（工单 05）：available 为查询期派生（条目软删 / 非 ACTIVE 即
+         *     False，展示「来源已删除」；回收站恢复自动复活，不存状态字段）。
+         */
+        SharedRefOut: {
+            /** Available */
+            available: boolean;
+            /** Course Id */
+            course_id: string;
+            /** Created At */
+            created_at: string;
+            /** Library Item Id */
+            library_item_id: string;
+            /**
+             * Owner Course Id
+             * @description 条目归属课程 id（未归类为 None）
+             */
+            owner_course_id: string | null;
+            /** Owner Course Name */
+            owner_course_name?: string | null;
+            /** Source Type */
+            source_type: string;
+            /** Title */
+            title: string;
         };
         /** SourceAnchorOut */
         SourceAnchorOut: {
@@ -9943,6 +10029,216 @@ export interface operations {
             };
         };
     };
+    list_course_shared_refs_api_courses__course_id__shared_refs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedRefOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_course_shared_ref_api_courses__course_id__shared_refs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SharedRefAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedRefOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_course_shared_ref_api_courses__course_id__shared_refs__library_item_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                course_id: string;
+                library_item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     unarchive_course_api_courses__course_id__unarchive_post: {
         parameters: {
             query?: never;
@@ -13722,7 +14018,10 @@ export interface operations {
     };
     submit_knowledge_point_job_api_records__record_id__knowledge_point_jobs_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产） */
+                course_id?: string | null;
+            };
             header?: {
                 "x-knowrealm-token"?: string | null;
             };
@@ -14217,7 +14516,10 @@ export interface operations {
     };
     submit_quiz_job_api_records__record_id__quiz_jobs_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产） */
+                course_id?: string | null;
+            };
             header?: {
                 "x-knowrealm-token"?: string | null;
             };
@@ -15419,7 +15721,10 @@ export interface operations {
     };
     submit_summary_api_records__record_id__summary_jobs_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 请求方知识空间上下文：携带时对共享引用资料只读（拒绝生成资产） */
+                course_id?: string | null;
+            };
             header?: {
                 "x-knowrealm-token"?: string | null;
             };
