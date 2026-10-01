@@ -275,8 +275,10 @@
       "open": "添加引用",
       "title": "引用外部资料",
       "description": "选择一份资料引用到本空间：原归属不变、不重复入库。",
+      "searchPlaceholder": "搜索资料标题",
       "loading": "正在加载可选资料…",
       "loadFailed": "可选资料加载失败，请关闭后重试。",
+      "truncated": "资料较多，仅列出最近更新的前 {{count}} 条，其余可用搜索查找。",
       "noCandidates": "暂无可引用的资料：资料库中没有归属其他空间或未归类的条目。",
       "cancel": "取消",
       "confirm": "引用",
@@ -2202,8 +2204,9 @@
         "failedDetail": "移除共享引用未成功（{{reason}}），可重试。",
         "accept": "确认移除共享引用",
         "reject": "取消移除",
+        "targetCourse": "移除引用的课程",
         "targetItem": "被移除引用的资料",
-        "hint": "移除只解除本课程的引用，原资料内容、归属与资产不受影响。"
+        "hint": "移除只解除该课程的引用，原资料内容、归属与资产不受影响。"
       },
       "planRegenerate": {
         "accepted": "学习计划已重排为新版本（第 {{version}} 版 · {{count}} 项）。",

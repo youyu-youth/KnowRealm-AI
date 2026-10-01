@@ -9,7 +9,9 @@ evidence_hits 可引用；分数只用于排序，不出现在结果结构里。
 关联 Record；COURSE = 本课程资料与记录（不含未归类）；ALL = 全部含未归类。
 ARCHIVED / 软删来源不以资料身份召回（07 硬门禁）。LIKE 兜底不进入通用管线——
 仅 RECORD / LIBRARY_ITEM 对范围内无分片记录按记录级路径继承（contract §4：
-transcript 恒为事实源，B2 迁移期语义收编）。
+transcript 恒为事实源，B2 迁移期语义收编）；COURSE 档例外仅共享引用覆盖的
+无分片记录（工单 05：被引用资料的 Record 内容须进入课程问答与检索——
+纯文本资料无分片，FTS 路径永不命中）。
 """
 
 from dataclasses import dataclass, field
@@ -155,6 +157,9 @@ _EXPANSION_COURSE_SQL = (
 )
 
 # 无分片记录的 transcript 子串兜底（RECORD / LIBRARY_ITEM 的记录级继承路径）。
+# COURSE 档（工单 05）仅共享引用覆盖的记录兜底：本课程自己的无分片记录维持
+# contract §4 不兜底口径——spec 承诺的是「被引用资料的 Record 内容进入课程
+# 问答与检索」，不扩大到课程自有记录。
 _SCOPE_FALLBACK_SQL: dict[ChatScope, TextClause] = {
     ChatScope.RECORD: text(
         "SELECT r.id AS record_id, r.title AS record_title, t.content "
@@ -168,6 +173,12 @@ _SCOPE_FALLBACK_SQL: dict[ChatScope, TextClause] = {
         "JOIN records r ON r.id = t.record_id AND r.deleted_at IS NULL "
         "JOIN library_item_records lir ON lir.record_id = r.id "
         "WHERE lir.library_item_id = :library_item_id AND t.deleted_at IS NULL"
+    ),
+    ChatScope.COURSE: text(
+        "SELECT r.id AS record_id, r.title AS record_title, t.content "
+        "FROM transcripts t "
+        "JOIN records r ON r.id = t.record_id AND r.deleted_at IS NULL "
+        f"WHERE r.id IN ({_SHARED_RECORD_IDS_SQL}) AND t.deleted_at IS NULL"
     ),
 }
 

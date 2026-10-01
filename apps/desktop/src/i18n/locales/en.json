@@ -275,8 +275,10 @@
       "open": "Add reference",
       "title": "Reference external material",
       "description": "Pick a material to reference into this space: ownership stays put, no duplicate ingestion.",
+      "searchPlaceholder": "Search by title",
       "loading": "Loading selectable materials…",
       "loadFailed": "Failed to load selectable materials, close and retry.",
+      "truncated": "Many items in the library — showing the {{count}} most recent. Use search to find the rest.",
       "noCandidates": "No referenceable materials: the library has no items owned by other spaces or unclassified.",
       "cancel": "Cancel",
       "confirm": "Reference",
@@ -2222,8 +2224,9 @@
         "failedDetail": "Removing the shared reference did not succeed ({{reason}}); you can retry.",
         "accept": "Confirm removing shared reference",
         "reject": "Cancel removal",
+        "targetCourse": "Course to unreference",
         "targetItem": "Material of the removed reference",
-        "hint": "Removing only unreferences it for this course; the original material, its ownership and assets are untouched."
+        "hint": "Removing only unreferences it for that course; the original material, its ownership and assets are untouched."
       },
       "planRegenerate": {
         "accepted": "Learning plan regenerated as a new version (v{{version}} · {{count}} items).",

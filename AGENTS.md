@@ -42,7 +42,6 @@ KnowRealm 是一个面向个人学习与工作的 **通用 Agent 工作台**。
 > 文档惯例：评审定稿即升版并**重命名文件**；改版本号须同步全部交叉引用（PRD / 技术栈 / CONTEXT.md / 扩展设计文档头部），历史"变更记录"行是史实、不改动。重大技术决策落 ADR（编号递增）；与既有 ADR 冲突须显式提出，不得默默覆盖。
 
 <!-- CODEGRAPH_START -->
-
 ## CodeGraph
 
 In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:

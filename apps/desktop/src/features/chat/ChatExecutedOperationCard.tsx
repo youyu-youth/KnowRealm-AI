@@ -7,6 +7,7 @@ import {
   operationHistoryApi,
   type AgentOperationOut,
 } from "@/features/settings/api/operationHistory";
+import { sharedRefsKeys } from "@/features/sharedRefs/api/keys";
 import { Button } from "@/components/ui/button";
 
 type ChatExecutedOperationCardProps = {
@@ -109,6 +110,9 @@ export function ChatExecutedOperationCard({
       void queryClient.invalidateQueries({
         queryKey: agentKeys.sessionOperations(sessionId),
       });
+      // 撤销 / 重试可能还原或重放共享引用（补偿动作类型不可知）：统一失效
+      // 引用缓存（低频显式动作，代价仅挂载中查询一次重取）。
+      void queryClient.invalidateQueries({ queryKey: sharedRefsKeys.all });
     },
   });
   const retry = useMutation({
@@ -118,6 +122,7 @@ export function ChatExecutedOperationCard({
       void queryClient.invalidateQueries({
         queryKey: agentKeys.sessionOperations(sessionId),
       });
+      void queryClient.invalidateQueries({ queryKey: sharedRefsKeys.all });
     },
   });
 

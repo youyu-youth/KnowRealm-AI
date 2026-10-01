@@ -33,8 +33,8 @@ ADD_SHARED_REF_ACTION = "add_shared_ref"
 REMOVE_SHARED_REF_ACTION = "remove_shared_ref"
 
 
-async def _require_ref(session: AsyncSession, payload: SharedRefPayload) -> None:
-    """引用行存在性检查：不存在 → SHARED_REF_NOT_FOUND。"""
+async def _require_ref(session: AsyncSession, payload: SharedRefPayload) -> str:
+    """引用行 id：不存在 → SHARED_REF_NOT_FOUND。"""
     found = await session.scalar(
         select(CourseSharedRef.id).where(
             CourseSharedRef.course_id == payload.course_id,
@@ -47,6 +47,7 @@ async def _require_ref(session: AsyncSession, payload: SharedRefPayload) -> None
             status_code=404,
             detail="共享引用不存在或已删除",
         )
+    return found
 
 
 async def _item_title(session: AsyncSession, item_id: str) -> str:
@@ -77,11 +78,20 @@ async def capture_shared_ref_remove_state(
     session: AsyncSession, payload: SharedRefPayload
 ) -> SharedRefRemoveStateSnapshot:
     """删除前状态读取器：引用不存在 → SHARED_REF_NOT_FOUND（零提案）；
-    条目标题进快照供确认卡预览（条目不可达时引用行经 FK 早已清理，存在性
-    检查先拦）。"""
-    await _require_ref(session, payload)
+    引用行 id 入快照绑定对象版本——确认窗口内引用被删重建（行身份变化，
+    ADR-0026）或课程改名 / 条目改名 → 快照比对失效重新确认；课程名与条目
+    标题供确认卡核对移除哪条关系（同一资料可被多空间引用）。"""
+    course = await CourseService.get(session, payload.course_id)
+    if course is None:
+        raise CodedHTTPException(
+            code="COURSE_NOT_FOUND",
+            status_code=404,
+            detail="课程不存在或已删除",
+        )
     return SharedRefRemoveStateSnapshot(
-        item_title=await _item_title(session, payload.library_item_id)
+        ref_id=await _require_ref(session, payload),
+        course_name=course.name,
+        item_title=await _item_title(session, payload.library_item_id),
     )
 
 

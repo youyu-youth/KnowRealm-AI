@@ -5,6 +5,7 @@ import { agentKeys } from "@/features/agent/api/authMode";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
 import { libraryKeys } from "@/features/library/api/keys";
+import { sharedRefsKeys } from "@/features/sharedRefs/api/keys";
 import { useChatUiStore } from "@/features/chat/chatUiStore";
 import { derivePageSnapshot } from "@/features/chat/pageSnapshot";
 
@@ -140,6 +141,9 @@ export function useChatStream(sessionId: string) {
           // 任务（run）查询同口径（工单 05）：批量计划卡 / 会话任务面板经持久化
           // 查询恢复——计划卡提案与直建 Run 都在本轮落库，流结束即拉最新。
           void queryClient.invalidateQueries({ queryKey: agentKeys.runs() });
+          // 共享引用缓存同口径（工单 05）：自动档直执行的引用增删已生效，流中
+          // 动作类型不可知——统一失效，挂载中的共享 Tab 随即重取。
+          void queryClient.invalidateQueries({ queryKey: sharedRefsKeys.all });
           abortRef.current = null;
           setIsStreaming(false);
         });

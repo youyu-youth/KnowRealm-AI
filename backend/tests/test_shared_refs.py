@@ -5,6 +5,7 @@ Agent 工具确认行为。"""
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from contextvars import Token
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
@@ -13,7 +14,7 @@ import aiosqlite
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -34,8 +35,10 @@ from app.modules.agent.schemas import ChatScope
 from app.modules.agent.tools.add_shared_ref import add_shared_ref
 from app.modules.agent.tools.list_shared_refs import list_shared_refs
 from app.modules.agent.tools.remove_shared_ref import remove_shared_ref
+from app.modules.library.models import CourseSharedRef
+from app.modules.library.proposals import ProposalService
 from app.modules.library.retrieval import LibraryRetrievalService, RetrievalScope
-from app.modules.library.shared_refs import guard_asset_generation
+from app.modules.library.shared_refs import SharedRefService, guard_asset_generation
 from app.modules.search.segment_service import (
     ENTITY_DOCUMENT_SEGMENT,
     ENTITY_TRANSCRIPT_SEGMENT,
@@ -56,6 +59,9 @@ REC_ML_PAPER = "d0000000-0000-4000-8000-000000000011"
 ITEM_ML_PAPER = "d0000000-0000-4000-8000-000000000021"
 ITEM_ML_WEB = "d0000000-0000-4000-8000-000000000022"
 REC_AGENT_NOTE = "d0000000-0000-4000-8000-000000000012"
+REC_ML_TEXT = "d0000000-0000-4000-8000-000000000013"
+ITEM_ML_TEXT = "d0000000-0000-4000-8000-000000000023"
+TEXT_NEEDLE = "变分自编码器的重参数化技巧"
 
 
 @pytest.fixture(scope="module")
@@ -100,8 +106,9 @@ async def run_sql(
 
 
 async def seed_full_corpus(session_factory: async_sessionmaker[AsyncSession]) -> None:
-    """ML 空间：论文条目（record 挂靠 + 直挂分片双路径）与已删网页条目；
-    AGENT 空间：引用论文条目 + 自己的速记；DB 空间：隔离对照（零引用）。"""
+    """ML 空间：论文条目（record 挂靠 + 直挂分片双路径）、纯文本条目（无分片
+    粘贴形态）与已删网页条目；AGENT 空间：引用论文条目 + 自己的速记；DB 空间：
+    隔离对照（零引用）。"""
     for course_id, name in (
         (COURSE_ML, "机器学习导论"),
         (COURSE_AGENT, "Agent 工程"),
@@ -140,6 +147,40 @@ async def seed_full_corpus(session_factory: async_sessionmaker[AsyncSession]) ->
         "metadata_json, status, created_at, updated_at) "
         "VALUES (:id, :course_id, 'WEB', '注意力机制综述', :hash, '{}', 'ACTIVE', :now, :now)",
         {"id": ITEM_ML_WEB, "course_id": COURSE_ML, "hash": f"hash-{ITEM_ML_WEB}", "now": NOW},
+        session_factory,
+    )
+    # 纯文本条目（归属 ML）：无分片粘贴形态（record 挂靠、零分片——正文只在
+    # transcript，FTS 永不命中，兜底路径语料）。
+    await run_sql(
+        "INSERT INTO library_items (id, course_id, source_type, title, content_hash, "
+        "metadata_json, status, created_at, updated_at) "
+        "VALUES (:id, :course_id, 'TEXT', 'VAE 学习笔记', :hash, '{}', 'ACTIVE', :now, :now)",
+        {"id": ITEM_ML_TEXT, "course_id": COURSE_ML, "hash": f"hash-{ITEM_ML_TEXT}", "now": NOW},
+        session_factory,
+    )
+    await run_sql(
+        "INSERT INTO records (id, course_id, capture_type, title, status, duration_ms, "
+        "created_at, updated_at) VALUES (:id, :course_id, 'PASTE', 'VAE 学习笔记', "
+        "'COMPLETED', 0, :now, :now)",
+        {"id": REC_ML_TEXT, "course_id": COURSE_ML, "now": NOW},
+        session_factory,
+    )
+    await run_sql(
+        "INSERT INTO transcripts (id, record_id, language, content, source_version, "
+        "edited_by_user, created_at, updated_at) VALUES (:id, :record_id, 'zh-CN', "
+        ":content, 1, 0, :now, :now)",
+        {
+            "id": f"transcript-{REC_ML_TEXT}",
+            "record_id": REC_ML_TEXT,
+            "content": f"{TEXT_NEEDLE}用于稳定训练。",
+            "now": NOW,
+        },
+        session_factory,
+    )
+    await run_sql(
+        "INSERT INTO library_item_records (library_item_id, record_id, role, sequence_no, "
+        "created_at) VALUES (:item_id, :record_id, 'PRIMARY', 0, :now)",
+        {"item_id": ITEM_ML_TEXT, "record_id": REC_ML_TEXT, "now": NOW},
         session_factory,
     )
     # AGENT 自己的记录（本课程命中对照）。
@@ -492,6 +533,46 @@ async def test_retrieval_shared_coverage_and_isolation(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_retrieval_shared_segmentless_text_fallback(tmp_path: Path) -> None:
+    """共享的无分片纯文本资料经记录级兜底进入 COURSE 检索（spec：被引用资料
+    的 Record 内容进入课程问答与检索——粘贴形态正文只在 transcript，FTS 分片
+    路径永不命中）；本课程自己的无分片记录维持 contract §4 不兜底口径。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_full_corpus(session_factory)
+        await seed_ref(session_factory, COURSE_AGENT, ITEM_ML_TEXT)
+
+        async with session_factory() as session:
+            result = await LibraryRetrievalService.search(
+                session,
+                RetrievalScope(scope=ChatScope.COURSE, course_id=COURSE_AGENT),
+                TEXT_NEEDLE,
+            )
+        hits = [hit for hit in result.evidence_hits if hit.record_id == REC_ML_TEXT]
+        assert hits
+        assert hits[0].channel == "transcript_fallback"
+        assert hits[0].shared_source is True
+        assert TEXT_NEEDLE in hits[0].quote
+
+        # 无引用课程隔离：兜底路径同样检索不到。
+        async with session_factory() as session:
+            isolated = await LibraryRetrievalService.search(
+                session,
+                RetrievalScope(scope=ChatScope.COURSE, course_id=COURSE_DB),
+                TEXT_NEEDLE,
+            )
+        assert isolated.evidence_hits == []
+
+        # 本课程自己的无分片记录（速记）不进兜底（contract §4 口径不扩大）。
+        async with session_factory() as session:
+            own_note = await LibraryRetrievalService.search(
+                session,
+                RetrievalScope(scope=ChatScope.COURSE, course_id=COURSE_AGENT),
+                "智能体通过工具调用",
+            )
+        assert own_note.evidence_hits == []
+
+
+@pytest.mark.anyio
 async def test_retrieval_soft_delete_invalidates_and_restore_revives(tmp_path: Path) -> None:
     async with bare_db(tmp_path) as session_factory:
         await seed_full_corpus(session_factory)
@@ -682,3 +763,76 @@ async def test_agent_shared_ref_tools(tmp_path: Path) -> None:
             assert payload["proposals"][0]["action"] == "remove_shared_ref"
         finally:
             reset_agent_runtime_context(token)
+
+
+@pytest.mark.anyio
+async def test_remove_proposal_stale_after_ref_recreate(tmp_path: Path) -> None:
+    """移除提案快照绑定引用行 id（ADR-0026 对象版本确认）：确认窗口内引用被
+    删重建（行身份变化）→ 旧提案 OPERATION_SNAPSHOT_STALE 失效，不得删除新
+    引用行；快照未变的正常确认照常删除。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_full_corpus(session_factory)
+        async with session_factory() as session, session.begin():
+            await SharedRefService.add_core(session, COURSE_AGENT, ITEM_ML_PAPER)
+
+        async def bind() -> Token[AgentRuntimeContext | None]:
+            return bind_agent_runtime_context(
+                AgentRuntimeContext(
+                    session_factory=session_factory,
+                    session_id="sess-remove-stale",
+                    auth_mode=AuthMode.REQUEST_APPROVAL,
+                    budget=ToolCallBudget(),
+                )
+            )
+
+        async def submit_remove() -> str:
+            token = await bind()
+            try:
+                raw = await remove_shared_ref.ainvoke(
+                    {"course_id": COURSE_AGENT, "library_item_id": ITEM_ML_PAPER}
+                )
+            finally:
+                reset_agent_runtime_context(token)
+            proposals = dict(json.loads(raw))["proposals"]
+            assert proposals, "remove 工具应落提案"
+            return cast(str, proposals[0]["proposal_id"])
+
+        async def current_ref_id() -> str | None:
+            async with session_factory() as session:
+                return await session.scalar(
+                    select(CourseSharedRef.id).where(
+                        CourseSharedRef.course_id == COURSE_AGENT,
+                        CourseSharedRef.library_item_id == ITEM_ML_PAPER,
+                    )
+                )
+
+        # 正常路径对照：快照未变 → 确认成功删除引用行。
+        proposal_a = await submit_remove()
+        async with session_factory() as session:
+            confirmed = await ProposalService.confirm(session, proposal_a)
+        assert confirmed.status == "APPLIED"
+        assert confirmed.snapshot is not None
+        assert confirmed.snapshot["course_name"] == "Agent 工程"
+        assert await current_ref_id() is None
+
+        # 确认窗口内删了重建（行身份变化）→ 旧提案失效、新引用行保留。
+        async with session_factory() as session, session.begin():
+            await SharedRefService.add_core(session, COURSE_AGENT, ITEM_ML_PAPER)
+        recreated_id = await current_ref_id()
+        assert recreated_id is not None
+        proposal_b = await submit_remove()
+        async with session_factory() as session, session.begin():
+            await SharedRefService.remove_core(session, COURSE_AGENT, ITEM_ML_PAPER)
+        async with session_factory() as session, session.begin():
+            await SharedRefService.add_core(session, COURSE_AGENT, ITEM_ML_PAPER)
+        assert await current_ref_id() not in (None, recreated_id)
+
+        async with session_factory() as session:
+            with pytest.raises(CodedHTTPException) as exc_info:
+                await ProposalService.confirm(session, proposal_b)
+        assert exc_info.value.code == "PROPOSAL_APPLY_FAILED"
+        assert exc_info.value.params == {"errorCode": "OPERATION_SNAPSHOT_STALE"}
+        assert await current_ref_id() is not None  # 新引用行未被旧批准删除
+        async with session_factory() as session:
+            stale = await ProposalService._get(session, proposal_b)  # pyright: ignore[reportPrivateUsage]
+        assert stale.status == "FAILED"

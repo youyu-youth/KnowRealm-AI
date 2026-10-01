@@ -4,7 +4,7 @@
 
 本地单用户 FastAPI sidecar：SQLAlchemy 2.0 async + aiosqlite + WAL，是 `knowrealm.db` 与数据目录业务文件的唯一写者/协调者。由 Tauri 壳以子进程拉起（127.0.0.1 随机端口 + 一次性启动令牌），不独立部署。
 
-> 编码规范正本是根目录 `.claude/rules/fastapi.md` 与 `data-layer.md`（自动加载，本文不重复）。本文件记录本目录的**命令、结构与已验证现状**；rules 中 LangGraph、sqlite-vec、pydantic-settings 等内容是目标态，差异见文末 Gotchas——按 function plan 推进，勿擅自补实现。
+> 编码规范正本是根目录 `.claude/rules/fastapi.md` 与 `data-layer.md`（自动加载，本文不重复）。本文件记录本目录的**命令、结构与已验证现状**；rules 中 LangGraph、sqlite-vec、pydantic-settings 等内容是目标态，按 function plan 推进，勿擅自补实现。
 
 ## 常用命令（backend/ 下执行，uv 管理）
 
@@ -27,27 +27,46 @@ python -m app.server --port 0 --token <32字节hex> --data-dir %USERPROFILE%\Kno
 ## 目录结构
 
 ```
-app/
-├── main.py          # create_app 工厂 + lifespan（顺序见下）；CORS 限 tauri 来源；全局异常处理器；唯一组合根
-├── server.py        # CLI 入口：bind_socket → stdout 打 KNOWREALM_SIDECAR_PORT=<port> → uvicorn 运行
-├── modules/         # Feature-first 模块化单体（ADR-0015）：一域一模块（路由+service+worker+models+schemas），包 __init__ 仅 docstring
-│   ├── llm/         # 平台：OpenAI 兼容结构化调用 + llm_call_logs 埋点
-│   ├── jobs/        # 平台：processing_jobs 队列 + JobRunner（ADR-0012）+ 控制面 API
-│   ├── settings/    # 平台：providers/consents/preferences（config.py 读写 settings.json、providers.json）
-│   ├── data/        # 平台：数据目录导出/导入/滚动备份
-│   ├── course/ course_brain/ record/ capture/ transcript/ summary/ knowledge_point/ quiz/ todo/ profile/ today/
-│   ├── learning/ library/ review_material/ search/ source_anchor/
-│   ├── agent/        # 对话式 Agent 域（ADR-0020）：chat 产品面 + graph 装配 + tools/ + middleware/（chat/ 更名升级）
-│   └── transcript/integrations/tencent.py  # 腾讯 ASR 客户端（供应商集成样板）
-├── shared/          # deps（令牌与会话依赖）/ schemas（ErrorResponse）/ errors（ADR-0017 错误码子类）/ prompts（#59 内容语言指令）/ events（Record 失效通知总线）
-├── core/            # data_dir（OS 排他锁）/ logging（loguru InterceptHandler）/ loop / version（APP_VERSION）；无 config.py
-└── db/              # engine（WAL + PRAGMA foreign_keys=ON）/ migrations（迁移执行器）/ base（Declarative Base + utcnow）
+backend/
+├── app/
+│   ├── main.py       # create_app 工厂 + lifespan（顺序见下）；CORS 限 tauri 来源；全局异常处理器；唯一组合根
+│   ├── server.py     # CLI 入口：bind_socket → stdout 打 KNOWREALM_SIDECAR_PORT=<port> → uvicorn 运行
+│   ├── modules/      # Feature-first 模块化单体（ADR-0015）：一域一模块（路由+service+worker+models+schemas），包 __init__ 仅 docstring
+│   │   ├── llm/                # 平台：OpenAI 兼容结构化调用 + llm_call_logs 埋点
+│   │   ├── jobs/               # 平台：processing_jobs 队列 + JobRunner（ADR-0012）+ 控制面 API
+│   │   ├── settings/           # 平台：providers/consents/preferences（config.py 读写 settings.json、providers.json）
+│   │   ├── data/               # 平台：数据目录导出/导入/滚动备份
+│   │   ├── course/             # 课程：CRUD 与归档闸门（/api/courses）
+│   │   ├── course_brain/       # 课程大脑：概念图谱构建 worker + 审核闭环
+│   │   ├── record/             # 记录：资产主体 CRUD、软删/恢复、SSE 失效事件
+│   │   ├── capture/            # 捕获入口：文本/录音会话/音频导入/文档导入/批量捕获 + web_fetch worker
+│   │   ├── transcript/         # 转写：document/audio 双 worker（ffmpeg→腾讯 ASR）+ segments + tencent.py 供应商集成样板
+│   │   ├── summary/            # AI 总结：生成/调整/确认/版本链 worker
+│   │   ├── knowledge_point/    # 知识点：生成 worker + CRUD + 对话锚点写入
+│   │   ├── quiz/               # 习题：生成 worker + 逐题评分 grading_worker + 模拟测试
+│   │   ├── todo/               # 待办：生成 worker + CRUD
+│   │   ├── profile/            # 档案：个人资料与头像
+│   │   ├── today/              # 今日：跨域待办汇总
+│   │   ├── learning/           # 学习证据：learning_events 水位消费（ADR-0021）+ 概念掌握度
+│   │   ├── library/            # 资料库/RAG：library_items + FTS 检索 + backfill/index_rebuild 双 worker + proposals
+│   │   ├── review_material/    # 复习资料：生成/确认/版本链 worker
+│   │   ├── search/             # 全局搜索：统一索引 + jieba 分词 + web_search（Tavily）
+│   │   ├── source_anchor/      # 源锚点：跨资产引用定位
+│   │   ├── agent/              # 对话式 Agent 域（ADR-0020/0026）：chat 产品面 + graph 装配 + tools/ + middleware/ + runs/（受控执行：审计/undo/resume）+ operations/ + auth_mode 授权档
+│   │   ├── learner/            # 学习者偏好：learner_preferences（含记忆外发开关），agent_proposals 快照冻结用
+│   │   └── learning_plan/      # 学习目标与计划：goals/plans/items CRUD + LLM 生成 + 锁定容量铺排 + 人工审计（0034~0036）
+│   ├── shared/         # deps（令牌与会话依赖）/ schemas（ErrorResponse）/ errors（ADR-0017 错误码子类）/ prompts（#59 内容语言指令）/ events（Record 失效通知总线）
+│   ├── core/           # data_dir（OS 排他锁）/ logging（loguru InterceptHandler）/ loop / version（APP_VERSION）；无 config.py
+│   └── db/             # engine（WAL + PRAGMA foreign_keys=ON）/ migrations.py（迁移执行器）/ base（Declarative Base + utcnow）
+├── migrations/         # 0001~0036 SQL 迁移（四位编号连续递增；user_version 由 app/db/migrations.py 执行器统一推进）
+├── scripts/            # export_openapi 契约导出等工具脚本
+└── tests/              # 58 个测试文件；无 conftest，各文件自带 fixture
 ```
 
-- 跨模块引用（行为与契约同规则）直达具体文件（`from app.modules.quiz.service import QuizService`）；模块间方向无环：`capture → transcript → summary → {kp, quiz, todo}`，agent/today 下游，learning/library/review_material/source_anchor 亦下游，search 无跨模块业务依赖；平台四件套被单向依赖。
+- 跨模块引用（行为与契约同规则）直达具体文件（`from app.modules.quiz.service import QuizService`）；模块间方向无环：`capture → transcript → summary → {kp, quiz, todo}`，agent/today 下游，learning/library/review_material/source_anchor/learner/learning_plan 亦下游，search 无跨模块业务依赖；平台四件套被单向依赖。
 
-- api 路由前缀：`/api/courses`、`/api/records…`（含 `GET /records/{id}/events` SSE、`/{id}/summary*` 总结读/生成/调整/确认/版本、`/{id}/transcript`、`/{id}/jobs`）、`/api/audio-imports`、`/api/capture-batches`、`/api/chat-sessions`、`/api/document-imports`、`/api/library`、`/api/processing-jobs`、`/api/profile`、`/api/proposals`、`/api/recording-sessions`、`/api/search`、`/api/settings…`（providers/llm 与 external-processing-consents）、`/api/text-captures`、`/api/today/pending-summaries`、`/api/health`。
-- services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（job_runner 骨架 + 十个 worker 执行体、processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation、summary_derivation）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service）；今日待办（today_service）；AI 对话（agent/session_service）；档案（profile_service）；学习证据（learning/consumer / mastery / queries）；资料库（library/service / backfill / proposals）；复习资料（review_material/service）；全局搜索（search/service / tokenizer / web_search / integrations/tavily）；源锚点（source_anchor/source_anchors）。
+- api 路由前缀：`/api/courses`、`/api/records…`（含 `GET /records/{id}/events` SSE、`/{id}/summary*` 总结读/生成/调整/确认/版本、`/{id}/transcript`、`/{id}/jobs`）、`/api/agent…`（auth-mode、runs 的 cancel/resume/undo/retry/purge 与 operations/activity）、`/api/audio-imports`、`/api/capture-batches`、`/api/chat-sessions`、`/api/document-imports`、`/api/learner`（preferences / memory-outbound）、`/api/library`、`/api/processing-jobs`、`/api/profile`、`/api/proposals`、`/api/recording-sessions`、`/api/search`、`/api/settings…`（providers/llm 与 external-processing-consents）、`/api/text-captures`、`/api/today/pending-summaries`、`/api/health`。
+- services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（job_runner 骨架 + 十三个 worker 执行体、processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation、summary_derivation）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service）；今日待办（today_service）；AI 对话与 Agent 受控执行（agent/session_service、runs/operations/undo 与 auth_mode）；档案（profile_service）；学习证据（learning/consumer / mastery / queries）；资料库（library/service / backfill / proposals）；复习资料（review_material/service）；全局搜索（search/service / tokenizer / web_search / integrations/tavily）；源锚点（source_anchor/source_anchors）。
 
 ## agent功能代码编写向导
 
@@ -67,7 +86,7 @@ app/
 
 ### 迁移纪律
 
-`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0026**（资料库数据地基：`library_items`/`library_item_records`/`agent_proposals`/`learner_preferences` 四新表 + `course_material_id`→`library_item_id` 改名列补 FK + `chat_sessions` 五档 scope 与 `library_item_id` + `processing_jobs.library_item_id` 与三新 job_type；升级前自动落 `knowrealm-premigrate-NNNN.db` 快照，存量映射走 LIBRARY_BACKFILL 幂等 Job）。全部 `user_version` 断言（16 个测试文件，`test_archive.py` 8 处 + 其余各 1 处）自 C2 收敛（3b836b0）起统一引用 `supported_user_version()` 动态值，**新增迁移零断言同步**（新迁移测试沿用同形断言；全库 grep 断言处数保留为兜底纪律）。
+`migrations/NNNN_snake_case.sql` 四位编号**必须从 0001 连续递增**（执行器校验拒绝跳号）；脚本只写 DDL，`PRAGMA user_version` 由 `db/migrations.py` 执行器在事务内统一推进；已发布迁移不可改，纠错新增迁移。当前最新 **0036**（0027 研究会话 RESEARCH 模式整表重建；0028~0033 Agent 受控执行：proposal 结果落库与文本/record 关联、agent_runs/agent_operations/agent_activity 三表、chat_message 执行锚点、proposal 快照、agent_run job_type；0034~0036 学习目标与计划两表加列；升级前自动落 `knowrealm-premigrate-NNNN.db` 快照）。全部 `user_version` 断言（22 个测试文件）自 C2 收敛（3b836b0）起统一引用 `supported_user_version()` 动态值，**新增迁移零断言同步**（新迁移测试沿用同形断言；全库 grep 断言处数保留为兜底纪律）。
 
 ### 令牌校验
 
@@ -75,12 +94,16 @@ app/
 
 ### 进程内 worker（processing_jobs 即队列，无独立 worker 进程）
 
-任务循环骨架单一归属 `services/job_runner.py`（ADR-0012）：九个 worker（document / audio / summary / review_material / knowledge_point / quiz / quiz_grading / todo / course_brain）各是一份声明式 `WorkerSpec`（候选查询 + 领取校验三态 + 执行体 + 写回 + 失败结局）注入 JobRunner，每 worker 一个 asyncio 任务，lifespan 内经显式工厂表启动。**新生成域一律写执行体描述，禁止复制骨架**；测试挂闸走公开接缝（模块级钩子函数 / `JobRunner.claim_one`），禁止 patch 私有方法。音频链：ffmpeg 转码（16k 单声道 libopus、300s 切片，经 `asyncio.create_subprocess_exec` 调随包 ffmpeg）→ 腾讯云 ASR（TC3-HMAC-SHA256 自签、httpx `trust_env=False`；consent / 密钥 / 离线三种 waiting_reason 不消耗 attempts；task_id 断点存 input_json，重启续轮询不重提交）。
+任务循环骨架单一归属 `modules/jobs/runner.py`（ADR-0012）：十三个 worker（document / audio / summary / review_material / knowledge_point / quiz / quiz_grading / todo / course_brain / library_backfill / web_fetch / library_index_rebuild / agent_run）各是一份声明式 `WorkerSpec`（候选查询 + 领取校验三态 + 执行体 + 写回 + 失败结局）注入 JobRunner，每 worker 一个 asyncio 任务，lifespan 内经显式工厂表启动。**新生成域一律写执行体描述，禁止复制骨架**；测试挂闸走公开接缝（模块级钩子函数 / `JobRunner.claim_one`），禁止 patch 私有方法。音频链：ffmpeg 转码（16k 单声道 libopus、300s 切片，经 `asyncio.create_subprocess_exec` 调随包 ffmpeg）→ 腾讯云 ASR（TC3-HMAC-SHA256 自签、httpx `trust_env=False`；consent / 密钥 / 离线三种 waiting_reason 不消耗 attempts；task_id 断点存 input_json，重启续轮询不重提交）。
 
 ### SSE（ADR-0008 按流语义拆分）
 
 - Record 失效通知（**已实现**）：`GET /api/records/{id}/events`，只发 `invalidate` 事件（`RecordInvalidationNotifier`：per-record 版本号 + asyncio.Event；15s ping）；REST/SQLite 恒为事实源。
 - AI/Chat 命令流（**已实现**）：POST + `status/token/tool_call/tool_result/citation/done/error` 七种事件（`interrupt` 尚未在 chat 命令流发出）。事件清单扩展决策见 ADR-0019，两份 rules 及镜像已同步为八事件全集。
+
+### Agent 受控执行（ADR-0026）
+
+写侧动作走 `agent_proposals` 确认卡 + `agent_runs`/`agent_operations` 审计账本。授权档 `AuthMode` 三档（REQUEST_APPROVAL / AUTO_APPROVE / FULL_ACCESS）：实际授权＝固化档（PUT `/api/agent/auth-mode`）∩ 会话覆盖（降档即时生效，重启仅剩固化档）。undo 按账本逆序补偿（run 级与单 operation 级端点）。执行体为 `agent_run` worker（`modules/agent/runs/worker.py`）。新增 Agent 写能力必须挂进该链路（复用 proposals + operations 回执），禁止绕过直写。
 
 ### 录音分片接收（ADR-0009：sidecar 拥有暂存）
 
@@ -97,4 +120,4 @@ app/
 - `--basetemp` 前须确保 `.tmp` 父目录存在：此 pytest 在 Windows 不建父目录，删掉 `.tmp` 本体会让全量测试以 FileNotFoundError 批量假失败。
 - `tests/test_server_process.py`：真实子进程集成（本机无 ffmpeg 自动 skip；从 stdout 解析端口；覆盖二次 sidecar 拿锁失败 `DATA_DIRECTORY_IN_USE` 等）；ASR 场景用 `tests/sidecar_asr_fixture.py` 的假腾讯 HTTP 传输（control JSON 切换 success/pending/503 等）。
 - 数据库断言直接 `aiosqlite.connect` 查 `PRAGMA user_version` / 表结构 / 外键。
-- 已知基线：`app/core/logging.py:46` 有一个 loguru 类型 stub 的既有 pyright 错误（非新代码引入）；全量 pyright 门禁以"无新增错误"为准。
+- 全量 pyright 门禁以零错误为准。

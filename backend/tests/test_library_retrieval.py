@@ -541,7 +541,8 @@ async def test_all_scope_includes_unclassified_and_excludes_dead_sources(tmp_pat
             app, RetrievalScope(scope=ChatScope.COURSE, course_id=COURSE_ML), "高维空间"
         )
         assert deleted_course_doc.evidence_hits == []
-        # COURSE/ALL 无记录级子串兜底：无分片粘贴记录在 ALL 也不可检索（contract §4）。
+        # ALL 无记录级子串兜底：无分片粘贴记录在 ALL 也不可检索（contract §4；
+        # COURSE 档仅共享引用覆盖的记录例外兜底，见 test_shared_refs.py）。
         no_fallback = await search(app, RetrievalScope(scope=ChatScope.ALL), "讲给外行听")
         assert no_fallback.evidence_hits == []
 

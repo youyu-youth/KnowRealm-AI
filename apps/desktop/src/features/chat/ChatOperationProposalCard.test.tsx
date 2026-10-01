@@ -145,6 +145,24 @@ describe("ChatOperationProposalCard", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("移除共享引用确认卡展示目标空间与资料（多空间引用可核对移除哪条关系）", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        proposal_type: "OP_SHARED_REF_REMOVE",
+        payload: { course_id: "course-agent", library_item_id: "item-paper" },
+        snapshot: {
+          ref_id: "ref-1",
+          course_name: "Agent 工程",
+          item_title: "梯度下降论文",
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("梯度下降论文")).toBeVisible();
+    // 目标空间与资料并列呈现（快照 course_name）。
+    expect(screen.getByText("Agent 工程")).toBeVisible();
+  });
+
   it("完整参数预览：读提案 payload 并把枚举值翻译为中文", async () => {
     listProposals.mockResolvedValue([proposalFixture()]);
     renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);

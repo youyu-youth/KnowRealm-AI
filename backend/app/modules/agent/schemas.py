@@ -1008,8 +1008,13 @@ class SharedRefAddStateSnapshot(BaseModel):
 
 
 class SharedRefRemoveStateSnapshot(BaseModel):
-    """shared_ref.remove 执行前快照：引用行存在性依据（条目标题供确认卡预览）。"""
+    """shared_ref.remove 执行前快照：引用行 id（对象版本绑定——确认窗口内
+    引用被删重建则行身份变化 → OPERATION_SNAPSHOT_STALE，旧批准不得删除
+    新引用行，ADR-0026）＋课程名与条目标题（确认卡核对移除哪条关系——同一
+    资料可被多空间引用；课程改名 → 快照比对失效重新确认，与 add 同口径）。"""
 
     model_config = ConfigDict(extra="forbid")
 
+    ref_id: str
+    course_name: str
     item_title: str

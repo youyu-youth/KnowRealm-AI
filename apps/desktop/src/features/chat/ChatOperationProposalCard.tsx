@@ -9,6 +9,7 @@ import {
   type AgentProposalOut,
 } from "@/features/library/api/library";
 import { libraryKeys } from "@/features/library/api/keys";
+import { sharedRefsKeys } from "@/features/sharedRefs/api/keys";
 import { agentKeys } from "@/features/agent/api/authMode";
 import {
   operationHistoryApi,
@@ -1219,7 +1220,8 @@ function SharedRefAddPreviewFields({
   );
 }
 
-/** OP_SHARED_REF_REMOVE 确认卡预览：被移除引用的资料（快照）+ 原资料不动提示。 */
+/** OP_SHARED_REF_REMOVE 确认卡预览：目标课程 + 被移除引用的资料（快照，
+ * 同一资料可被多空间引用——两行并列才能核对移除哪条关系）+ 原资料不动提示。 */
 function SharedRefRemovePreviewFields({
   payload,
   snapshot,
@@ -1227,6 +1229,15 @@ function SharedRefRemovePreviewFields({
 }: PreviewFieldsProps) {
   return (
     <>
+      <div className="flex gap-2">
+        <dt className="text-label text-muted-foreground shrink-0">
+          {t("chat.operationProposal.sharedRefRemove.targetCourse")}
+        </dt>
+        <dd className="text-label text-ink min-w-0 break-words">
+          {excerpt(fieldString(snapshot, "course_name") ?? "") ||
+            fieldString(payload, "course_id")}
+        </dd>
+      </div>
       <div className="flex gap-2">
         <dt className="text-label text-muted-foreground shrink-0">
           {t("chat.operationProposal.sharedRefRemove.targetItem")}
@@ -1483,6 +1494,12 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
 /** 本卡涵盖的操作提案类型（02 课程创建 / 03 文本记录 / 03' 修改与归档）＝配置表键。 */
 const OPERATION_PROPOSAL_TYPES = new Set(Object.keys(CARD_BY_TYPE));
 
+/** 共享引用提案类型：确认 / 拒绝后须失效共享引用缓存（清单与候选）。 */
+const SHARED_REF_PROPOSAL_TYPES = new Set([
+  "OP_SHARED_REF_ADD",
+  "OP_SHARED_REF_REMOVE",
+]);
+
 /** 操作卡文案键：查类型配置表（共用键的类型前缀分派，03 review 收敛单点）。 */
 function labelKey(proposal: AgentProposalOut, key: string): string {
   // proposals 已按 OPERATION_PROPOSAL_TYPES（= 表键）过滤，查表恒命中。
@@ -1707,6 +1724,9 @@ export function ChatOperationProposalCard({
       void queryClient.invalidateQueries({
         queryKey: agentKeys.sessionOperations(sessionId),
       });
+      // 撤销可能还原共享引用（补偿动作跨闭包不可知类型）：统一失效引用缓存
+      //（低频显式动作，代价仅挂载中查询一次重取）。
+      void queryClient.invalidateQueries({ queryKey: sharedRefsKeys.all });
     },
   });
 
@@ -1761,6 +1781,17 @@ export function ChatOperationProposalCard({
         void queryClient.invalidateQueries({
           queryKey: [...libraryKeys.all, "proposals"],
         });
+        // 共享引用提案确认 / 拒绝：失效引用缓存（清单与候选，desktop-state.md
+        // 「相关列表/聚合 key」——staleTime 60s 内不会自愈）。
+        const proposal = proposals.find((item) => item.id === proposalId);
+        if (
+          proposal !== undefined &&
+          SHARED_REF_PROPOSAL_TYPES.has(proposal.proposal_type)
+        ) {
+          void queryClient.invalidateQueries({
+            queryKey: sharedRefsKeys.all,
+          });
+        }
       })
       .catch((exc: unknown) => {
         setError(exc instanceof Error ? exc.message : String(exc));

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Info, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { BookOpen, Info, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { StatusTag } from "@/components/common/StatusTag";
@@ -22,6 +22,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -214,7 +215,8 @@ function SharedRefRow({
 
 /** 添加引用对话框：列出可引用的资料条目（排除本空间归属与已引用），单选确认。
  * 未归类与其他空间的条目均可引用；后端仍是执法边界（OWNED / DUPLICATE 稳定
- * 错误码经 toast 呈现）。 */
+ * 错误码经 toast 呈现）。标题搜索复用资料库列表 API（q 参数，全库范围命中
+ * ——首屏之外与首屏全被过滤的场景靠搜索触达）。 */
 function AddSharedRefDialog({
   courseId,
   open,
@@ -228,12 +230,20 @@ function AddSharedRefDialog({
 }) {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 250);
   // 可选清单随对话框打开取（引用关系变化不影响资料库清单本身）。
-  const items = useSharedRefCandidates(courseId, open, existingIds);
+  const items = useSharedRefCandidates(
+    courseId,
+    open,
+    existingIds,
+    debouncedSearch,
+  );
   const add = useAddSharedRef(courseId);
 
   const close = () => {
     setSelected(null);
+    setSearch("");
     onOpenChange(false);
   };
   return (
@@ -246,6 +256,19 @@ function AddSharedRefDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-2">
+          <div className="relative">
+            <Search
+              aria-hidden="true"
+              className="text-ink-muted pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+            />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t("sharedRefs.add.searchPlaceholder")}
+              className="pl-9"
+              aria-label={t("sharedRefs.add.searchPlaceholder")}
+            />
+          </div>
           {items.isPending ? (
             <p
               role="status"
@@ -288,6 +311,10 @@ function AddSharedRefDialog({
                 </label>
               ))}
             </RadioGroup>
+          ) : items.truncated ? (
+            <p className="text-body text-ink-muted py-6">
+              {t("sharedRefs.add.truncated", { count: items.loadedCount })}
+            </p>
           ) : (
             <p className="text-body text-ink-muted py-6">
               {t("sharedRefs.add.noCandidates")}
@@ -324,15 +351,29 @@ function AddSharedRefDialog({
   );
 }
 
-/** 可引用候选：全部资料条目（个人量级上限 100）过滤本空间归属、已软删与已引用。 */
+/** 输入去抖（对齐 search 模块先例：输入 250ms 后触发查询）。 */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+/** 可引用候选：资料条目按标题搜索（q 传后端，全库范围命中）取单页（个人量级
+ * 上限 100），前端过滤本空间归属、已软删与已引用；total 超出单页时 truncated
+ * ——空态须提示仅列出部分而非「没有候选」。 */
 function useSharedRefCandidates(
   courseId: string,
   enabled: boolean,
   existingIds: Set<string>,
+  q: string,
 ) {
   const query = useQuery({
-    queryKey: sharedRefsKeys.candidates(courseId),
-    queryFn: () => libraryApi.listItems({ limit: 100 }),
+    queryKey: sharedRefsKeys.candidates(courseId, q),
+    queryFn: () =>
+      libraryApi.listItems({ limit: 100, q: q.trim() || undefined }),
     enabled,
   });
   const data = useMemo(
@@ -345,5 +386,10 @@ function useSharedRefCandidates(
       ),
     [query.data, courseId, existingIds],
   );
-  return { ...query, data };
+  return {
+    ...query,
+    data,
+    truncated: (query.data?.total ?? 0) > (query.data?.items.length ?? 0),
+    loadedCount: query.data?.items.length ?? 0,
+  };
 }
