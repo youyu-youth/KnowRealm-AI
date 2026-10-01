@@ -52,6 +52,8 @@ def _hit_payload(hit: EvidenceHit) -> dict[str, object]:
         payload["record_id"] = hit.record_id
     if hit.library_item_id is not None:
         payload["library_item_id"] = hit.library_item_id
+    if hit.shared_source:
+        payload["shared_source"] = True
     return payload
 
 

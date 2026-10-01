@@ -39,6 +39,7 @@ from app.modules.agent.context import (
     CHAT_GOAL_GUIDANCE,
     CHAT_LANGUAGE_INSTRUCTION,
     CHAT_PLAN_GUIDANCE,
+    CHAT_SHARED_REF_GUIDANCE,
     CHAT_UNDO_GUIDANCE,
     ChatContextTooLargeError,
     ContextRow,
@@ -180,6 +181,7 @@ class TestBuildContextMessages:
             f"{CHAT_ENUMERATION_GUIDANCE}\n"
             f"{CHAT_BATCH_PLAN_GUIDANCE}\n{CHAT_UNDO_GUIDANCE}\n{CHAT_GOAL_GUIDANCE}\n"
             f"{CHAT_PLAN_GUIDANCE}\n"
+            f"{CHAT_SHARED_REF_GUIDANCE}\n"
             f"{CHAT_LANGUAGE_INSTRUCTION}"
         )
         assert messages[0].id == "sys"
@@ -235,6 +237,7 @@ class TestBuildContextMessages:
                     CHAT_UNDO_GUIDANCE,
                     CHAT_GOAL_GUIDANCE,
                     CHAT_PLAN_GUIDANCE,
+                    CHAT_SHARED_REF_GUIDANCE,
                     CHAT_LANGUAGE_INSTRUCTION,
                 ]
             )
@@ -281,6 +284,7 @@ class TestBuildContextMessages:
                     CHAT_UNDO_GUIDANCE,
                     CHAT_GOAL_GUIDANCE,
                     CHAT_PLAN_GUIDANCE,
+                    CHAT_SHARED_REF_GUIDANCE,
                     CHAT_LANGUAGE_INSTRUCTION,
                 ]
             ),
@@ -1495,6 +1499,7 @@ async def test_mounted_reply_citations_validated_stripped_and_streamed(
                 "title": None,
                 "library_item_id": None,
                 "anchor_id": None,
+                "shared": None,
             }
         ]
         assert "citations_json" not in assistant
@@ -1555,6 +1560,7 @@ async def test_mounted_blockquote_paraphrase_citation_aligned(
                 "title": None,
                 "library_item_id": None,
                 "anchor_id": None,
+                "shared": None,
             }
         ]
 
@@ -1712,13 +1718,14 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
                 "title": None,
                 "library_item_id": None,
                 "anchor_id": None,
+                "shared": None,
             }
         ]
 
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v22"
+        assert rows[0][3] == "chat-library-scope-v23"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2027,6 +2034,7 @@ async def test_free_chat_web_search_streams_tool_events_and_web_citation(
                 "title": "Python 官网",
                 "library_item_id": None,
                 "anchor_id": None,
+                "shared": None,
             }
         ]
 
@@ -2112,6 +2120,7 @@ async def test_mounted_web_flag_citations_mix_record_and_web_entries(
                 "title": None,
                 "library_item_id": None,
                 "anchor_id": None,
+                "shared": None,
             },
             {
                 "index": 2,
@@ -2123,6 +2132,7 @@ async def test_mounted_web_flag_citations_mix_record_and_web_entries(
                 "title": "MVCC 博客",
                 "library_item_id": None,
                 "anchor_id": None,
+                "shared": None,
             },
         ]
 
@@ -2151,6 +2161,7 @@ async def test_prompt_byte_identical_when_web_search_off(
             f"{CHAT_UNDO_GUIDANCE}\n"
             f"{CHAT_GOAL_GUIDANCE}\n"
             f"{CHAT_PLAN_GUIDANCE}\n"
+            f"{CHAT_SHARED_REF_GUIDANCE}\n"
             f"{CHAT_LANGUAGE_INSTRUCTION}"
         )
 
@@ -2274,6 +2285,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_plan_item",
                 "complete_plan_item",
                 "regenerate_plan",
+                "list_shared_refs",
+                "add_shared_ref",
+                "remove_shared_ref",
             ]
             assert await visible(record_session_id) == [
                 "search_library",
@@ -2308,6 +2322,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_plan_item",
                 "complete_plan_item",
                 "regenerate_plan",
+                "list_shared_refs",
+                "add_shared_ref",
+                "remove_shared_ref",
             ]
             assert await visible(course_session_id) == [
                 "search_library",
@@ -2342,6 +2359,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_plan_item",
                 "complete_plan_item",
                 "regenerate_plan",
+                "list_shared_refs",
+                "add_shared_ref",
+                "remove_shared_ref",
             ]
             assert await visible(all_session_id) == [
                 "search_library",
@@ -2376,6 +2396,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_plan_item",
                 "complete_plan_item",
                 "regenerate_plan",
+                "list_shared_refs",
+                "add_shared_ref",
+                "remove_shared_ref",
             ]
 
             # web_search 生效时在各 scope 基础上追加（需已配置 key）。
@@ -2416,6 +2439,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_plan_item",
                 "complete_plan_item",
                 "regenerate_plan",
+                "list_shared_refs",
+                "add_shared_ref",
+                "remove_shared_ref",
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
@@ -2451,6 +2477,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_plan_item",
                 "complete_plan_item",
                 "regenerate_plan",
+                "list_shared_refs",
+                "add_shared_ref",
+                "remove_shared_ref",
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
@@ -2486,6 +2515,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "update_plan_item",
                 "complete_plan_item",
                 "regenerate_plan",
+                "list_shared_refs",
+                "add_shared_ref",
+                "remove_shared_ref",
             ]
 
 

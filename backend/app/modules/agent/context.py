@@ -83,6 +83,16 @@ CHAT_PLAN_GUIDANCE = (
     "变了想整体重排用 regenerate_plan（用户手动改过的项会原样保留）——三者"
     "都需用户在确认卡确认后生效，item_id 从 get_plan 取得，不要猜测。"
 )
+# 共享来源引用指引（第三阶段工单 05，spec 用户故事 20~25）：资料保归属被
+# 多空间复用；引用只读语义（新空间不能对引用资料生成资产）。
+CHAT_SHARED_REF_GUIDANCE = (
+    "用户想把其他课程的资料拿到当前课程用时：先确认资料归属（list_library_items"
+    " 可看条目与归属课程），用 add_shared_ref 建立共享引用——资料仍在原课程，"
+    "内容会进入当前课程的问答检索（标注共享来源），但当前课程对它只读，不能"
+    "生成总结、知识点或习题（资产只在原空间生成，如实向用户说明这一边界）。"
+    "查看与移除引用用 list_shared_refs / remove_shared_ref，移除不影响原资料。"
+    "已归属当前课程的资料无需引用（会被拒绝）。"
+)
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，
 # 零结构化生成）：标题与各节指引一并进 prompt，供文本协议断言与评测黄金集复用。
 CHAT_RESEARCH_SECTIONS: tuple[tuple[str, str], ...] = (
@@ -475,6 +485,7 @@ def build_context_messages(
         content = f"{content}\n{CHAT_UNDO_GUIDANCE}"
         content = f"{content}\n{CHAT_GOAL_GUIDANCE}"
         content = f"{content}\n{CHAT_PLAN_GUIDANCE}"
+        content = f"{content}\n{CHAT_SHARED_REF_GUIDANCE}"
         content = f"{content}\n{CHAT_LANGUAGE_INSTRUCTION}"
         if web_search:
             guidance = CHAT_WEB_SEARCH_GUIDANCE

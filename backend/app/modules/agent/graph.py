@@ -42,6 +42,10 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.agent.schemas import ChatMode, ChatScope
+from app.modules.agent.tools.add_shared_ref import (
+    ADD_SHARED_REF_TOOL_NAME,
+    add_shared_ref,
+)
 from app.modules.agent.tools.add_text_record import (
     ADD_TEXT_RECORD_TOOL_NAME,
     add_text_record_to_course,
@@ -89,6 +93,7 @@ from app.modules.agent.tools.get_plan import get_plan
 from app.modules.agent.tools.list_course_records import list_course_records
 from app.modules.agent.tools.list_goals import list_goals
 from app.modules.agent.tools.list_library_items import list_library_items
+from app.modules.agent.tools.list_shared_refs import list_shared_refs
 from app.modules.agent.tools.move_record_course import (
     MOVE_RECORD_COURSE_TOOL_NAME,
     move_record_course,
@@ -105,6 +110,10 @@ from app.modules.agent.tools.propose_memory import (
 from app.modules.agent.tools.regenerate_plan import (
     REGENERATE_PLAN_TOOL_NAME,
     regenerate_plan,
+)
+from app.modules.agent.tools.remove_shared_ref import (
+    REMOVE_SHARED_REF_TOOL_NAME,
+    remove_shared_ref,
 )
 from app.modules.agent.tools.search_courses import search_courses
 from app.modules.agent.tools.search_library import search_library
@@ -137,15 +146,15 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v22"
+CHAT_PROMPT_VERSION = "chat-library-scope-v23"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
 # 指引；工单 06：撤销工具；第三阶段工单 01：学习目标工具与目标制定指引；
 # 工单 02：学习计划三工具与计划生成指引；02 真机验收修复：计划指引禁止
 # 正文输出草案 JSON；工单 03：计划调整 / 完成 / 重生成三工具与指引；
-# 时间能力 v1：时间提示行 + 时间工具族四工具）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v23"
+# 时间能力 v1：时间提示行 + 时间工具族四工具；工单 05：共享引用三工具与指引）。
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v24"
 CHAT_RECURSION_LIMIT = 25
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
@@ -174,6 +183,8 @@ OPERATION_TOOL_NAMES = frozenset(
         UPDATE_PLAN_ITEM_TOOL_NAME,
         COMPLETE_PLAN_ITEM_TOOL_NAME,
         REGENERATE_PLAN_TOOL_NAME,
+        ADD_SHARED_REF_TOOL_NAME,
+        REMOVE_SHARED_REF_TOOL_NAME,
     }
 )
 # 挂载检索工具的范围（工单 04：五档中 FREE 外统一挂 search_library；工单 01
@@ -327,6 +338,8 @@ def _resolve_agent_config(
     # confirm_plan 写操作——L2 草案确认卡，AUTO_APPROVE 档仍落卡等确认）。
     # 工单 03：计划调整三工具（update_plan_item / complete_plan_item L1 就地
     # 写 + regenerate_plan L2 换代确认卡）。
+    # 工单 05：共享引用域三工具（list_shared_refs 只读 + add_shared_ref /
+    # remove_shared_ref L1 写，写动作名 = 注册项 action = 工具函数名）。
     config = AgentConfig(
         tools=(
             *config.tools,
@@ -361,6 +374,9 @@ def _resolve_agent_config(
             update_plan_item,
             complete_plan_item,
             regenerate_plan,
+            list_shared_refs,
+            add_shared_ref,
+            remove_shared_ref,
         )
     )
     if research:
