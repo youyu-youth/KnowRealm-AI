@@ -91,6 +91,11 @@ export function TodayTodos({
                     aria-label={t("today.planTodos.completeLabel", {
                       content: item.content,
                     })}
+                    // 受控绑定未完成态（计划 Tab checked={done} 同构）：列表项
+                    // 本就只含待学项、完成即随缓存失效离开列表，恒 false 让
+                    // 失败回执后不可能残留假勾选（非受控点击即翻转，会与
+                    // 服务端 PENDING 不一致）。
+                    checked={false}
                     disabled={
                       complete.isPending &&
                       complete.variables?.itemId === item.item_id

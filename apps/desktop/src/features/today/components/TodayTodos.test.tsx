@@ -211,6 +211,34 @@ describe("今日待学双源清单", () => {
     expect(screen.queryByText("学习计划")).not.toBeInTheDocument();
   });
 
+  it("完成请求失败时复选框保持未勾选（与计划 Tab 同为受控，无假完成态）", async () => {
+    server.use(
+      http.get(PENDING_URL, () => HttpResponse.json([])),
+      http.get(PLAN_ITEMS_URL, () => HttpResponse.json([planItem])),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}/plans/${planItem.plan_id}/items/item-1/complete`,
+        () => HttpResponse.json({ detail: "sidecar 抖动" }, { status: 500 }),
+      ),
+    );
+
+    render(<App />);
+
+    const checkbox = await screen.findByRole("checkbox", {
+      name: "完成计划项「通读 LCEL 转写笔记」",
+    });
+    fireEvent.click(checkbox);
+
+    // 失败后：条目仍在列表（服务端仍 PENDING）、复选框保持未勾选——勾选态
+    // 由数据受控（计划 Tab checked={done} 同构），非受控翻转会产生假完成。
+    await waitFor(() => expect(checkbox).not.toBeChecked(), { timeout: 3_000 });
+    expect(
+      screen.getByRole("checkbox", {
+        name: "完成计划项「通读 LCEL 转写笔记」",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("通读 LCEL 转写笔记")).toBeInTheDocument();
+  });
+
   it("计划项读取失败显示行内错误与重试", async () => {
     let fail = true;
     server.use(
