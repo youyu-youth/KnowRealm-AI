@@ -2276,7 +2276,8 @@
       "failedDetail": "计划未能确认（{{reason}}），可重试或重新整理。",
       "dependsOn": "依赖第 {{indexes, list(style: narrow)}} 项",
       "paramTitle": "标题：{{title}}",
-      "paramCourse": "归类到课程：{{course}}"
+      "paramCourse": "归类到课程：{{course}}",
+      "paramCourseFromStep": "第 {{index}} 步的输出"
     }
   },
   "settings": {

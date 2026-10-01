@@ -259,6 +259,49 @@ describe("ChatBatchPlanCard", () => {
     expect(screen.getByText("共 3 项")).toBeInTheDocument();
   });
 
+  it("输出引用参数（对象）呈现来源步骤，不崩渲染（工单 06 真机回归）", async () => {
+    // 06 工单：course_id 等参数可为 {step, field} 引用对象（执行时后端注入）。
+    // 真机曾因对引用对象取 id 缩写（.slice）崩溃到全局兜底页，此处钉回归。
+    listProposals.mockResolvedValue([
+      planProposal({
+        payload: {
+          items: [
+            {
+              action: "create_course",
+              name: "Deep Agents 入门",
+              learning_context: "CAREER",
+              depth: "BEGINNER",
+            },
+            {
+              action: "ingest_library_item",
+              url: "https://docs.langchain.com/oss/python/deepagents",
+              course_id: { step: 0, field: "course_id" },
+              depends_on: [0],
+            },
+          ],
+          plan_version: 1,
+          auth_mode: "REQUEST_APPROVAL",
+          instruction_text: "建课并导入资料",
+        },
+        snapshot: {
+          plan_version: 1,
+          items: [
+            { action: "create_course", item_id: null, state: {} },
+            { action: "ingest_library_item", item_id: null, state: {} },
+          ],
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatBatchPlanCard sessionId={SESSION_ID} />);
+
+    expect(await screen.findByText("共 2 项")).toBeInTheDocument();
+    expect(screen.getByText("创建课程")).toBeInTheDocument();
+    expect(screen.getByText("导入网页资料")).toBeInTheDocument();
+    // 引用对象渲染为来源步骤（1 起序号，与依赖列同口径）。
+    expect(screen.getByText("归类到课程：第 1 步的输出")).toBeInTheDocument();
+    expect(screen.getByText("依赖第 1 项")).toBeInTheDocument();
+  });
+
   it("计划修改后版本递增并提示需重新确认", async () => {
     listProposals.mockResolvedValue([
       planProposal({

@@ -21,17 +21,30 @@ function shortId(id: string): string {
   return `#${id.slice(0, 8)}`;
 }
 
+/** 计划项参数的输出引用（工单 06 结果绑定）：course_id 等参数值可为
+ * {step, field} 引用对象（执行时由后端注入实际值），渲染前必须区分形态。 */
+type StepOutputRef = { step?: unknown; field?: unknown };
+
 type PlanItem = {
   action?: string;
   item_id?: string;
   title?: string;
-  course_id?: string;
+  course_id?: string | StepOutputRef;
   depends_on?: number[];
 };
 
 type PlanPayload = { items?: PlanItem[]; plan_version?: number };
 
 type PlanSnapshot = { items?: { state?: { title?: string } }[] };
+
+/** 输出引用的展示值（「第 N 步输出」，序号与依赖列一致 1 起）；非引用形态
+ * 或形状异常（异常数据）返回 null（不崩渲染）。 */
+function stepRefLabel(value: StepOutputRef, t: TFunction): string | null {
+  const step = value.step;
+  return typeof step === "number"
+    ? t("chat.batchPlan.paramCourseFromStep", { index: step + 1 })
+    : null;
+}
 
 /** 逐项目标名：优先确认卡预览投影（提交时固化的快照标题），否则载荷标题，
  * 再退回目标 id 缩写——不造假名。 */
@@ -244,10 +257,14 @@ function PlanItemRow({
   courseNames: Map<string, string>;
   t: TFunction;
 }) {
-  // 授权参数必须可见：课程名解析失败（未加载 / 课程不在列表）回落 id 缩写。
-  const courseLabel = item.course_id
-    ? (courseNames.get(item.course_id) ?? shortId(item.course_id))
-    : "";
+  // 授权参数必须可见：课程名解析失败（未加载 / 课程不在列表）回落 id 缩写；
+  // 输出引用（对象）呈现来源步骤，不得当字符串截断（工单 06 真机回归）。
+  const courseLabel =
+    item.course_id === undefined
+      ? ""
+      : typeof item.course_id === "string"
+        ? (courseNames.get(item.course_id) ?? shortId(item.course_id))
+        : (stepRefLabel(item.course_id, t) ?? "");
   const params = [
     item.title ? t("chat.batchPlan.paramTitle", { title: item.title }) : "",
     courseLabel ? t("chat.batchPlan.paramCourse", { course: courseLabel }) : "",
