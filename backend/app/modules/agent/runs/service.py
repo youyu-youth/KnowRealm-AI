@@ -728,6 +728,8 @@ class RunControlService:
                 blocked.finished_at = None
                 blocked.updated_at = now
             # 唤醒：等待态原子抢占；已收尾（部分完成 / 失败）的任务重开推进。
+            # waiting_job_id 随 waiting_reason 同清（口径对称：可重试的终态在
+            # 等待分流时已清列，此处防御异常残留）。
             await session.execute(
                 update(AgentRun)
                 .where(
@@ -743,6 +745,7 @@ class RunControlService:
                 .values(
                     status=RunStatus.RUNNING.value,
                     waiting_reason=None,
+                    waiting_job_id=None,
                     finished_at=None,
                     updated_at=now,
                 )

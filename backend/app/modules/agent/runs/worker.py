@@ -160,6 +160,11 @@ async def validate_claim(
     if run.status == RunStatus.WAITING_JOB.value:
         if not await resolve_waiting(session, run, now=utcnow()):
             return WaitingClaim("waiting_job")
+        # str() 收宽：resolve_waiting 在等待分支内改写 status（取消兜底收尾 /
+        # 唤醒），pyright 的字面量收窄看不到跨调用变化。
+        if str(run.status) != RunStatus.RUNNING.value:
+            # 核对中就地收尾（取消竞态兜底）：触发作废，静默不推进。
+            return CancelClaim("run_not_running")
     elif run.status != RunStatus.RUNNING.value:
         return CancelClaim("run_not_running")
     return Ready(_ClaimedRun(job_id=job.id, record_id=run_id, run_id=run_id))
@@ -183,7 +188,15 @@ async def resolve_waiting(session: AsyncSession, run: AgentRun, *, now: datetime
     - job FAILED / CANCELLED / 缺失（异常数据）→ 等待步骤翻 FAILED
       （AGENT_RUN_WAITING_JOB_FAILED，attempts 留痕）后唤醒——后续步骤的
       SKIPPED 与终态判定交还推进循环既有口径，与单项失败零特判。
+
+    取消竞态兜底：cancel_run 对等待态就地收尾，与本次核对的「读 WAITING_JOB →
+    写 RUNNING」无跨事务 CAS——读到取消旗标即按取消收尾（不把已取消的 Run
+    复活为 RUNNING；即便旗标在本次读取后才置，推进循环每步的取消检查仍兜底）。
     """
+    if run.cancel_requested:
+        await cancel_pending_operations(session, run)
+        settle_run(run, RunStatus.CANCELLED, now=now)
+        return True
     if run.waiting_job_id is None:
         # 等待态却无核对对象（异常数据）：保守按失败分流，不悬挂。
         await _fail_waiting_step(session, run, now=now)

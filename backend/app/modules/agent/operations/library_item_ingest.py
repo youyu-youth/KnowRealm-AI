@@ -6,6 +6,10 @@
 result 携带 awaited_job_id——推进 worker 据此把 Run 转 WAITING_JOB，等待
 抓取终态后自动续跑或失败分流（工单 06 机制）。创建类动作：无目标快照、
 不在撤销范围。
+
+重试边界（07 收口）：抓取失败后资料条目已在库（同 URL 内容指纹），本动作
+重试会命中重复内容拒绝——失败条目的正确处置走资料库既有重试 / 手动粘贴
+通道；「失败步骤可单独重试」对导入类步骤的幂等语义随 07 多资料票收口。
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession

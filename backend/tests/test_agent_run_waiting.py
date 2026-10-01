@@ -40,7 +40,7 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.agent.tools.plan_batch_operations import plan_batch_operations
-from app.modules.jobs.runner import Ready, WaitingClaim
+from app.modules.jobs.runner import CancelClaim, Ready, WaitingClaim
 from app.modules.library.proposals import ProposalService
 from app.shared.events import RecordInvalidationNotifier
 
@@ -226,6 +226,28 @@ async def finish_job(session_factory: async_sessionmaker[AsyncSession], status: 
         {"status": status, "later": LATER},
         session_factory,
     )
+
+
+async def finish_jobs(
+    session_factory: async_sessionmaker[AsyncSession], outcomes: list[str]
+) -> None:
+    """按序落定**尚未终态**的抓取 job（多份导入一成一败的构造用：每轮只碰
+    当前在等的那个，已落定的历史 job 不重写）。"""
+    async with session_factory() as session:
+        rows = (
+            await session.execute(
+                text(
+                    "SELECT id FROM processing_jobs WHERE job_type = 'WEB_FETCH'"
+                    " AND status = 'PENDING' ORDER BY created_at, id"
+                )
+            )
+        ).all()
+    for row, status in zip(rows, outcomes, strict=True):
+        await run_sql(
+            "UPDATE processing_jobs SET status = :status, finished_at = :later WHERE id = :id",
+            {"status": status, "later": LATER, "id": cast(str, row[0])},
+            session_factory,
+        )
 
 
 async def web_fetch_statuses(session_factory: async_sessionmaker[AsyncSession]) -> list[str]:
@@ -476,11 +498,79 @@ async def test_job_failure_fails_waiting_step_and_settles_partial(tmp_path: Path
             ("SUCCEEDED", None),
             ("FAILED", "AGENT_RUN_WAITING_JOB_FAILED"),
         ]
-        # 失败的等待步骤可单独重试（既有失败项重试口径）。
+        # 失败的等待步骤可单独重试（既有失败项重试口径；导入动作的重试幂等
+        # 边界见注册项备案，随 07 收口）。
         step_id = await _step_id(session_factory, run_id, "ingest_library_item")
         async with session_factory() as session:
             await RunControlService.retry_operation(session, run_id=run_id, operation_id=step_id)
         assert (await run_row(session_factory, run_id))[0] == "RUNNING"
+
+
+@pytest.mark.anyio
+async def test_second_waiting_step_after_wake_settles_partial(tmp_path: Path) -> None:
+    """部分失败链（工单测试要求）：两份导入一成一败——首份等待唤醒后继续执行
+    第二份导入、再次转等待（唤醒后仍有 waits_for_job 步骤），第二份失败 →
+    等待步骤翻 FAILED → PARTIAL_COMPLETED；建课与首份导入不重做。"""
+    async with bare_db(tmp_path) as session_factory:
+        direct = await invoke_plan(
+            session_factory,
+            [
+                create_course_entry(),
+                ingest_entry(course_id=COURSE_REF),
+                ingest_entry(url="https://example.com/another", course_id=COURSE_REF),
+            ],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+
+        # 首份导入提交 job → 等待；job 成功 → 唤醒后执行第二份导入 → 再等待。
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+        await finish_jobs(session_factory, ["SUCCEEDED"])
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+
+        # 第二份失败：唤醒后等待步骤翻 FAILED，终态部分完成。
+        await finish_jobs(session_factory, ["FAILED"])
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "PARTIAL_COMPLETED"
+        steps = await step_rows(session_factory, run_id)
+        assert [(action, status, code) for action, status, code, _a in steps] == [
+            ("create_course", "SUCCEEDED", None),
+            ("ingest_library_item", "SUCCEEDED", None),
+            ("ingest_library_item", "FAILED", "AGENT_RUN_WAITING_JOB_FAILED"),
+        ]
+        assert [attempts for _a, _s, _c, attempts in steps] == [1, 1, 1]
+
+
+@pytest.mark.anyio
+async def test_cancel_during_waiting_race_settles_cancelled(tmp_path: Path) -> None:
+    """唤醒与取消的竞态兜底：核对时已读到取消旗标 → 按取消收尾（不把已取消
+    的 Run 复活为 RUNNING），触发 job 静默作废。"""
+    async with bare_db(tmp_path) as session_factory:
+        direct = await invoke_plan(
+            session_factory,
+            [
+                create_course_entry(),
+                ingest_entry(course_id=COURSE_REF),
+                ingest_entry(url="https://example.com/another", depends_on=[1]),
+            ],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+
+        # 抓取已完成 + 取消旗标已置（竞态窗口的读取序）：核对就地收尾。
+        await finish_jobs(session_factory, ["SUCCEEDED"])
+        await run_sql(
+            "UPDATE agent_runs SET cancel_requested = 1 WHERE id = :id",
+            {"id": run_id},
+            session_factory,
+        )
+        decision = await claim_waiting(session_factory, run_id)
+        assert isinstance(decision, CancelClaim)
+        assert (await run_row(session_factory, run_id))[0] == "CANCELLED"
+        statuses = [status for _a, status, _c, _a2 in await step_rows(session_factory, run_id)]
+        assert statuses == ["SUCCEEDED", "SUCCEEDED", "CANCELLED"]
 
 
 async def _step_id(
@@ -531,6 +621,37 @@ async def test_restart_reconcile_waiting_run_without_redo(tmp_path: Path) -> Non
         assert await advance(session_factory, run_id) == "COMPLETED"
         steps = await step_rows(session_factory, run_id)
         assert [attempts for _a, _s, _c, attempts in steps] == [1, 1]
+
+
+@pytest.mark.anyio
+async def test_restart_reconcile_failed_job_settles_partial(tmp_path: Path) -> None:
+    """重启对账「败」分支：等待期间抓取 job 已失败 + 触发随进程中断翻 FAILED →
+    recover 重投触发 → 领取核对按失败分流 → 等待步骤 FAILED → PARTIAL_COMPLETED。"""
+    async with bare_db(tmp_path) as session_factory:
+        direct = await invoke_plan(
+            session_factory,
+            [create_course_entry(), ingest_entry(course_id=COURSE_REF)],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+
+        await finish_job(session_factory, "FAILED")
+        await run_sql(
+            "UPDATE processing_jobs SET status = 'FAILED', finished_at = :later"
+            " WHERE job_type = 'AGENT_RUN'",
+            {"later": LATER},
+            session_factory,
+        )
+
+        await spec_of(session_factory).recover_interrupted()
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "PARTIAL_COMPLETED"
+        steps = await step_rows(session_factory, run_id)
+        assert [(status, code) for _a, status, code, _attempts in steps] == [
+            ("SUCCEEDED", None),
+            ("FAILED", "AGENT_RUN_WAITING_JOB_FAILED"),
+        ]
 
 
 @pytest.mark.anyio

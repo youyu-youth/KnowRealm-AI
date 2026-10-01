@@ -39,7 +39,9 @@ class BatchPlanItemArgs(BaseModel):
         default=None,
         description="目标资料条目 id（update / archive 必填，先用 search_library 查找消歧取得）",
     )
-    title: str | None = Field(default=None, description="条目新标题（update / ingest 可选）")
+    title: str | None = Field(
+        default=None, description="条目标题（update 改名 / ingest 缺省用域名）"
+    )
     course_id: str | dict[str, Any] | None = Field(
         default=None,
         description=(
