@@ -280,6 +280,8 @@
     "goalCard": {
       "label": "Learning goal card",
       "activeGoal": "Active",
+      "completedGoal": "Completed",
+      "archivedGoal": "Archived",
       "deadline": "Deadline",
       "dailyMinutes": "Daily time",
       "dailyMinutesValue": "{{minutes}} min/day",
@@ -287,6 +289,11 @@
       "progress": "Progress",
       "progressValue": "{{done}}/{{total}} items",
       "progressEmpty": "No plan"
+    },
+    "goalSelect": {
+      "label": "Switch learning goal",
+      "activeOption": "{{title}} · Active",
+      "historyOption": "{{title}} · History"
     },
     "version": {
       "sectionLabel": "Plan versions",

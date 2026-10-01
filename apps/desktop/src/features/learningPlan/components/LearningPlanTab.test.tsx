@@ -27,12 +27,16 @@ const COURSE_ID = "22222222-2222-4222-8222-222222222222";
 const GOAL_ID = "11111111-1111-4111-8111-111111111111";
 const PLAN_ID = "33333333-3333-4333-8333-333333333333";
 const HISTORY_PLAN_ID = "44444444-4444-4444-8444-444444444444";
+const GOAL2_ID = "55555555-5555-4555-8555-555555555555";
+const PLAN2_ID = "66666666-6666-4666-8666-666666666666";
 
 const DETAIL_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}`;
 const GOALS_URL = `${DETAIL_URL}/goals`;
 const VERSIONS_URL = `${DETAIL_URL}/plans?goal_id=${GOAL_ID}`;
+const VERSIONS2_URL = `${DETAIL_URL}/plans?goal_id=${GOAL2_ID}`;
 const PLAN_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}/plans/${PLAN_ID}`;
 const HISTORY_PLAN_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}/plans/${HISTORY_PLAN_ID}`;
+const PLAN2_URL = `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}/plans/${PLAN2_ID}`;
 const ITEM1_URL = `${PLAN_URL}/items/item-1`;
 const ROUTE_PATH = `/spaces/${COURSE_ID}?tab=plan`;
 
@@ -63,6 +67,14 @@ const activeGoal: GoalOut = {
   status: "ACTIVE",
   created_at: "2026-09-01T00:00:00.000000Z",
   updated_at: "2026-09-01T00:00:00.000000Z",
+};
+
+const completedGoal: GoalOut = {
+  ...activeGoal,
+  id: GOAL2_ID,
+  title: "吃透 Linux 内核",
+  status: "COMPLETED",
+  updated_at: "2026-09-25T00:00:00.000000Z",
 };
 
 const versions: PlanVersionOut[] = [
@@ -148,6 +160,30 @@ const historyPlan: PlanOut = {
     itemOf("h-1", { content: "旧版条目一", priority: 1 }),
     itemOf("h-2", { content: "旧版条目二", priority: 2 }),
   ],
+};
+
+const completedGoalVersions: PlanVersionOut[] = [
+  {
+    id: PLAN2_ID,
+    goal_id: GOAL2_ID,
+    course_id: COURSE_ID,
+    plan_version: 1,
+    status: "ACTIVE",
+    effective_from: "2026-09-05",
+    effective_to: null,
+    item_count: 1,
+  },
+];
+
+const completedGoalPlan: PlanOut = {
+  id: PLAN2_ID,
+  goal_id: GOAL2_ID,
+  course_id: COURSE_ID,
+  plan_version: 1,
+  status: "ACTIVE",
+  effective_from: "2026-09-05",
+  effective_to: null,
+  items: [itemOf("done-1", { content: "读完内核调度器章节", priority: 1 })],
 };
 
 vi.mock("@/services/tauri/sidecar", () => ({
@@ -322,6 +358,96 @@ describe("学习计划 Tab", () => {
     expect(
       screen.getByRole("checkbox", { name: "完成「旧版条目一」" }),
     ).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("目标完结后保留只读查看入口与设定新目标引导", async () => {
+    server.use(
+      http.get(GOALS_URL, () => HttpResponse.json([completedGoal])),
+      http.get(VERSIONS2_URL, () => HttpResponse.json(completedGoalVersions)),
+      http.get(PLAN2_URL, () => HttpResponse.json(completedGoalPlan)),
+    );
+
+    renderAt(ROUTE_PATH);
+
+    // 回落到最近历史目标只读展示，计划项仍可追溯（spec 用户故事 16）。
+    expect(
+      await screen.findByText("读完内核调度器章节", undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("吃透 Linux 内核")).toBeInTheDocument();
+    expect(screen.getByText("已完结")).toBeInTheDocument();
+    // 执行面整体只读：无编辑/跳过，勾选禁用（aria-disabled——Base UI 复选框
+    // 渲染 span，B1 Switch 同坑）。
+    expect(
+      screen.queryByRole("button", { name: "编辑" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "跳过" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("checkbox", { name: "完成「读完内核调度器章节」" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    // 无进行中目标 → 设定新目标引导并排保留。
+    expect(screen.getByText("还没有进行中的学习目标")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "去对话设定目标" }),
+    ).toHaveAttribute("href", "/chat");
+  });
+
+  it("多目标时切换选择器查看历史目标（默认跟随进行中）", async () => {
+    // MSW 对带 query 的 path 只按 pathname 匹配（query 不构成区分条件）：
+    // 两个目标的版本列表必须由同一 handler 按 goal_id 分流，否则切换后的
+    // 请求会被先注册的同路径 handler 劫走。
+    server.use(
+      http.get(GOALS_URL, () => HttpResponse.json([activeGoal, completedGoal])),
+      http.get(`${DETAIL_URL}/plans`, ({ request }) => {
+        const goalId = new URL(request.url).searchParams.get("goal_id");
+        return HttpResponse.json(
+          goalId === GOAL2_ID ? completedGoalVersions : versions,
+        );
+      }),
+      http.get(PLAN_URL, () => HttpResponse.json(currentPlan)),
+      http.get(PLAN2_URL, () => HttpResponse.json(completedGoalPlan)),
+    );
+
+    renderAt(ROUTE_PATH);
+
+    // 默认跟随进行中目标（日常执行面不变）。
+    expect(
+      await screen.findByText("通读进程调度转写", undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("掌握操作系统的核心概念")).toBeInTheDocument();
+
+    // 切换目标后 GoalWorkspace 按 key 重挂载（版本状态重置），trigger 节点
+    // 随之替换：不能沿用 selectOption 的旧引用断言，以视图内容切换为断言。
+    const goalTrigger = screen.getByRole("combobox", { name: "切换学习目标" });
+    await waitFor(() => expect(goalTrigger).toBeEnabled());
+    fireEvent.click(goalTrigger);
+    const historyOption = await screen.findByRole("option", {
+      name: "吃透 Linux 内核 · 历史",
+    });
+    fireEvent.pointerDown(historyOption);
+    fireEvent.pointerUp(historyOption);
+    fireEvent.click(historyOption);
+
+    // 先确认目标卡切到历史目标（区分「未切换」与「计划详情未渲染」）。
+    expect(
+      await screen.findByText("吃透 Linux 内核", undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("读完内核调度器章节", undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("已完结")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "编辑" }),
+    ).not.toBeInTheDocument();
   });
 
   it("内联编辑仅提交变更字段并保存回显", async () => {

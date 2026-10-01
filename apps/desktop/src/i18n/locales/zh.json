@@ -280,6 +280,8 @@
     "goalCard": {
       "label": "学习目标卡",
       "activeGoal": "进行中",
+      "completedGoal": "已完结",
+      "archivedGoal": "已归档",
       "deadline": "期限",
       "dailyMinutes": "每日投入",
       "dailyMinutesValue": "{{minutes}} 分钟／天",
@@ -287,6 +289,11 @@
       "progress": "整体进度",
       "progressValue": "{{done}}/{{total}} 项",
       "progressEmpty": "暂无计划"
+    },
+    "goalSelect": {
+      "label": "切换学习目标",
+      "activeOption": "{{title}} · 进行中",
+      "historyOption": "{{title}} · 历史"
     },
     "version": {
       "sectionLabel": "计划版本区",

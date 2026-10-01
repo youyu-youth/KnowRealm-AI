@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import type { components } from "@knowrealm/api-types";
 import { Bot, Lock, MessageSquare } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,15 +38,28 @@ import { ApiError } from "@/services/http/client";
 
 type LearningPlanTabProps = { courseId: string };
 
+type GoalStatus = components["schemas"]["GoalStatus"];
+
+// 目标状态徽章文案（GoalCard 展示与生成枚举联动，planItemTypes 同式）。
+const GOAL_STATUS_LABEL_KEYS: Record<GoalStatus, string> = {
+  ACTIVE: "learningPlan.goalCard.activeGoal",
+  COMPLETED: "learningPlan.goalCard.completedGoal",
+  ARCHIVED: "learningPlan.goalCard.archivedGoal",
+};
+
 /** 学习计划 Tab（工单 04）：目标卡 + 版本切换 + 阶段分组计划项 + 项级执行面。
  *
  * 读取面与执行面全部走工单 03 已就位的课程嵌套端点；历史版本只读查看（编辑 /
- * 完成 / 跳过仅当前生效版本可用）。空态两档：无进行中目标 → 引导对话设定
- * 目标（新建目标主路径＝对话，本 Tab 为手动兜底与日常执行面）；有目标无计划
- * → 引导对话生成计划草案。 */
+ * 完成 / 跳过仅当前生效版本可用）。完结 / 归档的目标保留只读查看入口（spec
+ * 用户故事 16 的追溯要求）：默认仍跟随进行中目标（日常执行面），无进行中目标
+ * 时回落最近的历史目标只读展示，并保留"设定新目标"引导。空态两档：完全无目标
+ * → 引导对话设定目标（新建目标主路径＝对话，本 Tab 为手动兜底与日常执行面）；
+ * 有目标无计划 → 引导对话生成计划草案。 */
 export function LearningPlanTab({ courseId }: LearningPlanTabProps) {
   const { t } = useTranslation();
   const goals = useLearningGoals(courseId);
+  // null = 跟随默认目标（进行中优先）；显式选择后固定该目标。
+  const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
 
   if (goals.isPending) {
     return (
@@ -70,7 +84,15 @@ export function LearningPlanTab({ courseId }: LearningPlanTabProps) {
   }
 
   const activeGoal = goals.data?.find((goal) => goal.status === "ACTIVE");
-  if (!activeGoal) {
+  // 后端按"进行中在前、其余更新时间倒序"返回：首个非 ACTIVE 即最近的历史
+  // 目标，作为无进行中目标时的只读回落。
+  const fallbackGoal = goals.data?.find((goal) => goal.status !== "ACTIVE");
+  const currentGoal =
+    goals.data?.find((goal) => goal.id === selectedGoalId) ??
+    activeGoal ??
+    fallbackGoal;
+
+  if (!currentGoal) {
     return (
       <GuideCard
         title={t("learningPlan.emptyGoal.title")}
@@ -79,15 +101,37 @@ export function LearningPlanTab({ courseId }: LearningPlanTabProps) {
       />
     );
   }
-  return <GoalWorkspace courseId={courseId} goal={activeGoal} />;
+  return (
+    <div className="grid gap-6">
+      {/* key 重挂载：切换目标后版本选择状态随目标重置（各目标版本互不相干）。 */}
+      <GoalWorkspace
+        key={currentGoal.id}
+        courseId={courseId}
+        goal={currentGoal}
+        goals={goals.data ?? []}
+        onGoalChange={setSelectedGoalId}
+      />
+      {activeGoal == null ? (
+        <GuideCard
+          title={t("learningPlan.emptyGoal.title")}
+          description={t("learningPlan.emptyGoal.description")}
+          action={t("learningPlan.emptyGoal.cta")}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 function GoalWorkspace({
   courseId,
   goal,
+  goals,
+  onGoalChange,
 }: {
   courseId: string;
   goal: LearningGoal;
+  goals: LearningGoal[];
+  onGoalChange: (goalId: string) => void;
 }) {
   const { t } = useTranslation();
   const versions = usePlanVersions(courseId, goal.id);
@@ -141,9 +185,36 @@ function GoalWorkspace({
   const items = plan.data?.items;
   const done = items?.filter((item) => item.status === "DONE").length;
   const isCurrent = plan.data?.status === "ACTIVE";
+  // 历史版本只读；完结 / 归档目标的执行面整体只读（其计划不再催办，今日
+  // 待学同口径排除非 ACTIVE 目标）。
+  const editable = goal.status === "ACTIVE" && isCurrent !== false;
 
   return (
     <div className="grid gap-6">
+      {goals.length > 1 ? (
+        <div className="flex justify-end">
+          <Select
+            items={goals.map((goal) => goalLabel(goal, t))}
+            value={goal.id}
+            onValueChange={(value) => onGoalChange(String(value))}
+          >
+            <SelectTrigger
+              size="sm"
+              className="min-w-44"
+              aria-label={t("learningPlan.goalSelect.label")}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {goals.map((goal) => (
+                <SelectItem key={goal.id} value={goal.id}>
+                  {goalLabel(goal, t).label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
       <GoalCard
         goal={goal}
         progress={
@@ -190,7 +261,7 @@ function GoalWorkspace({
           isError={plan.isError}
           onRetry={() => void plan.refetch()}
           plan={plan.data}
-          editable={isCurrent !== false}
+          editable={editable}
         />
       </section>
     </div>
@@ -507,7 +578,7 @@ function GoalCard({
               {t(`learningPlan.goalType.${goal.goal_type}`)}
             </StatusTag>
             <span className="text-label text-ink-muted">
-              {t("learningPlan.goalCard.activeGoal")}
+              {t(GOAL_STATUS_LABEL_KEYS[goal.status])}
             </span>
           </div>
           <h2 className="text-section font-section text-ink-strong mt-2">
@@ -657,6 +728,20 @@ function versionLabel(
         : t("learningPlan.version.historyOption", {
             version: version.plan_version,
           }),
+  };
+}
+
+/** 目标选项文案（目标切换 Select 两处共用一份，versionLabel 同式）。 */
+function goalLabel(
+  goal: LearningGoal,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): { value: string; label: string } {
+  return {
+    value: goal.id,
+    label:
+      goal.status === "ACTIVE"
+        ? t("learningPlan.goalSelect.activeOption", { title: goal.title })
+        : t("learningPlan.goalSelect.historyOption", { title: goal.title }),
   };
 }
 
