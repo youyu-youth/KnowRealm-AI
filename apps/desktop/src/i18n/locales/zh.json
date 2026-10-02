@@ -2277,7 +2277,9 @@
       "dependsOn": "依赖第 {{indexes, list(style: narrow)}} 项",
       "paramTitle": "标题：{{title}}",
       "paramCourse": "归类到课程：{{course}}",
-      "paramCourseFromStep": "第 {{index}} 步的输出"
+      "paramCourseFromStep": "第 {{index}} 步的输出",
+      "paramUrl": "网页地址：{{url}}",
+      "paramValue": "{{label}}：{{value}}"
     }
   },
   "settings": {

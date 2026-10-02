@@ -259,7 +259,7 @@ describe("ChatBatchPlanCard", () => {
     expect(screen.getByText("共 3 项")).toBeInTheDocument();
   });
 
-  it("输出引用参数（对象）呈现来源步骤，不崩渲染（工单 06 真机回归）", async () => {
+  it("保存的建课导入计划含空值与输出引用，重新打开仍可展示授权参数", async () => {
     // 06 工单：course_id 等参数可为 {step, field} 引用对象（执行时后端注入）。
     // 真机曾因对引用对象取 id 缩写（.slice）崩溃到全局兜底页，此处钉回归。
     listProposals.mockResolvedValue([
@@ -268,13 +268,27 @@ describe("ChatBatchPlanCard", () => {
           items: [
             {
               action: "create_course",
+              item_id: null,
+              title: null,
+              course_id: null,
               name: "Deep Agents 入门",
               learning_context: "CAREER",
+              education_stage: null,
               depth: "BEGINNER",
+              description: null,
+              url: null,
+              depends_on: [],
             },
             {
               action: "ingest_library_item",
-              url: "https://docs.langchain.com/oss/python/deepagents",
+              item_id: null,
+              title: null,
+              name: null,
+              learning_context: null,
+              education_stage: null,
+              depth: null,
+              description: null,
+              url: "https://docs.langchain.com/oss/python/deepagents/customization#interpreters",
               course_id: { step: 0, field: "course_id" },
               depends_on: [0],
             },
@@ -292,14 +306,28 @@ describe("ChatBatchPlanCard", () => {
         },
       }),
     ]);
-    renderWithQuery(<ChatBatchPlanCard sessionId={SESSION_ID} />);
+    const view = renderWithQuery(<ChatBatchPlanCard sessionId={SESSION_ID} />);
 
     expect(await screen.findByText("共 2 项")).toBeInTheDocument();
     expect(screen.getByText("创建课程")).toBeInTheDocument();
     expect(screen.getByText("导入网页资料")).toBeInTheDocument();
+    expect(screen.getByText("Deep Agents 入门")).toBeInTheDocument();
+    expect(screen.getByText(/学习场景：职业技能/)).toBeInTheDocument();
+    expect(screen.getByText(/学习深度：入门/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "https://docs.langchain.com/oss/python/deepagents/customization#interpreters",
+      ),
+    ).toBeInTheDocument();
     // 引用对象渲染为来源步骤（1 起序号，与依赖列同口径）。
     expect(screen.getByText("归类到课程：第 1 步的输出")).toBeInTheDocument();
     expect(screen.getByText("依赖第 1 项")).toBeInTheDocument();
+    view.unmount();
+    renderWithQuery(<ChatBatchPlanCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText("Deep Agents 入门")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "确认执行本计划" }),
+    ).toBeEnabled();
   });
 
   it("计划修改后版本递增并提示需重新确认", async () => {

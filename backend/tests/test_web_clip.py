@@ -338,7 +338,7 @@ async def test_assert_resolves_public_literal_and_empty() -> None:
 
 @pytest.mark.anyio
 async def test_dns_preflight_allows_fake_ip_range(monkeypatch: pytest.MonkeyPatch) -> None:
-    """代理 fake-ip 模式：域名解析到 198.18.0.0/15（Clash 等虚拟路由段）放行。"""
+    """代理 fake-ip 模式：解析到 198.18.0.0/15（IANA 基准段）不属危险段，放行。"""
 
     async def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[Any, ...]]:
         return [(None, None, None, None, ("198.18.0.158", 443))]
@@ -346,6 +346,46 @@ async def test_dns_preflight_allows_fake_ip_range(monkeypatch: pytest.MonkeyPatc
     loop = asyncio.get_running_loop()
     monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
     await assert_resolves_public("www.w3cschool.cn")
+
+
+@pytest.mark.anyio
+async def test_dns_preflight_allows_ipv6_fake_ip_mix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TUN fake-ip 开 IPv6 时 A+AAAA 混合解析（v4 基准段 + v6 借用 ULA）放行。
+
+    真机回归：v6 fake-ip 落在 ULA（is_private），按公网白名单口径必误杀。"""
+
+    async def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[Any, ...]]:
+        return [
+            (None, None, None, None, ("198.18.0.59", 443)),
+            (None, None, None, None, ("fdfe:dcba:9876::3b", 443)),
+        ]
+
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
+    await assert_resolves_public("docs.langchain.com")
+
+
+@pytest.mark.parametrize(
+    "address",
+    [
+        "28.0.0.5",  # 自定义 fake-ip 段示例：换代理/改配置不复发
+        "fd12:3456:789a::1",  # 自配 ULA：与 v6 fake-ip 不可区分，按权衡放行
+    ],
+)
+@pytest.mark.anyio
+async def test_dns_preflight_ignores_non_rfc1918_ranges(
+    monkeypatch: pytest.MonkeyPatch, address: str
+) -> None:
+    """解析校验只认 RFC 危险段黑名单，非黑名单地址（无论何种代理约定段）放行。"""
+
+    async def fake_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[Any, ...]]:
+        return [(None, None, None, None, (address, 443))]
+
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "getaddrinfo", fake_getaddrinfo)
+    await assert_resolves_public("example.com")
 
 
 @pytest.mark.anyio

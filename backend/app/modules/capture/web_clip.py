@@ -51,15 +51,7 @@ class ClipContent:
     metadata: dict[str, Any]
 
 
-# 代理工具 fake-ip 虚拟路由约定段（Clash 等默认 198.18.0.0/16，IANA 基准段）：
-# 该段的 DNS 结果与连接均由本机代理接管转发（TUN/fake-ip 模式的正常网络路径），
-# 不触达真实内网——视为可信出口放行；真实私网/链路本地段拦截不受影响。
-_FAKE_IP_NETWORK = ipaddress.ip_network("198.18.0.0/15")
-
-
 def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    if ip in _FAKE_IP_NETWORK:
-        return True
     return not (
         ip.is_private
         or ip.is_loopback
@@ -75,6 +67,31 @@ def _is_public_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
             and not _is_public_ip(ip.ipv4_mapped)
         )
     )
+
+
+# 解析校验（DNS 预检与连接钉 IP）只拦 RFC 固定危险段——回环/链路本地/未指定/RFC1918。
+# 有意不拦 ULA（fd00::/8）、基准段（198.18.0.0/15）、CGNAT 等歧义段：代理 fake-ip
+# 恰恰借用这些段（v4 用基准段、v6 借 ULA），客户端无法与真实内网区分，枚举代理
+# 软件约定段不可完备且换配置即失效。放弃区分的残余风险（解析到真实 ULA 内网）
+# 在本地桌面威胁模型下可接受：抓取结果只落本地无回传通道；字面 IP 路径仍按
+# _is_public_ip 全量严格拦截，自定义 fake-ip 段也不会与危险段冲突（会破坏内网路由）。
+_BLOCKED_RESOLUTION_NETWORKS = (
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::/128"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fe80::/10"),
+)
+
+
+def _is_safe_resolution(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return _is_safe_resolution(ip.ipv4_mapped)
+    return not any(ip in network for network in _BLOCKED_RESOLUTION_NETWORKS)
 
 
 def _assert_public_literal(host: str) -> None:
@@ -100,8 +117,9 @@ def validate_public_http_url(url: str) -> str:
 
 
 async def assert_resolves_public(host: str) -> None:
-    """每跳 DNS 预检：域名解析结果须全部为公网地址（代理路径下客户端无法
+    """每跳 DNS 预检：域名解析结果须避开危险段（代理路径下客户端无法
     钉住代理解析，预检是最小防线；直连路径另有 GuardedNetworkBackend 钉住）。
+    字面 IP 按严格口径、解析结果按危险段黑名单口径（见 _is_safe_resolution）。
     解析失败本身放行——交由真实连接路径统一报 UNREACHABLE，避免双报。"""
     if not host:
         return
@@ -123,12 +141,12 @@ async def assert_resolves_public(host: str) -> None:
             address = ipaddress.ip_address(sockaddr[0])
         except ValueError:
             continue
-        if not _is_public_ip(address):
+        if not _is_safe_resolution(address):
             raise WebClipError("WEB_FETCH_BLOCKED_URL", "目标域名解析到受限网络地址")
 
 
 class GuardedNetworkBackend(httpcore.AsyncNetworkBackend):
-    """DNS guard：连接前解析域名、校验全部候选 IP，并直连首个公网结果。
+    """DNS guard：连接前解析域名、按危险段黑名单校验候选 IP，并直连首个结果。
 
     httpcore 的 TLS 握手以请求原始域名做 SNI，与连接 IP 解耦——因此解析、
     校验、连接在同一处完成后不存在 rebinding 窗口（上层不会二次解析）。
@@ -160,14 +178,15 @@ class GuardedNetworkBackend(httpcore.AsyncNetworkBackend):
                     address = ipaddress.ip_address(candidate)
                 except ValueError:
                     continue
-                if not _is_public_ip(address):
+                if not _is_safe_resolution(address):
                     raise WebClipError(
                         "WEB_FETCH_BLOCKED_URL", "目标域名解析到受限网络地址"
                     ) from None
             if not candidates:
                 raise WebClipError("WEB_FETCH_UNREACHABLE", "目标域名无法解析") from None
             ip = ipaddress.ip_address(candidates[0])
-        if not _is_public_ip(ip):
+        # 字面 IP 已在 validate_public_http_url 按严格口径拦截，此处兜底同用危险段口径。
+        if not _is_safe_resolution(ip):
             raise WebClipError("WEB_FETCH_BLOCKED_URL", "目标地址属于受限网络范围")
         return await self._inner.connect_tcp(
             str(ip),

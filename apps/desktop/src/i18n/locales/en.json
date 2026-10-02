@@ -2297,7 +2297,9 @@
       "dependsOn": "Depends on item(s) {{indexes, list(style: narrow)}}",
       "paramTitle": "Title: {{title}}",
       "paramCourse": "Move to course: {{course}}",
-      "paramCourseFromStep": "output of step {{index}}"
+      "paramCourseFromStep": "output of step {{index}}",
+      "paramUrl": "Web address: {{url}}",
+      "paramValue": "{{label}}: {{value}}"
     }
   },
   "settings": {

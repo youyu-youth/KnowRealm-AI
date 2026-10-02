@@ -27,9 +27,15 @@ type StepOutputRef = { step?: unknown; field?: unknown };
 
 type PlanItem = {
   action?: string;
-  item_id?: string;
-  title?: string;
-  course_id?: string | StepOutputRef;
+  item_id?: string | null;
+  title?: string | null;
+  course_id?: string | StepOutputRef | null;
+  name?: string | null;
+  learning_context?: string | null;
+  education_stage?: string | null;
+  depth?: string | null;
+  description?: string | null;
+  url?: string | null;
   depends_on?: number[];
 };
 
@@ -58,8 +64,14 @@ function planItemTitle(
   if (typeof snapshotTitle === "string" && snapshotTitle.trim()) {
     return snapshotTitle;
   }
+  if (item.name?.trim()) {
+    return item.name;
+  }
   if (item.title?.trim()) {
     return item.title;
+  }
+  if (item.url?.trim()) {
+    return item.url;
   }
   return item.item_id ? shortId(item.item_id) : "";
 }
@@ -260,7 +272,7 @@ function PlanItemRow({
   // 授权参数必须可见：课程名解析失败（未加载 / 课程不在列表）回落 id 缩写；
   // 输出引用（对象）呈现来源步骤，不得当字符串截断（工单 06 真机回归）。
   const courseLabel =
-    item.course_id === undefined
+    item.course_id == null
       ? ""
       : typeof item.course_id === "string"
         ? (courseNames.get(item.course_id) ?? shortId(item.course_id))
@@ -268,6 +280,29 @@ function PlanItemRow({
   const params = [
     item.title ? t("chat.batchPlan.paramTitle", { title: item.title }) : "",
     courseLabel ? t("chat.batchPlan.paramCourse", { course: courseLabel }) : "",
+    item.url && item.url !== target
+      ? t("chat.batchPlan.paramUrl", { url: item.url })
+      : "",
+    ...(
+      [
+        [item.learning_context, "learningContext"],
+        [item.education_stage, "educationStage"],
+        [item.depth, "depth"],
+      ] as const
+    ).map(([value, key]) =>
+      value
+        ? t("chat.batchPlan.paramValue", {
+            label: t(`spaces.form.${key}`),
+            value: t(`spaces.${key}.${value}`, value),
+          })
+        : "",
+    ),
+    item.description
+      ? t("chat.batchPlan.paramValue", {
+          label: t("spaces.detail.label.description"),
+          value: item.description,
+        })
+      : "",
   ].filter(Boolean);
   return (
     <li className="flex flex-wrap items-center gap-2">
@@ -276,9 +311,9 @@ function PlanItemRow({
           defaultValue: item.action ?? "",
         })}
       </span>
-      <span className="text-label min-w-0 flex-1 truncate">{target}</span>
+      <span className="text-label min-w-0 flex-1 wrap-anywhere">{target}</span>
       {params.length > 0 ? (
-        <span className="text-label text-muted-foreground shrink-0">
+        <span className="text-label text-muted-foreground min-w-0 wrap-anywhere">
           {params.join(" · ")}
         </span>
       ) : null}
