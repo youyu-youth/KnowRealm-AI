@@ -46,7 +46,7 @@ WAITING_JOB 等待与唤醒（第三阶段工单 06，spec M2 执行闭环）：
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, cast
 
 from loguru import logger
@@ -111,6 +111,10 @@ from app.shared.events import RecordInvalidationNotifier
 # 系统性故障（非编码异常 / 环境故障）的稳定错误码：job 与 Run 一并落 FAILED。
 AGENT_RUN_FAILED = "AGENT_RUN_FAILED"
 
+# 等待核对的调度退避（秒，与 poll_interval 同节奏）：等待触发让出一个轮询
+# 窗口给其他 Run 的触发，避免恒居候选队头饿死后续 Run（唤醒延迟增量≤一拍）。
+WAITING_RECHECK_BACKOFF_SECONDS = 0.25
+
 
 @dataclass(frozen=True)
 class _ClaimedRun(ClaimedJob):
@@ -159,6 +163,12 @@ async def validate_claim(
         return CancelClaim("run_missing")
     if run.status == RunStatus.WAITING_JOB.value:
         if not await resolve_waiting(session, run, now=utcnow()):
+            # 等待不消费触发，但短退避让出下一个调度窗口：否则本 job 恒居候选
+            # 队头（created_at 最早、next_run_at 空、WaitingClaim 原样保留），
+            # 其他 Run 的触发 job 领取不到（等待期阻塞全部独立 Run）。
+            now = utcnow()
+            job.next_run_at = now + timedelta(seconds=WAITING_RECHECK_BACKOFF_SECONDS)
+            job.updated_at = now
             return WaitingClaim("waiting_job")
         # str() 收宽：resolve_waiting 在等待分支内改写 status（取消兜底收尾 /
         # 唤醒），pyright 的字面量收窄看不到跨调用变化。
@@ -270,6 +280,12 @@ async def _resolve_step_refs(
             return None
         resolved[name] = node
     return resolved
+
+
+def _snapshot_blank(operation: AgentOperation) -> bool:
+    """快照未固化判定：None 或空对象 "{}"（工单 06 提交期跳过含引用项的历史
+    落库形态——现固化兜底按 None 判断对此恒不触发，回归口径）。"""
+    return operation.snapshot_json is None or operation.snapshot_json == "{}"
 
 
 def _operation_params(operation: AgentOperation) -> dict[str, Any]:
@@ -485,9 +501,9 @@ async def advance_step(session_factory: async_sessionmaker[AsyncSession], run_id
                     return False
                 params = _operation_params(operation)
                 if params_output_refs(params):
-                    # 输出引用注入（工单 06）：解析来源步骤结果并回填事实参数——
-                    # 引用目标在来源步骤产出后才存在，快照改由此处现固化（提交期
-                    # 跳过），此后快照重验 / 手动重试与普通步骤同口径。
+                    # 输出引用注入（工单 06）：解析来源步骤结果并回填事实参数；
+                    # 修改类的目标快照提交期已固化（剔除引用字段抓取），空快照
+                    # 仅存量数据兜底现固化——回填后与普通步骤同口径走快照重验。
                     resolved = await _resolve_step_refs(session, plan, params)
                     if resolved is None:
                         _mark_operation(
@@ -504,13 +520,15 @@ async def advance_step(session_factory: async_sessionmaker[AsyncSession], run_id
                     operation.payload_json = json.dumps(
                         params, ensure_ascii=False, separators=(",", ":")
                     )
-                    if spec.capture_state is not None and operation.snapshot_json is None:
+                    if spec.capture_state is not None and _snapshot_blank(operation):
                         operation.snapshot_json = (
                             await spec.capture_state(
                                 session, spec.payload_schema.model_validate(params)
                             )
                         ).model_dump_json()
-                elif await operation_snapshot_stale(session, spec, operation, params):
+                if not params_output_refs(params) and await operation_snapshot_stale(
+                    session, spec, operation, params
+                ):
                     _mark_operation(
                         operation,
                         OperationStatus.FAILED,
@@ -706,6 +724,7 @@ def agent_run_spec(
         name="agent_run_worker",
         job_type=AGENT_RUN_JOB_TYPE,
         poll_interval=0.25,
+        write_waiting_reason=False,
         find_candidate=find_candidate,
         validate_claim=validate_claim,
         execute=lambda ctx, runtime: execute(ctx, runtime, session_factory),

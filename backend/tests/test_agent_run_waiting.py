@@ -27,6 +27,7 @@ from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runs.service import RunControlService, RunHistoryService
+from app.modules.agent.runs.undo import UndoService
 from app.modules.agent.runs.worker import (
     advance_run,
     agent_run_spec,
@@ -40,7 +41,8 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.agent.tools.plan_batch_operations import plan_batch_operations
-from app.modules.jobs.runner import CancelClaim, Ready, WaitingClaim
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.runner import CancelClaim, JobRunner, Ready, WaitingClaim
 from app.modules.library.proposals import ProposalService
 from app.shared.events import RecordInvalidationNotifier
 
@@ -113,11 +115,12 @@ async def invoke_plan(
     entries: list[dict[str, Any]],
     *,
     auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL,
+    session_id: str = SESSION_ID,
 ) -> dict[str, Any]:
     token = bind_agent_runtime_context(
         AgentRuntimeContext(
             session_factory=session_factory,
-            session_id=SESSION_ID,
+            session_id=session_id,
             auth_mode=auth_mode,
             instruction_excerpt="建课并导入这篇资料",
             message_id="msg-1",
@@ -297,17 +300,14 @@ def spec_of(session_factory: async_sessionmaker[AsyncSession]):
 
 
 async def claim_waiting(session_factory: async_sessionmaker[AsyncSession], run_id: str) -> Any:
-    """对等待中的 Run 跑一次领取闸门（模拟 JobRunner 轮询核对）。"""
+    """对等待中的 Run 跑一次领取闸门（模拟 JobRunner 轮询核对）。
+
+    job 以 ORM 实体加载（与生产 find_candidate 同形态——等待分支会在实体上
+    写调度退避，SQL Row 不可赋值）。"""
     async with session_factory() as session, session.begin():
         job_id = await waiting_trigger_job(session_factory, run_id)
-        job = cast(
-            Any,
-            (
-                await session.execute(
-                    text("SELECT * FROM processing_jobs WHERE id = :id"), {"id": job_id}
-                )
-            ).one(),
-        )
+        job = await session.get(ProcessingJob, job_id)
+        assert job is not None
         return await validate_claim(session, job, "", None)
 
 
@@ -473,6 +473,284 @@ async def test_pending_job_keeps_run_waiting(tmp_path: Path) -> None:
         assert (await run_row(session_factory, run_id))[0] == "WAITING_JOB"
         # 触发 job 未被消费（PENDING 保留，轮询下一周期再核对）。
         await waiting_trigger_job(session_factory, run_id)
+
+
+@pytest.mark.anyio
+async def test_waiting_claim_skips_waiting_reason_write(tmp_path: Path) -> None:
+    """等待领取走完整 JobRunner.claim_one（真实迁移库、0004 CHECK 生效）：
+    processing_jobs.waiting_reason 是 audio 等待槽（CHECK 值域仅 audio 三态），
+    Agent 等待不写该列——修复前此处 IntegrityError，等待期反复错误恢复。"""
+    async with bare_db(tmp_path) as session_factory:
+        direct = await invoke_plan(
+            session_factory,
+            [create_course_entry(), ingest_entry(course_id=COURSE_REF)],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+
+        runner = JobRunner(spec_of(session_factory), session_factory, RecordInvalidationNotifier())
+        assert await runner.claim_one() is None  # 未消费触发（无可执行 ctx）
+
+        # 触发 job 保留 PENDING、waiting_reason 未被触碰、Run 保持等待。
+        job_id = await waiting_trigger_job(session_factory, run_id)
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text("SELECT status, waiting_reason FROM processing_jobs WHERE id = :id"),
+                    {"id": job_id},
+                )
+            ).one()
+        assert (row[0], row[1]) == ("PENDING", None)
+        assert (await run_row(session_factory, run_id))[0] == "WAITING_JOB"
+
+
+@pytest.mark.anyio
+async def test_appended_batch_refs_bind_to_own_steps(tmp_path: Path) -> None:
+    """追加批次的输出引用绑本批步骤（P1 回归）：引用 step 是本批局部索引，写入
+    前须换算为 Run 全局编号——修复前局部 step=0 绑到第一批建课 A（URL2 归入
+    A、课程 B 留空），违反步骤结果绑定与固定授权对象的要求。"""
+    url2 = "https://example.com/diffusion-explained"
+    async with bare_db(tmp_path) as session_factory:
+        direct = await invoke_plan(
+            session_factory,
+            [create_course_entry(), ingest_entry(course_id=COURSE_REF)],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+
+        # 等待期间追加第二批（等待态只接受显式确认，转计划卡）：建课 B＋导入
+        # URL2 引用本批第 0 步；确认后延展同一 Run。
+        planned = await invoke_plan(
+            session_factory,
+            [
+                create_course_entry(name="Diffusion 入门"),
+                ingest_entry(url=url2, course_id=COURSE_REF),
+            ],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        proposal_id = cast(str, planned["plan_proposal"]["proposal_id"])
+        assert await confirm_plan(session_factory, proposal_id) == run_id
+
+        # URL1 抓取完成 → 唤醒推进：第二批建课 B、URL2 提交 job 再转等待 → 完成。
+        await finish_job(session_factory, "SUCCEEDED")
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+        await finish_job(session_factory, "SUCCEEDED")
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "COMPLETED"
+
+        # URL2 归课程 B（引用本批建课步骤的全局编号），课程 A 只收 URL1。
+        async with session_factory() as session:
+            rows = (
+                await session.execute(
+                    text("SELECT name, id FROM courses WHERE created_at >= :now"),
+                    {"now": NOW},
+                )
+            ).all()
+        courses = {cast(str, row[0]): cast(str, row[1]) for row in rows}
+        item_a = await ingested_item_row(session_factory)
+        item_b = await ingested_item_row(session_factory, url=url2)
+        assert item_a is not None and item_b is not None
+        assert item_a[0] == courses["Transformer 精读"]
+        assert item_b[0] == courses["Diffusion 入门"]
+        # 计划投影里第二批引用已固化事实参数（执行回填），不再残留引用对象。
+        payloads = await operation_payloads(session_factory, run_id)
+        assert payloads[3]["course_id"] == courses["Diffusion 入门"]
+
+
+@pytest.mark.anyio
+async def test_ref_only_categorize_plan_is_accepted(tmp_path: Path) -> None:
+    """纯引用归类计划不被拒（P2 回归）：「建课 → 既有资料归到新课」只传
+    item_id＋course_id 引用是结果绑定的核心场景——剔除引用字段后不能因
+    「至少一个修改字段」拒绝（引用即修改意图）；快照照常完整固化。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_item(session_factory, 0)
+        direct = await invoke_plan(
+            session_factory,
+            [
+                create_course_entry(),
+                {"action": "update_library_item", "item_id": item_id(0), "course_id": COURSE_REF},
+            ],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        assert await advance(session_factory, run_id) == "COMPLETED"
+
+        course_id, _name = await new_course_row(session_factory)
+        async with session_factory() as session:
+            item = (
+                await session.execute(
+                    text("SELECT course_id FROM library_items WHERE id = :id"),
+                    {"id": item_id(0)},
+                )
+            ).one()
+            snap = (
+                await session.execute(
+                    text(
+                        "SELECT snapshot_json FROM agent_operations"
+                        " WHERE run_id = :run_id AND action = 'update_library_item'"
+                    ),
+                    {"run_id": run_id},
+                )
+            ).one()
+        assert item[0] == course_id
+        snapshot = cast(dict[str, Any], json.loads(cast(str, snap[0])))
+        assert snapshot["title"] == "条目0"
+        assert snapshot["course_id"] is None
+
+
+@pytest.mark.anyio
+async def test_waiting_trigger_yields_scheduling_to_other_runs(tmp_path: Path) -> None:
+    """等待核对让出调度窗口（P2 回归）：等待中的触发 job 恒居候选队头且
+    WaitingClaim 原样保留，短退避前其他独立 Run 的触发领取不到——Run A 等待
+    抓取期间，Run B（另一会话新建课程）始终 PLANNED 不被推进。"""
+    async with bare_db(tmp_path) as session_factory:
+        waiting = await invoke_plan(
+            session_factory,
+            [create_course_entry(), ingest_entry(course_id=COURSE_REF)],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_a = cast(str, waiting["run"]["run_id"])
+        assert await advance(session_factory, run_a) == "WAITING_JOB"
+
+        # 独立会话提交 Run B（触发 job 晚于 A 的等待触发）。
+        direct_b = await invoke_plan(
+            session_factory,
+            [create_course_entry(name="独立课程")],
+            auth_mode=AuthMode.FULL_ACCESS,
+            session_id="sess-independent",
+        )
+        run_b = cast(str, direct_b["run"]["run_id"])
+
+        runner = JobRunner(spec_of(session_factory), session_factory, RecordInvalidationNotifier())
+        # 第一拍：领取 A 的等待触发——不消费、置短退避。
+        assert await runner.claim_one() is None
+        trigger_a = await waiting_trigger_job(session_factory, run_a)
+        async with session_factory() as session:
+            backoff = (
+                await session.execute(
+                    text("SELECT next_run_at FROM processing_jobs WHERE id = :id"),
+                    {"id": trigger_a},
+                )
+            ).one()
+        assert backoff[0] is not None
+
+        # 第二拍（A 退避窗口内）：调度落到 B 的触发，B 完整推进收尾。
+        assert await runner.process_one() is True
+        steps = await step_rows(session_factory, run_b)
+        assert [status for _a, status, _c, _attempts in steps] == ["SUCCEEDED"]
+        assert (await run_row(session_factory, run_b))[0] == "COMPLETED"
+        # A 不受影响：仍在等待。
+        assert (await run_row(session_factory, run_a))[0] == "WAITING_JOB"
+
+
+@pytest.mark.anyio
+async def test_ref_update_step_snapshot_stale_blocks_overwrite(tmp_path: Path) -> None:
+    """含引用的修改类步骤受对象版本绑定（P1 回归）：提交期固化目标快照（剔除
+    引用字段抓取），执行时与普通步骤同口径重验——批准后用户改条目标题，Agent
+    不得覆盖该修改（OPERATION_SNAPSHOT_STALE，ADR-0026）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_item(session_factory, 0)
+        direct = await invoke_plan(
+            session_factory,
+            [
+                create_course_entry(),
+                ingest_entry(course_id=COURSE_REF),
+                {
+                    "action": "update_library_item",
+                    "item_id": item_id(0),
+                    "title": "Agent 改名",
+                    "course_id": COURSE_REF,
+                },
+            ],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+
+        # 等待期间用户手动改条目标题（第三方修改＝快照失效）。
+        await run_sql(
+            "UPDATE library_items SET title = :title, updated_at = :later WHERE id = :id",
+            {"title": "用户手改标题", "later": LATER, "id": item_id(0)},
+            session_factory,
+        )
+        await finish_job(session_factory, "SUCCEEDED")
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+
+        # 修改步骤执行前重验失败：不覆盖用户修改、等待用户处置。
+        assert await advance(session_factory, run_id) == "WAITING_USER"
+        steps = await step_rows(session_factory, run_id)
+        assert [(status, code) for _a, status, code, _attempts in steps] == [
+            ("SUCCEEDED", None),
+            ("SUCCEEDED", None),
+            ("FAILED", "OPERATION_SNAPSHOT_STALE"),
+        ]
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text("SELECT title, course_id FROM library_items WHERE id = :id"),
+                    {"id": item_id(0)},
+                )
+            ).one()
+        assert (row[0], row[1]) == ("用户手改标题", None)
+
+
+@pytest.mark.anyio
+async def test_ref_update_step_snapshot_complete_and_undoable(tmp_path: Path) -> None:
+    """含引用修改步骤的正常路径（P1 回归另一半）：快照完整固化（非 "{}"）、
+    执行归类生效、Undo 以快照恢复 before 值——修复前空快照撤销即
+    OPERATION_UNDO_CONFLICT。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_item(session_factory, 0)
+        direct = await invoke_plan(
+            session_factory,
+            [
+                create_course_entry(),
+                ingest_entry(course_id=COURSE_REF),
+                {
+                    "action": "update_library_item",
+                    "item_id": item_id(0),
+                    "title": "Agent 改名",
+                    "course_id": COURSE_REF,
+                },
+            ],
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        run_id = cast(str, direct["run"]["run_id"])
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+
+        await finish_job(session_factory, "SUCCEEDED")
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "COMPLETED"
+
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT snapshot_json FROM agent_operations"
+                        " WHERE run_id = :run_id AND action = 'update_library_item'"
+                    ),
+                    {"run_id": run_id},
+                )
+            ).one()
+        snapshot = cast(dict[str, Any], json.loads(cast(str, row[0])))
+        assert snapshot["title"] == "条目0"
+        assert snapshot["course_id"] is None
+
+        # Undo 恢复归类前状态（快照 before 值）。
+        step_id = await _step_id(session_factory, run_id, "update_library_item")
+        async with session_factory() as session:
+            await UndoService.undo_operation(session, operation_id=step_id)
+        async with session_factory() as session:
+            item = (
+                await session.execute(
+                    text("SELECT course_id FROM library_items WHERE id = :id"),
+                    {"id": item_id(0)},
+                )
+            ).one()
+        assert item[0] is None
 
 
 @pytest.mark.anyio

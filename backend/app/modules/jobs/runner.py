@@ -189,6 +189,10 @@ class WorkerSpec[PreflightT, CtxT: ClaimedJob, ResultT]:
     on_loop_failure: Callable[[str], Awaitable[None]] | None = None
     finalize_cycle: Callable[[CtxT], Awaitable[None]] | None = None
     clear_waiting_on_claim: bool = False
+    # WaitingClaim 是否落 processing_jobs.waiting_reason：audio 等待槽的
+    # CHECK 值域只有 audio 三态（0004），AGENT_RUN 等待语义在 agent_runs 侧
+    # 承载（该列无消费者），置 False 只取「不消费触发」协议语义。
+    write_waiting_reason: bool = True
     clock: Callable[[], datetime] = utcnow  # runner 外壳时钟接缝：领取/失败记账用，测试可冻结推进
 
 
@@ -299,7 +303,9 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
                     job.finished_at = now
                     job.updated_at = now
                 elif isinstance(decision, WaitingClaim):
-                    if await _mark_waiting(session, job.id, decision.reason, now):
+                    if self._spec.write_waiting_reason and await _mark_waiting(
+                        session, job.id, decision.reason, now
+                    ):
                         waiting_record = job.record_id
                 elif await _preempt(session, job.id, now, self._spec.clear_waiting_on_claim):
                     claimed_ctx = decision.ctx
