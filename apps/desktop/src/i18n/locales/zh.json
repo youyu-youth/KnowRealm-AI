@@ -2279,7 +2279,10 @@
       "paramCourse": "归类到课程：{{course}}",
       "paramCourseFromStep": "第 {{index}} 步的输出",
       "paramUrl": "网页地址：{{url}}",
-      "paramValue": "{{label}}：{{value}}"
+      "paramValue": "{{label}}：{{value}}",
+      "paramPath": "本地路径：{{path}}",
+      "paramContent": "文本：{{excerpt}}…",
+      "paramGoal": "目标：{{goal}}"
     }
   },
   "settings": {
@@ -2498,7 +2501,11 @@
         "soft_delete_record": "删除学习记录",
         "delete_course": "删除课程",
         "move_record_course": "迁移记录到课程",
-        "ingest_library_item": "导入网页资料"
+        "ingest_library_item": "导入网页资料",
+        "ingest_local_document": "导入本地文档",
+        "add_shared_ref": "添加共享引用",
+        "create_goal": "创建学习目标",
+        "generate_plan_draft": "生成学习计划草案"
       },
       "operationStatus": {
         "PLANNED": "待执行",
@@ -3045,7 +3052,12 @@
     "PLAN_ITEM_NOT_FOUND": "计划项不存在或所属课程已删除",
     "PLAN_VERSION_NOT_ACTIVE": "只有当前生效版本的计划项可以修改，历史版本只读",
     "PLAN_REGENERATE_NO_MATERIALS": "课程当前没有可用资料，无法重新生成计划；请先补充资料或逐项调整现有计划",
-    "PROPOSAL_EDIT_NOT_SUPPORTED": "该提案类型不支持确认前编辑"
+    "PROPOSAL_EDIT_NOT_SUPPORTED": "该提案类型不支持确认前编辑",
+    "DOCUMENT_FILE_UNREADABLE": "本地文档不存在或不支持（仅支持 TXT、MD、PDF、DOCX）",
+    "DATA_DIR_UNBOUND": "数据目录未初始化，无法导入本地文档",
+    "PLAN_DRAFT_LLM_UNCONFIGURED": "尚未配置 LLM 供应商，无法生成学习计划草案",
+    "PLAN_DRAFT_GOAL_UNAVAILABLE": "目标不可用（已完结或已有进行中计划），无法生成草案",
+    "PLAN_DRAFT_NO_MATERIALS": "课程还没有资料，无法生成学习计划草案，请先补充资料后重试"
   },
   "agent": {
     "run": {

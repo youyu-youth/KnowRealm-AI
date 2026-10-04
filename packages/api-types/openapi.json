@@ -5842,7 +5842,8 @@
           "WEB_FETCH",
           "LIBRARY_BACKFILL",
           "INDEX_REBUILD",
-          "AGENT_RUN"
+          "AGENT_RUN",
+          "PLAN_DRAFT"
         ],
         "title": "ProcessingJobType",
         "type": "string"
@@ -6053,7 +6054,9 @@
           "OP_PLAN_REGENERATE",
           "OP_SHARED_REF_ADD",
           "OP_SHARED_REF_REMOVE",
-          "OP_LIBRARY_ITEM_INGEST"
+          "OP_LIBRARY_ITEM_INGEST",
+          "OP_LOCAL_DOCUMENT_INGEST",
+          "OP_PLAN_DRAFT"
         ],
         "title": "ProposalType",
         "type": "string"

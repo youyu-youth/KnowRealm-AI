@@ -36,6 +36,15 @@ type PlanItem = {
   depth?: string | null;
   description?: string | null;
   url?: string | null;
+  // 工单 07：多资料来源与编排动作的参数列。
+  path?: string | null;
+  content?: string | null;
+  library_item_id?: string | null;
+  goal_type?: string | null;
+  target_date?: string | null;
+  daily_minutes?: number | null;
+  target_score?: number | null;
+  goal_id?: string | StepOutputRef | null;
   depends_on?: number[];
 };
 
@@ -52,8 +61,9 @@ function stepRefLabel(value: StepOutputRef, t: TFunction): string | null {
     : null;
 }
 
-/** 逐项目标名：优先确认卡预览投影（提交时固化的快照标题），否则载荷标题，
- * 再退回目标 id 缩写——不造假名。 */
+/** 逐项目标名：优先确认卡预览投影（提交时固化的快照标题），否则载荷标题
+ * （本地路径 / 粘贴文本摘要是各自来源的目标形态，工单 07），再退回目标 id
+ * 缩写——不造假名。 */
 function planItemTitle(
   proposal: AgentProposalOut,
   item: PlanItem,
@@ -72,6 +82,12 @@ function planItemTitle(
   }
   if (item.url?.trim()) {
     return item.url;
+  }
+  if (item.path?.trim()) {
+    return item.path;
+  }
+  if (item.content?.trim()) {
+    return item.content.slice(0, 60);
   }
   return item.item_id ? shortId(item.item_id) : "";
 }
@@ -277,11 +293,55 @@ function PlanItemRow({
       : typeof item.course_id === "string"
         ? (courseNames.get(item.course_id) ?? shortId(item.course_id))
         : (stepRefLabel(item.course_id, t) ?? "");
+  const goalLabel =
+    item.goal_id == null
+      ? ""
+      : typeof item.goal_id === "string"
+        ? shortId(item.goal_id)
+        : (stepRefLabel(item.goal_id, t) ?? "");
   const params = [
     item.title ? t("chat.batchPlan.paramTitle", { title: item.title }) : "",
     courseLabel ? t("chat.batchPlan.paramCourse", { course: courseLabel }) : "",
     item.url && item.url !== target
       ? t("chat.batchPlan.paramUrl", { url: item.url })
+      : "",
+    item.path && item.path !== target
+      ? t("chat.batchPlan.paramPath", { path: item.path })
+      : "",
+    item.content && item.content.slice(0, 60) !== target
+      ? t("chat.batchPlan.paramContent", {
+          excerpt: item.content.slice(0, 60),
+        })
+      : "",
+    goalLabel ? t("chat.batchPlan.paramGoal", { goal: goalLabel }) : "",
+    item.goal_type
+      ? t("chat.batchPlan.paramValue", {
+          label: t("chat.operationProposal.goalFields.type"),
+          value: t(
+            `chat.operationProposal.goalFields.goalType.${item.goal_type}`,
+            item.goal_type,
+          ),
+        })
+      : "",
+    item.target_date
+      ? t("chat.batchPlan.paramValue", {
+          label: t("chat.operationProposal.goalFields.targetDate"),
+          value: item.target_date,
+        })
+      : "",
+    item.daily_minutes
+      ? t("chat.batchPlan.paramValue", {
+          label: t("chat.operationProposal.goalFields.dailyMinutes"),
+          value: t("chat.operationProposal.goalFields.dailyMinutesValue", {
+            count: item.daily_minutes,
+          }),
+        })
+      : "",
+    item.target_score != null
+      ? t("chat.batchPlan.paramValue", {
+          label: t("chat.operationProposal.goalFields.targetScore"),
+          value: String(item.target_score),
+        })
       : "",
     ...(
       [

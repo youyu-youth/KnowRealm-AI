@@ -2299,7 +2299,10 @@
       "paramCourse": "Move to course: {{course}}",
       "paramCourseFromStep": "output of step {{index}}",
       "paramUrl": "Web address: {{url}}",
-      "paramValue": "{{label}}: {{value}}"
+      "paramValue": "{{label}}: {{value}}",
+      "paramPath": "Local path: {{path}}",
+      "paramContent": "Text: {{excerpt}}…",
+      "paramGoal": "Goal: {{goal}}"
     }
   },
   "settings": {
@@ -2518,7 +2521,11 @@
         "soft_delete_record": "Delete record",
         "delete_course": "Delete course",
         "move_record_course": "Move record to course",
-        "ingest_library_item": "Ingest web page"
+        "ingest_library_item": "Ingest web page",
+        "ingest_local_document": "Import local document",
+        "add_shared_ref": "Add shared reference",
+        "create_goal": "Create learning goal",
+        "generate_plan_draft": "Generate study plan draft"
       },
       "operationStatus": {
         "PLANNED": "Planned",
@@ -3065,7 +3072,12 @@
     "PLAN_ITEM_NOT_FOUND": "Plan item not found or its course has been deleted",
     "PLAN_VERSION_NOT_ACTIVE": "Only items in the currently active plan version can be modified; past versions are read-only",
     "PLAN_REGENERATE_NO_MATERIALS": "The course has no usable materials to regenerate the plan; add materials first or adjust items individually",
-    "PROPOSAL_EDIT_NOT_SUPPORTED": "This proposal type does not support editing before confirmation"
+    "PROPOSAL_EDIT_NOT_SUPPORTED": "This proposal type does not support editing before confirmation",
+    "DOCUMENT_FILE_UNREADABLE": "Local document not found or unsupported (TXT, MD, PDF, DOCX only)",
+    "DATA_DIR_UNBOUND": "Data directory is not initialized; cannot import local documents",
+    "PLAN_DRAFT_LLM_UNCONFIGURED": "No LLM provider configured; cannot generate study plan draft",
+    "PLAN_DRAFT_GOAL_UNAVAILABLE": "Goal unavailable (completed or an active plan exists); cannot generate draft",
+    "PLAN_DRAFT_NO_MATERIALS": "No materials in the course yet; add materials first, then retry the study plan draft"
   },
   "agent": {
     "run": {

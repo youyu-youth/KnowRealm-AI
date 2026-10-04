@@ -427,4 +427,75 @@ describe("ChatBatchPlanCard", () => {
       expect(cancelRun).toHaveBeenCalledWith("run-1");
     });
   });
+
+  it("多资料建课编排卡：四类来源与建目标、末步草案的动作及授权参数逐项可见", async () => {
+    listProposals.mockResolvedValue([
+      planProposal({
+        payload: {
+          items: [
+            {
+              action: "create_course",
+              name: "论文精读",
+              learning_context: "CAREER",
+              depth: "INTERMEDIATE",
+            },
+            {
+              action: "create_goal",
+              course_id: { step: 0, field: "course_id" },
+              goal_type: "SKILL",
+              target_date: "2026-11-01",
+              daily_minutes: 60,
+              target_score: 85,
+            },
+            { action: "ingest_library_item", url: "https://example.com/paper" },
+            {
+              action: "ingest_local_document",
+              path: "D:\\papers\\attention.pdf",
+            },
+            {
+              action: "add_text_record_to_course",
+              content:
+                "论文 A 的核心结论：注意力机制可并行化，长文本摘要同理。",
+              course_id: { step: 0, field: "course_id" },
+            },
+            {
+              action: "generate_plan_draft",
+              goal_id: { step: 1, field: "goal_id" },
+              depends_on: [3],
+            },
+          ],
+          plan_version: 1,
+          auth_mode: "REQUEST_APPROVAL",
+          instruction_text: "把这几篇论文整理到新课程并生成学习计划",
+        },
+        snapshot: { plan_version: 1, items: [] },
+      }),
+    ]);
+    renderWithQuery(<ChatBatchPlanCard sessionId={SESSION_ID} />);
+
+    expect(await screen.findByText("共 6 项")).toBeInTheDocument();
+    // 四类来源与编排动作的授权要素逐项可见。
+    expect(screen.getByText("创建课程")).toBeInTheDocument();
+    expect(screen.getByText("创建学习目标")).toBeInTheDocument();
+    expect(screen.getByText("导入网页资料")).toBeInTheDocument();
+    expect(screen.getByText("导入本地文档")).toBeInTheDocument();
+    expect(screen.getByText("添加文本记录")).toBeInTheDocument();
+    expect(screen.getByText("生成学习计划草案")).toBeInTheDocument();
+    // 目标参数（类型 / 期限 / 每日投入）与引用注入（建课 / 建目标输出）可见。
+    expect(screen.getByText(/目标类型：技能掌握/)).toBeInTheDocument();
+    expect(screen.getByText(/期限：2026-11-01/)).toBeInTheDocument();
+    expect(screen.getByText(/每日投入：每天 60 分钟/)).toBeInTheDocument();
+    expect(screen.getByText(/目标分数：85/)).toBeInTheDocument();
+    expect(screen.getAllByText(/第 1 步的输出/).length).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(screen.getByText(/目标：第 2 步的输出/)).toBeInTheDocument();
+    // 本地路径与粘贴文本摘要是目标形态（不造假名）。
+    expect(screen.getByText("D:\\papers\\attention.pdf")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "论文 A 的核心结论：注意力机制可并行化，长文本摘要同理。",
+      ),
+    ).toBeInTheDocument();
+  });
 });
