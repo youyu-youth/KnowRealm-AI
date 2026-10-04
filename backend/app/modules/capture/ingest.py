@@ -27,6 +27,7 @@ from app.modules.capture.document_import import (
     SUPPORTED_DOCUMENTS,
     copy_upload,
     remove_import_file,
+    valid_course,
 )
 from app.modules.capture.models import RecordFile
 from app.modules.capture.schemas import (
@@ -51,24 +52,6 @@ from app.modules.transcript.models import Transcript
 from app.shared.errors import CodedHTTPException
 
 MAX_TEXT_BYTES = 1024 * 1024
-
-
-async def valid_course(session: AsyncSession, course_id: str | None) -> None:
-    """归类目标课程校验（ingest 与 05 生命周期归类共用；跨模块公开）。"""
-    if course_id is None:
-        return
-    from app.modules.course.schemas import CourseStatus
-    from app.modules.course.service import CourseService
-
-    course = await CourseService.get(session, course_id)
-    if course is None:
-        raise CodedHTTPException(
-            code="COURSE_NOT_FOUND", status_code=404, detail="课程不存在或已删除"
-        )
-    if course.status != CourseStatus.ACTIVE:
-        raise CodedHTTPException(
-            code="COURSE_ARCHIVED", status_code=409, detail="已归档课程不能接受新资料"
-        )
 
 
 async def _duplicate_item_id(session: AsyncSession, content_hash: str) -> str | None:

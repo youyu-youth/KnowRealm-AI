@@ -25,21 +25,27 @@ from enum import StrEnum
 from typing import Any, Literal, cast
 
 from pydantic import ValidationError
+from pydantic_core import ErrorDetails
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
 from app.modules.agent.auth_mode import effective_session_auth_mode
 from app.modules.agent.operations.course_create import CREATE_COURSE_ACTION
+from app.modules.agent.operations.goal_create import CREATE_GOAL_ACTION
 from app.modules.agent.operations.library_item_archive import ARCHIVE_LIBRARY_ITEM_ACTION
 from app.modules.agent.operations.library_item_ingest import INGEST_LIBRARY_ITEM_ACTION
 from app.modules.agent.operations.library_item_update import UPDATE_LIBRARY_ITEM_ACTION
+from app.modules.agent.operations.local_document_ingest import INGEST_LOCAL_DOCUMENT_ACTION
+from app.modules.agent.operations.plan_draft import GENERATE_PLAN_DRAFT_ACTION
 from app.modules.agent.operations.registry import (
     INSTRUCTION_EXCERPT_MAX_CHARS,
     OperationSpec,
     get_operation,
     should_execute_directly,
 )
+from app.modules.agent.operations.shared_ref import ADD_SHARED_REF_ACTION
+from app.modules.agent.operations.text_record_add import ADD_TEXT_RECORD_ACTION
 from app.modules.agent.runs.models import AgentOperation, AgentRun
 from app.modules.agent.runs.schemas import (
     AGENT_RUN_PLAN_INVALID,
@@ -83,12 +89,19 @@ from app.shared.errors import CodedHTTPException
 
 # 计划项动作 → 操作注册表动作名（值即注册表 action 与薄工具函数名，零漂移）。
 # 工单 06 起纳入创建类动作（建课 / URL 导入）：导入步骤提交后台解析 job，Run
-# 推进到该步成功后转 WAITING_JOB（spec M2 执行闭环）。
+# 推进到该步成功后转 WAITING_JOB（spec M2 执行闭环）。工单 07 起纳入多资料
+# 建课编排动作面：四类来源导入（URL / 本地文档 / 粘贴文本）＋库内资料挂课
+# （改归属或共享引用）＋建目标＋计划草案产出（末步，草案确认是 Run 外闸门）。
 BATCH_PLAN_ACTIONS: dict[BatchPlanAction, str] = {
     BatchPlanAction.UPDATE_LIBRARY_ITEM: UPDATE_LIBRARY_ITEM_ACTION,
     BatchPlanAction.ARCHIVE_LIBRARY_ITEM: ARCHIVE_LIBRARY_ITEM_ACTION,
     BatchPlanAction.CREATE_COURSE: CREATE_COURSE_ACTION,
     BatchPlanAction.INGEST_LIBRARY_ITEM: INGEST_LIBRARY_ITEM_ACTION,
+    BatchPlanAction.INGEST_LOCAL_DOCUMENT: INGEST_LOCAL_DOCUMENT_ACTION,
+    BatchPlanAction.ADD_TEXT_RECORD: ADD_TEXT_RECORD_ACTION,
+    BatchPlanAction.ADD_SHARED_REF: ADD_SHARED_REF_ACTION,
+    BatchPlanAction.CREATE_GOAL: CREATE_GOAL_ACTION,
+    BatchPlanAction.GENERATE_PLAN_DRAFT: GENERATE_PLAN_DRAFT_ACTION,
 }
 
 # 计划卡提案的 Run 关联：target_type 固定值（target_id = 被延展的活跃 run，
@@ -154,23 +167,43 @@ def parse_plan_snapshot(proposal: AgentProposal, payload: BatchPlanPayload) -> B
     return snapshot
 
 
+def _only_deferred_errors(exc: ValidationError, ref_names: Collection[str]) -> bool:
+    """校验失败是否全部「因引用而放行」：①model 级条件校验（如 update 的
+    「至少一个修改字段」——错误无字段路径）；②引用字段自身的 missing 错误
+    （工单 07：必填引用消费方如 create_goal / add_text_record 的 course_id，
+    剔除后缺失属预期——引用字段执行时注入终值，自身即构成创建 / 修改意图）。
+    其余字段级校验（类型 / 枚举 / 长度）不放行。"""
+    if not ref_names:
+        return False
+    errors = exc.errors()
+    if not errors:
+        return False
+
+    def _deferred(error: ErrorDetails) -> bool:
+        loc = error.get("loc")
+        if not loc:
+            return True
+        return str(loc[0]) in ref_names and error.get("type") == "missing"
+
+    return all(_deferred(error) for error in errors)
+
+
 def _concrete_payload(
     spec: OperationSpec[Any],
     params: dict[str, Any],
     ref_names: Collection[str],
 ) -> Any:
-    """剔除引用字段后的动作载荷实例（判别 / 定位 / 快照 / 重验共用）。
+    """剔除引用字段后的动作载荷实例（快照 / 重验 / 定位共用）。
 
-    仅剩 model 级条件校验（如 update 的「至少一个修改字段」）失败且存在引用
-    字段时放行——引用字段执行时注入终值，自身即构成修改意图（「建课 → 归类
-    既有资料」的核心场景不能被拒）；字段级校验（错误带字段路径）失败照常抛。
+    仅因引用而放行的校验失败（:func:`_only_deferred_errors`）以
+    model_construct 构造——修改类含引用项的快照读取不受「至少一个修改字段」
+    等条件校验拦截（引用即修改意图，工单 06 review 口径）。
     """
     concrete = {k: v for k, v in params.items() if k not in ref_names}
     try:
         return spec.payload_schema.model_validate(concrete)
     except ValidationError as exc:
-        errors = exc.errors()
-        if ref_names and errors and all(not error.get("loc") for error in errors):
+        if _only_deferred_errors(exc, ref_names):
             return spec.payload_schema.model_construct(**concrete)
         raise
 
@@ -182,7 +215,7 @@ def _plan_item_params(spec: OperationSpec[Any], item: BatchPlanItemPayload) -> d
     参数（None 不落库——模型无法表达显式 null，先例见 registry 提交路径）。
     输出引用字段（StepOutputRef）执行时才解析为终值：判别校验只覆盖已知终值
     字段、引用原样保留进操作载荷（推进 worker 解析后回填）；引用字段若为该
-    动作必填项，剔除后校验报缺失＝保守拒绝（当前引用消费方 course_id 均可选）。
+    动作必填项，missing 属预期放行（执行路径的 payload 判别承担类型执法）。
     """
     raw = {
         name: getattr(item, name)
@@ -191,19 +224,26 @@ def _plan_item_params(spec: OperationSpec[Any], item: BatchPlanItemPayload) -> d
     }
     deferred = {name: value for name, value in raw.items() if isinstance(value, StepOutputRef)}
     try:
-        params = _concrete_payload(spec, raw, deferred.keys()).model_dump(mode="json")
+        params = spec.payload_schema.model_validate(
+            {k: v for k, v in raw.items() if k not in deferred}
+        ).model_dump(mode="json")
     except ValidationError as exc:
-        fields = [str(error.get("loc", ("",))[0]) for error in exc.errors() if error.get("loc")]
-        detail_parts = [
-            str(error.get("msg", "")).removeprefix("Value error, ")
-            for error in exc.errors()
-            if not error.get("loc")
-        ]
-        shape = "/".join(dict.fromkeys(fields)) if fields else "结构"
-        detail = f"计划项参数不符合动作要求：{shape}"
-        if detail_parts:
-            detail = f"{detail}（{'；'.join(detail_parts)}）"
-        raise _plan_payload_invalid(detail) from exc
+        if not _only_deferred_errors(exc, deferred.keys()):
+            fields = [str(error.get("loc", ("",))[0]) for error in exc.errors() if error.get("loc")]
+            detail_parts = [
+                str(error.get("msg", "")).removeprefix("Value error, ")
+                for error in exc.errors()
+                if not error.get("loc")
+            ]
+            shape = "/".join(dict.fromkeys(fields)) if fields else "结构"
+            detail = f"计划项参数不符合动作要求：{shape}"
+            if detail_parts:
+                detail = f"{detail}（{'；'.join(detail_parts)}）"
+            raise _plan_payload_invalid(detail) from exc
+        # 因引用放行（missing / model 级条件校验）：具体值直接投影，引用字段由
+        # update 补回；枚举等类型转换交执行路径的 payload 判别（model_construct
+        # 实例的 dump 会对 str 枚举值告警，故不经实例）。
+        params = {k: v for k, v in raw.items() if k not in deferred}
     params.update({name: ref.model_dump(mode="json") for name, ref in deferred.items()})
     return params
 
@@ -226,6 +266,18 @@ def resolve_plan_items(
     return resolved
 
 
+def _skip_item_snapshot(item: BatchPlanItemPayload, params: dict[str, Any]) -> bool:
+    """该项是否跳过提交期快照：创建类（item_id 空）且参数含输出引用——引用
+    定位的对象（新建课程 / 新建目标）在同批前序步骤产出，提交与确认时还不
+    存在、capture 无从读取（照常执行会误拒整张卡）；推进 worker 解析引用后
+    现固化兜底（空快照判定），状态依赖由应用器与存储层校验兜底。
+
+    修改类（item_id 非空）不跳过：剔除引用字段后照常固化目标快照（对象版本
+    绑定与 Undo 补偿不因引用降级，工单 06 review 口径）。
+    """
+    return item.item_id is None and bool(params_output_refs(params))
+
+
 async def capture_plan_snapshots(
     session: AsyncSession,
     items: list[BatchPlanItemPayload],
@@ -236,13 +288,13 @@ async def capture_plan_snapshots(
     目标不可达（不存在 / 已归档等）由 capture_state 抛稳定错误码：提交路径转
     结构化返回（不落提案、不建 Run），确认路径整体回滚（＝未发生）。参数含
     输出引用的**修改类**项（目标 item 既有，引用的只是 course_id 等参数字段）
-    剔除引用字段后照常固化目标快照——对象版本绑定（ADR-0026）与 Undo 补偿不
-    因引用降级；创建类动作（capture_state 为 None）恒无快照。
+    剔除引用字段后照常固化目标快照；创建类（capture_state 为 None，或创建类
+    含引用按 :func:`_skip_item_snapshot` 跳过）恒无快照。
     """
     captured: list[BatchPlanItemSnapshot] = []
     for item, (spec, params) in zip(items, resolved, strict=True):
         state: dict[str, Any] = {}
-        if spec.capture_state is not None:
+        if spec.capture_state is not None and not _skip_item_snapshot(item, params):
             validated = _concrete_payload(spec, params, params_output_refs(params))
             state = (await spec.capture_state(session, validated)).model_dump(mode="json")
         captured.append(
@@ -255,13 +307,17 @@ async def verify_plan_snapshots(
     session: AsyncSession,
     resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
     snapshot: BatchPlanSnapshot,
+    items: list[BatchPlanItemPayload] | None = None,
 ) -> None:
     """逐项执行前重验（spec 决策 12）：当前态与提交时固化快照不一致即失效。
 
     含输出引用的修改类项同口径重验（剔除引用字段后读取比对——引用字段值
-    执行时才注入，不参与目标状态读取）；创建类（capture_state 为 None）跳过。"""
-    for (spec, params), captured in zip(resolved, snapshot.items, strict=True):
+    执行时才注入，不参与目标状态读取）；创建类（capture_state 为 None，或
+    创建类含引用无提交期快照——引用对象尚未产出，比对无意义）跳过。"""
+    for index, ((spec, params), captured) in enumerate(zip(resolved, snapshot.items, strict=True)):
         if spec.capture_state is None:
+            continue
+        if items is not None and _skip_item_snapshot(items[index], params):
             continue
         current = (
             await spec.capture_state(
@@ -553,9 +609,11 @@ async def append_plan_operations(
             continue
         # 目标定位只消费既有目标字段（具体值）：引用字段（值未定）不参与定位，
         # 剔除后判别再喂 resolver——含引用参数的修改类步骤（如归类到新建课程）
-        # 提交时也能正常建 operation（引用注入在推进 worker，工单 06）。
+        # 提交时也能正常建 operation（引用注入在推进 worker，工单 06）。创建类
+        # 步骤（item_id 空）无既有目标可定位，恒不 resolve（工单 07：create_goal
+        # 的 resolver 消费 course_id，引用时值未定、model_construct 也不含该键）。
         target = None
-        if spec.target_resolver is not None:
+        if spec.target_resolver is not None and item.item_id is not None:
             target = spec.target_resolver(
                 _concrete_payload(spec, params, params_output_refs(params))
             )
@@ -861,7 +919,7 @@ async def apply_batch_plan(session: AsyncSession, proposal: AgentProposal) -> di
         preset,
         replaced,
     ) = pending_plan_batch(payload, snapshot, resolved, covered)
-    await verify_plan_snapshots(session, batch_resolved, batch_snapshot)
+    await verify_plan_snapshots(session, batch_resolved, batch_snapshot, batch.items)
     appended = await append_plan_operations(
         session,
         run,

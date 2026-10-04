@@ -358,7 +358,7 @@ async def test_migration_0036_adds_completed_at(tmp_path: Path) -> None:
     version_rows: list[Any] = []
     async with aiosqlite.connect(db_path) as db:
         version_rows = list(await db.execute_fetchall("PRAGMA user_version"))
-    assert cast(int, version_rows[0][0]) == supported_user_version() == 38
+    assert cast(int, version_rows[0][0]) == supported_user_version() == 39
 
 
 def test_pack_schedule_with_fixed_golden_samples() -> None:

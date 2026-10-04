@@ -93,9 +93,10 @@ CHAT_SHARED_REF_GUIDANCE = (
     "查看与移除引用用 list_shared_refs / remove_shared_ref，移除不影响原资料。"
     "已归属当前课程的资料无需引用（会被拒绝）。"
 )
-# 长任务计划指引（第三阶段工单 06，spec M2 执行闭环）：计划可含创建类步骤
-# （建课 / URL 导入）；后步参数可引用前步输出（字段路径引用注入）；导入步骤
-# 提交后台抓取任务后 Run 转等待、完成后自动接续，不需要用户逐步确认。
+# 长任务计划指引（第三阶段工单 06/07，spec M2 执行闭环）：计划可含创建类
+# 步骤（建课 / URL 导入）；后步参数可引用前步输出（字段路径引用注入）；导入
+# 步骤提交后台抓取任务后 Run 转等待、完成后自动接续，不需要用户逐步确认。
+# 工单 07：多资料建课一次编排——四类来源、建目标与末步草案产出步骤。
 CHAT_RUN_BINDING_GUIDANCE = (
     "plan_batch_operations 的计划里可以有创建类步骤：create_course（新建课程，"
     "参数 name、learning_context）和 ingest_library_item（导入网页资料，参数"
@@ -105,6 +106,16 @@ CHAT_RUN_BINDING_GUIDANCE = (
     ' {"step": 0, "field": "course_id"}。导入网页的步骤提交后会等待后台'
     "抓取完成再自动继续（任务面板会显示等待中），期间不需要用户确认，如实"
     "告知用户任务在后台进行即可，不要声称已经抓取完成。"
+    "多资料建课（如「把这几篇论文整理到新课程并生成学习计划」）可一次提交"
+    "完整编排：来源四类各用对应步骤——库内资料用 update_library_item（改归属）"
+    "或 add_shared_ref（建共享引用，保原归属）、网页用 ingest_library_item、"
+    "本地文档用 ingest_local_document（path 必须是用户明确给出的文件路径，"
+    "缺失先追问不要猜测）、粘贴文本用 add_text_record_to_course（content）；"
+    "建课之后可用 create_goal 在新课里建学习目标（course_id 引用建课输出）；"
+    "最后用 generate_plan_draft 收尾（goal_id 引用建目标输出），任务全部"
+    "完成后会自动产出学习计划草案卡，由用户确认后才生效——草案确认前不要"
+    "声称计划已生成。某一步失败不影响其余步骤，已建课程与已导入资料保留，"
+    "失败步骤可单独重试。"
 )
 # 研究会话（mode=RESEARCH）固定五节结构（grill Q2 定稿：纯 prompt 文本协议，
 # 零结构化生成）：标题与各节指引一并进 prompt，供文本协议断言与评测黄金集复用。

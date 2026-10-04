@@ -7,11 +7,13 @@ result 携带 awaited_job_id——推进 worker 据此把 Run 转 WAITING_JOB，
 抓取终态后自动续跑或失败分流（工单 06 机制）。创建类动作：无目标快照、
 不在撤销范围。
 
-重试边界（07 收口）：抓取失败后资料条目已在库（同 URL 内容指纹），本动作
-重试会命中重复内容拒绝——失败条目的正确处置走资料库既有重试 / 手动粘贴
-通道；「失败步骤可单独重试」对导入类步骤的幂等语义随 07 多资料票收口。
+重试幂等（07 收口）：抓取失败后条目已在库（同 URL 内容指纹），步骤重试
+预查命中即复用既有条目、不再提交新 job——「失败步骤可单独重试」落定为
+承认条目在库并由步骤成功收尾，条目抓取处置走资料库既有重试 / 手动粘贴
+通道（result 不带 awaited_job_id，不进等待）。
 """
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.agent.operations.registry import (
@@ -22,11 +24,68 @@ from app.modules.agent.operations.registry import (
 )
 from app.modules.agent.schemas import LibraryItemIngestPayload, LibraryItemIngestResult
 from app.modules.capture.ingest import create_web_ingest_rows
-from app.modules.library.models import AgentProposal
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
+from app.modules.library.models import AgentProposal, LibraryItem, LibraryItemRecord
 from app.modules.library.schemas import ProposalType
 
 # 动作标识（= 注册表 action；计划项动作枚举 INGEST_LIBRARY_ITEM 的映射值）。
 INGEST_LIBRARY_ITEM_ACTION = "ingest_library_item"
+
+
+async def _reused_ingest(
+    session: AsyncSession, url: str, course_id: str | None
+) -> LibraryItemIngestResult | None:
+    """重试幂等预查：同 URL 且**同归类**的在库存活条目（上次执行建的、抓取
+    失败）——复用其坐标直接成功（活动抓取任务仍等待之，终态失败 / 已成功
+    不再等待）。归类与存活（未软删、未归档）不匹配则不复用，交由
+    create_web_ingest_rows 的重复拒绝如实失败（模型可改用 update_library_item
+    / add_shared_ref 处置既有条目——与本地文档侧 _reusable_document_import
+    同口径，工单 07 review）。"""
+    from hashlib import sha256
+
+    content_hash = sha256(f"web:{url}".encode()).hexdigest()
+    item_id = (
+        await session.execute(
+            select(LibraryItem.id)
+            .where(
+                LibraryItem.content_hash == content_hash,
+                LibraryItem.course_id.is_(course_id),
+                LibraryItem.deleted_at.is_(None),
+                LibraryItem.status == "ACTIVE",
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if item_id is None:
+        return None
+    record_id = (
+        await session.execute(
+            select(LibraryItemRecord.record_id)
+            .where(LibraryItemRecord.library_item_id == item_id)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    awaited: str | None = None
+    if record_id is not None:
+        awaited = (
+            await session.execute(
+                select(ProcessingJob.id)
+                .where(
+                    ProcessingJob.record_id == record_id,
+                    ProcessingJob.job_type == ProcessingJobType.WEB_FETCH,
+                    ProcessingJob.status.in_(
+                        (ProcessingJobStatus.PENDING.value, ProcessingJobStatus.RUNNING.value)
+                    ),
+                )
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+    return LibraryItemIngestResult(
+        library_item_id=item_id,
+        record_id=record_id if record_id is not None else item_id,
+        awaited_job_id=awaited,
+    )
 
 
 async def apply_library_item_ingest(
@@ -35,6 +94,9 @@ async def apply_library_item_ingest(
     """OP_LIBRARY_ITEM_INGEST 应用器（调用方事务内、不得自行 begin）：经
     WEB 入库核心建行并提交 WEB_FETCH 任务，返回等待核对对象（job_id）。"""
     payload = parse_operation_payload(proposal, LibraryItemIngestPayload)
+    reused = await _reused_ingest(session, payload.url, payload.course_id)
+    if reused is not None:
+        return reused
     record_id, item_id, job_id = await create_web_ingest_rows(
         session,
         payload.url,

@@ -21,6 +21,9 @@ class ProcessingJobType(StrEnum):
     # 通用 Agent 第二阶段工单 05：Run 推进触发 job（无状态触发器，input 仅
     # run_id；任务状态以 agent_runs 为唯一事实源，job 不承载任务状态）。
     AGENT_RUN = "AGENT_RUN"
+    # 第三阶段工单 07：学习计划草案生成 job（input 携带 goal_id / session_id；
+    # 完成时落 OP_PLAN_CONFIRM 草案确认卡，Run 侧经 awaited_job_id 等待接续）。
+    PLAN_DRAFT = "PLAN_DRAFT"
 
 
 class ProcessingJobStatus(StrEnum):

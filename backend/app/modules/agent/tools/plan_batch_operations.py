@@ -32,7 +32,10 @@ class BatchPlanItemArgs(BaseModel):
         default=None,
         description=(
             "条目动作：update_library_item（改标题 / 归类）、archive_library_item"
-            "（归档）、create_course（新建课程）、ingest_library_item（导入网页资料）"
+            "（归档）、create_course（新建课程）、ingest_library_item（导入网页资料）、"
+            "ingest_local_document（导入本地文档）、add_text_record_to_course（保存粘贴"
+            "文本）、add_shared_ref（共享引用资料，保原归属）、create_goal（新建学习目标）、"
+            "generate_plan_draft（产出学习计划草案卡）"
         ),
     )
     item_id: str | None = Field(
@@ -40,12 +43,12 @@ class BatchPlanItemArgs(BaseModel):
         description="目标资料条目 id（update / archive 必填，先用 search_library 查找消歧取得）",
     )
     title: str | None = Field(
-        default=None, description="条目标题（update 改名 / ingest 缺省用域名）"
+        default=None, description="条目标题（update 改名 / ingest 缺省用域名或文件名）"
     )
     course_id: str | dict[str, Any] | None = Field(
         default=None,
         description=(
-            "归类目标课程 id（update / ingest），或输出引用对象"
+            "归类目标课程 id（update / ingest / add_text_record），或输出引用对象"
             ' {"step": 序号, "field": "course_id"}（指向本计划内建课步骤的输出）'
         ),
     )
@@ -64,6 +67,37 @@ class BatchPlanItemArgs(BaseModel):
     )
     description: str | None = Field(default=None, description="新建课程说明（create_course 可选）")
     url: str | None = Field(default=None, description="导入网页地址（ingest_library_item 必填）")
+    path: str | None = Field(
+        default=None,
+        description=(
+            "本地文档绝对路径（ingest_local_document 必填；用户明确给出的路径，缺失先追问）"
+        ),
+    )
+    content: str | None = Field(
+        default=None, description="粘贴文本正文（add_text_record_to_course 必填）"
+    )
+    library_item_id: str | None = Field(
+        default=None,
+        description="被引用的资料条目 id（add_shared_ref 必填，先经 search_library 取得）",
+    )
+    goal_type: str | None = Field(
+        default=None,
+        description="目标类型（create_goal 必填：SKILL / EXAM / PROJECT / READING / CUSTOM）",
+    )
+    target_date: str | None = Field(
+        default=None, description="目标期限 YYYY-MM-DD（create_goal 可选，先向用户追问）"
+    )
+    daily_minutes: int | None = Field(
+        default=None, description="计划每日投入分钟数（create_goal 可选，先向用户追问）"
+    )
+    target_score: float | None = Field(default=None, description="目标分数（create_goal 可选）")
+    goal_id: str | dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "学习目标 id（generate_plan_draft 必填），或输出引用对象"
+            ' {"step": 序号, "field": "goal_id"}（指向本计划内建目标步骤的输出）'
+        ),
+    )
     depends_on: list[int] | None = Field(
         default=None,
         description="依赖的计划项序号（0 起，必须更早）；依赖项未成功则本项跳过",
@@ -83,18 +117,25 @@ async def plan_batch_operations(**kwargs: Any) -> str:
     """当用户想批量整理资料条目或执行多步任务时使用：把本批目标一次提交为整理计划。
 
     适用场景：一次整理两条及以上的条目（批量归到某课程、批量改标题、批量归档），
-    或多步任务（如「建一个新课程并把这个网页导进去」）。逐项给出 action 与参数：
+    或多步任务（如「建一个新课程并把这个网页导进去」），或多资料建课（「把这几
+    篇论文整理到新课程并生成学习计划」——来源四类逐份导入、建课、挂课、建目标、
+    末步 generate_plan_draft 产计划草案卡）。逐项给出 action 与参数：
     update_library_item / archive_library_item 用 item_id（先用 search_library 查找
     消歧取得，课程 id 先用 search_courses 取得）；create_course 给 name 与
-    learning_context；ingest_library_item 给 url。后一步参数可引用前一步的输出：
-    参数值写成 {"step": 步骤序号, "field": "输出字段"}（如建课步骤输出 course_id）。
+    learning_context；ingest_library_item 给 url；ingest_local_document 给 path
+    （用户明确给出的本地文件路径）；add_text_record_to_course 给 content；
+    add_shared_ref 给 library_item_id；create_goal 给 goal_type 与 title；
+    generate_plan_draft 给 goal_id。后一步参数可引用前一步的输出：
+    参数值写成 {"step": 步骤序号, "field": "输出字段"}（如建课步骤输出 course_id、
+    建目标步骤输出 goal_id）。
 
     调用后是否需要用户确认由系统按当前授权档位决定：需要时生成一张计划卡（整卡
     一次确认即授权本批次，逐项列出目标与参数），否则直接开始执行并给批次回执。
-    计划执行中会有逐项结果；某一步失败不影响其余独立步骤；导入网页的步骤会等待
-    后台抓取完成后自动继续。请如实转述返回结果（已出计划卡 / 已开始执行 / 已
-    跳过重复目标 / 缺少哪些信息），不要声称任务已经全部完成——执行结果以逐项
-    结果与操作历史为准。
+    计划执行中会有逐项结果；某一步失败不影响其余独立步骤；导入网页 / 本地文档
+    的步骤会等待后台解析完成后自动继续。请如实转述返回结果（已出计划卡 / 已开始
+    执行 / 已跳过重复目标 / 缺少哪些信息），不要声称任务已经全部完成——执行
+    结果以逐项结果与操作历史为准；学习计划草案卡要等任务全部完成后自动产出，
+    且需用户确认才生效。
     """
     runtime = current_agent_runtime()
     if runtime is None:

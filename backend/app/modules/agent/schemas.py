@@ -1039,10 +1039,71 @@ class LibraryItemIngestPayload(BaseModel):
 class LibraryItemIngestResult(BaseModel):
     """ingest_library_item 结果投影（工单 06）：导入即入库（Record + 条目 +
     WEB_FETCH 任务同事务），真实抓取由 web_fetch_worker 异步完成——
-    awaited_job_id 是 Run 等待转移的核对对象（spec M2 执行闭环）。"""
+    awaited_job_id 是 Run 等待转移的核对对象（spec M2 执行闭环）。
+    重试幂等（工单 07）：同 URL 条目已在库（上次执行建的、抓取失败）时复用
+    既有行、不再提交新 job——条目处置走资料库既有重试 / 手动粘贴通道，
+    此时 awaited_job_id 为 None（步骤直接成功，不进等待）。"""
 
     model_config = ConfigDict(extra="forbid")
 
     library_item_id: str
     record_id: str
-    awaited_job_id: str = Field(description="等待的后台抓取任务 id（WEB_FETCH）")
+    awaited_job_id: str | None = Field(
+        default=None, description="等待的后台抓取任务 id（WEB_FETCH）；复用既有条目时为空"
+    )
+
+
+class LocalDocumentIngestPayload(BaseModel):
+    """ingest_local_document 提案判别载荷（第三阶段工单 07）：本地文档导入。
+
+    计划内步骤动作（多资料 Run 的本地文档来源）：path 是用户在对话中明确
+    提供的本地文件绝对路径（模型不得猜测路径，缺失先追问）；扩展名白名单
+    与空文件检查由 document import 核心执法。course_id 可经计划引用注入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(min_length=1, description="本地文档绝对路径（TXT / MD / PDF / DOCX）")
+    title: str | None = Field(default=None, description="展示标题（缺省用文件名去扩展名）")
+    course_id: str | None = Field(
+        default=None, description="归类课程 id（可为空＝未归类；可经计划引用注入）"
+    )
+
+
+class LocalDocumentIngestResult(BaseModel):
+    """ingest_local_document 结果投影（工单 07）：文件落库（Record + 文件行 +
+    DOCUMENT_PARSE 任务同事务），解析由既有 worker 异步完成——awaited_job_id
+    是 Run 等待转移的核对对象；重试幂等复用既有导入（同课程同内容指纹）时，
+    解析已完成则为空、上次失败则新投一个解析任务。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str
+    file_id: str
+    awaited_job_id: str | None = Field(
+        default=None, description="等待的后台解析任务 id（DOCUMENT_PARSE）；无可等待任务时为空"
+    )
+
+
+class PlanDraftGeneratePayload(BaseModel):
+    """generate_plan_draft 提案判别载荷（第三阶段工单 07）：Run 末步产计划草案卡。
+
+    计划内步骤动作（多资料 Run 的「计划生成意图」）：goal_id 是既有目标 id 或
+    经计划引用注入的建目标步骤输出；应用器提交 PLAN_DRAFT 后台任务（LLM 草案
+    生成），任务完成时落 OP_PLAN_CONFIRM 草案确认卡——草案确认是 Run 之外的
+    人工闸门（spec M2：不算 Run 步骤）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal_id: str = Field(
+        pattern=_UUID_PATTERN,
+        description="学习目标 id（既有目标，或指向建目标步骤输出的引用注入值）",
+    )
+
+
+class PlanDraftGenerateResult(BaseModel):
+    """generate_plan_draft 结果投影（工单 07）：提交 PLAN_DRAFT 任务即成功，
+    草案确认卡由任务完成时落库（提案 id 在任务 result，不回填本回执）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    awaited_job_id: str = Field(description="等待的后台草案生成任务 id（PLAN_DRAFT）")

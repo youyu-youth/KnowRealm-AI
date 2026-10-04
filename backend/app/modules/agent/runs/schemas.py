@@ -123,13 +123,20 @@ class BatchPlanAction(StrEnum):
     白名单枚举声明可进计划的动作；新批量能力 = 扩展本枚举 ＋ 在
     plans.BATCH_PLAN_ACTIONS 建立到注册表动作的映射 ＋ 逐项参数列补字段。
     工单 06 起纳入创建类动作（建课 / 资料导入——导入步骤提交后台解析 job 后
-    Run 转等待，供结果绑定与长任务场景消费）。
+    Run 转等待，供结果绑定与长任务场景消费）；工单 07 起纳入多资料建课
+    编排动作面（四类来源导入 + 建目标 + 共享引用 + 计划草案产出）。
     """
 
     UPDATE_LIBRARY_ITEM = "update_library_item"
     ARCHIVE_LIBRARY_ITEM = "archive_library_item"
     CREATE_COURSE = "create_course"
     INGEST_LIBRARY_ITEM = "ingest_library_item"
+    # 工单 07：多资料建课 Run 的动作面（spec M2，User Stories 29~34）。
+    INGEST_LOCAL_DOCUMENT = "ingest_local_document"
+    ADD_TEXT_RECORD = "add_text_record_to_course"
+    ADD_SHARED_REF = "add_shared_ref"
+    CREATE_GOAL = "create_goal"
+    GENERATE_PLAN_DRAFT = "generate_plan_draft"
 
 
 class StepOutputRef(BaseModel):
@@ -176,12 +183,13 @@ def params_output_refs(params: dict[str, Any]) -> dict[str, StepOutputRef]:
 class BatchPlanItemPayload(BaseModel):
     """计划项（对象集合的逐项条目，spec 决策 13）。
 
-    逐项参数以扁平列声明（update 动作消费 title / course_id，archive 动作只消费
-    item_id，create_course 消费 name，ingest 消费 url / title / course_id）：
-    可复用的无缝形状是「各动作参数 schema 字段的并集」，真实执法在
-    提交/确认时按动作判别 schema 校验（registry），本层只做计划结构校验。
-    创建类动作（create_course / ingest_library_item）无既有目标，item_id 为空；
-    course_id 允许 StepOutputRef 引用（执行时注入实际值）。
+    逐项参数以扁平列声明（各动作消费字段的并集）：可复用的无缝形状是
+    「各动作参数 schema 字段的并集」，真实执法在提交/确认时按动作判别
+    schema 校验（registry），本层只做计划结构校验。
+    创建类动作（create_course / ingest_* / add_text_record / create_goal /
+    add_shared_ref / generate_plan_draft）无既有目标，item_id 为空；
+    course_id 与 goal_id 允许 StepOutputRef 引用（执行时注入实际值——
+    建课 / 建目标步骤的输出绑定注入后续步骤，工单 06/07）。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -216,6 +224,34 @@ class BatchPlanItemPayload(BaseModel):
     description: str | None = Field(default=None, description="新建课程说明（create_course 可选）")
     url: str | None = Field(
         default=None, min_length=1, description="导入网页地址（ingest_library_item）"
+    )
+    # 工单 07：多资料来源与编排动作的参数列（动作判别在注册表 schema）。
+    path: str | None = Field(
+        default=None, min_length=1, description="本地文档绝对路径（ingest_local_document）"
+    )
+    content: str | None = Field(
+        default=None, min_length=1, description="粘贴文本正文（add_text_record_to_course）"
+    )
+    library_item_id: str | None = Field(
+        default=None,
+        pattern=_UUID_PATTERN,
+        description="被引用的资料条目 id（add_shared_ref；库内资料挂课的引用路径）",
+    )
+    goal_type: str | None = Field(
+        default=None,
+        description="目标类型（create_goal 必填：SKILL / EXAM / PROJECT / READING / CUSTOM）",
+    )
+    target_date: str | None = Field(
+        default=None, description="目标期限 YYYY-MM-DD（create_goal 可选）"
+    )
+    daily_minutes: int | None = Field(
+        default=None, gt=0, le=24 * 60, description="计划每日投入分钟数（create_goal 可选）"
+    )
+    target_score: float | None = Field(
+        default=None, ge=0, le=100, description="目标分数（create_goal 可选）"
+    )
+    goal_id: str | StepOutputRef | None = Field(
+        default=None, description="学习目标 id（generate_plan_draft），或指向建目标步骤输出的引用"
     )
     depends_on: list[int] = Field(
         default_factory=list[int],

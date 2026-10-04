@@ -303,6 +303,10 @@ class ProposalType(StrEnum):
     # 第三阶段工单 06：资料导入步骤（计划内动作，提交后台解析 job 后 Run 转等待；
     # 无独立薄工具，正常不产生单步提案）。
     OP_LIBRARY_ITEM_INGEST = "OP_LIBRARY_ITEM_INGEST"
+    # 第三阶段工单 07：本地文档导入与计划草案产出步骤（计划内动作；前者提交
+    # DOCUMENT_PARSE job 后转等待，后者提交 PLAN_DRAFT job 于完成时落草案确认卡）。
+    OP_LOCAL_DOCUMENT_INGEST = "OP_LOCAL_DOCUMENT_INGEST"
+    OP_PLAN_DRAFT = "OP_PLAN_DRAFT"
 
 
 class AgentProposalOut(BaseModel):

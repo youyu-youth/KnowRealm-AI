@@ -25,6 +25,7 @@ from app.db.migrations import run_migrations
 from app.modules.agent import chat_sessions
 from app.modules.agent.auth_mode import router as agent_auth_mode_router
 from app.modules.agent.message_service import ChatStreamRegistry
+from app.modules.agent.operations.plan_draft import plan_draft_spec
 from app.modules.agent.runs import routes as agent_runs_routes
 from app.modules.agent.runs.worker import agent_run_spec
 from app.modules.capture import (
@@ -399,6 +400,16 @@ def create_app(
                         "agent_run",
                         lambda: JobRunner(
                             agent_run_spec(session_factory, record_notifier),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
+                    # 计划草案生成（工单 07）：多资料 Run 末步提交的 PLAN_DRAFT
+                    # job——LLM 生成不占推进事务，完成时落草案确认卡。
+                    (
+                        "plan_draft",
+                        lambda: JobRunner(
+                            plan_draft_spec(session_factory, record_notifier, resolved_data_dir),
                             session_factory,
                             record_notifier,
                         ),
