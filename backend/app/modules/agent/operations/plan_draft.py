@@ -14,7 +14,7 @@ L2（计划头 + 批量项创建前置，与 confirm_plan 同级）；不在撤�
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import cast
 from uuid import uuid4
@@ -53,7 +53,6 @@ from app.modules.jobs.runner import (
     RunnerContext,
     WorkerSpec,
     mark_failed,
-    recover_running_to_failed,
 )
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.learning_plan.generation import PlanGenerationOutcome, PlanGenerationService
@@ -100,7 +99,9 @@ async def apply_plan_draft_generate(
             status=ProcessingJobStatus.PENDING,
             progress=0,
             attempts=0,
-            max_attempts=1,
+            # 业务失败（LLM 未配置 / 无资料 / 排期不可行）仍一次性终态；3 次
+            # 预算只被重启恢复消费（进程中断自动重投，工单 08）。
+            max_attempts=3,
             input_json=json.dumps(
                 {"goal_id": payload.goal_id, "operation_id": proposal.id},
                 ensure_ascii=False,
@@ -354,12 +355,33 @@ def plan_draft_spec(
         return LoopFailure(event="plan_draft_unexpected_failure", error_code="INTERNAL_ERROR")
 
     async def recover() -> None:
-        await recover_running_to_failed(
-            session_factory,
-            record_notifier,
-            ProcessingJobType.PLAN_DRAFT,
-            "学习计划草案生成被意外中断",
-        )
+        """重启恢复（工单 08）：进程中断 ≠ 业务失败——attempts 预算内回
+        PENDING 自动重投（对齐 document_worker.recover_running 形态），等待
+        中的 Run 经领取核对自动接续；预算耗尽才翻终态 FAILED
+        （WORKER_INTERRUPTED），等待步骤走失败分流、可手动重试。无 record
+        主体（goal 坐标在 input_json），零 Record 联动与 notify。"""
+        now = utcnow()
+        async with session_factory() as session, session.begin():
+            jobs = list(
+                (
+                    await session.scalars(
+                        select(ProcessingJob).where(
+                            ProcessingJob.job_type == ProcessingJobType.PLAN_DRAFT,
+                            ProcessingJob.status == ProcessingJobStatus.RUNNING,
+                        )
+                    )
+                ).all()
+            )
+            for job in jobs:
+                if job.attempts < job.max_attempts:
+                    job.status = ProcessingJobStatus.PENDING
+                    job.next_run_at = now + timedelta(seconds=2 ** max(job.attempts, 0))
+                else:
+                    job.status = ProcessingJobStatus.FAILED
+                    job.finished_at = now
+                job.error_code = "WORKER_INTERRUPTED"
+                job.error_message = "学习计划草案生成被意外中断"
+                job.updated_at = now
 
     return WorkerSpec(
         name="plan_draft_worker",

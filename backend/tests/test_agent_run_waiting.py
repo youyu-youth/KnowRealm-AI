@@ -41,6 +41,8 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.agent.tools.plan_batch_operations import plan_batch_operations
+from app.modules.capture.web_clip import ClipContent
+from app.modules.capture.web_fetch_worker import web_fetch_spec
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import CancelClaim, JobRunner, Ready, WaitingClaim
 from app.modules.library.proposals import ProposalService
@@ -1005,3 +1007,162 @@ async def test_resolve_waiting_signature_wakes_on_success(tmp_path: Path) -> Non
             assert run.status == "RUNNING"
             assert run.waiting_job_id is None
             assert run.waiting_reason is None
+
+
+# ---------------------------------------------------------------------------
+# 执行中退出的自动恢复（工单 08）：进程中断 ≠ 业务失败
+
+
+class _StaticClip:
+    """恢复链路测试的抓取假体：恒返回同一正文（零真实网络）。"""
+
+    def __init__(self, clip: ClipContent) -> None:
+        self._clip = clip
+
+    async def fetch_and_extract(self, url: str) -> ClipContent:
+        return self._clip
+
+
+async def _interrupt_mid_fetch(session_factory: async_sessionmaker[AsyncSession]) -> str:
+    """把等待中的 Run 推进到「抓取已领取、尚未写回」的中断瞬间：WEB_FETCH
+    领取态（RUNNING、attempts=1），AGENT_RUN 触发随进程中断翻 FAILED。
+    返回 run_id。"""
+    direct = await invoke_plan(
+        session_factory,
+        [create_course_entry(), ingest_entry(course_id=COURSE_REF)],
+        auth_mode=AuthMode.FULL_ACCESS,
+    )
+    run_id = cast(str, direct["run"]["run_id"])
+    assert await advance(session_factory, run_id) == "WAITING_JOB"
+    await run_sql(
+        "UPDATE processing_jobs SET status = 'RUNNING', attempts = 1, started_at = :now"
+        " WHERE job_type = 'WEB_FETCH'",
+        {"now": NOW},
+        session_factory,
+    )
+    await run_sql(
+        "UPDATE processing_jobs SET status = 'FAILED', finished_at = :later"
+        " WHERE job_type = 'AGENT_RUN'",
+        {"later": LATER},
+        session_factory,
+    )
+    return run_id
+
+
+async def fetch_and_record_row(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> tuple[str, str | None, str | None]:
+    """(job 状态, job 错误码, Record 状态)——抓取 job 关联记录联查。"""
+    async with session_factory() as session:
+        row = (
+            await session.execute(
+                text(
+                    "SELECT j.status, j.error_code, r.status FROM processing_jobs j"
+                    " JOIN records r ON r.id = j.record_id WHERE j.job_type = 'WEB_FETCH'"
+                )
+            )
+        ).one()
+    return (cast(str, row[0]), row[1], cast(str, row[2]))
+
+
+@pytest.mark.anyio
+async def test_interrupted_web_fetch_requeues_and_completes(tmp_path: Path) -> None:
+    """WEB_FETCH 已领取尚未完成（进程中断）：重启恢复按 attempts 预算回
+    PENDING 自动重投（对齐 DOCUMENT_PARSE 恢复形态）而非终态失败——Record
+    维持处理中，经真实 worker 写回链路完成后 Run 对账唤醒续跑至 COMPLETED；
+    来源对象不重复、Transcript 与记录状态一致（spec US32 自动续跑）。"""
+    clip = ClipContent(
+        text="中断恢复链路测试正文。" * 20,
+        title="中断恢复测试页",
+        metadata={"kind": "web", "url": URL},
+    )
+    async with bare_db(tmp_path) as session_factory:
+        run_id = await _interrupt_mid_fetch(session_factory)
+
+        # 重启恢复（真实链路）：预算内（1 < 3）回 PENDING 带退避，Record 不翻失败。
+        spec = web_fetch_spec(
+            session_factory, tmp_path, RecordInvalidationNotifier(), _StaticClip(clip)
+        )
+        await spec.recover_interrupted()
+        assert await fetch_and_record_row(session_factory) == (
+            "PENDING",
+            "WORKER_INTERRUPTED",
+            "CONTENT_PROCESSING",
+        )
+
+        # Run 对账重投触发；退避到期后真实 worker 领取（attempts 2 ≤ 预算）
+        # → 抓取 + 写回全链（Transcript 落库、Record 推进 SUMMARY_PENDING）。
+        await spec_of(session_factory).recover_interrupted()
+        await run_sql(
+            "UPDATE processing_jobs SET next_run_at = NULL WHERE job_type = 'WEB_FETCH'",
+            {},
+            session_factory,
+        )
+        runner = JobRunner(spec, session_factory, RecordInvalidationNotifier())
+        assert await runner.process_one() is True
+        async with session_factory() as session:
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT j.status, r.status,"
+                        " (SELECT COUNT(*) FROM transcripts t WHERE t.record_id = r.id)"
+                        " FROM processing_jobs j JOIN records r ON r.id = j.record_id"
+                        " WHERE j.job_type = 'WEB_FETCH'"
+                    )
+                )
+            ).one()
+        assert (row[0], row[1], row[2]) == ("SUCCEEDED", "SUMMARY_PENDING", 1)
+
+        # 对账核对唤醒 → 续跑收尾；步骤不重做、来源对象不重复。
+        decision = await claim_waiting(session_factory, run_id)
+        assert isinstance(decision, Ready)
+        assert await advance(session_factory, run_id) == "COMPLETED"
+        steps = await step_rows(session_factory, run_id)
+        assert [attempts for _a, _s, _c, attempts in steps] == [1, 1]
+        async with session_factory() as session:
+            counts = (
+                await session.execute(
+                    text(
+                        "SELECT (SELECT COUNT(*) FROM library_items),"
+                        " (SELECT COUNT(*) FROM records)"
+                    )
+                )
+            ).one()
+        assert (counts[0], counts[1]) == (1, 1)
+
+
+@pytest.mark.anyio
+async def test_interrupted_web_fetch_budget_exhausted_fails(tmp_path: Path) -> None:
+    """执行中退出的预算边界：中断时 attempts 已达 max_attempts（多次中断重投
+    后仍未完成）→ 恢复翻终态 FAILED（WORKER_INTERRUPTED）+ Record 失败；
+    Run 对账走失败分流（PARTIAL_COMPLETED），保留手动重试通道。"""
+    async with bare_db(tmp_path) as session_factory:
+        run_id = await _interrupt_mid_fetch(session_factory)
+        await run_sql(
+            "UPDATE processing_jobs SET attempts = 3 WHERE job_type = 'WEB_FETCH'",
+            {},
+            session_factory,
+        )
+
+        spec = web_fetch_spec(
+            session_factory,
+            tmp_path,
+            RecordInvalidationNotifier(),
+            _StaticClip(ClipContent(text="x", title=None, metadata={})),
+        )
+        await spec.recover_interrupted()
+        assert await fetch_and_record_row(session_factory) == (
+            "FAILED",
+            "WORKER_INTERRUPTED",
+            "FAILED",
+        )
+
+        # Run 对账重投触发 → 领取核对按失败分流 → 等待步骤 FAILED、部分完成。
+        await spec_of(session_factory).recover_interrupted()
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "PARTIAL_COMPLETED"
+        steps = await step_rows(session_factory, run_id)
+        assert [(status, code) for _a, status, code, _attempts in steps] == [
+            ("SUCCEEDED", None),
+            ("FAILED", "AGENT_RUN_WAITING_JOB_FAILED"),
+        ]

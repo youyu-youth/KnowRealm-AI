@@ -5,7 +5,7 @@
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -39,6 +39,7 @@ from app.modules.learning_plan.scheduling import (
     DEFAULT_DAILY_MINUTES,
     ScheduleConstraints,
     ScheduleInfeasible,
+    local_today,
     pack_schedule,
 )
 from app.modules.learning_plan.schemas import (
@@ -59,9 +60,10 @@ from app.modules.settings.config import LlmProviderConfig
 from app.shared.errors import CodedHTTPException
 
 TOKEN = "test-launch-token"
-# 时间锚相对运行日（排期重算锚 = 提交日，钉死日历会在非当日运行时全量漂移；
-# 07 日期炸弹先例）。seed 的时间戳日期与 packed_payload 起点、断言共用 TODAY。
-TODAY = datetime.now(UTC).date()
+# 时间锚与产品排期重算同源（local_today，提交日锚）：UTC 日期在本地凌晨
+# 会比本地早一天，锚点错位使「起点回挪」防线误拒全部提交（08 收口实锤）。
+# seed 的时间戳日期与 packed_payload 起点、断言共用 TODAY。
+TODAY = local_today()
 NOW = TODAY.isoformat() + "T08:00:00.000000Z"
 COURSE_ID = "c0000000-0000-4000-8000-000000000001"
 GOAL_ID = "90000000-0000-4000-8000-000000000001"

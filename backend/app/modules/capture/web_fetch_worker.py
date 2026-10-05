@@ -4,15 +4,16 @@
 + DocumentSegments（library_item 直挂，0026 XOR 另一分支的首个写入者）
 + LibraryItem 快照元数据更新 + 全局/分片搜索索引。净化快照先落 cache/
 临时文件再 os.replace 进 files/（该目录只接收完整文件，随全量导出走）。
-失败一次性终态（max_attempts=1，登录墙/不可达不重试轰炸），用户侧经
-「重新导入 / 降级手动粘贴」闭环（通用 retry 端点属工单 05）。
+失败一次性终态（登录墙/不可达不重试轰炸），用户侧经「重新导入 / 降级
+手动粘贴」闭环（通用 retry 端点属工单 05）；进程中断经重启恢复在
+attempts 预算内自动重投（对齐 DOCUMENT_PARSE 恢复形态，工单 08）。
 """
 
 import asyncio
 import json
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from typing import Protocol, cast
@@ -304,14 +305,24 @@ async def recover_running(
         for job in jobs:
             if job.record_id is not None:
                 record_ids.add(job.record_id)
-            mark_failed(
-                job, code=code.value, message=ERROR_MESSAGES.get(code, "网页抓取失败"), now=now
-            )
-            if job.record_id is not None:
-                record = await session.get(Record, job.record_id)
-                if record is not None:
-                    record.status = RecordStatus.FAILED
-                    record.updated_at = now
+            message = ERROR_MESSAGES.get(code, "网页抓取失败")
+            if job.attempts < job.max_attempts:
+                # 进程中断 ≠ 业务失败：预算内回 PENDING 自动重投（对齐
+                # document_worker.recover_running 形态），Record 维持
+                # CONTENT_PROCESSING 供 find_candidate 照常命中，等待中的
+                # Run 经领取核对自动接续（spec US32 自动续跑）。
+                job.status = ProcessingJobStatus.PENDING
+                job.next_run_at = now + timedelta(seconds=2 ** max(job.attempts, 0))
+            else:
+                mark_failed(job, code=code.value, message=message, now=now)
+                if job.record_id is not None:
+                    record = await session.get(Record, job.record_id)
+                    if record is not None:
+                        record.status = RecordStatus.FAILED
+                        record.updated_at = now
+            job.error_code = code.value
+            job.error_message = message
+            job.updated_at = now
         await session.flush()
     for record_id in record_ids:
         await record_notifier.notify(record_id)

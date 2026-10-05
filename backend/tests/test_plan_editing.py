@@ -37,6 +37,7 @@ from app.modules.learning_plan.generation import (
 )
 from app.modules.learning_plan.scheduling import (
     ScheduleConstraints,
+    local_today,
     pack_schedule,
     pack_schedule_with_fixed,
 )
@@ -59,8 +60,12 @@ from app.modules.settings.config import LlmProviderConfig
 from app.shared.errors import CodedHTTPException
 
 TOKEN = "test-launch-token"
-# 时间锚相对运行日（排期锚 = 提交日；07 日期炸弹先例）。
-TODAY = datetime.now(UTC).date()
+# 时间锚与产品排期重算同源（local_today，提交日锚）：UTC 日期在本地凌晨
+# 会比本地早一天，锚点错位使「起点回挪」防线误拒全部提交（08 收口实锤）。
+# LANDED 是另一锚：版本头 effective_from/to 的落库日（产品定稿 UTC，
+# service._next_version），两者凌晨 0~8 点差一天、断言各锚各的源。
+TODAY = local_today()
+LANDED = datetime.now(UTC).date().isoformat()
 NOW = TODAY.isoformat() + "T08:00:00.000000Z"
 COURSE_ID = "c0000000-0000-4000-8000-000000000001"
 GOAL_ID = "90000000-0000-4000-8000-000000000001"
@@ -529,7 +534,7 @@ async def test_regenerate_core_version_chain_and_locked_carry(tmp_path: Path) ->
 
         old = await load_plan(session_factory, PLAN_ID)
         assert old["status"] == "SUPERSEDED"
-        assert old["effective_to"] == TODAY.isoformat()
+        assert old["effective_to"] == LANDED
         # 旧版本只读保留进度记录（含 DONE 与 completed_at）。
         old_item = await load_item(session_factory, ITEM_ID)
         assert old_item["status"] == "DONE" and old_item["completed_at"] == NOW
@@ -825,7 +830,7 @@ async def test_regenerate_tool_end_to_end(tmp_path: Path, monkeypatch: pytest.Mo
         assert confirmed.result["locked_count"] == 1
 
         old = await load_plan(session_factory, PLAN_ID)
-        assert old["status"] == "SUPERSEDED" and old["effective_to"] == TODAY.isoformat()
+        assert old["status"] == "SUPERSEDED" and old["effective_to"] == LANDED
         # 新版本：锁定项原样保留。
         async with session_factory() as session:
             new_id = await PlanService.get_active_for_goal(session, GOAL_ID)

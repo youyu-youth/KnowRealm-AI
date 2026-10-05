@@ -710,8 +710,24 @@ async def test_library_endpoints(tmp_path: Path) -> None:
 
 @pytest.mark.anyio
 async def test_text_capture_enqueues_backfill(tmp_path: Path) -> None:
-    """capture 同事务入队钩子 → worker 真实运行：新粘贴在 /library 可见（e2e）。"""
-    async with running_app(tmp_path / "KnowRealm") as (_app, client, _session_factory):
+    """capture 同事务入队钩子 → worker 真实运行：新粘贴在 /library 可见（e2e）。
+
+    先等启动回填落定再捕获：入队钩子与回填 worker 的完结写回存在固有
+    TOCTOU（钩子读到 RUNNING 不投、worker 完结时本记录未提交不可见）——
+    撞窗记录由下一次捕获的钩子补扫自愈（延迟建立而非丢失，生产影响可
+    忽略）。本用例避开窗口，专测「入队钩子 → worker 真实运行」链路。"""
+    async with running_app(tmp_path / "KnowRealm") as (_app, client, session_factory):
+        for _ in range(20):  # worker 轮询 2s，最长等 10s
+            await asyncio.sleep(0.5)
+            async with session_factory() as session:
+                active = await session.scalar(
+                    text(
+                        "SELECT id FROM processing_jobs WHERE job_type = 'LIBRARY_BACKFILL'"
+                        " AND status IN ('PENDING', 'RUNNING')"
+                    )
+                )
+            if active is None:
+                break
         created = await client.post(
             "/api/text-captures",
             json={

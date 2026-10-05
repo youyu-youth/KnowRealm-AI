@@ -147,7 +147,9 @@ async def create_web_ingest_rows(
             status=ProcessingJobStatus.PENDING,
             progress=0,
             attempts=0,
-            max_attempts=1,
+            # 业务失败仍一次性终态（worker apply_failure 不看预算）；3 次预算
+            # 只被重启恢复消费（进程中断自动重投，工单 08）。
+            max_attempts=3,
             input_json=json.dumps({"url": url, "library_item_id": item_id}),
             created_at=now,
             updated_at=now,

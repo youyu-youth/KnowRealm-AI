@@ -34,7 +34,7 @@ from app.modules.agent.operations.plan_draft import (
 )
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runs.service import RunControlService, RunHistoryService
-from app.modules.agent.runs.worker import advance_run, validate_claim
+from app.modules.agent.runs.worker import advance_run, agent_run_spec, validate_claim
 from app.modules.agent.runtime import (
     AgentRuntimeContext,
     ToolCallBudget,
@@ -812,9 +812,13 @@ async def test_plan_draft_rejects_stale_constraints(
     provider = LlmProviderConfig(
         base_url="https://llm.example.com/v1", api_key="test-key", model="test-model"
     )
+
+    def fake_provider(_data_dir: Path) -> LlmProviderConfig:
+        return provider
+
     monkeypatch.setattr(
         "app.modules.agent.operations.plan_draft.load_llm_provider",
-        lambda _data_dir: provider,
+        fake_provider,
     )
     calls: list[int] = []
     async with bare_db(tmp_path) as session_factory:
@@ -943,9 +947,13 @@ async def test_plan_draft_writeback_revalidates_in_transaction(
     provider = LlmProviderConfig(
         base_url="https://llm.example.com/v1", api_key="test-key", model="test-model"
     )
+
+    def fake_provider(_data_dir: Path) -> LlmProviderConfig:
+        return provider
+
     monkeypatch.setattr(
         "app.modules.agent.operations.plan_draft.load_llm_provider",
-        lambda _data_dir: provider,
+        fake_provider,
     )
     day = date.today().isoformat()
 
@@ -1361,3 +1369,161 @@ async def test_batch_authorization_covers_l2_draft_step(tmp_path: Path) -> None:
         assert steps[-1][0] == "generate_plan_draft"
         assert steps[-1][1] == "SUCCEEDED"
         assert (await run_row(session_factory, run_id))[1] == "AGENT_RUN_WAITING_JOB_PENDING"
+
+
+@pytest.mark.anyio
+async def test_third_of_five_failure_keeps_independent_steps(tmp_path: Path) -> None:
+    """五份独立导入第三份失败：其余四份仍完成（独立步骤不连坐、推进不因
+    单点失败停止）、课程保留；失败步骤单独重试成功后 Run 收敛 COMPLETED
+    （终态按目标最新操作结局）。"""
+    async with bare_db(tmp_path) as session_factory:
+        entries: list[dict[str, Any]] = [
+            {
+                "action": "create_course",
+                "name": "五篇论文课",
+                "learning_context": "INTEREST",
+                "depth": "BEGINNER",
+            }
+        ]
+        for index in range(5):
+            entries.append(
+                {
+                    "action": "ingest_library_item",
+                    "url": f"https://example.com/paper-{index + 1}",
+                    "course_id": COURSE_REF,
+                }
+            )
+        planned = await invoke_plan(session_factory, entries)
+        run_id = await confirm_plan_card(
+            session_factory, cast(str, planned["plan_proposal"]["proposal_id"])
+        )
+
+        # 逐份等待接续：第三份失败，其余四份成功——失败后推进继续提交第四、
+        # 五份的抓取任务（独立步骤不连坐）。
+        outcomes = ["SUCCEEDED", "SUCCEEDED", "FAILED", "SUCCEEDED", "SUCCEEDED"]
+        expected = ["WAITING_JOB"] * 4 + ["PARTIAL_COMPLETED"]
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+        for outcome, expected_status in zip(outcomes, expected, strict=True):
+            await finish_pending_jobs(session_factory, "WEB_FETCH", outcome)
+            assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+            assert await advance(session_factory, run_id) == expected_status
+        steps = await step_rows(session_factory, run_id)
+        assert [(status, code) for _action, status, code in steps] == [
+            ("SUCCEEDED", None),
+            ("SUCCEEDED", None),
+            ("SUCCEEDED", None),
+            ("FAILED", "AGENT_RUN_WAITING_JOB_FAILED"),
+            ("SUCCEEDED", None),
+            ("SUCCEEDED", None),
+        ]
+
+        # 失败步骤单独重试：复用既有条目重新等待，成功后 Run 收敛完成；
+        # 五份条目恰好五条（重试不重复入库）。
+        failed_id = (
+            await scalar(
+                session_factory,
+                "SELECT id FROM agent_operations WHERE run_id = :run_id AND status = 'FAILED'",
+                {"run_id": run_id},
+            )
+        ).scalar_one()
+        async with session_factory() as session:
+            await RunControlService.retry_operation(session, run_id=run_id, operation_id=failed_id)
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+        await finish_pending_jobs(session_factory, "WEB_FETCH", "SUCCEEDED")
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "COMPLETED"
+        item_count = (
+            await scalar(
+                session_factory,
+                "SELECT COUNT(*) FROM library_items"
+                " WHERE origin_uri LIKE 'https://example.com/paper-%'",
+                {},
+            )
+        ).scalar_one()
+        assert item_count == 5
+
+
+@pytest.mark.anyio
+async def test_interrupted_plan_draft_requeues_and_completes(
+    tmp_path: Path, draft_llm: None
+) -> None:
+    """执行中退出（工单 08）：PLAN_DRAFT 生成中进程中断，重启恢复按 attempts
+    预算回 PENDING 自动重投（对齐 DOCUMENT_PARSE 形态）而非终态失败；经真实
+    worker 全链（生成 + 写回草案确认卡）完成后 Run 对账唤醒收尾，草案确认
+    仍是 Run 外人工闸门（learning_plans 零行）。"""
+    async with bare_db(tmp_path) as session_factory:
+        data_dir = tmp_path / "KnowRealm"
+        planned = await invoke_plan(
+            session_factory,
+            [
+                {
+                    "action": "create_course",
+                    "name": "草案恢复课",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+                {
+                    "action": "create_goal",
+                    "course_id": COURSE_REF,
+                    "goal_type": "SKILL",
+                    "title": "读完这批资料",
+                },
+                {"action": "generate_plan_draft", "goal_id": GOAL_REF},
+            ],
+        )
+        run_id = await confirm_plan_card(
+            session_factory, cast(str, planned["plan_proposal"]["proposal_id"])
+        )
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+
+        # 中断瞬间：草案 job 已领取（attempts=1）尚未写回；触发随进程中断翻 FAILED。
+        await run_sql(
+            "UPDATE processing_jobs SET status = 'RUNNING', attempts = 1, started_at = :now"
+            " WHERE job_type = 'PLAN_DRAFT'",
+            {"now": NOW},
+            session_factory,
+        )
+        await run_sql(
+            "UPDATE processing_jobs SET status = 'FAILED', finished_at = :later"
+            " WHERE job_type = 'AGENT_RUN'",
+            {"later": LATER},
+            session_factory,
+        )
+
+        # 重启恢复（真实链路）：预算内（1 < 3）回 PENDING 带退避；Run 对账重投
+        # 触发；退避到期后真实 worker 全链（生成 + 写回草案确认卡）。
+        await plan_draft_spec(
+            session_factory, RecordInvalidationNotifier(), data_dir
+        ).recover_interrupted()
+        row = (
+            await scalar(
+                session_factory,
+                "SELECT status, attempts, error_code FROM processing_jobs"
+                " WHERE job_type = 'PLAN_DRAFT'",
+                {},
+            )
+        ).one()
+        assert (row[0], row[1], row[2]) == ("PENDING", 1, "WORKER_INTERRUPTED")
+        await run_sql(
+            "UPDATE processing_jobs SET next_run_at = NULL WHERE job_type = 'PLAN_DRAFT'",
+            {},
+            session_factory,
+        )
+        await agent_run_spec(session_factory, RecordInvalidationNotifier()).recover_interrupted()
+
+        assert await run_draft_worker(session_factory, data_dir) is True
+        counts = (
+            await scalar(
+                session_factory,
+                "SELECT (SELECT COUNT(*) FROM processing_jobs WHERE job_type = 'PLAN_DRAFT'"
+                " AND status = 'SUCCEEDED'),"
+                " (SELECT COUNT(*) FROM agent_proposals WHERE proposal_type = 'OP_PLAN_CONFIRM'),"
+                " (SELECT COUNT(*) FROM learning_plans)",
+                {},
+            )
+        ).one()
+        assert (counts[0], counts[1], counts[2]) == (1, 1, 0)
+
+        # 对账核对唤醒 → Run 收尾完成（草案卡留待用户确认）。
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "COMPLETED"
