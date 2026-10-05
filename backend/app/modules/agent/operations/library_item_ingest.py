@@ -8,14 +8,15 @@ result 携带 awaited_job_id——推进 worker 据此把 Run 转 WAITING_JOB，
 不在撤销范围。
 
 重试幂等（07 收口）：抓取失败后条目已在库（同 URL 内容指纹），步骤重试
-预查命中即复用既有条目、不再提交新 job——「失败步骤可单独重试」落定为
-承认条目在库并由步骤成功收尾，条目抓取处置走资料库既有重试 / 手动粘贴
-通道（result 不带 awaited_job_id，不进等待）。
+预查命中即复用既有条目、不重复入库——上次抓取失败的 WEB_FETCH 任务原地
+重置回 PENDING 继续等待重新抓取（对齐资料库 retry_failed 通道语义；
+「失败步骤可单独重试」＝重新尝试取得内容，Run 如实呈现，07 review 二轮）。
 """
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.base import utcnow
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
@@ -28,6 +29,8 @@ from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.library.models import AgentProposal, LibraryItem, LibraryItemRecord
 from app.modules.library.schemas import ProposalType
+from app.modules.record.models import Record
+from app.modules.record.schemas import RecordStatus
 
 # 动作标识（= 注册表 action；计划项动作枚举 INGEST_LIBRARY_ITEM 的映射值）。
 INGEST_LIBRARY_ITEM_ACTION = "ingest_library_item"
@@ -37,11 +40,14 @@ async def _reused_ingest(
     session: AsyncSession, url: str, course_id: str | None
 ) -> LibraryItemIngestResult | None:
     """重试幂等预查：同 URL 且**同归类**的在库存活条目（上次执行建的、抓取
-    失败）——复用其坐标直接成功（活动抓取任务仍等待之，终态失败 / 已成功
-    不再等待）。归类与存活（未软删、未归档）不匹配则不复用，交由
-    create_web_ingest_rows 的重复拒绝如实失败（模型可改用 update_library_item
-    / add_shared_ref 处置既有条目——与本地文档侧 _reusable_document_import
-    同口径，工单 07 review）。"""
+    失败）——复用其坐标，不重复入库。活动抓取任务仍等待之；上次抓取失败则
+    原地重置 WEB_FETCH 任务回 PENDING 并等待重新抓取（字段集对齐资料库
+    retry_failed 通道；Record 状态回 CONTENT_PROCESSING——web fetch worker
+    的候选查询按该状态过滤，不重置则任务永不被领取；不新投，任务数不变）；
+    已成功或无任务不再等待。归类与存活（未软删、未归档）不匹配则不复用，
+    交由 create_web_ingest_rows 的重复拒绝如实失败（模型可改用
+    update_library_item / add_shared_ref 处置既有条目——与本地文档侧
+    _reusable_document_import 同口径，工单 07 review）。"""
     from hashlib import sha256
 
     content_hash = sha256(f"web:{url}".encode()).hexdigest()
@@ -66,24 +72,53 @@ async def _reused_ingest(
             .limit(1)
         )
     ).scalar_one_or_none()
-    awaited: str | None = None
-    if record_id is not None:
-        awaited = (
-            await session.execute(
-                select(ProcessingJob.id)
-                .where(
-                    ProcessingJob.record_id == record_id,
-                    ProcessingJob.job_type == ProcessingJobType.WEB_FETCH,
-                    ProcessingJob.status.in_(
-                        (ProcessingJobStatus.PENDING.value, ProcessingJobStatus.RUNNING.value)
-                    ),
-                )
-                .limit(1)
+    if record_id is None:
+        return LibraryItemIngestResult(
+            library_item_id=item_id, record_id=item_id, awaited_job_id=None
+        )
+    job = (
+        await session.scalars(
+            select(ProcessingJob)
+            .where(
+                ProcessingJob.record_id == record_id,
+                ProcessingJob.job_type == ProcessingJobType.WEB_FETCH,
             )
-        ).scalar_one_or_none()
+            .order_by(ProcessingJob.created_at.desc(), ProcessingJob.id.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    awaited: str | None = None
+    if job is not None:
+        if job.status in (
+            ProcessingJobStatus.PENDING.value,
+            ProcessingJobStatus.RUNNING.value,
+        ):
+            awaited = job.id
+        elif job.status == ProcessingJobStatus.FAILED.value:
+            # 上次抓取失败：原地重置重跑（不新投）。宣布成功会让 Run 呈现
+            # 完成而内容未取得——违反 spec「最终如实呈现部分成功」。
+            now = utcnow()
+            job.status = ProcessingJobStatus.PENDING
+            job.attempts = 0
+            job.progress = 0
+            job.next_run_at = None
+            job.error_code = None
+            job.error_message = None
+            job.started_at = None
+            job.finished_at = None
+            job.updated_at = now
+            record = await session.get(Record, record_id)
+            if record is not None and record.deleted_at is None:
+                record.status = RecordStatus.CONTENT_PROCESSING
+                record.updated_at = now
+            item = await session.get(LibraryItem, item_id)
+            if item is not None:
+                item.updated_at = now
+            await session.flush()
+            awaited = job.id
     return LibraryItemIngestResult(
         library_item_id=item_id,
-        record_id=record_id if record_id is not None else item_id,
+        record_id=record_id,
         awaited_job_id=awaited,
     )
 

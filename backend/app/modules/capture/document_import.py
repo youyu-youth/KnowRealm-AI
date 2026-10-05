@@ -188,10 +188,13 @@ async def _reusable_document_import(
 async def _reschedule_failed_parse(
     session: AsyncSession, record_id: str, file_id: str
 ) -> str | None:
-    """复用导入的解析任务口径：活动任务等待之；上次失败新投一个（重试语义，
+    """复用导入的解析任务口径：活动任务等待之；上次失败原地重置回 PENDING
+    （对齐 jobs 重试通道 ProcessingJobService.retry 的语义，不新投——新投会使
+    记录的解析任务数超过文件数，finalizer 的等数判定 len(files)==len(jobs)
+    永不成立，任务成功后记录仍卡 CONTENT_PROCESSING、无 Transcript）；
     Record 状态重置回 CONTENT_PROCESSING——document worker 的候选查询按该
-    状态过滤，不重置则新任务永不被领取、Run 永久等待；对齐 jobs 重试通道
-    先例）；已成功或无任务（异常数据）不再投。"""
+    状态过滤，不重置则任务永不被领取、Run 永久等待；已成功不再投；
+    无任务（异常数据）新建兜底（任务数 0→1 不破坏等数判定）。"""
     job = (
         await session.execute(
             select(ProcessingJob)
@@ -212,27 +215,44 @@ async def _reschedule_failed_parse(
         if job.status == ProcessingJobStatus.SUCCEEDED.value:
             return None
     now = utcnow()
-    new_job_id = str(uuid4())
-    session.add(
-        ProcessingJob(
-            id=new_job_id,
-            record_id=record_id,
-            job_type=ProcessingJobType.DOCUMENT_PARSE,
-            status=ProcessingJobStatus.PENDING,
-            progress=0,
-            attempts=0,
-            max_attempts=3,
-            input_json=json.dumps({"record_file_id": file_id}),
-            created_at=now,
-            updated_at=now,
+    awaited_job_id: str
+    if job is None:
+        awaited_job_id = str(uuid4())
+        session.add(
+            ProcessingJob(
+                id=awaited_job_id,
+                record_id=record_id,
+                job_type=ProcessingJobType.DOCUMENT_PARSE,
+                status=ProcessingJobStatus.PENDING,
+                progress=0,
+                attempts=0,
+                max_attempts=3,
+                input_json=json.dumps({"record_file_id": file_id}),
+                created_at=now,
+                updated_at=now,
+            )
         )
-    )
+    else:
+        # FAILED / CANCELLED：原地重置（字段集对齐 ProcessingJobService.retry
+        # 的非 ASR 分支）。
+        awaited_job_id = job.id
+        job.status = ProcessingJobStatus.PENDING
+        job.progress = 0
+        job.attempts = 0
+        job.next_run_at = None
+        job.waiting_reason = None
+        job.error_code = None
+        job.error_message = None
+        job.started_at = None
+        job.finished_at = None
+        job.result_json = None
+        job.updated_at = now
     record = await session.get(Record, record_id)
     if record is not None:
         record.status = RecordStatus.CONTENT_PROCESSING
         record.updated_at = now
     await session.flush()
-    return new_job_id
+    return awaited_job_id
 
 
 async def _ingest_document_rows(

@@ -50,7 +50,9 @@ type PlanItem = {
 
 type PlanPayload = { items?: PlanItem[]; plan_version?: number };
 
-type PlanSnapshot = { items?: { state?: { title?: string } }[] };
+type PlanSnapshot = {
+  items?: { state?: { title?: string; item_title?: string } }[];
+};
 
 /** 输出引用的展示值（「第 N 步输出」，序号与依赖列一致 1 起）；非引用形态
  * 或形状异常（异常数据）返回 null（不崩渲染）。 */
@@ -61,16 +63,20 @@ function stepRefLabel(value: StepOutputRef, t: TFunction): string | null {
     : null;
 }
 
-/** 逐项目标名：优先确认卡预览投影（提交时固化的快照标题），否则载荷标题
- * （本地路径 / 粘贴文本摘要是各自来源的目标形态，工单 07），再退回目标 id
- * 缩写——不造假名。 */
+/** 逐项目标名：优先确认卡预览投影（提交时固化的快照标题——共享引用项的
+ * 字段是 item_title，工单 07 review 七轮），否则载荷标题（本地路径 / 粘贴
+ * 文本摘要是各自来源的目标形态，工单 07），共享引用引用新课程时提交期
+ * 快照跳过（_skip_item_snapshot），以资料 id 缩写兜底——多个来源可核对、
+ * 不造假名。 */
 function planItemTitle(
   proposal: AgentProposalOut,
   item: PlanItem,
   index: number,
 ): string {
   const snapshot = (proposal.snapshot ?? {}) as PlanSnapshot;
-  const snapshotTitle = snapshot.items?.[index]?.state?.title;
+  const snapshotTitle =
+    snapshot.items?.[index]?.state?.title ??
+    snapshot.items?.[index]?.state?.item_title;
   if (typeof snapshotTitle === "string" && snapshotTitle.trim()) {
     return snapshotTitle;
   }
@@ -88,6 +94,9 @@ function planItemTitle(
   }
   if (item.content?.trim()) {
     return item.content.slice(0, 60);
+  }
+  if (item.library_item_id?.trim()) {
+    return shortId(item.library_item_id);
   }
   return item.item_id ? shortId(item.item_id) : "";
 }

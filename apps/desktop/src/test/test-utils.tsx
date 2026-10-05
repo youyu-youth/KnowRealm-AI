@@ -10,7 +10,9 @@ export function renderWithQuery(ui: ReactElement) {
       mutations: { retry: false },
     },
   });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   );
+  // queryClient 供测试驱动缓存翻转（setQueryData / invalidate）。
+  return { ...rendered, queryClient };
 }

@@ -27,6 +27,7 @@ from app.db.base import utcnow
 from app.modules.agent.operations.plan_confirm import (
     capture_plan_confirm_state,
     require_active_goal,
+    validate_plan_confirm_submission,
 )
 from app.modules.agent.operations.registry import (
     OperationLevel,
@@ -201,7 +202,8 @@ async def execute(
     """领取后二次确认仍 RUNNING，再提取生成上下文（LLM 调用期间零连接）。
 
     返回值交 writeback 落草案确认卡；目标不可用抛 PlanDraftGoalUnavailable
-    （job 落稳定失败码，等待步骤翻 FAILED 可重试）。"""
+    （job 落稳定失败码，等待步骤翻 FAILED 可重试）。生成完成后重验排期
+    一致性——生成期间的约束 / 目标态变化在此拦截，旧口径草案不落确认卡。"""
     async with session_factory() as session:
         active_job = (
             await session.execute(
@@ -245,6 +247,17 @@ async def execute(
             status_code=409,
             detail="课程还没有资料，无法生成学习计划草案，请先补充资料后重试",
         )
+    assert outcome.plan is not None
+    # 生成期间（LLM 秒~分钟窗口）目标约束或状态可能已变：写回的确认卡快照
+    # 在 writeback 时点采集，会把这期间的变化洗白进快照、旧口径草案经确认
+    # 落库（如每日预算 60→15 后同日仍落 90 分钟）。提交前重验（与工具路径
+    # 同款提交时执法：重读最新目标重算排期比对）——不一致即稳定失败码，
+    # job 落 FAILED 可单独重试，重试以新约束重新生成（07 review 五轮 P2）。
+    async with session_factory() as session:
+        await validate_plan_confirm_submission(
+            session,
+            PlanConfirmPayload(goal_id=ctx.goal_id, phases=outcome.plan.phases),
+        )
     return outcome
 
 
@@ -254,7 +267,8 @@ async def writeback(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> bool:
     """写回事务：job SUCCEEDED；草案路径同事务落 OP_PLAN_CONFIRM 草案确认卡
-    （快照同口径固化——确认时既有重验与弃置语义零改动复用）。
+    （落卡前事务内终验排期一致性，快照同口径固化——确认时既有重验与弃置
+    语义零改动复用）。
 
     草案确认卡归属触发 Run 的会话（经 operation_id → run 反查）：弃置语义
     （话题翻篇批量置 REJECTED）与工具路径同口径。无资料路径（SUGGESTIONS）
@@ -278,6 +292,10 @@ async def writeback(
             operation = await session.get(AgentOperation, ctx.operation_id)
             run = await session.get(AgentRun, operation.run_id) if operation is not None else None
             payload = PlanConfirmPayload(goal_id=ctx.goal_id, phases=plan.phases)
+            # 写回事务内终验（07 review 九轮 P2）：execute 尾部校验与写回之间存在
+            # 窗口，期间约束再变会被写回时点的新快照洗白——与 capture 同事务
+            # 重验排期一致性，变化原子拦截（异常回滚整个写回，job 走失败链）。
+            await validate_plan_confirm_submission(session, payload)
             snapshot = await capture_plan_confirm_state(session, payload)
             proposal = await ProposalService.create_core(
                 session,

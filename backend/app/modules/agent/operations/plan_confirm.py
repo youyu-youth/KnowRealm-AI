@@ -16,7 +16,7 @@ plan_regenerate（工单 03），不在本动作面。
 from datetime import date
 
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.agent.operations.registry import (
@@ -33,7 +33,7 @@ from app.modules.agent.schemas import (
 from app.modules.course.service import CourseService
 from app.modules.course_brain.models import Concept
 from app.modules.course_brain.schemas import ConceptStatus
-from app.modules.learning_plan.generation import constraints_for
+from app.modules.learning_plan.generation import constraints_for, shared_record_ids
 from app.modules.learning_plan.models import LearningGoal
 from app.modules.learning_plan.scheduling import ScheduleInfeasible, local_today, pack_schedule
 from app.modules.learning_plan.schemas import PlanConfirmCore, PlanRegenerateCore
@@ -160,7 +160,10 @@ async def require_records_visible(
 ) -> None:
     """STUDY_RECORD 的 record_id 必须是本课程可见记录（防模型编造引用）。
 
-    确认与重生成两动作共用（工单 03 起公开）。"""
+    可见口径与资料聚合 / COURSE 检索同源（归属 ∪ 共享引用资料的 Record，
+    generation.shared_record_ids 正本，07 review 八轮）——生成提示把共享
+    资料连同 record_id 呈给模型，校验须同样接受，否则共享记录永远无法成为
+    有效计划项。确认与重生成两动作共用（工单 03 起公开）。"""
     record_ids = {
         item.record_id
         for phase in payload.phases
@@ -174,8 +177,11 @@ async def require_records_visible(
             await session.scalars(
                 select(Record.id).where(
                     Record.id.in_(record_ids),
-                    Record.course_id == course_id,
                     Record.deleted_at.is_(None),
+                    or_(
+                        Record.course_id == course_id,
+                        Record.id.in_(shared_record_ids(course_id)),
+                    ),
                 )
             )
         ).all()

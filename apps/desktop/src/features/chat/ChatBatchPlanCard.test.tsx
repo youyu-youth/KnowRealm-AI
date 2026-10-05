@@ -498,4 +498,49 @@ describe("ChatBatchPlanCard", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it("共享引用项显示源资料身份：快照 item_title 优先，无快照以资料 id 兜底（07 review 七轮 P1）", async () => {
+    listProposals.mockResolvedValue([
+      planProposal({
+        payload: {
+          items: [
+            {
+              action: "create_course",
+              name: "论文精读",
+              learning_context: "INTEREST",
+              depth: "BEGINNER",
+            },
+            // 引用新课程：提交期快照跳过（_skip_item_snapshot），无源标题——
+            // 此前渲染为空目标，多个共享来源无法核对。
+            {
+              action: "add_shared_ref",
+              library_item_id: "b0000000-aaaa-4000-8000-0000000000f1",
+              course_id: { step: 0, field: "course_id" },
+            },
+            // 归类既有课程：提交期快照固化 item_title（共享引用快照字段名）。
+            {
+              action: "add_shared_ref",
+              library_item_id: "d2222222-bbbb-4000-8000-0000000000f2",
+              course_id: "course-1",
+            },
+          ],
+          plan_version: 1,
+          auth_mode: "REQUEST_APPROVAL",
+          instruction_text: "把这两份资料挂到新课程",
+        },
+        snapshot: {
+          plan_version: 1,
+          // 提交期快照按 index 对应：创建类含引用跳过、既有课程项固化 item_title。
+          items: [{}, {}, { state: { item_title: "注意力机制综述" } }],
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatBatchPlanCard sessionId={SESSION_ID} />);
+
+    expect(await screen.findByText("共 3 项")).toBeInTheDocument();
+    // 快照源标题（item_title 字段）与资料 id 兜底都可见——多个共享来源可核对。
+    expect(screen.getByText("注意力机制综述")).toBeInTheDocument();
+    expect(screen.getByText("#b0000000")).toBeInTheDocument();
+    expect(screen.getAllByText("添加共享引用").length).toBe(2);
+  });
 });

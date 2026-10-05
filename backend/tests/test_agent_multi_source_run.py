@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.data_dir import bind_data_dir, unbind_data_dir
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
+from app.modules.agent.operations import plan_draft as plan_draft_module
 from app.modules.agent.operations.plan_draft import (
     PLAN_DRAFT_LLM_UNCONFIGURED,
     plan_draft_spec,
@@ -52,6 +53,9 @@ from app.modules.learning_plan.schemas import PlanConfirmCore
 from app.modules.library.proposals import ProposalService
 from app.modules.llm.service import StructuredGenerationError
 from app.modules.settings.config import LlmProviderConfig
+from app.modules.transcript import document_worker
+from app.modules.transcript.document_parser import extract_document
+from app.shared.errors import CodedHTTPException
 from app.shared.events import RecordInvalidationNotifier
 
 NOW = "2026-10-04T08:00:00.000000Z"
@@ -290,7 +294,9 @@ async def scalar(
 
 
 def fake_draft_plan(goal_id: str) -> PlanConfirmCore:
-    day = date(2026, 10, 5)
+    # 日期用运行时今天：execute 的提交前重验按 local_today() 重算排期，
+    # 硬编码日期会与期望铺排不符被拒（同日 60+30=90 ≤ 默认预算 120 自洽）。
+    day = date.today()
     return PlanConfirmCore.model_validate(
         {
             "goal_id": goal_id,
@@ -566,7 +572,8 @@ async def test_partial_failure_keeps_course_and_imports(tmp_path: Path) -> None:
 @pytest.mark.anyio
 async def test_retry_failed_ingest_reuses_item(tmp_path: Path) -> None:
     """失败导入步骤单独重试的幂等收口：抓取失败后条目已在库，重试不撞重复
-    拒绝——复用既有条目直接成功，Run 继续推进至完成。"""
+    拒绝也不重复入库——复用既有条目并重置 WEB_FETCH 任务重新抓取（如实等待，
+    不直接消除失败；07 review 二轮 P1 的回归防线）。"""
     async with bare_db(tmp_path) as session_factory:
         planned = await invoke_plan(
             session_factory,
@@ -594,6 +601,19 @@ async def test_retry_failed_ingest_reuses_item(tmp_path: Path) -> None:
                 run_id=run_id,
                 operation_id=await step_id(session_factory, run_id, "ingest_library_item"),
             )
+        # 重试复用条目并重置既有任务重新等待（任务总数不变，未新投）。
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+        job_count = (
+            await scalar(
+                session_factory,
+                "SELECT COUNT(*) FROM processing_jobs WHERE job_type = 'WEB_FETCH'",
+                {},
+            )
+        ).scalar_one()
+        assert job_count == 1
+        # 重新抓取成功后 Run 才完成；再失败则仍部分成功（如实呈现）。
+        assert await finish_pending_jobs(session_factory, "WEB_FETCH", "SUCCEEDED") == 1
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
         assert await advance(session_factory, run_id) == "COMPLETED"
         # 同 URL 条目只有一条（重试复用，未重复入库）。
         count = (
@@ -608,8 +628,10 @@ async def test_retry_failed_ingest_reuses_item(tmp_path: Path) -> None:
 
 @pytest.mark.anyio
 async def test_retry_local_document_reschedules_parse(tmp_path: Path) -> None:
-    """本地文档解析失败后的重试：复用既有导入行（不重复建记录）并为上次失败
-    的解析新投任务——步骤重新等待解析完成。"""
+    """本地文档解析失败后的重试：复用既有导入行（不重复建记录），上次失败的
+    解析任务原地重置（不新投——新投会使任务数超过文件数，finalizer 等数判定
+    永不成立，任务成功后记录卡 CONTENT_PROCESSING、无正文），成功经真实
+    writeback 链路落 Transcript（07 review P1 的回归防线）。"""
     source = tmp_path / "notes.md"
     source.write_text("# 重试笔记\n本地文档内容", encoding="utf-8")
     async with bare_db(tmp_path) as session_factory:
@@ -636,9 +658,56 @@ async def test_retry_local_document_reschedules_parse(tmp_path: Path) -> None:
                 run_id=run_id,
                 operation_id=await step_id(session_factory, run_id, "ingest_local_document"),
             )
-        # 重试后 Run 重新等待（新投的解析任务）。
+        # 重试后 Run 重新等待；解析任务原地重置（总数仍 1，未新投）。
         assert await advance(session_factory, run_id) == "WAITING_JOB"
-        assert await finish_pending_jobs(session_factory, "DOCUMENT_PARSE", "SUCCEEDED") == 1
+        job_count = (
+            await scalar(
+                session_factory,
+                "SELECT COUNT(*) FROM processing_jobs WHERE job_type = 'DOCUMENT_PARSE'",
+                {},
+            )
+        ).scalar_one()
+        assert job_count == 1
+
+        # 真实 worker 写回链路：模拟领取（RUNNING）→ 解析 → writeback（内部
+        # complete_source_job 判定文件数==任务数并落 Transcript）。
+        data_dir = tmp_path / "KnowRealm"
+        job_row = (
+            await scalar(
+                session_factory,
+                "SELECT p.id, r.id, f.file_path FROM processing_jobs p"
+                " JOIN records r ON p.record_id = r.id"
+                " JOIN record_files f ON f.record_id = r.id"
+                " WHERE p.job_type = 'DOCUMENT_PARSE'",
+                {},
+            )
+        ).one()
+        job_id = cast(str, job_row[0])
+        record_id = cast(str, job_row[1])
+        file_path = cast(str, job_row[2])
+        await run_sql(
+            "UPDATE processing_jobs SET status = 'RUNNING', attempts = 1 WHERE id = :id",
+            {"id": job_id},
+            session_factory,
+        )
+        ctx = document_worker.ClaimedDocument(
+            job_id=job_id, record_id=record_id, path=data_dir / file_path
+        )
+        await document_worker.writeback(ctx, extract_document(ctx.path), session_factory, data_dir)
+
+        # 任务成功且记录被 finalizer 落定（不卡 CONTENT_PROCESSING）。
+        final_row = (
+            await scalar(
+                session_factory,
+                "SELECT (SELECT status FROM processing_jobs WHERE id = :job_id),"
+                " (SELECT status FROM records WHERE id = :record_id),"
+                " (SELECT COUNT(*) FROM transcripts WHERE record_id = :record_id)",
+                {"job_id": job_id, "record_id": record_id},
+            )
+        ).one()
+        assert cast(str, final_row[0]) == "SUCCEEDED"
+        assert cast(str, final_row[1]) == "SUMMARY_PENDING"
+        assert cast(int, final_row[2]) == 1
         assert isinstance(await claim_waiting(session_factory, run_id), Ready)
         assert await advance(session_factory, run_id) == "COMPLETED"
         records = (
@@ -731,6 +800,238 @@ async def test_plan_draft_job_failure_then_retry(
             )
         ).scalar_one()
         assert proposal == 1
+
+
+@pytest.mark.anyio
+async def test_plan_draft_rejects_stale_constraints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """生成期间目标预算 60→15：旧口径草案（单项 60 分钟）被提交前重验拒绝
+    （稳定失败码、零草案卡落库），单独重试按新约束重新生成成功（spec 预算
+    一致性：每日总量与 daily_minutes 相容，07 review 五轮 P2）。"""
+    provider = LlmProviderConfig(
+        base_url="https://llm.example.com/v1", api_key="test-key", model="test-model"
+    )
+    monkeypatch.setattr(
+        "app.modules.agent.operations.plan_draft.load_llm_provider",
+        lambda _data_dir: provider,
+    )
+    calls: list[int] = []
+    async with bare_db(tmp_path) as session_factory:
+
+        async def shifting_generate(**kwargs: Any) -> PlanGenerationOutcome:
+            calls.append(1)
+            goal = kwargs["goal"]
+            day = date.today()
+            if len(calls) == 1:
+                # LLM 生成期间每日预算 60 → 15；草案按旧口径（单项 60 分钟）。
+                async with session_factory() as session, session.begin():
+                    await session.execute(
+                        text("UPDATE learning_goals SET daily_minutes = 15 WHERE id = :id"),
+                        {"id": goal.id},
+                    )
+                stale = PlanConfirmCore.model_validate(
+                    {
+                        "goal_id": goal.id,
+                        "phases": [
+                            {
+                                "title": "第一阶段",
+                                "items": [
+                                    {
+                                        "action_type": "CUSTOM",
+                                        "content": "精读核心论文",
+                                        "estimated_minutes": 60,
+                                        "reason": "核心",
+                                        "scheduled_date": day.isoformat(),
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                )
+                return PlanGenerationOutcome(kind="DRAFT", plan=stale, total_minutes=60)
+            fresh = PlanConfirmCore.model_validate(
+                {
+                    "goal_id": goal.id,
+                    "phases": [
+                        {
+                            "title": "第一阶段",
+                            "items": [
+                                {
+                                    "action_type": "CUSTOM",
+                                    "content": "精读核心论文",
+                                    "estimated_minutes": 15,
+                                    "reason": "核心",
+                                    "scheduled_date": day.isoformat(),
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+            return PlanGenerationOutcome(kind="DRAFT", plan=fresh, total_minutes=15)
+
+        monkeypatch.setattr(PlanGenerationService, "generate", staticmethod(shifting_generate))
+        planned = await invoke_plan(
+            session_factory,
+            [
+                {
+                    "action": "create_course",
+                    "name": "预算课",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+                {
+                    "action": "create_goal",
+                    "course_id": COURSE_REF,
+                    "goal_type": "SKILL",
+                    "title": "读完这批资料",
+                    "daily_minutes": 60,
+                },
+                {"action": "generate_plan_draft", "goal_id": GOAL_REF},
+            ],
+        )
+        run_id = await confirm_plan_card(
+            session_factory, cast(str, planned["plan_proposal"]["proposal_id"])
+        )
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+        # 首跑：生成期间约束已变 → 旧口径草案被提交前重验拒绝（稳定失败码）。
+        assert await run_draft_worker(session_factory, tmp_path) is True
+        job_row = (
+            await scalar(
+                session_factory,
+                "SELECT status, error_code FROM processing_jobs WHERE job_type = 'PLAN_DRAFT'",
+                {},
+            )
+        ).one()
+        assert job_row == ("FAILED", "PLAN_SCHEDULE_INFEASIBLE")
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "PARTIAL_COMPLETED"
+        # 零草案卡（旧口径草案不落确认卡）。
+        assert (
+            await scalar(
+                session_factory,
+                "SELECT COUNT(*) FROM agent_proposals WHERE proposal_type = 'OP_PLAN_CONFIRM'",
+                {},
+            )
+        ).scalar_one() == 0
+        # 单独重试：约束已变 → 提交期快照比对失效，升回用户确认（既有防线，
+        # 等待重新预览授权后才会按新约束重新生成）。
+        async with session_factory() as session:
+            await RunControlService.retry_operation(
+                session,
+                run_id=run_id,
+                operation_id=await step_id(session_factory, run_id, "generate_plan_draft"),
+            )
+        assert await advance(session_factory, run_id) == "WAITING_USER"
+        steps = await step_rows(session_factory, run_id)
+        assert steps[-1] == ("generate_plan_draft", "FAILED", "OPERATION_SNAPSHOT_STALE")
+        assert await run_row(session_factory, run_id) == (
+            "WAITING_USER",
+            "OPERATION_SNAPSHOT_STALE",
+            None,
+        )
+
+
+@pytest.mark.anyio
+async def test_plan_draft_writeback_revalidates_in_transaction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """execute 校验通过后、写回事务前约束再变（120→15）：写回事务内终验拦截
+    旧草案、不落确认卡（07 review 九轮 P2——execute 尾部校验只覆盖生成期间
+    窗口，最后窗口由写回事务内核对，变化不再被新快照掩盖）。"""
+    provider = LlmProviderConfig(
+        base_url="https://llm.example.com/v1", api_key="test-key", model="test-model"
+    )
+    monkeypatch.setattr(
+        "app.modules.agent.operations.plan_draft.load_llm_provider",
+        lambda _data_dir: provider,
+    )
+    day = date.today().isoformat()
+
+    async def plain_generate(**kwargs: Any) -> PlanGenerationOutcome:
+        goal = kwargs["goal"]
+        plan = PlanConfirmCore.model_validate(
+            {
+                "goal_id": goal.id,
+                "phases": [
+                    {
+                        "title": "第一阶段",
+                        "items": [
+                            {
+                                "action_type": "CUSTOM",
+                                "content": "精读",
+                                "estimated_minutes": 60,
+                                "reason": "核心",
+                                "scheduled_date": day,
+                            },
+                            {
+                                "action_type": "CUSTOM",
+                                "content": "整理",
+                                "estimated_minutes": 30,
+                                "reason": "巩固",
+                                "scheduled_date": day,
+                            },
+                        ],
+                    }
+                ],
+            }
+        )
+        return PlanGenerationOutcome(kind="DRAFT", plan=plan, total_minutes=90)
+
+    monkeypatch.setattr(PlanGenerationService, "generate", staticmethod(plain_generate))
+    async with bare_db(tmp_path) as session_factory:
+        original_validate = plan_draft_module.validate_plan_confirm_submission
+        validate_calls: list[int] = []
+
+        async def injecting_validate(session: Any, payload: Any) -> None:
+            # 第一次（execute 尾部，默认预算 120）通过后即注入 15——模拟两阶段
+            # 之间用户改预算；第二次（writeback 终验，修复后存在）将如实拒绝。
+            await original_validate(session, payload)
+            validate_calls.append(1)
+            if len(validate_calls) == 1:
+                async with session_factory() as s, s.begin():
+                    await s.execute(
+                        text("UPDATE learning_goals SET daily_minutes = 15 WHERE id = :id"),
+                        {"id": payload.goal_id},
+                    )
+
+        monkeypatch.setattr(
+            plan_draft_module, "validate_plan_confirm_submission", injecting_validate
+        )
+        planned = await invoke_plan(
+            session_factory,
+            [
+                {
+                    "action": "create_course",
+                    "name": "终验课",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+                {
+                    "action": "create_goal",
+                    "course_id": COURSE_REF,
+                    "goal_type": "SKILL",
+                    "title": "读完这批资料",
+                },
+                {"action": "generate_plan_draft", "goal_id": GOAL_REF},
+            ],
+        )
+        run_id = await confirm_plan_card(
+            session_factory, cast(str, planned["plan_proposal"]["proposal_id"])
+        )
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+        # 写回事务内终验拒绝旧口径草案（稳定失败码，零确认卡落库）。
+        with pytest.raises(CodedHTTPException) as excinfo:
+            await run_draft_worker(session_factory, tmp_path)
+        assert excinfo.value.code == "PLAN_SCHEDULE_INFEASIBLE"
+        assert (
+            await scalar(
+                session_factory,
+                "SELECT COUNT(*) FROM agent_proposals WHERE proposal_type = 'OP_PLAN_CONFIRM'",
+                {},
+            )
+        ).scalar_one() == 0
 
 
 @pytest.mark.anyio
@@ -855,6 +1156,123 @@ async def test_plan_draft_without_materials_fails_with_stable_code(
                 {},
             )
         ).scalar_one() == 0
+
+
+@pytest.mark.anyio
+async def test_shared_ref_only_course_produces_plan_draft(
+    tmp_path: Path, draft_llm: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """仅通过共享引用挂课的资料也进计划草案：gather_materials 可见口径须含
+    共享覆盖（与 COURSE 检索同源），否则误报 PLAN_DRAFT_NO_MATERIALS、
+    「共享引用→草案」路径断裂（工单承诺两路径之一，07 review 三轮 P1）。
+    草案的 STUDY_RECORD 项引用共享记录——生成提示把共享资料连同 record_id
+    呈给模型，写回与确认校验须同样接受共享可见口径（07 review 八轮 P1）。"""
+    owner_course = "c0000000-0000-4000-8000-0000000000ff"
+    shared_record = "a0000000-0000-4000-8000-0000000000f1"
+    day = date.today().isoformat()
+    async with bare_db(tmp_path) as session_factory:
+        # 原课程 + 资料条目 + 归属原课程的 Record（经 library_item_records 关联）。
+        await run_sql(
+            "INSERT INTO courses (id, name, learning_context, depth, status, created_at,"
+            " updated_at) VALUES (:id, '原课程', 'INTEREST', 'BEGINNER', 'ACTIVE', :now, :now)",
+            {"id": owner_course, "now": NOW},
+            session_factory,
+        )
+        await run_sql(
+            "INSERT INTO library_items (id, course_id, source_type, title, content_hash,"
+            " metadata_json, status, created_at, updated_at)"
+            " VALUES (:id, :owner, 'TEXT', '共享论文', :hash, '{}', 'ACTIVE', :now, :now)",
+            {"id": item_id(9), "owner": owner_course, "hash": "mhash-9", "now": NOW},
+            session_factory,
+        )
+        await run_sql(
+            "INSERT INTO records (id, course_id, capture_type, title, status, duration_ms,"
+            " created_at, updated_at) VALUES (:id, :owner, 'PASTE', '共享论文正文',"
+            " 'SUMMARY_READY', 0, :now, :now)",
+            {"id": shared_record, "owner": owner_course, "now": NOW},
+            session_factory,
+        )
+        await run_sql(
+            "INSERT INTO library_item_records"
+            " (library_item_id, record_id, role, sequence_no, created_at)"
+            " VALUES (:item, :record, 'PRIMARY', 0, :now)",
+            {"item": item_id(9), "record": shared_record, "now": NOW},
+            session_factory,
+        )
+
+        # 草案带 STUDY_RECORD 项引用共享记录（record_id=归属原课程的 Record）。
+        async def shared_generate(**kwargs: Any) -> PlanGenerationOutcome:
+            goal = kwargs["goal"]
+            plan = PlanConfirmCore.model_validate(
+                {
+                    "goal_id": goal.id,
+                    "phases": [
+                        {
+                            "title": "第一阶段",
+                            "items": [
+                                {
+                                    "action_type": "STUDY_RECORD",
+                                    "record_id": shared_record,
+                                    "content": "精读共享论文",
+                                    "estimated_minutes": 30,
+                                    "reason": "核心资料",
+                                    "scheduled_date": day,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+            return PlanGenerationOutcome(kind="DRAFT", plan=plan, total_minutes=30)
+
+        monkeypatch.setattr(PlanGenerationService, "generate", staticmethod(shared_generate))
+        planned = await invoke_plan(
+            session_factory,
+            [
+                {
+                    "action": "create_course",
+                    "name": "共享课",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+                {
+                    "action": "create_goal",
+                    "course_id": COURSE_REF,
+                    "goal_type": "SKILL",
+                    "title": "吃透共享资料",
+                },
+                {
+                    "action": "add_shared_ref",
+                    "library_item_id": item_id(9),
+                    "course_id": COURSE_REF,
+                },
+                {"action": "generate_plan_draft", "goal_id": GOAL_REF},
+            ],
+        )
+        run_id = await confirm_plan_card(
+            session_factory, cast(str, planned["plan_proposal"]["proposal_id"])
+        )
+        # 前三步瞬时完成（新课程无归属记录），末步提交 PLAN_DRAFT job 后等待。
+        assert await advance(session_factory, run_id) == "WAITING_JOB"
+        assert await run_draft_worker(session_factory, tmp_path) is True
+        job_row = (
+            await scalar(
+                session_factory,
+                "SELECT status, error_code FROM processing_jobs WHERE job_type = 'PLAN_DRAFT'",
+                {},
+            )
+        ).one()
+        assert job_row == ("SUCCEEDED", None)
+        assert isinstance(await claim_waiting(session_factory, run_id), Ready)
+        assert await advance(session_factory, run_id) == "COMPLETED"
+        # 草案确认卡落库（非无资料失败）。
+        assert (
+            await scalar(
+                session_factory,
+                "SELECT COUNT(*) FROM agent_proposals WHERE proposal_type = 'OP_PLAN_CONFIRM'",
+                {},
+            )
+        ).scalar_one() == 1
 
 
 # ---------------------------------------------------------------------------

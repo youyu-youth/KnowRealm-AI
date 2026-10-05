@@ -15,7 +15,7 @@ Agent 工具转结构化载荷交模型如实转述。
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.learning_plan.models import LearningGoal
@@ -31,6 +31,7 @@ from app.modules.learning_plan.schemas import (
     PlanDraft,
     PlanSuggestions,
 )
+from app.modules.library.models import CourseSharedRef, LibraryItem, LibraryItemRecord
 from app.modules.library.retrieval import (
     SEARCH_LIBRARY_LIMIT,
     LibraryRetrievalService,
@@ -112,15 +113,44 @@ def constraints_for(goal: LearningGoal, today: date) -> ScheduleConstraints:
     return ScheduleConstraints(start_date=today, deadline=deadline, daily_minutes=daily)
 
 
+def shared_record_ids(course_id: str) -> Select[tuple[str]]:
+    """课程可见 Record 的共享引用覆盖子查询（与 COURSE 检索
+    retrieval._SHARED_RECORD_IDS_SQL 同源口径）：经条目关联的 Record，条目
+    ACTIVE、未软删（软删即失效，查询期派生）。资料聚合（gather_materials）
+    与计划项引用校验（require_records_visible，07 review 八轮）共用正本。"""
+    return (
+        select(LibraryItemRecord.record_id)
+        .join(
+            CourseSharedRef,
+            CourseSharedRef.library_item_id == LibraryItemRecord.library_item_id,
+        )
+        .join(LibraryItem, LibraryItem.id == LibraryItemRecord.library_item_id)
+        .where(
+            CourseSharedRef.course_id == course_id,
+            LibraryItem.deleted_at.is_(None),
+            LibraryItem.status == "ACTIVE",
+        )
+    )
+
+
 class PlanGenerationService:
     @staticmethod
     async def gather_materials(session: AsyncSession, course_id: str) -> list[MaterialDigest]:
-        """课程可见记录 + 已确认总结摘要（复用既有查询面，零新检索设施）。"""
+        """课程可见记录 + 已确认总结摘要（复用既有查询面，零新检索设施）。
+
+        可见口径与 COURSE 范围检索同源（归属 ∪ 共享引用资料的 Record）；
+        仅共享引用挂课的课程也进草案路径，不再误报无资料（工单 07 review 三轮）。"""
         records = list(
             (
                 await session.execute(
                     select(Record.id, Record.title, Record.capture_type)
-                    .where(Record.course_id == course_id, Record.deleted_at.is_(None))
+                    .where(
+                        Record.deleted_at.is_(None),
+                        or_(
+                            Record.course_id == course_id,
+                            Record.id.in_(shared_record_ids(course_id)),
+                        ),
+                    )
                     .order_by(Record.created_at)
                     .limit(MATERIALS_MAX_COUNT)
                 )

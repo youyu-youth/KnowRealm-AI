@@ -653,6 +653,71 @@ async def test_gather_materials_empty_for_course_without_records(tmp_path: Path)
 
 
 @pytest.mark.anyio
+async def test_gather_materials_includes_shared_refs(tmp_path: Path) -> None:
+    """仅共享引用挂课的资料进资料面（与 COURSE 检索同口径）；条目软删即失效
+    （查询期派生）；失效引用不产生无资料误报以外的泄漏（07 review 三轮）。"""
+    owner_course = "c0000000-0000-4000-8000-0000000000ff"
+    shared_item = "b0000000-0000-4000-8000-0000000000f1"
+    deleted_item = "b0000000-0000-4000-8000-0000000000f2"
+    shared_record = "a0000000-0000-4000-8000-0000000000f1"
+    async with bare_db(tmp_path) as session_factory:
+        await seed_course(session_factory)
+        await run_sql(
+            "INSERT INTO courses (id, name, learning_context, depth, status, created_at,"
+            " updated_at) VALUES (:id, '原课程', 'INTEREST', 'BEGINNER', 'ACTIVE', :now, :now)",
+            {"id": owner_course, "now": NOW},
+            session_factory,
+        )
+        for item_id, title, deleted in (
+            (shared_item, "共享论文", False),
+            (deleted_item, "失效引用论文", True),
+        ):
+            await run_sql(
+                "INSERT INTO library_items (id, course_id, source_type, title, content_hash,"
+                " metadata_json, status, created_at, updated_at, deleted_at)"
+                " VALUES (:id, :owner, 'TEXT', :title, :hash, '{}', 'ACTIVE',"
+                " :now, :now, :deleted)",
+                {
+                    "id": item_id,
+                    "owner": owner_course,
+                    "title": title,
+                    "hash": f"mhash-{item_id}",
+                    "now": NOW,
+                    "deleted": None if not deleted else NOW,
+                },
+                session_factory,
+            )
+        await seed_record(
+            session_factory, shared_record, course_id=owner_course, title="共享论文正文"
+        )
+        for item_id in (shared_item, deleted_item):
+            await run_sql(
+                "INSERT INTO library_item_records"
+                " (library_item_id, record_id, role, sequence_no, created_at)"
+                " VALUES (:item, :record, 'PRIMARY', 0, :now)",
+                {"item": item_id, "record": shared_record, "now": NOW},
+                session_factory,
+            )
+            await run_sql(
+                "INSERT INTO course_shared_refs (id, course_id, library_item_id, created_at)"
+                " VALUES (:id, :course, :item, :now)",
+                {
+                    "id": f"{item_id[:34]}{item_id[-1]}r",
+                    "course": COURSE_ID,
+                    "item": item_id,
+                    "now": NOW,
+                },
+                session_factory,
+            )
+        async with session_factory() as session:
+            materials = await PlanGenerationService.gather_materials(session, COURSE_ID)
+        # 归属记录为空（course_id 是原课程）；共享引用资料的 Record 命中一次，
+        # 软删条目的引用不生效（SQL 单表查询天然去重，同 Record 不重复）。
+        assert [material.record_id for material in materials] == [shared_record]
+        assert materials[0].title == "共享论文正文"
+
+
+@pytest.mark.anyio
 async def test_generate_draft_packs_dates_and_writes_nothing(tmp_path: Path) -> None:
     """草案语义：日期由排期器铺排；生成全程零 learning_plans 落库。"""
     async with bare_db(tmp_path) as session_factory:

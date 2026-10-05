@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { screen } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
+import { useQuery } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithQuery } from "@/test/test-utils";
 import { AgentRunProgress } from "./AgentRunProgress";
+import { agentKeys } from "@/features/agent/api/authMode";
+import { libraryKeys } from "@/features/library/api/keys";
+import { libraryApi } from "@/features/library/api/library";
 
-const { getRun } = vi.hoisted(() => ({ getRun: vi.fn() }));
+const { getRun, listProposals } = vi.hoisted(() => ({
+  getRun: vi.fn(),
+  listProposals: vi.fn(),
+}));
 
 // 模块级工具（isRunActive 等）随实际实现保留，只替换 api 对象。
 vi.mock("@/features/settings/api/operationHistory", async (importOriginal) => {
@@ -18,6 +25,12 @@ vi.mock("@/features/settings/api/operationHistory", async (importOriginal) => {
     ...actual,
     operationHistoryApi: { getRun },
   };
+});
+
+vi.mock("@/features/library/api/library", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/features/library/api/library")>();
+  return { ...actual, libraryApi: { ...actual.libraryApi, listProposals } };
 });
 
 function operationData(overrides: Record<string, unknown> = {}) {
@@ -71,7 +84,17 @@ function runData(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   getRun.mockResolvedValue(runData());
+  listProposals.mockResolvedValue([]);
 });
+
+/** 挂在 sessionProposals 查询上的探针（模拟聊天视图里的提案卡消费者）。 */
+function ProposalProbe() {
+  useQuery({
+    queryKey: libraryKeys.sessionProposals("sess-1"),
+    queryFn: () => libraryApi.listProposals({ session_id: "sess-1" }),
+  });
+  return null;
+}
 
 describe("AgentRunProgress", () => {
   it("补偿行不渲染重试按钮（失败补偿走重新发起撤销，不走正向重试）", async () => {
@@ -126,5 +149,43 @@ describe("AgentRunProgress", () => {
         "不可撤销：记录删除不可撤销：删除会影响记录级资产与学习证据链，且暂无恢复入口",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("Run 翻终态时失效本会话提案查询（草案卡即时可见，07 review 六轮 P1）", async () => {
+    getRun.mockResolvedValue(runData({ status: "RUNNING", finished_at: null }));
+    const { queryClient } = renderWithQuery(
+      <>
+        <AgentRunProgress runId="run-1" />
+        <ProposalProbe />
+      </>,
+    );
+    // 活动态轮询中：提案查询仅探针挂载拉取一次。
+    expect(await screen.findByText("进行中")).toBeInTheDocument();
+    await waitFor(() => expect(listProposals).toHaveBeenCalledTimes(1));
+    // 轮询观察到终态（以缓存翻转模拟）：提案查询被失效并重取——用户停留
+    // 当前聊天即可见后台落出的确认卡（如 PLAN_DRAFT 草案卡）。
+    act(() => {
+      queryClient.setQueryData(
+        agentKeys.runDetail("run-1"),
+        runData({ status: "COMPLETED" }),
+      );
+    });
+    expect(await screen.findByText("已完成")).toBeInTheDocument();
+    await waitFor(() => expect(listProposals).toHaveBeenCalledTimes(2));
+  });
+
+  it("挂载即终态也失效提案查询（首查竞态兜底，07 review 十轮 P1）", async () => {
+    // 场景：挂载时恰逢草案落库提交——提案首查读到旧列表（尚无草案）、Run
+    // 首查已返回 COMPLETED。翻转检测（先观察到活动态）在此不成立且终态
+    // 停轮询，进入终态本身即须失效一次。
+    getRun.mockResolvedValue(runData({ status: "COMPLETED" }));
+    renderWithQuery(
+      <>
+        <AgentRunProgress runId="run-1" />
+        <ProposalProbe />
+      </>,
+    );
+    expect(await screen.findByText("已完成")).toBeInTheDocument();
+    await waitFor(() => expect(listProposals).toHaveBeenCalledTimes(2));
   });
 });

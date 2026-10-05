@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
@@ -12,6 +13,7 @@ import {
   operationHistoryApi,
   runStatusTone,
 } from "@/features/settings/api/operationHistory";
+import { libraryKeys } from "@/features/library/api/keys";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -53,6 +55,21 @@ export function AgentRunProgress({ runId }: { runId: string }) {
     mutationFn: () => operationHistoryApi.undoRun(runId),
     onSuccess: invalidate,
   });
+
+  // Run 落终态（含挂载即终态）时失效本会话提案查询（07 review 六轮 / 十轮）：
+  // 后台产出的确认卡（如 PLAN_DRAFT 末步草案卡）挂在提案查询上、该查询无
+  // 轮询——挂载时提案首查与 Run 首查存在跨落库提交的竞态（提案读到旧列表、
+  // Run 已返回 COMPLETED，且终态停轮询），不失效则草案卡在该会话永不出现。
+  // 终态后 runDetail 停轮询、引用稳定，effect 只跑一次；失效幂等无害。
+  const runActive = run.data !== undefined && isRunActive(run.data.status);
+  useEffect(() => {
+    const sessionId = run.data?.session_id;
+    if (!runActive && sessionId != null) {
+      void queryClient.invalidateQueries({
+        queryKey: libraryKeys.sessionProposals(sessionId),
+      });
+    }
+  }, [runActive, run.data, queryClient]);
 
   const data = run.data;
   if (data === undefined) {
