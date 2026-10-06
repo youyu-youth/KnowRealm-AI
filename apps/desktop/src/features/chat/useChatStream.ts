@@ -58,7 +58,13 @@ export function useChatStream(sessionId: string) {
           sessionId,
           content,
           {
-            onStatus: () => setIsStreaming(true),
+            onStatus: () => {
+              setIsStreaming(true);
+              // status 发出前用户消息已落库（补答复用原行），生成期间就重取展示。
+              void queryClient.invalidateQueries({
+                queryKey: chatKeys.messages(sessionId),
+              });
+            },
             onToken: (text) =>
               setStreamedText((current) => (current ?? "") + text),
             onToolCall: (payload) =>

@@ -462,7 +462,11 @@ describe("自由聊天流式", () => {
   }
 
   it("发送后流式逐字渲染，完成后历史重取展示双方消息", async () => {
+    let accepted = false;
     let answered = false;
+    const opened = openSseResponse(
+      sseChunks(['event: status\ndata: {"phase":"generating"}']),
+    );
     server.use(
       http.get(
         `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
@@ -479,23 +483,17 @@ describe("自由聊天流式", () => {
                     "stub-chat-model",
                   ),
                 ]
-              : [SYSTEM_ROW],
+              : accepted
+                ? [SYSTEM_ROW, messageRow("user-row", "USER", "什么是 MVCC")]
+                : [SYSTEM_ROW],
           ),
       ),
       http.post(
         `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
-        () =>
-          sseResponse(
-            sseChunks([
-              'event: status\ndata: {"phase":"generating"}',
-              'event: token\ndata: {"text":"回答"}',
-              'event: token\ndata: {"text":"完成"}',
-              'event: done\ndata: {"message_id":"assistant-row","content":"回答完成"}',
-            ]),
-            () => {
-              answered = true;
-            },
-          ),
+        () => {
+          accepted = true;
+          return opened.response;
+        },
       ),
     );
     useSessionPage();
@@ -504,24 +502,48 @@ describe("自由聊天流式", () => {
     fireEvent.change(input, { target: { value: "什么是 MVCC" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    // token 逐字到达：先出现首片，再聚合为完整文本。
+    // 生成开始就显示已受理的提问，不等首个 token 或 done。
+    expect(await screen.findByText("什么是 MVCC")).toBeVisible();
+    expect(screen.getByRole("button", { name: "停止" })).toBeVisible();
+    opened.pushEvent('event: token\ndata: {"text":"回答"}');
+    expect(await screen.findByText("回答")).toBeVisible();
+    expect(screen.getAllByText("什么是 MVCC")).toHaveLength(1);
+    opened.pushEvent('event: token\ndata: {"text":"完成"}');
     expect(await screen.findByText("回答完成")).toBeVisible();
-    expect(screen.getByText("什么是 MVCC")).toBeVisible();
+    answered = true;
+    opened.pushEvent(
+      'event: done\ndata: {"message_id":"assistant-row","content":"回答完成"}',
+    );
+    opened.closeStream();
     // done 后发送入口恢复，输入框清空。
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "发送" })).toBeEnabled(),
     );
+    expect(screen.getAllByText("什么是 MVCC")).toHaveLength(1);
     expect(input).toHaveValue("");
   });
 
   it("流式期间出现停止按钮且不可连发，停止后展示重新生成入口", async () => {
+    let accepted = false;
     const opened = openSseResponse(
       sseChunks(['event: status\ndata: {"phase":"generating"}']),
     );
     server.use(
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json(
+            accepted
+              ? [SYSTEM_ROW, messageRow("user-row", "USER", "长问题")]
+              : [SYSTEM_ROW],
+          ),
+      ),
       http.post(
         `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
-        () => opened.response,
+        () => {
+          accepted = true;
+          return opened.response;
+        },
       ),
     );
     useSessionPage();
@@ -535,12 +557,15 @@ describe("自由聊天流式", () => {
     expect(
       screen.queryByRole("button", { name: "发送" }),
     ).not.toBeInTheDocument();
+    expect(await screen.findByText("长问题")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "停止" }));
     // 停止丢弃半截文本：流式气泡消失、发送恢复；末尾未回复提问露出重试入口。
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "发送" })).toBeEnabled(),
     );
+    expect(screen.getByText("长问题")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重新生成回答" })).toBeEnabled();
     opened.closeStream();
   });
 
