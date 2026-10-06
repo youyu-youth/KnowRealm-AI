@@ -18,3 +18,14 @@
 - 真实 SSE 停止后 REST 为 INTERRUPTED，未完成工具数为零、重新生成入口可用；重试后同一发起消息关联 INTERRUPTED / COMPLETED 两条不同过程记录，最终回答正常保存。
 
 真实供应商兼容性与用户日常数据体验仍可按常规人工试用复核，不能将本地模型桩当作供应商验收。权威数据模型增补提案待批；PROJECT_PROGRESS 已同步实现事实。
+
+## 2026-10-06 追加：过程行图标与「同文两遍」修复
+
+真机反馈：过程卡展开后同一条文案出现两遍（第二行无图标、缩进与首行文字对齐）。查用户真实库（数据目录 `knowrealm.db` 的 WAL，12:41 那条过程）确认 entries 里只有 2 条 tool 条目、各一份、且该过程没有任何 commentary 条目——重复来自渲染层：每条目原先是行内 Collapsible，触发行与本行展开面板显示同一 `entryLabel`。
+
+修复（仅前端，后端/迁移/契约零改动）：
+
+- 行结构改为「左侧工具图标 + 单行文案 + 行尾状态图标」，删除行内 Collapsible 副本；点击整行改为**原地**展开（`aria-expanded`，同一句任何状态只显示一份，chevron 随展开态旋转）。
+- 新增 `features/chat/toolIcons.ts`：37 个后端工具（含已退役 `search_transcript`）逐个 lucide 图标，未登记工具落兜底 `Wrench`；思考（公开说明）行用 `MessageSquareText` 专属图标；行尾状态图标覆盖五种状态，`title` 复用 `chat.process.toolStatus.*`。
+- 渲染前对完全相同的思考文本去重（保留第一条）；工具行不去重，保证「N 次工具调用」与行数一致。
+- 测试：`ChatMessageList.test.tsx` 增「展开后每条文案只出现一次 + 点击行原地展开不产生第二份」「相同思考文本只保留一条、相同文案工具行保留两条」；新增 `toolIcons.test.ts` 钉图标两两不同且不与兜底/思考图标重复。门禁：chat 相关 14 项、`tsc --noEmit`、`eslint --max-warnings 0`、`pnpm build` 全过；全量 656 通过，3 个失败文件（CourseBrainMastery/TodoPanel/SharedRefsTab）单跑 20 项全绿 = 既有并发抖动口径。

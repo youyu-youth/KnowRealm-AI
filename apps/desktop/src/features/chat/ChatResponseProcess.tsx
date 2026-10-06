@@ -4,8 +4,9 @@ import {
   ChevronDown,
   CircleAlert,
   CircleCheck,
+  CircleEllipsis,
+  CircleSlash,
   Clock,
-  Wrench,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,11 @@ import type {
   ChatProcessEntry,
   ChatResponseProcess as Process,
 } from "@/features/chat/api/types";
+import {
+  COMMENTARY_ICON,
+  TOOL_ICON_FALLBACK,
+  TOOL_ICONS,
+} from "@/features/chat/toolIcons";
 import { cn } from "@/lib/utils";
 
 const TOOL_COPY: Record<string, string> = {
@@ -27,13 +33,125 @@ const TOOL_COPY: Record<string, string> = {
   search_transcript: "chat.tools.activity",
 };
 
+type ToolEntry = Extract<ChatProcessEntry, { kind: "tool" }>;
+
+function isToolEntry(entry: ChatProcessEntry): entry is ToolEntry {
+  return entry.kind === "tool";
+}
+
+/** 完全相同的公开说明只保留第一条：同文重复对读者无区分意义。 */
+function dedupeCommentary(entries: ChatProcessEntry[]): ChatProcessEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    if (entry.kind !== "commentary") return true;
+    if (seen.has(entry.text)) return false;
+    seen.add(entry.text);
+    return true;
+  });
+}
+
+function statusIcon(status: ToolEntry["status"]) {
+  switch (status) {
+    case "RUNNING":
+      return (
+        <Spinner
+          aria-hidden="true"
+          className="mt-0.5 size-3 shrink-0 motion-reduce:animate-none"
+        />
+      );
+    case "SUCCEEDED":
+      return (
+        <CircleCheck aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+      );
+    case "FAILED":
+      return (
+        <CircleAlert
+          aria-hidden="true"
+          className="text-destructive mt-0.5 size-3 shrink-0"
+        />
+      );
+    case "INTERRUPTED":
+      return (
+        <CircleSlash aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+      );
+    case "AWAITING_CONFIRMATION":
+      return (
+        <CircleEllipsis aria-hidden="true" className="mt-0.5 size-3 shrink-0" />
+      );
+  }
+}
+
+function EntryIcon({
+  entry,
+  className,
+}: {
+  entry: ChatProcessEntry;
+  className?: string;
+}) {
+  const Icon =
+    entry.kind === "tool"
+      ? (TOOL_ICONS[entry.tool] ?? TOOL_ICON_FALLBACK)
+      : COMMENTARY_ICON;
+  return <Icon aria-hidden="true" className={className} />;
+}
+
+/**
+ * 单条过程：默认单行截断，点击整行原地换成换行全文——
+ * 同一句文案任何状态下只显示一份（行内不再嵌套可展开副本）。
+ */
+function ProcessEntryRow({
+  entry,
+  label,
+}: {
+  entry: ChatProcessEntry;
+  label: string;
+}) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const failed = entry.kind === "tool" && entry.status === "FAILED";
+  return (
+    <li className="flex min-w-0 items-start gap-2 py-1">
+      <EntryIcon
+        entry={entry}
+        className={cn("mt-0.5 size-3.5 shrink-0", failed && "text-destructive")}
+      />
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((value) => !value)}
+        title={
+          entry.kind === "tool"
+            ? t(`chat.process.toolStatus.${entry.status}`)
+            : undefined
+        }
+        className="hover:text-ink focus-visible:ring-ring flex min-w-0 flex-1 cursor-pointer items-start gap-1 rounded-sm text-left focus-visible:ring-2"
+      >
+        <span
+          className={cn(
+            "min-w-0 flex-1",
+            expanded ? "break-words whitespace-pre-wrap" : "truncate",
+            failed && "text-destructive",
+          )}
+        >
+          {label}
+        </span>
+        {entry.kind === "tool" ? statusIcon(entry.status) : null}
+        <ChevronDown
+          aria-hidden="true"
+          className={cn("mt-0.5 size-3 shrink-0", expanded && "rotate-180")}
+        />
+      </button>
+    </li>
+  );
+}
+
 export function ChatResponseProcess({ process }: { process: Process }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(Date.now);
   const running = process.status === "RUNNING";
-  const entries = process.entries ?? [];
-  const tools = entries.filter((entry) => entry.kind === "tool");
+  const entries = dedupeCommentary(process.entries ?? []);
+  const tools = entries.filter(isToolEntry);
   const latest = tools[tools.length - 1];
   const failures = tools.filter((entry) => entry.status === "FAILED").length;
 
@@ -131,8 +249,9 @@ export function ChatResponseProcess({ process }: { process: Process }) {
         />
       </CollapsibleTrigger>
       {running && latest && !open ? (
-        <p role="status" className="truncate px-2 py-1">
-          {entryLabel(latest)}
+        <p role="status" className="flex min-w-0 items-center gap-2 px-2 py-1">
+          <EntryIcon entry={latest} className="size-3.5 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">{entryLabel(latest)}</span>
         </p>
       ) : null}
       {process.history_saved === false ? (
@@ -151,49 +270,11 @@ export function ChatResponseProcess({ process }: { process: Process }) {
           )}
         >
           {entries.map((entry) => (
-            <li key={entry.id} className="flex min-w-0 items-start gap-2 py-1">
-              {entry.kind === "tool" ? (
-                entry.status === "RUNNING" ? (
-                  <Spinner
-                    aria-hidden="true"
-                    className="mt-0.5 size-3.5 shrink-0 motion-reduce:animate-none"
-                  />
-                ) : entry.status === "FAILED" ? (
-                  <CircleAlert
-                    aria-hidden="true"
-                    className="text-destructive mt-0.5 size-3.5 shrink-0"
-                  />
-                ) : entry.status === "SUCCEEDED" ? (
-                  <CircleCheck
-                    aria-hidden="true"
-                    className="mt-0.5 size-3.5 shrink-0"
-                  />
-                ) : (
-                  <Wrench
-                    aria-hidden="true"
-                    className="mt-0.5 size-3.5 shrink-0"
-                  />
-                )
-              ) : null}
-              <Collapsible className="min-w-0 flex-1">
-                <CollapsibleTrigger className="hover:text-ink focus-visible:ring-ring flex w-full min-w-0 cursor-pointer items-center gap-1 rounded-sm text-left focus-visible:ring-2">
-                  <span
-                    className={cn(
-                      "truncate",
-                      entry.kind === "tool" &&
-                        entry.status === "FAILED" &&
-                        "text-destructive",
-                    )}
-                  >
-                    {entryLabel(entry)}
-                  </span>
-                  <ChevronDown aria-hidden="true" className="size-3 shrink-0" />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-1 break-words whitespace-pre-wrap">
-                  {entryLabel(entry)}
-                </CollapsibleContent>
-              </Collapsible>
-            </li>
+            <ProcessEntryRow
+              key={entry.id}
+              entry={entry}
+              label={entryLabel(entry)}
+            />
           ))}
         </ol>
       </CollapsibleContent>

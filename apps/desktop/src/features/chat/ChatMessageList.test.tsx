@@ -295,3 +295,100 @@ describe("ChatMessageList 紧凑过程", () => {
     expect(screen.getByText("普通回答")).toBeVisible();
   });
 });
+
+describe("ChatMessageList 过程行展示（10-06 追加修复）", () => {
+  it("展开过程后每条文案只出现一次，点击行原地展开不再产生第二份", () => {
+    const entries: NonNullable<ChatResponseProcess["entries"]> = [
+      {
+        kind: "tool",
+        id: "call-1",
+        tool: "search_courses",
+        query: "Agent 论文精读",
+        status: "SUCCEEDED",
+        hits: 1,
+      },
+      {
+        kind: "tool",
+        id: "call-2",
+        tool: "list_course_records",
+        query: "",
+        status: "SUCCEEDED",
+        hits: null,
+      },
+    ];
+    const process = { ...responseProcess("COMPLETED"), entries };
+    renderWithQuery(
+      <ChatMessageList
+        {...BASE}
+        messages={[userWithProcess(process)]}
+        streamingText={null}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /已完成.*2 次工具调用/ }),
+    );
+    const list = screen.getByRole("list", { name: "回答过程详情" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getAllByText("「Agent 论文精读」找到 1 门课程")).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getAllByText("工具调用：list_course_records · 执行完成"),
+    ).toHaveLength(1);
+
+    const row = screen.getByRole("button", {
+      name: "「Agent 论文精读」找到 1 门课程",
+    });
+    expect(row).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(row);
+    expect(row).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByText("「Agent 论文精读」找到 1 门课程")).toHaveLength(
+      1,
+    );
+  });
+
+  it("完全相同的思考文本只保留一条；相同文案的工具行不去重", () => {
+    const entries: NonNullable<ChatResponseProcess["entries"]> = [
+      { kind: "commentary", id: "seg-1", text: "先核对课程资料。" },
+      { kind: "commentary", id: "seg-2", text: "先核对课程资料。" },
+      { kind: "commentary", id: "seg-3", text: "保存记录。" },
+      {
+        kind: "tool",
+        id: "call-1",
+        tool: "list_course_records",
+        query: "",
+        status: "SUCCEEDED",
+        hits: null,
+      },
+      {
+        kind: "tool",
+        id: "call-2",
+        tool: "list_course_records",
+        query: "",
+        status: "SUCCEEDED",
+        hits: null,
+      },
+    ];
+    const process = { ...responseProcess("COMPLETED"), entries };
+    renderWithQuery(
+      <ChatMessageList
+        {...BASE}
+        messages={[userWithProcess(process)]}
+        streamingText={null}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /已完成.*2 次工具调用/ }),
+    );
+    expect(screen.getAllByText("先核对课程资料。")).toHaveLength(1);
+    expect(screen.getByText("保存记录。")).toBeVisible();
+    expect(
+      screen.getAllByText("工具调用：list_course_records · 执行完成"),
+    ).toHaveLength(2);
+    expect(
+      within(screen.getByRole("list", { name: "回答过程详情" })).getAllByRole(
+        "listitem",
+      ),
+    ).toHaveLength(4);
+  });
+});
