@@ -50,7 +50,7 @@
 
 - [x] 整理数据模型升版提案：实际缺登范围为 **0027~0039 共 13 个迁移**（工单预估 0030~0039，执行核对 0027 研究会话/0028~0029 通用 Agent 一阶段同样晚于 v3.1 定稿日）；登记新表 7 张（agent_runs / agent_operations / agent_activity / learning_goals / learning_plans / learning_plan_items / course_shared_refs，已实施 31→38、设计 44→47）、存量表变更 8 项、learning_goals.course_id 对 P6 原设计的显式修正；learning_agent_actions / learning_agent_feedback / teach_back_attempts 维持 deferred 并登记启用条件。提案落盘 [data-model-upgrade-proposal.md](../data-model-upgrade-proposal.md)，**待用户批准**。
 - [x] 提案列明拟修改的权威文档（数据模型升 v3.2 重命名 + PRD/技术栈/扩展设计头部交叉引用 + PROJECT_PROGRESS 标记翻转）、升版与交叉引用范围；未批准前不动任何权威文档，本工单更新不视为批准。
-- [x] 权威文档零修改（核验结论）：恢复行为是 JobRunner 内部机制，对外 API/SSE/prompt 契约零变化（prompt 未 bump、OpenAPI 零 diff）；扩展文档 §44 对恢复仅有概括性表述（「JobRunner 自研队列带崩溃恢复」）与本票修复方向一致、无相悖旧口径；`recover_running_to_failed` 仍是 LLM 四域等 22 个 worker 的默认通道（未漂移）；CONTEXT 学习目标/计划/计划项/共享引用词条随 01/02/03/05 已落。PROJECT_PROGRESS 已更新（见下）。
+- [x] 权威文档零修改（核验结论）：恢复行为是 JobRunner 内部机制，对外 API/SSE/prompt 契约零变化（prompt 未 bump、OpenAPI 零 diff）；扩展文档 §44 对恢复仅有概括性表述（「JobRunner 自研队列带崩溃恢复」）与本票修复方向一致、无相悖旧口径；`recover_running_to_failed` 仍是 LLM 四域等 22 个 worker 的默认通道（未漂移）；GLOSSARY 学习目标/计划/计划项/共享引用词条随 01/02/03/05 已落。PROJECT_PROGRESS 已更新（见下）。
 - [x] PROJECT_PROGRESS 收口：删除重复的 2026-09-29 旧「最后更新」头；§3 表 06 行「修复中」改 done（审查修复 10-02 已落地）；补 07/08 两行；§5「第三阶段进行中」更新为八工单全部完结；§6 迁移清单 0038→0039；186 行保持 200 行内。
 - [x] 门禁：修复了产品代码 → 收口全量重跑。后端全量 pytest **1083 passed**（含 4 项新回归；独立 `.pytest-tmp` 测后已清理）+ ruff check/format（触及文件）+ pyright **0 errors** + OpenAPI `--check` 零 diff。前端零改动（恢复为后端内部机制，i18n/契约零变化）→ 引用 07 验收 commit 既有前端全量证据，不重复跑。
 - [x] 在本票追加执行记录（下节）。

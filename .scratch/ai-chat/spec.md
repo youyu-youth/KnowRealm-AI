@@ -2,7 +2,7 @@
 
 Status: ready-for-agent
 
-> 来源：plan 12（`.scratch/function-plans-introduction/12-ai-chat.md`，2026-08-28 grill 定案回写）；术语遵循 `CONTEXT.md`（聊天会话 / 自由聊天 / 挂载 / 知识点解释）。验收出口线以 plan 12 文件的 9 条为准，本 spec 是实现契约。
+> 来源：plan 12（`.scratch/function-plans-introduction/12-ai-chat.md`，2026-08-28 grill 定案回写）；术语遵循 `GLOSSARY.md`（聊天会话 / 自由聊天 / 挂载 / 知识点解释）。验收出口线以 plan 12 文件的 9 条为准，本 spec 是实现契约。
 
 ## Problem Statement
 

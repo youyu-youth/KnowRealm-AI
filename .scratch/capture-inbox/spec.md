@@ -247,7 +247,7 @@ Tauri 注册固定 `Ctrl+Alt+N` 全局快捷键，并提供最小系统托盘“
 
 ## Further Notes
 
-- 本规格综合了 11 功能计划的五轮 grilling 共识，并使用 CONTEXT 中的 Capture、Quick Note、Paste、Inbox、File、Upgrade、Record 与业务态语言。
+- 本规格综合了 11 功能计划的五轮 grilling 共识，并使用 GLOSSARY 中的 Capture、Quick Note、Paste、Inbox、File、Upgrade、Record 与业务态语言。
 - 当前生产桌面导入已经使用统一 Capture Batch；旧单文件文档接口仍同步课程可空，只为保持公开契约一致，不重新建设第二套 UI。
 - 本功能复用本地优先、封口 Capture Batch、Summary 绑定 Transcript Version、云 ASR/LLM 独立同意、Record File/Processing Cache 分离、Record SSE 仅失效通知和 sidecar 统一拥有录音 staging 等既有 ADR，不新增 ADR。
 - 计划中的最小实现顺序由后续 `to-tickets` 固化为三张纵向票：文本/可选课程导入到 Inbox；归类/升级到既有 Summary/HITL；全局快捷键/托盘/安全退出与 Wave A 总验收。

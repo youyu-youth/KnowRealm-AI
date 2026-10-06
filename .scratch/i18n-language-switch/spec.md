@@ -50,7 +50,7 @@ Status: ready-for-agent
 - **偏好模型**：偏好接口的读 / 写模型新增 `language`（枚举 `zh | en`），**缺省值 zh**——存量用户读取即中文，升级无感。设置页外观分组新增两选 RadioGroup，复用「改动即 PUT、成功回写缓存、失败回显服务端事实」的既有偏好控件模式。
 - **首帧语言策略**：应用启动时界面语言 = localStorage 缓存值 ?? 系统语言（navigator.language 以 zh 开头则 zh，否则 en）；偏好查询成功后校正实际值并写缓存，防止异步窗口闪变。已知边缘：系统英文的存量中文用户升级后首帧英文、校正后回中文，闪一次后永久消失（接受，不为此引入三态）。
 - **首启向导**：新增第一步「界面语言」（置于数据目录之前，原三步编号顺移）；该步界面语言用首帧语言渲染；完成向导（含全部跳过）时把当前选中项写入偏好。
-- **i18n 资源**：en 资源全量对齐 zh（约 1040 个叶子 key，AI 全量翻译 + 人工抽查），`fallbackLng` 保持 zh 兜底后续新增 key 的漏翻。领域术语英文对照定稿：Record / Knowledge Point / Quick Note / Review Material / Capture / Course / Inbox / Mock Test（已沉淀 CONTEXT.md「界面语言 / 内容语言」词条与四步向导描述）。
+- **i18n 资源**：en 资源全量对齐 zh（约 1040 个叶子 key，AI 全量翻译 + 人工抽查），`fallbackLng` 保持 zh 兜底后续新增 key 的漏翻。领域术语英文对照定稿：Record / Knowledge Point / Quick Note / Review Material / Capture / Course / Inbox / Mock Test（已沉淀 GLOSSARY.md「界面语言 / 内容语言」词条与四步向导描述）。
 - **错误响应契约（γ′ 附加字段）**：`detail` 中文原文保留不动，响应附加稳定错误码；带动态值的错误附参数对象，形如：
 
   ```json

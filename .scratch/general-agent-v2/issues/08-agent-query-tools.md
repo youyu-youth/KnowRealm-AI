@@ -14,7 +14,7 @@
 - [x] limit 统一形态：省略=全部（硬上限 100）、指定照传（同受硬上限）、超限 total+truncated+模型如实转述指引；calls_used 上限执法与 chars_fed 累计（search_courses 先例）；工具异常 ok=false 不炸整轮流
 - [x] 挂载：`_resolve_agent_config` 恒挂载段追加两新工具（全部会话类型）
 - [x] prompt bump：普通/研究会话各 +1（枚举工具使用指引：先列后改、按用户话术传 limit）
-- [x] CONTEXT.md「对象查询工具族」词条扩充（枚举语义与 limit 形态）
+- [x] GLOSSARY.md「对象查询工具族」词条扩充（枚举语义与 limit 形态）
 - [x] 测试：三工具行为用例（枚举/过滤/limit/硬上限/课程不存在/预算执法），并入既有 agent 工具测试族
 - [x] 门禁：后端 pytest / ruff / pyright、OpenAPI --check（无新端点应零 diff）；前端零改动无门禁要求
 

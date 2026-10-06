@@ -20,9 +20,9 @@
 
 **文档同步**
 
-- [x] 数据模型 v2.7→v2.8（git mv 重命名；§4.6 三表标已实施+重建不覆盖语义；「SQLite 无部分唯一索引」论断更正为部分唯一索引库级兜底；表口径=设计 42 张不变、已实施 26 张、2 张 FTS 衍生表不计——工单原记「45 张」系预判笔误，0023 无超出 v2.7 设计的新表）并全库交叉引用同步：扩展文档 5 处（头部一句话读法/D9/§7 回写/A3 回写/§40.3 A0）、PRD 头部、技术栈（42→设计 42/已实施 26）、CONTEXT.md、根 AGENTS.md 权威文档表（断链修复+口径精确）；PROJECT_PROGRESS 两处「现 v2.6」过时表述一并更正
+- [x] 数据模型 v2.7→v2.8（git mv 重命名；§4.6 三表标已实施+重建不覆盖语义；「SQLite 无部分唯一索引」论断更正为部分唯一索引库级兜底；表口径=设计 42 张不变、已实施 26 张、2 张 FTS 衍生表不计——工单原记「45 张」系预判笔误，0023 无超出 v2.7 设计的新表）并全库交叉引用同步：扩展文档 5 处（头部一句话读法/D9/§7 回写/A3 回写/§40.3 A0）、PRD 头部、技术栈（42→设计 42/已实施 26）、GLOSSARY.md、根 AGENTS.md 权威文档表（断链修复+口径精确）；PROJECT_PROGRESS 两处「现 v2.6」过时表述一并更正
 - [x] PRD v2.7 决策表/阶段表 F4 相关行更新（课程详情 Tab 行 :156 / 决策表 F4 行 :280 / Phase 3 行 :307 / 页面清单 :462）；扩展文档 §40.3 B 档新增 B7 行（F4 完结回写）+ B5 行补 CB-01 结论 + §40.4 序列图插入步与补记
-- [x] `docs/后端错误码清单.md` 新码入册核对：6 个 COURSE_BRAIN 码已在册（CB-05/06 交付时入册）；CONTEXT.md 词条已随 CB-00 落（Concept / Course Brain / Record Concept / Concept Relation 四条核对在位）
+- [x] `docs/后端错误码清单.md` 新码入册核对：6 个 COURSE_BRAIN 码已在册（CB-05/06 交付时入册）；GLOSSARY.md 词条已随 CB-00 落（Concept / Course Brain / Record Concept / Concept Relation 四条核对在位）
 - [x] PROJECT_PROGRESS.md 回写（158 行：头部/§2/§3 加 F4 行/§4 波次 15→16/§5 巨型 F4 进行时段落收敛为完结行，删除被 F4 取代的细节）
 - [x] OpenAPI 类型最终 regenerate + `--check` 零 diff（exit 0，CB-05~08 后契约已稳定）
 

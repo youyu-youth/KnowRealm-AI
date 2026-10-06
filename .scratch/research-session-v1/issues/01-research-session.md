@@ -38,5 +38,5 @@
 
 ## 实施备注（review 回写）
 
-- 双轴 code-review 补齐：`docs/后端错误码清单.md` 登记 `CHAT_RESEARCH_SCOPE_INVALID`；CONTEXT.md「会话范围」词条修订 + 新增「研究会话」词条；评测黄金集 `docs/evaluation/research-session-golden-set.md`（10 题 × 四类 + 四指标门禁 + 复跑流程，真机首跑待用户）。
+- 双轴 code-review 补齐：`docs/后端错误码清单.md` 登记 `CHAT_RESEARCH_SCOPE_INVALID`；GLOSSARY.md「会话范围」词条修订 + 新增「研究会话」词条；评测黄金集 `docs/evaluation/research-session-golden-set.md`（10 题 × 四类 + 四指标门禁 + 复跑流程，真机首跑待用户）。
 - 未采纳（judgement call，理由备案）：①确认卡/提案事件解析与 memory 先例成对重复——提取共享组件超出票面最小改动，两处并存留待第三次出现；②「研究问题=标题」经首条消息自动成题兑现（用户清空预填改发他句时标题随首条消息，与既有会话标题机制一致）；③FREE 会话用户显式关联网属意图外组合，prompt 已有诚实指引（无本地资料范围+无证据拒答），不在后端强拦。

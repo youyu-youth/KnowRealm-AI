@@ -618,7 +618,7 @@ FAILED      构建失败，可重试
 - 功能需求基线。
 - 数据模型。
 - 扩展设计。
-- `CONTEXT.md`。
+- `GLOSSARY.md`。
 - 必要时新增 ADR。
 - `PROJECT_PROGRESS.md`，保持 200 行以内。
 - OpenAPI 类型。

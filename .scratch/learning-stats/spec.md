@@ -119,7 +119,7 @@ KnowRealm 的学习闭环已经能捕获、转写、总结、练题、问答，�
 
 ## Further Notes
 
-- 决策源：2026-09-07 学习统计 grill 共识（三轮，含参考图定 UI 形态）；工单见 `.scratch/function-plans-introduction/17-learning-stats.md`；术语见 CONTEXT.md。
+- 决策源：2026-09-07 学习统计 grill 共识（三轮，含参考图定 UI 形态）；工单见 `.scratch/function-plans-introduction/17-learning-stats.md`；术语见 GLOSSARY.md。
 - **范围修订记录**：原工单与 PRD v2.4 均写「趋势图表 Wave B 出口线之外，后续可加」——本次 grill 裁决拉进本票，且用真数据（否决假数据先行：真数据源今天即存在，假数据上线即误导且需返工）。**PRD「学习统计」行需随本功能交付同步升版**（补趋势图与七口径），升版时按文档惯例改版本号并同步全部交叉引用。
 - 参考图：统计带内部结构（单行指标 + 格间细分隔线 + 图标/标签/大数值）严格照用户提供的参考图；外层容器按 DESIGN.md 无卡片化规范执行（grill Q9 裁决，参考图的白色圆角面板不采纳）。
 - 拆票建议（供 /to-tickets 起步）：①后端两端点 + 口径测试 → ②前端统计带（图表 + 六格）+ 测试；①为 ② 的 blocking edge。规模较 16 小，不建议拆更细。

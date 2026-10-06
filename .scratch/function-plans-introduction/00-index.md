@@ -2,7 +2,7 @@
 
 > 生成：2026-08-16（/grill-with-docs 拆分会话产物，两轮 grilling 共识）；2026-08-17 随本地优先范式转向（决策 #55 / ADR-0001）整体回写；同日澄清实施顺序：页面与真实功能优先，取消独立 S0 / 全量 Phase 0 前置；2026-08-20 定稿文档导入边界（决策 #57）；2026-08-22 定稿 Capture Batch、录音交接、随包 ffmpeg、本地 ASR 切片、隐私同意、SSE 失效通知与 Transcript 版本合同（决策 #58 / ADR-0002~0006）
 > 消费方式：每份 plan 依次走 grill 流程 `to-spec → to-tickets → implement`，结合当时代码库真实状态
-> 术语：遵循 `CONTEXT.md`（学习记录=Record、知识空间=课程统称、归类/升级/捕获）
+> 术语：遵循 `GLOSSARY.md`（学习记录=Record、知识空间=课程统称、归类/升级/捕获）
 
 ## 拆分约定
 

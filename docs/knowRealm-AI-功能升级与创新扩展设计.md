@@ -3864,7 +3864,7 @@ V1 实际 Adapter：
 
 ## 42.13 文档与决策门禁
 
-本轮已同步 PRD v2.8、数据模型 v3.1、技术栈 v4.6、`CONTEXT.md`、ADR-0024/0025 与 `PROJECT_PROGRESS.md`。工单 01 不再重新讨论已定产品边界，只冻结迁移编号、OpenAPI Schema、黄金集与可执行验收阈值。若实现发现事实与文档冲突，必须先回到 ADR 评审，不得默默偏离。
+本轮已同步 PRD v2.8、数据模型 v3.1、技术栈 v4.6、`GLOSSARY.md`、ADR-0024/0025 与 `PROJECT_PROGRESS.md`。工单 01 不再重新讨论已定产品边界，只冻结迁移编号、OpenAPI Schema、黄金集与可执行验收阈值。若实现发现事实与文档冲突，必须先回到 ADR 评审，不得默默偏离。
 
 历史版本变更记录中的 `course_materials`、四档 Chat Scope、Qdrant / 默认 sqlite-vec 等文字属于当时史实，不追改；当前正文不得继续把它们当现行方案。
 

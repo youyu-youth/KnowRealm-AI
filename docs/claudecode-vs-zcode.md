@@ -40,9 +40,9 @@
 
 ➡️ 建议必须先提交非空作答才能看参考答案——保住练习价值，也让 QUIZ_ANSWERED 事件里简答题有真实答案载荷。
 
-术语冲突（CONTEXT.md 挑战）→ Q2 修订
+术语冲突（GLOSSARY.md 挑战）→ Q2 修订
 
-CONTEXT.md「候选批次」定义：一次 AI 生成产出的候选集合（知识点/习题共用），经用户确认整体生效；新批次确认后旧 AI 批次才置过时。这与我原先「首次生成免确认」的推荐冲突——术语表明每一批（含首批）都经确认生效，且与 07 已落地的 KP 确认闭环同构（generation_status：DRAFT=候选 → ACTIVE → SUPERSEDED 单列承载）。
+GLOSSARY.md「候选批次」定义：一次 AI 生成产出的候选集合（知识点/习题共用），经用户确认整体生效；新批次确认后旧 AI 批次才置过时。这与我原先「首次生成免确认」的推荐冲突——术语表明每一批（含首批）都经确认生效，且与 07 已落地的 KP 确认闭环同构（generation_status：DRAFT=候选 → ACTIVE → SUPERSEDED 单列承载）。
 
 ❓ Q2（修订） - 首批也走「采用确认」？
 ➡️ 改推荐：是——生成 → DRAFT 候选（预览）→ 点「采用」→ ACTIVE 可作答；重新生成同样产出 DRAFT 候选、旧 ACTIVE 并行可用，采用候选后旧批 SUPERSEDED。与术语表及 KP 模式一致，两个 tab 可复用同一套组件语义。
@@ -118,7 +118,7 @@ B. 仿 07:批内删题、行内编辑题干/选项/答案，确认后 ACTIVE 仍
 
 ❓ Q6 - 作答前提与「确认」术语：(a) 只有 ACTIVE(已确认)批次的题可作答，DRAFT 只读审阅——对吗？(b) 习题的「确认批次」不落任何 learning_event(四事件无 QUIZ_CONFIRMED),只是批次状态迁移——确认吗？
 
-➡️ 推荐 (a)(b) 均是。(a) 是术语表「候选批次经用户确认整体生效」的直接推论，也保证作答事件永远指向稳定题目;(b) 与 07 不同但正确——KP 确认是学习行为(我学会了这些点)，题目批次采纳不是。我会在定稿后把「作答」与「批次采纳」的术语区分写进 CONTEXT.md。
+➡️ 推荐 (a)(b) 均是。(a) 是术语表「候选批次经用户确认整体生效」的直接推论，也保证作答事件永远指向稳定题目;(b) 与 07 不同但正确——KP 确认是学习行为(我学会了这些点)，题目批次采纳不是。我会在定稿后把「作答」与「批次采纳」的术语区分写进 GLOSSARY.md。
 
 ❓ Q7 - quizzes 建表与 07 的对齐：数据模型 v2.2 给 quizzes 定义了 model / prompt_version / quality_score / cognitive_level / concept_id / source_anchor_id 列，但 07 定稿时 KP 实际建表砍掉了溯源列(记 processing_jobs.result_json,0009 无 model/prompt_version 列)。quizzes 照哪个来？
 

@@ -75,7 +75,7 @@ Status: ready-for-agent
 - 腾讯客户端接住 ResultDetail 中每句的起止时间戳（现状在客户端边界即丢弃）；ASR 任务结构增加结构化句子列表。
 - chunk 文本缓存从纯 txt 改为 JSONL（每句 text + 起止时间）；ASR checkpoint 结构相应扩展，旧 checkpoint（无句子信息）兼容读取。
 - **in-flight 降级合并**：版本升级瞬间的旧 checkpoint / 纯 txt 缓存按纯文本合并为无时间戳分片，不重跑、不报错、不重复计费。
-- 转写定稿（finalizer）合并各文件句子流写入 transcript_segments；多文件 record 时间轴 = 按 sequence_no 顺序、前序文件 duration_ms 累加（"课堂拼接时间轴"语义，非真实墙钟，已写入 CONTEXT.md「来源时间轴」词条）。
+- 转写定稿（finalizer）合并各文件句子流写入 transcript_segments；多文件 record 时间轴 = 按 sequence_no 顺序、前序文件 duration_ms 累加（"课堂拼接时间轴"语义，非真实墙钟，已写入 GLOSSARY.md「来源时间轴」词条）。
 
 **文档分片（票 3）**
 
@@ -131,4 +131,4 @@ Status: ready-for-agent
   依赖：1 → 2/3/4（可并行）→ 5；6 收尾。票 2/3/4 交付时即有 API 可查分片，验收不阻塞票 5。
 - **路线衔接**（§40.4）：本 spec = P2 统一序列第 1 步（A0）；下一步 A3 Evidence Builder（依赖锚点结构）；A1+A2（chat 检索工具 + 工具调用前端呈现）为并行槽，F1 落地后其检索粒度可升级为段落级。
 - **Agent 能力融入定位**：本期零新 graph、零框架引入——分片是 A1 检索工具（命中粒度段落级）、A3 学习证据（source_anchor_id 挂靠）、未来 AI 产物引用（锚点链接契约）的供料层。
-- **术语**：UI 与文档统一用「来源时间轴」（Source Timeline），"Evidence Timeline" 废弃；Evidence 一词专属「学习证据」（Learning Evidence）。CONTEXT.md「转写与溯源」分节已更新（片段时间范围可空语义 + 新增来源时间轴词条）。
+- **术语**：UI 与文档统一用「来源时间轴」（Source Timeline），"Evidence Timeline" 废弃；Evidence 一词专属「学习证据」（Learning Evidence）。GLOSSARY.md「转写与溯源」分节已更新（片段时间范围可空语义 + 新增来源时间轴词条）。

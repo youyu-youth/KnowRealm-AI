@@ -83,6 +83,6 @@ Status: ready-for-agent
 ## Further Notes
 
 - 决策链：三轮选型咨询（维持 LIKE 稿）→ ChatGPT 交叉方案 grill → 用户终裁 FTS5 day-one；与上午稿的全部差异点及理由已固化于 ADR-0016 与 PRD v2.6 变更记录。
-- 「资产库」「命令面板」词条已入 CONTEXT.md（工作台与偏好节）。
+- 「资产库」「命令面板」词条已入 GLOSSARY.md（工作台与偏好节）。
 - jieba 为后端新依赖：纯 Python、零传递依赖、词典随包分发，通过本地优先两问。
 - 前置 02（跳转宿主）与 07（知识点作为搜索对象）均已交付；record-detail-panels/01 为纯重构不构成本功能阻塞。

@@ -116,7 +116,7 @@ LLM 埋点：graph_name="course-brain"、prompt_version="course_brain_v1"，走 
 - 后端：`uv run pytest --basetemp=.pytest-tmp` + ruff check + ruff format --check + pyright + openapi --check（契约变更后 regenerate）。
 - 前端：`pnpm test -- --maxWorkers=4` + lint + build。
 - Agent 边界：Agent 只读 CONFIRMED；无写工具；不写 learning_events/Evidence；knowrealm.db 与 langgraph.db 职责不混。
-- 文档同步：数据模型 v2.8（§4.6 标已实施+部分唯一索引更正）、PRD/扩展文档 §40.4 序列更新、CONTEXT.md 词条、ADR-0022、PROJECT_PROGRESS（≤200 行）、OpenAPI 类型。
+- 文档同步：数据模型 v2.8（§4.6 标已实施+部分唯一索引更正）、PRD/扩展文档 §40.4 序列更新、GLOSSARY.md 词条、ADR-0022、PROJECT_PROGRESS（≤200 行）、OpenAPI 类型。
 - 真机验收（用户执行，单列不代勾）：多来源首次构建、审核闭环、来源跳转定位、"讲过几次"真实回答、无 Key 降级、窄窗/暗色。
 
 ## Out of Scope（V1.1+）

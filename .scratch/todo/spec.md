@@ -115,5 +115,5 @@ Todo 是四个后续 AI 资产里最轻的一个（PRD §4.4.2），定位为独
 
 - 六项裁决（HITL=KP 式修剪 / 门控解耦 / 接管语义 / 零参数 / 不拖拽 / 划线弱化）系 2026-08-25 grill 定稿；接管机制见 ADR 0011；票面已同步修订（`.scratch/function-plans-introduction/09-todo-list.md`）。
 - 数据模型 v2.2 的 todo_items 注释「手工/用户修改项不自动换代」在本 spec 精确化为「勾 DONE 也算接管」；数据模型文档未改动，如需同步措辞再议。
-- 术语见 CONTEXT.md：「候选批次」（已扩至 Todo）、「批次采纳」（已泛化）、「接管」（新增）。
+- 术语见 GLOSSARY.md：「候选批次」（已扩至 Todo）、「批次采纳」（已泛化）、「接管」（新增）。
 - 实现注意：仓库内另有会话在改 records 前端文件（QuizPanel / RecordDetail.test），动工前先确认其变更已提交或错峰。

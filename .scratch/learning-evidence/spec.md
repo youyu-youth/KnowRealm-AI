@@ -62,7 +62,7 @@ Status: ready-for-agent
 | 测验逐题评分完成（评分 job 写回尾部，同事务） | QUIZ_ANSWERED | `quiz-answered:test:{item_id}` | score 取逐题评分、occurred_at 取该题作答时刻（answered_at） |
 | 交卷完成（评分落定处，同事务） | QUIZ_TEST_COMPLETED | `quiz-test-completed:{test_id}` | score 取卷面总分、occurred_at=完成时刻 |
 
-- 批次采纳（习题/Todo）不发事件——既定语义（CONTEXT.md「批次采纳」词条）；chat 行为不属学习事件（四事件 MVP 既定）。
+- 批次采纳（习题/Todo）不发事件——既定语义（GLOSSARY.md「批次采纳」词条）；chat 行为不属学习事件（四事件 MVP 既定）。
 - schema_version 起始 1；metadata_json 按事件类型记决策性上下文（题型、模式、课程等），不塞冗余快照。
 - 幂等冲突（键已存在）= 静默跳过，不报错（同事务重试场景）。
 
@@ -111,7 +111,7 @@ Status: ready-for-agent
 ## Further Notes
 
 - 架构决策：ADR-0021（独立水位消费循环、与 ADR-0012 的边界、失败语义、禁 NOT EXISTS）；红线 #2（确定性 Service 与 Graph 分离）禁止 Evidence Builder 引入 LLM。
-- 文档收尾：落地票内数据模型升 v2.6 重命名（event_id 唯一收紧，F1 CHECK 收紧先例）并同步全部交叉引用（PRD / 技术栈 / CONTEXT.md / 扩展文档头部）。
+- 文档收尾：落地票内数据模型升 v2.6 重命名（event_id 唯一收紧，F1 CHECK 收紧先例）并同步全部交叉引用（PRD / 技术栈 / GLOSSARY.md / 扩展文档头部）。
 - 事件写入函数的会话复用：挂点事务与事件写入必须同一事务会话，禁止独立连接写事件（崩溃窗口会造成动作成功而事件丢失）。
 - 形态参考：docs/research/ 下 EvoScientist 架构分析（事件 → 后台确定性转换 → 可重放；其 LLM 蒸馏部分明确不搬）。
 - QUIZ_TEST_COMPLETED 不产证据的双计规避为既定决策；未来若 Mastery 需要卷面级信号，从事件流直接取，不经 evidence。

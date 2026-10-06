@@ -51,7 +51,7 @@ Record 级三段式复习资料的生成与定版：考前速记 + Top 重点清
 - **超长按模型窗口自适应**：生成前估 token——装得下全文单次调用；装不下按语义段落分块 map-reduce 分级（照总结 #36 模式）；任何情况禁止静默截断/丢段。总结域 3 万字硬阈值不动，本策略仅复习资料域
 - prompt 留痕：PROMPT_VERSION 常量（review-v1 / review-adjust-v1 风格）随行 + `llm_call_logs`；token_usage / latency 照 ai_summaries 行上留痕；**输出全文不进日志**
 - `transcript_source_version` 过期锚点：submit 时校验，转写已改 → 拒绝并提示先看新总结（照 KP 的 PREREQUISITE_CHANGED 闸门风格）；`generated_from_summary_id` 仅溯源，总结换代不阻塞
-- UI 文案一律"考前速记"全称，与捕获入口"速记（Quick Note）"区分（CONTEXT.md 已增术语）
+- UI 文案一律"考前速记"全称，与捕获入口"速记（Quick Note）"区分（GLOSSARY.md 已增术语）
 
 ## 数据与迁移
 

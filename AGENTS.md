@@ -36,10 +36,10 @@ KnowRealm 是一个面向个人学习与工作的 **通用 Agent 工作台**。
 | `docs/KnowRealm-AI-数据模型-v3.1.md`          | 数据模型（设计 44 张表，已实施 31 张）                       |
 | `PROJECT_PROGRESS.md`                         | 项目进度总览文档/交接文档                                    |
 | `docs/技术栈设计与审查-v4.6.md`               | 技术选型与项目结构（§7.1 桌面端 / §7.2 后端）                |
-| `CONTEXT.md （GLOSSARY.md）`                                  | 领域术语表（角色≠学习场景、KP≠Concept 等）                   |
+| `GLOSSARY.md`                                  | 领域术语表（角色≠学习场景、KP≠Concept 等）                   |
 | `docs/adr/`                                   | 架构决策记录（数据目录 / 登录 / 模块化 / 搜索选型 / 错误码等定稿决策） |
 
-> 文档惯例：评审定稿即升版并**重命名文件**；改版本号须同步全部交叉引用（PRD / 技术栈 / CONTEXT.md / 扩展设计文档头部），历史"变更记录"行是史实、不改动。重大技术决策落 ADR（编号递增）；与既有 ADR 冲突须显式提出，不得默默覆盖。
+> 文档惯例：评审定稿即升版并**重命名文件**；改版本号须同步全部交叉引用（PRD / 技术栈 / GLOSSARY.md / 扩展设计文档头部），历史"变更记录"行是史实、不改动。重大技术决策落 ADR（编号递增）；与既有 ADR 冲突须显式提出，不得默默覆盖。
 
 <!-- CODEGRAPH_START -->
 ## CodeGraph
@@ -165,7 +165,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 使用五个默认规范角色标签：`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`。见 `docs/agents/triage-labels.md`。
 
 ### Domain docs
-单上下文布局：根目录 `CONTEXT.md` + `docs/adr/`。skill 指令中的 `GLOSSARY.md` 即指本仓 `CONTEXT.md`，读写一律落此、禁止新建平行术语表。见 `docs/agents/domain.md`。
+单上下文布局：根目录 `GLOSSARY.md` + `docs/adr/`。见 `docs/agents/domain.md`。
 
 
 ## 参考

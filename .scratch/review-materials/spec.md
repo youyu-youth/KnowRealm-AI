@@ -91,7 +91,7 @@ KnowRealm 的学习闭环到「练完」为止：转写 → 总结确认 → 知
 - 页签阅读态纵向三卡：考前速记 → 重点清单 → 大纲树；进行中态复用 active_job_id 条件轮询（不加新通道）。
 - **Markdown 渲染统一组件**（放共享组件层供复用）：react-markdown + shiki 转正（两者已在依赖清单声明，零新增）；shiki 用 css-variables 主题，经 `.dark` 语义变量实现亮暗双主题。
 - **大纲树自建**：解析 mind_map_markdown 标题层级递归渲染折叠节点（chevron 图标），默认全部展开；不引树组件库。
-- UI 文案一律「考前速记」全称，与捕获入口「速记」（Quick Note）区分（CONTEXT.md 术语已定）。
+- UI 文案一律「考前速记」全称，与捕获入口「速记」（Quick Note）区分（GLOSSARY.md 术语已定）。
 - 文案全走 i18n；交互组件 shadcn/ui + Base UI 原语；纯图标按钮带 aria-label。
 
 ### 导出接入（10 通道）
@@ -124,7 +124,7 @@ KnowRealm 的学习闭环到「练完」为止：转写 → 总结确认 → 知
 
 ## Further Notes
 
-- 决策源：2026-09-06 plan grill 定稿（16 项裁决），全文见 `.scratch/function-plans-introduction/16-review-materials.md`；表结构见数据模型 v2.3 §4.3 与其变更记录；术语见 CONTEXT.md「复习资料」「考前速记」。
+- 决策源：2026-09-06 plan grill 定稿（16 项裁决），全文见 `.scratch/function-plans-introduction/16-review-materials.md`；表结构见数据模型 v2.3 §4.3 与其变更记录；术语见 GLOSSARY.md「复习资料」「考前速记」。
 - 前置依赖：06（总结——解锁闸门与辅助上下文）、10（导出通道）；07 不再是上下文依赖。
 - 拆票建议（供 /to-tickets 起步）：①后端域（迁移 + graph + 六端点 + 测试）→ ②前端页签与弹窗 HITL + 渲染组件 + 版本列表 → ③导出接入；①为 ②③ 的 blocking edge。
 - 遗留：docs/rules 两处「数据模型 v2.2」引用漂移（rules 文件禁改，章节号仍有效，待用户处置）。

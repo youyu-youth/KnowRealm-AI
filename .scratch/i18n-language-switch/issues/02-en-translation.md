@@ -7,7 +7,7 @@
 **Status:** done
 
 - [x] en.json 全量真实英文翻译（替换 01 落位的 zh 结构占位副本），AI 翻译产出 + 人工抽查术语与高频界面
-- [x] 术语对照遵守 CONTEXT.md 词条与 Avoid 撞词的英文处理（如「学习会话/学习记录」统一 Record，不得出现 Session 撞词）
+- [x] 术语对照遵守 GLOSSARY.md 词条与 Avoid 撞词的英文处理（如「学习会话/学习记录」统一 Record，不得出现 Session 撞词）
 - [x] 计数类 key 按英文复数规则提供后缀形式（如 `_other`），不破坏 i18next 解析
 - [x] 新增资源一致性测试：zh / en 递归 key 集合 diff 为空（容忍英文复数后缀）
 - [x] fallbackLng=zh 保持不变：en 缺 key 时回显中文，兜底语义不回退

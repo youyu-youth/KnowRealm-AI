@@ -20,7 +20,7 @@
 
 - **ADR-0023**（`docs/adr/0023-concept-mastery-verifiable-evidence-derived-snapshot.md`）：四条裁决——验证性 Evidence 唯一改变 Mastery（AI 自述/确认动作/未校准难度标签均不算）、确定性派生快照可全量重建（版本化、零 LLM、唯一写入口）、Mastery 与 Forgetting 语义分离（不随墙钟衰减，`next_review_at` 留给 Forgetting）、拒绝 Record 广播/LLM 回填/多概念扇出（宁可覆盖率低不错误归因）。附 Considered Options 五方案对比与 Consequences。
 - **数据模型 v2.9**（git mv 重命名）：新增头部变更记录（0024 quizzes.concept_id + 0025 user_concept_mastery 实际结构，含「草案五列未建」声明）；quizzes 表补 concept_id 行并作废 2026-08-25「不建 concept_id」草案口径（正文行更正，**变更记录行系史实不改写**）；§4.5 更正 learning_events/evidence 的 concept_id「本期恒 NULL」为「由 Quiz 事件固化写入」；§4.7 user_concept_mastery 标注 P4 提前已实施；表总览 Learner Brain 行标注；已实施 26→27 张（42 张设计口径不变）。
-- **交叉引用同步**：技术栈 v4.5（27 表 + v2.9）、CONTEXT.md :3、PRD 头部 + :156 课程详情行 + F5/F7 行「已提前实施（V1）」标注 + Phase 3/4 行、扩展设计 6 处 v2.8→v2.9 + §40.4 序列「Concept Mastery 收尾」勾销。ADR-0021/0022 内的历史版本引用系定稿时史实，未回改。
+- **交叉引用同步**：技术栈 v4.5（27 表 + v2.9）、GLOSSARY.md :3、PRD 头部 + :156 课程详情行 + F5/F7 行「已提前实施（V1）」标注 + Phase 3/4 行、扩展设计 6 处 v2.8→v2.9 + §40.4 序列「Concept Mastery 收尾」勾销。ADR-0021/0022 内的历史版本引用系定稿时史实，未回改。
 - **PROJECT_PROGRESS**：头部收口为六票完结、§3 表行补 06、§5 待开发勾销该链（资料库 V1 波次解锁）、§7 全量抖动口径更新（426→476，失败文件轮换名单）、§6 模块清单修正 19→20 补 learning、Desktop 行「掌握度示意」过期描述移除。162 行（<200）。
 - **示意数据检索结论**：章级/课程级模拟掌握度的**独立展示入口为零**（ChapterMasteryList 已随票 02 删除、masteryState.ts 已删）。`courseDetailInsights.ts` 中 `mockChapterMastery → mockCurrentProgress → mockInsightSuggestions` 链仍被概览「洞察建议」示意卡间接消费——该卡是无关示意功能，按票面「不借机删除」保留；其内容数值与真实 Mastery 无关且带「示意」标注，不构成过期口径。
 - **顺带修复**：`backend/tests/test_course_brain.py` 的 ruff format 漂移（CB-13 收口时明确「留给 06」，4 行缩进修正，非扩大范围）。

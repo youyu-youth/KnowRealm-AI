@@ -15,7 +15,7 @@
 - 关窗行为 TRAY（默认）/ EXIT——前端 `onCloseRequested` 分流，EXIT 复用 11 安全退出确认流，与托盘退出收敛同一 safeExit
 - 开机自启（默认关）——官方 autostart 插件（lib.rs 注册 + capabilities 权限）
 - 速记快捷键自定义（默认 Ctrl+Alt+N，供 11 消费）——官方 global-shortcut JS API 前端动态注册/注销；react-hotkeys-hook（useRecordHotkeys）录制控件，防中文输入法 `isComposing` 误录
-- 上次界面恢复（`last_route`）：记忆除设置页外的最后路由，启动恢复，恢复失败兜底首页（术语见 CONTEXT.md「上次界面恢复」）
+- 上次界面恢复（`last_route`）：记忆除设置页外的最后路由，启动恢复，恢复失败兜底首页（术语见 GLOSSARY.md「上次界面恢复」）
 - 默认习题数量（`quiz_last_count` 迁入偏好分区，与习题生成对话框双入口同键同缓存）
 - 窗口记忆（尺寸/位置/最大化）——官方 window-state 插件，**唯一豁免 settings.json**
 

@@ -105,7 +105,7 @@ KnowRealm 的设置页目前只有「个人档案」一个分区。关窗驻留�
 
 ## Further Notes
 
-- 共识回写已完成（2026-08-29）：`CONTEXT.md` 新术语「上次界面恢复（Last Route）」；`docs/rules/desktop-ui.md` 偏好规则修订（窗口几何豁免 + Tauri 官方件消费）；技术栈文档升 v4.4；13 号功能计划重写定稿。
+- 共识回写已完成（2026-08-29）：`GLOSSARY.md` 新术语「上次界面恢复（Last Route）」；`docs/rules/desktop-ui.md` 偏好规则修订（窗口几何豁免 + Tauri 官方件消费）；技术栈文档升 v4.4；13 号功能计划重写定稿。
 - 先例：Clash Verge Rev（Tauri 2，关窗驻留/自启偏好存自家 verge.yaml，与本项目 settings.json 同构）。
 - 实现时 11 的相关测试（`AppShell.lifecycle.test.tsx`、lifecycle.rs 单测）随注册点迁移改写；速记框打开路径从「Rust emit 事件」改为「JS 注册回调直调」。
 - 唯一新前端依赖 react-hotkeys-hook；唯一新 Tauri 插件 window-state（autostart 依赖已装未接线）。

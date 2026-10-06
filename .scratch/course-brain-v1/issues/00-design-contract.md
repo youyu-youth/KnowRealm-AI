@@ -8,6 +8,6 @@
 
 - [x] grill 九问裁决（2026-09-15，用户全部按推荐）：job 预留值 / 锚点桥双轨 / 部分唯一索引 / 查询时 STALE / 朴素检索 / map Tab 主页面 / 跳转含定位 / 合成评测 / 存量薄假设
 - [x] `spec.md`：数据合同（三表 DDL 口径）、API 清单、构建 Pipeline、B2 增强合同、前端结构、验收门禁、Out of Scope
-- [x] `CONTEXT.md` +3 词条：课程大脑（Course Brain）/ 记录概念（Record Concept）/ 概念关系（Concept Relation）
+- [x] `GLOSSARY.md` +3 词条：课程大脑（Course Brain）/ 记录概念（Record Concept）/ 概念关系（Concept Relation）
 - [x] ADR-0022：Course Brain 数据底座与 Agent 只读边界（五个否决选项留档）
 - [x] issues/ 拆票 CB-01…CB-12（本目录）

@@ -37,7 +37,7 @@
 
 - [x] 后端测试全过（streaming seam 装配矩阵与清单注入、citations 纯函数跨记录矩阵、SegmentSearchService 跨记录查询、会话端点校验矩阵与 course_deleted 只读）；pytest（--basetemp=.pytest-tmp）/ ruff / pyright 全绿；openapi 重新 generate 并随票提交
 - [x] 前端门禁：`pnpm test -- --maxWorkers=4` / `pnpm lint` / 触及文件 Prettier / `pnpm build` 全绿（jsdom：胶囊交互建会话、工具卡文案、引用标题与降级、webSearch 默认值按 scope、zh/en key 一致）
-- [x] 文档收尾：数据模型文档升 v2.7 重命名 + `chat_sessions` scope 列说明 + 全库交叉引用同步；扩展文档 §40.3 B2 行回写「已实施」+ §40.4 第 4 步标记完成；CONTEXT.md 补「会话范围」「跨记录引用」词条；PROJECT_PROGRESS 同步
+- [x] 文档收尾：数据模型文档升 v2.7 重命名 + `chat_sessions` scope 列说明 + 全库交叉引用同步；扩展文档 §40.3 B2 行回写「已实施」+ §40.4 第 4 步标记完成；GLOSSARY.md 补「会话范围」「跨记录引用」词条；PROJECT_PROGRESS 同步
 - [x] 提交按域分次（type(scope) 规范不变），如 `feat(backend): 实现跨记录问答范围与检索工具（B2）` + `feat(desktop): 接线课程与全部资料问答范围（B2）` + `docs: 回写 B2 交付结论`
 
 **用户真机验收（不代勾）：** 真实课程（多条含转写记录）建课程会话问跨记录对比题，命中检索卡、回答带多记录引用且逐条可跳转；空课程 / 空库如实告知；胶囊点「课程」选课后问答正常且侧栏出现该会话；课程详情对话 Tab 发问即进课程会话；全部资料会话引用点击逐条跳转对应记录；亮 / 暗两态与 zh/en 切换正常。

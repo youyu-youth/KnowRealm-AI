@@ -445,7 +445,7 @@ AI 是工作台的处理引擎，不是角色。AI 产物必须状态清楚、�
 
 ### 术语与 i18n
 
-- 界面术语与 CONTEXT.md 词条一致，不自造同义词；新词条先进 CONTEXT.md 再进界面。
+- 界面术语与 GLOSSARY.md 词条一致，不自造同义词；新词条先进 GLOSSARY.md 再进界面。
 - zh 与 en key 一一对应，整句进资源文件，禁止运行时拼接；单位与复数在 i18n 层处理。
 
 ## 11. Interaction & Motion

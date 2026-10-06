@@ -13,7 +13,7 @@
 - [x] 设置页「服务与用量」新增搜索供应商卡：key 输入/掩码显示/保存/清除 + 手动测试按钮（文案注明真实消耗 1 credit 与「搜索词将发送至 Tavily」知情说明）
 - [x] 其余三工具开关（knowledgeBase/codeRun/documentParse）维持示意态不动
 - [x] zh.json / en.json 同步新增全部新文案（key 两侧一致）
-- [x] 文档回写：扩展文档 §40.3 B1 行标记已实施 + §40.4 第 3 步完成标记；数据模型文档就地补 `citations_json` web 条目结构说明（零表变更不升版，变更记录加行）；CONTEXT.md 视需要补「网络引用」词条；PROJECT_PROGRESS.md 同步
+- [x] 文档回写：扩展文档 §40.3 B1 行标记已实施 + §40.4 第 3 步完成标记；数据模型文档就地补 `citations_json` web 条目结构说明（零表变更不升版，变更记录加行）；GLOSSARY.md 视需要补「网络引用」词条；PROJECT_PROGRESS.md 同步
 - [x] 测试全过（开关状态→请求参数、无 key 置灰、web 引用外链渲染分流、工具卡文案、zh/en key 一致——jsdom 现有 chat 测试模式扩展）
 - [x] 门禁：pnpm test（--maxWorkers=4）/ lint / 触及文件 Prettier / build 全绿
 - [x] 提交 `feat(desktop): 接线联网搜索开关与网络引用外链（B1 票 02）` 与 `docs: 回写票 02 完结与 B1 交付结论`

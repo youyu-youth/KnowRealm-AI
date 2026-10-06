@@ -56,7 +56,7 @@ helper，listing.py 先例）；时间行到秒（HH:mm:ss）；锚点连带修�
       偏好时区解析；DST 固定样例=美东 2026-03-08 gap 与 2026-11-01 切换边界）
 - [x] 既有测试同步：test_chat_streaming 版本断言+字节一致测试剥离时间行+
       7 处工具可见性矩阵；test_research_session 版本断言
-- [x] CONTEXT.md 词条「时间提示（Time Hint）」；PROJECT_PROGRESS 更新
+- [x] GLOSSARY.md 词条「时间提示（Time Hint）」；PROJECT_PROGRESS 更新
 - [x] 门禁：pytest 全量 / ruff / pyright / openapi --check
 
 ## 用户真机验收（单列，不代勾）

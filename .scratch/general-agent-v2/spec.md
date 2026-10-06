@@ -154,5 +154,5 @@ Status: ready-for-agent
 - 实施约束沿用第一阶段：不造轮子，优先复用 deepagents / langgraph / langchain 现成能力与仓库已验证模式（`@tool`、AgentConfig 声明式装配、ProposalService、WorkerSpec、create_core）；拿不准的框架用法先查 langchain-docs / langchain-reference / context7。
 - 既有提案框架加固随 01 票落地：reject 与失败回写改条件 UPDATE 抢占（终态守卫＋rowcount 判定，confirm 先例），消除与确认 / 自动执行并发的先读后写覆盖竞态；应用器非编码异常同样落 FAILED＋INTERNAL 稳定错误码（原子回滚＝未发生、FAILED 可重试，诊断不断链）。
 - 迁移 0030 落地时同步全库 user_version 硬编码断言（先 grep 后改）；后端契约变化后 regenerate api-types 并核对。
-- 权威文档同步随收口票完成：设计-4 §7（V1 最小形态→Run/Operation 已启用）、开发计划第二 / 三阶段（「编排型 Job＋batch_id」表述改为 Run 推进）、扩展文档 §44.3；CONTEXT.md 补词条（Run / 计划卡 / 执行前快照 / 操作历史 / 跨课迁移）。
+- 权威文档同步随收口票完成：设计-4 §7（V1 最小形态→Run/Operation 已启用）、开发计划第二 / 三阶段（「编排型 Job＋batch_id」表述改为 Run 推进）、扩展文档 §44.3；GLOSSARY.md 补词条（Run / 计划卡 / 执行前快照 / 操作历史 / 跨课迁移）。
 - 真机验收项在各工单单列，不代勾；阶段收口安排真实 Tauri / WebView2、真实模型与重启验收。

@@ -81,7 +81,7 @@ Transcript 编辑或 Summary 调优换代后：已采纳批次照常可作答（
 - 客观题提交即判分（下标精确匹配）；简答题必须先提交非空作答，端点才返回参考答案，自评二态 CORRECT / WRONG 写回行上。
 - 作答与 QUIZ_ANSWERED 事件**同事务**：source_type=QUIZ_QUESTION、source_id=quiz_id、幂等键 `quiz-answered:{quiz_id}`、metadata={batch_id, question_type, generated_from_summary_id}、result 二态、difficulty 从题目行带出、score / duration_ms / concept_id 恒空；**用户所选答案不进事件**（行上有，事件保持行为日志定位）。
 - 事件时机 = 对错已知时：客观题判分后、简答题自评后；未自评 = 待自评、不发事件、不算完成。批次完成 = 批内全部题目已作答（简答含自评）。
-- **批次采纳不发学习事件**（四事件无 QUIZ_CONFIRMED 槽位；采纳是管理动作，不是学习行为——CONTEXT.md「批次采纳」术语）。
+- **批次采纳不发学习事件**（四事件无 QUIZ_CONFIRMED 槽位；采纳是管理动作，不是学习行为——GLOSSARY.md「批次采纳」术语）。
 
 ### 批次生命周期
 
@@ -119,7 +119,7 @@ Transcript 编辑或 Summary 调优换代后：已采纳批次照常可作答（
 ## Further Notes
 
 - 作答形态（逐题 + 简答自评）系 08 plan grill 定稿（2026-08-25），非 PRD 既有裁决——plan 原引「Q10 定稿」实为决策 #20（属 15 的 AI 评分域），引用已修正；两场预烤存档（docs/claudecode-vs-zcode.md）中的 A/B 分歧已裁定 B（作答三列在行）。
-- 数据模型 v2.2 已于 2026-08-25 同步修订（quizzes 作答三列、砍列、learning_events 幂等键构造格式 `{event-slug}:{source-id}`）；CONTEXT.md 新增「作答」「批次采纳」术语。
+- 数据模型 v2.2 已于 2026-08-25 同步修订（quizzes 作答三列、砍列、learning_events 幂等键构造格式 `{event-slug}:{source-id}`）；GLOSSARY.md 新增「作答」「批次采纳」术语。
 - Wave B 键位预留：测验模式同题再答的幂等键另立（`quiz-answered:test:{item_id}` 风格），避免与本批 `quiz-answered:{quiz_id}` 冲突。
 - 全部裁决与回写记录见 `.scratch/function-plans-introduction/08-quiz.md`。
 - 实现注意：仓库内另有会话在改 records 前端文件（keys.ts / RecordDetailPage 相关），动工前先确认错峰或其变更已提交。

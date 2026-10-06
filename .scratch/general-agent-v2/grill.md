@@ -67,7 +67,7 @@ Status: converged（Q1～Q22 三轮全部定稿，2026-09-22；spec 冻结于 [s
 ## 权威文档同步边界
 
 Q1 提前触发任务模型评审，后续须同步设计-4 §7、开发计划第二/三阶段、扩展文档 §44.3；不能继续把任务等待恢复仅登记为第三阶段。具体持久化方案待下一轮决定。
-CONTEXT.md 的 Operation / 操作回执当前定义以第一阶段确认事务为边界，需随第二阶段执行模型定稿调整，避免把自动执行、失败尝试或补偿错误排除在外。
+GLOSSARY.md 的 Operation / 操作回执当前定义以第一阶段确认事务为边界，需随第二阶段执行模型定稿调整，避免把自动执行、失败尝试或补偿错误排除在外。
 grill 全部收敛后形成冻结 spec 与逐闭环工单，同步权威文档；本稿不替代最终规格。
 
 ## 第二轮：已确认（2026-09-22）
@@ -108,5 +108,5 @@ grill 全部收敛后形成冻结 spec 与逐闭环工单，同步权威文档�
 - **Q28 补充功能取舍**：V1 只做点名三能力 + 记录状态字段并入列表返回；学习资产查询 / 记录正文通读（token 成本高且有 30k 降级）/ 掌握度统计查询 / 操作历史查询全部留待真实场景驱动再议（YAGNI）。
 - **Q29 limit 形态**：`limit` 可选；省略或「列出所有」→ 返回全部，受硬上限 100 保护（每条约 100 字符，100 条≈10k 贴每轮 12k 字符预算）；指定数字照传；超上限返回前 N + `total` + `truncated`，模型如实转述不静默丢弃。
 - **Q30 三工具统一**：search_courses 枚举分支 / list_course_records / list_library_items 统一 limit 形态（省略=全部≤100、total+truncated 透出），模型学一次规则用三处；固定上限仅保留在关键词消歧分支（8 条）。
-- **Q31 工单落位**：`.scratch/general-agent-v2/issues/08-agent-query-tools.md`，实施顺序=05 修复提交 → 08 → 06 → 07（07 验收纳入 08 新工具）；范围=后端 2 新工具 + search_courses 扩展 + prompt bump（普通/研究各 +1）+ 测试 + CONTEXT.md 词条扩充；单会话规模直连 implement。
+- **Q31 工单落位**：`.scratch/general-agent-v2/issues/08-agent-query-tools.md`，实施顺序=05 修复提交 → 08 → 06 → 07（07 验收纳入 08 新工具）；范围=后端 2 新工具 + search_courses 扩展 + prompt bump（普通/研究各 +1）+ 测试 + GLOSSARY.md 词条扩充；单会话规模直连 implement。
 - **Q32 命名与返回面**：`list_course_records`（id/标题/来源类型/总结状态/创建时间）、`list_library_items`（id/标题/source_type/归属课程名/更新时间/total）；search_courses 枚举载荷与现有关键词分支字段一致（id/名称/状态/学习场景/阶段或深度/更新时间）；两新工具为只读工具、不进操作注册表。

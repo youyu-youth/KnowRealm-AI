@@ -1,6 +1,6 @@
 # 用户接管使 AI Todo 项脱离批次生命周期
 
-Todo 候选批次采纳后，用户对某 AI 项的编辑内容或勾选 DONE 视为**接管**：`generation_status` 置 NULL，该行退出批次生命周期；此后新批次采纳只把仍为 ACTIVE 的旧批次行置 SUPERSEDED，被接管项与手工项（`generation_status` 天然为 NULL）一样保留。选它是因为 todo_items 无 is_modified 列（数据模型 v2.2 定稿，零新列），NULL 让 SUPERSEDED 的 UPDATE 谓词天然跳过，且「用户做完的事不随换代消失」。术语见 CONTEXT.md「接管」。
+Todo 候选批次采纳后，用户对某 AI 项的编辑内容或勾选 DONE 视为**接管**：`generation_status` 置 NULL，该行退出批次生命周期；此后新批次采纳只把仍为 ACTIVE 的旧批次行置 SUPERSEDED，被接管项与手工项（`generation_status` 天然为 NULL）一样保留。选它是因为 todo_items 无 is_modified 列（数据模型 v2.2 定稿，零新列），NULL 让 SUPERSEDED 的 UPDATE 谓词天然跳过，且「用户做完的事不随换代消失」。术语见 GLOSSARY.md「接管」。
 
 ## Considered Options
 

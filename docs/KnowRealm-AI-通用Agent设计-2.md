@@ -374,7 +374,7 @@ SubAgent 不直接写业务，因此无需为其分析结果实现业务 Undo；
    当前带课程的粘贴文本会创建记录并尝试进入总结流程，速记则不能直接选择课程。[代码 (line 36)](E:/workspace/project/my/KnowRealm-AI/backend/app/modules/capture/text_capture.py:36)
    “记录今天学习 FastAPI”可能只是学习日志。需要明确是否沿用现有文本学习记录，还是需要轻量日志能力，避免一句记录触发不必要的生成链。
 3. **“加入知识空间”的准确动作。**
-   当前知识空间是课程的 UI 统称，并非独立知识库实体。[术语 (line 9)](E:/workspace/project/my/KnowRealm-AI/CONTEXT.md:9)
+   当前知识空间是课程的 UI 统称，并非独立知识库实体。[术语 (line 9)](E:/workspace/project/my/KnowRealm-AI/GLOSSARY.md:9)
    Agent 应明确是在给来源归类、关联资料，还是移动 Record；来源移动不得擅自级联移动记录。
 
 执行界面还应提供：当前操作对象、简短计划、补充信息入口、审批卡、实际进度、已完成结果、部分失败、继续与可用撤销。展示执行事实和简短原因即可，不需要展示模型内部推理。

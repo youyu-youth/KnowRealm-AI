@@ -51,7 +51,7 @@ Status: ready-for-agent
 - `ChatMode` 新增 `RESEARCH` 枚举值；会话创建请求放开 mode 字面量为 `ASK | RESEARCH`（SOCRATIC_TUTOR / TEACH_BACK 继续不放开）。
 - RESEARCH 会话的 scope 校验矩阵：只允许 **ALL / COURSE / FREE**；与 RECORD / LIBRARY_ITEM 组合拒绝（422，错误码进实施票登记）。FREE = 纯联网研究（不挂检索工具，证据只来自 web_search）。
 - 研究问题 = 会话标题，复用现有 title 字段（可改名），零新列、零迁移。scope 会话内不可变语义沿用（B2 定稿）。
-- mode 与 scope 两轴正交语义不变（CONTEXT.md 已固化）；「会话范围」词条中"mode 恒 ASK"的表述随本票修订，并新增「研究会话」词条。
+- mode 与 scope 两轴正交语义不变（GLOSSARY.md 已固化）；「会话范围」词条中"mode 恒 ASK"的表述随本票修订，并新增「研究会话」词条。
 
 ### 工具挂载（复用 AgentConfig 组装）
 

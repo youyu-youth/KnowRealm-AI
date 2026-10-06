@@ -14,7 +14,7 @@
 - [x] 产品回归：普通问答、研究提案、RAG 引用、Learner Memory、总结审核、全局搜索在全部档位保持原有约束
 - [x] 扩展性验证：03 / 04 / 05 新动作接入对 operations 注册表与 runs 子包零领域分支（AST 防线）；公共流程无领域专属判断
 - [x] i18n 一致性防线、api-types regenerate、后端与前端全量门禁绿（既有抖动口径：失败文件单跑绿）
-- [x] 文档同步：设计-4 §7（V1 最小形态→Run/Operation 已启用、触发条件已兑现）；开发计划第二 / 三阶段（「编排型 Job＋batch_id」→ Run 推进）与状态行；扩展文档 §44.3；CONTEXT.md 词条（Run / 计划卡 / 执行前快照 / 操作历史 / 跨课迁移）
+- [x] 文档同步：设计-4 §7（V1 最小形态→Run/Operation 已启用、触发条件已兑现）；开发计划第二 / 三阶段（「编排型 Job＋batch_id」→ Run 推进）与状态行；扩展文档 §44.3；GLOSSARY.md 词条（Run / 计划卡 / 执行前快照 / 操作历史 / 跨课迁移）
 - [x] PROJECT_PROGRESS 回写（≤200 行，只保留当前有效信息）；工单逐条勾选并置 done
 
 ## 实施备注（2026-09-29）
@@ -27,7 +27,7 @@
   4. `test_agent_auth_mode.py` Memory 测试参数化 [AUTO_APPROVE, FULL_ACCESS]——修正测试名/docstring 与实际钉档位（原只钉 FULL_ACCESS）的事实漂移，「任何档位」两自动档齐备。
   5. `test_agent_operations.py` AST 防线受检清单补 `runs/undo.py`＋`runs/retry.py`（06 票新增子模块遗漏入清单，补入后通过＝两文件零领域 import 实证）。
 - **门禁归零（既有债务修复）**：HEAD 基线 pyright 存在 4 错（06 票末尾修复提交引入未复跑）——`runs/retry.py` rowcount 类型收窄改 proposals.py 同款 `isinstance(claim, CursorResult)` 判定（零行为变化）、`test_agent_undo_retry.py` OptionalCall 补 assert / 私有引用补 `# pyright: ignore[reportPrivateUsage]`（test_agent_auth_mode.py:31 先例）。触及文件 ruff format；存量 6 个 format 不符文件（course/service.py 等 03/04 票遗留）按「format 只跑改动文件」纪律不动。
-- **文档口径统一**：设计-4 §7 两处（V1 最小形态段改「Run／Operation 独立表已启用（触发条件兑现）」＋事实源分工表 Operation 行）、开发计划四处（头部状态行升二阶段收口、§四 07 行与「必须注意」存储条、§五第三阶段存储段改 Run 推进已启用）、扩展文档 §44.3 三处（Run 表述＋头部「能力未上线」过期句＋Mastery 收拢兑现）；全库 grep 确认「编排型 Job＋batch_id」仅存于设计-3（落选方案史实）与被取代说明句。CONTEXT.md「操作／操作回执」词条更新＋新增 Run／计划卡／执行前快照／操作历史／跨课迁移五词条。
+- **文档口径统一**：设计-4 §7 两处（V1 最小形态段改「Run／Operation 独立表已启用（触发条件兑现）」＋事实源分工表 Operation 行）、开发计划四处（头部状态行升二阶段收口、§四 07 行与「必须注意」存储条、§五第三阶段存储段改 Run 推进已启用）、扩展文档 §44.3 三处（Run 表述＋头部「能力未上线」过期句＋Mastery 收拢兑现）；全库 grep 确认「编排型 Job＋batch_id」仅存于设计-3（落选方案史实）与被取代说明句。GLOSSARY.md「操作／操作回执」词条更新＋新增 Run／计划卡／执行前快照／操作历史／跨课迁移五词条。
 - **产品回归口径**：普通问答/研究提案/RAG 引用/总结审核/全局搜索与档位无共享代码路径（02 票结构论证），全量 pytest 938 绿＋前端 vitest 全绿＝零回归；Learner Memory 两自动档由参数化测试钉住；L0 读取恒自动（test_read_tools_unaffected_by_auto_mode）。
 - **兼容性佐证补引**：「既有成功回执可查」=test_migration_0030_new_epoch_and_op_prefix（存量 APPLIED 不回填、旧回执经既有提案查询仍可达）＋test_proposal_list_filters_by_session_across_statuses（全状态列表过滤）；「PENDING 提案跨重启保留」=提案 SQLite 持久化行（跨进程重启天然保留，一阶段 04 已真机验收「重启后提案状态与界面一致」＋前端 APPLIED/FAILED/REJECTED 恢复测试），二阶段 operation 纪元不改变该存储事实。
 - **review 处置记录（双轴 code-review 2026-09-29）**：Standards 无硬违规——断流测试与提案版中断测试 ~30 行同构骨架（两处属提取下限，不提取）、runs_package 变量收敛（无碍）两条判断性提示维持现状；「lifecycle SQL 拼接被改单行」经核实为 ruff format 对触及文件的必然改写（ruff 会合并合并后 ≤100 字符的隐式拼接，还原反而制造 format 永远想改的抖动点），保留合规形态并在此披露。Spec 轴采纳 2 项：run 侧恢复与兼容性两子项的既有佐证测试名补进上文（避免「勾选无据」）；崩溃测试重投断言偏弱属既有 recovery 测试职责分工，维持。
