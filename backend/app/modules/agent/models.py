@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ISODateTime, utcnow
@@ -53,3 +53,24 @@ class ChatMessage(Base):
     # 详情与授权依据以 agent_operations 查询为准（锚点只判定存在性）。
     executed_operations_json: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+
+
+class ChatResponseProcess(Base):
+    __tablename__ = "chat_response_processes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_sessions.id", ondelete="CASCADE")
+    )
+    user_message_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_messages.id", ondelete="CASCADE")
+    )
+    assistant_message_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("chat_messages.id", ondelete="SET NULL"), default=None
+    )
+    status: Mapped[str] = mapped_column(String(20))
+    started_at: Mapped[datetime] = mapped_column(ISODateTime)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime)
+    ended_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+    elapsed_ms: Mapped[int] = mapped_column(Integer, default=0)
+    entries_json: Mapped[str] = mapped_column(Text, default="[]")

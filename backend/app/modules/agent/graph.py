@@ -21,6 +21,7 @@ from langchain.agents.middleware.types import (  # pyright: ignore[reportMissing
 )
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import (
+    AIMessage,
     AIMessageChunk,
     AnyMessage,
     SystemMessage,
@@ -206,12 +207,20 @@ class ChatStreamOutcome:
     """流式生成的用量回传（llm_call_logs 与 assistant 行落库共用）。"""
 
     token_usage: dict[str, object] = field(default_factory=dict[str, object])
+    final_text: str | None = None
 
 
 @dataclass(frozen=True)
 class ChatTokenEvent:
     """流式文本增量。"""
 
+    text: str
+    segment_id: str = ""
+
+
+@dataclass(frozen=True)
+class ChatCommentaryEvent:
+    segment_id: str
     text: str
 
 
@@ -221,6 +230,8 @@ class ChatToolCallEvent:
 
     tool: str
     query: str
+    tool_call_id: str = ""
+    segment_id: str = ""
 
 
 @dataclass(frozen=True)
@@ -230,6 +241,8 @@ class ChatToolResultEvent:
     tool: str
     hits: int
     ok: bool
+    tool_call_id: str = ""
+    awaiting_confirmation: bool = False
 
 
 @dataclass(frozen=True)
@@ -269,6 +282,7 @@ class ChatOperationExecutionEvent:
 
 ChatStreamEvent = (
     ChatTokenEvent
+    | ChatCommentaryEvent
     | ChatToolCallEvent
     | ChatToolResultEvent
     | ChatMemoryProposalEvent
@@ -451,10 +465,11 @@ class _ToolCallDraft:
     name: str = ""
     args: str = ""
     emitted: bool = False
+    id: str = ""
 
 
 def _consume_tool_call_fragments(
-    drafts: dict[int, _ToolCallDraft], chunk: AIMessageChunk
+    drafts: dict[int, _ToolCallDraft], chunk: AIMessageChunk, segment_id: str = ""
 ) -> list[ChatToolCallEvent]:
     """消费 tool_call_chunks 增量：args 严格 JSON 解析成功（拼装完整）才上报 query。
 
@@ -467,13 +482,16 @@ def _consume_tool_call_fragments(
         if not isinstance(index, int):
             continue
         draft = drafts.setdefault(index, _ToolCallDraft())
+        call_id = fragment.get("id")
+        if isinstance(call_id, str) and call_id:
+            draft.id = call_id
         name = fragment.get("name")
         if not draft.name and isinstance(name, str) and name:
             draft.name = name
         args_fragment = fragment.get("args")
         if isinstance(args_fragment, str) and args_fragment:
             draft.args += args_fragment
-        if draft.emitted or not draft.name or not draft.args:
+        if draft.emitted or not draft.id or not draft.name or not draft.args:
             continue
         try:
             parsed = json.loads(draft.args)
@@ -481,11 +499,21 @@ def _consume_tool_call_fragments(
             continue
         if not isinstance(parsed, dict):
             continue
-        query = cast(dict[str, object], parsed).get("query")
-        if not isinstance(query, str) or not query:
-            continue
+        args = cast(dict[str, object], parsed)
+        query = next(
+            (
+                args[key]
+                for key in ("query", "title", "url", "name")
+                if isinstance(args.get(key), str)
+            ),
+            "",
+        )
         draft.emitted = True
-        events.append(ChatToolCallEvent(tool=draft.name, query=query))
+        events.append(
+            ChatToolCallEvent(
+                tool=draft.name, query=str(query), tool_call_id=draft.id, segment_id=segment_id
+            )
+        )
     return events
 
 
@@ -498,9 +526,12 @@ def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
     web_search 的 hits、search_courses 的 courses〔工单 01〕）。
     """
     if message.status == "error":
-        return ChatToolResultEvent(tool=message.name or "", hits=0, ok=False)
+        return ChatToolResultEvent(
+            tool=message.name or "", hits=0, ok=False, tool_call_id=message.tool_call_id
+        )
     hits = 0
     ok = True
+    awaiting_confirmation = False
     if isinstance(message.content, str):
         try:
             payload = json.loads(message.content)
@@ -516,7 +547,14 @@ def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
             ok_value = body.get("ok")
             if isinstance(ok_value, bool):
                 ok = ok_value
-    return ChatToolResultEvent(tool=message.name or "", hits=hits, ok=ok)
+            awaiting_confirmation = bool(body.get("proposal_id") or body.get("proposals"))
+    return ChatToolResultEvent(
+        tool=message.name or "",
+        hits=hits,
+        ok=ok,
+        tool_call_id=message.tool_call_id,
+        awaiting_confirmation=awaiting_confirmation and ok,
+    )
 
 
 def _memory_proposal_event(message: ToolMessage) -> ChatMemoryProposalEvent | None:
@@ -719,26 +757,75 @@ async def stream_chat_reply(
                 research=runtime.mode == ChatMode.RESEARCH,
             ),
         )
-        tool_call_drafts: dict[int, _ToolCallDraft] = {}
-        async for chunk, _metadata in agent.astream(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        tool_call_drafts: dict[str, dict[int, _ToolCallDraft]] = {}
+        emitted_calls: set[str] = set()
+        last_segment_id = ""
+        async for stream_item in agent.astream(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
             {"messages": input_messages},  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]
             config={
                 "configurable": {"thread_id": thread_id},
                 "recursion_limit": CHAT_RECURSION_LIMIT,
             },
-            stream_mode="messages",
+            stream_mode=["messages", "updates"],
         ):
+            mode, data = cast(tuple[str, object], stream_item)
+            if mode == "updates":
+                # 完整模型消息提供真实 tool_calls 边界，不按自然语言猜测正文性质。
+                if not isinstance(data, dict):
+                    continue
+                for update in cast(dict[str, object], data).values():
+                    if not isinstance(update, dict):
+                        continue
+                    messages = cast(dict[str, object], update).get("messages")
+                    if not isinstance(messages, list):
+                        continue
+                    for message in cast(list[object], messages):
+                        if not isinstance(message, AIMessage) or isinstance(
+                            message, AIMessageChunk
+                        ):
+                            continue
+                        segment_id = message.id or last_segment_id
+                        text = message.content if isinstance(message.content, str) else ""
+                        if message.tool_calls:
+                            if text:
+                                yield ChatCommentaryEvent(segment_id=segment_id, text=text)
+                            for call in message.tool_calls:
+                                call_id = call.get("id") or f"{segment_id}-{len(emitted_calls)}"
+                                if call_id in emitted_calls:
+                                    continue
+                                args = call["args"]
+                                query = next(
+                                    (
+                                        args[k]
+                                        for k in ("query", "title", "url", "name")
+                                        if isinstance(args.get(k), str)
+                                    ),
+                                    "",
+                                )
+                                emitted_calls.add(call_id)
+                                yield ChatToolCallEvent(
+                                    tool=call["name"],
+                                    query=str(query),
+                                    tool_call_id=call_id,
+                                    segment_id=segment_id,
+                                )
+                        else:
+                            outcome.final_text = text
+                continue
+            chunk, metadata = cast(tuple[AnyMessage, dict[str, object]], data)
             if isinstance(chunk, AIMessageChunk):
+                segment_id = chunk.id or f"model-{metadata.get('langgraph_step', 0)}"
+                last_segment_id = segment_id
                 _accumulate_usage(outcome.token_usage, getattr(chunk, "usage_metadata", None))
                 text = chunk.content if isinstance(chunk.content, str) else ""
                 if text:
-                    yield ChatTokenEvent(text=text)
+                    yield ChatTokenEvent(text=text, segment_id=segment_id)
                 if chunk.tool_call_chunks:
-                    for event in _consume_tool_call_fragments(tool_call_drafts, chunk):
+                    drafts = tool_call_drafts.setdefault(segment_id, {})
+                    for event in _consume_tool_call_fragments(drafts, chunk, segment_id):
+                        emitted_calls.add(event.tool_call_id)
                         yield event
             elif isinstance(chunk, ToolMessage):
-                # 本轮工具执行完毕：拼装草稿在下一次模型调用前清空。
-                tool_call_drafts = {}
                 result_event = _tool_result_event(chunk)
                 if result_event.tool in RETRIEVAL_TOOL_NAMES:
                     retrieval_count = (retrieval_count or 0) + result_event.hits

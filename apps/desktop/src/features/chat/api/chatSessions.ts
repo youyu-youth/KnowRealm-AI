@@ -1,10 +1,12 @@
 import { createParser } from "eventsource-parser";
+import { z } from "zod";
 import type { AuthMode } from "@/features/agent/api/authMode";
 import type {
   ChatKnowledgePointSaveRequest,
   ChatMessage,
   ChatPageSnapshot,
   ChatRecordOption,
+  ChatResponseProcess,
   ChatSession,
   ChatSessionCreate,
   KnowledgePointOut,
@@ -19,12 +21,17 @@ import {
 export type ChatToolCallPayload = {
   tool: string;
   query: string;
+  toolCallId?: string;
+  segmentId?: string;
+  process?: ChatResponseProcess;
 };
 
 export type ChatToolResultPayload = {
   tool: string;
   hits: number;
   ok: boolean;
+  toolCallId?: string;
+  process?: ChatResponseProcess;
 };
 
 /** 模型经 propose_memory 创建的待确认记忆提案（工单 06，done 载荷透传）。 */
@@ -43,6 +50,7 @@ export type ChatResearchProposalPayload = {
 export type ChatDonePayload = {
   messageId: string;
   content: string;
+  process?: ChatResponseProcess;
   /** 本轮实际注入的学习者记忆条目（未注入时缺省）。 */
   memoryUsed?: string[];
   /** 本轮新建的 MEMORY 提案（无时缺省）。 */
@@ -107,13 +115,61 @@ function parseProposalList<T>(
   });
 }
 
+const processSchema: z.ZodType<ChatResponseProcess> = z.object({
+  id: z.string(),
+  session_id: z.string(),
+  user_message_id: z.string(),
+  assistant_message_id: z.string().nullable(),
+  status: z.enum(["RUNNING", "COMPLETED", "FAILED", "INTERRUPTED"]),
+  started_at: z.string().datetime({ offset: true }),
+  updated_at: z.string().datetime({ offset: true }),
+  ended_at: z.string().datetime({ offset: true }).nullable(),
+  elapsed_ms: z.number().int().nonnegative(),
+  history_saved: z.boolean(),
+  entries: z.array(
+    z.discriminatedUnion("kind", [
+      z.object({
+        kind: z.literal("commentary"),
+        id: z.string(),
+        text: z.string(),
+      }),
+      z.object({
+        kind: z.literal("tool"),
+        id: z.string(),
+        tool: z.string(),
+        query: z.string(),
+        status: z.enum([
+          "RUNNING",
+          "SUCCEEDED",
+          "FAILED",
+          "INTERRUPTED",
+          "AWAITING_CONFIRMATION",
+        ]),
+        hits: z.number().int().nonnegative().nullable(),
+      }),
+    ]),
+  ),
+});
+
+function parseProcess(value: unknown): ChatResponseProcess | undefined {
+  const parsed = processSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export type ChatStreamHandlers = {
-  onStatus: () => void;
-  onToken: (text: string) => void;
+  onStatus: (payload?: {
+    phase: string;
+    process?: ChatResponseProcess;
+  }) => void;
+  onToken: (text: string, segmentId?: string) => void;
   onToolCall: (payload: ChatToolCallPayload) => void;
   onToolResult: (payload: ChatToolResultPayload) => void;
   onDone: (payload: ChatDonePayload) => void;
-  onError: (payload: { code: string; detail: string }) => void;
+  onError: (payload: {
+    code: string;
+    detail: string;
+    process?: ChatResponseProcess;
+  }) => void;
 };
 
 /**
@@ -169,14 +225,33 @@ async function streamMessage(
           : {};
       switch (event.event) {
         case "status":
-          handlers.onStatus();
+          handlers.onStatus({
+            phase: typeof data.phase === "string" ? data.phase : "generating",
+            process: parseProcess(data.process),
+          });
           break;
         case "token":
-          if (typeof data.text === "string") handlers.onToken(data.text);
+          if (typeof data.text === "string")
+            handlers.onToken(
+              data.text,
+              typeof data.segment_id === "string" ? data.segment_id : undefined,
+            );
           break;
         case "tool_call":
           if (typeof data.tool === "string" && typeof data.query === "string") {
-            handlers.onToolCall({ tool: data.tool, query: data.query });
+            handlers.onToolCall({
+              tool: data.tool,
+              query: data.query,
+              toolCallId:
+                typeof data.tool_call_id === "string"
+                  ? data.tool_call_id
+                  : undefined,
+              segmentId:
+                typeof data.segment_id === "string"
+                  ? data.segment_id
+                  : undefined,
+              process: parseProcess(data.process),
+            });
           }
           break;
         case "tool_result":
@@ -189,6 +264,11 @@ async function streamMessage(
               tool: data.tool,
               hits: data.hits,
               ok: data.ok,
+              toolCallId:
+                typeof data.tool_call_id === "string"
+                  ? data.tool_call_id
+                  : undefined,
+              process: parseProcess(data.process),
             });
           }
           break;
@@ -200,6 +280,7 @@ async function streamMessage(
             handlers.onDone({
               messageId: data.message_id,
               content: data.content,
+              process: parseProcess(data.process),
               ...parseTurnProposalFields(data),
             });
           }
@@ -218,6 +299,7 @@ async function streamMessage(
             handlers.onError({
               code: data.code,
               detail: apiErrorMessage(data.code, data.detail, params),
+              process: parseProcess(data.process),
             });
           }
           break;

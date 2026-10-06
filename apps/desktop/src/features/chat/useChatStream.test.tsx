@@ -5,6 +5,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { libraryKeys } from "@/features/library/api/keys";
+import type { ChatResponseProcess } from "./api/types";
 import { useChatStream } from "./useChatStream";
 
 const { streamMessage } = vi.hoisted(() => ({ streamMessage: vi.fn() }));
@@ -15,8 +16,13 @@ vi.mock("@/features/chat/api/chatSessions", () => ({
 
 type StreamHandlers = {
   onStatus: () => void;
-  onToken: (text: string) => void;
-  onToolCall: (payload: { tool: string; query: string }) => void;
+  onToken: (text: string, segmentId?: string) => void;
+  onToolCall: (payload: {
+    tool: string;
+    query: string;
+    segmentId?: string;
+    process?: ChatResponseProcess;
+  }) => void;
   onToolResult: (payload: { hits: number; ok: boolean }) => void;
   onDone: (payload: Record<string, unknown>) => void;
   onError: (payload: { code: string; detail: string }) => void;
@@ -42,7 +48,7 @@ async function setup(impl: (handlers: StreamHandlers) => Promise<void>) {
   await act(async () => {
     result.current.send("你好", false);
   });
-  return { invalidate };
+  return { invalidate, result };
 }
 
 beforeEach(() => {
@@ -50,6 +56,55 @@ beforeEach(() => {
 });
 
 describe("useChatStream 提案查询失效", () => {
+  it("确认工具调用后将公开说明移出正文，断开时停止工具旋转", async () => {
+    let handlers: StreamHandlers | undefined;
+    let finish: (() => void) | undefined;
+    const { result } = await setup((callbacks) => {
+      handlers = callbacks;
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    });
+    act(() => handlers?.onToken("先核对时间。", "segment-1"));
+    expect(result.current.streamedText).toBe("先核对时间。");
+    act(() => {
+      handlers?.onToolCall({
+        tool: "get_current_time",
+        query: "",
+        segmentId: "segment-1",
+        process: {
+          id: "p-1",
+          session_id: "s-1",
+          user_message_id: "u-1",
+          assistant_message_id: null,
+          status: "RUNNING",
+          started_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          ended_at: null,
+          elapsed_ms: 0,
+          history_saved: true,
+          entries: [
+            {
+              kind: "tool",
+              id: "call-1",
+              tool: "get_current_time",
+              query: "",
+              status: "RUNNING",
+              hits: null,
+            },
+          ],
+        },
+      });
+      handlers?.onToken("当前时间已经核对。", "segment-2");
+    });
+    expect(result.current.streamedText).toBe("当前时间已经核对。");
+    await act(async () => finish?.());
+    expect(result.current.responseProcess?.status).toBe("INTERRUPTED");
+    expect(result.current.responseProcess?.entries?.[0]).toMatchObject({
+      status: "INTERRUPTED",
+    });
+  });
+
   it("done 后失效提案查询", async () => {
     const { invalidate } = await setup(
       (handlers) =>

@@ -3287,6 +3287,8 @@ export interface components {
              * @description 生成该条回答的模型，user/system 行为空
              */
             model?: string | null;
+            /** Response Processes */
+            response_processes?: components["schemas"]["ChatResponseProcessOut"][];
             role: components["schemas"]["ChatRole"];
         };
         /**
@@ -3328,6 +3330,42 @@ export interface components {
              */
             selected_id?: string | null;
         };
+        /** ChatProcessCommentary */
+        ChatProcessCommentary: {
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "commentary";
+            /** Text */
+            text: string;
+        };
+        /** ChatProcessTool */
+        ChatProcessTool: {
+            /** Hits */
+            hits?: number | null;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "tool";
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "RUNNING" | "SUCCEEDED" | "FAILED" | "INTERRUPTED" | "AWAITING_CONFIRMATION";
+            /** Tool */
+            tool: string;
+        };
         /** ChatRecordOption */
         ChatRecordOption: {
             /**
@@ -3350,6 +3388,40 @@ export interface components {
              * @description 学习记录标题
              */
             title: string;
+        };
+        /** ChatResponseProcessOut */
+        ChatResponseProcessOut: {
+            /** Assistant Message Id */
+            assistant_message_id?: string | null;
+            /**
+             * Elapsed Ms
+             * @default 0
+             */
+            elapsed_ms: number;
+            /** Ended At */
+            ended_at?: string | null;
+            /** Entries */
+            entries?: (components["schemas"]["ChatProcessCommentary"] | components["schemas"]["ChatProcessTool"])[];
+            /**
+             * History Saved
+             * @default true
+             */
+            history_saved: boolean;
+            /** Id */
+            id: string;
+            /** Session Id */
+            session_id: string;
+            /** Started At */
+            started_at: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "RUNNING" | "COMPLETED" | "FAILED" | "INTERRUPTED";
+            /** Updated At */
+            updated_at: string;
+            /** User Message Id */
+            user_message_id: string;
         };
         /**
          * ChatRole

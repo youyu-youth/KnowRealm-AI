@@ -46,6 +46,14 @@ export function ChatWorkspace({
     queryKey: chatKeys.messages(sessionId ?? ""),
     queryFn: () => chatApi.getMessages(sessionId ?? ""),
     enabled: sessionId !== undefined,
+    refetchInterval: (query) =>
+      query.state.data?.some((message) =>
+        message.response_processes?.some(
+          (process) => process.status === "RUNNING",
+        ),
+      )
+        ? 2000
+        : false,
   });
   const provider = useQuery({
     queryKey: settingsKeys.llmProvider,

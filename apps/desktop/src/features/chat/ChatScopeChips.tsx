@@ -43,7 +43,7 @@ export function ChatScopeChips({
     { id: "all", icon: Library, label: t("chat.scope.all") },
   ];
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2 max-md:flex-nowrap max-md:overflow-x-auto">
       {scopes.map((scopeChip) => {
         const Icon = scopeChip.icon;
         const active = scopeChip.id === activeChip;
@@ -64,7 +64,7 @@ export function ChatScopeChips({
                 : t("chat.scope.switchTo", { scope: scopeChip.label })
             }
             className={cn(
-              "text-label inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 transition-colors",
+              "text-label inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 transition-colors",
               active
                 ? "border-primary bg-primary text-primary-foreground font-medium"
                 : "border-border-subtle bg-surface-raised text-ink-muted hover:text-ink",

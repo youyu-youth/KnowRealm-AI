@@ -60,7 +60,7 @@ export function ChatComposer({
 
   return (
     <form
-      className="flex flex-col gap-2 pt-4 pb-5"
+      className="flex flex-col gap-2 pt-4 pb-5 max-md:py-2"
       onSubmit={(event) => {
         event.preventDefault();
         submit();

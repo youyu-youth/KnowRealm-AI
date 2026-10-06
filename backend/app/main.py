@@ -26,6 +26,7 @@ from app.modules.agent import chat_sessions
 from app.modules.agent.auth_mode import router as agent_auth_mode_router
 from app.modules.agent.message_service import ChatStreamRegistry
 from app.modules.agent.operations.plan_draft import plan_draft_spec
+from app.modules.agent.response_process import recover_processes
 from app.modules.agent.runs import routes as agent_runs_routes
 from app.modules.agent.runs.worker import agent_run_spec
 from app.modules.capture import (
@@ -153,6 +154,7 @@ def create_app(
                 logger.error("rolling_backup_failed", error_code="ROLLING_BACKUP_FAILED")
             engine, session_factory = create_database(db_path)
             app.state.session_factory = session_factory
+            await recover_processes(session_factory)
             app.state.data_dir = resolved_data_dir
             # 进程级绑定（工单 03）：提案应用器读 provider 配置用（app.state 不可达处）。
             bind_data_dir(resolved_data_dir)

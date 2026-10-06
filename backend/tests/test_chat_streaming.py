@@ -94,6 +94,8 @@ class ToolCallReply:
     args: dict[str, Any]
     call_id: str = "call-1"
     args_fragments: tuple[str, ...] | None = None
+    commentary: str = ""
+    parallel_calls: tuple["ToolCallReply", ...] = ()
 
 
 StubReply = list[str] | ToolCallReply | None
@@ -714,27 +716,30 @@ class StubChatModel(BaseChatModel):
         type(self).captured.append(list(messages))
         reply = type(self).replies.pop(0)
         if isinstance(reply, ToolCallReply):
-            fragments = reply.args_fragments or (json.dumps(reply.args, ensure_ascii=False),)
-            for index, fragment in enumerate(fragments):
-                first = index == 0
-                yield ChatGenerationChunk(
-                    message=AIMessageChunk(
-                        content="",
-                        tool_call_chunks=[
-                            {
-                                "name": reply.tool if first else None,
-                                "args": fragment,
-                                "id": reply.call_id if first else None,
-                                "index": 0,
-                            }
-                        ],
-                        usage_metadata=(
-                            UsageMetadata(input_tokens=3, output_tokens=4, total_tokens=7)
-                            if index == len(fragments) - 1
-                            else None
-                        ),
+            if reply.commentary:
+                yield ChatGenerationChunk(message=AIMessageChunk(content=reply.commentary))
+            for tool_index, call in enumerate((reply, *reply.parallel_calls)):
+                fragments = call.args_fragments or (json.dumps(call.args, ensure_ascii=False),)
+                for index, fragment in enumerate(fragments):
+                    first = index == 0
+                    yield ChatGenerationChunk(
+                        message=AIMessageChunk(
+                            content="",
+                            tool_call_chunks=[
+                                {
+                                    "name": call.tool if first else None,
+                                    "args": fragment,
+                                    "id": call.call_id if first else None,
+                                    "index": tool_index,
+                                }
+                            ],
+                            usage_metadata=(
+                                UsageMetadata(input_tokens=3, output_tokens=4, total_tokens=7)
+                                if tool_index == 0 and index == len(fragments) - 1
+                                else None
+                            ),
+                        )
                     )
-                )
             return
         if reply is None:
             raise RuntimeError("stub provider down")
@@ -1076,7 +1081,7 @@ async def test_send_message_streams_status_tokens_then_done_and_persists(
         assert names[0] == "status"
         assert names[1:-1] == ["token"] * (len(names) - 2)
         assert names[-1] == "done"
-        assert events[0][1] == {"phase": "generating"}
+        assert events[0][1]["phase"] == "generating"
         tokens = [payload["text"] for name, payload in events if name == "token"]
         assert tokens == STUB_REPLY
         assert events[-1][1]["content"] == "回答完成了"
@@ -1162,6 +1167,11 @@ async def test_interrupted_stream_keeps_user_row_and_skips_assistant(
         # 生成器（经探针验证，ASGITransport 提前退出不会传导断开，故直接在生成器边界验证）。
         await stream.aclose()
 
+        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        process = next(item for item in history if item["role"] == "USER")["response_processes"][0]
+        assert process["status"] == "INTERRUPTED"
+        assert process["ended_at"] is not None
+
         rows = await message_rows(tmp_path, session_id)
         assert ("USER", "会被中断的问题") in rows
         assert all(role != "ASSISTANT" for role, _content in rows)
@@ -1172,6 +1182,10 @@ async def test_interrupted_stream_keeps_user_row_and_skips_assistant(
         rows = await message_rows(tmp_path, session_id)
         assert [content for role, content in rows if role == "USER"].count("会被中断的问题") == 1
         assert ("ASSISTANT", "回答完成了") in rows
+
+        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        processes = next(item for item in history if item["role"] == "USER")["response_processes"]
+        assert [item["status"] for item in processes] == ["INTERRUPTED", "COMPLETED"]
 
 
 @pytest.mark.anyio
@@ -1220,6 +1234,7 @@ async def test_provider_failure_emits_error_and_chat_continues(
         assert events[0][0] == "status"
         assert events[-1][0] == "error"
         assert events[-1][1]["code"] == "CHAT_STREAM_FAILED"
+        assert events[-1][1]["process"]["status"] == "FAILED"
         assert not any(name == "done" for name, _payload in events)
 
         # 失败不落 assistant 行；error 后可继续发问并成功。
@@ -1229,6 +1244,11 @@ async def test_provider_failure_emits_error_and_chat_continues(
         assert retry[-1][0] == "done"
         rows = await message_rows(tmp_path, session_id)
         assert ("ASSISTANT", "回答完成了") in rows
+
+        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        processes = next(item for item in history if item["role"] == "USER")["response_processes"]
+        assert [item["status"] for item in processes] == ["FAILED", "COMPLETED"]
+        assert processes[0]["id"] != processes[1]["id"]
 
         # 回答错误可区分（CB-08）：失败轮埋点带 CHAT_STREAM_FAILED，重试成功轮无错误码。
         logs = await chat_log_rows(tmp_path)
@@ -1317,17 +1337,21 @@ async def test_llm_call_logs_retrieval_count_and_no_body(
         mounted_id = cast(str, mounted.json()["id"])
 
         events = await send_message(client, mounted_id, "傅里叶级数怎么展开？")
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_library", "hits": 1, "ok": True}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "search_library", "hits": 1, "ok": True}]
 
         free_id = await create_session(client)
         assert (await send_message(client, free_id, "自由提问"))[-1][0] == "done"
 
         failed = await send_message(client, mounted_id, "再检索一次")
-        assert [payload for name, payload in failed if name == "tool_result"] == [
-            {"tool": "search_library", "hits": 0, "ok": False}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in failed
+            if name == "tool_result"
+        ] == [{"tool": "search_library", "hits": 0, "ok": False}]
         assert failed[-1][0] == "done"
 
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
@@ -1388,9 +1412,11 @@ async def test_fts_exception_streams_failure_and_logs_warning(
     finally:
         logger.remove(sink_id)
 
-    assert [payload for name, payload in events if name == "tool_result"] == [
-        {"tool": "search_library", "hits": 0, "ok": False}
-    ]
+    assert [
+        {key: payload[key] for key in ("tool", "hits", "ok")}
+        for name, payload in events
+        if name == "tool_result"
+    ] == [{"tool": "search_library", "hits": 0, "ok": False}]
     assert events[-1][0] == "done"
     warnings = [line for line in logs.getvalue().splitlines() if "chat_tool_failed" in line]
     assert len(warnings) == 1 and "'tool': 'search_library'" in warnings[0]
@@ -1690,12 +1716,16 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         assert names[0] == "status"
         assert names[-1] == "done"
         assert names.index("tool_call") < names.index("tool_result") < names.index("token")
-        assert [payload for name, payload in events if name == "tool_call"] == [
-            {"tool": "search_library", "query": "傅里叶"}
-        ]
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_library", "hits": 1, "ok": True}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "query")}
+            for name, payload in events
+            if name == "tool_call"
+        ] == [{"tool": "search_library", "query": "傅里叶"}]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "search_library", "hits": 1, "ok": True}]
         # 工具命中进入第二次模型调用的上下文（ToolMessage 逐字原文）。
         tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
         assert len(tool_messages) == 1
@@ -1764,12 +1794,16 @@ async def test_mounted_tool_falls_back_to_substring_without_segments(
 
         events = await send_message(client, session_id, "一致性哈希是什么？")
 
-        assert [payload for name, payload in events if name == "tool_call"] == [
-            {"tool": "search_library", "query": "一致性哈希"}
-        ]
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_library", "hits": 1, "ok": True}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "query")}
+            for name, payload in events
+            if name == "tool_call"
+        ] == [{"tool": "search_library", "query": "一致性哈希"}]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "search_library", "hits": 1, "ok": True}]
         tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
         assert len(tool_messages) == 1
         assert "第二段讲一致性哈希。" in str(tool_messages[0].content)
@@ -1814,9 +1848,11 @@ async def test_segmented_record_fts_miss_returns_no_hits_without_substring_fallb
 
         # 有分片记录：FTS 未命中即如实返回（「MVC」是原文子串但非索引词，不做子串兜底）。
         assert "MVC" in "MVCC 依赖 undo 日志实现多版本读"
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_library", "hits": 0, "ok": True}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "search_library", "hits": 0, "ok": True}]
 
 
 @pytest.mark.anyio
@@ -1859,9 +1895,11 @@ async def test_mounted_tool_failure_streams_failed_tool_result(
 
         events = await send_message(client, session_id, "检索一下")
 
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_library", "hits": 0, "ok": False}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "search_library", "hits": 0, "ok": False}]
         assert events[-1][0] == "done"
 
 
@@ -2003,12 +2041,16 @@ async def test_free_chat_web_search_streams_tool_events_and_web_citation(
         names = [name for name, _payload in events]
         assert names[0] == "status" and names[-1] == "done"
         assert names.index("tool_call") < names.index("tool_result") < names.index("token")
-        assert [payload for name, payload in events if name == "tool_call"] == [
-            {"tool": "web_search", "query": "Python 最新版本"}
-        ]
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "web_search", "hits": 2, "ok": True}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "query")}
+            for name, payload in events
+            if name == "tool_call"
+        ] == [{"tool": "web_search", "query": "Python 最新版本"}]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "web_search", "hits": 2, "ok": True}]
         assert [payload for name, payload in events if name == "citation"] == [
             {
                 "index": 1,
@@ -2064,9 +2106,11 @@ async def test_web_search_failure_streams_failed_tool_result_and_continues(
         events = await send_message(client, session_id, "外发查询", web_search=True)
 
         # 网络失败：错误 JSON 载荷 → tool_result 失败态，流不中断、回答照常完成。
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "web_search", "hits": 0, "ok": False}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "web_search", "hits": 0, "ok": False}]
         assert events[-1][0] == "done"
         assert not any(name == "error" for name, _payload in events)
 
@@ -2586,12 +2630,16 @@ async def test_course_session_streams_library_tool_and_cross_record_citations(
         names = [name for name, _payload in events]
         assert names[0] == "status" and names[-1] == "done"
         assert names.index("tool_call") < names.index("tool_result") < names.index("token")
-        assert [payload for name, payload in events if name == "tool_call"] == [
-            {"tool": "search_library", "query": "一致性哈希"}
-        ]
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_library", "hits": 1, "ok": True}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "query")}
+            for name, payload in events
+            if name == "tool_call"
+        ] == [{"tool": "search_library", "query": "一致性哈希"}]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "search_library", "hits": 1, "ok": True}]
         # 工具命中进入第二次模型调用：跨记录命中带标题与逐字原文。
         tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
         assert len(tool_messages) == 1
@@ -2769,9 +2817,11 @@ async def test_all_session_fts_library_hits_and_web_guidance(
         assert "全部资料" in prompt
         assert "仅作为材料外的补充来源" in prompt
         # 有分片记录命中 FTS（文档导入建分片）。
-        assert [payload for name, payload in events if name == "tool_result"] == [
-            {"tool": "search_library", "hits": 1, "ok": True}
-        ]
+        assert [
+            {key: payload[key] for key in ("tool", "hits", "ok")}
+            for name, payload in events
+            if name == "tool_result"
+        ] == [{"tool": "search_library", "hits": 1, "ok": True}]
         tool_messages = [message for message in captured[1] if isinstance(message, ToolMessage)]
         assert len(tool_messages) == 1
         assert "本讲系统梳理傅里叶级数的展开方法" in str(tool_messages[0].content)
@@ -3281,15 +3331,15 @@ async def test_interrupted_stream_keeps_pending_operation_proposal(
             registry=app.state.chat_stream_registry,
             accepted=accepted,
         )
-        # 消费到工具结果事件（create_course 已执行、提案已独立事务提交）后
-        # 模拟客户端断开/停止（生成器边界验证，同中断先例）；写操作工具不发
-        # tool_call SSE 事件（提案经 done 载荷透传，02 语义），故序列仅两事件。
+        # 工具调用已返回待确认提案；中断后过程留痕，确认卡继续独立可用。
         seen: list[str] = []
         async for event in stream:
             seen.append(str(event.event))
             if event.event == "tool_result":
                 break
-        assert seen == ["status", "tool_result"]
+        assert seen[0] == "status"
+        assert "tool_call" in seen
+        assert seen[-1] == "tool_result"
         await stream.aclose()
 
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
@@ -3312,6 +3362,11 @@ async def test_interrupted_stream_keeps_pending_operation_proposal(
         # 流已停止：提案恒一条（Agent 不再产生新操作）、确认前零课程。
         assert proposal_count == 1
         assert course_count == 0
+        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        process = next(item for item in history if item["role"] == "USER")["response_processes"][0]
+        assert process["status"] == "INTERRUPTED"
+        assert process["entries"][0]["status"] == "AWAITING_CONFIRMATION"
+        assert process["entries"][0]["hits"] is None
         rows = await message_rows(tmp_path, session_id)
         assert all(role != "ASSISTANT" for role, _content in rows)
         # 保留的待确认提案仍可决定：确认 → APPLIED + 回执课程。
@@ -3453,7 +3508,9 @@ async def test_interrupted_stream_keeps_direct_execution_recoverable(
             seen.append(str(event.event))
             if event.event == "tool_result":
                 break
-        assert seen == ["status", "tool_result"]
+        assert seen[0] == "status"
+        assert "tool_call" in seen
+        assert seen[-1] == "tool_result"
         await stream.aclose()
 
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
@@ -3473,6 +3530,10 @@ async def test_interrupted_stream_keeps_direct_execution_recoverable(
         assert [tuple(row) for row in operation_rows] == [
             ("create_course", "SUCCEEDED", None, None)
         ]
+        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        process = next(item for item in history if item["role"] == "USER")["response_processes"][0]
+        assert process["status"] == "INTERRUPTED"
+        assert process["entries"][0]["status"] == "SUCCEEDED"
         rows = await message_rows(tmp_path, session_id)
         assert all(role != "ASSISTANT" for role, _content in rows)
 
@@ -3485,3 +3546,160 @@ async def test_interrupted_stream_keeps_direct_execution_recoverable(
         assert items[0]["action"] == "create_course"
         assert items[0]["status"] == "SUCCEEDED"
         assert items[0]["authorization"]["auth_mode"] == "AUTO_APPROVE"
+
+
+@pytest.mark.anyio
+async def test_response_process_separates_commentary_and_all_parallel_tools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    replies: list[StubReply] = [
+        ToolCallReply(
+            "search_courses",
+            {"query": "Redis"},
+            call_id="courses-a",
+            commentary="我先查询课程，再核对当前时间。",
+            parallel_calls=(
+                ToolCallReply("search_courses", {"query": "Python"}, call_id="courses-b"),
+                ToolCallReply("get_current_time", {}, call_id="time-c"),
+            ),
+        ),
+        ["最终课程回答。"],
+        list(STUB_REPLY),
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=replies) as (
+        _app,
+        client,
+        captured,
+    ):
+        session_id = await create_session(client)
+        events = await send_message(client, session_id, "讲解课程")
+        assert events[-1][0] == "done"
+        assert events[-1][1]["content"] == "最终课程回答。"
+        process = events[-1][1]["process"]
+        assert process["status"] == "COMPLETED"
+        assert process["history_saved"] is True
+        assert process["entries"][0]["text"] == "我先查询课程，再核对当前时间。"
+        tools = [entry for entry in process["entries"] if entry["kind"] == "tool"]
+        assert [entry["id"] for entry in tools] == ["courses-a", "courses-b", "time-c"]
+        assert all(entry["status"] == "SUCCEEDED" for entry in tools)
+        assert tools[2]["hits"] is None
+        assert tools[2]["query"] == ""
+        calls = [payload["tool_call_id"] for name, payload in events if name == "tool_call"]
+        assert calls == ["courses-a", "courses-b", "time-c"]
+        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        user = next(message for message in history if message["role"] == "USER")
+        assert user["response_processes"] == [process]
+        assert history[-1]["content"] == "最终课程回答。"
+        await send_message(client, session_id, "继续")
+        assert all("我先查询课程" not in str(message.content) for message in captured[-1])
+
+
+@pytest.mark.anyio
+async def test_response_process_correlates_out_of_order_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.modules.agent import message_service
+    from app.modules.agent.graph import (
+        ChatStreamEvent,
+        ChatTokenEvent,
+        ChatToolCallEvent,
+        ChatToolResultEvent,
+    )
+
+    async def events(**_kwargs: object) -> AsyncGenerator[ChatStreamEvent, None]:
+        yield ChatToolCallEvent("search_courses", "first", "call-a", "model-1")
+        yield ChatToolCallEvent("search_courses", "second", "call-b", "model-1")
+        yield ChatToolResultEvent("search_courses", 2, True, "call-b")
+        yield ChatToolResultEvent("search_courses", 0, False, "call-a")
+        yield ChatTokenEvent("可用的最终回答", "model-2")
+
+    monkeypatch.setattr(message_service, "stream_chat_reply", events)
+    async with streaming_chat_app(tmp_path, monkeypatch) as (_app, client, _captured):
+        session_id = await create_session(client)
+        streamed = await send_message(client, session_id, "查询")
+        process = streamed[-1][1]["process"]
+        tools = process["entries"]
+        assert [(entry["id"], entry["status"], entry["hits"]) for entry in tools] == [
+            ("call-a", "FAILED", 0),
+            ("call-b", "SUCCEEDED", 2),
+        ]
+        assert process["status"] == "COMPLETED"
+
+
+@pytest.mark.anyio
+async def test_process_history_save_failure_keeps_answer_and_does_not_repeat_tools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fail_save(*_args: object) -> None:
+        raise OSError("history write unavailable")
+
+    monkeypatch.setattr("app.modules.agent.message_service.save_process", fail_save)
+    async with streaming_chat_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply(tool="get_current_time", args={}), list(STUB_REPLY)],
+    ) as (_app, client, captured):
+        session_id = await create_session(client)
+        events = await send_message(client, session_id, "核对时间")
+        assert events[-1][0] == "done"
+        assert events[-1][1]["process"]["history_saved"] is False
+        assert events[-1][1]["content"] == "回答完成了"
+        assert len(captured) == 2
+        assert len([name for name, _payload in events if name == "tool_call"]) == 1
+        rows = await message_rows(tmp_path, session_id)
+        assert ("ASSISTANT", "回答完成了") in rows
+
+
+@pytest.mark.anyio
+async def test_response_process_recovery_uses_last_saved_time_and_keeps_retry_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with streaming_chat_app(tmp_path, monkeypatch) as (app, client, _captured):
+        session_id = await create_session(client)
+        accepted = await ChatMessageService.accept(
+            session_factory=app.state.session_factory,
+            data_dir=tmp_path,
+            registry=app.state.chat_stream_registry,
+            session_id=session_id,
+            content="查询时间",
+        )
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as db:
+            await db.execute(
+                "UPDATE chat_response_processes SET started_at=?, updated_at=?, "
+                "elapsed_ms=?, entries_json=? WHERE id=?",
+                (
+                    "2026-10-01T00:00:00Z",
+                    "2026-10-01T00:00:04Z",
+                    4000,
+                    json.dumps(
+                        [
+                            {
+                                "kind": "tool",
+                                "id": "pending",
+                                "tool": "get_current_time",
+                                "query": "",
+                                "status": "RUNNING",
+                                "hits": None,
+                            }
+                        ]
+                    ),
+                    accepted.process.id,
+                ),
+            )
+            await db.commit()
+    async with streaming_chat_app(tmp_path, monkeypatch) as (_app, client, _captured):
+        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        user = next(message for message in history if message["role"] == "USER")
+        previous = user["response_processes"][0]
+        assert previous["status"] == "INTERRUPTED"
+        assert previous["elapsed_ms"] == 4000
+        assert previous["ended_at"] == "2026-10-01T00:00:04.000000Z"
+        assert previous["entries"][0]["status"] == "INTERRUPTED"
+        await send_message(client, session_id, "查询时间")
+        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        users = [message for message in history if message["role"] == "USER"]
+        assert len(users) == 1
+        assert [process["status"] for process in users[0]["response_processes"]] == [
+            "INTERRUPTED",
+            "COMPLETED",
+        ]

@@ -1,30 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  BookmarkPlus,
-  CircleAlert,
-  Globe,
-  GraduationCap,
-  Library,
-  RotateCcw,
-  Search,
-} from "lucide-react";
+import { ArrowDown, BookmarkPlus, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
-import type { ChatMessage } from "@/features/chat/api/types";
+import type {
+  ChatMessage,
+  ChatResponseProcess as Process,
+} from "@/features/chat/api/types";
 import { ChatMarkdown } from "@/features/chat/ChatMarkdown";
 import {
   planDraftStreamingView,
   stripPlanDraftBlocks,
 } from "@/features/chat/planDraftJson";
 import { SaveKnowledgePointDialog } from "@/features/chat/SaveKnowledgePointDialog";
-import type { ChatToolActivity } from "@/features/chat/useChatStream";
+import { ChatResponseProcess } from "@/features/chat/ChatResponseProcess";
 
 type ChatMessageListProps = {
   messages: ChatMessage[];
   streamingText: string | null;
-  toolActivities: ChatToolActivity[];
+  responseProcess?: Process | null;
   isStreaming: boolean;
   streamError: string | null;
   onRetry: (content: string) => void;
@@ -40,72 +34,6 @@ const messageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour: "2-digit",
   minute: "2-digit",
 });
-
-const toolActivityCardClass =
-  "bg-surface-subtle text-label flex max-w-full items-center gap-2 rounded-sm px-2.5 py-1.5";
-const toolActivityIconClass = "size-3.5 shrink-0";
-
-/** 专属活动卡的文案键与图标（单一映射，新增工具只改这里）；兜底为通用检索卡。 */
-const TOOL_ACTIVITY_META: Record<
-  string,
-  { copyKey: string; icon: typeof Globe }
-> = {
-  web_search: { copyKey: "chat.tools.activity.webSearch", icon: Globe },
-  search_library: { copyKey: "chat.tools.activity.library", icon: Library },
-  search_courses: {
-    copyKey: "chat.tools.activity.courseSearch",
-    icon: GraduationCap,
-  },
-};
-const TOOL_ACTIVITY_FALLBACK = { copyKey: "chat.tools.activity", icon: Search };
-
-/** 检索过程卡：加载 / 命中 / 失败三态，图标与文字同时表达状态（不只靠颜色）。
- * 各检索类工具共用卡形态，仅文案与图标经 TOOL_ACTIVITY_META 分流。 */
-function ToolActivityCard({ activity }: { activity: ChatToolActivity }) {
-  const { t } = useTranslation();
-  const { copyKey, icon: ResultIcon } =
-    TOOL_ACTIVITY_META[activity.tool] ?? TOOL_ACTIVITY_FALLBACK;
-  if (activity.result === null) {
-    return (
-      <li className={toolActivityCardClass}>
-        <Spinner
-          aria-hidden="true"
-          className={`${toolActivityIconClass} text-muted-foreground`}
-        />
-        <span className="text-muted-foreground">
-          {t(`${copyKey}.running`, { query: activity.query })}
-        </span>
-      </li>
-    );
-  }
-  if (activity.result.ok) {
-    return (
-      <li className={toolActivityCardClass}>
-        <ResultIcon
-          aria-hidden="true"
-          className={`${toolActivityIconClass} text-muted-foreground`}
-        />
-        <span className="text-muted-foreground">
-          {t(`${copyKey}.hits`, {
-            query: activity.query,
-            count: activity.result.hits,
-          })}
-        </span>
-      </li>
-    );
-  }
-  return (
-    <li className={toolActivityCardClass}>
-      <CircleAlert
-        aria-hidden="true"
-        className={`${toolActivityIconClass} text-destructive`}
-      />
-      <span className="text-destructive">
-        {t(`${copyKey}.failed`, { query: activity.query })}
-      </span>
-    </li>
-  );
-}
 
 /** 计划草案 JSON 折叠块（工单 02 真机验收兜底）：正文整体即草案 JSON 时
  * （模型未输出中文复述），以摘要行 + 可展开原始数据呈现并引导重新发起。 */
@@ -140,7 +68,7 @@ function PlanDraftJsonBlock({
 export function ChatMessageList({
   messages,
   streamingText,
-  toolActivities,
+  responseProcess = null,
   isStreaming,
   streamError,
   onRetry,
@@ -149,7 +77,10 @@ export function ChatMessageList({
   defaultRecordId,
 }: ChatMessageListProps) {
   const { t } = useTranslation();
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const followRef = useRef(true);
+  const readingProcessRef = useRef(false);
+  const [showJump, setShowJump] = useState(false);
   const [saveTarget, setSaveTarget] = useState<ChatMessage | null>(null);
   // SYSTEM 是会话创建时的角色快照，仅喂给模型，不渲染给用户。
   const visible = messages.filter((message) => message.role !== "SYSTEM");
@@ -161,153 +92,228 @@ export function ChatMessageList({
     streamingText === null;
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: "end" });
-  }, [visible.length, streamingText, toolActivities.length]);
+    const container = scrollRef.current;
+    if (container && followRef.current && !readingProcessRef.current) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [visible.length, streamingText]);
+
+  const allProcesses = visible.flatMap(
+    (message) => message.response_processes ?? [],
+  );
+  const currentProcess =
+    responseProcess &&
+    allProcesses.find((process) => process.id === responseProcess.id);
+  // REST 已有终态后优先用持久化事实；接收期间使用流快照。
+  const liveProcess =
+    currentProcess &&
+    currentProcess.status !== "RUNNING" &&
+    responseProcess?.history_saved !== false
+      ? currentProcess
+      : responseProcess;
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto" aria-live="polite">
-      {visible.length === 0 && streamingText === null ? (
-        showEmptyHint ? (
-          <p className="text-body text-muted-foreground py-8 text-center">
-            {t("chat.emptyConversation")}
-          </p>
-        ) : null
-      ) : (
-        <ul className="flex flex-col gap-6 py-6">
-          {visible.map((message) =>
-            message.role === "USER" ? (
-              <li key={message.id} className="flex flex-col items-end gap-1">
-                <p className="bg-primary text-primary-foreground text-body max-w-[85%] rounded-2xl rounded-ee-md px-4 py-2.5 break-words whitespace-pre-wrap">
-                  {message.content}
-                </p>
-                <time
-                  dateTime={message.created_at}
-                  className="text-label text-muted-foreground px-1"
-                >
-                  {messageTimeFormatter.format(new Date(message.created_at))}
-                </time>
-              </li>
-            ) : (
-              <li key={message.id} className="flex min-w-0 flex-col gap-3">
-                {(() => {
-                  const stripped = stripPlanDraftBlocks(message.content);
-                  if (stripped !== null && stripped.rest !== "") {
-                    // 草案 JSON（任意位置）+ 中文复述：移除 JSON 段只渲染中文。
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto"
+        aria-label={t("chat.process.conversation")}
+        onScroll={(event) => {
+          const element = event.currentTarget;
+          followRef.current =
+            element.scrollHeight - element.scrollTop - element.clientHeight <=
+            80;
+          setShowJump(!followRef.current);
+        }}
+        onClickCapture={(event) => {
+          const target = event.target;
+          if (
+            target instanceof Element &&
+            target.closest('[data-slot="collapsible"]')
+          ) {
+            readingProcessRef.current = true;
+            followRef.current = false;
+            setShowJump(true);
+          }
+        }}
+      >
+        {visible.length === 0 && streamingText === null ? (
+          showEmptyHint ? (
+            <p className="text-body text-muted-foreground py-8 text-center">
+              {t("chat.emptyConversation")}
+            </p>
+          ) : null
+        ) : (
+          <ul className="flex flex-col gap-6 py-6">
+            {visible.map((message) =>
+              message.role === "USER" ? (
+                <li key={message.id} className="flex min-w-0 flex-col gap-1">
+                  <div className="flex flex-col items-end gap-1">
+                    <p className="bg-primary text-primary-foreground text-body max-w-[85%] rounded-2xl rounded-ee-md px-4 py-2.5 break-words whitespace-pre-wrap">
+                      {message.content}
+                    </p>
+                    <time
+                      dateTime={message.created_at}
+                      className="text-label text-muted-foreground px-1"
+                    >
+                      {messageTimeFormatter.format(
+                        new Date(message.created_at),
+                      )}
+                    </time>
+                  </div>
+                  {(() => {
+                    const processes = [...(message.response_processes ?? [])];
+                    if (liveProcess?.user_message_id === message.id) {
+                      const index = processes.findIndex(
+                        (process) => process.id === liveProcess.id,
+                      );
+                      if (index >= 0) processes[index] = liveProcess;
+                      else processes.push(liveProcess);
+                    }
+                    return processes.map((process) => (
+                      <ChatResponseProcess key={process.id} process={process} />
+                    ));
+                  })()}
+                </li>
+              ) : (
+                <li key={message.id} className="flex min-w-0 flex-col gap-3">
+                  {(() => {
+                    const stripped = stripPlanDraftBlocks(message.content);
+                    if (stripped !== null && stripped.rest !== "") {
+                      // 草案 JSON（任意位置）+ 中文复述：移除 JSON 段只渲染中文。
+                      return (
+                        <ChatMarkdown
+                          content={stripped.rest}
+                          citations={message.citations ?? []}
+                        />
+                      );
+                    }
+                    if (stripped !== null) {
+                      return (
+                        <PlanDraftJsonBlock
+                          raw={stripped.blocks[0].json}
+                          itemCount={stripped.blocks.reduce(
+                            (total, block) => total + block.itemCount,
+                            0,
+                          )}
+                        />
+                      );
+                    }
                     return (
                       <ChatMarkdown
-                        content={stripped.rest}
+                        content={message.content}
                         citations={message.citations ?? []}
                       />
                     );
-                  }
-                  if (stripped !== null) {
-                    return (
-                      <PlanDraftJsonBlock
-                        raw={stripped.blocks[0].json}
-                        itemCount={stripped.blocks.reduce(
-                          (total, block) => total + block.itemCount,
-                          0,
-                        )}
+                  })()}
+                  {/* 对话转知识点（对话转学习资产 V1）：messages 里的回答均已落库，可直接保存。 */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-ink h-auto w-fit cursor-pointer gap-1.5 px-2 py-1"
+                    onClick={() => setSaveTarget(message)}
+                  >
+                    <BookmarkPlus
+                      data-icon="inline-start"
+                      aria-hidden="true"
+                      className="size-3.5"
+                    />
+                    {t("chat.saveKp.action")}
+                  </Button>
+                </li>
+              ),
+            )}
+            {streamingText !== null &&
+            !visible.some(
+              (message) => message.id === liveProcess?.assistant_message_id,
+            ) ? (
+              <li className="flex min-w-0 flex-col gap-3">
+                {liveProcess &&
+                !visible.some(
+                  (message) => message.id === liveProcess.user_message_id,
+                ) ? (
+                  <ChatResponseProcess
+                    key={liveProcess.id}
+                    process={liveProcess}
+                  />
+                ) : null}
+                {streamingText ? (
+                  (() => {
+                    const view = planDraftStreamingView(streamingText);
+                    return view.kind === "pending" ? (
+                      <p
+                        role="status"
+                        className="text-body text-muted-foreground animate-pulse"
+                      >
+                        {t("chat.planDraftJson.streaming")}
+                      </p>
+                    ) : (
+                      <ChatMarkdown
+                        content={view.text}
+                        citations={[]}
+                        streaming
                       />
                     );
-                  }
-                  return (
-                    <ChatMarkdown
-                      content={message.content}
-                      citations={message.citations ?? []}
-                    />
-                  );
-                })()}
-                {/* 对话转知识点（对话转学习资产 V1）：messages 里的回答均已落库，可直接保存。 */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:text-ink h-auto w-fit cursor-pointer gap-1.5 px-2 py-1"
-                  onClick={() => setSaveTarget(message)}
-                >
-                  <BookmarkPlus
-                    data-icon="inline-start"
-                    aria-hidden="true"
-                    className="size-3.5"
-                  />
-                  {t("chat.saveKp.action")}
-                </Button>
+                  })()
+                ) : !liveProcess ? (
+                  <p role="status" className="text-body text-muted-foreground">
+                    {t("chat.streamingStatus")}
+                  </p>
+                ) : null}
               </li>
-            ),
-          )}
-          {streamingText !== null ? (
-            <li className="flex min-w-0 flex-col gap-3">
-              {toolActivities.length > 0 ? (
-                <ul
-                  aria-label={t("chat.tools.activity.label")}
-                  className="flex flex-col items-start gap-1.5"
-                >
-                  {toolActivities.map((activity, index) => (
-                    <ToolActivityCard key={index} activity={activity} />
-                  ))}
-                </ul>
-              ) : null}
-              {streamingText ? (
-                (() => {
-                  const view = planDraftStreamingView(streamingText);
-                  return view.kind === "pending" ? (
-                    <p
-                      role="status"
-                      className="text-body text-muted-foreground animate-pulse"
-                    >
-                      {t("chat.planDraftJson.streaming")}
-                    </p>
-                  ) : (
-                    <ChatMarkdown
-                      content={view.text}
-                      citations={[]}
-                      streaming
-                    />
-                  );
-                })()
-              ) : (
-                <p
-                  role="status"
-                  className="text-body text-muted-foreground animate-pulse"
-                >
-                  {t("chat.streamingStatus")}
-                </p>
-              )}
-            </li>
-          ) : null}
-        </ul>
-      )}
+            ) : null}
+          </ul>
+        )}
 
-      {streamError !== null ? (
-        <Alert variant="destructive" className="mt-2">
-          <AlertDescription>{streamError}</AlertDescription>
-        </Alert>
-      ) : null}
+        {streamError !== null ? (
+          <Alert variant="destructive" className="mt-2">
+            <AlertDescription>{streamError}</AlertDescription>
+          </Alert>
+        ) : null}
 
-      {interrupted ? (
-        <div className="border-border-subtle mt-4 flex flex-col gap-2 border-t pt-4">
-          <p className="text-label text-muted-foreground">
-            {t("chat.interruptedDescription")}
-          </p>
-          <div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onRetry(lastVisible.content)}
-            >
-              <RotateCcw data-icon="inline-start" aria-hidden="true" />
-              {t("chat.retryAnswer")}
-            </Button>
+        {interrupted ? (
+          <div className="border-border-subtle mt-4 flex flex-col gap-2 border-t pt-4">
+            <p className="text-label text-muted-foreground">
+              {t("chat.interruptedDescription")}
+            </p>
+            <div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onRetry(lastVisible.content)}
+              >
+                <RotateCcw data-icon="inline-start" aria-hidden="true" />
+                {t("chat.retryAnswer")}
+              </Button>
+            </div>
           </div>
-        </div>
+        ) : null}
+        <SaveKnowledgePointDialog
+          message={saveTarget}
+          onClose={() => setSaveTarget(null)}
+          sessionId={sessionId}
+          defaultRecordId={defaultRecordId}
+        />
+      </div>
+      {showJump ? (
+        <Button
+          variant="outline"
+          size="sm"
+          className="absolute right-4 bottom-4 cursor-pointer max-md:right-1 max-md:bottom-1 max-md:size-6 max-md:p-0"
+          onClick={() => {
+            readingProcessRef.current = false;
+            followRef.current = true;
+            setShowJump(false);
+            const container = scrollRef.current;
+            if (container) container.scrollTop = container.scrollHeight;
+          }}
+        >
+          <ArrowDown data-icon="inline-start" aria-hidden="true" />
+          <span className="max-md:sr-only">
+            {t("chat.process.jumpToLatest")}
+          </span>
+        </Button>
       ) : null}
-      <SaveKnowledgePointDialog
-        message={saveTarget}
-        onClose={() => setSaveTarget(null)}
-        sessionId={sessionId}
-        defaultRecordId={defaultRecordId}
-      />
-      <div ref={bottomRef} aria-hidden="true" />
     </div>
   );
 }

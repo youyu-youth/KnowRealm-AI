@@ -111,6 +111,26 @@ function sseResponse(chunks: string[], onClose?: () => void) {
 /** 保持打开的流：推完初始块后不关闭，可按需继续推事件或收尾关闭。 */
 function openSseResponse(initialChunks: string[]) {
   const encoder = new TextEncoder();
+  const process = {
+    id: "process-live",
+    session_id: FIRST_SESSION_ID,
+    user_message_id: "user-row",
+    assistant_message_id: null as string | null,
+    status: "RUNNING",
+    started_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ended_at: null as string | null,
+    elapsed_ms: 0,
+    history_saved: true,
+    entries: [] as {
+      kind: "tool";
+      id: string;
+      tool: string;
+      query: string;
+      status: string;
+      hits: number | null;
+    }[],
+  };
   let streamController: ReadableStreamDefaultController<Uint8Array> | null =
     null;
   const stream = new ReadableStream<Uint8Array>({
@@ -125,7 +145,48 @@ function openSseResponse(initialChunks: string[]) {
       headers: { "Content-Type": "text/event-stream" },
     }),
     pushEvent: (event: string) => {
-      streamController?.enqueue(encoder.encode(`${event}\n\n`));
+      const name = event.split("\n")[0].slice(7);
+      const data: Record<string, unknown> = JSON.parse(
+        event.split("\ndata: ")[1],
+      );
+      if (name === "tool_call") {
+        const id =
+          typeof data.tool_call_id === "string"
+            ? data.tool_call_id
+            : `call-${process.entries.length}`;
+        process.entries.push({
+          kind: "tool",
+          id,
+          tool: String(data.tool),
+          query: String(data.query),
+          status: "RUNNING",
+          hits: null,
+        });
+        data.tool_call_id = id;
+      } else if (name === "tool_result") {
+        const entry = process.entries.find(
+          (entry) =>
+            entry.id === data.tool_call_id ||
+            (entry.tool === data.tool && entry.status === "RUNNING"),
+        );
+        if (entry) {
+          entry.status = data.ok ? "SUCCEEDED" : "FAILED";
+          entry.hits = Number(data.hits);
+          data.tool_call_id = entry.id;
+        }
+      } else if (name === "done" || name === "error") {
+        process.status = name === "done" ? "COMPLETED" : "FAILED";
+        process.ended_at = new Date().toISOString();
+        if (name === "done")
+          process.assistant_message_id = String(data.message_id);
+      }
+      if (
+        ["status", "tool_call", "tool_result", "done", "error"].includes(name)
+      )
+        data.process = process;
+      streamController?.enqueue(
+        encoder.encode(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`),
+      );
     },
     closeStream: () => streamController?.close(),
   };
@@ -628,7 +689,7 @@ describe("自由聊天流式", () => {
       target: { value: "第二条" },
     });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
-    expect(await screen.findByText("好")).toBeVisible();
+    await waitFor(() => expect(screen.getByText("好")).toBeVisible());
   });
 
   it("未配置 AI 服务时展示跳设置页的引导卡，无就地配置表单", async () => {
@@ -957,7 +1018,7 @@ describe("挂载对话检索过程", () => {
     renderAt(`/chat/${FIRST_SESSION_ID}`);
   }
 
-  it("检索状态卡三态逐条呈现，done 后随流式态消失", async () => {
+  it("检索过程默认仅展示最新状态，done 后保留可展开历史", async () => {
     const answered = { current: false };
     const opened = openSseResponse([]);
     server.use(
@@ -993,7 +1054,7 @@ describe("挂载对话检索过程", () => {
       'event: tool_result\ndata: {"tool":"search_transcript","hits":0,"ok":false}',
     );
     expect(await screen.findByText("「undo 日志」检索失败")).toBeVisible();
-    expect(screen.getByText("「MVCC」命中 3 条")).toBeVisible();
+    expect(screen.queryByText("「MVCC」命中 3 条")).not.toBeInTheDocument();
 
     opened.pushEvent('event: token\ndata: {"text":"答案"}');
     opened.pushEvent('event: token\ndata: {"text":"见转写原文。"}');
@@ -1009,6 +1070,11 @@ describe("挂载对话检索过程", () => {
     );
     expect(screen.queryByText("「undo 日志」检索失败")).not.toBeInTheDocument();
     expect(await screen.findByText("答案见转写原文。")).toBeVisible();
+    fireEvent.click(
+      await screen.findByRole("button", { name: /已完成.*2 次工具调用/ }),
+    );
+    expect(screen.getByText("「MVCC」命中 3 条")).toBeVisible();
+    expect(screen.getByText("「undo 日志」检索失败")).toBeVisible();
   });
 });
 

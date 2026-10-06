@@ -1782,6 +1782,13 @@
             "description": "生成该条回答的模型，user/system 行为空",
             "title": "Model"
           },
+          "response_processes": {
+            "items": {
+              "$ref": "#/components/schemas/ChatResponseProcessOut"
+            },
+            "title": "Response Processes",
+            "type": "array"
+          },
           "role": {
             "$ref": "#/components/schemas/ChatRole"
           }
@@ -1862,6 +1869,82 @@
         "title": "ChatPageSnapshot",
         "type": "object"
       },
+      "ChatProcessCommentary": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "commentary",
+            "default": "commentary",
+            "title": "Kind",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "ChatProcessCommentary",
+        "type": "object"
+      },
+      "ChatProcessTool": {
+        "properties": {
+          "hits": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hits"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "tool",
+            "default": "tool",
+            "title": "Kind",
+            "type": "string"
+          },
+          "query": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RUNNING",
+              "SUCCEEDED",
+              "FAILED",
+              "INTERRUPTED",
+              "AWAITING_CONFIRMATION"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tool",
+          "status"
+        ],
+        "title": "ChatProcessTool",
+        "type": "object"
+      },
       "ChatRecordOption": {
         "properties": {
           "course_id": {
@@ -1899,6 +1982,104 @@
           "has_transcript"
         ],
         "title": "ChatRecordOption",
+        "type": "object"
+      },
+      "ChatResponseProcessOut": {
+        "properties": {
+          "assistant_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assistant Message Id"
+          },
+          "elapsed_ms": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "entries": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "commentary": "#/components/schemas/ChatProcessCommentary",
+                  "tool": "#/components/schemas/ChatProcessTool"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ChatProcessCommentary"
+                },
+                {
+                  "$ref": "#/components/schemas/ChatProcessTool"
+                }
+              ]
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "history_saved": {
+            "default": true,
+            "title": "History Saved",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "RUNNING",
+              "COMPLETED",
+              "FAILED",
+              "INTERRUPTED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "user_message_id": {
+            "title": "User Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "session_id",
+          "user_message_id",
+          "status",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "ChatResponseProcessOut",
         "type": "object"
       },
       "ChatRole": {

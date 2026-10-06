@@ -1,7 +1,7 @@
 import json
 from datetime import UTC, date, datetime
 from enum import StrEnum
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import UUID
 
 from pydantic import (
@@ -312,6 +312,49 @@ def parse_executed_operation_ids(raw: str | None) -> list[str]:
     return [item for item in cast(list[object], value) if isinstance(item, str)]
 
 
+class ChatProcessCommentary(BaseModel):
+    kind: Literal["commentary"] = "commentary"
+    id: str
+    text: str
+
+
+class ChatProcessTool(BaseModel):
+    kind: Literal["tool"] = "tool"
+    id: str
+    tool: str
+    query: str = ""
+    status: Literal["RUNNING", "SUCCEEDED", "FAILED", "INTERRUPTED", "AWAITING_CONFIRMATION"]
+    hits: int | None = None
+
+
+ChatProcessEntry = Annotated[ChatProcessCommentary | ChatProcessTool, Field(discriminator="kind")]
+ChatProcessStatus = Literal["RUNNING", "COMPLETED", "FAILED", "INTERRUPTED"]
+
+
+class ChatResponseProcessOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    session_id: str
+    user_message_id: str
+    assistant_message_id: str | None = None
+    status: ChatProcessStatus
+    started_at: datetime
+    updated_at: datetime
+    ended_at: datetime | None = None
+    elapsed_ms: int = Field(default=0, ge=0)
+    entries: list[ChatProcessEntry] = Field(default_factory=list[ChatProcessEntry])
+    history_saved: bool = True
+
+    @field_serializer("started_at", "updated_at")
+    def serialize_time(self, value: datetime) -> str:
+        return _iso_utc(value)
+
+    @field_serializer("ended_at")
+    def serialize_end_time(self, value: datetime | None) -> str | None:
+        return _iso_utc(value) if value is not None else None
+
+
 class ChatMessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -329,6 +372,9 @@ class ChatMessageOut(BaseModel):
         description="本轮直执行回执锚点（operation_id 列表；详情经操作历史查询）",
     )
     created_at: datetime
+    response_processes: list[ChatResponseProcessOut] = Field(
+        default_factory=list[ChatResponseProcessOut]
+    )
 
     @model_validator(mode="after")
     def load_message_payloads(self) -> "ChatMessageOut":

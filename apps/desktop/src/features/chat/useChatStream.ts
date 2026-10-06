@@ -3,29 +3,22 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { AuthMode } from "@/features/agent/api/authMode";
 import { agentKeys } from "@/features/agent/api/authMode";
 import { chatApi } from "@/features/chat/api/chatSessions";
+import type { ChatResponseProcess } from "@/features/chat/api/types";
 import { chatKeys } from "@/features/chat/api/keys";
 import { libraryKeys } from "@/features/library/api/keys";
 import { sharedRefsKeys } from "@/features/sharedRefs/api/keys";
 import { useChatUiStore } from "@/features/chat/chatUiStore";
 import { derivePageSnapshot } from "@/features/chat/pageSnapshot";
 
-/**
- * 单会话的流式回答状态：发送 / 停止 / 逐字渲染 / 检索过程 / done 后失效重取。
- * 流式文本与工具过程卡都是本组件树内的临时态，事实源始终是 chat_messages（REST）。
- */
-export type ChatToolActivity = {
-  tool: string;
-  query: string;
-  /** null = 检索进行中；非空 = 结果（命中数 + 是否成功）。 */
-  result: { hits: number; ok: boolean } | null;
-};
-
 export function useChatStream(sessionId: string) {
   const queryClient = useQueryClient();
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamedText, setStreamedText] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [toolActivities, setToolActivities] = useState<ChatToolActivity[]>([]);
+  const [responseProcess, setResponseProcess] =
+    useState<ChatResponseProcess | null>(null);
+  const segmentsRef = useRef(new Map<string, string>());
+  const commentaryRef = useRef(new Set<string>());
   const abortRef = useRef<AbortController | null>(null);
   // 本轮学习者记忆（工单 06）放 chatUiStore：消息流确认卡与右栏注入展示
   // 分属不同组件层，done 写入 / 发送与停止时清除（当轮语义，不落库）。
@@ -40,7 +33,8 @@ export function useChatStream(sessionId: string) {
   // 流式文本与工具过程卡同生命周期：一起置空即回到历史态。
   const clearTransientState = useCallback(() => {
     setStreamedText(null);
-    setToolActivities([]);
+    segmentsRef.current.clear();
+    commentaryRef.current.clear();
   }, []);
 
   const send = useCallback(
@@ -51,43 +45,67 @@ export function useChatStream(sessionId: string) {
       setIsStreaming(true);
       setStreamedText("");
       setStreamError(null);
-      setToolActivities([]);
+      setResponseProcess(null);
+      segmentsRef.current.clear();
+      commentaryRef.current.clear();
       clearTurnMemory(sessionId);
       chatApi
         .streamMessage(
           sessionId,
           content,
           {
-            onStatus: () => {
-              setIsStreaming(true);
-              // status 发出前用户消息已落库（补答复用原行），生成期间就重取展示。
-              void queryClient.invalidateQueries({
-                queryKey: chatKeys.messages(sessionId),
-              });
+            onStatus: (payload) => {
+              if (payload?.process) {
+                setResponseProcess(payload.process);
+                for (const entry of payload.process.entries ?? []) {
+                  if (entry.kind === "commentary")
+                    commentaryRef.current.add(entry.id);
+                }
+                setStreamedText(
+                  [...segmentsRef.current]
+                    .filter(([id]) => !commentaryRef.current.has(id))
+                    .map(([, text]) => text)
+                    .join(""),
+                );
+              }
+              if (!payload || payload.phase === "generating") {
+                setIsStreaming(true);
+                void queryClient.invalidateQueries({
+                  queryKey: chatKeys.messages(sessionId),
+                });
+              }
             },
-            onToken: (text) =>
-              setStreamedText((current) => (current ?? "") + text),
-            onToolCall: (payload) =>
-              setToolActivities((current) => [
-                ...current,
-                { tool: payload.tool, query: payload.query, result: null },
-              ]),
-            onToolResult: (payload) =>
-              setToolActivities((current) => {
-                // 工具循环逐次串行，结果只回填最后一张在途卡；无对应卡片时忽略。
-                const last = current[current.length - 1];
-                if (last === undefined || last.result !== null) return current;
-                const next = [...current];
-                next[next.length - 1] = {
-                  ...last,
-                  result: { hits: payload.hits, ok: payload.ok },
-                };
-                return next;
-              }),
+            onToken: (text, segmentId = "legacy") => {
+              segmentsRef.current.set(
+                segmentId,
+                (segmentsRef.current.get(segmentId) ?? "") + text,
+              );
+              setStreamedText(
+                [...segmentsRef.current]
+                  .filter(([id]) => !commentaryRef.current.has(id))
+                  .map(([, value]) => value)
+                  .join(""),
+              );
+            },
+            onToolCall: (payload) => {
+              if (payload.segmentId)
+                commentaryRef.current.add(payload.segmentId);
+              if (payload.process) setResponseProcess(payload.process);
+              setStreamedText(
+                [...segmentsRef.current]
+                  .filter(([id]) => !commentaryRef.current.has(id))
+                  .map(([, text]) => text)
+                  .join(""),
+              );
+            },
+            onToolResult: (payload) => {
+              if (payload.process) setResponseProcess(payload.process);
+            },
             onDone: async (payload) => {
               // 先清流式临时态（历史重取后消息由 REST 承载），再落本轮记忆展示
               // （done 载荷是本轮注入记忆与待确认提案的唯一来源）。
-              clearTransientState();
+              setResponseProcess(payload.process ?? null);
+              setStreamedText(payload.content);
               setTurnMemory({
                 sessionId,
                 memoryUsed: payload.memoryUsed ?? [],
@@ -99,6 +117,8 @@ export function useChatStream(sessionId: string) {
               await queryClient.invalidateQueries({
                 queryKey: chatKeys.messages(sessionId),
               });
+              if (!abortRef.current || abortRef.current === controller)
+                clearTransientState();
               await queryClient.invalidateQueries({
                 queryKey: chatKeys.detail(sessionId),
               });
@@ -108,6 +128,7 @@ export function useChatStream(sessionId: string) {
             },
             onError: (payload) => {
               clearTransientState();
+              if (payload.process) setResponseProcess(payload.process);
               setStreamError(payload.detail);
             },
           },
@@ -150,6 +171,26 @@ export function useChatStream(sessionId: string) {
           // 共享引用缓存同口径（工单 05）：自动档直执行的引用增删已生效，流中
           // 动作类型不可知——统一失效，挂载中的共享 Tab 随即重取。
           void queryClient.invalidateQueries({ queryKey: sharedRefsKeys.all });
+          void queryClient.invalidateQueries({
+            queryKey: chatKeys.messages(sessionId),
+          });
+          setResponseProcess((current) =>
+            current?.status === "RUNNING"
+              ? {
+                  ...current,
+                  status: "INTERRUPTED",
+                  elapsed_ms: Math.max(
+                    current.elapsed_ms ?? 0,
+                    Date.now() - Date.parse(current.started_at),
+                  ),
+                  entries: (current.entries ?? []).map((entry) =>
+                    entry.kind === "tool" && entry.status === "RUNNING"
+                      ? { ...entry, status: "INTERRUPTED" }
+                      : entry,
+                  ),
+                }
+              : current,
+          );
           abortRef.current = null;
           setIsStreaming(false);
         });
@@ -167,5 +208,12 @@ export function useChatStream(sessionId: string) {
     abortRef.current?.abort();
   }, []);
 
-  return { isStreaming, streamedText, streamError, toolActivities, send, stop };
+  return {
+    isStreaming,
+    streamedText,
+    streamError,
+    responseProcess,
+    send,
+    stop,
+  };
 }

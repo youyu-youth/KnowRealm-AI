@@ -121,12 +121,12 @@ async def list_chat_messages(
     session_id: UUID,
     session: AsyncSession = Depends(get_db),
 ) -> list[ChatMessageOut]:
-    messages = await ChatMessageService.list_messages(session, str(session_id))
+    messages = await ChatMessageService.list_message_outputs(session, str(session_id))
     if messages is None:
         raise CodedHTTPException(
             code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
         )
-    return [ChatMessageOut.model_validate(message) for message in messages]
+    return messages
 
 
 @router.post(

@@ -85,8 +85,14 @@ export function ChatConversationView({
   initialPrompt,
 }: ChatConversationViewProps) {
   const { t, i18n } = useTranslation();
-  const { isStreaming, streamedText, streamError, toolActivities, send, stop } =
-    useChatStream(sessionId);
+  const {
+    isStreaming,
+    streamedText,
+    streamError,
+    responseProcess,
+    send,
+    stop,
+  } = useChatStream(sessionId);
   const [composerValue, setComposerValue] = useState(initialPrompt ?? "");
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -174,10 +180,10 @@ export function ChatConversationView({
       aria-label={t("chat.detailLabel", { title })}
       className="flex h-full min-h-0 flex-col"
     >
-      <header className="flex shrink-0 items-start gap-3 px-6 pt-6">
+      <header className="flex shrink-0 items-start gap-3 px-6 pt-6 max-md:px-3 max-md:pt-3">
         <div className="min-w-0 flex-1">
           <h1
-            className="text-headline font-headline text-ink-strong break-words"
+            className="text-headline font-headline text-ink-strong break-words max-md:truncate"
             title={title}
           >
             {title}
@@ -248,7 +254,7 @@ export function ChatConversationView({
         </div>
       </header>
 
-      <div className="shrink-0 px-6 pt-4">
+      <div className="shrink-0 px-6 pt-4 max-md:px-3 max-md:pt-2">
         <ChatScopeChips
           scope={scope}
           onSelectScope={handleSelectScope}
@@ -256,7 +262,7 @@ export function ChatConversationView({
         />
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col px-6">
+      <div className="flex min-h-0 flex-1 flex-col px-6 max-md:px-3">
         {showSuggestions ? (
           <ChatSuggestions onPick={setComposerValue} research={research} />
         ) : null}
@@ -278,7 +284,7 @@ export function ChatConversationView({
           <ChatMessageList
             messages={messages.data}
             streamingText={streamedText}
-            toolActivities={toolActivities}
+            responseProcess={responseProcess}
             isStreaming={isStreaming}
             streamError={streamError}
             onRetry={(content) =>

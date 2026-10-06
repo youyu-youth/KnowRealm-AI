@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+import anyio
 from langchain_core.messages import AnyMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
 from loguru import logger
@@ -37,6 +38,7 @@ from app.modules.agent.context import (
 from app.modules.agent.graph import (
     CHAT_PROMPT_VERSION,
     CHAT_RESEARCH_PROMPT_VERSION,
+    ChatCommentaryEvent,
     ChatMemoryProposalEvent,
     ChatOperationExecutionEvent,
     ChatOperationProposalEvent,
@@ -46,12 +48,27 @@ from app.modules.agent.graph import (
     ChatToolCallEvent,
     stream_chat_reply,
 )
-from app.modules.agent.models import ChatMessage, ChatSession
+from app.modules.agent.models import ChatMessage, ChatResponseProcess, ChatSession
+from app.modules.agent.response_process import (
+    finish_process,
+    persist_process,
+    process_out,
+    save_process,
+)
 from app.modules.agent.runs.models import AgentOperation
 from app.modules.agent.runs.schemas import AuthMode, OperationStatus
 from app.modules.agent.runs.service import list_nonterminal_runs
 from app.modules.agent.runtime import AgentRuntimeContext, ToolCallBudget
-from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole, ChatScope
+from app.modules.agent.schemas import (
+    ChatMessageOut,
+    ChatMode,
+    ChatPageSnapshot,
+    ChatProcessCommentary,
+    ChatProcessTool,
+    ChatResponseProcessOut,
+    ChatRole,
+    ChatScope,
+)
 from app.modules.agent.session_service import ChatSessionService
 from app.modules.agent.tools.time_utils import format_time_hint
 from app.modules.course.models import Course
@@ -131,6 +148,7 @@ class AcceptedMessage:
     user_row_id: str
     content: str
     provider: LlmProviderConfig
+    process: ChatResponseProcessOut
     web_search: SearchProvider | None = None
     memory_injection_allowed: bool = False
     page: ChatPageSnapshot | None = None
@@ -666,6 +684,26 @@ def _cited_excerpts(raw: str | None, record_id: str | None) -> tuple[str, ...]:
 
 class ChatMessageService:
     @staticmethod
+    async def list_message_outputs(
+        session: AsyncSession, session_id: str
+    ) -> list[ChatMessageOut] | None:
+        messages = await ChatMessageService.list_messages(session, session_id)
+        if messages is None:
+            return None
+        processes = await session.scalars(
+            select(ChatResponseProcess)
+            .where(ChatResponseProcess.session_id == session_id)
+            .order_by(ChatResponseProcess.started_at, ChatResponseProcess.id)
+        )
+        by_user: dict[str, list[ChatResponseProcessOut]] = {}
+        for row in processes:
+            by_user.setdefault(row.user_message_id, []).append(process_out(row))
+        result = [ChatMessageOut.model_validate(message) for message in messages]
+        for message in result:
+            message.response_processes = by_user.get(message.id, [])
+        return result
+
+    @staticmethod
     async def list_messages(session: AsyncSession, session_id: str) -> list[ChatMessage] | None:
         """按时间顺序返回会话全部消息；会话不存在或已删返回 None。"""
         chat = await ChatSessionService.get(session, session_id)
@@ -782,6 +820,20 @@ class ChatMessageService:
                     chat.title = content[:CHAT_TITLE_MAX_CHARS]
                 chat.updated_at = utcnow()
                 await session.flush()
+                now = utcnow()
+                process_row = ChatResponseProcess(
+                    id=str(uuid4()),
+                    session_id=session_id,
+                    user_message_id=user_row_id,
+                    status="RUNNING",
+                    started_at=now,
+                    updated_at=now,
+                    entries_json="[]",
+                    elapsed_ms=0,
+                )
+                session.add(process_row)
+                await session.flush()
+                process = process_out(process_row)
         except BaseException:
             registry.release(session_id)
             raise
@@ -790,6 +842,7 @@ class ChatMessageService:
             user_row_id=user_row_id,
             content=content,
             provider=provider,
+            process=process,
             web_search=web_search_provider,
             memory_injection_allowed=outbound_enabled and consent_current,
             page=page,
@@ -805,13 +858,33 @@ class ChatMessageService:
         registry: ChatStreamRegistry,
         accepted: AcceptedMessage,
     ) -> AsyncGenerator[ServerSentEvent, None]:
-        """流式生成回答：status → token… → done / error；中断不落库、finally 释放锁。"""
+        """流式生成回答；中断保留过程、不保存半截正文，finally 释放锁。"""
         session_id = accepted.session_id
         user_row_id = accepted.user_row_id
+        process = accepted.process
+        segments: dict[str, str] = {}
+        commentary_segments: set[str] = set()
+
+        def capture_commentary(segment_id: str, text: str) -> None:
+            commentary_segments.add(segment_id)
+            for entry in process.entries:
+                if isinstance(entry, ChatProcessCommentary) and entry.id == segment_id:
+                    entry.text = text
+                    return
+            if text:
+                process.entries.append(ChatProcessCommentary(id=segment_id, text=text))
+
+        async def failed_payload(code: str, detail: str) -> dict[str, object]:
+            finish_process(process, "FAILED")
+            await persist_process(session_factory, process)
+            return {"code": code, "detail": detail, "process": process.model_dump(mode="json")}
+
         try:
-            yield _sse("status", {"phase": STREAM_STATUS_GENERATING})
+            yield _sse(
+                "status",
+                {"phase": STREAM_STATUS_GENERATING, "process": process.model_dump(mode="json")},
+            )
             outcome = ChatStreamOutcome()
-            parts: list[str] = []
             memory_proposals: list[dict[str, object]] = []
             research_proposals: list[dict[str, str]] = []
             operation_proposals: list[dict[str, object]] = []
@@ -860,10 +933,39 @@ class ChatMessageService:
                     ),
                 ):
                     if isinstance(event, ChatTokenEvent):
-                        parts.append(event.text)
-                        yield _sse("token", {"text": event.text})
+                        segments[event.segment_id] = segments.get(event.segment_id, "") + event.text
+                        yield _sse("token", {"text": event.text, "segment_id": event.segment_id})
+                    elif isinstance(event, ChatCommentaryEvent):
+                        capture_commentary(event.segment_id, event.text)
+                        await persist_process(session_factory, process)
+                        yield _sse(
+                            "status",
+                            {
+                                "phase": "process_updated",
+                                "process": process.model_dump(mode="json"),
+                            },
+                        )
                     elif isinstance(event, ChatToolCallEvent):
-                        yield _sse("tool_call", {"tool": event.tool, "query": event.query})
+                        capture_commentary(event.segment_id, segments.get(event.segment_id, ""))
+                        process.entries.append(
+                            ChatProcessTool(
+                                id=event.tool_call_id,
+                                tool=event.tool,
+                                query=event.query,
+                                status="RUNNING",
+                            )
+                        )
+                        await persist_process(session_factory, process)
+                        yield _sse(
+                            "tool_call",
+                            {
+                                "tool": event.tool,
+                                "query": event.query,
+                                "tool_call_id": event.tool_call_id,
+                                "segment_id": event.segment_id,
+                                "process": process.model_dump(mode="json"),
+                            },
+                        )
                     elif isinstance(event, ChatMemoryProposalEvent):
                         memory_proposals.append(
                             {"proposal_id": event.proposal_id, "items": event.items}
@@ -875,17 +977,43 @@ class ChatMessageService:
                     elif isinstance(event, ChatOperationExecutionEvent):
                         executed_operations.extend(event.executions)
                     else:
+                        for entry in process.entries:
+                            if (
+                                isinstance(entry, ChatProcessTool)
+                                and entry.id == event.tool_call_id
+                            ):
+                                entry.status = (
+                                    "FAILED"
+                                    if not event.ok
+                                    else "AWAITING_CONFIRMATION"
+                                    if event.awaiting_confirmation
+                                    else "SUCCEEDED"
+                                )
+                                if entry.tool in {
+                                    "search_library",
+                                    "search_transcript",
+                                    "search_courses",
+                                    "web_search",
+                                }:
+                                    entry.hits = event.hits
+                                break
+                        await persist_process(session_factory, process)
                         yield _sse(
                             "tool_result",
-                            {"tool": event.tool, "hits": event.hits, "ok": event.ok},
+                            {
+                                "tool": event.tool,
+                                "hits": event.hits,
+                                "ok": event.ok,
+                                "tool_call_id": event.tool_call_id,
+                                "process": process.model_dump(mode="json"),
+                            },
                         )
             except ChatContextTooLargeError:
                 yield _sse(
                     "error",
-                    {
-                        "code": "CHAT_CONTEXT_TOO_LARGE",
-                        "detail": "摘要与知识点仍超过上下文预算，请精简材料后重试",
-                    },
+                    await failed_payload(
+                        "CHAT_CONTEXT_TOO_LARGE", "摘要与知识点仍超过上下文预算，请精简材料后重试"
+                    ),
                 )
                 return
             except Exception:
@@ -894,12 +1022,20 @@ class ChatMessageService:
                 )
                 yield _sse(
                     "error",
-                    {"code": "CHAT_STREAM_FAILED", "detail": "回答生成失败，请稍后重试"},
+                    await failed_payload("CHAT_STREAM_FAILED", "回答生成失败，请稍后重试"),
                 )
                 return
-            content = "".join(parts)
+            content = (
+                outcome.final_text
+                if outcome.final_text is not None
+                else "".join(
+                    text
+                    for segment_id, text in segments.items()
+                    if segment_id not in commentary_segments
+                )
+            )
             if not content:
-                yield _sse("error", {"code": "EMPTY_REPLY", "detail": "回答为空，请重试"})
+                yield _sse("error", await failed_payload("EMPTY_REPLY", "回答为空，请重试"))
                 return
             # 引用块解析：范围会话（RECORD 之外的挂载范围）按「（来源：标题）」裁定
             # 归属（记录条目优先、资料条目 library 条目次之）；RECORD 单记录按转写
@@ -925,7 +1061,7 @@ class ChatMessageService:
                 content = parsed.content
                 citations = parsed.citations
             if not content:
-                yield _sse("error", {"code": "EMPTY_REPLY", "detail": "回答为空，请重试"})
+                yield _sse("error", await failed_payload("EMPTY_REPLY", "回答为空，请重试"))
                 return
             for citation in citations:
                 yield _sse("citation", citation)
@@ -963,6 +1099,20 @@ class ChatMessageService:
                 chat = await ChatSessionService.get(session, session_id)
                 if chat is not None:
                     chat.updated_at = utcnow()
+                await session.flush()
+                finish_process(process, "COMPLETED")
+                process.assistant_message_id = assistant_id
+                try:
+                    async with session.begin_nested():
+                        await save_process(session, process)
+                    process.history_saved = True
+                except Exception:
+                    process.history_saved = False
+                    logger.error(
+                        "chat_process_save_failed",
+                        process_id=process.id,
+                        error_code="CHAT_PROCESS_SAVE_FAILED",
+                    )
             # done 载荷扩展（工单 06，可选字段向后兼容）：memory_used=本轮实际
             # 注入的记忆条目，恒携带——空数组=本轮零注入（外发关闭/无记忆），
             # 让前端能区分「未询问」与「确认未注入」并展示空态；
@@ -971,6 +1121,7 @@ class ChatMessageService:
                 "message_id": assistant_id,
                 "content": content,
                 "memory_used": list(prompt_context.learner_memories),
+                "process": process.model_dump(mode="json"),
             }
             if memory_proposals:
                 done_payload["memory_proposals"] = memory_proposals
@@ -985,5 +1136,17 @@ class ChatMessageService:
             if executed_operations:
                 done_payload["executed_operations"] = executed_operations
             yield _sse("done", done_payload)
+        except Exception:
+            logger.error(
+                "chat_generation_failed", session_id=session_id, error_code="CHAT_STREAM_FAILED"
+            )
+            yield _sse(
+                "error", await failed_payload("CHAT_STREAM_FAILED", "回答生成失败，请稍后重试")
+            )
         finally:
+            if process.status == "RUNNING":
+                finish_process(process, "INTERRUPTED")
+                # EventSourceResponse 在取消 scope 中关闭生成器，终态写入须能完成。
+                with anyio.CancelScope(shield=True):
+                    await persist_process(session_factory, process)
             registry.release(session_id)

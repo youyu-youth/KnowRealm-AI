@@ -2303,6 +2303,32 @@
       "paramPath": "Local path: {{path}}",
       "paramContent": "Text: {{excerpt}}…",
       "paramGoal": "Goal: {{goal}}"
+    },
+    "process": {
+      "seconds": "{{count}}s",
+      "minutes": "{{minutes}}m {{seconds}}s",
+      "duration": "Took {{duration}}",
+      "calls": "{{count}} tool calls",
+      "failures": "{{count}} failed",
+      "executing": "Running tools",
+      "generating": "Generating response",
+      "status": {
+        "COMPLETED": "Completed",
+        "FAILED": "Response failed",
+        "INTERRUPTED": "Response interrupted"
+      },
+      "tool": "Tool call: {{tool}}",
+      "toolStatus": {
+        "RUNNING": "Running",
+        "SUCCEEDED": "Completed",
+        "FAILED": "Failed",
+        "INTERRUPTED": "Interrupted",
+        "AWAITING_CONFIRMATION": "Awaiting approval"
+      },
+      "details": "Response process details",
+      "historyIncomplete": "Process history was not fully saved",
+      "conversation": "Conversation messages",
+      "jumpToLatest": "Jump to latest"
     }
   },
   "settings": {

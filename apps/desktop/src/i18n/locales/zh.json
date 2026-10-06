@@ -2283,6 +2283,32 @@
       "paramPath": "本地路径：{{path}}",
       "paramContent": "文本：{{excerpt}}…",
       "paramGoal": "目标：{{goal}}"
+    },
+    "process": {
+      "seconds": "{{count}} 秒",
+      "minutes": "{{minutes}} 分 {{seconds}} 秒",
+      "duration": "用时 {{duration}}",
+      "calls": "{{count}} 次工具调用",
+      "failures": "{{count}} 次失败",
+      "executing": "正在调用工具",
+      "generating": "正在生成回答",
+      "status": {
+        "COMPLETED": "已完成",
+        "FAILED": "回答失败",
+        "INTERRUPTED": "回答已中断"
+      },
+      "tool": "工具调用：{{tool}}",
+      "toolStatus": {
+        "RUNNING": "执行中",
+        "SUCCEEDED": "执行完成",
+        "FAILED": "执行失败",
+        "INTERRUPTED": "已中断",
+        "AWAITING_CONFIRMATION": "待确认"
+      },
+      "details": "回答过程详情",
+      "historyIncomplete": "过程历史保存不完整",
+      "conversation": "对话消息",
+      "jumpToLatest": "回到最新"
     }
   },
   "settings": {

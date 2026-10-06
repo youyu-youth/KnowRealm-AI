@@ -2,6 +2,11 @@ import type { components } from "@knowrealm/api-types";
 
 export type ChatSession = components["schemas"]["ChatSessionOut"];
 export type ChatMessage = components["schemas"]["ChatMessageOut"];
+export type ChatResponseProcess =
+  components["schemas"]["ChatResponseProcessOut"];
+export type ChatProcessEntry = NonNullable<
+  ChatResponseProcess["entries"]
+>[number];
 export type ChatSessionCreate = components["schemas"]["ChatSessionCreate"];
 export type ChatRecordOption = components["schemas"]["ChatRecordOption"];
 export type ChatCitation = components["schemas"]["ChatCitationOut"];
