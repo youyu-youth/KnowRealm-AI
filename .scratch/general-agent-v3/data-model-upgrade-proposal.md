@@ -35,7 +35,7 @@
 
 ### 1.3 设计口径
 
-- 正式表设计口径 **44 → 47 张**（agent_runs / agent_operations / agent_activity 三表为通用 Agent 二阶段新增设计，不在 v3.1 的 44 张内）；**已实施 31 → 38 张**（两张 FTS 衍生索引表不计，纪律同 ADR-0016）。
+- 正式表设计口径 **44 → 48 张**（agent_runs / agent_operations / agent_activity 三表〔通用 Agent 二阶段〕与 course_shared_refs〔三阶段 05〕共 4 张为 v3.1 定稿后新增设计，均不在 v3.1 的 44 张内；learning_goals / learning_plans / learning_plan_items 属 P6 原设计、已计入 44 张不重复计）；**已实施 31 → 38 张**（两张 FTS 衍生索引表不计，纪律同 ADR-0016）。
 
 ## 2. deferred 表登记（本期不实施）
 

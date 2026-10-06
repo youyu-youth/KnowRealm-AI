@@ -48,7 +48,7 @@
 
 ## 4. 必要文档与门禁收口
 
-- [x] 整理数据模型升版提案：实际缺登范围为 **0027~0039 共 13 个迁移**（工单预估 0030~0039，执行核对 0027 研究会话/0028~0029 通用 Agent 一阶段同样晚于 v3.1 定稿日）；登记新表 7 张（agent_runs / agent_operations / agent_activity / learning_goals / learning_plans / learning_plan_items / course_shared_refs，已实施 31→38、设计 44→47）、存量表变更 8 项、learning_goals.course_id 对 P6 原设计的显式修正；learning_agent_actions / learning_agent_feedback / teach_back_attempts 维持 deferred 并登记启用条件。提案落盘 [data-model-upgrade-proposal.md](../data-model-upgrade-proposal.md)，**待用户批准**。
+- [x] 整理数据模型升版提案：实际缺登范围为 **0027~0039 共 13 个迁移**（工单预估 0030~0039，执行核对 0027 研究会话/0028~0029 通用 Agent 一阶段同样晚于 v3.1 定稿日）；登记新表 7 张（agent_runs / agent_operations / agent_activity / learning_goals / learning_plans / learning_plan_items / course_shared_refs，已实施 31→38、设计 44→48〔codex 审查修正：course_shared_refs 亦为 v3.1 定稿后新增设计，原计 47 漏算该表；计划域三表属 P6 原设计已计入 44〕）、存量表变更 8 项、learning_goals.course_id 对 P6 原设计的显式修正；learning_agent_actions / learning_agent_feedback / teach_back_attempts 维持 deferred 并登记启用条件。提案落盘 [data-model-upgrade-proposal.md](../data-model-upgrade-proposal.md)，**待用户批准**。
 - [x] 提案列明拟修改的权威文档（数据模型升 v3.2 重命名 + PRD/技术栈/扩展设计头部交叉引用 + PROJECT_PROGRESS 标记翻转）、升版与交叉引用范围；未批准前不动任何权威文档，本工单更新不视为批准。
 - [x] 权威文档零修改（核验结论）：恢复行为是 JobRunner 内部机制，对外 API/SSE/prompt 契约零变化（prompt 未 bump、OpenAPI 零 diff）；扩展文档 §44 对恢复仅有概括性表述（「JobRunner 自研队列带崩溃恢复」）与本票修复方向一致、无相悖旧口径；`recover_running_to_failed` 仍是 LLM 四域等 22 个 worker 的默认通道（未漂移）；GLOSSARY 学习目标/计划/计划项/共享引用词条随 01/02/03/05 已落。PROJECT_PROGRESS 已更新（见下）。
 - [x] PROJECT_PROGRESS 收口：删除重复的 2026-09-29 旧「最后更新」头；§3 表 06 行「修复中」改 done（审查修复 10-02 已落地）；补 07/08 两行；§5「第三阶段进行中」更新为八工单全部完结；§6 迁移清单 0038→0039；186 行保持 200 行内。
@@ -70,6 +70,10 @@
 **审查备案（code-review 双轴，2026-10-06）**：Standards 轴无硬违规——「中断恢复预算分支」形状现散在 document/web_fetch/plan_draft 三处内联副本，**收敛提案登记**（与退避公式统一、job-runner issue 01 一并处理，见 PROJECT_PROGRESS §7；本次不抽共享 helper＝document 公式明文冻结保真，抽统一即动雷、超票面）；测试 helper 命名对齐同文件惯例（`interrupt_mid_fetch`）。Spec 轴无确证违规（四时点证据逐格核实、范围无蔓延、文档数据与迁移目录实核一致）；恢复幂等与 PLAN_DRAFT 重投后 goal 终态两处无恢复期专测＝同一执行路径既有用例已盖，按工单「不为完整度扩测试」不补。
 
 **追加修复（2026-10-06，codex 审查发现的存量缺口，属实已修）**：恢复预算 1→3 只落在新建路径（`create_web_ingest_rows` / `apply_plan_draft_generate`），**升级前已落库的 WEB_FETCH 未终态任务仍为 max_attempts=1**——抢占已 attempts+1，重启恢复 `attempts(1) < max(1)` 不成立、直接翻终态 FAILED，违反 spec US32（重启不分版本；DOCUMENT_PARSE 无此问题＝其创建路径从诞生即 max=3）。修复＝新增迁移 **0040** 纯数据回填（0022 先例）：WEB_FETCH/PLAN_DRAFT 的 PENDING/RUNNING 行 max_attempts<3 → 3（终态史实与其余 22 个 worker 的 max=1 刻意合同不触碰；迁移先于 worker 恢复执行，回填后 recover 预算内回 PENDING）。不改 recover 逻辑（`max_attempts` 落库值为创建时合同，recover 擅自提预算会偏离 DOCUMENT_PARSE 对齐形态）。新增回归 `test_upgrade_migration_backfills_legacy_recovery_budget`（真实链路造中断瞬间 → 模拟升级前预算=1 + 版本回拨 0039 → 重放迁移链 → 断言回填后 recover 回 PENDING）+ 红验证（撤 0040 转红）；`test_plan_editing.py` user_version 断言 39→40；数据模型提案补登范围更新为 0027~0040（14 个）。
+
+**追加修正二（2026-10-06，codex 审查，属实）**：提案 §1.3「设计 44→47」漏算 course_shared_refs——经 v3.1 文档实核：域分组表 1+8+8+2+6+4+5+1+6+1+2=44 张中 learning_goals / learning_plans / learning_plan_items 属 P6 原设计**已计入** 44，而 course_shared_refs（三阶段 05 新设计）与 agent 三表同样**不在** v3.1 的 44 张内，新增设计实为 4 张 → 正确口径 **44→48**（已实施 31→38 无误：31+agent三表+计划三表+shared_refs）。提案 §1.3、本票 §4 备案行、PROJECT_PROGRESS 08 行三处已同步更正。
+
+**追加修复三（2026-10-06，codex 审查，属实）＝WEB_FETCH 临时文件残留阻断自动续跑**：净化快照写回 `_write_temp` 用排他创建（`open("xb")`）+ 固定 `cache/webclips/{job_id}.tmp`——退出发生在临时文件创建后、`os.replace` 前即残留（该目录无启动清理，全后端唯一引用即 writeback 自身）；重启重投后 writeback 再写同名 tmp 必抛 FileExistsError，而 writeback 异常按 runner 契约直冒泡走 loop 恢复链（classify pause=False → recover 预算内回 PENDING）→ 三次重投连续撞同一残留耗尽预算 → mark_failed + Record FAILED、Run PARTIAL_COMPLETED——恢复预算修复被文件残留锁死。修复＝`"xb"`→`"wb"` 覆盖写（tmp 是纯草稿、唯一消费方是紧随的 os.replace，领取原语保证同 job 唯一领取者，覆盖无语义损失）。新增回归 `test_ingest_web_requeued_writeback_overwrites_stale_tmp`（残留 tmp 下真实 worker 全链 → SUCCEEDED、快照落新正文、tmp 被 replace 走）+ 红验证（还原 "xb" 以真实 FileExistsError 转红）。
 
 **自动化结果**：后端全量 1083 绿（4 项新回归 + 红验证：撤产品修复两个 requeues 用例转红、存修复全绿）+ ruff + pyright 0 错 + OpenAPI --check；前端零改动引用 07 证据。
 

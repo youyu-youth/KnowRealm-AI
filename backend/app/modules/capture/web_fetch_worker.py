@@ -252,7 +252,11 @@ async def writeback(
 
 
 def _write_temp(path: Path, payload: bytes) -> None:
-    with path.open("xb") as output:
+    # 覆盖写而非排他创建：中断重投会撞上次「写到一半 / 未 replace」的同名
+    # 残留 tmp（进程中断窗口，该目录无启动清理），排他创建会让重投连续失败
+    # 耗尽恢复预算；tmp 是纯草稿（唯一消费方是紧随的 os.replace，领取原语
+    # 保证同 job 唯一领取者），覆盖无语义损失（工单 08）。
+    with path.open("wb") as output:
         output.write(payload)
         output.flush()
         os.fsync(output.fileno())

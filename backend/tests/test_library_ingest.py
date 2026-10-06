@@ -341,6 +341,45 @@ async def test_ingest_web_full_loop(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_ingest_web_requeued_writeback_overwrites_stale_tmp(tmp_path: Path) -> None:
+    """中断重投的写回可安全重入（工单 08 缺口，codex 审查属实）：退出发生在
+    临时文件创建后、os.replace 前 → cache/webclips/{job_id}.tmp 残留（该目录
+    无启动清理）；重投后 writeback 再写同名临时文件被排他创建拒绝会连续撞
+    残留耗尽恢复预算、Job/Record 终态失败。覆盖写后残留被原地覆盖，快照
+    落新正文不被半截残留污染。"""
+    async with bare_db(tmp_path) as session_factory:
+        accepted = await LibraryIngestService.ingest_web(
+            session_factory,
+            LibraryIngestRequest(source=LibraryIngestSource.WEB, url="https://example.com/article"),
+        )
+        assert accepted.job is not None
+        job_id = accepted.job.id
+        record_id = accepted.job.record_id
+        assert record_id is not None
+
+        data_dir = tmp_path / "KnowRealm"
+        stale_tmp = data_dir / "cache" / "webclips" / f"{job_id}.tmp"
+        stale_tmp.parent.mkdir(parents=True, exist_ok=True)
+        stale_tmp.write_bytes(b"stale-half-written")
+
+        runner = JobRunner(
+            web_fetch_spec(
+                session_factory, data_dir, _NoopNotifier(), adapter=_FakeAdapter(FAKE_CLIP)
+            ),
+            session_factory,
+            _NoopNotifier(),
+        )
+        assert await runner.process_one() is True
+
+        async with session_factory() as session:
+            job = await session.get(ProcessingJob, job_id)
+            assert job is not None and job.status == "SUCCEEDED"
+        snapshot = data_dir / "files" / record_id / f"{job_id}.md"
+        assert snapshot.read_text(encoding="utf-8") == PAGE_TEXT
+        assert not stale_tmp.exists()
+
+
+@pytest.mark.anyio
 async def test_ingest_web_with_course_reaches_summary_pending(tmp_path: Path) -> None:
     async with bare_db(tmp_path) as session_factory:
         await insert_course(session_factory)
