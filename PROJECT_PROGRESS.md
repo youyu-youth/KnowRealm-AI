@@ -158,6 +158,7 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 - 供应商连通性测试用腾讯 `GetAsrVocabList` 只读接口近似（LLM 测试=真实计费生成，故仅手动）。
 - 前端全量测试默认并发时，资源竞争会使不同用例偶发超时（失败文件每轮随机轮换：TodoPanel / CourseBrain 三件套 / chat 均出现过），失败文件单跑均通过；稳定证据口径 = 失败文件单跑全绿 + `npx vitest run <files>` 批跑绿（票 06 门禁实测：全量多轮 473~475/476，失败轮换，单跑批 28/28、44/44 全绿）（本地 `format:check` 会因 `core.autocrlf=true` 的 CRLF 工作区对全库报 warn，CI/LF 检出下正常；验收格式以触及文件为准）。
 - 分支未合并堆积：`feat/extend-dev-05` 领先 main 34 提交；本地尚存多个历史 feature 分支（feat/dev-01~04、arch-opt 等）。
+- **资料库 backfill 入队钩子与回填 worker 完结写回存在固有 TOCTOU**（钩子读 RUNNING 不投 + worker 完结时新捕获未提交不可见 → 撞窗记录延迟建立；自愈 = 下一次任意捕获的钩子补扫；08 收口实证登记，修复属资料库域独立工单）；同类「中断恢复 attempts 预算分支」形状现散在 document/web_fetch/plan_draft 三处内联，收敛为共享结局 helper 与退避公式统一（job-runner issue 01）一并处理。
 
 **本机环境坑（跑门禁前必读，详见 §9 命令）：**
 

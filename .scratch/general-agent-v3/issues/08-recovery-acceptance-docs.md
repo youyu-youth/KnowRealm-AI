@@ -65,7 +65,9 @@
 1. **恢复缺口（本票主缺陷）**：WEB_FETCH / PLAN_DRAFT 中断恢复一律翻终态 FAILED + `max_attempts=1` 双重锁死自动续跑（对照 DOCUMENT_PARSE 既有 attempts 预算形态）→ 修复为预算内回 PENDING 带退避自动重投（耗尽才 FAILED）+ max_attempts 1→3；业务失败语义不变（apply_failure 一次性终态）。
 2. **搭车修复一（测试日期锚凌晨错位，非本票引入）**：`test_plan_editing.py` / `test_learning_plans.py` 的 `TODAY = datetime.now(UTC).date()` 与产品排期锚 `local_today()` 在本地凌晨 0~8 点差一天 → 「起点回挪」防线误拒全部提交（全量 11 failed 的根因；白天跑绿掩盖）。修复：TODAY 改 local_today 同源；`effective_from/to` 断言分锚 `LANDED`（产品定稿 UTC 落库日，service._next_version 注释明示，凌晨差一天无逻辑破坏、本票不改产品语义）。
 3. **搭车修复二（e75481a 遗留 pyright 4 错）**：`lambda _data_dir: provider` 两处裸 lambda（partial unknown）→ 换带注解 def（07 同款处理）。
-4. **搭车修复三（既有 TOCTOU 测试稳定化，产品不动）**：`test_text_capture_enqueues_backfill` 撞 capture 入队钩子与回填 worker 完结写回的固有竞态窗口（钩子读 RUNNING 不投 + worker 完结时新记录未提交不可见 → 撞窗记录成孤儿直到下一次捕获钩子补扫自愈，生产影响=条目延迟建立；干净 HEAD 同样红、诊断脚本实证双窗口时序）→ 用例先等启动回填落定再捕获，专测「入队钩子 → worker 真实运行」链路。**竞态本身登记为资料库域已知问题**（有自愈路径，修复属独立工单范围）。
+4. **搭车修复三（既有 TOCTOU 测试稳定化，产品不动）**：`test_text_capture_enqueues_backfill` 撞 capture 入队钩子与回填 worker 完结写回的固有竞态窗口（钩子读 RUNNING 不投 + worker 完结时新记录未提交不可见 → 撞窗记录成孤儿直到下一次捕获钩子补扫自愈，生产影响=条目延迟建立；干净 HEAD 同样红、诊断脚本实证双窗口时序）→ 用例先等启动回填落定再捕获，专测「入队钩子 → worker 真实运行」链路。**竞态本身登记为资料库域已知问题**（PROJECT_PROGRESS §7 已登记；有自愈路径，修复属独立工单范围）。
+
+**审查备案（code-review 双轴，2026-10-06）**：Standards 轴无硬违规——「中断恢复预算分支」形状现散在 document/web_fetch/plan_draft 三处内联副本，**收敛提案登记**（与退避公式统一、job-runner issue 01 一并处理，见 PROJECT_PROGRESS §7；本次不抽共享 helper＝document 公式明文冻结保真，抽统一即动雷、超票面）；测试 helper 命名对齐同文件惯例（`interrupt_mid_fetch`）。Spec 轴无确证违规（四时点证据逐格核实、范围无蔓延、文档数据与迁移目录实核一致）；恢复幂等与 PLAN_DRAFT 重投后 goal 终态两处无恢复期专测＝同一执行路径既有用例已盖，按工单「不为完整度扩测试」不补。
 
 **自动化结果**：后端全量 1083 绿（4 项新回归 + 红验证：撤产品修复两个 requeues 用例转红、存修复全绿）+ ruff + pyright 0 错 + OpenAPI --check；前端零改动引用 07 证据。
 

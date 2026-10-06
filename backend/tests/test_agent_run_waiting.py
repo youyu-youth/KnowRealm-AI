@@ -1023,7 +1023,7 @@ class _StaticClip:
         return self._clip
 
 
-async def _interrupt_mid_fetch(session_factory: async_sessionmaker[AsyncSession]) -> str:
+async def interrupt_mid_fetch(session_factory: async_sessionmaker[AsyncSession]) -> str:
     """把等待中的 Run 推进到「抓取已领取、尚未写回」的中断瞬间：WEB_FETCH
     领取态（RUNNING、attempts=1），AGENT_RUN 触发随进程中断翻 FAILED。
     返回 run_id。"""
@@ -1077,7 +1077,7 @@ async def test_interrupted_web_fetch_requeues_and_completes(tmp_path: Path) -> N
         metadata={"kind": "web", "url": URL},
     )
     async with bare_db(tmp_path) as session_factory:
-        run_id = await _interrupt_mid_fetch(session_factory)
+        run_id = await interrupt_mid_fetch(session_factory)
 
         # 重启恢复（真实链路）：预算内（1 < 3）回 PENDING 带退避，Record 不翻失败。
         spec = web_fetch_spec(
@@ -1137,7 +1137,7 @@ async def test_interrupted_web_fetch_budget_exhausted_fails(tmp_path: Path) -> N
     后仍未完成）→ 恢复翻终态 FAILED（WORKER_INTERRUPTED）+ Record 失败；
     Run 对账走失败分流（PARTIAL_COMPLETED），保留手动重试通道。"""
     async with bare_db(tmp_path) as session_factory:
-        run_id = await _interrupt_mid_fetch(session_factory)
+        run_id = await interrupt_mid_fetch(session_factory)
         await run_sql(
             "UPDATE processing_jobs SET attempts = 3 WHERE job_type = 'WEB_FETCH'",
             {},
