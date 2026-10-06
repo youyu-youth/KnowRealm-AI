@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+import aiosqlite
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -1166,3 +1167,53 @@ async def test_interrupted_web_fetch_budget_exhausted_fails(tmp_path: Path) -> N
             ("SUCCEEDED", None),
             ("FAILED", "AGENT_RUN_WAITING_JOB_FAILED"),
         ]
+
+
+@pytest.mark.anyio
+async def test_upgrade_migration_backfills_legacy_recovery_budget(tmp_path: Path) -> None:
+    """升级前存量预算对齐（0040，工单 08 缺口收口）：恢复预算 1→3 只落在新建
+    路径，升级前落库的 WEB_FETCH 未终态任务仍为 1——重启恢复 attempts(1) <
+    max(1) 不成立，直接终态 FAILED，违反 spec US32。0040 迁移（0022 回填
+    先例）在 worker 恢复前对齐存量预算，中断 job 照常回 PENDING 自动续跑。"""
+    db_path = tmp_path / "knowrealm.db"
+    await run_migrations(db_path)
+    engine, session_factory = create_database(db_path)
+    try:
+        await interrupt_mid_fetch(session_factory)
+        # 模拟升级前落库形态：预算=1、版本停在 0039（0040 为纯回填零 DDL，
+        # 回拨后重放迁移链即真实升级路径）。
+        await run_sql(
+            "UPDATE processing_jobs SET max_attempts = 1 WHERE job_type = 'WEB_FETCH'",
+            {},
+            session_factory,
+        )
+        async with aiosqlite.connect(db_path) as connection:
+            await connection.execute("PRAGMA user_version=39")
+            await connection.commit()
+
+        await run_migrations(db_path)
+        async with session_factory() as session:
+            legacy = (
+                await session.execute(
+                    text(
+                        "SELECT max_attempts, status FROM processing_jobs"
+                        " WHERE job_type = 'WEB_FETCH'"
+                    )
+                )
+            ).one()
+        assert (legacy[0], legacy[1]) == (3, "RUNNING")
+
+        spec = web_fetch_spec(
+            session_factory,
+            tmp_path,
+            RecordInvalidationNotifier(),
+            _StaticClip(ClipContent(text="x", title=None, metadata={})),
+        )
+        await spec.recover_interrupted()
+        assert await fetch_and_record_row(session_factory) == (
+            "PENDING",
+            "WORKER_INTERRUPTED",
+            "CONTENT_PROCESSING",
+        )
+    finally:
+        await engine.dispose()

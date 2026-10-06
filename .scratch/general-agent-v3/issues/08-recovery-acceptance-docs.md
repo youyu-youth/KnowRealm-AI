@@ -69,6 +69,8 @@
 
 **审查备案（code-review 双轴，2026-10-06）**：Standards 轴无硬违规——「中断恢复预算分支」形状现散在 document/web_fetch/plan_draft 三处内联副本，**收敛提案登记**（与退避公式统一、job-runner issue 01 一并处理，见 PROJECT_PROGRESS §7；本次不抽共享 helper＝document 公式明文冻结保真，抽统一即动雷、超票面）；测试 helper 命名对齐同文件惯例（`interrupt_mid_fetch`）。Spec 轴无确证违规（四时点证据逐格核实、范围无蔓延、文档数据与迁移目录实核一致）；恢复幂等与 PLAN_DRAFT 重投后 goal 终态两处无恢复期专测＝同一执行路径既有用例已盖，按工单「不为完整度扩测试」不补。
 
+**追加修复（2026-10-06，codex 审查发现的存量缺口，属实已修）**：恢复预算 1→3 只落在新建路径（`create_web_ingest_rows` / `apply_plan_draft_generate`），**升级前已落库的 WEB_FETCH 未终态任务仍为 max_attempts=1**——抢占已 attempts+1，重启恢复 `attempts(1) < max(1)` 不成立、直接翻终态 FAILED，违反 spec US32（重启不分版本；DOCUMENT_PARSE 无此问题＝其创建路径从诞生即 max=3）。修复＝新增迁移 **0040** 纯数据回填（0022 先例）：WEB_FETCH/PLAN_DRAFT 的 PENDING/RUNNING 行 max_attempts<3 → 3（终态史实与其余 22 个 worker 的 max=1 刻意合同不触碰；迁移先于 worker 恢复执行，回填后 recover 预算内回 PENDING）。不改 recover 逻辑（`max_attempts` 落库值为创建时合同，recover 擅自提预算会偏离 DOCUMENT_PARSE 对齐形态）。新增回归 `test_upgrade_migration_backfills_legacy_recovery_budget`（真实链路造中断瞬间 → 模拟升级前预算=1 + 版本回拨 0039 → 重放迁移链 → 断言回填后 recover 回 PENDING）+ 红验证（撤 0040 转红）；`test_plan_editing.py` user_version 断言 39→40；数据模型提案补登范围更新为 0027~0040（14 个）。
+
 **自动化结果**：后端全量 1083 绿（4 项新回归 + 红验证：撤产品修复两个 requeues 用例转红、存修复全绿）+ ruff + pyright 0 错 + OpenAPI --check；前端零改动引用 07 证据。
 
 **真实环境证据**：无（自动化环境无真实模型与真机条件，如实缺省，不以 mock 代勾）。
