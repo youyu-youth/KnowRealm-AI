@@ -4,6 +4,10 @@ export type ChatSession = components["schemas"]["ChatSessionOut"];
 export type ChatMessage = components["schemas"]["ChatMessageOut"];
 export type ChatResponseProcess =
   components["schemas"]["ChatResponseProcessOut"];
+/** ChatTurn（切换会话不中断任务，票 01）：一条用户输入对应的一次回答生成。 */
+export type ChatTurn = components["schemas"]["ChatTurnOut"];
+export type ChatTurnsPage = components["schemas"]["ChatTurnsPage"];
+export type ChatTurnStatus = components["schemas"]["ChatTurnStatus"];
 export type ChatProcessEntry = NonNullable<
   ChatResponseProcess["entries"]
 >[number];

@@ -15,6 +15,7 @@ vi.mock("@/services/tauri/sidecar", () => ({
 }));
 
 const SESSION_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const TURN_ID = "tttttttt-tttt-4ttt-8ttt-tttttttttttt";
 
 afterEach(() => {
   server.resetHandlers();
@@ -33,39 +34,46 @@ function sseBody(events: string[], keepOpen = false) {
   return { stream, close };
 }
 
-describe("chatApi.streamMessage", () => {
+function turnEventsHandler(events: string[], keepOpen = false) {
+  const { stream, close } = sseBody(events, keepOpen);
+  return {
+    close,
+    handler: http.get(
+      `${TEST_SIDECAR_URL}/api/chat-turns/${TURN_ID}/events`,
+      () =>
+        new HttpResponse(stream, {
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+    ),
+  };
+}
+
+const noop = () => undefined;
+
+describe("chatApi.turnEvents", () => {
   it("按到达顺序逐 token 回调，done 携带完整内容与消息 id", async () => {
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
-        () => {
-          const { stream } = sseBody([
-            'event: status\ndata: {"phase":"generating"}\n\n',
-            'event: token\ndata: {"text":"操"}\n\n',
-            'event: token\ndata: {"text":"作"}\n\n',
-            'event: token\ndata: {"text":"系统"}\n\n',
-            'event: done\ndata: {"message_id":"m1","content":"操作系统"}\n\n',
-          ]);
-          return new HttpResponse(stream, {
-            headers: { "Content-Type": "text/event-stream" },
-          });
-        },
-      ),
-    );
+    const { handler } = turnEventsHandler([
+      'event: status\ndata: {"phase":"generating"}\n\n',
+      'event: token\ndata: {"text":"操"}\n\n',
+      'event: token\ndata: {"text":"作"}\n\n',
+      'event: token\ndata: {"text":"系统"}\n\n',
+      'event: done\ndata: {"message_id":"m1","content":"操作系统"}\n\n',
+    ]);
+    server.use(handler);
 
     const tokens: string[] = [];
     let statusCount = 0;
     let donePayload: { messageId: string; content: string } | null = null;
-    await chatApi.streamMessage(
-      SESSION_ID,
-      "什么是操作系统",
+    await chatApi.turnEvents(
+      TURN_ID,
+      0,
       {
         onStatus: () => {
           statusCount += 1;
         },
         onToken: (text) => tokens.push(text),
-        onToolCall: () => undefined,
-        onToolResult: () => undefined,
+        onToolCall: noop,
+        onToolResult: noop,
         onDone: (payload) => {
           donePayload = payload;
         },
@@ -82,33 +90,24 @@ describe("chatApi.streamMessage", () => {
   });
 
   it("tool_call / tool_result 事件按到达顺序分发，畸形载荷忽略", async () => {
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
-        () => {
-          const { stream } = sseBody([
-            'event: status\ndata: {"phase":"generating"}\n\n',
-            'event: tool_call\ndata: {"tool":"search_transcript","query":"MVCC"}\n\n',
-            'event: tool_call\ndata: {"tool":"search_transcript"}\n\n',
-            'event: tool_result\ndata: {"tool":"search_transcript","hits":3,"ok":true}\n\n',
-            'event: tool_result\ndata: {"tool":"search_transcript","query":"MVCC"}\n\n',
-            'event: token\ndata: {"text":"命中"}\n\n',
-            'event: tool_call\ndata: {"tool":"search_transcript","query":"undo"}\n\n',
-            'event: tool_result\ndata: {"tool":"search_transcript","hits":0,"ok":false}\n\n',
-            'event: done\ndata: {"message_id":"m1","content":"命中"}\n\n',
-          ]);
-          return new HttpResponse(stream, {
-            headers: { "Content-Type": "text/event-stream" },
-          });
-        },
-      ),
-    );
+    const { handler } = turnEventsHandler([
+      'event: status\ndata: {"phase":"generating"}\n\n',
+      'event: tool_call\ndata: {"tool":"search_transcript","query":"MVCC"}\n\n',
+      'event: tool_call\ndata: {"tool":"search_transcript"}\n\n',
+      'event: tool_result\ndata: {"tool":"search_transcript","hits":3,"ok":true}\n\n',
+      'event: tool_result\ndata: {"tool":"search_transcript","query":"MVCC"}\n\n',
+      'event: token\ndata: {"text":"命中"}\n\n',
+      'event: tool_call\ndata: {"tool":"search_transcript","query":"undo"}\n\n',
+      'event: tool_result\ndata: {"tool":"search_transcript","hits":0,"ok":false}\n\n',
+      'event: done\ndata: {"message_id":"m1","content":"命中"}\n\n',
+    ]);
+    server.use(handler);
 
     const events: string[] = [];
     const tokens: string[] = [];
-    await chatApi.streamMessage(
-      SESSION_ID,
-      "MVCC 怎么实现",
+    await chatApi.turnEvents(
+      TURN_ID,
+      0,
       {
         onStatus: () => events.push("status"),
         onToken: (text) => {
@@ -142,32 +141,21 @@ describe("chatApi.streamMessage", () => {
   });
 
   it("done 载荷 research_proposals 防御性收窄：合法条目透传，畸形条目静默跳过", async () => {
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
-        () => {
-          const { stream } = sseBody([
-            'event: status\ndata: {"phase":"generating"}\n\n',
-            'event: done\ndata: {"message_id":"m1","content":"结论","memory_used":[],"research_proposals":[{"proposal_id":"p1","url":"https://a.example.com/1","title":"来源 A"},{"proposal_id":42},{"proposal_id":"p2","url":"https://b.example.com","title":"来源 B","extra":true},"oops"]}\n\n',
-          ]);
-          return new HttpResponse(stream, {
-            headers: { "Content-Type": "text/event-stream" },
-          });
-        },
-      ),
-    );
+    const { handler } = turnEventsHandler([
+      'event: status\ndata: {"phase":"generating"}\n\n',
+      'event: done\ndata: {"message_id":"m1","content":"结论","memory_used":[],"research_proposals":[{"proposal_id":"p1","url":"https://a.example.com/1","title":"来源 A"},{"proposal_id":42},{"proposal_id":"p2","url":"https://b.example.com","title":"来源 B","extra":true},"oops"]}\n\n',
+    ]);
+    server.use(handler);
 
-    let donePayload:
-      | Parameters<Parameters<typeof chatApi.streamMessage>[2]["onDone"]>[0]
-      | null = null;
-    await chatApi.streamMessage(
-      SESSION_ID,
-      "研究问题",
+    let donePayload: { messageId: string; content: string } | null = null;
+    await chatApi.turnEvents(
+      TURN_ID,
+      0,
       {
-        onStatus: () => undefined,
-        onToken: () => undefined,
-        onToolCall: () => undefined,
-        onToolResult: () => undefined,
+        onStatus: noop,
+        onToken: noop,
+        onToolCall: noop,
+        onToolResult: noop,
         onDone: (payload) => {
           donePayload = payload;
         },
@@ -178,7 +166,7 @@ describe("chatApi.streamMessage", () => {
       undefined,
     );
 
-    expect(donePayload).toEqual({
+    expect(donePayload).toMatchObject({
       messageId: "m1",
       content: "结论",
       memoryUsed: [],
@@ -189,13 +177,13 @@ describe("chatApi.streamMessage", () => {
     });
   });
 
-  it("web_search 标志进请求体：显式 true 与缺省 false", async () => {
-    const bodies: unknown[] = [];
+  it("游标进查询串：after_seq 透传", async () => {
+    const queries: string[] = [];
     server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
-        async ({ request }) => {
-          bodies.push(await request.json());
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-turns/${TURN_ID}/events`,
+        ({ request }) => {
+          queries.push(new URL(request.url).search);
           const { stream } = sseBody([
             'event: done\ndata: {"message_id":"m1","content":"好"}\n\n',
           ]);
@@ -205,25 +193,9 @@ describe("chatApi.streamMessage", () => {
         },
       ),
     );
-
-    const noop = () => undefined;
-    await chatApi.streamMessage(
-      SESSION_ID,
-      "带标志",
-      {
-        onStatus: noop,
-        onToken: noop,
-        onToolCall: noop,
-        onToolResult: noop,
-        onDone: noop,
-        onError: noop,
-      },
-      undefined,
-      true,
-    );
-    await chatApi.streamMessage(
-      SESSION_ID,
-      "默认",
+    await chatApi.turnEvents(
+      TURN_ID,
+      7,
       {
         onStatus: noop,
         onToken: noop,
@@ -234,95 +206,24 @@ describe("chatApi.streamMessage", () => {
       },
       undefined,
     );
-
-    expect(bodies).toEqual([
-      { content: "带标志", web_search: true },
-      { content: "默认", web_search: false },
-    ]);
+    expect(queries).toEqual(["?after_seq=7"]);
   });
 
-  it("page 快照进请求体：传入才携带，缺省不出现该键", async () => {
-    const bodies: unknown[] = [];
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
-        async ({ request }) => {
-          bodies.push(await request.json());
-          const { stream } = sseBody([
-            'event: done\ndata: {"message_id":"m1","content":"好"}\n\n',
-          ]);
-          return new HttpResponse(stream, {
-            headers: { "Content-Type": "text/event-stream" },
-          });
-        },
-      ),
-    );
-
-    const noop = () => undefined;
-    const handlers = {
-      onStatus: noop,
-      onToken: noop,
-      onToolCall: noop,
-      onToolResult: noop,
-      onDone: noop,
-      onError: noop,
-    };
-    await chatApi.streamMessage(
-      SESSION_ID,
-      "带页面",
-      handlers,
-      undefined,
-      false,
-      {
-        page_type: "chat",
-        captured_at: "2026-09-21T08:00:00.000Z",
-      },
-    );
-    await chatApi.streamMessage(SESSION_ID, "无页面", handlers, undefined);
-
-    expect(bodies).toEqual([
-      {
-        content: "带页面",
-        web_search: false,
-        page: { page_type: "chat", captured_at: "2026-09-21T08:00:00.000Z" },
-      },
-      { content: "无页面", web_search: false },
-    ]);
-  });
-
-  it("error 事件回调可读错误码；409 由 apiRequest 转为 ApiError", async () => {
-    let rejected = false;
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
-        () => {
-          if (!rejected) {
-            rejected = true;
-            const { stream } = sseBody([
-              'event: error\ndata: {"code":"CHAT_STREAM_FAILED","detail":"回答生成失败，请稍后重试"}\n\n',
-            ]);
-            return new HttpResponse(stream, {
-              headers: { "Content-Type": "text/event-stream" },
-            });
-          }
-          return HttpResponse.json(
-            { detail: "CHAT_STREAM_IN_PROGRESS：该对话正在生成回答，请稍候" },
-            { status: 409 },
-          );
-        },
-      ),
-    );
-
+  it("error 事件回调可读错误码；非 2xx 由 apiRequest 转为 ApiError", async () => {
     const errors: { code: string; detail: string }[] = [];
-    await chatApi.streamMessage(
-      SESSION_ID,
-      "提问",
+    const { handler } = turnEventsHandler([
+      'event: error\ndata: {"code":"CHAT_STREAM_FAILED","detail":"回答生成失败，请稍后重试"}\n\n',
+    ]);
+    server.use(handler);
+    await chatApi.turnEvents(
+      TURN_ID,
+      0,
       {
-        onStatus: () => undefined,
-        onToken: () => undefined,
-        onToolCall: () => undefined,
-        onToolResult: () => undefined,
-        onDone: () => undefined,
+        onStatus: noop,
+        onToken: noop,
+        onToolCall: noop,
+        onToolResult: noop,
+        onDone: noop,
         onError: (payload) => errors.push(payload),
       },
       undefined,
@@ -331,49 +232,46 @@ describe("chatApi.streamMessage", () => {
       { code: "CHAT_STREAM_FAILED", detail: "回答生成失败，请稍后重试" },
     ]);
 
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-turns/${TURN_ID}/events`, () =>
+        HttpResponse.json({ detail: "轮次不存在" }, { status: 404 }),
+      ),
+    );
     await expect(
-      chatApi.streamMessage(
-        SESSION_ID,
-        "再问",
+      chatApi.turnEvents(
+        TURN_ID,
+        0,
         {
-          onStatus: () => undefined,
-          onToken: () => undefined,
-          onToolCall: () => undefined,
-          onToolResult: () => undefined,
-          onDone: () => undefined,
-          onError: () => undefined,
+          onStatus: noop,
+          onToken: noop,
+          onToolCall: noop,
+          onToolResult: noop,
+          onDone: noop,
+          onError: noop,
         },
         undefined,
       ),
-    ).rejects.toMatchObject({ status: 409 });
+    ).rejects.toMatchObject({ status: 404 });
   });
 
-  it("停止信号取消读取并转抛 AbortError", async () => {
-    const { stream, close } = sseBody(
+  it("断开信号只取消订阅并转抛 AbortError（不作业务停止）", async () => {
+    const { handler, close } = turnEventsHandler(
       ['event: status\ndata: {"phase":"generating"}\n\n'],
       true,
     );
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
-        () =>
-          new HttpResponse(stream, {
-            headers: { "Content-Type": "text/event-stream" },
-          }),
-      ),
-    );
+    server.use(handler);
 
     const controller = new AbortController();
-    const pending = chatApi.streamMessage(
-      SESSION_ID,
-      "长问题",
+    const pending = chatApi.turnEvents(
+      TURN_ID,
+      0,
       {
         onStatus: () => controller.abort(),
-        onToken: () => undefined,
-        onToolCall: () => undefined,
-        onToolResult: () => undefined,
-        onDone: () => undefined,
-        onError: () => undefined,
+        onToken: noop,
+        onToolCall: noop,
+        onToolResult: noop,
+        onDone: noop,
+        onError: noop,
       },
       controller.signal,
     );
@@ -400,26 +298,18 @@ describe("chatApi.streamMessage", () => {
     async function collectErrors(
       errorEvent: string,
     ): Promise<{ code: string; detail: string }[]> {
-      const { stream } = sseBody([errorEvent]);
-      server.use(
-        http.post(
-          `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/messages`,
-          () =>
-            new HttpResponse(stream, {
-              headers: { "Content-Type": "text/event-stream" },
-            }),
-        ),
-      );
+      const { handler } = turnEventsHandler([errorEvent]);
+      server.use(handler);
       const errors: { code: string; detail: string }[] = [];
-      await chatApi.streamMessage(
-        SESSION_ID,
-        "提问",
+      await chatApi.turnEvents(
+        TURN_ID,
+        0,
         {
-          onStatus: () => undefined,
-          onToken: () => undefined,
-          onToolCall: () => undefined,
-          onToolResult: () => undefined,
-          onDone: () => undefined,
+          onStatus: noop,
+          onToken: noop,
+          onToolCall: noop,
+          onToolResult: noop,
+          onDone: noop,
           onError: (payload) => errors.push(payload),
         },
         undefined,
@@ -452,5 +342,125 @@ describe("chatApi.streamMessage", () => {
         ),
       ).toEqual([{ code: "FUTURE_SSE_CODE", detail: "未来错误原文" }]);
     });
+  });
+});
+
+describe("chatApi.submitTurn", () => {
+  it("请求体携带 content/web_search/request_id 与可选 page/auth_mode", async () => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/turns`,
+        async ({ request }) => {
+          bodies.push(await request.json());
+          return HttpResponse.json(
+            {
+              id: TURN_ID,
+              session_id: SESSION_ID,
+              user_message_id: "m0",
+              status: "QUEUED",
+              cancel_requested: false,
+              attempt: 0,
+              output_revision: 1,
+              last_seq: 0,
+              created_at: "2026-10-06T00:00:00.000000Z",
+              updated_at: "2026-10-06T00:00:00.000000Z",
+              output_text: "",
+            },
+            { status: 202 },
+          );
+        },
+      ),
+    );
+
+    await chatApi.submitTurn(SESSION_ID, {
+      content: "带全部字段",
+      webSearch: true,
+      requestId: "req-body-0001",
+      page: {
+        page_type: "chat",
+        captured_at: "2026-10-06T08:00:00.000Z",
+      },
+      authMode: "AUTO_APPROVE",
+    });
+    await chatApi.submitTurn(SESSION_ID, {
+      content: "最小字段",
+      webSearch: false,
+      requestId: "req-body-0002",
+    });
+
+    expect(bodies).toEqual([
+      {
+        content: "带全部字段",
+        web_search: true,
+        request_id: "req-body-0001",
+        page: { page_type: "chat", captured_at: "2026-10-06T08:00:00.000Z" },
+        auth_mode: "AUTO_APPROVE",
+      },
+      { content: "最小字段", web_search: false, request_id: "req-body-0002" },
+    ]);
+  });
+
+  it("会话在途冲突（409）转为 ApiError", async () => {
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/turns`,
+        () =>
+          HttpResponse.json(
+            {
+              detail:
+                "CHAT_TURN_IN_PROGRESS：该对话正在生成回答，请稍候或先停止",
+              code: "CHAT_TURN_IN_PROGRESS",
+            },
+            { status: 409 },
+          ),
+      ),
+    );
+    await expect(
+      chatApi.submitTurn(SESSION_ID, {
+        content: "冲突提问",
+        webSearch: false,
+        requestId: "req-conflict-1",
+      }),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+});
+
+describe("chatApi.activeTurn", () => {
+  it("返回唯一非终态轮次；空列表返回 null", async () => {
+    let expectActive = true;
+    server.use(
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${SESSION_ID}/turns`,
+        () =>
+          HttpResponse.json(
+            expectActive
+              ? {
+                  turns: [
+                    {
+                      id: TURN_ID,
+                      session_id: SESSION_ID,
+                      user_message_id: "m0",
+                      status: "RUNNING",
+                      cancel_requested: false,
+                      attempt: 1,
+                      output_revision: 1,
+                      last_seq: 3,
+                      created_at: "2026-10-06T00:00:00.000000Z",
+                      updated_at: "2026-10-06T00:00:01.000000Z",
+                      output_text: "部分输出",
+                    },
+                  ],
+                  next_before: null,
+                }
+              : { turns: [], next_before: null },
+          ),
+      ),
+    );
+    const active = await chatApi.activeTurn(SESSION_ID);
+    expect(active?.id).toBe(TURN_ID);
+    expect(active?.status).toBe("RUNNING");
+    expectActive = false;
+    expect(await chatApi.activeTurn(SESSION_ID)).toBeNull();
   });
 });

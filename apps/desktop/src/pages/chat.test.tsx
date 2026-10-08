@@ -10,7 +10,12 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { http, HttpResponse, type HttpHandler } from "msw";
+import {
+  type DefaultBodyType,
+  http,
+  HttpResponse,
+  type HttpHandler,
+} from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
@@ -190,6 +195,68 @@ function openSseResponse(initialChunks: string[]) {
     },
     closeStream: () => streamController?.close(),
   };
+}
+
+const TURN_ID = "tttttttt-tttt-4ttt-8ttt-tttttttttttt";
+
+function turnPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    id: TURN_ID,
+    session_id: FIRST_SESSION_ID,
+    user_message_id: "user-row",
+    status: "RUNNING",
+    cancel_requested: false,
+    attempt: 1,
+    output_revision: 1,
+    last_seq: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    output_text: "",
+    ...overrides,
+  };
+}
+
+/** 轮次契约 mock 四件套：提交 202、事件订阅 SSE、持久取消、快照对账。 */
+function turnFlowHandlers(
+  makeResponse: () => HttpResponse<DefaultBodyType>,
+  onAccept?: () => void,
+) {
+  const state = { cancelled: false };
+  const markCancelled = () => {
+    state.cancelled = true;
+  };
+  const handlers = [
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/turns`,
+      () => {
+        onAccept?.();
+        return HttpResponse.json(turnPayload(), { status: 202 });
+      },
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-turns/${TURN_ID}/events`, () =>
+      makeResponse(),
+    ),
+    http.post(`${TEST_SIDECAR_URL}/api/chat-turns/${TURN_ID}/cancel`, () => {
+      markCancelled();
+      return HttpResponse.json({
+        turn: turnPayload({ cancel_requested: true }),
+      });
+    }),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-turns/${TURN_ID}`, () =>
+      HttpResponse.json(
+        turnPayload(
+          state.cancelled
+            ? {
+                status: "CANCELLED",
+                cancel_requested: true,
+                finished_at: new Date().toISOString(),
+              }
+            : {},
+        ),
+      ),
+    ),
+  ];
+  return handlers;
 }
 
 afterEach(() => {
@@ -549,11 +616,10 @@ describe("自由聊天流式", () => {
                 : [SYSTEM_ROW],
           ),
       ),
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+      ...turnFlowHandlers(
+        () => opened.response,
         () => {
           accepted = true;
-          return opened.response;
         },
       ),
     );
@@ -599,11 +665,10 @@ describe("自由聊天流式", () => {
               : [SYSTEM_ROW],
           ),
       ),
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+      ...turnFlowHandlers(
+        () => opened.response,
         () => {
           accepted = true;
-          return opened.response;
         },
       ),
     );
@@ -621,6 +686,11 @@ describe("自由聊天流式", () => {
     expect(await screen.findByText("长问题")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "停止" }));
+    // 持久取消受理（「正在停止」）；取消落实后下发 cancelled 标记。
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "正在停止" })).toBeVisible(),
+    );
+    opened.pushEvent('event: status\ndata: {"phase":"cancelled"}');
     // 停止丢弃半截文本：流式气泡消失、发送恢复；末尾未回复提问露出重试入口。
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "发送" })).toBeEnabled(),
@@ -652,26 +722,32 @@ describe("自由聊天流式", () => {
           ),
       ),
       http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/turns`,
         () => {
           if (conflict) {
             conflict = false;
             return HttpResponse.json(
-              { detail: "CHAT_STREAM_IN_PROGRESS：该对话正在生成回答，请稍候" },
+              {
+                detail:
+                  "CHAT_TURN_IN_PROGRESS：该对话正在生成回答，请稍候或先停止",
+              },
               { status: 409 },
             );
           }
-          return sseResponse(
-            sseChunks([
-              'event: status\ndata: {"phase":"generating"}',
-              'event: token\ndata: {"text":"好"}',
-              'event: done\ndata: {"message_id":"assistant-row","content":"好"}',
-            ]),
-            () => {
-              answered = true;
-            },
-          );
+          return HttpResponse.json(turnPayload(), { status: 202 });
         },
+      ),
+      ...turnFlowHandlers(() =>
+        sseResponse(
+          sseChunks([
+            'event: status\ndata: {"phase":"generating"}',
+            'event: token\ndata: {"text":"好"}',
+            'event: done\ndata: {"message_id":"assistant-row","content":"好"}',
+          ]),
+          () => {
+            answered = true;
+          },
+        ),
       ),
     );
     useSessionPage();
@@ -680,9 +756,7 @@ describe("自由聊天流式", () => {
     fireEvent.change(input, { target: { value: "第一条" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(
-      await screen.findByText(/CHAT_STREAM_IN_PROGRESS：该对话正在生成回答/),
-    ).toBeVisible();
+    expect(await screen.findByText(/该对话正在生成回答/)).toBeVisible();
 
     // 错误后可继续发问。
     fireEvent.change(screen.getByRole("textbox", { name: "提问输入框" }), {
@@ -1021,12 +1095,7 @@ describe("挂载对话检索过程", () => {
   it("检索过程默认仅展示最新状态，done 后保留可展开历史", async () => {
     const answered = { current: false };
     const opened = openSseResponse([]);
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
-        () => opened.response,
-      ),
-    );
+    server.use(...turnFlowHandlers(() => opened.response));
     renderMountedStreaming(answered);
 
     const input = await screen.findByRole("textbox", { name: "提问输入框" });
@@ -1096,11 +1165,9 @@ describe("联网搜索接线（B1）", () => {
 
   function capturedMessagePost(answered: { current: boolean }) {
     const bodies: unknown[] = [];
-    const handler = http.post(
-      `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
-      async ({ request }) => {
-        bodies.push(await request.json());
-        return sseResponse(
+    server.use(
+      ...turnFlowHandlers(() =>
+        sseResponse(
           sseChunks([
             'event: token\ndata: {"text":"答"}',
             'event: done\ndata: {"message_id":"assistant-row","content":"答"}',
@@ -1108,10 +1175,18 @@ describe("联网搜索接线（B1）", () => {
           () => {
             answered.current = true;
           },
-        );
-      },
+        ),
+      ),
     );
-    server.use(handler);
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/turns`,
+        async ({ request }) => {
+          bodies.push(await request.json());
+          return HttpResponse.json(turnPayload(), { status: 202 });
+        },
+      ),
+    );
     return bodies;
   }
 
@@ -1157,6 +1232,7 @@ describe("联网搜索接线（B1）", () => {
       expect(bodies[0]).toEqual({
         content: "最新版本是多少",
         web_search: true,
+        request_id: expect.any(String),
         page: { page_type: "chat", captured_at: expect.any(String) },
       }),
     );
@@ -1170,6 +1246,7 @@ describe("联网搜索接线（B1）", () => {
       expect(bodies[1]).toEqual({
         content: "不联网问问",
         web_search: false,
+        request_id: expect.any(String),
         page: { page_type: "chat", captured_at: expect.any(String) },
       }),
     );
@@ -1221,6 +1298,7 @@ describe("联网搜索接线（B1）", () => {
       expect(bodies[0]).toEqual({
         content: "追问材料外背景",
         web_search: true,
+        request_id: expect.any(String),
         page: { page_type: "chat", captured_at: expect.any(String) },
       }),
     );
@@ -1264,12 +1342,7 @@ describe("联网搜索接线（B1）", () => {
     );
     useConfiguredWebSearch();
     const opened = openSseResponse([]);
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
-        () => opened.response,
-      ),
-    );
+    server.use(...turnFlowHandlers(() => opened.response));
     const listHandler = http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
       HttpResponse.json([created]),
     );
@@ -1736,12 +1809,7 @@ describe("跨记录问答范围（B2）", () => {
     const created = chatSession(FIRST_SESSION_ID, { scope: "ALL" });
     scopeSessionPage(created, []);
     const opened = openSseResponse([]);
-    server.use(
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
-        () => opened.response,
-      ),
-    );
+    server.use(...turnFlowHandlers(() => opened.response));
 
     const input = await screen.findByRole("textbox", { name: "提问输入框" });
     fireEvent.change(input, { target: { value: "一致性哈希" } });

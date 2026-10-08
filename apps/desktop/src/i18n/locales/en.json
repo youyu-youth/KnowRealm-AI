@@ -2329,6 +2329,13 @@
       "historyIncomplete": "Process history was not fully saved",
       "conversation": "Conversation messages",
       "jumpToLatest": "Jump to latest"
+    },
+    "turn": {
+      "stopping": "Stopping",
+      "disconnected": "Connection lost. The answer is still being generated in the background; refresh or come back later to continue reading",
+      "failed": "Answer generation failed",
+      "missing": "The turn does not exist or has been deleted",
+      "interrupted": "Answer generation was interrupted; generated content is kept"
     }
   },
   "settings": {
@@ -3103,7 +3110,13 @@
     "DATA_DIR_UNBOUND": "Data directory is not initialized; cannot import local documents",
     "PLAN_DRAFT_LLM_UNCONFIGURED": "No LLM provider configured; cannot generate study plan draft",
     "PLAN_DRAFT_GOAL_UNAVAILABLE": "Goal unavailable (completed or an active plan exists); cannot generate draft",
-    "PLAN_DRAFT_NO_MATERIALS": "No materials in the course yet; add materials first, then retry the study plan draft"
+    "PLAN_DRAFT_NO_MATERIALS": "No materials in the course yet; add materials first, then retry the study plan draft",
+    "CHAT_TURN_IN_PROGRESS": "This chat is generating an answer. Wait or stop it first",
+    "CHAT_TURN_REQUEST_CONFLICT": "The same request ID was submitted with different content. Refresh and try again",
+    "CHAT_SESSION_HAS_ACTIVE_TURN": "This chat is generating an answer. Stop it before deleting",
+    "CHAT_TURN_NOT_FOUND": "The chat turn does not exist",
+    "CHAT_TURN_SUBMIT_CONFLICT": "Submission conflict. Please retry",
+    "CHAT_TURN_CURSOR_INVALID": "Invalid turn cursor"
   },
   "agent": {
     "run": {

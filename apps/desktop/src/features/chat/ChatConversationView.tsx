@@ -46,7 +46,7 @@ import {
   selectWebSearchEnabled,
   useChatUiStore,
 } from "@/features/chat/chatUiStore";
-import { useChatStream } from "@/features/chat/useChatStream";
+import { useChatTurns } from "@/features/chat/useChatTurns";
 import { useCourseNames } from "@/features/chat/useCourseNames";
 import { useCreateChatSession } from "@/features/chat/useCreateChatSession";
 import { useWebSearchAvailability } from "@/features/chat/useWebSearchAvailability";
@@ -87,12 +87,13 @@ export function ChatConversationView({
   const { t, i18n } = useTranslation();
   const {
     isStreaming,
+    stopping,
     streamedText,
     streamError,
     responseProcess,
     send,
     stop,
-  } = useChatStream(sessionId);
+  } = useChatTurns(sessionId);
   const [composerValue, setComposerValue] = useState(initialPrompt ?? "");
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -288,7 +289,7 @@ export function ChatConversationView({
             isStreaming={isStreaming}
             streamError={streamError}
             onRetry={(content) =>
-              send(content, webSearchEnabled, sessionAuthMode)
+              void send(content, webSearchEnabled, sessionAuthMode)
             }
             showEmptyHint={!showSuggestions}
             sessionId={sessionId}
@@ -307,7 +308,7 @@ export function ChatConversationView({
         <ChatOperationProposalCard
           sessionId={sessionId}
           onSendMessage={(text) =>
-            send(text, webSearchEnabled, sessionAuthMode)
+            void send(text, webSearchEnabled, sessionAuthMode)
           }
         />
         {/* 直执行回执卡（通用 Agent 第二阶段工单 02）：自动档免确认执行的
@@ -338,11 +339,14 @@ export function ChatConversationView({
                   : undefined
           }
           isStreaming={isStreaming}
+          stopping={stopping}
           webSearchEnabled={webSearchEnabled}
           webSearchAvailable={webSearchAvailable}
           onToggleWebSearch={(next) => setWebSearchEnabled(sessionId, next)}
           onValueChange={setComposerValue}
-          onSend={(content) => send(content, webSearchEnabled, sessionAuthMode)}
+          onSend={(content) =>
+            void send(content, webSearchEnabled, sessionAuthMode)
+          }
           onStop={stop}
         />
       </div>

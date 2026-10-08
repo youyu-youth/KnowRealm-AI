@@ -2309,6 +2309,13 @@
       "historyIncomplete": "过程历史保存不完整",
       "conversation": "对话消息",
       "jumpToLatest": "回到最新"
+    },
+    "turn": {
+      "stopping": "正在停止",
+      "disconnected": "连接已断开，回答仍在后台生成；刷新或稍后返回可继续查看",
+      "failed": "回答生成失败",
+      "missing": "轮次不存在或已删除",
+      "interrupted": "回答生成被中断，已生成内容保留"
     }
   },
   "settings": {
@@ -3083,7 +3090,13 @@
     "DATA_DIR_UNBOUND": "数据目录未初始化，无法导入本地文档",
     "PLAN_DRAFT_LLM_UNCONFIGURED": "尚未配置 LLM 供应商，无法生成学习计划草案",
     "PLAN_DRAFT_GOAL_UNAVAILABLE": "目标不可用（已完结或已有进行中计划），无法生成草案",
-    "PLAN_DRAFT_NO_MATERIALS": "课程还没有资料，无法生成学习计划草案，请先补充资料后重试"
+    "PLAN_DRAFT_NO_MATERIALS": "课程还没有资料，无法生成学习计划草案，请先补充资料后重试",
+    "CHAT_TURN_IN_PROGRESS": "该对话正在生成回答，请稍候或先停止",
+    "CHAT_TURN_REQUEST_CONFLICT": "同一请求身份与上次提交内容不一致，请刷新后重试",
+    "CHAT_SESSION_HAS_ACTIVE_TURN": "该对话正在生成回答，请先停止后再删除",
+    "CHAT_TURN_NOT_FOUND": "对话轮次不存在",
+    "CHAT_TURN_SUBMIT_CONFLICT": "提交冲突，请重试",
+    "CHAT_TURN_CURSOR_INVALID": "轮次游标无效"
   },
   "agent": {
     "run": {

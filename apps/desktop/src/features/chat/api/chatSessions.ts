@@ -9,6 +9,8 @@ import type {
   ChatResponseProcess,
   ChatSession,
   ChatSessionCreate,
+  ChatTurn,
+  ChatTurnsPage,
   KnowledgePointOut,
 } from "@/features/chat/api/types";
 import { apiErrorMessage } from "@/services/http/apiErrorMessage";
@@ -156,55 +158,38 @@ function parseProcess(value: unknown): ChatResponseProcess | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-export type ChatStreamHandlers = {
-  onStatus: (payload?: {
-    phase: string;
-    process?: ChatResponseProcess;
-  }) => void;
+function abortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+export type TurnStreamHandlers = {
+  onStatus: (payload: { phase: string; process?: ChatResponseProcess }) => void;
   onToken: (text: string, segmentId?: string) => void;
   onToolCall: (payload: ChatToolCallPayload) => void;
   onToolResult: (payload: ChatToolResultPayload) => void;
   onDone: (payload: ChatDonePayload) => void;
-  onError: (payload: {
-    code: string;
-    detail: string;
-    process?: ChatResponseProcess;
-  }) => void;
+  onError: (payload: { code: string; detail: string }) => void;
 };
 
 /**
- * 发送消息并消费 SSE 回答流（POST 流 + eventsource-parser + AbortController）。
- * 非 2xx 由 apiRequest 统一抛 ApiError（如 409 在途 / 未配置供应商）。
- * webSearch=true 时本轮挂载联网搜索工具（后端无 key 时强制忽略该标志）；
- * page 为从当前路由派生的页面快照（工单 01：提示性信息，缺省不发送）；
- * authMode 为会话授权档位覆盖（工单 02：仅显式拨过才携带，缺省不发送）。
- * 停止信号经 reader.cancel() 传导并在读结束时转抛 AbortError（不把 signal 交给
- * fetch：jsdom 测试环境的 AbortSignal 与 Node fetch 存在跨 realm 类型冲突）。
+ * 订阅轮次已提交事件（GET 流 + eventsource-parser + AbortController）。
+ * 连接只承载观察：断开 / 卸载 / 切换会话经 signal 关闭订阅，业务停止必须走
+ * cancel 端点的持久指令（切换会话不中断任务，票 01）。
  */
-async function streamMessage(
-  sessionId: string,
-  content: string,
-  handlers: ChatStreamHandlers,
+async function turnEvents(
+  turnId: string,
+  afterSeq: number,
+  handlers: TurnStreamHandlers,
   signal: AbortSignal | undefined,
-  webSearch = false,
-  page?: ChatPageSnapshot,
-  authMode?: AuthMode,
 ): Promise<void> {
   if (signal?.aborted) throw abortError();
-  const body: Record<string, unknown> = { content, web_search: webSearch };
-  if (page) body.page = page;
-  // 会话授权档位覆盖（工单 02）：仅显式拨过才携带，不携带＝全局默认档。
-  if (authMode) body.auth_mode = authMode;
   const response = await apiRequest(
-    `/api/chat-sessions/${sessionId}/messages`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-      headers: { Accept: "text/event-stream" },
-    },
+    `/api/chat-turns/${turnId}/events?after_seq=${afterSeq}`,
+    { headers: { Accept: "text/event-stream" } },
   );
-  // 传输层防御分支（FastAPI 流式 2xx 必有正文），与 abortError 同类：技术串、不走码表。
-  if (!response.body) throw new Error("chat stream response has no body");
+  if (!response.body) throw new Error("turn events response has no body");
   const reader = response.body.getReader();
   const onAbort = () => {
     void reader.cancel().catch(() => undefined);
@@ -272,6 +257,9 @@ async function streamMessage(
             });
           }
           break;
+        case "citation":
+          // 引用渲染以最终消息的 citations 为事实源（done 后重取），不单独消费。
+          break;
         case "done":
           if (
             typeof data.message_id === "string" &&
@@ -290,8 +278,6 @@ async function streamMessage(
             typeof data.code === "string" &&
             typeof data.detail === "string"
           ) {
-            // SSE 错误载荷经同一翻译入口（工单 04）：按码取译文，未命中回显中文原文；
-            // params 按 ADR-0017 契约透传插值。
             const params =
               typeof data.params === "object" && data.params !== null
                 ? (data.params as Record<string, unknown>)
@@ -299,7 +285,6 @@ async function streamMessage(
             handlers.onError({
               code: data.code,
               detail: apiErrorMessage(data.code, data.detail, params),
-              process: parseProcess(data.process),
             });
           }
           break;
@@ -319,12 +304,6 @@ async function streamMessage(
   } finally {
     signal?.removeEventListener("abort", onAbort);
   }
-}
-
-function abortError(): Error {
-  const error = new Error("Aborted");
-  error.name = "AbortError";
-  return error;
 }
 
 export const chatApi = {
@@ -357,5 +336,41 @@ export const chatApi = {
       `/api/chat-sessions/${sessionId}/messages/${messageId}/knowledge-points`,
       { method: "POST", body: JSON.stringify(body) },
     ),
-  streamMessage,
+  /** 提交回答生成轮次（票 01）：202 原子受理，request_id 网络重试中保持稳定。 */
+  submitTurn: (
+    sessionId: string,
+    body: {
+      content: string;
+      webSearch: boolean;
+      requestId: string;
+      page?: ChatPageSnapshot;
+      authMode?: AuthMode;
+    },
+  ) => {
+    const payload: Record<string, unknown> = {
+      content: body.content,
+      web_search: body.webSearch,
+      request_id: body.requestId,
+    };
+    if (body.page) payload.page = body.page;
+    if (body.authMode) payload.auth_mode = body.authMode;
+    return apiFetch<ChatTurn>(`/api/chat-sessions/${sessionId}/turns`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  /** 会话当前非终态轮次（至多一条；无在途时 null）。 */
+  activeTurn: async (sessionId: string): Promise<ChatTurn | null> => {
+    const page = await apiFetch<ChatTurnsPage>(
+      `/api/chat-sessions/${sessionId}/turns?active_only=true&limit=1`,
+    );
+    return page.turns[0] ?? null;
+  },
+  getTurn: (turnId: string) => apiFetch<ChatTurn>(`/api/chat-turns/${turnId}`),
+  /** 持久停止指令（票 01）：返回实际状态与 cancel_requested（RUNNING＝正在停止）。 */
+  cancelTurn: (turnId: string) =>
+    apiFetch<{ turn: ChatTurn }>(`/api/chat-turns/${turnId}/cancel`, {
+      method: "POST",
+    }),
+  turnEvents,
 };

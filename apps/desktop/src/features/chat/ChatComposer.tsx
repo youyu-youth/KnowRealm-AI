@@ -11,6 +11,8 @@ type ChatComposerProps = {
   /** 禁用的用户可读原因（如挂载记录已删除），展示在输入区下方。 */
   disabledHint?: string;
   isStreaming: boolean;
+  /** 持久取消已受理、执行侧尚未落实（「正在停止」，票 01）。 */
+  stopping?: boolean;
   /** 联网搜索开关（已接真）：available=false 时置灰并经 tooltip 引导设置页。 */
   webSearchEnabled: boolean;
   webSearchAvailable: boolean;
@@ -27,6 +29,7 @@ export function ChatComposer({
   disabled,
   disabledHint,
   isStreaming,
+  stopping = false,
   webSearchEnabled,
   webSearchAvailable,
   onToggleWebSearch,
@@ -121,7 +124,9 @@ export function ChatComposer({
               variant="outline"
               size="icon-lg"
               className="rounded-full"
-              aria-label={t("chat.stop")}
+              aria-label={stopping ? t("chat.turn.stopping") : t("chat.stop")}
+              aria-disabled={stopping}
+              disabled={stopping}
               onClick={onStop}
             >
               <Square aria-hidden="true" />
