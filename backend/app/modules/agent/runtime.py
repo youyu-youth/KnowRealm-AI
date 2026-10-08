@@ -10,7 +10,9 @@ propose_ingest），随操作工具族上线收敛为单对 bind/reset，消除�
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from datetime import tzinfo
+from typing import cast
 
+from sqlalchemy import CursorResult, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.runs.schemas import AuthMode
@@ -94,20 +96,27 @@ class AgentRuntimeContext:
         """业务提交处最终校验（规格 §2/§11/§14，取消闸门 Middleware 之外的
         原子兜底）：轮次在当前执行身份下运行且未受理持久取消时放行。
 
-        须在业务写入的同一事务内调用——cancel_requested 先落库则本事务读到
-        已取消并拒绝（取消后禁止新增副作用）；业务事务先提交则本校验先放行
-        （真实结果保留）。执行身份失配（重启后新领取）同样拒绝：迟到的旧
-        worker 不得提交新副作用（规格 §6）。
+        须在业务写入的同一事务内调用。条件 UPDATE 不改变轮次数据，但取得
+        SQLite 写锁直到本事务结束，避免 SELECT 放行后取消抢先提交；取消先
+        提交或执行身份失配则匹配零行，拒绝新增副作用（规格 §6）。
         """
         if self.turn_id is None:
             return True
-        turn = await session.get(ChatTurn, self.turn_id)
-        return (
-            turn is not None
-            and turn.status == ChatTurnStatus.RUNNING.value
-            and turn.claim_token == self.turn_claim_token
-            and not bool(turn.cancel_requested)
+        result = cast(
+            "CursorResult[tuple[()]]",
+            await session.execute(
+                update(ChatTurn)
+                .where(
+                    ChatTurn.id == self.turn_id,
+                    ChatTurn.status == ChatTurnStatus.RUNNING.value,
+                    ChatTurn.claim_token == self.turn_claim_token,
+                    ChatTurn.cancel_requested.is_(False),
+                )
+                .values(claim_token=ChatTurn.claim_token)
+                .execution_options(synchronize_session=False)
+            ),
         )
+        return result.rowcount == 1
 
 
 _agent_runtime_context: ContextVar[AgentRuntimeContext | None] = ContextVar(

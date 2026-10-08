@@ -4,7 +4,7 @@
 
 **Blocked by:** 无，可立即开始
 
-**Status:** ready-for-human（自动化门禁全绿，剩用户真机验收清单见下）
+**Status:** ready-for-agent（本次 P1 取消竞态已修复；独立 FAILED 回执事务取消守卫及其他复核问题待修，真机验收未执行）
 
 ## 规格与交付边界
 
@@ -53,7 +53,8 @@
 - 自动化证据：后端新增 `tests/test_chat_turns.py` 11 用例（T01 A/B 并发、T02 离开期间完成、T03 游标补发、T04 幂等/指纹/配置漂移/并发、T05 普通提案不阻塞、T06 单槽写回故障针对性收口、T11 取消与完成竞态×2、T19 活动删除冲突、T21 迁移约束、启动对账 INTERRUPTED）+ 既有七测试文件迁移到轮次契约；前端 `useChatTurns.test.tsx` 6 用例（订阅/失效/停止/会话恢复）+ chatSessions.test 轮次契约重写 + chat.test.tsx 39 用例全绿；模型/网络替身=GatedReply/StubChatModel，数据库写入/领取/回执真实。
 - 未提交前临时目录（.tmp 冒烟脚本与 pytest basetemp）已删除；真机验收清单（A→B→A、离开期间完成、刷新、隐藏窗口）保留未勾，由用户执行。
 - 双轴 review 修复（2026-10-08，全部落地并复验）：①返回会话部分输出——active_only 列表带事件投影（list_session_turn_outs），前端恢复可见已生成正文；②取消检查点——新增 TurnCancelGuardMiddleware（abefore_model/awrap_tool_call 副作用前闸门，cancel_check 经 stream_chat_reply 注入）；③INTERRUPTED 原因展示——hook 消费 chat.turn.interrupted；④断线重连正文缺口——重连以服务端快照 output_text 重置本地拼接再从 last_seq 续订；⑤request_id 保留——仅网络失败（非 ApiError）保留身份重试，服务端裁决即清除；⑥针对性收口退避重试 ≤2 次（写库暂时不可写场景，规格 §6）；⑦审查附带收敛——游标错误 422→400、iso_utc 公开复用、last_claim 改 _ClaimedTurn、job 收口三元组助手 close_job、on_loop_failure 复用 finalize_terminal、routes 去 Any、删 TurnEventPayloads 死导出、错误码清单登记六码、abefore_model 签名对齐框架（state, runtime）。
-- codex 审查 P1 修复（2026-10-08，规格 §2/§11/§14）：取消落库后业务提交仍可新增副作用——闸门/观察器均基于 0.4s 内存标记，业务提交事务无最终校验。修复：AgentRuntimeContext 增 turn_id/turn_claim_token（worker 领取后填入）+ turn_write_allowed（提交事务内原子校验 RUNNING+身份匹配+未取消），接入全部业务提交入口（submit_operation 落提案/直执行两分支、propose_memory、propose_ingest 逐条、submit_undo 两写事务、submit_batch_plan）；命中返回结构化 CHAT_TURN_CANCELLED 且不落任何行（FAILED 回执也是新增副作用）；业务事务先提交则照常保留。新增 5 用例（取消后落提案/直执行拒绝且零副作用、claim 失配拒绝、记忆提案拒绝、正常轮次对照不误伤）。
+- 取消业务守卫（2026-10-09，规格 §2/§11/§14）：AgentRuntimeContext 的 turn_id/turn_claim_token 由 worker 填入；turn_write_allowed 通过条件 UPDATE 校验 RUNNING＋身份匹配＋未取消，并持有 SQLite 写锁至业务事务结束，修复原 SELECT 放行到首个业务写入之间取消仍能抢先提交的竞态。复用已有接入点：submit_operation 提案/直执行、propose_memory、propose_ingest 逐条、submit_undo 两分支、submit_batch_plan。取消先提交则拒绝；业务先取得锁则先完成提交，取消等待后落库，保留真实结果。独立 FAILED 回执事务仍遗漏守卫，本次未修，不能据此宣称全部业务副作用已受控。
+- 本次验收：新增参数化双连接竞态用例覆盖提案与直执行，在旧 SELECT 实现上均失败；修复后证明校验放行后取消不能抢先写入、业务事务结束后取消可提交、随后工具调用拒绝且不增加提案/回执。`uv run pytest tests/test_agent_operations.py tests/test_chat_turns.py tests/test_research_session.py tests/test_learner_memory.py --basetemp .tmp/pytest-fix-turn-atomic-regression -p no:cacheprovider -q`：110 passed；触及 Python 文件 ruff、格式检查、pyright 通过。另以公开 API＋真实 JobRunner＋迁移数据库，在提案首个写入前挂起并发起取消，验证取消等待业务提交后返回 200，已提交 COURSE_CREATE/PENDING 保留一条；仅模型为桩，临时数据库已清理。未执行全量后端/前端及真机验收。
 
 ## 执行注意
 

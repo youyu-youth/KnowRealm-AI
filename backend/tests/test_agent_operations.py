@@ -15,8 +15,9 @@
 """
 
 import json
+import sqlite3
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -1974,3 +1975,52 @@ async def test_active_turn_allows_operation_proposal(tmp_path: Path) -> None:
         rows = await proposal_rows(session_factory)
         assert len(rows) == 1
         assert rows[0][1] == "COURSE_CREATE"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("auth_mode", [AuthMode.REQUEST_APPROVAL, AuthMode.FULL_ACCESS])
+async def test_turn_guard_serializes_cancel_with_business_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth_mode: AuthMode
+) -> None:
+    """校验放行到首个业务写入之间，另一连接不能抢先提交取消。"""
+    original_guard = AgentRuntimeContext.turn_write_allowed
+
+    async def check_cancel_race(runtime: AgentRuntimeContext, session: AsyncSession) -> bool:
+        allowed = await original_guard(runtime, session)
+        if allowed:
+            # 零等待使锁竞争可确定验证，不依赖 sleep 或任务调度顺序。
+            with closing(sqlite3.connect(tmp_path / "knowrealm.db", timeout=0)) as cancelling:
+                with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                    cancelling.execute(
+                        "UPDATE chat_turns SET cancel_requested = 1 WHERE id = ?", ("turn-race",)
+                    )
+        return allowed
+
+    monkeypatch.setattr(AgentRuntimeContext, "turn_write_allowed", check_cancel_race)
+    async with bare_db(tmp_path) as session_factory:
+        await seed_running_turn(session_factory, turn_id="turn-race", session_id="sess-turn")
+        payload = await invoke_with_turn(
+            create_course,
+            CREATE_COURSE_ARGS,
+            session_factory,
+            turn_id="turn-race",
+            auth_mode=auth_mode,
+        )
+        assert payload["ok"] is True
+        table = "agent_proposals" if auth_mode == AuthMode.REQUEST_APPROVAL else "agent_operations"
+        assert await table_count(session_factory, f"SELECT count(*) FROM {table}") == 1
+
+        with closing(sqlite3.connect(tmp_path / "knowrealm.db", timeout=0)) as cancelling:
+            cancelling.execute(
+                "UPDATE chat_turns SET cancel_requested = 1 WHERE id = ?", ("turn-race",)
+            )
+            cancelling.commit()
+        payload = await invoke_with_turn(
+            create_course,
+            CREATE_COURSE_ARGS,
+            session_factory,
+            turn_id="turn-race",
+            auth_mode=auth_mode,
+        )
+        assert payload["error"] == CHAT_TURN_CANCELLED
+        assert await table_count(session_factory, f"SELECT count(*) FROM {table}") == 1
