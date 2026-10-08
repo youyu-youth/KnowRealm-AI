@@ -13,7 +13,7 @@ import json
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.modules.agent.runtime import current_agent_runtime
+from app.modules.agent.runtime import CHAT_TURN_CANCELLED, current_agent_runtime
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
 
@@ -70,17 +70,25 @@ async def propose_ingest(sources: list[IngestSource]) -> str:
     created: list[dict[str, str]] = []
     async with context.session_factory() as session:
         for source in sources:
-            proposal = await ProposalService.create(
-                session,
-                ProposalCreateRequest(
-                    proposal_type=ProposalType.RESEARCH_INGEST,
-                    payload={
-                        "url": source.url,
-                        "title": source.title,
-                        "course_id": context.course_id,
-                    },
-                    session_id=context.session_id,
-                ),
-            )
+            # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库则
+            # 同事务拒绝创建；已提交条目保留（业务先提交则保留真实结果）。
+            # 逐条独立事务＝既有提交粒度不变，取消不可逆故逐条重查。
+            async with session.begin():
+                if not await context.turn_write_allowed(session):
+                    return json.dumps(
+                        {"ok": False, "error": CHAT_TURN_CANCELLED}, ensure_ascii=False
+                    )
+                proposal = await ProposalService.create_core(
+                    session,
+                    ProposalCreateRequest(
+                        proposal_type=ProposalType.RESEARCH_INGEST,
+                        payload={
+                            "url": source.url,
+                            "title": source.title,
+                            "course_id": context.course_id,
+                        },
+                        session_id=context.session_id,
+                    ),
+                )
             created.append({"proposal_id": proposal.id, "url": source.url, "title": source.title})
     return json.dumps({"ok": True, "proposals": created, "status": "PENDING"}, ensure_ascii=False)

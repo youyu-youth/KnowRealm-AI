@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatScope
+from app.modules.agent.turns.models import ChatTurn
+from app.modules.agent.turns.schemas import ChatTurnStatus
 from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import LlmProviderConfig
 
@@ -40,6 +42,10 @@ MAX_TOOL_CALLS_PER_TURN = 6
 # 每轮操作类提案上限（spec 实施决策 16：超限拒绝而非截断——截断会让确认卡
 # 出现用户没见过的操作；量级对齐既有提案工具先例）。
 MAX_OPERATION_PROPOSALS_PER_TURN = 5
+
+# 轮次取消落库后业务提交的结构化拒绝码（切换会话规格 §2/§14：取消先提交
+# 后禁止该轮次新增副作用，业务提交处最终校验命中时返回给模型）。
+CHAT_TURN_CANCELLED = "CHAT_TURN_CANCELLED"
 
 
 @dataclass
@@ -78,6 +84,30 @@ class AgentRuntimeContext:
     # 系统本地），时间工具族的默认时区；None=测试上下文缺省，工具侧回退 UTC。
     user_timezone: tzinfo | None = None
     budget: ToolCallBudget = field(default_factory=ToolCallBudget)
+    # 轮次执行归属（ChatTurn 票 01，规格 §2/§11）：轮次 worker 领取后填入，
+    # 业务提交事务内据此做取消与执行身份的最终校验；None＝非轮次上下文
+    # （测试）不校验。
+    turn_id: str | None = None
+    turn_claim_token: str | None = None
+
+    async def turn_write_allowed(self, session: AsyncSession) -> bool:
+        """业务提交处最终校验（规格 §2/§11/§14，取消闸门 Middleware 之外的
+        原子兜底）：轮次在当前执行身份下运行且未受理持久取消时放行。
+
+        须在业务写入的同一事务内调用——cancel_requested 先落库则本事务读到
+        已取消并拒绝（取消后禁止新增副作用）；业务事务先提交则本校验先放行
+        （真实结果保留）。执行身份失配（重启后新领取）同样拒绝：迟到的旧
+        worker 不得提交新副作用（规格 §6）。
+        """
+        if self.turn_id is None:
+            return True
+        turn = await session.get(ChatTurn, self.turn_id)
+        return (
+            turn is not None
+            and turn.status == ChatTurnStatus.RUNNING.value
+            and turn.claim_token == self.turn_claim_token
+            and not bool(turn.cancel_requested)
+        )
 
 
 _agent_runtime_context: ContextVar[AgentRuntimeContext | None] = ContextVar(

@@ -50,6 +50,7 @@ from app.modules.agent.runs.service import (
     order_run_operations,
 )
 from app.modules.agent.runtime import (
+    CHAT_TURN_CANCELLED,
     MAX_OPERATION_PROPOSALS_PER_TURN,
     AgentRuntimeContext,
 )
@@ -303,6 +304,10 @@ async def submit_undo(runtime: AgentRuntimeContext, operation_id: str) -> dict[s
         async with runtime.session_factory() as session:
             try:
                 async with session.begin():
+                    # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先
+                    # 落库或执行身份失配 → 拒绝执行补偿（取消后禁止新增副作用）。
+                    if not await runtime.turn_write_allowed(session):
+                        return {"ok": False, "error": CHAT_TURN_CANCELLED, "executed": None}
                     original = await _require_undoable_operation(session, operation_id)
                     compensation = await execute_undo_core(
                         session, original, authorization=authorization
@@ -321,6 +326,14 @@ async def submit_undo(runtime: AgentRuntimeContext, operation_id: str) -> dict[s
             },
         }
     async with runtime.session_factory() as session, session.begin():
+        # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库或执行
+        # 身份失配 → 拒绝落提案。
+        if not await runtime.turn_write_allowed(session):
+            return {
+                "ok": False,
+                "error": CHAT_TURN_CANCELLED,
+                "proposals": [],
+            }
         proposal = await ProposalService.create_core(
             session,
             ProposalCreateRequest(

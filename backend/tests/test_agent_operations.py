@@ -43,7 +43,10 @@ from app.modules.agent.graph import (
 from app.modules.agent.message_service import (
     _validate_page_snapshot,  # pyright: ignore[reportPrivateUsage]
 )
+from app.modules.agent.models import ChatMessage, ChatSession
+from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runtime import (
+    CHAT_TURN_CANCELLED,
     MAX_OPERATION_PROPOSALS_PER_TURN,
     MAX_TOOL_CALLS_PER_TURN,
     AgentRuntimeContext,
@@ -51,7 +54,7 @@ from app.modules.agent.runtime import (
     bind_agent_runtime_context,
     reset_agent_runtime_context,
 )
-from app.modules.agent.schemas import ChatPageSnapshot, ChatRole
+from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole
 from app.modules.agent.tools.add_text_record import add_text_record_to_course
 from app.modules.agent.tools.create_course import create_course
 from app.modules.agent.tools.list_course_records import list_course_records
@@ -60,10 +63,12 @@ from app.modules.agent.tools.listing import (
     LIST_HARD_LIMIT,
     resolve_list_limit,
 )
+from app.modules.agent.tools.propose_memory import propose_memory
 from app.modules.agent.tools.search_courses import (
     SEARCH_COURSES_LIMIT,
     search_courses,
 )
+from app.modules.agent.turns.models import ChatTurn
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import (
     ProposalCreateRequest,
@@ -1802,3 +1807,170 @@ def test_operations_common_flow_imports_no_domain_modules() -> None:
                 imported.update(alias.name for alias in node.names)
         domain = {name for name in imported if is_domain(name)}
         assert not domain, f"{module.__name__} 引入了领域模块：{domain}"
+
+
+# ---------------------------------------------------------------------------
+# 轮次取消后的业务提交最终校验（ChatTurn 票 01 review，规格 §2/§11/§14：
+# 取消先落库后禁止新增副作用——观察器内存标记有 0.4s 延迟，原子兜底在
+# 各业务提交事务内）
+# ---------------------------------------------------------------------------
+
+
+async def seed_running_turn(
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    turn_id: str,
+    session_id: str,
+    cancel_requested: bool = False,
+    claim_token: str | None = "claim-current",
+) -> None:
+    """预置聊天会话 + 用户消息 + RUNNING 轮次。
+
+    逐层独立事务：跨模型无 ORM relationship，同一 flush 不保证父表先插
+    （FK 即时校验会拒），照 seed_course 先例按表分层提交。"""
+    async with session_factory() as session, session.begin():
+        session.add(ChatSession(id=session_id, mode=ChatMode.ASK))
+    async with session_factory() as session, session.begin():
+        session.add(
+            ChatMessage(
+                id=f"{turn_id}-msg",
+                session_id=session_id,
+                role=ChatRole.USER,
+                content="帮我建一门算法课",
+            )
+        )
+    async with session_factory() as session, session.begin():
+        session.add(
+            ChatTurn(
+                id=turn_id,
+                session_id=session_id,
+                user_message_id=f"{turn_id}-msg",
+                request_id=f"req-{turn_id}",
+                request_fingerprint=f"fp-{turn_id}",
+                status="RUNNING",
+                cancel_requested=cancel_requested,
+                claim_token=claim_token,
+            )
+        )
+
+
+async def invoke_with_turn(
+    tool_obj: object,
+    args: dict[str, Any],
+    session_factory: async_sessionmaker[AsyncSession],
+    *,
+    turn_id: str,
+    claim_token: str | None = "claim-current",
+    auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL,
+) -> dict[str, Any]:
+    """带轮次执行身份的工具调用壳（模拟 worker 领取后的运行时上下文）。"""
+    token = bind_agent_runtime_context(
+        AgentRuntimeContext(
+            session_factory=session_factory,
+            session_id="sess-turn",
+            auth_mode=auth_mode,
+            turn_id=turn_id,
+            turn_claim_token=claim_token,
+        )
+    )
+    try:
+        raw = await cast("Any", tool_obj).ainvoke(args)
+        return cast("dict[str, Any]", json.loads(raw))
+    finally:
+        reset_agent_runtime_context(token)
+
+
+CREATE_COURSE_ARGS: dict[str, Any] = {
+    "name": "算法入门",
+    "learning_context": "INTEREST",
+    "depth": "BEGINNER",
+}
+
+
+@pytest.mark.anyio
+async def test_operation_proposal_rejected_after_turn_cancel(tmp_path: Path) -> None:
+    """持久取消先落库：落提案分支拒绝（取消后不新增 COURSE_CREATE 提案）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_running_turn(
+            session_factory, turn_id="turn-1", session_id="sess-turn", cancel_requested=True
+        )
+        payload = await invoke_with_turn(
+            create_course, CREATE_COURSE_ARGS, session_factory, turn_id="turn-1"
+        )
+        assert payload["ok"] is False
+        assert payload["error"] == CHAT_TURN_CANCELLED
+        assert payload["proposals"] == []
+        assert await table_count(session_factory, "SELECT count(*) FROM agent_proposals") == 0
+
+
+@pytest.mark.anyio
+async def test_direct_execution_rejected_after_turn_cancel(tmp_path: Path) -> None:
+    """直执行分支同事务拒绝：不写业务对象、不落任何 operation 行（含 FAILED——
+    取消不是操作失败，回执本身也是新增副作用）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_running_turn(
+            session_factory, turn_id="turn-2", session_id="sess-turn", cancel_requested=True
+        )
+        payload = await invoke_with_turn(
+            create_course,
+            CREATE_COURSE_ARGS,
+            session_factory,
+            turn_id="turn-2",
+            auth_mode=AuthMode.FULL_ACCESS,
+        )
+        assert payload["ok"] is False
+        assert payload["error"] == CHAT_TURN_CANCELLED
+        assert await table_count(session_factory, "SELECT count(*) FROM agent_operations") == 0
+        assert await table_count(session_factory, "SELECT count(*) FROM courses") == 0
+
+
+@pytest.mark.anyio
+async def test_operation_submit_rejected_when_claim_token_stale(tmp_path: Path) -> None:
+    """执行身份失配（重启后新领取换 token）：迟到的旧执行不得提交新副作用
+    （规格 §6）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_running_turn(
+            session_factory,
+            turn_id="turn-3",
+            session_id="sess-turn",
+            claim_token="claim-new",
+        )
+        payload = await invoke_with_turn(
+            create_course,
+            CREATE_COURSE_ARGS,
+            session_factory,
+            turn_id="turn-3",
+            claim_token="claim-stale",
+        )
+        assert payload["ok"] is False
+        assert payload["error"] == CHAT_TURN_CANCELLED
+        assert await table_count(session_factory, "SELECT count(*) FROM agent_proposals") == 0
+
+
+@pytest.mark.anyio
+async def test_propose_memory_rejected_after_turn_cancel(tmp_path: Path) -> None:
+    """记忆提案入口同口径：取消先落库则不创建 MEMORY 提案。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_running_turn(
+            session_factory, turn_id="turn-4", session_id="sess-turn", cancel_requested=True
+        )
+        payload = await invoke_with_turn(
+            propose_memory, {"items": ["喜欢先看例题"]}, session_factory, turn_id="turn-4"
+        )
+        assert payload["ok"] is False
+        assert payload["error"] == CHAT_TURN_CANCELLED
+        assert await table_count(session_factory, "SELECT count(*) FROM agent_proposals") == 0
+
+
+@pytest.mark.anyio
+async def test_active_turn_allows_operation_proposal(tmp_path: Path) -> None:
+    """对照：轮次正常运行（身份匹配、未取消）时提案照常创建（不误伤）。"""
+    async with bare_db(tmp_path) as session_factory:
+        await seed_running_turn(session_factory, turn_id="turn-5", session_id="sess-turn")
+        payload = await invoke_with_turn(
+            create_course, CREATE_COURSE_ARGS, session_factory, turn_id="turn-5"
+        )
+        assert payload["ok"] is True
+        rows = await proposal_rows(session_factory)
+        assert len(rows) == 1
+        assert rows[0][1] == "COURSE_CREATE"

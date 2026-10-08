@@ -75,6 +75,7 @@ from app.modules.agent.runs.service import (
     find_active_run,
 )
 from app.modules.agent.runtime import (
+    CHAT_TURN_CANCELLED,
     MAX_OPERATION_PROPOSALS_PER_TURN,
     AgentRuntimeContext,
 )
@@ -765,6 +766,10 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
     runtime.budget.operations_created += 1
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     async with runtime.session_factory() as session, session.begin():
+        # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库或执行
+        # 身份失配 → 不建 Run、不落计划卡（取消后禁止新增副作用）。
+        if not await runtime.turn_write_allowed(session):
+            return {"ok": False, "error": CHAT_TURN_CANCELLED}
         active = await find_active_run(session, runtime.session_id)
         if active is not None:
             try:

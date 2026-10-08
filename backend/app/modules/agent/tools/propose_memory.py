@@ -12,7 +12,7 @@ import json
 
 from langchain_core.tools import tool
 
-from app.modules.agent.runtime import current_agent_runtime
+from app.modules.agent.runtime import CHAT_TURN_CANCELLED, current_agent_runtime
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
 
@@ -57,8 +57,12 @@ async def propose_memory(items: list[str]) -> str:
             },
             ensure_ascii=False,
         )
-    async with context.session_factory() as session:
-        proposal = await ProposalService.create(
+    async with context.session_factory() as session, session.begin():
+        # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库则同事务
+        # 拒绝创建（取消后禁止新增副作用）；create_core 先例＝调用方拥有事务。
+        if not await context.turn_write_allowed(session):
+            return json.dumps({"ok": False, "error": CHAT_TURN_CANCELLED}, ensure_ascii=False)
+        proposal = await ProposalService.create_core(
             session,
             ProposalCreateRequest(
                 proposal_type=ProposalType.MEMORY,

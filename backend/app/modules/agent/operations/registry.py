@@ -32,6 +32,7 @@ from app.modules.agent.runs.models import AgentOperation
 from app.modules.agent.runs.schemas import AuthMode, OperationAuthorization
 from app.modules.agent.runs.service import record_confirmed_operation, record_direct_execution
 from app.modules.agent.runtime import (
+    CHAT_TURN_CANCELLED,
     MAX_OPERATION_PROPOSALS_PER_TURN,
     AgentRuntimeContext,
 )
@@ -430,7 +431,9 @@ async def _execute_operation_directly(
     OPERATION_APPROVAL_REQUIRED），再比对快照与首次尝试基线（锁竞争窗口
     内目标被修改 → FAILED＋OPERATION_SNAPSHOT_STALE，不覆盖手改）；耗尽
     落 FAILED＋OPERATION_TRANSIENT_ERROR。业务拒绝（CodedHTTPException）
-    不自动重试。取消（spec 决策 20 第三项）为 run 概念，直执行无 run 不适用。
+    不自动重试。run 取消（spec 决策 20 第三项）为 run 概念；轮次持久取消
+    （ChatTurn 规格 §2/§14）在直执行主事务开头原子校验，命中即拒绝且不落
+    FAILED 回执（取消后禁止新增任何副作用）。
 
     失败载荷携带 operation_id（工单 06 review 修复）：FAILED 行已在独立小
     事务落库，id 随载荷返回——消息流锚点据此定位失败回执，回执卡的手动
@@ -482,6 +485,11 @@ async def _execute_operation_directly(
             )
             try:
                 async with session.begin():
+                    # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先
+                    # 落库或执行身份失配 → 拒绝执行，不落任何行（取消不是操作
+                    # 失败，FAILED 回执本身也是新增副作用）。重试轮同位重查。
+                    if not await runtime.turn_write_allowed(session):
+                        return {"ok": False, "error": CHAT_TURN_CANCELLED}
                     # 直执行同事务固化快照：快照随 operation 落库，供 Undo 补偿
                     # 与审计（spec 决策 12）；重试轮与首次基线比对＝版本重验。
                     # 提交时执法（工单 03）与快照同路：直执行＝模型提交时刻。
@@ -674,6 +682,15 @@ async def submit_operation(
     snapshot_failure: CodedHTTPException | None = None
     proposal: AgentProposalOut | None = None
     async with runtime.session_factory() as session, session.begin():
+        # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库或执行
+        # 身份失配 → 拒绝落提案（取消闸门 Middleware 是 0.4s 内存标记，此处
+        # 同事务读库才是原子兜底）。空事务提交＝无副作用。
+        if not await runtime.turn_write_allowed(session):
+            return {
+                "ok": False,
+                "error": CHAT_TURN_CANCELLED,
+                "proposals": [],
+            }
         # 提交时同事务固化执行前快照（spec 决策 12）：目标读取与提案创建
         # 原子（快照读与落提案之间无并发写窗口）。目标不可达＝结构化返回由
         # 模型转述，不落提案；捕获面只限快照读取与提交时执法——create_core

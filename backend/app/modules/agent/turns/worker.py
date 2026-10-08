@@ -323,6 +323,8 @@ class _TurnExecutor:
             message_id=turn.user_message_id,
             user_timezone=user_timezone,
             budget=ToolCallBudget(),
+            turn_id=self._ctx.turn_id,
+            turn_claim_token=self._ctx.claim_token,
         )
         outcome = ChatStreamOutcome()
         stream = message_service.stream_chat_reply(

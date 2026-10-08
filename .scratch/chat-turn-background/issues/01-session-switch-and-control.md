@@ -53,6 +53,7 @@
 - 自动化证据：后端新增 `tests/test_chat_turns.py` 11 用例（T01 A/B 并发、T02 离开期间完成、T03 游标补发、T04 幂等/指纹/配置漂移/并发、T05 普通提案不阻塞、T06 单槽写回故障针对性收口、T11 取消与完成竞态×2、T19 活动删除冲突、T21 迁移约束、启动对账 INTERRUPTED）+ 既有七测试文件迁移到轮次契约；前端 `useChatTurns.test.tsx` 6 用例（订阅/失效/停止/会话恢复）+ chatSessions.test 轮次契约重写 + chat.test.tsx 39 用例全绿；模型/网络替身=GatedReply/StubChatModel，数据库写入/领取/回执真实。
 - 未提交前临时目录（.tmp 冒烟脚本与 pytest basetemp）已删除；真机验收清单（A→B→A、离开期间完成、刷新、隐藏窗口）保留未勾，由用户执行。
 - 双轴 review 修复（2026-10-08，全部落地并复验）：①返回会话部分输出——active_only 列表带事件投影（list_session_turn_outs），前端恢复可见已生成正文；②取消检查点——新增 TurnCancelGuardMiddleware（abefore_model/awrap_tool_call 副作用前闸门，cancel_check 经 stream_chat_reply 注入）；③INTERRUPTED 原因展示——hook 消费 chat.turn.interrupted；④断线重连正文缺口——重连以服务端快照 output_text 重置本地拼接再从 last_seq 续订；⑤request_id 保留——仅网络失败（非 ApiError）保留身份重试，服务端裁决即清除；⑥针对性收口退避重试 ≤2 次（写库暂时不可写场景，规格 §6）；⑦审查附带收敛——游标错误 422→400、iso_utc 公开复用、last_claim 改 _ClaimedTurn、job 收口三元组助手 close_job、on_loop_failure 复用 finalize_terminal、routes 去 Any、删 TurnEventPayloads 死导出、错误码清单登记六码、abefore_model 签名对齐框架（state, runtime）。
+- codex 审查 P1 修复（2026-10-08，规格 §2/§11/§14）：取消落库后业务提交仍可新增副作用——闸门/观察器均基于 0.4s 内存标记，业务提交事务无最终校验。修复：AgentRuntimeContext 增 turn_id/turn_claim_token（worker 领取后填入）+ turn_write_allowed（提交事务内原子校验 RUNNING+身份匹配+未取消），接入全部业务提交入口（submit_operation 落提案/直执行两分支、propose_memory、propose_ingest 逐条、submit_undo 两写事务、submit_batch_plan）；命中返回结构化 CHAT_TURN_CANCELLED 且不落任何行（FAILED 回执也是新增副作用）；业务事务先提交则照常保留。新增 5 用例（取消后落提案/直执行拒绝且零副作用、claim 失配拒绝、记忆提案拒绝、正常轮次对照不误伤）。
 
 ## 执行注意
 
