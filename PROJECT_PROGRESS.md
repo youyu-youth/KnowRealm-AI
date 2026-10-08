@@ -1,4 +1,4 @@
-> **最后更新**：2026-10-06（AI 对话过程展示优化已实施：紧凑摘要、按需展开、正文分段、工具调用 ID 关联与历史留痕；迁移 0041。后端相关 184 项、前端聊天 62 项及类型/契约门禁通过；隔离真实 Tauri + WebView2 使用本地模型桩验证明暗、窄窗、200% 缩放与减少动效，证据见 `.scratch/chat-response-process/implementation.md`。**当日追加修复**：过程行改为逐工具图标 + 行尾状态图标，行内展开改为原地展开（消除同句文案渲染两份），完全相同的思考文本只保留一条。数据模型 0027～0040 补登提案与 0041 增补提案均待批准，权威数据模型未改。）
+> **最后更新**：2026-10-07（ChatTurn 切换会话与持久控制〔票 01〕已实施：提交/观察/控制三分离——POST turns 202 原子受理 + CHAT_TURN 双执行槽 worker + 持久事件游标订阅 + 持久取消；旧 POST /messages 流式入口移除；迁移 0042。后端全量 1098 绿、前端全绿（并发抖动单跑核实）、ruff/pyright/tsc/OpenAPI 全过；剩用户真机验收〔A→B→A、离开期间完成、刷新、隐藏窗口〕，清单在工单。数据模型 0042 登记与术语 ChatTurn 增补为提案待批。）
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
 
@@ -128,14 +128,14 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 │  ├─ src/styles/         tokens.css(@theme) / theme.css / globals.css / animations.css 分层
 │  └─ src-tauri/          Rust 壳：sidecar 拉起、托盘、全局快捷键、数据目录解析（ADR-0013）
 ├─ backend/               FastAPI sidecar（uv 管理，py312，feature-first 模块化单体 ADR-0015）
-│  ├─ app/modules/        22 模块：agent（含 operations 操作注册表 + runs 执行事实子包）/
+│  ├─ app/modules/        22 模块：agent（含 operations 操作注册表 + runs 执行事实子包 + turns 轮次执行子包）/
 │  │                      capture/course/course_brain/data/jobs/knowledge_point/
 │  │                      learner/library/learning/llm/profile/quiz/record/review_material/
 │  │                      search/settings/source_anchor/summary/today/todo/transcript
 │  ├─ app/shared/         deps/errors(带码 HTTPException)/events/prompts/schemas
 │  ├─ app/core/           data_dir/logging/loop/version
 │  ├─ app/db/             engine/base/migrations（SQL 迁移执行器，PRAGMA user_version 推进）
-│  └─ migrations/         0001~0041 手写 SQL，四位编号连续递增不可跳号
+│  └─ migrations/         0001~0042 手写 SQL，四位编号连续递增不可跳号
 ├─ packages/api-types/    OpenAPI → TS 类型生成（后端 schema 变更后必须重新 generate）
 ├─ docs/                  权威文档 + ADR + 评测 + 规则镜像（正本在 .claude/rules/）
 └─ .scratch/              工单 tracker（25 个 feature 目录）
