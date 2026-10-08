@@ -363,11 +363,7 @@ export interface paths {
         /** List Chat Messages */
         get: operations["list_chat_messages_api_chat_sessions__session_id__messages_get"];
         put?: never;
-        /**
-         * Send Chat Message
-         * @description 发送用户消息并流式返回回答（SSE：status → token… → done / error）。
-         */
-        post: operations["send_chat_message_api_chat_sessions__session_id__messages_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -392,6 +388,90 @@ export interface paths {
          *     索引 + CHAT_MESSAGE 锚点与链接同生同灭；不写学习事件。
          */
         post: operations["save_chat_message_as_knowledge_point_api_chat_sessions__session_id__messages__message_id__knowledge_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-sessions/{session_id}/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Chat Turns
+         * @description 会话轮次列表（新到旧游标分页）；active_only 只取非终态轮次（至多一条）。
+         */
+        get: operations["list_chat_turns_api_chat_sessions__session_id__turns_get"];
+        put?: never;
+        /**
+         * Submit Chat Turn
+         * @description 提交回答生成：原子受理（user 消息 + 轮次 + job 同事务），立即返回实际状态。
+         */
+        post: operations["submit_chat_turn_api_chat_sessions__session_id__turns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-turns/{turn_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chat Turn */
+        get: operations["get_chat_turn_api_chat_turns__turn_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-turns/{turn_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Chat Turn
+         * @description 持久取消：返回实际状态与 cancel_requested（RUNNING 在途＝「正在停止」）。
+         */
+        post: operations["cancel_chat_turn_api_chat_turns__turn_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-turns/{turn_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat Turn Events
+         * @description 订阅轮次事件：补发 after_seq 之后的已提交事件并持续观察到终态。
+         *
+         *     卸载 / 切换 / 刷新只关闭本连接（解除订阅），不影响后端执行；停止须经
+         *     cancel 端点的持久指令落实。
+         */
+        get: operations["chat_turn_events_api_chat_turns__turn_id__events_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3246,24 +3326,6 @@ export interface components {
              */
             target_record_id: string;
         };
-        /** ChatMessageCreate */
-        ChatMessageCreate: {
-            /** @description 会话授权档位覆盖（前端按会话内存携带）；不携带＝全局默认档 */
-            auth_mode?: components["schemas"]["AuthMode"] | null;
-            /**
-             * Content
-             * @description 用户消息文本
-             */
-            content: string;
-            /** @description 可选页面快照（提示信息，不构成授权） */
-            page?: components["schemas"]["ChatPageSnapshot"] | null;
-            /**
-             * Web Search
-             * @description 本轮是否允许联网搜索；无 key 时后端强制忽略
-             * @default false
-             */
-            web_search: boolean;
-        };
         /** ChatMessageOut */
         ChatMessageOut: {
             /**
@@ -3533,6 +3595,99 @@ export interface components {
              * @description 会话标题
              */
             title: string;
+        };
+        /**
+         * ChatTurnCancelOut
+         * @description 取消受理结果：cancel_requested 恒 True；状态可能仍 RUNNING（正在停止）。
+         */
+        ChatTurnCancelOut: {
+            turn: components["schemas"]["ChatTurnOut"];
+        };
+        /**
+         * ChatTurnOut
+         * @description 轮次快照：一致视图返回状态、正文投影与 last_seq（客户端从该序号补发）。
+         */
+        ChatTurnOut: {
+            /** Attempt */
+            attempt: number;
+            /** Cancel Requested */
+            cancel_requested: boolean;
+            /** Created At */
+            created_at: string;
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Final Message Id */
+            final_message_id?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Id */
+            id: string;
+            /** Last Seq */
+            last_seq: number;
+            /** Output Revision */
+            output_revision: number;
+            /**
+             * Output Text
+             * @default
+             */
+            output_text: string;
+            process?: components["schemas"]["ChatResponseProcessOut"] | null;
+            /** Session Id */
+            session_id: string;
+            /** Started At */
+            started_at?: string | null;
+            status: components["schemas"]["ChatTurnStatus"];
+            /** Updated At */
+            updated_at: string;
+            /** User Message Id */
+            user_message_id: string;
+        };
+        /**
+         * ChatTurnStatus
+         * @description 轮次状态机（规格 §6）；WAITING_* 由后续票写入。
+         * @enum {string}
+         */
+        ChatTurnStatus: "QUEUED" | "RUNNING" | "WAITING_USER" | "WAITING_JOB" | "INTERRUPTED" | "COMPLETED" | "FAILED" | "CANCELLED";
+        /**
+         * ChatTurnSubmitRequest
+         * @description 提交回答生成：request_id 由客户端一次提交生成并在网络重试中保留。
+         */
+        ChatTurnSubmitRequest: {
+            /** @description 会话授权档位覆盖（前端按会话内存携带）；不携带＝全局默认档 */
+            auth_mode?: components["schemas"]["AuthMode"] | null;
+            /**
+             * Content
+             * @description 用户消息文本
+             */
+            content: string;
+            /** @description 可选页面快照（提示信息，不构成授权） */
+            page?: components["schemas"]["ChatPageSnapshot"] | null;
+            /**
+             * Request Id
+             * @description 客户端稳定受理身份（一次提交一个）
+             */
+            request_id: string;
+            /**
+             * Web Search
+             * @description 本轮是否允许联网搜索；无 key 时后端强制忽略
+             * @default false
+             */
+            web_search: boolean;
+        };
+        /**
+         * ChatTurnsPage
+         * @description 会话轮次列表（游标分页，before = 上一页最旧一条的 created_at/id）。
+         */
+        ChatTurnsPage: {
+            /** Next Before */
+            next_before?: [
+                string,
+                string
+            ] | null;
+            /** Turns */
+            turns: components["schemas"]["ChatTurnOut"][];
         };
         /** ConceptAnchorSourceOut */
         ConceptAnchorSourceOut: {
@@ -4998,7 +5153,7 @@ export interface components {
          * ProcessingJobType
          * @enum {string}
          */
-        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING" | "REVIEW_MATERIAL_GENERATION" | "CONCEPT_EXTRACTION" | "WEB_FETCH" | "LIBRARY_BACKFILL" | "INDEX_REBUILD" | "AGENT_RUN" | "PLAN_DRAFT";
+        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING" | "REVIEW_MATERIAL_GENERATION" | "CONCEPT_EXTRACTION" | "WEB_FETCH" | "LIBRARY_BACKFILL" | "INDEX_REBUILD" | "AGENT_RUN" | "PLAN_DRAFT" | "CHAT_TURN";
         /**
          * ProcessingJobWaitingReason
          * @enum {string}
@@ -7910,7 +8065,7 @@ export interface operations {
             };
         };
     };
-    send_chat_message_api_chat_sessions__session_id__messages_post: {
+    save_chat_message_as_knowledge_point_api_chat_sessions__session_id__messages__message_id__knowledge_points_post: {
         parameters: {
             query?: never;
             header?: {
@@ -7918,21 +8073,24 @@ export interface operations {
             };
             path: {
                 session_id: string;
+                message_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ChatMessageCreate"];
+                "application/json": components["schemas"]["ChatKnowledgePointSaveRequest"];
             };
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["KnowledgePointOut"];
+                };
             };
             /** @description Forbidden */
             403: {
@@ -7981,7 +8139,80 @@ export interface operations {
             };
         };
     };
-    save_chat_message_as_knowledge_point_api_chat_sessions__session_id__messages__message_id__knowledge_points_post: {
+    list_chat_turns_api_chat_sessions__session_id__turns_get: {
+        parameters: {
+            query?: {
+                active_only?: boolean;
+                limit?: number;
+                before_seq_cursor?: string | null;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTurnsPage"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    submit_chat_turn_api_chat_sessions__session_id__turns_post: {
         parameters: {
             query?: never;
             header?: {
@@ -7989,24 +8220,230 @@ export interface operations {
             };
             path: {
                 session_id: string;
-                message_id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["ChatKnowledgePointSaveRequest"];
+                "application/json": components["schemas"]["ChatTurnSubmitRequest"];
             };
         };
         responses: {
             /** @description Successful Response */
-            201: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["KnowledgePointOut"];
+                    "application/json": components["schemas"]["ChatTurnOut"];
                 };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_chat_turn_api_chat_turns__turn_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTurnOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_chat_turn_api_chat_turns__turn_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTurnCancelOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    chat_turn_events_api_chat_turns__turn_id__events_get: {
+        parameters: {
+            query?: {
+                after_seq?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Forbidden */
             403: {
