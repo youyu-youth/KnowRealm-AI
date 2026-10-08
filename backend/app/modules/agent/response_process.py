@@ -1,15 +1,17 @@
-"""回答过程的展示事实；不调度任务、不重放业务操作。"""
+"""回答过程的展示事实；不调度任务、不重放业务操作。
+
+旧执行路径的运行期持久化已随 ChatTurn 迁移移除（票 01）；本模块保留旧行
+只读投影与启动恢复（历史过程仍可查），新轮次过程由 turns.projection 投影。
+"""
 
 import json
 
-from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.modules.agent.models import ChatResponseProcess
 from app.modules.agent.schemas import (
-    ChatProcessStatus,
     ChatProcessTool,
     ChatResponseProcessOut,
 )
@@ -32,14 +34,6 @@ def process_out(row: ChatResponseProcess) -> ChatResponseProcessOut:
     )
 
 
-def finish_process(process: ChatResponseProcessOut, status: ChatProcessStatus) -> None:
-    process.status = status
-    process.ended_at = utcnow()
-    for entry in process.entries:
-        if isinstance(entry, ChatProcessTool) and entry.status == "RUNNING":
-            entry.status = "INTERRUPTED"
-
-
 async def save_process(session: AsyncSession, process: ChatResponseProcessOut) -> None:
     row = await session.get(ChatResponseProcess, process.id)
     if row is None:
@@ -59,20 +53,6 @@ async def save_process(session: AsyncSession, process: ChatResponseProcessOut) -
         separators=(",", ":"),
     )
     await session.flush()
-
-
-async def persist_process(
-    session_factory: async_sessionmaker[AsyncSession], process: ChatResponseProcessOut
-) -> None:
-    try:
-        async with session_factory() as session, session.begin():
-            await save_process(session, process)
-        process.history_saved = True
-    except Exception:
-        process.history_saved = False
-        logger.error(
-            "chat_process_save_failed", process_id=process.id, error_code="CHAT_PROCESS_SAVE_FAILED"
-        )
 
 
 async def recover_processes(session_factory: async_sessionmaker[AsyncSession]) -> None:

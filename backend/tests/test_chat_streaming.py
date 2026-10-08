@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from typing import Any, ClassVar, cast
+from uuid import uuid4
 
 import aiosqlite
 import httpx
@@ -51,7 +52,6 @@ from app.modules.agent.context import (
 )
 from app.modules.agent.graph import build_chat_agent
 from app.modules.agent.message_service import (
-    ChatMessageService,
     _cited_excerpts,  # pyright: ignore[reportPrivateUsage]
 )
 from app.modules.agent.models import ChatMessage
@@ -98,7 +98,20 @@ class ToolCallReply:
     parallel_calls: tuple["ToolCallReply", ...] = ()
 
 
-StubReply = list[str] | ToolCallReply | None
+@dataclass(frozen=True)
+class GatedReply:
+    """受控回复：先吐 prefix 分片，随后挂起等待 release（取消 / 并发测试用）。
+
+    挂起点即「生成在途」的确定性窗口：取消观察器 / 冲突提交在此期间行动，
+    release 置位后继续吐 rest（取消路径下生成器已被取消，置位无副作用）。
+    """
+
+    prefix: tuple[str, ...]
+    release: asyncio.Event
+    rest: tuple[str, ...] = ("收尾",)
+
+
+StubReply = list[str] | ToolCallReply | GatedReply | None
 
 
 def row(row_id: str, role: ChatRole, content: str) -> ContextRow:
@@ -715,6 +728,13 @@ class StubChatModel(BaseChatModel):
     ) -> AsyncIterator[ChatGenerationChunk]:
         type(self).captured.append(list(messages))
         reply = type(self).replies.pop(0)
+        if isinstance(reply, GatedReply):
+            for part in reply.prefix:
+                yield ChatGenerationChunk(message=AIMessageChunk(content=part))
+            await reply.release.wait()
+            for part in reply.rest:
+                yield ChatGenerationChunk(message=AIMessageChunk(content=part))
+            return
         if isinstance(reply, ToolCallReply):
             if reply.commentary:
                 yield ChatGenerationChunk(message=AIMessageChunk(content=reply.commentary))
@@ -821,17 +841,70 @@ async def send_message(
     *,
     web_search: bool = False,
     page: dict[str, Any] | None = None,
+    request_id: str | None = None,
 ) -> list[tuple[str, dict[str, Any]]]:
-    body: dict[str, Any] = {"content": content, "web_search": web_search}
+    """提交轮次并订阅事件到终态（票 01 提交/订阅契约；返回与旧流同词汇的事件列表）。"""
+    body: dict[str, Any] = {
+        "content": content,
+        "web_search": web_search,
+        "request_id": request_id or str(uuid4()),
+    }
     if page is not None:
         body["page"] = page
-    async with client.stream(
-        "POST",
-        f"/api/chat-sessions/{session_id}/messages",
-        json=body,
-    ) as response:
+    submitted = await client.post(f"/api/chat-sessions/{session_id}/turns", json=body)
+    assert submitted.status_code == 202, submitted.text
+    turn_id = submitted.json()["id"]
+    async with client.stream("GET", f"/api/chat-turns/{turn_id}/events?after_seq=0") as response:
         assert response.status_code == 200
         return await read_sse(response)
+
+
+async def submit_turn(
+    client: httpx.AsyncClient,
+    session_id: str,
+    content: str,
+    *,
+    web_search: bool = False,
+    page: dict[str, Any] | None = None,
+    auth_mode: str | None = None,
+) -> str:
+    """提交轮次（不订阅事件流）：返回 turn_id（取消 / 冲突类测试的入口）。"""
+    body: dict[str, Any] = {
+        "content": content,
+        "web_search": web_search,
+        "request_id": str(uuid4()),
+    }
+    if page is not None:
+        body["page"] = page
+    if auth_mode is not None:
+        body["auth_mode"] = auth_mode
+    submitted = await client.post(f"/api/chat-sessions/{session_id}/turns", json=body)
+    assert submitted.status_code == 202, submitted.text
+    return cast(str, submitted.json()["id"])
+
+
+async def wait_turn_terminal(
+    client: httpx.AsyncClient, turn_id: str, timeout_seconds: float = 15.0
+) -> dict[str, Any]:
+    """轮询轮次快照直到终态（返回快照 JSON）。"""
+    for _ in range(int(timeout_seconds / 0.1)):
+        body = cast(dict[str, Any], (await client.get(f"/api/chat-turns/{turn_id}")).json())
+        if body["status"] in ("COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"):
+            return body
+        await asyncio.sleep(0.1)
+    pytest.fail(f"轮次未达终态: {turn_id}")
+
+
+async def wait_turn_progress(client: httpx.AsyncClient, turn_id: str, min_seq: int) -> None:
+    """等待轮次推进（last_seq ≥ min_seq 且在途）：取消测试的确定性前置。"""
+    for _ in range(150):
+        body = cast(dict[str, Any], (await client.get(f"/api/chat-turns/{turn_id}")).json())
+        if body["status"] == "RUNNING" and body["last_seq"] >= min_seq:
+            return
+        if body["status"] in ("COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"):
+            pytest.fail(f"轮次提前终态: {body['status']}")
+        await asyncio.sleep(0.1)
+    pytest.fail("轮次未推进")
 
 
 async def message_rows(data_dir: Path, session_id: str) -> list[tuple[str, str]]:
@@ -1142,30 +1215,25 @@ async def test_context_contains_system_snapshot_and_last_ten_turns(
 async def test_interrupted_stream_keeps_user_row_and_skips_assistant(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async with streaming_chat_app(tmp_path, monkeypatch, replies=[list(STUB_REPLY)] * 2) as (
-        app,
+    """票 01：停止经持久取消指令落实（挂起中的生成被取消，不等待下一条 token）；
+    部分输出已持久、user 行保留、无 assistant；取消释放会话，新问补答复用原行。"""
+    release = asyncio.Event()
+    replies: list[StubReply] = [GatedReply(prefix=("回答",), release=release), list(STUB_REPLY)]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=replies) as (
+        _app,
         client,
         _captured,
     ):
         session_id = await create_session(client)
-        accepted = await ChatMessageService.accept(
-            session_factory=app.state.session_factory,
-            data_dir=app.state.data_dir,
-            registry=app.state.chat_stream_registry,
-            session_id=session_id,
-            content="会被中断的问题",
-        )
-        stream = ChatMessageService.stream_events(
-            session_factory=app.state.session_factory,
-            checkpointer=app.state.chat_checkpointer,
-            registry=app.state.chat_stream_registry,
-            accepted=accepted,
-        )
-        assert (await anext(stream)).event == "status"
-        assert (await anext(stream)).event == "token"
-        # 模拟客户端断开：真实 uvicorn 下客户端断连时 starlette 会 aclose 响应流
-        # 生成器（经探针验证，ASGITransport 提前退出不会传导断开，故直接在生成器边界验证）。
-        await stream.aclose()
+        turn_id = await submit_turn(client, session_id, "会被中断的问题")
+        await wait_turn_progress(client, turn_id, min_seq=1)
+
+        cancelled = await client.post(f"/api/chat-turns/{turn_id}/cancel")
+        assert cancelled.status_code == 200
+        assert cancelled.json()["turn"]["cancel_requested"] is True
+        final = await wait_turn_terminal(client, turn_id)
+        assert final["status"] == "CANCELLED"
+        release.set()
 
         history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
         process = next(item for item in history if item["role"] == "USER")["response_processes"][0]
@@ -1192,17 +1260,40 @@ async def test_interrupted_stream_keeps_user_row_and_skips_assistant(
 async def test_second_send_while_streaming_returns_409(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    async with streaming_chat_app(tmp_path, monkeypatch) as (app, client, _captured):
+    """票 01：同会话已有非终态轮次 → 409 明确冲突；不建隐藏队列、不覆盖已有
+    USER 消息；停止（或完成）后才能新问。"""
+    release = asyncio.Event()
+    replies: list[StubReply] = [
+        GatedReply(prefix=("正在",), release=release),
+        list(STUB_REPLY),
+    ]
+    async with streaming_chat_app(tmp_path, monkeypatch, replies=replies) as (
+        _app,
+        client,
+        _captured,
+    ):
         session_id = await create_session(client)
-        assert app.state.chat_stream_registry.acquire(session_id)
+        turn_id = await submit_turn(client, session_id, "第一条")
+        await wait_turn_progress(client, turn_id, min_seq=1)
 
         conflict = await client.post(
-            f"/api/chat-sessions/{session_id}/messages", json={"content": "第二条"}
+            f"/api/chat-sessions/{session_id}/turns",
+            json={"content": "第二条", "web_search": False, "request_id": str(uuid4())},
         )
         assert conflict.status_code == 409
-        assert "CHAT_STREAM_IN_PROGRESS" in conflict.json()["detail"]
+        assert "CHAT_TURN_IN_PROGRESS" in conflict.json()["detail"]
+        # 冲突提交不落第二条 user 消息（不覆盖、不排队）。
+        rows = await message_rows(tmp_path, session_id)
+        assert ("USER", "第一条") in rows
+        assert all(content != "第二条" for _role, content in rows)
 
-        app.state.chat_stream_registry.release(session_id)
+        cancelled = await client.post(f"/api/chat-turns/{turn_id}/cancel")
+        assert cancelled.status_code == 200
+        await wait_turn_terminal(client, turn_id)
+        release.set()
+        # 终态后新问创建新轮次。
+        events = await send_message(client, session_id, "第二条")
+        assert events[-1][0] == "done"
 
 
 @pytest.mark.anyio
@@ -1444,8 +1535,8 @@ async def test_send_without_provider_returns_semantic_409(
         ) as client:
             session_id = await create_session(client)
             response = await client.post(
-                f"/api/chat-sessions/{session_id}/messages",
-                json={"content": "没配置供应商"},
+                f"/api/chat-sessions/{session_id}/turns",
+                json={"content": "没配置供应商", "web_search": False, "request_id": "req-nopro-1"},
             )
             assert response.status_code == 409
             assert "LLM_PROVIDER_UNCONFIGURED" in response.json()["detail"]
@@ -1459,14 +1550,20 @@ async def test_send_validates_payload_and_missing_session(
 ) -> None:
     async with streaming_chat_app(tmp_path, monkeypatch) as (_app, client, _captured):
         blank = await client.post(
-            "/api/chat-sessions/00000000-0000-4000-8000-000000000001/messages",
-            json={"content": "   "},
+            "/api/chat-sessions/00000000-0000-4000-8000-000000000001/turns",
+            json={"content": "   ", "web_search": False, "request_id": "req-blank-001"},
         )
         assert blank.status_code == 422
 
+        no_request_id = await client.post(
+            "/api/chat-sessions/00000000-0000-4000-8000-000000000001/turns",
+            json={"content": "缺少请求身份"},
+        )
+        assert no_request_id.status_code == 422
+
         missing = await client.post(
-            "/api/chat-sessions/00000000-0000-4000-8000-000000000002/messages",
-            json={"content": "不存在的会话"},
+            "/api/chat-sessions/00000000-0000-4000-8000-000000000002/turns",
+            json={"content": "不存在的会话", "web_search": False, "request_id": "req-miss-001"},
         )
         assert missing.status_code == 404
 
@@ -1935,7 +2032,7 @@ def patch_tavily_transport(
         def __init__(self, api_key: str) -> None:
             super().__init__(api_key, transport=transport)
 
-    monkeypatch.setattr("app.modules.agent.message_service.TavilySearchClient", _TransportedTavily)
+    monkeypatch.setattr("app.modules.agent.turns.worker.TavilySearchClient", _TransportedTavily)
 
 
 def test_cited_excerpts_skip_web_entries() -> None:
@@ -3310,37 +3407,33 @@ async def test_interrupted_stream_keeps_pending_operation_proposal(
         ),
         ["已创建提案。"],
     ]
+    release = asyncio.Event()
+    replies[1] = GatedReply(prefix=(), release=release)
     async with streaming_chat_app(tmp_path, monkeypatch, replies=replies) as (
-        app,
+        _app,
         client,
         _captured,
     ):
         created = await client.post("/api/chat-sessions", json={"scope": "FREE"})
         assert created.status_code == 201
         session_id = created.json()["id"]
-        accepted = await ChatMessageService.accept(
-            session_factory=app.state.session_factory,
-            data_dir=app.state.data_dir,
-            registry=app.state.chat_stream_registry,
-            session_id=session_id,
-            content="帮我创建一个课程",
-        )
-        stream = ChatMessageService.stream_events(
-            session_factory=app.state.session_factory,
-            checkpointer=app.state.chat_checkpointer,
-            registry=app.state.chat_stream_registry,
-            accepted=accepted,
-        )
-        # 工具调用已返回待确认提案；中断后过程留痕，确认卡继续独立可用。
-        seen: list[str] = []
-        async for event in stream:
-            seen.append(str(event.event))
-            if event.event == "tool_result":
+        turn_id = await submit_turn(client, session_id, "帮我创建一个课程")
+        # 工具调用已返回待确认提案（轮次事件推进到 tool_result 后停住）；
+        # 取消后过程留痕，确认卡继续独立可用。
+        for _ in range(150):
+            snapshot = cast(
+                dict[str, Any],
+                (await client.get(f"/api/chat-turns/{turn_id}")).json(),
+            )
+            if snapshot["status"] == "RUNNING" and snapshot["last_seq"] >= 2:
                 break
-        assert seen[0] == "status"
-        assert "tool_call" in seen
-        assert seen[-1] == "tool_result"
-        await stream.aclose()
+            if snapshot["status"] in ("COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"):
+                pytest.fail(f"轮次提前终态: {snapshot['status']}")
+            await asyncio.sleep(0.1)
+        cancelled = await client.post(f"/api/chat-turns/{turn_id}/cancel")
+        assert cancelled.status_code == 200
+        await wait_turn_terminal(client, turn_id)
+        release.set()
 
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
             proposal_row = await (
@@ -3390,7 +3483,7 @@ async def test_new_user_message_discards_pending_plan_drafts(
     PENDING 计划草案提案批量置 REJECTED（learning_plans 零写入不变）；其余
     操作提案与其他会话的草案不受影响；补答（复用原 user 行）不是翻篇。"""
     async with streaming_chat_app(tmp_path, monkeypatch, replies=[list(STUB_REPLY)] * 3) as (
-        app,
+        _app,
         client,
         _captured,
     ):
@@ -3435,31 +3528,14 @@ async def test_new_user_message_discards_pending_plan_drafts(
             ).fetchone()
         assert plans is not None and plans[0] == 0
 
-        # 补答（流中断后重发同一内容，复用原 user 行）不是翻篇：中断落库的
-        # USER 行之后 seed 新草案，重发不触发弃置。
-        accepted = await ChatMessageService.accept(
-            session_factory=app.state.session_factory,
-            data_dir=app.state.data_dir,
-            registry=app.state.chat_stream_registry,
-            session_id=session_id,
-            content="会被中断的问题",
-        )
-        stream = ChatMessageService.stream_events(
-            session_factory=app.state.session_factory,
-            checkpointer=app.state.chat_checkpointer,
-            registry=app.state.chat_stream_registry,
-            accepted=accepted,
-        )
-        assert (await anext(stream)).event == "status"
-        await stream.aclose()
+        # 补答（轮次被停止后重发同一内容，复用原 user 行）不是翻篇：停止后
+        # 落库的 USER 行之后 seed 新草案，重发不触发弃置。
+        stopped_turn = await submit_turn(client, session_id, "会被中断的问题")
+        cancelled = await client.post(f"/api/chat-turns/{stopped_turn}/cancel")
+        assert cancelled.status_code == 200
+        await wait_turn_terminal(client, stopped_turn)
         await seed_proposal("draft-2", "OP_PLAN_CONFIRM", session_id)
-        await ChatMessageService.accept(
-            session_factory=app.state.session_factory,
-            data_dir=app.state.data_dir,
-            registry=app.state.chat_stream_registry,
-            session_id=session_id,
-            content="会被中断的问题",
-        )
+        await submit_turn(client, session_id, "会被中断的问题")
         assert await status_of("draft-2") == "PENDING"
 
 
@@ -3472,46 +3548,41 @@ async def test_interrupted_stream_keeps_direct_execution_recoverable(
     行、零提案）。对照上例（提案版中断）：提案保留待决，本例操作已发生且可查。"""
     from app.modules.agent.runs.schemas import AuthMode
 
+    release = asyncio.Event()
     replies: list[StubReply] = [
         ToolCallReply(
             "create_course",
             {"name": "直执行断流课", "learning_context": "INTEREST", "depth": "BEGINNER"},
         ),
-        ["课程已创建。"],
+        GatedReply(prefix=(), release=release),
     ]
     async with streaming_chat_app(tmp_path, monkeypatch, replies=replies) as (
-        app,
+        _app,
         client,
         _captured,
     ):
         created = await client.post("/api/chat-sessions", json={"scope": "FREE"})
         assert created.status_code == 201
         session_id = created.json()["id"]
-        accepted = await ChatMessageService.accept(
-            session_factory=app.state.session_factory,
-            data_dir=app.state.data_dir,
-            registry=app.state.chat_stream_registry,
-            session_id=session_id,
-            content="帮我创建一个课程",
-            auth_mode=AuthMode.AUTO_APPROVE,
+        turn_id = await submit_turn(
+            client, session_id, "帮我创建一个课程", auth_mode=AuthMode.AUTO_APPROVE
         )
-        stream = ChatMessageService.stream_events(
-            session_factory=app.state.session_factory,
-            checkpointer=app.state.chat_checkpointer,
-            registry=app.state.chat_stream_registry,
-            accepted=accepted,
-        )
-        # 消费到工具结果事件（直执行已完成、operation 与课程同事务提交）后
-        # 模拟客户端断开/超时（生成器边界验证，同上例中断先例）。
-        seen: list[str] = []
-        async for event in stream:
-            seen.append(str(event.event))
-            if event.event == "tool_result":
+        # 直执行已完成（operation 与课程同事务提交、事件推进到 tool_result）
+        # 后发出持久取消：已提交事实不回滚，取消只收口轮次。
+        for _ in range(150):
+            snapshot = cast(
+                dict[str, Any],
+                (await client.get(f"/api/chat-turns/{turn_id}")).json(),
+            )
+            if snapshot["status"] == "RUNNING" and snapshot["last_seq"] >= 2:
                 break
-        assert seen[0] == "status"
-        assert "tool_call" in seen
-        assert seen[-1] == "tool_result"
-        await stream.aclose()
+            if snapshot["status"] in ("COMPLETED", "FAILED", "CANCELLED", "INTERRUPTED"):
+                pytest.fail(f"轮次提前终态: {snapshot['status']}")
+            await asyncio.sleep(0.1)
+        cancelled = await client.post(f"/api/chat-turns/{turn_id}/cancel")
+        assert cancelled.status_code == 200
+        await wait_turn_terminal(client, turn_id)
+        release.set()
 
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
             operation_rows = await (
@@ -3624,82 +3695,3 @@ async def test_response_process_correlates_out_of_order_results(
             ("call-b", "SUCCEEDED", 2),
         ]
         assert process["status"] == "COMPLETED"
-
-
-@pytest.mark.anyio
-async def test_process_history_save_failure_keeps_answer_and_does_not_repeat_tools(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async def fail_save(*_args: object) -> None:
-        raise OSError("history write unavailable")
-
-    monkeypatch.setattr("app.modules.agent.message_service.save_process", fail_save)
-    async with streaming_chat_app(
-        tmp_path,
-        monkeypatch,
-        replies=[ToolCallReply(tool="get_current_time", args={}), list(STUB_REPLY)],
-    ) as (_app, client, captured):
-        session_id = await create_session(client)
-        events = await send_message(client, session_id, "核对时间")
-        assert events[-1][0] == "done"
-        assert events[-1][1]["process"]["history_saved"] is False
-        assert events[-1][1]["content"] == "回答完成了"
-        assert len(captured) == 2
-        assert len([name for name, _payload in events if name == "tool_call"]) == 1
-        rows = await message_rows(tmp_path, session_id)
-        assert ("ASSISTANT", "回答完成了") in rows
-
-
-@pytest.mark.anyio
-async def test_response_process_recovery_uses_last_saved_time_and_keeps_retry_history(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    async with streaming_chat_app(tmp_path, monkeypatch) as (app, client, _captured):
-        session_id = await create_session(client)
-        accepted = await ChatMessageService.accept(
-            session_factory=app.state.session_factory,
-            data_dir=tmp_path,
-            registry=app.state.chat_stream_registry,
-            session_id=session_id,
-            content="查询时间",
-        )
-        async with aiosqlite.connect(tmp_path / "knowrealm.db") as db:
-            await db.execute(
-                "UPDATE chat_response_processes SET started_at=?, updated_at=?, "
-                "elapsed_ms=?, entries_json=? WHERE id=?",
-                (
-                    "2026-10-01T00:00:00Z",
-                    "2026-10-01T00:00:04Z",
-                    4000,
-                    json.dumps(
-                        [
-                            {
-                                "kind": "tool",
-                                "id": "pending",
-                                "tool": "get_current_time",
-                                "query": "",
-                                "status": "RUNNING",
-                                "hits": None,
-                            }
-                        ]
-                    ),
-                    accepted.process.id,
-                ),
-            )
-            await db.commit()
-    async with streaming_chat_app(tmp_path, monkeypatch) as (_app, client, _captured):
-        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
-        user = next(message for message in history if message["role"] == "USER")
-        previous = user["response_processes"][0]
-        assert previous["status"] == "INTERRUPTED"
-        assert previous["elapsed_ms"] == 4000
-        assert previous["ended_at"] == "2026-10-01T00:00:04.000000Z"
-        assert previous["entries"][0]["status"] == "INTERRUPTED"
-        await send_message(client, session_id, "查询时间")
-        history = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
-        users = [message for message in history if message["role"] == "USER"]
-        assert len(users) == 1
-        assert [process["status"] for process in users[0]["response_processes"]] == [
-            "INTERRUPTED",
-            "COMPLETED",
-        ]

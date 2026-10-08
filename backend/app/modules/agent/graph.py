@@ -1,8 +1,8 @@
 """deepagents 骨架装配与流式生成路径：AgentConfig 变体、图工厂与 SSE 结构化事件分发。"""
 
 import json
-from collections.abc import AsyncGenerator, Sequence
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator, Callable, Sequence
+from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Any, cast
 
@@ -33,6 +33,7 @@ from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
 )
 from loguru import logger
 
+from app.modules.agent.middleware.cancel_guard import TurnCancelGuardMiddleware
 from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
     NoopSummarizationMiddleware,
@@ -720,10 +721,14 @@ async def stream_chat_reply(
     runtime: AgentRuntimeContext,
     outcome: ChatStreamOutcome,
     prompt_version: str = CHAT_PROMPT_VERSION,
+    thread_id: str | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> AsyncGenerator[ChatStreamEvent, None]:
     """工厂层流式生成路径：建模型 → 清残留 → astream 分发结构化流事件 → 统一埋点。
 
-    - 每轮从 chat_messages 重建喂入：轮初清掉上轮/崩溃残留，checkpoint 只承载当轮运行态；
+    - 每轮从 chat_messages 重建喂入：轮初清掉残留，checkpoint 只承载当轮运行态；
+      thread_id 缺省按会话命名（历史路径），ChatTurn 执行传 chat-turn-{turn_id}
+      （每轮独立 checkpoint 身份，切换会话规格 §8）；
     - 统一 Agent 运行时上下文（工单 01）承载全部工具运行期状态并单对绑定/重置：
       范围会话（scope ∈ RETRIEVAL_SCOPES）注入 search_library，web_search_provider
       非 None 时挂载联网工具，mode=RESEARCH 追加挂载 propose_ingest，search_courses
@@ -735,8 +740,8 @@ async def stream_chat_reply(
     - 中断（GeneratorExit，客户端断开/用户停止）不落埋点直接终止；
     - 其他异常埋点后重新抛出，由调用方转 error 事件。
     """
-    thread_id = chat_thread_id(runtime.session_id)
-    await checkpointer.adelete_thread(thread_id)
+    thread = thread_id if thread_id is not None else chat_thread_id(runtime.session_id)
+    await checkpointer.adelete_thread(thread)
     http_client = openai.DefaultAsyncHttpxClient(trust_env=False)
     started = perf_counter()
     # 业务 system 提示经 build_chat_agent 参数注入（deepagents 下混入 messages 会被丢弃），
@@ -747,15 +752,22 @@ async def stream_chat_reply(
     # 检索归因（CB-08）：本轮资料检索命中合计（None=未检索，0=检索无命中）。
     retrieval_count: int | None = None
     try:
+        base_config = _resolve_agent_config(
+            retrieval=runtime.scope in RETRIEVAL_SCOPES,
+            web_search_enabled=runtime.web_search_provider is not None,
+            research=runtime.mode == ChatMode.RESEARCH,
+        )
+        if cancel_check is not None:
+            # 轮次取消闸门（票 01）：模型调用前 / 工具执行前的副作用前检查点。
+            base_config = replace(
+                base_config,
+                middleware=(*base_config.middleware, TurnCancelGuardMiddleware(cancel_check)),
+            )
         agent = build_chat_agent(
             build_chat_model(provider, http_client),
             checkpointer,
             system_prompt=system_prompt,
-            config=_resolve_agent_config(
-                retrieval=runtime.scope in RETRIEVAL_SCOPES,
-                web_search_enabled=runtime.web_search_provider is not None,
-                research=runtime.mode == ChatMode.RESEARCH,
-            ),
+            config=base_config,
         )
         tool_call_drafts: dict[str, dict[int, _ToolCallDraft]] = {}
         emitted_calls: set[str] = set()
@@ -763,7 +775,7 @@ async def stream_chat_reply(
         async for stream_item in agent.astream(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
             {"messages": input_messages},  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]
             config={
-                "configurable": {"thread_id": thread_id},
+                "configurable": {"thread_id": thread},
                 "recursion_limit": CHAT_RECURSION_LIMIT,
             },
             stream_mode=["messages", "updates"],
@@ -884,4 +896,4 @@ async def stream_chat_reply(
         retrieval_count=retrieval_count,
         error_code=None,
     )
-    await checkpointer.adelete_thread(thread_id)
+    await checkpointer.adelete_thread(thread)

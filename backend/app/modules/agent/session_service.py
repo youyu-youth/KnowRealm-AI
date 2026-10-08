@@ -368,10 +368,23 @@ class ChatSessionService:
 
     @staticmethod
     async def soft_delete(session: AsyncSession, session_id: str) -> bool:
+        """软删会话；存在非终态轮次时抛 409（先停止任务，不隐式取消）。
+
+        活动轮次的会话删除冲突（规格 §14）：不隐式取消、不删除独立业务执行
+        历史。返回 False=会话不存在，True=已删。
+        """
+        from app.modules.agent.turns.service import find_active_turn
+
         async with session.begin():
             chat = await ChatSessionService.get(session, session_id)
             if chat is None:
                 return False
+            if await find_active_turn(session, session_id) is not None:
+                raise CodedHTTPException(
+                    code="CHAT_SESSION_HAS_ACTIVE_TURN",
+                    status_code=409,
+                    detail="CHAT_SESSION_HAS_ACTIVE_TURN：该对话正在生成回答，请先停止后再删除",
+                )
             now = utcnow()
             chat.deleted_at = now
             chat.updated_at = now

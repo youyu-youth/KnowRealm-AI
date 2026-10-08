@@ -5,11 +5,13 @@
 观察偏好零覆盖显式偏好。端点契约走完整 app；聚合与工具直调 service 层。
 """
 
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -20,13 +22,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.main import create_app
-from app.modules.agent.message_service import ChatMessageService, ChatStreamRegistry
 from app.modules.agent.runtime import (
     AgentRuntimeContext,
     bind_agent_runtime_context,
     reset_agent_runtime_context,
 )
 from app.modules.agent.tools.propose_memory import propose_memory
+from app.modules.agent.turns.service import ChatTurnService
 from app.modules.learner.service import build_learner_context
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ChatScope
@@ -476,21 +478,48 @@ async def test_proposal_list_filters_memory(tmp_path: Path) -> None:
 
 @pytest.mark.anyio
 async def test_accept_derives_memory_injection_flag(tmp_path: Path) -> None:
-    """硬门禁「关闭外发后零发送」的真实链路：accept 派生注入标志
-    = 外发开关开启 AND 外发同意对当前供应商有效（fingerprint 匹配）。"""
+    """硬门禁「关闭外发后零发送」的真实链路：受理派生注入标志
+    = 外发开关开启 AND 外发同意对当前供应商有效（fingerprint 匹配）；
+    断言对象为执行快照（票 01：标志随轮次持久化）。"""
     async with running_app(tmp_path) as (_app, client, session_factory, data_dir):
         created = await client.post("/api/chat-sessions", json={})
         assert created.status_code == 201
         session_id = created.json()["id"]
 
-        async def accept() -> object:
-            return await ChatMessageService.accept(
+        async def injection_allowed() -> bool | None:
+            from app.modules.agent.turns.schemas import ChatTurnSubmitRequest
+            from app.modules.agent.turns.service import get_turn, load_execution
+
+            turn, _created_flag = await ChatTurnService.submit_turn(
                 session_factory=session_factory,
                 data_dir=data_dir,
-                registry=ChatStreamRegistry(),
                 session_id=session_id,
-                content="问题",
+                payload=ChatTurnSubmitRequest(
+                    content="问题", web_search=False, request_id=str(uuid4())
+                ),
             )
+            async with session_factory() as session:
+                row = await get_turn(session, turn.id)
+                assert row is not None
+                value = load_execution(row).get("memory_injection_allowed")
+            # 真实 worker 在跑：立即取消并等终态释放会话，供下一次受理。
+            await ChatTurnService.cancel_turn(
+                session_factory=session_factory,
+                turn_id=turn.id,
+                active=_app.state.turn_active_registry,
+            )
+            for _ in range(150):
+                async with session_factory() as session:
+                    row = await get_turn(session, turn.id)
+                if row is not None and row.status in (
+                    "COMPLETED",
+                    "FAILED",
+                    "CANCELLED",
+                    "INTERRUPTED",
+                ):
+                    break
+                await asyncio.sleep(0.1)
+            return bool(value) if value is not None else None
 
         # 供应商已配置但外发同意未授予 → 不注入。
         save_llm_provider(
@@ -500,12 +529,12 @@ async def test_accept_derives_memory_injection_flag(tmp_path: Path) -> None:
             model="stub-chat-model",
             clear_api_key=False,
         )
-        assert (await accept()).memory_injection_allowed is False  # type: ignore[attr-defined]
+        assert (await injection_allowed()) is False
         # 授予同意（绑定当前供应商指纹）→ 注入。
         granted = await client.post("/api/settings/external-processing-consents/llm")
         assert granted.status_code == 200
-        assert (await accept()).memory_injection_allowed is True  # type: ignore[attr-defined]
+        assert (await injection_allowed()) is True
         # 关闭外发开关 → 不注入（记忆保留本地）。
         toggled = await client.put("/api/learner/memory-outbound", json={"enabled": False})
         assert toggled.status_code == 200
-        assert (await accept()).memory_injection_allowed is False  # type: ignore[attr-defined]
+        assert (await injection_allowed()) is False

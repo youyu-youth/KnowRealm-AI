@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import cast
+from uuid import uuid4
 
 import aiosqlite
 import httpx
@@ -327,7 +328,8 @@ async def test_deleted_mount_record_marks_session_invalid_and_rejects_send(
 
         # 失效会话发送返回语义化冲突错误，不落 user 行。
         rejected = await client.post(
-            f"/api/chat-sessions/{session_id}/messages", json={"content": "还能问吗"}
+            f"/api/chat-sessions/{session_id}/turns",
+            json={"content": "还能问吗", "web_search": False, "request_id": str(uuid4())},
         )
         assert rejected.status_code == 409
         assert "CHAT_RECORD_UNAVAILABLE" in rejected.json()["detail"]
@@ -456,7 +458,8 @@ async def test_deleted_course_marks_course_session_read_only(tmp_path: Path) -> 
 
         # 失效会话发送返回语义化冲突错误，不落 user 行。
         rejected = await client.post(
-            f"/api/chat-sessions/{session_id}/messages", json={"content": "还能问吗"}
+            f"/api/chat-sessions/{session_id}/turns",
+            json={"content": "还能问吗", "web_search": False, "request_id": str(uuid4())},
         )
         assert rejected.status_code == 409
         assert rejected.json()["code"] == "CHAT_COURSE_UNAVAILABLE"

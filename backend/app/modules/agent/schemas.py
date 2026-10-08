@@ -191,7 +191,7 @@ class ChatKnowledgePointSaveRequest(KnowledgePointWriteRequest):
     target_record_id: UUID = Field(description="知识点归属的目标学习记录")
 
 
-def _iso_utc(value: datetime) -> str:
+def iso_utc(value: datetime) -> str:
     utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
     return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
@@ -227,7 +227,7 @@ class ChatSessionOut(BaseModel):
 
     @field_serializer("created_at", "updated_at")
     def serialize_utc(self, value: datetime) -> str:
-        return _iso_utc(value)
+        return iso_utc(value)
 
 
 class ChatCitationOut(BaseModel):
@@ -348,11 +348,11 @@ class ChatResponseProcessOut(BaseModel):
 
     @field_serializer("started_at", "updated_at")
     def serialize_time(self, value: datetime) -> str:
-        return _iso_utc(value)
+        return iso_utc(value)
 
     @field_serializer("ended_at")
     def serialize_end_time(self, value: datetime | None) -> str | None:
-        return _iso_utc(value) if value is not None else None
+        return iso_utc(value) if value is not None else None
 
 
 class ChatMessageOut(BaseModel):
@@ -384,7 +384,7 @@ class ChatMessageOut(BaseModel):
 
     @field_serializer("created_at")
     def serialize_utc(self, value: datetime) -> str:
-        return _iso_utc(value)
+        return iso_utc(value)
 
 
 # ---------------------------------------------------------------------------

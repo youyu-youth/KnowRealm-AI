@@ -363,7 +363,8 @@ async def test_migration_0036_adds_completed_at(tmp_path: Path) -> None:
     version_rows: list[Any] = []
     async with aiosqlite.connect(db_path) as db:
         version_rows = list(await db.execute_fetchall("PRAGMA user_version"))
-    assert cast(int, version_rows[0][0]) == supported_user_version() == 40
+    # 版本尾数断言已随迁移增长失真（41/42 加入）；改为跟随发现逻辑。
+    assert cast(int, version_rows[0][0]) == supported_user_version()
 
 
 def test_pack_schedule_with_fixed_golden_samples() -> None:

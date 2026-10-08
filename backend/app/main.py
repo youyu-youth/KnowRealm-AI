@@ -24,11 +24,17 @@ from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.modules.agent import chat_sessions
 from app.modules.agent.auth_mode import router as agent_auth_mode_router
-from app.modules.agent.message_service import ChatStreamRegistry
 from app.modules.agent.operations.plan_draft import plan_draft_spec
 from app.modules.agent.response_process import recover_processes
 from app.modules.agent.runs import routes as agent_runs_routes
 from app.modules.agent.runs.worker import agent_run_spec
+from app.modules.agent.turns.routes import router as chat_turns_router
+from app.modules.agent.turns.runtime import (
+    ActiveTurnRegistry,
+    ChatTurnRecovery,
+    TurnEventBroadcaster,
+)
+from app.modules.agent.turns.worker import chat_turn_spec
 from app.modules.capture import (
     audio_imports,
     capture_batches,
@@ -133,7 +139,10 @@ def create_app(
     cors_origins: Sequence[str] = DEFAULT_CORS_ORIGINS,
 ) -> FastAPI:
     record_notifier = RecordInvalidationNotifier()
-    chat_stream_registry = ChatStreamRegistry()
+    # ChatTurn 运行时协作件（票 01）：事件通知降延迟 + 在途执行登记 + 启动对账闸门。
+    turn_broadcaster = TurnEventBroadcaster()
+    turn_active_registry = ActiveTurnRegistry()
+    turn_recovery = ChatTurnRecovery()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
@@ -416,6 +425,27 @@ def create_app(
                             record_notifier,
                         ),
                     ),
+                    # ChatTurn 双执行槽（票 01）：会话 A/B 独立推进，数据库条件领取
+                    # 防双领取；轮次状态以 chat_turns 为唯一事实源。
+                    *[
+                        (
+                            f"chat_turn_{slot}",
+                            lambda: JobRunner(
+                                chat_turn_spec(
+                                    session_factory=session_factory,
+                                    data_dir=resolved_data_dir,
+                                    checkpointer=checkpointer,
+                                    broadcaster=turn_broadcaster,
+                                    active=turn_active_registry,
+                                    notifier=record_notifier,
+                                    recovery=turn_recovery,
+                                ),
+                                session_factory,
+                                record_notifier,
+                            ),
+                        )
+                        for slot in range(2)
+                    ],
                 ]
                 if ffmpeg_path is not None:
                     worker_factories.insert(1, ("audio", audio_factory))
@@ -463,7 +493,8 @@ def create_app(
     )
     app.state.launch_token = launch_token
     app.state.record_notifier = record_notifier
-    app.state.chat_stream_registry = chat_stream_registry
+    app.state.turn_broadcaster = turn_broadcaster
+    app.state.turn_active_registry = turn_active_registry
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(cors_origins),
@@ -498,6 +529,7 @@ def create_app(
     app.include_router(search_routes.router)
     app.include_router(source_anchors.router)
     app.include_router(chat_sessions.router)
+    app.include_router(chat_turns_router)
     app.include_router(agent_auth_mode_router)
     app.include_router(agent_runs_routes.router)
     app.include_router(profile.router)

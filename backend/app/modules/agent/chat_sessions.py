@@ -2,12 +2,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sse_starlette import EventSourceResponse
 
 from app.modules.agent.message_service import ChatMessageService
 from app.modules.agent.schemas import (
     ChatKnowledgePointSaveRequest,
-    ChatMessageCreate,
     ChatMessageOut,
     ChatRecordOption,
     ChatScope,
@@ -157,31 +155,3 @@ async def save_chat_message_as_knowledge_point(
         )
     await request.app.state.record_notifier.notify(str(payload.target_record_id))
     return item
-
-
-@router.post("/{session_id}/messages", response_class=EventSourceResponse)
-async def send_chat_message(
-    session_id: UUID,
-    payload: ChatMessageCreate,
-    request: Request,
-) -> EventSourceResponse:
-    """发送用户消息并流式返回回答（SSE：status → token… → done / error）。"""
-    app = request.app
-    accepted = await ChatMessageService.accept(
-        session_factory=app.state.session_factory,
-        data_dir=app.state.data_dir,
-        registry=app.state.chat_stream_registry,
-        session_id=str(session_id),
-        content=payload.content,
-        web_search=payload.web_search,
-        page=payload.page,
-        auth_mode=payload.auth_mode,
-    )
-    return EventSourceResponse(
-        ChatMessageService.stream_events(
-            session_factory=app.state.session_factory,
-            checkpointer=app.state.chat_checkpointer,
-            registry=app.state.chat_stream_registry,
-            accepted=accepted,
-        )
-    )

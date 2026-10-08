@@ -725,7 +725,8 @@ async def test_library_item_session_readonly_when_archived(tmp_path: Path) -> No
         mine = next(item for item in listing.json() if item["id"] == session_id)
         assert mine["library_item_deleted"] is True
         sent = await client.post(
-            f"/api/chat-sessions/{session_id}/messages", json={"content": "还在吗"}
+            f"/api/chat-sessions/{session_id}/turns",
+            json={"content": "还在吗", "web_search": False, "request_id": "req-libr-01"},
         )
         assert sent.status_code == 409
         assert sent.json()["code"] == "CHAT_LIBRARY_ITEM_UNAVAILABLE"

@@ -469,11 +469,14 @@ async def read_sse(response: httpx.Response) -> list[tuple[str, dict[str, Any]]]
 async def send_message(
     client: httpx.AsyncClient, session_id: str, content: str
 ) -> list[tuple[str, dict[str, Any]]]:
-    async with client.stream(
-        "POST",
-        f"/api/chat-sessions/{session_id}/messages",
-        json={"content": content, "web_search": False},
-    ) as response:
+    """提交轮次并订阅事件到终态（票 01 提交/订阅契约）。"""
+    submitted = await client.post(
+        f"/api/chat-sessions/{session_id}/turns",
+        json={"content": content, "web_search": False, "request_id": str(uuid4())},
+    )
+    assert submitted.status_code == 202, submitted.text
+    turn_id = submitted.json()["id"]
+    async with client.stream("GET", f"/api/chat-turns/{turn_id}/events?after_seq=0") as response:
         assert response.status_code == 200
         return await read_sse(response)
 
@@ -539,7 +542,13 @@ async def test_research_stream_done_carries_research_proposals(
         events = await send_message(client, session_id, "研究：注意力机制变体的取舍")
 
     tool_results = [payload for name, payload in events if name == "tool_result"]
-    assert {"tool": "propose_ingest", "hits": 0, "ok": True} in tool_results
+    # 载荷含 tool_call_id / process 等扩展键（票 01 事件词汇），按字段子集断言。
+    assert any(
+        payload.get("tool") == "propose_ingest"
+        and payload.get("hits") == 0
+        and payload.get("ok") is True
+        for payload in tool_results
+    )
     done = events[-1][1]
     assert events[-1][0] == "done"
     proposals = done["research_proposals"]

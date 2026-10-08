@@ -1,33 +1,26 @@
-"""对话发消息：受理（校验 / 补答 / user 落库）与 SSE 流式事件生成。"""
+"""对话消息与上下文组装：历史消息（含过程投影）与喂入 LLM 的会话上下文。
 
-import asyncio
+回答生成执行已迁移 ChatTurn（票 01：提交 / 观察 / 控制分离，见 turns/）；
+本模块保留：消息历史查询（旧 ChatResponseProcess 行 + 新轮次事件投影合并）、
+会话上下文组装（ChatTurn worker 复用）与挂载对象校验。
+"""
+
 import json
-from collections.abc import AsyncGenerator, Mapping
 from dataclasses import dataclass
 from datetime import datetime, tzinfo
-from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
 
-import anyio
 from langchain_core.messages import AnyMessage
-from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
-from loguru import logger
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sse_starlette import ServerSentEvent
 
-from app.db.base import utcnow
 from app.modules.agent.citations import (
     LibraryItemMaterial,
     LibraryRecordMaterial,
-    parse_citation_reply,
-    parse_library_citation_reply,
 )
 from app.modules.agent.context import (
     CHAT_TRANSCRIPT_MAX_CHARS,
     ActiveRunSummary,
-    ChatContextTooLargeError,
     ContextRow,
     LibraryContext,
     LibraryRecordRow,
@@ -35,125 +28,47 @@ from app.modules.agent.context import (
     RecordContext,
     build_context_messages,
 )
-from app.modules.agent.graph import (
-    CHAT_PROMPT_VERSION,
-    CHAT_RESEARCH_PROMPT_VERSION,
-    ChatCommentaryEvent,
-    ChatMemoryProposalEvent,
-    ChatOperationExecutionEvent,
-    ChatOperationProposalEvent,
-    ChatResearchProposalEvent,
-    ChatStreamOutcome,
-    ChatTokenEvent,
-    ChatToolCallEvent,
-    stream_chat_reply,
-)
+from app.modules.agent.graph import stream_chat_reply
 from app.modules.agent.models import ChatMessage, ChatResponseProcess, ChatSession
-from app.modules.agent.response_process import (
-    finish_process,
-    persist_process,
-    process_out,
-    save_process,
-)
+from app.modules.agent.response_process import process_out
 from app.modules.agent.runs.models import AgentOperation
-from app.modules.agent.runs.schemas import AuthMode, OperationStatus
+from app.modules.agent.runs.schemas import OperationStatus
 from app.modules.agent.runs.service import list_nonterminal_runs
-from app.modules.agent.runtime import AgentRuntimeContext, ToolCallBudget
 from app.modules.agent.schemas import (
     ChatMessageOut,
     ChatMode,
     ChatPageSnapshot,
-    ChatProcessCommentary,
-    ChatProcessTool,
     ChatResponseProcessOut,
-    ChatRole,
     ChatScope,
 )
 from app.modules.agent.session_service import ChatSessionService
 from app.modules.agent.tools.time_utils import format_time_hint
+from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent
+from app.modules.agent.turns.projection import process_out_for
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
 from app.modules.learner.service import build_learner_context
 from app.modules.library.models import LibraryItem, LibraryItemRecord
-from app.modules.library.proposals import ProposalService
 from app.modules.library.shared_refs import (
     shared_alive_item_ids,
     shared_alive_record_ids,
 )
 from app.modules.record.models import Record
 from app.modules.record.service import RecordService
-from app.modules.search.integrations.tavily import TavilySearchClient
-from app.modules.search.web_search import SearchProvider
-from app.modules.settings.config import (
-    LlmProviderConfig,
-    agent_default_auth_mode,
-    llm_consent,
-    load_llm_provider,
-    load_web_search_config,
-    memory_outbound_enabled,
-    resolve_user_timezone,
-)
 from app.modules.summary.models import AiSummary
 from app.modules.summary.schemas import AiSummaryStatus
 from app.modules.transcript.models import DocumentSegment, Transcript
 from app.shared.errors import CodedHTTPException
 
+# stream_chat_reply 经本模块属性调用（turns worker 的测试替换缝隙先例保留）。
+__all__ = ["ChatMessageService", "SessionPromptContext", "stream_chat_reply"]
+
+
 # 会话标题默认取首条用户消息的截断长度。
 CHAT_TITLE_MAX_CHARS = 30
 # 未结束任务摘要条数上限（工单 05：只提示最近几条，避免提示块随任务数膨胀）。
 ACTIVE_RUN_SUMMARY_LIMIT = 3
-
-STREAM_STATUS_GENERATING = "generating"
-
-
-class ChatStreamRegistry:
-    """同一会话同时只允许一条在途生成（进程内状态；sidecar 单进程）。
-
-    锁的配对唯一：accept 内 acquire（受理失败即在 accept 内释放），
-    受理成功后由 stream_events 的 finally 释放（锁生命周期 = SSE 流生命周期，
-    跨函数边界，contextmanager 无法覆盖）。
-    """
-
-    def __init__(self) -> None:
-        self._active: set[str] = set()
-
-    def acquire(self, session_id: str) -> bool:
-        if session_id in self._active:
-            return False
-        self._active.add(session_id)
-        return True
-
-    def release(self, session_id: str) -> None:
-        self._active.discard(session_id)
-
-
-@dataclass(frozen=True)
-class AcceptedMessage:
-    """受理结果：user 行已落库（或补答复用），流式生成从这里开始。
-
-    web_search 为当轮生效的搜索客户端：请求标志开启且已配置可用 key 才非空
-    （无 key 时后端无视标志强制不挂工具，B1 双保险）。
-    memory_injection_allowed = 记忆外发开关开启且 LLM 外发同意对当前供应商
-    有效（工单 06）；False 时本轮零记忆注入（硬门禁：关闭外发后零发送）。
-    page 为随消息携带的页面快照（工单 01）：提示性信息，不落库、不构成授权；
-    注入前经 _validate_page_snapshot 重校验对象存在性。
-    auth_mode 为当轮生效授权档（工单 02）：请求会话覆盖优先，否则全局默认
-    （settings.json 偏离项缺省 REQUEST_APPROVAL）；执行端据此分流提交路径。
-    user_timezone 为用户时区（时间能力 v1）：受理时从偏好解析（timezone
-    优先、未设置回退系统本地），时间提示行与时间工具族消费。
-    """
-
-    session_id: str
-    user_row_id: str
-    content: str
-    provider: LlmProviderConfig
-    process: ChatResponseProcessOut
-    web_search: SearchProvider | None = None
-    memory_injection_allowed: bool = False
-    page: ChatPageSnapshot | None = None
-    auth_mode: AuthMode = AuthMode.REQUEST_APPROVAL
-    user_timezone: tzinfo | None = None
 
 
 @dataclass(frozen=True)
@@ -188,17 +103,22 @@ class SessionPromptContext:
         return self.record_id is not None or self.library is not None or self.web_search
 
 
-def _sse(event: str, payload: Mapping[str, object]) -> ServerSentEvent:
-    return ServerSentEvent(event=event, data=json.dumps(payload, separators=(",", ":")))
-
-
-async def _last_message(session: AsyncSession, session_id: str) -> ChatMessage | None:
-    return await session.scalar(
-        select(ChatMessage)
-        .where(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
-        .limit(1)
-    )
+async def validate_sendable_chat(session: AsyncSession, chat: ChatSession) -> None:
+    """发送前校验（受理与执行共用）：挂载对象失效即拒绝（软删/归档，会话只读）。"""
+    if chat.record_id is not None and (await RecordService.get(session, chat.record_id)) is None:
+        raise CodedHTTPException(
+            code="CHAT_RECORD_UNAVAILABLE",
+            status_code=409,
+            detail="CHAT_RECORD_UNAVAILABLE：原记录已删除，对话已失效",
+        )
+    if chat.scope == ChatScope.COURSE and not await _course_available(session, chat):
+        raise CodedHTTPException(
+            code="CHAT_COURSE_UNAVAILABLE",
+            status_code=409,
+            detail="CHAT_COURSE_UNAVAILABLE：课程已删除，对话已失效",
+        )
+    if chat.scope == ChatScope.LIBRARY_ITEM:
+        await _require_library_item(session, chat.library_item_id)
 
 
 async def _course_available(session: AsyncSession, chat: ChatSession) -> bool:
@@ -422,7 +342,7 @@ async def _load_scope_materials(
     return records, items
 
 
-async def _load_library_materials(
+async def load_library_materials(
     session_factory: async_sessionmaker[AsyncSession],
     scope: ChatScope,
     scope_id: str | None,
@@ -506,7 +426,7 @@ async def _active_run_summaries(session: AsyncSession, session_id: str) -> list[
     ]
 
 
-async def _session_context(
+async def session_context(
     session_factory: async_sessionmaker[AsyncSession],
     session_id: str,
     *,
@@ -522,14 +442,14 @@ async def _session_context(
                 code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
             )
         if chat.scope == ChatScope.COURSE and not await _course_available(session, chat):
-            # 失效态运行时推导：挂载课程软删后流式上下文拒绝组装（accept 已先拦一道）。
+            # 失效态运行时推导：挂载课程软删后流式上下文拒绝组装（提交受理已先拦一道）。
             raise CodedHTTPException(
                 code="CHAT_COURSE_UNAVAILABLE",
                 status_code=409,
                 detail="CHAT_COURSE_UNAVAILABLE：课程已删除，对话已失效",
             )
         if chat.scope == ChatScope.LIBRARY_ITEM:
-            # 失效态运行时推导：挂载资料软删/归档后拒绝组装（accept 已先拦一道）。
+            # 失效态运行时推导：挂载资料软删/归档后拒绝组装（提交受理已先拦一道）。
             await _require_library_item(session, chat.library_item_id)
         rows = (
             await session.scalars(
@@ -687,6 +607,11 @@ class ChatMessageService:
     async def list_message_outputs(
         session: AsyncSession, session_id: str
     ) -> list[ChatMessageOut] | None:
+        """历史消息 + 过程视图：旧 ChatResponseProcess 行与 ChatTurn 事件投影合并。
+
+        新轮次不再写第二套执行状态机（规格实施决策 1），过程视图由轮次事件
+        投影（id=turn_id）；旧行保持只读可查，同一 user 消息按开始时间排序。
+        """
         messages = await ChatMessageService.list_messages(session, session_id)
         if messages is None:
             return None
@@ -698,6 +623,33 @@ class ChatMessageService:
         by_user: dict[str, list[ChatResponseProcessOut]] = {}
         for row in processes:
             by_user.setdefault(row.user_message_id, []).append(process_out(row))
+        turns = list(
+            (
+                await session.scalars(
+                    select(ChatTurn)
+                    .where(ChatTurn.session_id == session_id)
+                    .order_by(ChatTurn.created_at, ChatTurn.id)
+                )
+            ).all()
+        )
+        if turns:
+            events = list(
+                (
+                    await session.scalars(
+                        select(ChatTurnEvent)
+                        .where(ChatTurnEvent.turn_id.in_([turn.id for turn in turns]))
+                        .order_by(ChatTurnEvent.turn_id, ChatTurnEvent.seq)
+                    )
+                ).all()
+            )
+            events_by_turn: dict[str, list[ChatTurnEvent]] = {}
+            for event in events:
+                events_by_turn.setdefault(event.turn_id, []).append(event)
+            for turn in turns:
+                process = process_out_for(turn, events_by_turn.get(turn.id, []))
+                bucket = by_user.setdefault(turn.user_message_id, [])
+                bucket.append(process)
+                bucket.sort(key=lambda item: (item.started_at, item.id))
         result = [ChatMessageOut.model_validate(message) for message in messages]
         for message in result:
             message.response_processes = by_user.get(message.id, [])
@@ -718,435 +670,3 @@ class ChatMessageService:
                 )
             ).all()
         )
-
-    @staticmethod
-    async def accept(
-        *,
-        session_factory: async_sessionmaker[AsyncSession],
-        data_dir: Path,
-        registry: ChatStreamRegistry,
-        session_id: str,
-        content: str,
-        web_search: bool = False,
-        page: ChatPageSnapshot | None = None,
-        auth_mode: AuthMode | None = None,
-    ) -> AcceptedMessage:
-        """受理发送：校验供应商与在途状态，落库 user 行（补答复用原行）。
-
-        web_search 标志仅在已配置可用 key 时生效（无 key 强制不挂工具）；
-        page 为提示性页面快照，不落库（工单 01）；auth_mode 为请求携带的
-        会话档位覆盖（工单 02），不携带＝全局默认档。
-        """
-        provider = await asyncio.to_thread(load_llm_provider, data_dir)
-        if provider is None or not provider.api_key:
-            raise CodedHTTPException(
-                code="LLM_PROVIDER_UNCONFIGURED",
-                status_code=409,
-                detail="LLM_PROVIDER_UNCONFIGURED：未配置 AI 服务，请先完成供应商配置",
-            )
-        effective_auth_mode = auth_mode or AuthMode(
-            await asyncio.to_thread(agent_default_auth_mode, data_dir)
-        )
-        # 用户时区（时间能力 v1）：时间提示行与时间工具族消费，随消息每轮重读
-        # （偏好改时区后下一轮即生效，与页面提示同款不跨轮）。
-        user_timezone = await asyncio.to_thread(resolve_user_timezone, data_dir)
-        # 记忆注入前提（工单 06）：外发开关开启且外发同意对当前供应商有效
-        # （供应商地址/密钥变化后同意失效，重新确认前不发送记忆）。
-        outbound_enabled = await asyncio.to_thread(memory_outbound_enabled, data_dir)
-        _, consent_current = await asyncio.to_thread(llm_consent, data_dir)
-        web_search_provider: SearchProvider | None = None
-        if web_search:
-            config = await asyncio.to_thread(load_web_search_config, data_dir)
-            if config is not None:
-                web_search_provider = TavilySearchClient(config.api_key)
-        if not registry.acquire(session_id):
-            raise CodedHTTPException(
-                code="CHAT_STREAM_IN_PROGRESS",
-                status_code=409,
-                detail="CHAT_STREAM_IN_PROGRESS：该对话正在生成回答，请稍候",
-            )
-        try:
-            async with session_factory() as session, session.begin():
-                chat = await ChatSessionService.get(session, session_id)
-                if chat is None:
-                    raise CodedHTTPException(
-                        code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
-                    )
-                if (
-                    chat.record_id is not None
-                    and (await RecordService.get(session, chat.record_id)) is None
-                ):
-                    # 失效态运行时推导：挂载记录软删后发送被拒，会话只读。
-                    raise CodedHTTPException(
-                        code="CHAT_RECORD_UNAVAILABLE",
-                        status_code=409,
-                        detail="CHAT_RECORD_UNAVAILABLE：原记录已删除，对话已失效",
-                    )
-                if chat.scope == ChatScope.COURSE and not await _course_available(session, chat):
-                    # 失效态运行时推导：挂载课程软删后发送被拒，会话只读。
-                    raise CodedHTTPException(
-                        code="CHAT_COURSE_UNAVAILABLE",
-                        status_code=409,
-                        detail="CHAT_COURSE_UNAVAILABLE：课程已删除，对话已失效",
-                    )
-                if chat.scope == ChatScope.LIBRARY_ITEM:
-                    # 失效态运行时推导：挂载资料软删/归档后发送被拒，会话只读。
-                    await _require_library_item(session, chat.library_item_id)
-                last = await _last_message(session, session_id)
-                if last is not None and last.role == ChatRole.USER:
-                    # 补答：会话末尾是无回复的 user 消息，复用原行重新生成，不重复落库。
-                    last.content = content
-                    user_row_id = last.id
-                else:
-                    user_row_id = str(uuid4())
-                    session.add(
-                        ChatMessage(
-                            id=user_row_id,
-                            session_id=session_id,
-                            role=ChatRole.USER,
-                            content=content,
-                            citations_json=None,
-                            model=None,
-                            token_usage_json=None,
-                            created_at=utcnow(),
-                        )
-                    )
-                    # 确认卡关闭即弃（spec 用户故事 11）：新消息 = 话题翻篇，
-                    # 本会话待确认计划草案提案随本次发送批量弃置（REJECTED
-                    # 终态、计划业务表零写入；补答复用原行不弃置）。同事务内，
-                    # 之后模型在本轮提交的新草案提案不受影响。
-                    await ProposalService.discard_session_plan_drafts(session, session_id)
-                if chat.title is None:
-                    chat.title = content[:CHAT_TITLE_MAX_CHARS]
-                chat.updated_at = utcnow()
-                await session.flush()
-                now = utcnow()
-                process_row = ChatResponseProcess(
-                    id=str(uuid4()),
-                    session_id=session_id,
-                    user_message_id=user_row_id,
-                    status="RUNNING",
-                    started_at=now,
-                    updated_at=now,
-                    entries_json="[]",
-                    elapsed_ms=0,
-                )
-                session.add(process_row)
-                await session.flush()
-                process = process_out(process_row)
-        except BaseException:
-            registry.release(session_id)
-            raise
-        return AcceptedMessage(
-            session_id=session_id,
-            user_row_id=user_row_id,
-            content=content,
-            provider=provider,
-            process=process,
-            web_search=web_search_provider,
-            memory_injection_allowed=outbound_enabled and consent_current,
-            page=page,
-            auth_mode=effective_auth_mode,
-            user_timezone=user_timezone,
-        )
-
-    @staticmethod
-    async def stream_events(
-        *,
-        session_factory: async_sessionmaker[AsyncSession],
-        checkpointer: BaseCheckpointSaver[str],
-        registry: ChatStreamRegistry,
-        accepted: AcceptedMessage,
-    ) -> AsyncGenerator[ServerSentEvent, None]:
-        """流式生成回答；中断保留过程、不保存半截正文，finally 释放锁。"""
-        session_id = accepted.session_id
-        user_row_id = accepted.user_row_id
-        process = accepted.process
-        segments: dict[str, str] = {}
-        commentary_segments: set[str] = set()
-
-        def capture_commentary(segment_id: str, text: str) -> None:
-            commentary_segments.add(segment_id)
-            for entry in process.entries:
-                if isinstance(entry, ChatProcessCommentary) and entry.id == segment_id:
-                    entry.text = text
-                    return
-            if text:
-                process.entries.append(ChatProcessCommentary(id=segment_id, text=text))
-
-        async def failed_payload(code: str, detail: str) -> dict[str, object]:
-            finish_process(process, "FAILED")
-            await persist_process(session_factory, process)
-            return {"code": code, "detail": detail, "process": process.model_dump(mode="json")}
-
-        try:
-            yield _sse(
-                "status",
-                {"phase": STREAM_STATUS_GENERATING, "process": process.model_dump(mode="json")},
-            )
-            outcome = ChatStreamOutcome()
-            memory_proposals: list[dict[str, object]] = []
-            research_proposals: list[dict[str, str]] = []
-            operation_proposals: list[dict[str, object]] = []
-            executed_operations: list[dict[str, object]] = []
-            research_mode = False
-            try:
-                prompt_context = await _session_context(
-                    session_factory,
-                    session_id,
-                    web_search=accepted.web_search is not None,
-                    memory_allowed=accepted.memory_injection_allowed,
-                    page=accepted.page,
-                    user_timezone=accepted.user_timezone,
-                )
-                research_mode = prompt_context.mode == ChatMode.RESEARCH
-                # 统一 Agent 运行时上下文（工单 01）：会话工厂/会话 id/范围与挂载
-                # 对象/模式/联网供应商/页面快照/工具预算，单对绑定由 stream_chat_reply
-                # 完成；工具挂载矩阵（scope 决定 search_library）不因页面快照改变。
-                # 授权档位与授权依据素材（工单 02）：当轮生效档 + 触发指令摘录 +
-                # 消息引用，直执行回执 authorization_json 消费。
-                runtime = AgentRuntimeContext(
-                    session_factory=session_factory,
-                    session_id=session_id,
-                    scope=prompt_context.scope,
-                    mode=prompt_context.mode,
-                    course_id=prompt_context.course_id,
-                    record_id=prompt_context.record_id,
-                    library_item_id=prompt_context.library_item_id,
-                    web_search_provider=accepted.web_search,
-                    llm_provider=accepted.provider,
-                    page=prompt_context.page,
-                    auth_mode=accepted.auth_mode,
-                    instruction_excerpt=accepted.content,
-                    message_id=user_row_id,
-                    user_timezone=accepted.user_timezone,
-                    budget=ToolCallBudget(),
-                )
-                async for event in stream_chat_reply(
-                    checkpointer=checkpointer,
-                    provider=accepted.provider,
-                    context_messages=prompt_context.messages,
-                    runtime=runtime,
-                    outcome=outcome,
-                    prompt_version=(
-                        CHAT_RESEARCH_PROMPT_VERSION if research_mode else CHAT_PROMPT_VERSION
-                    ),
-                ):
-                    if isinstance(event, ChatTokenEvent):
-                        segments[event.segment_id] = segments.get(event.segment_id, "") + event.text
-                        yield _sse("token", {"text": event.text, "segment_id": event.segment_id})
-                    elif isinstance(event, ChatCommentaryEvent):
-                        capture_commentary(event.segment_id, event.text)
-                        await persist_process(session_factory, process)
-                        yield _sse(
-                            "status",
-                            {
-                                "phase": "process_updated",
-                                "process": process.model_dump(mode="json"),
-                            },
-                        )
-                    elif isinstance(event, ChatToolCallEvent):
-                        capture_commentary(event.segment_id, segments.get(event.segment_id, ""))
-                        process.entries.append(
-                            ChatProcessTool(
-                                id=event.tool_call_id,
-                                tool=event.tool,
-                                query=event.query,
-                                status="RUNNING",
-                            )
-                        )
-                        await persist_process(session_factory, process)
-                        yield _sse(
-                            "tool_call",
-                            {
-                                "tool": event.tool,
-                                "query": event.query,
-                                "tool_call_id": event.tool_call_id,
-                                "segment_id": event.segment_id,
-                                "process": process.model_dump(mode="json"),
-                            },
-                        )
-                    elif isinstance(event, ChatMemoryProposalEvent):
-                        memory_proposals.append(
-                            {"proposal_id": event.proposal_id, "items": event.items}
-                        )
-                    elif isinstance(event, ChatResearchProposalEvent):
-                        research_proposals.extend(event.proposals)
-                    elif isinstance(event, ChatOperationProposalEvent):
-                        operation_proposals.extend(event.proposals)
-                    elif isinstance(event, ChatOperationExecutionEvent):
-                        executed_operations.extend(event.executions)
-                    else:
-                        for entry in process.entries:
-                            if (
-                                isinstance(entry, ChatProcessTool)
-                                and entry.id == event.tool_call_id
-                            ):
-                                entry.status = (
-                                    "FAILED"
-                                    if not event.ok
-                                    else "AWAITING_CONFIRMATION"
-                                    if event.awaiting_confirmation
-                                    else "SUCCEEDED"
-                                )
-                                if entry.tool in {
-                                    "search_library",
-                                    "search_transcript",
-                                    "search_courses",
-                                    "web_search",
-                                }:
-                                    entry.hits = event.hits
-                                break
-                        await persist_process(session_factory, process)
-                        yield _sse(
-                            "tool_result",
-                            {
-                                "tool": event.tool,
-                                "hits": event.hits,
-                                "ok": event.ok,
-                                "tool_call_id": event.tool_call_id,
-                                "process": process.model_dump(mode="json"),
-                            },
-                        )
-            except ChatContextTooLargeError:
-                yield _sse(
-                    "error",
-                    await failed_payload(
-                        "CHAT_CONTEXT_TOO_LARGE", "摘要与知识点仍超过上下文预算，请精简材料后重试"
-                    ),
-                )
-                return
-            except Exception:
-                logger.error(
-                    "chat_generation_failed", session_id=session_id, error_code="CHAT_STREAM_FAILED"
-                )
-                yield _sse(
-                    "error",
-                    await failed_payload("CHAT_STREAM_FAILED", "回答生成失败，请稍后重试"),
-                )
-                return
-            content = (
-                outcome.final_text
-                if outcome.final_text is not None
-                else "".join(
-                    text
-                    for segment_id, text in segments.items()
-                    if segment_id not in commentary_segments
-                )
-            )
-            if not content:
-                yield _sse("error", await failed_payload("EMPTY_REPLY", "回答为空，请重试"))
-                return
-            # 引用块解析：范围会话（RECORD 之外的挂载范围）按「（来源：标题）」裁定
-            # 归属（记录条目优先、资料条目 library 条目次之）；RECORD 单记录按转写
-            # 逐字校验；自由聊天仅本轮联网时解析（产出 web 条目）。
-            citations: list[dict[str, int | str]] = []
-            if prompt_context.should_parse_citations:
-                if prompt_context.library is not None:
-                    scope_id = (
-                        prompt_context.library_item_id
-                        if prompt_context.scope == ChatScope.LIBRARY_ITEM
-                        else prompt_context.course_id
-                    )
-                    records, items = await _load_library_materials(
-                        session_factory, prompt_context.scope, scope_id
-                    )
-                    parsed = parse_library_citation_reply(content, records, items)
-                else:
-                    parsed = parse_citation_reply(
-                        content,
-                        transcript=prompt_context.transcript or "",
-                        record_id=prompt_context.record_id or "",
-                    )
-                content = parsed.content
-                citations = parsed.citations
-            if not content:
-                yield _sse("error", await failed_payload("EMPTY_REPLY", "回答为空，请重试"))
-                return
-            for citation in citations:
-                yield _sse("citation", citation)
-            assistant_id = str(uuid4())
-            # 直执行回执锚点（工单 02 P2 修复）：随 assistant 行持久化本轮
-            # 直执行 operation_id 列表——清理 operation 后「锚点在、查询空」
-            # 即「历史已清理」占位，跨重启成立（spec 用户故事 33）。
-            executed_anchor_ids = [
-                entry["operation_id"]
-                for entry in executed_operations
-                if isinstance(entry.get("operation_id"), str)
-            ]
-            async with session_factory() as session, session.begin():
-                session.add(
-                    ChatMessage(
-                        id=assistant_id,
-                        session_id=session_id,
-                        role=ChatRole.ASSISTANT,
-                        content=content,
-                        citations_json=json.dumps(citations, separators=(",", ":"))
-                        if citations
-                        else None,
-                        model=accepted.provider.model,
-                        token_usage_json=json.dumps(outcome.token_usage, separators=(",", ":"))
-                        if outcome.token_usage
-                        else None,
-                        executed_operations_json=json.dumps(
-                            executed_anchor_ids, separators=(",", ":")
-                        )
-                        if executed_anchor_ids
-                        else None,
-                        created_at=utcnow(),
-                    )
-                )
-                chat = await ChatSessionService.get(session, session_id)
-                if chat is not None:
-                    chat.updated_at = utcnow()
-                await session.flush()
-                finish_process(process, "COMPLETED")
-                process.assistant_message_id = assistant_id
-                try:
-                    async with session.begin_nested():
-                        await save_process(session, process)
-                    process.history_saved = True
-                except Exception:
-                    process.history_saved = False
-                    logger.error(
-                        "chat_process_save_failed",
-                        process_id=process.id,
-                        error_code="CHAT_PROCESS_SAVE_FAILED",
-                    )
-            # done 载荷扩展（工单 06，可选字段向后兼容）：memory_used=本轮实际
-            # 注入的记忆条目，恒携带——空数组=本轮零注入（外发关闭/无记忆），
-            # 让前端能区分「未询问」与「确认未注入」并展示空态；
-            # memory_proposals=模型经 propose_memory 创建的待确认提案（就地确认卡）。
-            done_payload: dict[str, object] = {
-                "message_id": assistant_id,
-                "content": content,
-                "memory_used": list(prompt_context.learner_memories),
-                "process": process.model_dump(mode="json"),
-            }
-            if memory_proposals:
-                done_payload["memory_proposals"] = memory_proposals
-            if research_proposals:
-                done_payload["research_proposals"] = research_proposals
-            # 操作提案（工单 02）：{proposal_id, action, payload}，零新 SSE 事件
-            # 类型（先例：研究提案、记忆提案的完成载荷模式）。
-            if operation_proposals:
-                done_payload["operation_proposals"] = operation_proposals
-            # 直执行回执（第二阶段工单 02）：自动档免确认执行的操作，授权依据
-            # （档位/指令摘录/时间）经 operation 查询可追溯；零新 SSE 事件类型。
-            if executed_operations:
-                done_payload["executed_operations"] = executed_operations
-            yield _sse("done", done_payload)
-        except Exception:
-            logger.error(
-                "chat_generation_failed", session_id=session_id, error_code="CHAT_STREAM_FAILED"
-            )
-            yield _sse(
-                "error", await failed_payload("CHAT_STREAM_FAILED", "回答生成失败，请稍后重试")
-            )
-        finally:
-            if process.status == "RUNNING":
-                finish_process(process, "INTERRUPTED")
-                # EventSourceResponse 在取消 scope 中关闭生成器，终态写入须能完成。
-                with anyio.CancelScope(shield=True):
-                    await persist_process(session_factory, process)
-            registry.release(session_id)

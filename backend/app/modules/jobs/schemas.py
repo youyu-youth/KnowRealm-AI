@@ -24,6 +24,9 @@ class ProcessingJobType(StrEnum):
     # 第三阶段工单 07：学习计划草案生成 job（input 携带 goal_id / session_id；
     # 完成时落 OP_PLAN_CONFIRM 草案确认卡，Run 侧经 awaited_job_id 等待接续）。
     PLAN_DRAFT = "PLAN_DRAFT"
+    # 切换会话不中断任务（票 01）：回答生成轮次 job（input 携带 turn_id；
+    # 轮次状态以 chat_turns 为唯一事实源，job 只承载调度）。
+    CHAT_TURN = "CHAT_TURN"
 
 
 class ProcessingJobStatus(StrEnum):

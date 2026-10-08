@@ -78,7 +78,8 @@ async def test_chat_message_without_provider_returns_coded_409(tmp_path: Path) -
         created = await client.post("/api/chat-sessions", json={})
         session_id = created.json()["id"]
         response = await client.post(
-            f"/api/chat-sessions/{session_id}/messages", json={"content": "你好"}
+            f"/api/chat-sessions/{session_id}/turns",
+            json={"content": "你好", "web_search": False, "request_id": "req-errc-01"},
         )
 
     assert response.status_code == 409
