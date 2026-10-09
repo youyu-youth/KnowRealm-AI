@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowUp, Globe, Plus, SlidersHorizontal, Square } from "lucide-react";
 import { AppTooltip } from "@/components/common/AppTooltip";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -144,6 +145,17 @@ export function ChatComposer({
           )}
         </div>
       </div>
+      {/* 等待态始终可见（DESIGN §Feedback）：阶段文字 + 16px 行内 spinner，
+          不只依赖禁用态颜色或可访问名称。 */}
+      {stopping ? (
+        <p
+          role="status"
+          className="text-label text-muted-foreground flex items-center gap-2 px-1"
+        >
+          <Spinner aria-hidden="true" />
+          {t("chat.turn.stopping")}
+        </p>
+      ) : null}
       {disabled && disabledHint ? (
         <p className="text-label text-muted-foreground px-1">{disabledHint}</p>
       ) : null}

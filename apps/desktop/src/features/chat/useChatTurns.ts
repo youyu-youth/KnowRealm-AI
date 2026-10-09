@@ -120,6 +120,8 @@ export function useChatTurns(sessionId: string) {
       // 权威最终正文以 done 事件为准（引用已在服务端解析）；随后重取消息
       // 历史（assistant 行）、会话列表（活跃度）与会话详情（标题更新）。
       setStreamedText(content);
+      // 完成是权威事实：清掉此前会话级错误（如停止请求失败），不留过时提示。
+      setStreamError(null);
       await queryClient.invalidateQueries({
         queryKey: chatKeys.messages(sessionId),
       });
@@ -384,8 +386,14 @@ export function useChatTurns(sessionId: string) {
     void chatApi
       .cancelTurn(current.id)
       .then((result) => setTurn(result.turn))
-      .catch(() => undefined);
-  }, [turn]);
+      // 停止请求失败不得静默吞错（DESIGN 失败与恢复层）：域内裁决用本地化
+      // 文案（ADR-0017），网络未送达用可重试文案；按钮未进入停止态，可重试。
+      .catch((error: unknown) => {
+        setStreamError(
+          error instanceof ApiError ? error.message : t("chat.turn.stopFailed"),
+        );
+      });
+  }, [t, turn]);
 
   return {
     isStreaming,

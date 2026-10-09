@@ -5,6 +5,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { libraryKeys } from "@/features/library/api/keys";
+import { ApiError } from "@/services/http/client";
 import type { ChatResponseProcess, ChatTurn } from "./api/types";
 import { useChatTurns } from "./useChatTurns";
 
@@ -248,6 +249,22 @@ describe("useChatTurns 停止与会话恢复", () => {
       expect(result.current.stopping).toBe(true);
     });
     await act(async () => finish?.());
+  });
+
+  it("停止请求失败就地呈现错误，不静默吞错", async () => {
+    const { result } = await setup(() => new Promise(() => {}));
+    // 网络未送达：可操作文案（非原始异常文本）。
+    chatApi.cancelTurn.mockRejectedValue(new TypeError("fetch failed"));
+    act(() => result.current.stop());
+    await waitFor(() => {
+      expect(result.current.streamError).not.toBeNull();
+    });
+    // 服务端域内裁决沿用 ADR-0017 本地化文案；按钮未进入停止态可重试。
+    chatApi.cancelTurn.mockRejectedValue(new ApiError(404, "对话轮次不存在"));
+    act(() => result.current.stop());
+    await waitFor(() => {
+      expect(result.current.streamError).toBe("对话轮次不存在");
+    });
   });
 
   it("受理未确认（网络失败）保留 request_id：重试携带同一身份", async () => {

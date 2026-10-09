@@ -686,10 +686,11 @@ describe("自由聊天流式", () => {
     expect(await screen.findByText("长问题")).toBeVisible();
 
     fireEvent.click(screen.getByRole("button", { name: "停止" }));
-    // 持久取消受理（「正在停止」）；取消落实后下发 cancelled 标记。
+    // 持久取消受理（「正在停止」）；等待态有可见阶段文字，不只可访问名称。
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "正在停止" })).toBeVisible(),
     );
+    expect(screen.getByText("正在停止")).toBeVisible();
     opened.pushEvent('event: status\ndata: {"phase":"cancelled"}');
     // 停止丢弃半截文本：流式气泡消失、发送恢复；末尾未回复提问露出重试入口。
     await waitFor(() =>
@@ -698,6 +699,58 @@ describe("自由聊天流式", () => {
     expect(screen.getByText("长问题")).toBeVisible();
     expect(screen.getByRole("button", { name: "重新生成回答" })).toBeEnabled();
     opened.closeStream();
+  });
+
+  it("停止请求失败就地提示错误，回答仍在继续且可再次停止", async () => {
+    let accepted = false;
+    const opened = openSseResponse(
+      sseChunks(['event: status\ndata: {"phase":"generating"}']),
+    );
+    server.use(
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json(
+            accepted
+              ? [SYSTEM_ROW, messageRow("user-row", "USER", "长问题")]
+              : [SYSTEM_ROW],
+          ),
+      ),
+      // 取消请求网络未送达：就地错误提示，不静默吞错。同批 use 内靠前者优先，
+      // 须排在四件套的成功取消之前。
+      http.post(`${TEST_SIDECAR_URL}/api/chat-turns/${TURN_ID}/cancel`, () =>
+        HttpResponse.error(),
+      ),
+      ...turnFlowHandlers(
+        () => opened.response,
+        () => {
+          accepted = true;
+        },
+      ),
+    );
+    useSessionPage();
+
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "长问题" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    fireEvent.click(await screen.findByRole("button", { name: "停止" }));
+
+    expect(
+      await screen.findByText("停止请求未送达，回答仍在继续；请重试"),
+    ).toBeVisible();
+    // 取消未受理：未进入停止态，按钮可直接重试。
+    expect(screen.getByRole("button", { name: "停止" })).toBeEnabled();
+
+    // 回答自然完成后，停止失败的过时提示清除。
+    opened.pushEvent(
+      'event: done\ndata: {"message_id":"assistant-row","content":"回答完成"}',
+    );
+    opened.closeStream();
+    await waitFor(() =>
+      expect(
+        screen.queryByText("停止请求未送达，回答仍在继续；请重试"),
+      ).not.toBeInTheDocument(),
+    );
   });
 
   it("在途冲突返回 409 并展示可读错误，之后仍可发送", async () => {
