@@ -647,6 +647,65 @@ async def test_t11_completion_wins_when_finalized_before_cancel(
         assert (await snapshot(client, turn_id))["status"] == "COMPLETED"
 
 
+@pytest.mark.anyio
+async def test_t11_cancel_committed_before_stream_end_rejects_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """取消先落库、流随后结束：完成提交必须被拒绝（规格 §14；验收「取消先提交
+    后无新副作用」「迟到输出不得转回完成」）。
+
+    窗口真实性：流结束（consume 返回）后执行侧已停用取消观察器与等待器
+    （worker.run 在 asyncio.wait 返回时取消 watcher/flusher，进入 _finalize 前
+    取消 cancel_waiter），此后唯一兜底是完成提交事务内的条件检查；窗口宽度上界
+    ＝观察器 0.4s 轮询间隔——取消在最后一次轮询之后、流结束之前落库即命中。
+    本用例把观察器间隔钉到最坏观察延迟，使兜底路径成为唯一收口路径（断言与
+    轮询相位无关；取消的原子性不得依赖观察器及时性，规格 §14「取消不依赖下
+    一条 token」）。修复前同一时序落 COMPLETED＋最终消息＋done 事件。
+    """
+    import app.modules.agent.turns.worker as turns_worker
+
+    monkeypatch.setattr(turns_worker, "CANCEL_POLL_INTERVAL_SECONDS", 30.0)
+    gate = asyncio.Event()
+    replies: list[StubReply] = [GatedReply(prefix=("半截",), release=gate)]
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
+        session_id = await create_session(client)
+        submitted = await submit(client, session_id, "取消先提交", request_id="req-t11-0003")
+        turn_id = cast(str, submitted.json()["id"])
+        await wait_running_progress(client, turn_id, min_seq=1)
+
+        # 取消先落库：执行在途（观察器尚未置位），状态保持 RUNNING＝「正在停止」。
+        cancelled = await client.post(f"/api/chat-turns/{turn_id}/cancel")
+        assert cancelled.status_code == 200
+        body = cancelled.json()["turn"]
+        assert body["cancel_requested"] is True
+        assert body["status"] == "RUNNING"
+
+        # 流照常结束：完整生成已持久，完成提交必须被取消裁决拒绝。
+        gate.set()
+
+        final = await wait_terminal(client, turn_id)
+        assert final["status"] == "CANCELLED"
+        assert final["cancel_requested"] is True
+        assert final["final_message_id"] is None
+        assert final["last_seq"] == 2  # 部分（此处完整）输出保留
+        assert final["output_text"] == "半截收尾"
+        rows = await db_rows(
+            tmp_path,
+            "SELECT role FROM chat_messages WHERE session_id = ?",
+            (session_id,),
+        )
+        assert all(role != "ASSISTANT" for (role,) in rows)
+        event_types = [
+            event_type
+            for (event_type,) in await db_rows(
+                tmp_path,
+                "SELECT type FROM chat_turn_events WHERE turn_id = ?",
+                (turn_id,),
+            )
+        ]
+        assert "done" not in event_types
+
+
 # ---------------------------------------------------------------------------
 # T19：有非终态轮次的会话删除返回冲突；停止后可删。
 

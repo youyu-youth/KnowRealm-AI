@@ -4,7 +4,7 @@
 
 **Blocked by:** 无，可立即开始
 
-**Status:** ready-for-agent（本次 P1 取消竞态已修复；独立 FAILED 回执事务取消守卫及其他复核问题待修，真机验收未执行）
+**Status:** ready-for-agent（本次两个 P1 取消竞态已修复：业务提交守卫、完成提交取消裁决；独立 FAILED 回执事务取消守卫及其他复核问题待修，真机验收未执行）
 
 ## 规格与交付边界
 
@@ -54,7 +54,8 @@
 - 未提交前临时目录（.tmp 冒烟脚本与 pytest basetemp）已删除；真机验收清单（A→B→A、离开期间完成、刷新、隐藏窗口）保留未勾，由用户执行。
 - 双轴 review 修复（2026-10-08，全部落地并复验）：①返回会话部分输出——active_only 列表带事件投影（list_session_turn_outs），前端恢复可见已生成正文；②取消检查点——新增 TurnCancelGuardMiddleware（abefore_model/awrap_tool_call 副作用前闸门，cancel_check 经 stream_chat_reply 注入）；③INTERRUPTED 原因展示——hook 消费 chat.turn.interrupted；④断线重连正文缺口——重连以服务端快照 output_text 重置本地拼接再从 last_seq 续订；⑤request_id 保留——仅网络失败（非 ApiError）保留身份重试，服务端裁决即清除；⑥针对性收口退避重试 ≤2 次（写库暂时不可写场景，规格 §6）；⑦审查附带收敛——游标错误 422→400、iso_utc 公开复用、last_claim 改 _ClaimedTurn、job 收口三元组助手 close_job、on_loop_failure 复用 finalize_terminal、routes 去 Any、删 TurnEventPayloads 死导出、错误码清单登记六码、abefore_model 签名对齐框架（state, runtime）。
 - 取消业务守卫（2026-10-09，规格 §2/§11/§14）：AgentRuntimeContext 的 turn_id/turn_claim_token 由 worker 填入；turn_write_allowed 通过条件 UPDATE 校验 RUNNING＋身份匹配＋未取消，并持有 SQLite 写锁至业务事务结束，修复原 SELECT 放行到首个业务写入之间取消仍能抢先提交的竞态。复用已有接入点：submit_operation 提案/直执行、propose_memory、propose_ingest 逐条、submit_undo 两分支、submit_batch_plan。取消先提交则拒绝；业务先取得锁则先完成提交，取消等待后落库，保留真实结果。独立 FAILED 回执事务仍遗漏守卫，本次未修，不能据此宣称全部业务副作用已受控。
-- 本次验收：新增参数化双连接竞态用例覆盖提案与直执行，在旧 SELECT 实现上均失败；修复后证明校验放行后取消不能抢先写入、业务事务结束后取消可提交、随后工具调用拒绝且不增加提案/回执。`uv run pytest tests/test_agent_operations.py tests/test_chat_turns.py tests/test_research_session.py tests/test_learner_memory.py --basetemp .tmp/pytest-fix-turn-atomic-regression -p no:cacheprovider -q`：110 passed；触及 Python 文件 ruff、格式检查、pyright 通过。另以公开 API＋真实 JobRunner＋迁移数据库，在提案首个写入前挂起并发起取消，验证取消等待业务提交后返回 200，已提交 COURSE_CREATE/PENDING 保留一条；仅模型为桩，临时数据库已清理。未执行全量后端/前端及真机验收。
+- 完成提交取消裁决（2026-10-09，codex 复核 P1「取消先提交，轮次仍能变成 COMPLETED」属实）：`finalize_completed` 原守卫只查执行身份与 RUNNING，未查 cancel_requested；而流结束进入 `_finalize` 前执行侧已停用取消观察器与等待器（`worker.run` 354-356 取消 watcher/flusher、376 取消 cancel_waiter），取消先落库后流随后结束时轮次落 COMPLETED＋cancel_requested=true＋新增最终 assistant 行＋done 事件。公开 API＋真实 JobRunner＋迁移库复现：自然时序 4 红 1 绿（绿＝观察器 0.4s 相位恰好抢先），红侧证据快照 status=COMPLETED、final_message_id 非空、chat_messages 含 ASSISTANT「半截收尾」、事件 (1,token)(2,token)(3,done)。修复：完成提交事务首条语句改为条件 no-op UPDATE 先取 SQLite 写锁并原子断言（id＋claim_token＋RUNNING＋未取消；先例 `runtime.turn_write_allowed`），匹配零行且仍 RUNNING＋身份匹配＋已取消 → 拒绝完成提交（不写最终消息/done/状态，已持久化部分输出保留），`finalize_completed` 返回 `TurnCompletionOutcome`（COMPLETED/CANCELLED/LOST），worker 对 CANCELLED 复用既有取回收口路径写 CANCELLED 并广播；完成先提交时取消只能读到 COMPLETED 终态（既有用例保持）。新增回归用例把观察器间隔钉到 30s（最坏观察延迟；取消原子性不得依赖观察器及时性，规格 §14「取消不依赖下一条 token」）断言 CANCELLED＋cancel_requested=true＋final_message_id 空＋无 ASSISTANT 行＋无 done＋last_seq==2＋output_text=「半截收尾」；反向验证（仅移除新条件）即红 COMPLETED，证明用例闸门即新条件。本次验收：`uv run pytest tests/test_chat_turns.py tests/test_agent_operations.py tests/test_chat_streaming.py tests/test_research_session.py tests/test_learner_memory.py --basetemp .tmp/pytest-turn-completion-cancel -p no:cacheprovider -q`：195 passed；触及文件 ruff、格式检查、pyright 0 错、OpenAPI `--check` exit 0。FAILED 终态路径（`_fail`/`apply_failure`/`targeted_closure`）未含取消裁决，属另一决策范围，本次未改。改动未提交。
+- 取消业务守卫本次验收：新增参数化双连接竞态用例覆盖提案与直执行，在旧 SELECT 实现上均失败；修复后证明校验放行后取消不能抢先写入、业务事务结束后取消可提交、随后工具调用拒绝且不增加提案/回执。`uv run pytest tests/test_agent_operations.py tests/test_chat_turns.py tests/test_research_session.py tests/test_learner_memory.py --basetemp .tmp/pytest-fix-turn-atomic-regression -p no:cacheprovider -q`：110 passed；触及 Python 文件 ruff、格式检查、pyright 通过。另以公开 API＋真实 JobRunner＋迁移数据库，在提案首个写入前挂起并发起取消，验证取消等待业务提交后返回 200，已提交 COURSE_CREATE/PENDING 保留一条；仅模型为桩，临时数据库已清理。未执行全量后端/前端及真机验收。
 
 ## 执行注意
 

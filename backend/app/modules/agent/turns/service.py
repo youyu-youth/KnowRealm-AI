@@ -4,20 +4,23 @@
 - 受理在同一事务保存用户消息、轮次与 CHAT_TURN job，任一步失败全部回滚；
 - 事件服务只读已提交事件；快照与 last_seq 来自同一数据库一致视图；
 - 取消是持久控制指令：先落 cancel_requested；QUEUED / 无在途执行的 RUNNING /
-  INTERRUPTED 直接收口 CANCELLED（释放路径，防崩溃死锁会话）；
+  INTERRUPTED 直接收口 CANCELLED（释放路径，防崩溃死锁会话）；在途执行由执行
+  侧落实，完成提交与取消裁决共享事务内的条件检查（取消先提交则拒绝完成，
+  不写最终消息与完成事件）；
 - 启动对账把 RUNNING 翻 INTERRUPTED 并保留内容，禁止不安全续跑（票 01）。
 """
 
 import asyncio
 import json
 from datetime import UTC, datetime, timedelta, timezone, tzinfo
+from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -68,6 +71,14 @@ _ACTIVE_TURN_FILTER = ChatTurn.status.notin_(
         ChatTurnStatus.CANCELLED.value,
     )
 )
+
+
+class TurnCompletionOutcome(StrEnum):
+    """完成提交结果：提交成功 / 被已提交的取消拒绝 / 执行身份或状态失配。"""
+
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    LOST = "LOST"
 
 
 def turn_job_input(turn_id: str) -> str:
@@ -571,20 +582,46 @@ class ChatTurnService:
         assistant_row: ChatMessage,
         done_payload: dict[str, Any],
         citations: list[dict[str, int | str]] | None = None,
-    ) -> bool:
+    ) -> TurnCompletionOutcome:
         """最终 assistant、引用、终态与完成事件原子提交（轮次唯一最终消息）。
+
+        完成提交与取消裁决共享事务内的条件检查（规格 §14）：首条语句以条件
+        no-op UPDATE 取 SQLite 写锁并原子断言「运行中 + 执行身份匹配 + 未受理
+        取消」（先例 runtime.turn_write_allowed）。取消先提交 → 匹配零行，
+        拒绝完成（不写最终消息、done 事件与状态，已持久化部分输出保留），
+        返回 CANCELLED 交执行侧按取回收口；完成先提交 → 取消随后落库只能读到
+        COMPLETED 终态，不产生两个终态。执行身份失配 / 已终态返回 LOST。
 
         引用条目先于 done 事件逐条落库（SSE 词汇先例：citation 流事件在
         done 之前下发，渲染仍以最终消息的 citations 为事实源）。
         """
         async with session_factory() as session, session.begin():
+            result = cast(
+                "CursorResult[tuple[()]]",
+                await session.execute(
+                    update(ChatTurn)
+                    .where(
+                        ChatTurn.id == turn_id,
+                        ChatTurn.claim_token == claim_token,
+                        ChatTurn.status == ChatTurnStatus.RUNNING.value,
+                        ChatTurn.cancel_requested.is_(False),
+                    )
+                    .values(claim_token=ChatTurn.claim_token)
+                    .execution_options(synchronize_session=False)
+                ),
+            )
             turn = await get_turn(session, turn_id)
-            if (
-                turn is None
-                or turn.claim_token != claim_token
-                or turn.status != ChatTurnStatus.RUNNING.value
-            ):
-                return False
+            if turn is None:
+                return TurnCompletionOutcome.LOST
+            if result.rowcount != 1:
+                if (
+                    turn.status == ChatTurnStatus.RUNNING.value
+                    and turn.claim_token == claim_token
+                    and bool(turn.cancel_requested)
+                ):
+                    # 取消先提交：拒绝完成提交（迟到输出不得转回完成）。
+                    return TurnCompletionOutcome.CANCELLED
+                return TurnCompletionOutcome.LOST
             now = utcnow()
             session.add(assistant_row)
             await session.flush()
@@ -622,7 +659,7 @@ class ChatTurnService:
             chat = await session.get(ChatSession, turn.session_id)
             if chat is not None:
                 chat.updated_at = now
-        return True
+        return TurnCompletionOutcome.COMPLETED
 
     @staticmethod
     async def finalize_terminal(
@@ -656,6 +693,7 @@ __all__ = [
     "CHAT_TURN_JOB_TYPE",
     "ActiveTurnRegistry",
     "ChatTurnService",
+    "TurnCompletionOutcome",
     "TurnEventBroadcaster",
     "find_active_turn",
     "get_turn",

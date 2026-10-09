@@ -9,6 +9,8 @@
   才广播（通知只降延迟，订阅端超时补拉兜底）；
 - 取消落实：观察器独立轮询 cancel_requested（不依赖下一条 token），置位即
   取消在途生成并按执行身份条件收口 CANCELLED（部分输出已持久，保留展示）；
+  完成提交与取消裁决同事务串行——取消先提交则拒绝完成提交（不写最终消息与
+  done 事件），按取回收口，迟到输出不得转回完成；
 - 失败收口：单槽故障只收口对应轮次与 job（apply_failure 条件更新）；
   on_loop_failure 禁全局恢复（双槽会误伤兄弟槽在途轮次），只做针对性收口；
 - 启动对账经 ChatTurnRecovery 一次性闸门：RUNNING → INTERRUPTED 保留内容，
@@ -67,6 +69,7 @@ from app.modules.agent.turns.schemas import ChatTurnEventType, ChatTurnStatus
 from app.modules.agent.turns.service import (
     CHAT_TURN_JOB_TYPE,
     ChatTurnService,
+    TurnCompletionOutcome,
     load_execution,
     parse_timezone,
 )
@@ -108,7 +111,7 @@ class _ClaimedTurn(ClaimedJob):
 
 
 class _TurnCancelled(Exception):
-    """生成被持久取消指令终止（非失败路径）。"""
+    """生成被持久取消终止（观察器 / 取消闸门 / 完成提交被取消裁决拒绝；非失败路径）。"""
 
 
 class _ClaimLost(Exception):
@@ -608,7 +611,7 @@ class _TurnExecutor:
             done_payload["operation_proposals"] = self._state.operation_proposals
         if self._state.executed_operations:
             done_payload["executed_operations"] = self._state.executed_operations
-        landed = await ChatTurnService.finalize_completed(
+        completion = await ChatTurnService.finalize_completed(
             session_factory=self._session_factory,
             turn_id=self._ctx.turn_id,
             claim_token=self._ctx.claim_token,
@@ -616,8 +619,12 @@ class _TurnExecutor:
             done_payload=done_payload,
             citations=citations,
         )
-        if landed:
+        if completion == TurnCompletionOutcome.COMPLETED:
             self._broadcaster.publish(self._ctx.turn_id)
+        elif completion == TurnCompletionOutcome.CANCELLED:
+            # 取消先提交：完成提交被拒（最终消息与 done 事件未落库，部分输出
+            # 保留），复用取回收口路径写 CANCELLED。
+            raise _TurnCancelled
 
     async def _fail(self, code: str, message: str) -> None:
         landed = await ChatTurnService.finalize_terminal(
