@@ -223,6 +223,29 @@ async def drain_events(
         return await read_sse(response)
 
 
+async def collect_stream_until_close(
+    client: httpx.AsyncClient, turn_id: str, *, timeout_seconds: float = 3.0
+) -> tuple[list[tuple[str, dict[str, Any]]], bool]:
+    """读事件流直到服务端收口；超时未收口返回（[], False）＝观察收口分支不可达。
+
+    ASGITransport 会 await 整个 ASGI app（非真流式），未收口的流只能在任务级取消。
+    """
+
+    async def read() -> list[tuple[str, dict[str, Any]]]:
+        return await drain_events(client, turn_id)
+
+    task = asyncio.create_task(read())
+    done, _pending = await asyncio.wait({task}, timeout=timeout_seconds)
+    if not done:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        return [], False
+    return task.result(), True
+
+
 async def db_rows(data_dir: Path, sql: str, params: tuple[Any, ...] = ()) -> list[tuple[Any, ...]]:
     async with aiosqlite.connect(data_dir / "knowrealm.db") as connection:
         return [
@@ -1027,6 +1050,13 @@ async def test_startup_recovery_marks_running_turn_interrupted(
         state = await snapshot(client2, turn_id)
         assert state["status"] == "INTERRUPTED"
         assert state["output_text"] == "崩溃前输出"
+        # 订阅必须在观察侧终态收口并带 interrupted 阶段：否则前端中断原因分支与
+        # 观察收尾不可达（过程卡显示「已中断」但无明确原因、副作用查询不失效）。
+        streamed, closed = await collect_stream_until_close(client2, turn_id)
+        assert closed, "INTERRUPTED 轮次订阅未收口"
+        assert streamed[-1][0] == "status"
+        assert streamed[-1][1]["phase"] == "interrupted"
+        assert streamed[-1][1]["process"]["status"] == "INTERRUPTED"
         # INTERRUPTED 可显式取消释放会话（无继续按钮：安全续跑属后续票）。
         cancelled = await client2.post(f"/api/chat-turns/{turn_id}/cancel")
         assert cancelled.status_code == 200

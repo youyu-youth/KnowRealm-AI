@@ -170,7 +170,9 @@ async def _event_stream(
                 seen.append(row)
                 cursor = row.seq
                 yield _event_sse(row, turn, seen)
-            if ChatTurnStatus(turn.status).is_terminal and cursor >= turn.last_seq:
+            # 观察侧终态收口（含 INTERRUPTED）：订阅必须结束并带明确阶段，
+            # 否则前端中断原因分支与观察收尾不可达；会话占用仍按业务终态。
+            if ChatTurnStatus(turn.status).is_observer_terminal and cursor >= turn.last_seq:
                 marker = _terminal_sse(turn, seen)
                 if marker is not None:
                     yield marker

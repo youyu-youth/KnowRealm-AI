@@ -30,6 +30,11 @@ class ChatTurnStatus(StrEnum):
     def is_terminal(self) -> bool:
         return self in _TERMINAL_STATUSES
 
+    @property
+    def is_observer_terminal(self) -> bool:
+        """观察侧终态（含 INTERRUPTED）：订阅在此收口；会话占用仍按 is_terminal。"""
+        return self in _OBSERVER_TERMINAL_STATUSES
+
 
 _TERMINAL_STATUSES = frozenset(
     {
@@ -38,6 +43,9 @@ _TERMINAL_STATUSES = frozenset(
         ChatTurnStatus.CANCELLED,
     }
 )
+
+# 观察侧终态：SSE 事件订阅在该口径收口（INTERRUPTED 仍占用会话，须显式停止释放）。
+_OBSERVER_TERMINAL_STATUSES = _TERMINAL_STATUSES | {ChatTurnStatus.INTERRUPTED}
 
 # 过程展示投影的状态映射（ChatResponseProcessOut.status 值域）。
 _PROCESS_STATUS_BY_TURN: dict[ChatTurnStatus, str] = {
