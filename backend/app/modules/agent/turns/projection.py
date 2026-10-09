@@ -23,6 +23,15 @@ from app.modules.agent.turns.schemas import (
 # 仅检索类工具展示命中数（先例：message_service 流式路径的 hits 集合）。
 TOOL_HITS_TOOLS = frozenset({"search_library", "search_transcript", "search_courses", "web_search"})
 
+# 轮次停下的状态：未回结果的工具在这些状态下投影为已中断（在途不算中断）。
+_STOPPED_TURN_STATUSES = frozenset(
+    {
+        ChatTurnStatus.INTERRUPTED,
+        ChatTurnStatus.FAILED,
+        ChatTurnStatus.CANCELLED,
+    }
+)
+
 
 def event_payload(row: ChatTurnEvent) -> dict[str, Any]:
     try:
@@ -105,7 +114,9 @@ def process_out_for(
     """把轮次投影为历史过程视图（ChatResponseProcessOut 形状，id=turn_id）。"""
     status = ChatTurnStatus(turn.status)
     entries = project_entries(events)
-    if status != ChatTurnStatus.COMPLETED:
+    # 只有轮次确实停下（中断/失败/取消）时，未回结果的工具才显示为已中断；仍在
+    # 执行（QUEUED/RUNNING/WAITING_*）的轮次保留 RUNNING——工具在途不是中断。
+    if status in _STOPPED_TURN_STATUSES:
         for entry in entries:
             if isinstance(entry, ChatProcessTool) and entry.status == "RUNNING":
                 entry.status = "INTERRUPTED"

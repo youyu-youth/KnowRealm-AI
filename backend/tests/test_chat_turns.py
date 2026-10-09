@@ -1040,3 +1040,87 @@ async def test_startup_recovery_marks_running_turn_interrupted(
             (turn_id,),
         )
         assert rows[0][0] == "CANCELLED"
+
+
+# ---------------------------------------------------------------------------
+# 过程投影：在途工具不得显示为已中断（RUNNING 轮次保留 RUNNING，轮次停下才转
+# INTERRUPTED）。流用模块级接缝注入，工具在途窗口由 gate 确定性持有。
+
+
+def _tool_entries(process: Any) -> list[Any]:
+    return [entry for entry in process["entries"] if entry["kind"] == "tool"]
+
+
+@pytest.mark.anyio
+async def test_inflight_tool_keeps_running_while_turn_executes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """工具调用已持久、结果未产生时轮次仍在执行：工具必须显示 RUNNING，不能因为
+    轮次不是 COMPLETED 就显示 INTERRUPTED。"""
+    from app.modules.agent import message_service
+    from app.modules.agent.graph import (
+        ChatStreamEvent,
+        ChatTokenEvent,
+        ChatToolCallEvent,
+        ChatToolResultEvent,
+    )
+
+    release = asyncio.Event()
+
+    async def gated_tool(**_kwargs: object) -> AsyncGenerator[ChatStreamEvent, None]:
+        yield ChatToolCallEvent("search_courses", "Redis", "call-1", "model-1")
+        await release.wait()
+        yield ChatToolResultEvent("search_courses", 3, True, "call-1")
+        yield ChatTokenEvent("收尾", "model-2")
+
+    monkeypatch.setattr(message_service, "stream_chat_reply", gated_tool)
+    async with turns_app(tmp_path, monkeypatch) as (_app, client, _captured):
+        session_id = await create_session(client)
+        submitted = await submit(client, session_id, "查课程", request_id="req-inflight-01")
+        assert submitted.status_code == 202
+        turn_id = cast(str, submitted.json()["id"])
+        await wait_running_progress(client, turn_id, min_seq=1)
+        body = await snapshot(client, turn_id)
+        assert body["status"] == "RUNNING"
+        assert [(entry["tool"], entry["status"]) for entry in _tool_entries(body["process"])] == [
+            ("search_courses", "RUNNING")
+        ]
+        # 结果到达后转 SUCCEEDED（既有语义不变）。
+        release.set()
+        finished = await wait_terminal(client, turn_id)
+        assert [entry["status"] for entry in _tool_entries(finished["process"])] == ["SUCCEEDED"]
+
+
+@pytest.mark.anyio
+async def test_inflight_tool_marks_interrupted_after_turn_stops(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """轮次确实停下（取消）后，未回结果的工具显示 INTERRUPTED（既有语义保留）。"""
+    from app.modules.agent import message_service
+    from app.modules.agent.graph import (
+        ChatStreamEvent,
+        ChatTokenEvent,
+        ChatToolCallEvent,
+        ChatToolResultEvent,
+    )
+
+    release = asyncio.Event()
+
+    async def gated_tool(**_kwargs: object) -> AsyncGenerator[ChatStreamEvent, None]:
+        yield ChatToolCallEvent("search_courses", "Redis", "call-1", "model-1")
+        await release.wait()
+        yield ChatToolResultEvent("search_courses", 3, True, "call-1")
+        yield ChatTokenEvent("收尾", "model-2")
+
+    monkeypatch.setattr(message_service, "stream_chat_reply", gated_tool)
+    async with turns_app(tmp_path, monkeypatch) as (_app, client, _captured):
+        session_id = await create_session(client)
+        submitted = await submit(client, session_id, "查课程", request_id="req-inflight-02")
+        assert submitted.status_code == 202
+        turn_id = cast(str, submitted.json()["id"])
+        await wait_running_progress(client, turn_id, min_seq=1)
+        cancelled = await client.post(f"/api/chat-turns/{turn_id}/cancel")
+        assert cancelled.status_code == 200
+        finished = await wait_terminal(client, turn_id)
+        assert finished["status"] == "CANCELLED"
+        assert [entry["status"] for entry in _tool_entries(finished["process"])] == ["INTERRUPTED"]
