@@ -1,0 +1,159 @@
+[
+  {
+    "w": 1586,
+    "h": 992,
+    "dpr": 1.0000000149011612,
+    "font": "16px",
+    "theme": "light",
+    "tauri": true,
+    "grid": "325.587px 599.8px 377px",
+    "bodyOverflow": false,
+    "overflows": [
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      }
+    ],
+    "file": "light.png"
+  },
+  {
+    "w": 1586,
+    "h": 992,
+    "dpr": 1.0000000149011612,
+    "font": "16px",
+    "theme": "dark",
+    "tauri": true,
+    "grid": "325.587px 599.8px 377px",
+    "bodyOverflow": false,
+    "overflows": [
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      }
+    ],
+    "file": "dark.png"
+  },
+  {
+    "w": 1586,
+    "h": 992,
+    "dpr": 1.0000000149011612,
+    "font": "15px",
+    "theme": "light",
+    "tauri": true,
+    "grid": "329.837px 607.625px 381.925px",
+    "bodyOverflow": false,
+    "overflows": [
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      }
+    ],
+    "file": "small.png"
+  },
+  {
+    "w": 1586,
+    "h": 992,
+    "dpr": 1.0000000149011612,
+    "font": "18px",
+    "theme": "light",
+    "tauri": true,
+    "grid": "317.087px 584.138px 367.163px",
+    "bodyOverflow": false,
+    "overflows": [
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      }
+    ],
+    "file": "large.png"
+  },
+  {
+    "w": 1066,
+    "h": 800,
+    "dpr": 1.0000000149011612,
+    "font": "18px",
+    "theme": "light",
+    "tauri": true,
+    "grid": "354.138px 602.062px",
+    "bodyOverflow": false,
+    "overflows": [
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      },
+      {
+        "tag": "SPAN",
+        "text": ""
+      }
+    ],
+    "file": "narrow-large.png"
+  },
+  {
+    "w": 1586,
+    "h": 992,
+    "dpr": 1.0000000149011612,
+    "font": "16px",
+    "theme": "light",
+    "tauri": true,
+    "grid": "325.587px 599.8px 377px",
+    "bodyOverflow": false,
+    "overflows": [],
+    "file": "orbit.png"
+  }
+]

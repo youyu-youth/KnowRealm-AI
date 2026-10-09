@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
-import { chartPalette, darkTooltipStyle, hexWithAlpha } from "@/charts/token";
+import { chartPalette, cssVar, darkTooltipStyle } from "@/charts/token";
 import type { TodayTrendPoint } from "@/features/today/api/today";
 import { formatLearningDurationText } from "@/features/today/duration";
 
@@ -15,9 +15,17 @@ function buildTrendOption(
   t: TFunction,
 ) {
   const palette = chartPalette();
+  const accent = cssVar("--today-accent");
+  const muted = cssVar("--today-muted");
+  const border = cssVar("--today-border");
+  const fontSize =
+    parseFloat(getComputedStyle(document.documentElement).fontSize) * 0.75 ||
+    12;
 
   return {
-    grid: { left: 36, right: 4, top: 8, bottom: 20 },
+    animation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    textStyle: { fontSize },
+    grid: { left: 32, right: 20, top: 24, bottom: 24, outerBoundsMode: "same" },
     tooltip: {
       trigger: "axis",
       ...darkTooltipStyle(),
@@ -29,18 +37,19 @@ function buildTrendOption(
       data: points.map((point) => point.date),
       boundaryGap: false,
       axisTick: { show: false },
-      axisLine: { lineStyle: { color: palette.border } },
+      axisLine: { lineStyle: { color: border } },
       axisLabel: {
-        color: palette.mutedForeground,
+        color: muted,
+        fontSize,
         formatter: (value: string) => value.slice(5).replace("-", "/"),
       },
     },
     yAxis: {
       type: "value",
       name: t("today.stats.trendUnit"),
-      nameTextStyle: { color: palette.mutedForeground },
-      axisLabel: { color: palette.mutedForeground },
-      splitLine: { lineStyle: { color: palette.border } },
+      nameTextStyle: { color: muted, fontSize },
+      axisLabel: { color: muted, fontSize },
+      splitLine: { lineStyle: { color: border, type: "dashed" } },
     },
     series: [
       {
@@ -50,31 +59,16 @@ function buildTrendOption(
         data: points.map((point) =>
           Number((point.total_ms / MS_PER_HOUR).toFixed(2)),
         ),
-        smooth: true,
+        smooth: false,
         showSymbol,
         symbol: "circle",
         symbolSize: 6,
         itemStyle: {
           color: palette.card,
-          borderColor: palette.foreground,
+          borderColor: accent,
           borderWidth: 1.5,
         },
-        lineStyle: { width: 1.5, color: palette.foreground },
-        areaStyle: palette.foreground
-          ? {
-              color: {
-                type: "linear",
-                x: 0,
-                y: 0,
-                x2: 0,
-                y2: 1,
-                colorStops: [
-                  { offset: 0, color: hexWithAlpha(palette.foreground, "18") },
-                  { offset: 1, color: hexWithAlpha(palette.foreground, "03") },
-                ],
-              },
-            }
-          : undefined,
+        lineStyle: { width: 1.5, color: accent },
       },
     ],
   };

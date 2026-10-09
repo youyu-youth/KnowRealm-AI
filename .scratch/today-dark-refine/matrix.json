@@ -1,0 +1,140 @@
+{
+  "screenshots": [
+    {
+      "viewport": [
+        1920,
+        1080
+      ],
+      "dpr": 1,
+      "font": "16px",
+      "tauri": false,
+      "bodyOverflow": false,
+      "colors": {
+        "--today-ink": "#d5d8de",
+        "--today-muted": "#9196a1",
+        "--today-border": "#242831",
+        "--today-soft": "#181b20",
+        "--today-surface": "#20242a",
+        "--today-accent": "#d5d8de",
+        "--today-primary": "#f2f4f7",
+        "--today-primary-foreground": "#131519",
+        "--today-focus": "#d5d8de"
+      },
+      "visual_mock": true,
+      "runtime": "Isolated Chrome browser with Tauri IPC and API substitutes",
+      "file": "dark.png",
+      "ipc_mock": true
+    },
+    {
+      "viewport": [
+        1586,
+        992
+      ],
+      "dpr": 1,
+      "font": "18px",
+      "tauri": false,
+      "bodyOverflow": false,
+      "colors": {
+        "--today-ink": "#d5d8de",
+        "--today-muted": "#9196a1",
+        "--today-border": "#242831",
+        "--today-soft": "#181b20",
+        "--today-surface": "#20242a",
+        "--today-accent": "#d5d8de",
+        "--today-primary": "#f2f4f7",
+        "--today-primary-foreground": "#131519",
+        "--today-focus": "#d5d8de"
+      },
+      "visual_mock": true,
+      "runtime": "Isolated Chrome browser with Tauri IPC and API substitutes",
+      "file": "dark-large.png",
+      "ipc_mock": true
+    },
+    {
+      "viewport": [
+        1066,
+        800
+      ],
+      "dpr": 1,
+      "font": "18px",
+      "tauri": false,
+      "bodyOverflow": false,
+      "colors": {
+        "--today-ink": "#d5d8de",
+        "--today-muted": "#9196a1",
+        "--today-border": "#242831",
+        "--today-soft": "#181b20",
+        "--today-surface": "#20242a",
+        "--today-accent": "#d5d8de",
+        "--today-primary": "#f2f4f7",
+        "--today-primary-foreground": "#131519",
+        "--today-focus": "#d5d8de"
+      },
+      "visual_mock": true,
+      "runtime": "Isolated Chrome browser with Tauri IPC and API substitutes",
+      "file": "dark-narrow.png",
+      "ipc_mock": true
+    },
+    {
+      "viewport": [
+        1586,
+        992
+      ],
+      "dpr": 1,
+      "font": "16px",
+      "tauri": false,
+      "bodyOverflow": false,
+      "colors": {
+        "--today-ink": "#101d3a",
+        "--today-muted": "#53698e",
+        "--today-border": "#e2eaf3",
+        "--today-soft": "#eff4f9",
+        "--today-surface": "#ffffff",
+        "--today-accent": "#075dce",
+        "--today-primary": "#22344b",
+        "--today-primary-foreground": "#ffffff",
+        "--today-focus": "#009e8a"
+      },
+      "visual_mock": true,
+      "runtime": "Isolated Chrome browser with Tauri IPC and API substitutes",
+      "file": "light-regression.png",
+      "ipc_mock": true
+    },
+    {
+      "viewport": [
+        1586,
+        992
+      ],
+      "dpr": 1,
+      "font": "16px",
+      "tauri": false,
+      "bodyOverflow": false,
+      "colors": {
+        "--today-ink": "#d5d8de",
+        "--today-muted": "#9196a1",
+        "--today-border": "#242831",
+        "--today-soft": "#181b20",
+        "--today-surface": "#20242a",
+        "--today-accent": "#d5d8de",
+        "--today-primary": "#f2f4f7",
+        "--today-primary-foreground": "#131519",
+        "--today-focus": "#d5d8de"
+      },
+      "visual_mock": true,
+      "runtime": "Isolated Chrome browser with Tauri IPC and API substitutes",
+      "file": "dark-focus.png",
+      "ipc_mock": true
+    }
+  ],
+  "contrast": {
+    "--today-ink on --today-surface": 10.92,
+    "--today-ink on --today-soft": 12.09,
+    "--today-muted on --today-surface": 5.26,
+    "--today-muted on --today-soft": 5.82
+  },
+  "focus": {
+    "name": "打开收件箱",
+    "visible": true,
+    "outline": "rgb(213, 216, 222)"
+  }
+}

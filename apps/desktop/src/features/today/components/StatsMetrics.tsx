@@ -15,7 +15,6 @@ import {
   formatLearningDurationParts,
   type DurationPart,
 } from "@/features/today/duration";
-import { cn } from "@/lib/utils";
 
 type TodayStats = components["schemas"]["TodayStatsOut"];
 
@@ -23,13 +22,7 @@ type StatCell = {
   icon: LucideIcon;
   labelKey: string;
   parts: DurationPart[];
-  // 分隔线只画在水平相邻格之间。默认 3 列折行（行首格不带左线），
-  // wide 6 列时仅第 1 格不带；折行处不留悬空分隔线。
-  borderClass: string;
 };
-
-const bordered = "border-border border-l pl-6";
-const rowStartAt3Cols = "border-border border-l-0 wide:border-l wide:pl-6";
 
 function countParts(value: number): DurationPart[] {
   return [{ text: String(value), muted: false }];
@@ -47,25 +40,21 @@ export function StatsMetrics({ stats }: StatsMetricsProps) {
       icon: Timer,
       labelKey: "today.stats.metrics.learningDuration",
       parts: formatLearningDurationParts(stats.total_learning_ms, t),
-      borderClass: "",
     },
     {
       icon: FileStack,
       labelKey: "today.stats.metrics.recordCount",
       parts: countParts(stats.record_count),
-      borderClass: bordered,
     },
     {
       icon: BookOpenText,
       labelKey: "today.stats.metrics.courseCount",
       parts: countParts(stats.course_count),
-      borderClass: bordered,
     },
     {
       icon: Sparkles,
       labelKey: "today.stats.metrics.aiSummaryCount",
       parts: countParts(stats.ai_summary_count),
-      borderClass: rowStartAt3Cols,
     },
     {
       icon: ListChecks,
@@ -75,25 +64,20 @@ export function StatsMetrics({ stats }: StatsMetricsProps) {
         { text: "/", muted: true },
         { text: String(stats.quiz_generated_count), muted: false },
       ],
-      borderClass: bordered,
     },
     {
       icon: MessagesSquare,
       labelKey: "today.stats.metrics.chatTurnCount",
       parts: countParts(stats.chat_turn_count),
-      borderClass: bordered,
     },
   ];
 
   return (
-    <div className="wide:grid-cols-6 grid grid-cols-3 gap-y-6">
+    <div className="today-metrics grid grid-cols-2 gap-3 pt-3">
       {cells.map((cell) => (
         <div
           key={cell.labelKey}
-          className={cn(
-            "flex min-w-0 items-center gap-3 py-2",
-            cell.borderClass,
-          )}
+          className="flex min-w-0 items-start gap-2 py-2"
         >
           <span
             aria-hidden="true"
@@ -102,10 +86,10 @@ export function StatsMetrics({ stats }: StatsMetricsProps) {
             <cell.icon className="size-6 stroke-[1.6]" />
           </span>
           <div className="min-w-0">
-            <p className="text-label text-muted-foreground truncate">
+            <p className="text-label text-muted-foreground break-words">
               {t(cell.labelKey)}
             </p>
-            <p className="text-ink-strong mt-0.5 text-xl font-semibold tabular-nums">
+            <p className="text-ink-strong text-body mt-0.5 font-semibold tabular-nums">
               {cell.parts.map((part, partIndex) => (
                 <Fragment key={partIndex}>
                   {partIndex > 0 ? " " : null}

@@ -77,24 +77,24 @@ function renderAt(path = "/") {
 }
 
 describe("今日页", () => {
-  it("按日期、学习链、行动与资产、统计顺序呈现，并保持示意条目只读", async () => {
+  it("呈现三栏工作台并保持示意条目只读", async () => {
     renderAt();
 
-    const chain = await screen.findByRole("heading", { name: "今日学习链" });
-    const actions = screen.getByRole("heading", { name: "行动流" });
-    const assets = screen.getByRole("heading", { name: "最近资产" });
-    const stats = screen.getByRole("heading", { name: "学习趋势" });
     expect(
-      chain.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      await screen.findByRole("heading", { name: "学习流程" }),
+    ).toBeInTheDocument();
     expect(
-      actions.compareDocumentPosition(assets) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      screen.getByRole("heading", { name: "今日行动" }),
+    ).toBeInTheDocument();
     expect(
-      assets.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(screen.getByText("课堂录音正在转写").closest("a")).toBeNull();
+      screen.getByRole("heading", { name: "最近资产" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "学习趋势" }),
+    ).toBeInTheDocument();
+    expect(
+      (await screen.findByText("课堂录音正在转写")).closest("a"),
+    ).toBeNull();
     expect(screen.getAllByText("示意").length).toBeGreaterThan(4);
     expect(screen.getByRole("link", { name: /打开资产库/ })).toHaveAttribute(
       "href",
@@ -116,7 +116,7 @@ describe("今日页", () => {
 
     const link = await screen.findByRole("link", { name: /操作系统第一讲/ });
     expect(link).toHaveAttribute("href", `/records/${RECORD_ID}`);
-    expect(screen.getByText("操作系统")).toBeInTheDocument();
+    expect(screen.getAllByText("操作系统").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("list", { name: "待确认总结列表" }),
     ).toBeInTheDocument();

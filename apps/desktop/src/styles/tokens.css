@@ -1,4 +1,16 @@
 @theme inline {
+  --color-today-accent: var(--today-accent);
+  --color-today-soft: var(--today-soft);
+  --color-today-muted: var(--today-muted);
+  --color-today-border: var(--today-border);
+  --color-today-primary: var(--today-primary);
+  --color-today-primary-foreground: var(--today-primary-foreground);
+  --color-today-focus: var(--today-focus);
+  --text-today-section: 1.125rem;
+  --text-today-section--line-height: 1.4;
+  --spacing-today-timer: 9rem;
+  --spacing-today-duration: 5rem;
+  --spacing-today-status: 4rem;
   --font-heading: var(--font-sans);
   --font-sans: "Noto Sans SC Variable", "Geist Variable", sans-serif;
 

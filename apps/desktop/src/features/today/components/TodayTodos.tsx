@@ -15,17 +15,21 @@ type TodayTodosProps = {
   isSummariesPending: boolean;
   isSummariesError: boolean;
   onRetrySummaries: () => void;
+  showSummaries?: boolean;
+  course?: string;
+  order?: "date" | "duration";
 };
 
-/** 今日待学双源清单（工单 04）：跨空间学习计划项（排期日 ≤ 今天且未完成，
- * 勾选完成直接作用于计划项）与记录待办（待确认总结）并列分组、标注来源。
- * 计划项与记录待办都为空时整块不出现（沿今日页既有行为）。
- * 样式执行卡内零 chrome（DESIGN.md §148，TodaySummaryTodos 先例）。 */
+/** 跨空间待学清单：勾选完成作用于真实计划项；工作台将待确认总结放在左栏。
+ * 保留总结分组供原有调用方使用，筛选后无内容时不渲染清单。 */
 export function TodayTodos({
   summaries,
   isSummariesPending,
   isSummariesError,
   onRetrySummaries,
+  showSummaries = true,
+  course = "all",
+  order = "date",
 }: TodayTodosProps) {
   const { t, i18n } = useTranslation();
   const planItems = useQuery({
@@ -41,7 +45,7 @@ export function TodayTodos({
       </p>
     );
   }
-  if (isSummariesError || planItems.isError) {
+  if ((showSummaries && isSummariesError) || planItems.isError) {
     return (
       <div role="alert" className="border-border-subtle mt-4 border-t pt-4">
         <h3 className="text-body-dense text-destructive font-medium">
@@ -64,15 +68,22 @@ export function TodayTodos({
     );
   }
 
-  const hasPlanItems = (planItems.data?.length ?? 0) > 0;
-  const hasSummaries = (summaries?.length ?? 0) > 0;
+  const visibleItems = (planItems.data ?? [])
+    .filter((item) => course === "all" || item.course_id === course)
+    .sort((a, b) =>
+      order === "duration"
+        ? (b.estimated_minutes ?? 0) - (a.estimated_minutes ?? 0)
+        : a.scheduled_date.localeCompare(b.scheduled_date),
+    );
+  const hasPlanItems = visibleItems.length > 0;
+  const hasSummaries = showSummaries && (summaries?.length ?? 0) > 0;
   if (!hasPlanItems && !hasSummaries) {
     return null;
   }
 
   return (
-    <div className="border-border/60 mb-4 border-b pb-4">
-      <h3 className="text-label text-ink-muted font-medium">
+    <div className="min-w-0">
+      <h3 className="text-label text-ink-muted sr-only font-medium">
         {t("today.todoTitle")}
       </h3>
       {hasPlanItems ? (
@@ -82,11 +93,11 @@ export function TodayTodos({
           </p>
           <ul
             aria-label={t("today.planTodos.listLabel")}
-            className="mt-1.5 grid"
+            className="divide-border-subtle mt-1.5 grid divide-y"
           >
-            {planItems.data?.map((item) => (
+            {visibleItems.map((item) => (
               <li key={item.item_id} className="min-w-0">
-                <div className="hover:bg-surface-subtle -mx-2 flex items-start gap-3 rounded-sm px-2 py-2 transition-colors">
+                <div className="today-task-row hover:bg-today-soft px-3 py-2.5 transition-colors">
                   <Checkbox
                     aria-label={t("today.planTodos.completeLabel", {
                       content: item.content,
@@ -123,13 +134,25 @@ export function TodayTodos({
                       to="/spaces/$courseId"
                       params={{ courseId: item.course_id }}
                       search={{ tab: "plan" }}
-                      className="hover:text-ink-strong block truncate font-medium transition-colors"
+                      className="hover:text-today-accent block font-medium transition-colors"
                       title={item.content}
                     >
-                      {item.content}
+                      <span className="line-clamp-2 break-words">
+                        {item.content}
+                      </span>
                     </Link>
-                    <p className="text-label text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                      <span className="truncate">{item.course_name}</span>
+                    <p
+                      className="text-label text-ink-muted mt-0.5 truncate"
+                      title={item.goal_title}
+                    >
+                      {item.goal_title}
+                    </p>
+                  </div>
+                  <span className="text-label text-ink-muted break-words">
+                    {item.course_name}
+                  </span>
+                  <div className="text-label text-ink-muted">
+                    <p className="text-label text-muted-foreground mt-0.5 grid gap-1">
                       {item.estimated_minutes != null ? (
                         <span>
                           {t("today.planTodos.minutes", {
@@ -148,13 +171,19 @@ export function TodayTodos({
                           t,
                         )}
                       </span>
-                      {isOverdue(item.scheduled_date) ? (
-                        <StatusTag tone="warning">
-                          {t("today.planTodos.overdue")}
-                        </StatusTag>
-                      ) : null}
                     </p>
                   </div>
+                  <StatusTag
+                    tone={
+                      isOverdue(item.scheduled_date) ? "warning" : "neutral"
+                    }
+                  >
+                    {t(
+                      isOverdue(item.scheduled_date)
+                        ? "today.planTodos.overdue"
+                        : "today.workspace.notStarted",
+                    )}
+                  </StatusTag>
                 </div>
               </li>
             ))}

@@ -1,14 +1,26 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { TodayStatsBand } from "@/features/today/components/TodayStatsBand";
 import { TodayOverview } from "@/features/today/components/TodayOverview";
 
-export const Route = createFileRoute("/")({ component: TodayPage });
+type TodaySearch = {
+  view?: "orbit" | "workbench";
+  course?: string;
+  order?: "duration" | "date";
+};
+
+export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>): TodaySearch => ({
+    view: search.view === "orbit" ? ("orbit" as const) : ("workbench" as const),
+    course: typeof search.course === "string" ? search.course : "all",
+    order:
+      search.order === "duration" ? ("duration" as const) : ("date" as const),
+  }),
+  component: TodayPage,
+});
 
 export function TodayPage() {
   return (
-    <section className="work-surface-enter max-w-workbench px-content mx-auto flex min-h-full flex-col gap-6 py-7">
+    <section className="work-surface-enter min-h-full p-2">
       <TodayOverview />
-      <TodayStatsBand />
     </section>
   );
 }

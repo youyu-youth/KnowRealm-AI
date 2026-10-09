@@ -26,9 +26,12 @@ export function BaseChart({
     const chart = echarts.init(element, undefined, { renderer: "svg" });
     chartRef.current = chart;
     const onResize = () => chart.resize();
+    const observer = new ResizeObserver(onResize);
+    observer.observe(element);
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("resize", onResize);
+      observer.disconnect();
       chart.dispose();
       chartRef.current = null;
     };

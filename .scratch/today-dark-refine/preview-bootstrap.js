@@ -1,0 +1,23 @@
+const { mockIPC, mockWindows } = await import('/node_modules/@tauri-apps/api/mocks.js');
+mockIPC((cmd) => cmd === 'get_sidecar_config' ? {baseUrl:'http://127.0.0.1:43127',token:'visual-preview'} : cmd === 'get_onboarding_state' ? true : null, {shouldMockEvents:true});
+mockWindows('main');
+const originalFetch = window.fetch;
+window.fetch = async (input, init) => {
+  const url = String(input instanceof Request ? input.url : input);
+  if (!url.startsWith('http://127.0.0.1:43127/')) return originalFetch(input, init);
+  const path = new URL(url).pathname;
+  let data = [];
+  if(path.endsWith('/preferences')) data = {theme:'DARK',font_scale:'M',language:'zh',timezone:null,close_behavior:'TRAY',quick_note_shortcut:'Ctrl+Alt+N',autostart:false,quiz_last_count:5};
+  if(path === '/api/today/stats') data = {total_learning_ms:36000000,record_count:39,course_count:13,ai_summary_count:20,quiz_generated_count:50,quiz_answered_count:24,chat_turn_count:135};
+  if(path === '/api/today/stats/trend') data = Array.from({length:30},(_,i)=>({date:new Date(Date.UTC(2026,8,10+i)).toISOString().slice(0,10),total_ms:[1,1.5,.5,2,1,1.5,2.5][i%7]*3600000}));
+  return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
+};
+const React = (await import('/node_modules/.vite/deps/react.js')).default;
+const {createRoot} = (await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+const {default:App} = await import('/src/App.tsx');
+document.querySelector('#root').style.display='none';
+const preview = document.createElement('div');
+preview.id='dark-refine-preview';
+document.body.appendChild(preview);
+createRoot(preview).render(React.createElement(App));
+window.__TODAY_VISUAL_MOCK__ = true;

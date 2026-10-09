@@ -66,7 +66,10 @@ const fullTrend = trendResponse(30, { 26: 5_400_000, 19: 3_600_000 });
 // （textContent 连续但非单一文本节点），故按标签定位相邻容器断言完整文本，
 // 同时与侧栏导航文案、图表 SVG 内的数字隔离。
 function statsRegion(): HTMLElement {
-  return screen.getByRole("region", { name: "学习趋势" });
+  const region = screen.getByRole("region", { name: "学习趋势" });
+  const toggle = within(region).getByRole("button", { name: "累计学习统计" });
+  if (toggle.getAttribute("aria-expanded") === "false") fireEvent.click(toggle);
+  return region;
 }
 
 function insightRegion(name: string): HTMLElement {
@@ -154,19 +157,21 @@ describe("今日页统计带", () => {
 
     render(<App />);
 
+    fireEvent.click(await screen.findByRole("tab", { name: /学习轨道/ }));
     expect(
       await screen.findByRole("region", { name: "学科能力雷达图" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("region", { name: "学习时间分布" }),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /学习轨道/ }));
     expect(
-      screen.getByRole("region", { name: "学习专注度" }),
+      await screen.findByRole("region", { name: "学习专注度" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("region", { name: "学习进步趋势" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("行动流")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /工作台/ })).toBeInTheDocument();
     expect(screen.getByText("最近资产")).toBeInTheDocument();
     expect(screen.getByText("AI 助手")).toBeInTheDocument();
     expect(screen.getByText("学习成就")).toBeInTheDocument();
@@ -271,8 +276,9 @@ describe("今日页统计带", () => {
     render(<App />);
 
     expect(await screen.findByText("正在读取学习统计")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /学习轨道/ }));
     expect(
-      screen.getByRole("region", { name: "学习专注度" }),
+      await screen.findByRole("region", { name: "学习专注度" }),
     ).toBeInTheDocument();
 
     expect(await cellValueText("累计学习时长")).toBe("0 分钟");
@@ -323,8 +329,9 @@ describe("今日页统计带", () => {
     expect(
       within(statsRegion()).getByRole("img", { name: "学习趋势图" }),
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /学习轨道/ }));
     expect(
-      screen.getByRole("region", { name: "学习进步趋势" }),
+      await screen.findByRole("region", { name: "学习进步趋势" }),
     ).toBeInTheDocument();
   });
 });

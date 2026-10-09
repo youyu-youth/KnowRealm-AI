@@ -4,6 +4,13 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   todayApi,
@@ -30,7 +37,7 @@ function formatHoursBig(ms: number): string {
   return (ms / MS_PER_HOUR).toFixed(1);
 }
 
-export function TodayStatsBand() {
+export function TodayStatsBand({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation();
   const [days, setDays] = useState<TrendDays>(7);
   const [themeRevision, setThemeRevision] = useState(0);
@@ -41,7 +48,7 @@ export function TodayStatsBand() {
     );
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class"],
+      attributeFilter: ["class", "style"],
     });
     queueMicrotask(() => setThemeRevision((revision) => revision + 1));
     return () => observer.disconnect();
@@ -71,9 +78,21 @@ export function TodayStatsBand() {
       <div
         aria-label={t("today.stats.title")}
         role="region"
-        className="bg-surface-raised border-border-subtle rounded-md border p-5"
+        className="today-panel today-stats p-4"
       >
-        <StatsBandHeader days={days} onDaysChange={setDays} />
+        <StatsBandHeader
+          days={days}
+          onDaysChange={setDays}
+          total={
+            compact &&
+            !stats.isPending &&
+            !trend.isPending &&
+            !stats.isError &&
+            !trend.isError
+              ? formatHoursBig(windowTotalMs)
+              : undefined
+          }
+        />
         {stats.isPending || trend.isPending ? (
           <p
             role="status"
@@ -103,62 +122,94 @@ export function TodayStatsBand() {
           </div>
         ) : (
           <>
-            <div className="compact:flex-row compact:items-end compact:gap-8 mt-3 flex min-w-0 flex-col gap-4">
-              <div className="compact:w-32 compact:pb-5 shrink-0">
-                <p className="text-stat font-headline text-ink-strong tabular-nums">
-                  {formatHoursBig(windowTotalMs)}
-                  <span className="text-label font-label text-muted-foreground">
-                    {" "}
-                    {t("today.stats.insights.unitH")}
-                  </span>
-                </p>
-                {comparison ? (
-                  <p className="text-label text-muted-foreground mt-1">
-                    {t("today.stats.weekOverWeek")}{" "}
-                    <span className="text-ink font-medium">{comparison}</span>
+            <div
+              className={cn(
+                "mt-3 flex min-w-0 gap-3",
+                compact
+                  ? "flex-col"
+                  : "compact:flex-row compact:items-end compact:gap-8 flex-col",
+              )}
+            >
+              {!compact ? (
+                <div className="compact:w-32 compact:pb-5 shrink-0">
+                  <p
+                    className={cn(
+                      "font-headline text-ink-strong tabular-nums",
+                      compact ? "text-body" : "text-stat",
+                    )}
+                  >
+                    {formatHoursBig(windowTotalMs)}
+                    <span className="text-label font-label text-muted-foreground">
+                      {" "}
+                      {t("today.stats.insights.unitH")}
+                    </span>
                   </p>
-                ) : null}
-              </div>
+                  {comparison ? (
+                    <p className="text-label text-muted-foreground mt-1">
+                      {t("today.stats.weekOverWeek")}{" "}
+                      <span className="text-ink font-medium">{comparison}</span>
+                    </p>
+                  ) : null}
+                </div>
+              ) : comparison ? (
+                <p className="text-label text-ink-muted">
+                  {t("today.stats.weekOverWeek")} {comparison}
+                </p>
+              ) : null}
               <StatsTrendChart
                 points={windowPoints}
                 showSymbol={days === 7}
                 ariaLabel={t("today.stats.trendChartLabel")}
-                className="h-44 min-w-0 flex-1"
+                className={cn(
+                  "min-w-0",
+                  compact ? "h-40 w-full" : "h-44 flex-1",
+                )}
               />
             </div>
-            <div className="border-border mt-4 border-t pt-3">
-              <StatsMetrics stats={stats.data} />
-            </div>
+            <Collapsible
+              defaultOpen={!compact}
+              className="border-border mt-3 border-t pt-2"
+            >
+              <CollapsibleTrigger className="text-label text-ink-muted flex w-full items-center justify-between gap-2 py-1">
+                {t("today.workspace.metrics")}
+                <ChevronDown className="size-3.5" aria-hidden="true" />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <StatsMetrics stats={stats.data} />
+              </CollapsibleContent>
+            </Collapsible>
           </>
         )}
       </div>
 
       {/* 洞察小图卡为示意数据，不依赖统计查询，加载/失败不影响渲染。 */}
-      <div className="compact:grid-cols-2 wide:grid-cols-4 mt-4 grid grid-cols-1 gap-4">
-        <StatsInsightCard title={t("today.stats.insights.radarTitle")}>
-          <StatsRadarChart
-            ariaLabel={t("today.stats.insights.radarChartLabel")}
-            className="h-40 w-full"
-          />
-        </StatsInsightCard>
-        <StatsInsightCard title={t("today.stats.insights.distributionTitle")}>
-          <StatsDistributionChart
-            ariaLabel={t("today.stats.insights.distributionChartLabel")}
-          />
-        </StatsInsightCard>
-        <StatsInsightCard title={t("today.stats.insights.focusTitle")}>
-          <StatsFocusChart
-            ariaLabel={t("today.stats.insights.focusChartLabel")}
-            className="h-28 w-full"
-          />
-        </StatsInsightCard>
-        <StatsInsightCard title={t("today.stats.insights.progressTitle")}>
-          <StatsProgressChart
-            ariaLabel={t("today.stats.insights.progressChartLabel")}
-            className="h-28 w-full"
-          />
-        </StatsInsightCard>
-      </div>
+      {!compact ? (
+        <div className="compact:grid-cols-2 mt-4 grid grid-cols-1 gap-3">
+          <StatsInsightCard title={t("today.stats.insights.radarTitle")}>
+            <StatsRadarChart
+              ariaLabel={t("today.stats.insights.radarChartLabel")}
+              className="h-40 w-full"
+            />
+          </StatsInsightCard>
+          <StatsInsightCard title={t("today.stats.insights.distributionTitle")}>
+            <StatsDistributionChart
+              ariaLabel={t("today.stats.insights.distributionChartLabel")}
+            />
+          </StatsInsightCard>
+          <StatsInsightCard title={t("today.stats.insights.focusTitle")}>
+            <StatsFocusChart
+              ariaLabel={t("today.stats.insights.focusChartLabel")}
+              className="h-28 w-full"
+            />
+          </StatsInsightCard>
+          <StatsInsightCard title={t("today.stats.insights.progressTitle")}>
+            <StatsProgressChart
+              ariaLabel={t("today.stats.insights.progressChartLabel")}
+              className="h-28 w-full"
+            />
+          </StatsInsightCard>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -183,16 +234,27 @@ function buildWeekComparison(
 type StatsBandHeaderProps = {
   days: TrendDays;
   onDaysChange: (days: TrendDays) => void;
+  total?: string;
 };
 
-function StatsBandHeader({ days, onDaysChange }: StatsBandHeaderProps) {
+function StatsBandHeader({ days, onDaysChange, total }: StatsBandHeaderProps) {
   const { t } = useTranslation();
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-      <h2 id="today-stats-title" className="text-section font-section text-ink">
-        {t("today.stats.title")}
-      </h2>
+      <div className="flex flex-wrap items-center gap-3">
+        <h2 id="today-stats-title" className="today-heading">
+          {t("today.stats.title")}
+        </h2>
+        {total !== undefined ? (
+          <p className="text-body font-medium tabular-nums">
+            {total}{" "}
+            <span className="text-label text-ink-muted">
+              {t("today.stats.insights.unitH")}
+            </span>
+          </p>
+        ) : null}
+      </div>
       <Tabs
         value={String(days)}
         onValueChange={(value) => onDaysChange(value === "30" ? 30 : 7)}

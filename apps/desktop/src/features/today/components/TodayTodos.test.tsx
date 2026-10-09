@@ -11,7 +11,7 @@ import {
   within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
@@ -78,21 +78,79 @@ vi.mock("@/services/tauri/recording", () => ({
 
 vi.stubGlobal("scrollTo", vi.fn());
 
+beforeEach(() => {
+  server.use(
+    http.get(`${TEST_SIDECAR_URL}/api/records/${todo.record_id}/summary`, () =>
+      HttpResponse.json({ summary: null, action_required: "NONE" }),
+    ),
+  );
+});
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
   vi.mocked(setRecordingKeepAwake).mockReset().mockResolvedValue(undefined);
 });
 
-// 双源清单渲染在行动流内，学习链复用同一真实查询。
+// 双源清单渲染在今日行动内，学习链复用同一真实查询。
 function actionFlow(): HTMLElement {
-  const heading = screen.getByText("行动流");
+  const heading = screen.getByText("今日行动");
   const card = heading.closest("section");
   expect(card).not.toBeNull();
   return card as HTMLElement;
 }
 
 describe("今日待学双源清单", () => {
+  it("按 URL 恢复课程筛选与时长排序，仅呈现匹配的真实计划项", async () => {
+    server.use(
+      http.get(PENDING_URL, () => HttpResponse.json([])),
+      http.get(PLAN_ITEMS_URL, () =>
+        HttpResponse.json([
+          planItem,
+          overdueItem,
+          {
+            ...planItem,
+            item_id: "long-item",
+            content: "深入练习 LCEL",
+            estimated_minutes: 60,
+          },
+        ]),
+      ),
+    );
+    window.history.replaceState(
+      null,
+      "",
+      `/?course=${COURSE_ID}&order=duration`,
+    );
+    render(<App />);
+    const list = await screen.findByRole("list", {
+      name: "今日待学计划项列表",
+    });
+    expect(
+      within(list)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["深入练习 LCEL", "通读 LCEL 转写笔记"]);
+    expect(
+      within(list).queryByText("复习进程调度概念"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "按课程筛选" }));
+    const option = await screen.findByRole("option", { name: "操作系统" });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(
+        within(list)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["复习进程调度概念"]),
+    );
+    expect(new URLSearchParams(window.location.search).get("course")).toBe(
+      OTHER_COURSE_ID,
+    );
+  });
+
   it("计划项与记录待办并列分组、标注来源，计划项可跳计划 Tab", async () => {
     server.use(
       http.get(PENDING_URL, () => HttpResponse.json([todo])),
@@ -103,14 +161,14 @@ describe("今日待学双源清单", () => {
 
     render(<App />);
 
-    await screen.findByText("行动流");
+    await screen.findByText("今日行动");
     const card = actionFlow();
     expect(
       await within(card).findByRole("heading", { name: "等待确认的总结" }),
     ).toBeInTheDocument();
     // 双源分组标签。
     expect(within(card).getByText("学习计划")).toBeInTheDocument();
-    expect(within(card).getByText("记录待办")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "待处理" })).toBeInTheDocument();
 
     const list = within(card).getByRole("list", {
       name: "今日待学计划项列表",
@@ -139,7 +197,7 @@ describe("今日待学双源清单", () => {
     expect(link).toHaveAttribute("href", `/spaces/${COURSE_ID}?tab=plan`);
 
     // 记录待办分组仍是去确认链接。
-    const recordList = within(card).getByRole("list", {
+    const recordList = screen.getByRole("list", {
       name: "待确认总结列表",
     });
     expect(
@@ -236,7 +294,9 @@ describe("今日待学双源清单", () => {
         name: "完成计划项「通读 LCEL 转写笔记」",
       }),
     ).toBeInTheDocument();
-    expect(screen.getByText("通读 LCEL 转写笔记")).toBeInTheDocument();
+    expect(
+      within(actionFlow()).getByText("通读 LCEL 转写笔记"),
+    ).toBeInTheDocument();
   });
 
   it("计划项读取失败显示行内错误与重试", async () => {

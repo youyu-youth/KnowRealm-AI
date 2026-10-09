@@ -1,0 +1,110 @@
+.today-workspace {
+  container: today / inline-size;
+  color: var(--today-ink);
+  --ink: var(--today-ink);
+  --ink-strong: var(--today-ink);
+  --ink-muted: var(--today-muted);
+  --ink-faint: var(--today-muted);
+  --muted-foreground: var(--today-muted);
+  --border: var(--today-border);
+  --border-subtle: var(--today-border);
+  --surface-subtle: var(--today-soft);
+  --surface-raised: var(--today-surface);
+  --primary: var(--today-primary);
+  --primary-foreground: var(--today-primary-foreground);
+  --ring: var(--today-accent);
+  --focus: var(--today-accent);
+}
+
+.today-grid {
+  display: grid;
+  align-items: start;
+  gap: calc(var(--spacing) * 2);
+}
+
+.today-panel {
+  min-width: 0;
+  border: 1px solid var(--today-border);
+  border-radius: var(--radius-xs);
+  background: var(--today-surface);
+}
+
+.today-heading {
+  font-size: var(--text-today-section);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.dark .today-workspace {
+  --ink-strong: var(--today-primary);
+}
+
+.dark .today-workspace :is(h1, .today-heading) {
+  color: var(--ink-strong);
+}
+
+.dark .today-workspace .border-today-accent {
+  border-color: var(--border-strong);
+}
+
+.today-task-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: calc(var(--spacing) * 3);
+}
+
+.today-task-row > :nth-child(n + 3) {
+  grid-column: 2;
+}
+
+.today-task-header {
+  display: none;
+}
+
+.today-stats {
+  container: today-stats / inline-size;
+}
+
+@container today-stats (min-width: 32rem) {
+  .today-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container today (min-width: 48rem) {
+  .today-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+  }
+  .today-rail {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+@container today (min-width: 70rem) {
+  .today-grid {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.75fr) minmax(0, 1.1fr);
+  }
+  .today-rail {
+    grid-column: auto;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+@container today (min-width: 34rem) {
+  .today-task-row {
+    grid-template-columns:
+      calc(var(--spacing) * 4) minmax(0, 1fr) minmax(0, 0.55fr)
+      var(--spacing-today-duration) var(--spacing-today-status);
+    align-items: center;
+  }
+  .today-task-row > :nth-child(n + 3) {
+    grid-column: auto;
+  }
+  .today-task-header {
+    display: grid;
+  }
+}

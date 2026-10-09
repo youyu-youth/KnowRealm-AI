@@ -54,6 +54,7 @@ import type {
   TextCaptureMode,
 } from "@/features/text-capture/api/textCaptures";
 import { TextCaptureDialog } from "@/features/text-capture/TextCaptureDialog";
+import { QuickNoteContext } from "@/features/text-capture/QuickNoteContext";
 import { cn } from "@/lib/utils";
 import { isRestartPending } from "@/services/restartPending";
 import {
@@ -488,7 +489,9 @@ export function AppShell() {
           </Alert>
         ) : null}
         <main className="bg-paper min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-          <Outlet />
+          <QuickNoteContext value={openQuickNote}>
+            <Outlet />
+          </QuickNoteContext>
         </main>
       </div>
       <CommandPalette

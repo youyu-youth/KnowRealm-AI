@@ -249,6 +249,128 @@
       "askPlaceholder": "Ask a question, or @ a course / material",
       "achievementTitle": "Learning achievements",
       "reviewProgress": "View learning progress"
+    },
+    "workspace": {
+      "courseColumn": "Course",
+      "durationColumn": "Duration",
+      "statusColumn": "Status",
+      "pendingList": "Scrollable pending items",
+      "workbench": "Workbench",
+      "orbit": "Learning orbit",
+      "local": "Local workspace",
+      "pending": "Pending",
+      "all": "All",
+      "awaiting": "Awaiting review",
+      "processing": "Processing",
+      "openRecord": "Open record “{{title}}”",
+      "filterEmpty": "No pending items in this category",
+      "flow": "Learning workflow",
+      "flowHints": {
+        "capture": "Collect material",
+        "processing": "Transcribe & organize",
+        "summary": "Human review",
+        "assets": "Build knowledge"
+      },
+      "continueHint": "Pick up where you left off",
+      "quickStart": "Quick start",
+      "noteHint": "Capture ideas and learning notes",
+      "newNote": "New note",
+      "askHint": "Ask about your learning material",
+      "startChat": "Start chat",
+      "practice": "Review & practice",
+      "practiceHint": "Choose exercises in a course",
+      "openPractice": "View exercises",
+      "actions": "Today’s actions",
+      "toDo": "To do",
+      "done": "Completed",
+      "courseFilter": "Filter by course",
+      "allCourses": "All courses",
+      "sort": "Sort tasks",
+      "sortDate": "Due date ↑",
+      "sortDuration": "Estimated duration ↓",
+      "task": "Task",
+      "columns": "Course · Duration · Status",
+      "notStarted": "Not started",
+      "sampleTasks": "Sample tasks; no learning plan is changed",
+      "noTasks": "No pending plan items. Create a learning plan in a course.",
+      "completedHint": "These completed tasks are illustrative. View actual completion history in your course learning plan.",
+      "metrics": "Cumulative learning statistics",
+      "focus": {
+        "title": "Current focus",
+        "edit": "Edit duration",
+        "remaining": "Remaining focus time",
+        "ready": "Ready",
+        "running": "Focusing",
+        "paused": "Paused",
+        "ended": "Ended",
+        "sampleTask": "Review process scheduling",
+        "sampleCourse": "Operating systems · Sample task",
+        "start": "Start",
+        "pause": "Pause",
+        "resume": "Resume",
+        "end": "End",
+        "switchHint": "The timer continues between workbench views",
+        "progress": "Progress {{elapsed}} / {{duration}} min",
+        "unbound": "No plan item linked",
+        "demoHint": "Local demo timer; excluded from learning statistics. Resets when you leave Today.",
+        "durationHint": "Set a focus duration of 5–180 minutes.",
+        "duration": "Focus duration (minutes)",
+        "save": "Save duration"
+      },
+      "preview": {
+        "contentLabel": "Summary preview content",
+        "title": "Summary awaiting review",
+        "sampleTitle": "Processes and threads",
+        "sampleSource": "Operating systems · Learning recording · Sample",
+        "noSelection": "No summaries awaiting review",
+        "chooseHint": "Records awaiting review will appear here",
+        "tab": "Summary preview",
+        "source": "Source",
+        "error": "Could not load the summary. Please retry.",
+        "unavailable": "No preview available. Open the record to check its status.",
+        "sourceHint": "Open the original record to view transcripts, source text and anchors.",
+        "sampleHint": "Illustrative layout only; this is not an actual learning record.",
+        "viewSource": "View source",
+        "original": "Original text & source",
+        "confirm": "Review & confirm",
+        "confirmHint": "Review and confirm in the record details to create learning assets",
+        "sections": {
+          "difference": {
+            "title": "Processes vs. threads",
+            "body": "A process is a unit of resource allocation with its own address space and system resources. A thread is a unit of CPU scheduling and shares its process’s memory and resources. Processes are isolated; threads share memory."
+          },
+          "switching": {
+            "title": "Scheduling and context switches",
+            "body": "Process switches update memory mappings, page tables and other resources. Thread switches typically update registers, stack pointers and program counters, with lower overhead."
+          },
+          "synchronization": {
+            "title": "Synchronization and mutual exclusion",
+            "body": "Shared memory can introduce race conditions. Synchronization mechanisms coordinate threads, including mutexes, reader-writer locks and semaphores."
+          }
+        }
+      },
+      "tasks": {
+        "scheduling": {
+          "title": "Review process scheduling",
+          "detail": "Compare scheduling algorithms and metrics",
+          "course": "Operating systems"
+        },
+        "docker": {
+          "title": "Practice Dockerfile instructions",
+          "detail": "Compare CMD and ENTRYPOINT behavior",
+          "course": "Docker containers"
+        },
+        "cache": {
+          "title": "Cache and validation self-test",
+          "detail": "Write and answer 8–10 concept questions",
+          "course": "Spring Boot"
+        },
+        "set": {
+          "title": "Practice Set types",
+          "detail": "Implement filtering and deduplication",
+          "course": "Advanced Java"
+        }
+      }
     }
   },
   "sharedRefs": {
