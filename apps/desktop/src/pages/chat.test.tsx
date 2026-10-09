@@ -18,6 +18,7 @@ import {
 } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
+import { applyLanguage } from "@/i18n";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 import { setRecordingKeepAwake } from "@/services/tauri/recording";
@@ -751,6 +752,57 @@ describe("自由聊天流式", () => {
         screen.queryByText("停止请求未送达，回答仍在继续；请重试"),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("快照对账的失败错误经统一翻译入口，英文界面不出现后端中文原文", async () => {
+    let accepted = false;
+    const opened = openSseResponse([]);
+    server.use(
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}/messages`,
+        () =>
+          HttpResponse.json(
+            accepted
+              ? [SYSTEM_ROW, messageRow("user-row", "USER", "长问题")]
+              : [SYSTEM_ROW],
+          ),
+      ),
+      // 快照对账读到失败轮次：错误码已登记 i18n，后端原文为中文。
+      // 同批 use 内靠前者优先，须排在四件套的快照之前。
+      http.get(`${TEST_SIDECAR_URL}/api/chat-turns/${TURN_ID}`, () =>
+        HttpResponse.json(
+          turnPayload({
+            status: "FAILED",
+            error_code: "LLM_PROVIDER_UNCONFIGURED",
+            error_message: "AI 服务配置已失效，请重新配置后再试",
+          }),
+        ),
+      ),
+      ...turnFlowHandlers(
+        () => opened.response,
+        () => {
+          accepted = true;
+        },
+      ),
+    );
+    useSessionPage();
+
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "长问题" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+    await screen.findByRole("button", { name: "停止" });
+
+    await applyLanguage("en");
+    // 流断开且无终态事件 → 快照对账发现 FAILED：展示登记码的英文译文。
+    opened.closeStream();
+    expect(
+      await screen.findByText(
+        "Configure an LLM provider (including its API key) first.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByText("AI 服务配置已失效，请重新配置后再试"),
+    ).not.toBeInTheDocument();
   });
 
   it("在途冲突返回 409 并展示可读错误，之后仍可发送", async () => {

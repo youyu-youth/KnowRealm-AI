@@ -9,6 +9,7 @@ import { chatKeys } from "@/features/chat/api/keys";
 import { libraryKeys } from "@/features/library/api/keys";
 import { sharedRefsKeys } from "@/features/sharedRefs/api/keys";
 import { useChatUiStore } from "@/features/chat/chatUiStore";
+import { apiErrorMessage } from "@/services/http/apiErrorMessage";
 import { ApiError } from "@/services/http/client";
 import { derivePageSnapshot } from "@/features/chat/pageSnapshot";
 
@@ -145,9 +146,15 @@ export function useChatTurns(sessionId: string) {
       if (snapshot && isObserverTerminal(snapshot.status)) {
         setTurn(snapshot);
         if (snapshot.process) setResponseProcess(snapshot.process);
+        // 快照失败原因与 SSE error 事件共用 ADR-0017 翻译入口：登记过的错误码按
+        // 界面语言取译文（英文界面不回显后端中文原文）；无码或未登记回显原文。
         setStreamError(
           snapshot.status === "FAILED"
-            ? snapshot.error_message || t("chat.turn.failed")
+            ? apiErrorMessage(
+                snapshot.error_code ?? undefined,
+                snapshot.error_message ?? "",
+                undefined,
+              ) || t("chat.turn.failed")
             : snapshot.status === "INTERRUPTED"
               ? t("chat.turn.interrupted")
               : null,
