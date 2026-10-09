@@ -1,0 +1,98 @@
+[
+  {
+    "viewport": [
+      1920,
+      1080
+    ],
+    "dpr": 1,
+    "font": "16px",
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "gridHeight": 938,
+    "previewHeight": 578,
+    "confirmBottom": 981.203125,
+    "file": "light.png",
+    "runtime": "Chrome browser with IPC/API substitutes",
+    "tauri": false
+  },
+  {
+    "viewport": [
+      1586,
+      992
+    ],
+    "dpr": 1,
+    "font": "18px",
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "gridHeight": 833,
+    "previewHeight": 395,
+    "confirmBottom": 881.109375,
+    "file": "light-large.png",
+    "runtime": "Chrome browser with IPC/API substitutes",
+    "tauri": false
+  },
+  {
+    "viewport": [
+      1066,
+      800
+    ],
+    "dpr": 1,
+    "font": "18px",
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "gridHeight": 661,
+    "previewHeight": 683,
+    "confirmBottom": 1764.609375,
+    "file": "light-narrow.png",
+    "runtime": "Chrome browser with IPC/API substitutes",
+    "tauri": false
+  },
+  {
+    "viewport": [
+      1440,
+      900
+    ],
+    "dpr": 1,
+    "font": "15px",
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "gridHeight": 767,
+    "previewHeight": 417,
+    "confirmBottom": 807.25,
+    "file": "light-small.png",
+    "runtime": "Chrome browser with IPC/API substitutes",
+    "tauri": false
+  },
+  {
+    "viewport": [
+      1586,
+      992
+    ],
+    "dpr": 1,
+    "font": "16px",
+    "bodyOverflow": false,
+    "mainOverflow": true,
+    "gridHeight": 1020,
+    "previewHeight": 648,
+    "confirmBottom": 1063.140625,
+    "file": "dark-regression.png",
+    "runtime": "Chrome browser with IPC/API substitutes",
+    "tauri": false
+  },
+  {
+    "viewport": [
+      1920,
+      1080
+    ],
+    "dpr": 1,
+    "font": "16px",
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "gridHeight": 938,
+    "previewHeight": 578,
+    "confirmBottom": 981.203125,
+    "file": "interaction.png",
+    "runtime": "Chrome browser with IPC/API substitutes",
+    "tauri": false
+  }
+]

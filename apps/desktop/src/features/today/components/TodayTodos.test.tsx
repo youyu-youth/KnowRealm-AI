@@ -209,6 +209,10 @@ describe("今日待学双源清单", () => {
     let remaining = 1;
     let completeCalls = 0;
     let trendCalls = 0;
+    let releaseCompletion = () => {};
+    const completionGate = new Promise<void>((resolve) => {
+      releaseCompletion = resolve;
+    });
     server.use(
       http.get(PENDING_URL, () => HttpResponse.json([])),
       http.get(PLAN_ITEMS_URL, () =>
@@ -223,8 +227,9 @@ describe("今日待学双源清单", () => {
       }),
       http.post(
         `${TEST_SIDECAR_URL}/api/courses/${COURSE_ID}/plans/${planItem.plan_id}/items/item-1/complete`,
-        () => {
+        async () => {
           completeCalls += 1;
+          await completionGate;
           remaining = 0;
           return HttpResponse.json({ ...planItem, status: "DONE" });
         },
@@ -239,6 +244,10 @@ describe("今日待学双源清单", () => {
     await waitFor(() => expect(trendCalls).toBeGreaterThan(0));
     const trendCallsBeforeComplete = trendCalls;
     fireEvent.click(checkbox);
+
+    expect(await screen.findByText("正在完成")).toBeInTheDocument();
+    expect(checkbox).toHaveAttribute("aria-disabled", "true");
+    releaseCompletion();
 
     await waitFor(() => expect(completeCalls).toBe(1));
     // 完成后列表刷新，条目消失（区块随双源皆空撤下）。

@@ -1,13 +1,13 @@
 :root {
-  --today-ink: #101d3a;
-  --today-muted: #53698e;
-  --today-border: #e2eaf3;
-  --today-soft: #eff4f9;
+  --today-ink: #2f3239;
+  --today-muted: #666b75;
+  --today-border: #e3e5e9;
+  --today-soft: #f1f2f4;
   --today-surface: #ffffff;
-  --today-accent: #075dce;
-  --today-primary: #22344b;
-  --today-primary-foreground: #ffffff;
-  --today-focus: #009e8a;
+  --today-accent: #2f3239;
+  --today-primary: #1a1c20;
+  --today-primary-foreground: #fafafb;
+  --today-focus: #2f3239;
   color-scheme: light;
   --canvas: #eff1f4;
   --paper: #fafafb;

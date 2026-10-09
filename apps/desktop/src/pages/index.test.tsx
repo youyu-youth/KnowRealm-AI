@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,6 +78,32 @@ function renderAt(path = "/") {
 }
 
 describe("今日页", () => {
+  it("点击待确认行的课程信息即可切换预览，详情和原文入口对应选中记录", async () => {
+    const second = { ...todo, record_id: "second-record", title: "第二份总结" };
+    server.use(
+      http.get(TODAY_URL, () => HttpResponse.json([todo, second])),
+      http.get(`${TEST_SIDECAR_URL}/api/records/second-record/summary`, () =>
+        HttpResponse.json({
+          summary: generatedSummary,
+          action_required: "NONE",
+        }),
+      ),
+    );
+    renderAt();
+    const select = await screen.findByRole("button", {
+      name: "预览总结「第二份总结」",
+    });
+    fireEvent.click(within(select).getByText("操作系统"));
+    expect(select).toHaveAttribute("aria-pressed", "true");
+    const preview = screen.getByRole("region", { name: "待确认总结" });
+    expect(
+      within(preview).getByRole("link", { name: "查看并确认" }),
+    ).toHaveAttribute("href", "/records/second-record");
+    expect(
+      within(preview).getByRole("link", { name: "查看原文" }),
+    ).toHaveAttribute("href", "/records/second-record?tab=transcript");
+  });
+
   it("呈现三栏工作台并保持示意条目只读", async () => {
     renderAt();
 

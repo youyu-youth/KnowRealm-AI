@@ -19,7 +19,7 @@ export const Route = createFileRoute("/")({
 
 export function TodayPage() {
   return (
-    <section className="work-surface-enter min-h-full p-2">
+    <section className="today-page work-surface-enter min-h-full p-2">
       <TodayOverview />
     </section>
   );

@@ -11,6 +11,7 @@
   --spacing-today-timer: 9rem;
   --spacing-today-duration: 5rem;
   --spacing-today-status: 4rem;
+  --spacing-today-preview-min: 22rem;
   --font-heading: var(--font-sans);
   --font-sans: "Noto Sans SC Variable", "Geist Variable", sans-serif;
 

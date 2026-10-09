@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { StatusTag } from "@/components/common/StatusTag";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Spinner } from "@/components/ui/spinner";
 import { useCompletePlanItem } from "@/features/learningPlan/api/learningPlan";
 import { toastMutationError } from "@/features/learningPlan/components/LearningPlanTab";
 import { todayApi, type TodaySummaryTodo } from "@/features/today/api/today";
@@ -38,7 +39,7 @@ export function TodayTodos({
   });
   const complete = useCompletePlanItem();
 
-  if (isSummariesPending && planItems.isPending) {
+  if (planItems.isPending && (!showSummaries || isSummariesPending)) {
     return (
       <p role="status" className="text-label text-ink-muted mt-4">
         {t("today.loading")}
@@ -96,7 +97,14 @@ export function TodayTodos({
             className="divide-border-subtle mt-1.5 grid divide-y"
           >
             {visibleItems.map((item) => (
-              <li key={item.item_id} className="min-w-0">
+              <li
+                key={item.item_id}
+                className="min-w-0"
+                aria-busy={
+                  complete.isPending &&
+                  complete.variables?.itemId === item.item_id
+                }
+              >
                 <div className="today-task-row hover:bg-today-soft px-3 py-2.5 transition-colors">
                   <Checkbox
                     aria-label={t("today.planTodos.completeLabel", {
@@ -173,17 +181,28 @@ export function TodayTodos({
                       </span>
                     </p>
                   </div>
-                  <StatusTag
-                    tone={
-                      isOverdue(item.scheduled_date) ? "warning" : "neutral"
-                    }
-                  >
-                    {t(
-                      isOverdue(item.scheduled_date)
-                        ? "today.planTodos.overdue"
-                        : "today.workspace.notStarted",
-                    )}
-                  </StatusTag>
+                  {complete.isPending &&
+                  complete.variables?.itemId === item.item_id ? (
+                    <span
+                      role="status"
+                      className="text-label text-ink-muted flex items-center gap-1"
+                    >
+                      <Spinner className="size-3" />
+                      {t("today.workspace.completing")}
+                    </span>
+                  ) : (
+                    <StatusTag
+                      tone={
+                        isOverdue(item.scheduled_date) ? "warning" : "neutral"
+                      }
+                    >
+                      {t(
+                        isOverdue(item.scheduled_date)
+                          ? "today.planTodos.overdue"
+                          : "today.workspace.notStarted",
+                      )}
+                    </StatusTag>
+                  )}
                 </div>
               </li>
             ))}

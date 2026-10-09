@@ -83,8 +83,8 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
           </Button>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
-        <div className="size-today-timer relative shrink-0">
+      <div className="today-focus-layout mt-4 flex flex-wrap items-center justify-center gap-4">
+        <div className="today-focus-timer size-today-timer relative shrink-0">
           <svg
             viewBox="0 0 160 160"
             className="size-full -rotate-90"
@@ -124,7 +124,7 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
             </p>
           </div>
         </div>
-        <div className="min-w-0 flex-1 basis-32">
+        <div className="today-focus-controls min-w-0 flex-1 basis-32">
           <p
             className="text-body line-clamp-2 font-semibold break-words"
             title={activeTask?.content}

@@ -37,8 +37,9 @@ export function TodaySummaryPreview({
     : null;
   return (
     <section
+      id="today-summary-preview"
       aria-labelledby="today-preview-title"
-      className="today-panel w-full p-4"
+      className="today-panel today-preview w-full p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="today-preview-title" className="today-heading">
@@ -52,7 +53,10 @@ export function TodaySummaryPreview({
           )}
         </StatusTag>
       </div>
-      <h3 className="mt-3 text-xl font-semibold break-words">
+      <h3
+        className="mt-3 line-clamp-2 text-xl font-semibold break-words"
+        title={record?.title}
+      >
         {record?.title ??
           t(
             sample
@@ -68,7 +72,7 @@ export function TodaySummaryPreview({
             ? t("today.workspace.preview.sampleSource")
             : t("today.workspace.preview.chooseHint")}
       </p>
-      <Tabs defaultValue="preview" className="mt-3">
+      <Tabs defaultValue="preview" className="today-preview-tabs mt-3">
         <TabsList
           variant="line"
           className="border-border-subtle h-auto w-full justify-start border-b p-0"
@@ -83,7 +87,7 @@ export function TodaySummaryPreview({
             {t("today.workspace.preview.source")}
           </TabsTrigger>
         </TabsList>
-        <TabsContent value="preview" className="mt-2">
+        <TabsContent value="preview" className="today-preview-content mt-2">
           {loading || (record && summary.isPending) ? (
             <p role="status" className="text-label text-ink-muted py-4">
               {t("today.loading")}
@@ -108,7 +112,7 @@ export function TodaySummaryPreview({
               tabIndex={0}
               role="region"
               aria-label={t("today.workspace.preview.contentLabel")}
-              className="text-body-dense max-h-80 overflow-y-auto pr-1 leading-relaxed"
+              className="today-preview-body text-body-dense max-h-80 overflow-y-auto pr-1 leading-relaxed"
             >
               {sample ? (
                 ["difference", "switching", "synchronization"].map(
@@ -148,7 +152,10 @@ export function TodaySummaryPreview({
             </div>
           )}
         </TabsContent>
-        <TabsContent value="source" className="text-label text-ink-muted py-4">
+        <TabsContent
+          value="source"
+          className="today-preview-content text-label text-ink-muted py-4"
+        >
           <p>
             {record
               ? t("today.workspace.preview.sourceHint")
@@ -170,12 +177,12 @@ export function TodaySummaryPreview({
         </TabsContent>
       </Tabs>
       {record ? (
-        <div className="mt-3 grid gap-2">
+        <div className="today-preview-actions mt-3 grid gap-2">
           <Link
             to="/records/$recordId"
             params={{ recordId: record.record_id }}
             search={{ tab: "transcript" }}
-            className="bg-today-soft text-label text-ink-muted flex items-center justify-between rounded-sm px-3 py-2"
+            className="today-preview-source-shortcut bg-today-soft text-label text-ink-muted flex items-center justify-between rounded-sm px-3 py-2"
           >
             <span className="flex items-center gap-2">
               <FileText className="size-4" aria-hidden="true" />
@@ -203,7 +210,7 @@ export function TodaySummaryPreview({
           </p>
         </div>
       ) : sample ? (
-        <div className="mt-3">
+        <div className="today-preview-actions mt-3">
           <Button className="w-full" disabled>
             {t("today.workspace.preview.confirm")}
           </Button>

@@ -115,10 +115,16 @@ export function TodayOverview() {
             {t("today.workspace.local")}
           </p>
         </header>
-        <div className="today-grid">
+        <div
+          className="today-grid"
+          tabIndex={0}
+          role="region"
+          aria-label={t("today.workspace.workArea")}
+        >
           <aside
             aria-label={t("today.workspace.pending")}
-            className="today-panel"
+            className="today-panel today-left"
+            tabIndex={0}
           >
             <TodayPending
               summaries={pending.data ?? []}
@@ -130,8 +136,12 @@ export function TodayOverview() {
             />
             <TodayAssets />
           </aside>
-          <div className="min-w-0">
-            <TabsContent value="workbench" className="m-0 flex flex-col gap-2">
+          <div className="today-center min-w-0">
+            <TabsContent
+              value="workbench"
+              className="today-center-content m-0 flex flex-col gap-2"
+              tabIndex={0}
+            >
               <TodayStatsBand compact />
               <TodayActions
                 summaries={pending.data}
@@ -141,7 +151,11 @@ export function TodayOverview() {
               />
               <TodayQuickStart />
             </TabsContent>
-            <TabsContent value="orbit" className="m-0">
+            <TabsContent
+              value="orbit"
+              className="today-center-content m-0"
+              tabIndex={0}
+            >
               <TodayStatsBand />
               <div className="mt-3">
                 <TodayQuickStart />
@@ -151,6 +165,7 @@ export function TodayOverview() {
           <aside
             aria-label={t("today.rightRail.label")}
             className="today-rail min-w-0 gap-2"
+            tabIndex={0}
           >
             <TodayFocus task={plans.data?.[0]} />
             <TodaySummaryPreview

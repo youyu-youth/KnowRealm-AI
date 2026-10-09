@@ -162,38 +162,42 @@ export function TodayPending({
                       )}
                     >
                       <div className="flex items-start gap-3">
-                        <FileText
-                          className="mt-0.5 size-5 shrink-0"
-                          aria-hidden="true"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <Button
-                            variant="ghost"
-                            onClick={() => onSelect(summary.record_id)}
-                            aria-pressed={selectedId === summary.record_id}
-                            className="h-auto max-w-full justify-start p-0 text-left whitespace-normal"
-                          >
+                        <Button
+                          variant="ghost"
+                          onClick={() => onSelect(summary.record_id)}
+                          aria-pressed={selectedId === summary.record_id}
+                          aria-controls="today-summary-preview"
+                          aria-label={t("today.workspace.previewRecord", {
+                            title: summary.title,
+                          })}
+                          className="h-auto min-w-0 flex-1 items-start justify-start gap-3 p-0 text-left whitespace-normal"
+                        >
+                          <FileText
+                            className="mt-0.5 size-5 shrink-0"
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 flex-1">
                             <span
                               className="line-clamp-2 break-words"
                               title={summary.title}
                             >
                               {summary.title}
                             </span>
-                          </Button>
-                          <p className="text-label text-ink-muted mt-1 break-words">
-                            {summary.course_name}
-                          </p>
-                          <StatusTag tone="warning" className="mt-2">
-                            {t("today.workspace.awaiting")}
-                          </StatusTag>
-                        </div>
+                            <span className="text-label text-ink-muted mt-1 block break-words">
+                              {summary.course_name}
+                            </span>
+                            <StatusTag tone="warning" className="mt-2">
+                              {t("today.workspace.awaiting")}
+                            </StatusTag>
+                          </span>
+                        </Button>
                         <Link
                           to="/records/$recordId"
                           params={{ recordId: summary.record_id }}
                           aria-label={t("today.workspace.openRecord", {
                             title: summary.title,
                           })}
-                          className="text-ink-muted hover:text-today-accent p-1"
+                          className="text-ink-muted hover:text-today-accent inline-flex size-8 shrink-0 items-center justify-center"
                         >
                           <ArrowUpRight className="size-4" aria-hidden="true" />
                         </Link>

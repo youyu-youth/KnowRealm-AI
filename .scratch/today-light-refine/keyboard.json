@@ -1,0 +1,10 @@
+{
+  "keyboardFocus": {
+    "focusVisible": true,
+    "outline": "solid"
+  },
+  "ctrl1ctrl2": true,
+  "narrowConfirmAccessible": true,
+  "root32pxNoHorizontalOverflow": true,
+  "actualWebViewZoom": false
+}
