@@ -53,6 +53,9 @@ export function useChatTurns(sessionId: string) {
     useState<ChatResponseProcess | null>(null);
   const segmentsRef = useRef(new Map<string, string>());
   const commentaryRef = useRef(new Set<string>());
+  // 快照正文是权威基准（规格 §5）：恢复后从 last_seq 续订的增量只能追加在它
+  // 之后，不能只由分段 Map 重算——否则下一条 token 会把恢复的正文整段顶掉。
+  const baselineRef = useRef("");
   const abortRef = useRef<AbortController | null>(null);
   // 一次逻辑提交的稳定受理身份：确认受理（202）前网络重试复用。
   const pendingRequestIdRef = useRef<string | null>(null);
@@ -73,15 +76,27 @@ export function useChatTurns(sessionId: string) {
 
   const clearTransientState = useCallback(() => {
     setStreamedText(null);
+    baselineRef.current = "";
     segmentsRef.current.clear();
     commentaryRef.current.clear();
   }, []);
 
+  /** 以快照正文为基准重置本地拼接（规格 §5）：后续 token 追加在它之后。 */
+  const restoreFromSnapshot = useCallback((outputText: string) => {
+    baselineRef.current = outputText;
+    segmentsRef.current.clear();
+    commentaryRef.current.clear();
+    setStreamedText(outputText);
+  }, []);
+
   const joinSegments = useCallback(() => {
-    return [...segmentsRef.current]
-      .filter(([id]) => !commentaryRef.current.has(id))
-      .map(([, text]) => text)
-      .join("");
+    return (
+      baselineRef.current +
+      [...segmentsRef.current]
+        .filter(([id]) => !commentaryRef.current.has(id))
+        .map(([, text]) => text)
+        .join("")
+    );
   }, []);
 
   const invalidateTurnSideEffects = useCallback(() => {
@@ -242,9 +257,7 @@ export function useChatTurns(sessionId: string) {
         setTurn(snapshot);
         // 断线期间的 M+1..N 事件不再重放：以服务端快照正文为权威基准重置本地
         // 拼接（缺口同步，规格 §5），再从 last_seq 续订后续增量。
-        segmentsRef.current.clear();
-        commentaryRef.current.clear();
-        setStreamedText(snapshot.output_text || "");
+        restoreFromSnapshot(snapshot.output_text || "");
         if (snapshot.process) setResponseProcess(snapshot.process);
         cursor = snapshot.last_seq;
         await new Promise((resolve) =>
@@ -261,6 +274,7 @@ export function useChatTurns(sessionId: string) {
       invalidateTurnSideEffects,
       joinSegments,
       queryClient,
+      restoreFromSnapshot,
       sessionId,
       setTurnMemory,
       t,
@@ -282,13 +296,14 @@ export function useChatTurns(sessionId: string) {
     [observeTurn],
   );
 
-  const hydrateSnapshot = useCallback((snapshot: ChatTurn) => {
-    setTurn(snapshot);
-    setStreamedText(snapshot.output_text || "");
-    if (snapshot.process) setResponseProcess(snapshot.process);
-    segmentsRef.current.clear();
-    commentaryRef.current.clear();
-  }, []);
+  const hydrateSnapshot = useCallback(
+    (snapshot: ChatTurn) => {
+      setTurn(snapshot);
+      restoreFromSnapshot(snapshot.output_text || "");
+      if (snapshot.process) setResponseProcess(snapshot.process);
+    },
+    [restoreFromSnapshot],
+  );
 
   // 会话打开 / 返回 / 刷新：恢复在途轮次（部分输出 + 过程）并从游标续订。
   useEffect(() => {
@@ -317,9 +332,7 @@ export function useChatTurns(sessionId: string) {
       abortRef.current = controller;
       setStreamError(null);
       setResponseProcess(null);
-      setStreamedText("");
-      segmentsRef.current.clear();
-      commentaryRef.current.clear();
+      restoreFromSnapshot("");
       clearTurnMemory(sessionId);
       const requestId = pendingRequestIdRef.current ?? crypto.randomUUID();
       pendingRequestIdRef.current = requestId;
@@ -358,6 +371,7 @@ export function useChatTurns(sessionId: string) {
       clearTurnMemory,
       hydrateSnapshot,
       queryClient,
+      restoreFromSnapshot,
       sessionId,
       startObservation,
       turn,

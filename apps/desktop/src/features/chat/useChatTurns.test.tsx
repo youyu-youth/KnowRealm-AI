@@ -348,4 +348,84 @@ describe("useChatTurns 停止与会话恢复", () => {
       expect.anything(),
     );
   });
+
+  it("恢复快照后继续收 token：正文追加在快照基准之后而非覆盖", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let handlers: StreamHandlers | undefined;
+    chatApi.activeTurn.mockResolvedValue(
+      turnSnapshot({ last_seq: 7, output_text: "prefix" }),
+    );
+    chatApi.getTurn.mockResolvedValue(
+      turnSnapshot({ last_seq: 7, output_text: "prefix" }),
+    );
+    chatApi.turnEvents.mockImplementation(
+      (_turnId: string, afterSeq: number, next: StreamHandlers) => {
+        // 只接本用例 hook 的订阅（游标 7）：其它用例卸载后可能补一次调用。
+        if (afterSeq !== 7) return new Promise<void>(() => {});
+        handlers = next;
+        return new Promise<void>(() => {});
+      },
+    );
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useChatTurns("s-1"), { wrapper });
+    await waitFor(() => {
+      expect(result.current.streamedText).toBe("prefix");
+      expect(handlers).toBeDefined();
+    });
+    // 快照是权威基准（规格 §5）：从 last_seq 续订的 token 只能追加在它之后。
+    act(() => handlers?.onToken("suffix", "segment-1"));
+    expect(result.current.streamedText).toBe("prefixsuffix");
+  });
+
+  it("断线重连恢复快照后继续收 token：正文追加在快照基准之后而非覆盖", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let rejectedOnce = false;
+    let handlers: StreamHandlers | undefined;
+    chatApi.activeTurn.mockResolvedValue(
+      turnSnapshot({ last_seq: 7, output_text: "prefix" }),
+    );
+    chatApi.getTurn.mockResolvedValue(
+      turnSnapshot({ last_seq: 7, output_text: "prefix" }),
+    );
+    chatApi.turnEvents.mockImplementation(
+      (_turnId: string, afterSeq: number, next: StreamHandlers) => {
+        // 只接本用例 hook 的订阅（游标 7）：其它用例卸载后可能补一次调用。
+        if (afterSeq !== 7) return new Promise<void>(() => {});
+        if (!rejectedOnce) {
+          // 第一次订阅被网络中断（非用户中止、无终态）→ 走快照对账重连。
+          rejectedOnce = true;
+          return Promise.reject(
+            Object.assign(new Error("network down"), { name: "NetworkError" }),
+          );
+        }
+        handlers = next;
+        return new Promise<void>(() => {});
+      },
+    );
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useChatTurns("s-1"), { wrapper });
+    await waitFor(
+      () => {
+        expect(result.current.streamedText).toBe("prefix");
+        expect(handlers).toBeDefined();
+      },
+      { timeout: 4000 },
+    );
+    expect(chatApi.turnEvents).toHaveBeenCalledWith(
+      TURN_ID,
+      7,
+      expect.anything(),
+      expect.anything(),
+    );
+    act(() => handlers?.onToken("suffix", "segment-1"));
+    expect(result.current.streamedText).toBe("prefixsuffix");
+  });
 });
