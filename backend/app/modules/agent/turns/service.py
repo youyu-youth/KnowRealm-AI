@@ -20,7 +20,7 @@ from typing import Any, cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import CursorResult, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -158,6 +158,19 @@ async def list_turn_events(session: AsyncSession, turn_id: str) -> list[ChatTurn
             )
         ).all()
     )
+
+
+async def _begin_read_snapshot(session: AsyncSession) -> None:
+    """投影读取前取得真实 SQLite 读事务快照（规格 §5「查询快照以一致数据库视图
+    返回 last_seq」）。
+
+    pysqlite/aiosqlite 只为 DML 隐式 BEGIN：同 session 的多个 SELECT 各自取最新
+    已提交快照，轮次行与事件列表之间可能夹入一次并发提交，令 last_seq 与正文互相
+    矛盾（客户端按该游标补发会重复已渲染正文）。显式 BEGIN 使后续读取共享同一读
+    快照（WAL 下读者不阻塞写者）；须在会话首个语句前调用，调用方均为只读投影的
+    请求级新会话。
+    """
+    await session.execute(text("BEGIN"))
 
 
 def turn_out(turn: ChatTurn, events: list[ChatTurnEvent] | None = None) -> ChatTurnOut:
@@ -392,6 +405,7 @@ class ChatTurnService:
     ) -> ChatTurnOut | None:
         """一致视图返回状态、正文投影与 last_seq（客户端从该序号补发）。"""
         async with session_factory() as session:
+            await _begin_read_snapshot(session)
             turn = await get_turn(session, turn_id)
             if turn is None:
                 return None
@@ -431,6 +445,9 @@ class ChatTurnService:
     ) -> list[ChatTurnOut]:
         """轮次列表投影：active_only（至多一条）带事件投影（返回会话时
         部分输出与过程可见，规格 §15）；其余列表不带事件（轻量元数据）。"""
+        if active_only:
+            # 带事件投影时先取一致读快照：last_seq 与正文必须同源（规格 §5）。
+            await _begin_read_snapshot(session)
         rows = await ChatTurnService.list_session_turns(
             session,
             session_id,

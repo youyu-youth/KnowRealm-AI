@@ -2,6 +2,9 @@ import type { components } from "@knowrealm/api-types";
 
 export type ChatSession = components["schemas"]["ChatSessionOut"];
 export type ChatMessage = components["schemas"]["ChatMessageOut"];
+/** 消息所属轮次的引用（规格 §15）：终态部分输出与完成载荷（成果恢复入口）。 */
+export type ChatMessageTurn = NonNullable<ChatMessage["turn"]>;
+export type ChatTurnResult = NonNullable<ChatMessageTurn["result"]>;
 export type ChatResponseProcess =
   components["schemas"]["ChatResponseProcessOut"];
 /** ChatTurn（切换会话不中断任务，票 01）：一条用户输入对应的一次回答生成。 */

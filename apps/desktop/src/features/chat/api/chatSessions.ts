@@ -10,6 +10,7 @@ import type {
   ChatSession,
   ChatSessionCreate,
   ChatTurn,
+  ChatTurnResult,
   ChatTurnsPage,
   KnowledgePointOut,
 } from "@/features/chat/api/types";
@@ -101,6 +102,21 @@ function parseTurnProposalFields(data: Record<string, unknown>): {
     ...(memoryUsed !== undefined ? { memoryUsed } : {}),
     ...(Array.isArray(data.memory_proposals) ? { memoryProposals } : {}),
     ...(Array.isArray(data.research_proposals) ? { researchProposals } : {}),
+  };
+}
+
+/** 历史行轮次载荷的展示子集解析（与 done 载荷同一防御性收窄，规格 §15 恢复入口）。 */
+export function parseTurnResult(result: ChatTurnResult | null | undefined): {
+  memoryUsed: string[];
+  proposals: ChatMemoryProposalPayload[];
+  researchProposals: ChatResearchProposalPayload[];
+} | null {
+  if (result == null) return null;
+  const parsed = parseTurnProposalFields({ ...result });
+  return {
+    memoryUsed: parsed.memoryUsed ?? [],
+    proposals: parsed.memoryProposals ?? [],
+    researchProposals: parsed.researchProposals ?? [],
   };
 }
 

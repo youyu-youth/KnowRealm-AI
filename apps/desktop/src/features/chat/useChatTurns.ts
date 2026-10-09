@@ -121,34 +121,26 @@ export function useChatTurns(sessionId: string) {
 
   const finalizeStalled = useCallback(
     async (turnId: string) => {
-      // 终态但未见 done（取消 / 中断 / 快照对账发现）。取消对齐旧停止 UX：
-      // 丢弃半截文本、末尾未回复提问露出「重新生成」；中断保留部分输出
-      // （回到会话仍可看到已生成内容）。
+      // 终态但未见 done（取消 / 失败 / 中断 / 快照对账发现）。部分输出保留展示
+      // （规格 §5/§15）：先由快照正文承接，历史查询回来后交给轮次引用块渲染
+      // （避免同文重复）；末尾未回复提问仍露出「重新生成」。
       const snapshot = await chatApi.getTurn(turnId).catch(() => null);
       if (snapshot && isObserverTerminal(snapshot.status)) {
         setTurn(snapshot);
         if (snapshot.process) setResponseProcess(snapshot.process);
-        if (snapshot.status === "FAILED") {
-          setStreamError(snapshot.error_message || t("chat.turn.failed"));
-          clearTransientState();
-        } else if (snapshot.status === "CANCELLED") {
-          setStreamError(null);
-          clearTransientState();
-        } else if (snapshot.status === "INTERRUPTED") {
-          // 中断原因呈现（票边界：原会话可查看原因并停止，无继续按钮）。
-          setStreamError(null);
-          clearTransientState();
-          setStreamedText(snapshot.output_text || "");
-          setStreamError(t("chat.turn.interrupted"));
-        } else {
-          setStreamError(null);
-          clearTransientState();
-          setStreamedText(snapshot.output_text || "");
-        }
+        setStreamError(
+          snapshot.status === "FAILED"
+            ? snapshot.error_message || t("chat.turn.failed")
+            : snapshot.status === "INTERRUPTED"
+              ? t("chat.turn.interrupted")
+              : null,
+        );
+        setStreamedText(snapshot.output_text || "");
         invalidateTurnSideEffects();
-        void queryClient.invalidateQueries({
+        await queryClient.invalidateQueries({
           queryKey: chatKeys.messages(sessionId),
         });
+        clearTransientState();
         return;
       }
     },

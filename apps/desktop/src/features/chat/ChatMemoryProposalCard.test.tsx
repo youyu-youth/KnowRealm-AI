@@ -63,6 +63,22 @@ describe("ChatMemoryProposalCard", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("历史轮次载荷恢复（memory 入参）不依赖本客户端内存态", () => {
+    // 离开期间完成的轮次没有 live done 载荷：卡片由历史轮次载荷恢复。
+    renderWithQuery(
+      <ChatMemoryProposalCard
+        sessionId={SESSION_ID}
+        memory={{
+          sessionId: SESSION_ID,
+          memoryUsed: [],
+          proposals: [{ proposalId: "p-10", items: ["偏好晚间复习"] }],
+          researchProposals: [],
+        }}
+      />,
+    );
+    expect(screen.getByText(/偏好晚间复习/)).toBeVisible();
+  });
+
   it("确认记忆提案调用 confirm 并显示已记住", async () => {
     confirmProposal.mockResolvedValue({ status: "APPLIED" });
     setTurnMemory([{ proposalId: "p-1", items: ["先看例题"] }]);

@@ -355,6 +355,37 @@ class ChatResponseProcessOut(BaseModel):
         return iso_utc(value) if value is not None else None
 
 
+class ChatTurnResultOut(BaseModel):
+    """轮次完成载荷的展示子集（成果恢复入口：本轮注入记忆与新建提案）。
+
+    形状与 done 事件一致，前端沿用同一防御性解析；不携带最终正文与执行回执
+    （正文以最终消息 / 部分输出为准，回执以 assistant 行锚点 + operation 查询
+    为事实源）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    memory_used: list[str] = Field(default_factory=list[str])
+    memory_proposals: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
+    research_proposals: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
+
+
+class ChatMessageTurnOut(BaseModel):
+    """消息所属轮次的引用（规格 §15「以轮次引用合并」）。
+
+    - status：轮次状态（取值同 ChatTurnStatus；终态据此展示原因）；
+    - output_text：无最终消息（取消 / 失败 / 中断）时的已持久化部分输出；
+    - result：已完成轮次的展示载荷（记忆注入与提案，跨会话恢复确认卡）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    status: str
+    output_text: str = ""
+    result: ChatTurnResultOut | None = None
+
+
 class ChatMessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -375,6 +406,9 @@ class ChatMessageOut(BaseModel):
     response_processes: list[ChatResponseProcessOut] = Field(
         default_factory=list[ChatResponseProcessOut]
     )
+    # 轮次引用（规格 §15）：取消 / 失败 / 中断的部分输出与完成载荷的恢复入口；
+    # 非轮次历史行（旧数据）为 None。
+    turn: ChatMessageTurnOut | None = None
 
     @model_validator(mode="after")
     def load_message_payloads(self) -> "ChatMessageOut":

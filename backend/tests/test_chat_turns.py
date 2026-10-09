@@ -8,7 +8,7 @@ T11 当前轮次取消、T19 活动删除、T21 迁移持久化与启动对账�
 
 import asyncio
 import json
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -319,6 +319,130 @@ async def test_active_turn_list_carries_partial_output_projection(
 
 
 @pytest.mark.anyio
+async def test_snapshot_projection_is_consistent_across_concurrent_commit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """快照正文与游标必须来自一致视图（规格 §5「查询快照以一致数据库视图返回
+    last_seq」）：事件读取跨越一次并发提交时，last_seq 与 output_text 不得互相
+    矛盾，否则客户端按 last_seq 补发会重复已渲染正文。
+
+    pysqlite/aiosqlite 只为 DML 隐式 BEGIN，同 session 的多个 SELECT 各自取最新
+    已提交快照；本用例把「轮次行读取」与「事件读取」之间的真实窗口加宽为可控门
+    （事件读取前挂起，期间放行模型提交 seq 2/3），两条消费路径（单轮次快照与
+    active_only 列表）同时验证。
+    """
+    import app.modules.agent.turns.service as turns_service
+
+    original_list_turn_events = turns_service.list_turn_events
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    waiting = 0
+
+    async def gated_list_turn_events(session: Any, turn_id: str) -> Any:
+        nonlocal waiting
+        waiting += 1
+        if waiting >= 2:
+            entered.set()
+        await release.wait()
+        return await original_list_turn_events(session, turn_id)
+
+    gate = asyncio.Event()
+    replies: list[StubReply] = [GatedReply(prefix=("半截",), release=gate)]
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
+        session_id = await create_session(client)
+        submitted = await submit(client, session_id, "一致快照", request_id="req-snap-0001")
+        turn_id = cast(str, submitted.json()["id"])
+        await wait_running_progress(client, turn_id, min_seq=1)
+
+        # 门在进度确认后才装（wait_running_progress 自身会调快照端点）。
+        monkeypatch.setattr(turns_service, "list_turn_events", gated_list_turn_events)
+        # 两条消费路径的请求都停在「事件读取」前（轮次行已读：RUNNING / last_seq=1）。
+        snapshot_task = asyncio.create_task(client.get(f"/api/chat-turns/{turn_id}"))
+        list_task = asyncio.create_task(
+            client.get(f"/api/chat-sessions/{session_id}/turns?active_only=true&limit=1")
+        )
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=10.0)
+            # 挂起期间放行模型：seq 2（正文）与 seq 3（done）提交，轮次完成。
+            gate.set()
+            committed = False
+            for _ in range(150):
+                rows = await db_rows(
+                    tmp_path, "SELECT last_seq FROM chat_turns WHERE id = ?", (turn_id,)
+                )
+                if rows and int(rows[0][0]) >= 3:
+                    committed = True
+                    break
+                await asyncio.sleep(0.1)
+            assert committed, "并发提交未落库"
+        finally:
+            release.set()
+        snapshot_response = await snapshot_task
+        list_response = await list_task
+        assert snapshot_response.status_code == 200
+        assert list_response.status_code == 200
+
+        # 一致视图：正文只能来自游标以内的已提交事件（不得含 seq 2 的「收尾」）。
+        snapshot_body = snapshot_response.json()
+        active_body = list_response.json()["turns"][0]
+        for view in (snapshot_body, active_body):
+            assert view["status"] == "RUNNING"  # 快照即读取时刻的视图
+            assert view["last_seq"] == 1
+            assert view["output_text"] == "半截"
+        # 按快照游标补发：只收到提交后的增量，已渲染正文不重复。
+        events = await drain_events(client, turn_id, after_seq=snapshot_body["last_seq"])
+        delivered_tokens = "".join(
+            cast(str, payload["text"]) for name, payload in events if name == "token"
+        )
+        assert delivered_tokens == "收尾"
+
+
+@pytest.mark.anyio
+async def test_history_carries_turn_ref_partial_output_and_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """历史消息按轮次引用携带成果恢复入口（规格 §5/§15）：取消轮次的部分输出与
+    状态、完成轮次的展示载荷（记忆注入与提案）都在 messages 响应中。"""
+    gate = asyncio.Event()
+    replies: list[StubReply] = [
+        list(STUB_REPLY),  # A：正常完成 → 展示载荷
+        GatedReply(prefix=("半截",), release=gate),  # B：取消 → 部分输出
+    ]
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
+        session_id = await create_session(client)
+        events_a = await drain_events_after_submit(client, session_id, "req-hist-0001")
+        assert events_a[-1][0] == "done"
+        submitted = await submit(client, session_id, "取消的轮次", request_id="req-hist-0002")
+        turn_b = cast(str, submitted.json()["id"])
+        await wait_running_progress(client, turn_b, min_seq=1)
+        cancelled = await client.post(f"/api/chat-turns/{turn_b}/cancel")
+        assert cancelled.status_code == 200
+        await wait_terminal(client, turn_b)
+        gate.set()
+
+        history = cast(
+            list[dict[str, Any]],
+            (await client.get(f"/api/chat-sessions/{session_id}/messages")).json(),
+        )
+        user_rows = [row for row in history if row["role"] == "USER"]
+        assert len(user_rows) == 2
+        # 完成轮次：正文以最终消息为准，展示载荷（记忆注入与提案）随轮次引用。
+        done_ref = user_rows[0]["turn"]
+        assert done_ref["status"] == "COMPLETED"
+        assert done_ref["output_text"] == ""
+        assert done_ref["result"] == {
+            "memory_used": [],
+            "memory_proposals": [],
+            "research_proposals": [],
+        }
+        # 取消轮次：无最终消息 → 部分输出 + 状态按轮次引用可恢复。
+        cancelled_ref = user_rows[1]["turn"]
+        assert cancelled_ref["status"] == "CANCELLED"
+        assert cancelled_ref["output_text"] == "半截"
+        assert cancelled_ref["result"] is None
+
+
+@pytest.mark.anyio
 async def test_turn_cancel_guard_middleware_blocks_model_and_tool() -> None:
     """取消标记已置位时：模型前与工具前中止（副作用前最后一道闸，spec §2/§14）。"""
     from langchain_core.messages import ToolMessage
@@ -584,6 +708,71 @@ async def test_t06_slot_failure_is_targeted_and_other_slot_continues(
         events_retry = await drain_events_after_submit(client, session_a, "req-t06-0003")
         assert events_retry[-1][0] == "done"
         monkeypatch.setattr(turns_worker, "writeback", original_writeback)
+
+
+@pytest.mark.anyio
+async def test_t06_closure_retry_settles_turn_after_job_already_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """故障收口两步之间暂时写失败：恢复后重试必须完成收口，不能永久占用会话
+    （规格 §6「数据库暂时不可写时保留故障身份并重试针对性收口，恢复可写后不能
+    永久占用会话」）。
+
+    注入两次「暂时不可写」：①模型失败记账事务（mark_failed 首次调用抛错）——
+    轮次保持 RUNNING 进入针对性收口；②收口第二步（轮次终态事务
+    finalize_terminal 首次调用抛错）——job 已提交 FAILED、轮次仍未收口。
+    重试时 job 已非 RUNNING：修复前直接返回、轮次永久 RUNNING（会话被占用、
+    新问 409）；修复后仍按轮次事实继续收口。
+    """
+    import app.modules.agent.turns.worker as turns_worker
+    from app.modules.agent.turns.service import ChatTurnService
+
+    original_mark_failed = turns_worker.mark_failed
+    original_finalize_terminal = cast(
+        "Callable[..., Awaitable[bool]]", ChatTurnService.finalize_terminal
+    )
+    pending = {"mark_failed": 1, "finalize_terminal": 1}
+
+    def flaky_mark_failed(
+        job: Any, *, code: str, message: str, now: Any, clear_next_run: bool = False
+    ) -> None:
+        if pending["mark_failed"] > 0 and job.job_type == "CHAT_TURN":
+            pending["mark_failed"] -= 1
+            raise RuntimeError("storage temporarily unavailable")
+        original_mark_failed(
+            job, code=code, message=message, now=now, clear_next_run=clear_next_run
+        )
+
+    async def flaky_finalize_terminal(*args: Any, **kwargs: Any) -> bool:
+        if pending["finalize_terminal"] > 0:
+            pending["finalize_terminal"] -= 1
+            raise RuntimeError("storage temporarily unavailable")
+        return await original_finalize_terminal(*args, **kwargs)
+
+    monkeypatch.setattr(turns_worker, "mark_failed", flaky_mark_failed)
+    monkeypatch.setattr(ChatTurnService, "finalize_terminal", staticmethod(flaky_finalize_terminal))
+    replies: list[StubReply] = [None, list(STUB_REPLY)]
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
+        session_id = await create_session(client)
+        submitted = await submit(client, session_id, "收口重试", request_id="req-t06b-0001")
+        turn_id = cast(str, submitted.json()["id"])
+
+        final = await wait_terminal(client, turn_id)
+        assert final["status"] == "FAILED"
+        assert pending == {"mark_failed": 0, "finalize_terminal": 0}  # 两次注入均命中
+        job_rows = await db_rows(
+            tmp_path,
+            "SELECT status, error_message FROM processing_jobs "
+            "WHERE job_type = 'CHAT_TURN' AND input_json = ?",
+            (json.dumps({"turn_id": turn_id}, separators=(",", ":")),),
+        )
+        # job 由针对性收口（非失败记账）落 FAILED：轮次收口随后才由重试补齐。
+        assert [tuple(str(value) for value in row) for row in job_rows] == [
+            ("FAILED", "回答生成执行异常")
+        ]
+        # 会话已释放：新问照常受理并完成（未被永久占用）。
+        events = await drain_events_after_submit(client, session_id, "req-t06b-0002")
+        assert events[-1][0] == "done"
 
 
 # ---------------------------------------------------------------------------

@@ -2335,7 +2335,12 @@
       "disconnected": "Connection lost. The answer is still being generated in the background; refresh or come back later to continue reading",
       "failed": "Answer generation failed",
       "missing": "The turn does not exist or has been deleted",
-      "interrupted": "Answer generation was interrupted; generated content is kept"
+      "interrupted": "Answer generation was interrupted; generated content is kept",
+      "partial": {
+        "cancelled": "The answer was stopped. Below is the partial content that was generated",
+        "failed": "Answer generation failed. Below is the partial content that was generated",
+        "interrupted": "Answer generation was interrupted. Below is the partial content that was generated"
+      }
     }
   },
   "settings": {

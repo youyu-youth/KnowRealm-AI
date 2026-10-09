@@ -12,7 +12,8 @@
   完成提交与取消裁决同事务串行——取消先提交则拒绝完成提交（不写最终消息与
   done 事件），按取回收口，迟到输出不得转回完成；
 - 失败收口：单槽故障只收口对应轮次与 job（apply_failure 条件更新）；
-  on_loop_failure 禁全局恢复（双槽会误伤兄弟槽在途轮次），只做针对性收口；
+  on_loop_failure 禁全局恢复（双槽会误伤兄弟槽在途轮次），只做针对性收口
+  （job 已终态时仍按轮次事实补齐收口，重试恢复可写后不永久占用会话）；
 - 启动对账经 ChatTurnRecovery 一次性闸门：RUNNING → INTERRUPTED 保留内容，
   禁止不安全续跑（安全重放由后续票交付）。
 """
@@ -715,12 +716,15 @@ def chat_turn_spec(
 
     async def targeted_closure(claim: _ClaimedTurn) -> bool:
         # 双槽禁全局恢复（兄弟槽在途轮次会被误翻 INTERRUPTED）：只针对性收口
-        # 本槽最后一次领取；轮次收口复用 finalize_terminal（同条件守卫）。
+        # 本槽最后一次领取。job 已终态时仍按轮次事实继续收口（job 先落 FAILED、
+        # 轮次收口暂时失败的重试路径），轮次收口复用 finalize_terminal（同条件
+        # 守卫）；任一事务暂时写失败整体不生效，重试恢复可写后必须完成收口，
+        # 不能永久占用会话（规格 §6）。
+        now = utcnow()
         async with session_factory() as session, session.begin():
             job = await session.get(ProcessingJob, claim.job_id)
-            if job is None or job.status != ProcessingJobStatus.RUNNING:
-                return False
-            mark_failed(job, code=CHAT_STREAM_FAILED, message="回答生成执行异常", now=utcnow())
+            if job is not None and job.status == ProcessingJobStatus.RUNNING:
+                mark_failed(job, code=CHAT_STREAM_FAILED, message="回答生成执行异常", now=now)
         await ChatTurnService.finalize_terminal(
             session_factory=session_factory,
             turn_id=claim.turn_id,

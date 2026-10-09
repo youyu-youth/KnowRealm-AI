@@ -17,7 +17,9 @@ import type { ChatCitation, ChatMessage } from "@/features/chat/api/types";
 import { ChatContextPanel } from "@/features/chat/ChatContextPanel";
 import { ChatConversationView } from "@/features/chat/ChatConversationView";
 import { ChatSessionSidebar } from "@/features/chat/ChatSessionSidebar";
+import { useChatUiStore } from "@/features/chat/chatUiStore";
 import { NewChatButton } from "@/features/chat/NewChatButton";
+import { deriveTurnMemory } from "@/features/chat/turnMemory";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
 import { ApiError } from "@/services/http/client";
@@ -63,6 +65,14 @@ export function ChatWorkspace({
     provider.data?.provider != null && provider.data.provider.has_api_key;
 
   const citations = collectCitations(messages.data ?? []);
+  // 右栏「本轮 AI 记忆」：live done 载荷优先，缺省从历史轮次载荷恢复（规格 §15）。
+  const liveTurnMemory = useChatUiStore((state) => state.turnMemory);
+  const turnMemory =
+    sessionId !== undefined && liveTurnMemory?.sessionId === sessionId
+      ? liveTurnMemory
+      : sessionId !== undefined
+        ? deriveTurnMemory(messages.data ?? [], sessionId)
+        : null;
 
   return (
     <section className="flex h-full min-h-0">
@@ -150,6 +160,7 @@ export function ChatWorkspace({
           courseDeleted={detail.data?.course_deleted ?? false}
           libraryItemDeleted={detail.data?.library_item_deleted ?? false}
           citations={citations}
+          turnMemory={turnMemory}
         />
       ) : null}
     </section>

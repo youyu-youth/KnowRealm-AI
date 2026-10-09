@@ -36,15 +36,18 @@ from app.modules.agent.runs.schemas import OperationStatus
 from app.modules.agent.runs.service import list_nonterminal_runs
 from app.modules.agent.schemas import (
     ChatMessageOut,
+    ChatMessageTurnOut,
     ChatMode,
     ChatPageSnapshot,
     ChatResponseProcessOut,
     ChatScope,
+    ChatTurnResultOut,
 )
 from app.modules.agent.session_service import ChatSessionService
 from app.modules.agent.tools.time_utils import format_time_hint
 from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent
-from app.modules.agent.turns.projection import process_out_for
+from app.modules.agent.turns.projection import build_output_text, event_payload, process_out_for
+from app.modules.agent.turns.schemas import ChatTurnEventType, ChatTurnStatus
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.knowledge_point.schemas import KnowledgePointGenerationStatus
@@ -63,6 +66,48 @@ from app.shared.errors import CodedHTTPException
 
 # stream_chat_reply 经本模块属性调用（turns worker 的测试替换缝隙先例保留）。
 __all__ = ["ChatMessageService", "SessionPromptContext", "stream_chat_reply"]
+
+# 部分输出恢复口径（规格 §5/§15）：终态或中断且无最终消息时，历史行按轮次引用
+# 携带已持久化部分输出；RUNNING 由前端流式态负责，不在此重复。
+_PARTIAL_OUTPUT_STATUSES = (
+    ChatTurnStatus.CANCELLED.value,
+    ChatTurnStatus.FAILED.value,
+    ChatTurnStatus.INTERRUPTED.value,
+)
+
+
+def _str_list(value: object) -> list[str]:
+    items = cast("list[object]", value) if isinstance(value, list) else []
+    return [item for item in items if isinstance(item, str)]
+
+
+def _dict_list(value: object) -> list[dict[str, Any]]:
+    items = cast("list[object]", value) if isinstance(value, list) else []
+    return [cast("dict[str, Any]", item) for item in items if isinstance(item, dict)]
+
+
+def _turn_ref(turn: ChatTurn, events: list[ChatTurnEvent]) -> ChatMessageTurnOut:
+    """轮次引用投影（规格 §15）：部分输出（终态 / 中断且无最终消息）与完成载荷
+    展示子集（本轮注入记忆与新建提案，跨会话 / 重启恢复确认卡）。"""
+    output_text = (
+        build_output_text(events)
+        if turn.final_message_id is None and turn.status in _PARTIAL_OUTPUT_STATUSES
+        else ""
+    )
+    result: ChatTurnResultOut | None = None
+    for row in events:
+        if row.type != ChatTurnEventType.DONE.value:
+            continue
+        payload = event_payload(row)
+        result = ChatTurnResultOut(
+            memory_used=_str_list(payload.get("memory_used")),
+            memory_proposals=_dict_list(payload.get("memory_proposals")),
+            research_proposals=_dict_list(payload.get("research_proposals")),
+        )
+        break
+    return ChatMessageTurnOut(
+        id=turn.id, status=turn.status, output_text=output_text, result=result
+    )
 
 
 # 会话标题默认取首条用户消息的截断长度。
@@ -623,6 +668,7 @@ class ChatMessageService:
         by_user: dict[str, list[ChatResponseProcessOut]] = {}
         for row in processes:
             by_user.setdefault(row.user_message_id, []).append(process_out(row))
+        turn_by_user: dict[str, ChatMessageTurnOut] = {}
         turns = list(
             (
                 await session.scalars(
@@ -646,13 +692,16 @@ class ChatMessageService:
             for event in events:
                 events_by_turn.setdefault(event.turn_id, []).append(event)
             for turn in turns:
-                process = process_out_for(turn, events_by_turn.get(turn.id, []))
+                turn_events = events_by_turn.get(turn.id, [])
+                process = process_out_for(turn, turn_events)
                 bucket = by_user.setdefault(turn.user_message_id, [])
                 bucket.append(process)
                 bucket.sort(key=lambda item: (item.started_at, item.id))
+                turn_by_user[turn.user_message_id] = _turn_ref(turn, turn_events)
         result = [ChatMessageOut.model_validate(message) for message in messages]
         for message in result:
             message.response_processes = by_user.get(message.id, [])
+            message.turn = turn_by_user.get(message.id)
         return result
 
     @staticmethod

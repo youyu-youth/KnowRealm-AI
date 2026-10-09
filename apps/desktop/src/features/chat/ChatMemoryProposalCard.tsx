@@ -5,22 +5,29 @@ import {
   libraryApi,
   type AgentProposalOut,
 } from "@/features/library/api/library";
-import { useChatUiStore } from "@/features/chat/chatUiStore";
+import {
+  useChatUiStore,
+  type ChatTurnMemory,
+} from "@/features/chat/chatUiStore";
 
 type ChatMemoryProposalCardProps = {
   sessionId: string;
+  /** 当轮展示态（历史恢复入口，规格 §15）；缺省回落到本客户端内存态（done 载荷）。 */
+  memory?: ChatTurnMemory | null;
 };
 
 type Decision = "APPLIED" | "REJECTED";
 
 /** 消息流内的 MEMORY 提案就地确认卡（工单 06，ADR-0025）：模型经
- * propose_memory 创建的待确认提案，确认写入 / 拒绝零变更；数据源为
- * chatUiStore 的当轮临时态，无提案时不渲染。 */
+ * propose_memory 创建的待确认提案，确认写入 / 拒绝零变更；数据源为当轮
+ * 展示态（live done 载荷或历史轮次载荷恢复），无提案时不渲染。 */
 export function ChatMemoryProposalCard({
   sessionId,
+  memory,
 }: ChatMemoryProposalCardProps) {
   const { t } = useTranslation();
-  const turnMemory = useChatUiStore((state) => state.turnMemory);
+  const liveMemory = useChatUiStore((state) => state.turnMemory);
+  const turnMemory = memory !== undefined ? memory : liveMemory;
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

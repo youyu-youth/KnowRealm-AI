@@ -5,10 +5,15 @@ import {
   libraryApi,
   type AgentProposalOut,
 } from "@/features/library/api/library";
-import { useChatUiStore } from "@/features/chat/chatUiStore";
+import {
+  useChatUiStore,
+  type ChatTurnMemory,
+} from "@/features/chat/chatUiStore";
 
 type ChatResearchProposalCardProps = {
   sessionId: string;
+  /** 当轮展示态（历史恢复入口，规格 §15）；缺省回落到本客户端内存态（done 载荷）。 */
+  memory?: ChatTurnMemory | null;
 };
 
 type Decision = "APPLIED" | "REJECTED";
@@ -23,12 +28,15 @@ function proposalDomain(url: string): string {
 
 /** 消息流内的入库提案就地确认卡（研究会话 V1）：模型经 propose_ingest 创建的
  * 「建议保存」提案，确认走现有 RESEARCH_INGEST 应用器（真实抓取入库）、拒绝
- * 零变更；数据源为 chatUiStore 的当轮临时态，无提案时不渲染。 */
+ * 零变更；数据源为当轮展示态（live done 载荷或历史轮次载荷恢复），无提案时
+ * 不渲染。 */
 export function ChatResearchProposalCard({
   sessionId,
+  memory,
 }: ChatResearchProposalCardProps) {
   const { t } = useTranslation();
-  const turnMemory = useChatUiStore((state) => state.turnMemory);
+  const liveMemory = useChatUiStore((state) => state.turnMemory);
+  const turnMemory = memory !== undefined ? memory : liveMemory;
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

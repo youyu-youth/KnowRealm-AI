@@ -1,19 +1,26 @@
 import { Brain } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useChatUiStore } from "@/features/chat/chatUiStore";
+import {
+  useChatUiStore,
+  type ChatTurnMemory,
+} from "@/features/chat/chatUiStore";
 
 type ChatMemoryUsedSectionProps = {
   sessionId: string;
+  /** 当轮展示态（历史恢复入口，规格 §15）；缺省回落到本客户端内存态（done 载荷）。 */
+  memory?: ChatTurnMemory | null;
 };
 
 /** 右栏「本轮 AI 记忆」分区（工单 06）：本轮实际注入的记忆条目（边框卡片、
- * 无填充色）；零注入或本轮未发送消息时不展示或展示空态，事实源为 chatUiStore
- * 的当轮临时态。 */
+ * 无填充色）；零注入或本轮未发送消息时不展示或展示空态，事实源为当轮展示态
+ * （live done 载荷或历史轮次载荷恢复）。 */
 export function ChatMemoryUsedSection({
   sessionId,
+  memory,
 }: ChatMemoryUsedSectionProps) {
   const { t } = useTranslation();
-  const turnMemory = useChatUiStore((state) => state.turnMemory);
+  const liveMemory = useChatUiStore((state) => state.turnMemory);
+  const turnMemory = memory !== undefined ? memory : liveMemory;
   if (turnMemory === null || turnMemory.sessionId !== sessionId) {
     return null;
   }

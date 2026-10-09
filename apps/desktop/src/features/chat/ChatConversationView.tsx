@@ -39,6 +39,7 @@ import {
   RenameChatDialog,
 } from "@/features/chat/ChatSessionDialogs";
 import { ChatSuggestions } from "@/features/chat/ChatSuggestions";
+import { deriveTurnMemory } from "@/features/chat/turnMemory";
 import { CoursePickerDialog } from "@/features/chat/CoursePickerDialog";
 import { RecordMountDialog } from "@/features/chat/RecordMountDialog";
 import { formatChatTimestamp } from "@/features/chat/chatTime";
@@ -121,6 +122,14 @@ export function ChatConversationView({
     (state) => state.authModeBySession[sessionId],
   );
   const scopeUnavailable = recordDeleted || courseDeleted || libraryItemDeleted;
+
+  // 当轮展示态：本客户端 live done 载荷优先；切换 / 刷新 / 离开期间完成的轮次
+  // 从历史轮次载荷恢复（规格 §5/§15 成果恢复入口）。
+  const liveTurnMemory = useChatUiStore((state) => state.turnMemory);
+  const turnMemory =
+    liveTurnMemory?.sessionId === sessionId
+      ? liveTurnMemory
+      : deriveTurnMemory(messages.data ?? [], sessionId);
 
   const visibleCount = (messages.data ?? []).filter(
     (message) => message.role !== "SYSTEM",
@@ -298,10 +307,10 @@ export function ChatConversationView({
         )}
         {/* MEMORY 提案就地确认卡（工单 06）：done 后出现，确认/拒绝即定局；
             本轮注入记忆的展示在右栏上下文面板。 */}
-        <ChatMemoryProposalCard sessionId={sessionId} />
+        <ChatMemoryProposalCard sessionId={sessionId} memory={turnMemory} />
         {/* 入库提案就地确认卡（研究会话 V1）：逐条确认/拒绝，确认后走现有
-            网页入库链路；本轮展示为临时态，提案本体跨重启持久。 */}
-        <ChatResearchProposalCard sessionId={sessionId} />
+            网页入库链路；当轮展示为临时态，提案本体跨重启持久。 */}
+        <ChatResearchProposalCard sessionId={sessionId} memory={turnMemory} />
         {/* 课程创建提案就地确认卡（通用 Agent 工单 02）：完整参数预览，确认后
             真实创建课程并转回执态；断线/重启经提案查询恢复。计划草案卡的
             「重新生成」经父级发送代发指令（放弃旧草案 + Agent 重排一份）。 */}

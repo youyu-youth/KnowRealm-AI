@@ -3352,6 +3352,27 @@ export interface components {
             /** Response Processes */
             response_processes?: components["schemas"]["ChatResponseProcessOut"][];
             role: components["schemas"]["ChatRole"];
+            turn?: components["schemas"]["ChatMessageTurnOut"] | null;
+        };
+        /**
+         * ChatMessageTurnOut
+         * @description 消息所属轮次的引用（规格 §15「以轮次引用合并」）。
+         *
+         *     - status：轮次状态（取值同 ChatTurnStatus；终态据此展示原因）；
+         *     - output_text：无最终消息（取消 / 失败 / 中断）时的已持久化部分输出；
+         *     - result：已完成轮次的展示载荷（记忆注入与提案，跨会话恢复确认卡）。
+         */
+        ChatMessageTurnOut: {
+            /** Id */
+            id: string;
+            /**
+             * Output Text
+             * @default
+             */
+            output_text: string;
+            result?: components["schemas"]["ChatTurnResultOut"] | null;
+            /** Status */
+            status: string;
         };
         /**
          * ChatMode
@@ -3643,6 +3664,26 @@ export interface components {
             updated_at: string;
             /** User Message Id */
             user_message_id: string;
+        };
+        /**
+         * ChatTurnResultOut
+         * @description 轮次完成载荷的展示子集（成果恢复入口：本轮注入记忆与新建提案）。
+         *
+         *     形状与 done 事件一致，前端沿用同一防御性解析；不携带最终正文与执行回执
+         *     （正文以最终消息 / 部分输出为准，回执以 assistant 行锚点 + operation 查询
+         *     为事实源）。
+         */
+        ChatTurnResultOut: {
+            /** Memory Proposals */
+            memory_proposals?: {
+                [key: string]: unknown;
+            }[];
+            /** Memory Used */
+            memory_used?: string[];
+            /** Research Proposals */
+            research_proposals?: {
+                [key: string]: unknown;
+            }[];
         };
         /**
          * ChatTurnStatus

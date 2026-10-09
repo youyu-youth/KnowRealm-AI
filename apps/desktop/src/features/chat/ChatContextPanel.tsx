@@ -21,6 +21,7 @@ import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
 import type { ChatCitation, ChatSession } from "@/features/chat/api/types";
 import { ChatAuthModeSection } from "@/features/chat/ChatAuthModeSection";
+import type { ChatTurnMemory } from "@/features/chat/chatUiStore";
 import { ChatCitationList } from "@/features/chat/ChatCitationList";
 import { ChatMemoryUsedSection } from "@/features/chat/ChatMemoryUsedSection";
 import { ChatCitationsDialog } from "@/features/chat/ChatCitationsDialog";
@@ -52,6 +53,8 @@ type ChatContextPanelProps = {
   courseDeleted: boolean;
   libraryItemDeleted: boolean;
   citations: ChatCitation[];
+  /** 当轮展示态（历史恢复入口，规格 §15）；缺省由分区回落到本客户端内存态。 */
+  turnMemory?: ChatTurnMemory | null;
 };
 
 /**
@@ -67,6 +70,7 @@ export function ChatContextPanel({
   courseDeleted,
   libraryItemDeleted,
   citations,
+  turnMemory,
 }: ChatContextPanelProps) {
   const { t } = useTranslation();
   const tools = useChatUiStore((state) => state.tools);
@@ -201,7 +205,7 @@ export function ChatContextPanel({
       </section>
 
       {/* 本轮 AI 记忆（工单 06）：输入侧信息与挂载上下文相邻，先于引用产出。 */}
-      <ChatMemoryUsedSection sessionId={sessionId} />
+      <ChatMemoryUsedSection sessionId={sessionId} memory={turnMemory} />
 
       {/* 会话授权档位（通用 Agent 工单 02）：临时切换仅本会话生效，重启回落
           全局默认；切换先写审计。 */}

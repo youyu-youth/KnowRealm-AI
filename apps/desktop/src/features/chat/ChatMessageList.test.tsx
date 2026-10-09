@@ -392,3 +392,50 @@ describe("ChatMessageList 过程行展示（10-06 追加修复）", () => {
     ).toHaveLength(4);
   });
 });
+
+describe("ChatMessageList — 终态轮次部分输出（规格 §5/§15 成果恢复入口）", () => {
+  it("取消轮次按轮次引用展示已持久化部分正文与原因", () => {
+    renderWithQuery(
+      <ChatMessageList
+        {...BASE}
+        messages={[
+          {
+            ...userWithProcess(),
+            turn: {
+              id: "turn-1",
+              status: "CANCELLED",
+              output_text: "已生成的一半",
+              result: null,
+            },
+          },
+        ]}
+        streamingText={null}
+      />,
+    );
+    expect(
+      screen.getByText("回答已停止，以下是已生成的部分内容"),
+    ).toBeVisible();
+    expect(screen.getByText("已生成的一半")).toBeVisible();
+  });
+
+  it("完成轮次（正文以最终消息为准）不渲染部分输出块", () => {
+    renderWithQuery(
+      <ChatMessageList
+        {...BASE}
+        messages={[
+          {
+            ...userWithProcess(),
+            turn: {
+              id: "turn-2",
+              status: "COMPLETED",
+              output_text: "",
+              result: null,
+            },
+          },
+        ]}
+        streamingText={null}
+      />,
+    );
+    expect(screen.queryByText("回答已停止，以下是已生成的部分内容")).toBeNull();
+  });
+});
