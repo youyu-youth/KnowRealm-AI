@@ -36,6 +36,9 @@ const messageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   minute: "2-digit",
 });
 
+/** 会向上移动滚动位置的按键：按下即视为用户滚动意图（不抢阅读位置）。 */
+const SCROLL_UP_KEYS = new Set(["ArrowUp", "PageUp", "Home"]);
+
 /** 计划草案 JSON 折叠块（工单 02 真机验收兜底）：正文整体即草案 JSON 时
  * （模型未输出中文复述），以摘要行 + 可展开原始数据呈现并引导重新发起。 */
 function PlanDraftJsonBlock({
@@ -81,6 +84,9 @@ export function ChatMessageList({
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
+  // 用户滚动意图：滚轮 / 触摸 / 滚动键 / 滚动条按下才置位，回到最新后清零。
+  // 钉底回执与布局位移（内容增高、收缩夹紧 scrollTop）都不置位。
+  const userScrollRef = useRef(false);
   const readingProcessRef = useRef(false);
   const [showJump, setShowJump] = useState(false);
   const [saveTarget, setSaveTarget] = useState<ChatMessage | null>(null);
@@ -94,17 +100,20 @@ export function ChatMessageList({
     streamingText === null;
 
   // 跟随底部盯内容高度而非消息数 / 流式文本：切回会话后代码高亮、过程卡
-  // 工具条目、终态轮次部分输出都会异步增高，只有高度变化能全覆盖。
+  // 工具条目、终态轮次部分输出都会异步增高，只有高度变化能全覆盖。容器本身
+  // 也要盯：列表下方出现确认卡 / 输入区变高会压矮可视区，钉底需随之更新。
   useEffect(() => {
     const content = contentRef.current;
+    const container = scrollRef.current;
     if (content === null) return;
     const observer = new ResizeObserver(() => {
-      const container = scrollRef.current;
-      if (container && followRef.current && !readingProcessRef.current) {
-        container.scrollTop = container.scrollHeight;
+      const target = scrollRef.current;
+      if (target && followRef.current && !readingProcessRef.current) {
+        target.scrollTop = target.scrollHeight;
       }
     });
     observer.observe(content);
+    if (container !== null) observer.observe(container);
     return () => observer.disconnect();
   }, []);
 
@@ -130,10 +139,39 @@ export function ChatMessageList({
         aria-label={t("chat.process.conversation")}
         onScroll={(event) => {
           const element = event.currentTarget;
-          followRef.current =
-            element.scrollHeight - element.scrollTop - element.clientHeight <=
-            80;
-          setShowJump(!followRef.current);
+          const distance =
+            element.scrollHeight - element.scrollTop - element.clientHeight;
+          if (distance <= 80) {
+            // 已在底部（含用户手动滚回）：恢复跟随。
+            followRef.current = true;
+            userScrollRef.current = false;
+            setShowJump(false);
+            return;
+          }
+          // 只有用户滚动意图才关闭跟随：钉底回执在下一帧派发，期间内容可能已
+          // 大幅增高或收缩夹紧 scrollTop（流式批量 token、完成时一次性落全量
+          // 正文、切回会话注入快照正文），此刻 distance 是假差值，据此关闭会
+          // 让 ResizeObserver 永不再钉底、视图停在半空。
+          if (!userScrollRef.current) return;
+          followRef.current = false;
+          setShowJump(true);
+        }}
+        onWheel={() => {
+          userScrollRef.current = true;
+        }}
+        onTouchMove={() => {
+          userScrollRef.current = true;
+        }}
+        onKeyDown={(event) => {
+          if (SCROLL_UP_KEYS.has(event.key)) userScrollRef.current = true;
+        }}
+        onPointerDown={(event) => {
+          // 滚动条拖动没有独立的滚动信号：按下时指针落在滚动条槽内即算意图。
+          const element = event.currentTarget;
+          const rect = element.getBoundingClientRect();
+          if (event.clientX > rect.left + element.clientWidth) {
+            userScrollRef.current = true;
+          }
         }}
         onClickCapture={(event) => {
           const target = event.target;

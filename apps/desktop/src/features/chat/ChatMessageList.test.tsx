@@ -264,6 +264,7 @@ describe("ChatMessageList 紧凑过程", () => {
       clientHeight: { value: 400, configurable: true },
     });
     scroll.scrollTop = 100;
+    fireEvent.wheel(scroll, { deltaY: -240 });
     fireEvent.scroll(scroll);
     view.rerender(
       <QueryClientProvider client={view.queryClient}>
@@ -343,6 +344,7 @@ describe("ChatMessageList 跟随底部（切回会话恢复，10-09 修复）", 
       expect(scroll.scrollTop).toBe(1000);
       // 用户上滚阅读旧消息。
       scroll.scrollTop = 100;
+      fireEvent.wheel(scroll, { deltaY: -240 });
       fireEvent.scroll(scroll);
       // 过程卡条目增多等异步增高不改变消息数与流式文本：仍不抢滚动位置。
       view.rerender(
@@ -363,6 +365,72 @@ describe("ChatMessageList 跟随底部（切回会话恢复，10-09 修复）", 
       expect(scroll.scrollTop).toBe(1000);
       fireGrowth();
       expect(scroll.scrollTop).toBe(1000);
+    } finally {
+      window.ResizeObserver = originalObserver;
+      ControllableResizeObserver.instances.length = 0;
+    }
+  });
+
+  it("钉底回执晚于内容增高（假 distance）不关闭跟随；用户真上滚仍关闭", () => {
+    const originalObserver = window.ResizeObserver;
+    window.ResizeObserver =
+      ControllableResizeObserver as unknown as typeof ResizeObserver;
+    try {
+      renderWithQuery(
+        <ChatMessageList
+          {...BASE}
+          messages={[userWithProcess()]}
+          streamingText="开始"
+          isStreaming
+        />,
+      );
+      const scroll = screen.getByLabelText("对话消息");
+      Object.defineProperties(scroll, {
+        scrollHeight: { value: 1000, configurable: true },
+        clientHeight: { value: 400, configurable: true },
+      });
+      const fireGrowth = () => {
+        for (const observer of ControllableResizeObserver.instances) {
+          observer.callback([], observer as unknown as ResizeObserver);
+        }
+      };
+      fireGrowth();
+      expect(scroll.scrollTop).toBe(1000);
+      // 完成时一次性落全量正文：内容先增高，钉底回执（scroll 事件）随后才派发，
+      // 此刻 distance 是「新 scrollHeight × 旧 scrollTop」的假差值，不能关闭跟随。
+      Object.defineProperty(scroll, "scrollHeight", {
+        value: 5000,
+        configurable: true,
+      });
+      fireEvent.scroll(scroll);
+      expect(
+        screen.queryByRole("button", { name: "回到最新" }),
+      ).not.toBeInTheDocument();
+      fireGrowth();
+      expect(scroll.scrollTop).toBe(5000);
+      // 收缩夹紧 scrollTop 后内容再增高：回执同样是假差值，不关闭跟随。
+      scroll.scrollTop = 800;
+      Object.defineProperty(scroll, "scrollHeight", {
+        value: 6000,
+        configurable: true,
+      });
+      fireEvent.scroll(scroll);
+      expect(
+        screen.queryByRole("button", { name: "回到最新" }),
+      ).not.toBeInTheDocument();
+      fireGrowth();
+      expect(scroll.scrollTop).toBe(6000);
+      // 用户滚轮上滚：关闭跟随并露出「回到最新」。
+      fireEvent.wheel(scroll, { deltaY: -240 });
+      scroll.scrollTop = 1200;
+      fireEvent.scroll(scroll);
+      expect(screen.getByRole("button", { name: "回到最新" })).toBeVisible();
+      // 滚回底部：恢复跟随。
+      scroll.scrollTop = 6000;
+      fireEvent.scroll(scroll);
+      expect(
+        screen.queryByRole("button", { name: "回到最新" }),
+      ).not.toBeInTheDocument();
     } finally {
       window.ResizeObserver = originalObserver;
       ControllableResizeObserver.instances.length = 0;

@@ -33,7 +33,7 @@ KnowRealm 是一个面向个人学习与工作的 **通用 Agent 工作台**。
 | --------------------------------------------- | ------------------------------------------------------------ |
 | `docs/KnowRealm-AI-功能需求基线-v2.8.md`      | 需求与决策表（#1~#61）                                       |
 | `docs/knowRealm-AI-功能升级与创新扩展设计.md` | KnowRealm-AI 扩展功能文档                                    |
-| `docs/KnowRealm-AI-数据模型-v3.1.md`          | 数据模型（设计 44 张表，已实施 31 张）                       |
+| `docs/KnowRealm-AI-数据模型-v3.1.md`          | 数据模型设计基线；实施差异核对 `backend/migrations/` 与 `PROJECT_PROGRESS.md` |
 | `PROJECT_PROGRESS.md`                         | 项目进度总览文档/交接文档                                    |
 | `docs/技术栈设计与审查-v4.6.md`               | 技术选型与项目结构（§7.1 桌面端 / §7.2 后端）                |
 | `GLOSSARY.md`                                  | 领域术语表（角色≠学习场景、KP≠Concept 等）                   |
@@ -61,6 +61,20 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - 无根 package.json；前端 workspace 由 `pnpm-workspace.yaml` 定义，后端独立用 uv
 - 同仓多会话并行时：pytest 各自独立 basetemp（互踩会产生伪失败）、提交点名 add、git mv 后用 `--follow` 核对
 
+## 按任务定位功能入口
+
+下列路径相对仓库根目录；用于定位现有实现，不代表对应功能已完成全部验收。进入前后端目录后，继续阅读该目录的 `AGENTS.md`。
+
+| 任务 | 优先入口 | 职责边界 |
+| --- | --- | --- |
+| 聊天提交、订阅、停止与返回会话 | `apps/desktop/src/features/chat/useChatTurns.ts`；`backend/app/modules/agent/turns/` | ChatTurn 管一次回答生成；历史消息查询与过程投影见 `agent/message_service.py`，Agent 装配见 `agent/graph.py` |
+| Agent 工具与受控写操作 | `backend/app/modules/agent/tools/`、`middleware/`、`operations/registry.py`；`backend/app/modules/library/proposals.py` | Tool 表达能力，Middleware 拦截调用，注册表与提案框架连接受控执行；业务规则复用领域 Service |
+| 多步业务执行、等待、取消与恢复 | `backend/app/modules/agent/runs/worker.py`；`backend/app/modules/jobs/runner.py`；`backend/app/main.py` | Run 管业务执行，ProcessingJob 管调度；启动装配与恢复接线在 lifespan，不能只检查执行体 |
+| 资料检索、共享范围与引用定位 | `backend/app/modules/library/retrieval.py`、`shared_refs.py`；`backend/app/modules/source_anchor/source_anchors.py` | 分别负责检索、共享可见性与只读边界、来源定位；新增消费方先核对既有作用域口径 |
+| 课程概念图谱 | `backend/app/modules/course_brain/service.py`；`apps/desktop/src/features/courses/` | Course 级 Concept 与 Record 级知识点是不同实体，术语与生命周期查 `GLOSSARY.md` |
+| 学习证据与掌握度 | `backend/app/modules/learning/consumer.py`、`mastery.py` | Consumer 消费学习事实，Mastery 使用确定性算法；不要另建 LLM 掌握度计算链 |
+| 学习目标与计划 | `backend/app/modules/learning_plan/service.py`、`generation.py`、`scheduling.py`；`apps/desktop/src/features/learningPlan/` | 分别定位业务入口、生成与材料收集、确定性排期；Agent 接入继续追踪 `agent/operations/` 与 Run |
+
 
 
 ## 技术文档查询 使用 context7 mcp 或相关context7 skills
@@ -82,11 +96,9 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 2. 设计或创建对应的桌面端ui时，需要遵循 impeccable skill 的规范要求，以及调用它来设计。
    - 不要重复造轮子，需要搞清楚当前的ui组件是否 可以用 shadcn ui 来实现。并保持设计规范。
 
-3. 在测试中产生的任何临时文件，在测试完毕之后都要进行删除
+3. **执行编写任务之前，如果该功能是现有代码可以实现的则复用它，复用优先，禁止重复造轮子，保持代码简洁，且职责分明(适用于前端和后端)**
 
-4. **执行编写任务之前，如果该功能是现有代码可以实现的则复用它，复用优先，禁止重复造轮子，保持代码简洁，且职责分明(适用于前端和后端)**
-
-5. 前端样式设计体系遵循如下分层结构和对应职责：
+4. 前端样式设计体系遵循如下分层结构和对应职责：
 
    | 内容                       | 位置                            |
    | -------------------------- | ------------------------------- |
@@ -95,15 +107,15 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
    | 全局 reset / 基础样式      | `styles/globals.css`            |
    | 动画 keyframes             | `styles/animations.css`         |
 
-6. **（必须遵循）**涉及 `langchain` / `langGraph` / `Deep Agents` 等 Agent 相关代码的编写、设计、搭建时，必须先使用 **langchain mcp 工具**（`langchain-docs`，` langchain-reference`）查询官方文档与 API 参考，**复用现成能力、避免重复造轮子**；或使用 `.agents/skills/` / `.zcode/skills/` / `.claude/skills/` 下的相关 skills（langchain-* / langgraph-* / deep-agents-*）。
+5. **（必须遵循）**涉及 `langchain` / `langGraph` / `Deep Agents` 等 Agent 相关代码的编写、设计、搭建时，必须先使用 **langchain mcp 工具**（`langchain-docs`，` langchain-reference`）查询官方文档与 API 参考，**复用现成能力、避免重复造轮子**；或使用 `.agents/skills/` / `.zcode/skills/` / `.claude/skills/` 下的相关 skills（langchain-* / langgraph-* / deep-agents-*）。
 
-7. 编码时必要时遵循 SOLID、KISS、DRY、YAGNI，保持高内聚、低耦合，避免过度设计与无意义抽象。
+6. 编码时必要时遵循 SOLID、KISS、DRY、YAGNI，保持高内聚、低耦合，避免过度设计与无意义抽象。
 
-8. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
+7. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
 
-9. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
+8. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
 
-10. agent相关功能，多使用Middleware 中间件等 （优先遵循）
+9. agent相关功能，多使用Middleware 中间件等 （优先遵循）
 
 
 
@@ -114,6 +126,17 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - 完成重要功能、架构调整或技术方案变更后，必须同步更新 `PROJECT_PROGRESS.md`。
 - 文档内容必须以当前代码实际状态为准，避免重复开发、状态失真或 Agent 之间的信息断层。
 - `PROJECT_PROGRESS.md`文档行数始终保持在200行内。
+
+## 异步功能与恢复验收
+
+- 长任务分别验收“已受理、执行中、已完成”：受理后已落库的用户消息等事实应及时可见，不能只检查最终结果。
+- 涉及取消、确认或重试时，追踪实际提交事务及所有独立记账事务，包括失败回执；工具调用前的检查不能替代提交处的取消、执行身份与授权校验。
+- 验收报告明确区分静态检查、模型或网络替身、真实 API＋迁移数据库＋Worker、真实模型、Tauri/WebView2；记录实际使用的组合、未执行项与已知缺口，不以测试全绿或工单勾选推断全部真实完成。
+
+## 已核实的规范差异
+
+- 聊天当前契约是 POST 提交轮次、GET 订阅持久事件、显式 cancel；切换会话或卸载只关闭订阅。`apps/desktop/AGENTS.md` 的 `useChatStream` 及 `.claude/rules/desktop-state.md`、`fastapi.md` 的 POST 执行流描述尚未对齐；定位实现应从 `useChatTurns.ts` 与 `agent/turns/routes.py` 开始。
+- `.claude/rules/data-layer.md` 要求迁移只写 DDL，但 `backend/migrations/0040_web_fetch_plan_draft_recovery_budget.sql` 已使用 UPDATE 回填存量任务。此处仅登记冲突；涉及同类迁移时明确提出处理方案，不自行扩大例外范围。
 
 
 
