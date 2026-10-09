@@ -650,7 +650,7 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
           ) : null}
         </div>
 
-        <aside className="border-border bg-background sticky top-4 hidden max-h-[calc(100vh-7rem)] min-h-[calc(100vh-9.5rem)] min-w-0 self-start overflow-y-auto rounded-xl border shadow-[0_4px_16px_rgb(15_23_42/0.045)] xl:block">
+        <aside className="border-border bg-background sticky top-4 hidden max-h-[calc(100vh-var(--spacing-titlebar)-7rem)] min-h-[calc(100vh-var(--spacing-titlebar)-9.5rem)] min-w-0 self-start overflow-y-auto rounded-xl border shadow-[0_4px_16px_rgb(15_23_42/0.045)] xl:block">
           <InboxPreview
             record={selectedRecord}
             onClose={() => updateSearch({ record: undefined })}

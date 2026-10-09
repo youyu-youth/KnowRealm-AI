@@ -44,8 +44,8 @@ export function OnboardingWizard() {
   };
 
   return (
-    <div className="bg-canvas text-foreground min-h-screen">
-      <div className="mx-auto flex min-h-screen w-full max-w-2xl flex-col px-8 pt-12 pb-14">
+    <div className="bg-canvas text-foreground h-full overflow-y-auto">
+      <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-8 pt-12 pb-14">
         <header className="flex items-center gap-3">
           <BookOpenText
             className="text-ink-strong size-5 shrink-0"

@@ -290,7 +290,7 @@ export function AppShell() {
   );
 
   return (
-    <div className="bg-canvas text-foreground max-compact:p-0 flex h-screen min-w-0 overflow-hidden p-2">
+    <div className="bg-canvas text-foreground max-compact:p-0 flex h-full min-w-0 overflow-hidden p-2">
       <AppearanceSync />
       <AppToasts />
       <aside

@@ -67,6 +67,7 @@
   --color-sidebar-ring: var(--sidebar-ring);
 
   --spacing-sidebar: 14rem;
+  --spacing-titlebar: 2.25rem;
   --spacing-topbar: 3.25rem;
   --spacing-content: 1.75rem;
   --spacing-filter-search: 15rem;

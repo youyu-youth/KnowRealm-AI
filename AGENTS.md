@@ -116,6 +116,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 8. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
 
 9. agent相关功能，多使用Middleware 中间件等 （优先遵循）
+10. 使用animate  相关 skills 构建 desktop 动画和动效，增加ux 体验
 
 
 

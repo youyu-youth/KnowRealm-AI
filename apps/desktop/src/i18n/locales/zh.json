@@ -3,6 +3,25 @@
     "name": "KnowRealm",
     "tagline": "个人学习工作台"
   },
+  "windowTitleBar": {
+    "label": "窗口标题栏",
+    "menu": "应用菜单",
+    "file": "文件",
+    "edit": "编辑",
+    "view": "视图",
+    "help": "帮助",
+    "placeholder": "暂未实现",
+    "navigation": "全局导航",
+    "back": "返回",
+    "forward": "前进",
+    "controls": "窗口控制",
+    "minimize": "最小化",
+    "maximize": "最大化",
+    "restore": "还原窗口",
+    "close": "关闭窗口",
+    "stateFailed": "窗口状态暂时无法读取，请重启应用。",
+    "actionFailed": "窗口操作失败，请重试。"
+  },
   "nav": {
     "label": "工作区导航",
     "today": "今日",

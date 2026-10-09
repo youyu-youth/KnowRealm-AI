@@ -22,7 +22,15 @@ pub fn run() {
         ))
         // 窗口几何（尺寸/位置/最大化/显示器夹回）全权交由 window-state 插件，
         // 按决策 #51 豁免：存插件自身配置文件，不进 settings.json。
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        // 装饰由应用配置决定，避免旧窗口状态恢复出系统标题栏。
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        .difference(tauri_plugin_window_state::StateFlags::DECORATIONS),
+                )
+                .build(),
+        )
         .setup(|app| {
             lifecycle::setup(app)?;
             let state = sidecar::start(app.handle())?;

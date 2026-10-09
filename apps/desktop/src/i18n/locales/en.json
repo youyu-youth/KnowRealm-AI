@@ -3,6 +3,25 @@
     "name": "KnowRealm",
     "tagline": "Your personal learning workspace"
   },
+  "windowTitleBar": {
+    "label": "Window title bar",
+    "menu": "Application menu",
+    "file": "File",
+    "edit": "Edit",
+    "view": "View",
+    "help": "Help",
+    "placeholder": "Not implemented yet",
+    "navigation": "Global navigation",
+    "back": "Back",
+    "forward": "Forward",
+    "controls": "Window controls",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
+    "restore": "Restore window",
+    "close": "Close window",
+    "stateFailed": "Window state is unavailable. Please restart the app.",
+    "actionFailed": "Window action failed. Please try again."
+  },
   "nav": {
     "label": "Workspace navigation",
     "today": "Today",

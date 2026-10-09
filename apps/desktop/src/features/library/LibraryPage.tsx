@@ -1315,7 +1315,7 @@ export function LibraryPage({
             </div>
           </div>
 
-          <div className="max-h-[calc(100vh-17rem)] overflow-y-auto pr-0.5">
+          <div className="max-h-[calc(100vh-var(--spacing-titlebar)-17rem)] overflow-y-auto pr-0.5">
             {view === "trash" ? (
               <Alert className="mb-3">
                 <AlertDescription>{t("library.trash.banner")}</AlertDescription>
@@ -1430,7 +1430,7 @@ export function LibraryPage({
           </div>
         </main>
 
-        <aside className="bg-surface-raised hidden max-h-[calc(100vh-11rem)] overflow-y-auto rounded-xl border border-solid p-4 xl:block">
+        <aside className="bg-surface-raised hidden max-h-[calc(100vh-var(--spacing-titlebar)-11rem)] overflow-y-auto rounded-xl border border-solid p-4 xl:block">
           {inspectorBody}
         </aside>
       </div>
