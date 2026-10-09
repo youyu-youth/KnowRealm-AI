@@ -79,6 +79,7 @@ export function ChatMessageList({
 }: ChatMessageListProps) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const followRef = useRef(true);
   const readingProcessRef = useRef(false);
   const [showJump, setShowJump] = useState(false);
@@ -92,12 +93,20 @@ export function ChatMessageList({
     !isStreaming &&
     streamingText === null;
 
+  // 跟随底部盯内容高度而非消息数 / 流式文本：切回会话后代码高亮、过程卡
+  // 工具条目、终态轮次部分输出都会异步增高，只有高度变化能全覆盖。
   useEffect(() => {
-    const container = scrollRef.current;
-    if (container && followRef.current && !readingProcessRef.current) {
-      container.scrollTop = container.scrollHeight;
-    }
-  }, [visible.length, streamingText]);
+    const content = contentRef.current;
+    if (content === null) return;
+    const observer = new ResizeObserver(() => {
+      const container = scrollRef.current;
+      if (container && followRef.current && !readingProcessRef.current) {
+        container.scrollTop = container.scrollHeight;
+      }
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
 
   const allProcesses = visible.flatMap(
     (message) => message.response_processes ?? [],
@@ -138,165 +147,173 @@ export function ChatMessageList({
           }
         }}
       >
-        {visible.length === 0 && streamingText === null ? (
-          showEmptyHint ? (
-            <p className="text-body text-muted-foreground py-8 text-center">
-              {t("chat.emptyConversation")}
-            </p>
-          ) : null
-        ) : (
-          <ul className="flex flex-col gap-6 py-6">
-            {visible.map((message) =>
-              message.role === "USER" ? (
-                <li key={message.id} className="flex min-w-0 flex-col gap-1">
-                  <div className="flex flex-col items-end gap-1">
-                    <p className="bg-primary text-primary-foreground text-body max-w-[85%] rounded-2xl rounded-ee-md px-4 py-2.5 break-words whitespace-pre-wrap">
-                      {message.content}
-                    </p>
-                    <time
-                      dateTime={message.created_at}
-                      className="text-label text-muted-foreground px-1"
-                    >
-                      {messageTimeFormatter.format(
-                        new Date(message.created_at),
-                      )}
-                    </time>
-                  </div>
-                  {(() => {
-                    const processes = [...(message.response_processes ?? [])];
-                    if (liveProcess?.user_message_id === message.id) {
-                      const index = processes.findIndex(
-                        (process) => process.id === liveProcess.id,
-                      );
-                      if (index >= 0) processes[index] = liveProcess;
-                      else processes.push(liveProcess);
-                    }
-                    return processes.map((process) => (
-                      <ChatResponseProcess key={process.id} process={process} />
-                    ));
-                  })()}
-                  {/* 终态轮次的部分输出（规格 §5/§15）：按轮次引用恢复已持久化正文。 */}
-                  <ChatTurnPartialOutput turn={message.turn} />
-                </li>
-              ) : (
-                <li key={message.id} className="flex min-w-0 flex-col gap-3">
-                  {(() => {
-                    const stripped = stripPlanDraftBlocks(message.content);
-                    if (stripped !== null && stripped.rest !== "") {
-                      // 草案 JSON（任意位置）+ 中文复述：移除 JSON 段只渲染中文。
+        <div ref={contentRef}>
+          {visible.length === 0 && streamingText === null ? (
+            showEmptyHint ? (
+              <p className="text-body text-muted-foreground py-8 text-center">
+                {t("chat.emptyConversation")}
+              </p>
+            ) : null
+          ) : (
+            <ul className="flex flex-col gap-6 py-6">
+              {visible.map((message) =>
+                message.role === "USER" ? (
+                  <li key={message.id} className="flex min-w-0 flex-col gap-1">
+                    <div className="flex flex-col items-end gap-1">
+                      <p className="bg-primary text-primary-foreground text-body max-w-[85%] rounded-2xl rounded-ee-md px-4 py-2.5 break-words whitespace-pre-wrap">
+                        {message.content}
+                      </p>
+                      <time
+                        dateTime={message.created_at}
+                        className="text-label text-muted-foreground px-1"
+                      >
+                        {messageTimeFormatter.format(
+                          new Date(message.created_at),
+                        )}
+                      </time>
+                    </div>
+                    {(() => {
+                      const processes = [...(message.response_processes ?? [])];
+                      if (liveProcess?.user_message_id === message.id) {
+                        const index = processes.findIndex(
+                          (process) => process.id === liveProcess.id,
+                        );
+                        if (index >= 0) processes[index] = liveProcess;
+                        else processes.push(liveProcess);
+                      }
+                      return processes.map((process) => (
+                        <ChatResponseProcess
+                          key={process.id}
+                          process={process}
+                        />
+                      ));
+                    })()}
+                    {/* 终态轮次的部分输出（规格 §5/§15）：按轮次引用恢复已持久化正文。 */}
+                    <ChatTurnPartialOutput turn={message.turn} />
+                  </li>
+                ) : (
+                  <li key={message.id} className="flex min-w-0 flex-col gap-3">
+                    {(() => {
+                      const stripped = stripPlanDraftBlocks(message.content);
+                      if (stripped !== null && stripped.rest !== "") {
+                        // 草案 JSON（任意位置）+ 中文复述：移除 JSON 段只渲染中文。
+                        return (
+                          <ChatMarkdown
+                            content={stripped.rest}
+                            citations={message.citations ?? []}
+                          />
+                        );
+                      }
+                      if (stripped !== null) {
+                        return (
+                          <PlanDraftJsonBlock
+                            raw={stripped.blocks[0].json}
+                            itemCount={stripped.blocks.reduce(
+                              (total, block) => total + block.itemCount,
+                              0,
+                            )}
+                          />
+                        );
+                      }
                       return (
                         <ChatMarkdown
-                          content={stripped.rest}
+                          content={message.content}
                           citations={message.citations ?? []}
                         />
                       );
-                    }
-                    if (stripped !== null) {
-                      return (
-                        <PlanDraftJsonBlock
-                          raw={stripped.blocks[0].json}
-                          itemCount={stripped.blocks.reduce(
-                            (total, block) => total + block.itemCount,
-                            0,
-                          )}
+                    })()}
+                    {/* 对话转知识点（对话转学习资产 V1）：messages 里的回答均已落库，可直接保存。 */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-ink h-auto w-fit cursor-pointer gap-1.5 px-2 py-1"
+                      onClick={() => setSaveTarget(message)}
+                    >
+                      <BookmarkPlus
+                        data-icon="inline-start"
+                        aria-hidden="true"
+                        className="size-3.5"
+                      />
+                      {t("chat.saveKp.action")}
+                    </Button>
+                  </li>
+                ),
+              )}
+              {streamingText !== null &&
+              !visible.some(
+                (message) => message.id === liveProcess?.assistant_message_id,
+              ) ? (
+                <li className="flex min-w-0 flex-col gap-3">
+                  {liveProcess &&
+                  !visible.some(
+                    (message) => message.id === liveProcess.user_message_id,
+                  ) ? (
+                    <ChatResponseProcess
+                      key={liveProcess.id}
+                      process={liveProcess}
+                    />
+                  ) : null}
+                  {streamingText ? (
+                    (() => {
+                      const view = planDraftStreamingView(streamingText);
+                      return view.kind === "pending" ? (
+                        <p
+                          role="status"
+                          className="text-body text-muted-foreground animate-pulse"
+                        >
+                          {t("chat.planDraftJson.streaming")}
+                        </p>
+                      ) : (
+                        <ChatMarkdown
+                          content={view.text}
+                          citations={[]}
+                          streaming
                         />
                       );
-                    }
-                    return (
-                      <ChatMarkdown
-                        content={message.content}
-                        citations={message.citations ?? []}
-                      />
-                    );
-                  })()}
-                  {/* 对话转知识点（对话转学习资产 V1）：messages 里的回答均已落库，可直接保存。 */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="text-muted-foreground hover:text-ink h-auto w-fit cursor-pointer gap-1.5 px-2 py-1"
-                    onClick={() => setSaveTarget(message)}
-                  >
-                    <BookmarkPlus
-                      data-icon="inline-start"
-                      aria-hidden="true"
-                      className="size-3.5"
-                    />
-                    {t("chat.saveKp.action")}
-                  </Button>
+                    })()
+                  ) : !liveProcess ? (
+                    <p
+                      role="status"
+                      className="text-body text-muted-foreground"
+                    >
+                      {t("chat.streamingStatus")}
+                    </p>
+                  ) : null}
                 </li>
-              ),
-            )}
-            {streamingText !== null &&
-            !visible.some(
-              (message) => message.id === liveProcess?.assistant_message_id,
-            ) ? (
-              <li className="flex min-w-0 flex-col gap-3">
-                {liveProcess &&
-                !visible.some(
-                  (message) => message.id === liveProcess.user_message_id,
-                ) ? (
-                  <ChatResponseProcess
-                    key={liveProcess.id}
-                    process={liveProcess}
-                  />
-                ) : null}
-                {streamingText ? (
-                  (() => {
-                    const view = planDraftStreamingView(streamingText);
-                    return view.kind === "pending" ? (
-                      <p
-                        role="status"
-                        className="text-body text-muted-foreground animate-pulse"
-                      >
-                        {t("chat.planDraftJson.streaming")}
-                      </p>
-                    ) : (
-                      <ChatMarkdown
-                        content={view.text}
-                        citations={[]}
-                        streaming
-                      />
-                    );
-                  })()
-                ) : !liveProcess ? (
-                  <p role="status" className="text-body text-muted-foreground">
-                    {t("chat.streamingStatus")}
-                  </p>
-                ) : null}
-              </li>
-            ) : null}
-          </ul>
-        )}
+              ) : null}
+            </ul>
+          )}
 
-        {streamError !== null ? (
-          <Alert variant="destructive" className="mt-2">
-            <AlertDescription>{streamError}</AlertDescription>
-          </Alert>
-        ) : null}
+          {streamError !== null ? (
+            <Alert variant="destructive" className="mt-2">
+              <AlertDescription>{streamError}</AlertDescription>
+            </Alert>
+          ) : null}
 
-        {interrupted ? (
-          <div className="border-border-subtle mt-4 flex flex-col gap-2 border-t pt-4">
-            <p className="text-label text-muted-foreground">
-              {t("chat.interruptedDescription")}
-            </p>
-            <div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onRetry(lastVisible.content)}
-              >
-                <RotateCcw data-icon="inline-start" aria-hidden="true" />
-                {t("chat.retryAnswer")}
-              </Button>
+          {interrupted ? (
+            <div className="border-border-subtle mt-4 flex flex-col gap-2 border-t pt-4">
+              <p className="text-label text-muted-foreground">
+                {t("chat.interruptedDescription")}
+              </p>
+              <div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRetry(lastVisible.content)}
+                >
+                  <RotateCcw data-icon="inline-start" aria-hidden="true" />
+                  {t("chat.retryAnswer")}
+                </Button>
+              </div>
             </div>
-          </div>
-        ) : null}
-        <SaveKnowledgePointDialog
-          message={saveTarget}
-          onClose={() => setSaveTarget(null)}
-          sessionId={sessionId}
-          defaultRecordId={defaultRecordId}
-        />
+          ) : null}
+          <SaveKnowledgePointDialog
+            message={saveTarget}
+            onClose={() => setSaveTarget(null)}
+            sessionId={sessionId}
+            defaultRecordId={defaultRecordId}
+          />
+        </div>
       </div>
       {showJump ? (
         <Button

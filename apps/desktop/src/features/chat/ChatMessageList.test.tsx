@@ -296,6 +296,80 @@ describe("ChatMessageList 紧凑过程", () => {
   });
 });
 
+/** jsdom 无真实布局，用手动触发回调的假观察器驱动「内容增高」事件。 */
+class ControllableResizeObserver {
+  static instances: ControllableResizeObserver[] = [];
+  readonly callback: ResizeObserverCallback;
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    ControllableResizeObserver.instances.push(this);
+  }
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): ResizeObserverEntry[] {
+    return [];
+  }
+}
+
+describe("ChatMessageList 跟随底部（切回会话恢复，10-09 修复）", () => {
+  it("内容异步增高（代码高亮 / 过程卡增长）钉住底部；上滚阅读不抢位置", () => {
+    const originalObserver = window.ResizeObserver;
+    window.ResizeObserver =
+      ControllableResizeObserver as unknown as typeof ResizeObserver;
+    try {
+      const process = responseProcess();
+      const view = renderWithQuery(
+        <ChatMessageList
+          {...BASE}
+          messages={[userWithProcess()]}
+          streamingText="开始"
+          responseProcess={process}
+          isStreaming
+        />,
+      );
+      const scroll = screen.getByLabelText("对话消息");
+      Object.defineProperties(scroll, {
+        scrollHeight: { value: 1000, configurable: true },
+        clientHeight: { value: 400, configurable: true },
+      });
+      const fireGrowth = () => {
+        for (const observer of ControllableResizeObserver.instances) {
+          observer.callback([], observer as unknown as ResizeObserver);
+        }
+      };
+      // 挂载（切回会话）即到底。
+      fireGrowth();
+      expect(scroll.scrollTop).toBe(1000);
+      // 用户上滚阅读旧消息。
+      scroll.scrollTop = 100;
+      fireEvent.scroll(scroll);
+      // 过程卡条目增多等异步增高不改变消息数与流式文本：仍不抢滚动位置。
+      view.rerender(
+        <QueryClientProvider client={view.queryClient}>
+          <ChatMessageList
+            {...BASE}
+            messages={[userWithProcess()]}
+            streamingText="开始"
+            responseProcess={process}
+            isStreaming
+          />
+        </QueryClientProvider>,
+      );
+      fireGrowth();
+      expect(scroll.scrollTop).toBe(100);
+      // 回到最新后恢复跟随。
+      fireEvent.click(screen.getByRole("button", { name: "回到最新" }));
+      expect(scroll.scrollTop).toBe(1000);
+      fireGrowth();
+      expect(scroll.scrollTop).toBe(1000);
+    } finally {
+      window.ResizeObserver = originalObserver;
+      ControllableResizeObserver.instances.length = 0;
+    }
+  });
+});
+
 describe("ChatMessageList 过程行展示（10-06 追加修复）", () => {
   it("展开过程后每条文案只出现一次，点击行原地展开不再产生第二份", () => {
     const entries: NonNullable<ChatResponseProcess["entries"]> = [
