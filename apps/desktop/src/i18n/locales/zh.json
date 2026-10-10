@@ -2652,7 +2652,21 @@
         "searchPlaceholder": "输入时区名筛选，如 Asia/Shanghai",
         "noMatch": "没有匹配的时区"
       },
-      "quizCountLegend": "默认习题数量"
+      "quizCountLegend": "默认习题数量",
+      "themeGroups": {
+        "LIGHT": "明亮主题",
+        "DARK": "暗黑主题"
+      },
+      "themeNames": {
+        "LIGHT_DEFAULT": "默认明亮",
+        "LIGHT_SAGE": "柔和青灰",
+        "DARK_DEFAULT": "默认暗黑",
+        "DARK_INK": "克制墨蓝"
+      },
+      "savingTheme": "正在保存主题…",
+      "themeSaveFailed": "主题保存遇到问题，已恢复可确认的外观。请重试。",
+      "saveBusy": "正在保存偏好，请稍后重试。",
+      "startupFailed": "无法读取外观偏好，已使用可用缓存或默认主题。可在设置中重试。"
     },
     "operationHistory": {
       "title": "操作历史",

@@ -1,5 +1,5 @@
 // 图表配色统一读语义 token 的计算值，亮暗主题（.dark 类）随之生效。
-// 主题切换只发生在设置页，返回页面即重挂载并重读 token，故无需监听类翻转；
+// 图表组件订阅根外观变化后重新读取 token，保留原有实例；
 // 取不到值（如 jsdom 无样式表）时交由 echarts 默认色兜底，不阻塞渲染。
 export function cssVar(name: string): string | undefined {
   const value = getComputedStyle(document.documentElement)

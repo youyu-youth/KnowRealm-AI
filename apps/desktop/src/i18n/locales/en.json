@@ -2672,7 +2672,21 @@
         "searchPlaceholder": "Filter by time zone name, e.g. Asia/Shanghai",
         "noMatch": "No matching time zones"
       },
-      "quizCountLegend": "Default question count"
+      "quizCountLegend": "Default question count",
+      "themeGroups": {
+        "LIGHT": "Light themes",
+        "DARK": "Dark themes"
+      },
+      "themeNames": {
+        "LIGHT_DEFAULT": "Default light",
+        "LIGHT_SAGE": "Soft sage",
+        "DARK_DEFAULT": "Default dark",
+        "DARK_INK": "Quiet ink"
+      },
+      "savingTheme": "Saving theme…",
+      "themeSaveFailed": "There was a problem saving the theme. Using the confirmed appearance. Please retry.",
+      "saveBusy": "Preferences are being saved. Please try again shortly.",
+      "startupFailed": "Could not load appearance preferences. Using the available cache or default theme. Retry in settings."
     },
     "operationHistory": {
       "title": "Operation history",

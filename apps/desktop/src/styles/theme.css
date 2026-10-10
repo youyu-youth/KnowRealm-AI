@@ -1,4 +1,18 @@
 :root {
+  --filter-active-background: #000000;
+  --filter-active-foreground: #ffffff;
+  --course-cover-0-from: #eceef1;
+  --course-cover-0-to: #c4c9d2;
+  --course-cover-1-from: #e9edf2;
+  --course-cover-1-to: #b9c3d2;
+  --course-cover-2-from: #eeece8;
+  --course-cover-2-to: #d2c9bd;
+  --course-cover-3-from: #e8ecea;
+  --course-cover-3-to: #bacdc6;
+  --course-cover-4-from: #eceaf0;
+  --course-cover-4-to: #c6bfd2;
+  --course-cover-opacity: 0.09;
+
   --today-ink: #253140;
   --today-muted: #617081;
   --today-border: #e1e6ed;
@@ -71,6 +85,20 @@
 }
 
 .dark {
+  --filter-active-background: #ffffff;
+  --filter-active-foreground: #000000;
+  --course-cover-0-from: #23262c;
+  --course-cover-0-to: #3a3f48;
+  --course-cover-1-from: #212730;
+  --course-cover-1-to: #39434f;
+  --course-cover-2-from: #282520;
+  --course-cover-2-to: #423c33;
+  --course-cover-3-from: #212826;
+  --course-cover-3-to: #37443f;
+  --course-cover-4-from: #26222c;
+  --course-cover-4-to: #3d3745;
+  --course-cover-opacity: 0.12;
+
   --today-ink: #d5d8de;
   --today-muted: #9196a1;
   --today-border: #242831;
@@ -134,6 +162,20 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
+    --filter-active-background: #ffffff;
+    --filter-active-foreground: #000000;
+    --course-cover-0-from: #23262c;
+    --course-cover-0-to: #3a3f48;
+    --course-cover-1-from: #212730;
+    --course-cover-1-to: #39434f;
+    --course-cover-2-from: #282520;
+    --course-cover-2-to: #423c33;
+    --course-cover-3-from: #212826;
+    --course-cover-3-to: #37443f;
+    --course-cover-4-from: #26222c;
+    --course-cover-4-to: #3d3745;
+    --course-cover-opacity: 0.12;
+
     --today-ink: #d5d8de;
     --today-muted: #9196a1;
     --today-border: #242831;
@@ -196,4 +238,178 @@
   :root:not(.light) .markdown-code-token {
     color: var(--shiki-dark);
   }
+}
+
+:root.light[data-theme="LIGHT_SAGE"] {
+  --canvas: #e8eeec;
+  --paper: #f5f8f6;
+  --surface-subtle: #edf3ef;
+  --surface-strong: #dce7e0;
+  --surface-raised: #ffffff;
+  --surface-overlay: #ffffff;
+  --ink: #32483e;
+  --ink-strong: #263c35;
+  --ink-neutral: #425e50;
+  --ink-muted: #587264;
+  --ink-faint: #71877c;
+  --destructive: #a93c44;
+  --border-subtle: #d4dfd8;
+  --input: #c3d3c9;
+  --border-strong: #94ac9e;
+  --focus: #365f4b;
+  --learning: #365f4b;
+  --learning-soft: #e1ede5;
+  --chat-accent: #3d6970;
+  --chat-accent-soft: #e2eef0;
+  --warning-foreground: #825719;
+  --warning-soft: #f4eddc;
+  --success-foreground: #326947;
+  --success-soft: #e4f0e8;
+  --danger-soft: #f7e7e7;
+  --sidebar: #e1eae4;
+  --today-ink: #32483e;
+  --today-muted: #587264;
+  --today-border: #d4dfd8;
+  --today-soft: #edf3ef;
+  --today-surface: #ffffff;
+  --today-accent: #3d6970;
+  --today-primary: #365f4b;
+  --today-primary-foreground: #f5f8f6;
+  --today-focus: #326947;
+  --course-cover-0-from: #e0eae3;
+  --course-cover-0-to: #9fb5a7;
+  --course-cover-1-from: #dfebea;
+  --course-cover-1-to: #9ab4b3;
+  --course-cover-2-from: #e9e9de;
+  --course-cover-2-to: #b4b49b;
+  --course-cover-3-from: #dde9e1;
+  --course-cover-3-to: #98b5a2;
+  --course-cover-4-from: #e6e4e9;
+  --course-cover-4-to: #afa7bb;
+  --course-cover-opacity: 0.09;
+}
+
+:root.dark[data-theme="DARK_INK"] {
+  --canvas: #0e1620;
+  --paper: #15212e;
+  --surface-subtle: #192838;
+  --surface-strong: #25394e;
+  --surface-raised: #213244;
+  --surface-overlay: #1c2d40;
+  --ink: #d2deec;
+  --ink-strong: #e7eef7;
+  --ink-neutral: #b5c8df;
+  --ink-muted: #98afc8;
+  --ink-faint: #7890aa;
+  --destructive: #ef949c;
+  --border-subtle: #2e435b;
+  --input: #3a536e;
+  --border-strong: #617e9d;
+  --focus: #a8c4e5;
+  --learning: #b5cde9;
+  --learning-soft: #293f58;
+  --chat-accent: #a8c4e5;
+  --chat-accent-soft: #293f58;
+  --warning-foreground: #e5c08a;
+  --warning-soft: #343026;
+  --success-foreground: #96d0b8;
+  --success-soft: #223c38;
+  --danger-soft: #432d3b;
+  --sidebar: #111c29;
+  --today-ink: #d2deec;
+  --today-muted: #98afc8;
+  --today-border: #2e435b;
+  --today-soft: #192838;
+  --today-surface: #213244;
+  --today-accent: #a8c4e5;
+  --today-primary: #e7eef7;
+  --today-primary-foreground: #15212e;
+  --today-focus: #96d0b8;
+  --course-cover-0-from: #23364a;
+  --course-cover-0-to: #3f5d7c;
+  --course-cover-1-from: #213749;
+  --course-cover-1-to: #3b5e79;
+  --course-cover-2-from: #303c43;
+  --course-cover-2-to: #596a70;
+  --course-cover-3-from: #223a40;
+  --course-cover-3-to: #3b6266;
+  --course-cover-4-from: #2d344a;
+  --course-cover-4-to: #515d7f;
+  --course-cover-opacity: 0.12;
+}
+
+:root[data-theme="LIGHT_SAGE"],
+:root[data-theme="DARK_INK"] {
+  --filter-active-background: var(--ink-strong);
+  --filter-active-foreground: var(--paper);
+  --color-blue-50: var(--chat-accent-soft);
+  --color-blue-100: color-mix(
+    in oklch,
+    var(--chat-accent-soft) 75%,
+    var(--border-strong)
+  );
+  --color-blue-300: var(--chat-accent);
+  --color-blue-600: var(--chat-accent);
+  --color-blue-700: color-mix(
+    in oklch,
+    var(--chat-accent) 85%,
+    var(--ink-strong)
+  );
+  --color-blue-950: var(--chat-accent-soft);
+  --color-emerald-50: var(--success-soft);
+  --color-emerald-100: color-mix(
+    in oklch,
+    var(--success-soft) 75%,
+    var(--border-strong)
+  );
+  --color-emerald-300: var(--success-foreground);
+  --color-emerald-600: var(--success-foreground);
+  --color-emerald-700: color-mix(
+    in oklch,
+    var(--success-foreground) 85%,
+    var(--ink-strong)
+  );
+  --color-emerald-950: var(--success-soft);
+  --color-violet-50: var(--learning-soft);
+  --color-violet-100: color-mix(
+    in oklch,
+    var(--learning-soft) 75%,
+    var(--border-strong)
+  );
+  --color-violet-300: var(--learning);
+  --color-violet-600: var(--learning);
+  --color-violet-700: color-mix(
+    in oklch,
+    var(--learning) 85%,
+    var(--ink-strong)
+  );
+  --color-violet-950: var(--learning-soft);
+  --color-amber-50: var(--warning-soft);
+  --color-amber-100: color-mix(
+    in oklch,
+    var(--warning-soft) 75%,
+    var(--border-strong)
+  );
+  --color-amber-300: var(--warning-foreground);
+  --color-amber-600: var(--warning-foreground);
+  --color-amber-700: color-mix(
+    in oklch,
+    var(--warning-foreground) 85%,
+    var(--ink-strong)
+  );
+  --color-amber-950: var(--warning-soft);
+  --color-red-50: var(--danger-soft);
+  --color-red-100: color-mix(
+    in oklch,
+    var(--danger-soft) 75%,
+    var(--border-strong)
+  );
+  --color-red-300: var(--destructive);
+  --color-red-600: var(--destructive);
+  --color-red-700: color-mix(
+    in oklch,
+    var(--destructive) 85%,
+    var(--ink-strong)
+  );
+  --color-red-950: var(--danger-soft);
 }

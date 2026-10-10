@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 export const TEST_SIDECAR_URL = "http://127.0.0.1:43127";
 export const TEST_LAUNCH_TOKEN = "test-launch-token";
 
-const preferencesPayload = {
+export const preferencesPayload = {
   theme: "SYSTEM",
   light_theme_id: "LIGHT_DEFAULT",
   dark_theme_id: "DARK_DEFAULT",
@@ -14,6 +14,7 @@ const preferencesPayload = {
   quick_note_shortcut: "Ctrl+Alt+N",
   autostart: false,
   quiz_last_count: 5,
+  last_route: null,
 };
 
 export const handlers = [

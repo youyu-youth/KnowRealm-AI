@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
@@ -90,10 +90,8 @@ export function StatsTrendChart({
   className,
 }: StatsTrendChartProps) {
   const { t } = useTranslation();
-  const option = useMemo(
-    () => buildTrendOption(points, showSymbol, t),
-    [points, showSymbol, t],
-  );
+  useAppearanceSnapshot();
+  const option = buildTrendOption(points, showSymbol, t);
   return (
     <BaseChart option={option} ariaLabel={ariaLabel} className={className} />
   );

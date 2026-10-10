@@ -44,7 +44,7 @@ import {
 const ALL_OPTION = "ALL";
 
 const filterPillClassName =
-  "h-7 rounded-md px-2.5 text-[13px] transition-colors duration-[120ms] ease-out data-active:border-transparent data-active:bg-black data-active:text-white data-active:shadow-sm dark:data-active:bg-white dark:data-active:text-black";
+  "h-7 rounded-md px-2.5 text-[13px] transition-colors duration-[120ms] ease-out data-active:border-transparent data-active:bg-filter-active-background data-active:text-filter-active-foreground data-active:shadow-sm";
 
 type CourseFiltersProps = {
   search: SpacesSearch;

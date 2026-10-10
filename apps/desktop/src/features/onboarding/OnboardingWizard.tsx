@@ -10,7 +10,7 @@ import { LanguageStep } from "@/features/onboarding/LanguageStep";
 import { ProfileStep } from "@/features/onboarding/ProfileStep";
 import { ProvidersStep } from "@/features/onboarding/ProvidersStep";
 import { isUiLanguage } from "@/i18n/language";
-import { settingsApi } from "@/features/settings/api/settings";
+import { useSavePreference } from "@/features/settings/useSavePreference";
 import { completeOnboarding } from "@/services/tauri/onboarding";
 
 function errorMessage(error: unknown): string {
@@ -22,6 +22,7 @@ function errorMessage(error: unknown): string {
 export function OnboardingWizard() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const savePreference = useSavePreference();
   const [stepIndex, setStepIndex] = useState(0);
   const [entering, setEntering] = useState(false);
   const [enterError, setEnterError] = useState<string | null>(null);
@@ -32,7 +33,7 @@ export function OnboardingWizard() {
     try {
       // 当前选中项落偏好：失败与完成失败同样阻断并提示，否则下次启动会被偏好校正回旧值。
       const language = i18n.language;
-      await settingsApi.updatePreferences({
+      await savePreference.mutateAsync({
         language: isUiLanguage(language) ? language : "zh",
       });
       await completeOnboarding();

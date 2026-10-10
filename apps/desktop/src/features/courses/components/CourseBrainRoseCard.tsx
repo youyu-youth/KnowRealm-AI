@@ -1,3 +1,4 @@
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -132,6 +133,7 @@ export function CourseBrainRoseCard({
   className,
 }: CourseBrainRoseCardProps) {
   const { t } = useTranslation();
+  useAppearanceSnapshot();
   const view = useCourseBrainView(course.id);
   const triggerBuild = useTriggerBuild(course.id);
   const concepts = useCourseBrainConcepts(course.id, { status: "CONFIRMED" });
@@ -147,10 +149,7 @@ export function CourseBrainRoseCard({
         .slice(0, ROSE_TOP_N),
     [concepts.data],
   );
-  const option = useMemo(
-    () => (top.length > 0 ? buildRoseOption(top, t) : null),
-    [top, t],
-  );
+  const option = top.length > 0 ? buildRoseOption(top, t) : null;
   const ariaLabel = t("spaces.courseDetail.brain.rose.aria", {
     course: course.name,
   });

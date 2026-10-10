@@ -434,7 +434,7 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
                     <TabsTrigger
                       key={value}
                       value={value}
-                      className="h-7 rounded-md px-2.5 text-[13px] data-active:border-transparent data-active:bg-black data-active:text-white data-active:shadow-sm dark:data-active:bg-white dark:data-active:text-black"
+                      className="data-active:bg-filter-active-background data-active:text-filter-active-foreground h-7 rounded-md px-2.5 text-[13px] data-active:border-transparent data-active:shadow-sm"
                     >
                       {t(`inbox.filters.type.${value}`)}
                     </TabsTrigger>

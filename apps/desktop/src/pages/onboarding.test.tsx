@@ -12,7 +12,7 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
-import { TEST_SIDECAR_URL } from "@/mocks/handlers";
+import { preferencesPayload, TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 
 const runtime = vi.hoisted(() => ({
@@ -80,8 +80,9 @@ function usePreferenceWriteSpy() {
     http.put(
       `${TEST_SIDECAR_URL}/api/settings/preferences`,
       async ({ request }) => {
-        bodies.push((await request.json()) as object);
-        return HttpResponse.json({});
+        const patch = (await request.json()) as object;
+        bodies.push(patch);
+        return HttpResponse.json({ ...preferencesPayload, ...patch });
       },
     ),
   );

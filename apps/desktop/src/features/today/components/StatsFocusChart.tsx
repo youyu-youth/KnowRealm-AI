@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
@@ -70,7 +70,8 @@ export function StatsFocusChart({
   className,
 }: StatsFocusChartProps) {
   const { t } = useTranslation();
-  const option = useMemo(() => buildFocusOption(t), [t]);
+  useAppearanceSnapshot();
+  const option = buildFocusOption(t);
   return (
     <BaseChart option={option} ariaLabel={ariaLabel} className={className} />
   );

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useTranslation } from "react-i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
@@ -67,7 +67,8 @@ export function StatsRadarChart({
   className,
 }: StatsRadarChartProps) {
   const { t } = useTranslation();
-  const option = useMemo(() => buildRadarOption(t), [t]);
+  useAppearanceSnapshot();
+  const option = buildRadarOption(t);
   const palette = chartPalette();
 
   return (

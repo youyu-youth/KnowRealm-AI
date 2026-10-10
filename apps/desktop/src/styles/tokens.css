@@ -1,4 +1,6 @@
 @theme inline {
+  --color-filter-active-background: var(--filter-active-background);
+  --color-filter-active-foreground: var(--filter-active-foreground);
   --color-today-accent: var(--today-accent);
   --color-today-soft: var(--today-soft);
   --color-today-muted: var(--today-muted);

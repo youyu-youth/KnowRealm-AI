@@ -1,4 +1,5 @@
-import { useCallback, useMemo } from "react";
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
+import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
@@ -203,10 +204,8 @@ export function CourseBrainGraph({
   className,
 }: CourseBrainGraphProps) {
   const { t } = useTranslation();
-  const option = useMemo(
-    () => buildGraphOption(graph, masteryByConceptId, t),
-    [graph, masteryByConceptId, t],
-  );
+  useAppearanceSnapshot();
+  const option = buildGraphOption(graph, masteryByConceptId, t);
   const handleSelect = useCallback(
     (params: echarts.ECElementEvent) => {
       const data = params.data as { id?: unknown } | undefined;

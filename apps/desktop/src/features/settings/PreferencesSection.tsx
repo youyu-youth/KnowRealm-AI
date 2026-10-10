@@ -1,5 +1,5 @@
 import type { components } from "@knowrealm/api-types";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
@@ -14,6 +14,8 @@ import { TabsContent } from "@/components/ui/tabs";
 import { isUiLanguage, UI_LANGUAGES } from "@/i18n/language";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
+import { ThemeChoices } from "@/features/settings/ThemeChoices";
+import { useSavePreference } from "@/features/settings/useSavePreference";
 import {
   SettingsChoiceRow,
   SettingsPanelHeader,
@@ -27,7 +29,6 @@ import {
 } from "@/services/tauri/preferences";
 
 type PreferencesOut = components["schemas"]["PreferencesOut"];
-type PreferencesUpdate = components["schemas"]["PreferencesUpdate"];
 
 const THEMES = ["LIGHT", "DARK", "SYSTEM"] as const;
 const FONT_SCALES = ["S", "M", "L"] as const;
@@ -46,19 +47,6 @@ function isCloseBehavior(
 
 function isFontScale(value: string): value is (typeof FONT_SCALES)[number] {
   return (FONT_SCALES as readonly string[]).includes(value);
-}
-
-// 控件值一律绑定服务端事实：改动即 PUT，成功后以全量响应写回缓存；
-// 失败不改缓存，控件自然停留在当前生效值，配合行内报错即「回显服务端事实」。
-// eslint-disable-next-line react-refresh/only-export-components -- 既有导出结构（HMR 提示非缺陷，门禁解锁）
-export function useSavePreference() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (patch: PreferencesUpdate) =>
-      settingsApi.updatePreferences(patch),
-    onSuccess: (data) =>
-      queryClient.setQueryData(settingsKeys.preferences, data),
-  });
 }
 
 export function PreferencesSection() {
@@ -170,7 +158,11 @@ function AppearancePreferences({
       <SettingsChoiceRow label={t("settings.preferences.themeLegend")}>
         <RadioGroup
           className="flex flex-wrap gap-x-5 gap-y-3"
-          value={preferences.theme}
+          value={
+            theme.status === "pending"
+              ? (theme.variables?.theme ?? preferences.theme)
+              : preferences.theme
+          }
           onValueChange={(value) => {
             if (isTheme(value)) theme.mutate({ theme: value });
           }}
@@ -188,8 +180,14 @@ function AppearancePreferences({
             );
           })}
         </RadioGroup>
-        <SaveError error={theme.error} />
+        <SaveError
+          error={theme.error}
+          onRetry={() => theme.variables && theme.mutate(theme.variables)}
+        />
       </SettingsChoiceRow>
+
+      <ThemeChoices mode="LIGHT" preferences={preferences} />
+      <ThemeChoices mode="DARK" preferences={preferences} />
 
       <SettingsChoiceRow label={t("settings.preferences.fontScaleLegend")}>
         <RadioGroup
@@ -461,11 +459,23 @@ function GeneralPreferences({ preferences }: { preferences: PreferencesOut }) {
   );
 }
 
-function SaveError({ error }: { error: Error | null }) {
+function SaveError({
+  error,
+  onRetry,
+}: {
+  error: Error | null;
+  onRetry?: () => void;
+}) {
+  const { t } = useTranslation();
   if (!error) return null;
   return (
     <Alert variant="destructive" className="w-auto">
       <AlertDescription>{error.message}</AlertDescription>
+      {onRetry ? (
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          {t("settings.preferences.retry")}
+        </Button>
+      ) : null}
     </Alert>
   );
 }

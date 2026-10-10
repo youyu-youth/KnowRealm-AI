@@ -1,5 +1,5 @@
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import type { components } from "@knowrealm/api-types";
@@ -88,17 +88,15 @@ function buildChartOption(daily: LlmUsageOut["daily"], t: TFunction) {
 /** 服务与用量分区的用量卡：近 30 天调用量与 token 消耗（按模型汇总，不做计价）。 */
 export function LlmUsageCard() {
   const { t } = useTranslation();
+  useAppearanceSnapshot();
   const usage = useQuery({
     queryKey: settingsKeys.llmUsage,
     queryFn: settingsApi.getLlmUsage,
   });
-  const chartOption = useMemo(
-    () =>
-      usage.data && usage.data.items.length > 0
-        ? buildChartOption(usage.data.daily, t)
-        : null,
-    [usage.data, t],
-  );
+  const chartOption =
+    usage.data && usage.data.items.length > 0
+      ? buildChartOption(usage.data.daily, t)
+      : null;
 
   if (usage.isPending) {
     return (

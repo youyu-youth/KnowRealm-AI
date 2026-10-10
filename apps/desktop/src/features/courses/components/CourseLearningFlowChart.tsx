@@ -1,3 +1,4 @@
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { BaseChart } from "@/charts/BaseChart";
@@ -141,6 +142,7 @@ export function CourseLearningFlowChart({
   className,
 }: CourseLearningFlowChartProps) {
   const { t } = useTranslation();
+  useAppearanceSnapshot();
   const labels = useMemo(
     () =>
       Object.fromEntries(
@@ -148,10 +150,7 @@ export function CourseLearningFlowChart({
       ) as Record<LearningChainNodeKey, string>,
     [t],
   );
-  const option = useMemo(
-    () => buildSankeyOption(chain, labels),
-    [chain, labels],
-  );
+  const option = buildSankeyOption(chain, labels);
   const activeDrops = LEARNING_CHAIN_DROP_KEYS.filter(
     (key) => chain.drops[key] > 0,
   );

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { echarts } from "@/charts/echarts";
 
@@ -19,8 +20,10 @@ export function BaseChart({
 }: BaseChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
+  const appearance = useAppearanceSnapshot();
+  const previousAppearance = useRef(appearance);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = containerRef.current;
     if (!element) return;
     const chart = echarts.init(element, undefined, { renderer: "svg" });
@@ -37,10 +40,17 @@ export function BaseChart({
     };
   }, []);
 
-  useEffect(() => {
-    // notMerge：数据集切换（如 7↔30 天）时丢弃旧序列，避免残留。
-    chartRef.current?.setOption(option, { notMerge: true });
-  }, [option]);
+  useLayoutEffect(() => {
+    // 数据变化替换序列；只换色时合并，保留缩放与选择状态。
+    const colorsOnly = previousAppearance.current !== appearance;
+    chartRef.current?.setOption(
+      colorsOnly ? { ...option, animation: false } : option,
+      {
+        notMerge: !colorsOnly,
+      },
+    );
+    previousAppearance.current = appearance;
+  }, [option, appearance]);
 
   useEffect(() => {
     const chart = chartRef.current;

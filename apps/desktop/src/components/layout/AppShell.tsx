@@ -41,7 +41,7 @@ import { DocumentImportDialog } from "@/features/document-import/DocumentImportD
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
 import { CommandPalette } from "@/features/search/components/CommandPalette";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
-import { useSavePreference } from "@/features/settings/PreferencesSection";
+import { useSavePreference } from "@/features/settings/useSavePreference";
 import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
 import { SidebarResizeHandle } from "@/components/layout/SidebarResizeHandle";
 import {
@@ -139,7 +139,9 @@ export function AppShell() {
     activeCourses.courses,
     activeCourseId,
   );
-  const { mutate: savePreference } = useSavePreference();
+  const { mutate: savePreference, isPending: preferenceSavePending } =
+    useSavePreference();
+  const lastRouteAttemptRef = useRef<string | null | undefined>(undefined);
   const restoreAttemptedRef = useRef(false);
   const restoreNavigationInFlightRef = useRef(false);
   useEffect(() => {
@@ -154,16 +156,18 @@ export function AppShell() {
   }, [navigate, pathname, preferences.data]);
   useEffect(() => {
     const saved = preferences.data;
-    if (!saved) return;
+    if (!saved || preferenceSavePending) return;
     if (restoreNavigationInFlightRef.current) {
       restoreNavigationInFlightRef.current = false;
       return;
     }
     if (pathname.startsWith("/settings")) return;
     const next = pathname === "/" ? null : pathname;
-    if (next === saved.last_route) return;
+    if (next === saved.last_route || next === lastRouteAttemptRef.current)
+      return;
+    lastRouteAttemptRef.current = next;
     savePreference({ last_route: next });
-  }, [pathname, preferences.data, savePreference]);
+  }, [pathname, preferences.data, savePreference, preferenceSavePending]);
   // 关窗分流每次关窗时读取的最新偏好；偏好未载入时为 null = 不拦截直接退出。
   const closeBehaviorRef = useRef<CloseBehaviorPreference | null>(null);
   const closeBehavior = preferences.data?.close_behavior ?? null;

@@ -9,31 +9,14 @@ import { courseDetailSeed } from "@/features/courses/courseDetailInsights";
 import { CourseMetaTags } from "@/features/courses/components/CourseMetaTags";
 import { CourseStatusTag } from "@/features/courses/components/CourseCard";
 
-const COVER_PALETTES = [
-  ["#eceef1", "#c4c9d2"],
-  ["#e9edf2", "#b9c3d2"],
-  ["#eeece8", "#d2c9bd"],
-  ["#e8ecea", "#bacdc6"],
-  ["#eceaf0", "#c6bfd2"],
-] as const;
-
-const COVER_PALETTES_DARK = [
-  ["#23262c", "#3a3f48"],
-  ["#212730", "#39434f"],
-  ["#282520", "#423c33"],
-  ["#212826", "#37443f"],
-  ["#26222c", "#3d3745"],
-] as const;
-
 /** 确定性封面：按课程 id 生成灰度渐变 + 同心纹样，不依赖外部资源。 */
 function CourseCoverArt({ course }: { course: CourseDetail }) {
   const seed = courseDetailSeed(course.id);
-  const isDark = document.documentElement.classList.contains("dark");
-  const [from, to] = (isDark ? COVER_PALETTES_DARK : COVER_PALETTES)[
-    seed % COVER_PALETTES.length
-  ];
+  const palette = seed % 5;
+  const from = `var(--course-cover-${palette}-from)`;
+  const to = `var(--course-cover-${palette}-to)`;
   const gradientId = `course-cover-${course.id}`;
-  const stroke = isDark ? "#f2f4f7" : "#1a1c20";
+  const stroke = "var(--ink-strong)";
   return (
     <svg
       viewBox="0 0 160 120"
@@ -49,7 +32,11 @@ function CourseCoverArt({ course }: { course: CourseDetail }) {
         </linearGradient>
       </defs>
       <rect width="160" height="120" fill={`url(#${gradientId})`} />
-      <g fill="none" stroke={stroke} strokeOpacity={isDark ? 0.12 : 0.09}>
+      <g
+        fill="none"
+        stroke={stroke}
+        strokeOpacity="var(--course-cover-opacity)"
+      >
         <circle cx={24 + (seed % 40)} cy={26 + ((seed >>> 6) % 30)} r={34} />
         <circle cx={120 - ((seed >>> 9) % 40)} cy={92} r={46} />
         <circle cx={132} cy={22 + ((seed >>> 12) % 26)} r={20} />

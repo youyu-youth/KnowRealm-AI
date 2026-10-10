@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useTranslation } from "react-i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
@@ -54,7 +54,8 @@ export function StatsDistributionChart({
   ariaLabel,
 }: StatsDistributionChartProps) {
   const { t } = useTranslation();
-  const option = useMemo(() => buildDistributionOption(t), [t]);
+  useAppearanceSnapshot();
+  const option = buildDistributionOption(t);
   const palette = chartPalette();
   const colors = [
     palette.primary,

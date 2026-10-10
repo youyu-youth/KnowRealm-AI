@@ -1,3 +1,4 @@
+import { useSavePreference } from "@/features/settings/useSavePreference";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
@@ -1170,6 +1171,7 @@ function GenerateQuizDialog({
     queryKey: settingsKeys.preferences,
     queryFn: settingsApi.getPreferences,
   });
+  const savePreference = useSavePreference();
   const submit = useMutation({
     mutationFn: (body: components["schemas"]["QuizGenerateRequest"]) =>
       recordApi.submitQuizGeneration(recordId, body),
@@ -1177,8 +1179,8 @@ function GenerateQuizDialog({
       onOpenChange(false);
       await Promise.all([
         // 档位记忆是 best-effort：写回失败只影响“记住上次选择”，不干扰生成流程。
-        settingsApi
-          .updatePreferences({ quiz_last_count: variables.total_count })
+        savePreference
+          .mutateAsync({ quiz_last_count: variables.total_count })
           .then(() =>
             queryClient.invalidateQueries({
               queryKey: settingsKeys.preferences,

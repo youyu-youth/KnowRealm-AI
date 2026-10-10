@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useTranslation } from "react-i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
@@ -84,7 +84,8 @@ export function StatsProgressChart({
   className,
 }: StatsProgressChartProps) {
   const { t } = useTranslation();
-  const option = useMemo(() => buildProgressOption(t), [t]);
+  useAppearanceSnapshot();
+  const option = buildProgressOption(t);
   const lineColors = progressLayerColors();
 
   return (
