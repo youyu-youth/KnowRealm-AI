@@ -14,6 +14,8 @@
     "navigation": "Global navigation",
     "back": "Back",
     "forward": "Forward",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
     "controls": "Window controls",
     "minimize": "Minimize",
     "maximize": "Maximize",

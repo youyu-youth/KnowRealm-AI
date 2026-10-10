@@ -4,11 +4,17 @@ import {
   BookOpenText,
   Copy,
   Minus,
+  PanelLeftClose,
+  PanelLeftOpen,
   Square,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+  APP_SIDEBAR_ID,
+  useSidebarUiStore,
+} from "@/components/layout/sidebarUiStore";
 import { Button } from "@/components/ui/button";
 import { getDesktopWindow } from "@/services/tauri/window";
 
@@ -20,6 +26,13 @@ export function WindowTitleBar() {
   const [appWindow] = useState(getDesktopWindow);
   const [state, setState] = useState({ focused: true, maximized: false });
   const [error, setError] = useState<string | null>(null);
+  const sidebarCollapsed = useSidebarUiStore((state) => state.collapsed);
+  const toggleSidebar = useSidebarUiStore((state) => state.toggleSidebar);
+  const sidebarToggleLabel = t(
+    sidebarCollapsed
+      ? "windowTitleBar.expandSidebar"
+      : "windowTitleBar.collapseSidebar",
+  );
 
   useEffect(() => {
     if (!appWindow) return;
@@ -92,6 +105,23 @@ export function WindowTitleBar() {
       data-maximized={state.maximized}
       className="bg-canvas border-border-subtle text-ink h-titlebar data-[focused=false]:text-muted-foreground relative z-60 flex shrink-0 items-center border-b select-none"
     >
+      <div className="flex h-full shrink-0 items-center pl-2">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={sidebarToggleLabel}
+          title={sidebarToggleLabel}
+          aria-expanded={!sidebarCollapsed}
+          aria-controls={APP_SIDEBAR_ID}
+          onClick={toggleSidebar}
+        >
+          {sidebarCollapsed ? (
+            <PanelLeftOpen aria-hidden="true" />
+          ) : (
+            <PanelLeftClose aria-hidden="true" />
+          )}
+        </Button>
+      </div>
       <div
         data-tauri-drag-region
         className="flex h-full shrink-0 items-center gap-2 px-4 max-sm:px-3"

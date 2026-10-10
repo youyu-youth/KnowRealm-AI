@@ -37,6 +37,10 @@ import { CommandPalette } from "@/features/search/components/CommandPalette";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
 import { useSavePreference } from "@/features/settings/PreferencesSection";
 import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
+import {
+  APP_SIDEBAR_ID,
+  useSidebarUiStore,
+} from "@/components/layout/sidebarUiStore";
 import { selectSidebarCourses } from "@/components/layout/selectSidebarCourses";
 import { useActiveCourses } from "@/features/courses/api/queries";
 import { settingsKeys } from "@/features/settings/api/keys";
@@ -160,6 +164,7 @@ export function AppShell() {
     closeBehaviorRef.current = closeBehavior;
   }, [closeBehavior]);
   const setRecordingOpen = useRecordingUiStore((state) => state.setStartOpen);
+  const sidebarCollapsed = useSidebarUiStore((state) => state.collapsed);
   const recordingSessions = useRecordingSessions();
   const recordingActive = (recordingSessions.data ?? []).some(
     blocksNewRecording,
@@ -294,141 +299,156 @@ export function AppShell() {
       <AppearanceSync />
       <AppToasts />
       <aside
+        id={APP_SIDEBAR_ID}
         aria-label={t("nav.label")}
-        className="w-sidebar bg-sidebar max-compact:w-16 max-compact:px-2 flex h-full shrink-0 flex-col px-3 py-3 transition-[width] duration-150"
+        inert={sidebarCollapsed}
+        className={cn(
+          "bg-sidebar flex h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          sidebarCollapsed ? "w-0" : "w-sidebar max-compact:w-16",
+        )}
       >
-        <div className="max-compact:justify-center max-compact:px-0 flex h-10 items-center gap-3 px-3">
-          <BookOpenText
-            className="text-ink-strong size-5 shrink-0"
-            aria-hidden="true"
-          />
-          <div className="max-compact:sr-only min-w-0">
-            <p className="text-body text-ink-strong font-section truncate">
-              {t("app.name")}
-            </p>
-            <p className="text-label text-muted-foreground truncate">
-              {t("app.tagline")}
-            </p>
+        {/* 内容保持定宽（含内边距的原宽度）：折叠只裁切不重排，动画期间文字不跳动；折叠态用 inert 移出焦点与读屏树。 */}
+        <div
+          className={cn(
+            "w-sidebar max-compact:w-16 max-compact:px-2 flex h-full flex-col px-3 py-3 transition-opacity duration-150",
+            sidebarCollapsed && "opacity-0",
+          )}
+        >
+          <div className="max-compact:justify-center max-compact:px-0 flex h-10 items-center gap-3 px-3">
+            <BookOpenText
+              className="text-ink-strong size-5 shrink-0"
+              aria-hidden="true"
+            />
+            <div className="max-compact:sr-only min-w-0">
+              <p className="text-body text-ink-strong font-section truncate">
+                {t("app.name")}
+              </p>
+              <p className="text-label text-muted-foreground truncate">
+                {t("app.tagline")}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <nav className="mt-5 flex flex-col gap-1">
-          {navigationItems.map((item) => {
-            const { labelKey, icon: Icon } = item;
-            const label = t(labelKey);
+          <nav className="mt-5 flex flex-col gap-1">
+            {navigationItems.map((item) => {
+              const { labelKey, icon: Icon } = item;
+              const label = t(labelKey);
 
-            if ("to" in item) {
+              if ("to" in item) {
+                return (
+                  <AppTooltip key={labelKey} label={label}>
+                    <Link
+                      to={item.to}
+                      activeOptions={{ exact: item.to === "/" }}
+                      activeProps={{ className: activeNavClass }}
+                      inactiveProps={{ className: inactiveNavClass }}
+                      aria-label={label}
+                    >
+                      <Icon className="size-4 shrink-0" aria-hidden="true" />
+                      <span className="max-compact:sr-only truncate">
+                        {label}
+                      </span>
+                    </Link>
+                  </AppTooltip>
+                );
+              }
+
               return (
-                <AppTooltip key={labelKey} label={label}>
-                  <Link
-                    to={item.to}
-                    activeOptions={{ exact: item.to === "/" }}
-                    activeProps={{ className: activeNavClass }}
-                    inactiveProps={{ className: inactiveNavClass }}
-                    aria-label={label}
+                <AppTooltip
+                  key={labelKey}
+                  label={t("nav.unavailableLabel", { label })}
+                >
+                  <Button
+                    variant="ghost"
+                    size="lg"
+                    disabled
+                    className="max-compact:justify-center max-compact:px-0 w-full justify-start gap-3 px-3 disabled:pointer-events-auto disabled:opacity-70 disabled:hover:bg-transparent"
+                    aria-label={t("nav.unavailableLabel", { label })}
                   >
-                    <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <Icon data-icon="inline-start" aria-hidden="true" />
                     <span className="max-compact:sr-only truncate">
                       {label}
                     </span>
-                  </Link>
+                    <span className="text-label max-compact:sr-only ml-auto">
+                      {t("nav.unavailable")}
+                    </span>
+                  </Button>
                 </AppTooltip>
               );
-            }
+            })}
+          </nav>
 
-            return (
-              <AppTooltip
-                key={labelKey}
-                label={t("nav.unavailableLabel", { label })}
-              >
-                <Button
-                  variant="ghost"
-                  size="lg"
-                  disabled
-                  className="max-compact:justify-center max-compact:px-0 w-full justify-start gap-3 px-3 disabled:pointer-events-auto disabled:opacity-70 disabled:hover:bg-transparent"
-                  aria-label={t("nav.unavailableLabel", { label })}
-                >
-                  <Icon data-icon="inline-start" aria-hidden="true" />
-                  <span className="max-compact:sr-only truncate">{label}</span>
-                  <span className="text-label max-compact:sr-only ml-auto">
-                    {t("nav.unavailable")}
-                  </span>
-                </Button>
-              </AppTooltip>
-            );
-          })}
-        </nav>
-
-        <section
-          className="max-compact:hidden mt-6 min-h-0"
-          aria-label={t("nav.courses.label")}
-        >
-          <button
-            type="button"
-            className="text-label text-ink-muted flex h-8 w-full items-center justify-between px-3 font-medium"
-            aria-expanded={coursesExpanded}
-            onClick={() => setCoursesExpanded((expanded) => !expanded)}
+          <section
+            className="max-compact:hidden mt-6 min-h-0"
+            aria-label={t("nav.courses.label")}
           >
-            {t("nav.courses.label")}
-            <ChevronDown
-              aria-hidden="true"
-              className={cn(
-                "size-3.5 transition-transform",
-                coursesExpanded && "rotate-180",
-              )}
-            />
-          </button>
-          {coursesExpanded ? (
-            activeCourses.isError ? (
-              <p className="text-label text-ink-faint px-3 py-2">
-                {t("nav.courses.unavailable")}
-              </p>
-            ) : (
-              <div className="mt-1 grid gap-0.5">
-                {sidebarCourses.map((course) => (
+            <button
+              type="button"
+              className="text-label text-ink-muted flex h-8 w-full items-center justify-between px-3 font-medium"
+              aria-expanded={coursesExpanded}
+              onClick={() => setCoursesExpanded((expanded) => !expanded)}
+            >
+              {t("nav.courses.label")}
+              <ChevronDown
+                aria-hidden="true"
+                className={cn(
+                  "size-3.5 transition-transform",
+                  coursesExpanded && "rotate-180",
+                )}
+              />
+            </button>
+            {coursesExpanded ? (
+              activeCourses.isError ? (
+                <p className="text-label text-ink-faint px-3 py-2">
+                  {t("nav.courses.unavailable")}
+                </p>
+              ) : (
+                <div className="mt-1 grid gap-0.5">
+                  {sidebarCourses.map((course) => (
+                    <Link
+                      key={course.id}
+                      to="/spaces/$courseId"
+                      params={{ courseId: course.id }}
+                      search={{ tab: "overview" }}
+                      className="text-body-dense text-ink-muted hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-ring/40 flex h-8 items-center gap-2 rounded-sm px-3 focus-visible:ring-2"
+                      activeProps={{
+                        className:
+                          "bg-surface-subtle text-ink-strong font-medium",
+                      }}
+                      title={course.name}
+                    >
+                      <span className="bg-border-strong size-1.5 shrink-0 rounded-full" />
+                      <span className="truncate">{course.name}</span>
+                    </Link>
+                  ))}
+                  {activeCourses.isPending ? (
+                    <p className="text-label text-ink-faint px-3 py-2">
+                      {t("nav.courses.loading")}
+                    </p>
+                  ) : null}
                   <Link
-                    key={course.id}
-                    to="/spaces/$courseId"
-                    params={{ courseId: course.id }}
-                    search={{ tab: "overview" }}
-                    className="text-body-dense text-ink-muted hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-ring/40 flex h-8 items-center gap-2 rounded-sm px-3 focus-visible:ring-2"
-                    activeProps={{
-                      className:
-                        "bg-surface-subtle text-ink-strong font-medium",
-                    }}
-                    title={course.name}
+                    to="/spaces"
+                    className="text-label text-ink-muted hover:text-ink-strong mt-1 px-3 py-1.5"
                   >
-                    <span className="bg-border-strong size-1.5 shrink-0 rounded-full" />
-                    <span className="truncate">{course.name}</span>
+                    {t("nav.courses.viewAll")}
                   </Link>
-                ))}
-                {activeCourses.isPending ? (
-                  <p className="text-label text-ink-faint px-3 py-2">
-                    {t("nav.courses.loading")}
-                  </p>
-                ) : null}
-                <Link
-                  to="/spaces"
-                  className="text-label text-ink-muted hover:text-ink-strong mt-1 px-3 py-1.5"
-                >
-                  {t("nav.courses.viewAll")}
-                </Link>
-              </div>
-            )
-          ) : null}
-        </section>
+                </div>
+              )
+            ) : null}
+          </section>
 
-        <SidebarUserArea />
-        <AppTooltip label={t("nav.settings")}>
-          <Link
-            to="/settings"
-            className="hover:bg-surface-subtle focus-visible:ring-ring/40 max-compact:justify-center max-compact:px-0 text-body text-muted-foreground mt-1 flex h-9 items-center gap-3 rounded-md px-3 font-medium focus-visible:ring-3"
-            aria-label={t("nav.settings")}
-          >
-            <Settings className="size-4 shrink-0" aria-hidden="true" />
-            <span className="max-compact:sr-only">{t("nav.settings")}</span>
-          </Link>
-        </AppTooltip>
+          <SidebarUserArea />
+          <AppTooltip label={t("nav.settings")}>
+            <Link
+              to="/settings"
+              className="hover:bg-surface-subtle focus-visible:ring-ring/40 max-compact:justify-center max-compact:px-0 text-body text-muted-foreground mt-1 flex h-9 items-center gap-3 rounded-md px-3 font-medium focus-visible:ring-3"
+              aria-label={t("nav.settings")}
+            >
+              <Settings className="size-4 shrink-0" aria-hidden="true" />
+              <span className="max-compact:sr-only">{t("nav.settings")}</span>
+            </Link>
+          </AppTooltip>
+        </div>
       </aside>
 
       <div className="bg-paper border-border-subtle max-compact:rounded-none max-compact:border-y-0 max-compact:border-r-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">
