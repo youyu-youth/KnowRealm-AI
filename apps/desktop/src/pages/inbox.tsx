@@ -21,6 +21,11 @@ export const Route = createFileRoute("/inbox")({
       typeof search.record === "string" && search.record
         ? search.record
         : undefined,
+    view: search.view === "list" ? "list" : undefined,
+    sort:
+      search.sort === "oldest" || search.sort === "title"
+        ? search.sort
+        : undefined,
   }),
   component: function InboxRoute() {
     const search = Route.useSearch();

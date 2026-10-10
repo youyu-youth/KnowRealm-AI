@@ -21,20 +21,28 @@ import { useActiveCourses } from "@/features/courses/api/queries";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type { RecordOut } from "@/features/records/api/types";
-
-const ORGANIZABLE_STATUSES = new Set(["NOTE", "SUMMARY_PENDING"]);
+import { ORGANIZABLE_STATUSES } from "@/features/inbox/inboxPresentation";
 
 export function InboxRowActions({
   record,
   onClassified,
   compact = false,
   disabled = false,
+  action,
+  onActionChange,
 }: {
   record: RecordOut;
   onClassified: (courseName: string) => void;
   compact?: boolean;
   disabled?: boolean;
+  action?: "classify" | "upgrade" | "delete" | null;
+  onActionChange?: (action: "classify" | "upgrade" | "delete" | null) => void;
 }) {
+  const [localAction, setLocalAction] = useState<
+    "classify" | "upgrade" | "delete" | null
+  >(null);
+  const currentAction = action === undefined ? localAction : action;
+  const changeAction = onActionChange ?? setLocalAction;
   return (
     <div className={`flex items-center ${compact ? "gap-1" : "gap-2"}`}>
       {ORGANIZABLE_STATUSES.has(record.status) ? (
@@ -44,11 +52,15 @@ export function InboxRowActions({
             onClassified={onClassified}
             compact={compact}
             disabled={disabled}
+            open={currentAction === "classify"}
+            onOpenChange={(open) => changeAction(open ? "classify" : null)}
           />
           <InboxUpgradeButton
             record={record}
             compact={compact}
             disabled={disabled}
+            open={currentAction === "upgrade"}
+            onOpenChange={(open) => changeAction(open ? "upgrade" : null)}
           />
         </>
       ) : null}
@@ -57,6 +69,8 @@ export function InboxRowActions({
         title={record.title.trim() || undefined}
         compact={compact}
         disabled={disabled}
+        open={currentAction === "delete"}
+        onOpenChange={(open) => changeAction(open ? "delete" : null)}
       />
     </div>
   );
@@ -67,15 +81,18 @@ function InboxClassifyButton({
   onClassified,
   compact,
   disabled,
+  open,
+  onOpenChange,
 }: {
   record: RecordOut;
   onClassified: (courseName: string) => void;
   compact: boolean;
   disabled: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [courseId, setCourseId] = useState<string | null>(null);
   const { courses } = useActiveCourses(open);
   const title = record.title.trim() || t("spaces.records.untitled");
@@ -90,7 +107,7 @@ function InboxClassifyButton({
           queryKey: recordKeys.courseList(selectedCourseId),
         }),
       ]);
-      setOpen(false);
+      onOpenChange(false);
       onClassified(
         courses.find((course) => course.id === selectedCourseId)?.name ?? "",
       );
@@ -105,7 +122,7 @@ function InboxClassifyButton({
       classify.reset();
       setCourseId(null);
     }
-    setOpen(nextOpen);
+    onOpenChange(nextOpen);
   }
 
   return (
@@ -172,15 +189,18 @@ function InboxUpgradeButton({
   record,
   compact,
   disabled,
+  open,
+  onOpenChange,
 }: {
   record: RecordOut;
   compact: boolean;
   disabled: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
   const [courseId, setCourseId] = useState<string | null>(null);
   const title = record.title.trim() || t("spaces.records.untitled");
 
@@ -200,7 +220,7 @@ function InboxUpgradeButton({
           queryKey: recordKeys.courseList(selectedCourseId),
         }),
       ]);
-      setOpen(false);
+      onOpenChange(false);
       void navigate({
         to: "/records/$recordId",
         params: { recordId: record.id },
@@ -214,7 +234,7 @@ function InboxUpgradeButton({
       upgrade.reset();
       setCourseId(null);
     }
-    setOpen(nextOpen);
+    onOpenChange(nextOpen);
   }
 
   return (
@@ -282,15 +302,18 @@ function InboxDeleteButton({
   title,
   compact,
   disabled,
+  open,
+  onOpenChange,
 }: {
   recordId: string;
   title?: string;
   compact: boolean;
   disabled: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [open, setOpen] = useState(false);
   const displayTitle = title || t("spaces.records.untitled");
   const deleteRecord = useMutation({
     mutationFn: () => recordApi.delete(recordId),
@@ -304,14 +327,14 @@ function InboxDeleteButton({
         exact: true,
       });
       await queryClient.invalidateQueries({ queryKey: recordKeys.inbox() });
-      setOpen(false);
+      onOpenChange(false);
     },
   });
 
   function handleOpenChange(nextOpen: boolean) {
     if (deleteRecord.isPending) return;
     if (!nextOpen) deleteRecord.reset();
-    setOpen(nextOpen);
+    onOpenChange(nextOpen);
   }
 
   return (

@@ -1,4 +1,6 @@
 :root {
+  --inbox-accent: light-dark(#00858c, #71d4d6);
+  --inbox-soft: color-mix(in oklch, var(--inbox-accent) 6%, var(--paper));
   --filter-active-background: #000000;
   --filter-active-foreground: #ffffff;
   --course-cover-0-from: #eceef1;

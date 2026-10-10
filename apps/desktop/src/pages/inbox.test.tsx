@@ -8,9 +8,10 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
@@ -103,6 +104,17 @@ function mockRecordDetail(recordId: string, course_id: string | null) {
   );
 }
 
+beforeEach(() => {
+  server.use(
+    http.get(`${TEST_SIDECAR_URL}/api/records/:id/transcript`, () =>
+      HttpResponse.json({ status: "NOT_READY", transcript: null }),
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/records/:id/jobs`, () =>
+      HttpResponse.json({ jobs: [], progress: 0 }),
+    ),
+  );
+});
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
@@ -147,9 +159,11 @@ describe("文本捕获", () => {
     expect(await screen.findByRole("status", { name: "" })).toHaveTextContent(
       "已保存到本地收件箱",
     );
-    expect(
-      screen.queryByRole("heading", { name: "新建速记" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "新建速记" }),
+      ).not.toBeInTheDocument(),
+    );
     expect(bodies).toEqual([
       { capture_type: "QUICK_NOTE", content: "速记正文\n\n第二段" },
     ]);
@@ -268,14 +282,98 @@ describe("文本捕获", () => {
     expect(screen.getByLabelText("正文")).toHaveValue("会失败的正文");
 
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
-    expect(
-      screen.queryByRole("heading", { name: "新建速记" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "新建速记" }),
+      ).not.toBeInTheDocument(),
+    );
     expect(calls).toBe(1);
   });
 });
 
 describe("收件箱", () => {
+  it("课程浏览覆盖全部活动课程，左右切换有边界且归类复用确认", async () => {
+    const courses = Array.from({ length: 7 }, (_, index) => ({
+      ...course,
+      id: `course-${index}`,
+      name: `课程 ${index + 1}`,
+    }));
+    const requests: object[] = [];
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () =>
+        HttpResponse.json([
+          ...courses,
+          {
+            ...course,
+            id: "archived-course",
+            name: "归档课程",
+            status: "ARCHIVED",
+          },
+        ]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json([inboxRecord(NOTE_RECORD_ID, {})]),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/inbox/bulk-classify`,
+        async ({ request }) => {
+          requests.push((await request.json()) as object);
+          return HttpResponse.json({ results: [] });
+        },
+      ),
+    );
+    renderAt("/inbox");
+    const tray = await screen.findByRole("region", { name: "归类到课程" });
+    await within(tray).findByRole("button", { name: "归类所选内容到 课程 7" });
+    expect(
+      within(tray).queryByRole("button", { name: "归类所选内容到 归档课程" }),
+    ).not.toBeInTheDocument();
+    const track = within(tray).getByRole("group", { name: "归类到课程" });
+    Object.defineProperties(track, {
+      clientWidth: { configurable: true, value: 480 },
+      scrollWidth: { configurable: true, value: 1440 },
+      scrollLeft: { configurable: true, value: 0, writable: true },
+    });
+    const scrollBy = vi.fn((options: ScrollToOptions) => {
+      track.scrollLeft = Math.min(
+        960,
+        Math.max(0, track.scrollLeft + (options.left ?? 0)),
+      );
+      fireEvent.scroll(track);
+    });
+    Object.defineProperty(track, "scrollBy", {
+      configurable: true,
+      value: scrollBy,
+    });
+    fireEvent.scroll(track);
+    const previous = within(tray).getByRole("button", {
+      name: "查看上一组课程",
+    });
+    const next = within(tray).getByRole("button", { name: "查看下一组课程" });
+    expect(previous).toBeDisabled();
+    fireEvent.click(next);
+    expect(scrollBy).toHaveBeenLastCalledWith({ left: 480, behavior: "auto" });
+    expect(previous).toBeEnabled();
+    fireEvent.click(next);
+    expect(next).toBeDisabled();
+    fireEvent.click(previous);
+    expect(next).toBeEnabled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 速记标题" }));
+    fireEvent.click(
+      within(tray).getByRole("button", { name: "归类所选内容到 课程 7" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "归类 1 项内容" });
+    expect(
+      within(dialog).getByRole("combobox", { name: "所属课程" }),
+    ).toHaveTextContent("课程 7");
+    expect(requests).toEqual([]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() => expect(dialog).not.toBeInTheDocument());
+    expect(
+      screen.getByRole("checkbox", { name: "选择 速记标题" }),
+    ).toBeChecked();
+  });
+
   it("空态如实展示，没有示例数据", async () => {
     renderAt("/inbox");
 
@@ -459,6 +557,255 @@ describe("收件箱", () => {
   });
 });
 
+describe("收件箱桌面交互", () => {
+  beforeEach(() => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () =>
+        HttpResponse.json([course]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json([
+          inboxRecord(NOTE_RECORD_ID, {
+            title: "较早速记",
+            created_at: "2026-08-22T10:00:00Z",
+          }),
+          inboxRecord(PROCESSING_RECORD_ID, { title: "较新速记" }),
+        ]),
+      ),
+    );
+  });
+
+  function transfer() {
+    const data = new Map<string, string>();
+    return {
+      types: ["application/x-knowrealm-inbox"],
+      setData: (type: string, value: string) => data.set(type, value),
+      getData: (type: string) => data.get(type) ?? "",
+      effectAllowed: "",
+      dropEffect: "",
+    };
+  }
+
+  it("等待授权使用真实任务状态，宽屏列表深链接不会打开隐藏弹窗", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json([
+          inboxRecord(PROCESSING_RECORD_ID, {
+            title: "待授权录音",
+            capture_type: "AUDIO_IMPORT",
+            status: "CONTENT_PROCESSING",
+          }),
+        ]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/records/:id/jobs`, () =>
+        HttpResponse.json({
+          progress: 0.5,
+          jobs: [
+            {
+              id: "waiting-asr",
+              record_id: PROCESSING_RECORD_ID,
+              job_type: "ASR",
+              status: "PENDING",
+              progress: 0,
+              waiting_reason: "CONSENT_REQUIRED",
+              attempts: 0,
+              max_attempts: 3,
+              error_code: null,
+              retryable: false,
+              sequence_no: 0,
+            },
+          ],
+        }),
+      ),
+    );
+    renderAt("/inbox");
+    expect(await screen.findByText("等待授权")).toBeVisible();
+    const oldWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1586,
+    });
+    try {
+      cleanup();
+      renderAt(`/inbox?view=list&record=${PROCESSING_RECORD_ID}`);
+      await screen.findByRole("button", { name: "预览 待授权录音" });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: oldWidth,
+      });
+    }
+  });
+
+  it("桌面与列表切换保留选择、筛选和排序，刷新 URL 可恢复", async () => {
+    renderAt("/inbox?type=quick-note&sort=oldest");
+    const list = await screen.findByRole("list", { name: "未归类记录列表" });
+    expect(within(list).getAllByRole("listitem")[0]).toHaveTextContent(
+      "较早速记",
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 较早速记" }));
+    fireEvent.click(screen.getByRole("tab", { name: "列表" }));
+    await waitFor(() => expect(window.location.search).toContain("view=list"));
+    expect(window.location.search).toContain("sort=oldest");
+    expect(window.location.search).toContain("type=quick-note");
+    expect(
+      screen.getByRole("checkbox", { name: "选择 较早速记" }),
+    ).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("tab", { name: "桌面" }));
+    await waitFor(() =>
+      expect(window.location.search).not.toContain("view=list"),
+    );
+    fireEvent.click(screen.getByRole("combobox", { name: "收件箱排序" }));
+    const option = await screen.findByRole("option", {
+      name: "按创建时间（最新）",
+    });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByRole("list", { name: "未归类记录列表" }),
+        ).getAllByRole("listitem")[0],
+      ).toHaveTextContent("较新速记"),
+    );
+  });
+
+  it("更多菜单与右键菜单进入原有确认流程，取消不提交", async () => {
+    let deletes = 0;
+    server.use(
+      http.delete(`${TEST_SIDECAR_URL}/api/records/:id`, () => {
+        deletes += 1;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    renderAt("/inbox");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "更多操作：较早速记" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "删除" }));
+    const dialog = await screen.findByRole("dialog", { name: "删除学习记录" });
+    expect(dialog).toHaveTextContent("较早速记");
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    const card = screen.getByRole("link", { name: "较早速记" }).closest("li");
+    expect(card).not.toBeNull();
+    fireEvent.contextMenu(card as HTMLElement, { clientX: 100, clientY: 100 });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "归类到课程" }),
+    );
+    expect(
+      await screen.findByRole("dialog", { name: "归类到课程" }),
+    ).toHaveTextContent("较早速记");
+    expect(deletes).toBe(0);
+  });
+
+  it("多选拖放先确认，取消无写入，失败项保持选择且不能重复提交", async () => {
+    const calls: string[] = [];
+    let removed = false;
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/records/:id/classification`,
+        async ({ params, request }) => {
+          calls.push(String(params.id));
+          expect(await request.json()).toEqual({ course_id: COURSE_ID });
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          if (params.id === PROCESSING_RECORD_ID)
+            return HttpResponse.json({ detail: "归类冲突" }, { status: 409 });
+          removed = true;
+          return HttpResponse.json(
+            inboxRecord(NOTE_RECORD_ID, { course_id: COURSE_ID }),
+          );
+        },
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json([
+          ...(removed
+            ? []
+            : [inboxRecord(NOTE_RECORD_ID, { title: "较早速记" })]),
+          inboxRecord(PROCESSING_RECORD_ID, { title: "较新速记" }),
+        ]),
+      ),
+    );
+    renderAt("/inbox");
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "选择 较早速记" }),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 较新速记" }));
+    const card = screen.getByRole("link", { name: "较早速记" }).closest("li");
+    expect(card).not.toBeNull();
+    const dataTransfer = transfer();
+    fireEvent.dragStart(card as HTMLElement, { dataTransfer });
+    const target = screen.getByRole("button", {
+      name: "归类所选内容到 操作系统",
+    });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+    const dialog = await screen.findByRole("dialog", { name: "归类 2 项内容" });
+    expect(
+      within(dialog).getByRole("combobox", { name: "所属课程" }),
+    ).toHaveTextContent("操作系统");
+    expect(calls).toEqual([]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    fireEvent.click(target);
+    const confirm = within(
+      await screen.findByRole("dialog", { name: "归类 2 项内容" }),
+    ).getByRole("button", { name: "归类所选内容" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    expect(await screen.findByText(/批量处理完成/)).toHaveTextContent(
+      "成功 1 项，失败 1 项",
+    );
+    expect(calls).toHaveLength(2);
+    expect(
+      screen.getByRole("checkbox", { name: "选择 较新速记" }),
+    ).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("外部拖入与包含处理中记录的多选拖动均不会提交", async () => {
+    let calls = 0;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json([
+          inboxRecord(NOTE_RECORD_ID, { title: "较早速记" }),
+          inboxRecord(PROCESSING_RECORD_ID, {
+            title: "处理中音频",
+            status: "CONTENT_PROCESSING",
+            capture_type: "AUDIO_IMPORT",
+          }),
+        ]),
+      ),
+      http.post(`${TEST_SIDECAR_URL}/api/records/:id/classification`, () => {
+        calls += 1;
+        return HttpResponse.json({});
+      }),
+    );
+    renderAt("/inbox");
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "选择 较早速记" }),
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "选择 处理中音频" }));
+    const card = screen.getByRole("link", { name: "较早速记" }).closest("li");
+    expect(card).not.toBeNull();
+    const dataTransfer = transfer();
+    expect(fireEvent.dragStart(card as HTMLElement, { dataTransfer })).toBe(
+      false,
+    );
+    fireEvent.drop(
+      screen.getByRole("button", { name: "归类所选内容到 操作系统" }),
+      { dataTransfer },
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(calls).toBe(0);
+  });
+});
+
 describe("收件箱归类与升级", () => {
   const llmProviderMissing = http.get(
     `${TEST_SIDECAR_URL}/api/settings/providers/llm`,
@@ -639,9 +986,11 @@ describe("收件箱归类与升级", () => {
     fireEvent.keyDown(document.activeElement ?? document.body, {
       key: "Escape",
     });
-    expect(
-      screen.queryByRole("heading", { name: "归类到课程" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "归类到课程" }),
+      ).not.toBeInTheDocument(),
+    );
     expect(calls).toBe(1);
   });
 

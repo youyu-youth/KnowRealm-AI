@@ -117,6 +117,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 9. agent相关功能，多使用Middleware 中间件等 （优先遵循）
 10. 使用animate  相关 skills 构建 desktop 动画和动效，增加ux 体验
+11. desktop端界面的修改都需要考虑到多主题的适配和兼容
 
 
 

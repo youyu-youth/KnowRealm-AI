@@ -1695,6 +1695,44 @@
     "submitting": "正在保存"
   },
   "inbox": {
+    "workspace": {
+      "summary": "{{count}} 项未归类 · 今日新增 {{today}} · 可升级 {{upgradable}} · 处理中 {{processing}} · 失败 {{failed}}",
+      "viewLabel": "收件箱视图",
+      "desk": "桌面",
+      "list": "列表",
+      "sortLabel": "收件箱排序",
+      "sort": {
+        "newest": "按创建时间（最新）",
+        "oldest": "按创建时间（最早）",
+        "title": "按标题排序"
+      },
+      "preview": "预览",
+      "quickPreview": "快速预览 {{title}}",
+      "more": "更多操作：{{title}}",
+      "actions": "操作 {{title}}",
+      "audio": "音频",
+      "document": "文档",
+      "web": "网页",
+      "text": "文本",
+      "waveformDemo": "波形示意 · 点击查看内容",
+      "waiting": {
+        "CONSENT_REQUIRED": "等待授权",
+        "ASR_KEY_REQUIRED": "需配置转写密钥",
+        "OFFLINE": "等待网络恢复"
+      },
+      "coursesTitle": "归类到课程",
+      "coursesHint": "拖动记录到目标课程，或选择后点击课程",
+      "dropHint": "释放后确认归类",
+      "courseTargetHint": "选择内容后归类到这里",
+      "previousCourses": "查看上一组课程",
+      "nextCourses": "查看下一组课程",
+      "classifyInto": "归类所选内容到 {{course}}",
+      "allCourses": "查看全部课程",
+      "browseCourses": "浏览课程目录",
+      "createCourse": "先创建一门课程",
+      "classifyNotice": "仅调整课程归属，原内容保留；处理中或失败记录请先打开详情处理。",
+      "invalidDrop": "这些内容当前无法归类，请重新选择可整理的记录。"
+    },
     "title": "收件箱",
     "description": "所有暂未归类的学习记录都会集中在这里，按创建时间倒序排列。",
     "loading": "正在读取收件箱…",

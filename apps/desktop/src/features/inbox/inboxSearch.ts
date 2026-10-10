@@ -24,6 +24,8 @@ export type InboxSearch = {
   status?: InboxStatusFilter;
   page?: number;
   record?: string;
+  view?: "desk" | "list";
+  sort?: "newest" | "oldest" | "title";
 };
 
 export function isInboxTypeFilter(value: unknown): value is InboxTypeFilter {

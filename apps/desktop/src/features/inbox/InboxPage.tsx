@@ -5,23 +5,18 @@ import {
   ArrowRight,
   AudioLines,
   ClipboardPaste,
-  FilePlus2,
   FileText,
   FolderOpen,
   Inbox,
   Layers3,
-  ListTodo,
   Mic2,
   PencilLine,
   Rocket,
-  Search,
-  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,18 +36,17 @@ import {
   EmptyHeader,
   EmptyMedia,
 } from "@/components/ui/empty";
-import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ActiveCourseSelect } from "@/features/courses/components/ActiveCourseSelect";
+import { InboxCard } from "@/features/inbox/InboxCard";
+import { InboxCourseTray } from "@/features/inbox/InboxCourseTray";
+import { InboxToolbar } from "@/features/inbox/InboxToolbar";
 import { InboxRowActions } from "@/features/inbox/InboxRowActions";
 import {
-  isInboxTypeFilter,
   type InboxSearch,
   type InboxStatusFilter,
   type InboxTypeFilter,
 } from "@/features/inbox/inboxSearch";
-import { formatSize } from "@/lib/utils";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
 import type {
@@ -62,83 +56,19 @@ import type {
 } from "@/features/records/api/types";
 import {
   captureTypeLabelKeys,
-  formatRecordDuration,
   recordDateFormatter,
   statusLabelKeys,
 } from "@/features/records/recordPresentation";
 
+import {
+  ORGANIZABLE_STATUSES,
+  PROCESSING_STATUSES,
+  inboxStatusClassNames,
+  inboxMetaText,
+  formatInboxListDate,
+} from "@/features/inbox/inboxPresentation";
+
 const PAGE_SIZE = 20;
-const ORGANIZABLE_STATUSES = new Set(["NOTE", "SUMMARY_PENDING"]);
-const PROCESSING_STATUSES = new Set([
-  "DRAFT",
-  "CONTENT_PROCESSING",
-  "SUMMARY_PROCESSING",
-]);
-
-const inboxStatusClassNames = {
-  NOTE: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-300",
-  DRAFT: "bg-surface-subtle text-muted-foreground",
-  CONTENT_PROCESSING:
-    "bg-blue-50 text-blue-700 dark:bg-blue-950/45 dark:text-blue-300",
-  SUMMARY_PENDING:
-    "bg-amber-50 text-amber-700 dark:bg-amber-950/45 dark:text-amber-300",
-  SUMMARY_PROCESSING:
-    "bg-blue-50 text-blue-700 dark:bg-blue-950/45 dark:text-blue-300",
-  SUMMARY_READY:
-    "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/45 dark:text-emerald-300",
-  COMPLETED: "bg-surface-subtle text-ink",
-  FAILED: "bg-red-50 text-red-700 dark:bg-red-950/45 dark:text-red-300",
-} satisfies Record<RecordOut["status"], string>;
-
-const listTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-const typeFilters = [
-  "all",
-  "quick-note",
-  "paste",
-  "audio",
-  "document",
-  "other",
-] as const;
-
-const statusFilters = [
-  "unfiled",
-  "upgradable",
-  "processing",
-  "failed",
-] as const;
-
-function inboxMetaText(record: InboxRecordOut, t: TFunction): string {
-  const parts: string[] = [];
-  const isAudio = ["RECORDING", "AUDIO_IMPORT"].includes(record.capture_type);
-  const isText = ["QUICK_NOTE", "PASTE"].includes(record.capture_type);
-  if (isAudio && record.duration_ms > 0) {
-    parts.push(
-      t("inbox.meta.duration", {
-        duration: formatRecordDuration(record.duration_ms, t),
-      }),
-    );
-  }
-  if (!isText) {
-    const size = formatSize(record.file_size_bytes ?? null);
-    if (size) parts.push(size);
-  }
-  if (
-    !isAudio &&
-    (isText ||
-      record.capture_type === "MULTI_SOURCE" ||
-      record.capture_type === "CLIP") &&
-    record.content_chars != null
-  ) {
-    parts.push(t("inbox.meta.characters", { count: record.content_chars }));
-  }
-  return parts.join(" · ");
-}
-
 function matchesType(record: RecordOut, filter: InboxTypeFilter) {
   if (filter === "all") return true;
   if (filter === "quick-note") return record.capture_type === "QUICK_NOTE";
@@ -154,22 +84,6 @@ function matchesStatus(record: RecordOut, filter: InboxStatusFilter) {
   if (filter === "upgradable") return ORGANIZABLE_STATUSES.has(record.status);
   if (filter === "processing") return PROCESSING_STATUSES.has(record.status);
   return record.status === "FAILED";
-}
-
-function isToday(value: string) {
-  const date = new Date(value);
-  const today = new Date();
-  return (
-    date.getFullYear() === today.getFullYear() &&
-    date.getMonth() === today.getMonth() &&
-    date.getDate() === today.getDate()
-  );
-}
-
-function formatInboxListDate(value: string) {
-  return isToday(value)
-    ? listTimeFormatter.format(new Date(value))
-    : recordDateFormatter.format(new Date(value));
 }
 
 function CaptureIcon({ type }: { type: CaptureType }) {
@@ -197,7 +111,13 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(
+    Boolean(search.record) &&
+      (search.view !== "list" || window.innerWidth < 1280),
+  );
+  const [draggedIds, setDraggedIds] = useState<string[]>([]);
+  const bulkPendingRef = useRef(false);
+  const view = search.view ?? "desk";
   const [feedback, setFeedback] = useState<string | null>(null);
   const [bulkAction, setBulkAction] = useState<
     "classify" | "upgrade" | "delete" | null
@@ -233,6 +153,13 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
       .toLocaleLowerCase()
       .includes(normalizedQuery);
   });
+  filteredRecords.sort((a, b) => {
+    if (search.sort === "title") return a.title.localeCompare(b.title);
+    const order =
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime() ||
+      b.id.localeCompare(a.id);
+    return search.sort === "oldest" ? -order : order;
+  });
   const pageCount = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
   const page = Math.min(search.page ?? 1, pageCount);
   const pageRecords = filteredRecords.slice(
@@ -253,14 +180,6 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
   const allSelectedOrganizable =
     selectedRecords.length > 0 &&
     selectedRecords.every((record) => ORGANIZABLE_STATUSES.has(record.status));
-  const stats = {
-    today: allRecords.filter((record) => isToday(record.created_at)).length,
-    unfiled: allRecords.length,
-    upgradable: allRecords.filter((record) =>
-      ORGANIZABLE_STATUSES.has(record.status),
-    ).length,
-  };
-
   function updateSearch(next: Partial<InboxSearch>) {
     onSearchChange({ ...search, ...next });
   }
@@ -281,7 +200,7 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
 
   function openPreview(recordId: string) {
     updateSearch({ record: recordId });
-    if (window.innerWidth < 1280) setPreviewOpen(true);
+    if (view === "desk" || window.innerWidth < 1280) setPreviewOpen(true);
   }
 
   function closeBulkDialog() {
@@ -291,8 +210,10 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
   }
 
   async function executeBulkAction() {
+    if (bulkPendingRef.current) return;
     if (!bulkAction || !selectedRecords.length) return;
     if (bulkAction !== "delete" && !bulkCourseId) return;
+    bulkPendingRef.current = true;
     setBulkPending(true);
     const courseId = bulkCourseId;
     const results = await Promise.allSettled(
@@ -344,9 +265,52 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
         failed: failedIds.size,
       }),
     );
+    bulkPendingRef.current = false;
     setBulkPending(false);
     setBulkAction(null);
     setBulkCourseId(null);
+  }
+
+  function startDrag(event: DragEvent<HTMLElement>, record: InboxRecordOut) {
+    const items = selectedIds.has(record.id) ? selectedRecords : [record];
+    if (
+      bulkPending ||
+      items.some((item) => !ORGANIZABLE_STATUSES.has(item.status))
+    ) {
+      event.preventDefault();
+      return;
+    }
+    const ids = items.map((item) => item.id);
+    event.dataTransfer.setData(
+      "application/x-knowrealm-inbox",
+      JSON.stringify(ids),
+    );
+    event.dataTransfer.effectAllowed = "move";
+    setDraggedIds(ids);
+  }
+
+  function classifyInto(courseId: string, ids?: string[]) {
+    if (bulkPending || bulkAction) return;
+    if (ids) setSelectedIds(new Set(ids));
+    setBulkCourseId(courseId);
+    setBulkAction("classify");
+  }
+
+  function dropInto(event: DragEvent<HTMLElement>, courseId: string) {
+    event.preventDefault();
+    const payload = event.dataTransfer.getData("application/x-knowrealm-inbox");
+    const valid =
+      draggedIds.length > 0 &&
+      payload === JSON.stringify(draggedIds) &&
+      draggedIds.every((id) =>
+        allRecords.some(
+          (record) =>
+            record.id === id && ORGANIZABLE_STATUSES.has(record.status),
+        ),
+      );
+    if (valid) classifyInto(courseId, draggedIds);
+    else setFeedback(t("inbox.workspace.invalidDrop"));
+    setDraggedIds([]);
   }
 
   if (records.isPending) {
@@ -376,293 +340,262 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
     );
   }
 
-  if (records.data.length === 0) {
-    return (
-      <section className="work-surface-enter max-w-workbench px-content mx-auto min-h-full py-8">
-        <InboxHeader stats={stats} />
+  return (
+    <section className="inbox-workspace max-w-workbench px-content mx-auto min-w-0">
+      <div className="inbox-scroll-area min-h-0 flex-1 overflow-y-auto pt-6 pb-5">
+        <InboxToolbar
+          records={allRecords}
+          search={search}
+          onChange={updateSearch}
+          onFilterChange={changeFilter}
+        />
         {feedback ? (
           <p role="status" className="text-body text-muted-foreground mt-4">
             {feedback}
           </p>
         ) : null}
-        <Empty className="border-border mt-8 items-start rounded-none border-x-0 border-t border-b-0 border-solid bg-transparent px-0 py-8 text-start">
-          <EmptyHeader className="items-start text-start">
-            <EmptyMedia className="text-muted-foreground">
-              <Inbox aria-hidden="true" className="size-5" />
-            </EmptyMedia>
-            <h2 className="text-section font-section text-ink">
-              {t("inbox.emptyTitle")}
-            </h2>
-            <EmptyDescription className="max-w-reading text-body text-start">
-              {t("inbox.emptyDescription")}
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </section>
-    );
-  }
 
-  return (
-    <section className="work-surface-enter max-w-workbench px-content mx-auto min-h-full min-w-0 py-8">
-      <InboxHeader stats={stats} />
-      {feedback ? (
-        <p role="status" className="text-body text-muted-foreground mt-4">
-          {feedback}
-        </p>
-      ) : null}
-
-      <div className="mt-5 grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1fr)_clamp(22.5rem,30vw,31rem)]">
-        <div className="min-w-0">
-          <div className="border-border bg-background rounded-xl border p-3 shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
-            <div className="flex flex-wrap items-center gap-2">
-              <Tabs
-                value={typeFilter}
-                onValueChange={(value) =>
-                  changeFilter({
-                    type:
-                      isInboxTypeFilter(value) && value !== "all"
-                        ? value
-                        : undefined,
-                  })
-                }
-              >
-                <TabsList
-                  aria-label={t("inbox.filters.typeLabel")}
-                  className="border-border bg-background h-9 rounded-lg border p-1 shadow-none"
-                >
-                  {typeFilters.map((value) => (
-                    <TabsTrigger
-                      key={value}
-                      value={value}
-                      className="data-active:bg-filter-active-background data-active:text-filter-active-foreground h-7 rounded-md px-2.5 text-[13px] data-active:border-transparent data-active:shadow-sm"
-                    >
-                      {t(`inbox.filters.type.${value}`)}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </Tabs>
-              <div
-                className="border-border bg-background flex h-9 items-center gap-0.5 rounded-lg border p-1"
-                aria-label={t("inbox.filters.statusLabel")}
-              >
-                {statusFilters.map((value) => (
-                  <Button
-                    key={value}
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={`h-7 rounded-md px-2.5 text-[13px] ${statusFilter === value ? "bg-muted text-foreground shadow-sm" : "text-muted-foreground"}`}
-                    onClick={() =>
-                      changeFilter({
-                        status: value === "unfiled" ? undefined : value,
-                      })
-                    }
-                  >
-                    {t(`inbox.filters.status.${value}`)}
-                  </Button>
-                ))}
-              </div>
-              <div className="relative ml-auto min-w-52 flex-1 lg:max-w-64">
-                <Search
-                  aria-hidden="true"
-                  className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-                />
-                <Input
-                  type="search"
-                  value={search.q ?? ""}
-                  onChange={(event) =>
-                    changeFilter({ q: event.target.value || undefined })
-                  }
-                  maxLength={100}
-                  className="bg-background h-9 rounded-lg pl-8"
-                  aria-label={t("inbox.filters.searchLabel")}
-                  placeholder={t("inbox.filters.searchPlaceholder")}
-                />
-              </div>
-              <Button
-                variant="outline"
-                size="icon"
-                className="size-9 rounded-lg"
-                aria-label={t("inbox.filters.more")}
-              >
-                <SlidersHorizontal aria-hidden="true" />
-              </Button>
+        <div
+          className={`mt-4 grid min-h-0 gap-4 ${view === "list" ? "xl:grid-cols-[minmax(0,1fr)_minmax(18rem,26rem)]" : ""}`}
+        >
+          <div className="min-w-0">
+            <div
+              className={`${view === "desk" ? "hidden" : "inbox-list-columns"} text-muted-foreground grid-cols-[1rem_minmax(0,1fr)_5.5rem_7rem] items-center gap-3 px-4 py-3 text-xs 2xl:grid-cols-[1rem_minmax(0,1fr)_5.5rem_7rem_7rem_6rem]`}
+            >
+              <span />
+              <span>{t("inbox.columns.content")}</span>
+              <span>{t("inbox.columns.source")}</span>
+              <span>{t("inbox.columns.status")}</span>
+              <span className="hidden 2xl:block">
+                {t("inbox.columns.course")}
+              </span>
+              <span className="hidden text-right 2xl:block">
+                {t("inbox.columns.createdAt")}
+              </span>
             </div>
-          </div>
 
-          <div className="border-border bg-background mt-3 flex min-h-12 items-center gap-3 rounded-xl border px-4 shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
-            <Checkbox
-              checked={allPageSelected}
-              onCheckedChange={(checked) => {
-                const next = new Set(selectedIds);
-                pageRecords.forEach((record) => {
-                  if (checked) next.add(record.id);
-                  else next.delete(record.id);
-                });
-                setSelectedIds(next);
-              }}
-              aria-label={t("inbox.selection.page")}
-            />
-            {selectedIds.size ? (
-              <>
-                <span className="text-label text-muted-foreground">
-                  {t("inbox.selection.count", { count: selectedIds.size })}
+            {pageRecords.length ? (
+              <ul
+                aria-label={t("inbox.listLabel")}
+                className={view === "desk" ? "inbox-grid" : "min-w-0 space-y-2"}
+              >
+                {pageRecords.map((record) =>
+                  view === "desk" ? (
+                    <InboxCard
+                      key={record.id}
+                      record={record}
+                      selected={record.id === selectedRecord?.id}
+                      checked={selectedIds.has(record.id)}
+                      disabled={bulkPending}
+                      onCheckedChange={(checked) =>
+                        toggleRecord(record.id, checked)
+                      }
+                      onPreview={() => openPreview(record.id)}
+                      onClassified={(courseName) =>
+                        setFeedback(
+                          t("inbox.classifiedFeedback", { course: courseName }),
+                        )
+                      }
+                      onDragStart={(event) => startDrag(event, record)}
+                      onDragEnd={() => setDraggedIds([])}
+                    />
+                  ) : (
+                    <InboxRow
+                      key={record.id}
+                      record={record}
+                      selected={record.id === selectedRecord?.id}
+                      checked={selectedIds.has(record.id)}
+                      onCheckedChange={(checked) =>
+                        toggleRecord(record.id, checked)
+                      }
+                      onPreview={() => openPreview(record.id)}
+                      onClassified={(courseName) =>
+                        setFeedback(
+                          t("inbox.classifiedFeedback", { course: courseName }),
+                        )
+                      }
+                      disabled={bulkPending}
+                    />
+                  ),
+                )}
+              </ul>
+            ) : (
+              <Empty className="items-start rounded-none px-2 py-10 text-start">
+                <EmptyHeader className="items-start text-start">
+                  {records.data.length === 0 ? (
+                    <EmptyMedia className="text-muted-foreground">
+                      <Inbox aria-hidden="true" className="size-5" />
+                    </EmptyMedia>
+                  ) : null}
+                  <h2 className="text-section font-section text-ink">
+                    {t(
+                      records.data.length === 0
+                        ? "inbox.emptyTitle"
+                        : "inbox.noResultsTitle",
+                    )}
+                  </h2>
+                  <EmptyDescription>
+                    {t(
+                      records.data.length === 0
+                        ? "inbox.emptyDescription"
+                        : "inbox.noResultsDescription",
+                    )}
+                  </EmptyDescription>
+                </EmptyHeader>
+                {records.data.length > 0 ? (
+                  <EmptyContent className="items-start">
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        changeFilter({
+                          q: undefined,
+                          type: undefined,
+                          status: undefined,
+                        })
+                      }
+                    >
+                      {t("inbox.filters.clear")}
+                    </Button>
+                  </EmptyContent>
+                ) : null}
+              </Empty>
+            )}
+
+            {filteredRecords.length > PAGE_SIZE ? (
+              <nav
+                className="mt-5 flex items-center justify-end gap-2"
+                aria-label={t("inbox.pagination.label")}
+              >
+                <span className="text-label text-muted-foreground mr-2 tabular-nums">
+                  {t("inbox.pagination.page", { page, count: pageCount })}
                 </span>
                 <Button
-                  variant="ghost"
-                  size="xs"
-                  className="bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
-                  onClick={() => setSelectedIds(new Set())}
-                >
-                  {t("inbox.selection.clear")}
-                </Button>
-                <div className="ml-auto flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!allSelectedOrganizable}
-                    onClick={() => setBulkAction("classify")}
-                  >
-                    <FolderOpen aria-hidden="true" />
-                    {t("inbox.bulk.classify")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={!allSelectedOrganizable}
-                    onClick={() => setBulkAction("upgrade")}
-                  >
-                    <Rocket aria-hidden="true" />
-                    {t("inbox.bulk.upgrade")}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => setBulkAction("delete")}
-                  >
-                    <Trash2 aria-hidden="true" />
-                    {t("inbox.bulk.delete")}
-                  </Button>
-                </div>{" "}
-              </>
-            ) : (
-              <span className="text-label text-muted-foreground">
-                {t("inbox.listCount", { count: filteredRecords.length })}
-              </span>
-            )}
-          </div>
-
-          <div className="text-muted-foreground grid grid-cols-[1rem_minmax(0,1fr)_5.5rem_7rem] items-center gap-3 px-4 py-3 text-xs 2xl:grid-cols-[1rem_minmax(0,1fr)_5.5rem_7rem_7rem_6rem]">
-            <span />
-            <span>{t("inbox.columns.content")}</span>
-            <span>{t("inbox.columns.source")}</span>
-            <span>{t("inbox.columns.status")}</span>
-            <span className="hidden 2xl:block">
-              {t("inbox.columns.course")}
-            </span>
-            <span className="hidden text-right 2xl:block">
-              {t("inbox.columns.createdAt")}
-            </span>
-          </div>
-
-          {pageRecords.length ? (
-            <ul aria-label={t("inbox.listLabel")} className="min-w-0 space-y-2">
-              {pageRecords.map((record) => (
-                <InboxRow
-                  key={record.id}
-                  record={record}
-                  selected={record.id === selectedRecord?.id}
-                  checked={selectedIds.has(record.id)}
-                  onCheckedChange={(checked) =>
-                    toggleRecord(record.id, checked)
-                  }
-                  onPreview={() => openPreview(record.id)}
-                  onClassified={(courseName) =>
-                    setFeedback(
-                      t("inbox.classifiedFeedback", { course: courseName }),
-                    )
-                  }
-                />
-              ))}
-            </ul>
-          ) : (
-            <Empty className="items-start rounded-none px-2 py-10 text-start">
-              <EmptyHeader className="items-start text-start">
-                <h2 className="text-section font-section text-ink">
-                  {t("inbox.noResultsTitle")}
-                </h2>
-                <EmptyDescription>
-                  {t("inbox.noResultsDescription")}
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent className="items-start">
-                <Button
                   variant="outline"
+                  size="icon"
+                  disabled={page <= 1}
+                  aria-label={t("inbox.pagination.previous")}
                   onClick={() =>
-                    changeFilter({
-                      q: undefined,
-                      type: undefined,
-                      status: undefined,
+                    updateSearch({
+                      page: page - 1 || undefined,
+                      record: undefined,
                     })
                   }
                 >
-                  {t("inbox.filters.clear")}
+                  <ArrowLeft aria-hidden="true" />
                 </Button>
-              </EmptyContent>
-            </Empty>
-          )}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  disabled={page >= pageCount}
+                  aria-label={t("inbox.pagination.next")}
+                  onClick={() =>
+                    updateSearch({ page: page + 1, record: undefined })
+                  }
+                >
+                  <ArrowRight aria-hidden="true" />
+                </Button>
+              </nav>
+            ) : null}
+          </div>
 
-          {filteredRecords.length > PAGE_SIZE ? (
-            <nav
-              className="mt-5 flex items-center justify-end gap-2"
-              aria-label={t("inbox.pagination.label")}
-            >
-              <span className="text-label text-muted-foreground mr-2 tabular-nums">
-                {t("inbox.pagination.page", { page, count: pageCount })}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={page <= 1}
-                aria-label={t("inbox.pagination.previous")}
-                onClick={() =>
-                  updateSearch({
-                    page: page - 1 || undefined,
-                    record: undefined,
-                  })
+          {view === "list" ? (
+            <aside className="border-border bg-background sticky top-4 hidden max-h-[calc(100vh-var(--spacing-titlebar)-7rem)] min-h-[calc(100vh-var(--spacing-titlebar)-9.5rem)] min-w-0 self-start overflow-y-auto rounded-xl border shadow-[0_4px_16px_rgb(15_23_42/0.045)] xl:block">
+              <InboxPreview
+                record={selectedRecord}
+                onClose={() => updateSearch({ record: undefined })}
+                onClassified={(courseName) =>
+                  setFeedback(
+                    t("inbox.classifiedFeedback", { course: courseName }),
+                  )
                 }
-              >
-                <ArrowLeft aria-hidden="true" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={page >= pageCount}
-                aria-label={t("inbox.pagination.next")}
-                onClick={() =>
-                  updateSearch({ page: page + 1, record: undefined })
-                }
-              >
-                <ArrowRight aria-hidden="true" />
-              </Button>
-            </nav>
+              />
+            </aside>
           ) : null}
         </div>
-
-        <aside className="border-border bg-background sticky top-4 hidden max-h-[calc(100vh-var(--spacing-titlebar)-7rem)] min-h-[calc(100vh-var(--spacing-titlebar)-9.5rem)] min-w-0 self-start overflow-y-auto rounded-xl border shadow-[0_4px_16px_rgb(15_23_42/0.045)] xl:block">
-          <InboxPreview
-            record={selectedRecord}
-            onClose={() => updateSearch({ record: undefined })}
-            onClassified={(courseName) =>
-              setFeedback(t("inbox.classifiedFeedback", { course: courseName }))
-            }
-          />
-        </aside>
       </div>
 
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl xl:hidden">
+      <InboxCourseTray
+        dragging={draggedIds.length > 0}
+        canClassify={allSelectedOrganizable}
+        disabled={bulkPending || bulkAction !== null}
+        onClassify={classifyInto}
+        onDrop={dropInto}
+      >
+        <div className="flex min-h-9 flex-wrap items-center gap-3">
+          <Checkbox
+            checked={allPageSelected}
+            disabled={bulkPending}
+            onCheckedChange={(checked) => {
+              const next = new Set(selectedIds);
+              pageRecords.forEach((record) => {
+                if (checked) next.add(record.id);
+                else next.delete(record.id);
+              });
+              setSelectedIds(next);
+            }}
+            aria-label={t("inbox.selection.page")}
+          />
+          {selectedIds.size ? (
+            <>
+              <span className="text-label text-muted-foreground">
+                {t("inbox.selection.count", { count: selectedIds.size })}
+              </span>
+              <Button
+                variant="ghost"
+                size="xs"
+                className="bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
+                disabled={bulkPending}
+                onClick={() => setSelectedIds(new Set())}
+              >
+                {t("inbox.selection.clear")}
+              </Button>
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!allSelectedOrganizable || bulkPending}
+                  onClick={() => setBulkAction("classify")}
+                >
+                  <FolderOpen aria-hidden="true" />
+                  {t("inbox.bulk.classify")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!allSelectedOrganizable || bulkPending}
+                  onClick={() => setBulkAction("upgrade")}
+                >
+                  <Rocket aria-hidden="true" />
+                  {t("inbox.bulk.upgrade")}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={bulkPending}
+                  onClick={() => setBulkAction("delete")}
+                >
+                  <Trash2 aria-hidden="true" />
+                  {t("inbox.bulk.delete")}
+                </Button>
+              </div>{" "}
+            </>
+          ) : (
+            <span className="text-label text-muted-foreground">
+              {t("inbox.listCount", { count: filteredRecords.length })}
+            </span>
+          )}
+        </div>
+      </InboxCourseTray>
+
+      <Dialog
+        open={previewOpen && Boolean(selectedRecord)}
+        onOpenChange={(open) => {
+          setPreviewOpen(open);
+          if (!open) updateSearch({ record: undefined });
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader className="sr-only">
             <DialogTitle>{t("inbox.preview.title")}</DialogTitle>
             <DialogDescription>
@@ -737,74 +670,6 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
   );
 }
 
-function InboxHeader({
-  stats,
-}: {
-  stats: { today: number; unfiled: number; upgradable: number };
-}) {
-  const { t } = useTranslation();
-  const items = [
-    {
-      key: "today",
-      value: stats.today,
-      icon: FilePlus2,
-      iconClass:
-        "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300",
-    },
-    {
-      key: "unfiled",
-      value: stats.unfiled,
-      icon: ListTodo,
-      iconClass:
-        "bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-300",
-    },
-    {
-      key: "upgradable",
-      value: stats.upgradable,
-      icon: Rocket,
-      iconClass:
-        "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300",
-    },
-  ] as const;
-  return (
-    <header className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-      <div>
-        <h1 className="text-headline font-headline text-ink-strong">
-          {t("inbox.title")}
-        </h1>
-        <p className="max-w-reading text-body text-muted-foreground mt-2">
-          {t("inbox.description")}
-        </p>
-      </div>
-      <dl className="border-border bg-background grid min-w-[30rem] grid-cols-3 rounded-xl border px-2 py-3 shadow-[0_4px_14px_rgb(15_23_42/0.05)]">
-        {items.map(({ key, value, icon: Icon, iconClass }, index) => (
-          <div
-            key={key}
-            className={`flex items-center gap-3 px-4 ${index ? "border-border border-l" : ""}`}
-          >
-            <span
-              className={`${iconClass} flex size-9 shrink-0 items-center justify-center rounded-full`}
-            >
-              <Icon aria-hidden="true" className="size-[18px]" />
-            </span>
-            <div>
-              <dt className="text-foreground text-[13px] font-semibold">
-                {t(`inbox.stats.${key}`)}
-              </dt>
-              <dd className="text-foreground mt-0.5 flex items-baseline gap-1.5 text-2xl font-semibold tabular-nums">
-                {value}
-                <span className="text-muted-foreground text-xs font-normal">
-                  {t("inbox.stats.unit")}
-                </span>
-              </dd>
-            </div>
-          </div>
-        ))}
-      </dl>
-    </header>
-  );
-}
-
 function InboxLoading({ title, label }: { title: string; label: string }) {
   return (
     <section className="max-w-workbench px-content mx-auto py-8">
@@ -827,7 +692,9 @@ function InboxRow({
   onCheckedChange,
   onPreview,
   onClassified,
+  disabled,
 }: {
+  disabled: boolean;
   record: InboxRecordOut;
   selected: boolean;
   checked: boolean;
@@ -844,13 +711,14 @@ function InboxRow({
     >
       <Checkbox
         checked={checked}
+        disabled={disabled}
         onCheckedChange={onCheckedChange}
         aria-label={t("inbox.selection.record", { title })}
       />
       <button
         type="button"
         onClick={onPreview}
-        className="focus-visible:ring-ring/40 grid min-w-0 grid-cols-[minmax(0,1fr)_5.5rem_7rem] items-center gap-3 py-3 text-left focus-visible:rounded-lg focus-visible:ring-3 focus-visible:outline-hidden 2xl:grid-cols-[minmax(0,1fr)_5.5rem_7rem_7rem_6rem]"
+        className="focus-visible:ring-ring/40 grid min-w-0 grid-cols-1 items-center gap-3 py-3 text-left focus-visible:rounded-lg focus-visible:ring-3 focus-visible:outline-hidden md:grid-cols-[minmax(0,1fr)_5.5rem_7rem] 2xl:grid-cols-[minmax(0,1fr)_5.5rem_7rem_7rem_6rem]"
         aria-label={t("inbox.preview.action", { title })}
       >
         <span className="flex min-w-0 items-center gap-3">
@@ -893,6 +761,7 @@ function InboxRow({
             record={record}
             onClassified={onClassified}
             compact
+            disabled={disabled}
           />
         </div>
         <Link

@@ -1707,6 +1707,44 @@
     "submitting": "Saving"
   },
   "inbox": {
+    "workspace": {
+      "summary": "{{count}} unfiled · {{today}} added today · {{upgradable}} upgradable · {{processing}} processing · {{failed}} failed",
+      "viewLabel": "Inbox view",
+      "desk": "Desk",
+      "list": "List",
+      "sortLabel": "Sort inbox",
+      "sort": {
+        "newest": "Created time (newest)",
+        "oldest": "Created time (oldest)",
+        "title": "Title"
+      },
+      "preview": "Preview",
+      "quickPreview": "Quick preview {{title}}",
+      "more": "More actions: {{title}}",
+      "actions": "Actions for {{title}}",
+      "audio": "Audio",
+      "document": "Document",
+      "web": "Web page",
+      "text": "Text",
+      "waveformDemo": "Illustrative waveform · Click to preview",
+      "waiting": {
+        "CONSENT_REQUIRED": "Awaiting consent",
+        "ASR_KEY_REQUIRED": "ASR key required",
+        "OFFLINE": "Waiting for network"
+      },
+      "coursesTitle": "File into a course",
+      "coursesHint": "Drag a record to a course, or select records and click a course",
+      "dropHint": "Release to confirm filing",
+      "courseTargetHint": "Select content to file here",
+      "previousCourses": "View previous courses",
+      "nextCourses": "View next courses",
+      "classifyInto": "File selected content into {{course}}",
+      "allCourses": "View all courses",
+      "browseCourses": "Browse course directory",
+      "createCourse": "Create a course first",
+      "classifyNotice": "Only changes course membership; content is preserved. Open processing or failed records to resolve them first.",
+      "invalidDrop": "This content cannot be filed right now. Select records that are ready to organize."
+    },
     "title": "Inbox",
     "description": "All unfiled Records gather here, newest first.",
     "loading": "Loading Inbox…",
