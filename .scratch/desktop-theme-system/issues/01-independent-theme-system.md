@@ -69,3 +69,5 @@
 2026-10-10：用户批准采用建议的一张完整闭环工单，无前置工单依赖。本票发布为 ready-for-agent；功能尚未实施，所有验收项保持未勾选。
 
 2026-10-10 实施：先完成不依赖新增配色的偏好存储与契约：light_theme_id / dark_theme_id 的独立字面量校验、缺键默认、单组坏值回退、默认值删键；settings.json 的五个写入口共享提交锁；OpenAPI 与前端类型已生成，既有 mock / 类型化夹具同步。权威文档具体修改见 [authority-proposal.md](../authority-proposal.md)，尚未获批；DESIGN.md / GLOSSARY.md、两组主题 UI、主题登记与样式、启动缓存、前端保存对账与冲突控制、图表刷新及真机验收仍未完成，不宣称完整交付。
+
+2026-10-10 阶段收口：提交 9833a23；相关后端 78 项、pyright、前端构建、契约漂移与触及文件 lint / 格式通过；全量前端 686 通过 / 9 失败（6 文件），全仓前端 lint 受两条未修改文件警告拦截。code-review 双轴未发现本阶段实质缺陷；完整证据及剩余范围见 [validation-storage.md](../validation-storage.md)。继续实施需先批准具体权威文档提案，全部真机项保持未勾选。
