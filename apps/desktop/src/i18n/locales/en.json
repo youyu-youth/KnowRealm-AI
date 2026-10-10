@@ -25,6 +25,7 @@
     "actionFailed": "Window action failed. Please try again."
   },
   "nav": {
+    "resizeSidebar": "Resize sidebar",
     "label": "Workspace navigation",
     "today": "Today",
     "inbox": "Inbox",

@@ -17,6 +17,76 @@
 @source "../../node_modules/@streamdown/cjk/dist/*.js";
 @source "../../node_modules/@streamdown/math/dist/*.js";
 
+@layer components {
+  .app-sidebar {
+    --sidebar-width: var(--spacing-sidebar);
+    container: sidebar / inline-size;
+  }
+
+  .sidebar-label {
+    transition: opacity 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .sidebar-courses {
+    white-space: nowrap;
+  }
+
+  .sidebar-resizing .app-sidebar,
+  .app-sidebar:has(.sidebar-resize-handle:focus-visible) {
+    transition: none;
+  }
+
+  /* 保留行高与图标位置：模式切换不重排导航或底部入口。 */
+  @container sidebar (width < 10rem) {
+    .sidebar-label {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sidebar-courses {
+      visibility: hidden;
+    }
+  }
+
+  @media (width < 68.75rem) {
+    .app-sidebar {
+      --sidebar-width: 4rem;
+    }
+  }
+
+  .sidebar-resize-handle {
+    cursor: col-resize;
+    background: transparent;
+  }
+
+  .sidebar-resize-handle::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    width: 1px;
+    background: var(--border-strong);
+    opacity: 0;
+    transition: opacity 150ms;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sidebar-resize-handle:hover::after {
+      opacity: 1;
+    }
+  }
+
+  .sidebar-resize-handle:focus-visible::after,
+  .sidebar-resizing .sidebar-resize-handle::after {
+    opacity: 1;
+  }
+
+  .sidebar-resizing,
+  .sidebar-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

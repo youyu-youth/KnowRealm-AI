@@ -24,7 +24,8 @@ export function SidebarUserArea() {
     <Link
       to="/settings"
       aria-label={t("nav.userArea.openSettings")}
-      className="hover:bg-surface-subtle focus-visible:ring-ring/40 max-compact:justify-center max-compact:px-0 mt-auto flex h-11 items-center gap-3 rounded-md px-3 transition-colors focus-visible:ring-3"
+      title={t("nav.userArea.openSettings")}
+      className="hover:bg-surface-subtle focus-visible:ring-ring/40 mt-auto flex h-11 shrink-0 items-center gap-3 rounded-md px-1 transition-colors focus-visible:ring-3"
     >
       <span className="bg-surface-subtle flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full">
         {avatar.blob ? (
@@ -40,7 +41,7 @@ export function SidebarUserArea() {
           />
         )}
       </span>
-      <span className="text-body text-muted-foreground max-compact:sr-only min-w-0 truncate">
+      <span className="sidebar-label text-body text-muted-foreground min-w-0 truncate">
         {nickname ?? t("nav.userArea.nicknamePlaceholder")}
       </span>
     </Link>

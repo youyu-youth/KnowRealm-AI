@@ -16,7 +16,13 @@ import {
   UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -37,6 +43,7 @@ import { CommandPalette } from "@/features/search/components/CommandPalette";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
 import { useSavePreference } from "@/features/settings/PreferencesSection";
 import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
+import { SidebarResizeHandle } from "@/components/layout/SidebarResizeHandle";
 import {
   APP_SIDEBAR_ID,
   useSidebarUiStore,
@@ -89,9 +96,9 @@ const captureItems = [
 ] as const;
 
 const activeNavClass =
-  "flex h-9 items-center gap-3 rounded-md bg-surface-subtle px-3 text-body font-semibold text-ink-strong transition-colors focus-visible:ring-3 focus-visible:ring-ring/40 max-compact:justify-center max-compact:px-0";
+  "flex h-9 items-center gap-3 overflow-hidden rounded-md bg-surface-subtle px-3 text-body font-semibold text-ink-strong transition-colors focus-visible:ring-3 focus-visible:ring-ring/40";
 const inactiveNavClass =
-  "flex h-9 items-center gap-3 rounded-md px-3 text-body font-medium text-muted-foreground transition-colors hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-3 focus-visible:ring-ring/40 max-compact:justify-center max-compact:px-0";
+  "flex h-9 items-center gap-3 overflow-hidden rounded-md px-3 text-body font-medium text-muted-foreground transition-colors hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-3 focus-visible:ring-ring/40";
 
 type ExitRisks = {
   recording: boolean;
@@ -165,6 +172,7 @@ export function AppShell() {
   }, [closeBehavior]);
   const setRecordingOpen = useRecordingUiStore((state) => state.setStartOpen);
   const sidebarCollapsed = useSidebarUiStore((state) => state.collapsed);
+  const sidebarWidth = useSidebarUiStore((state) => state.width);
   const recordingSessions = useRecordingSessions();
   const recordingActive = (recordingSessions.data ?? []).some(
     blocksNewRecording,
@@ -302,24 +310,30 @@ export function AppShell() {
         id={APP_SIDEBAR_ID}
         aria-label={t("nav.label")}
         inert={sidebarCollapsed}
+        style={
+          {
+            "--sidebar-width":
+              sidebarWidth === null ? undefined : `${sidebarWidth}px`,
+          } as CSSProperties
+        }
         className={cn(
-          "bg-sidebar flex h-full shrink-0 overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
-          sidebarCollapsed ? "w-0" : "w-sidebar max-compact:w-16",
+          "app-sidebar bg-sidebar relative flex h-full shrink-0 transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          sidebarCollapsed ? "w-0 overflow-hidden" : "w-[var(--sidebar-width)]",
         )}
       >
-        {/* 内容保持定宽（含内边距的原宽度）：折叠只裁切不重排，动画期间文字不跳动；折叠态用 inert 移出焦点与读屏树。 */}
+        {/* Toggle 只裁切，内容与导航保持挂载；容器宽度决定文字可见性。 */}
         <div
           className={cn(
-            "w-sidebar max-compact:w-16 max-compact:px-2 flex h-full flex-col px-3 py-3 transition-opacity duration-150",
+            "sidebar-content flex h-full w-[var(--sidebar-width)] shrink-0 flex-col overflow-x-hidden overflow-y-auto px-2 py-3 transition-opacity duration-150",
             sidebarCollapsed && "opacity-0",
           )}
         >
-          <div className="max-compact:justify-center max-compact:px-0 flex h-10 items-center gap-3 px-3">
+          <div className="flex h-10 shrink-0 items-center gap-3 overflow-hidden px-3">
             <BookOpenText
               className="text-ink-strong size-5 shrink-0"
               aria-hidden="true"
             />
-            <div className="max-compact:sr-only min-w-0">
+            <div className="sidebar-label min-w-0">
               <p className="text-body text-ink-strong font-section truncate">
                 {t("app.name")}
               </p>
@@ -345,9 +359,7 @@ export function AppShell() {
                       aria-label={label}
                     >
                       <Icon className="size-4 shrink-0" aria-hidden="true" />
-                      <span className="max-compact:sr-only truncate">
-                        {label}
-                      </span>
+                      <span className="sidebar-label truncate">{label}</span>
                     </Link>
                   </AppTooltip>
                 );
@@ -362,14 +374,12 @@ export function AppShell() {
                     variant="ghost"
                     size="lg"
                     disabled
-                    className="max-compact:justify-center max-compact:px-0 w-full justify-start gap-3 px-3 disabled:pointer-events-auto disabled:opacity-70 disabled:hover:bg-transparent"
+                    className="w-full justify-start gap-3 overflow-hidden px-3 disabled:pointer-events-auto disabled:opacity-70 disabled:hover:bg-transparent"
                     aria-label={t("nav.unavailableLabel", { label })}
                   >
                     <Icon data-icon="inline-start" aria-hidden="true" />
-                    <span className="max-compact:sr-only truncate">
-                      {label}
-                    </span>
-                    <span className="text-label max-compact:sr-only ml-auto">
+                    <span className="sidebar-label truncate">{label}</span>
+                    <span className="sidebar-label text-label ml-auto">
                       {t("nav.unavailable")}
                     </span>
                   </Button>
@@ -379,7 +389,7 @@ export function AppShell() {
           </nav>
 
           <section
-            className="max-compact:hidden mt-6 min-h-0"
+            className="sidebar-courses mt-6 min-h-0 overflow-y-auto"
             aria-label={t("nav.courses.label")}
           >
             <button
@@ -403,14 +413,14 @@ export function AppShell() {
                   {t("nav.courses.unavailable")}
                 </p>
               ) : (
-                <div className="mt-1 grid gap-0.5">
+                <div className="mt-1 grid min-w-0 gap-0.5">
                   {sidebarCourses.map((course) => (
                     <Link
                       key={course.id}
                       to="/spaces/$courseId"
                       params={{ courseId: course.id }}
                       search={{ tab: "overview" }}
-                      className="text-body-dense text-ink-muted hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-ring/40 flex h-8 items-center gap-2 rounded-sm px-3 focus-visible:ring-2"
+                      className="text-body-dense text-ink-muted hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-ring/40 flex h-8 min-w-0 items-center gap-2 rounded-sm px-3 focus-visible:ring-2"
                       activeProps={{
                         className:
                           "bg-surface-subtle text-ink-strong font-medium",
@@ -441,14 +451,17 @@ export function AppShell() {
           <AppTooltip label={t("nav.settings")}>
             <Link
               to="/settings"
-              className="hover:bg-surface-subtle focus-visible:ring-ring/40 max-compact:justify-center max-compact:px-0 text-body text-muted-foreground mt-1 flex h-9 items-center gap-3 rounded-md px-3 font-medium focus-visible:ring-3"
+              className="hover:bg-surface-subtle focus-visible:ring-ring/40 text-body text-muted-foreground mt-1 flex h-9 shrink-0 items-center gap-3 overflow-hidden rounded-md px-3 font-medium focus-visible:ring-3"
               aria-label={t("nav.settings")}
             >
               <Settings className="size-4 shrink-0" aria-hidden="true" />
-              <span className="max-compact:sr-only">{t("nav.settings")}</span>
+              <span className="sidebar-label truncate">
+                {t("nav.settings")}
+              </span>
             </Link>
           </AppTooltip>
         </div>
+        {!sidebarCollapsed && <SidebarResizeHandle />}
       </aside>
 
       <div className="bg-paper border-border-subtle max-compact:rounded-none max-compact:border-y-0 max-compact:border-r-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">

@@ -25,6 +25,7 @@
     "actionFailed": "窗口操作失败，请重试。"
   },
   "nav": {
+    "resizeSidebar": "调整侧边栏宽度",
     "label": "工作区导航",
     "today": "今日",
     "inbox": "收件箱",
