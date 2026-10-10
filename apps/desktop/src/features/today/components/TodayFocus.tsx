@@ -1,4 +1,4 @@
-import { Clock3, Link2, Pause, Play, Square, Timer } from "lucide-react";
+import { Clock3, Pause, Play, Square, Timer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -58,7 +58,7 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
   return (
     <section
       aria-labelledby="today-focus-title"
-      className="today-panel w-full p-4"
+      className="today-panel today-focus w-full p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2
@@ -119,8 +119,7 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
               {time}
             </p>
             <p className="text-label text-ink-muted mt-1">
-              {t(`today.workspace.focus.${phase}`)} ·{" "}
-              {t("today.planTodos.minutes", { minutes: duration })}
+              {t(`today.workspace.focus.${phase}`)}
             </p>
           </div>
         </div>
@@ -134,43 +133,45 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
           <p className="text-label text-ink-muted mt-1">
             {activeTask?.course_name ?? t("today.workspace.focus.sampleCourse")}
           </p>
-          <Button
-            className="mt-4 h-9 w-full"
-            onClick={
-              phase === "running"
-                ? () => {
-                    setRemaining(
-                      Math.max(
-                        0,
-                        Math.ceil((deadline.current - Date.now()) / 1000),
-                      ),
-                    );
-                    setPhase("paused");
-                  }
-                : start
-            }
-          >
-            {phase === "running" ? (
-              <Pause aria-hidden="true" />
-            ) : (
-              <Play aria-hidden="true" />
-            )}
-            {t(
-              `today.workspace.focus.${phase === "running" ? "pause" : phase === "paused" ? "resume" : "start"}`,
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            className="mt-2 h-9 w-full"
-            disabled={phase === "ready" || phase === "ended"}
-            onClick={() => {
-              setRemaining(0);
-              setPhase("ended");
-            }}
-          >
-            <Square aria-hidden="true" />
-            {t("today.workspace.focus.end")}
-          </Button>
+          <div className="mt-3 flex gap-2">
+            <Button
+              className="h-8 min-w-0 flex-1 gap-1 px-2 text-xs"
+              onClick={
+                phase === "running"
+                  ? () => {
+                      setRemaining(
+                        Math.max(
+                          0,
+                          Math.ceil((deadline.current - Date.now()) / 1000),
+                        ),
+                      );
+                      setPhase("paused");
+                    }
+                  : start
+              }
+            >
+              {phase === "running" ? (
+                <Pause aria-hidden="true" />
+              ) : (
+                <Play aria-hidden="true" />
+              )}
+              {t(
+                `today.workspace.focus.${phase === "running" ? "pause" : phase === "paused" ? "resume" : "start"}`,
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-8 gap-1 px-2 text-xs"
+              disabled={phase === "ready" || phase === "ended"}
+              onClick={() => {
+                setRemaining(0);
+                setPhase("ended");
+              }}
+            >
+              <Square aria-hidden="true" />
+              {t("today.workspace.focus.end")}
+            </Button>
+          </div>
         </div>
       </div>
       <p className="text-label text-ink-muted mt-3 flex items-center justify-center gap-1">
@@ -183,12 +184,6 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
             elapsed: Math.floor((duration * 60 - remaining) / 60),
             duration,
           })}
-        </span>
-        <span className="inline-flex min-w-0 items-center gap-1">
-          <Link2 className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="truncate">
-            {activeTask?.content ?? t("today.workspace.focus.unbound")}
-          </span>
         </span>
       </div>
       <p className="text-label text-ink-muted mt-2">

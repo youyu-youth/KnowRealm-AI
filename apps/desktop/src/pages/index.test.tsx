@@ -78,6 +78,28 @@ function renderAt(path = "/") {
 }
 
 describe("今日页", () => {
+  it("从 URL 恢复分区选择，并在切换学习轨道时返回主区域", async () => {
+    renderAt("/?panel=pending");
+    const pending = await screen.findByRole("button", { name: "待处理" });
+    expect(pending).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "专注与总结" }));
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get("panel")).toBe(
+        "review",
+      ),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /学习轨道/ }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "学习趋势" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      ),
+    );
+    expect(new URLSearchParams(window.location.search).get("panel")).toBe(
+      "actions",
+    );
+  });
+
   it("点击待确认行的课程信息即可切换预览，详情和原文入口对应选中记录", async () => {
     const second = { ...todo, record_id: "second-record", title: "第二份总结" };
     server.use(
@@ -95,7 +117,13 @@ describe("今日页", () => {
     });
     fireEvent.click(within(select).getByText("操作系统"));
     expect(select).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "专注与总结" }),
+      ).toHaveAttribute("aria-pressed", "true"),
+    );
     const preview = screen.getByRole("region", { name: "待确认总结" });
+    expect(preview).toHaveFocus();
     expect(
       within(preview).getByRole("link", { name: "查看并确认" }),
     ).toHaveAttribute("href", "/records/second-record");

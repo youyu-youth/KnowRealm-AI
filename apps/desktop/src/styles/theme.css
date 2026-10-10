@@ -1,13 +1,14 @@
 :root {
-  --today-ink: #2f3239;
-  --today-muted: #666b75;
-  --today-border: #e3e5e9;
-  --today-soft: #f1f2f4;
+  --today-ink: #253140;
+  --today-muted: #617081;
+  --today-border: #e1e6ed;
+  --today-soft: #f3f6f9;
   --today-surface: #ffffff;
-  --today-accent: #2f3239;
-  --today-primary: #1a1c20;
+  --today-accent: #315f75;
+  --today-primary: #25455d;
   --today-primary-foreground: #fafafb;
-  --today-focus: #2f3239;
+  --today-button: var(--primary);
+  --today-focus: #23705f;
   color-scheme: light;
   --canvas: #eff1f4;
   --paper: #fafafb;
@@ -78,7 +79,7 @@
   --today-accent: #d5d8de;
   --today-primary: #f2f4f7;
   --today-primary-foreground: #131519;
-  --today-focus: #d5d8de;
+  --today-focus: #77c9b2;
   color-scheme: dark;
   --canvas: #0d0f12;
   --paper: #131519;
@@ -141,7 +142,7 @@
     --today-accent: #d5d8de;
     --today-primary: #f2f4f7;
     --today-primary-foreground: #131519;
-    --today-focus: #d5d8de;
+    --today-focus: #77c9b2;
     color-scheme: dark;
     --canvas: #0d0f12;
     --paper: #131519;

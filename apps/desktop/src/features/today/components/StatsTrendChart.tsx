@@ -25,7 +25,7 @@ function buildTrendOption(
   return {
     animation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     textStyle: { fontSize },
-    grid: { left: 32, right: 20, top: 24, bottom: 24, outerBoundsMode: "same" },
+    grid: { left: 32, right: 16, top: 24, bottom: 24 },
     tooltip: {
       trigger: "axis",
       ...darkTooltipStyle(),
@@ -39,6 +39,7 @@ function buildTrendOption(
       axisTick: { show: false },
       axisLine: { lineStyle: { color: border } },
       axisLabel: {
+        hideOverlap: true,
         color: muted,
         fontSize,
         formatter: (value: string) => value.slice(5).replace("-", "/"),
@@ -48,7 +49,8 @@ function buildTrendOption(
       type: "value",
       name: t("today.stats.trendUnit"),
       nameTextStyle: { color: muted, fontSize },
-      axisLabel: { color: muted, fontSize },
+      splitNumber: 3,
+      axisLabel: { color: muted, fontSize, hideOverlap: true },
       splitLine: { lineStyle: { color: border, type: "dashed" } },
     },
     series: [

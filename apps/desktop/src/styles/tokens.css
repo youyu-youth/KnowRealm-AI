@@ -8,10 +8,11 @@
   --color-today-focus: var(--today-focus);
   --text-today-section: 1.125rem;
   --text-today-section--line-height: 1.4;
-  --spacing-today-timer: 9rem;
+  --spacing-today-timer: 7rem;
   --spacing-today-duration: 5rem;
   --spacing-today-status: 4rem;
   --spacing-today-preview-min: 22rem;
+  --spacing-today-rail: 18rem;
   --font-heading: var(--font-sans);
   --font-sans: "Noto Sans SC Variable", "Geist Variable", sans-serif;
 

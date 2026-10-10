@@ -5,6 +5,7 @@ type TodaySearch = {
   view?: "orbit" | "workbench";
   course?: string;
   order?: "duration" | "date";
+  panel?: "actions" | "pending" | "review";
 };
 
 export const Route = createFileRoute("/")({
@@ -13,6 +14,10 @@ export const Route = createFileRoute("/")({
     course: typeof search.course === "string" ? search.course : "all",
     order:
       search.order === "duration" ? ("duration" as const) : ("date" as const),
+    panel:
+      search.panel === "pending" || search.panel === "review"
+        ? search.panel
+        : ("actions" as const),
   }),
   component: TodayPage,
 });

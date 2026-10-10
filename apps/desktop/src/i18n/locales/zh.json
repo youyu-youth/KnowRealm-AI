@@ -276,6 +276,8 @@
       "pendingList": "待处理事项滚动列表",
       "workbench": "工作台",
       "workArea": "今日工作区",
+      "panelSwitch": "切换今日分区",
+      "focusAndSummary": "专注与总结",
       "previewRecord": "预览总结「{{title}}」",
       "completing": "正在完成",
       "orbit": "学习轨道",

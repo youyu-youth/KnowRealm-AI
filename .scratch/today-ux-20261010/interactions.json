@@ -1,0 +1,18 @@
+{
+  "tauri": true,
+  "mock": false,
+  "checks": [
+    "Timer advances",
+    "Control+2 switches orbit and preserves timer",
+    "Control+1 switches workbench",
+    "Timer resumes",
+    "Timer ends",
+    "Thirty-day filter selected",
+    "Summary source has original-record destination",
+    "Confirmation and source target same record",
+    "Keyboard scroll stays in action list",
+    "Reduced-motion preference respected",
+    "Selected summary receives focus",
+    "Narrow summary actions visible immediately"
+  ]
+}

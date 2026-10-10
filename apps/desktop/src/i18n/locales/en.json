@@ -276,6 +276,8 @@
       "pendingList": "Scrollable pending items",
       "workbench": "Workbench",
       "workArea": "Today workspace",
+      "panelSwitch": "Switch Today panels",
+      "focusAndSummary": "Focus & summaries",
       "previewRecord": "Preview summary “{{title}}”",
       "completing": "Completing",
       "orbit": "Learning orbit",

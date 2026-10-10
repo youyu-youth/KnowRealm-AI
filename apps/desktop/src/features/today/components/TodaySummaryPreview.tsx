@@ -39,6 +39,7 @@ export function TodaySummaryPreview({
     <section
       id="today-summary-preview"
       aria-labelledby="today-preview-title"
+      tabIndex={-1}
       className="today-panel today-preview w-full p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">

@@ -1,0 +1,68 @@
+from pathlib import Path
+exec(compile(Path('.scratch/today-ux-20261010/verify-native.py').read_text(encoding='utf-8').split('\ntry:\n')[0], 'verify-native-helpers.py', 'exec'))
+
+checks = []
+
+def check(name, result):
+    assert result, name
+    checks.append(name)
+    print('PASS ' + name)
+
+try:
+    cdp('Page.bringToFront')
+    cdp('Emulation.setDeviceMetricsOverride', width=1440, height=900, deviceScaleFactor=1, mobile=False)
+    ctrl_digit('1')
+    time.sleep(.5)
+    click_named('开始', 'button')
+    time.sleep(1.2)
+    check('Timer advances', js("document.querySelector('[role=timer]').textContent") != '25:00')
+    click_named('暂停', 'button')
+    paused = js("document.querySelector('[role=timer]').textContent")
+    ctrl_digit('2')
+    time.sleep(.4)
+    check('Control+2 switches orbit and preserves timer', js("new URLSearchParams(location.search).get('view')") == 'orbit' and js("document.querySelector('[role=timer]').textContent") == paused)
+    ctrl_digit('1')
+    time.sleep(.3)
+    check('Control+1 switches workbench', js("new URLSearchParams(location.search).get('view')") == 'workbench')
+    click_named('继续', 'button')
+    time.sleep(1.1)
+    check('Timer resumes', js("document.querySelector('[role=timer]').textContent") != paused)
+    click_named('结束', 'button')
+    check('Timer ends', js("document.querySelector('[role=timer]').textContent") == '00:00')
+
+    click_named('近 30 天', 'tab')
+    time.sleep(.3)
+    check('Thirty-day filter selected', js("[...document.querySelectorAll('[role=tab]')].find(e=>e.textContent==='近 30 天')?.getAttribute('aria-selected')") == 'true')
+    click_named('近 7 天', 'tab')
+    click_named('来源', 'tab')
+    check('Summary source has original-record destination', bool(js("document.querySelector('.today-preview-content a')?.getAttribute('href')?.includes('tab=transcript')")))
+    click_named('总结预览', 'tab')
+    check('Confirmation and source target same record', js("(()=>{const a=[...document.querySelectorAll('.today-preview-actions a')].filter(e=>getComputedStyle(e).display!=='none');return a.length===2&&a[0].pathname===a[1].pathname})()"))
+
+    js("const a=document.querySelector('.today-action-list');a.scrollTop=0;a.focus()")
+    cdp('Input.dispatchKeyEvent', type='keyDown', key='PageDown', code='PageDown', windowsVirtualKeyCode=34)
+    cdp('Input.dispatchKeyEvent', type='keyUp', key='PageDown', code='PageDown', windowsVirtualKeyCode=34)
+    time.sleep(.3)
+    check('Keyboard scroll stays in action list', js("document.querySelector('.today-action-list').scrollTop>0&&document.querySelector('main').scrollTop===0"))
+    js("document.querySelectorAll('.today-workspace *').forEach(e=>{if(e.scrollTop)e.scrollTop=0})")
+    cdp('Emulation.setEmulatedMedia', features=[{'name':'prefers-reduced-motion','value':'reduce'}])
+    check('Reduced-motion preference respected', js("matchMedia('(prefers-reduced-motion:reduce)').matches&&parseFloat(getComputedStyle(document.querySelector('.today-pending-item')).transitionDuration)<0.001"))
+
+    cdp('Emulation.setDeviceMetricsOverride', width=1099, height=720, deviceScaleFactor=1, mobile=False)
+    js("document.documentElement.className='light';document.documentElement.style.fontSize='18px'")
+    time.sleep(.3)
+    click_named('待处理', 'button')
+    time.sleep(.2)
+    node = next(n for n in cdp('Accessibility.getFullAXTree')['nodes'] if n.get('role', {}).get('value')=='button' and n.get('name', {}).get('value','').startswith('预览总结'))
+    click_named(node['name']['value'], 'button')
+    time.sleep(.5)
+    check('Selected summary receives focus', js("document.activeElement.id==='today-summary-preview'"))
+    check('Narrow summary actions visible immediately', js("document.querySelector('.today-preview-actions').getBoundingClientRect().bottom<=innerHeight&&document.querySelector('.today-rail').scrollTop>0"))
+    (out / 'final-narrow-review.png').write_bytes(base64.b64decode(cdp('Page.captureScreenshot', format='png')['data']))
+    (out / 'interactions.json').write_text(json.dumps({'tauri':True,'mock':False,'checks':checks}, indent=2), encoding='utf-8')
+finally:
+    original = json.loads((out / 'original.json').read_text())
+    cdp('Emulation.setEmulatedMedia', features=[])
+    cdp('Emulation.clearDeviceMetricsOverride')
+    js('document.documentElement.className=' + json.dumps(original['theme']) + ';document.documentElement.style.fontSize=' + json.dumps(original['font']))
+    cdp('Page.navigate', url=original['url'])

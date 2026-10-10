@@ -37,7 +37,11 @@ const todo: TodaySummaryTodo = {
 function todayStr(offsetDays = 0): string {
   const date = new Date();
   date.setDate(date.getDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
 }
 
 const planItem: TodayPlanItem = {
@@ -94,7 +98,7 @@ afterEach(() => {
 
 // 双源清单渲染在今日行动内，学习链复用同一真实查询。
 function actionFlow(): HTMLElement {
-  const heading = screen.getByText("今日行动");
+  const heading = screen.getByRole("heading", { name: "今日行动" });
   const card = heading.closest("section");
   expect(card).not.toBeNull();
   return card as HTMLElement;
@@ -161,7 +165,7 @@ describe("今日待学双源清单", () => {
 
     render(<App />);
 
-    await screen.findByText("今日行动");
+    await screen.findByRole("heading", { name: "今日行动" });
     const card = actionFlow();
     expect(
       await within(card).findByRole("heading", { name: "等待确认的总结" }),

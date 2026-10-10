@@ -74,7 +74,10 @@ export function TodayStatsBand({ compact = false }: { compact?: boolean }) {
   if (themeRevision === 0) return null;
 
   return (
-    <section key={themeRevision} className="min-w-0">
+    <section
+      key={themeRevision}
+      className={cn("min-w-0", compact && "today-trend-compact")}
+    >
       <div
         aria-label={t("today.stats.title")}
         role="region"
@@ -83,6 +86,7 @@ export function TodayStatsBand({ compact = false }: { compact?: boolean }) {
         <StatsBandHeader
           days={days}
           onDaysChange={setDays}
+          comparison={compact ? comparison : undefined}
           total={
             compact &&
             !stats.isPending &&
@@ -151,10 +155,6 @@ export function TodayStatsBand({ compact = false }: { compact?: boolean }) {
                     </p>
                   ) : null}
                 </div>
-              ) : comparison ? (
-                <p className="text-label text-ink-muted">
-                  {t("today.stats.weekOverWeek")} {comparison}
-                </p>
               ) : null}
               <StatsTrendChart
                 points={windowPoints}
@@ -162,7 +162,7 @@ export function TodayStatsBand({ compact = false }: { compact?: boolean }) {
                 ariaLabel={t("today.stats.trendChartLabel")}
                 className={cn(
                   "min-w-0",
-                  compact ? "h-40 w-full" : "h-44 flex-1",
+                  compact ? "h-36 w-full" : "h-44 flex-1",
                 )}
               />
             </div>
@@ -235,9 +235,15 @@ type StatsBandHeaderProps = {
   days: TrendDays;
   onDaysChange: (days: TrendDays) => void;
   total?: string;
+  comparison?: string | null;
 };
 
-function StatsBandHeader({ days, onDaysChange, total }: StatsBandHeaderProps) {
+function StatsBandHeader({
+  days,
+  onDaysChange,
+  total,
+  comparison,
+}: StatsBandHeaderProps) {
   const { t } = useTranslation();
 
   return (
@@ -252,6 +258,11 @@ function StatsBandHeader({ days, onDaysChange, total }: StatsBandHeaderProps) {
             <span className="text-label text-ink-muted">
               {t("today.stats.insights.unitH")}
             </span>
+          </p>
+        ) : null}
+        {comparison ? (
+          <p className="text-label text-ink-muted">
+            {t("today.stats.weekOverWeek")} {comparison}
           </p>
         ) : null}
       </div>

@@ -1,0 +1,113 @@
+[
+  {
+    "viewport": [
+      1920,
+      1080
+    ],
+    "dpr": 1.0000000149011612,
+    "font": "16px",
+    "tauri": true,
+    "mock": false,
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "grid": "344.925px 862.312px 431.163px",
+    "visiblePanels": [
+      "today-pane-pending",
+      "today-pane-actions",
+      "today-pane-review"
+    ],
+    "panelBackground": "rgb(255, 255, 255)",
+    "linkColor": "rgb(37, 49, 64)",
+    "previewBody": 309,
+    "confirmBottom": 1046.4000396728516,
+    "file": "final-light.png"
+  },
+  {
+    "viewport": [
+      1440,
+      900
+    ],
+    "dpr": 1.0000000149011612,
+    "font": "16px",
+    "tauri": true,
+    "mock": false,
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "grid": "243.863px 609.688px 304.85px",
+    "visiblePanels": [
+      "today-pane-pending",
+      "today-pane-actions",
+      "today-pane-review"
+    ],
+    "panelBackground": "rgb(255, 255, 255)",
+    "linkColor": "rgb(37, 49, 64)",
+    "previewBody": 112,
+    "confirmBottom": 866.4000396728516,
+    "file": "final-light-standard.png"
+  },
+  {
+    "viewport": [
+      1440,
+      900
+    ],
+    "dpr": 1.0000000149011612,
+    "font": "16px",
+    "tauri": true,
+    "mock": false,
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "grid": "243.863px 609.688px 304.85px",
+    "visiblePanels": [
+      "today-pane-pending",
+      "today-pane-actions",
+      "today-pane-review"
+    ],
+    "panelBackground": "rgb(32, 36, 42)",
+    "linkColor": "rgb(213, 216, 222)",
+    "previewBody": 112,
+    "confirmBottom": 866.4000396728516,
+    "file": "final-dark.png"
+  },
+  {
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.0000000149011612,
+    "font": "16px",
+    "tauri": true,
+    "mock": false,
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "grid": "1022.4px",
+    "visiblePanels": [
+      "today-pane-actions"
+    ],
+    "panelBackground": "rgb(255, 255, 255)",
+    "linkColor": "rgb(37, 49, 64)",
+    "previewBody": 0,
+    "confirmBottom": 0,
+    "file": "final-small.png"
+  },
+  {
+    "viewport": [
+      1099,
+      720
+    ],
+    "dpr": 1.0000000149011612,
+    "font": "18px",
+    "tauri": true,
+    "mock": false,
+    "bodyOverflow": false,
+    "mainOverflow": false,
+    "grid": "1008.4px",
+    "visiblePanels": [
+      "today-pane-actions"
+    ],
+    "panelBackground": "rgb(255, 255, 255)",
+    "linkColor": "rgb(37, 49, 64)",
+    "previewBody": 0,
+    "confirmBottom": 0,
+    "file": "final-narrow.png"
+  }
+]

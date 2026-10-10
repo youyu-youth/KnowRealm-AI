@@ -14,10 +14,11 @@ import { TodayQuickStart } from "@/features/today/components/TodayQuickStart";
 import { TodayStatsBand } from "@/features/today/components/TodayStatsBand";
 import { TodaySummaryPreview } from "@/features/today/components/TodaySummaryPreview";
 import "@/features/today/components/TodayWorkspace.css";
+import { Button } from "@/components/ui/button";
 
 export function TodayOverview() {
   const { t, i18n } = useTranslation();
-  const { view = "workbench" } = useSearch({ from: "/" });
+  const { view = "workbench", panel = "actions" } = useSearch({ from: "/" });
   const navigate = useNavigate({ from: "/" });
   const [selectedId, setSelectedId] = useState<string>();
   const [now, setNow] = useState(() => new Date());
@@ -37,6 +38,7 @@ export function TodayOverview() {
       search: (previous) => ({
         ...previous,
         view: next === "orbit" ? "orbit" : "workbench",
+        panel: "actions",
       }),
       replace: true,
     });
@@ -63,6 +65,7 @@ export function TodayOverview() {
           search: (previous) => ({
             ...previous,
             view: event.key === "2" ? "orbit" : "workbench",
+            panel: "actions",
           }),
           replace: true,
         });
@@ -71,6 +74,13 @@ export function TodayOverview() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [navigate]);
+  useEffect(() => {
+    if (panel === "review") {
+      const preview = document.getElementById("today-summary-preview");
+      preview?.focus({ preventScroll: true });
+      preview?.scrollIntoView({ block: "nearest" });
+    }
+  }, [panel, selectedId]);
   const date = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     year: "numeric",
     month: "long",
@@ -83,9 +93,9 @@ export function TodayOverview() {
       <Tabs
         value={view}
         onValueChange={(value) => setView(String(value))}
-        className="gap-2"
+        className="today-workspace-tabs gap-3"
       >
-        <header className="flex flex-wrap items-center justify-between gap-3 px-2 py-2">
+        <header className="today-header flex flex-wrap items-center justify-between gap-3 px-2 py-2">
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-headline font-headline">{t("today.title")}</h1>
             <p className="text-body text-ink-muted border-border-subtle border-l pl-3">
@@ -96,7 +106,7 @@ export function TodayOverview() {
             <TabsTrigger
               value="workbench"
               aria-keyshortcuts="Control+1"
-              className="data-active:bg-today-accent data-active:text-today-primary-foreground dark:data-active:bg-today-accent dark:data-active:text-today-primary-foreground gap-3 px-5 py-2"
+              className="data-active:bg-primary data-active:text-today-primary-foreground dark:data-active:bg-today-accent dark:data-active:text-today-primary-foreground gap-3 px-5 py-2"
             >
               {t("today.workspace.workbench")}
               <kbd className="text-label font-sans opacity-80">Ctrl 1</kbd>
@@ -104,7 +114,7 @@ export function TodayOverview() {
             <TabsTrigger
               value="orbit"
               aria-keyshortcuts="Control+2"
-              className="data-active:bg-today-accent data-active:text-today-primary-foreground dark:data-active:bg-today-accent dark:data-active:text-today-primary-foreground gap-3 px-5 py-2"
+              className="data-active:bg-primary data-active:text-today-primary-foreground dark:data-active:bg-today-accent dark:data-active:text-today-primary-foreground gap-3 px-5 py-2"
             >
               {t("today.workspace.orbit")}
               <kbd className="text-label font-sans opacity-80">Ctrl 2</kbd>
@@ -116,12 +126,45 @@ export function TodayOverview() {
           </p>
         </header>
         <div
+          className="today-pane-switcher gap-2 px-2"
+          role="group"
+          aria-label={t("today.workspace.panelSwitch")}
+        >
+          {(["actions", "pending", "review"] as const).map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              variant={panel === value ? "secondary" : "ghost"}
+              aria-pressed={panel === value}
+              aria-controls={`today-pane-${value}`}
+              onClick={() =>
+                void navigate({
+                  search: (previous) => ({ ...previous, panel: value }),
+                  replace: true,
+                })
+              }
+            >
+              {t(
+                value === "review"
+                  ? "today.workspace.focusAndSummary"
+                  : value === "pending"
+                    ? "today.workspace.pending"
+                    : view === "orbit"
+                      ? "today.stats.title"
+                      : "today.workspace.actions",
+              )}
+            </Button>
+          ))}
+        </div>
+        <div
           className="today-grid"
+          data-panel={panel}
           tabIndex={0}
           role="region"
           aria-label={t("today.workspace.workArea")}
         >
           <aside
+            id="today-pane-pending"
             aria-label={t("today.workspace.pending")}
             className="today-panel today-left"
             tabIndex={0}
@@ -132,24 +175,39 @@ export function TodayOverview() {
               error={pending.isError}
               onRetry={() => void pending.refetch()}
               selectedId={selected?.record_id}
-              onSelect={setSelectedId}
+              onSelect={(id) => {
+                setSelectedId(id);
+                void navigate({
+                  search: (previous) => ({ ...previous, panel: "review" }),
+                  replace: true,
+                });
+              }}
             />
-            <TodayAssets />
-          </aside>
-          <div className="today-center min-w-0">
-            <TabsContent
-              value="workbench"
-              className="today-center-content m-0 flex flex-col gap-2"
+            <div
+              className="today-assets-list"
+              role="region"
+              aria-label={t("today.overview.assetsTitle")}
               tabIndex={0}
             >
-              <TodayStatsBand compact />
+              <TodayAssets />
+            </div>
+          </aside>
+          <div id="today-pane-actions" className="today-center min-w-0">
+            <TabsContent
+              value="workbench"
+              className="today-center-content today-workbench m-0 flex flex-col gap-3"
+              tabIndex={0}
+            >
               <TodayActions
                 summaries={pending.data}
                 loading={pending.isPending}
                 error={pending.isError}
                 onRetry={() => void pending.refetch()}
               />
-              <TodayQuickStart />
+              <div className="today-secondary">
+                <TodayStatsBand compact />
+                <TodayQuickStart />
+              </div>
             </TabsContent>
             <TabsContent
               value="orbit"
@@ -163,6 +221,7 @@ export function TodayOverview() {
             </TabsContent>
           </div>
           <aside
+            id="today-pane-review"
             aria-label={t("today.rightRail.label")}
             className="today-rail min-w-0 gap-2"
             tabIndex={0}

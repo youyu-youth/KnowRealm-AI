@@ -1,8 +1,15 @@
+.today-page,
+.today-workspace,
+.today-workspace-tabs {
+  height: 100%;
+  min-height: 0;
+}
+
 .today-workspace {
   container: today / inline-size;
   color: var(--today-ink);
   --ink: var(--today-ink);
-  --ink-strong: var(--today-ink);
+  --ink-strong: var(--today-primary);
   --ink-muted: var(--today-muted);
   --ink-faint: var(--today-muted);
   --muted-foreground: var(--today-muted);
@@ -10,23 +17,24 @@
   --border-subtle: var(--today-border);
   --surface-subtle: var(--today-soft);
   --surface-raised: var(--today-surface);
-  --primary: var(--today-primary);
+  --primary: var(--today-button);
   --primary-foreground: var(--today-primary-foreground);
   --ring: var(--today-accent);
   --focus: var(--today-accent);
 }
 
-.today-grid {
-  display: grid;
-  align-items: start;
-  gap: calc(var(--spacing) * 2);
+.dark .today-workspace {
+  color: var(--today-ink);
 }
 
-.today-panel {
-  min-width: 0;
-  border: 1px solid var(--today-border);
-  border-radius: var(--radius-xs);
-  background: var(--today-surface);
+.today-header,
+.today-actions-toolbar,
+.today-preview-actions {
+  flex-shrink: 0;
+}
+
+.today-workspace :is(h1, .today-heading) {
+  color: var(--ink-strong);
 }
 
 .today-heading {
@@ -35,134 +43,135 @@
   line-height: 1.4;
 }
 
-.dark .today-workspace {
-  --ink-strong: var(--today-primary);
-}
-
-.dark .today-workspace :is(h1, .today-heading) {
-  color: var(--ink-strong);
-}
-
-.dark .today-workspace .border-today-accent {
-  border-color: var(--border-strong);
-}
-
-:root:not(.dark) .today-page {
-  height: 100%;
-  min-height: 0;
-}
-
-:root:not(.dark) .today-workspace {
-  --ink-strong: var(--today-primary);
-  height: 100%;
-}
-
-:root:not(.dark) .today-workspace > [data-slot="tabs"] {
-  height: 100%;
-  min-height: 0;
-}
-
-:root:not(.dark) .today-workspace header {
+.today-pane-switcher {
+  display: flex;
   flex-shrink: 0;
 }
 
-:root:not(.dark) .today-workspace :is(h1, .today-heading) {
-  color: var(--ink-strong);
+.today-pane-switcher button {
+  transition: none;
 }
 
-:root:not(.dark) .today-grid {
+.today-grid {
+  display: grid;
   flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  gap: calc(var(--spacing) * 3);
+  overflow: hidden;
+}
+
+.today-panel {
+  min-width: 0;
+  border: 1px solid var(--today-border);
+  border-radius: var(--radius-md);
+  background: var(--today-surface);
+}
+
+.today-workspace
+  :is(
+    .today-grid,
+    .today-center-content,
+    .today-action-list,
+    .today-pending-list,
+    .today-assets-list,
+    .today-preview-body
+  ):focus-visible {
+  outline: 2px solid var(--today-accent);
+  outline-offset: -2px;
+}
+
+.today-workspace .border-today-accent {
+  border-color: color-mix(
+    in srgb,
+    var(--today-accent) 45%,
+    var(--today-border)
+  );
+}
+
+.today-left,
+.today-pending,
+.today-pending-tabs,
+.today-pending-content {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.today-left {
+  overflow: hidden;
+}
+
+.today-pending,
+.today-pending-tabs {
+  flex: 1;
+}
+
+.today-pending-tabs > [data-slot="tabs-list"] {
+  flex-shrink: 0;
+}
+
+.today-pending-list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.today-pending-item:has([aria-pressed="true"]) {
+  background: color-mix(in srgb, var(--today-accent) 8%, var(--today-surface));
+}
+
+.today-assets-list {
+  max-height: 38%;
+  flex-shrink: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.today-center,
+.today-rail,
+.today-actions-tabs {
+  min-height: 0;
+}
+
+.today-center-content {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.today-workbench {
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.today-actions {
+  container: today-actions / inline-size;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.today-actions-tabs {
+  flex: 1;
+}
+
+.today-action-list {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
 
-:root:not(.dark) .today-workspace .border-today-accent {
-  border-color: var(--border-strong);
-}
-
-:root:not(.dark) .today-preview-source-shortcut {
-  display: none;
-}
-
-:root:not(.dark) .today-center-content:focus-visible {
-  outline: 2px solid var(--today-accent);
-  outline-offset: -2px;
-}
-
-@container today (min-width: 70rem) {
-  :root:not(.dark) .today-grid {
-    align-items: stretch;
-    overflow: hidden;
-    scrollbar-gutter: auto;
-  }
-  :root:not(.dark) :is(.today-left, .today-rail) {
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-  }
-  :root:not(.dark) .today-center {
-    min-height: 0;
-  }
-  :root:not(.dark) .today-center-content {
-    height: 100%;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-gutter: stable;
-  }
-  :root:not(.dark) .today-center-content > * {
-    flex-shrink: 0;
-  }
-  :root:not(.dark) .today-rail > :first-child {
-    flex-shrink: 0;
-  }
-  :root:not(.dark) .today-focus-layout {
-    flex-wrap: nowrap;
-  }
-  :root:not(.dark) .today-focus-timer {
-    width: 40%;
-    height: auto;
-    aspect-ratio: 1;
-  }
-  :root:not(.dark) .today-focus-controls {
-    flex-basis: 0;
-  }
-  :root:not(.dark) .today-focus-timer p:last-child {
-    max-width: 80%;
-    text-align: center;
-  }
-  :root:not(.dark) .today-preview {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: var(--spacing-today-preview-min);
-  }
-  :root:not(.dark) .today-preview > * {
-    flex-shrink: 0;
-  }
-  :root:not(.dark) .today-preview-tabs {
-    flex: 1;
-    min-height: 0;
-  }
-  :root:not(.dark) .today-preview-content {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-  :root:not(.dark) .today-preview-body {
-    max-height: none;
-    overflow: visible;
-  }
-}
-
 .today-task-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: calc(var(--spacing) * 3);
+  gap: calc(var(--spacing) * 2);
 }
 
 .today-task-row > :nth-child(n + 3) {
@@ -173,8 +182,142 @@
   display: none;
 }
 
+.today-actions .today-task-row {
+  padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+}
+
+.today-actions .today-task-header {
+  padding-block: calc(var(--spacing) * 2);
+}
+
+.today-actions h3 + div > p {
+  padding-inline: calc(var(--spacing) * 4);
+}
+
+.today-secondary {
+  display: grid;
+  max-height: 38%;
+  flex-shrink: 0;
+  gap: calc(var(--spacing) * 3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .today-stats {
   container: today-stats / inline-size;
+}
+
+.today-rail {
+  flex-direction: column;
+  gap: calc(var(--spacing) * 3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.today-focus {
+  flex-shrink: 0;
+}
+
+.today-focus-layout {
+  flex-wrap: nowrap;
+  gap: calc(var(--spacing) * 3);
+}
+
+.today-focus-controls {
+  flex-basis: 0;
+}
+
+.today-focus-timer {
+  width: var(--spacing-today-timer);
+  height: var(--spacing-today-timer);
+}
+
+.today-focus-timer p:first-child {
+  color: var(--today-focus);
+  white-space: nowrap;
+}
+
+.today-focus-timer p:last-child {
+  max-width: 80%;
+  text-align: center;
+}
+
+.today-preview-source-shortcut {
+  display: none;
+}
+
+.today-preview {
+  display: flex;
+  min-height: var(--spacing-today-preview-min);
+  flex: 1;
+  flex-direction: column;
+}
+
+.today-preview > :not(.today-preview-tabs),
+.today-preview-tabs > [data-slot="tabs-list"] {
+  flex-shrink: 0;
+}
+
+.today-preview-tabs,
+.today-preview-content {
+  min-height: 0;
+  flex: 1;
+}
+
+.today-preview-body {
+  max-height: none;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.today-preview-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.today-grid > :is(.today-left, .today-center, .today-rail) {
+  display: none;
+}
+
+.today-grid[data-panel="pending"] > .today-left,
+.today-grid[data-panel="review"] > .today-rail {
+  display: flex;
+}
+
+.today-grid[data-panel="actions"] > .today-center {
+  display: block;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .today-task-row:has(a:hover),
+  .today-pending-item:hover {
+    background: color-mix(
+      in srgb,
+      var(--today-accent) 5%,
+      var(--today-surface)
+    );
+  }
+}
+
+@container today-actions (min-width: 32rem) {
+  .today-task-row {
+    grid-template-columns:
+      calc(var(--spacing) * 4) minmax(0, 1fr) minmax(0, 0.45fr)
+      var(--spacing-today-duration) var(--spacing-today-status);
+    align-items: center;
+    gap: calc(var(--spacing) * 3);
+  }
+  .today-task-row > :nth-child(n + 3) {
+    grid-column: auto;
+  }
+  .today-task-header {
+    display: grid;
+  }
 }
 
 @container today-stats (min-width: 32rem) {
@@ -183,40 +326,19 @@
   }
 }
 
-@container today (min-width: 48rem) {
+@container today (min-width: 66rem) {
+  .today-pane-switcher {
+    display: none;
+  }
   .today-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
-  }
-  .today-rail {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-  }
-}
-
-@container today (min-width: 70rem) {
-  .today-grid {
-    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.75fr) minmax(0, 1.1fr);
-  }
-  .today-rail {
-    grid-column: auto;
-    display: flex;
-    flex-direction: column;
-  }
-}
-
-@container today (min-width: 34rem) {
-  .today-task-row {
     grid-template-columns:
-      calc(var(--spacing) * 4) minmax(0, 1fr) minmax(0, 0.55fr)
-      var(--spacing-today-duration) var(--spacing-today-status);
-    align-items: center;
+      minmax(var(--spacing-sidebar), 0.8fr) minmax(0, 2fr)
+      minmax(var(--spacing-today-rail), 1fr);
   }
-  .today-task-row > :nth-child(n + 3) {
-    grid-column: auto;
+  .today-grid > :is(.today-left, .today-rail) {
+    display: flex;
   }
-  .today-task-header {
-    display: grid;
+  .today-grid > .today-center {
+    display: block;
   }
 }

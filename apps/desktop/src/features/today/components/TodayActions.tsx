@@ -42,7 +42,7 @@ export function TodayActions({ summaries, loading, error, onRetry }: Props) {
   return (
     <section
       aria-labelledby="today-actions-title"
-      className="today-panel overflow-hidden"
+      className="today-panel today-actions overflow-hidden"
     >
       <h2 id="today-actions-title" className="today-heading px-4 pt-4">
         {t("today.workspace.actions")}
@@ -50,9 +50,9 @@ export function TodayActions({ summaries, loading, error, onRetry }: Props) {
       <Tabs
         value={status}
         onValueChange={(value) => setStatus(String(value))}
-        className="mt-2 gap-0"
+        className="today-actions-tabs mt-2 gap-0"
       >
-        <div className="border-border-subtle flex flex-wrap items-center justify-between gap-2 border-b px-3 pb-2">
+        <div className="today-actions-toolbar border-border-subtle flex flex-wrap items-center justify-between gap-2 border-b px-3 pb-2">
           <TabsList variant="line" className="h-auto p-0">
             <TabsTrigger
               value="pending"
@@ -138,7 +138,11 @@ export function TodayActions({ summaries, loading, error, onRetry }: Props) {
             </Select>
           </div>
         </div>
-        <TabsContent value="pending" className="m-0">
+        <TabsContent
+          value="pending"
+          className="today-action-list m-0"
+          tabIndex={0}
+        >
           <div
             aria-hidden="true"
             className="today-task-row today-task-header bg-today-soft text-label text-ink-muted px-3 py-2"
@@ -214,7 +218,11 @@ export function TodayActions({ summaries, loading, error, onRetry }: Props) {
             </p>
           ) : null}
         </TabsContent>
-        <TabsContent value="done" className="m-0 p-4">
+        <TabsContent
+          value="done"
+          className="today-action-list m-0 p-4"
+          tabIndex={0}
+        >
           <p className="text-label text-ink-muted mb-3">
             {t("today.workspace.completedHint")}
           </p>

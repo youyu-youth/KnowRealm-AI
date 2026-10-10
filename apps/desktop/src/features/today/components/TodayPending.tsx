@@ -80,7 +80,10 @@ export function TodayPending({
   const count = summaries.length + records.length;
 
   return (
-    <section aria-labelledby="today-pending-title" className="p-4">
+    <section
+      aria-labelledby="today-pending-title"
+      className="today-pending p-4"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="today-pending-title" className="today-heading">
           {t("today.workspace.pending")}
@@ -102,7 +105,7 @@ export function TodayPending({
       <Tabs
         value={filter}
         onValueChange={(value) => setFilter(String(value))}
-        className="mt-3"
+        className="today-pending-tabs mt-3"
       >
         <TabsList className="flex-wrap justify-start gap-1 bg-transparent p-0 group-data-horizontal/tabs:h-auto">
           {[
@@ -113,16 +116,16 @@ export function TodayPending({
             <TabsTrigger
               key={value}
               value={value}
-              className="bg-today-soft data-active:bg-today-primary data-active:text-today-primary-foreground dark:data-active:bg-today-primary dark:data-active:text-today-primary-foreground text-label px-3 py-1.5"
+              className="bg-today-soft data-active:bg-primary data-active:text-today-primary-foreground dark:data-active:bg-today-primary dark:data-active:text-today-primary-foreground text-label h-7 flex-none gap-1 px-2 py-1.5"
             >
-              {t(`today.workspace.${key}`)}{" "}
-              <span className="ml-1 tabular-nums">
+              {t(`today.workspace.${key}`)}
+              <span className="tabular-nums">
                 {sample ? (value === "all" ? 3 : 1) : total}
               </span>
             </TabsTrigger>
           ))}
         </TabsList>
-        <TabsContent value={filter} className="m-0">
+        <TabsContent value={filter} className="today-pending-content m-0">
           {pending || inbox.isPending ? (
             <p role="status" className="text-label text-ink-muted py-5">
               {t("today.loading")}
@@ -147,7 +150,7 @@ export function TodayPending({
             tabIndex={0}
             role="region"
             aria-label={t("today.workspace.pendingList")}
-            className="mt-3 max-h-80 overflow-y-auto"
+            className="today-pending-list mt-3 overflow-y-auto"
           >
             <ul aria-label={t("today.todoListLabel")} className="grid gap-2">
               {filter !== "processing"
@@ -155,7 +158,7 @@ export function TodayPending({
                     <li
                       key={summary.record_id}
                       className={cn(
-                        "rounded-sm border p-3 transition-colors",
+                        "today-pending-item rounded-sm border p-3 transition-colors",
                         selectedId === summary.record_id
                           ? "border-today-accent bg-today-soft"
                           : "hover:bg-today-soft border-transparent",
