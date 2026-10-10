@@ -1,0 +1,302 @@
+[
+  {
+    "theme": "LIGHT_DEFAULT",
+    "font": "15px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "小-默认明亮-settings.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "font": "15px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "小-默认明亮-today.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "font": "15px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "小-柔和青灰-settings.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "font": "15px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "小-柔和青灰-today.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "font": "15px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "小-默认暗黑-settings.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "font": "15px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "小-默认暗黑-today.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "font": "15px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "小-克制墨蓝-settings.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "font": "15px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "小-克制墨蓝-today.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "中-默认明亮-settings.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "中-默认明亮-today.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "中-柔和青灰-settings.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "中-柔和青灰-today.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "中-默认暗黑-settings.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "中-默认暗黑-today.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "中-克制墨蓝-settings.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "中-克制墨蓝-today.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "font": "18px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "大-默认明亮-settings.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "font": "18px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "大-默认明亮-today.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "font": "18px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "大-柔和青灰-settings.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "font": "18px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "大-柔和青灰-today.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "font": "18px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "大-默认暗黑-settings.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "font": "18px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "大-默认暗黑-today.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "font": "18px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "大-克制墨蓝-settings.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "font": "18px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "大-克制墨蓝-today.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "font": "16px",
+    "viewport": [
+      886,
+      712
+    ],
+    "dpr": 1.25,
+    "overflow": false,
+    "native": true,
+    "file": "keyboard-reduced-motion.png"
+  }
+]

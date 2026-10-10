@@ -1,0 +1,326 @@
+[
+  {
+    "theme": "LIGHT_DEFAULT",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#eff1f4",
+    "paper": "#fafafb",
+    "chartCount": 0,
+    "file": "LIGHT_DEFAULT-settings.png",
+    "clickToRootMs": 0.8000000007450581
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#eff1f4",
+    "paper": "#fafafb",
+    "chartCount": 1,
+    "file": "LIGHT_DEFAULT-today.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#eff1f4",
+    "paper": "#fafafb",
+    "chartCount": 0,
+    "file": "LIGHT_DEFAULT-spaces.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#eff1f4",
+    "paper": "#fafafb",
+    "chartCount": 0,
+    "file": "LIGHT_DEFAULT-library.png"
+  },
+  {
+    "theme": "LIGHT_DEFAULT",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#eff1f4",
+    "paper": "#fafafb",
+    "chartCount": 0,
+    "file": "LIGHT_DEFAULT-chat.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#e8eeec",
+    "paper": "#f5f8f6",
+    "chartCount": 0,
+    "file": "LIGHT_SAGE-settings.png",
+    "clickToRootMs": 0.599999999627471
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#e8eeec",
+    "paper": "#f5f8f6",
+    "chartCount": 1,
+    "file": "LIGHT_SAGE-today.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#e8eeec",
+    "paper": "#f5f8f6",
+    "chartCount": 0,
+    "file": "LIGHT_SAGE-spaces.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#e8eeec",
+    "paper": "#f5f8f6",
+    "chartCount": 0,
+    "file": "LIGHT_SAGE-library.png"
+  },
+  {
+    "theme": "LIGHT_SAGE",
+    "mode": "light",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#e8eeec",
+    "paper": "#f5f8f6",
+    "chartCount": 0,
+    "file": "LIGHT_SAGE-chat.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0d0f12",
+    "paper": "#131519",
+    "chartCount": 0,
+    "file": "DARK_DEFAULT-settings.png",
+    "clickToRootMs": 0.5
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0d0f12",
+    "paper": "#131519",
+    "chartCount": 1,
+    "file": "DARK_DEFAULT-today.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0d0f12",
+    "paper": "#131519",
+    "chartCount": 0,
+    "file": "DARK_DEFAULT-spaces.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0d0f12",
+    "paper": "#131519",
+    "chartCount": 0,
+    "file": "DARK_DEFAULT-library.png"
+  },
+  {
+    "theme": "DARK_DEFAULT",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0d0f12",
+    "paper": "#131519",
+    "chartCount": 0,
+    "file": "DARK_DEFAULT-chat.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0e1620",
+    "paper": "#15212e",
+    "chartCount": 0,
+    "file": "DARK_INK-settings.png",
+    "clickToRootMs": 0.5
+  },
+  {
+    "theme": "DARK_INK",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0e1620",
+    "paper": "#15212e",
+    "chartCount": 1,
+    "file": "DARK_INK-today.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0e1620",
+    "paper": "#15212e",
+    "chartCount": 0,
+    "file": "DARK_INK-spaces.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0e1620",
+    "paper": "#15212e",
+    "chartCount": 0,
+    "file": "DARK_INK-library.png"
+  },
+  {
+    "theme": "DARK_INK",
+    "mode": "dark",
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "font": "16px",
+    "tauri": true,
+    "bodyOverflow": false,
+    "canvas": "#0e1620",
+    "paper": "#15212e",
+    "chartCount": 0,
+    "file": "DARK_INK-chat.png"
+  }
+]

@@ -1,0 +1,20 @@
+{
+  "directory": "E:\\workspace\\project\\my\\KnowRealm-AI\\.scratch\\desktop-theme-system\\native\\data",
+  "theme": "DARK_INK",
+  "viewport": [
+    874,
+    696
+  ],
+  "dpr": 1.25,
+  "cache": [
+    {
+      "version": 1,
+      "directory": "E:\\workspace\\project\\my\\KnowRealm-AI\\.scratch\\desktop-theme-system\\native\\data",
+      "appearance": {
+        "theme": "DARK",
+        "light_theme_id": "LIGHT_SAGE",
+        "dark_theme_id": "DARK_INK"
+      }
+    }
+  ]
+}

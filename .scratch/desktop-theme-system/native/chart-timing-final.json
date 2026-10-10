@@ -1,0 +1,85 @@
+{
+  "metadata": {
+    "native": true,
+    "viewport": [
+      1280,
+      800
+    ],
+    "dpr": 1.25,
+    "focused": false
+  },
+  "results": [
+    {
+      "id": "LIGHT_SAGE",
+      "chartUpdateMs": [
+        62.30000000074506,
+        62.30000000074506,
+        62.30000000074506,
+        62.30000000074506,
+        62.5
+      ],
+      "instancesRetained": true,
+      "transitionRestored": true
+    },
+    {
+      "id": "LIGHT_DEFAULT",
+      "chartUpdateMs": [
+        62.599999997764826,
+        62.69999999925494,
+        62.69999999925494,
+        62.69999999925494,
+        62.899999998509884
+      ],
+      "instancesRetained": true,
+      "transitionRestored": true
+    },
+    {
+      "id": "LIGHT_SAGE",
+      "chartUpdateMs": [
+        58.599999997764826,
+        58.69999999925494,
+        58.69999999925494,
+        58.69999999925494,
+        58.69999999925494
+      ],
+      "instancesRetained": true,
+      "transitionRestored": true
+    },
+    {
+      "id": "DARK_INK",
+      "chartUpdateMs": [
+        36.69999999925494,
+        36.69999999925494,
+        36.80000000074506,
+        36.80000000074506,
+        36.900000002235174
+      ],
+      "instancesRetained": true,
+      "transitionRestored": true
+    },
+    {
+      "id": "DARK_DEFAULT",
+      "chartUpdateMs": [
+        49.100000001490116,
+        49.100000001490116,
+        49.100000001490116,
+        49.100000001490116,
+        49.20000000298023
+      ],
+      "instancesRetained": true,
+      "transitionRestored": true
+    },
+    {
+      "id": "DARK_INK",
+      "chartUpdateMs": [
+        61.70000000298023,
+        61.80000000074506,
+        61.900000002235174,
+        61.900000002235174,
+        62
+      ],
+      "instancesRetained": true,
+      "transitionRestored": true
+    }
+  ]
+}

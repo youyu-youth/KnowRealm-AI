@@ -1,0 +1,619 @@
+[
+  {
+    "case": "light-no-cache",
+    "expected": "LIGHT_SAGE",
+    "visibleWorkspaceFrames": [
+      {
+        "time": 755.3000000007451,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 771.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 776.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 780.3000000007451,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 804.9000000022352,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 808.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 809.6000000014901,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 856.1000000014901,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 860.8000000007451,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 885.6000000014901,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 902.8000000007451,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 925.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      }
+    ],
+    "screencastFrameCount": 6
+  },
+  {
+    "case": "dark-valid",
+    "expected": "DARK_INK",
+    "visibleWorkspaceFrames": [
+      {
+        "time": 541.2000000029802,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 554.9000000022352,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 562.7000000029802,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 618.8000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 623.3000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 679.5,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 706.4000000022352,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 712.9000000022352,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 716.8000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 723,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 729,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 735.2000000029802,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 741.1000000014901,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 747.1000000014901,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 753.3000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 759.3000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 765.4000000022352,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 771.4000000022352,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 777.6000000014901,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 783.6000000014901,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 789.6000000014901,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 795.6000000014901,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 802.5,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 807.9000000022352,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 813.9000000022352,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      }
+    ],
+    "screencastFrameCount": 9
+  },
+  {
+    "case": "light-corrupt",
+    "expected": "LIGHT_SAGE",
+    "visibleWorkspaceFrames": [
+      {
+        "time": 710.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 721.6999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 725.6000000014901,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 774.6000000014901,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 779.6000000014901,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 795.4000000022352,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 799.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 821.6999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 846.6999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 882.4000000022352,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      }
+    ],
+    "screencastFrameCount": 7
+  },
+  {
+    "case": "dark-wrong-directory",
+    "expected": "DARK_INK",
+    "visibleWorkspaceFrames": [
+      {
+        "time": 631.5999999977648,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 644.8999999985099,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 651.3000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 653.6999999992549,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 665.6999999992549,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 666.5999999977648,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 670.8999999985099,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 685.5,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 687.3999999985099,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 726.8000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 732.5,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 733.3000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 759.8999999985099,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 776.8999999985099,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 801.8000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 807.3999999985099,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 810.0999999977648,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 816.3000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 822.3000000007451,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      },
+      {
+        "time": 828.5999999977648,
+        "theme": "DARK_INK",
+        "canvas": "#0e1620"
+      }
+    ],
+    "screencastFrameCount": 7
+  },
+  {
+    "case": "system-valid",
+    "expected": "LIGHT_SAGE",
+    "visibleWorkspaceFrames": [
+      {
+        "time": 640.0999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 651.6999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 655.3999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 667.6999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 683.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 684.5999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 697.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 703.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 746.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 750.0999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 785,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 818.0999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      }
+    ],
+    "screencastFrameCount": 6
+  },
+  {
+    "case": "system-stale-theme",
+    "expected": "LIGHT_SAGE",
+    "visibleWorkspaceFrames": [
+      {
+        "time": 640.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 650.8000000007451,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 655,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 714.8000000007451,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 721.3999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 722.6999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 799.0999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 820.0999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 826.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 829.3999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 834.3999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 840.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 856.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 860.5999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 860.8999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 867.5999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 873.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 878.6999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 882.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 888.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 894.5999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 900.5999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 906.8000000007451,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 912.8999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 918.8999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 925,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 930.8999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 937,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 943.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 949.0999999977648,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 955.3000000007451,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 961.1999999992549,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 967.3999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 973.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 979.3999999985099,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      },
+      {
+        "time": 985.5,
+        "theme": "LIGHT_SAGE",
+        "canvas": "#e8eeec"
+      }
+    ],
+    "screencastFrameCount": 9
+  }
+]
