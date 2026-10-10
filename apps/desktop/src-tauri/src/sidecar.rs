@@ -85,9 +85,10 @@ mod job_object {
 
 const LOOPBACK: &str = "127.0.0.1";
 const PORT_MARKER: &str = "KNOWREALM_SIDECAR_PORT=";
-// 后端 import 链重（langchain 全家桶），冷启动 + 杀软扫描可超 10s；lifespan 侧迁移/回填同理。
+// 后端 import 链重（langchain 全家桶），冷启动 + 杀软扫描可超 10s 甚至逼近 30s；
+// lifespan 侧迁移/回填同理。2026-10-10 实测 29s 冷启动贴线超时，放宽到 60s。
 #[cfg(not(test))]
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(test)]
 const STARTUP_TIMEOUT: Duration = Duration::from_millis(200);
 

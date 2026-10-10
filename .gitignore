@@ -217,5 +217,8 @@ docs/sessions
 docs/improve-codebase-architecture
 .pytest-tmp
 .pytest-tmp-*
+.pytest-*
 
 graduation-project-related
+
+.scratch/desktop-theme-system
