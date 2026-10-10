@@ -478,6 +478,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat-turns/{turn_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Chat Turn
+         * @description 继续执行（票 02）：重验等待原因与恢复条件后重新排队。
+         *
+         *     类型化决定（RETRY_AFTER_FIX）只是声明阻塞条件已处理；不批准业务提案、
+         *     不构成重新授权、不改写原输入／模型／范围。继续与停止都是持久指令。
+         */
+        post: operations["resume_chat_turn_api_chat_turns__turn_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/courses": {
         parameters: {
             query?: never;
@@ -3664,6 +3687,7 @@ export interface components {
             updated_at: string;
             /** User Message Id */
             user_message_id: string;
+            waiting_reason?: components["schemas"]["ChatTurnWaitingReason"] | null;
         };
         /**
          * ChatTurnResultOut
@@ -3684,6 +3708,25 @@ export interface components {
             research_proposals?: {
                 [key: string]: unknown;
             }[];
+        };
+        /**
+         * ChatTurnResumeOut
+         * @description 继续受理结果：重验恢复条件通过后重新排队（QUEUED）。
+         */
+        ChatTurnResumeOut: {
+            turn: components["schemas"]["ChatTurnOut"];
+        };
+        /**
+         * ChatTurnResumeRequest
+         * @description 继续执行（票 02）：类型化决定；继续按钮不等于批准业务提案或重新授权。
+         */
+        ChatTurnResumeRequest: {
+            /**
+             * Decision Kind
+             * @default RETRY_AFTER_FIX
+             * @constant
+             */
+            decision_kind: "RETRY_AFTER_FIX";
         };
         /**
          * ChatTurnStatus
@@ -3716,6 +3759,21 @@ export interface components {
              * @default false
              */
             web_search: boolean;
+        };
+        /**
+         * ChatTurnWaitingKind
+         * @description WAITING_USER 等待原因类型（票 02，规格 §7/§11/§12）。
+         * @enum {string}
+         */
+        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING";
+        /**
+         * ChatTurnWaitingReason
+         * @description 等待原因载荷（chat_turns.waiting_reason JSON）。
+         */
+        ChatTurnWaitingReason: {
+            /** Detail */
+            detail?: string | null;
+            kind: components["schemas"]["ChatTurnWaitingKind"];
         };
         /**
          * ChatTurnsPage
@@ -8505,6 +8563,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    resume_chat_turn_api_chat_turns__turn_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatTurnResumeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTurnResumeOut"];
+                };
             };
             /** @description Forbidden */
             403: {

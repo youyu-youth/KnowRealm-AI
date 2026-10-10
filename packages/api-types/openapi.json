@@ -2429,6 +2429,16 @@
           "user_message_id": {
             "title": "User Message Id",
             "type": "string"
+          },
+          "waiting_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatTurnWaitingReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -2475,6 +2485,34 @@
           }
         },
         "title": "ChatTurnResultOut",
+        "type": "object"
+      },
+      "ChatTurnResumeOut": {
+        "additionalProperties": false,
+        "description": "继续受理结果：重验恢复条件通过后重新排队（QUEUED）。",
+        "properties": {
+          "turn": {
+            "$ref": "#/components/schemas/ChatTurnOut"
+          }
+        },
+        "required": [
+          "turn"
+        ],
+        "title": "ChatTurnResumeOut",
+        "type": "object"
+      },
+      "ChatTurnResumeRequest": {
+        "additionalProperties": false,
+        "description": "继续执行（票 02）：类型化决定；继续按钮不等于批准业务提案或重新授权。",
+        "properties": {
+          "decision_kind": {
+            "const": "RETRY_AFTER_FIX",
+            "default": "RETRY_AFTER_FIX",
+            "title": "Decision Kind",
+            "type": "string"
+          }
+        },
+        "title": "ChatTurnResumeRequest",
         "type": "object"
       },
       "ChatTurnStatus": {
@@ -2544,6 +2582,44 @@
           "request_id"
         ],
         "title": "ChatTurnSubmitRequest",
+        "type": "object"
+      },
+      "ChatTurnWaitingKind": {
+        "description": "WAITING_USER 等待原因类型（票 02，规格 §7/§11/§12）。",
+        "enum": [
+          "PROVIDER_UNAVAILABLE",
+          "PROVIDER_CHANGED",
+          "MEMORY_OUTBOUND_REVOKED",
+          "WEB_SEARCH_UNAVAILABLE",
+          "GRAPH_INCOMPATIBLE",
+          "CHECKPOINT_MISSING"
+        ],
+        "title": "ChatTurnWaitingKind",
+        "type": "string"
+      },
+      "ChatTurnWaitingReason": {
+        "additionalProperties": false,
+        "description": "等待原因载荷（chat_turns.waiting_reason JSON）。",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ChatTurnWaitingKind"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ChatTurnWaitingReason",
         "type": "object"
       },
       "ChatTurnsPage": {
@@ -12896,6 +12972,116 @@
           }
         },
         "summary": "Chat Turn Events",
+        "tags": [
+          "chat-turns"
+        ]
+      }
+    },
+    "/api/chat-turns/{turn_id}/resume": {
+      "post": {
+        "description": "继续执行（票 02）：重验等待原因与恢复条件后重新排队。\n\n类型化决定（RETRY_AFTER_FIX）只是声明阻塞条件已处理；不批准业务提案、\n不构成重新授权、不改写原输入／模型／范围。继续与停止都是持久指令。",
+        "operationId": "resume_chat_turn_api_chat_turns__turn_id__resume_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatTurnResumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTurnResumeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Resume Chat Turn",
         "tags": [
           "chat-turns"
         ]
