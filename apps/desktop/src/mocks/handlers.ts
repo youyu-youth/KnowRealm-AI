@@ -5,6 +5,8 @@ export const TEST_LAUNCH_TOKEN = "test-launch-token";
 
 const preferencesPayload = {
   theme: "SYSTEM",
+  light_theme_id: "LIGHT_DEFAULT",
+  dark_theme_id: "DARK_DEFAULT",
   font_scale: "M",
   language: "zh",
   timezone: null,

@@ -6,6 +6,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 QUIZ_COUNT_CHOICES = (3, 5, 10)
 
+LightThemeId = Literal["LIGHT_DEFAULT", "LIGHT_SAGE"]
+DarkThemeId = Literal["DARK_DEFAULT", "DARK_INK"]
+
 
 class ExternalProcessingConsentOut(BaseModel):
     granted_at: str | None
@@ -131,6 +134,8 @@ class LlmConsentOut(BaseModel):
 
 class PreferencesOut(BaseModel):
     theme: Literal["LIGHT", "DARK", "SYSTEM"]
+    light_theme_id: LightThemeId
+    dark_theme_id: DarkThemeId
     font_scale: Literal["S", "M", "L"]
     language: Literal["zh", "en"]
     timezone: str | None
@@ -221,7 +226,9 @@ class PreferencesUpdate(BaseModel):
     """全字段 optional 的部分更新：未提供的键保持原值；
     timezone/last_route 显式 null 各表跟随系统/默认页。"""
 
-    theme: Literal["LIGHT", "DARK", "SYSTEM"] | None = Field(default=None, description="外观主题")
+    theme: Literal["LIGHT", "DARK", "SYSTEM"] | None = Field(default=None, description="界面模式")
+    light_theme_id: LightThemeId | None = Field(default=None, description="明亮主题 ID")
+    dark_theme_id: DarkThemeId | None = Field(default=None, description="暗黑主题 ID")
     font_scale: Literal["S", "M", "L"] | None = Field(default=None, description="字号档位")
     language: Literal["zh", "en"] | None = Field(default=None, description="界面语言")
     timezone: str | None = Field(default=None, description="IANA 时区名；null 表示跟随系统")
@@ -254,6 +261,8 @@ class PreferencesUpdate(BaseModel):
     def reject_explicit_null(self) -> Self:
         for field in (
             "theme",
+            "light_theme_id",
+            "dark_theme_id",
             "font_scale",
             "language",
             "close_behavior",

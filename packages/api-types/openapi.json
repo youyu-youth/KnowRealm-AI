@@ -5926,6 +5926,14 @@
             "title": "Close Behavior",
             "type": "string"
           },
+          "dark_theme_id": {
+            "enum": [
+              "DARK_DEFAULT",
+              "DARK_INK"
+            ],
+            "title": "Dark Theme Id",
+            "type": "string"
+          },
           "font_scale": {
             "enum": [
               "S",
@@ -5953,6 +5961,14 @@
               }
             ],
             "title": "Last Route"
+          },
+          "light_theme_id": {
+            "enum": [
+              "LIGHT_DEFAULT",
+              "LIGHT_SAGE"
+            ],
+            "title": "Light Theme Id",
+            "type": "string"
           },
           "quick_note_shortcut": {
             "title": "Quick Note Shortcut",
@@ -5985,6 +6001,8 @@
         },
         "required": [
           "theme",
+          "light_theme_id",
+          "dark_theme_id",
           "font_scale",
           "language",
           "timezone",
@@ -6027,6 +6045,22 @@
             ],
             "description": "关窗行为",
             "title": "Close Behavior"
+          },
+          "dark_theme_id": {
+            "anyOf": [
+              {
+                "enum": [
+                  "DARK_DEFAULT",
+                  "DARK_INK"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "暗黑主题 ID",
+            "title": "Dark Theme Id"
           },
           "font_scale": {
             "anyOf": [
@@ -6073,6 +6107,22 @@
             "description": "上次界面路由；null 表示默认页",
             "title": "Last Route"
           },
+          "light_theme_id": {
+            "anyOf": [
+              {
+                "enum": [
+                  "LIGHT_DEFAULT",
+                  "LIGHT_SAGE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "明亮主题 ID",
+            "title": "Light Theme Id"
+          },
           "quick_note_shortcut": {
             "anyOf": [
               {
@@ -6116,7 +6166,7 @@
                 "type": "null"
               }
             ],
-            "description": "外观主题",
+            "description": "界面模式",
             "title": "Theme"
           },
           "timezone": {

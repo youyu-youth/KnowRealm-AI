@@ -146,6 +146,8 @@ async def test_export_includes_providers_when_secrets_requested(tmp_path: Path) 
 @pytest.mark.anyio
 async def test_restore_round_trips_into_fresh_directory(tmp_path: Path) -> None:
     source = await seed_data_dir(tmp_path / "A")
+    appearance = {"theme": "DARK", "light_theme_id": "LIGHT_SAGE", "dark_theme_id": "DARK_INK"}
+    (source / "config" / "settings.json").write_text(json.dumps(appearance), encoding="utf-8")
     file_name = await export_archive(source, include_secrets=True)
     target = ensure_data_dir(tmp_path / "B")
 
@@ -159,6 +161,9 @@ async def test_restore_round_trips_into_fresh_directory(tmp_path: Path) -> None:
         target / "files" / "22222222-2222-4222-8222-222222222222" / "doc.txt"
     ).read_bytes() == b"doc-body"
     assert (target / "config" / "providers.json").read_text(encoding="utf-8") == '{"llm": {}}'
+    async with running_app(target) as (_app, client):
+        preferences = (await client.get("/api/settings/preferences")).json()
+    assert {key: preferences[key] for key in appearance} == appearance
     assert not (target / "cache" / "import-archive").exists()
 
 

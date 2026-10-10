@@ -7,10 +7,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, tzinfo
 from hashlib import sha256
 from pathlib import Path
-from typing import cast
+from typing import cast, get_args
 from zoneinfo import ZoneInfo
 
-from app.modules.settings.schemas import QUIZ_COUNT_CHOICES, is_valid_shortcut, is_valid_timezone
+from app.modules.settings.schemas import (
+    QUIZ_COUNT_CHOICES,
+    DarkThemeId,
+    LightThemeId,
+    is_valid_shortcut,
+    is_valid_timezone,
+)
+
+# 原子替换不保护读改写；settings.json 的所有写入口共享同一提交锁。
+_SETTINGS_WRITE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -72,12 +81,13 @@ def external_processing_consent_at(data_dir: Path) -> str | None:
 
 
 def grant_external_processing_consent(data_dir: Path) -> str:
-    path = data_dir / "config" / "settings.json"
-    settings = _read_json(path)
-    granted_at = datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
-    settings["tencent_asr_consent_granted_at"] = granted_at
-    _write_json(path, settings)
-    return granted_at
+    with _SETTINGS_WRITE_LOCK:
+        path = data_dir / "config" / "settings.json"
+        settings = _read_json(path)
+        granted_at = datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
+        settings["tencent_asr_consent_granted_at"] = granted_at
+        _write_json(path, settings)
+        return granted_at
 
 
 def load_tencent_asr_provider(data_dir: Path) -> TencentAsrConfig | None:
@@ -225,6 +235,10 @@ def llm_consent(data_dir: Path) -> tuple[str | None, bool]:
 
 
 THEME_CHOICES = ("LIGHT", "DARK", "SYSTEM")
+LIGHT_THEME_IDS = get_args(LightThemeId)
+DARK_THEME_IDS = get_args(DarkThemeId)
+DEFAULT_LIGHT_THEME_ID = "LIGHT_DEFAULT"
+DEFAULT_DARK_THEME_ID = "DARK_DEFAULT"
 FONT_SCALE_CHOICES = ("S", "M", "L")
 LANGUAGE_CHOICES = ("zh", "en")
 CLOSE_BEHAVIOR_CHOICES = ("TRAY", "EXIT")
@@ -240,6 +254,8 @@ DEFAULT_QUIZ_LAST_COUNT = 5
 # settings.json 只保留用户的偏离项，consent 等未知键经读改写天然保留。
 PREFERENCE_DEFAULTS: dict[str, object] = {
     "theme": DEFAULT_THEME,
+    "light_theme_id": DEFAULT_LIGHT_THEME_ID,
+    "dark_theme_id": DEFAULT_DARK_THEME_ID,
     "font_scale": DEFAULT_FONT_SCALE,
     "language": DEFAULT_LANGUAGE,
     "timezone": None,
@@ -254,6 +270,8 @@ PREFERENCE_DEFAULTS: dict[str, object] = {
 def load_preferences(data_dir: Path) -> dict[str, object]:
     settings = _read_json(data_dir / "config" / "settings.json")
     theme = settings.get("theme")
+    light_theme_id = settings.get("light_theme_id")
+    dark_theme_id = settings.get("dark_theme_id")
     font_scale = settings.get("font_scale")
     language = settings.get("language")
     timezone = settings.get("timezone")
@@ -264,6 +282,12 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
     last_route = settings.get("last_route")
     return {
         "theme": theme if theme in THEME_CHOICES else DEFAULT_THEME,
+        "light_theme_id": (
+            light_theme_id if light_theme_id in LIGHT_THEME_IDS else DEFAULT_LIGHT_THEME_ID
+        ),
+        "dark_theme_id": (
+            dark_theme_id if dark_theme_id in DARK_THEME_IDS else DEFAULT_DARK_THEME_ID
+        ),
         "font_scale": font_scale if font_scale in FONT_SCALE_CHOICES else DEFAULT_FONT_SCALE,
         "language": language if language in LANGUAGE_CHOICES else DEFAULT_LANGUAGE,
         "timezone": (
@@ -287,32 +311,34 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
 
 
 def save_preferences(data_dir: Path, updates: Mapping[str, object]) -> dict[str, object]:
-    if not updates:
+    with _SETTINGS_WRITE_LOCK:
+        if not updates:
+            return load_preferences(data_dir)
+        path = data_dir / "config" / "settings.json"
+        settings = _read_json(path)
+        for key, value in updates.items():
+            if key in PREFERENCE_DEFAULTS and value == PREFERENCE_DEFAULTS[key]:
+                settings.pop(key, None)
+            else:
+                settings[key] = value
+        _write_json(path, settings)
         return load_preferences(data_dir)
-    path = data_dir / "config" / "settings.json"
-    settings = _read_json(path)
-    for key, value in updates.items():
-        if key in PREFERENCE_DEFAULTS and value == PREFERENCE_DEFAULTS[key]:
-            settings.pop(key, None)
-        else:
-            settings[key] = value
-    _write_json(path, settings)
-    return load_preferences(data_dir)
 
 
 def grant_llm_consent(data_dir: Path) -> str | None:
-    provider = load_llm_provider(data_dir)
-    if provider is None or not provider.api_key:
-        return None
-    path = data_dir / "config" / "settings.json"
-    settings = _read_json(path)
-    granted_at = datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
-    settings["llm_external_processing_consent"] = {
-        "provider_fingerprint": llm_provider_fingerprint(provider),
-        "granted_at": granted_at,
-    }
-    _write_json(path, settings)
-    return granted_at
+    with _SETTINGS_WRITE_LOCK:
+        provider = load_llm_provider(data_dir)
+        if provider is None or not provider.api_key:
+            return None
+        path = data_dir / "config" / "settings.json"
+        settings = _read_json(path)
+        granted_at = datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
+        settings["llm_external_processing_consent"] = {
+            "provider_fingerprint": llm_provider_fingerprint(provider),
+            "granted_at": granted_at,
+        }
+        _write_json(path, settings)
+        return granted_at
 
 
 # 长期记忆外发开关（工单 06）：默认开启；关闭=记忆保留本地、不再注入发给 LLM
@@ -324,14 +350,15 @@ def memory_outbound_enabled(data_dir: Path) -> bool:
 
 
 def set_memory_outbound_enabled(data_dir: Path, enabled: bool) -> bool:
-    path = data_dir / "config" / "settings.json"
-    settings = _read_json(path)
-    if enabled:
-        settings.pop("learner_memory_outbound_enabled", None)
-    else:
-        settings["learner_memory_outbound_enabled"] = False
-    _write_json(path, settings)
-    return enabled
+    with _SETTINGS_WRITE_LOCK:
+        path = data_dir / "config" / "settings.json"
+        settings = _read_json(path)
+        if enabled:
+            settings.pop("learner_memory_outbound_enabled", None)
+        else:
+            settings["learner_memory_outbound_enabled"] = False
+        _write_json(path, settings)
+        return enabled
 
 
 # Agent 全局默认授权档（通用 Agent 第二阶段工单 02）：默认 REQUEST_APPROVAL 不写键
@@ -349,13 +376,14 @@ def agent_default_auth_mode(data_dir: Path) -> str:
 
 
 def set_agent_default_auth_mode(data_dir: Path, mode: str) -> None:
-    path = data_dir / "config" / "settings.json"
-    settings = _read_json(path)
-    if mode == "REQUEST_APPROVAL":
-        settings.pop(AGENT_DEFAULT_AUTH_MODE_KEY, None)
-    else:
-        settings[AGENT_DEFAULT_AUTH_MODE_KEY] = mode
-    _write_json(path, settings)
+    with _SETTINGS_WRITE_LOCK:
+        path = data_dir / "config" / "settings.json"
+        settings = _read_json(path)
+        if mode == "REQUEST_APPROVAL":
+            settings.pop(AGENT_DEFAULT_AUTH_MODE_KEY, None)
+        else:
+            settings[AGENT_DEFAULT_AUTH_MODE_KEY] = mode
+        _write_json(path, settings)
 
 
 # Agent 时间能力的用户时区（时间能力 v1）：偏好 timezone（IANA 名，null=跟随

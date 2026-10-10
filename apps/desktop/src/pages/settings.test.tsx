@@ -360,6 +360,8 @@ type PreferencesOut = components["schemas"]["PreferencesOut"];
 const PREFERENCES_URL = `${TEST_SIDECAR_URL}/api/settings/preferences`;
 const DEFAULT_PREFERENCES: PreferencesOut = {
   theme: "SYSTEM",
+  light_theme_id: "LIGHT_DEFAULT",
+  dark_theme_id: "DARK_DEFAULT",
   font_scale: "M",
   language: "zh",
   timezone: null,

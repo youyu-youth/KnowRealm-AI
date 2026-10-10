@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -14,6 +15,8 @@ TOKEN = "test-launch-token"
 
 DEFAULTS = {
     "theme": "SYSTEM",
+    "light_theme_id": "LIGHT_DEFAULT",
+    "dark_theme_id": "DARK_DEFAULT",
     "font_scale": "M",
     "language": "zh",
     "timezone": None,
@@ -70,6 +73,100 @@ async def test_get_preferences_returns_defaults_without_writing_file(tmp_path: P
     assert response.status_code == 200
     assert response.json() == DEFAULTS
     assert not settings_path(tmp_path).exists()
+
+
+@pytest.mark.anyio
+async def test_independent_themes_preserve_mode_and_reset_by_removing_only_default_keys(
+    tmp_path: Path,
+) -> None:
+    write_settings(tmp_path, {"theme": "DARK", "language": "en", "custom": {"kept": True}})
+    async with running_app(tmp_path) as (_app, client):
+        legacy = await client.get("/api/settings/preferences")
+        assert legacy.json() == {**DEFAULTS, "theme": "DARK", "language": "en"}
+        assert read_settings(tmp_path) == {
+            "theme": "DARK",
+            "language": "en",
+            "custom": {"kept": True},
+        }
+        for patch in ({"light_theme_id": "LIGHT_SAGE"}, {"dark_theme_id": "DARK_INK"}):
+            assert (await client.put("/api/settings/preferences", json=patch)).status_code == 200
+        for mode in ("LIGHT", "DARK", "SYSTEM"):
+            result = await client.put("/api/settings/preferences", json={"theme": mode})
+            assert result.json()["light_theme_id"] == "LIGHT_SAGE"
+            assert result.json()["dark_theme_id"] == "DARK_INK"
+        await client.put("/api/settings/preferences", json={"light_theme_id": "LIGHT_DEFAULT"})
+        reread = await client.get("/api/settings/preferences")
+    assert reread.json() == {**DEFAULTS, "dark_theme_id": "DARK_INK", "language": "en"}
+    assert read_settings(tmp_path) == {
+        "dark_theme_id": "DARK_INK",
+        "language": "en",
+        "custom": {"kept": True},
+    }
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "field,other,valid,wrong",
+    [
+        ("light_theme_id", "dark_theme_id", "DARK_INK", "DARK_INK"),
+        ("dark_theme_id", "light_theme_id", "LIGHT_SAGE", "LIGHT_SAGE"),
+    ],
+)
+@pytest.mark.parametrize("invalid", [None, "", "REMOVED", "wrong-mode", [], {}])
+async def test_corrupt_theme_falls_back_without_rewriting_other_preferences(
+    tmp_path: Path,
+    field: str,
+    other: str,
+    valid: str,
+    wrong: str,
+    invalid: object,
+) -> None:
+    stored = {
+        field: wrong if invalid == "wrong-mode" else invalid,
+        other: valid,
+        "theme": "LIGHT",
+        "language": "en",
+        "custom": 42,
+    }
+    write_settings(tmp_path, stored)
+    async with running_app(tmp_path) as (_app, client):
+        result = await client.get("/api/settings/preferences")
+    assert result.json() == {
+        **DEFAULTS,
+        other: valid,
+        "theme": "LIGHT",
+        "language": "en",
+    }
+    assert read_settings(tmp_path) == stored
+
+
+@pytest.mark.anyio
+async def test_concurrent_preferences_and_consent_writes_keep_every_update(tmp_path: Path) -> None:
+    write_settings(tmp_path, {"custom": "keep"})
+    patches = [
+        {"light_theme_id": "LIGHT_SAGE"},
+        {"dark_theme_id": "DARK_INK"},
+        {"theme": "DARK"},
+        {"font_scale": "L"},
+        {"language": "en"},
+        {"timezone": "Asia/Shanghai"},
+        {"last_route": "/settings"},
+    ]
+    async with running_app(tmp_path) as (_app, client):
+        results = await asyncio.gather(
+            *(client.put("/api/settings/preferences", json=patch) for patch in patches),
+            client.post("/api/settings/external-processing-consents/tencent-asr"),
+        )
+        assert all(result.status_code == 200 for result in results)
+        reread = await client.get("/api/settings/preferences")
+    expected = {**DEFAULTS, **{key: value for patch in patches for key, value in patch.items()}}
+    assert reread.json() == expected
+    stored = read_settings(tmp_path)
+    assert stored["custom"] == "keep"
+    assert stored["tencent_asr_consent_granted_at"] == results[-1].json()["granted_at"]
+    for patch in patches:
+        for key, value in patch.items():
+            assert stored[key] == value
 
 
 @pytest.mark.anyio
@@ -206,6 +303,14 @@ async def test_put_empty_body_keeps_everything_unchanged(tmp_path: Path) -> None
         {"autostart": "maybe"},
         {"quiz_last_count": 7},
         {"theme": None},
+        {"light_theme_id": None},
+        {"dark_theme_id": None},
+        {"light_theme_id": ""},
+        {"dark_theme_id": ""},
+        {"light_theme_id": "REMOVED"},
+        {"dark_theme_id": "REMOVED"},
+        {"light_theme_id": "DARK_INK"},
+        {"dark_theme_id": "LIGHT_SAGE"},
         {"font_scale": None},
         {"close_behavior": None},
         {"autostart": None},
@@ -218,6 +323,7 @@ async def test_put_rejects_invalid_values(tmp_path: Path, payload: dict[str, obj
         response = await client.put("/api/settings/preferences", json=payload)
 
     assert response.status_code == 422
+    assert not settings_path(tmp_path).exists()
 
 
 @pytest.mark.anyio

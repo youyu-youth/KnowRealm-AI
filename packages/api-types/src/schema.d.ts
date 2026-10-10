@@ -5066,6 +5066,11 @@ export interface components {
              */
             close_behavior: "TRAY" | "EXIT";
             /**
+             * Dark Theme Id
+             * @enum {string}
+             */
+            dark_theme_id: "DARK_DEFAULT" | "DARK_INK";
+            /**
              * Font Scale
              * @enum {string}
              */
@@ -5077,6 +5082,11 @@ export interface components {
             language: "zh" | "en";
             /** Last Route */
             last_route: string | null;
+            /**
+             * Light Theme Id
+             * @enum {string}
+             */
+            light_theme_id: "LIGHT_DEFAULT" | "LIGHT_SAGE";
             /** Quick Note Shortcut */
             quick_note_shortcut: string;
             /** Quiz Last Count */
@@ -5106,6 +5116,11 @@ export interface components {
              */
             close_behavior?: ("TRAY" | "EXIT") | null;
             /**
+             * Dark Theme Id
+             * @description 暗黑主题 ID
+             */
+            dark_theme_id?: ("DARK_DEFAULT" | "DARK_INK") | null;
+            /**
              * Font Scale
              * @description 字号档位
              */
@@ -5121,6 +5136,11 @@ export interface components {
              */
             last_route?: string | null;
             /**
+             * Light Theme Id
+             * @description 明亮主题 ID
+             */
+            light_theme_id?: ("LIGHT_DEFAULT" | "LIGHT_SAGE") | null;
+            /**
              * Quick Note Shortcut
              * @description 速记快捷键 accelerator
              */
@@ -5132,7 +5152,7 @@ export interface components {
             quiz_last_count?: (3 | 5 | 10) | null;
             /**
              * Theme
-             * @description 外观主题
+             * @description 界面模式
              */
             theme?: ("LIGHT" | "DARK" | "SYSTEM") | null;
             /**
