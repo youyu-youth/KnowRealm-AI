@@ -81,6 +81,8 @@ export function applyTheme(
   const dark = theme === "DARK" || (theme === "SYSTEM" && systemPrefersDark());
   const root = document.documentElement;
   const previous = appearanceSnapshot();
+  const next = `${dark}:${dark ? selection.dark_theme_id : selection.light_theme_id}`;
+  if (previous !== next) root.dataset.themeSwitching = "";
   root.classList.toggle("dark", dark);
   root.classList.toggle("light", !dark);
   root.dataset.theme = dark
@@ -88,6 +90,10 @@ export function applyTheme(
     : selection.light_theme_id;
   if (previous !== appearanceSnapshot()) {
     window.dispatchEvent(new Event(APPEARANCE_CHANGED_EVENT));
+    // 先绘制新配色，再恢复控件自身的 hover/focus 过渡。
+    window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => delete root.dataset.themeSwitching),
+    );
   }
 }
 

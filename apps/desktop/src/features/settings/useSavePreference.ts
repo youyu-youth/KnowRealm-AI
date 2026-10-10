@@ -44,6 +44,7 @@ export function useSavePreference() {
           applyTheme(candidate.theme, candidate);
         }
         const data = await settingsApi.updatePreferences(patch);
+        await queryClient.cancelQueries({ queryKey: settingsKeys.preferences });
         queryClient.setQueryData(settingsKeys.preferences, data);
         confirmAppearance(data);
         return data;
@@ -55,6 +56,9 @@ export function useSavePreference() {
             queryKey: settingsKeys.preferences,
           });
           const data = await settingsApi.getPreferences();
+          await queryClient.cancelQueries({
+            queryKey: settingsKeys.preferences,
+          });
           queryClient.setQueryData(settingsKeys.preferences, data);
           confirmAppearance(data);
         } catch {

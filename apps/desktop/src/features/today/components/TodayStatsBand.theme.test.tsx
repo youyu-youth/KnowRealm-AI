@@ -50,12 +50,18 @@ it("主题变化保留统计折叠状态和图表节点", async () => {
       dark_theme_id: "DARK_INK",
     }),
   );
+  expect(document.documentElement).toHaveAttribute("data-theme-switching");
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "累计学习统计" }),
     ).toHaveAttribute("aria-expanded", "false"),
   );
   expect(screen.getByRole("img", { name: "学习趋势图" })).toBe(chart);
+  await waitFor(() =>
+    expect(document.documentElement).not.toHaveAttribute(
+      "data-theme-switching",
+    ),
+  );
   view.unmount();
   client.clear();
 });

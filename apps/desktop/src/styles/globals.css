@@ -152,3 +152,9 @@
     }
   }
 }
+/* 换主题一次性生效；控件的日常状态过渡在首帧之后恢复。 */
+:root[data-theme-switching] *,
+:root[data-theme-switching] *::before,
+:root[data-theme-switching] *::after {
+  transition: none !important;
+}
