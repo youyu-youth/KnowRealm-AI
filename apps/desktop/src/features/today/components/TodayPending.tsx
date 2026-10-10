@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { AudioLines, ArrowUpRight, FileText } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { AudioLines, ArrowUpRight, Eye, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StatusTag } from "@/components/common/StatusTag";
@@ -14,6 +14,7 @@ import {
 } from "@/features/records/recordPresentation";
 import { todayKeys } from "@/features/today/api/keys";
 import type { TodaySummaryTodo } from "@/features/today/api/today";
+import { TodayItemMenu } from "@/features/today/components/TodayItemMenu";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -40,6 +41,7 @@ export function TodayPending({
   onSelect,
 }: Props) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [filter, setFilter] = useState("all");
   const queryClient = useQueryClient();
   const inbox = useQuery({
@@ -152,19 +154,53 @@ export function TodayPending({
             aria-label={t("today.workspace.pendingList")}
             className="today-pending-list mt-3 overflow-y-auto"
           >
-            <ul aria-label={t("today.todoListLabel")} className="grid gap-2">
+            <ul aria-label={t("today.todoListLabel")} className="grid gap-1">
               {filter !== "processing"
                 ? summaries.map((summary) => (
                     <li
                       key={summary.record_id}
                       className={cn(
-                        "today-pending-item rounded-sm border p-3 transition-colors",
+                        "today-pending-item px-3 py-2 transition-colors",
                         selectedId === summary.record_id
-                          ? "border-today-accent bg-today-soft"
-                          : "hover:bg-today-soft border-transparent",
+                          ? "bg-today-soft"
+                          : "hover:bg-today-soft",
                       )}
                     >
-                      <div className="flex items-start gap-3">
+                      <TodayItemMenu
+                        quickAction={false}
+                        title={summary.title}
+                        className="flex items-center gap-2"
+                        actions={[
+                          {
+                            label: t("today.workspace.openRecord", {
+                              title: summary.title,
+                            }),
+                            icon: ArrowUpRight,
+                            run: () =>
+                              void navigate({
+                                to: "/records/$recordId",
+                                params: { recordId: summary.record_id },
+                              }),
+                          },
+                          {
+                            label: t("today.workspace.previewRecord", {
+                              title: summary.title,
+                            }),
+                            icon: Eye,
+                            run: () => onSelect(summary.record_id),
+                          },
+                          {
+                            label: t("today.workspace.preview.viewSource"),
+                            icon: FileText,
+                            run: () =>
+                              void navigate({
+                                to: "/records/$recordId",
+                                params: { recordId: summary.record_id },
+                                search: { tab: "transcript" },
+                              }),
+                          },
+                        ]}
+                      >
                         <Button
                           variant="ghost"
                           onClick={() => onSelect(summary.record_id)}
@@ -186,10 +222,10 @@ export function TodayPending({
                             >
                               {summary.title}
                             </span>
-                            <span className="text-label text-ink-muted mt-1 block break-words">
+                            <span className="text-label text-ink-muted mt-0.5 block truncate">
                               {summary.course_name}
                             </span>
-                            <StatusTag tone="warning" className="mt-2">
+                            <StatusTag tone="warning" className="mt-1">
                               {t("today.workspace.awaiting")}
                             </StatusTag>
                           </span>
@@ -204,7 +240,7 @@ export function TodayPending({
                         >
                           <ArrowUpRight className="size-4" aria-hidden="true" />
                         </Link>
-                      </div>
+                      </TodayItemMenu>
                     </li>
                   ))
                 : null}

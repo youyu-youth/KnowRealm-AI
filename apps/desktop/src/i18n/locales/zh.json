@@ -273,6 +273,16 @@
       "reviewProgress": "查看学习进度"
     },
     "workspace": {
+      "awaitingCount": "{{count}} 待确认",
+      "focusSelected": "专注此任务",
+      "markComplete": "标记完成",
+      "quickAction": "{{action}}「{{title}}」",
+      "itemActions": "「{{title}}」的快捷操作",
+      "closeInspector": "收起详情",
+      "focusTask": "专注此任务「{{title}}」",
+      "openPlan": "打开课程计划",
+      "dropFocus": "拖动任务到此处，或使用条目上的专注按钮",
+      "nextFocus": "本轮继续当前任务；下轮专注「{{title}}」",
       "courseColumn": "课程",
       "durationColumn": "时长",
       "statusColumn": "状态",

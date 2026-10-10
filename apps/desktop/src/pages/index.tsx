@@ -6,6 +6,9 @@ type TodaySearch = {
   course?: string;
   order?: "duration" | "date";
   panel?: "actions" | "pending" | "review";
+  inspector?: "summary" | "focus";
+  record?: string;
+  task?: string;
 };
 
 export const Route = createFileRoute("/")({
@@ -18,6 +21,12 @@ export const Route = createFileRoute("/")({
       search.panel === "pending" || search.panel === "review"
         ? search.panel
         : ("actions" as const),
+    record: typeof search.record === "string" ? search.record : undefined,
+    task: typeof search.task === "string" ? search.task : undefined,
+    inspector:
+      search.inspector === "summary" || search.inspector === "focus"
+        ? search.inspector
+        : undefined,
   }),
   component: TodayPage,
 });

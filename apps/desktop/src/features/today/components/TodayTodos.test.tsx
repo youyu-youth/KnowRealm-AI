@@ -155,6 +155,70 @@ describe("今日待学双源清单", () => {
     );
   });
 
+  it("快捷按钮与右键菜单联动专注，拖放仅接受当前列表任务且不打断本轮", async () => {
+    server.use(
+      http.get(PENDING_URL, () => HttpResponse.json([])),
+      http.get(PLAN_ITEMS_URL, () =>
+        HttpResponse.json([planItem, overdueItem]),
+      ),
+    );
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "专注此任务「通读 LCEL 转写笔记」",
+      }),
+    );
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get("task")).toBe(
+        planItem.item_id,
+      ),
+    );
+    expect(screen.getByRole("heading", { name: "当前专注" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "开始" }));
+    const second = screen
+      .getByRole("link", { name: overdueItem.content })
+      .closest("li")!;
+    fireEvent.contextMenu(second.querySelector("[data-selected]")!);
+    fireEvent.click(
+      await screen.findByRole("menuitem", {
+        name: "专注此任务",
+      }),
+    );
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get("task")).toBe(
+        overdueItem.item_id,
+      ),
+    );
+    expect(
+      screen.getByText(`本轮继续当前任务；下轮专注「${overdueItem.content}」`),
+    ).toBeInTheDocument();
+    const dropZone = screen
+      .getByRole("heading", { name: "当前专注" })
+      .closest("section")!;
+    fireEvent.drop(dropZone, {
+      dataTransfer: { getData: () => "unknown-item" },
+    });
+    expect(new URLSearchParams(window.location.search).get("task")).toBe(
+      overdueItem.item_id,
+    );
+    fireEvent.drop(dropZone, {
+      dataTransfer: { getData: () => planItem.item_id },
+    });
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get("task")).toBe(
+        planItem.item_id,
+      ),
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() =>
+      expect(
+        new URLSearchParams(window.location.search).get("inspector"),
+      ).toBeNull(),
+    );
+    expect(screen.getByRole("button", { name: "今日行动" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument();
+  });
+
   it("计划项与记录待办并列分组、标注来源，计划项可跳计划 Tab", async () => {
     server.use(
       http.get(PENDING_URL, () => HttpResponse.json([todo])),

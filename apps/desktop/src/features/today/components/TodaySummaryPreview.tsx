@@ -14,16 +14,18 @@ export function TodaySummaryPreview({
   record,
   loading,
   error,
+  active = true,
 }: {
   record?: TodaySummaryTodo;
   loading: boolean;
   error: boolean;
+  active?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const summary = useQuery({
     queryKey: recordKeys.summary(record?.record_id ?? ""),
     queryFn: () => recordApi.getSummary(record?.record_id ?? ""),
-    enabled: Boolean(record),
+    enabled: Boolean(record) && active,
     refetchInterval: (query) =>
       query.state.data?.active_job_id ? 2_000 : false,
   });

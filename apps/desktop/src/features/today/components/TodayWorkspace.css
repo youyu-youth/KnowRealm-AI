@@ -38,7 +38,7 @@
 }
 
 .today-heading {
-  font-size: var(--text-today-section);
+  font-size: var(--text-section);
   font-weight: 600;
   line-height: 1.4;
 }
@@ -57,14 +57,15 @@
   flex: 1;
   min-height: 0;
   align-items: stretch;
-  gap: calc(var(--spacing) * 3);
+  gap: 0;
   overflow: hidden;
+  background: var(--today-surface);
 }
 
 .today-panel {
   min-width: 0;
-  border: 1px solid var(--today-border);
-  border-radius: var(--radius-md);
+  border: 0;
+  border-radius: 0;
   background: var(--today-surface);
 }
 
@@ -100,6 +101,7 @@
 
 .today-left {
   overflow: hidden;
+  background: var(--today-surface);
 }
 
 .today-pending,
@@ -170,12 +172,16 @@
 
 .today-task-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: calc(var(--spacing) * 2);
 }
 
 .today-task-row > :nth-child(n + 3) {
   grid-column: 2;
+}
+.today-task-row > .today-row-actions {
+  grid-column: 3;
+  grid-row: 1;
 }
 
 .today-task-header {
@@ -198,6 +204,7 @@
   display: grid;
   max-height: 38%;
   flex-shrink: 0;
+  border-top: 1px solid var(--today-border);
   gap: calc(var(--spacing) * 3);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -284,8 +291,7 @@
   display: none;
 }
 
-.today-grid[data-panel="pending"] > .today-left,
-.today-grid[data-panel="review"] > .today-rail {
+.today-grid[data-panel="pending"] > .today-left {
   display: flex;
 }
 
@@ -308,12 +314,13 @@
   .today-task-row {
     grid-template-columns:
       calc(var(--spacing) * 4) minmax(0, 1fr) minmax(0, 0.45fr)
-      var(--spacing-today-duration) var(--spacing-today-status);
+      var(--spacing-today-duration) var(--spacing-today-status) auto;
     align-items: center;
     gap: calc(var(--spacing) * 3);
   }
   .today-task-row > :nth-child(n + 3) {
     grid-column: auto;
+    grid-row: auto;
   }
   .today-task-header {
     display: grid;
@@ -326,19 +333,104 @@
   }
 }
 
-@container today (min-width: 66rem) {
-  .today-pane-switcher {
-    display: none;
+/* 内容选择决定详情；窄窗口用同一分区入口返回主工作区。 */
+.today-rail {
+  background: var(--today-soft);
+  border-left: 1px solid var(--today-border);
+  gap: 0;
+}
+.today-grid:not([data-inspector="closed"]) > .today-rail {
+  display: flex;
+}
+.today-grid:not([data-inspector="closed"]) > :is(.today-left, .today-center) {
+  display: none;
+}
+.today-rail[data-detail="summary"] .today-focus-slot,
+.today-rail[data-detail="focus"] > .today-preview {
+  display: none;
+}
+.today-inspector-toolbar {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--today-border);
+}
+.today-focus-slot {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.today-focus-slot .today-focus {
+  background: transparent;
+}
+.today-header {
+  border-bottom: 1px solid var(--today-border);
+}
+.today-pane-switcher {
+  padding-block: calc(var(--spacing) * 2);
+  user-select: none;
+}
+.today-task-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.today-task-row[data-selected="true"],
+.today-pending-item:has([aria-pressed="true"]) {
+  background: var(--today-soft);
+}
+.today-row-actions {
+  flex-shrink: 0;
+}
+.today-row-actions button,
+.today-inspector-toolbar button {
+  min-width: calc(var(--spacing) * 8);
+  min-height: calc(var(--spacing) * 8);
+}
+.today-row-menu {
+  opacity: 0.45;
+}
+.today-task-row:focus-within .today-row-menu,
+.today-pending-item:focus-within .today-row-menu,
+.today-row-menu[data-popup-open] {
+  opacity: 1;
+}
+.today-focus[data-drag-over="true"] {
+  outline: 2px dashed var(--today-accent);
+  outline-offset: -4px;
+  background: var(--today-surface);
+}
+.today-workspace :is(button, a, [role="menuitem"]):focus-visible {
+  outline: 2px solid var(--today-accent);
+  outline-offset: -2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .today-task-row:hover .today-row-menu,
+  .today-pending-item:hover .today-row-menu {
+    opacity: 1;
   }
-  .today-grid {
-    grid-template-columns:
-      minmax(var(--spacing-sidebar), 0.8fr) minmax(0, 2fr)
-      minmax(var(--spacing-today-rail), 1fr);
+}
+@media (prefers-reduced-motion: reduce) {
+  .today-workspace *,
+  .today-row-menu {
+    animation: none;
+    transition: none;
   }
-  .today-grid > :is(.today-left, .today-rail) {
-    display: flex;
+}
+@container today (min-width: 52rem) {
+  .today-grid:not([data-inspector="closed"]) {
+    grid-template-columns: minmax(0, 1fr) var(--spacing-today-inspector);
   }
-  .today-grid > .today-center {
+  .today-grid[data-panel="actions"] > .today-center {
     display: block;
   }
+  .today-grid[data-panel="pending"] > .today-left {
+    display: flex;
+  }
+}
+
+.today-workspace[data-dragging-task="true"]
+  .today-pane-switcher
+  button[aria-controls="today-pane-review"] {
+  outline: 2px dashed var(--today-accent);
+  outline-offset: 2px;
+  background: var(--today-soft);
 }

@@ -1,6 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { ArrowRight, CalendarClock } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarClock,
+  Check,
+  ExternalLink,
+  Timer,
+} from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import { TodayItemMenu } from "@/features/today/components/TodayItemMenu";
 import { useTranslation } from "react-i18next";
 
 import { StatusTag } from "@/components/common/StatusTag";
@@ -8,7 +16,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import { useCompletePlanItem } from "@/features/learningPlan/api/learningPlan";
 import { toastMutationError } from "@/features/learningPlan/components/LearningPlanTab";
-import { todayApi, type TodaySummaryTodo } from "@/features/today/api/today";
+import {
+  todayApi,
+  type TodayPlanItem,
+  type TodaySummaryTodo,
+} from "@/features/today/api/today";
 import { todayKeys } from "@/features/today/api/keys";
 
 type TodayTodosProps = {
@@ -19,6 +31,8 @@ type TodayTodosProps = {
   showSummaries?: boolean;
   course?: string;
   order?: "date" | "duration";
+  selectedItemId?: string;
+  onFocus: (id: string) => void;
 };
 
 /** 跨空间待学清单：勾选完成作用于真实计划项；工作台将待确认总结放在左栏。
@@ -31,13 +45,24 @@ export function TodayTodos({
   showSummaries = true,
   course = "all",
   order = "date",
+  selectedItemId,
+  onFocus,
 }: TodayTodosProps) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const planItems = useQuery({
     queryKey: todayKeys.planItems,
     queryFn: todayApi.planItems,
   });
   const complete = useCompletePlanItem();
+  const completeItem = (item: TodayPlanItem) =>
+    complete.mutate(
+      { courseId: item.course_id, planId: item.plan_id, itemId: item.item_id },
+      {
+        onError: (error) =>
+          toastMutationError(error, t("learningPlan.mutationFailed")),
+      },
+    );
 
   if (planItems.isPending && (!showSummaries || isSummariesPending)) {
     return (
@@ -105,7 +130,44 @@ export function TodayTodos({
                   complete.variables?.itemId === item.item_id
                 }
               >
-                <div className="today-task-row hover:bg-today-soft px-3 py-2.5 transition-colors">
+                <TodayItemMenu
+                  className="today-task-row hover:bg-today-soft px-3 py-2.5 transition-colors"
+                  title={item.content}
+                  data-selected={selectedItemId === item.item_id}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(
+                      "application/x-knowrealm-plan-item",
+                      item.item_id,
+                    );
+                    event.dataTransfer.effectAllowed = "copy";
+                  }}
+                  actions={[
+                    {
+                      label: t("today.workspace.focusSelected"),
+                      icon: Timer,
+                      run: () => onFocus(item.item_id),
+                    },
+                    {
+                      label: t("today.workspace.openPlan"),
+                      icon: ExternalLink,
+                      run: () =>
+                        void navigate({
+                          to: "/spaces/$courseId",
+                          params: { courseId: item.course_id },
+                          search: { tab: "plan" },
+                        }),
+                    },
+                    {
+                      label: t("today.workspace.markComplete"),
+                      icon: Check,
+                      disabled:
+                        complete.isPending &&
+                        complete.variables?.itemId === item.item_id,
+                      run: () => completeItem(item),
+                    },
+                  ]}
+                >
                   <Checkbox
                     aria-label={t("today.planTodos.completeLabel", {
                       content: item.content,
@@ -119,22 +181,7 @@ export function TodayTodos({
                       complete.isPending &&
                       complete.variables?.itemId === item.item_id
                     }
-                    onCheckedChange={() =>
-                      complete.mutate(
-                        {
-                          courseId: item.course_id,
-                          planId: item.plan_id,
-                          itemId: item.item_id,
-                        },
-                        {
-                          onError: (error) =>
-                            toastMutationError(
-                              error,
-                              t("learningPlan.mutationFailed"),
-                            ),
-                        },
-                      )
-                    }
+                    onCheckedChange={() => completeItem(item)}
                     className="mt-1"
                   />
                   <div className="min-w-0 flex-1">
@@ -203,7 +250,7 @@ export function TodayTodos({
                       )}
                     </StatusTag>
                   )}
-                </div>
+                </TodayItemMenu>
               </li>
             ))}
           </ul>

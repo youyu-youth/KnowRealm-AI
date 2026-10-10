@@ -21,13 +21,22 @@ type Props = {
   loading: boolean;
   error: boolean;
   onRetry: () => void;
+  selectedItemId?: string;
+  onFocus: (id: string) => void;
 };
 
-export function TodayActions({ summaries, loading, error, onRetry }: Props) {
+export function TodayActions({
+  summaries,
+  loading,
+  error,
+  onRetry,
+  selectedItemId,
+  onFocus,
+}: Props) {
   const { t } = useTranslation();
   const { course = "all", order = "date" } = useSearch({ from: "/" });
   const navigate = useNavigate({ from: "/" });
-  const [status, setStatus] = useState("pending");
+  const [status, setStatus] = useState<"pending" | "done">("pending");
   const plans = useQuery({
     queryKey: todayKeys.planItems,
     queryFn: todayApi.planItems,
@@ -49,7 +58,9 @@ export function TodayActions({ summaries, loading, error, onRetry }: Props) {
       </h2>
       <Tabs
         value={status}
-        onValueChange={(value) => setStatus(String(value))}
+        onValueChange={(value) =>
+          setStatus(value === "done" ? "done" : "pending")
+        }
         className="today-actions-tabs mt-2 gap-0"
       >
         <div className="today-actions-toolbar border-border-subtle flex flex-wrap items-center justify-between gap-2 border-b px-3 pb-2">
@@ -152,6 +163,7 @@ export function TodayActions({ summaries, loading, error, onRetry }: Props) {
             <span>{t("today.workspace.courseColumn")}</span>
             <span>{t("today.workspace.durationColumn")}</span>
             <span>{t("today.workspace.statusColumn")}</span>
+            <span />
           </div>
           <TodayTodos
             summaries={summaries}
@@ -161,6 +173,8 @@ export function TodayActions({ summaries, loading, error, onRetry }: Props) {
             showSummaries={false}
             course={course}
             order={order}
+            selectedItemId={selectedItemId}
+            onFocus={onFocus}
           />
           {sample && course === "all" ? (
             <div>
@@ -204,6 +218,7 @@ export function TodayActions({ summaries, loading, error, onRetry }: Props) {
                           : "today.workspace.notStarted",
                       )}
                     </StatusTag>
+                    <span />
                   </li>
                 ))}
               </ul>

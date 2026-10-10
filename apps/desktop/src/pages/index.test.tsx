@@ -82,10 +82,10 @@ describe("今日页", () => {
     renderAt("/?panel=pending");
     const pending = await screen.findByRole("button", { name: "待处理" });
     expect(pending).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "专注与总结" }));
+    fireEvent.click(screen.getByRole("button", { name: "当前专注" }));
     await waitFor(() =>
-      expect(new URLSearchParams(window.location.search).get("panel")).toBe(
-        "review",
+      expect(new URLSearchParams(window.location.search).get("inspector")).toBe(
+        "focus",
       ),
     );
     fireEvent.click(screen.getByRole("tab", { name: /学习轨道/ }));
@@ -101,29 +101,43 @@ describe("今日页", () => {
   });
 
   it("点击待确认行的课程信息即可切换预览，详情和原文入口对应选中记录", async () => {
+    let previewReads = 0;
     const second = { ...todo, record_id: "second-record", title: "第二份总结" };
     server.use(
-      http.get(TODAY_URL, () => HttpResponse.json([todo, second])),
-      http.get(`${TEST_SIDECAR_URL}/api/records/second-record/summary`, () =>
-        HttpResponse.json({
+      http.get(SUMMARY_URL, () => {
+        previewReads += 1;
+        return HttpResponse.json({
           summary: generatedSummary,
           action_required: "NONE",
-        }),
-      ),
+        });
+      }),
+      http.get(TODAY_URL, () => HttpResponse.json([todo, second])),
+      http.get(`${TEST_SIDECAR_URL}/api/records/second-record/summary`, () => {
+        previewReads += 1;
+        return HttpResponse.json({
+          summary: generatedSummary,
+          action_required: "NONE",
+        });
+      }),
     );
     renderAt();
     const select = await screen.findByRole("button", {
       name: "预览总结「第二份总结」",
     });
+    expect(previewReads).toBe(0);
     fireEvent.click(within(select).getByText("操作系统"));
-    expect(select).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(select).toHaveAttribute("aria-pressed", "true"));
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "专注与总结" }),
-      ).toHaveAttribute("aria-pressed", "true"),
+      expect(new URLSearchParams(window.location.search).get("inspector")).toBe(
+        "summary",
+      ),
     );
     const preview = screen.getByRole("region", { name: "待确认总结" });
     expect(preview).toHaveFocus();
+    expect(
+      await within(preview).findByText(generatedSummary.abstract),
+    ).toBeInTheDocument();
+    expect(previewReads).toBe(1);
     expect(
       within(preview).getByRole("link", { name: "查看并确认" }),
     ).toHaveAttribute("href", "/records/second-record");
@@ -132,7 +146,7 @@ describe("今日页", () => {
     ).toHaveAttribute("href", "/records/second-record?tab=transcript");
   });
 
-  it("呈现三栏工作台并保持示意条目只读", async () => {
+  it("保留工作台内容并保持示意条目只读", async () => {
     renderAt();
 
     expect(

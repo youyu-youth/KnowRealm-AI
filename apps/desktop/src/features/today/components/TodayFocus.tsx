@@ -15,8 +15,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { TodayPlanItem } from "@/features/today/api/today";
 
-export function TodayFocus({ task }: { task?: TodayPlanItem }) {
+export function TodayFocus({
+  task,
+  onDropTask,
+}: {
+  task?: TodayPlanItem;
+  onDropTask?: (id: string) => void;
+}) {
   const { t } = useTranslation();
+  const [dragOver, setDragOver] = useState(false);
   const [duration, setDuration] = useState(25);
   const [remaining, setRemaining] = useState(25 * 60);
   const [phase, setPhase] = useState<"ready" | "running" | "paused" | "ended">(
@@ -59,10 +66,40 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
     <section
       aria-labelledby="today-focus-title"
       className="today-panel today-focus w-full p-4"
+      data-drag-over={dragOver}
+      onDragOver={(event) => {
+        if (
+          !onDropTask ||
+          !event.dataTransfer.types.includes(
+            "application/x-knowrealm-plan-item",
+          )
+        )
+          return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (
+          !event.currentTarget.contains(
+            event.relatedTarget instanceof Node ? event.relatedTarget : null,
+          )
+        )
+          setDragOver(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragOver(false);
+        const id = event.dataTransfer.getData(
+          "application/x-knowrealm-plan-item",
+        );
+        if (id) onDropTask?.(id);
+      }}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2
           id="today-focus-title"
+          tabIndex={-1}
           className="today-heading flex items-center gap-2"
         >
           <Timer className="size-5" aria-hidden="true" />
@@ -135,6 +172,7 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
           </p>
           <div className="mt-3 flex gap-2">
             <Button
+              variant="outline"
               className="h-8 min-w-0 flex-1 gap-1 px-2 text-xs"
               onClick={
                 phase === "running"
@@ -174,6 +212,18 @@ export function TodayFocus({ task }: { task?: TodayPlanItem }) {
           </div>
         </div>
       </div>
+      {task &&
+      boundTask?.item_id !== task.item_id &&
+      (phase === "running" || phase === "paused") ? (
+        <p role="status" className="text-label text-ink-muted mt-3">
+          {t("today.workspace.nextFocus", { title: task.content })}
+        </p>
+      ) : null}
+      {onDropTask ? (
+        <p className="text-label text-ink-muted mt-3">
+          {t("today.workspace.dropFocus")}
+        </p>
+      ) : null}
       <p className="text-label text-ink-muted mt-3 flex items-center justify-center gap-1">
         <Clock3 className="size-3.5" aria-hidden="true" />
         {t("today.workspace.focus.switchHint")}

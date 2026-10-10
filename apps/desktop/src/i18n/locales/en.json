@@ -273,6 +273,16 @@
       "reviewProgress": "View learning progress"
     },
     "workspace": {
+      "awaitingCount": "{{count}} to review",
+      "focusSelected": "Focus on task",
+      "markComplete": "Mark complete",
+      "quickAction": "{{action}} “{{title}}”",
+      "itemActions": "Actions for “{{title}}”",
+      "closeInspector": "Close details",
+      "focusTask": "Focus on “{{title}}”",
+      "openPlan": "Open course plan",
+      "dropFocus": "Drop a task here, or use its focus button",
+      "nextFocus": "Keep the current session; focus on “{{title}}” next",
       "courseColumn": "Course",
       "durationColumn": "Duration",
       "statusColumn": "Status",
