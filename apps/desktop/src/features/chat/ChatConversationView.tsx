@@ -27,6 +27,7 @@ import { ChatBatchRunCard } from "@/features/chat/ChatBatchRunCard";
 import { ChatComposer } from "@/features/chat/ChatComposer";
 import { ChatExecutedOperationCard } from "@/features/chat/ChatExecutedOperationCard";
 import { ChatMemoryProposalCard } from "@/features/chat/ChatMemoryProposalCard";
+import { ChatTurnWaitingCard } from "@/features/chat/ChatTurnWaitingCard";
 import { ChatMessageList } from "@/features/chat/ChatMessageList";
 import { ChatOperationProposalCard } from "@/features/chat/ChatOperationProposalCard";
 import { ChatResearchProposalCard } from "@/features/chat/ChatResearchProposalCard";
@@ -89,11 +90,13 @@ export function ChatConversationView({
   const {
     isStreaming,
     stopping,
+    turn,
     streamedText,
     streamError,
     responseProcess,
     send,
     stop,
+    resume,
   } = useChatTurns(sessionId);
   const [composerValue, setComposerValue] = useState(initialPrompt ?? "");
   const [renameOpen, setRenameOpen] = useState(false);
@@ -305,6 +308,9 @@ export function ChatConversationView({
             defaultRecordId={recordId}
           />
         )}
+        {/* 等待 / 中断轮次的处理入口（票 02）：等待原因 + 继续 / 停止；继续只
+            重验恢复条件重新排队，不批准提案、不构成重新授权。 */}
+        <ChatTurnWaitingCard turn={turn} onResume={resume} onStop={stop} />
         {/* MEMORY 提案就地确认卡（工单 06）：done 后出现，确认/拒绝即定局；
             本轮注入记忆的展示在右栏上下文面板。 */}
         <ChatMemoryProposalCard sessionId={sessionId} memory={turnMemory} />

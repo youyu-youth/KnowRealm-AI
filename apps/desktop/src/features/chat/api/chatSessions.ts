@@ -11,6 +11,7 @@ import type {
   ChatSessionCreate,
   ChatTurn,
   ChatTurnResult,
+  ChatTurnWaitingReason,
   ChatTurnsPage,
   KnowledgePointOut,
 } from "@/features/chat/api/types";
@@ -180,8 +181,31 @@ function abortError(): Error {
   return error;
 }
 
+/** 等待原因（票 02）：形状与 OpenAPI 生成的 ChatTurnWaitingReason 同构
+ * （SSE 载荷不在契约内，这里手工校验）；null＝显式无原因，undefined＝缺键。 */
+function parseWaitingReason(
+  value: unknown,
+): ChatTurnWaitingReason | null | undefined {
+  if (value === null) return null;
+  if (typeof value !== "object" || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.kind !== "string") return undefined;
+  // 未知 kind（前端旧版本遇后端新枚举）保留原值：消费端回退通用等待文案。
+  return {
+    kind: raw.kind as ChatTurnWaitingReason["kind"],
+    detail: typeof raw.detail === "string" ? raw.detail : null,
+  };
+}
+
 export type TurnStreamHandlers = {
-  onStatus: (payload: { phase: string; process?: ChatResponseProcess }) => void;
+  onStatus: (payload: {
+    phase: string;
+    process?: ChatResponseProcess;
+    /** revising：被替换的未完成正文 segment（票 02 版本替换边界）。 */
+    replacesSegment?: string | null;
+    /** waiting_user：等待原因（与快照 waiting_reason 同形）。 */
+    reason?: ChatTurnWaitingReason | null;
+  }) => void;
   onToken: (text: string, segmentId?: string) => void;
   onToolCall: (payload: ChatToolCallPayload) => void;
   onToolResult: (payload: ChatToolResultPayload) => void;
@@ -229,6 +253,14 @@ async function turnEvents(
           handlers.onStatus({
             phase: typeof data.phase === "string" ? data.phase : "generating",
             process: parseProcess(data.process),
+            replacesSegment:
+              typeof data.replaces_segment === "string"
+                ? data.replaces_segment
+                : typeof data.replaces_segment === "object" &&
+                    data.replaces_segment === null
+                  ? null
+                  : undefined,
+            reason: parseWaitingReason(data.reason),
           });
           break;
         case "token":
@@ -387,6 +419,12 @@ export const chatApi = {
   cancelTurn: (turnId: string) =>
     apiFetch<{ turn: ChatTurn }>(`/api/chat-turns/${turnId}/cancel`, {
       method: "POST",
+    }),
+  /** 继续执行（票 02）：重验恢复条件后重新排队；不批准提案、不构成重新授权。 */
+  resumeTurn: (turnId: string) =>
+    apiFetch<{ turn: ChatTurn }>(`/api/chat-turns/${turnId}/resume`, {
+      method: "POST",
+      body: JSON.stringify({ decision_kind: "RETRY_AFTER_FIX" }),
     }),
   turnEvents,
 };

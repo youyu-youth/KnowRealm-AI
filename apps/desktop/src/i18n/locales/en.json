@@ -2562,6 +2562,20 @@
       "failed": "Answer generation failed",
       "missing": "The turn does not exist or has been deleted",
       "interrupted": "Answer generation was interrupted; generated content is kept",
+      "resume": "Resume",
+      "resumeFailed": "The resume request did not succeed; resolve the waiting reason and try again",
+      "stopTurn": "Stop this turn",
+      "waiting": {
+        "sectionLabel": "Turn awaiting action",
+        "submittedAt": "Asked at {{time}}",
+        "generic": "Answer generation is waiting; it can continue once the condition is restored",
+        "PROVIDER_UNAVAILABLE": "The original AI provider is unavailable; restore the configuration to continue",
+        "PROVIDER_CHANGED": "The current AI provider differs from the original turn; restore the original configuration to continue, or stop and ask again",
+        "MEMORY_OUTBOUND_REVOKED": "Injected memories can no longer be sent out; restore consent to continue",
+        "WEB_SEARCH_UNAVAILABLE": "The original turn allowed web search, but the search configuration is unavailable; restore it to continue",
+        "GRAPH_INCOMPATIBLE": "The engine version is incompatible with the original turn; stop and ask again",
+        "CHECKPOINT_MISSING": "Execution state is missing while committed content exists, so it cannot continue safely; stop and ask again"
+      },
       "partial": {
         "cancelled": "The answer was stopped. Below is the partial content that was generated",
         "failed": "Answer generation failed. Below is the partial content that was generated",
@@ -3361,7 +3375,11 @@
     "CHAT_SESSION_HAS_ACTIVE_TURN": "This chat is generating an answer. Stop it before deleting",
     "CHAT_TURN_NOT_FOUND": "The chat turn does not exist",
     "CHAT_TURN_SUBMIT_CONFLICT": "Submission conflict. Please retry",
-    "CHAT_TURN_CURSOR_INVALID": "Invalid turn cursor"
+    "CHAT_TURN_CURSOR_INVALID": "Invalid turn cursor",
+    "CHAT_TURN_RESUME_CONFLICT": "This turn cannot be resumed in its current state",
+    "CHAT_TURN_RESUME_UNSAFE": "This turn cannot continue safely; stop it and ask again",
+    "CHAT_TURN_RESUME_CONDITION_UNMET": "The resume condition is not met yet; resolve the waiting reason first",
+    "CHAT_TURN_CANCEL_IN_PROGRESS": "This turn has a pending stop and cannot be resumed"
   },
   "agent": {
     "run": {

@@ -23,15 +23,30 @@ function isTerminal(status: string): boolean {
   return TERMINAL_STATUSES.has(status);
 }
 
-/** 观察侧终态（含 INTERRUPTED）：订阅在此口径收尾；INTERRUPTED 仍占用会话
- * （新问前须停止），与提交闸门口径（isTerminal）分离。 */
+/** 观察侧终态（含 INTERRUPTED / WAITING_USER）：订阅在此口径收尾；两者仍占用
+ * 会话（继续前不能新问），须经 resume 继续或 cancel 停止，与提交闸门口径
+ * （isTerminal）分离。 */
 const OBSERVER_TERMINAL_STATUSES = new Set([
   ...TERMINAL_STATUSES,
   "INTERRUPTED",
+  "WAITING_USER",
 ]);
 
 function isObserverTerminal(status: string): boolean {
   return OBSERVER_TERMINAL_STATUSES.has(status);
+}
+
+/** 等待原因文案（票 02）：按 kind 取登记译文（后端 detail 为中文原文，不回显
+ * 到英文界面）；未登记 kind 回退通用等待文案。等待卡与快照对账共用。 */
+export function waitingReasonText(
+  t: (key: string) => string,
+  kind: string | undefined,
+): string {
+  if (kind) {
+    const keyed = t(`chat.turn.waiting.${kind}`);
+    if (keyed !== `chat.turn.waiting.${kind}`) return keyed;
+  }
+  return t("chat.turn.waiting.generic");
 }
 
 /**
@@ -157,7 +172,9 @@ export function useChatTurns(sessionId: string) {
               ) || t("chat.turn.failed")
             : snapshot.status === "INTERRUPTED"
               ? t("chat.turn.interrupted")
-              : null,
+              : snapshot.status === "WAITING_USER"
+                ? waitingReasonText(t, snapshot.waiting_reason?.kind)
+                : null,
         );
         setStreamedText(snapshot.output_text || "");
         invalidateTurnSideEffects();
@@ -191,10 +208,17 @@ export function useChatTurns(sessionId: string) {
                 }
                 if (
                   payload.phase === "cancelled" ||
-                  payload.phase === "interrupted"
+                  payload.phase === "interrupted" ||
+                  payload.phase === "waiting_user"
                 ) {
                   terminalSeen = true;
                   void finalizeStalled(turnId);
+                }
+                if (payload.phase === "revising" && payload.replacesSegment) {
+                  // 续跑的正文版本替换边界（票 02）：被替换的未完成段从本地
+                  // 拼接移除（服务端投影同口径），后续 token 追加在它之后。
+                  segmentsRef.current.delete(payload.replacesSegment);
+                  setStreamedText(joinSegments());
                 }
               },
               onToken: (text, segmentId = "legacy") => {
@@ -402,6 +426,27 @@ export function useChatTurns(sessionId: string) {
       });
   }, [t, turn]);
 
+  /** 继续执行（票 02）：等待 / 中断轮次的重验后重跑；不批准提案、不重新授权。 */
+  const resume = useCallback(() => {
+    const current = turn;
+    if (current === null) return;
+    void chatApi
+      .resumeTurn(current.id)
+      .then((result) => {
+        setStreamError(null);
+        hydrateSnapshot(result.turn);
+        startObservation(result.turn.id, result.turn.last_seq);
+      })
+      .catch((error: unknown) => {
+        // 条件未恢复 / 不可安全继续：域内裁决文案就地呈现（可处理后重试）。
+        setStreamError(
+          error instanceof ApiError
+            ? error.message
+            : t("chat.turn.resumeFailed"),
+        );
+      });
+  }, [hydrateSnapshot, startObservation, t, turn]);
+
   return {
     isStreaming,
     stopping,
@@ -411,5 +456,6 @@ export function useChatTurns(sessionId: string) {
     responseProcess,
     send,
     stop,
+    resume,
   };
 }

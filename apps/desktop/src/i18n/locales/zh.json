@@ -2542,6 +2542,20 @@
       "failed": "回答生成失败",
       "missing": "轮次不存在或已删除",
       "interrupted": "回答生成被中断，已生成内容保留",
+      "resume": "继续生成",
+      "resumeFailed": "继续请求未成功；请处理等待原因后重试",
+      "stopTurn": "停止本轮",
+      "waiting": {
+        "sectionLabel": "轮次等待处理",
+        "submittedAt": "提问于 {{time}}",
+        "generic": "回答生成等待处理；恢复条件后可继续",
+        "PROVIDER_UNAVAILABLE": "原 AI 服务配置当前不可用；恢复配置后可继续",
+        "PROVIDER_CHANGED": "当前 AI 服务与原轮次不一致；恢复原配置后可继续，或停止后重新提问",
+        "MEMORY_OUTBOUND_REVOKED": "已注入的记忆不再允许外发；恢复同意后可继续",
+        "WEB_SEARCH_UNAVAILABLE": "原轮次允许联网搜索，当前联网配置不可用；恢复配置后可继续",
+        "GRAPH_INCOMPATIBLE": "执行引擎版本与原轮次不兼容；请停止后重新提问",
+        "CHECKPOINT_MISSING": "执行状态缺失且已有已提交内容，无法安全继续；请停止后重新提问"
+      },
       "partial": {
         "cancelled": "回答已停止，以下是已生成的部分内容",
         "failed": "回答生成失败，以下是已生成的部分内容",
@@ -3341,7 +3355,11 @@
     "CHAT_SESSION_HAS_ACTIVE_TURN": "该对话正在生成回答，请先停止后再删除",
     "CHAT_TURN_NOT_FOUND": "对话轮次不存在",
     "CHAT_TURN_SUBMIT_CONFLICT": "提交冲突，请重试",
-    "CHAT_TURN_CURSOR_INVALID": "轮次游标无效"
+    "CHAT_TURN_CURSOR_INVALID": "轮次游标无效",
+    "CHAT_TURN_RESUME_CONFLICT": "当前状态不能继续该轮次",
+    "CHAT_TURN_RESUME_UNSAFE": "该轮次无法安全继续，请停止后重新提问",
+    "CHAT_TURN_RESUME_CONDITION_UNMET": "继续条件尚未满足，请先处理等待原因",
+    "CHAT_TURN_CANCEL_IN_PROGRESS": "该轮次已受理停止，不能继续"
   },
   "agent": {
     "run": {
