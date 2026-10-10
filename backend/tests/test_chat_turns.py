@@ -1028,16 +1028,17 @@ async def test_t21_migration_constraints_in_real_database(tmp_path: Path) -> Non
 
 
 # ---------------------------------------------------------------------------
-# 启动对账：崩溃残留 RUNNING → INTERRUPTED，保留内容并可取消释放。
+# 启动对账（票 02 升级）：崩溃残留 RUNNING → QUEUED 自动续跑；未完成正文段被
+# revision 替换（保留可查看），完成正文为权威 done 快照；不重复注入用户输入。
 
 
 @pytest.mark.anyio
-async def test_startup_recovery_marks_running_turn_interrupted(
+async def test_startup_recovery_resumes_running_turn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     gate = asyncio.Event()
     replies: list[StubReply] = [GatedReply(prefix=("崩溃前", "输出"), release=gate)]
-    async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (app, client, captured):
         session_id = await create_session(client)
         submitted = await submit(client, session_id, "崩溃问题", request_id="req-recover-01")
         turn_id = cast(str, submitted.json()["id"])
@@ -1045,31 +1046,69 @@ async def test_startup_recovery_marks_running_turn_interrupted(
         # 模拟进程强杀：不释放 gate 直接退出（teardown 软停机取消生成、不写终态，
         # 轮次残留 RUNNING＝崩溃现场；部分输出已持久）。
 
-    # 重启（同一数据目录新实例）：启动对账把 RUNNING 翻 INTERRUPTED，保留内容。
+    # 重启（同一数据目录新实例）：启动对账把 RUNNING 翻 QUEUED，worker 自动
+    # 续跑（attempt+1 / output_revision+1 / 不重新注入用户输入）。
+    async with turns_app(tmp_path, monkeypatch) as (_app2, client2, captured2):
+        state = await wait_terminal(client2, turn_id)
+        assert state["status"] == "COMPLETED"
+        # 权威最终正文（done 快照），未完成半截段被 revision 替换不再拼接。
+        assert state["output_text"] == "回答完成了"
+        assert state["attempt"] >= 2
+        assert state["output_revision"] >= 2
+        # 续跑不重新注入用户输入：模型只见首次喂入（captured 不随重启增长之外的
+        # 新轮注入——续跑 astream(None) 从 checkpoint 状态恢复）。
+        rows = await db_rows(
+            tmp_path,
+            "SELECT type, payload_json FROM chat_turn_events WHERE turn_id = ? AND"
+            " type = 'revision'",
+            (turn_id,),
+        )
+        assert rows, "续跑未落 revision 事件（未完成段替换边界缺失）"
+        revision_payload = json.loads(rows[0][1])
+        assert revision_payload["replaces_segment"], "崩溃于模型流中途应替换未完成段"
+
+
+# ---------------------------------------------------------------------------
+# 启动对账后遗留 INTERRUPTED（票 01 期间中断）保留内容，由用户显式继续或停止。
+
+
+@pytest.mark.anyio
+async def test_interrupted_turn_resume_and_cancel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = asyncio.Event()
+    replies: list[StubReply] = [GatedReply(prefix=("中断前",), release=gate)]
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
+        session_id = await create_session(client)
+        submitted = await submit(client, session_id, "中断问题", request_id="req-int-01")
+        turn_id = cast(str, submitted.json()["id"])
+        await wait_running_progress(client, turn_id, min_seq=1)
+        # 直接落 INTERRUPTED（模拟票 01 期间中断的遗留轮次）并收口 job。
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            await connection.execute(
+                "UPDATE chat_turns SET status = 'INTERRUPTED' WHERE id = ?", (turn_id,)
+            )
+            await connection.commit()
+
     async with turns_app(tmp_path, monkeypatch) as (_app2, client2, _captured2):
         state = await snapshot(client2, turn_id)
         assert state["status"] == "INTERRUPTED"
-        assert state["output_text"] == "崩溃前输出"
-        # 订阅必须在观察侧终态收口并带 interrupted 阶段：否则前端中断原因分支与
-        # 观察收尾不可达（过程卡显示「已中断」但无明确原因、副作用查询不失效）。
+        assert state["output_text"] == "中断前"
+        # 订阅在观察侧收口并带 interrupted 阶段。
         streamed, closed = await collect_stream_until_close(client2, turn_id)
         assert closed, "INTERRUPTED 轮次订阅未收口"
         assert streamed[-1][0] == "status"
         assert streamed[-1][1]["phase"] == "interrupted"
-        assert streamed[-1][1]["process"]["status"] == "INTERRUPTED"
-        # INTERRUPTED 可显式取消释放会话（无继续按钮：安全续跑属后续票）。
-        cancelled = await client2.post(f"/api/chat-turns/{turn_id}/cancel")
-        assert cancelled.status_code == 200
-        assert cancelled.json()["turn"]["status"] == "CANCELLED"
-        # 释放后可新问，不改写旧轮次。
-        events = await drain_events_after_submit(client2, session_id, "req-recover-02")
-        assert events[-1][0] == "done"
-        rows = await db_rows(
-            tmp_path,
-            "SELECT status FROM chat_turns WHERE id = ?",
-            (turn_id,),
-        )
-        assert rows[0][0] == "CANCELLED"
+        # 显式继续：重验恢复条件通过后重新排队并续跑完成（attempt+1）。
+        resumed = await client2.post(f"/api/chat-turns/{turn_id}/resume", json={})
+        assert resumed.status_code == 200
+        assert resumed.json()["turn"]["status"] == "QUEUED"
+        final = await wait_terminal(client2, turn_id)
+        assert final["status"] == "COMPLETED"
+        assert final["attempt"] >= 2
+        # 重复继续（已终态）明确冲突，不复活。
+        again = await client2.post(f"/api/chat-turns/{turn_id}/resume", json={})
+        assert again.status_code == 409
 
 
 # ---------------------------------------------------------------------------

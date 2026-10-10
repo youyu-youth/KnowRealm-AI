@@ -41,6 +41,27 @@ class ToolCallBudget:
 # 工单 01 起随 ToolCallBudget 收敛到本模块，02/03 操作工具同源引用）。
 MAX_TOOL_CALLS_PER_TURN = 6
 
+# 递增 budget.calls_used 的工具名全集（票 02 预算恢复单一来源：与各工具内
+# `budget.calls_used += 1` 执法面对齐；新增计数工具须同步本名单）。
+BUDGET_COUNTED_TOOL_NAMES = frozenset(
+    {
+        "convert_time",
+        "diff_datetime",
+        "generate_learning_plan",
+        "get_current_time",
+        "get_goal",
+        "get_plan",
+        "list_course_records",
+        "list_goals",
+        "list_library_items",
+        "list_shared_refs",
+        "regenerate_plan",
+        "search_courses",
+        "search_library",
+        "shift_datetime",
+    }
+)
+
 # 每轮操作类提案上限（spec 实施决策 16：超限拒绝而非截断——截断会让确认卡
 # 出现用户没见过的操作；量级对齐既有提案工具先例）。
 MAX_OPERATION_PROPOSALS_PER_TURN = 5

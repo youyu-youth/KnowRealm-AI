@@ -9,11 +9,17 @@ propose_memory，见 agent/runtime.py）；scope=COURSE 自动带课程 id，ALL
 """
 
 import json
+from typing import Any
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.agent.runtime import CHAT_TURN_CANCELLED, current_agent_runtime
+from app.modules.agent.turns.effects import (
+    EffectExecutionError,
+    complete_effect,
+    prepare_effect,
+)
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
 
@@ -68,8 +74,35 @@ async def propose_ingest(sources: list[IngestSource]) -> str:
             ensure_ascii=False,
         )
     created: list[dict[str, str]] = []
+    # 幂等前置（票 02，规格 §9）：多结果工具先固定逐项计划（全部项 PLANNED
+    # 落库后才允许副作用执行；前三项成功后崩溃的恢复只补后两项，已成功项
+    # 复用原提案 ID；指纹含序号区分逐项）。
+    effect_args_list = [(index, source.url, source.title) for index, source in enumerate(sources)]
+    preparations: list[Any] = []
+    for index, effect_args in enumerate(effect_args_list):
+        try:
+            preparations.append(
+                await prepare_effect(
+                    context, PROPOSE_INGEST_TOOL_NAME, effect_args, effect_index=index
+                )
+            )
+        except EffectExecutionError as exc:
+            return json.dumps(
+                {"ok": False, "error": exc.code, "detail": exc.detail}, ensure_ascii=False
+            )
     async with context.session_factory() as session:
-        for source in sources:
+        for index, source in enumerate(sources):
+            effect_args = effect_args_list[index]
+            preparation = preparations[index]
+            if preparation is not None and preparation.replay is not None:
+                created.append(
+                    {
+                        "proposal_id": str(preparation.replay.get("proposal_id") or ""),
+                        "url": source.url,
+                        "title": source.title,
+                    }
+                )
+                continue
             # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库则
             # 同事务拒绝创建；已提交条目保留（业务先提交则保留真实结果）。
             # 逐条独立事务＝既有提交粒度不变，取消不可逆故逐条重查。
@@ -90,5 +123,15 @@ async def propose_ingest(sources: list[IngestSource]) -> str:
                         session_id=context.session_id,
                     ),
                 )
-            created.append({"proposal_id": proposal.id, "url": source.url, "title": source.title})
+                entry = {"proposal_id": proposal.id, "url": source.url, "title": source.title}
+                if preparation is not None:
+                    await complete_effect(
+                        session,
+                        context,
+                        PROPOSE_INGEST_TOOL_NAME,
+                        effect_args,
+                        effect_index=index,
+                        result={"proposal_id": proposal.id},
+                    )
+            created.append(entry)
     return json.dumps({"ok": True, "proposals": created, "status": "PENDING"}, ensure_ascii=False)

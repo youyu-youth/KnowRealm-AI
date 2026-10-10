@@ -54,6 +54,11 @@ from app.modules.agent.runtime import (
     MAX_OPERATION_PROPOSALS_PER_TURN,
     AgentRuntimeContext,
 )
+from app.modules.agent.turns.effects import (
+    EffectExecutionError,
+    complete_effect,
+    prepare_effect,
+)
 from app.modules.library.models import AgentProposal
 from app.modules.library.proposals import (
     ProposalService,
@@ -297,6 +302,15 @@ async def submit_undo(runtime: AgentRuntimeContext, operation_id: str) -> dict[s
                 "proposals": [],
             }
     runtime.budget.operations_created += 1
+    # 幂等前置（票 02，规格 §9）：已成功项复用原补偿回执 / 撤销提案 ID；
+    # 失败不记录（重放重新校验撤销条件，不把失败当成功跳过）。
+    effect_args = {"operation_id": operation_id}
+    try:
+        preparation = await prepare_effect(runtime, "undo_operation", effect_args)
+    except EffectExecutionError as exc:
+        return {"ok": False, "error": exc.code, "detail": exc.detail, "proposals": []}
+    if preparation is not None and preparation.replay is not None:
+        return preparation.replay
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     if should_execute_directly(effective_mode, OperationLevel(original.level)):
         authorization = direct_authorization(runtime, effective_mode)
@@ -312,19 +326,28 @@ async def submit_undo(runtime: AgentRuntimeContext, operation_id: str) -> dict[s
                     compensation = await execute_undo_core(
                         session, original, authorization=authorization
                     )
+                    undo_payload = {
+                        "ok": True,
+                        "executed": {
+                            "operation_id": compensation.id,
+                            "action": compensation.action,
+                            "level": compensation.level,
+                            "auth_mode": effective_mode.value,
+                            "payload": {"operation_id": operation_id},
+                            "result": {"undone_operation_id": operation_id},
+                        },
+                    }
+                    if preparation is not None:
+                        await complete_effect(
+                            session,
+                            runtime,
+                            "undo_operation",
+                            effect_args,
+                            result=undo_payload,
+                        )
             except CodedHTTPException as exc:
                 return {"ok": False, "error": exc.code, "executed": None}
-        return {
-            "ok": True,
-            "executed": {
-                "operation_id": compensation.id,
-                "action": compensation.action,
-                "level": compensation.level,
-                "auth_mode": effective_mode.value,
-                "payload": {"operation_id": operation_id},
-                "result": {"undone_operation_id": operation_id},
-            },
-        }
+        return undo_payload
     async with runtime.session_factory() as session, session.begin():
         # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库或执行
         # 身份失配 → 拒绝落提案。
@@ -346,17 +369,26 @@ async def submit_undo(runtime: AgentRuntimeContext, operation_id: str) -> dict[s
             ),
             snapshot_json=undo_snapshot_json,
         )
-    return {
-        "ok": True,
-        "proposals": [
-            {
-                "proposal_id": proposal.id,
-                "action": "undo_operation",
-                "payload": {"operation_id": operation_id},
-                "status": proposal.status.value,
-            }
-        ],
-    }
+        undo_proposal_payload = {
+            "ok": True,
+            "proposals": [
+                {
+                    "proposal_id": proposal.id,
+                    "action": "undo_operation",
+                    "payload": {"operation_id": operation_id},
+                    "status": proposal.status.value,
+                }
+            ],
+        }
+        if preparation is not None:
+            await complete_effect(
+                session,
+                runtime,
+                "undo_operation",
+                effect_args,
+                result=undo_proposal_payload,
+            )
+    return undo_proposal_payload
 
 
 async def _capture_undo_snapshot(session: AsyncSession, original: AgentOperation) -> str | None:

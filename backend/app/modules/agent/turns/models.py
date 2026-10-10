@@ -1,4 +1,4 @@
-"""ChatTurn 持久模型（切换会话不中断任务，票 01）。"""
+"""ChatTurn 持久模型（切换会话不中断任务，票 01/02）。"""
 
 from datetime import datetime
 from uuid import uuid4
@@ -35,6 +35,9 @@ class ChatTurn(Base):
     )
     error_code: Mapped[str | None] = mapped_column(String(50), default=None)
     error_message: Mapped[str | None] = mapped_column(Text, default=None)
+    # WAITING_USER 等待原因（票 02，JSON：kind/detail）；继续生成需要用户
+    # 处理（恢复配置 / 同意 / 授权）或安全边界无法确定时写入。
+    waiting_reason: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
@@ -59,3 +62,37 @@ class ChatTurnEvent(Base):
     tool_call_id: Mapped[str | None] = mapped_column(String(64), default=None)
     payload_json: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+
+
+class ChatTurnToolEffect(Base):
+    """副作用逐项恢复记录（票 02，规格 §9）：来源键 + 参数指纹 + 可恢复结果。
+
+    一次逻辑调用（namespace + logical_call_id）产生多项副作用时按 effect_index
+    逐项记录；attempt 不进入来源键——重放/续跑命中已成功项直接复用原结构化
+    结果，不再写入业务。同身份参数指纹变化拒绝执行。
+    """
+
+    __tablename__ = "chat_turn_tool_effects"
+    __table_args__ = (
+        UniqueConstraint(
+            "turn_id",
+            "namespace",
+            "logical_call_id",
+            "effect_index",
+            name="idx_chat_turn_tool_effects_source",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    turn_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_turns.id", ondelete="CASCADE")
+    )
+    namespace: Mapped[str] = mapped_column(String(64))
+    logical_call_id: Mapped[str] = mapped_column(String(64))
+    effect_index: Mapped[int] = mapped_column(Integer, default=0)
+    tool_name: Mapped[str] = mapped_column(String(64))
+    args_fingerprint: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20))
+    result_json: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)

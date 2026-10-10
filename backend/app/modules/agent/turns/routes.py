@@ -24,11 +24,13 @@ from app.modules.agent.turns.schemas import (
     ChatTurnCancelOut,
     ChatTurnEventType,
     ChatTurnOut,
+    ChatTurnResumeOut,
+    ChatTurnResumeRequest,
     ChatTurnsPage,
     ChatTurnStatus,
     ChatTurnSubmitRequest,
 )
-from app.modules.agent.turns.service import ChatTurnService
+from app.modules.agent.turns.service import ChatTurnService, parse_waiting_reason
 from app.shared.deps import get_db, require_launch_token
 from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
@@ -106,6 +108,17 @@ def _event_sse(row: ChatTurnEvent, turn: ChatTurn, seen: list[ChatTurnEvent]) ->
         )
     if event_type == ChatTurnEventType.CITATION:
         return _sse("citation", dict(payload))
+    if event_type == ChatTurnEventType.REVISION:
+        # 续跑正文版本边界（票 02）：被替换 segment 的本地拼接清空，后续 token
+        # 追加在快照基准之后（不拼接两份半段正文）。
+        return _sse(
+            "status",
+            {
+                "phase": "revising",
+                "replaces_segment": payload.get("replaces_segment"),
+                **meta,
+            },
+        )
     # done：权威最终快照（message_id / content / memory_used / 提案与回执扩展）。
     done_payload: dict[str, object] = {
         "message_id": payload.get("message_id", ""),
@@ -126,7 +139,7 @@ def _event_sse(row: ChatTurnEvent, turn: ChatTurn, seen: list[ChatTurnEvent]) ->
 
 
 def _terminal_sse(turn: ChatTurn, seen: list[ChatTurnEvent]) -> ServerSentEvent | None:
-    """终态标记：FAILED → error（可读错误），CANCELLED / INTERRUPTED → status。"""
+    """观察收口标记：FAILED → error，WAITING_USER → 带原因，其余停止态 → status。"""
     status = ChatTurnStatus(turn.status)
     if status == ChatTurnStatus.COMPLETED:
         return None  # done 事件已持久，无需合成
@@ -137,6 +150,16 @@ def _terminal_sse(turn: ChatTurn, seen: list[ChatTurnEvent]) -> ServerSentEvent 
             {
                 "code": code,
                 "detail": turn.error_message or "回答生成失败，请稍后重试",
+                "process": _process_payload(turn, seen),
+            },
+        )
+    if status == ChatTurnStatus.WAITING_USER:
+        reason = parse_waiting_reason(turn.waiting_reason)
+        return _sse(
+            "status",
+            {
+                "phase": "waiting_user",
+                "reason": reason.model_dump(mode="json") if reason is not None else None,
                 "process": _process_payload(turn, seen),
             },
         )
@@ -291,3 +314,25 @@ async def cancel_chat_turn(turn_id: UUID, request: Request) -> ChatTurnCancelOut
             code="CHAT_TURN_NOT_FOUND", status_code=404, detail="对话轮次不存在"
         )
     return ChatTurnCancelOut(turn=snapshot)
+
+
+@router.post("/api/chat-turns/{turn_id}/resume", response_model=ChatTurnResumeOut)
+async def resume_chat_turn(
+    turn_id: UUID, _payload: ChatTurnResumeRequest, request: Request
+) -> ChatTurnResumeOut:
+    """继续执行（票 02）：重验等待原因与恢复条件后重新排队。
+
+    类型化决定（RETRY_AFTER_FIX）只是声明阻塞条件已处理；不批准业务提案、
+    不构成重新授权、不改写原输入／模型／范围。继续与停止都是持久指令。
+    """
+    app = request.app
+    snapshot = await ChatTurnService.resume_turn(
+        session_factory=app.state.session_factory,
+        data_dir=app.state.data_dir,
+        turn_id=str(turn_id),
+    )
+    if snapshot is None:
+        raise CodedHTTPException(
+            code="CHAT_TURN_NOT_FOUND", status_code=404, detail="对话轮次不存在"
+        )
+    return ChatTurnResumeOut(turn=snapshot)

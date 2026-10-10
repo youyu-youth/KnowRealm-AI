@@ -1,4 +1,4 @@
-"""CHAT_TURN 执行 worker（切换会话不中断任务，票 01）。
+"""CHAT_TURN 执行 worker（切换会话不中断任务，票 01/02）。
 
 复用 WorkerSpec／JobRunner（ADR-0012）：双执行槽各自一个 runner 实例，数据库
 条件领取（``_preempt`` rowcount==1）天然防双领取；轮次是执行与观察的事实源：
@@ -14,8 +14,16 @@
 - 失败收口：单槽故障只收口对应轮次与 job（apply_failure 条件更新）；
   on_loop_failure 禁全局恢复（双槽会误伤兄弟槽在途轮次），只做针对性收口
   （job 已终态时仍按轮次事实补齐收口，重试恢复可写后不永久占用会话）；
-- 启动对账经 ChatTurnRecovery 一次性闸门：RUNNING → INTERRUPTED 保留内容，
-  禁止不安全续跑（安全重放由后续票交付）。
+- 安全续跑（票 02，规格 §8/§10/§12）：attempt>1 即续跑——先重验恢复条件
+  （图版本 / 原供应商身份 / 记忆外发 / 联网），不满足落 WAITING_USER
+  （释放执行槽、保留内容，等用户处理后 resume）；checkpoint 三入口（首次 /
+  续跑 astream(None) / 图已完成仅补写）；模型节点重放先发 revision 事件
+  （output_revision+1，未完成 segment 被替换，旧片段保留）；checkpoint 缺失
+  时按持久事实分流（无副作用且无输出＝从头执行，否则保守等待）；终态收口
+  后清理 checkpoint（业务先落盘，双库可对账）；预算跨恢复累计重建。
+
+- 启动对账经 ChatTurnRecovery 一次性闸门：RUNNING → QUEUED 自动续跑（安全
+  能力齐备后开放，票 02）；遗留 INTERRUPTED 保留内容，由用户显式 resume。
 """
 
 import asyncio
@@ -28,6 +36,7 @@ from time import perf_counter
 from typing import Any, cast
 from uuid import uuid4
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
 from loguru import logger
 from sqlalchemy import select
@@ -45,10 +54,12 @@ from app.modules.agent.graph import (
     ChatOperationExecutionEvent,
     ChatOperationProposalEvent,
     ChatResearchProposalEvent,
+    ChatRevisionEvent,
     ChatStreamOutcome,
     ChatTokenEvent,
     ChatToolCallEvent,
     ChatToolResultEvent,
+    TurnCheckpointMissingError,
 )
 from app.modules.agent.message_service import (
     SessionPromptContext,
@@ -58,21 +69,32 @@ from app.modules.agent.message_service import (
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.models import ChatMessage
 from app.modules.agent.runs.schemas import AuthMode
-from app.modules.agent.runtime import AgentRuntimeContext, ToolCallBudget
+from app.modules.agent.runtime import (
+    BUDGET_COUNTED_TOOL_NAMES,
+    AgentRuntimeContext,
+    ToolCallBudget,
+)
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole, ChatScope
+from app.modules.agent.turns.effects import count_turn_effects
 from app.modules.agent.turns.models import ChatTurn
 from app.modules.agent.turns.runtime import (
     ActiveTurnRegistry,
     ChatTurnRecovery,
     TurnEventBroadcaster,
 )
-from app.modules.agent.turns.schemas import ChatTurnEventType, ChatTurnStatus
+from app.modules.agent.turns.schemas import (
+    ChatTurnEventType,
+    ChatTurnStatus,
+    ChatTurnWaitingKind,
+)
 from app.modules.agent.turns.service import (
     CHAT_TURN_JOB_TYPE,
     ChatTurnService,
     TurnCompletionOutcome,
+    list_turn_events,
     load_execution,
     parse_timezone,
+    resume_blocked_reason,
 )
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import (
@@ -198,6 +220,10 @@ async def claim_turn(
     turn.status = ChatTurnStatus.RUNNING.value
     turn.claim_token = claim_token
     turn.attempt += 1
+    # 续跑（attempt>1）推进正文版本（票 02，规格 §10）：模型节点重放的增量
+    # 属新 output_revision，未完成 segment 被替换而非拼接。
+    if turn.attempt > 1:
+        turn.output_revision += 1
     turn.started_at = turn.started_at or now
     turn.updated_at = now
     return _ClaimedTurn(
@@ -292,13 +318,48 @@ class _TurnExecutor:
         turn = await self._load_turn()
         if turn is None:
             return
-        session_id = turn.session_id
+        is_resume = turn.attempt > 1
         execution = load_execution(turn)
         provider = await asyncio.to_thread(load_llm_provider, self._data_dir)
         if provider is None or not provider.api_key:
+            if is_resume:
+                # 续跑遇原供应商不可用：保留输出等待（规格 §12），不静默换服务。
+                await self._wait(
+                    ChatTurnWaitingKind.PROVIDER_UNAVAILABLE, "原 AI 服务配置当前不可用"
+                )
+                return
             # 受理后配置被清空：收口失败，不静默换供应商（规格 §12）。
             await self._fail("LLM_PROVIDER_UNCONFIGURED", "AI 服务配置已失效，请重新配置后再试")
             return
+        if is_resume:
+            blocked = await self._resume_blocked_reason(execution, provider)
+            if blocked is not None:
+                await self._wait(blocked[0], blocked[1])
+                return
+        try:
+            await self._drive(turn, execution, provider, resume=is_resume)
+        except TurnCheckpointMissingError:
+            # checkpoint 缺失：按持久事实分流（规格 §8）——无副作用且无已保存
+            # 输出＝领取前中断，可从头执行；否则安全边界无法确定，保守等待。
+            effect_count, last_seq = await self._turn_facts()
+            if effect_count == 0 and last_seq == 0:
+                await self._drive(turn, execution, provider, resume=False)
+            else:
+                await self._wait(
+                    ChatTurnWaitingKind.CHECKPOINT_MISSING,
+                    "执行状态缺失且已有已提交内容，无法安全继续",
+                )
+
+    async def _drive(
+        self,
+        turn: ChatTurn,
+        execution: dict[str, Any],
+        provider: LlmProviderConfig,
+        *,
+        resume: bool,
+    ) -> None:
+        """构建上下文与流并驱动执行到收尾（首次 / 续跑两形态共用）。"""
+        session_id = turn.session_id
         user_content = await self._user_content(turn.user_message_id)
         web_search_provider = await self._resolve_web_search(bool(execution.get("web_search")))
         page = self._page_snapshot(execution.get("page"))
@@ -311,6 +372,23 @@ class _TurnExecutor:
             page=page,
             user_timezone=user_timezone,
         )
+        context_messages: list[Any] = list(prompt_context.messages)
+        resume_replaces: str | None = None
+        if resume:
+            # 续跑：原 system 提示与已注入记忆用首次执行固化的快照（规格 §10——
+            # 已进入上下文的材料保持原快照，不随会话 / 配置漂移重建）。
+            snapshot_prompt = execution.get("system_prompt")
+            if isinstance(snapshot_prompt, str) and snapshot_prompt:
+                context_messages = [
+                    SystemMessage(content=snapshot_prompt),
+                    HumanMessage(content=user_content or ""),
+                ]
+            # 替换边界由流在 checkpoint 验证通过后发（ChatRevisionEvent）——不在
+            # 此预发，避免 checkpoint 缺失分流被 revision 事件污染 last_seq。
+            resume_replaces = await self._pending_segment()
+        else:
+            await self._persist_execution_snapshot(turn, execution, prompt_context)
+        budget = await self._restore_budget(resume)
         runtime = AgentRuntimeContext(
             session_factory=self._session_factory,
             session_id=session_id,
@@ -326,7 +404,7 @@ class _TurnExecutor:
             instruction_excerpt=user_content,
             message_id=turn.user_message_id,
             user_timezone=user_timezone,
-            budget=ToolCallBudget(),
+            budget=budget,
             turn_id=self._ctx.turn_id,
             turn_claim_token=self._ctx.claim_token,
         )
@@ -334,7 +412,7 @@ class _TurnExecutor:
         stream = message_service.stream_chat_reply(
             checkpointer=self._checkpointer,
             provider=provider,
-            context_messages=prompt_context.messages,
+            context_messages=context_messages,
             runtime=runtime,
             outcome=outcome,
             prompt_version=(
@@ -344,6 +422,8 @@ class _TurnExecutor:
             ),
             thread_id=turn_thread_id(self._ctx.turn_id),
             cancel_check=self._cancel_event.is_set,
+            resume=resume,
+            resume_replaces=resume_replaces,
         )
         watcher = asyncio.create_task(self._watch_stop())
         flusher = asyncio.create_task(self._flush_loop())
@@ -374,7 +454,7 @@ class _TurnExecutor:
             with contextlib.suppress(_ClaimLost):
                 await self._flush_buffer(force=True)
             if shutdown_waiter in done or self._shutdown_event.is_set():
-                # 停机不写终态：保留 RUNNING 交启动对账翻 INTERRUPTED。
+                # 停机不写终态：保留 RUNNING 交启动对账翻 QUEUED 续跑（票 02）。
                 return
             raise _TurnCancelled
         cancel_waiter.cancel()
@@ -386,7 +466,7 @@ class _TurnExecutor:
             with contextlib.suppress(_ClaimLost):
                 await self._flush_buffer(force=True)
             raise _TurnCancelled from None
-        await self._finalize(session_id, prompt_context, outcome, provider)
+        await self._finalize(session_id, prompt_context, execution, outcome, provider, resume)
 
     async def _load_turn(self) -> ChatTurn | None:
         async with self._session_factory() as session:
@@ -398,6 +478,96 @@ class _TurnExecutor:
             ):
                 return None
             return turn
+
+    async def _resume_blocked_reason(
+        self, execution: dict[str, Any], provider: LlmProviderConfig
+    ) -> tuple[ChatTurnWaitingKind, str] | None:
+        """续跑前置重验（规格 §11/§12）：与 resume 端点共用 service 实现。"""
+        return await resume_blocked_reason(self._data_dir, execution, provider)
+
+    async def _turn_facts(self) -> tuple[int, int]:
+        """轮次持久事实：已登记副作用数与已保存事件游标（checkpoint 缺失分流）。"""
+        async with self._session_factory() as session:
+            effect_count = await count_turn_effects(session, self._ctx.turn_id)
+            last_seq = await session.scalar(
+                select(ChatTurn.last_seq).where(ChatTurn.id == self._ctx.turn_id)
+            )
+        return effect_count, int(last_seq or 0)
+
+    async def _pending_segment(self) -> str | None:
+        """中断时仍未完成的正文 segment（空＝中断发生在正文边界外）。"""
+        async with self._session_factory() as session:
+            events = await list_turn_events(session, self._ctx.turn_id)
+        pending: str | None = None
+        for row in events:
+            if row.type == ChatTurnEventType.TOKEN.value:
+                pending = row.segment_id
+            elif row.type in (
+                ChatTurnEventType.TOOL_CALL.value,
+                ChatTurnEventType.TOOL_RESULT.value,
+                ChatTurnEventType.COMMENTARY.value,
+                ChatTurnEventType.REVISION.value,
+            ):
+                pending = None
+        return pending
+
+    async def _persist_execution_snapshot(
+        self, turn: ChatTurn, execution: dict[str, Any], prompt_context: SessionPromptContext
+    ) -> None:
+        """首次执行起固化恢复上下文（规格 §10）：原 system 提示与已注入记忆。
+
+        已固化不覆盖（checkpoint 缺失后从头重跑的二次固化保持原快照）。
+        """
+        if "system_prompt" in execution:
+            return
+        system_prompt = next(
+            (m for m in prompt_context.messages if isinstance(m, SystemMessage)), None
+        )
+        execution = {
+            **execution,
+            "system_prompt": system_prompt.content if system_prompt is not None else None,
+            "injected_memories": list(prompt_context.learner_memories),
+        }
+        async with self._session_factory() as session, session.begin():
+            row = await session.get(ChatTurn, self._ctx.turn_id)
+            if row is None or row.claim_token != self._ctx.claim_token:
+                return
+            row.execution_json = json.dumps(execution, ensure_ascii=False, separators=(",", ":"))
+            row.updated_at = utcnow()
+
+    async def _restore_budget(self, resume: bool) -> ToolCallBudget:
+        """预算跨恢复累计重建（规格 §10）：calls_used 从事件、operations 从效果行。"""
+        if not resume:
+            return ToolCallBudget()
+        async with self._session_factory() as session:
+            events = await list_turn_events(session, self._ctx.turn_id)
+            operations = await count_turn_effects(session, self._ctx.turn_id)
+        calls = 0
+        for row in events:
+            if row.type != ChatTurnEventType.TOOL_CALL.value:
+                continue
+            try:
+                payload: object = json.loads(row.payload_json)
+            except ValueError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            tool = cast(dict[str, object], payload).get("tool")
+            if isinstance(tool, str) and tool in BUDGET_COUNTED_TOOL_NAMES:
+                calls += 1
+        return ToolCallBudget(calls_used=calls, operations_created=operations)
+
+    async def _wait(self, kind: ChatTurnWaitingKind, detail: str) -> None:
+        """真正等待（规格 §7）：释放执行槽、保留内容与已提交事实，等用户处理。"""
+        landed = await ChatTurnService.finalize_waiting(
+            session_factory=self._session_factory,
+            turn_id=self._ctx.turn_id,
+            claim_token=self._ctx.claim_token,
+            kind=kind,
+            detail=detail,
+        )
+        if landed:
+            self._broadcaster.publish(self._ctx.turn_id)
 
     async def _user_content(self, message_id: str) -> str | None:
         async with self._session_factory() as session:
@@ -440,7 +610,17 @@ class _TurnExecutor:
     async def _consume(self, stream: Any) -> None:
         """消费流事件：映射为持久事件行（token 批处理），同事务提交后广播。"""
         async for event in stream:
-            if isinstance(event, ChatTokenEvent):
+            if isinstance(event, ChatRevisionEvent):
+                # 续跑替换边界（图流在 checkpoint 验证通过后首发）：先落
+                # revision 事件再落重放 token，投影端据此替换未完成段。
+                self._buffer.append(
+                    {
+                        "type": ChatTurnEventType.REVISION.value,
+                        "payload": {"replaces_segment": event.replaces_segment},
+                    }
+                )
+                await self._flush_buffer(force=True)
+            elif isinstance(event, ChatTokenEvent):
                 self._state.segments[event.segment_id] = (
                     self._state.segments.get(event.segment_id, "") + event.text
                 )
@@ -548,8 +728,10 @@ class _TurnExecutor:
         self,
         session_id: str,
         prompt_context: SessionPromptContext,
+        execution: dict[str, Any],
         outcome: ChatStreamOutcome,
         provider: LlmProviderConfig,
+        resume: bool,
     ) -> None:
         content = outcome.final_text if outcome.final_text is not None else self._state.joined_text
         if not content:
@@ -584,6 +766,13 @@ class _TurnExecutor:
             for entry in self._state.executed_operations
             if isinstance(entry.get("operation_id"), str)
         ]
+        # 本轮注入记忆（续跑用首次执行快照，规格 §10；缺省回退当次上下文）。
+        injected_memories = execution.get("injected_memories")
+        memory_used = (
+            [item for item in cast(list[object], injected_memories) if isinstance(item, str)]
+            if isinstance(injected_memories, list)
+            else list(prompt_context.learner_memories)
+        )
         assistant_row = ChatMessage(
             id=assistant_id,
             session_id=session_id,
@@ -602,7 +791,7 @@ class _TurnExecutor:
         done_payload: dict[str, Any] = {
             "message_id": assistant_id,
             "content": content,
-            "memory_used": list(prompt_context.learner_memories),
+            "memory_used": memory_used,
         }
         if self._state.memory_proposals:
             done_payload["memory_proposals"] = self._state.memory_proposals
@@ -621,6 +810,9 @@ class _TurnExecutor:
             citations=citations,
         )
         if completion == TurnCompletionOutcome.COMPLETED:
+            # 业务终态已提交：清理本 thread checkpoint（票 02 生命周期——先业务
+            # 后 checkpoint，崩溃窗口只留孤儿由启动对账兜底清理）。
+            await self._checkpointer.adelete_thread(turn_thread_id(self._ctx.turn_id))
             self._broadcaster.publish(self._ctx.turn_id)
         elif completion == TurnCompletionOutcome.CANCELLED:
             # 取消先提交：完成提交被拒（最终消息与 done 事件未落库，部分输出
@@ -637,6 +829,7 @@ class _TurnExecutor:
             error_message=message,
         )
         if landed:
+            await self._checkpointer.adelete_thread(turn_thread_id(self._ctx.turn_id))
             self._broadcaster.publish(self._ctx.turn_id)
 
 
@@ -671,6 +864,8 @@ async def execute(
                 status=ChatTurnStatus.CANCELLED,
             )
             if landed:
+                # 取消终态已提交：checkpoint 随之清理（不再续跑）。
+                await checkpointer.adelete_thread(turn_thread_id(ctx.turn_id))
                 broadcaster.publish(ctx.turn_id)
         except _ClaimLost:
             logger.warning("chat_turn_claim_lost", turn_id=ctx.turn_id)
@@ -758,7 +953,9 @@ def chat_turn_spec(
         await retry_closure(claim)
 
     async def recover() -> None:
-        await recovery.run_once(lambda: ChatTurnService.startup_recover(session_factory, notifier))
+        await recovery.run_once(
+            lambda: ChatTurnService.startup_recover(session_factory, notifier, checkpointer)
+        )
 
     async def tracked_execute(ctx: _ClaimedTurn, runtime: RunnerContext) -> bool:
         last_claim[0] = ctx

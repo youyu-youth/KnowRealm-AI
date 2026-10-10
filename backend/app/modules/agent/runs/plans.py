@@ -79,6 +79,11 @@ from app.modules.agent.runtime import (
     MAX_OPERATION_PROPOSALS_PER_TURN,
     AgentRuntimeContext,
 )
+from app.modules.agent.turns.effects import (
+    EffectExecutionError,
+    complete_effect,
+    prepare_effect,
+)
 from app.modules.library.models import AgentProposal
 from app.modules.library.proposals import (
     ProposalService,
@@ -764,6 +769,16 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
     except CodedHTTPException as exc:
         return {"ok": False, "error": exc.code, "detail": exc.detail}
     runtime.budget.operations_created += 1
+    # 幂等前置（票 02，规格 §9）：轮次上下文下按逻辑调用身份恢复——已成功项
+    # 复用原 Run / 计划卡回执，不重复创建对象；「已在计划内」纯读结果与失败
+    # 载荷不记录（重放重新判定，不把失败当成功跳过）。
+    effect_args: dict[str, Any] = {"items": args.get("items") or []}
+    try:
+        preparation = await prepare_effect(runtime, "plan_batch_operations", effect_args)
+    except EffectExecutionError as exc:
+        return {"ok": False, "error": exc.code, "detail": exc.detail}
+    if preparation is not None and preparation.replay is not None:
+        return preparation.replay
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     async with runtime.session_factory() as session, session.begin():
         # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库或执行
@@ -851,7 +866,17 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
                 replaced_operation_ids=replaced,
             )
             await enqueue_trigger(session, run.id)
-            return _run_tool_payload(run, added_item_count=len(appended))
+            direct_payload = _run_tool_payload(run, added_item_count=len(appended))
+            if preparation is not None:
+                # 效果行与 Run 建立同事务收口（票 02）：恢复命中即复用原 Run。
+                await complete_effect(
+                    session,
+                    runtime,
+                    "plan_batch_operations",
+                    effect_args,
+                    result=direct_payload,
+                )
+            return direct_payload
         proposal = await ProposalService.create_core(
             session,
             ProposalCreateRequest(
@@ -864,7 +889,7 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
             ),
             snapshot_json=snapshot.model_dump_json(),
         )
-        return {
+        plan_payload = {
             "ok": True,
             "plan_proposal": {
                 "proposal_id": proposal.id,
@@ -872,6 +897,15 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
                 "item_count": len(payload.items),
             },
         }
+        if preparation is not None:
+            await complete_effect(
+                session,
+                runtime,
+                "plan_batch_operations",
+                effect_args,
+                result=plan_payload,
+            )
+        return plan_payload
 
 
 def _validation_tool_payload(exc: ValidationError) -> dict[str, Any]:

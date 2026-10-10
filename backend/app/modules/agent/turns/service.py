@@ -1,13 +1,16 @@
-"""ChatTurn 领域服务：受理（幂等）、快照、事件读取、取消与启动对账。
+"""ChatTurn 领域服务：受理（幂等）、快照、事件读取、取消、继续与启动对账。
 
 职责边界（规格实施决策 1/4/5/6）：
 - 受理在同一事务保存用户消息、轮次与 CHAT_TURN job，任一步失败全部回滚；
 - 事件服务只读已提交事件；快照与 last_seq 来自同一数据库一致视图；
 - 取消是持久控制指令：先落 cancel_requested；QUEUED / 无在途执行的 RUNNING /
-  INTERRUPTED 直接收口 CANCELLED（释放路径，防崩溃死锁会话）；在途执行由执行
-  侧落实，完成提交与取消裁决共享事务内的条件检查（取消先提交则拒绝完成，
-  不写最终消息与完成事件）；
-- 启动对账把 RUNNING 翻 INTERRUPTED 并保留内容，禁止不安全续跑（票 01）。
+  INTERRUPTED / WAITING_USER 直接收口 CANCELLED（释放路径，防崩溃死锁会话）；
+  在途执行由执行侧落实，完成提交与取消裁决共享事务内的条件检查（取消先提交
+  则拒绝完成，不写最终消息与完成事件）；
+- 继续是持久控制指令（票 02）：校验等待原因与恢复条件后重新排队；重复继续
+  只有一个有效触发（QUEUED 幂等返回，并发失败方按库内事实分流）；
+- 启动对账（票 02）：RUNNING → QUEUED 自动续跑（副作用幂等齐备后开放）；
+  遗留 INTERRUPTED 保留内容由用户显式继续；终态轮次的孤儿 checkpoint 清理。
 """
 
 import asyncio
@@ -20,11 +23,13 @@ from typing import Any, cast
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
+from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
 from sqlalchemy import CursorResult, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
+from app.modules.agent.graph import CHAT_GRAPH_VERSION
 from app.modules.agent.message_service import validate_sendable_chat
 from app.modules.agent.models import ChatMessage, ChatSession
 from app.modules.agent.runs.schemas import AuthMode
@@ -37,6 +42,8 @@ from app.modules.agent.turns.schemas import (
     ChatTurnOut,
     ChatTurnStatus,
     ChatTurnSubmitRequest,
+    ChatTurnWaitingKind,
+    ChatTurnWaitingReason,
 )
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import recover_running_to_failed
@@ -47,6 +54,7 @@ from app.modules.settings.config import (
     agent_default_auth_mode,
     llm_consent,
     load_llm_provider,
+    load_web_search_config,
     memory_outbound_enabled,
     resolve_user_timezone,
 )
@@ -126,6 +134,26 @@ def parse_timezone(raw: str | None) -> tzinfo | None:
         return None
 
 
+def parse_waiting_reason(raw: str | None) -> ChatTurnWaitingReason | None:
+    """等待原因载荷解析（chat_turns.waiting_reason JSON）；损坏按无原因处理。"""
+    if raw is None:
+        return None
+    try:
+        value: object = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    try:
+        return ChatTurnWaitingReason.model_validate(value)
+    except Exception:
+        return None
+
+
+def serialize_waiting_reason(reason: ChatTurnWaitingReason) -> str:
+    return reason.model_dump_json(exclude_none=True)
+
+
 def load_execution(row: ChatTurn) -> dict[str, Any]:
     try:
         value: object = json.loads(row.execution_json)
@@ -187,6 +215,7 @@ def turn_out(turn: ChatTurn, events: list[ChatTurnEvent] | None = None) -> ChatT
         last_seq=turn.last_seq,
         error_code=turn.error_code,
         error_message=turn.error_message,
+        waiting_reason=parse_waiting_reason(turn.waiting_reason),
         created_at=turn.created_at,
         updated_at=turn.updated_at,
         started_at=turn.started_at,
@@ -261,6 +290,16 @@ async def _submit_in_transaction(
     if chat.title is None:
         chat.title = content[:CHAT_TITLE_MAX_CHARS]
     chat.updated_at = now
+    # 会话范围快照（票 02，规格 §10）：续跑的 runtime 装配（工具挂载 / 引用
+    # 解析）按受理时范围，不随会话归属漂移。
+    execution = {
+        **execution,
+        "scope": chat.scope,
+        "mode": chat.mode,
+        "course_id": chat.course_id,
+        "record_id": chat.record_id,
+        "library_item_id": chat.library_item_id,
+    }
     session.add(
         ChatTurn(
             id=turn_id,
@@ -325,6 +364,50 @@ def _memory_outbound_allowed(data_dir: Path) -> bool:
     return outbound_enabled and consent_current
 
 
+async def resume_blocked_reason(
+    data_dir: Path, execution: dict[str, Any], provider: LlmProviderConfig | None
+) -> tuple[ChatTurnWaitingKind, str] | None:
+    """续跑恢复条件重验（票 02，规格 §11/§12；worker 领取后与 resume 端点共用）。
+
+    图版本、原供应商身份、记忆外发与联网可用性逐项检查；不满足返回等待原因。
+    provider 为 None（未配置）由调用方先行分流（worker 等待 / resume 拒绝）。
+    """
+    if execution.get("graph_version") != CHAT_GRAPH_VERSION:
+        return (
+            ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
+            "执行引擎版本与原轮次不兼容，请停止后重新提问",
+        )
+    if provider is None:
+        return (
+            ChatTurnWaitingKind.PROVIDER_UNAVAILABLE,
+            "原 AI 服务配置当前不可用",
+        )
+    if (
+        execution.get("provider_base_url") != provider.base_url
+        or execution.get("provider_model") != provider.model
+    ):
+        return (
+            ChatTurnWaitingKind.PROVIDER_CHANGED,
+            f"当前 AI 服务（{provider.model}）与原轮次（{execution.get('provider_model')}）不一致",
+        )
+    if bool(execution.get("memory_injection_allowed")):
+        injected = execution.get("injected_memories")
+        if isinstance(injected, list) and injected:
+            if not await asyncio.to_thread(_memory_outbound_allowed, data_dir):
+                return (
+                    ChatTurnWaitingKind.MEMORY_OUTBOUND_REVOKED,
+                    "已注入的记忆不再允许外发，请恢复同意后继续",
+                )
+    if bool(execution.get("web_search")):
+        config = await asyncio.to_thread(load_web_search_config, data_dir)
+        if config is None:
+            return (
+                ChatTurnWaitingKind.WEB_SEARCH_UNAVAILABLE,
+                "原轮次允许联网搜索，当前联网配置不可用",
+            )
+    return None
+
+
 async def _close_turn_job(session: AsyncSession, turn_id: str, status: ProcessingJobStatus) -> None:
     job = await session.scalar(
         select(ProcessingJob).where(
@@ -337,6 +420,38 @@ async def _close_turn_job(session: AsyncSession, turn_id: str, status: Processin
     now = utcnow()
     job.status = status
     job.finished_at = now
+    job.updated_at = now
+
+
+async def _ensure_turn_job(session: AsyncSession, turn_id: str, now: datetime) -> None:
+    """继续／自动续跑后确保 CHAT_TURN job 可被领取（缺失或非终态时重置 PENDING）。"""
+    job = await session.scalar(
+        select(ProcessingJob).where(
+            ProcessingJob.job_type == CHAT_TURN_JOB_TYPE,
+            ProcessingJob.input_json == turn_job_input(turn_id),
+        )
+    )
+    if job is None:
+        session.add(
+            ProcessingJob(
+                job_type=CHAT_TURN_JOB_TYPE,
+                status=ProcessingJobStatus.PENDING,
+                input_json=turn_job_input(turn_id),
+                max_attempts=1,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        return
+    if job.status not in _TERMINAL_JOB_STATUSES:
+        # 等待释放槽位时 job 已 SUCCEEDED；QUEUED 既有 job 保持（不重复投递）。
+        return
+    job.status = ProcessingJobStatus.PENDING
+    job.finished_at = None
+    job.error_code = None
+    job.error_message = None
+    job.attempts = 0
+    job.next_run_at = None
     job.updated_at = now
 
 
@@ -369,6 +484,10 @@ class ChatTurnService:
             "user_timezone": user_timezone,
             "page": payload.page.model_dump(mode="json") if payload.page is not None else None,
             "provider_model": provider.model,
+            # 恢复上下文快照（票 02，规格 §10）：原供应商身份（不含凭据）、图
+            # 版本——续跑前比对，不静默换服务、不盲目重放不兼容图状态。
+            "provider_base_url": provider.base_url,
+            "graph_version": CHAT_GRAPH_VERSION,
         }
         now = utcnow()
         turn_id = str(uuid4())
@@ -495,7 +614,8 @@ class ChatTurnService:
         """持久取消：先落 cancel_requested；可直收口的状态就地翻 CANCELLED。
 
         RUNNING 且在途执行中 → 仅落标记，执行侧观察器落实（「正在停止」）；
-        QUEUED / INTERRUPTED / 无在途执行的 RUNNING → 直接终态收口并关 job。
+        QUEUED / INTERRUPTED / WAITING_USER / 无在途执行的 RUNNING → 直接终态
+        收口并关 job。
         """
         async with session_factory() as session, session.begin():
             turn = await get_turn(session, turn_id)
@@ -507,7 +627,11 @@ class ChatTurnService:
             now = utcnow()
             turn.cancel_requested = True
             turn.updated_at = now
-            direct = status in (ChatTurnStatus.QUEUED, ChatTurnStatus.INTERRUPTED)
+            direct = status in (
+                ChatTurnStatus.QUEUED,
+                ChatTurnStatus.INTERRUPTED,
+                ChatTurnStatus.WAITING_USER,
+            )
             if status == ChatTurnStatus.RUNNING and turn_id not in active:
                 direct = True
             if direct:
@@ -517,16 +641,107 @@ class ChatTurnService:
             return turn_out(turn)
 
     @staticmethod
+    async def finalize_waiting(
+        *,
+        session_factory: async_sessionmaker[AsyncSession],
+        turn_id: str,
+        claim_token: str,
+        kind: ChatTurnWaitingKind,
+        detail: str,
+    ) -> bool:
+        """执行侧等待收口（票 02，规格 §7）：条件更新 RUNNING → WAITING_USER。
+
+        等待释放执行槽（job 走 SUCCEEDED），但保留会话占用与已提交内容；
+        waiting_reason 持久化供快照与前端展示。继续经 resume 端点重验后重新
+        排队，或经 cancel 停止。
+        """
+        async with session_factory() as session, session.begin():
+            turn = await get_turn(session, turn_id)
+            if (
+                turn is None
+                or turn.claim_token != claim_token
+                or turn.status != ChatTurnStatus.RUNNING.value
+            ):
+                return False
+            now = utcnow()
+            turn.status = ChatTurnStatus.WAITING_USER.value
+            turn.waiting_reason = serialize_waiting_reason(
+                ChatTurnWaitingReason(kind=kind, detail=detail)
+            )
+            turn.updated_at = now
+        return True
+
+    @staticmethod
+    async def resume_turn(
+        *,
+        session_factory: async_sessionmaker[AsyncSession],
+        data_dir: Path,
+        turn_id: str,
+    ) -> ChatTurnOut | None:
+        """继续执行（票 02，规格 §4/§7）：重验恢复条件后重新排队。
+
+        只接收对应等待原因需要的类型化决定（RETRY_AFTER_FIX：用户声明阻塞
+        条件已处理）；不接受改写原输入、模型、范围或业务参数，不批准提案、
+        不构成重新授权。重复继续／并发恢复只有一个有效触发：QUEUED 幂等返回
+        当前快照；不可恢复类等待（图版本不兼容 / checkpoint 缺失）明确拒绝。
+        """
+        provider = await asyncio.to_thread(load_llm_provider, data_dir)
+        async with session_factory() as session, session.begin():
+            turn = await get_turn(session, turn_id)
+            if turn is None:
+                return None
+            status = ChatTurnStatus(turn.status)
+            if bool(turn.cancel_requested):
+                raise CodedHTTPException(
+                    code="CHAT_TURN_CANCEL_IN_PROGRESS",
+                    status_code=409,
+                    detail="CHAT_TURN_CANCEL_IN_PROGRESS：轮次已受理停止，不能继续",
+                )
+            if status == ChatTurnStatus.QUEUED:
+                return turn_out(turn)
+            if status not in (ChatTurnStatus.WAITING_USER, ChatTurnStatus.INTERRUPTED):
+                raise CodedHTTPException(
+                    code="CHAT_TURN_RESUME_CONFLICT",
+                    status_code=409,
+                    detail="CHAT_TURN_RESUME_CONFLICT：当前状态不能继续",
+                )
+            reason = parse_waiting_reason(turn.waiting_reason)
+            if reason is not None and not reason.kind.resumable:
+                raise CodedHTTPException(
+                    code="CHAT_TURN_RESUME_UNSAFE",
+                    status_code=409,
+                    detail=("CHAT_TURN_RESUME_UNSAFE：该轮次无法安全继续，请停止后重新提问"),
+                )
+            if reason is not None:
+                blocked = await resume_blocked_reason(data_dir, load_execution(turn), provider)
+                if blocked is not None:
+                    raise CodedHTTPException(
+                        code="CHAT_TURN_RESUME_CONDITION_UNMET",
+                        status_code=409,
+                        detail=f"CHAT_TURN_RESUME_CONDITION_UNMET：{blocked[1]}",
+                    )
+            now = utcnow()
+            turn.status = ChatTurnStatus.QUEUED.value
+            turn.waiting_reason = None
+            turn.updated_at = now
+            await _ensure_turn_job(session, turn_id, now)
+        async with session_factory() as session:
+            refreshed = await get_turn(session, turn_id)
+            assert refreshed is not None
+            return turn_out(refreshed)
+
+    @staticmethod
     async def startup_recover(
         session_factory: async_sessionmaker[AsyncSession],
         notifier: RecordInvalidationNotifier,
+        checkpointer: BaseCheckpointSaver[str] | None = None,
     ) -> None:
-        """启动对账：RUNNING 轮次 → INTERRUPTED（保留内容，禁止不安全续跑）。
+        """启动对账（票 02 升级）：RUNNING → QUEUED 自动续跑 + 孤儿 checkpoint 清理。
 
-        job 侧沿用 recover_running_to_failed（RUNNING job → FAILED(
-        WORKER_INTERRUPTED)，max_attempts=1 无自动重投）；轮次侧再独立扫一遍
-        RUNNING（覆盖软停机等 job 已终态但轮次仍 RUNNING 的残留）。QUEUED
-        轮次照常由 worker 领取。
+        副作用幂等与安全续跑契约（票 02）齐备后开放自动恢复：执行中断的轮次
+        重投领取（worker 领取后重验恢复条件，不满足落 WAITING_USER）。遗留
+        INTERRUPTED（票 01 期间中断）保留内容，由用户显式 resume 继续或停止。
+        终态轮次的 checkpoint 残留（业务先提交、清理前崩溃的窗口）在此清理。
         """
         await recover_running_to_failed(
             session_factory,
@@ -534,6 +749,8 @@ class ChatTurnService:
             CHAT_TURN_JOB_TYPE,
             "回答生成被意外中断",
         )
+        stale_ids: list[str] = []
+        terminal_ids: list[str] = []
         async with session_factory() as session, session.begin():
             stale = list(
                 (
@@ -544,9 +761,38 @@ class ChatTurnService:
             )
             now = utcnow()
             for turn in stale:
-                turn.status = ChatTurnStatus.INTERRUPTED.value
-                turn.finished_at = now
+                turn.status = ChatTurnStatus.QUEUED.value
                 turn.updated_at = now
+                stale_ids.append(turn.id)
+            # 终态轮次的孤儿 checkpoint 清理候选：仅取最近一批（成本上界；正常
+            # 路径 worker 收尾即删，残留只是崩溃窗口孤儿，量小）。
+            terminal_ids = list(
+                (
+                    await session.scalars(
+                        select(ChatTurn.id)
+                        .where(
+                            ChatTurn.status.in_(
+                                (
+                                    ChatTurnStatus.COMPLETED.value,
+                                    ChatTurnStatus.FAILED.value,
+                                    ChatTurnStatus.CANCELLED.value,
+                                )
+                            )
+                        )
+                        .order_by(ChatTurn.updated_at.desc())
+                        .limit(500)
+                    )
+                ).all()
+            )
+        # job 侧重投（RUNNING job 已被 recover_running_to_failed 翻 FAILED——
+        # 语义为「执行中断」，这里按轮次事实重建 PENDING 领取入口）。
+        async with session_factory() as session, session.begin():
+            now = utcnow()
+            for turn_id in stale_ids:
+                await _ensure_turn_job(session, turn_id, now)
+        if checkpointer is not None:
+            for turn_id in terminal_ids:
+                await checkpointer.adelete_thread(f"chat-turn-{turn_id}")
 
     @staticmethod
     async def append_events(
@@ -714,9 +960,13 @@ __all__ = [
     "TurnEventBroadcaster",
     "find_active_turn",
     "get_turn",
+    "list_turn_events",
     "load_execution",
     "parse_timezone",
+    "parse_waiting_reason",
+    "resume_blocked_reason",
     "serialize_timezone",
+    "serialize_waiting_reason",
     "turn_job_input",
     "turn_out",
 ]

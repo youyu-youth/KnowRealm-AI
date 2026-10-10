@@ -1,8 +1,8 @@
-"""ChatTurn 公开契约：提交（幂等）、快照、事件与取消。"""
+"""ChatTurn 公开契约：提交（幂等）、快照、事件、取消与继续（票 02）。"""
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
@@ -44,8 +44,11 @@ _TERMINAL_STATUSES = frozenset(
     }
 )
 
-# 观察侧终态：SSE 事件订阅在该口径收口（INTERRUPTED 仍占用会话，须显式停止释放）。
-_OBSERVER_TERMINAL_STATUSES = _TERMINAL_STATUSES | {ChatTurnStatus.INTERRUPTED}
+# 观察侧终态：SSE 事件订阅在该口径收口（INTERRUPTED/WAITING_USER 仍占用会话，
+# 须经显式 resume 继续或 cancel 停止释放）。
+_OBSERVER_TERMINAL_STATUSES = frozenset(
+    _TERMINAL_STATUSES | {ChatTurnStatus.INTERRUPTED, ChatTurnStatus.WAITING_USER}
+)
 
 # 过程展示投影的状态映射（ChatResponseProcessOut.status 值域）。
 _PROCESS_STATUS_BY_TURN: dict[ChatTurnStatus, str] = {
@@ -73,6 +76,51 @@ class ChatTurnEventType(StrEnum):
     TOOL_RESULT = "tool_result"
     CITATION = "citation"
     DONE = "done"
+    # 模型节点重放的正文替换边界（票 02）：未完成 segment 被新 output_revision
+    # 替换，旧片段保留在事件流中可查看。
+    REVISION = "revision"
+
+
+class ChatTurnWaitingKind(StrEnum):
+    """WAITING_USER 等待原因类型（票 02，规格 §7/§11/§12）。"""
+
+    # 原供应商身份不可用（未配置 / 凭据被清空）。
+    PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
+    # 当前配置与原供应商身份 / 模型不一致（不静默换服务）。
+    PROVIDER_CHANGED = "PROVIDER_CHANGED"
+    # 已注入记忆但记忆外发同意已收回。
+    MEMORY_OUTBOUND_REVOKED = "MEMORY_OUTBOUND_REVOKED"
+    # 原轮次允许联网但当前联网配置不可用。
+    WEB_SEARCH_UNAVAILABLE = "WEB_SEARCH_UNAVAILABLE"
+    # 图 / 工具集版本与原执行不兼容（保守等待，不盲目重放）。
+    GRAPH_INCOMPATIBLE = "GRAPH_INCOMPATIBLE"
+    # checkpoint 缺失且已有已提交副作用，安全边界无法确定。
+    CHECKPOINT_MISSING = "CHECKPOINT_MISSING"
+
+    @property
+    def resumable(self) -> bool:
+        """是否可经 resume（条件恢复后重验继续）；不可恢复类只能停止或新问。"""
+        return self not in (
+            ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
+            ChatTurnWaitingKind.CHECKPOINT_MISSING,
+        )
+
+
+class ChatTurnWaitingReason(BaseModel):
+    """等待原因载荷（chat_turns.waiting_reason JSON）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: ChatTurnWaitingKind
+    detail: str | None = None
+
+
+class ChatTurnResumeRequest(BaseModel):
+    """继续执行（票 02）：类型化决定；继续按钮不等于批准业务提案或重新授权。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision_kind: Literal[Literal["RETRY_AFTER_FIX"]] = "RETRY_AFTER_FIX"
 
 
 class ChatTurnSubmitRequest(BaseModel):
@@ -134,6 +182,8 @@ class ChatTurnOut(BaseModel):
     last_seq: int = Field(ge=0)
     error_code: str | None = None
     error_message: str | None = None
+    # WAITING_USER 等待原因（票 02）：null＝非等待态。
+    waiting_reason: ChatTurnWaitingReason | None = None
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None = None
@@ -169,13 +219,25 @@ class ChatTurnCancelOut(BaseModel):
     turn: ChatTurnOut
 
 
+class ChatTurnResumeOut(BaseModel):
+    """继续受理结果：重验恢复条件通过后重新排队（QUEUED）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    turn: ChatTurnOut
+
+
 __all__ = [
     "ChatTurnCancelOut",
     "ChatTurnEventOut",
     "ChatTurnEventType",
     "ChatTurnOut",
+    "ChatTurnResumeOut",
+    "ChatTurnResumeRequest",
     "ChatTurnStatus",
     "ChatTurnSubmitRequest",
+    "ChatTurnWaitingKind",
+    "ChatTurnWaitingReason",
     "ChatTurnsPage",
     "process_status_for_turn",
 ]

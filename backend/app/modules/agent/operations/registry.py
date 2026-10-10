@@ -36,6 +36,12 @@ from app.modules.agent.runtime import (
     MAX_OPERATION_PROPOSALS_PER_TURN,
     AgentRuntimeContext,
 )
+from app.modules.agent.turns.effects import (
+    EffectExecutionError,
+    EffectPreparation,
+    complete_effect,
+    prepare_effect,
+)
 from app.modules.library.models import AgentProposal
 from app.modules.library.proposals import ProposalService, register_applier, register_payload_schema
 from app.modules.library.schemas import AgentProposalOut, ProposalCreateRequest, ProposalType
@@ -404,6 +410,24 @@ def _final_attempts_json(
     return json.dumps(history, ensure_ascii=False, separators=(",", ":"))
 
 
+def _direct_execution_body(
+    operation: AgentOperation,
+    spec: OperationSpec[Any],
+    auth_mode: AuthMode,
+    validated: BaseModel,
+    result: BaseModel,
+) -> dict[str, Any]:
+    """直执行成功回执的 executed 载荷（工具返回与效果行可恢复结果同构）。"""
+    return {
+        "operation_id": operation.id,
+        "action": spec.action,
+        "level": spec.level.value,
+        "auth_mode": auth_mode.value,
+        "payload": validated.model_dump(mode="json"),
+        "result": result.model_dump(mode="json"),
+    }
+
+
 async def _execute_operation_directly(
     runtime: AgentRuntimeContext,
     spec: OperationSpec[Any],
@@ -411,6 +435,8 @@ async def _execute_operation_directly(
     auth_mode: AuthMode,
     *,
     basis_json: str | None = None,
+    preparation: EffectPreparation | None = None,
+    effect_args: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """自动档直执行（spec 决策 11）：单事务写 operation＋业务结果。
 
@@ -538,6 +564,22 @@ async def _execute_operation_directly(
                         attempts=1 + attempt,
                         attempts_json=attempts_json,
                     )
+                    if preparation is not None and effect_args is not None:
+                        # 效果行与直执行业务写入同事务收口（票 02，规格 §9）：
+                        # 瞬时故障重试回滚时一并回滚，恢复命中即复用原回执
+                        # （成功载荷与最终返回同构，一次构造两处使用）。
+                        await complete_effect(
+                            session,
+                            runtime,
+                            spec.action,
+                            effect_args,
+                            result={
+                                "ok": True,
+                                "executed": _direct_execution_body(
+                                    operation, spec, auth_mode, validated, result
+                                ),
+                            },
+                        )
             except CodedHTTPException as exc:
                 async with session.begin():
                     failed = await record_direct_execution(
@@ -615,14 +657,7 @@ async def _execute_operation_directly(
             break  # 成功（各失败分支均已在 except 内返回）
     return {
         "ok": True,
-        "executed": {
-            "operation_id": operation.id,
-            "action": spec.action,
-            "level": spec.level.value,
-            "auth_mode": auth_mode.value,
-            "payload": validated.model_dump(mode="json"),
-            "result": result.model_dump(mode="json"),
-        },
+        "executed": _direct_execution_body(operation, spec, auth_mode, validated, result),
     }
 
 
@@ -667,12 +702,28 @@ async def submit_operation(
             body["detail"] = detail
         return body
     runtime.budget.operations_created += 1
+    # 幂等前置（票 02，规格 §9）：轮次上下文下按逻辑调用身份恢复——已成功项
+    # 复用原回执（提案 ID / operation_id），不重复创建对象；业务失败不记录
+    # （重放重新执行，不把失败当成功跳过）。
+    effect_args = {"action": action, "args": args, "basis_json": basis_json}
+    try:
+        preparation = await prepare_effect(runtime, action, effect_args)
+    except EffectExecutionError as exc:
+        return {"ok": False, "error": exc.code, "detail": exc.detail, "proposals": []}
+    if preparation is not None and preparation.replay is not None:
+        return preparation.replay
     # 生效档＝会话覆盖与本轮起点档取更严格者（spec 用户故事 6）：流式生成
     # 中途降档经注册表即时约束本轮后续提交；升档自下一轮（请求携带新档）放宽。
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     if should_execute_directly(effective_mode, spec.level):
         return await _execute_operation_directly(
-            runtime, spec, validated, effective_mode, basis_json=basis_json
+            runtime,
+            spec,
+            validated,
+            effective_mode,
+            basis_json=basis_json,
+            preparation=preparation,
+            effect_args=effect_args,
         )
     # mode="json"：载荷进 payload_json / 工具返回 / 确认卡事件统一 JSON 安全
     # （date 等类型按 ISO 字符串下行；既有动作字段为 str/枚举，输出等价）。
@@ -725,6 +776,25 @@ async def submit_operation(
                 ),
                 snapshot_json=snapshot_json,
             )
+            if preparation is not None:
+                # 效果行与提案同事务收口（票 02）：恢复命中即复用原提案 ID。
+                await complete_effect(
+                    session,
+                    runtime,
+                    action,
+                    effect_args,
+                    result={
+                        "ok": True,
+                        "proposals": [
+                            {
+                                "proposal_id": proposal.id,
+                                "action": action,
+                                "payload": cleaned_payload,
+                                "status": proposal.status.value,
+                            }
+                        ],
+                    },
+                )
     if snapshot_failure is not None:
         # 快照读取器的拒绝载荷附带 detail（工单 02 起）：模型可据此转述原因或
         # 自纠（如 PLAN_SCHEDULE_INVALID 附期望日期）；缺省 detail 仅错误码。

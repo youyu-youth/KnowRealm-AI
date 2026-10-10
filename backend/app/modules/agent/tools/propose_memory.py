@@ -13,6 +13,11 @@ import json
 from langchain_core.tools import tool
 
 from app.modules.agent.runtime import CHAT_TURN_CANCELLED, current_agent_runtime
+from app.modules.agent.turns.effects import (
+    EffectExecutionError,
+    complete_effect,
+    prepare_effect,
+)
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
 
@@ -57,6 +62,17 @@ async def propose_memory(items: list[str]) -> str:
             },
             ensure_ascii=False,
         )
+    # 幂等前置（票 02，规格 §9）：轮次上下文下按逻辑调用身份恢复——已成功
+    # 项复用原提案 ID，不重复创建；指纹冲突拒绝执行。
+    try:
+        preparation = await prepare_effect(context, PROPOSE_MEMORY_TOOL_NAME, cleaned)
+    except EffectExecutionError as exc:
+        return json.dumps(
+            {"ok": False, "error": exc.code, "detail": exc.detail}, ensure_ascii=False
+        )
+    if preparation is not None and preparation.replay is not None:
+        return json.dumps(preparation.replay, ensure_ascii=False, separators=(",", ":"))
+    payload: dict[str, object]
     async with context.session_factory() as session, session.begin():
         # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库则同事务
         # 拒绝创建（取消后禁止新增副作用）；create_core 先例＝调用方拥有事务。
@@ -70,7 +86,15 @@ async def propose_memory(items: list[str]) -> str:
                 session_id=context.session_id,
             ),
         )
-    return json.dumps(
-        {"ok": True, "proposal_id": proposal.id, "items": cleaned, "status": "PENDING"},
-        ensure_ascii=False,
-    )
+        payload = {
+            "ok": True,
+            "proposal_id": proposal.id,
+            "items": cleaned,
+            "status": "PENDING",
+        }
+        # 效果行与业务写入同事务收口（票 02）：恢复命中即复用原提案 ID。
+        if preparation is not None:
+            await complete_effect(
+                session, context, PROPOSE_MEMORY_TOOL_NAME, cleaned, result=payload
+            )
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

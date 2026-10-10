@@ -38,6 +38,7 @@ from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
     NoopSummarizationMiddleware,
 )
+from app.modules.agent.middleware.tool_identity import ToolCallIdentityMiddleware
 from app.modules.agent.runtime import (
     AgentRuntimeContext,
     bind_agent_runtime_context,
@@ -160,8 +161,18 @@ CHAT_PROMPT_VERSION = "chat-library-scope-v25"
 # 指引——四类来源、建目标与末步草案产出步骤）。
 CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v26"
 CHAT_RECURSION_LIMIT = 25
+# 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
+# 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
+# 工具集合、图结构或 checkpoint 状态语义变化时 bump。
+CHAT_GRAPH_VERSION = "chat-graph-v1"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
+
+
+class TurnCheckpointMissingError(Exception):
+    """续跑入口发现 checkpoint 缺失（票 02）：交 worker 按持久事实分流。"""
+
+
 # 操作工具族（工单 02 起）：成功返回经操作提案事件进 done 载荷（确认卡）。
 # 工单 03 追加修改与归档动作（六动作）、工单 04 追加删除与跨课迁移（三动作），
 # 动作名 = 注册项 action = 工具函数名；工单 06 追加撤销工具（直执行回执与
@@ -217,6 +228,14 @@ class ChatTokenEvent:
 
     text: str
     segment_id: str = ""
+
+
+@dataclass(frozen=True)
+class ChatRevisionEvent:
+    """续跑的正文版本替换边界（票 02）：replaces_segment＝中断时仍未完成的
+    正文段（None＝中断发生在正文边界外）；其后重放 token 属新 output_revision。"""
+
+    replaces_segment: str | None
 
 
 @dataclass(frozen=True)
@@ -290,6 +309,7 @@ ChatStreamEvent = (
     | ChatResearchProposalEvent
     | ChatOperationProposalEvent
     | ChatOperationExecutionEvent
+    | ChatRevisionEvent
 )
 
 
@@ -723,25 +743,35 @@ async def stream_chat_reply(
     prompt_version: str = CHAT_PROMPT_VERSION,
     thread_id: str | None = None,
     cancel_check: Callable[[], bool] | None = None,
+    resume: bool = False,
+    resume_replaces: str | None = None,
 ) -> AsyncGenerator[ChatStreamEvent, None]:
     """工厂层流式生成路径：建模型 → 清残留 → astream 分发结构化流事件 → 统一埋点。
 
     - 每轮从 chat_messages 重建喂入：轮初清掉残留，checkpoint 只承载当轮运行态；
       thread_id 缺省按会话命名（历史路径），ChatTurn 执行传 chat-turn-{turn_id}
       （每轮独立 checkpoint 身份，切换会话规格 §8）；
+    - resume=True（票 02，规格 §8 三入口）：不清 checkpoint、不重新注入用户输入。
+      先经公开状态 API（aget_state）读 checkpoint：待执行节点非空 → astream(None)
+      续跑；图已完成 → 仅从最终图状态补写最终文本与用量（不调模型，返回后由
+      worker 补写业务结果）；checkpoint 缺失 → 抛 TurnCheckpointMissingError
+      交 worker 按持久事实分流（无副作用可重跑，有副作用保守等待）；
     - 统一 Agent 运行时上下文（工单 01）承载全部工具运行期状态并单对绑定/重置：
       范围会话（scope ∈ RETRIEVAL_SCOPES）注入 search_library，web_search_provider
       非 None 时挂载联网工具，mode=RESEARCH 追加挂载 propose_ingest，search_courses
       / propose_memory / create_course 恒挂载（装配组合见 _resolve_agent_config）；
+      工具执行期恒挂 ToolCallIdentityMiddleware 绑定逻辑调用身份（票 02 幂等）；
     - 事件分发：AIMessageChunk 文本 → token、tool_call_chunks 拼全 → tool_call、
       ToolMessage → tool_result；token 用量跨工具循环累加；
     - 正常完成埋点（graph_name=chat，仅元数据，prompt_version 随会话模式取
-      普通/研究两版）并在返回前清理本轮 checkpoint；
+      普通/研究两版）；checkpoint 清理不在本层——业务终态由 worker 先提交
+      （双库先后落盘对账，规格 §8），完成后由 worker 删 checkpoint；
     - 中断（GeneratorExit，客户端断开/用户停止）不落埋点直接终止；
     - 其他异常埋点后重新抛出，由调用方转 error 事件。
     """
     thread = thread_id if thread_id is not None else chat_thread_id(runtime.session_id)
-    await checkpointer.adelete_thread(thread)
+    if not resume:
+        await checkpointer.adelete_thread(thread)
     http_client = openai.DefaultAsyncHttpxClient(trust_env=False)
     started = perf_counter()
     # 业务 system 提示经 build_chat_agent 参数注入（deepagents 下混入 messages 会被丢弃），
@@ -763,17 +793,51 @@ async def stream_chat_reply(
                 base_config,
                 middleware=(*base_config.middleware, TurnCancelGuardMiddleware(cancel_check)),
             )
+        # 逻辑调用身份绑定（票 02 幂等）：namespace＝当轮 checkpoint thread。
+        base_config = replace(
+            base_config,
+            middleware=(*base_config.middleware, ToolCallIdentityMiddleware(thread)),
+        )
         agent = build_chat_agent(
             build_chat_model(provider, http_client),
             checkpointer,
             system_prompt=system_prompt,
             config=base_config,
         )
+        graph_input: dict[str, Any] | None = {"messages": input_messages}
+        if resume:
+            snapshot = await agent.aget_state(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
+                {"configurable": {"thread_id": thread}}
+            )
+            if not snapshot.values:
+                # 空 values＝thread 无 checkpoint（aget_state 对空 thread 返回
+                # 空快照而非 None）。
+                raise TurnCheckpointMissingError(thread)
+            if not snapshot.next:
+                # 图已完成、业务结果未提交：仅补写（规格 §8）——最终文本与
+                # 用量取自最终图状态，不调模型（模型调用次数不增加）。
+                final_messages = cast(list[object], snapshot.values.get("messages") or [])
+                for message in reversed(final_messages):
+                    if not isinstance(message, AIMessage) or not message.content:
+                        continue
+                    outcome.final_text = (
+                        message.content
+                        if isinstance(message.content, str)
+                        else str(message.content)
+                    )
+                    _accumulate_usage(outcome.token_usage, getattr(message, "usage_metadata", None))
+                    break
+                return
+            graph_input = None  # 续跑：复用现有图状态，不重复注入用户输入。
+            # checkpoint 验证通过后才声明替换边界（票 02）：checkpoint 缺失的
+            # 分流在验证处抛出，不会误发 revision 事件（last_seq 不被污染，
+            # 「无副作用且无输出＝从头执行」分流保持可达）。
+            yield ChatRevisionEvent(replaces_segment=resume_replaces)
         tool_call_drafts: dict[str, dict[int, _ToolCallDraft]] = {}
         emitted_calls: set[str] = set()
         last_segment_id = ""
         async for stream_item in agent.astream(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
-            {"messages": input_messages},  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]
+            graph_input,  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]
             config={
                 "configurable": {"thread_id": thread},
                 "recursion_limit": CHAT_RECURSION_LIMIT,
@@ -896,4 +960,5 @@ async def stream_chat_reply(
         retrieval_count=retrieval_count,
         error_code=None,
     )
-    await checkpointer.adelete_thread(thread)
+    # checkpoint 清理（票 02）：业务终态先提交（worker finalize 后删），双库
+    # 先后落盘可对账——图完成但最终消息未保存时仍能从图状态补写。

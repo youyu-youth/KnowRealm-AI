@@ -90,9 +90,14 @@ def project_entries(
 
 
 def build_output_text(events: Sequence[ChatTurnEvent]) -> str:
-    """已提交正文投影：done 事件为权威最终快照，否则非评注 segment 按序拼接。"""
+    """已提交正文投影：done 事件为权威最终快照，否则非评注 segment 按序拼接。
+
+    revision 事件（票 02）声明被替换的未完成 segment：模型节点重放的新正文
+    替换它而非拼接两份半段；被替换片段保留在事件流中可查看，不进当前正文。
+    """
     segments: dict[str, list[str]] = {}
     commentary_ids: set[str] = set()
+    replaced_ids: set[str] = set()
     for row in events:
         event_type = ChatTurnEventType(row.type)
         if event_type == ChatTurnEventType.TOKEN:
@@ -101,10 +106,16 @@ def build_output_text(events: Sequence[ChatTurnEvent]) -> str:
             )
         elif event_type == ChatTurnEventType.COMMENTARY:
             commentary_ids.add(row.segment_id or "")
+        elif event_type == ChatTurnEventType.REVISION:
+            replaces = event_payload(row).get("replaces_segment")
+            if isinstance(replaces, str) and replaces:
+                replaced_ids.add(replaces)
         elif event_type == ChatTurnEventType.DONE:
             return str(event_payload(row).get("content") or "")
     return "".join(
-        "".join(parts) for segment_id, parts in segments.items() if segment_id not in commentary_ids
+        "".join(parts)
+        for segment_id, parts in segments.items()
+        if segment_id not in commentary_ids and segment_id not in replaced_ids
     )
 
 
