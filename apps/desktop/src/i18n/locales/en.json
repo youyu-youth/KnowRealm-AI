@@ -523,7 +523,7 @@
   },
   "spaces": {
     "title": "Knowledge Spaces",
-    "description": "Manage your courses, skill topics and interest topics here, and build your own knowledge system.",
+    "description": "Keep related courses and topics on the same track, organized around how you learn.",
     "emptyTitle": "No Knowledge Spaces yet",
     "emptyDescription": "Create your first course to set a clear context and depth for future Records.",
     "create": "New Course",
@@ -546,7 +546,11 @@
       "allTitle": "All Knowledge Spaces ({{count}})",
       "viewLabel": "View switch",
       "viewGrid": "Grid view",
-      "viewList": "List view"
+      "viewList": "List view",
+      "viewTracks": "Tracks",
+      "viewTracksShort": "Tracks",
+      "viewListShort": "List",
+      "viewGridShort": "Cards"
     },
     "card": {
       "noDescription": "No course description yet",
@@ -560,7 +564,8 @@
       "open": "Open course {{name}}",
       "openAction": "Open",
       "editAction": "Edit",
-      "moreActions": "More actions for {{name}}"
+      "moreActions": "More actions for {{name}}",
+      "sampleStats": "Record and knowledge point counts are illustrative"
     },
     "filters": {
       "searchLabel": "Search courses",
@@ -1208,6 +1213,29 @@
           "blankShould": "(should be {{answer}})",
           "blankEmpty": "(empty)"
         }
+      }
+    },
+    "tracks": {
+      "description": {
+        "CAREER": "Build professional skills and practical experience.",
+        "SCHOOL": "Develop a structured understanding of your subjects.",
+        "INTEREST": "Follow your curiosity and explore new possibilities."
+      },
+      "createIn": "Create a course in {{context}}",
+      "browse": "Browse {{context}} courses",
+      "previous": "Previous {{context}} courses",
+      "next": "Next {{context}} courses",
+      "empty": "No matching courses in this context.",
+      "hint": "Local course data · Record counts, knowledge points and progress are illustrative"
+    },
+    "dock": {
+      "openInbox": "Open inbox",
+      "preview": "Sample file preview",
+      "classifyHint": "Sample files cannot be dragged to classify. Use the inbox to organize real content.",
+      "files": {
+        "note": "Study notes.md",
+        "document": "Reference material.pdf",
+        "audio": "Recording draft.mp3"
       }
     }
   },

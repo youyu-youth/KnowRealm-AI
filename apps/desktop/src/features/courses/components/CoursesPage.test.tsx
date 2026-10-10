@@ -312,6 +312,119 @@ describe("知识空间页面", () => {
     expect(onEditCourse).toHaveBeenCalledWith("c1");
   });
 
+  it("轨道按场景分组，场景建课预选且关闭后不污染全局建课", async () => {
+    server.use(
+      http.get(coursesUrl, () =>
+        HttpResponse.json([
+          makeCourse({ id: "school", name: "操作系统" }),
+          makeCourse({
+            id: "career",
+            name: "工程实践",
+            learning_context: "CAREER",
+            education_stage: null,
+            depth: "ADVANCED",
+          }),
+        ]),
+      ),
+    );
+    renderWithQuery(<CourseDiscoveryHarness />);
+    expect(
+      await screen.findByRole("region", { name: "职业技能" }),
+    ).toHaveTextContent("工程实践");
+    expect(screen.getByRole("region", { name: "学业学习" })).toHaveTextContent(
+      "操作系统",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "在职业技能中新建课程" }),
+    );
+    expect(
+      await screen.findByRole("radio", { name: /职业技能/ }),
+    ).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "新建课程" }));
+    expect(
+      await screen.findByRole("radio", { name: /职业技能/ }),
+    ).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("卡片、列表与轨道切换保留筛选并保留洞察展示入口", async () => {
+    server.use(
+      http.get(coursesUrl, () =>
+        HttpResponse.json([makeCourse({ id: "c1", name: "操作系统" })]),
+      ),
+    );
+    renderWithQuery(
+      <CourseDiscoveryHarness initialSearch={{ q: "操作", view: "grid" }} />,
+    );
+    await screen.findByRole("button", { name: "打开课程 操作系统" });
+    fireEvent.click(screen.getByRole("button", { name: "列表视图" }));
+    fireEvent.click(screen.getByRole("button", { name: "轨道" }));
+    expect(screen.getByRole("searchbox", { name: "搜索课程" })).toHaveValue(
+      "操作",
+    );
+    expect(screen.getByRole("region", { name: "学业学习" })).toHaveTextContent(
+      "操作系统",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "知识空间洞察" }));
+    expect(await screen.findByText("最近活跃课程")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "前往收件箱" })).toHaveAttribute(
+      "href",
+      "/inbox",
+    );
+  });
+
+  it("轨道翻页区分鼠标、键盘和减弱动效偏好", async () => {
+    server.use(
+      http.get(coursesUrl, () =>
+        HttpResponse.json([
+          makeCourse({ id: "c1", name: "操作系统" }),
+          makeCourse({ id: "c2", name: "编译原理" }),
+        ]),
+      ),
+    );
+    renderWithQuery(<CourseDiscoveryHarness />);
+    const rail = await screen.findByRole("region", {
+      name: "浏览学业学习课程",
+    });
+    const scrollBy = vi.fn();
+    Object.defineProperties(rail, {
+      clientWidth: { value: 300 },
+      scrollWidth: { value: 600 },
+      scrollBy: { value: scrollBy },
+    });
+    fireEvent.scroll(rail);
+    const next = screen.getByRole("button", { name: "下一组学业学习课程" });
+    fireEvent.click(next, { detail: 1 });
+    expect(scrollBy).toHaveBeenLastCalledWith({
+      left: 300,
+      behavior: "smooth",
+    });
+    fireEvent.click(next, { detail: 0 });
+    expect(scrollBy).toHaveBeenLastCalledWith({
+      left: 300,
+      behavior: "instant",
+    });
+    const originalMatchMedia = window.matchMedia;
+    const media = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation((query) => ({
+        ...originalMatchMedia(query),
+        matches: true,
+      }));
+    try {
+      fireEvent.click(next, { detail: 1 });
+      expect(scrollBy).toHaveBeenLastCalledWith({
+        left: 300,
+        behavior: "instant",
+      });
+    } finally {
+      media.mockRestore();
+    }
+  });
+
   it("从卡片菜单删除课程后刷新列表", async () => {
     let courses = [makeCourse({ id: "c1", name: "操作系统" })];
     const deleted: string[] = [];

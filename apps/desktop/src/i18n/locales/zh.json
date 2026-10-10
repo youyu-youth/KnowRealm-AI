@@ -523,7 +523,7 @@
   },
   "spaces": {
     "title": "知识空间",
-    "description": "在这里管理你的课程、技能主题与兴趣主题，构建属于自己的知识体系。",
+    "description": "按学习场景组织，将相关的课程与主题放在同一轨道，聚焦你的学习目标。",
     "emptyTitle": "还没有知识空间",
     "emptyDescription": "创建首门课程，为之后的学习记录设定清晰的场景与深度。",
     "create": "新建课程",
@@ -545,8 +545,12 @@
     "grid": {
       "allTitle": "全部知识空间（{{count}}）",
       "viewLabel": "视图切换",
-      "viewGrid": "网格视图",
-      "viewList": "列表视图"
+      "viewGrid": "卡片视图",
+      "viewList": "列表视图",
+      "viewTracks": "轨道",
+      "viewTracksShort": "轨道",
+      "viewListShort": "列表",
+      "viewGridShort": "卡片"
     },
     "card": {
       "noDescription": "暂无课程说明",
@@ -560,7 +564,8 @@
       "open": "打开课程 {{name}}",
       "openAction": "打开",
       "editAction": "编辑",
-      "moreActions": "更多操作：{{name}}"
+      "moreActions": "更多操作：{{name}}",
+      "sampleStats": "记录与知识点统计为示意数据"
     },
     "filters": {
       "searchLabel": "搜索课程",
@@ -1199,6 +1204,29 @@
           "blankShould": "（应为 {{answer}}）",
           "blankEmpty": "（空）"
         }
+      }
+    },
+    "tracks": {
+      "description": {
+        "CAREER": "面向职业发展，提升专业能力与实践经验。",
+        "SCHOOL": "面向在校学习，构建系统化的学科知识。",
+        "INTEREST": "基于个人兴趣，探索更多可能。"
+      },
+      "createIn": "在{{context}}中新建课程",
+      "browse": "浏览{{context}}课程",
+      "previous": "上一组{{context}}课程",
+      "next": "下一组{{context}}课程",
+      "empty": "这个场景还没有匹配的课程。",
+      "hint": "课程信息来自本地 · 记录、知识点与学习进度为示意"
+    },
+    "dock": {
+      "openInbox": "前往收件箱",
+      "preview": "文件预览 · 示意",
+      "classifyHint": "示意文件不支持拖放归类，请前往收件箱处理真实内容。",
+      "files": {
+        "note": "学习笔记.md",
+        "document": "参考资料.pdf",
+        "audio": "录音草稿.mp3"
       }
     }
   },

@@ -1,4 +1,7 @@
 :root {
+  --spaces-accent: light-dark(#008455, #75d8ac);
+  --spaces-soft: color-mix(in oklch, var(--spaces-accent) 8%, var(--paper));
+  --spaces-cover: light-dark(#f1eee7, #292b29);
   --inbox-accent: light-dark(#00858c, #71d4d6);
   --inbox-soft: color-mix(in oklch, var(--inbox-accent) 6%, var(--paper));
   --filter-active-background: #000000;

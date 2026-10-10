@@ -1,4 +1,5 @@
 import { Search, SlidersHorizontal, X } from "lucide-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,14 +45,25 @@ import {
 const ALL_OPTION = "ALL";
 
 const filterPillClassName =
-  "h-7 rounded-md px-2.5 text-[13px] transition-colors duration-[120ms] ease-out data-active:border-transparent data-active:bg-filter-active-background data-active:text-filter-active-foreground data-active:shadow-sm";
+  "text-body-dense min-h-7 h-auto rounded-md px-2.5 py-1 data-active:bg-spaces-soft data-active:text-spaces-accent";
 
 type CourseFiltersProps = {
   search: SpacesSearch;
   onChange: (next: SpacesSearch) => void;
+  actions?: ReactNode;
+  heading?: ReactNode;
+  description?: ReactNode;
+  courses?: { status: "ACTIVE" | "ARCHIVED" }[];
 };
 
-export function CourseFilters({ search, onChange }: CourseFiltersProps) {
+export function CourseFilters({
+  search,
+  onChange,
+  actions,
+  heading,
+  description,
+  courses = [],
+}: CourseFiltersProps) {
   const { t } = useTranslation();
   const contextFilter = search.learning_context ?? ALL_OPTION;
   const statusFilter = search.status ?? "ACTIVE";
@@ -75,49 +87,7 @@ export function CourseFilters({ search, onChange }: CourseFiltersProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="relative min-w-52 flex-1 lg:max-w-72">
-        <Search
-          aria-hidden="true"
-          className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-        />
-        <Input
-          type="search"
-          value={search.q ?? ""}
-          onChange={(event) => patch({ q: event.target.value || undefined })}
-          maxLength={100}
-          className="bg-background h-9 rounded-lg pl-8"
-          aria-label={t("spaces.filters.searchLabel")}
-          placeholder={t("spaces.filters.searchPlaceholder")}
-        />
-      </div>
-
-      <Tabs
-        value={contextFilter}
-        onValueChange={(value) =>
-          patch({
-            learning_context: isLearningContext(value) ? value : undefined,
-          })
-        }
-      >
-        <TabsList
-          aria-label={t("spaces.filters.contextLabel")}
-          className="border-border bg-background h-9 rounded-lg border p-1 shadow-none"
-        >
-          <TabsTrigger value={ALL_OPTION} className={filterPillClassName}>
-            {t("spaces.filters.allContexts")}
-          </TabsTrigger>
-          {learningContexts.map((value) => (
-            <TabsTrigger
-              key={value}
-              value={value}
-              className={filterPillClassName}
-            >
-              {t(learningContextLabelKeys[value])}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-      </Tabs>
-
+      <div className="mr-auto">{heading}</div>
       <div
         role="group"
         aria-label={t("spaces.filters.statusLabel")}
@@ -130,17 +100,20 @@ export function CourseFilters({ search, onChange }: CourseFiltersProps) {
             variant="ghost"
             size="sm"
             aria-pressed={statusFilter === value}
-            className={`h-7 rounded-md px-2.5 text-[13px] transition-colors duration-[120ms] ease-out ${statusFilter === value ? "bg-muted text-foreground" : "text-muted-foreground"}`}
+            className={`text-body-dense h-auto min-h-7 rounded-md px-2.5 py-1 ${statusFilter === value ? "bg-spaces-soft text-spaces-accent" : "text-muted-foreground"}`}
             onClick={() =>
               patch({ status: value === "ACTIVE" ? undefined : value })
             }
           >
             {t(courseStatusLabelKeys[value])}
+            <span className="text-label tabular-nums">
+              {courses.filter((course) => course.status === value).length}
+            </span>
           </Button>
         ))}
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Select
           items={sortItems}
           value={sort}
@@ -177,7 +150,7 @@ export function CourseFilters({ search, onChange }: CourseFiltersProps) {
             <SlidersHorizontal data-icon="inline-start" aria-hidden="true" />
             {t("spaces.filters.more")}
             {extraFilterCount > 0 ? (
-              <span className="bg-ink-strong text-paper ml-0.5 inline-flex size-4 items-center justify-center rounded-full text-[10px] tabular-nums">
+              <span className="bg-ink-strong text-paper text-label ml-0.5 inline-flex min-w-4 items-center justify-center rounded-full tabular-nums">
                 {extraFilterCount}
               </span>
             ) : null}
@@ -236,16 +209,64 @@ export function CourseFilters({ search, onChange }: CourseFiltersProps) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-9 rounded-lg"
-          disabled={!hasFilters}
-          onClick={clearAll}
+        {hasFilters ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-9 rounded-lg"
+            disabled={!hasFilters}
+            onClick={clearAll}
+          >
+            <X data-icon="inline-start" aria-hidden="true" />
+            {t("spaces.filters.clear")}
+          </Button>
+        ) : null}
+      </div>
+      <div className="ml-auto">{actions}</div>
+      <div className="text-body text-ink-muted w-full">{description}</div>
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2 pt-1">
+        {" "}
+        <div className="relative min-w-52 flex-1 lg:max-w-72">
+          <Search
+            aria-hidden="true"
+            className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
+          />
+          <Input
+            type="search"
+            value={search.q ?? ""}
+            onChange={(event) => patch({ q: event.target.value || undefined })}
+            maxLength={100}
+            className="bg-background h-9 rounded-lg pl-8"
+            aria-label={t("spaces.filters.searchLabel")}
+            placeholder={t("spaces.filters.searchPlaceholder")}
+          />
+        </div>
+        <Tabs
+          value={contextFilter}
+          onValueChange={(value) =>
+            patch({
+              learning_context: isLearningContext(value) ? value : undefined,
+            })
+          }
         >
-          <X data-icon="inline-start" aria-hidden="true" />
-          {t("spaces.filters.clear")}
-        </Button>
+          <TabsList
+            aria-label={t("spaces.filters.contextLabel")}
+            className="border-border bg-background h-9 rounded-lg border p-1 shadow-none"
+          >
+            <TabsTrigger value={ALL_OPTION} className={filterPillClassName}>
+              {t("spaces.filters.allContexts")}
+            </TabsTrigger>
+            {learningContexts.map((value) => (
+              <TabsTrigger
+                key={value}
+                value={value}
+                className={filterPillClassName}
+              >
+                {t(learningContextLabelKeys[value])}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
     </div>
   );

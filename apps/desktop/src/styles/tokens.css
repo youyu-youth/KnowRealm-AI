@@ -1,4 +1,18 @@
 @theme inline {
+  --color-spaces-accent: var(--spaces-accent);
+  --color-spaces-soft: var(--spaces-soft);
+  --color-spaces-cover: var(--spaces-cover);
+  --spacing-spaces-card: 22rem;
+  --spacing-spaces-lane: 10.5rem;
+  --spacing-spaces-cover: 3.5rem;
+  --spacing-spaces-career-cover: 5rem;
+  --spacing-spaces-dock-label: 9rem;
+  --spacing-spaces-progress: 5rem;
+  --text-spaces-title: 1.75rem;
+  --text-spaces-title--line-height: 1.3;
+  --text-spaces-section: 1.0625rem;
+  --text-spaces-section--line-height: 1.45;
+  --ease-spaces: cubic-bezier(0.23, 1, 0.32, 1);
   --color-inbox-accent: var(--inbox-accent);
   --color-inbox-soft: var(--inbox-soft);
   --spacing-inbox-card: 17rem;

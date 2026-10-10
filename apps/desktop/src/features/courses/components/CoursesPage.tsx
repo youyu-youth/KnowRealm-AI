@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { BookOpenText, LayoutGrid, List, Plus } from "lucide-react";
+import { BookOpenText, Plus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -14,9 +14,11 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
-import type { Course } from "@/features/courses/api/types";
+import type { Course, LearningContext } from "@/features/courses/api/types";
 import { CourseCard } from "@/features/courses/components/CourseCard";
 import { CourseFilters } from "@/features/courses/components/CourseFilters";
+import { SpacesViewSwitcher } from "@/features/courses/components/SpacesViewSwitcher";
+import { CourseTracks } from "@/features/courses/components/CourseTracks";
 import { CourseList } from "@/features/courses/components/CourseList";
 import { CreateCourseSheet } from "@/features/courses/components/CreateCourseSheet";
 import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDialog";
@@ -42,6 +44,7 @@ export function CoursesPage({
 }: CoursesPageProps) {
   const { t } = useTranslation();
   const [createOpen, setCreateOpen] = useState(false);
+  const [createContext, setCreateContext] = useState<LearningContext>();
   const [deletingCourse, setDeletingCourse] = useState<Course | null>(null);
   const courses = useQuery({
     queryKey: courseKeys.list(),
@@ -50,66 +53,47 @@ export function CoursesPage({
   const allCourses = courses.data ?? [];
   const visibleCourses = visibleSpacesCourses(allCourses, search);
   const hasFilters = hasSpacesFilters(search);
-  const view = search.view ?? "grid";
-  const showFilters = hasFilters || allCourses.length > 0;
+  const view = search.view ?? "tracks";
 
   return (
-    <section className="work-surface-enter max-w-workbench px-content mx-auto min-h-full min-w-0 py-8">
-      <header className="flex items-start justify-between gap-8">
-        <div className="max-w-reading">
-          <h1 className="text-headline font-headline text-ink-strong">
-            {t("spaces.title")}
-          </h1>
-          <p className="text-body text-muted-foreground mt-2">
-            {t("spaces.description")}
-          </p>
-        </div>
-        <Button className="shrink-0" onClick={() => setCreateOpen(true)}>
-          <Plus data-icon="inline-start" aria-hidden="true" />
-          {t("spaces.create")}
-        </Button>
-      </header>
-
-      <div className="mt-5 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_clamp(17rem,22vw,19.5rem)]">
-        <div className="min-w-0">
-          {showFilters ? (
-            <CourseFilters search={search} onChange={onSearchChange} />
-          ) : null}
-
-          <div className="mt-4 flex min-h-8 items-center justify-between gap-3">
-            <h2 className="text-section font-section text-ink-strong">
-              {t("spaces.grid.allTitle", { count: visibleCourses.length })}
-            </h2>
-            <div
-              role="group"
-              aria-label={t("spaces.grid.viewLabel")}
-              className="border-border bg-background flex h-8 items-center gap-0.5 rounded-lg border p-0.5"
-            >
+    <section className="spaces-workspace px-content mx-auto flex min-h-full min-w-0 flex-col py-5">
+      <header>
+        <CourseFilters
+          search={search}
+          onChange={onSearchChange}
+          courses={allCourses}
+          heading={
+            <div className="flex flex-wrap items-baseline gap-3">
+              <h1 className="text-spaces-title font-headline text-ink-strong">
+                {t("spaces.title")}
+              </h1>
+              <span className="text-body text-ink-muted">
+                {t("spaces.grid.allTitle", { count: visibleCourses.length })}
+              </span>
+            </div>
+          }
+          description={t("spaces.description")}
+          actions={
+            <div className="flex flex-wrap items-center gap-3">
+              <SpacesViewSwitcher search={search} onChange={onSearchChange} />
               <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-pressed={view === "grid"}
-                aria-label={t("spaces.grid.viewGrid")}
-                className={`transition-colors duration-[120ms] ease-out ${view === "grid" ? "bg-muted" : ""}`}
-                onClick={() => onSearchChange({ ...search, view: undefined })}
+                onClick={() => {
+                  setCreateContext(undefined);
+                  setCreateOpen(true);
+                }}
               >
-                <LayoutGrid aria-hidden="true" />
-              </Button>
-              <Button
-                type="button"
-                size="icon-sm"
-                variant="ghost"
-                aria-pressed={view === "list"}
-                aria-label={t("spaces.grid.viewList")}
-                className={`transition-colors duration-[120ms] ease-out ${view === "list" ? "bg-muted" : ""}`}
-                onClick={() => onSearchChange({ ...search, view: "list" })}
-              >
-                <List aria-hidden="true" />
+                <Plus data-icon="inline-start" aria-hidden="true" />
+                {t("spaces.create")}
               </Button>
             </div>
-          </div>
-
+          }
+        />
+      </header>
+      <div className="mt-2 flex min-w-0 flex-1 flex-col gap-3">
+        <div className="min-w-0">
+          <p className="text-label text-ink-muted mt-2">
+            {t("spaces.tracks.hint")}
+          </p>
           {courses.isPending ? (
             <p
               role="status"
@@ -171,14 +155,31 @@ export function CoursesPage({
                 </EmptyDescription>
               </EmptyHeader>
               <EmptyContent className="items-start">
-                <Button onClick={() => setCreateOpen(true)}>
+                <Button
+                  onClick={() => {
+                    setCreateContext(undefined);
+                    setCreateOpen(true);
+                  }}
+                >
                   {t("spaces.createFirst")}
                 </Button>
               </EmptyContent>
             </Empty>
           ) : (
-            <div key={view} className="view-switch-enter mt-4 min-w-0">
-              {view === "list" ? (
+            <div key={view} className="mt-3 min-w-0">
+              {view === "tracks" ? (
+                <CourseTracks
+                  courses={visibleCourses}
+                  context={search.learning_context}
+                  onCreate={(context) => {
+                    setCreateContext(context);
+                    setCreateOpen(true);
+                  }}
+                  onOpenCourse={onOpenCourse}
+                  onEditCourse={onEditCourse}
+                  onDeleteCourse={setDeletingCourse}
+                />
+              ) : view === "list" ? (
                 <CourseList
                   courses={visibleCourses}
                   onOpenCourse={onOpenCourse}
@@ -186,7 +187,7 @@ export function CoursesPage({
                   onDeleteCourse={setDeletingCourse}
                 />
               ) : (
-                <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+                <div className="spaces-course-grid">
                   {visibleCourses.map((course) => (
                     <CourseCard
                       key={course.id}
@@ -202,12 +203,19 @@ export function CoursesPage({
           )}
         </div>
 
-        <aside className="min-w-0" aria-label={t("spaces.insights.label")}>
+        <aside
+          className="spaces-insights-dock mt-auto min-w-0"
+          aria-label={t("spaces.insights.label")}
+        >
           <SpacesInsightsRail courses={allCourses} />
         </aside>
       </div>
 
-      <CreateCourseSheet open={createOpen} onOpenChange={setCreateOpen} />
+      <CreateCourseSheet
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        initialLearningContext={createContext}
+      />
       {deletingCourse ? (
         <DeleteCourseDialog
           course={deletingCourse}

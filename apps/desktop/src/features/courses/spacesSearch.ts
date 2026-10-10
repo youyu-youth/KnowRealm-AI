@@ -10,7 +10,7 @@ import {
 } from "@/features/courses/courseOptions";
 
 export type SpacesSort = "updated" | "created" | "name";
-export type SpacesView = "grid" | "list";
+export type SpacesView = "grid" | "list" | "tracks";
 
 /** 知识空间页的 URL 可恢复状态（筛选、排序与视图）。 */
 export type SpacesSearch = {
@@ -24,7 +24,7 @@ export type SpacesSearch = {
 };
 
 export const spacesSorts: SpacesSort[] = ["updated", "created", "name"];
-export const spacesViews: SpacesView[] = ["grid", "list"];
+export const spacesViews: SpacesView[] = ["grid", "list", "tracks"];
 
 export function isSpacesSort(value: unknown): value is SpacesSort {
   return typeof value === "string" && spacesSorts.includes(value as SpacesSort);

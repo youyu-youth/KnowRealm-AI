@@ -3,13 +3,19 @@ import {
   ArrowRight,
   BookOpenText,
   CalendarClock,
+  ChevronDown,
   FileText,
   Layers3,
   Mic,
-  StickyNote,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { StatusTag } from "@/components/common/StatusTag";
 import type { Course } from "@/features/courses/api/types";
 import { CourseAvatar } from "@/features/courses/components/CourseCard";
@@ -21,42 +27,26 @@ import {
   mockSpacesOverview,
   type SpacesActivity,
   type SpacesCourseInsight,
-  type SpacesPendingItemKey,
 } from "@/features/courses/spacesInsights";
 
 const statItems = [
   {
     key: "courseCount",
     icon: BookOpenText,
-    iconClass:
-      "bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300",
   },
   {
     key: "knowledgePointCount",
     icon: Layers3,
-    iconClass:
-      "bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300",
   },
   {
     key: "recordCount",
     icon: FileText,
-    iconClass:
-      "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300",
   },
   {
     key: "activeThisWeek",
     icon: CalendarClock,
-    iconClass:
-      "bg-orange-50 text-orange-600 dark:bg-orange-950/50 dark:text-orange-300",
   },
 ] as const;
-
-const pendingIcons = {
-  notes: StickyNote,
-  knowledgePoints: Layers3,
-  documents: FileText,
-  recordings: Mic,
-} satisfies Record<SpacesPendingItemKey, typeof StickyNote>;
 
 type SpacesInsightsRailProps = {
   courses: Course[];
@@ -64,97 +54,156 @@ type SpacesInsightsRailProps = {
 
 export function SpacesInsightsRail({ courses }: SpacesInsightsRailProps) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
   const overview = mockSpacesOverview(courses);
   const recent = mockRecentCourses(courses, 4);
   const activities = mockActivities(courses, 5);
 
   return (
-    <div className="grid gap-4">
-      <InsightsCard title={t("spaces.insights.stats.title")}>
-        <dl className="mt-3.5 grid grid-cols-2 gap-x-3 gap-y-3.5">
-          {statItems.map(({ key, icon: Icon, iconClass }) => (
-            <div key={key} className="flex min-w-0 items-center gap-2.5">
-              <span
-                className={`${iconClass} flex size-8 shrink-0 items-center justify-center rounded-lg`}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <dd className="text-section font-section text-ink-strong tabular-nums">
-                  {overview[key]}
-                </dd>
-                <dt className="text-label text-ink-muted truncate">
-                  {t(`spaces.insights.stats.${key}`)}
-                </dt>
-              </div>
+    <div className="grid gap-2" data-expanded={expanded || undefined}>
+      <Collapsible open={expanded} onOpenChange={setExpanded}>
+        <CollapsibleTrigger
+          render={<Button variant="ghost" size="sm" />}
+          className="group"
+        >
+          <BookOpenText aria-hidden="true" />
+          {t("spaces.insights.label")}
+          <ChevronDown
+            aria-hidden="true"
+            className="group-data-[panel-open]:rotate-180"
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="mt-2 grid gap-3 md:grid-cols-2">
+            <InsightsCard title={t("spaces.insights.stats.title")}>
+              <dl className="mt-3 grid grid-cols-2 gap-3">
+                {statItems.map(({ key, icon: Icon }) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <Icon
+                      className="text-ink-muted size-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <div>
+                      <dd className="text-section text-ink-strong font-semibold tabular-nums">
+                        {overview[key]}
+                      </dd>
+                      <dt className="text-label text-ink-muted">
+                        {t(`spaces.insights.stats.${key}`)}
+                      </dt>
+                    </div>
+                  </div>
+                ))}
+              </dl>
+            </InsightsCard>
+            <InsightsCard title={t("spaces.insights.recent.title")}>
+              {recent.length > 0 ? (
+                <ol className="mt-3 grid gap-3">
+                  {recent.map((insight, index) => (
+                    <RecentCourseRow
+                      key={insight.course.id}
+                      insight={insight}
+                      index={index + 1}
+                    />
+                  ))}
+                </ol>
+              ) : (
+                <p className="text-label text-ink-muted mt-3">
+                  {t("spaces.insights.recent.empty")}
+                </p>
+              )}
+            </InsightsCard>
+            <InsightsCard title={t("spaces.insights.activity.title")}>
+              <ol className="mt-3 grid gap-2">
+                {activities.map((activity) => (
+                  <ActivityRow key={activity.id} activity={activity} />
+                ))}
+              </ol>
+            </InsightsCard>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+      <div className="spaces-dock">
+        <section className="spaces-pending-section min-w-0">
+          <header className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <h2 className="text-spaces-section text-ink-strong font-semibold">
+                {t("spaces.insights.pending.title")}
+              </h2>
+              <StatusTag>{t("spaces.insights.sample")}</StatusTag>
             </div>
-          ))}
-        </dl>
-      </InsightsCard>
-
-      <InsightsCard title={t("spaces.insights.recent.title")}>
-        {recent.length > 0 ? (
-          <ol className="mt-3 grid gap-3">
-            {recent.map((insight, index) => (
-              <RecentCourseRow
-                key={insight.course.id}
-                insight={insight}
-                index={index + 1}
-              />
-            ))}
-          </ol>
-        ) : (
-          <p className="text-label text-ink-muted mt-3">
-            {t("spaces.insights.recent.empty")}
+            <Link
+              to="/inbox"
+              className="text-label text-ink-muted hover:text-ink-strong inline-flex items-center gap-1"
+            >
+              {t("spaces.dock.openInbox")}
+              <ArrowRight className="size-3.5" aria-hidden="true" />
+            </Link>
+          </header>
+          <p className="text-label text-ink-muted mt-1">
+            {mockPendingItems
+              .map(
+                (item) =>
+                  `${t(`spaces.insights.pending.${item.key}`)} ${item.count}`,
+              )
+              .join(" · ")}
           </p>
-        )}
-      </InsightsCard>
-
-      <InsightsCard
-        title={t("spaces.insights.pending.title")}
-        action={
-          <Link
-            to="/inbox"
-            className="text-label text-ink-muted hover:text-ink-strong inline-flex items-center gap-1"
-          >
-            {t("spaces.insights.viewAll")}
-            <ArrowRight className="size-3.5" aria-hidden="true" />
-          </Link>
-        }
-      >
-        <ul className="mt-3 grid gap-2.5">
-          {mockPendingItems.map((item) => {
-            const Icon = pendingIcons[item.key];
-            return (
-              <li key={item.key} className="flex min-w-0 items-center gap-2.5">
-                <span className="border-border-subtle bg-surface-subtle text-ink-muted flex size-8 shrink-0 items-center justify-center rounded-lg border">
-                  <Icon className="size-4" aria-hidden="true" />
-                </span>
-                <span className="text-body-dense text-ink-muted min-w-0 flex-1 truncate">
-                  {t(`spaces.insights.pending.${item.key}`)}
-                </span>
-                <span className="text-body-dense text-ink-strong shrink-0 font-medium tabular-nums">
-                  {item.count}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      </InsightsCard>
-
-      <InsightsCard title={t("spaces.insights.activity.title")}>
-        {activities.length > 0 ? (
-          <ol className="border-border-subtle mt-3.5 grid gap-3.5 border-l pl-4">
-            {activities.map((activity) => (
-              <ActivityRow key={activity.id} activity={activity} />
-            ))}
-          </ol>
-        ) : (
-          <p className="text-label text-ink-muted mt-3">
-            {t("spaces.insights.activity.empty")}
+          <ul className="spaces-pending-files">
+            {(["note", "document", "audio"] as const).map((key) => {
+              const Icon = key === "audio" ? Mic : FileText;
+              return (
+                <li key={key} className="spaces-file-preview">
+                  <Icon
+                    className="text-ink-muted size-5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  <div className="min-w-0">
+                    <p
+                      className="text-label text-ink-strong truncate font-medium"
+                      title={t(`spaces.dock.files.${key}`)}
+                    >
+                      {t(`spaces.dock.files.${key}`)}
+                    </p>
+                    <p className="text-label text-ink-muted mt-1">
+                      {t("spaces.dock.preview")}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-label text-ink-muted">
+            {t("spaces.dock.classifyHint")}
           </p>
-        )}
-      </InsightsCard>
+        </section>
+        <section className="border-border min-w-0 border-t pt-3 @min-[55rem]/spaces:border-t-0">
+          <header className="flex flex-wrap items-center gap-2">
+            <h2 className="text-spaces-section text-ink-strong font-semibold">
+              {t("spaces.insights.activity.title")}
+            </h2>
+            <StatusTag>{t("spaces.insights.sample")}</StatusTag>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto"
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+            >
+              {t("spaces.insights.viewAll")}
+            </Button>
+          </header>
+          {activities.length > 0 ? (
+            <ol className="mt-3 grid gap-2">
+              {activities.slice(0, 2).map((activity) => (
+                <ActivityRow key={activity.id} activity={activity} />
+              ))}
+            </ol>
+          ) : (
+            <p className="text-label text-ink-muted mt-3">
+              {t("spaces.insights.activity.empty")}
+            </p>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
@@ -237,15 +286,12 @@ function ActivityRow({ activity }: { activity: SpacesActivity }) {
     i18n.resolvedLanguage ?? "zh-CN",
   );
   return (
-    <li className="relative">
-      <span
-        aria-hidden="true"
-        className="bg-border-strong absolute top-1.5 -left-[calc(1rem+3px)] size-1.5 rounded-full"
-      />
+    <li className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
       <p className="text-label text-ink-muted tabular-nums">{time}</p>
-      <p className="text-body-dense text-ink-muted mt-0.5">
+      <p className="text-body-dense text-ink-muted min-w-0 break-words">
         {t(`spaces.insights.activity.${activity.kind}`, {
           course: activity.course.name,
+          count: activity.amount,
         })}
       </p>
     </li>

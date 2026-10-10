@@ -22,6 +22,7 @@ import type { Course, LearningContext } from "@/features/courses/api/types";
 import { courseStatusLabelKeys } from "@/features/courses/courseOptions";
 import { CourseMetaTags } from "@/features/courses/components/CourseMetaTags";
 import { formatCourseMoment } from "@/features/courses/spacesDateFormat";
+import { CourseCover } from "@/features/courses/components/CourseCover";
 import { mockCourseStats } from "@/features/courses/spacesInsights";
 
 const contextAvatarClassNames = {
@@ -96,15 +97,15 @@ export function CourseCard({
     course.description?.trim() || t("spaces.card.noDescription");
 
   return (
-    <article className="group border-border bg-surface-raised hover:border-border-strong hover:bg-surface-subtle dark:hover:bg-surface-raised flex min-w-0 flex-col rounded-xl border p-4 transition-[background-color,border-color] duration-[120ms] ease-out">
+    <article className="spaces-course-card group">
+      <CourseCover course={course} />
       <div className="flex min-w-0 items-start gap-3">
-        <CourseAvatar context={course.learning_context} />
         <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={onOpen}
-              className="text-body text-ink-strong focus-visible:ring-ring/40 min-w-0 truncate text-left font-semibold focus-visible:rounded-sm focus-visible:ring-3 focus-visible:outline-hidden"
+              className="text-body text-ink-strong focus-visible:ring-ring/40 min-w-0 text-left font-semibold break-words focus-visible:rounded-sm focus-visible:ring-3 focus-visible:outline-hidden"
               aria-label={t("spaces.card.open", { name: course.name })}
               title={course.name}
             >
@@ -112,76 +113,85 @@ export function CourseCard({
             </button>
             <CourseStatusTag course={course} />
           </div>
-          <div className="mt-1.5">
+          <div className="mt-1">
             <CourseMetaTags course={course} />
           </div>
         </div>
       </div>
 
-      <p className="text-body-dense text-ink-muted mt-3.5 line-clamp-2 min-h-10">
+      <p className="text-body-dense text-ink-muted mt-1 line-clamp-2">
         {description}
       </p>
 
-      <dl className="mt-3.5 grid grid-cols-3 gap-3">
-        <div className="min-w-0">
-          <dt className="text-label text-ink-muted flex items-center gap-1">
-            <FileText className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="truncate">{t("spaces.card.records")}</span>
-          </dt>
-          <dd className="text-body-dense text-ink-strong mt-0.5 font-semibold tabular-nums">
-            {t("spaces.card.recordsValue", { count: stats.records })}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-label text-ink-muted flex items-center gap-1">
-            <Layers3 className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="truncate">{t("spaces.card.knowledgePoints")}</span>
-          </dt>
-          <dd className="text-body-dense text-ink-strong mt-0.5 font-semibold tabular-nums">
-            {t("spaces.card.knowledgePointsValue", {
-              count: stats.knowledgePoints,
-            })}
-          </dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="text-label text-ink-muted flex items-center gap-1">
-            <Clock className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="truncate">{t("spaces.card.updatedAt")}</span>
-          </dt>
-          <dd
-            className="text-body-dense text-ink-strong mt-0.5 font-semibold"
-            title={course.updated_at}
-          >
-            <time dateTime={course.updated_at}>{updatedAt}</time>
-          </dd>
-        </div>
-      </dl>
-
-      <div className="mt-3.5">
-        <div className="text-label flex items-center justify-between">
-          <span className="text-ink-muted font-label">
-            {t("spaces.card.progress")}
-          </span>
-          <span className="text-ink-strong font-label tabular-nums">
-            {t("spaces.card.progressValue", { percent: stats.progress })}
-          </span>
-        </div>
-        <div
-          role="progressbar"
-          aria-label={t("spaces.card.progress")}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={stats.progress}
-          className="bg-surface-strong mt-1.5 h-1.5 w-full overflow-hidden rounded-full"
+      <div className="spaces-card-summary mt-2">
+        <dl
+          className="grid flex-1 grid-cols-3 gap-2"
+          aria-label={t("spaces.card.sampleStats")}
         >
+          <div className="min-w-0">
+            <dt className="text-label text-ink-muted flex items-center gap-1">
+              <FileText className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">{t("spaces.card.records")}</span>
+            </dt>
+            <dd className="text-body-dense text-ink-strong mt-0.5 font-semibold tabular-nums">
+              {t("spaces.card.recordsValue", { count: stats.records })}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-label text-ink-muted flex items-center gap-1">
+              <Layers3 className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                {t("spaces.card.knowledgePoints")}
+              </span>
+            </dt>
+            <dd className="text-body-dense text-ink-strong mt-0.5 font-semibold tabular-nums">
+              {t("spaces.card.knowledgePointsValue", {
+                count: stats.knowledgePoints,
+              })}
+            </dd>
+          </div>
+          <div className="min-w-0">
+            <dt className="text-label text-ink-muted flex items-center gap-1">
+              <Clock className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">{t("spaces.card.updatedAt")}</span>
+            </dt>
+            <dd
+              className="text-body-dense text-ink-strong mt-0.5 font-semibold"
+              title={course.updated_at}
+            >
+              <time dateTime={course.updated_at}>{updatedAt}</time>
+            </dd>
+          </div>
+        </dl>
+
+        <div className="spaces-card-progress">
+          <div className="text-label flex flex-wrap items-center justify-between gap-1">
+            <span
+              className="text-ink-muted font-label"
+              title={t("spaces.card.sampleStats")}
+            >
+              {t("spaces.insights.sample")}
+            </span>
+            <span className="text-ink-strong font-label tabular-nums">
+              {t("spaces.card.progressValue", { percent: stats.progress })}
+            </span>
+          </div>
           <div
-            className="bg-ink-strong progress-reveal h-full rounded-full"
-            style={{ width: `${stats.progress}%` }}
-          />
+            role="progressbar"
+            aria-label={t("spaces.card.progress")}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={stats.progress}
+            className="bg-surface-strong mt-1 h-1.5 w-full overflow-hidden rounded-full"
+          >
+            <div
+              className="bg-spaces-accent h-full rounded-full"
+              style={{ width: `${stats.progress}%` }}
+            />
+          </div>
         </div>
       </div>
-
-      <div className="mt-auto flex items-center gap-2 pt-4">
+      <div className="mt-auto flex items-center gap-2 pt-2">
         <Button size="sm" className="flex-1" onClick={onOpen}>
           <FolderOpen data-icon="inline-start" aria-hidden="true" />
           {t("spaces.card.openAction")}

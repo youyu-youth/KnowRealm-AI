@@ -26,15 +26,18 @@ import {
 import { CourseFormFields } from "@/features/courses/components/CourseFormFields";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { profileApi } from "@/features/settings/api/profile";
+import type { LearningContext } from "@/features/courses/api/types";
 
 type CreateCourseSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialLearningContext?: LearningContext;
 };
 
 export function CreateCourseSheet({
   open,
   onOpenChange,
+  initialLearningContext,
 }: CreateCourseSheetProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -54,9 +57,9 @@ export function CreateCourseSheet({
 
   // 学习场景初值随档案派生（可改）：用户未选定（空）且抽屉打开时取角色预选；
   // 用户一旦选定即以用户值为准——档案晚到不覆盖选择，也不抹掉其它已输入字段。
-  const presetContext = presetLearningContext(
-    profile.data?.primary_role ?? null,
-  );
+  const presetContext =
+    initialLearningContext ??
+    presetLearningContext(profile.data?.primary_role ?? null);
   const formValues: CourseFormValues =
     open && values.learningContext === ""
       ? { ...values, learningContext: presetContext }
