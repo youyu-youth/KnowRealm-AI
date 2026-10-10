@@ -1,4 +1,4 @@
-import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
+import { appearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { echarts } from "@/charts/echarts";
@@ -20,7 +20,7 @@ export function BaseChart({
 }: BaseChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
-  const appearance = useAppearanceSnapshot();
+  const appearance = appearanceSnapshot();
   const previousAppearance = useRef(appearance);
 
   useLayoutEffect(() => {

@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
@@ -40,20 +40,6 @@ function formatHoursBig(ms: number): string {
 export function TodayStatsBand({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation();
   const [days, setDays] = useState<TrendDays>(7);
-  const [themeRevision, setThemeRevision] = useState(0);
-
-  useEffect(() => {
-    const observer = new MutationObserver(() =>
-      setThemeRevision((revision) => revision + 1),
-    );
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "style"],
-    });
-    queueMicrotask(() => setThemeRevision((revision) => revision + 1));
-    return () => observer.disconnect();
-  }, []);
-
   const stats = useQuery({
     queryKey: todayKeys.stats,
     queryFn: todayApi.stats,
@@ -71,13 +57,8 @@ export function TodayStatsBand({ compact = false }: { compact?: boolean }) {
   const windowTotalMs = sumMs(windowPoints);
   const comparison = buildWeekComparison(points, days);
 
-  if (themeRevision === 0) return null;
-
   return (
-    <section
-      key={themeRevision}
-      className={cn("min-w-0", compact && "today-trend-compact")}
-    >
+    <section className={cn("min-w-0", compact && "today-trend-compact")}>
       <div
         aria-label={t("today.stats.title")}
         role="region"
