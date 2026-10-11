@@ -32,6 +32,7 @@ from app.modules.agent.operations.plan_draft import (
     PLAN_DRAFT_LLM_UNCONFIGURED,
     plan_draft_spec,
 )
+from app.modules.agent.operations.registry import submit_operation
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runs.service import RunControlService, RunHistoryService
 from app.modules.agent.runs.worker import advance_run, agent_run_spec, validate_claim
@@ -771,6 +772,14 @@ async def test_plan_draft_job_failure_then_retry(
             session_factory, cast(str, planned["plan_proposal"]["proposal_id"])
         )
         assert await advance(session_factory, run_id) == "WAITING_JOB"
+        original_identity = (
+            await scalar(
+                session_factory,
+                "SELECT json_extract(input_json, '$.operation_id') FROM processing_jobs"
+                " WHERE job_type = 'PLAN_DRAFT'",
+                {},
+            )
+        ).scalar_one()
         # PLAN_DRAFT job 首跑失败（LLM 输出无效）。
         assert await run_draft_worker(session_factory, tmp_path) is True
         assert isinstance(await claim_waiting(session_factory, run_id), Ready)
@@ -789,6 +798,22 @@ async def test_plan_draft_job_failure_then_retry(
                 operation_id=await step_id(session_factory, run_id, "generate_plan_draft"),
             )
         assert await advance(session_factory, run_id) == "WAITING_JOB"
+        identities = (
+            (
+                await scalar(
+                    session_factory,
+                    "SELECT json_extract(input_json, '$.operation_id') FROM processing_jobs"
+                    " WHERE job_type = 'PLAN_DRAFT'",
+                    {},
+                )
+            )
+            .scalars()
+            .all()
+        )
+        operation_id = await step_id(session_factory, run_id, "generate_plan_draft")
+        assert len(identities) == len(set(identities)) == 2
+        assert original_identity in identities
+        assert operation_id not in identities
         assert await run_draft_worker(session_factory, tmp_path) is True
         assert isinstance(await claim_waiting(session_factory, run_id), Ready)
         assert await advance(session_factory, run_id) == "COMPLETED"
@@ -800,6 +825,77 @@ async def test_plan_draft_job_failure_then_retry(
             )
         ).scalar_one()
         assert proposal == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("auth_mode", [AuthMode.REQUEST_APPROVAL, AuthMode.FULL_ACCESS])
+async def test_standalone_draft_preserves_job_execution_identity(
+    tmp_path: Path, auth_mode: AuthMode
+) -> None:
+    """确认用真实 Proposal ID，自动入口用独立 UUID；不迁移成 Operation ID。"""
+    async with bare_db(tmp_path) as session_factory:
+        planned = await invoke_plan(
+            session_factory,
+            [
+                {
+                    "action": "create_course",
+                    "name": "草案身份课",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+                {
+                    "action": "create_goal",
+                    "course_id": COURSE_REF,
+                    "goal_type": "SKILL",
+                    "title": "草案身份目标",
+                },
+            ],
+        )
+        run_id = await confirm_plan_card(
+            session_factory, cast(str, planned["plan_proposal"]["proposal_id"])
+        )
+        assert await advance(session_factory, run_id) == "COMPLETED"
+        goal_id = (await scalar(session_factory, "SELECT id FROM learning_goals", {})).scalar_one()
+        receipt = await submit_operation(
+            AgentRuntimeContext(
+                session_factory=session_factory,
+                session_id=SESSION_ID,
+                auth_mode=auth_mode,
+                budget=ToolCallBudget(),
+            ),
+            "generate_plan_draft",
+            {"goal_id": goal_id},
+        )
+        assert receipt["ok"] is True
+        proposal_id: str | None = None
+        if auth_mode == AuthMode.REQUEST_APPROVAL:
+            proposal_id = cast(str, receipt["proposals"][0]["proposal_id"])
+            async with session_factory() as session:
+                applied = await ProposalService.confirm(session, proposal_id)
+            assert applied.status == "APPLIED"
+        job_identity = (
+            await scalar(
+                session_factory,
+                "SELECT json_extract(input_json, '$.operation_id') FROM processing_jobs"
+                " WHERE job_type = 'PLAN_DRAFT'",
+                {},
+            )
+        ).scalar_one()
+        operation = (
+            await scalar(
+                session_factory,
+                "SELECT id, proposal_id FROM agent_operations WHERE action = 'generate_plan_draft'",
+                {},
+            )
+        ).one()
+        assert job_identity != operation[0]
+        assert operation[1] == proposal_id
+        if proposal_id is not None:
+            assert job_identity == proposal_id
+        else:
+            from uuid import UUID
+
+            assert str(UUID(job_identity)) == job_identity
 
 
 @pytest.mark.anyio

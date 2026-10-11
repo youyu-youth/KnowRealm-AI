@@ -1,4 +1,4 @@
-> **最后更新**：2026-10-11（ChatTurn 票 02「安全恢复与幂等」自动化验收完成：迁移 0043（chat_turn_tool_effects 效果表 + waiting_reason + revision 事件）；副作用幂等框架两段式（prepare_effect 登记复用指纹校验 + complete_effect 业务事务内收口）覆盖 5 个提交入口（submit_operation 全 Operation/propose_memory/propose_ingest 多结果逐项/submit_batch_plan/submit_undo）；checkpoint 三入口（首次/续跑 astream(None)/图完成仅补写）+ 生命周期改造（业务终态先落盘后删 checkpoint）；续跑前置重验（图版本/原供应商身份/记忆外发/联网）不满足落 WAITING_USER；启动对账 RUNNING→QUEUED 自动续跑；resume API（类型化决定，QUEUED 幂等/不可恢复类 409）；revision 事件替换未完成正文段；旧片段折叠查看与重新生成标识已交付（历史/快照同源，重启后可查看）；前端等待卡+继续停止入口；预算与快照跨恢复累计。后端 207+216 用例、前端 chat 162 用例全绿，ruff/pyright/tsc/eslint/OpenAPI 通过；真机验收未执行〔见工单 02 实施记录〕。票 01 的十一轮修复细节见工单 01 实施记录。）
+> **最后更新**：2026-10-12（Operation module 工单 01 收口：确认、自动执行和 Run 共用受控执行 implementation；22 个动作解除应用器审批 ORM 耦合；相关 267 用例通过，两轴静态审查无未解决项。全量 1167 通过、2 个既有失败在原始基准复现；触及类型/规范/OpenAPI 通过，全量 Pyright 6 个既有问题保留；真实模型/Tauri 未验收。见 `.scratch/operation-module-refactor/implementation.md`。）
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
 
@@ -44,6 +44,7 @@
 
 | 域 | 功能 | 备注 |
 | --- | --- | --- |
+| **受控 Operation module 加深** | 确认卡、自动执行、Run 与必要 Retry 复用 execution 内部 adapter/共享核心；22 个动作接收类型化载荷与显式执行标识，去掉伪 Proposal；Run 引用解析仍归 runs/bindings，生命周期与事务/guard/授权/快照/幂等协议保持 | 2026-10-12：本票相关 267 用例通过；全量 1167 通过、2 个历史失败基准复现（文档异常日志隐私、习题偏好断言）；触及 Ruff/Pyright/OpenAPI 通过，全量 Pyright 保留 6 个既有问题。双轴审查无未解决项；真实模型/Tauri 未执行；草案 Job 身份关联与独立失败事务原 guard 按规格未修。见 `.scratch/operation-module-refactor/implementation.md` |
 | Desktop 自定义标题栏 | 关闭系统装饰；全局标题栏覆盖向导/加载/错误页，文件/编辑/视图/帮助与返回/前进禁用占位；Tauri 原生拖拽/双击最大化、最小化/最大化/还原/关闭，原生焦点与最大化反馈；保留托盘/安全退出分流，弹窗打开时窗口控制仍可用；旧 window-state 的装饰恢复被排除，保留几何恢复 | 2026-10-10：相关 34 测试、build、触及文件 ESLint/Prettier、Rust clippy/触及文件 rustfmt 通过；真实 WebView2（Windows 125%）验证旧配置启动、拖拽/双击/窗口控制/焦点、明暗主题、弹窗内关闭与未保存速记保护；200% 视口模拟及 reduced-motion 通过，Windows 系统 200% 与多显示器未验收；本机窗口管理不新增 Agent Tool；全库 cargo fmt 仍有既有 data_migration/sidecar 格式差异 |
 | 捕获 | 课堂录音（托盘/全局快捷键）、音频导入、单文件文档导入、文本捕获+闪念速记、捕获收件箱（归类/升级/移交总结）、全局快捷键+托盘 | 录音文件不经云端（ADR-0002/0004），云 ASR 前强制同意（ADR-0006） |
 | 转写 | 腾讯云 ASR 管道、密封批次生命周期、失败重试恢复、文档删除清理 | ASR 管道已接句级时间戳（F1 票 02） |

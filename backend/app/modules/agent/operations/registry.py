@@ -13,24 +13,20 @@ operation＋业务结果，失败独立小事务落 FAILED＋稳定错误码（�
 _mark_failed 先例）。
 """
 
-import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, cast
-from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, create_model
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.base import utcnow
 from app.modules.agent.auth_mode import effective_session_auth_mode
 from app.modules.agent.runs.models import AgentOperation
 from app.modules.agent.runs.schemas import AuthMode, OperationAuthorization
-from app.modules.agent.runs.service import record_confirmed_operation, record_direct_execution
 from app.modules.agent.runtime import (
     CHAT_TURN_CANCELLED,
     MAX_OPERATION_PROPOSALS_PER_TURN,
@@ -38,7 +34,6 @@ from app.modules.agent.runtime import (
 )
 from app.modules.agent.turns.effects import (
     EffectExecutionError,
-    EffectPreparation,
     complete_effect,
     prepare_effect,
 )
@@ -47,11 +42,9 @@ from app.modules.library.proposals import ProposalService, register_applier, reg
 from app.modules.library.schemas import AgentProposalOut, ProposalCreateRequest, ProposalType
 from app.shared.errors import CodedHTTPException
 
-# 应用器契约（提案框架 library.proposals.ProposalApplier 的操作侧收窄）：在调用方
-# 确认事务内执行领域写入、不得自行 begin；返回值是类型化结果投影（操作回执，
-# 经类型参数与 result_schema 静态绑定，APPLIED 时由注册表适配器校验并转 dict
-# 同事务写进 result_json）。
-type OperationApplier[R: BaseModel] = Callable[[AsyncSession, AgentProposal], Awaitable[R]]
+# 应用器在调用方事务内接收类型化载荷与后端执行标识，不依赖审批 ORM、不自行 begin；
+# 载荷/结果与 schema 静态绑定，结果由共享执行流程校验并同事务写入操作事实。
+type OperationApplier[P: BaseModel, R: BaseModel] = Callable[[AsyncSession, P, str], Awaitable[R]]
 
 # 执行前快照读取器（spec 决策 12）：同事务读当前态产类型化快照。提交时固化进
 # 提案、确认时重读比对重验（不匹配＝目标已变化）、直执行时落 operation 供
@@ -180,7 +173,7 @@ class OperationLevel(StrEnum):
 
 
 @dataclass(frozen=True)
-class OperationSpec[R: BaseModel]:
+class OperationSpec[P: BaseModel, R: BaseModel]:
     """单个写操作的声明式注册项（课程创建为首个接入动作，文本记录随后复用）。
 
     快照字段（工单 03，spec 决策 12）仅修改 / 归档类动作声明（capture_state
@@ -189,9 +182,9 @@ class OperationSpec[R: BaseModel]:
     action: str  # 动作标识（= 薄工具函数名，流式分发按名识别）
     proposal_type: ProposalType  # 提案类型（提案框架判别键）
     level: OperationLevel  # 操作级别（设计-4 §6，第二阶段授权按级分流）
-    payload_schema: type[BaseModel]  # 判别 payload schema（未知键拒绝）
+    payload_schema: type[P]  # 判别 payload schema（未知键拒绝）
     result_schema: type[R]  # 类型化结果投影（操作回执形状，spec 决策 8）
-    applier: OperationApplier[R]  # 确认事务内的应用器（返回结果投影）
+    applier: OperationApplier[P, R]  # 确认事务内的应用器（返回结果投影）
     capture_state: SnapshotReader | None = None  # 执行前快照读取器（三用）
     target_resolver: TargetResolver | None = None  # payload → 目标定位
     # 提交时载荷执法（工单 03）：提交与直执行两路调用，确认时不重跑（用户
@@ -209,10 +202,10 @@ class OperationSpec[R: BaseModel]:
     waits_for_job: bool = False
 
 
-_OPERATIONS: dict[str, OperationSpec[Any]] = {}
+_OPERATIONS: dict[str, OperationSpec[Any, Any]] = {}
 
 
-def register_operation(spec: OperationSpec[Any]) -> None:
+def register_operation(spec: OperationSpec[Any, Any]) -> None:
     """注册操作项；payload schema 与应用器同步注册进既有提案框架。
 
     应用器经投影适配器包装：返回值先按 result_schema 校验再转 dict 交给提案
@@ -227,35 +220,16 @@ def register_operation(spec: OperationSpec[Any]) -> None:
     """
 
     async def scoped_applier(session: AsyncSession, proposal: AgentProposal) -> dict[str, Any]:
-        snapshot_json = proposal.snapshot_json
-        if spec.capture_state is not None:
-            payload = spec.payload_schema.model_validate(operation_payload_dict(proposal))
-            current_json = (await spec.capture_state(session, payload)).model_dump_json()
-            if snapshot_json is None or snapshot_json != current_json:
-                raise CodedHTTPException(
-                    code="OPERATION_SNAPSHOT_STALE",
-                    status_code=409,
-                    detail="目标已发生变化，提案已失效，请重新预览确认",
-                )
-        result = spec.result_schema.model_validate(await spec.applier(session, proposal))
-        # mode="json"：result 含执行后版本戳（datetime）——JSON 安全投影。
-        result_dict = result.model_dump(mode="json")
-        await record_confirmed_operation(
-            session,
-            proposal=proposal,
-            action=spec.action,
-            level=spec.level.value,
-            result_dict=result_dict,
-            snapshot_json=snapshot_json,
-        )
-        return result_dict
+        from app.modules.agent.operations.execution import execute_confirmed_operation
+
+        return await execute_confirmed_operation(session, spec, proposal)
 
     _OPERATIONS[spec.action] = spec
     register_payload_schema(spec.proposal_type, spec.payload_schema)
     register_applier(spec.proposal_type, scoped_applier)
 
 
-def get_operation(action: str) -> OperationSpec[Any] | None:
+def get_operation(action: str) -> OperationSpec[Any, Any] | None:
     return _OPERATIONS.get(action)
 
 
@@ -312,21 +286,21 @@ def _missing_fields(exc: ValidationError) -> tuple[list[str], str]:
     return fields, detail
 
 
-def operation_payload_dict(proposal: AgentProposal) -> dict[str, Any]:
+def operation_payload_dict(payload_json: str) -> dict[str, Any]:
     """解析提案载荷 JSON（应用器共用）：非 dict 形状返回空 dict 由 schema 校验兜底。"""
     try:
-        value: object = json.loads(proposal.payload_json)
+        value: object = json.loads(payload_json)
     except ValueError:
         return {}
     # 元素类型静态未知（载荷源自 json.loads 的运行时收窄，与 proposals._as_dict 同口径）。
     return cast(dict[str, Any], value) if isinstance(value, dict) else {}
 
 
-def parse_operation_payload[R: BaseModel](proposal: AgentProposal, schema: type[R]) -> R:
+def parse_operation_payload[R: BaseModel](payload_json: str, schema: type[R]) -> R:
     """应用器共用的载荷解析（工单 03）：判别 schema 校验失败统一转
     PROPOSAL_PAYLOAD_INVALID 稳定错误码（提案 FAILED 可重试）。"""
     try:
-        return schema.model_validate(operation_payload_dict(proposal))
+        return schema.model_validate(operation_payload_dict(payload_json))
     except ValidationError as exc:
         raise CodedHTTPException(
             code="PROPOSAL_PAYLOAD_INVALID",
@@ -340,24 +314,11 @@ def parse_operation_payload[R: BaseModel](proposal: AgentProposal, schema: type[
 INSTRUCTION_EXCERPT_MAX_CHARS = 200
 
 
-async def run_operation_applier(
-    session: AsyncSession, spec: OperationSpec[Any], payload_json: str
-) -> BaseModel:
-    """按操作载荷执行注册项应用器（调用方事务内、不得自行 begin）。
-
-    直执行（单步自动档）与 Run 推进（批次逐项）共用同一执行核心：应用器契约是
-    ``(session, proposal)`` 且只消费 payload_json（course_create / text_record_add
-    均然），因此构造未落库的 transient 提案实例喂入——领域应用器零改动，返回值
-    按 result_schema 校验（投影形状漂移在此显式失败而非被静默丢弃）。
-    """
-    transient = AgentProposal(
-        id=str(uuid4()),
-        proposal_type=spec.proposal_type.value,
-        status="PENDING",
-        payload_json=payload_json,
-        created_at=utcnow(),
-    )
-    return spec.result_schema.model_validate(await spec.applier(session, transient))
+async def run_operation_applier[P: BaseModel, R: BaseModel](
+    session: AsyncSession, spec: OperationSpec[P, R], payload: P, execution_id: str
+) -> R:
+    """执行类型化动作并校验结果；身份仅传给应用器，不构成授权。"""
+    return spec.result_schema.model_validate(await spec.applier(session, payload, execution_id))
 
 
 def should_execute_directly(auth_mode: AuthMode, level: OperationLevel) -> bool:
@@ -392,286 +353,6 @@ def direct_authorization(
         session_id=runtime.session_id,
         message_id=runtime.message_id,
     )
-
-
-async def _failure_snapshot(
-    session: AsyncSession, spec: OperationSpec[Any], validated: BaseModel
-) -> str | None:
-    """失败记账小事务内补固化执行前快照（工单 06）：主事务回滚后目标态＝初试
-    执行前态；目标不可达（如已删除）时快照缺席，重试由快照重验保守拒绝。"""
-    if spec.capture_state is None:
-        return None
-    try:
-        return (await spec.capture_state(session, validated)).model_dump_json()
-    except CodedHTTPException:
-        return None
-
-
-def _final_attempts_json(
-    transient_history: list[dict[str, Any]], attempt: int, error_code: str
-) -> str:
-    """失败落定时补记最终尝试（工单 06：attempts_json 逐次尝试错误历史可查，
-    与推进 worker 的 append_attempt 同形）。"""
-    history = [
-        *transient_history,
-        {
-            "attempt": 1 + attempt,
-            "error_code": error_code,
-            "at": utcnow().isoformat(),
-        },
-    ]
-    return json.dumps(history, ensure_ascii=False, separators=(",", ":"))
-
-
-def _direct_execution_body(
-    operation: AgentOperation,
-    spec: OperationSpec[Any],
-    auth_mode: AuthMode,
-    validated: BaseModel,
-    result: BaseModel,
-) -> dict[str, Any]:
-    """直执行成功回执的 executed 载荷（工具返回与效果行可恢复结果同构）。"""
-    return {
-        "operation_id": operation.id,
-        "action": spec.action,
-        "level": spec.level.value,
-        "auth_mode": auth_mode.value,
-        "payload": validated.model_dump(mode="json"),
-        "result": result.model_dump(mode="json"),
-    }
-
-
-async def _execute_operation_directly(
-    runtime: AgentRuntimeContext,
-    spec: OperationSpec[Any],
-    validated: BaseModel,
-    auth_mode: AuthMode,
-    *,
-    basis_json: str | None = None,
-    preparation: EffectPreparation | None = None,
-    effect_args: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """自动档直执行（spec 决策 11）：单事务写 operation＋业务结果。
-
-    auth_mode 是本次提交的生效档（会话覆盖与本轮起点取更严格者），
-    授权依据与回执载荷如实记录执行时实际生效档。成功：应用器领域写入与
-    operation 行（SUCCEEDED＋result 回填＋授权依据）同一事务原子提交；
-    失败：业务事务整体回滚（＝未发生），独立小事务落 FAILED operation＋
-    稳定错误码（_mark_failed 先例，诊断不断链；**各失败分支统一补固化
-    执行前快照**——快照缺席会让修改类操作的手动重试被保守拒绝，无法
-    恢复）。返回工具 JSON 载荷：
-    成功 {ok, executed}；失败 {ok: False, error, operation_id}（模型转述
-    原因，operation_id 供消息流锚点与手动重试定位）。
-
-    瞬时故障自动重试（工单 06，spec 决策 20）：SQLITE_BUSY 等锁竞争在原
-    operation 身份下小睡重试 ≤2 次（attempts／attempts_json 如实累计），
-    **每轮重验授权与版本**（与推进 worker 同口径）——重试轮先重检会话
-    覆盖档位（同进程降档即时约束，不满足直执行 → FAILED＋
-    OPERATION_APPROVAL_REQUIRED），再比对快照与首次尝试基线（锁竞争窗口
-    内目标被修改 → FAILED＋OPERATION_SNAPSHOT_STALE，不覆盖手改）；耗尽
-    落 FAILED＋OPERATION_TRANSIENT_ERROR。业务拒绝（CodedHTTPException）
-    不自动重试。run 取消（spec 决策 20 第三项）为 run 概念；轮次持久取消
-    （ChatTurn 规格 §2/§14）在直执行主事务开头原子校验，命中即拒绝且不落
-    FAILED 回执（取消后禁止新增任何副作用）。
-
-    失败载荷携带 operation_id（工单 06 review 修复）：FAILED 行已在独立小
-    事务落库，id 随载荷返回——消息流锚点据此定位失败回执，回执卡的手动
-    重试入口才真实可达（否则锚点只覆盖成功路径）。
-    """
-    payload_json = validated.model_dump_json()
-    target = spec.target_resolver(validated) if spec.target_resolver is not None else None
-    authorization = direct_authorization(runtime, auth_mode)
-    # 首次尝试的执行前快照＝重试轮版本重验基线（首试事务回滚不吞该值）。
-    baseline_snapshot: str | None = None
-    # 派生基线失效标记：FAILED 行快照须存基线而非当前态（重试重验 vs 基线
-    # 恒失效），否则手动重试会在变更后状态上重放旧载荷。
-    basis_stale = False
-    async with runtime.session_factory() as session:
-        attempt = 0
-        transient_history: list[dict[str, Any]] = []
-        while True:
-            if attempt > 0 and not should_execute_directly(
-                effective_session_auth_mode(runtime.session_id, runtime.auth_mode),
-                spec.level,
-            ):
-                # 重试轮授权重检（spec 决策 20）：会话在锁竞争窗口内降档 →
-                # 原授权失效，停止重试（worker _authorized 同口径）。
-                async with session.begin():
-                    failed = await record_direct_execution(
-                        session,
-                        action=spec.action,
-                        level=spec.level.value,
-                        target=target,
-                        payload_json=payload_json,
-                        authorization=authorization,
-                        result_dict=None,
-                        error_code="OPERATION_APPROVAL_REQUIRED",
-                        snapshot_json=await _failure_snapshot(session, spec, validated),
-                        attempts=1 + attempt,
-                        attempts_json=_final_attempts_json(
-                            transient_history, attempt, "OPERATION_APPROVAL_REQUIRED"
-                        ),
-                    )
-                return {
-                    "ok": False,
-                    "error": "OPERATION_APPROVAL_REQUIRED",
-                    "operation_id": failed.id,
-                }
-            attempts_json = (
-                json.dumps(transient_history, ensure_ascii=False, separators=(",", ":"))
-                if transient_history
-                else None
-            )
-            try:
-                async with session.begin():
-                    # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先
-                    # 落库或执行身份失配 → 拒绝执行，不落任何行（取消不是操作
-                    # 失败，FAILED 回执本身也是新增副作用）。重试轮同位重查。
-                    if not await runtime.turn_write_allowed(session):
-                        return {"ok": False, "error": CHAT_TURN_CANCELLED}
-                    # 直执行同事务固化快照：快照随 operation 落库，供 Undo 补偿
-                    # 与审计（spec 决策 12）；重试轮与首次基线比对＝版本重验。
-                    # 提交时执法（工单 03）与快照同路：直执行＝模型提交时刻。
-                    snapshot_json = None
-                    if spec.capture_state is not None:
-                        snapshot_json = (
-                            await spec.capture_state(session, validated)
-                        ).model_dump_json()
-                        if (
-                            attempt > 0
-                            and baseline_snapshot is not None
-                            and snapshot_json != baseline_snapshot
-                        ):
-                            # 锁竞争窗口内目标已偏离首试前态（用户手改等）：
-                            # 版本冲突不自动重试（spec 决策 20），交由下方
-                            # CodedHTTPException 分支统一落 FAILED＋STABLE。
-                            raise CodedHTTPException(
-                                code="OPERATION_SNAPSHOT_STALE",
-                                status_code=409,
-                                detail="目标在自动重试期间被修改，请重新发起操作",
-                            )
-                        if attempt == 0 and basis_json is not None and snapshot_json != basis_json:
-                            # 派生基线（载荷派生时刻快照，LLM 调用前固化）已偏离
-                            # 当前态：旧载荷不得执行；置 basis_stale 使 FAILED 行
-                            # 快照存基线（重试重验恒失效，引导重新发起）。
-                            basis_stale = True
-                            raise CodedHTTPException(
-                                code="OPERATION_SNAPSHOT_STALE",
-                                status_code=409,
-                                detail="生成期间目标或计划已被修改，请重新发起操作",
-                            )
-                    if attempt == 0:
-                        baseline_snapshot = snapshot_json
-                    if spec.submission_validator is not None:
-                        await spec.submission_validator(session, validated)
-                    result = await run_operation_applier(session, spec, payload_json)
-                    operation = await record_direct_execution(
-                        session,
-                        action=spec.action,
-                        level=spec.level.value,
-                        target=target,
-                        payload_json=payload_json,
-                        authorization=authorization,
-                        result_dict=result.model_dump(mode="json"),
-                        snapshot_json=snapshot_json,
-                        attempts=1 + attempt,
-                        attempts_json=attempts_json,
-                    )
-                    if preparation is not None and effect_args is not None:
-                        # 效果行与直执行业务写入同事务收口（票 02，规格 §9）：
-                        # 瞬时故障重试回滚时一并回滚，恢复命中即复用原回执
-                        # （成功载荷与最终返回同构，一次构造两处使用）。
-                        await complete_effect(
-                            session,
-                            runtime,
-                            spec.action,
-                            effect_args,
-                            result={
-                                "ok": True,
-                                "executed": _direct_execution_body(
-                                    operation, spec, auth_mode, validated, result
-                                ),
-                            },
-                        )
-            except CodedHTTPException as exc:
-                async with session.begin():
-                    failed = await record_direct_execution(
-                        session,
-                        action=spec.action,
-                        level=spec.level.value,
-                        target=target,
-                        payload_json=payload_json,
-                        authorization=authorization,
-                        result_dict=None,
-                        error_code=exc.code,
-                        snapshot_json=(
-                            basis_json
-                            if basis_stale and basis_json is not None
-                            else await _failure_snapshot(session, spec, validated)
-                        ),
-                        attempts=1 + attempt,
-                        attempts_json=_final_attempts_json(transient_history, attempt, exc.code),
-                    )
-                return {"ok": False, "error": exc.code, "operation_id": failed.id}
-            except OperationalError as exc:
-                if is_transient_exception(exc) and attempt < TRANSIENT_MAX_RETRIES:
-                    attempt += 1
-                    transient_history.append(
-                        {
-                            "attempt": attempt,
-                            "error_code": OPERATION_TRANSIENT_ERROR,
-                            "at": utcnow().isoformat(),
-                        }
-                    )
-                    await asyncio.sleep(0.05 * attempt)
-                    continue
-                async with session.begin():
-                    failed = await record_direct_execution(
-                        session,
-                        action=spec.action,
-                        level=spec.level.value,
-                        target=target,
-                        payload_json=payload_json,
-                        authorization=authorization,
-                        result_dict=None,
-                        error_code=OPERATION_TRANSIENT_ERROR,
-                        # 失败记账统一保留执行基线（review P2）：重试轮版本
-                        # 重验通过＝目标未变，回滚后当前态＝初试前态——快照
-                        # 缺席会让手动重试被快照重验保守拒绝（无法恢复）。
-                        snapshot_json=await _failure_snapshot(session, spec, validated),
-                        attempts=1 + attempt,
-                        attempts_json=_final_attempts_json(
-                            transient_history, attempt, OPERATION_TRANSIENT_ERROR
-                        ),
-                    )
-                return {
-                    "ok": False,
-                    "error": OPERATION_TRANSIENT_ERROR,
-                    "operation_id": failed.id,
-                }
-            except Exception:
-                # 非编码异常（bug / 环境故障）：原子回滚＝未发生，落 INTERNAL 稳定
-                # 错误码（先例：提案框架非编码异常路径）；快照同口径保留。
-                async with session.begin():
-                    failed = await record_direct_execution(
-                        session,
-                        action=spec.action,
-                        level=spec.level.value,
-                        target=target,
-                        payload_json=payload_json,
-                        authorization=authorization,
-                        result_dict=None,
-                        error_code="INTERNAL",
-                        snapshot_json=await _failure_snapshot(session, spec, validated),
-                        attempts=1 + attempt,
-                        attempts_json=_final_attempts_json(transient_history, attempt, "INTERNAL"),
-                    )
-                return {"ok": False, "error": "INTERNAL", "operation_id": failed.id}
-            break  # 成功（各失败分支均已在 except 内返回）
-    return {
-        "ok": True,
-        "executed": _direct_execution_body(operation, spec, auth_mode, validated, result),
-    }
 
 
 async def submit_operation(
@@ -729,7 +410,9 @@ async def submit_operation(
     # 中途降档经注册表即时约束本轮后续提交；升档自下一轮（请求携带新档）放宽。
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     if should_execute_directly(effective_mode, spec.level):
-        return await _execute_operation_directly(
+        from app.modules.agent.operations.execution import execute_direct_operation
+
+        return await execute_direct_operation(
             runtime,
             spec,
             validated,

@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.schemas import (
@@ -23,7 +22,6 @@ from app.modules.agent.schemas import (
 )
 from app.modules.knowledge_point.models import KnowledgePoint
 from app.modules.learning.service import MasteryService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.modules.quiz.models import Quiz
 from app.modules.record.service import RecordService
@@ -83,12 +81,11 @@ def resolve_record_target(payload: RecordSoftDeletePayload) -> tuple[str, str]:
 
 
 async def apply_record_soft_delete(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: RecordSoftDeletePayload, _execution_id: str
 ) -> RecordSoftDeleteResult:
     """OP_RECORD_SOFT_DELETE 应用器（调用方事务内、不得自行 begin）：执行前
     重验已由注册表适配器完成；复用记录软删领域核心（级联语义与 HTTP 路由
     同源），掌握度重算登记为提交后动作（回滚不触发）。"""
-    payload = parse_operation_payload(proposal, RecordSoftDeletePayload)
     record = await RecordService.get(session, payload.record_id)
     if record is None:
         raise CodedHTTPException(

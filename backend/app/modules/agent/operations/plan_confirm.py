@@ -127,7 +127,7 @@ async def validate_plan_draft_edit(
     # 排序）：换了目标时可见性与期限会按新目标误校验、审计 target 仍记原
     # 目标——下游快照比对虽拦得住落库，但提案会被污染成 FAILED＋误导性的
     # STALE（编辑非法应保持 PENDING），故在编辑校验器内直接拒绝。
-    original = parse_operation_payload(proposal, PlanConfirmPayload)
+    original = parse_operation_payload(proposal.payload_json, PlanConfirmPayload)
     if payload.goal_id != original.goal_id:
         raise CodedHTTPException(
             code="PLAN_DRAFT_INVALID",
@@ -276,14 +276,15 @@ def resolve_plan_confirm_target(payload: PlanConfirmPayload) -> tuple[str, str]:
     return "goal", payload.goal_id
 
 
-async def apply_plan_confirm(session: AsyncSession, proposal: AgentProposal) -> PlanConfirmResult:
+async def apply_plan_confirm(
+    session: AsyncSession, payload: PlanConfirmPayload, _execution_id: str
+) -> PlanConfirmResult:
     """OP_PLAN_CONFIRM 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
     执行前重验（目标可达 + 快照比对 + 状态依赖约束）已由注册表适配器与
     capture 完成存储层前置；此处经领域核心落库（require_no_active 与部分
     唯一索引仍是并发兜底）。
     """
-    payload = parse_operation_payload(proposal, PlanConfirmPayload)
     goal = await GoalService.get(session, payload.goal_id)
     if goal is None:
         raise CodedHTTPException(

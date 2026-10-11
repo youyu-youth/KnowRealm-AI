@@ -10,30 +10,26 @@ TEXT_RECORD_ADD 提案 → 用户确认卡确认（明示将尝试生成 AI 总�
 
 from uuid import UUID
 
-from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.data_dir import bound_data_dir
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    operation_payload_dict,
     register_operation,
 )
 from app.modules.agent.schemas import TextRecordAddPayload, TextRecordAddResult
 from app.modules.capture.schemas import CaptureType, TextCaptureCreate
 from app.modules.capture.text_capture import TextCaptureService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.modules.summary.service import SummaryService
-from app.shared.errors import CodedHTTPException
 
 # 工具名（langchain @tool 注册名 = 函数名）：流式分发按名识别本工具的返回。
 ADD_TEXT_RECORD_ACTION = "add_text_record_to_course"
 
 
 async def apply_text_record_add(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: TextRecordAddPayload, _execution_id: str
 ) -> TextRecordAddResult:
     """TEXT_RECORD_ADD 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
@@ -42,14 +38,6 @@ async def apply_text_record_add(
     提交总结任务；返回类型化结果投影（记录 id + 总结任务真实状态），经注册表
     适配器校验后在确认事务内写进 result_json。
     """
-    try:
-        payload = TextRecordAddPayload.model_validate(operation_payload_dict(proposal))
-    except ValidationError as exc:
-        raise CodedHTTPException(
-            code="PROPOSAL_PAYLOAD_INVALID",
-            status_code=422,
-            detail="提案载荷不符合该类型的结构要求",
-        ) from exc
     record_id = await TextCaptureService.create_core(
         session,
         TextCaptureCreate(

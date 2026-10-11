@@ -19,7 +19,6 @@ from app.core.data_dir import bound_data_dir
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.schemas import (
@@ -27,7 +26,6 @@ from app.modules.agent.schemas import (
     LocalDocumentIngestResult,
 )
 from app.modules.capture.document_import import create_document_ingest_rows
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
 
@@ -36,11 +34,10 @@ INGEST_LOCAL_DOCUMENT_ACTION = "ingest_local_document"
 
 
 async def apply_local_document_ingest(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: LocalDocumentIngestPayload, _execution_id: str
 ) -> LocalDocumentIngestResult:
     """OP_LOCAL_DOCUMENT_INGEST 应用器（调用方事务内、不得自行 begin）：经
     document import 核心建行并提交解析任务，返回等待核对对象（job_id）。"""
-    payload = parse_operation_payload(proposal, LocalDocumentIngestPayload)
     data_dir = bound_data_dir()
     if data_dir is None:
         raise CodedHTTPException(

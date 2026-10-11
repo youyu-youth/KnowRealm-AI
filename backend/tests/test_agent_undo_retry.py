@@ -736,11 +736,11 @@ async def test_worker_transient_retry_succeeds(
 ) -> None:
     """SQLITE_BUSY 前两次、第三次成功：原身份 attempts=3、SUCCEEDED、
     attempts_json 留两次瞬时历史。"""
-    from app.modules.agent.runs import worker as worker_module
+    from app.modules.agent.operations import execution as execution_module
 
     calls = 0
 
-    async def flaky(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def flaky(session: AsyncSession, spec: Any, payload: Any, execution_id: str) -> Any:
         nonlocal calls
         calls += 1
         if calls < 3:
@@ -749,7 +749,7 @@ async def test_worker_transient_retry_succeeds(
 
         return LibraryItemArchiveResult(item_id=item_id(1), status="ARCHIVED")
 
-    monkeypatch.setattr(worker_module, "run_operation_applier", flaky)
+    monkeypatch.setattr(execution_module, "run_operation_applier", flaky)
     async with bare_db(tmp_path) as session_factory:
         await seed_item(session_factory, 1)
         run_id = await run_batch_and_complete(
@@ -773,12 +773,14 @@ async def test_worker_transient_retry_exhausted(
 ) -> None:
     """恒锁竞争：重试 ≤2 次后 FAILED＋OPERATION_TRANSIENT_ERROR，批次按独立项
     收尾（部分完成）。"""
-    from app.modules.agent.runs import worker as worker_module
+    from app.modules.agent.operations import execution as execution_module
 
-    async def always_locked(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def always_locked(
+        session: AsyncSession, spec: Any, payload: Any, execution_id: str
+    ) -> Any:
         raise locked_error()
 
-    monkeypatch.setattr(worker_module, "run_operation_applier", always_locked)
+    monkeypatch.setattr(execution_module, "run_operation_applier", always_locked)
     async with bare_db(tmp_path) as session_factory:
         await seed_item(session_factory, 1)
         run_id = await run_batch_and_complete(
@@ -799,12 +801,12 @@ async def test_worker_non_transient_error_is_system_failure(
 ) -> None:
     """非瞬时 OperationalError（如 SQL 语法错误）不走自动重试，维持系统性
     故障上抛口径（job 层落 AGENT_RUN_FAILED）。"""
-    from app.modules.agent.runs import worker as worker_module
+    from app.modules.agent.operations import execution as execution_module
 
-    async def broken(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def broken(session: AsyncSession, spec: Any, payload: Any, execution_id: str) -> Any:
         raise OperationalError("SQL", {}, Exception("no such table: missing"))
 
-    monkeypatch.setattr(worker_module, "run_operation_applier", broken)
+    monkeypatch.setattr(execution_module, "run_operation_applier", broken)
     async with bare_db(tmp_path) as session_factory:
         await seed_item(session_factory, 1)
         run_id = await run_batch_and_complete(
@@ -821,11 +823,11 @@ async def test_direct_execution_transient_retry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """直执行路径的瞬时自动重试：成功回执 ok=True、attempts=3、留痕两条。"""
-    from app.modules.agent.operations import registry as registry_module
+    from app.modules.agent.operations import execution as execution_module
 
     calls = 0
 
-    async def flaky(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def flaky(session: AsyncSession, spec: Any, payload: Any, execution_id: str) -> Any:
         nonlocal calls
         calls += 1
         if calls < 3:
@@ -834,7 +836,7 @@ async def test_direct_execution_transient_retry(
 
         return LibraryItemUpdateResult(item_id=item_id(1), before={}, after={})
 
-    monkeypatch.setattr(registry_module, "run_operation_applier", flaky)
+    monkeypatch.setattr(execution_module, "run_operation_applier", flaky)
     async with bare_db(tmp_path) as session_factory:
         await seed_item(session_factory, 1)
         receipt = await invoke_tool(
@@ -858,18 +860,20 @@ async def test_direct_retry_rechecks_auth_on_downgrade(
         clear_session_auth_override,
         set_session_auth_override,
     )
-    from app.modules.agent.operations import registry as registry_module
+    from app.modules.agent.operations import execution as execution_module
 
     calls = 0
 
-    async def locked_and_downgraded(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def locked_and_downgraded(
+        session: AsyncSession, spec: Any, payload: Any, execution_id: str
+    ) -> Any:
         nonlocal calls
         calls += 1
         # 首试即遇锁；模拟用户在重试窗口内把会话降回默认档。
         set_session_auth_override(SESSION_ID, AuthMode.REQUEST_APPROVAL)
         raise locked_error()
 
-    monkeypatch.setattr(registry_module, "run_operation_applier", locked_and_downgraded)
+    monkeypatch.setattr(execution_module, "run_operation_applier", locked_and_downgraded)
     try:
         async with bare_db(tmp_path) as session_factory:
             await seed_item(session_factory, 1)
@@ -896,17 +900,19 @@ async def test_direct_retry_rejects_target_drift(
 ) -> None:
     """重试轮版本重验（spec 决策 20）：锁竞争窗口内目标被手改（快照偏离
     首试基线）→ FAILED＋OPERATION_SNAPSHOT_STALE，不覆盖手改。"""
-    from app.modules.agent.operations import registry as registry_module
+    from app.modules.agent.operations import execution as execution_module
     from app.modules.agent.operations.registry import get_operation
 
     calls = 0
 
-    async def always_locked(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def always_locked(
+        session: AsyncSession, spec: Any, payload: Any, execution_id: str
+    ) -> Any:
         nonlocal calls
         calls += 1
         raise locked_error()
 
-    monkeypatch.setattr(registry_module, "run_operation_applier", always_locked)
+    monkeypatch.setattr(execution_module, "run_operation_applier", always_locked)
     # 冻结 dataclass：经 object.__setattr__ 挂钩快照采集，第二轮模拟目标漂移。
     spec = get_operation("update_library_item")
     assert spec is not None
@@ -953,19 +959,21 @@ async def test_transient_exhausted_keeps_snapshot_for_manual_retry(
     """瞬时耗尽的失败记账保留执行基线（review P2）：锁故障耗尽落 FAILED
     时快照在场，故障解除后手动重试可恢复（修复前快照为空 → 重试恒
     OPERATION_SNAPSHOT_STALE 死循环）。"""
-    from app.modules.agent.operations import registry as registry_module
+    from app.modules.agent.operations import execution as execution_module
     from app.modules.agent.schemas import LibraryItemUpdateResult
 
     calls = 0
 
-    async def always_locked_then_healed(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def always_locked_then_healed(
+        session: AsyncSession, spec: Any, payload: Any, execution_id: str
+    ) -> Any:
         nonlocal calls
         calls += 1
         if calls <= 1 + 2:  # 首试＋两次自动重试全部锁死 → 耗尽
             raise locked_error()
         return LibraryItemUpdateResult(item_id=item_id(1), before={}, after={})
 
-    monkeypatch.setattr(registry_module, "run_operation_applier", always_locked_then_healed)
+    monkeypatch.setattr(execution_module, "run_operation_applier", always_locked_then_healed)
     async with bare_db(tmp_path) as session_factory:
         await seed_item(session_factory, 1)
         receipt = await invoke_tool(
@@ -1215,13 +1223,15 @@ async def test_concurrent_manual_retry_executes_business_once(
     后到者被拒并返回先行者的既有结果（业务恰好一次、无重复副作用）。"""
     import asyncio
 
-    from app.modules.agent.runs import retry as retry_module
+    from app.modules.agent.operations import execution as execution_module
 
     a_in_applier = asyncio.Event()
     release_a = asyncio.Event()
     calls = 0
 
-    async def slow_applier(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def slow_applier(
+        session: AsyncSession, spec: Any, payload: Any, execution_id: str
+    ) -> Any:
         nonlocal calls
         calls += 1
         a_in_applier.set()
@@ -1230,7 +1240,6 @@ async def test_concurrent_manual_retry_executes_business_once(
 
         return LibraryItemUpdateResult(item_id=item_id(1), before={}, after={})
 
-    monkeypatch.setattr(retry_module, "run_operation_applier", slow_applier)
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory, COURSE_ARCHIVED, status="ARCHIVED")
         await seed_item(session_factory, 1)
@@ -1247,6 +1256,7 @@ async def test_concurrent_manual_retry_executes_business_once(
             {"id": COURSE_ARCHIVED},
             session_factory,
         )
+        monkeypatch.setattr(execution_module, "run_operation_applier", slow_applier)
 
         async with session_factory() as session_a, session_factory() as session_b:
             task_a = asyncio.create_task(retry_standalone_operation(session_a, op_id))
@@ -1349,16 +1359,18 @@ async def test_applier_crash_leaves_no_operation_or_business_write(
     """未知结果对账锚点（spec 决策 20）：应用器在业务写之后崩溃 → operation
     行与业务写同事务回滚（崩溃＝未发生、可安全重试；行在＝已执行由成功路径
     的同事务断言覆盖）。"""
-    from app.modules.agent.runs import worker as worker_module
+    from app.modules.agent.operations import execution as execution_module
 
-    async def crash_after_write(session: AsyncSession, spec: Any, payload_json: str) -> Any:
+    async def crash_after_write(
+        session: AsyncSession, spec: Any, payload: Any, execution_id: str
+    ) -> Any:
         await session.execute(
             text("UPDATE library_items SET status = 'ARCHIVED' WHERE id = :id"),
             {"id": item_id(1)},
         )
         raise RuntimeError("boom after business write")
 
-    monkeypatch.setattr(worker_module, "run_operation_applier", crash_after_write)
+    monkeypatch.setattr(execution_module, "run_operation_applier", crash_after_write)
     async with bare_db(tmp_path) as session_factory:
         await seed_item(session_factory, 1)
         run_id = await run_batch_and_complete(

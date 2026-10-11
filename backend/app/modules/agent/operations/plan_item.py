@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.runs.schemas import OperationAuthorization
@@ -38,7 +37,6 @@ from app.modules.learning_plan.audit import register_manual_audit_recorder
 from app.modules.learning_plan.models import LearningGoal, LearningPlan, LearningPlanItem
 from app.modules.learning_plan.schemas import PlanItemUpdate
 from app.modules.learning_plan.service import PlanItemService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
 
@@ -114,11 +112,10 @@ def resolve_plan_item_target(
 
 
 async def apply_plan_item_update(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: PlanItemUpdatePayload, _execution_id: str
 ) -> PlanItemUpdateResult:
     """OP_PLAN_ITEM_UPDATE 应用器（调用方事务内）：经领域核心就地修改 +
     user_locked 置位，返回修改字段 before / after 对照。"""
-    payload = parse_operation_payload(proposal, PlanItemUpdatePayload)
     found = await load_item_context(session, payload.item_id)
     if found is None:
         raise _item_not_found()
@@ -145,10 +142,9 @@ async def apply_plan_item_update(
 
 
 async def apply_plan_item_complete(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: PlanItemCompletePayload, _execution_id: str
 ) -> PlanItemCompleteResult:
     """OP_PLAN_ITEM_COMPLETE 应用器：DONE + 完成时间戳（不进学习证据链）。"""
-    payload = parse_operation_payload(proposal, PlanItemCompletePayload)
     found = await load_item_context(session, payload.item_id)
     if found is None:
         raise _item_not_found()

@@ -17,7 +17,6 @@ from app.modules.agent.operations.registry import (
     UndoOperationResult,
     assert_undo_state,
     assert_undo_version,
-    parse_operation_payload,
     parse_undo_basis,
     register_operation,
 )
@@ -36,7 +35,6 @@ from app.modules.course.schemas import (
     LearningDepth,
 )
 from app.modules.course.service import CourseService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
 
@@ -85,13 +83,14 @@ def resolve_course_target(
     return "course", payload.course_id
 
 
-async def apply_course_update(session: AsyncSession, proposal: AgentProposal) -> CourseUpdateResult:
+async def apply_course_update(
+    session: AsyncSession, payload: CourseUpdatePayload, _execution_id: str
+) -> CourseUpdateResult:
     """OP_COURSE_UPDATE 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
     执行前重验已由注册表适配器统一完成（快照比对）；此处经课程更新事务内核心
     落库（与 HTTP 路由共用校验链），返回被修改字段的 before / after 对照。
     """
-    payload = parse_operation_payload(proposal, CourseUpdatePayload)
     course = await CourseService.get(session, payload.course_id)
     if course is None:
         raise CodedHTTPException(

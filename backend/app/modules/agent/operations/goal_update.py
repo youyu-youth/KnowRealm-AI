@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.schemas import (
@@ -24,7 +23,6 @@ from app.modules.agent.schemas import (
 )
 from app.modules.learning_plan.schemas import GoalStatus, GoalType, GoalUpdate
 from app.modules.learning_plan.service import GoalService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
 
@@ -58,14 +56,15 @@ def resolve_goal_target(payload: GoalUpdatePayload) -> tuple[str, str]:
     return "goal", payload.goal_id
 
 
-async def apply_goal_update(session: AsyncSession, proposal: AgentProposal) -> GoalUpdateResult:
+async def apply_goal_update(
+    session: AsyncSession, payload: GoalUpdatePayload, _execution_id: str
+) -> GoalUpdateResult:
     """OP_GOAL_UPDATE 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
     执行前重验已由注册表适配器统一完成（快照比对）；此处先应用字段编辑、
     再执行状态流转（同一事务），返回被修改字段的 before / after 对照与
     执行后状态。
     """
-    payload = parse_operation_payload(proposal, GoalUpdatePayload)
     goal = await GoalService.get(session, payload.goal_id)
     if goal is None:
         raise CodedHTTPException(code="GOAL_NOT_FOUND", status_code=404, detail="学习目标不存在")

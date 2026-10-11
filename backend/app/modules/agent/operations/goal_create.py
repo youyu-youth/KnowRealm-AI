@@ -18,7 +18,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.schemas import (
@@ -29,7 +28,6 @@ from app.modules.agent.schemas import (
 from app.modules.course.service import CourseService
 from app.modules.learning_plan.schemas import GoalCreateCore, GoalScopeSource
 from app.modules.learning_plan.service import GoalService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
 
@@ -54,7 +52,9 @@ def resolve_goal_create_target(payload: GoalCreatePayload) -> tuple[str, str]:
     return "course", payload.course_id
 
 
-async def apply_goal_create(session: AsyncSession, proposal: AgentProposal) -> GoalCreateResult:
+async def apply_goal_create(
+    session: AsyncSession, payload: GoalCreatePayload, _execution_id: str
+) -> GoalCreateResult:
     """OP_GOAL_CREATE 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
     执行前重验（课程可达 + 快照比对）已由注册表适配器完成；此处经领域核心
@@ -63,7 +63,6 @@ async def apply_goal_create(session: AsyncSession, proposal: AgentProposal) -> G
     预授权（ADR-0026，与其他写动作同口径），确认事实由 operation 行的
     authorization_json 承载。
     """
-    payload = parse_operation_payload(proposal, GoalCreatePayload)
     course = await CourseService.get(session, payload.course_id)
     if course is None:
         raise CodedHTTPException(

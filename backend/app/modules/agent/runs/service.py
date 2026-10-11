@@ -95,29 +95,6 @@ def append_attempt(operation: AgentOperation, error_code: str, *, now: datetime)
     operation.attempts_json = json.dumps(history, ensure_ascii=False, separators=(",", ":"))
 
 
-async def operation_snapshot_stale(
-    session: AsyncSession,
-    spec: "OperationSpec[Any]",
-    operation: AgentOperation,
-    params: dict[str, Any],
-) -> bool:
-    """执行前快照重验（spec 决策 12，推进 worker 每步与手动重试共用的口径）：
-    当前态与固化快照不一致即失效（缺失 / 坏值同样失效＝保守方向）。快照按
-    字典比对（不依赖序列化字节一致）。"""
-    if spec.capture_state is None:
-        return False
-    if operation.snapshot_json is None:
-        return True
-    try:
-        stored: object = json.loads(operation.snapshot_json)
-    except ValueError:
-        return True
-    current = (
-        await spec.capture_state(session, spec.payload_schema.model_validate(params))
-    ).model_dump(mode="json")
-    return current != stored
-
-
 def _job_run_id_column() -> ColumnElement[Any]:
     """触发 job 的 run_id 投影列（run_id 只存 input_json；json_extract 无存根，
     cast 收口为列表达式，先例见 settings/usage.py）。"""
@@ -427,7 +404,7 @@ def operation_out(operation: AgentOperation) -> dict[str, Any]:
     }
 
 
-def _undo_reason(spec: "OperationSpec[Any] | None") -> str:
+def _undo_reason(spec: "OperationSpec[Any, Any] | None") -> str:
     """不可撤销原因（注册项声明；未注册动作的兜底文案）。"""
     reason = getattr(spec, "undo_reason", None) if spec is not None else None
     return str(reason) if reason else "该操作不提供撤销"

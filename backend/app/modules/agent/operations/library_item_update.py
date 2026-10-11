@@ -17,7 +17,6 @@ from app.modules.agent.operations.registry import (
     UndoOperationResult,
     assert_undo_state,
     assert_undo_version,
-    parse_operation_payload,
     parse_undo_basis,
     register_operation,
 )
@@ -29,7 +28,6 @@ from app.modules.agent.schemas import (
     LibraryItemUpdateResult,
 )
 from app.modules.library.lifecycle import LibraryLifecycleService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import LibraryItemPatch, ProposalType
 from app.modules.library.service import LibraryService
 
@@ -60,13 +58,12 @@ def resolve_library_item_target(
 
 
 async def apply_library_item_update(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: LibraryItemUpdatePayload, _execution_id: str
 ) -> LibraryItemUpdateResult:
     """OP_LIBRARY_ITEM_UPDATE 应用器（提案框架契约：调用方事务内、不得自行 begin）。
 
     执行前重验已由注册表适配器统一完成；经 lifecycle 事务内核心落库（标题空值
     / 归类目标课程校验与 HTTP 路由同源）。"""
-    payload = parse_operation_payload(proposal, LibraryItemUpdatePayload)
     item = await LibraryService.active_item(session, payload.item_id)
     before = {field: getattr(item, field) for field in LIBRARY_ITEM_UPDATE_FIELDS}
     # 工具面已滤 None（模型无法传递显式 null）：值非 None 的字段才是要修改的

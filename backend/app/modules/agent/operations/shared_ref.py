@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.schemas import (
@@ -23,7 +22,7 @@ from app.modules.agent.schemas import (
     SharedRefResult,
 )
 from app.modules.course.service import CourseService
-from app.modules.library.models import AgentProposal, CourseSharedRef, LibraryItem
+from app.modules.library.models import CourseSharedRef, LibraryItem
 from app.modules.library.schemas import ProposalType
 from app.modules.library.shared_refs import SharedRefService, validate_add
 from app.shared.errors import CodedHTTPException
@@ -99,9 +98,10 @@ def resolve_shared_ref_target(payload: SharedRefPayload) -> tuple[str, str]:
     return "library_item", payload.library_item_id
 
 
-async def apply_shared_ref_add(session: AsyncSession, proposal: AgentProposal) -> SharedRefResult:
+async def apply_shared_ref_add(
+    session: AsyncSession, payload: SharedRefPayload, _execution_id: str
+) -> SharedRefResult:
     """OP_SHARED_REF_ADD 应用器（调用方事务内）：经领域核心落引用行。"""
-    payload = parse_operation_payload(proposal, SharedRefPayload)
     created = await SharedRefService.add_core(session, payload.course_id, payload.library_item_id)
     return SharedRefResult(
         course_id=created.course_id,
@@ -111,10 +111,9 @@ async def apply_shared_ref_add(session: AsyncSession, proposal: AgentProposal) -
 
 
 async def apply_shared_ref_remove(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: SharedRefPayload, _execution_id: str
 ) -> SharedRefResult:
     """OP_SHARED_REF_REMOVE 应用器：删除引用行（原资料不动）。"""
-    payload = parse_operation_payload(proposal, SharedRefPayload)
     title = await _item_title(session, payload.library_item_id)
     await SharedRefService.remove_core(session, payload.course_id, payload.library_item_id)
     return SharedRefResult(

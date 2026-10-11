@@ -195,7 +195,7 @@ def _only_deferred_errors(exc: ValidationError, ref_names: Collection[str]) -> b
 
 
 def _concrete_payload(
-    spec: OperationSpec[Any],
+    spec: OperationSpec[Any, Any],
     params: dict[str, Any],
     ref_names: Collection[str],
 ) -> Any:
@@ -214,7 +214,7 @@ def _concrete_payload(
         raise
 
 
-def _plan_item_params(spec: OperationSpec[Any], item: BatchPlanItemPayload) -> dict[str, Any]:
+def _plan_item_params(spec: OperationSpec[Any, Any], item: BatchPlanItemPayload) -> dict[str, Any]:
     """计划项 → 该动作的判别载荷参数（逐项参数的真实执法）。
 
     字段名与动作载荷 schema 同源：扁平计划项列里属于该动作 schema 的字段即逐项
@@ -256,9 +256,9 @@ def _plan_item_params(spec: OperationSpec[Any], item: BatchPlanItemPayload) -> d
 
 def resolve_plan_items(
     items: list[BatchPlanItemPayload],
-) -> list[tuple[OperationSpec[Any], dict[str, Any]]]:
+) -> list[tuple[OperationSpec[Any, Any], dict[str, Any]]]:
     """逐项解析（动作装载 + 参数判别校验），顺序与计划项一一对应。"""
-    resolved: list[tuple[OperationSpec[Any], dict[str, Any]]] = []
+    resolved: list[tuple[OperationSpec[Any, Any], dict[str, Any]]] = []
     for item in items:
         action = BATCH_PLAN_ACTIONS[item.action]
         spec = get_operation(action)
@@ -287,7 +287,7 @@ def _skip_item_snapshot(item: BatchPlanItemPayload, params: dict[str, Any]) -> b
 async def capture_plan_snapshots(
     session: AsyncSession,
     items: list[BatchPlanItemPayload],
-    resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
+    resolved: list[tuple[OperationSpec[Any, Any], dict[str, Any]]],
 ) -> BatchPlanSnapshot:
     """逐项执行前快照固化（提交 / 直执行共用，调用方事务内）。
 
@@ -311,7 +311,7 @@ async def capture_plan_snapshots(
 
 async def verify_plan_snapshots(
     session: AsyncSession,
-    resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
+    resolved: list[tuple[OperationSpec[Any, Any], dict[str, Any]]],
     snapshot: BatchPlanSnapshot,
     items: list[BatchPlanItemPayload] | None = None,
 ) -> None:
@@ -477,12 +477,12 @@ def _covered_unchanged(
 def pending_plan_batch(
     payload: BatchPlanPayload,
     snapshot: BatchPlanSnapshot,
-    resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
+    resolved: list[tuple[OperationSpec[Any, Any], dict[str, Any]]],
     covered: dict[tuple[str, str], LiveStep],
 ) -> tuple[
     BatchPlanPayload,
     BatchPlanSnapshot,
-    list[tuple[OperationSpec[Any], dict[str, Any]]],
+    list[tuple[OperationSpec[Any, Any], dict[str, Any]]],
     list[int],
     dict[int, str],
     dict[int, str],
@@ -550,7 +550,7 @@ async def append_plan_operations(
     *,
     payload: BatchPlanPayload,
     snapshot: BatchPlanSnapshot,
-    resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
+    resolved: list[tuple[OperationSpec[Any, Any], dict[str, Any]]],
     authorization: OperationAuthorization,
     proposal_id: str | None,
     submitted_indexes: list[int] | None = None,
@@ -679,7 +679,7 @@ def batch_route(
     auth_mode: AuthMode,
     active: AgentRun | None,
     items: list[BatchPlanItemPayload],
-    resolved: list[tuple[OperationSpec[Any], dict[str, Any]]],
+    resolved: list[tuple[OperationSpec[Any, Any], dict[str, Any]]],
     covered: dict[tuple[str, str], LiveStep],
     session_operation_count: int,
 ) -> BatchRoute:

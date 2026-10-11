@@ -32,7 +32,6 @@ from app.modules.agent.operations.plan_confirm import (
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.runs.models import AgentOperation, AgentRun
@@ -58,7 +57,6 @@ from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.learning_plan.generation import PlanGenerationOutcome, PlanGenerationService
 from app.modules.learning_plan.scheduling import ScheduleInfeasible, local_today
 from app.modules.learning_plan.service import GoalService, PlanService
-from app.modules.library.models import AgentProposal
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ProposalCreateRequest, ProposalType
 from app.modules.llm.service import StructuredGenerationError
@@ -77,7 +75,7 @@ PLAN_DRAFT_NO_MATERIALS = "PLAN_DRAFT_NO_MATERIALS"
 
 
 async def apply_plan_draft_generate(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: PlanDraftGeneratePayload, execution_id: str
 ) -> PlanDraftGenerateResult:
     """OP_PLAN_DRAFT 应用器（调用方事务内）：提交草案生成任务即成功
     （result 留回执），真实生成由 job worker 异步完成。
@@ -85,10 +83,9 @@ async def apply_plan_draft_generate(
     提交前状态依赖由 capture_state 承担（既有目标：目标不可达 / 非进行中 /
     已有进行中计划零提交）；goal_id 经引用注入时目标在同批前序步骤创建，
     快照跳过、由推进 worker 现固化，状态依赖兜底在学习侧（ACTIVE 校验与
-    部分唯一索引）。operation_id 进 job input：写回时反查 run 会话归属，
-    草案确认卡落进触发 Run 的会话（弃置语义同口径）。
+    部分唯一索引）。execution_id 原样写入 job 的 operation_id：确认入口是
+    Proposal ID，其他入口是逐次 UUID；与真实 Operation 的关联问题另票处理。
     """
-    payload = parse_operation_payload(proposal, PlanDraftGeneratePayload)
     job_id = str(uuid4())
     now = utcnow()
     session.add(
@@ -103,7 +100,7 @@ async def apply_plan_draft_generate(
             # 预算只被重启恢复消费（进程中断自动重投，工单 08）。
             max_attempts=3,
             input_json=json.dumps(
-                {"goal_id": payload.goal_id, "operation_id": proposal.id},
+                {"goal_id": payload.goal_id, "operation_id": execution_id},
                 ensure_ascii=False,
                 separators=(",", ":"),
             ),

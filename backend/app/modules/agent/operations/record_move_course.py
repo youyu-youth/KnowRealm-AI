@@ -21,7 +21,6 @@ from app.modules.agent.operations.registry import (
     UndoOperationResult,
     assert_undo_state,
     assert_undo_version,
-    parse_operation_payload,
     parse_undo_basis,
     register_operation,
 )
@@ -33,7 +32,6 @@ from app.modules.agent.schemas import (
 )
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.modules.record.move import RecordMoveService
 from app.modules.record.service import RecordService
@@ -66,12 +64,11 @@ def resolve_record_target(payload: RecordMoveCoursePayload) -> tuple[str, str]:
 
 
 async def apply_record_move_course(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: RecordMoveCoursePayload, _execution_id: str
 ) -> RecordMoveCourseResult:
     """OP_RECORD_MOVE_COURSE 应用器（调用方事务内、不得自行 begin）：执行前
     重验已由注册表适配器完成；经跨课迁移领域核心落库（目标课程校验、进行中
     任务拒绝、搜索索引同事务重建），返回 before/after 课程对照。"""
-    payload = parse_operation_payload(proposal, RecordMoveCoursePayload)
     record = await RecordService.get(session, payload.record_id)
     if record is None:
         raise CodedHTTPException(

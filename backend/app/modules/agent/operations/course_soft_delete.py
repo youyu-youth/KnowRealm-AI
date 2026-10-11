@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.schemas import (
@@ -24,7 +23,6 @@ from app.modules.agent.schemas import (
     CourseSoftDeleteResult,
 )
 from app.modules.course.service import CourseService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.modules.record.models import Record
 from app.shared.errors import CodedHTTPException
@@ -70,12 +68,11 @@ def resolve_course_delete_target(payload: CourseSoftDeletePayload) -> tuple[str,
 
 
 async def apply_course_soft_delete(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: CourseSoftDeletePayload, _execution_id: str
 ) -> CourseSoftDeleteResult:
     """OP_COURSE_SOFT_DELETE 应用器（调用方事务内、不得自行 begin）：执行前
     重验已由注册表适配器完成；课程删除编排（级联软删＋重算＋consumer 重试）
     经领域应用函数 apply_soft_delete 与 HTTP 路由同源（spec 决策 15）。"""
-    payload = parse_operation_payload(proposal, CourseSoftDeletePayload)
     course = await CourseService.get(session, payload.course_id)
     if course is None:
         raise CodedHTTPException(

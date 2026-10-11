@@ -5,7 +5,7 @@
 路径失败不落 operation 行（提案框架 FAILED 可重试）；run 内操作走既有
 runs/{id}/operations/{op}/retry 端点（重试会重开推进）。
 
-执行前快照重验（service.operation_snapshot_stale，与推进 worker 同口径）：
+执行前快照重验（operations.execution.operation_snapshot_stale，与推进 worker 同口径）：
 目标已变 → FAILED＋OPERATION_SNAPSHOT_STALE（旧批准失效，需重新发起操作，
 不覆盖用户后续修改）。失败尝试经 append_attempt 留痕 attempts_json。
 
@@ -16,8 +16,7 @@ runs/{id}/operations/{op}/retry 端点（重试会重开推进）。
 投影（已成功＝既有结果），业务恰好执行一次。
 """
 
-import json
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import update
@@ -25,27 +24,15 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import utcnow
-from app.modules.agent.operations.registry import (
-    get_operation,
-    run_operation_applier,
-)
+from app.modules.agent.operations.execution import execute_retry_operation
+from app.modules.agent.operations.registry import get_operation
 from app.modules.agent.runs.models import AgentOperation
 from app.modules.agent.runs.schemas import OperationStatus
 from app.modules.agent.runs.service import (
     append_attempt,
     operation_out,
-    operation_snapshot_stale,
 )
 from app.shared.errors import CodedHTTPException
-
-
-def _operation_params(payload_json: str) -> dict[str, Any]:
-    """操作载荷 JSON → dict（坏值＝空 dict，由注册项 schema 校验兜底）。"""
-    try:
-        value: object = json.loads(payload_json)
-    except ValueError:
-        return {}
-    return cast("dict[str, Any]", value) if isinstance(value, dict) else {}
 
 
 async def retry_standalone_operation(
@@ -103,24 +90,7 @@ async def retry_standalone_operation(
                 return operation_out(current)
             operation = await session.get(AgentOperation, operation_id)
             assert operation is not None
-            if await operation_snapshot_stale(
-                session, spec, operation, _operation_params(operation.payload_json)
-            ):
-                raise CodedHTTPException(
-                    code="OPERATION_SNAPSHOT_STALE",
-                    status_code=409,
-                    detail="目标已发生变化，请重新发起操作",
-                )
-            result = await run_operation_applier(session, spec, operation.payload_json)
-            now = utcnow()
-            operation.status = OperationStatus.SUCCEEDED.value
-            operation.result_json = json.dumps(
-                result.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":")
-            )
-            operation.error_code = None
-            operation.attempts += 1
-            operation.updated_at = now
-            operation.finished_at = now
+            await execute_retry_operation(session, spec, operation)
     except CodedHTTPException as exc:
         # 业务写已回滚（＝未发生，不会重复成功部分）；独立小事务落 FAILED＋
         # 本次尝试错误码（attempts 递增、attempts_json 留痕）。

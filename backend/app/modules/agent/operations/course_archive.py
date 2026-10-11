@@ -22,7 +22,6 @@ from app.modules.agent.operations.registry import (
     UndoOperationResult,
     assert_undo_state,
     assert_undo_version,
-    parse_operation_payload,
     parse_undo_basis,
     register_operation,
 )
@@ -33,7 +32,6 @@ from app.modules.agent.schemas import (
     CourseStateSnapshot,
 )
 from app.modules.course.service import CourseService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
 
@@ -43,14 +41,13 @@ RESTORE_COURSE_ACTION = "restore_course"
 
 
 async def _apply_course_status(
-    session: AsyncSession, proposal: AgentProposal, *, archived: bool
+    session: AsyncSession, payload: CourseArchivePayload, *, archived: bool
 ) -> CourseArchiveResult:
     """OP_COURSE_ARCHIVE / OP_COURSE_RESTORE 应用器（调用方事务内）。
 
     执行前重验已由注册表适配器统一完成；重复归档 / 重复恢复由领域核心
     幂等守卫拒绝（409 稳定错误码 → 提案 FAILED 可重试）。
     """
-    payload = parse_operation_payload(proposal, CourseArchivePayload)
     course = await CourseService.get(session, payload.course_id)
     if course is None:
         raise CodedHTTPException(
@@ -65,15 +62,15 @@ async def _apply_course_status(
 
 
 async def apply_course_archive(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: CourseArchivePayload, _execution_id: str
 ) -> CourseArchiveResult:
-    return await _apply_course_status(session, proposal, archived=True)
+    return await _apply_course_status(session, payload, archived=True)
 
 
 async def apply_course_restore(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: CourseArchivePayload, _execution_id: str
 ) -> CourseArchiveResult:
-    return await _apply_course_status(session, proposal, archived=False)
+    return await _apply_course_status(session, payload, archived=False)
 
 
 async def _undo_course_status(

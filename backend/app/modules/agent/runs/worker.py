@@ -55,15 +55,12 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.modules.agent.auth_mode import effective_session_auth_mode
+from app.modules.agent.operations.execution import RunOperationBlocked, execute_run_operation
 from app.modules.agent.operations.registry import (
     OPERATION_TRANSIENT_ERROR,
     TRANSIENT_MAX_RETRIES,
-    OperationSpec,
     get_operation,
     is_transient_exception,
-    run_operation_applier,
-    should_execute_directly,
 )
 from app.modules.agent.runs.models import AgentOperation, AgentRun
 from app.modules.agent.runs.schemas import (
@@ -72,12 +69,9 @@ from app.modules.agent.runs.schemas import (
     AGENT_RUN_WAITING_JOB_PENDING,
     OPERATION_DEPENDENCY_FAILED,
     WAITABLE_OPERATION_ERROR_CODES,
-    AuthMode,
-    BatchPlanOut,
     OperationStatus,
     PlanCorruptError,
     RunStatus,
-    params_output_refs,
     plan_dependencies,
     require_plan_out,
 )
@@ -87,7 +81,6 @@ from app.modules.agent.runs.service import (
     cancel_pending_operations,
     enqueue_trigger,
     list_run_operations,
-    operation_snapshot_stale,
     order_run_operations,
     settle_run,
 )
@@ -244,86 +237,6 @@ async def _fail_waiting_step(session: AsyncSession, run: AgentRun, *, now: datet
             step_id=operation.id,
             job_id=run.waiting_job_id,
         )
-
-
-async def _resolve_step_refs(
-    session: AsyncSession, plan: BatchPlanOut, params: dict[str, Any]
-) -> dict[str, Any] | None:
-    """输出引用解析（工单 06 结果绑定注入）：来源步骤的 result 按点路径取值。
-
-    返回 None＝不可解析（来源步骤缺失 / 未成功 / 路径无值 / 值非非空字符串），
-    调用方按依赖失败跳过——防御路径，正常由「引用即依赖」的前置依赖判定拦截。
-    """
-    resolved = dict(params)
-    entries = {item.index: item for item in plan.items}
-    for name, ref in params_output_refs(params).items():
-        entry = entries.get(ref.step)
-        if entry is None:
-            return None
-        source = await session.get(AgentOperation, entry.operation_id)
-        if (
-            source is None
-            or source.status != OperationStatus.SUCCEEDED.value
-            or source.result_json is None
-        ):
-            return None
-        try:
-            parsed: object = json.loads(source.result_json)
-        except ValueError:
-            return None
-        node: object = parsed
-        for part in ref.field.split("."):
-            if not isinstance(node, dict):
-                return None
-            node = cast("dict[str, Any]", node).get(part)
-        if not isinstance(node, str) or not node:
-            return None
-        resolved[name] = node
-    return resolved
-
-
-def _snapshot_blank(operation: AgentOperation) -> bool:
-    """快照未固化判定：None 或空对象 "{}"（工单 06 提交期跳过含引用项的历史
-    落库形态——现固化兜底按 None 判断对此恒不触发，回归口径）。"""
-    return operation.snapshot_json is None or operation.snapshot_json == "{}"
-
-
-def _operation_params(operation: AgentOperation) -> dict[str, Any]:
-    """操作载荷 JSON（计划项逐项参数）：坏值转稳定错误码（单项失败不炸推进）。"""
-    try:
-        value: object = json.loads(operation.payload_json)
-    except ValueError as exc:
-        raise CodedHTTPException(
-            code="PROPOSAL_PAYLOAD_INVALID",
-            status_code=422,
-            detail="操作载荷不符合该动作的结构要求",
-        ) from exc
-    if not isinstance(value, dict):
-        raise CodedHTTPException(
-            code="PROPOSAL_PAYLOAD_INVALID",
-            status_code=422,
-            detail="操作载荷不符合该动作的结构要求",
-        )
-    return cast(dict[str, Any], value)
-
-
-def _authorized(run: AgentRun, spec: OperationSpec[Any]) -> bool:
-    """每步前授权重检（spec 决策 6/9、用户故事 6）：按 Run 固化依据执法，并叠加
-    同进程会话覆盖取更严格者——同进程降档即时约束后续步骤（继续 / 重试不构成
-    重新授权）；升档不放宽。覆盖为空（未切过档 / 重启后）＝仅固化依据，跨重启
-    接续不回放会话档位。
-
-    - 已批准计划（proposal_id 非空）：对象集合＋参数＋版本即授权，操作只从计划
-      建立，恒在已批准集合内（显式批准保留，spec Q3）；
-    - 档位授权 Run（proposal_id 空）：按固化档与会话覆盖中更严格者的分流规则复核
-      该操作级别；已不允许自动执行该级别 → 授权失效，转等待用户确认。
-    """
-    if run.proposal_id is not None:
-        return True
-    mode = AuthMode(run.auth_mode)
-    if run.session_id is not None:
-        mode = effective_session_auth_mode(run.session_id, mode)
-    return should_execute_directly(mode, spec.level)
 
 
 def _mark_operation(
@@ -487,65 +400,28 @@ async def advance_step(session_factory: async_sessionmaker[AsyncSession], run_id
                     )
                     _wait_for_user(run, "OPERATION_NOT_REGISTERED", now=now)
                     return False
-                if not _authorized(run, spec):
-                    _mark_operation(
-                        operation,
-                        OperationStatus.FAILED,
-                        now=now,
-                        error_code="OPERATION_APPROVAL_REQUIRED",
-                    )
-                    _wait_for_user(run, "OPERATION_APPROVAL_REQUIRED", now=now)
-                    logger.info(
-                        "agent_run_step_approval_required", run_id=run_id, step_id=operation.id
-                    )
-                    return False
-                params = _operation_params(operation)
-                if params_output_refs(params):
-                    # 输出引用注入（工单 06）：解析来源步骤结果并回填事实参数；
-                    # 修改类的目标快照提交期已固化（剔除引用字段抓取），空快照
-                    # 仅存量数据兜底现固化——回填后与普通步骤同口径走快照重验。
-                    resolved = await _resolve_step_refs(session, plan, params)
-                    if resolved is None:
+                try:
+                    result = await execute_run_operation(session, spec, run, operation, plan, now)
+                except RunOperationBlocked as exc:
+                    if exc.code == OPERATION_DEPENDENCY_FAILED:
                         _mark_operation(
-                            operation,
-                            OperationStatus.SKIPPED,
-                            now=now,
-                            error_code=OPERATION_DEPENDENCY_FAILED,
+                            operation, OperationStatus.SKIPPED, now=now, error_code=exc.code
                         )
                         logger.info(
                             "agent_run_step_ref_unresolved", run_id=run_id, step_id=operation.id
                         )
                         return True
-                    params = resolved
-                    operation.payload_json = json.dumps(
-                        params, ensure_ascii=False, separators=(",", ":")
+                    _mark_operation(operation, OperationStatus.FAILED, now=now, error_code=exc.code)
+                    _wait_for_user(run, exc.code, now=now)
+                    logger.info(
+                        "agent_run_step_approval_required"
+                        if exc.code == "OPERATION_APPROVAL_REQUIRED"
+                        else "agent_run_step_conflict",
+                        run_id=run_id,
+                        step_id=operation.id,
                     )
-                    if spec.capture_state is not None and _snapshot_blank(operation):
-                        operation.snapshot_json = (
-                            await spec.capture_state(
-                                session, spec.payload_schema.model_validate(params)
-                            )
-                        ).model_dump_json()
-                if not params_output_refs(params) and await operation_snapshot_stale(
-                    session, spec, operation, params
-                ):
-                    _mark_operation(
-                        operation,
-                        OperationStatus.FAILED,
-                        now=now,
-                        error_code="OPERATION_SNAPSHOT_STALE",
-                    )
-                    _wait_for_user(run, "OPERATION_SNAPSHOT_STALE", now=now)
-                    logger.info("agent_run_step_conflict", run_id=run_id, step_id=operation.id)
                     return False
-                result = await run_operation_applier(session, spec, operation.payload_json)
                 result_dict = result.model_dump(mode="json")
-                _mark_operation(
-                    operation,
-                    OperationStatus.SUCCEEDED,
-                    now=now,
-                    result=result_dict,
-                )
                 awaited_job_id = result_dict.get("awaited_job_id")
                 if spec.waits_for_job and isinstance(awaited_job_id, str) and awaited_job_id:
                     # 后台 job 等待转移（工单 06）：步骤提交即成功（result 留回执），

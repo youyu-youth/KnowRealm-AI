@@ -19,7 +19,6 @@ from app.modules.agent.operations.plan_confirm import (
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.schemas import (
@@ -31,7 +30,6 @@ from app.modules.agent.schemas import (
 from app.modules.course.service import CourseService
 from app.modules.learning_plan.models import LearningGoal, LearningPlan
 from app.modules.learning_plan.service import PlanService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
 
@@ -94,11 +92,10 @@ def resolve_plan_regenerate_target(payload: PlanRegeneratePayload) -> tuple[str,
 
 
 async def apply_plan_regenerate(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: PlanRegeneratePayload, _execution_id: str
 ) -> PlanRegenerateResult:
     """OP_PLAN_REGENERATE 应用器（调用方事务内）：旧版 SUPERSEDED + 新版本
     落库（锁定项原样带入，状态归 PENDING），返回换代事实投影。"""
-    payload = parse_operation_payload(proposal, PlanRegeneratePayload)
     goal = await require_active_goal(session, payload.goal_id)
     superseded = await PlanService.get_active_for_goal(session, goal.id)
     plan = await PlanService.regenerate_core(session, goal, payload)

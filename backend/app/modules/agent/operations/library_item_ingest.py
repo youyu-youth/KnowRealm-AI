@@ -20,14 +20,13 @@ from app.db.base import utcnow
 from app.modules.agent.operations.registry import (
     OperationLevel,
     OperationSpec,
-    parse_operation_payload,
     register_operation,
 )
 from app.modules.agent.schemas import LibraryItemIngestPayload, LibraryItemIngestResult
 from app.modules.capture.ingest import create_web_ingest_rows
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
-from app.modules.library.models import AgentProposal, LibraryItem, LibraryItemRecord
+from app.modules.library.models import LibraryItem, LibraryItemRecord
 from app.modules.library.schemas import ProposalType
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
@@ -124,11 +123,10 @@ async def _reused_ingest(
 
 
 async def apply_library_item_ingest(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: LibraryItemIngestPayload, _execution_id: str
 ) -> LibraryItemIngestResult:
     """OP_LIBRARY_ITEM_INGEST 应用器（调用方事务内、不得自行 begin）：经
     WEB 入库核心建行并提交 WEB_FETCH 任务，返回等待核对对象（job_id）。"""
-    payload = parse_operation_payload(proposal, LibraryItemIngestPayload)
     reused = await _reused_ingest(session, payload.url, payload.course_id)
     if reused is not None:
         return reused

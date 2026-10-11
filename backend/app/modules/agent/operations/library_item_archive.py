@@ -20,7 +20,6 @@ from app.modules.agent.operations.registry import (
     UndoOperationResult,
     assert_undo_state,
     assert_undo_version,
-    parse_operation_payload,
     parse_undo_basis,
     register_operation,
 )
@@ -31,7 +30,6 @@ from app.modules.agent.schemas import (
     LibraryItemStateSnapshot,
 )
 from app.modules.library.lifecycle import LibraryLifecycleService
-from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.modules.library.service import LibraryService
 
@@ -41,13 +39,12 @@ RESTORE_LIBRARY_ITEM_ACTION = "restore_library_item"
 
 
 async def _apply_library_item_status(
-    session: AsyncSession, proposal: AgentProposal, *, archived: bool
+    session: AsyncSession, payload: LibraryItemArchivePayload, *, archived: bool
 ) -> LibraryItemArchiveResult:
     """OP_LIBRARY_ITEM_ARCHIVE / OP_LIBRARY_ITEM_RESTORE 应用器（调用方事务内）。
 
     执行前重验已由注册表适配器统一完成；重复归档 / 重复恢复由领域核心幂等
     守卫拒绝（409 稳定错误码 → 提案 FAILED 可重试）。"""
-    payload = parse_operation_payload(proposal, LibraryItemArchivePayload)
     item = await LibraryService.active_item(session, payload.item_id)
     await LibraryLifecycleService.set_archived_core(session, item, archived=archived)
     return LibraryItemArchiveResult(
@@ -58,15 +55,15 @@ async def _apply_library_item_status(
 
 
 async def apply_library_item_archive(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: LibraryItemArchivePayload, _execution_id: str
 ) -> LibraryItemArchiveResult:
-    return await _apply_library_item_status(session, proposal, archived=True)
+    return await _apply_library_item_status(session, payload, archived=True)
 
 
 async def apply_library_item_restore(
-    session: AsyncSession, proposal: AgentProposal
+    session: AsyncSession, payload: LibraryItemArchivePayload, _execution_id: str
 ) -> LibraryItemArchiveResult:
-    return await _apply_library_item_status(session, proposal, archived=False)
+    return await _apply_library_item_status(session, payload, archived=False)
 
 
 async def _undo_library_item_status(
