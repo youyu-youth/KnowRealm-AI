@@ -84,6 +84,25 @@ def effective_session_auth_mode(session_id: str, turn_mode: AuthMode) -> AuthMod
     )
 
 
+def clamp_resume_auth_mode(
+    session_id: str, turn_mode: AuthMode, current_default: AuthMode
+) -> AuthMode:
+    """恢复轮次（attempt>1）的注入档（ChatTurn 规格 §11/T13）。
+
+    会话覆盖仍在（同进程 resume，临时授权意图未消失）＝原固化档照用，
+    中途升降档约束交提交点 effective 实时取严格者（既有口径）；覆盖缺席
+    （重启清空 / 从未切档）＝会话临时高权限依据已消失，与当前全局默认
+    取更严格者——原授权是上限、全局档位恢复按当前配置重验且不升档，
+    高权限写回落提案确认卡等显式重新授权。
+    """
+    if _SESSION_AUTH_OVERRIDES.get(session_id) is not None:
+        return turn_mode
+    return min(
+        (turn_mode, current_default),
+        key=lambda mode: _AUTH_MODE_STRICTNESS[mode],
+    )
+
+
 router = APIRouter(
     prefix="/api/agent",
     tags=["agent-runs"],

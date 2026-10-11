@@ -2551,6 +2551,7 @@
         "generic": "回答生成等待处理；恢复条件后可继续",
         "PROVIDER_UNAVAILABLE": "原 AI 服务配置当前不可用；恢复配置后可继续",
         "PROVIDER_CHANGED": "当前 AI 服务与原轮次不一致；恢复原配置后可继续，或停止后重新提问",
+        "OUTBOUND_CONSENT_REVOKED": "AI 服务外发同意已失效或未确认；在设置中重新确认后可继续",
         "MEMORY_OUTBOUND_REVOKED": "已注入的记忆不再允许外发；恢复同意后可继续",
         "WEB_SEARCH_UNAVAILABLE": "原轮次允许联网搜索，当前联网配置不可用；恢复配置后可继续",
         "GRAPH_INCOMPATIBLE": "执行引擎版本与原轮次不兼容；请停止后重新提问",

@@ -390,6 +390,16 @@ async def resume_blocked_reason(
             ChatTurnWaitingKind.PROVIDER_CHANGED,
             f"当前 AI 服务（{provider.model}）与原轮次（{execution.get('provider_model')}）不一致",
         )
+    # 外发同意通用重验（规格 §12：密钥变化导致同意失效时先重新确认）：凭据
+    # 不落盘，PROVIDER_CHANGED 只比对地址/模型，换密钥只能经同意指纹检测；
+    # 无记忆轮次同样不得默默继续出网（首次执行是用户主动发起，恢复重发需
+    # 同意依据仍在）。
+    _, consent_current = await asyncio.to_thread(llm_consent, data_dir)
+    if not consent_current:
+        return (
+            ChatTurnWaitingKind.OUTBOUND_CONSENT_REVOKED,
+            "AI 服务外发同意已失效或未确认，请在设置中重新确认后继续",
+        )
     if bool(execution.get("memory_injection_allowed")):
         injected = execution.get("injected_memories")
         if isinstance(injected, list) and injected:

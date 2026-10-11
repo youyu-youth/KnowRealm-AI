@@ -3765,7 +3765,7 @@ export interface components {
          * @description WAITING_USER 等待原因类型（票 02，规格 §7/§11/§12）。
          * @enum {string}
          */
-        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING";
+        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "OUTBOUND_CONSENT_REVOKED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING";
         /**
          * ChatTurnWaitingReason
          * @description 等待原因载荷（chat_turns.waiting_reason JSON）。

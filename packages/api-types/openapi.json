@@ -2589,6 +2589,7 @@
         "enum": [
           "PROVIDER_UNAVAILABLE",
           "PROVIDER_CHANGED",
+          "OUTBOUND_CONSENT_REVOKED",
           "MEMORY_OUTBOUND_REVOKED",
           "WEB_SEARCH_UNAVAILABLE",
           "GRAPH_INCOMPATIBLE",

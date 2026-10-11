@@ -24,7 +24,7 @@ from langchain_core.outputs import ChatGenerationChunk, ChatResult
 
 from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
-from app.modules.settings.config import save_llm_provider
+from app.modules.settings.config import grant_llm_consent, save_llm_provider
 
 TOKEN = "test-launch-token"
 STUB_REPLY = ["回答", "完成", "了"]
@@ -133,6 +133,8 @@ async def turns_app(
         model="stub-chat-model",
         clear_api_key=False,
     )
+    # 外发同意（恢复重验前置，票 02 规格 §12）：续跑用例按已同意用户现场。
+    grant_llm_consent(tmp_path)
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
         async with httpx.AsyncClient(

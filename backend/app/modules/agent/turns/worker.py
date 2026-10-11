@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
 from app.modules.agent import message_service
+from app.modules.agent.auth_mode import clamp_resume_auth_mode
 from app.modules.agent.citations import parse_citation_reply, parse_library_citation_reply
 from app.modules.agent.context import ChatContextTooLargeError
 from app.modules.agent.graph import (
@@ -111,7 +112,12 @@ from app.modules.jobs.runner import (
 from app.modules.jobs.schemas import ProcessingJobStatus
 from app.modules.search.integrations.tavily import TavilySearchClient
 from app.modules.search.web_search import SearchProvider
-from app.modules.settings.config import LlmProviderConfig, load_llm_provider, load_web_search_config
+from app.modules.settings.config import (
+    LlmProviderConfig,
+    agent_default_auth_mode,
+    load_llm_provider,
+    load_web_search_config,
+)
 from app.shared.errors import CodedHTTPException
 from app.shared.events import RecordInvalidationNotifier
 
@@ -389,6 +395,15 @@ class _TurnExecutor:
         else:
             await self._persist_execution_snapshot(turn, execution, prompt_context)
         budget = await self._restore_budget(resume)
+        turn_mode = AuthMode(str(execution.get("auth_mode") or AuthMode.REQUEST_APPROVAL))
+        if turn.attempt > 1:
+            # 恢复档收紧（ChatTurn 规格 §11/T13）：重启后会话临时高权限失效——
+            # 覆盖缺席时与当前全局默认取更严格者，高权限写回落提案等显式重新
+            # 授权；同进程 resume 覆盖仍在则 clamp 原样放行（升降档交提交点）。
+            current_default = AuthMode(
+                await asyncio.to_thread(agent_default_auth_mode, self._data_dir)
+            )
+            turn_mode = clamp_resume_auth_mode(session_id, turn_mode, current_default)
         runtime = AgentRuntimeContext(
             session_factory=self._session_factory,
             session_id=session_id,
@@ -400,7 +415,7 @@ class _TurnExecutor:
             web_search_provider=web_search_provider,
             llm_provider=provider,
             page=prompt_context.page,
-            auth_mode=AuthMode(str(execution.get("auth_mode") or AuthMode.REQUEST_APPROVAL)),
+            auth_mode=turn_mode,
             instruction_excerpt=user_content,
             message_id=turn.user_message_id,
             user_timezone=user_timezone,

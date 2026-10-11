@@ -38,7 +38,7 @@ from app.modules.agent.turns.effects import (
     prepare_effect,
     reset_tool_call_identity,
 )
-from app.modules.settings.config import save_llm_provider
+from app.modules.settings.config import grant_llm_consent, save_llm_provider
 from tests.test_chat_turns import (
     STUB_REPLY,
     TOKEN,
@@ -68,8 +68,10 @@ async def recovery_app(
     replies: list[StubReply] | None = None,
     patches: Callable[[pytest.MonkeyPatch], None] | None = None,
     provider: tuple[str, str, str] | None = None,
+    consent: bool = True,
 ) -> AsyncGenerator[tuple[FastAPI, httpx.AsyncClient, list[list[Any]]], None]:
-    """provider=(base_url, api_key, model)：覆盖缺省 stub 供应商（T14 换配置）。"""
+    """provider=(base_url, api_key, model)：覆盖缺省 stub 供应商（T14 换配置）；
+    consent=False 跳过外发同意授予（密钥轮换使指纹失配的现场）。"""
     captured: list[list[Any]] = []
     queue: list[StubReply] = list(replies) if replies is not None else [list(STUB_REPLY)]
 
@@ -91,6 +93,9 @@ async def recovery_app(
         model=model,
         clear_api_key=False,
     )
+    # 外发同意按当前供应商授予（恢复重验前置，票 02 规格 §12）。
+    if consent:
+        grant_llm_consent(tmp_path)
     if patches is not None:
         patches(monkeypatch)
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
@@ -450,6 +455,54 @@ async def test_t14_provider_change_waits_then_resumes(
 
     # 恢复原配置后 resume：重新排队并续跑完成（原轮次身份不变）。
     async with recovery_app(tmp_path, monkeypatch) as (_app3, client3, _captured3):
+        resumed = await client3.post(f"/api/chat-turns/{turn_id}/resume", json={})
+        assert resumed.status_code == 200
+        final = await wait_terminal(client3, turn_id)
+        assert final["status"] == "COMPLETED"
+        turns = await db_rows(
+            tmp_path, "SELECT COUNT(*) FROM chat_turns WHERE session_id = ?", (session_id,)
+        )
+        assert turns[0][0] == 1
+
+
+# ---------------------------------------------------------------------------
+# T14 补充：同服务换密钥使外发同意失效——无记忆轮次恢复同样重验同意
+# （规格 §12「密钥或地址变化导致同意失效时，先重新确认」，codex 审查 P1）。
+
+
+@pytest.mark.anyio
+async def test_t14_api_key_rotation_blocks_resume_until_reconsent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = asyncio.Event()
+    replies: list[StubReply] = [GatedReply(prefix=("崩溃前",), release=gate)]
+    async with recovery_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
+        session_id = await create_session(client)
+        submitted = await submit(client, session_id, "换密钥问题", request_id="req-t14b-0001")
+        turn_id = str(submitted.json()["id"])
+        await wait_running_progress(client, turn_id, min_seq=1)
+
+    # 崩溃后同地址同模型换密钥、不重新授予同意：地址/模型比对放行，同意
+    # 指纹失配必须拦截（凭据不落盘，密钥变化只能经同意指纹检测）。
+    async with recovery_app(
+        tmp_path,
+        monkeypatch,
+        provider=("https://stub.example.com/v1", "sk-rotated", "stub-chat-model"),
+        consent=False,
+    ) as (_app2, client2, _captured2):
+        state = await wait_stable_status(client2, turn_id, ("WAITING_USER",))
+        assert state["waiting_reason"]["kind"] == "OUTBOUND_CONSENT_REVOKED"
+        assert state["output_text"] == "崩溃前"
+        # 条件未恢复（同意仍指向旧密钥指纹）：resume 明确拒绝。
+        denied = await client2.post(f"/api/chat-turns/{turn_id}/resume", json={})
+        assert denied.status_code == 409
+
+    # 重新授予同意（新密钥指纹）后 resume：重新排队并续跑完成。
+    async with recovery_app(
+        tmp_path,
+        monkeypatch,
+        provider=("https://stub.example.com/v1", "sk-rotated", "stub-chat-model"),
+    ) as (_app3, client3, _captured3):
         resumed = await client3.post(f"/api/chat-turns/{turn_id}/resume", json={})
         assert resumed.status_code == 200
         final = await wait_terminal(client3, turn_id)

@@ -86,6 +86,48 @@ async def test_mid_stream_downgrade_constrains_current_turn(tmp_path: Path) -> N
         assert len(await table_rows(session_factory, "SELECT * FROM courses")) == 1
 
 
+def test_clamp_resume_auth_mode_matrix() -> None:
+    """恢复档收紧矩阵（ChatTurn 规格 §11/T13，codex 审查 P1 修复）：覆盖
+    缺席（重启清空 / 从未切档）＝原固化档与当前全局默认取更严格者，临时
+    高权限不因重启延续、受理后全局降档不放大为旧授权、升档不自动扩大；
+    覆盖仍在（同进程 resume）＝原档照用，升降档约束交提交点 effective。"""
+    from app.modules.agent.auth_mode import (
+        clamp_resume_auth_mode,
+        clear_session_auth_override,
+        set_session_auth_override,
+    )
+
+    session_id = "sess-clamp-resume"
+    clear_session_auth_override(session_id)
+    # 重启后临时高权限失效：回落更严格的当前全局档（高权限写走提案确认）。
+    assert (
+        clamp_resume_auth_mode(session_id, AuthMode.FULL_ACCESS, AuthMode.REQUEST_APPROVAL)
+        == AuthMode.REQUEST_APPROVAL
+    )
+    # 原为全局档且当前仍同档：按当前全局配置重验通过，照用。
+    assert (
+        clamp_resume_auth_mode(session_id, AuthMode.FULL_ACCESS, AuthMode.FULL_ACCESS)
+        == AuthMode.FULL_ACCESS
+    )
+    # 受理后全局调低：不把全局设置变化扩大为旧任务授权。
+    assert (
+        clamp_resume_auth_mode(session_id, AuthMode.AUTO_APPROVE, AuthMode.REQUEST_APPROVAL)
+        == AuthMode.REQUEST_APPROVAL
+    )
+    # 受理后全局调高：原授权是上限，升档不自动扩大。
+    assert (
+        clamp_resume_auth_mode(session_id, AuthMode.REQUEST_APPROVAL, AuthMode.FULL_ACCESS)
+        == AuthMode.REQUEST_APPROVAL
+    )
+    # 同进程 resume 覆盖仍在：原固化档照用（降档收紧由提交点 effective 承担）。
+    set_session_auth_override(session_id, AuthMode.REQUEST_APPROVAL)
+    assert (
+        clamp_resume_auth_mode(session_id, AuthMode.FULL_ACCESS, AuthMode.REQUEST_APPROVAL)
+        == AuthMode.FULL_ACCESS
+    )
+    clear_session_auth_override(session_id)
+
+
 @pytest.mark.anyio
 async def test_mid_stream_upgrade_does_not_widen_current_turn(tmp_path: Path) -> None:
     """中途升档不放宽本轮（与「升档不自动执行既有动作序列」同一安全精神）：

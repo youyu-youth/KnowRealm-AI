@@ -155,7 +155,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 - 在探索或检索代码库时，优先使用 codegraph 相关工具来探索或检索代码
 - 当需要爬取网页数据的时候，你可以使用firecrawl 相关工具来进行爬取
-- 技术文档查询时，使用 context7 tools ！
+- 技术文档查询时，使用 context7 mcp 来查询 文档
 - 如果使用 lsp 工具更为高效，如 pyright-lsp，则使用它
 - 涉及到浏览器交互的操作，优先使用 browser-use mcp 工具.或者 playwright 插件
 

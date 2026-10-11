@@ -88,6 +88,9 @@ class ChatTurnWaitingKind(StrEnum):
     PROVIDER_UNAVAILABLE = "PROVIDER_UNAVAILABLE"
     # 当前配置与原供应商身份 / 模型不一致（不静默换服务）。
     PROVIDER_CHANGED = "PROVIDER_CHANGED"
+    # 外发同意已失效或未确认（密钥或地址变化使指纹失配，规格 §12——凭据
+    # 不落盘，密钥变化只能经同意指纹检测）。
+    OUTBOUND_CONSENT_REVOKED = "OUTBOUND_CONSENT_REVOKED"
     # 已注入记忆但记忆外发同意已收回。
     MEMORY_OUTBOUND_REVOKED = "MEMORY_OUTBOUND_REVOKED"
     # 原轮次允许联网但当前联网配置不可用。
