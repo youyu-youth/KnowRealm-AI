@@ -37,9 +37,12 @@ from app.modules.agent.turns.effects import (
     ToolCallIdentity,
     bind_tool_call_identity,
     complete_effect,
+    count_turn_effects,
+    effect_args_fingerprint,
     prepare_effect,
     reset_tool_call_identity,
 )
+from app.modules.agent.turns.models import ChatTurnToolEffect
 from app.modules.settings.config import grant_llm_consent, save_llm_provider
 from tests.test_chat_turns import (
     STUB_REPLY,
@@ -287,11 +290,13 @@ async def _seed_turn(session_factory: Any) -> _TurnSeed:
 
 
 def _runtime_for(session_factory: Any, seed: _TurnSeed) -> AgentRuntimeContext:
+    from app.modules.agent.schemas import ChatMode, ChatScope
+
     return AgentRuntimeContext(
         session_factory=session_factory,
         session_id=seed.session_id,
-        mode="RESEARCH",
-        scope="ALL",
+        mode=ChatMode.RESEARCH,
+        scope=ChatScope.ALL,
         turn_id=seed.turn_id,
         turn_claim_token="claim-test",
     )
@@ -412,6 +417,197 @@ async def test_t08_undo_committed_replays_original_receipt(tmp_path: Path, direc
             reset_tool_call_identity(token)
         assert await operation_rows(factory) == rows
         assert (await item_row(factory, 1))[0] == "条目1"
+
+
+# ---------------------------------------------------------------------------
+# 规格 §9/§10：预算满时重放已提交项必须复用原回执（幂等恢复先于上限执法）；
+# 恢复重建的 operations_created 只数递增入口效果行（记忆 / 入库逐项不混入）。
+
+
+@pytest.mark.anyio
+async def test_operation_replay_at_budget_limit_returns_original_receipt(
+    tmp_path: Path,
+) -> None:
+    """第五项操作已提交、checkpoint 未保存：恢复重放返回原回执而非 LIMIT。"""
+    from app.modules.agent.operations.registry import submit_operation
+    from app.modules.agent.runs.schemas import AuthMode
+    from app.modules.agent.runtime import MAX_OPERATION_PROPOSALS_PER_TURN
+    from tests.test_agent_undo_retry import (
+        bare_db,
+        invoke_tool,
+        item_id,
+        seed_item,
+        update_library_item,
+    )
+
+    async with bare_db(tmp_path) as factory:
+        await seed_item(factory, 1)
+        await invoke_tool(update_library_item, factory, {"item_id": item_id(1), "title": "改名"})
+        seed = await _seed_turn(factory)
+        runtime = AgentRuntimeContext(
+            session_factory=factory,
+            session_id=seed.session_id,
+            auth_mode=AuthMode.FULL_ACCESS,
+            turn_id=seed.turn_id,
+            turn_claim_token="claim-test",
+        )
+        token = bind_tool_call_identity(
+            ToolCallIdentity(namespace=f"chat-turn-{seed.turn_id}", logical_call_id="call-op-5")
+        )
+        try:
+            args = {"item_id": item_id(1), "title": "第五项修改"}
+            first = await submit_operation(runtime, "update_library_item", args)
+            assert first["ok"] is True, first
+            # 同轮前四项操作已消耗预算 ＝ 恢复 _restore_budget 重建后的现场。
+            runtime.budget.operations_created = MAX_OPERATION_PROPOSALS_PER_TURN
+            assert await submit_operation(runtime, "update_library_item", args) == first
+            assert runtime.budget.operations_created == MAX_OPERATION_PROPOSALS_PER_TURN
+            # 预算执法保持：新调用（不同逻辑身份）仍被每轮上限拒绝。
+            reset_tool_call_identity(token)
+            token = bind_tool_call_identity(
+                ToolCallIdentity(namespace=f"chat-turn-{seed.turn_id}", logical_call_id="call-op-6")
+            )
+            rejected = await submit_operation(
+                runtime, "update_library_item", {"item_id": item_id(1), "title": "第六项"}
+            )
+            assert rejected["error"] == "OPERATION_PROPOSAL_LIMIT"
+        finally:
+            reset_tool_call_identity(token)
+
+
+@pytest.mark.anyio
+async def test_plan_replay_at_budget_limit_returns_original_receipt(
+    tmp_path: Path,
+) -> None:
+    """plan_batch_operations 已提交后重放：预算满仍返回原 Run 回执。"""
+    from app.modules.agent.runs.plans import submit_batch_plan
+    from app.modules.agent.runs.schemas import AuthMode
+    from app.modules.agent.runtime import MAX_OPERATION_PROPOSALS_PER_TURN
+
+    db_path = tmp_path / "knowrealm.db"
+    await run_migrations(db_path)
+    _engine, session_factory = create_database(db_path)
+    try:
+        seed = await _seed_turn(session_factory)
+        receipt = {"ok": True, "run": {"run_id": "run-1", "added_item_count": 2}}
+        fingerprint = effect_args_fingerprint({"items": ["x"]})
+        async with session_factory() as session, session.begin():
+            session.add(
+                ChatTurnToolEffect(
+                    id="seed-plan-effect",
+                    turn_id=seed.turn_id,
+                    namespace=f"chat-turn-{seed.turn_id}",
+                    logical_call_id="call-plan-1",
+                    effect_index=0,
+                    tool_name="plan_batch_operations",
+                    args_fingerprint=fingerprint,
+                    status="SUCCEEDED",
+                    result_json=json.dumps(receipt, ensure_ascii=False),
+                )
+            )
+        runtime = AgentRuntimeContext(
+            session_factory=session_factory,
+            session_id=seed.session_id,
+            auth_mode=AuthMode.FULL_ACCESS,
+            turn_id=seed.turn_id,
+            turn_claim_token="claim-test",
+        )
+        runtime.budget.operations_created = MAX_OPERATION_PROPOSALS_PER_TURN
+        token = bind_tool_call_identity(
+            ToolCallIdentity(namespace=f"chat-turn-{seed.turn_id}", logical_call_id="call-plan-1")
+        )
+        try:
+            assert await submit_batch_plan(runtime, {"items": ["x"]}) == receipt
+            assert runtime.budget.operations_created == MAX_OPERATION_PROPOSALS_PER_TURN
+        finally:
+            reset_tool_call_identity(token)
+    finally:
+        await _engine.dispose()
+
+
+@pytest.mark.anyio
+async def test_restore_budget_counts_only_operation_scoped_effects(
+    tmp_path: Path,
+) -> None:
+    """恢复口径：操作预算只数递增入口效果行；全部副作用口径（checkpoint
+    缺失分流）保持含记忆与入库逐项行。"""
+    from app.modules.agent.operations.registry import budget_counted_effect_tool_names
+
+    db_path = tmp_path / "knowrealm.db"
+    await run_migrations(db_path)
+    _engine, session_factory = create_database(db_path)
+    try:
+        seed = await _seed_turn(session_factory)
+        rows = [
+            ("update_library_item", 0),
+            ("plan_batch_operations", 0),
+            ("undo_operation", 0),
+            ("propose_memory", 0),
+            ("propose_ingest", 1),
+        ]
+        async with session_factory() as session, session.begin():
+            for i, (tool, index) in enumerate(rows):
+                session.add(
+                    ChatTurnToolEffect(
+                        id=f"seed-{i}",
+                        turn_id=seed.turn_id,
+                        namespace=f"chat-turn-{seed.turn_id}",
+                        logical_call_id=f"call-{tool}-{i}",
+                        effect_index=index,
+                        tool_name=tool,
+                        args_fingerprint=f"fp-{i}",
+                        status="SUCCEEDED",
+                        result_json="{}",
+                    )
+                )
+        scoped = budget_counted_effect_tool_names()
+        assert {"update_library_item", "plan_batch_operations", "undo_operation"} <= scoped
+        assert "propose_memory" not in scoped and "propose_ingest" not in scoped
+        async with session_factory() as session:
+            operations = await count_turn_effects(session, seed.turn_id, tool_names=scoped)
+            total = await count_turn_effects(session, seed.turn_id)
+        assert operations == 3
+        assert total == 5
+    finally:
+        await _engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+@pytest.mark.anyio
+@pytest.mark.parametrize("status", ["INTERRUPTED", "QUEUED"])
+async def test_resume_preserves_output_and_cursor(tmp_path: Path, status: str) -> None:
+    """首次继续与排队状态的重复继续都返回正文、过程和游标一致的完整快照。"""
+    from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent
+    from app.modules.agent.turns.service import ChatTurnService
+    from tests.test_agent_undo_retry import bare_db
+
+    async with bare_db(tmp_path) as factory:
+        seed = await _seed_turn(factory)
+        async with factory() as session, session.begin():
+            turn = await session.get(ChatTurn, seed.turn_id)
+            assert turn is not None
+            turn.status = status
+            turn.last_seq = 1
+            session.add(
+                ChatTurnEvent(
+                    turn_id=seed.turn_id,
+                    seq=1,
+                    attempt=1,
+                    output_revision=1,
+                    type="token",
+                    segment_id="saved-segment",
+                    payload_json=json.dumps({"text": "已保存的正文"}, ensure_ascii=False),
+                )
+            )
+        resumed = await ChatTurnService.resume_turn(
+            session_factory=factory, data_dir=tmp_path, turn_id=seed.turn_id
+        )
+        authoritative = await ChatTurnService.get_snapshot(factory, seed.turn_id)
+        assert resumed is not None and authoritative is not None
+        assert resumed.output_text == "已保存的正文"
+        assert resumed.last_seq == 1
+        assert resumed.process is not None
+        assert resumed == authoritative
 
 
 # ---------------------------------------------------------------------------

@@ -259,6 +259,19 @@ def get_operation(action: str) -> OperationSpec[Any] | None:
     return _OPERATIONS.get(action)
 
 
+OPERATION_BUDGET_EFFECT_TOOL_NAMES: frozenset[str] = frozenset(
+    {"plan_batch_operations", "undo_operation"}
+)
+
+
+def budget_counted_effect_tool_names() -> frozenset[str]:
+    """操作预算计数的效果行名单（ChatTurn 规格 §10 恢复口径单一来源）：
+    全部注册 action（submit_operation 三类产物共用 action 名落行）∪ 批量
+    计划与撤销入口，与 runtime.budget.operations_created 三处递增执法面
+    一一对应；记忆与入库逐项效果行不计入操作预算。"""
+    return frozenset(_OPERATIONS) | OPERATION_BUDGET_EFFECT_TOOL_NAMES
+
+
 def lenient_tool_args_schema(payload_schema: type[BaseModel]) -> type[BaseModel]:
     """由注册项 payload schema 派生薄工具的宽松参数 schema（spec 决策 3/9）。
 
@@ -668,8 +681,9 @@ async def submit_operation(
     *,
     basis_json: str | None = None,
 ) -> dict[str, Any]:
-    """操作类写工具的公共提交入口（spec 决策 10）：校验 → 每轮上限执法 →
-    按当轮授权档位分流（默认档落提案＝现状零变化，自动档直执行）。
+    """操作类写工具的公共提交入口（spec 决策 10）：幂等恢复 → 校验 →
+    每轮上限执法 → 按当轮授权档位分流（默认档落提案＝现状零变化，自动档
+    直执行）。
 
     basis_json（可选）＝载荷派生基线：载荷派生自外部过程（如 LLM 调用）
     之前的数据库状态时，工具在该时刻固化的 capture_state 快照——提交时与
@@ -686,6 +700,15 @@ async def submit_operation(
     spec = get_operation(action)
     if spec is None:
         return {"ok": False, "error": "OPERATION_NOT_REGISTERED", "proposals": []}
+    # 已提交结果先于预算与参数校验恢复（规格 §9）：重放已成功项复用原回执，
+    # 不消耗新写预算、不被每轮上限拦截（先例：submit_undo）。
+    effect_args = {"action": action, "args": args, "basis_json": basis_json}
+    try:
+        preparation = await prepare_effect(runtime, action, effect_args)
+    except EffectExecutionError as exc:
+        return {"ok": False, "error": exc.code, "detail": exc.detail, "proposals": []}
+    if preparation is not None and preparation.replay is not None:
+        return preparation.replay
     if runtime.budget.operations_created >= MAX_OPERATION_PROPOSALS_PER_TURN:
         return {
             "ok": False,
@@ -702,16 +725,6 @@ async def submit_operation(
             body["detail"] = detail
         return body
     runtime.budget.operations_created += 1
-    # 幂等前置（票 02，规格 §9）：轮次上下文下按逻辑调用身份恢复——已成功项
-    # 复用原回执（提案 ID / operation_id），不重复创建对象；业务失败不记录
-    # （重放重新执行，不把失败当成功跳过）。
-    effect_args = {"action": action, "args": args, "basis_json": basis_json}
-    try:
-        preparation = await prepare_effect(runtime, action, effect_args)
-    except EffectExecutionError as exc:
-        return {"ok": False, "error": exc.code, "detail": exc.detail, "proposals": []}
-    if preparation is not None and preparation.replay is not None:
-        return preparation.replay
     # 生效档＝会话覆盖与本轮起点档取更严格者（spec 用户故事 6）：流式生成
     # 中途降档经注册表即时约束本轮后续提交；升档自下一轮（请求携带新档）放宽。
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)

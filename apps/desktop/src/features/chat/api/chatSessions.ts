@@ -203,6 +203,9 @@ export type TurnStreamHandlers = {
     process?: ChatResponseProcess;
     /** revising：被替换的未完成正文 segment（票 02 版本替换边界）。 */
     replacesSegment?: string | null;
+    /** revising：替换后基准正文（服务端投影口径）。被替换段不在本地分段
+     * （恢复 / 刷新后已固化进快照 baseline）时消费端重置基准，防两份半段。 */
+    baseline?: string | null;
     /** waiting_user：等待原因（与快照 waiting_reason 同形）。 */
     reason?: ChatTurnWaitingReason | null;
   }) => void;
@@ -258,6 +261,12 @@ async function turnEvents(
                 ? data.replaces_segment
                 : typeof data.replaces_segment === "object" &&
                     data.replaces_segment === null
+                  ? null
+                  : undefined,
+            baseline:
+              typeof data.baseline === "string"
+                ? data.baseline
+                : typeof data.baseline === "object" && data.baseline === null
                   ? null
                   : undefined,
             reason: parseWaitingReason(data.reason),

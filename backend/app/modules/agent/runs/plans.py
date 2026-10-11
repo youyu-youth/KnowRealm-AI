@@ -743,7 +743,8 @@ def _run_tool_payload(
 
 
 async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) -> dict[str, Any]:
-    """计划工具公共提交入口（工单 05）：校验 → 预算 → 分流 → 执行或落计划卡。
+    """计划工具公共提交入口（工单 05）：幂等恢复 → 校验 → 预算 → 分流 →
+    执行或落计划卡。
 
     返回工具 JSON 载荷（模型转述给用户）：
     - 直执行 → {ok: True, run: {run_id, status, plan_version, added_item_count}}；
@@ -754,6 +755,16 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
     预算口径：一张计划卡 / 一个 Run 计一次操作预算（计划项数由计划规模上限与
     档位阈值各自约束；超每轮上限拒绝不截断，先例见 registry 提交路径）。
     """
+    # 已提交结果先于预算与载荷校验恢复（规格 §9）：重放已成功项复用原
+    # Run / 计划卡回执，不消耗新写预算、不被每轮上限拦截（先例：submit_undo）。
+    # 「已在计划内」纯读结果与失败载荷不记录（重放重新判定，不把失败当成功跳过）。
+    effect_args: dict[str, Any] = {"items": args.get("items") or []}
+    try:
+        preparation = await prepare_effect(runtime, "plan_batch_operations", effect_args)
+    except EffectExecutionError as exc:
+        return {"ok": False, "error": exc.code, "detail": exc.detail}
+    if preparation is not None and preparation.replay is not None:
+        return preparation.replay
     if runtime.budget.operations_created >= MAX_OPERATION_PROPOSALS_PER_TURN:
         return {
             "ok": False,
@@ -769,16 +780,6 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
     except CodedHTTPException as exc:
         return {"ok": False, "error": exc.code, "detail": exc.detail}
     runtime.budget.operations_created += 1
-    # 幂等前置（票 02，规格 §9）：轮次上下文下按逻辑调用身份恢复——已成功项
-    # 复用原 Run / 计划卡回执，不重复创建对象；「已在计划内」纯读结果与失败
-    # 载荷不记录（重放重新判定，不把失败当成功跳过）。
-    effect_args: dict[str, Any] = {"items": args.get("items") or []}
-    try:
-        preparation = await prepare_effect(runtime, "plan_batch_operations", effect_args)
-    except EffectExecutionError as exc:
-        return {"ok": False, "error": exc.code, "detail": exc.detail}
-    if preparation is not None and preparation.replay is not None:
-        return preparation.replay
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     async with runtime.session_factory() as session, session.begin():
         # 业务提交处最终校验（ChatTurn 规格 §2/§14）：持久取消先落库或执行

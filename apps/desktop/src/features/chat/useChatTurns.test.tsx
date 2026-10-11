@@ -22,7 +22,12 @@ const { chatApi } = vi.hoisted(() => ({
 vi.mock("@/features/chat/api/chatSessions", () => ({ chatApi }));
 
 type StreamHandlers = {
-  onStatus: (payload: { phase: string; process?: ChatResponseProcess }) => void;
+  onStatus: (payload: {
+    phase: string;
+    process?: ChatResponseProcess;
+    replacesSegment?: string | null;
+    baseline?: string | null;
+  }) => void;
   onToken: (text: string, segmentId?: string) => void;
   onToolCall: (payload: {
     tool: string;
@@ -397,6 +402,53 @@ describe("useChatTurns 停止与会话恢复", () => {
     act(() => handlers?.onToken("suffix", "segment-1"));
     expect(result.current.streamedText).toBe("prefixsuffix");
   });
+
+  it.each(["仅快照", "旧段跨越快照", "本地已有完成段"])(
+    "恢复形态收到 revision（%s）：保留完成段并替换旧半段",
+    async (shape) => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      let handlers: StreamHandlers | undefined;
+      // 返回会话后快照与后续增量可能共享旧段；revision 必须按权威基准完整替换。
+      chatApi.activeTurn.mockResolvedValue(
+        turnSnapshot({ last_seq: 5, output_text: "已完成段旧半段" }),
+      );
+      chatApi.getTurn.mockResolvedValue(
+        turnSnapshot({ last_seq: 5, output_text: "已完成段旧半段" }),
+      );
+      chatApi.turnEvents.mockImplementation(
+        (_turnId: string, afterSeq: number, next: StreamHandlers) => {
+          if (afterSeq !== 5) return new Promise<void>(() => {});
+          handlers = next;
+          return new Promise<void>(() => {});
+        },
+      );
+      const wrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      );
+      const { result } = renderHook(() => useChatTurns("s-1"), { wrapper });
+      await waitFor(() => {
+        expect(result.current.streamedText).toBe("已完成段旧半段");
+        expect(handlers).toBeDefined();
+      });
+      const baseline =
+        shape === "本地已有完成段" ? "已完成段新增完成段" : "已完成段";
+      act(() => {
+        if (shape === "旧段跨越快照") handlers?.onToken("旧段后续", "seg-old");
+        if (shape === "本地已有完成段")
+          handlers?.onToken("新增完成段", "seg-complete");
+        handlers?.onStatus({
+          phase: "revising",
+          replacesSegment: "seg-old",
+          baseline,
+        });
+        handlers?.onToken("重新生成的正文", "seg-new");
+      });
+      // 旧半段必须被替换（规格 §10：不得把新半段追加到旧半段之后）。
+      expect(result.current.streamedText).toBe(`${baseline}重新生成的正文`);
+    },
+  );
 
   it("断线重连恢复快照后继续收 token：正文追加在快照基准之后而非覆盖", async () => {
     const client = new QueryClient({

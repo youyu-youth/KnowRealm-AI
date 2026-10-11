@@ -69,6 +69,7 @@ from app.modules.agent.message_service import (
 )
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.models import ChatMessage
+from app.modules.agent.operations.registry import budget_counted_effect_tool_names
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runtime import (
     BUDGET_COUNTED_TOOL_NAMES,
@@ -551,12 +552,17 @@ class _TurnExecutor:
             row.updated_at = utcnow()
 
     async def _restore_budget(self, resume: bool) -> ToolCallBudget:
-        """预算跨恢复累计重建（规格 §10）：calls_used 从事件、operations 从效果行。"""
+        """预算跨恢复累计重建（规格 §10）：calls_used 从事件、operations 从
+        效果行；操作口径只数递增入口的行（记忆 / 入库逐项不消耗操作预算）。"""
         if not resume:
             return ToolCallBudget()
         async with self._session_factory() as session:
             events = await list_turn_events(session, self._ctx.turn_id)
-            operations = await count_turn_effects(session, self._ctx.turn_id)
+            operations = await count_turn_effects(
+                session,
+                self._ctx.turn_id,
+                tool_names=budget_counted_effect_tool_names(),
+            )
         calls = 0
         for row in events:
             if row.type != ChatTurnEventType.TOOL_CALL.value:

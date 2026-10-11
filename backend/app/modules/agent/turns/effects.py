@@ -235,13 +235,26 @@ async def complete_effect(
     row.updated_at = now
 
 
-async def count_turn_effects(session: AsyncSession, turn_id: str) -> int:
-    """轮次已登记副作用数：恢复时重建 operations_created 预算（规格 §10）。"""
-    count = await session.scalar(
+async def count_turn_effects(
+    session: AsyncSession,
+    turn_id: str,
+    *,
+    tool_names: frozenset[str] | set[str] | None = None,
+) -> int:
+    """轮次已登记副作用数：恢复时重建 operations_created 预算（规格 §10）。
+
+    tool_names 给定时只数名单内效果行＝操作预算口径（与递增
+    operations_created 的提交入口效果行对齐）；None＝全部副作用行
+    （checkpoint 缺失分流的「已登记副作用」口径，含记忆与入库逐项）。
+    """
+    stmt = (
         select(func.count())
         .select_from(ChatTurnToolEffect)
         .where(ChatTurnToolEffect.turn_id == turn_id)
     )
+    if tool_names is not None:
+        stmt = stmt.where(ChatTurnToolEffect.tool_name.in_(tool_names))
+    count = await session.scalar(stmt)
     return int(count or 0)
 
 

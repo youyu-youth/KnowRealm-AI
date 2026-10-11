@@ -1141,9 +1141,23 @@ async def test_interrupted_turn_resume_and_cancel(
         resumed = await client2.post(f"/api/chat-turns/{turn_id}/resume", json={})
         assert resumed.status_code == 200
         assert resumed.json()["turn"]["status"] == "QUEUED"
+        assert resumed.json()["turn"]["output_text"] == state["output_text"]
+        assert resumed.json()["turn"]["last_seq"] == state["last_seq"]
+        assert resumed.json()["turn"]["process"] is not None
         final = await wait_terminal(client2, turn_id)
         assert final["status"] == "COMPLETED"
         assert final["attempt"] >= 2
+        # revising 载荷带替换后基准（恢复形态客户端重置 baseline 的依据，
+        # 防旧半段留在基准后拼接两份半段，规格 §10）。
+        replayed = await drain_events(client2, turn_id)
+        revising = [
+            payload
+            for name, payload in replayed
+            if name == "status" and payload.get("phase") == "revising"
+        ]
+        assert revising, "续跑未投影 revising 阶段"
+        assert revising[0]["replaces_segment"]
+        assert revising[0]["baseline"] == ""
         # 重复继续（已终态）明确冲突，不复活。
         again = await client2.post(f"/api/chat-turns/{turn_id}/resume", json={})
         assert again.status_code == 409

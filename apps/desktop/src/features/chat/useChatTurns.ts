@@ -215,10 +215,13 @@ export function useChatTurns(sessionId: string) {
                   void finalizeStalled(turnId);
                 }
                 if (payload.phase === "revising" && payload.replacesSegment) {
-                  // 续跑的正文版本替换边界（票 02）：被替换的未完成段从本地
-                  // 拼接移除（服务端投影同口径），后续 token 追加在它之后。
-                  segmentsRef.current.delete(payload.replacesSegment);
-                  setStreamedText(joinSegments());
+                  // 服务端基准已包含全部保留正文；重置增量避免跨快照旧段残留或重复。
+                  if (typeof payload.baseline === "string") {
+                    restoreFromSnapshot(payload.baseline);
+                  } else {
+                    segmentsRef.current.delete(payload.replacesSegment);
+                    setStreamedText(joinSegments());
+                  }
                 }
               },
               onToken: (text, segmentId = "legacy") => {

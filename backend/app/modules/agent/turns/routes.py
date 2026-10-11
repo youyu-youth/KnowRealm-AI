@@ -18,7 +18,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent
-from app.modules.agent.turns.projection import event_payload, process_out_for
+from app.modules.agent.turns.projection import (
+    build_output_text,
+    event_payload,
+    process_out_for,
+)
 from app.modules.agent.turns.runtime import TurnEventBroadcaster
 from app.modules.agent.turns.schemas import (
     ChatTurnCancelOut,
@@ -110,12 +114,15 @@ def _event_sse(row: ChatTurnEvent, turn: ChatTurn, seen: list[ChatTurnEvent]) ->
         return _sse("citation", dict(payload))
     if event_type == ChatTurnEventType.REVISION:
         # 续跑正文版本边界（票 02）：被替换 segment 的本地拼接清空，后续 token
-        # 追加在快照基准之后（不拼接两份半段正文）。
+        # 追加在快照基准之后（不拼接两份半段正文）。baseline＝此刻服务端投影
+        # （已剔除被替换段）：被替换段不在客户端本地分段（恢复 / 刷新后固化进
+        # 快照 baseline）时，客户端以它重置基准（规格 §10 替换跨恢复生效）。
         return _sse(
             "status",
             {
                 "phase": "revising",
                 "replaces_segment": payload.get("replaces_segment"),
+                "baseline": build_output_text(seen),
                 **meta,
             },
         )

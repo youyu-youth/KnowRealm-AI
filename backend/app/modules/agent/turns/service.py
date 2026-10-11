@@ -708,7 +708,7 @@ class ChatTurnService:
                     detail="CHAT_TURN_CANCEL_IN_PROGRESS：轮次已受理停止，不能继续",
                 )
             if status == ChatTurnStatus.QUEUED:
-                return turn_out(turn)
+                return await ChatTurnService.get_snapshot(session_factory, turn_id)
             if status not in (ChatTurnStatus.WAITING_USER, ChatTurnStatus.INTERRUPTED):
                 raise CodedHTTPException(
                     code="CHAT_TURN_RESUME_CONFLICT",
@@ -735,10 +735,7 @@ class ChatTurnService:
             turn.waiting_reason = None
             turn.updated_at = now
             await _ensure_turn_job(session, turn_id, now)
-        async with session_factory() as session:
-            refreshed = await get_turn(session, turn_id)
-            assert refreshed is not None
-            return turn_out(refreshed)
+        return await ChatTurnService.get_snapshot(session_factory, turn_id)
 
     @staticmethod
     async def startup_recover(
