@@ -67,6 +67,8 @@
 
 - codex 审查修复（2026-10-11，P1×1 第二项）：普通聊天恢复未重验外发同意——resume_blocked_reason 只在「受理时允许且实际注入过非空记忆」时经 _memory_outbound_allowed 间接查 consent；而同意指纹=sha256(base_url+\0+api_key)（settings/config.py），凭据按规格 §12 不落盘、PROVIDER_CHANGED 只比对地址/模型，**换密钥只能经同意指纹检测**——无记忆轮次换 key 后自动续跑用新密钥发原上下文＝「默默继续出网」（违反规格 §12:202「密钥或地址变化导致同意失效时，先重新确认」/203/T14；项目内 quiz/course_brain/knowledge_point/review_material worker preflight 均把 consent_current 作通用领取前置佐证语义非记忆专属）。修复＝ChatTurnWaitingKind 新增 OUTBOUND_CONSENT_REVOKED（resumable）+ resume_blocked_reason 在供应商身份比对后加通用 consent 重验（无记忆轮次同拦；consent 失效先于记忆分支命中，记忆开关单独关闭仍走 MEMORY_OUTBOUND_REVOKED 分层）+ 夹具补授同意还原真实前置（turns_app/recovery_app，consent=False 参数可跳过）。首次执行不要求同意的既有口径不变（用户主动发起＝明示；无人值守恢复需同意依据仍在）。新增 test_t14_api_key_rotation_blocks_resume_until_reconsent（同地址同模型换 key→WAITING_USER(OUTBOUND_CONSENT_REVOKED)+resume 409+重新授同意后续跑完成）；OpenAPI/api-types 重生成；zh/en 补 7→8 类等待文案。复验：ChatTurn 27 绿+关联四套件 181 绿、ruff/format/pyright/tsc/prettier/i18n/OpenAPI --check 全过。
 
+- codex 审查修复（2026-10-11，P1×1 第三项）：启动对账自身中断留下永久不可领取轮次——原实现分立两事务（事务一：RUNNING→QUEUED 提交；事务二：对 stale_ids 逐个 _ensure_turn_job 重投），间隙中断留下 turn=QUEUED/job=FAILED 组合；下次对账只扫 RUNNING、resume 对 QUEUED 幂等返回不重投、find_candidate 只领 PENDING——该残留永久占用会话（同会话非终态唯一约束阻断新提交），违反规格 §6「未完成任务进入可处理状态／不能永久占用会话」与 §8「QUEUED 正常领取」。修复＝①翻 QUEUED 与 job 重投合并同事务（消除产生窗口）；②重投范围从 stale_ids 扩到全部 QUEUED 轮次（历史窗口残留与任何未知来源经后续对账自愈；非终态 job 保持不重复投递——_ensure_turn_job 既有语义）。新增 test_startup_recovery_repairs_queued_turn_with_failed_job（SQL 预置 QUEUED/FAILED 现场→重启对账自愈→领取续跑完成 attempt≥2；修复前该用例因 job 永不领取超时红）。复验：ChatTurn 两套件 29 绿、ruff/format/pyright 0 错。
+
 ## 执行注意
 
 开始前复核 01 实际闭环，不把已有 checkpoint、测试数量或工单勾选当作安全重放证明。实施完整调用覆盖后再开启续跑；任何覆盖缺口都保留安全等待，不降低验收要求。不要另建恢复平台或通用远端事务抽象。

@@ -1071,6 +1071,42 @@ async def test_startup_recovery_resumes_running_turn(
 
 
 # ---------------------------------------------------------------------------
+# 启动对账窗口残留自愈：QUEUED 轮次配 FAILED job（对账翻 QUEUED 与 job 重投
+# 两事务间中断的现场）经后续对账重建领取入口，不再永久占用会话（codex 审查 P1）。
+
+
+@pytest.mark.anyio
+async def test_startup_recovery_repairs_queued_turn_with_failed_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    gate = asyncio.Event()
+    replies: list[StubReply] = [GatedReply(prefix=("崩溃前",), release=gate)]
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (app, client, captured):
+        session_id = await create_session(client)
+        submitted = await submit(client, session_id, "对账窗口问题", request_id="req-recover-03")
+        turn_id = cast(str, submitted.json()["id"])
+        await wait_running_progress(client, turn_id, min_seq=1)
+
+    # SQL 预置「对账事务一提交后、事务二重投前中断」的残留现场：turn 已翻
+    # QUEUED、job 停在 recover_running_to_failed 翻出的 FAILED。
+    job_input = json.dumps({"turn_id": turn_id}, separators=(",", ":"))
+    await db_rows(tmp_path, "UPDATE chat_turns SET status = 'QUEUED' WHERE id = ?", (turn_id,))
+    await db_rows(
+        tmp_path,
+        "UPDATE processing_jobs SET status = 'FAILED', error_code = 'CHAT_STREAM_FAILED'"
+        " WHERE job_type = 'CHAT_TURN' AND input_json = ?",
+        (job_input,),
+    )
+
+    # 重启：对账按 QUEUED 轮次重建 PENDING 领取入口，worker 领取续跑完成
+    # （修复前该残留永久不可领取——对账只扫 RUNNING、resume 对 QUEUED 幂等返回）。
+    async with turns_app(tmp_path, monkeypatch) as (_app2, client2, _captured2):
+        state = await wait_terminal(client2, turn_id)
+        assert state["status"] == "COMPLETED"
+        assert state["attempt"] >= 2
+
+
+# ---------------------------------------------------------------------------
 # 启动对账后遗留 INTERRUPTED（票 01 期间中断）保留内容，由用户显式继续或停止。
 
 

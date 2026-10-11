@@ -759,7 +759,6 @@ class ChatTurnService:
             CHAT_TURN_JOB_TYPE,
             "回答生成被意外中断",
         )
-        stale_ids: list[str] = []
         terminal_ids: list[str] = []
         async with session_factory() as session, session.begin():
             stale = list(
@@ -773,7 +772,6 @@ class ChatTurnService:
             for turn in stale:
                 turn.status = ChatTurnStatus.QUEUED.value
                 turn.updated_at = now
-                stale_ids.append(turn.id)
             # 终态轮次的孤儿 checkpoint 清理候选：仅取最近一批（成本上界；正常
             # 路径 worker 收尾即删，残留只是崩溃窗口孤儿，量小）。
             terminal_ids = list(
@@ -794,11 +792,21 @@ class ChatTurnService:
                     )
                 ).all()
             )
-        # job 侧重投（RUNNING job 已被 recover_running_to_failed 翻 FAILED——
-        # 语义为「执行中断」，这里按轮次事实重建 PENDING 领取入口）。
-        async with session_factory() as session, session.begin():
-            now = utcnow()
-            for turn_id in stale_ids:
+            # job 侧重投（RUNNING job 已被 recover_running_to_failed 翻 FAILED——
+            # 语义为「执行中断」，这里按轮次事实重建 PENDING 领取入口）。与轮次
+            # 翻 QUEUED 同事务提交（规格 §6「未完成任务进入可处理状态」）：分立
+            # 两事务会在间隙留下 QUEUED/FAILED 组合——对账只扫 RUNNING、resume
+            # 对 QUEUED 幂等返回，该残留将永久占用会话不可领取。重投范围取全部
+            # QUEUED 轮次：历史窗口残留经后续对账自愈；非终态 job 保持不动
+            # （不重复投递）。
+            queued_ids = list(
+                (
+                    await session.scalars(
+                        select(ChatTurn.id).where(ChatTurn.status == ChatTurnStatus.QUEUED.value)
+                    )
+                ).all()
+            )
+            for turn_id in queued_ids:
                 await _ensure_turn_job(session, turn_id, now)
         if checkpointer is not None:
             for turn_id in terminal_ids:
