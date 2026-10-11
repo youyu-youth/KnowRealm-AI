@@ -14,13 +14,15 @@ from collections.abc import AsyncGenerator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import aiosqlite
 import httpx
 import pytest
 from fastapi import FastAPI
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.types import Send
 
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
@@ -189,6 +191,69 @@ async def test_effect_prepare_complete_and_fingerprint_conflict(tmp_path: Path) 
 # 图恢复对 pending 工具调用的重放调度由 LangGraph checkpoint 语义保证（T07
 # 集成路径证明图恢复续跑）；本用例在工具接缝验证同 identity 重放的复用行为：
 # 效果行已提交（同事务业务）后，重放直接返回原结构化结果，不再写业务。
+
+
+@pytest.mark.anyio
+async def test_tool_waits_for_call_plan_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    saving = asyncio.Event()
+    release = asyncio.Event()
+    saved = asyncio.Event()
+    tool_started = asyncio.Event()
+    call_id = "call-checkpoint-barrier"
+    original_aput = AsyncSqliteSaver.aput
+    from app.modules.agent.middleware.tool_identity import ToolCallIdentityMiddleware
+
+    original_tool_call = ToolCallIdentityMiddleware.awrap_tool_call
+
+    async def gated_aput(
+        saver: AsyncSqliteSaver, config: Any, checkpoint: Any, metadata: Any, new_versions: Any
+    ) -> Any:
+        has_plan = any(
+            isinstance(task, Send)
+            and task.node == "tools"
+            and any(call["id"] == call_id for call in task.arg)
+            for value in checkpoint["channel_values"].values()
+            if isinstance(value, list)
+            for task in cast(list[object], value)
+        )
+        if has_plan and not saved.is_set():
+            saving.set()
+            await release.wait()
+            result = await original_aput(saver, config, checkpoint, metadata, new_versions)
+            saved.set()
+            return result
+        return await original_aput(saver, config, checkpoint, metadata, new_versions)
+
+    async def observed_tool_call(middleware: Any, request: Any, handler: Any) -> Any:
+        tool_started.set()
+        assert saved.is_set(), "工具执行前必须完成调用计划 checkpoint 保存"
+        return await original_tool_call(middleware, request, handler)
+
+    monkeypatch.setattr(AsyncSqliteSaver, "aput", gated_aput)
+    monkeypatch.setattr(ToolCallIdentityMiddleware, "awrap_tool_call", observed_tool_call)
+    async with recovery_app(
+        tmp_path,
+        monkeypatch,
+        replies=[ToolCallReply("propose_memory", {"items": ["先看例题"]}, call_id), STUB_REPLY],
+    ) as (_, client, _):
+        session_id = await create_session(client)
+        accepted = await submit(client, session_id, "记住学习偏好", request_id="req-checkpoint-1")
+        assert accepted.status_code == 202
+        turn_id = str(accepted.json()["id"])
+        try:
+            await asyncio.wait_for(saving.wait(), timeout=10)
+            with pytest.raises(TimeoutError):
+                await asyncio.wait_for(tool_started.wait(), timeout=0.5)
+            assert await db_rows(tmp_path, "SELECT COUNT(*) FROM chat_turn_tool_effects") == [(0,)]
+        finally:
+            release.set()
+        assert (await wait_terminal(client, turn_id))["status"] == "COMPLETED"
+        assert tool_started.is_set() and saved.is_set()
+        assert await db_rows(tmp_path, "SELECT status FROM chat_turn_tool_effects") == [
+            ("SUCCEEDED",)
+        ]
 
 
 @dataclass

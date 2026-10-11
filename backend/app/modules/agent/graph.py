@@ -843,6 +843,7 @@ async def stream_chat_reply(
                 "recursion_limit": CHAT_RECURSION_LIMIT,
             },
             stream_mode=["messages", "updates"],
+            durability="sync",  # 调用计划先落盘，工具副作用重放才能复用同一身份。
         ):
             mode, data = cast(tuple[str, object], stream_item)
             if mode == "updates":
