@@ -928,7 +928,8 @@ async def stream_chat_reply(
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise
     except Exception:
-        logger.error("chat_stream_failed", error_code="CHAT_STREAM_FAILED")
+        # 带栈落日志：真机「回答生成失败」只打码不打栈曾令排障无据。
+        logger.exception("chat_stream_failed", error_code="CHAT_STREAM_FAILED")
         await write_llm_call_log(
             session_factory=runtime.session_factory,
             graph_name="chat",

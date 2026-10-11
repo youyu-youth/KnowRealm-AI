@@ -280,6 +280,14 @@ async def submit_undo(runtime: AgentRuntimeContext, operation_id: str) -> dict[s
     - 直执行 → {ok, executed}（六键与正向直执行回执同形，回执卡复用）；
     - 落提案 → {ok, proposals: [{proposal_id, action, payload, status}]}。
     """
+    # 已提交结果先于预算与当前态校验恢复：补偿成功后原操作已标记 undone_by。
+    effect_args = {"operation_id": operation_id}
+    try:
+        preparation = await prepare_effect(runtime, "undo_operation", effect_args)
+    except EffectExecutionError as exc:
+        return {"ok": False, "error": exc.code, "detail": exc.detail, "proposals": []}
+    if preparation is not None and preparation.replay is not None:
+        return preparation.replay
     if runtime.budget.operations_created >= MAX_OPERATION_PROPOSALS_PER_TURN:
         return {
             "ok": False,
@@ -302,15 +310,6 @@ async def submit_undo(runtime: AgentRuntimeContext, operation_id: str) -> dict[s
                 "proposals": [],
             }
     runtime.budget.operations_created += 1
-    # 幂等前置（票 02，规格 §9）：已成功项复用原补偿回执 / 撤销提案 ID；
-    # 失败不记录（重放重新校验撤销条件，不把失败当成功跳过）。
-    effect_args = {"operation_id": operation_id}
-    try:
-        preparation = await prepare_effect(runtime, "undo_operation", effect_args)
-    except EffectExecutionError as exc:
-        return {"ok": False, "error": exc.code, "detail": exc.detail, "proposals": []}
-    if preparation is not None and preparation.replay is not None:
-        return preparation.replay
     effective_mode = effective_session_auth_mode(runtime.session_id, runtime.auth_mode)
     if should_execute_directly(effective_mode, OperationLevel(original.level)):
         authorization = direct_authorization(runtime, effective_mode)

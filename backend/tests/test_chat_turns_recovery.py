@@ -336,6 +336,85 @@ async def test_t08_business_committed_before_checkpoint_reuses_result(
 
 
 # ---------------------------------------------------------------------------
+@pytest.mark.anyio
+@pytest.mark.parametrize("direct", [True, False])
+async def test_t08_undo_committed_replays_original_receipt(tmp_path: Path, direct: bool) -> None:
+    """补偿已提交后重放原调用，复用原补偿或提案 ID；新调用仍拒绝重复撤销。"""
+    from app.modules.agent.runs.schemas import AuthMode
+    from app.modules.agent.runs.undo import submit_undo
+    from app.modules.agent.runtime import MAX_OPERATION_PROPOSALS_PER_TURN
+    from app.modules.library.proposals import ProposalService
+    from tests.test_agent_undo_retry import (
+        bare_db,
+        invoke_tool,
+        item_id,
+        item_row,
+        operation_rows,
+        seed_item,
+        update_library_item,
+    )
+
+    async with bare_db(tmp_path) as factory:
+        await seed_item(factory, 1)
+        receipt = await invoke_tool(
+            update_library_item, factory, {"item_id": item_id(1), "title": "新标题"}
+        )
+        original_id = receipt["executed"]["operation_id"]
+        seed = await _seed_turn(factory)
+        runtime = AgentRuntimeContext(
+            session_factory=factory,
+            session_id=seed.session_id,
+            auth_mode=AuthMode.FULL_ACCESS if direct else AuthMode.REQUEST_APPROVAL,
+            turn_id=seed.turn_id,
+            turn_claim_token="claim-test",
+        )
+        identity = ToolCallIdentity(namespace=f"chat-turn-{seed.turn_id}", logical_call_id="undo-1")
+        token = bind_tool_call_identity(identity)
+        try:
+            first = await submit_undo(runtime, original_id)
+            assert first["ok"] is True
+            if not direct:
+                async with factory() as session:
+                    await ProposalService.confirm(session, first["proposals"][0]["proposal_id"])
+            rows = await operation_rows(factory)
+            assert len(rows) == 2
+            assert rows[0]["undone_by"] == rows[1]["id"]
+            effects = await db_rows(
+                tmp_path,
+                "SELECT status FROM chat_turn_tool_effects WHERE turn_id = ?",
+                (seed.turn_id,),
+            )
+            assert effects == [("SUCCEEDED",)]
+
+            # 恢复使用新运行时，但逻辑调用身份不变；业务状态已变也应还原原回执。
+            restored = AgentRuntimeContext(
+                session_factory=factory,
+                session_id=seed.session_id,
+                auth_mode=AuthMode.REQUEST_APPROVAL,
+                turn_id=seed.turn_id,
+                turn_claim_token="claim-test",
+            )
+            assert await submit_undo(restored, original_id) == first
+            # 已提交结果的读取不消耗新写预算，也不能被恢复后的预算上限拦截。
+            restored.budget.operations_created = MAX_OPERATION_PROPOSALS_PER_TURN
+            assert await submit_undo(restored, original_id) == first
+            assert restored.budget.operations_created == MAX_OPERATION_PROPOSALS_PER_TURN
+        finally:
+            reset_tool_call_identity(token)
+
+        token = bind_tool_call_identity(
+            ToolCallIdentity(namespace=identity.namespace, logical_call_id="undo-new")
+        )
+        try:
+            result = await submit_undo(runtime, original_id)
+            assert result["error"] == "OPERATION_ALREADY_UNDONE"
+        finally:
+            reset_tool_call_identity(token)
+        assert await operation_rows(factory) == rows
+        assert (await item_row(factory, 1))[0] == "条目1"
+
+
+# ---------------------------------------------------------------------------
 # T09：五项工具第三项提交后崩溃 → 只补后两项，五项身份稳定。
 # 崩溃现场＝前 3 项效果行已 SUCCEEDED（同事务业务）；恢复重放整工具调用。
 

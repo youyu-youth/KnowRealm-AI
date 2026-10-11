@@ -824,16 +824,23 @@ class ChatTurnService:
         if not rows:
             return 0
         async with session_factory() as session, session.begin():
-            turn = await get_turn(session, turn_id)
-            if (
-                turn is None
-                or turn.claim_token != claim_token
-                or turn.status != ChatTurnStatus.RUNNING.value
-            ):
+            # 定时 token 刷新与工具事件刷新可重叠；先原子分配序号，避免读取旧游标。
+            allocation = (
+                await session.execute(
+                    update(ChatTurn)
+                    .where(
+                        ChatTurn.id == turn_id,
+                        ChatTurn.claim_token == claim_token,
+                        ChatTurn.status == ChatTurnStatus.RUNNING.value,
+                    )
+                    .values(last_seq=ChatTurn.last_seq + len(rows), updated_at=utcnow())
+                    .returning(ChatTurn.last_seq, ChatTurn.attempt, ChatTurn.output_revision)
+                )
+            ).one_or_none()
+            if allocation is None:
                 return None
-            seq = turn.last_seq
-            attempt = turn.attempt
-            revision = turn.output_revision
+            last_seq, attempt, revision = allocation
+            seq = last_seq - len(rows)
             for row in rows:
                 seq += 1
                 session.add(
@@ -850,8 +857,6 @@ class ChatTurnService:
                         ),
                     )
                 )
-            turn.last_seq = seq
-            turn.updated_at = utcnow()
         return seq
 
     @staticmethod

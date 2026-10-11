@@ -263,6 +263,9 @@ class JobRunner[PreflightT, CtxT: ClaimedJob, ResultT]:
             code = self._spec.failure_code(ctx, exc)
             if code is None:
                 raise
+            # 失败收口不打栈是排障盲区（真机「回答生成失败」无任何日志可查）：
+            # 收口前先落异常现场，再按错误码落库。
+            logger.exception("job_execute_failed", error_code=code)
             landed = await self._apply_failure(ctx, code)
         else:
             # 写回异常不属执行失败：按现状契约直抛 run 循环走恢复路径
