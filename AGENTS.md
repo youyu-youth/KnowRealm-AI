@@ -118,6 +118,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 9. agent相关功能，多使用Middleware 中间件等 （优先遵循）
 10. 使用animate  相关 skills 构建 desktop 动画和动效，增加ux 体验
 11. desktop端界面的修改都需要考虑到多主题的适配和兼容
+12. 新增 HTTP 错误码时，同步登记 `docs/后端错误码清单.md` 与 `zh.json`、`en.json` 的 `errors`；三方登记防线见 `backend/tests/test_error_code_guard.py`
 
 
 
@@ -133,6 +134,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 - 长任务分别验收“已受理、执行中、已完成”：受理后已落库的用户消息等事实应及时可见，不能只检查最终结果。
 - 涉及取消、确认或重试时，追踪实际提交事务及所有独立记账事务，包括失败回执；工具调用前的检查不能替代提交处的取消、执行身份与授权校验。
+- 验收记录分别标明自动化测试、模型或网络替身、真实 API/SQLite/Worker、真实模型、真实 Tauri/WebView2 的验证范围及未验证项；浏览器视口或 DPR 模拟不等同于 Windows 系统缩放验收，不代勾用户真机验收。
 
 ## 已核实的规范差异
 
