@@ -115,7 +115,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 8. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
 
-9. agent相关功能，多使用Middleware 中间件等 （优先遵循）
+9. agent相关功能，多使用Middleware 中间件等 （优先遵循），如果框架自带的Middleware不能满足需求，则进行自定义的Middleware
 10. 使用animate  相关 skills 构建 desktop 动画和动效，增加ux 体验
 11. desktop端界面的修改都需要考虑到多主题的适配和兼容
 12. 新增 HTTP 错误码时，同步登记 `docs/后端错误码清单.md` 与 `zh.json`、`en.json` 的 `errors`；三方登记防线见 `backend/tests/test_error_code_guard.py`

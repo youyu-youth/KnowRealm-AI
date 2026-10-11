@@ -84,3 +84,14 @@ Q1：普通提案不触发 interrupt；只有明确 `wait_for_task` 且来源未
 具体权威文档内容见 [增补提案](documentation-proposal-03.md)，未获批准不改权威文件。全量无关失败保留，未补历史覆盖率、未改规范文件、未增调度平台和设置入口；未改变 Windows 宿主生命周期。
 
 本票隔离 worktree、全部 pytest-turn03 basetemp 与临时日志已清理；只保留上列文本摘要与实际测试身份。其他会话的 worktree/数据未动。
+
+## 审查修复：等待接续丢失展示引用（2026-10-11）
+
+- 确认缺陷：`_StreamState` 每次领取重建，提案／直执行回执事件仅在内存聚合；`WAITING_JOB` 返回后，续跑流只发新事件，完成消息锚点与 done 因而遗漏旧引用。违反 spec §5 的真实业务引用保留及 §10 的回执身份保留要求。
+- 公开 API＋真实 JobRunner／领域 Service／迁移 SQLite／持久 checkpoint 复现，同进程接续与关闭 lifespan 后重新启动两种场景均失败。修复前数据库实际有 2 条 MEMORY 和 1 条 RESEARCH_INGEST 提案，done 却只有 1 条记忆提案、0 条研究提案、0 条执行回执，assistant 的 `executed_operations_json` 为 NULL。
+- 修复：图续跑经公开 `aget_state` 读取已保存 ToolMessage，复用原工具返回解析器重建展示事件；运行中接续与图已完成的补写共用此路径。worker 按 proposal_id／operation_id 聚合，保留等待前后的引用并消除工具重放重复，不重复执行业务写入或放宽授权。
+- 回归用例：`tests/test_chat_turns_background.py::test_wait_resume_preserves_proposals_and_execution_anchors[False/True]`，断言等待前提案原 ID、接续新提案、同一调用重放去重、assistant 执行锚点及历史 USER 轮次 result；来源任务通过真实 worker 完成，模型／网页抓取用替身。
+- 修复后两场景数据库及 done 均验证：2 条记忆提案、1 条研究提案、1 条操作提案、1 条执行回执，assistant 锚点与 done 一致；提案总数 4、课程／来源资料／等待关系各 1，无重复业务创建。
+- 门禁：`uv run pytest tests/test_chat_turns.py tests/test_chat_turns_background.py tests/test_chat_turns_recovery.py tests/test_chat_turn_event_writes.py tests/test_chat_streaming.py --basetemp .tmp/pytest-wait-references-regression -q --tb=short`：133 passed（250.02 秒）；`tests/test_agent_auth_mode.py tests/test_agent_operations.py -k 'operation_execution_event or operation_proposal_event'`：5 passed。触及三个 Python 文件的 Ruff check／format check、Pyright 通过，未扩大为后端全量测试。
+- 本次临时目录仍保留在 `backend/.tmp/pytest-wait-references-{repro,fixed,verified,regression}`：路径边界已核对，清理命令被自动审批策略以 `blocked by policy` 拒绝，未执行删除；其他会话数据未动。
+- 本次未验证真实供应商模型和 Tauri／WebView2，未自动补写已完成且 checkpoint 已清理的历史轮次；不改变本票剩余验收状态，也未改权威文档和用户已有 AGENTS.md 改动。

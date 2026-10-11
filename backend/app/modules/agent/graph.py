@@ -1,7 +1,7 @@
 """deepagents 骨架装配与流式生成路径：AgentConfig 变体、图工厂与 SSE 结构化事件分发。"""
 
 import json
-from collections.abc import AsyncGenerator, Callable, Sequence
+from collections.abc import AsyncGenerator, Callable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from time import perf_counter
 from typing import Any, cast
@@ -738,6 +738,25 @@ def _operation_execution_event(message: ToolMessage) -> ChatOperationExecutionEv
     )
 
 
+def _tool_business_events(message: ToolMessage) -> Iterator[ChatStreamEvent]:
+    """首次流和续跑共用工具返回的展示投影，不重新执行业务写入。"""
+    if message.name == PROPOSE_MEMORY_TOOL_NAME:
+        memory = _memory_proposal_event(message)
+        if memory is not None:
+            yield memory
+    if message.name == PROPOSE_INGEST_TOOL_NAME:
+        research = _research_proposal_event(message)
+        if research is not None:
+            yield research
+    if message.name in OPERATION_TOOL_NAMES:
+        proposal = _operation_proposal_event(message)
+        if proposal is not None:
+            yield proposal
+        execution = _operation_execution_event(message)
+        if execution is not None:
+            yield execution
+
+
 async def stream_chat_reply(
     *,
     checkpointer: BaseCheckpointSaver[str],
@@ -818,11 +837,16 @@ async def stream_chat_reply(
                 # 空 values＝thread 无 checkpoint（aget_state 对空 thread 返回
                 # 空快照而非 None）。
                 raise TurnCheckpointMissingError(thread)
+            # astream 只发接续的新事件；先恢复原工具返回的展示引用，完成图补写也需要。
+            saved_messages = cast(list[object], snapshot.values.get("messages") or [])
+            for message in saved_messages:
+                if isinstance(message, ToolMessage):
+                    for event in _tool_business_events(message):
+                        yield event
             if not snapshot.next:
                 # 图已完成、业务结果未提交：仅补写（规格 §8）——最终文本与
                 # 用量取自最终图状态，不调模型（模型调用次数不增加）。
-                final_messages = cast(list[object], snapshot.values.get("messages") or [])
-                for message in reversed(final_messages):
+                for message in reversed(saved_messages):
                     if not isinstance(message, AIMessage) or not message.content:
                         continue
                     outcome.final_text = (
@@ -929,21 +953,8 @@ async def stream_chat_reply(
                 if not result_event.ok:
                     logger.warning("chat_tool_failed", tool=result_event.tool)
                 yield result_event
-                if chunk.name == PROPOSE_MEMORY_TOOL_NAME:
-                    proposal_event = _memory_proposal_event(chunk)
-                    if proposal_event is not None:
-                        yield proposal_event
-                if chunk.name == PROPOSE_INGEST_TOOL_NAME:
-                    research_event = _research_proposal_event(chunk)
-                    if research_event is not None:
-                        yield research_event
-                if chunk.name in OPERATION_TOOL_NAMES:
-                    operation_event = _operation_proposal_event(chunk)
-                    if operation_event is not None:
-                        yield operation_event
-                    execution_event = _operation_execution_event(chunk)
-                    if execution_event is not None:
-                        yield execution_event
+                for event in _tool_business_events(chunk):
+                    yield event
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise

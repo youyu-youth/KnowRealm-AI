@@ -281,10 +281,17 @@ class _StreamState:
 
     segments: dict[str, str] = field(default_factory=dict[str, str])
     commentary_ids: set[str] = field(default_factory=set[str])
-    memory_proposals: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
-    research_proposals: list[dict[str, str]] = field(default_factory=list[dict[str, str]])
-    operation_proposals: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
-    executed_operations: list[dict[str, object]] = field(default_factory=list[dict[str, object]])
+    # checkpoint 展示恢复与工具节点重放可能返回同一对象，按业务身份合并。
+    memory_proposals: dict[str, dict[str, object]] = field(
+        default_factory=dict[str, dict[str, object]]
+    )
+    research_proposals: dict[str, dict[str, str]] = field(default_factory=dict[str, dict[str, str]])
+    operation_proposals: dict[str, dict[str, object]] = field(
+        default_factory=dict[str, dict[str, object]]
+    )
+    executed_operations: dict[str, dict[str, object]] = field(
+        default_factory=dict[str, dict[str, object]]
+    )
 
     @property
     def joined_text(self) -> str:
@@ -719,15 +726,22 @@ class _TurnExecutor:
                 )
                 await self._flush_buffer(force=True)
             elif isinstance(event, ChatMemoryProposalEvent):
-                self._state.memory_proposals.append(
-                    {"proposal_id": event.proposal_id, "items": event.items}
-                )
+                self._state.memory_proposals[event.proposal_id] = {
+                    "proposal_id": event.proposal_id,
+                    "items": event.items,
+                }
             elif isinstance(event, ChatResearchProposalEvent):
-                self._state.research_proposals.extend(event.proposals)
+                self._state.research_proposals.update(
+                    (entry["proposal_id"], entry) for entry in event.proposals
+                )
             elif isinstance(event, ChatOperationProposalEvent):
-                self._state.operation_proposals.extend(event.proposals)
+                self._state.operation_proposals.update(
+                    (cast(str, entry["proposal_id"]), entry) for entry in event.proposals
+                )
             elif isinstance(event, ChatOperationExecutionEvent):
-                self._state.executed_operations.extend(event.executions)
+                self._state.executed_operations.update(
+                    (cast(str, entry["operation_id"]), entry) for entry in event.executions
+                )
         await self._flush_buffer(force=True)
 
     async def _flush_buffer(self, *, force: bool) -> None:
@@ -794,7 +808,7 @@ class _TurnExecutor:
         assistant_id = str(uuid4())
         executed_anchor_ids = [
             entry["operation_id"]
-            for entry in self._state.executed_operations
+            for entry in self._state.executed_operations.values()
             if isinstance(entry.get("operation_id"), str)
         ]
         # 本轮注入记忆（续跑用首次执行快照，规格 §10；缺省回退当次上下文）。
@@ -825,13 +839,13 @@ class _TurnExecutor:
             "memory_used": memory_used,
         }
         if self._state.memory_proposals:
-            done_payload["memory_proposals"] = self._state.memory_proposals
+            done_payload["memory_proposals"] = list(self._state.memory_proposals.values())
         if self._state.research_proposals:
-            done_payload["research_proposals"] = self._state.research_proposals
+            done_payload["research_proposals"] = list(self._state.research_proposals.values())
         if self._state.operation_proposals:
-            done_payload["operation_proposals"] = self._state.operation_proposals
+            done_payload["operation_proposals"] = list(self._state.operation_proposals.values())
         if self._state.executed_operations:
-            done_payload["executed_operations"] = self._state.executed_operations
+            done_payload["executed_operations"] = list(self._state.executed_operations.values())
         completion = await ChatTurnService.finalize_completed(
             session_factory=self._session_factory,
             turn_id=self._ctx.turn_id,

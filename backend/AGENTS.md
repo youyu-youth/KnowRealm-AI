@@ -72,6 +72,8 @@ backend/
 
 涉及 `langchain` / `langGraph` / `Deep Agents` 等 Agent 相关代码的编写、设计、搭建时，必须先使用 **langchain mcp 工具**（`langchain-docs`，` langchain-reference`）查询官方文档与 API 参考，**复用现成能力、避免重复造轮子**；或使用 `.agents/skills/` / `.zcode/skills/` / `.claude/skills/` 下的相关 skills（langchain-* / langgraph-* / deep-agents-*）。
 
+**agent相关功能，多使用Middleware 中间件等 （优先遵循），如果框架自带的Middleware不能满足需求，则进行自定义的Middleware**
+
 **多使用Middleware 中间件等**
 
 ## 关键机制

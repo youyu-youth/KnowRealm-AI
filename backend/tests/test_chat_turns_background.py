@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any, cast
 
@@ -18,6 +19,7 @@ from sqlalchemy import text
 from test_agent_run_waiting import bare_db, invoke_plan
 from test_chat_turns import (
     StubChatModel,
+    StubReply,
     ToolCallReply,
     create_session,
     drain_events,
@@ -134,6 +136,108 @@ async def wait_status(client: httpx.AsyncClient, turn_id: str, status: str) -> d
         assert body["status"] not in ("FAILED", "CANCELLED"), body
         await asyncio.sleep(0.1)
     pytest.fail(f"未达到 {status}: {body}")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("restart", [False, True])
+async def test_wait_resume_preserves_proposals_and_execution_anchors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, restart: bool
+) -> None:
+    from app.modules.llm import service as llm_service
+
+    release = asyncio.Event()
+
+    async def fetch(_self: object, url: str) -> ClipContent:
+        await release.wait()
+        return ClipContent(text="后台正文。" * 40, title="资料", metadata={"url": url})
+
+    monkeypatch.setattr("app.modules.capture.web_clip.WebClipAdapter.fetch_and_extract", fetch)
+    continuation: list[StubReply] = [
+        ToolCallReply("propose_memory", {"items": ["等待前的偏好"]}, "memory-before"),
+        ToolCallReply("propose_memory", {"items": ["接续后的偏好"]}, "memory-after"),
+        ToolCallReply(
+            "create_course",
+            {"name": "接续后的课程", "learning_context": "INTEREST", "depth": "BEGINNER"},
+            "course-after",
+        ),
+        ["结果已完成"],
+    ]
+    async with AsyncExitStack() as stack:
+        app, client, captured = await stack.enter_async_context(
+            turns_app(
+                tmp_path,
+                monkeypatch,
+                replies=[
+                    ToolCallReply(
+                        "create_course",
+                        {
+                            "name": "等待前的课程",
+                            "learning_context": "INTEREST",
+                            "depth": "BEGINNER",
+                        },
+                        "course-before",
+                    ),
+                    ToolCallReply("propose_memory", {"items": ["等待前的偏好"]}, "memory-before"),
+                    ToolCallReply(
+                        "propose_ingest",
+                        {"sources": [{"url": "https://example.com/proposal", "title": "候选资料"}]},
+                        "research-before",
+                    ),
+                    ToolCallReply("plan_batch_operations", {"items": PLAN}, "plan-call"),
+                    ToolCallReply("wait_for_task", {}),
+                    *continuation,
+                ],
+            )
+        )
+        install_wait_model(monkeypatch, cast(type[StubChatModel], llm_service.ChatOpenAI))
+        session_id = await create_session(client, mode="RESEARCH", scope="ALL")
+        turn_id = (
+            await submit(
+                client,
+                session_id,
+                "创建并等待",
+                request_id="wait-references-001",
+                auth_mode="FULL_ACCESS",
+            )
+        ).json()["id"]
+        await wait_status(client, turn_id, "WAITING_JOB")
+        before = [
+            json.loads(str(message.content))
+            for message in captured[-1]
+            if isinstance(message, ToolMessage)
+        ]
+        execution_id = before[0]["executed"]["operation_id"]
+        memory_id = before[1]["proposal_id"]
+        research_id = before[2]["proposals"][0]["proposal_id"]
+        if restart:
+            await stack.aclose()
+            app, client, captured = await stack.enter_async_context(
+                turns_app(tmp_path, monkeypatch, replies=continuation)
+            )
+        release.set()
+        assert (await wait_terminal(client, turn_id))["status"] == "COMPLETED"
+        done = (await drain_events(client, turn_id))[-1][1]
+        assert [entry["proposal_id"] for entry in done["memory_proposals"]][0] == memory_id
+        assert len(done["memory_proposals"]) == 2
+        assert done["research_proposals"] == [
+            {"proposal_id": research_id, "url": "https://example.com/proposal", "title": "候选资料"}
+        ]
+        execution_ids = [entry["operation_id"] for entry in done["executed_operations"]]
+        assert execution_ids[0] == execution_id
+        assert len(execution_ids) == 1
+        # 请求档未设置会话覆盖，接续按当前全局档收紧，新操作仍走确认卡。
+        assert len(done["operation_proposals"]) == 1
+        messages = (await client.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        assistant = next(message for message in messages if message["role"] == "ASSISTANT")
+        user = next(message for message in messages if message["role"] == "USER")
+        assert assistant["executed_operation_ids"] == execution_ids
+        assert user["turn"]["result"]["memory_proposals"] == done["memory_proposals"]
+        assert user["turn"]["result"]["research_proposals"] == done["research_proposals"]
+        async with app.state.session_factory() as session:
+            assert await session.scalar(text("SELECT COUNT(*) FROM chat_turn_waits")) == 1
+            assert await session.scalar(text("SELECT COUNT(*) FROM library_items")) == 1
+            assert await session.scalar(text("SELECT COUNT(*) FROM courses")) == 1
+            assert await session.scalar(text("SELECT COUNT(*) FROM agent_proposals")) == 4
 
 
 @pytest.mark.anyio
