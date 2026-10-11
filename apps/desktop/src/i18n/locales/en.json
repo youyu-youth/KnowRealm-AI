@@ -2577,6 +2577,13 @@
         "GRAPH_INCOMPATIBLE": "The engine version is incompatible with the original turn; stop and ask again",
         "CHECKPOINT_MISSING": "Execution state is missing while committed content exists, so it cannot continue safely; stop and ask again"
       },
+      "revisions": {
+        "view": "Part of this answer was regenerated · View previous fragments ({{count}})",
+        "history": "Answer revision history",
+        "previous": "Version {{revision}} · Replaced fragment",
+        "regenerated": "Version {{revision}} · Regenerated fragment",
+        "pending": "No new saved content for this fragment yet"
+      },
       "partial": {
         "cancelled": "The answer was stopped. Below is the partial content that was generated",
         "failed": "Answer generation failed. Below is the partial content that was generated",

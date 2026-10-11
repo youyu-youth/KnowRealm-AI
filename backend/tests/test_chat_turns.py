@@ -1044,7 +1044,9 @@ async def test_startup_recovery_resumes_running_turn(
         session_id = await create_session(client)
         submitted = await submit(client, session_id, "崩溃问题", request_id="req-recover-01")
         turn_id = cast(str, submitted.json()["id"])
-        await wait_running_progress(client, turn_id, min_seq=1)
+        await wait_running_progress(client, turn_id, min_seq=2)
+        before_restart = await snapshot(client, turn_id)
+        assert before_restart["revisions"] == []
         # 模拟进程强杀：不释放 gate 直接退出（teardown 软停机取消生成、不写终态，
         # 轮次残留 RUNNING＝崩溃现场；部分输出已持久）。
 
@@ -1068,6 +1070,27 @@ async def test_startup_recovery_resumes_running_turn(
         assert rows, "续跑未落 revision 事件（未完成段替换边界缺失）"
         revision_payload = json.loads(rows[0][1])
         assert revision_payload["replaces_segment"], "崩溃于模型流中途应替换未完成段"
+        assert state["revisions"] == [
+            {
+                "replaces_segment": revision_payload["replaces_segment"],
+                "previous_revision": 1,
+                "output_revision": state["output_revision"],
+                "previous_text": before_restart["output_text"],
+                "regenerated_text": "回答完成了",
+            }
+        ]
+        assert state["revisions"][0]["previous_text"]
+        history = (await client2.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        user = next(row for row in history if row["role"] == "USER")
+        assert user["turn"]["revisions"] == state["revisions"]
+
+    # 完成后再次冷启动，历史入口仍由持久事件恢复，无需原订阅。
+    async with turns_app(tmp_path, monkeypatch) as (_app3, client3, _captured3):
+        reopened = await snapshot(client3, turn_id)
+        history = (await client3.get(f"/api/chat-sessions/{session_id}/messages")).json()
+        assert reopened["revisions"] == state["revisions"]
+        user = next(row for row in history if row["role"] == "USER")
+        assert user["turn"]["revisions"] == state["revisions"]
 
 
 # ---------------------------------------------------------------------------

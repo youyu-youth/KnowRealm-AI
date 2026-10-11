@@ -35,7 +35,7 @@ from app.modules.agent.models import ChatMessage, ChatSession
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import ChatRole
 from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent
-from app.modules.agent.turns.projection import build_output_text, process_out_for
+from app.modules.agent.turns.projection import build_output_text, process_out_for, project_revisions
 from app.modules.agent.turns.runtime import ActiveTurnRegistry, TurnEventBroadcaster
 from app.modules.agent.turns.schemas import (
     ChatTurnEventType,
@@ -222,6 +222,7 @@ def turn_out(turn: ChatTurn, events: list[ChatTurnEvent] | None = None) -> ChatT
         finished_at=turn.finished_at,
         output_text=build_output_text(events) if events is not None else "",
         process=process_out_for(turn, events) if events is not None else None,
+        revisions=project_revisions(events) if events is not None else [],
     )
 
 

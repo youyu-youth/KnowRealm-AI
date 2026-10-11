@@ -46,7 +46,12 @@ from app.modules.agent.schemas import (
 from app.modules.agent.session_service import ChatSessionService
 from app.modules.agent.tools.time_utils import format_time_hint
 from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent
-from app.modules.agent.turns.projection import build_output_text, event_payload, process_out_for
+from app.modules.agent.turns.projection import (
+    build_output_text,
+    event_payload,
+    process_out_for,
+    project_revisions,
+)
 from app.modules.agent.turns.schemas import ChatTurnEventType, ChatTurnStatus
 from app.modules.course.models import Course
 from app.modules.knowledge_point.models import KnowledgePoint
@@ -106,7 +111,11 @@ def _turn_ref(turn: ChatTurn, events: list[ChatTurnEvent]) -> ChatMessageTurnOut
         )
         break
     return ChatMessageTurnOut(
-        id=turn.id, status=turn.status, output_text=output_text, result=result
+        id=turn.id,
+        status=turn.status,
+        output_text=output_text,
+        result=result,
+        revisions=project_revisions(events),
     )
 
 

@@ -1791,6 +1791,13 @@
               }
             ]
           },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurnRevisionOut"
+            },
+            "title": "Revisions",
+            "type": "array"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -2404,6 +2411,13 @@
               }
             ]
           },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurnRevisionOut"
+            },
+            "title": "Revisions",
+            "type": "array"
+          },
           "session_id": {
             "title": "Session Id",
             "type": "string"
@@ -2513,6 +2527,41 @@
           }
         },
         "title": "ChatTurnResumeRequest",
+        "type": "object"
+      },
+      "ChatTurnRevisionOut": {
+        "additionalProperties": false,
+        "description": "被恢复重放替换的片段，以及对应重新生成的正文。",
+        "properties": {
+          "output_revision": {
+            "title": "Output Revision",
+            "type": "integer"
+          },
+          "previous_revision": {
+            "title": "Previous Revision",
+            "type": "integer"
+          },
+          "previous_text": {
+            "title": "Previous Text",
+            "type": "string"
+          },
+          "regenerated_text": {
+            "title": "Regenerated Text",
+            "type": "string"
+          },
+          "replaces_segment": {
+            "title": "Replaces Segment",
+            "type": "string"
+          }
+        },
+        "required": [
+          "replaces_segment",
+          "previous_revision",
+          "output_revision",
+          "previous_text",
+          "regenerated_text"
+        ],
+        "title": "ChatTurnRevisionOut",
         "type": "object"
       },
       "ChatTurnStatus": {

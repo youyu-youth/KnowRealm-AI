@@ -215,6 +215,9 @@ export function useChatTurns(sessionId: string) {
                   void finalizeStalled(turnId);
                 }
                 if (payload.phase === "revising" && payload.replacesSegment) {
+                  void queryClient.invalidateQueries({
+                    queryKey: chatKeys.messages(sessionId),
+                  });
                   // 服务端基准已包含全部保留正文；重置增量避免跨快照旧段残留或重复。
                   if (typeof payload.baseline === "string") {
                     restoreFromSnapshot(payload.baseline);

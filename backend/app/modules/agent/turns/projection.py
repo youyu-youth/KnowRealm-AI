@@ -12,6 +12,7 @@ from app.modules.agent.schemas import (
     ChatProcessCommentary,
     ChatProcessTool,
     ChatResponseProcessOut,
+    ChatTurnRevisionOut,
 )
 from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent
 from app.modules.agent.turns.schemas import (
@@ -117,6 +118,41 @@ def build_output_text(events: Sequence[ChatTurnEvent]) -> str:
         for segment_id, parts in segments.items()
         if segment_id not in commentary_ids and segment_id not in replaced_ids
     )
+
+
+def project_revisions(events: Sequence[ChatTurnEvent]) -> list[ChatTurnRevisionOut]:
+    """保留每次替换的旧片段，并关联同版本首个模型片段（可跨刷新查看）。"""
+    segments: dict[str, list[str]] = {}
+    segment_revisions: dict[str, int] = {}
+    replacements: list[tuple[str, int]] = []
+    for row in events:
+        if row.type == ChatTurnEventType.TOKEN.value and row.segment_id:
+            segments.setdefault(row.segment_id, []).append(
+                str(event_payload(row).get("text") or "")
+            )
+            segment_revisions[row.segment_id] = row.output_revision
+        elif row.type == ChatTurnEventType.REVISION.value:
+            replaces = event_payload(row).get("replaces_segment")
+            if isinstance(replaces, str) and replaces:
+                replacements.append((replaces, row.output_revision))
+    return [
+        ChatTurnRevisionOut(
+            replaces_segment=segment_id,
+            previous_revision=segment_revisions[segment_id],
+            output_revision=revision,
+            previous_text="".join(segments[segment_id]),
+            regenerated_text=next(
+                (
+                    "".join(parts)
+                    for new_id, parts in segments.items()
+                    if segment_revisions[new_id] == revision
+                ),
+                "",
+            ),
+        )
+        for segment_id, revision in replacements
+        if segment_id in segments
+    ]
 
 
 def process_out_for(

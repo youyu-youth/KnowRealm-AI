@@ -181,6 +181,54 @@ function userWithProcess(process?: ChatResponseProcess): ChatMessage {
 }
 
 describe("ChatMessageList 紧凑过程", () => {
+  it.each(["RUNNING", "COMPLETED", "INTERRUPTED"])(
+    "%s 轮次可展开被替换的旧正文，并区分重新生成的片段",
+    (status) => {
+      const message = userWithProcess();
+      message.turn = {
+        id: "turn-revision",
+        status,
+        output_text: "",
+        result: null,
+        revisions: [
+          {
+            replaces_segment: "old-segment",
+            previous_revision: 1,
+            output_revision: 2,
+            previous_text: "原回答的半段正文",
+            regenerated_text:
+              status === "RUNNING" ? "" : "恢复后重新生成的正文",
+          },
+        ],
+      };
+      renderWithQuery(
+        <ChatMessageList
+          {...BASE}
+          messages={[message]}
+          streamingText={status === "RUNNING" ? "当前正文" : null}
+          isStreaming={status === "RUNNING"}
+        />,
+      );
+      const trigger = screen.getByRole("button", {
+        name: "部分正文已重新生成 · 查看旧片段（1）",
+      });
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(screen.queryByText("原回答的半段正文")).not.toBeInTheDocument();
+      fireEvent.click(trigger);
+      expect(trigger).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByText("原回答的半段正文")).toBeVisible();
+      expect(screen.getByText("版本 1 · 已替换的旧片段")).toBeVisible();
+      expect(screen.getByText("版本 2 · 重新生成的片段")).toBeVisible();
+      expect(
+        screen.getByText(
+          status === "RUNNING"
+            ? "此片段尚未产生新的已保存内容"
+            : "恢复后重新生成的正文",
+        ),
+      ).toBeVisible();
+    },
+  );
+
   it("十二次工具调用默认只显示最新一条，手动展开在完成和历史接管后保持", () => {
     const process = responseProcess();
     const view = renderWithQuery(

@@ -10,6 +10,7 @@ from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import (
     ChatPageSnapshot,
     ChatResponseProcessOut,
+    ChatTurnRevisionOut,
     iso_utc,
 )
 
@@ -195,6 +196,7 @@ class ChatTurnOut(BaseModel):
     # assistant 行一致，前端完成渲染以 done 事件 / 最终消息为准。
     output_text: str = ""
     process: ChatResponseProcessOut | None = None
+    revisions: list[ChatTurnRevisionOut] = Field(default_factory=list[ChatTurnRevisionOut])
 
     @field_serializer("created_at", "updated_at")
     def serialize_time(self, value: datetime) -> str:

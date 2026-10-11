@@ -5,6 +5,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { libraryKeys } from "@/features/library/api/keys";
+import { chatKeys } from "@/features/chat/api/keys";
 import { ApiError } from "@/services/http/client";
 import type { ChatResponseProcess, ChatTurn } from "./api/types";
 import { useChatTurns } from "./useChatTurns";
@@ -434,6 +435,7 @@ describe("useChatTurns 停止与会话恢复", () => {
       });
       const baseline =
         shape === "本地已有完成段" ? "已完成段新增完成段" : "已完成段";
+      const invalidate = vi.spyOn(client, "invalidateQueries");
       act(() => {
         if (shape === "旧段跨越快照") handlers?.onToken("旧段后续", "seg-old");
         if (shape === "本地已有完成段")
@@ -447,6 +449,9 @@ describe("useChatTurns 停止与会话恢复", () => {
       });
       // 旧半段必须被替换（规格 §10：不得把新半段追加到旧半段之后）。
       expect(result.current.streamedText).toBe(`${baseline}重新生成的正文`);
+      expect(invalidate).toHaveBeenCalledWith({
+        queryKey: chatKeys.messages("s-1"),
+      });
     },
   );
 

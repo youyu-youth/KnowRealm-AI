@@ -15,6 +15,7 @@ import {
 import { SaveKnowledgePointDialog } from "@/features/chat/SaveKnowledgePointDialog";
 import { ChatResponseProcess } from "@/features/chat/ChatResponseProcess";
 import { ChatTurnPartialOutput } from "@/features/chat/ChatTurnPartialOutput";
+import { ChatTurnRevisions } from "@/features/chat/ChatTurnRevisions";
 
 type ChatMessageListProps = {
   messages: ChatMessage[];
@@ -228,6 +229,7 @@ export function ChatMessageList({
                     })()}
                     {/* 终态轮次的部分输出（规格 §5/§15）：按轮次引用恢复已持久化正文。 */}
                     <ChatTurnPartialOutput turn={message.turn} />
+                    <ChatTurnRevisions revisions={message.turn?.revisions} />
                   </li>
                 ) : (
                   <li key={message.id} className="flex min-w-0 flex-col gap-3">

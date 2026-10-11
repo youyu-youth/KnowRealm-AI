@@ -2557,6 +2557,13 @@
         "GRAPH_INCOMPATIBLE": "执行引擎版本与原轮次不兼容；请停止后重新提问",
         "CHECKPOINT_MISSING": "执行状态缺失且已有已提交内容，无法安全继续；请停止后重新提问"
       },
+      "revisions": {
+        "view": "部分正文已重新生成 · 查看旧片段（{{count}}）",
+        "history": "正文版本记录",
+        "previous": "版本 {{revision}} · 已替换的旧片段",
+        "regenerated": "版本 {{revision}} · 重新生成的片段",
+        "pending": "此片段尚未产生新的已保存内容"
+      },
       "partial": {
         "cancelled": "回答已停止，以下是已生成的部分内容",
         "failed": "回答生成失败，以下是已生成的部分内容",

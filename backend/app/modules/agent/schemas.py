@@ -370,6 +370,18 @@ class ChatTurnResultOut(BaseModel):
     research_proposals: list[dict[str, Any]] = Field(default_factory=list[dict[str, Any]])
 
 
+class ChatTurnRevisionOut(BaseModel):
+    """被恢复重放替换的片段，以及对应重新生成的正文。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    replaces_segment: str
+    previous_revision: int
+    output_revision: int
+    previous_text: str
+    regenerated_text: str
+
+
 class ChatMessageTurnOut(BaseModel):
     """消息所属轮次的引用（规格 §15「以轮次引用合并」）。
 
@@ -384,6 +396,7 @@ class ChatMessageTurnOut(BaseModel):
     status: str
     output_text: str = ""
     result: ChatTurnResultOut | None = None
+    revisions: list[ChatTurnRevisionOut] = Field(default_factory=list[ChatTurnRevisionOut])
 
 
 class ChatMessageOut(BaseModel):

@@ -3394,6 +3394,8 @@ export interface components {
              */
             output_text: string;
             result?: components["schemas"]["ChatTurnResultOut"] | null;
+            /** Revisions */
+            revisions?: components["schemas"]["ChatTurnRevisionOut"][];
             /** Status */
             status: string;
         };
@@ -3678,6 +3680,8 @@ export interface components {
              */
             output_text: string;
             process?: components["schemas"]["ChatResponseProcessOut"] | null;
+            /** Revisions */
+            revisions?: components["schemas"]["ChatTurnRevisionOut"][];
             /** Session Id */
             session_id: string;
             /** Started At */
@@ -3727,6 +3731,22 @@ export interface components {
              * @constant
              */
             decision_kind: "RETRY_AFTER_FIX";
+        };
+        /**
+         * ChatTurnRevisionOut
+         * @description 被恢复重放替换的片段，以及对应重新生成的正文。
+         */
+        ChatTurnRevisionOut: {
+            /** Output Revision */
+            output_revision: number;
+            /** Previous Revision */
+            previous_revision: number;
+            /** Previous Text */
+            previous_text: string;
+            /** Regenerated Text */
+            regenerated_text: string;
+            /** Replaces Segment */
+            replaces_segment: string;
         };
         /**
          * ChatTurnStatus
