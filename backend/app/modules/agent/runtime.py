@@ -59,6 +59,7 @@ BUDGET_COUNTED_TOOL_NAMES = frozenset(
         "search_courses",
         "search_library",
         "shift_datetime",
+        "wait_for_task",
     }
 )
 

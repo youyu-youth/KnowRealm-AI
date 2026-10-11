@@ -99,6 +99,41 @@ beforeEach(() => {
 });
 
 describe("useChatTurns 订阅与失效", () => {
+  it("等待快照迟到不能覆盖已接续的轮次", async () => {
+    let handlers: StreamHandlers | undefined;
+    const { result } = await setup((callbacks) => {
+      handlers = callbacks;
+      return new Promise(() => {});
+    });
+    let resolveSnapshot!: (snapshot: ChatTurn) => void;
+    chatApi.getTurn.mockReturnValue(
+      new Promise<ChatTurn>((resolve) => {
+        resolveSnapshot = resolve;
+      }),
+    );
+    act(() => handlers?.onStatus({ phase: "waiting_job" }));
+    act(() => handlers?.onStatus({ phase: "generating" }));
+    await act(async () => {
+      resolveSnapshot(turnSnapshot({ status: "WAITING_JOB" }));
+    });
+    expect(result.current.turn?.status).toBe("RUNNING");
+  });
+  it("后台等待从快照恢复，压缩重置替换旧正文，接续后解除等待展示", async () => {
+    let handlers: StreamHandlers | undefined;
+    const { result } = await setup((callbacks) => {
+      handlers = callbacks;
+      return new Promise(() => {});
+    });
+    chatApi.getTurn.mockResolvedValue(
+      turnSnapshot({ status: "WAITING_JOB", output_text: "保留正文" }),
+    );
+    await act(async () => handlers?.onStatus({ phase: "waiting_job" }));
+    expect(result.current.turn?.status).toBe("WAITING_JOB");
+    act(() => handlers?.onStatus({ phase: "reset", baseline: "权威正文" }));
+    expect(result.current.streamedText).toBe("权威正文");
+    act(() => handlers?.onStatus({ phase: "generating" }));
+    expect(result.current.turn?.status).toBe("RUNNING");
+  });
   it("工具调用前的正文段移出正文；断开时工具态转 INTERRUPTED", async () => {
     let handlers: StreamHandlers | undefined;
     let finish: (() => void) | undefined;

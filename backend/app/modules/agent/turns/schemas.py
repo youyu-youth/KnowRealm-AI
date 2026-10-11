@@ -100,6 +100,7 @@ class ChatTurnWaitingKind(StrEnum):
     GRAPH_INCOMPATIBLE = "GRAPH_INCOMPATIBLE"
     # checkpoint 缺失且已有已提交副作用，安全边界无法确定。
     CHECKPOINT_MISSING = "CHECKPOINT_MISSING"
+    BACKGROUND_TASK = "BACKGROUND_TASK"
 
     @property
     def resumable(self) -> bool:
@@ -107,6 +108,7 @@ class ChatTurnWaitingKind(StrEnum):
         return self not in (
             ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
             ChatTurnWaitingKind.CHECKPOINT_MISSING,
+            ChatTurnWaitingKind.BACKGROUND_TASK,
         )
 
 
@@ -170,6 +172,13 @@ class ChatTurnEventOut(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict[str, Any])
 
 
+class ChatTurnTaskOut(BaseModel):
+    target_type: Literal["RUN", "JOB"]
+    target_id: str
+    status: str
+    control_scope: Literal["EXCLUSIVE", "SHARED", "INDEPENDENT"]
+
+
 class ChatTurnOut(BaseModel):
     """轮次快照：一致视图返回状态、正文投影与 last_seq（客户端从该序号补发）。"""
 
@@ -184,6 +193,8 @@ class ChatTurnOut(BaseModel):
     attempt: int = Field(ge=0)
     output_revision: int = Field(ge=1)
     last_seq: int = Field(ge=0)
+    compacted_seq: int = Field(default=0, ge=0)
+    background_tasks: list[ChatTurnTaskOut] = Field(default_factory=list[ChatTurnTaskOut])
     error_code: str | None = None
     error_message: str | None = None
     # WAITING_USER 等待原因（票 02）：null＝非等待态。

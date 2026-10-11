@@ -30,6 +30,8 @@ class ChatTurn(Base):
     attempt: Mapped[int] = mapped_column(Integer, default=0)
     output_revision: Mapped[int] = mapped_column(Integer, default=1)
     last_seq: Mapped[int] = mapped_column(Integer, default=0)
+    compacted_seq: Mapped[int] = mapped_column(Integer, default=0)
+    snapshot_json: Mapped[str | None] = mapped_column(Text, default=None)
     final_message_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("chat_messages.id", ondelete="SET NULL"), default=None
     )
@@ -42,6 +44,43 @@ class ChatTurn(Base):
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
     finished_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+
+
+class ChatTurnRun(Base):
+    """控制归属：新直执行 Run 专属，复用 Run 共享，批准后独立 Run 不随轮次停止。"""
+
+    __tablename__ = "chat_turn_runs"
+
+    turn_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_turns.id", ondelete="CASCADE"), primary_key=True
+    )
+    run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("agent_runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    control_scope: Mapped[str] = mapped_column(String(20))
+    cancel_requested: Mapped[bool] = mapped_column(Integer, default=False)
+
+
+class ChatTurnWait(Base):
+    """稳定工具来源与原任务、框架 interrupt 的持久绑定；结果只记录一次。"""
+
+    __tablename__ = "chat_turn_waits"
+    __table_args__ = (UniqueConstraint("turn_id", "namespace", "logical_call_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    turn_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_turns.id", ondelete="CASCADE")
+    )
+    namespace: Mapped[str] = mapped_column(String(64))
+    logical_call_id: Mapped[str] = mapped_column(String(64))
+    target_type: Mapped[str] = mapped_column(String(10))
+    target_id: Mapped[str] = mapped_column(String(36))
+    source_operation_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("agent_operations.id", ondelete="SET NULL"), default=None
+    )
+    interrupt_id: Mapped[str | None] = mapped_column(String(64), default=None)
+    result_json: Mapped[str | None] = mapped_column(Text, default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
 
 
 class ChatTurnEvent(Base):

@@ -455,6 +455,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat-turns/{turn_id}/compact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Compact Chat Turn */
+        post: operations["compact_chat_turn_api_chat_turns__turn_id__compact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat-turns/{turn_id}/events": {
         parameters: {
             query?: never;
@@ -3656,8 +3673,15 @@ export interface components {
         ChatTurnOut: {
             /** Attempt */
             attempt: number;
+            /** Background Tasks */
+            background_tasks?: components["schemas"]["ChatTurnTaskOut"][];
             /** Cancel Requested */
             cancel_requested: boolean;
+            /**
+             * Compacted Seq
+             * @default 0
+             */
+            compacted_seq: number;
             /** Created At */
             created_at: string;
             /** Error Code */
@@ -3780,12 +3804,29 @@ export interface components {
              */
             web_search: boolean;
         };
+        /** ChatTurnTaskOut */
+        ChatTurnTaskOut: {
+            /**
+             * Control Scope
+             * @enum {string}
+             */
+            control_scope: "EXCLUSIVE" | "SHARED" | "INDEPENDENT";
+            /** Status */
+            status: string;
+            /** Target Id */
+            target_id: string;
+            /**
+             * Target Type
+             * @enum {string}
+             */
+            target_type: "RUN" | "JOB";
+        };
         /**
          * ChatTurnWaitingKind
          * @description WAITING_USER 等待原因类型（票 02，规格 §7/§11/§12）。
          * @enum {string}
          */
-        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "OUTBOUND_CONSENT_REVOKED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING";
+        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "OUTBOUND_CONSENT_REVOKED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING" | "BACKGROUND_TASK";
         /**
          * ChatTurnWaitingReason
          * @description 等待原因载荷（chat_turns.waiting_reason JSON）。
@@ -8513,6 +8554,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatTurnCancelOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    compact_chat_turn_api_chat_turns__turn_id__compact_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTurnOut"];
                 };
             };
             /** @description Forbidden */

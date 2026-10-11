@@ -77,6 +77,7 @@ from app.modules.agent.runtime import (
     ToolCallBudget,
 )
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole, ChatScope
+from app.modules.agent.turns.background import park_turn, reconcile_waits
 from app.modules.agent.turns.effects import count_turn_effects
 from app.modules.agent.turns.models import ChatTurn
 from app.modules.agent.turns.runtime import (
@@ -482,6 +483,15 @@ class _TurnExecutor:
             with contextlib.suppress(_ClaimLost):
                 await self._flush_buffer(force=True)
             raise _TurnCancelled from None
+        if outcome.background_interrupts:
+            async with self._session_factory() as session, session.begin():
+                parked = await park_turn(
+                    session, self._ctx.turn_id, self._ctx.claim_token, outcome.background_interrupts
+                )
+            if not parked:
+                raise _TurnCancelled
+            self._broadcaster.publish(self._ctx.turn_id)
+            return
         await self._finalize(session_id, prompt_context, execution, outcome, provider, resume)
 
     async def _load_turn(self) -> ChatTurn | None:
@@ -914,6 +924,12 @@ async def writeback(
         if job is None or job.status != ProcessingJobStatus.RUNNING:
             return False
         close_job(job, ProcessingJobStatus.SUCCEEDED, utcnow())
+        await session.flush()
+        turn = await session.get(ChatTurn, ctx.turn_id)
+        if turn is not None and turn.status == ChatTurnStatus.QUEUED.value:
+            from app.modules.agent.turns.service import ensure_turn_job
+
+            await ensure_turn_job(session, ctx.turn_id, utcnow())
     return True
 
 
@@ -929,6 +945,16 @@ def chat_turn_spec(
 ) -> WorkerSpec[None, _ClaimedTurn, bool]:
     """双执行槽各建一个实例：last-claim 钩子只收口本槽最后一次领取的 job。"""
     last_claim: list[_ClaimedTurn | None] = [None]
+    last_reconcile = 0.0
+
+    async def find_with_reconciliation(
+        session: AsyncSession, now: datetime
+    ) -> ProcessingJob | None:
+        nonlocal last_reconcile
+        if perf_counter() - last_reconcile >= 2.0:
+            await reconcile_waits(session)
+            last_reconcile = perf_counter()
+        return await find_candidate(session, now)
 
     async def targeted_closure(claim: _ClaimedTurn) -> bool:
         # 双槽禁全局恢复（兄弟槽在途轮次会被误翻 INTERRUPTED）：只针对性收口
@@ -1005,7 +1031,7 @@ def chat_turn_spec(
         job_type=CHAT_TURN_JOB_TYPE,
         poll_interval=0.25,
         write_waiting_reason=False,
-        find_candidate=find_candidate,
+        find_candidate=find_with_reconciliation,
         validate_claim=validate_claim,
         on_preempted=claim_turn,
         execute=tracked_execute,

@@ -120,8 +120,13 @@ def build_output_text(events: Sequence[ChatTurnEvent]) -> str:
     )
 
 
-def project_revisions(events: Sequence[ChatTurnEvent]) -> list[ChatTurnRevisionOut]:
+def project_revisions(
+    events: Sequence[ChatTurnEvent], turn: ChatTurn | None = None
+) -> list[ChatTurnRevisionOut]:
     """保留每次替换的旧片段，并关联同版本首个模型片段（可跨刷新查看）。"""
+    if turn is not None and turn.snapshot_json is not None:
+        saved = json.loads(turn.snapshot_json)["turn"]
+        return [ChatTurnRevisionOut.model_validate(item) for item in saved["revisions"]]
     segments: dict[str, list[str]] = {}
     segment_revisions: dict[str, int] = {}
     replacements: list[tuple[str, int]] = []
@@ -159,6 +164,10 @@ def process_out_for(
     turn: ChatTurn, events: Sequence[ChatTurnEvent], *, history_saved: bool = True
 ) -> ChatResponseProcessOut:
     """把轮次投影为历史过程视图（ChatResponseProcessOut 形状，id=turn_id）。"""
+    if turn.snapshot_json is not None:
+        return ChatResponseProcessOut.model_validate(
+            json.loads(turn.snapshot_json)["turn"]["process"]
+        )
     status = ChatTurnStatus(turn.status)
     entries = project_entries(events)
     # 只有轮次确实停下（中断/失败/取消）时，未回结果的工具才显示为已中断；仍在

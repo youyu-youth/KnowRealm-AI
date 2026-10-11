@@ -2567,6 +2567,21 @@
       "stopTurn": "Stop this turn",
       "waiting": {
         "sectionLabel": "Turn awaiting action",
+        "BACKGROUND_TASK": "Waiting for background processing; the answer will continue automatically",
+        "tasks": "Linked background tasks",
+        "taskType": { "RUN": "Agent task", "JOB": "Background processing" },
+        "taskStatus": {
+          "PENDING": "Queued",
+          "RUNNING": "Running",
+          "WAITING_JOB": "Waiting for processing",
+          "WAITING_USER": "Awaiting approval",
+          "SUCCEEDED": "Completed",
+          "COMPLETED": "Completed",
+          "PARTIAL_COMPLETED": "Partially completed",
+          "FAILED": "Failed",
+          "CANCELLED": "Stopped",
+          "MISSING": "Unavailable"
+        },
         "submittedAt": "Asked at {{time}}",
         "generic": "Answer generation is waiting; it can continue once the condition is restored",
         "PROVIDER_UNAVAILABLE": "The original AI provider is unavailable; restore the configuration to continue",

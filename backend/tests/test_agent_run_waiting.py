@@ -1191,6 +1191,9 @@ async def test_upgrade_migration_backfills_legacy_recovery_budget(tmp_path: Path
             # 真实升级前的库形态：版本 39 且无 0041/0042 新表（先落库后回拨，
             # 须一并摘除本轮已建的新表，重放迁移链才是纯升级路径）。
             await connection.execute("DROP TABLE IF EXISTS chat_turn_events")
+            await connection.execute("DROP TABLE IF EXISTS chat_turn_waits")
+            await connection.execute("DROP TABLE IF EXISTS chat_turn_runs")
+            await connection.execute("DROP TABLE IF EXISTS chat_turn_tool_effects")
             await connection.execute("DROP TABLE IF EXISTS chat_turns")
             await connection.execute("DROP TABLE IF EXISTS chat_response_processes")
             await connection.execute("PRAGMA user_version=39")

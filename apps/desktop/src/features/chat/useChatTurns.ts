@@ -192,6 +192,7 @@ export function useChatTurns(sessionId: string) {
   const observeTurn = useCallback(
     async (turnId: string, afterSeq: number, signal: AbortSignal) => {
       let cursor = afterSeq;
+      let statusVersion = 0;
       for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt += 1) {
         let terminalSeen = false;
         try {
@@ -200,8 +201,35 @@ export function useChatTurns(sessionId: string) {
             cursor,
             {
               onStatus: (payload) => {
+                const version = ++statusVersion;
                 if (payload.process) setResponseProcess(payload.process);
+                if (
+                  payload.phase === "reset" &&
+                  typeof payload.baseline === "string"
+                ) {
+                  restoreFromSnapshot(payload.baseline);
+                }
+                if (payload.phase === "waiting_job") {
+                  invalidateTurnSideEffects();
+                  void chatApi
+                    .getTurn(turnId)
+                    .then((snapshot) => {
+                      if (
+                        version === statusVersion &&
+                        !terminalSeen &&
+                        activeTurnIdRef.current === turnId &&
+                        !signal.aborted
+                      )
+                        setTurn(snapshot);
+                    })
+                    .catch(() => undefined);
+                }
                 if (payload.phase === "generating") {
+                  setTurn((current) =>
+                    current?.status === "WAITING_JOB"
+                      ? { ...current, status: "RUNNING", waiting_reason: null }
+                      : current,
+                  );
                   void queryClient.invalidateQueries({
                     queryKey: chatKeys.messages(sessionId),
                   });
@@ -228,6 +256,7 @@ export function useChatTurns(sessionId: string) {
                 }
               },
               onToken: (text, segmentId = "legacy") => {
+                statusVersion += 1;
                 segmentsRef.current.set(
                   segmentId,
                   (segmentsRef.current.get(segmentId) ?? "") + text,
@@ -277,6 +306,7 @@ export function useChatTurns(sessionId: string) {
           }
           // 网络失败：落入下方快照对账重连。
         }
+        statusVersion += 1;
         if (terminalSeen || signal.aborted) return;
         // 流关闭但未见终态事件：快照对账（完成／失败就地收尾，在途则续订）。
         const snapshot = await chatApi.getTurn(turnId).catch(() => null);

@@ -849,6 +849,14 @@ async def submit_batch_plan(runtime: AgentRuntimeContext, args: dict[str, Any]) 
                 run = active
                 run.plan_version = payload.plan_version
                 run.updated_at = utcnow()
+            from app.modules.agent.turns.background import RunControlScope, bind_run
+
+            await bind_run(
+                session,
+                runtime.turn_id,
+                run.id,
+                RunControlScope.EXCLUSIVE if active is None else RunControlScope.SHARED,
+            )
             appended = await append_plan_operations(
                 session,
                 run,
@@ -944,6 +952,16 @@ async def apply_batch_plan(session: AsyncSession, proposal: AgentProposal) -> di
     snapshot = parse_plan_snapshot(proposal, payload)
     resolved = resolve_plan_items(payload.items)
     run = await _target_run(session, proposal, payload)
+    from app.modules.agent.turns.background import RunControlScope, bind_run
+    from app.modules.agent.turns.models import ChatTurn
+
+    turn_id = await session.scalar(
+        select(ChatTurn.id)
+        .where(ChatTurn.user_message_id == proposal.message_id)
+        .order_by(ChatTurn.created_at.desc())
+        .limit(1)
+    )
+    await bind_run(session, turn_id, run.id, RunControlScope.INDEPENDENT)
     # 计划版本以 Run 上生效的版本为准（延展时可能被提升为单调递增版本），
     # 保证 run.plan_json 与「已批准集合」的版本口径一致。
     payload = payload.model_copy(update={"plan_version": run.plan_version})

@@ -2330,9 +2330,22 @@
             "title": "Attempt",
             "type": "integer"
           },
+          "background_tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurnTaskOut"
+            },
+            "title": "Background Tasks",
+            "type": "array"
+          },
           "cancel_requested": {
             "title": "Cancel Requested",
             "type": "boolean"
+          },
+          "compacted_seq": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Compacted Seq",
+            "type": "integer"
           },
           "created_at": {
             "title": "Created At",
@@ -2633,6 +2646,43 @@
         "title": "ChatTurnSubmitRequest",
         "type": "object"
       },
+      "ChatTurnTaskOut": {
+        "properties": {
+          "control_scope": {
+            "enum": [
+              "EXCLUSIVE",
+              "SHARED",
+              "INDEPENDENT"
+            ],
+            "title": "Control Scope",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "enum": [
+              "RUN",
+              "JOB"
+            ],
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "target_id",
+          "status",
+          "control_scope"
+        ],
+        "title": "ChatTurnTaskOut",
+        "type": "object"
+      },
       "ChatTurnWaitingKind": {
         "description": "WAITING_USER 等待原因类型（票 02，规格 §7/§11/§12）。",
         "enum": [
@@ -2642,7 +2692,8 @@
           "MEMORY_OUTBOUND_REVOKED",
           "WEB_SEARCH_UNAVAILABLE",
           "GRAPH_INCOMPATIBLE",
-          "CHECKPOINT_MISSING"
+          "CHECKPOINT_MISSING",
+          "BACKGROUND_TASK"
         ],
         "title": "ChatTurnWaitingKind",
         "type": "string"
@@ -12918,6 +12969,105 @@
           }
         },
         "summary": "Cancel Chat Turn",
+        "tags": [
+          "chat-turns"
+        ]
+      }
+    },
+    "/api/chat-turns/{turn_id}/compact": {
+      "post": {
+        "operationId": "compact_chat_turn_api_chat_turns__turn_id__compact_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTurnOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Compact Chat Turn",
         "tags": [
           "chat-turns"
         ]

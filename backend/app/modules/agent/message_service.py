@@ -100,6 +100,18 @@ def _turn_ref(turn: ChatTurn, events: list[ChatTurnEvent]) -> ChatMessageTurnOut
         else ""
     )
     result: ChatTurnResultOut | None = None
+    if turn.snapshot_json is not None:
+        saved = cast(dict[str, Any], json.loads(turn.snapshot_json))
+        if turn.final_message_id is None and turn.status in _PARTIAL_OUTPUT_STATUSES:
+            output_text = str(saved["turn"]["output_text"])
+        payload = saved.get("done")
+        if isinstance(payload, dict):
+            payload = cast(dict[str, Any], payload)
+            result = ChatTurnResultOut(
+                memory_used=_str_list(payload.get("memory_used")),
+                memory_proposals=_dict_list(payload.get("memory_proposals")),
+                research_proposals=_dict_list(payload.get("research_proposals")),
+            )
     for row in events:
         if row.type != ChatTurnEventType.DONE.value:
             continue
@@ -115,7 +127,7 @@ def _turn_ref(turn: ChatTurn, events: list[ChatTurnEvent]) -> ChatMessageTurnOut
         status=turn.status,
         output_text=output_text,
         result=result,
-        revisions=project_revisions(events),
+        revisions=project_revisions(events, turn),
     )
 
 

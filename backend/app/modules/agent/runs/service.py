@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, cast
 from uuid import uuid4
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -35,6 +35,8 @@ from app.modules.agent.runs.schemas import (
     parse_plan_out,
     plan_dependencies,
 )
+from app.modules.agent.turns.models import ChatTurn, ChatTurnRun, ChatTurnWait
+from app.modules.agent.turns.schemas import ChatTurnStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.library.models import AgentProposal
@@ -47,6 +49,35 @@ if TYPE_CHECKING:
 
 # AGENT_RUN 触发 job 的类型值（Run 推进 worker 的 job_type；无状态触发器）。
 AGENT_RUN_JOB_TYPE = ProcessingJobType.AGENT_RUN
+
+
+def protected_run_ids() -> Select[tuple[str]]:
+    return (
+        select(ChatTurnRun.run_id)
+        .join(ChatTurn, ChatTurn.id == ChatTurnRun.turn_id)
+        .where(ChatTurn.status.notin_([s.value for s in ChatTurnStatus if s.is_terminal]))
+    )
+
+
+def protected_operation() -> ColumnElement[bool]:
+    triggered = (
+        select(ChatTurn.id)
+        .where(
+            ChatTurn.status.notin_([s.value for s in ChatTurnStatus if s.is_terminal]),
+            func.json_extract(AgentOperation.authorization_json, "$.message_id")
+            == ChatTurn.user_message_id,
+        )
+        .exists()
+    )
+    awaited = (
+        select(ChatTurnWait.source_operation_id)
+        .join(ChatTurn, ChatTurn.id == ChatTurnWait.turn_id)
+        .where(
+            ChatTurn.status.notin_([s.value for s in ChatTurnStatus if s.is_terminal]),
+            ChatTurnWait.source_operation_id.is_not(None),
+        )
+    )
+    return triggered | AgentOperation.id.in_(awaited)
 
 
 def append_attempt(operation: AgentOperation, error_code: str, *, now: datetime) -> None:
@@ -509,6 +540,10 @@ class RunHistoryService:
         活动 run 拒绝清理（先结束或取消再清理）；提案审批事实永不删。
         """
         async with session.begin():
+            # 与新等待登记串行，检查后不能被迟到的 ORM DELETE 级联删除。
+            await session.execute(
+                update(AgentRun).where(AgentRun.id == run_id).values(updated_at=AgentRun.updated_at)
+            )
             run = await session.get(AgentRun, run_id)
             if run is None:
                 raise CodedHTTPException(
@@ -520,6 +555,19 @@ class RunHistoryService:
                     status_code=409,
                     detail="任务尚未结束，不能清理历史",
                 )
+            if (
+                await session.scalar(
+                    select(AgentRun.id).where(
+                        AgentRun.id == run_id, AgentRun.id.in_(protected_run_ids())
+                    )
+                )
+                is not None
+            ):
+                raise CodedHTTPException(
+                    code="AGENT_RUN_NOT_FINISHED",
+                    status_code=409,
+                    detail="回答仍依赖此任务，暂不能清理历史",
+                )
             await session.delete(run)
 
     @staticmethod
@@ -529,6 +577,11 @@ class RunHistoryService:
         terminal_run_statuses = [status.value for status in RUN_TERMINAL_STATUSES]
         terminal_op_statuses = [status.value for status in OPERATION_TERMINAL_STATUSES]
         async with session.begin():
+            await session.execute(
+                update(AgentRun)
+                .where(AgentRun.status.in_(terminal_run_statuses))
+                .values(updated_at=AgentRun.updated_at)
+            )
             cascading = cast(
                 int,
                 await session.scalar(
@@ -536,18 +589,25 @@ class RunHistoryService:
                     .select_from(AgentOperation)
                     .where(
                         AgentOperation.run_id.in_(
-                            select(AgentRun.id).where(AgentRun.status.in_(terminal_run_statuses))
+                            select(AgentRun.id).where(
+                                AgentRun.status.in_(terminal_run_statuses),
+                                AgentRun.id.notin_(protected_run_ids()),
+                            )
                         )
                     )
                 ),
             )
             runs_claimed = await session.execute(
-                delete(AgentRun).where(AgentRun.status.in_(terminal_run_statuses))
+                delete(AgentRun).where(
+                    AgentRun.status.in_(terminal_run_statuses),
+                    AgentRun.id.notin_(protected_run_ids()),
+                )
             )
             steps_claimed = await session.execute(
                 delete(AgentOperation).where(
                     AgentOperation.run_id.is_(None),
                     AgentOperation.status.in_(terminal_op_statuses),
+                    ~protected_operation(),
                 )
             )
             # DELETE 结果必为 CursorResult（proposals.confirm 抢占判定同收窄方式）。
@@ -631,6 +691,17 @@ class RunControlService:
     """
 
     @staticmethod
+    async def cancel_in_transaction(session: AsyncSession, run: AgentRun) -> None:
+        """共用取消提交边界，调用方已持有写事务；不撤销已提交的领域 Job。"""
+        run.cancel_requested = True
+        run.updated_at = utcnow()
+        if run.status in (RunStatus.WAITING_USER.value, RunStatus.WAITING_JOB.value):
+            await cancel_pending_operations(session, run)
+            settle_run(run, RunStatus.CANCELLED)
+        else:
+            await enqueue_trigger(session, run.id)
+
+    @staticmethod
     async def cancel_run(session: AsyncSession, run_id: str) -> dict[str, Any]:
         """取消（持久化端点）：置 cancel_requested；推进中由 worker 每步检查后
         收尾，等待态无 worker 在跑则就地落 CANCELLED（不新增动作、已提交保留）。
@@ -642,16 +713,11 @@ class RunControlService:
         已取消）拒绝取消——终局不可改，取消不冒充撤销；重试失败项另有端点。
         """
         async with session.begin():
+            await session.execute(
+                update(AgentRun).where(AgentRun.id == run_id).values(updated_at=AgentRun.updated_at)
+            )
             run = await _require_active_run(session, run_id)
-            run.cancel_requested = True
-            run.updated_at = utcnow()
-            if run.status in (RunStatus.WAITING_USER.value, RunStatus.WAITING_JOB.value):
-                await cancel_pending_operations(session, run)
-                settle_run(run, RunStatus.CANCELLED)
-            else:
-                # 运行态：确保有一个触发 job 会观察到取消请求（同 Run 已有活动
-                # 触发 job 时不重复投递，正在推进的 worker 下一步即收尾）。
-                await enqueue_trigger(session, run.id)
+            await RunControlService.cancel_in_transaction(session, run)
         return _run_out(run)
 
     @staticmethod

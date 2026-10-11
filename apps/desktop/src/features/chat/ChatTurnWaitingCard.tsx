@@ -24,10 +24,13 @@ export function ChatTurnWaitingCard({
   const { t } = useTranslation();
   if (turn === null) return null;
   const status = turn.status;
-  if (status !== "WAITING_USER" && status !== "INTERRUPTED") return null;
-  const waiting = status === "WAITING_USER";
+  const background = status === "WAITING_JOB";
+  if (status !== "WAITING_USER" && status !== "INTERRUPTED" && !background)
+    return null;
+  const waiting = status === "WAITING_USER" || background;
   const kind = waiting ? turn.waiting_reason?.kind : undefined;
-  const resumable = !waiting || !kind || !UNRESUMABLE_KINDS.has(kind);
+  const resumable =
+    !background && (!waiting || !kind || !UNRESUMABLE_KINDS.has(kind));
   const label = waiting
     ? waitingReasonText(t, kind)
     : t("chat.turn.interrupted");
@@ -55,6 +58,21 @@ export function ChatTurnWaitingCard({
           })}
         </span>
       </p>
+      {background ? (
+        <ul
+          aria-label={t("chat.turn.waiting.tasks")}
+          className="text-label text-muted-foreground w-full"
+        >
+          {turn.background_tasks?.map((task) => (
+            <li key={`${task.target_type}-${task.target_id}`}>
+              {t(`chat.turn.waiting.taskType.${task.target_type}`)} ·{" "}
+              {t(`chat.turn.waiting.taskStatus.${task.status}`, {
+                defaultValue: task.status,
+              })}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {resumable ? (
         <Button
           type="button"
@@ -71,9 +89,10 @@ export function ChatTurnWaitingCard({
         variant="outline"
         size="sm"
         onClick={onStop}
+        disabled={turn.cancel_requested}
         aria-label={t("chat.turn.stopTurn")}
       >
-        {t("chat.turn.stopTurn")}
+        {t(turn.cancel_requested ? "chat.turn.stopping" : "chat.turn.stopTurn")}
       </Button>
     </section>
   );

@@ -1856,7 +1856,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v25"
+        assert rows[0][3] == "chat-library-scope-v26"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2424,6 +2424,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "wait_for_task",
                 "undo_operation",
                 "create_goal",
                 "update_goal",
@@ -2461,6 +2462,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "wait_for_task",
                 "undo_operation",
                 "create_goal",
                 "update_goal",
@@ -2498,6 +2500,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "wait_for_task",
                 "undo_operation",
                 "create_goal",
                 "update_goal",
@@ -2535,6 +2538,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "wait_for_task",
                 "undo_operation",
                 "create_goal",
                 "update_goal",
@@ -2578,6 +2582,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "wait_for_task",
                 "undo_operation",
                 "create_goal",
                 "update_goal",
@@ -2616,6 +2621,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "wait_for_task",
                 "undo_operation",
                 "create_goal",
                 "update_goal",
@@ -2654,6 +2660,7 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "delete_course",
                 "move_record_course",
                 "plan_batch_operations",
+                "wait_for_task",
                 "undo_operation",
                 "create_goal",
                 "update_goal",

@@ -24,7 +24,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
-from sqlalchemy import CursorResult, select, text, update
+from sqlalchemy import CursorResult, delete, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -34,7 +34,7 @@ from app.modules.agent.message_service import validate_sendable_chat
 from app.modules.agent.models import ChatMessage, ChatSession
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import ChatRole
-from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent
+from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent, ChatTurnRun
 from app.modules.agent.turns.projection import build_output_text, process_out_for, project_revisions
 from app.modules.agent.turns.runtime import ActiveTurnRegistry, TurnEventBroadcaster
 from app.modules.agent.turns.schemas import (
@@ -203,6 +203,8 @@ async def _begin_read_snapshot(session: AsyncSession) -> None:
 
 def turn_out(turn: ChatTurn, events: list[ChatTurnEvent] | None = None) -> ChatTurnOut:
     """轮次快照投影；events 提供时一并投影正文与过程（同一一致视图读取）。"""
+    if turn.snapshot_json is not None:
+        return ChatTurnOut.model_validate(json.loads(turn.snapshot_json)["turn"])
     return ChatTurnOut(
         id=turn.id,
         session_id=turn.session_id,
@@ -213,6 +215,7 @@ def turn_out(turn: ChatTurn, events: list[ChatTurnEvent] | None = None) -> ChatT
         attempt=turn.attempt,
         output_revision=turn.output_revision,
         last_seq=turn.last_seq,
+        compacted_seq=turn.compacted_seq,
         error_code=turn.error_code,
         error_message=turn.error_message,
         waiting_reason=parse_waiting_reason(turn.waiting_reason),
@@ -222,7 +225,7 @@ def turn_out(turn: ChatTurn, events: list[ChatTurnEvent] | None = None) -> ChatT
         finished_at=turn.finished_at,
         output_text=build_output_text(events) if events is not None else "",
         process=process_out_for(turn, events) if events is not None else None,
-        revisions=project_revisions(events) if events is not None else [],
+        revisions=project_revisions(events, turn) if events is not None else [],
     )
 
 
@@ -434,7 +437,7 @@ async def _close_turn_job(session: AsyncSession, turn_id: str, status: Processin
     job.updated_at = now
 
 
-async def _ensure_turn_job(session: AsyncSession, turn_id: str, now: datetime) -> None:
+async def ensure_turn_job(session: AsyncSession, turn_id: str, now: datetime) -> None:
     """继续／自动续跑后确保 CHAT_TURN job 可被领取（缺失或非终态时重置 PENDING）。"""
     job = await session.scalar(
         select(ProcessingJob).where(
@@ -467,6 +470,45 @@ async def _ensure_turn_job(session: AsyncSession, turn_id: str, now: datetime) -
 
 
 class ChatTurnService:
+    @staticmethod
+    async def compact_events(
+        session_factory: async_sessionmaker[AsyncSession], turn_id: str
+    ) -> ChatTurnOut | None:
+        """仅压缩终态增量；先保存权威投影与业务回执，同事务删除事件。"""
+        from app.modules.agent.turns.background import task_states
+
+        async with session_factory() as session, session.begin():
+            await session.execute(
+                update(ChatTurn)
+                .where(ChatTurn.id == turn_id)
+                .values(updated_at=ChatTurn.updated_at)
+            )
+            turn = await get_turn(session, turn_id)
+            if turn is None:
+                return None
+            if not ChatTurnStatus(turn.status).is_terminal:
+                raise _turn_in_progress_error()
+            if turn.snapshot_json is not None:
+                return turn_out(turn)
+            events = await list_turn_events(session, turn_id)
+            snapshot = turn_out(turn, events)
+            snapshot.compacted_seq = turn.last_seq
+            snapshot.background_tasks = await task_states(session, turn_id)
+            done = next(
+                (
+                    json.loads(row.payload_json)
+                    for row in reversed(events)
+                    if row.type == ChatTurnEventType.DONE.value
+                ),
+                None,
+            )
+            turn.snapshot_json = json.dumps(
+                {"turn": snapshot.model_dump(mode="json"), "done": done}, ensure_ascii=False
+            )
+            turn.compacted_seq = turn.last_seq
+            await session.execute(delete(ChatTurnEvent).where(ChatTurnEvent.turn_id == turn_id))
+            return snapshot
+
     @staticmethod
     async def submit_turn(
         *,
@@ -540,7 +582,11 @@ class ChatTurnService:
             if turn is None:
                 return None
             events = await list_turn_events(session, turn_id)
-            return turn_out(turn, events)
+            snapshot = turn_out(turn, events)
+            from app.modules.agent.turns.background import task_states
+
+            snapshot.background_tasks = await task_states(session, turn_id)
+            return snapshot
 
     @staticmethod
     async def list_session_turns(
@@ -590,7 +636,11 @@ class ChatTurnService:
         outs: list[ChatTurnOut] = []
         for row in rows:
             events = await list_turn_events(session, row.id)
-            outs.append(turn_out(row, events))
+            snapshot = turn_out(row, events)
+            from app.modules.agent.turns.background import task_states
+
+            snapshot.background_tasks = await task_states(session, row.id)
+            outs.append(snapshot)
         return outs
 
     @staticmethod
@@ -599,6 +649,7 @@ class ChatTurnService:
     ) -> tuple[ChatTurn, list[ChatTurnEvent]]:
         """只读已提交事件与轮次当前态（同一一致视图）。"""
         async with session_factory() as session:
+            await _begin_read_snapshot(session)
             turn = await get_turn(session, turn_id)
             if turn is None:
                 raise CodedHTTPException(
@@ -629,6 +680,11 @@ class ChatTurnService:
         收口并关 job。
         """
         async with session_factory() as session, session.begin():
+            await session.execute(
+                update(ChatTurn)
+                .where(ChatTurn.id == turn_id)
+                .values(updated_at=ChatTurn.updated_at)
+            )
             turn = await get_turn(session, turn_id)
             if turn is None:
                 return None
@@ -638,10 +694,31 @@ class ChatTurnService:
             now = utcnow()
             turn.cancel_requested = True
             turn.updated_at = now
+            from app.modules.agent.runs.models import AgentRun
+            from app.modules.agent.runs.schemas import RUN_TERMINAL_STATUSES
+            from app.modules.agent.runs.service import RunControlService
+            from app.modules.agent.turns.background import RunControlScope
+
+            links = list(
+                (
+                    await session.scalars(
+                        select(ChatTurnRun).where(
+                            ChatTurnRun.turn_id == turn_id,
+                            ChatTurnRun.control_scope == RunControlScope.EXCLUSIVE.value,
+                        )
+                    )
+                ).all()
+            )
+            for link in links:
+                link.cancel_requested = True
+                run = await session.get(AgentRun, link.run_id)
+                if run is not None and run.status not in {s.value for s in RUN_TERMINAL_STATUSES}:
+                    await RunControlService.cancel_in_transaction(session, run)
             direct = status in (
                 ChatTurnStatus.QUEUED,
                 ChatTurnStatus.INTERRUPTED,
                 ChatTurnStatus.WAITING_USER,
+                ChatTurnStatus.WAITING_JOB,
             )
             if status == ChatTurnStatus.RUNNING and turn_id not in active:
                 direct = True
@@ -667,6 +744,11 @@ class ChatTurnService:
         排队，或经 cancel 停止。
         """
         async with session_factory() as session, session.begin():
+            await session.execute(
+                update(ChatTurn)
+                .where(ChatTurn.id == turn_id)
+                .values(updated_at=ChatTurn.updated_at)
+            )
             turn = await get_turn(session, turn_id)
             if (
                 turn is None
@@ -675,6 +757,12 @@ class ChatTurnService:
             ):
                 return False
             now = utcnow()
+            if bool(turn.cancel_requested):
+                turn.status = ChatTurnStatus.CANCELLED.value
+                turn.finished_at = now
+                turn.updated_at = now
+                await _close_turn_job(session, turn_id, ProcessingJobStatus.CANCELLED)
+                return True
             turn.status = ChatTurnStatus.WAITING_USER.value
             turn.waiting_reason = serialize_waiting_reason(
                 ChatTurnWaitingReason(kind=kind, detail=detail)
@@ -735,7 +823,7 @@ class ChatTurnService:
             turn.status = ChatTurnStatus.QUEUED.value
             turn.waiting_reason = None
             turn.updated_at = now
-            await _ensure_turn_job(session, turn_id, now)
+            await ensure_turn_job(session, turn_id, now)
         return await ChatTurnService.get_snapshot(session_factory, turn_id)
 
     @staticmethod
@@ -805,7 +893,10 @@ class ChatTurnService:
                 ).all()
             )
             for turn_id in queued_ids:
-                await _ensure_turn_job(session, turn_id, now)
+                await ensure_turn_job(session, turn_id, now)
+            from app.modules.agent.turns.background import reconcile_waits
+
+            await reconcile_waits(session)
         if checkpointer is not None:
             for turn_id in terminal_ids:
                 await checkpointer.adelete_thread(f"chat-turn-{turn_id}")
@@ -910,6 +1001,11 @@ class ChatTurnService:
             session.add(assistant_row)
             await session.flush()
             turn.status = ChatTurnStatus.COMPLETED.value
+            await session.execute(
+                update(ChatTurnRun)
+                .where(ChatTurnRun.turn_id == turn_id, ChatTurnRun.control_scope == "EXCLUSIVE")
+                .values(control_scope="INDEPENDENT")
+            )
             turn.final_message_id = assistant_row.id
             turn.finished_at = now
             turn.updated_at = now

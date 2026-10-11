@@ -31,6 +31,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[rep
 from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
     CompiledStateGraph,
 )
+from langgraph.types import Command, Interrupt
 from loguru import logger
 
 from app.modules.agent.middleware.cancel_guard import TurnCancelGuardMiddleware
@@ -145,11 +146,13 @@ from app.modules.agent.tools.update_plan_item import (
     UPDATE_PLAN_ITEM_TOOL_NAME,
     update_plan_item,
 )
+from app.modules.agent.tools.wait_for_task import wait_for_task
 from app.modules.agent.tools.web_search import web_search
+from app.modules.agent.turns.background import interrupt_bindings, resume_results
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v25"
+CHAT_PROMPT_VERSION = "chat-library-scope-v26"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
@@ -159,12 +162,12 @@ CHAT_PROMPT_VERSION = "chat-library-scope-v25"
 # 时间能力 v1：时间提示行 + 时间工具族四工具；工单 05：共享引用三工具与指引；
 # 第三阶段工单 06：计划创建类步骤与输出引用指引；工单 07：多资料建课编排
 # 指引——四类来源、建目标与末步草案产出步骤）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v26"
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v27"
 CHAT_RECURSION_LIMIT = 25
 # 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
 # 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
 # 工具集合、图结构或 checkpoint 状态语义变化时 bump。
-CHAT_GRAPH_VERSION = "chat-graph-v1"
+CHAT_GRAPH_VERSION = "chat-graph-v2"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
@@ -220,6 +223,7 @@ class ChatStreamOutcome:
 
     token_usage: dict[str, object] = field(default_factory=dict[str, object])
     final_text: str | None = None
+    background_interrupts: dict[str, str] = field(default_factory=dict[str, str])
 
 
 @dataclass(frozen=True)
@@ -404,6 +408,7 @@ def _resolve_agent_config(
             delete_course,
             move_record_course,
             plan_batch_operations,
+            wait_for_task,
             undo_operation,
             create_goal,
             update_goal,
@@ -804,7 +809,7 @@ async def stream_chat_reply(
             system_prompt=system_prompt,
             config=base_config,
         )
-        graph_input: dict[str, Any] | None = {"messages": input_messages}
+        graph_input: dict[str, Any] | Command[Any] | None = {"messages": input_messages}
         if resume:
             snapshot = await agent.aget_state(  # pyright: ignore[reportUnknownVariableType, reportUnknownMemberType]
                 {"configurable": {"thread_id": thread}}
@@ -829,6 +834,16 @@ async def stream_chat_reply(
                     break
                 return
             graph_input = None  # 续跑：复用现有图状态，不重复注入用户输入。
+            pending = interrupt_bindings(
+                [item for task in snapshot.tasks for item in task.interrupts]
+            )
+            if pending:
+                results = await resume_results(runtime, pending)
+                if len(results) == len(pending):
+                    graph_input = Command(resume=results)
+                else:
+                    outcome.background_interrupts = pending
+                    return
             # checkpoint 验证通过后才声明替换边界（票 02）：checkpoint 缺失的
             # 分流在验证处抛出，不会误发 revision 事件（last_seq 不被污染，
             # 「无副作用且无输出＝从头执行」分流保持可达）。
@@ -847,6 +862,11 @@ async def stream_chat_reply(
         ):
             mode, data = cast(tuple[str, object], stream_item)
             if mode == "updates":
+                if isinstance(data, dict) and "__interrupt__" in data:
+                    outcome.background_interrupts.update(
+                        interrupt_bindings(cast(tuple[Interrupt, ...], data["__interrupt__"]))
+                    )
+                    continue
                 # 完整模型消息提供真实 tool_calls 边界，不按自然语言猜测正文性质。
                 if not isinstance(data, dict):
                     continue

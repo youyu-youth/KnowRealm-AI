@@ -34,7 +34,7 @@ from app.modules.agent.turns.schemas import (
     ChatTurnStatus,
     ChatTurnSubmitRequest,
 )
-from app.modules.agent.turns.service import ChatTurnService, parse_waiting_reason
+from app.modules.agent.turns.service import ChatTurnService, parse_waiting_reason, turn_out
 from app.shared.deps import get_db, require_launch_token
 from app.shared.errors import CodedHTTPException
 from app.shared.schemas import ErrorResponse
@@ -188,6 +188,7 @@ async def _event_stream(
 ) -> AsyncGenerator[ServerSentEvent, None]:
     queue = broadcaster.subscribe(turn_id)
     cursor = after_seq
+    last_status: str | None = None
     try:
         # 过程投影状态从 0 号事件完整重建（续订客户端只补流 after_seq 之后的事件，
         # 但 process 载荷须包含此前全部条目）；流只发 cursor 之后的事件。
@@ -196,6 +197,30 @@ async def _event_stream(
         yield _sse("status", {"phase": "generating", "process": _process_payload(turn, seen)})
         while True:
             turn, events = await ChatTurnService.read_events_after(factory, turn_id, cursor)
+            if (
+                last_status == ChatTurnStatus.WAITING_JOB.value
+                and turn.status == ChatTurnStatus.RUNNING.value
+            ):
+                yield _sse(
+                    "status", {"phase": "generating", "process": _process_payload(turn, seen)}
+                )
+            last_status = turn.status
+            if turn.compacted_seq > cursor:
+                snapshot = turn_out(turn)
+                seen = []
+                cursor = snapshot.last_seq
+                yield _sse(
+                    "status",
+                    {
+                        "phase": "reset",
+                        "snapshot": snapshot.model_dump(mode="json"),
+                        "baseline": snapshot.output_text,
+                        "seq": cursor,
+                        "process": snapshot.process.model_dump(mode="json")
+                        if snapshot.process
+                        else None,
+                    },
+                )
             for row in events:
                 seen.append(row)
                 cursor = row.seq
@@ -207,6 +232,21 @@ async def _event_stream(
                 if marker is not None:
                     yield marker
                 return
+            if turn.status == ChatTurnStatus.WAITING_JOB.value:
+                snapshot = await ChatTurnService.get_snapshot(factory, turn_id)
+                yield _sse(
+                    "status",
+                    {
+                        "phase": "waiting_job",
+                        "process": _process_payload(turn, seen),
+                        "reason": {"kind": "BACKGROUND_TASK"},
+                        "tasks": [
+                            task.model_dump(mode="json") for task in snapshot.background_tasks
+                        ]
+                        if snapshot
+                        else [],
+                    },
+                )
             # 通知降低延迟；丢失通知由超时补拉兜底（慢客户端断开后可重连同步）。
             try:
                 await asyncio.wait_for(queue.get(), timeout=EVENT_POLL_FALLBACK_SECONDS)
@@ -275,6 +315,16 @@ async def list_chat_turns(
 async def get_chat_turn(turn_id: UUID, request: Request) -> ChatTurnOut:
     app = request.app
     snapshot = await ChatTurnService.get_snapshot(app.state.session_factory, str(turn_id))
+    if snapshot is None:
+        raise CodedHTTPException(
+            code="CHAT_TURN_NOT_FOUND", status_code=404, detail="对话轮次不存在"
+        )
+    return snapshot
+
+
+@router.post("/api/chat-turns/{turn_id}/compact", response_model=ChatTurnOut)
+async def compact_chat_turn(turn_id: UUID, request: Request) -> ChatTurnOut:
+    snapshot = await ChatTurnService.compact_events(request.app.state.session_factory, str(turn_id))
     if snapshot is None:
         raise CodedHTTPException(
             code="CHAT_TURN_NOT_FOUND", status_code=404, detail="对话轮次不存在"

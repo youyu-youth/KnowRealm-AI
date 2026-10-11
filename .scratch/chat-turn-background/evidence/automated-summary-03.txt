@@ -1,0 +1,36 @@
+2026-10-11 票03自动化输出摘要
+基线: 5da4076013a051c3ce9f3f4f0a4b13c6fef8a037
+
+后端全量（最后夹具和挂载矩阵修正前）:
+FAILED tests/test_chat_streaming.py::test_scope_mounting_matrix_tool_visibility
+FAILED tests/test_chat_turns_background.py::test_t16_wait_releases_slot_and_resumes_original_result[True]
+FAILED tests/test_document_import.py::test_unexpected_io_and_parser_errors_are_not_retryable_or_logged
+FAILED tests/test_quizzes.py::test_quiz_last_count_preference_round_trip[asyncio]
+4 failed, 1159 passed, 7 warnings in 1295.34s (0:21:35)
+
+最终后台套件:
+10 passed in 61.79s (0:01:01)
+
+最终前端等待卡/Hook:
+ Test Files  2 passed (2)
+      Tests  18 passed (18)
+   Duration  6.99s (transform 312ms, setup 1.89s, collect 1.17s, tests 2.13s, environment 3.66s, prepare 499ms)
+
+干净基线前端对照（相同5个失败）:
+ ❯ src/features/learningPlan/components/LearningPlanTab.test.tsx (8 tests | 3 failed) 5899ms
+ ❯ src/features/records/components/RecordDetail.test.tsx (11 tests | 1 failed) 14586ms
+ ❯ src/features/search/components/CommandPalette.test.tsx (12 tests | 1 failed) 11159ms
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/features/learningPlan/components/LearningPlanTab.test.tsx > 学习计划 Tab > 切换历史版本只读查看（无编辑/跳过、勾选禁用）
+ FAIL  src/features/learningPlan/components/LearningPlanTab.test.tsx > 学习计划 Tab > 目标完结后保留只读查看入口与设定新目标引导
+ FAIL  src/features/learningPlan/components/LearningPlanTab.test.tsx > 学习计划 Tab > 多目标时切换选择器查看历史目标（默认跟随进行中）
+ FAIL  src/features/records/components/RecordDetail.test.tsx > 学习记录详情 > review 路由按考前速记、重点清单和大纲树显示生成结果
+ FAIL  src/features/search/components/CommandPalette.test.tsx > 命令面板 > 空查询显示三个捕获命令且不发搜索请求，Enter 触发既有入口
+ Test Files  3 failed (3)
+      Tests  5 failed | 26 passed (31)
+   Duration  61.46s (transform 4.48s, setup 4.50s, collect 55.88s, tests 31.64s, environment 10.22s, prepare 1.24s)
+
+干净基线后端遗留失败复现:
+FAILED tests/test_document_import.py::test_unexpected_io_and_parser_errors_are_not_retryable_or_logged
+FAILED tests/test_quizzes.py::test_quiz_last_count_preference_round_trip[asyncio]
+2 failed in 13.81s
