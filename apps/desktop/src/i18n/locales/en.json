@@ -2593,7 +2593,8 @@
         "MEMORY_OUTBOUND_REVOKED": "Injected memories can no longer be sent out; restore consent to continue",
         "WEB_SEARCH_UNAVAILABLE": "The original turn allowed web search, but the search configuration is unavailable; restore it to continue",
         "GRAPH_INCOMPATIBLE": "The engine version is incompatible with the original turn; stop and ask again",
-        "CHECKPOINT_MISSING": "Execution state is missing while committed content exists, so it cannot continue safely; stop and ask again"
+        "CHECKPOINT_MISSING": "Execution state is missing while committed content exists, so it cannot continue safely; stop and ask again",
+        "CONTEXT_COMPACTION_LIMIT": "Summary allowance exhausted. Continuing adds four requests and does not approve business operations."
       },
       "revisions": {
         "view": "Part of this answer was regenerated · View previous fragments ({{count}})",
@@ -2645,6 +2646,34 @@
         "BLOCKED": "Blocked; no model call"
       },
       "versions": "Turn {{turn}} · context version {{version}} · budget policy {{policy}}"
+    },
+    "compaction": {
+      "title": "Conversation compaction",
+      "progress": "Chunks {{completed}}/{{total}} · Summary requests {{used}}/{{allowance}}",
+      "showSummary": "View summary and sources",
+      "summaryHint": "This derived summary is traceable but may omit meaning. It is not verbatim evidence, long-term memory, or execution permission.",
+      "covered": "Program coverage: {{count}} message sources",
+      "sources": "Sources:",
+      "continue": "Continue compaction (four more requests)",
+      "purpose": {
+        "ANSWER": "Answer",
+        "SUMMARY": "Summary"
+      },
+      "status": {
+        "RUNNING": "Compacting history",
+        "WAITING": "Waiting for more summary allowance",
+        "FAILED": "Compaction failed; original context kept",
+        "COMPLETED": "History compaction completed",
+        "CANCELLED": "Compaction cancelled"
+      },
+      "columns": {
+        "goals": "User goals",
+        "constraints": "Explicit constraints",
+        "decisions": "Confirmed decisions",
+        "objects": "Objects and sources",
+        "unfinished": "Unfinished tasks",
+        "questions": "Open questions"
+      }
     }
   },
   "settings": {

@@ -275,7 +275,8 @@ async def test_legacy_nonterminal_turn_requires_stop_and_new_question(
     # 恢复迁移 0044 的真实 schema，再经生产迁移链升级；不补造旧消费事实。
     async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
         await connection.executescript(
-            "DROP TABLE chat_turn_budget_outputs; DROP TABLE chat_turn_budget_calls;"
+            "DROP TABLE chat_compactions;"
+            " DROP TABLE chat_turn_budget_outputs; DROP TABLE chat_turn_budget_calls;"
             " DROP TABLE chat_model_requests; DROP TABLE chat_context_inputs;"
             " DROP TABLE chat_context_states;"
             " PRAGMA user_version=44;"

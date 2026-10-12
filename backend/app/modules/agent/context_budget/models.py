@@ -15,6 +15,7 @@ class ChatContextState(Base):
     )
     version: Mapped[int] = mapped_column(Integer, default=1)
     segment: Mapped[int] = mapped_column(Integer, default=1)
+    summary_id: Mapped[str | None] = mapped_column(String(36), default=None)
 
 
 class ChatContextInput(Base):
@@ -25,6 +26,9 @@ class ChatContextInput(Base):
     context_version: Mapped[int] = mapped_column(Integer)
     policy_json: Mapped[str] = mapped_column(Text)
     messages_json: Mapped[str | None] = mapped_column(Text, default=None)
+    segment: Mapped[int] = mapped_column(Integer, default=1)
+    summary_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    summary_allowance: Mapped[int] = mapped_column(Integer, default=4)
 
 
 class ChatModelRequest(Base):
@@ -39,5 +43,28 @@ class ChatModelRequest(Base):
     input_fingerprint: Mapped[str] = mapped_column(String(64))
     estimate_json: Mapped[str] = mapped_column(Text)
     usage_json: Mapped[str | None] = mapped_column(Text, default=None)
+    error_code: Mapped[str | None] = mapped_column(String(50), default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    purpose: Mapped[str] = mapped_column(String(10), default="ANSWER")
+    messages_json: Mapped[str | None] = mapped_column(Text, default=None)
+    retry_of: Mapped[str | None] = mapped_column(String(64), default=None)
+
+
+class ChatCompaction(Base):
+    __tablename__ = "chat_compactions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    turn_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_turns.id", ondelete="CASCADE")
+    )
+    input_fingerprint: Mapped[str] = mapped_column(String(64))
+    context_version: Mapped[int] = mapped_column(Integer)
+    segment: Mapped[int] = mapped_column(Integer)
+    base_summary_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    status: Mapped[str] = mapped_column(String(20), default="RUNNING")
+    plan_json: Mapped[str] = mapped_column(Text)
+    results_json: Mapped[str] = mapped_column(Text, default="[]")
+    summary_json: Mapped[str | None] = mapped_column(Text, default=None)
+    covered_json: Mapped[str] = mapped_column(Text)
+    requests_used: Mapped[int] = mapped_column(Integer, default=0)
     error_code: Mapped[str | None] = mapped_column(String(50), default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)

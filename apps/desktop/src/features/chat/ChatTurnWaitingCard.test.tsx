@@ -31,6 +31,25 @@ const waitingTurn: ChatTurn = {
 };
 
 describe("ChatTurnWaitingCard 后台等待", () => {
+  it("明确说明压缩继续会追加四次请求且不批准业务操作", () => {
+    const resume = vi.fn();
+    renderWithQuery(
+      <ChatTurnWaitingCard
+        turn={{
+          ...waitingTurn,
+          status: "WAITING_USER",
+          waiting_reason: { kind: "CONTEXT_COMPACTION_LIMIT" },
+        }}
+        onResume={resume}
+        onStop={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/不批准业务操作/)).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "继续压缩（追加四次请求）" }),
+    );
+    expect(resume).toHaveBeenCalledOnce();
+  });
   it("显示真实任务状态、自动接续文案和停止入口", () => {
     const stop = vi.fn();
     renderWithQuery(

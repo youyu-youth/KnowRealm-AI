@@ -415,6 +415,7 @@ def build_context_messages(
     page_hint: PageHint | None = None,
     active_runs: Sequence[ActiveRunSummary] = (),
     time_hint: str | None = None,
+    durable_history: bool = False,
 ) -> list[AnyMessage]:
     """把会话全部消息行组装为喂入 LLM 的上下文。
 
@@ -522,14 +523,26 @@ def build_context_messages(
             role=ChatRole.SYSTEM,
             content=content,
         )
-    turns = turns[-CHAT_CONTEXT_MAX_TURNS:]
-    while turns and _turns_chars(system_row, turns, trailing_user) > budget:
-        turns = turns[1:]
-    if record is not None and _turns_chars(system_row, turns, trailing_user) > budget:
+    if not durable_history:
+        turns = turns[-CHAT_CONTEXT_MAX_TURNS:]
+        while turns and _turns_chars(system_row, turns, trailing_user) > budget:
+            turns = turns[1:]
+    if (
+        not durable_history
+        and record is not None
+        and _turns_chars(system_row, turns, trailing_user) > budget
+    ):
         raise ChatContextTooLargeError("挂载材料超过上下文预算")
     messages: list[AnyMessage] = []
     if system_row is not None:
         messages.append(SystemMessage(content=system_row.content, id=system_row.id))
+    if durable_history:
+        for row in rows:
+            if row.role == ChatRole.USER:
+                messages.append(HumanMessage(content=row.content, id=row.id))
+            elif row.role == ChatRole.ASSISTANT:
+                messages.append(AIMessage(content=row.content, id=row.id))
+        return messages
     for turn in turns:
         messages.append(HumanMessage(content=turn.user.content, id=turn.user.id))
         messages.append(AIMessage(content=turn.assistant.content, id=turn.assistant.id))

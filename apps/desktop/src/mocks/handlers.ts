@@ -38,6 +38,19 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/:id/turns`, () =>
     HttpResponse.json({ turns: [], next_before: null }),
   ),
+  http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/:id/context`, ({ params }) =>
+    HttpResponse.json({
+      session_id: params.id,
+      version: 1,
+      segment: 1,
+      actual_turn_id: null,
+      actual: [],
+      next_estimate: null,
+      next_error_code: null,
+      compactions: [],
+      active_summary: null,
+    }),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/:id/messages`, () =>
     HttpResponse.json([
       {

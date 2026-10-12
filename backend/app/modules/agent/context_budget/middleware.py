@@ -3,11 +3,15 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
+import openai
 from langchain.agents.middleware.types import (  # pyright: ignore[reportMissingTypeStubs]
     AgentMiddleware,
     ModelRequest,
 )
+from langchain_core.messages import messages_to_dict
+from sqlalchemy import select
 
+from app.modules.agent.context_budget.compaction import compact
 from app.modules.agent.context_budget.models import ChatModelRequest
 from app.modules.agent.context_budget.policy import estimate_input
 from app.modules.agent.context_budget.schemas import ContextPolicy, ModelRequestStatus
@@ -33,6 +37,52 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Awaitable[Any]]
     ) -> Any:
         await self._check_outbound()
+        messages = await compact(
+            self.runtime,
+            self.policy,
+            request.messages,
+            request.system_message,
+            request.tools,
+            request.model,
+            self._check_outbound,
+        )
+        request = request.override(messages=messages)
+        try:
+            return await self._invoke(request, handler)
+        except openai.BadRequestError as exc:
+            code = exc.code or ""
+            if code not in ("context_length_exceeded", "max_context_length_exceeded"):
+                raise
+            # 只重试当前模型请求；handler 不执行已提交的工具节点。
+            messages = await compact(
+                self.runtime,
+                self.policy,
+                request.messages,
+                request.system_message,
+                request.tools,
+                request.model,
+                self._check_outbound,
+                force=True,
+            )
+            if messages == request.messages:
+                raise
+            original = estimate_input(
+                self.policy,
+                ([request.system_message] if request.system_message else []) + request.messages,
+                request.tools,
+            )
+            return await self._invoke(
+                request.override(messages=messages), handler, retry_of=original.input_fingerprint
+            )
+
+    async def _invoke(
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Awaitable[Any]],
+        *,
+        retry_of: str | None = None,
+    ) -> Any:
+        await self._check_outbound()
         messages = ([request.system_message] if request.system_message else []) + request.messages
         estimate = estimate_input(self.policy, messages, request.tools)
         request = request.override(
@@ -46,10 +96,25 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             input_fingerprint=estimate.input_fingerprint,
             estimate_json=estimate.model_dump_json(),
             error_code=estimate.error_code,
+            messages_json=json.dumps(messages_to_dict(request.messages), ensure_ascii=False),
+            retry_of=retry_of,
         )
         async with self.runtime.session_factory() as session, session.begin():
             if not await self.runtime.turn_write_allowed(session):
                 raise TurnCancelledError
+            if retry_of and await session.scalar(
+                select(ChatModelRequest.id)
+                .where(
+                    ChatModelRequest.turn_id == self.runtime.turn_id,
+                    ChatModelRequest.retry_of == retry_of,
+                )
+                .limit(1)
+            ):
+                raise CodedHTTPException(
+                    code="MODEL_INPUT_BUDGET_EXCEEDED",
+                    status_code=409,
+                    detail="该请求的超限重试已用尽",
+                )
             session.add(row)
         if estimate.error_code:
             raise CodedHTTPException(
@@ -60,7 +125,12 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         try:
             response = await handler(request)
         except Exception:
-            await self._finish(row.id, ModelRequestStatus.FAILED, None)
+            await self._finish(
+                row.id,
+                ModelRequestStatus.FAILED,
+                None,
+                "MODEL_INPUT_BUDGET_EXCEEDED" if retry_of else None,
+            )
             raise
         usage = next(
             (
@@ -110,7 +180,13 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                 detail="AI 或记忆外发同意已失效，请恢复同意后重新提问",
             )
 
-    async def _finish(self, request_id: str, status: ModelRequestStatus, usage: object) -> None:
+    async def _finish(
+        self,
+        request_id: str,
+        status: ModelRequestStatus,
+        usage: object,
+        error_code: str | None = None,
+    ) -> None:
         async with self.runtime.session_factory() as session, session.begin():
             if not await self.runtime.turn_write_allowed(session):
                 raise TurnCancelledError
@@ -118,6 +194,8 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             if row is not None:
                 row.status = status
                 row.error_code = (
-                    "CHAT_STREAM_FAILED" if status == ModelRequestStatus.FAILED else None
+                    error_code or "CHAT_STREAM_FAILED"
+                    if status == ModelRequestStatus.FAILED
+                    else None
                 )
                 row.usage_json = json.dumps(usage) if usage is not None else None

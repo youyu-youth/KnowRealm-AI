@@ -49,6 +49,7 @@ from app.modules.agent.budget.policy import POLICY_VERSION
 from app.modules.agent.budget.service import restore
 from app.modules.agent.citations import parse_citation_reply, parse_library_citation_reply
 from app.modules.agent.context import ChatContextTooLargeError
+from app.modules.agent.context_budget.compaction import CompactionWaiting
 from app.modules.agent.context_budget.schemas import ContextPolicy
 from app.modules.agent.context_budget.service import context_input, restore_messages, save_messages
 from app.modules.agent.graph import (
@@ -518,6 +519,13 @@ class _TurnExecutor:
         shutdown_waiter.cancel()
         try:
             await consume  # 传播执行异常（含持久化失败与 _ClaimLost）
+        except CompactionWaiting:
+            await self._flush_buffer(force=True)
+            await self._wait(
+                ChatTurnWaitingKind.CONTEXT_COMPACTION_LIMIT,
+                "摘要请求额度已耗尽；继续将追加四次请求额度",
+            )
+            return
         except TurnCancelledError:
             # 取消闸门命中（模型前 / 工具前）：已落事件保留，按取消收口。
             with contextlib.suppress(_ClaimLost):

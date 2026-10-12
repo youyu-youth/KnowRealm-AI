@@ -1,15 +1,22 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
-from langchain_core.messages import AnyMessage, messages_from_dict, messages_to_dict
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    SystemMessage,
+    messages_from_dict,
+    messages_to_dict,
+)
 from sqlalchemy import select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.context import ChatContextTooLargeError
 from app.modules.agent.context_budget.models import (
+    ChatCompaction,
     ChatContextInput,
     ChatContextState,
     ChatModelRequest,
@@ -48,7 +55,11 @@ async def bind_context(
     state = await initialize_context(session, session_id)
     session.add(
         ChatContextInput(
-            turn_id=turn_id, context_version=state.version, policy_json=policy.model_dump_json()
+            turn_id=turn_id,
+            context_version=state.version,
+            policy_json=policy.model_dump_json(),
+            segment=state.segment,
+            summary_id=state.summary_id,
         )
     )
 
@@ -81,8 +92,56 @@ async def save_messages(
     original = restore_messages(snapshot)
     if original is not None:
         return original
+    messages = await apply_history(session, messages, snapshot.summary_id)
     snapshot.messages_json = json.dumps(messages_to_dict(messages), ensure_ascii=False)
     return messages
+
+
+async def apply_history(
+    session: AsyncSession, messages: list[AnyMessage], summary_id: str | None
+) -> list[AnyMessage]:
+    from app.modules.agent.context_budget.compaction import summary_message
+
+    result: list[AnyMessage] = []
+    for message in messages:
+        if isinstance(message, AIMessage) and message.id:
+            turn = await session.scalar(
+                select(ChatTurn).where(ChatTurn.final_message_id == message.id)
+            )
+            if turn:
+                request = await session.scalar(
+                    select(ChatModelRequest)
+                    .where(
+                        ChatModelRequest.turn_id == turn.id,
+                        ChatModelRequest.purpose == "ANSWER",
+                        ChatModelRequest.status == "COMPLETED",
+                        ChatModelRequest.messages_json.is_not(None),
+                    )
+                    .order_by(ChatModelRequest.created_at.desc(), ChatModelRequest.id.desc())
+                    .limit(1)
+                )
+                if request and request.messages_json:
+                    saved = cast(
+                        list[AnyMessage], messages_from_dict(json.loads(request.messages_json))
+                    )
+                    start = next(
+                        (
+                            index
+                            for index, item in enumerate(saved)
+                            if item.id == turn.user_message_id
+                        ),
+                        None,
+                    )
+                    if start is not None:
+                        result.extend(saved[start + 1 :])
+        result.append(message)
+    summary = await session.get(ChatCompaction, summary_id) if summary_id else None
+    if summary and summary.status == "COMPLETED":
+        covered = set(json.loads(summary.covered_json))
+        result = [message for message in result if message.id not in covered]
+        index = 1 if result and isinstance(result[0], SystemMessage) else 0
+        result.insert(index, summary_message(summary))
+    return result
 
 
 async def view_context(
@@ -133,12 +192,39 @@ async def view_context(
                     usage=json.loads(row.usage_json) if row.usage_json else None,
                     error_code=row.error_code,
                     created_at=row.created_at,
+                    purpose=cast(Literal["ANSWER", "SUMMARY"], row.purpose),
                 )
                 for row in requests
             ],
             next_estimate=None,
             next_error_code=None,
         )
+        from app.modules.agent.context_budget.compaction import compaction_out
+
+        compactions = (
+            list(
+                (
+                    await session.scalars(
+                        select(ChatCompaction)
+                        .where(ChatCompaction.turn_id == turn_id)
+                        .order_by(ChatCompaction.created_at, ChatCompaction.id)
+                    )
+                ).all()
+            )
+            if turn_id
+            else []
+        )
+        result.compactions = [
+            compaction_out(row, bound.summary_allowance if bound else 4) for row in compactions
+        ]
+        latest_turn = await session.get(ChatTurn, turn_id) if turn_id else None
+        if latest_turn and latest_turn.status == "CANCELLED":
+            for item in result.compactions:
+                if item.status != "COMPLETED":
+                    item.status = "CANCELLED"
+        active = await session.get(ChatCompaction, state.summary_id) if state.summary_id else None
+        if active:
+            result.active_summary = compaction_out(active, bound.summary_allowance if bound else 4)
     provider = await asyncio.to_thread(load_llm_provider, data_dir)
     if provider is None or not provider.api_key:
         result.next_error_code = "LLM_PROVIDER_UNCONFIGURED"
@@ -169,7 +255,9 @@ async def view_context(
             web_search_enabled=web_search,
             research=context.mode == "RESEARCH",
         )
-        result.next_estimate = estimate_input(policy, context.messages, config.tools)
+        async with session_factory() as session:
+            preview_messages = await apply_history(session, context.messages, state.summary_id)
+        result.next_estimate = estimate_input(policy, preview_messages, config.tools)
         result.next_error_code = result.next_estimate.error_code
     except CodedHTTPException as exc:
         result.next_error_code = exc.code

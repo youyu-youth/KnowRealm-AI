@@ -23,7 +23,11 @@ def _encoded(value: object) -> str:
 
 
 def estimate_input(
-    policy: ContextPolicy, messages: Sequence[AnyMessage], tools: Sequence[Any]
+    policy: ContextPolicy,
+    messages: Sequence[AnyMessage],
+    tools: Sequence[Any],
+    *,
+    summary: bool = False,
 ) -> InputEstimate:
     wire_messages = convert_to_openai_messages(list(messages))
     wire_tools = [convert_to_openai_tool(tool) for tool in tools]
@@ -37,7 +41,7 @@ def estimate_input(
         "tools": ceil(len(_encoded(wire_tools).encode("utf-8")) / 2),
         "protocol": 64 + 16 * len(messages) + 64 * len(tools),
     }
-    reserve = output_reserve(policy.capability)
+    reserve = output_reserve(policy.capability, summary=summary)
     limits: list[int] = []
     if policy.capability.input_limit is not None:
         limits.append(policy.capability.input_limit)

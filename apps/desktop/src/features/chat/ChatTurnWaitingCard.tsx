@@ -79,9 +79,17 @@ export function ChatTurnWaitingCard({
           variant="outline"
           size="sm"
           onClick={onResume}
-          aria-label={t("chat.turn.resume")}
+          aria-label={t(
+            kind === "CONTEXT_COMPACTION_LIMIT"
+              ? "chat.compaction.continue"
+              : "chat.turn.resume",
+          )}
         >
-          {t("chat.turn.resume")}
+          {t(
+            kind === "CONTEXT_COMPACTION_LIMIT"
+              ? "chat.compaction.continue"
+              : "chat.turn.resume",
+          )}
         </Button>
       ) : null}
       <Button

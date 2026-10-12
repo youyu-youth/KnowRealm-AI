@@ -3860,7 +3860,7 @@ export interface components {
          * @description WAITING_USER 等待原因类型（票 02，规格 §7/§11/§12）。
          * @enum {string}
          */
-        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "OUTBOUND_CONSENT_REVOKED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING" | "BACKGROUND_TASK";
+        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "OUTBOUND_CONSENT_REVOKED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING" | "BACKGROUND_TASK" | "CONTEXT_COMPACTION_LIMIT";
         /**
          * ChatTurnWaitingReason
          * @description 等待原因载荷（chat_turns.waiting_reason JSON）。
@@ -3882,6 +3882,29 @@ export interface components {
             ] | null;
             /** Turns */
             turns: components["schemas"]["ChatTurnOut"][];
+        };
+        /** CompactionOut */
+        CompactionOut: {
+            /** Allowance */
+            allowance: number;
+            /** Completed Chunks */
+            completed_chunks: number;
+            /** Covered Message Ids */
+            covered_message_ids: string[];
+            /** Error Code */
+            error_code: string | null;
+            /** Id */
+            id: string;
+            /** Requests Used */
+            requests_used: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "RUNNING" | "WAITING" | "FAILED" | "COMPLETED" | "CANCELLED";
+            summary: components["schemas"]["ConversationSummary"] | null;
+            /** Total Chunks */
+            total_chunks: number;
         };
         /** ConceptAnchorSourceOut */
         ConceptAnchorSourceOut: {
@@ -4090,10 +4113,13 @@ export interface components {
         };
         /** ContextViewOut */
         ContextViewOut: {
+            active_summary?: components["schemas"]["CompactionOut"] | null;
             /** Actual */
             actual: components["schemas"]["ModelRequestOut"][];
             /** Actual Turn Id */
             actual_turn_id: string | null;
+            /** Compactions */
+            compactions?: components["schemas"]["CompactionOut"][];
             /** Next Error Code */
             next_error_code: string | null;
             next_estimate: components["schemas"]["InputEstimate"] | null;
@@ -4103,6 +4129,39 @@ export interface components {
             session_id: string;
             /** Version */
             version: number;
+        };
+        /** ConversationSummary */
+        ConversationSummary: {
+            /**
+             * Constraints
+             * @description 明确约束，逐字摘录
+             */
+            constraints: components["schemas"]["SummaryItem"][];
+            /**
+             * Decisions
+             * @description 已确认决定，逐字摘录
+             */
+            decisions: components["schemas"]["SummaryItem"][];
+            /**
+             * Goals
+             * @description 用户目标
+             */
+            goals: components["schemas"]["SummaryItem"][];
+            /**
+             * Objects
+             * @description 相关对象和来源
+             */
+            objects: components["schemas"]["SummaryItem"][];
+            /**
+             * Questions
+             * @description 待澄清问题、冲突与推测
+             */
+            questions: components["schemas"]["SummaryItem"][];
+            /**
+             * Unfinished
+             * @description 未完成事项
+             */
+            unfinished: components["schemas"]["SummaryItem"][];
         };
         /** CourseCreate */
         CourseCreate: {
@@ -5183,6 +5242,12 @@ export interface components {
             estimate: components["schemas"]["InputEstimate"];
             /** Id */
             id: string;
+            /**
+             * Purpose
+             * @default ANSWER
+             * @enum {string}
+             */
+            purpose: "ANSWER" | "SUMMARY";
             status: components["schemas"]["ModelRequestStatus"];
             /** Turn Id */
             turn_id: string;
@@ -6302,6 +6367,19 @@ export interface components {
              * Format: uuid
              */
             summary_id: string;
+        };
+        /** SummaryItem */
+        SummaryItem: {
+            /**
+             * Source Ids
+             * @description 程序提供的消息来源身份
+             */
+            source_ids: string[];
+            /**
+             * Text
+             * @description 摘要内容；约束和决定必须摘录用户原文
+             */
+            text: string;
         };
         /** SummaryJobAccepted */
         SummaryJobAccepted: {

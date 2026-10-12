@@ -2573,7 +2573,8 @@
         "MEMORY_OUTBOUND_REVOKED": "已注入的记忆不再允许外发；恢复同意后可继续",
         "WEB_SEARCH_UNAVAILABLE": "原轮次允许联网搜索，当前联网配置不可用；恢复配置后可继续",
         "GRAPH_INCOMPATIBLE": "执行引擎版本与原轮次不兼容；请停止后重新提问",
-        "CHECKPOINT_MISSING": "执行状态缺失且已有已提交内容，无法安全继续；请停止后重新提问"
+        "CHECKPOINT_MISSING": "执行状态缺失且已有已提交内容，无法安全继续；请停止后重新提问",
+        "CONTEXT_COMPACTION_LIMIT": "摘要请求额度已耗尽，继续将追加四次请求，不批准业务操作。"
       },
       "revisions": {
         "view": "部分正文已重新生成 · 查看旧片段（{{count}}）",
@@ -2625,6 +2626,34 @@
         "BLOCKED": "已拦截，未调用"
       },
       "versions": "轮次 {{turn}} · 上下文版本 {{version}} · 预算策略 {{policy}}"
+    },
+    "compaction": {
+      "title": "会话压缩",
+      "progress": "分块 {{completed}}/{{total}} · 摘要请求 {{used}}/{{allowance}}",
+      "showSummary": "查看六栏摘要与来源",
+      "summaryHint": "摘要是可追溯的派生内容，不保证语义无损，不作为逐字证据、长期记忆或执行许可。",
+      "covered": "程序记录覆盖 {{count}} 条消息来源",
+      "sources": "来源：",
+      "continue": "继续压缩（追加四次请求）",
+      "purpose": {
+        "ANSWER": "回答",
+        "SUMMARY": "摘要"
+      },
+      "status": {
+        "RUNNING": "正在压缩历史",
+        "WAITING": "等待追加摘要额度",
+        "FAILED": "压缩失败，保留原上下文",
+        "COMPLETED": "历史压缩完成",
+        "CANCELLED": "压缩已取消"
+      },
+      "columns": {
+        "goals": "用户目标",
+        "constraints": "明确约束",
+        "decisions": "已确认决定",
+        "objects": "相关对象和来源",
+        "unfinished": "未完成事项",
+        "questions": "待澄清问题"
+      }
     }
   },
   "settings": {

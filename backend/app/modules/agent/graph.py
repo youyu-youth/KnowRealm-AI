@@ -36,6 +36,7 @@ from langgraph.types import Command, Interrupt
 from loguru import logger
 
 from app.modules.agent.budget.middleware import ToolBudgetMiddleware
+from app.modules.agent.context_budget.compaction import CompactionWaiting
 from app.modules.agent.context_budget.middleware import InputBudgetMiddleware
 from app.modules.agent.middleware.cancel_guard import TurnCancelGuardMiddleware
 from app.modules.agent.middleware.skeleton import (
@@ -171,7 +172,7 @@ CHAT_RECURSION_LIMIT = 25
 # 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
 # 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
 # 工具集合、图结构或 checkpoint 状态语义变化时 bump。
-CHAT_GRAPH_VERSION = "chat-graph-v2"
+CHAT_GRAPH_VERSION = "chat-graph-v3"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
@@ -956,6 +957,8 @@ async def stream_chat_reply(
                             outcome.final_text = text
                 continue
             chunk, metadata = cast(tuple[AnyMessage, dict[str, object]], data)
+            if "conversation-summary" in cast(list[str], metadata.get("tags", [])):
+                continue
             if isinstance(chunk, AIMessageChunk):
                 segment_id = chunk.id or f"model-{metadata.get('langgraph_step', 0)}"
                 last_segment_id = segment_id
@@ -977,6 +980,8 @@ async def stream_chat_reply(
                 yield result_event
                 for event in _tool_business_events(chunk):
                     yield event
+    except CompactionWaiting:
+        raise
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise

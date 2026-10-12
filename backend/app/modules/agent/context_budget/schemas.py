@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.modules.agent.schemas import ChatPageSnapshot
 from app.modules.settings.model_budget import ModelCapabilityOut
@@ -48,6 +48,35 @@ class ModelRequestOut(BaseModel):
     usage: dict[str, int] | None
     error_code: str | None
     created_at: datetime
+    purpose: Literal["ANSWER", "SUMMARY"] = "ANSWER"
+
+
+class SummaryItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    text: str = Field(min_length=1, description="摘要内容；约束和决定必须摘录用户原文")
+    source_ids: list[str] = Field(min_length=1, description="程序提供的消息来源身份")
+
+
+class ConversationSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    goals: list[SummaryItem] = Field(description="用户目标")
+    constraints: list[SummaryItem] = Field(description="明确约束，逐字摘录")
+    decisions: list[SummaryItem] = Field(description="已确认决定，逐字摘录")
+    objects: list[SummaryItem] = Field(description="相关对象和来源")
+    unfinished: list[SummaryItem] = Field(description="未完成事项")
+    questions: list[SummaryItem] = Field(description="待澄清问题、冲突与推测")
+
+
+class CompactionOut(BaseModel):
+    id: str
+    status: Literal["RUNNING", "WAITING", "FAILED", "COMPLETED", "CANCELLED"]
+    completed_chunks: int
+    total_chunks: int
+    requests_used: int
+    allowance: int
+    covered_message_ids: list[str]
+    summary: ConversationSummary | None
+    error_code: str | None
 
 
 class ContextViewOut(BaseModel):
@@ -58,6 +87,8 @@ class ContextViewOut(BaseModel):
     actual: list[ModelRequestOut]
     next_estimate: InputEstimate | None
     next_error_code: str | None
+    compactions: list[CompactionOut] = Field(default_factory=lambda: list[CompactionOut]())
+    active_summary: CompactionOut | None = None
 
 
 class ContextPreviewRequest(BaseModel):

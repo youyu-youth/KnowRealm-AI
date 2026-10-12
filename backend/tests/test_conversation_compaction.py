@@ -1,0 +1,555 @@
+"""公开执行链、真实 SQLite/Worker 与结构化模型替身的压缩验收。"""
+
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
+
+import httpx2 as httpx
+import openai
+import pytest
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.outputs import ChatGenerationChunk
+from langchain_core.runnables import RunnableLambda
+from sqlalchemy import select
+
+from app.modules.agent.context_budget.compaction import ConversationSummary, compact, plan_chunks
+from app.modules.agent.context_budget.models import (
+    ChatCompaction,
+    ChatContextInput,
+    ChatContextState,
+)
+from app.modules.agent.context_budget.policy import policy_for
+from app.modules.agent.models import ChatMessage
+from app.modules.agent.runtime import AgentRuntimeContext, current_agent_runtime
+from app.modules.agent.schemas import ChatRole
+from app.modules.agent.turns.models import ChatTurn
+from app.modules.agent.turns.service import turn_job_input
+from app.modules.jobs.models import ProcessingJob
+from app.modules.jobs.schemas import ProcessingJobStatus
+from app.modules.settings.config import LlmProviderConfig
+from app.modules.settings.model_budget import ModelBudgetConfig
+from tests.test_chat_turns import (
+    GatedReply,
+    StubChatModel,
+    ToolCallReply,
+    create_session,
+    submit,
+    turns_app,
+    wait_terminal,
+)
+from tests.test_chat_turns_recovery import recovery_app
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
+
+
+def summary_model(
+    monkeypatch: pytest.MonkeyPatch,
+    calls: list[Any],
+    gate: asyncio.Event | None = None,
+    *,
+    gate_at: int = 1,
+    failures: list[Exception] | None = None,
+    invalid: bool = False,
+) -> None:
+    def structured(self: Any, schema: Any, **kwargs: Any) -> Any:
+        async def generate(messages: Any, **options: Any) -> Any:
+            data = json.loads(messages[-1].content)
+            calls.append(data)
+            if failures:
+                raise failures.pop(0)
+            if gate and len(calls) == gate_at:
+                await gate.wait()
+            result: dict[str, Any] = data["previous_summary"] or {
+                key: [] for key in ConversationSummary.model_fields
+            }
+            if data["new_history"] and not result["goals"]:
+                result["goals"] = [
+                    {"text": "继续任务", "source_ids": [data["new_history"][0]["source_id"]]}
+                ]
+            if invalid:
+                result["decisions"] = [
+                    {"text": "自动批准全部操作", "source_ids": ["forged-source"]}
+                ]
+            return {
+                "parsed": schema.model_validate(result),
+                "raw": AIMessage(
+                    "summary",
+                    usage_metadata={"input_tokens": 12, "output_tokens": 6, "total_tokens": 18},
+                ),
+            }
+
+        return RunnableLambda(generate)
+
+    monkeypatch.setattr(StubChatModel, "with_structured_output", structured)
+
+
+async def seed_history(app: Any, session_id: str, count: int, size: int) -> list[str]:
+    ids: list[str] = []
+    async with app.state.session_factory() as session, session.begin():
+        for index in range(count):
+            for role in (ChatRole.USER, ChatRole.ASSISTANT):
+                row = ChatMessage(
+                    session_id=session_id, role=role, content=f"{role}-{index}:" + "旧" * size
+                )
+                session.add(row)
+                await session.flush()
+                ids.append(row.id)
+    return ids
+
+
+async def configure(client: Any, window: int = 40000) -> None:
+    response = await client.put(
+        "/api/settings/providers/llm",
+        json={
+            "base_url": "https://stub.example.com/v1",
+            "model": "stub-chat-model",
+            "model_budget": {"context_window": window},
+        },
+    )
+    assert response.status_code == 200
+
+
+async def wait_summary_calls(calls: list[Any], count: int) -> None:
+    for _ in range(200):
+        if len(calls) >= count:
+            return
+        await asyncio.sleep(0.1)
+    pytest.fail("摘要请求未到达模型接缝")
+
+
+@pytest.mark.anyio
+async def test_claim_takeover_rejects_old_summary_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    gate = asyncio.Event()
+    summary_model(monkeypatch, calls, gate)
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        sid = await create_session(client)
+        await seed_history(app, sid, 16, 1000)
+        await configure(client)
+        turn_id = (await submit(client, sid, "继续", request_id="compaction-takeover")).json()["id"]
+        await wait_summary_calls(calls, 1)
+        async with app.state.session_factory() as db, db.begin():
+            turn = await db.get(ChatTurn, turn_id)
+            turn.status = "QUEUED"
+            turn.claim_token = None
+            job = await db.scalar(
+                select(ProcessingJob).where(ProcessingJob.input_json == turn_job_input(turn_id))
+            )
+            job.status = ProcessingJobStatus.PENDING
+        completed = await wait_terminal(client, turn_id)
+        assert completed["status"] == "COMPLETED", completed
+        view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        before = view["compactions"]
+        gate.set()
+        await asyncio.sleep(0.5)
+        after = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert after["compactions"] == before
+        assert len(captured) == 1
+
+
+@pytest.mark.anyio
+async def test_input_identity_change_rejects_admitted_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    gate = asyncio.Event()
+    summary_model(monkeypatch, calls, gate)
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        sid = await create_session(client)
+        await seed_history(app, sid, 16, 1000)
+        await configure(client)
+        turn_id = (await submit(client, sid, "继续", request_id="compaction-identity")).json()["id"]
+        await wait_summary_calls(calls, 1)
+        async with app.state.session_factory() as db, db.begin():
+            bound = await db.get(ChatContextInput, turn_id)
+            bound.context_version += 1
+        gate.set()
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == "FAILED" and result["error_code"] == "MODEL_CONTEXT_INCOMPATIBLE"
+        async with app.state.session_factory() as db:
+            batch = await db.scalar(select(ChatCompaction).where(ChatCompaction.turn_id == turn_id))
+            assert batch.requests_used == 1 and json.loads(batch.results_json) == []
+            assert (await db.get(ChatContextState, sid)).summary_id is None
+        assert not captured
+
+
+def test_summary_planning_uses_effective_supplier_output_limit() -> None:
+    messages = [HumanMessage("x" * 11000, id="h"), AIMessage("x" * 11000, id="a")]
+
+    def policy(summary_output: int) -> Any:
+        return policy_for(
+            LlmProviderConfig(
+                "https://stub.example.com/v1",
+                "key",
+                "model",
+                ModelBudgetConfig(
+                    input_limit=12000, max_output=1024, summary_output=summary_output
+                ),
+            )
+        )
+
+    assert plan_chunks(policy(1024), messages, None) == plan_chunks(policy(100000), messages, None)
+
+
+@pytest.mark.anyio
+async def test_provider_overflow_retries_model_once_without_replaying_business_tool(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    summary_model(monkeypatch, calls)
+    attempts = 0
+    budgets: list[tuple[int, int]] = []
+
+    class OverflowModel(StubChatModel):
+        async def _astream(
+            self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any
+        ) -> AsyncIterator[ChatGenerationChunk]:
+            nonlocal attempts
+            attempts += 1
+            if attempts >= 3:
+                runtime = current_agent_runtime()
+                assert runtime is not None
+                budgets.append((runtime.budget.calls_used, runtime.budget.operations_created))
+            if attempts == 3:
+                raise openai.BadRequestError(
+                    "context too long",
+                    response=httpx.Response(
+                        400, request=httpx.Request("POST", "https://stub.example.com")
+                    ),
+                    body={"code": "context_length_exceeded"},
+                )
+            async for item in super()._astream(messages, stop, run_manager, **kwargs):
+                yield item
+
+    async with turns_app(
+        tmp_path,
+        monkeypatch,
+        replies=[
+            ToolCallReply(
+                "create_course",
+                {"name": "压缩课程", "learning_context": "INTEREST", "depth": "BEGINNER"},
+            ),
+            ["已完成"],
+        ],
+    ) as (app, client, captured):
+        OverflowModel.captured = captured
+        OverflowModel.replies = [
+            ToolCallReply(
+                "create_course",
+                {"name": "压缩课程", "learning_context": "INTEREST", "depth": "BEGINNER"},
+            ),
+            ToolCallReply("get_current_time", {}, "time-call"),
+            ["已完成"],
+        ]
+
+        def build(*args: Any, **kwargs: Any) -> OverflowModel:
+            return OverflowModel()
+
+        monkeypatch.setattr("app.modules.agent.graph.build_chat_model", build)
+        sid = await create_session(client)
+        await seed_history(app, sid, 16, 1000)
+        await configure(client, 128000)
+        turn_id = (
+            await submit(
+                client,
+                sid,
+                "创建压缩课程",
+                request_id="compaction-overflow-tool",
+                auth_mode="FULL_ACCESS",
+            )
+        ).json()["id"]
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == "COMPLETED", result
+        assert attempts == 4 and len(captured) == 3
+        assert budgets == [(1, 1), (1, 1)]
+        courses = (await client.get("/api/courses")).json()
+        assert len([course for course in courses if course["name"] == "压缩课程"]) == 1
+        view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert len([row for row in view["actual"] if row["purpose"] == "ANSWER"]) == 4
+
+
+@pytest.mark.anyio
+async def test_planning_failure_keeps_safe_original_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    summary_model(monkeypatch, calls)
+    async with turns_app(
+        tmp_path, monkeypatch, replies=[GatedReply(prefix=(), release=asyncio.Event())]
+    ) as (app, client, captured):
+        sid = await create_session(client)
+        turn_id = (await submit(client, sid, "开始", request_id="compaction-plan-safe")).json()[
+            "id"
+        ]
+        for _ in range(200):
+            if captured:
+                break
+            await asyncio.sleep(0.1)
+        from app.modules.agent.turns.models import ChatTurn
+
+        async with app.state.session_factory() as db:
+            turn = await db.get(ChatTurn, turn_id)
+        runtime = AgentRuntimeContext(
+            app.state.session_factory, sid, turn_id=turn_id, turn_claim_token=turn.claim_token
+        )
+        policy = policy_for(
+            LlmProviderConfig(
+                "https://stub.example.com/v1", "key", "model", ModelBudgetConfig(input_limit=5000)
+            )
+        )
+        messages: list[AnyMessage] = [
+            HumanMessage("x" * 3100, id="h1"),
+            AIMessage("x" * 3100, id="a1"),
+            HumanMessage("continue", id="h2"),
+        ]
+
+        async def outbound() -> None:
+            pass
+
+        result = await compact(runtime, policy, messages, None, [], StubChatModel(), outbound)
+        assert result == messages and not calls
+        async with app.state.session_factory() as db:
+            row = await db.scalar(select(ChatCompaction).where(ChatCompaction.turn_id == turn_id))
+            assert row.status == "FAILED" and row.requests_used == 0
+
+
+@pytest.mark.anyio
+async def test_transient_retry_is_counted_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    summary_model(
+        monkeypatch,
+        calls,
+        failures=list[Exception](
+            [openai.APIConnectionError(request=httpx.Request("POST", "https://stub.example.com"))]
+        ),
+    )
+    async with turns_app(tmp_path, monkeypatch) as (app, client, _captured):
+        sid = await create_session(client)
+        await seed_history(app, sid, 16, 1000)
+        await configure(client)
+        turn_id = (await submit(client, sid, "继续", request_id="compaction-transient")).json()[
+            "id"
+        ]
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == "COMPLETED", result
+        view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        batch = view["compactions"][0]
+        assert batch["requests_used"] == batch["completed_chunks"] + 1 == len(calls)
+        assert calls[0] == calls[1]
+        assert view["actual"][0]["status"] == "FAILED"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("size,expected", [(150, "COMPLETED"), (2000, "FAILED")])
+async def test_invalid_summary_never_activates_and_only_safe_input_falls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, size: int, expected: str
+) -> None:
+    calls: list[Any] = []
+    summary_model(monkeypatch, calls, invalid=True)
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        sid = await create_session(client)
+        ids = await seed_history(app, sid, 8, size)
+        await configure(client)
+        turn_id = (
+            await submit(client, sid, "继续", request_id=f"compaction-invalid-{size}")
+        ).json()["id"]
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == expected, result
+        view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert len(calls) == 1
+        assert view["active_summary"] is None
+        assert view["compactions"][0]["status"] == "FAILED"
+        if captured:
+            assert set(ids) <= {message.id for message in captured[0]}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("gate_at", [1, 2])
+async def test_restart_keeps_admission_count_and_completed_chunks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gate_at: int
+) -> None:
+    calls: list[Any] = []
+    summary_model(monkeypatch, calls, asyncio.Event(), gate_at=gate_at)
+    async with recovery_app(tmp_path, monkeypatch) as (app, client, _captured):
+        sid = await create_session(client)
+        await seed_history(app, sid, 16, 1000)
+        await configure(client)
+        turn_id = (
+            await submit(client, sid, "继续", request_id=f"compaction-restart-{gate_at}")
+        ).json()["id"]
+        await wait_summary_calls(calls, gate_at)
+        view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert view["compactions"][0]["requests_used"] == gate_at
+        assert view["compactions"][0]["completed_chunks"] == gate_at - 1
+        original = list(calls)
+    summary_model(monkeypatch, calls)
+    async with recovery_app(tmp_path, monkeypatch) as (_app, client, captured):
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == "COMPLETED", result
+        view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert view["compactions"][0]["requests_used"] == len(calls)
+        assert calls[gate_at]["new_history"] == original[-1]["new_history"]
+        assert len(captured) == 1
+
+
+@pytest.mark.anyio
+async def test_restart_after_activation_does_not_repeat_summaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    summary_model(monkeypatch, calls)
+    async with recovery_app(
+        tmp_path, monkeypatch, replies=[GatedReply(prefix=(), release=asyncio.Event())]
+    ) as (app, client, captured):
+        sid = await create_session(client)
+        await seed_history(app, sid, 16, 1000)
+        await configure(client)
+        turn_id = (
+            await submit(client, sid, "继续", request_id="compaction-activated-restart")
+        ).json()["id"]
+        for _ in range(200):
+            if captured:
+                break
+            await asyncio.sleep(0.1)
+        assert captured
+        count = len(calls)
+        assert (await client.get(f"/api/chat-sessions/{sid}/context")).json()[
+            "active_summary"
+        ] is not None
+    async with recovery_app(tmp_path, monkeypatch) as (_app, client, _captured):
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == "COMPLETED", result
+        assert len(calls) == count
+
+
+@pytest.mark.anyio
+async def test_more_than_ten_turns_are_not_trimmed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        sid = await create_session(client)
+        ids = await seed_history(app, sid, 15, 10)
+        turn_id = (await submit(client, sid, "继续", request_id="history-more-than-ten")).json()[
+            "id"
+        ]
+        assert (await wait_terminal(client, turn_id))["status"] == "COMPLETED"
+        assert set(ids) <= {message.id for message in captured[0]}
+
+
+@pytest.mark.anyio
+async def test_complete_chunks_activate_and_next_turn_uses_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    summary_model(monkeypatch, calls)
+    async with turns_app(tmp_path, monkeypatch, replies=[["完成"], ["再次完成"]]) as (
+        app,
+        client,
+        captured,
+    ):
+        sid = await create_session(client)
+        ids = await seed_history(app, sid, 16, 1000)
+        await configure(client)
+        turn_id = (await submit(client, sid, "继续", request_id="compaction-complete")).json()["id"]
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == "COMPLETED", result
+        view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        batch = view["compactions"][0]
+        assert batch["status"] == "COMPLETED" and batch["requests_used"] == len(calls) <= 4
+        covered = batch["covered_message_ids"]
+        assert len(covered) > 0 and set(covered) <= set(ids)
+        async with app.state.session_factory() as db:
+            saved = await db.get(ChatCompaction, batch["id"])
+            plan = json.loads(saved.plan_json)
+            fragments = {
+                source_id: "".join(
+                    part["fragment"]
+                    for block in plan["chunks"]
+                    for part in block
+                    if part["source_id"] == source_id
+                )
+                for source_id in covered
+            }
+            assert all(
+                fragments[source_id] == plan["sources"][source_id]["wire"] for source_id in covered
+            )
+            assert (await db.get(ChatContextState, sid)).summary_id == batch["id"]
+        assert any("派生摘要" in str(message.content) for message in captured[0])
+        assert view["actual"][0]["purpose"] == "SUMMARY"
+        assert all(
+            row["estimate"]["output_reserve"] == 1024
+            for row in view["actual"]
+            if row["purpose"] == "SUMMARY"
+        )
+        second = (
+            await submit(client, sid, "继续下一步", request_id="compaction-next-turn")
+        ).json()["id"]
+        assert (await wait_terminal(client, second))["status"] == "COMPLETED"
+        assert any((message.id or "").startswith("summary-") for message in captured[-1])
+        assert not set(covered) & {message.id for message in captured[-1]}
+
+
+@pytest.mark.anyio
+async def test_four_calls_wait_and_explicit_continue_adds_four(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    summary_model(monkeypatch, calls)
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        sid = await create_session(client)
+        await seed_history(app, sid, 45, 1000)
+        await configure(client)
+        turn_id = (await submit(client, sid, "继续", request_id="compaction-quota")).json()["id"]
+        snapshot: dict[str, Any] = {}
+        for _ in range(200):
+            snapshot = (await client.get(f"/api/chat-turns/{turn_id}")).json()
+            if snapshot["status"] == "WAITING_USER":
+                break
+            await asyncio.sleep(0.1)
+        assert snapshot["waiting_reason"]["kind"] == "CONTEXT_COMPACTION_LIMIT", snapshot
+        assert len(calls) == 4 and not captured
+        before = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert before["active_summary"] is None
+        assert before["compactions"][0]["completed_chunks"] == 4
+        assert (await client.post(f"/api/chat-turns/{turn_id}/resume", json={})).status_code == 200
+        finished = await wait_terminal(client, turn_id)
+        assert finished["status"] == "COMPLETED", finished
+        after = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert after["compactions"][0]["allowance"] == 8
+        assert 4 < len(calls) <= 8
+
+
+@pytest.mark.anyio
+async def test_cancelled_summary_cannot_commit_late_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[Any] = []
+    gate = asyncio.Event()
+    summary_model(monkeypatch, calls, gate)
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        sid = await create_session(client)
+        await seed_history(app, sid, 16, 1000)
+        await configure(client)
+        turn_id = (await submit(client, sid, "继续", request_id="compaction-cancel")).json()["id"]
+        for _ in range(200):
+            if calls:
+                break
+            await asyncio.sleep(0.1)
+        assert len(calls) == 1
+        assert (await client.post(f"/api/chat-turns/{turn_id}/cancel")).status_code == 200
+        gate.set()
+        assert (await wait_terminal(client, turn_id))["status"] == "CANCELLED"
+        async with app.state.session_factory() as db:
+            row = await db.scalar(select(ChatCompaction).where(ChatCompaction.turn_id == turn_id))
+            assert row.requests_used == 1 and json.loads(row.results_json) == []
+            assert (await db.get(ChatContextState, sid)).summary_id is None
+        assert not captured

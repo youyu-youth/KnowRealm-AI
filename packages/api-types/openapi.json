@@ -2693,7 +2693,8 @@
           "WEB_SEARCH_UNAVAILABLE",
           "GRAPH_INCOMPATIBLE",
           "CHECKPOINT_MISSING",
-          "BACKGROUND_TASK"
+          "BACKGROUND_TASK",
+          "CONTEXT_COMPACTION_LIMIT"
         ],
         "title": "ChatTurnWaitingKind",
         "type": "string"
@@ -2761,6 +2762,82 @@
           "turns"
         ],
         "title": "ChatTurnsPage",
+        "type": "object"
+      },
+      "CompactionOut": {
+        "properties": {
+          "allowance": {
+            "title": "Allowance",
+            "type": "integer"
+          },
+          "completed_chunks": {
+            "title": "Completed Chunks",
+            "type": "integer"
+          },
+          "covered_message_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Covered Message Ids",
+            "type": "array"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "requests_used": {
+            "title": "Requests Used",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "RUNNING",
+              "WAITING",
+              "FAILED",
+              "COMPLETED",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total_chunks": {
+            "title": "Total Chunks",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "completed_chunks",
+          "total_chunks",
+          "requests_used",
+          "allowance",
+          "covered_message_ids",
+          "summary",
+          "error_code"
+        ],
+        "title": "CompactionOut",
         "type": "object"
       },
       "ConceptAnchorSourceOut": {
@@ -3209,6 +3286,16 @@
       },
       "ContextViewOut": {
         "properties": {
+          "active_summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompactionOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "actual": {
             "items": {
               "$ref": "#/components/schemas/ModelRequestOut"
@@ -3226,6 +3313,13 @@
               }
             ],
             "title": "Actual Turn Id"
+          },
+          "compactions": {
+            "items": {
+              "$ref": "#/components/schemas/CompactionOut"
+            },
+            "title": "Compactions",
+            "type": "array"
           },
           "next_error_code": {
             "anyOf": [
@@ -3271,6 +3365,69 @@
           "next_error_code"
         ],
         "title": "ContextViewOut",
+        "type": "object"
+      },
+      "ConversationSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "constraints": {
+            "description": "明确约束，逐字摘录",
+            "items": {
+              "$ref": "#/components/schemas/SummaryItem"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "decisions": {
+            "description": "已确认决定，逐字摘录",
+            "items": {
+              "$ref": "#/components/schemas/SummaryItem"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "goals": {
+            "description": "用户目标",
+            "items": {
+              "$ref": "#/components/schemas/SummaryItem"
+            },
+            "title": "Goals",
+            "type": "array"
+          },
+          "objects": {
+            "description": "相关对象和来源",
+            "items": {
+              "$ref": "#/components/schemas/SummaryItem"
+            },
+            "title": "Objects",
+            "type": "array"
+          },
+          "questions": {
+            "description": "待澄清问题、冲突与推测",
+            "items": {
+              "$ref": "#/components/schemas/SummaryItem"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "unfinished": {
+            "description": "未完成事项",
+            "items": {
+              "$ref": "#/components/schemas/SummaryItem"
+            },
+            "title": "Unfinished",
+            "type": "array"
+          }
+        },
+        "required": [
+          "goals",
+          "constraints",
+          "decisions",
+          "objects",
+          "unfinished",
+          "questions"
+        ],
+        "title": "ConversationSummary",
         "type": "object"
       },
       "CourseCreate": {
@@ -6097,6 +6254,15 @@
           },
           "id": {
             "title": "Id",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "ANSWER",
+            "enum": [
+              "ANSWER",
+              "SUMMARY"
+            ],
+            "title": "Purpose",
             "type": "string"
           },
           "status": {
@@ -9324,6 +9490,32 @@
           "summary_id"
         ],
         "title": "SummaryConfirmRequest",
+        "type": "object"
+      },
+      "SummaryItem": {
+        "additionalProperties": false,
+        "properties": {
+          "source_ids": {
+            "description": "程序提供的消息来源身份",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Source Ids",
+            "type": "array"
+          },
+          "text": {
+            "description": "摘要内容；约束和决定必须摘录用户原文",
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "source_ids"
+        ],
+        "title": "SummaryItem",
         "type": "object"
       },
       "SummaryJobAccepted": {

@@ -20,6 +20,7 @@ import { contextApi } from "@/features/chat/api/context";
 import { chatKeys } from "@/features/chat/api/keys";
 import { ContextBudgetDetails } from "@/features/chat/ContextBudgetDetails";
 import { ContextRequestList } from "@/features/chat/ContextRequestList";
+import { ContextCompactionList } from "@/features/chat/ContextCompactionList";
 import {
   selectWebSearchEnabled,
   useChatUiStore,
@@ -184,6 +185,10 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
               {t("chat.contextView.actualHint")}
             </p>
             <ContextRequestList requests={context.data.actual} />
+            <ContextCompactionList
+              batches={context.data.compactions ?? []}
+              showSummary
+            />
           </TabsContent>
           <TabsContent
             value="next"
@@ -203,6 +208,12 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
             {context.data.next_estimate ? (
               <ContextBudgetDetails estimate={context.data.next_estimate} />
             ) : null}
+            <ContextCompactionList
+              batches={
+                context.data.active_summary ? [context.data.active_summary] : []
+              }
+              showSummary
+            />
           </TabsContent>
         </Tabs>
       ) : null}

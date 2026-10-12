@@ -101,6 +101,7 @@ class ChatTurnWaitingKind(StrEnum):
     # checkpoint 缺失且已有已提交副作用，安全边界无法确定。
     CHECKPOINT_MISSING = "CHECKPOINT_MISSING"
     BACKGROUND_TASK = "BACKGROUND_TASK"
+    CONTEXT_COMPACTION_LIMIT = "CONTEXT_COMPACTION_LIMIT"
 
     @property
     def resumable(self) -> bool:

@@ -645,6 +645,7 @@ async def session_context(
                 page_hint=page_hint,
                 active_runs=active_runs,
                 time_hint=time_hint,
+                durable_history=True,
             ),
             transcript=transcript_text,
             record_id=record_id,

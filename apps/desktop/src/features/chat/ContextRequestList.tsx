@@ -37,6 +37,7 @@ export function ContextRequestList({
             }
           >
             <span>
+              {t(`chat.compaction.purpose.${request.purpose ?? "ANSWER"}`)} ·{" "}
               {t("chat.contextView.request", { count: index + 1 })} ·{" "}
               {t(`chat.contextView.status.${request.status}`)}
             </span>

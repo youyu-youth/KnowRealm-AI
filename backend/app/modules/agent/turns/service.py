@@ -844,6 +844,12 @@ class ChatTurnService:
             now = utcnow()
             turn.status = ChatTurnStatus.QUEUED.value
             turn.waiting_reason = None
+            if reason is not None and reason.kind == ChatTurnWaitingKind.CONTEXT_COMPACTION_LIMIT:
+                from app.modules.agent.context_budget.models import ChatContextInput
+
+                bound = await session.get(ChatContextInput, turn_id)
+                if bound:
+                    bound.summary_allowance += 4
             turn.updated_at = now
             await ensure_turn_job(session, turn_id, now)
         return await ChatTurnService.get_snapshot(session_factory, turn_id)

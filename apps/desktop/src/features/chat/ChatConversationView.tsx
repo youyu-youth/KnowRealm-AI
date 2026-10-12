@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import type { UseQueryResult } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { contextApi } from "@/features/chat/api/context";
+import { chatKeys } from "@/features/chat/api/keys";
+import { ContextCompactionList } from "@/features/chat/ContextCompactionList";
 import { useTranslation } from "react-i18next";
 import {
   BookOpen,
@@ -99,6 +102,16 @@ export function ChatConversationView({
     stop,
     resume,
   } = useChatTurns(sessionId);
+  const compaction = useQuery({
+    queryKey: [
+      ...chatKeys.context(sessionId, { content: "", web_search: false }),
+      turn?.id,
+      turn?.status,
+    ],
+    queryFn: () => contextApi.get(sessionId),
+    enabled: turn !== null,
+    refetchInterval: isStreaming ? 2000 : false,
+  });
   const composerValue = useChatUiStore(
     (state) => state.draftsBySession[sessionId] ?? initialPrompt ?? "",
   );
@@ -331,6 +344,7 @@ export function ChatConversationView({
         {/* 等待 / 中断轮次的处理入口（票 02）：等待原因 + 继续 / 停止；继续只
             重验恢复条件重新排队，不批准提案、不构成重新授权。 */}
         <ChatTurnWaitingCard turn={turn} onResume={resume} onStop={stop} />
+        <ContextCompactionList batches={compaction.data?.compactions ?? []} />
         {/* MEMORY 提案就地确认卡（工单 06）：done 后出现，确认/拒绝即定局；
             本轮注入记忆的展示在右栏上下文面板。 */}
         <ChatMemoryProposalCard sessionId={sessionId} memory={turnMemory} />
