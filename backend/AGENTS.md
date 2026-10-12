@@ -6,6 +6,8 @@
 
 > 编码规范正本是根目录 `.claude/rules/fastapi.md` 与 `data-layer.md`（自动加载，本文不重复）。本文件记录本目录的**命令、结构与已验证现状**；rules 中 LangGraph、sqlite-vec、pydantic-settings 等内容是目标态，按 function plan 推进，勿擅自补实现。
 
+- 改动 Agent 装配、模型 Middleware 顺序、默认摘要或文件卸载时，按 `../docs/agents/validation.md` 的“Agent 装配变更”验证真实装配后的输入及恢复边界，复用现有预算与恢复回归。
+
 ## 常用命令（backend/ 下执行，uv 管理）
 
 | 命令 | 说明 |

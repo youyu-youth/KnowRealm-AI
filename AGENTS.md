@@ -23,7 +23,6 @@ KnowRealm 是一个面向个人学习与工作的 **通用 Agent 工作台**。
 
 - **给谁用**：一切学习知识的人（学生、程序员、上班族、终身学习者）.
 - **产品定位（本地优先）**：数据全部落在用户可见、可搬移的本地目录；零部署（.msi 即用）、无账号、桌面端永不强制登录（ADR-0014）。**新能力先过两问**：① 数据是否落在本地可见可搬移的目录？② 是否要求用户多装任何东西？
-- **核心闭环**：捕获（录音 / 导入 / 粘贴 / 速记）→ ASR 转写 → AI 总结（人工确认）→ 知识点 / 习题 / Todo → AI 问答
 - **通用 Agent（自动化执行）**：用户通过自然语言描述指挥 Agent 自动化完成任务（受控写路径 + 确认卡 + 回执，见扩展文档 §44 / ADR-0026）
 - **长期方向**：从"学习助手"演进为"个人学习大脑"（掌握度 / 遗忘复习 / 自适应学习）
 
@@ -60,6 +59,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - `packages/api-types` — OpenAPI → TS 类型生成（前后端契约链：后端 schema 变更后须重新 generate）
 - 无根 package.json；前端 workspace 由 `pnpm-workspace.yaml` 定义，后端独立用 uv
 - 同仓多会话并行时：pytest 各自独立 basetemp（互踩会产生伪失败）、提交点名 add、git mv 后用 `--follow` 核对
+- 按改动检查或复现基点失败时，先读 `docs/agents/validation.md`；范围检查入口为 `scripts/check-changed.ps1`，CI 接线见 `.github/workflows/check.yml`。
 
 ## 按任务定位功能入口
 
@@ -74,6 +74,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 | 课程概念图谱 | `backend/app/modules/course_brain/service.py`；`apps/desktop/src/features/courses/` | Course 级 Concept 与 Record 级知识点是不同实体，术语与生命周期查 `GLOSSARY.md` |
 | 学习证据与掌握度 | `backend/app/modules/learning/consumer.py`、`mastery.py` | Consumer 消费学习事实，Mastery 使用确定性算法；不要另建 LLM 掌握度计算链 |
 | 学习目标与计划 | `backend/app/modules/learning_plan/service.py`、`generation.py`、`scheduling.py`；`apps/desktop/src/features/learningPlan/` | 分别定位业务入口、生成与材料收集、确定性排期；Agent 接入继续追踪 `agent/operations/` 与 Run |
+| 项目脚本 | `scripts` | 仓库级脚本文件位置 |
 
 
 

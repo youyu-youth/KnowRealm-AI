@@ -70,13 +70,12 @@ pip-delete-this-directory.txt
 # =========================================================
 
 node_modules/
-
+node_modules/lib/
 build/
 dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/

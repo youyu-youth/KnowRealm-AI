@@ -1,0 +1,88 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - run: npm install --global pnpm@11.2.2
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.9.22"
+          python-version: "3.13"
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --frozen --directory backend
+      - name: Check script self-test
+        run: ./scripts/test-check-changed.ps1
+      - name: Changed files
+        env:
+          CHECK_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          $base = $env:CHECK_BASE
+          if (-not $base -or $base -match '^0+$') {
+            $base = git rev-list --max-parents=0 HEAD
+          }
+          ./scripts/check-changed.ps1 -Base $base
+      - name: API contract
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @knowrealm/api-types check
+      - name: Locale consistency
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @knowrealm/desktop exec vitest run src/i18n/locales.test.ts --maxWorkers=1
+      - name: Agent input, recovery, tool budget and error registry
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: uv run --frozen pytest --basetemp=.pytest-tmp-ci-agent -q --tb=short tests/test_context_budget.py tests/test_chat_turns_recovery.py tests/test_tool_budget.py tests/test_error_code_guard.py
+
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+      - run: npm install --global pnpm@11.2.2
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.9.22"
+          python-version: "3.13"
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --frozen --directory backend
+      - name: Prepare existing FFmpeg runtime
+        run: |
+          ./apps/desktop/scripts/prepare-ffmpeg.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $binaryRoot = Join-Path $env:GITHUB_WORKSPACE 'apps/desktop/src-tauri/binaries'
+          Copy-Item -LiteralPath (Join-Path $binaryRoot 'ffmpeg-x86_64-pc-windows-msvc.exe') -Destination (Join-Path $binaryRoot 'ffmpeg.exe')
+          $binaryRoot >> $env:GITHUB_PATH
+      - name: Frontend suite
+        if: ${{ !cancelled() }}
+        run: pnpm --filter @knowrealm/desktop test --maxWorkers=1
+      - name: Backend suite
+        if: ${{ !cancelled() }}
+        working-directory: backend
+        run: uv run --frozen pytest --basetemp=.pytest-tmp-ci-full -q --tb=short
