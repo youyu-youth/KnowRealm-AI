@@ -434,6 +434,7 @@ class _CompiledPlan:
 
     payload: BatchPlanPayload
     steps: list[_PlanStep]
+    covered: dict[tuple[str, str], LiveStep] | None = None
 
     @classmethod
     def compile(
@@ -496,6 +497,7 @@ class _CompiledPlan:
         """保留三档、会话累计阈值及当前已批准集合分流。"""
         session_operation_count = await count_session_operations(session, session_id)
         covered = await covered_targets(session, active) if active is not None else {}
+        self.covered = covered
         if auth_mode == AuthMode.REQUEST_APPROVAL:
             return BatchRoute.PLAN_CARD
         # 档位不允许自动执行的项（帮我批准档的 L2/L3）恒出计划卡逐项确认。
@@ -536,7 +538,7 @@ class _CompiledPlan:
         只 flush，不拥有事务、触发或轮次绑定。确认先重验全部待执行项，
         直提交已在当前事务固化快照；创建类含引用仍不读取未创建对象。
         """
-        covered = await covered_targets(session, run)
+        covered = self.covered if self.covered is not None else await covered_targets(session, run)
         pending: list[tuple[_PlanStep, str | None]] = []
         preset: dict[int, str] = {}
         for step in self.steps:
