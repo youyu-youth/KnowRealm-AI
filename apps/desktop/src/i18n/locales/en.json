@@ -2569,7 +2569,10 @@
         "sectionLabel": "Turn awaiting action",
         "BACKGROUND_TASK": "Waiting for background processing; the answer will continue automatically",
         "tasks": "Linked background tasks",
-        "taskType": { "RUN": "Agent task", "JOB": "Background processing" },
+        "taskType": {
+          "RUN": "Agent task",
+          "JOB": "Background processing"
+        },
         "taskStatus": {
           "PENDING": "Queued",
           "RUNNING": "Running",
@@ -2603,6 +2606,43 @@
         "cancelled": "The answer was stopped. Below is the partial content that was generated",
         "failed": "Answer generation failed. Below is the partial content that was generated",
         "interrupted": "Answer generation was interrupted. Below is the partial content that was generated"
+      }
+    },
+    "contextView": {
+      "title": "Context management",
+      "open": "View context",
+      "back": "Back to chat",
+      "session": "Current conversation",
+      "actual": "Actual input for this turn",
+      "actualHint": "Full request measurements for the latest turn. Blocked requests are never sent to the model.",
+      "next": "Next-turn estimate",
+      "nextHint": "Estimated using the current model, conversation scope and unsent draft. Tool results and page hints may change the input; it is checked again before sending.",
+      "unknown": "Unknown",
+      "noActual": "No model requests recorded for this turn. Older turns do not receive fabricated input or usage records.",
+      "inputTokens": "Estimated input tokens",
+      "usableBudget": "Usable input budget",
+      "outputReserve": "Answer output reserve",
+      "safetyMargin": "Safety margin (20%)",
+      "remaining": "Remaining input budget",
+      "input_limit": "Input limit",
+      "context_window": "Total context window",
+      "max_output": "Output limit",
+      "approximate": "Approximate token count ({{tokenizer}}), including full tool definitions and protocol overhead. This is not provider billing usage.",
+      "inventory": "Includes {{messages}} messages and {{tools}} tool definitions. Materials and learner context are counted in the system prompt.",
+      "request": "Request {{count}}",
+      "usage": "Provider usage: input {{input}} · output {{output}} tokens",
+      "configure": "Configure model capabilities",
+      "components": {
+        "system": "System prompt and materials",
+        "messages": "Messages and tool results",
+        "tools": "Tool definitions",
+        "protocol": "Protocol overhead"
+      },
+      "status": {
+        "STARTED": "Admitted; completion unconfirmed",
+        "COMPLETED": "Call completed",
+        "FAILED": "Call failed",
+        "BLOCKED": "Blocked; no model call"
       }
     }
   },
@@ -2958,6 +2998,20 @@
         "total": "Total tokens",
         "errors": "Failed"
       }
+    },
+    "modelBudget": {
+      "title": "Model capabilities and input budget",
+      "hint": "Capabilities belong to this endpoint and model. Leave blank to use trusted official values; unknown or custom deployments require an input limit or context window. All values are tokens and apply after saving.",
+      "input_limit": "Input limit",
+      "context_window": "Total context window",
+      "max_output": "Provider output limit",
+      "answer_output": "Answer output reserve",
+      "summary_output": "Summary output reserve",
+      "unknown": "Unknown; configure a limit",
+      "userSource": "User override",
+      "officialSource": "Official source · {{count}} tokens",
+      "officialSourceLabel": "Official source",
+      "openSourceFailed": "Could not open the official source. Try again later."
     }
   },
   "providerGuide": {
@@ -3407,7 +3461,10 @@
     "CHAT_TURN_RESUME_CONFLICT": "This turn cannot be resumed in its current state",
     "CHAT_TURN_RESUME_UNSAFE": "This turn cannot continue safely; stop it and ask again",
     "CHAT_TURN_RESUME_CONDITION_UNMET": "The resume condition is not met yet; resolve the waiting reason first",
-    "CHAT_TURN_CANCEL_IN_PROGRESS": "This turn has a pending stop and cannot be resumed"
+    "CHAT_TURN_CANCEL_IN_PROGRESS": "This turn has a pending stop and cannot be resumed",
+    "MODEL_CAPABILITY_REQUIRED": "Configure an input limit or context window for this endpoint and model in AI settings.",
+    "MODEL_INPUT_BUDGET_EXCEEDED": "The full model input exceeds the usable budget. Shorten your question, reduce materials or adjust model capabilities.",
+    "MODEL_CONTEXT_INCOMPATIBLE": "This turn has no compatible input budget snapshot. Stop it and ask again."
   },
   "agent": {
     "run": {

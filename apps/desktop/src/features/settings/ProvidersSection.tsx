@@ -11,6 +11,7 @@ import type { components } from "@knowrealm/api-types";
 import { settingsKeys } from "@/features/settings/api/keys";
 import { settingsApi } from "@/features/settings/api/settings";
 import { LlmUsageCard } from "@/features/settings/LlmUsageCard";
+import { ModelBudgetFields } from "@/features/settings/ModelBudgetFields";
 import {
   SettingsActions,
   SettingsPanelHeader,
@@ -157,17 +158,19 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
   const hasApiKey = initial?.has_api_key ?? false;
 
   const save = useMutation({
-    mutationFn: () =>
+    mutationFn: (modelBudget: components["schemas"]["ModelBudgetConfig"]) =>
       settingsApi.updateLlmProvider({
         base_url: baseUrl.trim(),
         model: model.trim(),
         api_key: apiKey,
         clear_api_key: clearApiKey,
+        model_budget: modelBudget,
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: settingsKeys.llmProvider,
       });
+      await queryClient.invalidateQueries({ queryKey: ["chat", "context"] });
     },
   });
   const test = useMutation({ mutationFn: settingsApi.testLlmProvider });
@@ -187,7 +190,18 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
       }}
       onSubmit={(event) => {
         event.preventDefault();
-        if (canSave && !save.isPending) save.mutate();
+        if (canSave && !save.isPending) {
+          const fields = new FormData(event.currentTarget);
+          const numeric = (key: string) =>
+            fields.get(key) ? Number(fields.get(key)) : null;
+          save.mutate({
+            input_limit: numeric("input_limit"),
+            context_window: numeric("context_window"),
+            max_output: numeric("max_output"),
+            answer_output: numeric("answer_output") ?? 4096,
+            summary_output: numeric("summary_output") ?? 1024,
+          });
+        }
       }}
     >
       <SettingsRow
@@ -266,6 +280,16 @@ function LlmProviderForm({ initial }: { initial: LlmProviderOut | null }) {
         ) : null}
       </SettingsRow>
 
+      <ModelBudgetFields
+        key={`${baseUrl.trim()}|${model.trim()}`}
+        initial={
+          baseUrl.trim() === initial?.base_url &&
+          model.trim() === initial?.model
+            ? initial
+            : null
+        }
+        disabled={save.isPending}
+      />
       <SettingsActions>
         {save.isError ? (
           <Alert variant="destructive" className="mb-3 w-auto">

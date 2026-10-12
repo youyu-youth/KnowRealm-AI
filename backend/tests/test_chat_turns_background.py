@@ -33,6 +33,7 @@ from test_server_process import wait_for_sidecar
 
 from app.modules.capture.web_clip import ClipContent, WebClipError
 from app.modules.settings.config import grant_llm_consent, save_llm_provider
+from app.modules.settings.model_budget import ModelBudgetConfig
 
 
 @pytest.fixture(scope="module")
@@ -582,6 +583,7 @@ def test_t17_killed_source_worker_recovers_original_job_and_turn(tmp_path: Path)
         api_key="sk-test",
         model="stub-chat-model",
         clear_api_key=False,
+        model_budget=ModelBudgetConfig(context_window=128000),
     )
     grant_llm_consent(tmp_path)
 

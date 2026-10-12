@@ -44,6 +44,7 @@ from app.modules.agent.turns.effects import (
 )
 from app.modules.agent.turns.models import ChatTurnToolEffect
 from app.modules.settings.config import grant_llm_consent, save_llm_provider
+from app.modules.settings.model_budget import ModelBudgetConfig
 from tests.test_chat_turns import (
     STUB_REPLY,
     TOKEN,
@@ -97,6 +98,7 @@ async def recovery_app(
         api_key=api_key,
         model=model,
         clear_api_key=False,
+        model_budget=ModelBudgetConfig(context_window=128000),
     )
     # 外发同意按当前供应商授予（恢复重验前置，票 02 规格 §12）。
     if consent:

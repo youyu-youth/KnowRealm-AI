@@ -40,6 +40,7 @@ from app.modules.agent.schemas import (
     ChatMode,
     ChatPageSnapshot,
     ChatResponseProcessOut,
+    ChatRole,
     ChatScope,
     ChatTurnResultOut,
 )
@@ -500,6 +501,8 @@ async def session_context(
     memory_allowed: bool = False,
     page: ChatPageSnapshot | None = None,
     user_timezone: tzinfo | None = None,
+    preview_content: str | None = None,
+    input_messages: list[AnyMessage] | None = None,
 ) -> SessionPromptContext:
     async with session_factory() as session:
         chat = await ChatSessionService.get(session, session_id)
@@ -612,19 +615,28 @@ async def session_context(
         time_hint = (
             format_time_hint(datetime.now(user_timezone)) if user_timezone is not None else None
         )
+        context_rows = [
+            ContextRow(
+                id=row.id,
+                role=row.role,
+                content=row.content,
+                cited_excerpts=_cited_excerpts(row.citations_json, chat.record_id),
+            )
+            for row in rows
+        ]
+        if preview_content is not None:
+            if context_rows and context_rows[-1].role == ChatRole.USER:
+                context_rows.pop()
+            context_rows.append(
+                ContextRow(id="preview", role=ChatRole.USER, content=preview_content)
+            )
         return SessionPromptContext(
             mode=chat.mode,
             scope=chat.scope,
-            messages=build_context_messages(
-                [
-                    ContextRow(
-                        id=row.id,
-                        role=row.role,
-                        content=row.content,
-                        cited_excerpts=_cited_excerpts(row.citations_json, chat.record_id),
-                    )
-                    for row in rows
-                ],
+            messages=input_messages
+            if input_messages is not None
+            else build_context_messages(
+                context_rows,
                 record=record_context,
                 library=library_context,
                 web_search=web_search,

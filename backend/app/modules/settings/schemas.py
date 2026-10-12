@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.modules.settings.model_budget import ModelBudgetConfig, ModelCapabilityOut
+
 QUIZ_COUNT_CHOICES = (3, 5, 10)
 
 LightThemeId = Literal["LIGHT_DEFAULT", "LIGHT_SAGE"]
@@ -19,6 +21,7 @@ class LlmProviderUpdate(BaseModel):
     api_key: str = Field(default="", max_length=4096)
     model: str = Field(min_length=1, max_length=200)
     clear_api_key: bool = False
+    model_budget: ModelBudgetConfig | None = None
 
     @field_validator("base_url")
     @classmethod
@@ -45,6 +48,8 @@ class LlmProviderOut(BaseModel):
     model: str
     has_api_key: bool
     api_key_hint: str | None
+    model_budget: ModelBudgetConfig | None = None
+    capability: ModelCapabilityOut | None = None
 
 
 class LlmProviderStateOut(BaseModel):

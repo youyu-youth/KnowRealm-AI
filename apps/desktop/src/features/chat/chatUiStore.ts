@@ -37,6 +37,8 @@ export const CHAT_DEMO_TOOL_IDS = [
 export type ChatDemoToolId = (typeof CHAT_DEMO_TOOL_IDS)[number];
 
 type ChatUiState = {
+  draftsBySession: Record<string, string>;
+  setDraft: (sessionId: string, value: string) => void;
   /**
    * 会话收藏与示意工具开关是图 1 对齐的本地状态：
    * 只在本进程内生效，不落库。
@@ -59,6 +61,11 @@ type ChatUiState = {
 };
 
 export const useChatUiStore = create<ChatUiState>((set) => ({
+  draftsBySession: {},
+  setDraft: (sessionId, value) =>
+    set((state) => ({
+      draftsBySession: { ...state.draftsBySession, [sessionId]: value },
+    })),
   favoriteSessionIds: new Set<string>(),
   tools: {
     knowledgeBase: true,

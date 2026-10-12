@@ -10,6 +10,7 @@ propose_ingest），随操作工具族上线收敛为单对 bind/reset，消除�
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, field
 from datetime import tzinfo
+from pathlib import Path
 from typing import cast
 
 from sqlalchemy import CursorResult, update
@@ -21,6 +22,7 @@ from app.modules.agent.budget.policy import (
 from app.modules.agent.budget.policy import (
     ToolCallBudget as ToolCallBudget,
 )
+from app.modules.agent.context_budget.schemas import ContextPolicy
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatScope
 from app.modules.agent.turns.models import ChatTurn
@@ -78,6 +80,11 @@ class AgentRuntimeContext:
     # （测试）不校验。
     turn_id: str | None = None
     turn_claim_token: str | None = None
+    context_policy: ContextPolicy | None = None
+    data_dir: Path | None = None
+    provider_fingerprint: str | None = None
+    outbound_consent_required: bool = False
+    memory_injected: bool = False
 
     async def turn_write_allowed(self, session: AsyncSession) -> bool:
         """业务提交处最终校验（规格 §2/§11/§14，取消闸门 Middleware 之外的

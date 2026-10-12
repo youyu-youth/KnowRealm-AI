@@ -353,6 +353,40 @@ export interface paths {
         patch: operations["rename_chat_session_api_chat_sessions__session_id__patch"];
         trace?: never;
     };
+    "/api/chat-sessions/{session_id}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Context */
+        get: operations["get_context_api_chat_sessions__session_id__context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-sessions/{session_id}/context/estimates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Preview Context */
+        post: operations["preview_context_api_chat_sessions__session_id__context_estimates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat-sessions/{session_id}/messages": {
         parameters: {
             query?: never;
@@ -4026,6 +4060,50 @@ export interface components {
              */
             relation_id: string;
         };
+        /** ContextPolicy */
+        ContextPolicy: {
+            /** Base Url */
+            base_url: string;
+            capability: components["schemas"]["ModelCapabilityOut"];
+            /** Model */
+            model: string;
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+        };
+        /** ContextPreviewRequest */
+        ContextPreviewRequest: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            page?: components["schemas"]["ChatPageSnapshot"] | null;
+            /**
+             * Web Search
+             * @default false
+             */
+            web_search: boolean;
+        };
+        /** ContextViewOut */
+        ContextViewOut: {
+            /** Actual */
+            actual: components["schemas"]["ModelRequestOut"][];
+            /** Actual Turn Id */
+            actual_turn_id: string | null;
+            /** Next Error Code */
+            next_error_code: string | null;
+            next_estimate: components["schemas"]["InputEstimate"] | null;
+            /** Segment */
+            segment: number;
+            /** Session Id */
+            session_id: string;
+            /** Version */
+            version: number;
+        };
         /** CourseCreate */
         CourseCreate: {
             /** @description 可选课程类型 */
@@ -4426,6 +4504,45 @@ export interface components {
             title: string;
             /** Updated At */
             updated_at: string;
+        };
+        /** InputEstimate */
+        InputEstimate: {
+            /** Components */
+            components: {
+                [key: string]: number;
+            };
+            /**
+             * Counting
+             * @default APPROXIMATE
+             * @constant
+             */
+            counting: "APPROXIMATE";
+            /** Error Code */
+            error_code?: string | null;
+            /** Input Capacity */
+            input_capacity: number;
+            /** Input Fingerprint */
+            input_fingerprint: string;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Message Count */
+            message_count: number;
+            /** Output Reserve */
+            output_reserve: number;
+            policy: components["schemas"]["ContextPolicy"];
+            /** Remaining */
+            remaining: number;
+            /** Safety Margin */
+            safety_margin: number;
+            /**
+             * Tokenizer
+             * @default utf8_bytes/2
+             */
+            tokenizer: string;
+            /** Tool Count */
+            tool_count: number;
+            /** Usable Budget */
+            usable_budget: number;
         };
         /**
          * KnowledgePointAction
@@ -4829,10 +4946,12 @@ export interface components {
             api_key_hint: string | null;
             /** Base Url */
             base_url: string;
+            capability?: components["schemas"]["ModelCapabilityOut"] | null;
             /** Has Api Key */
             has_api_key: boolean;
             /** Model */
             model: string;
+            model_budget?: components["schemas"]["ModelBudgetConfig"] | null;
         };
         /** LlmProviderStateOut */
         LlmProviderStateOut: {
@@ -4861,6 +4980,7 @@ export interface components {
             clear_api_key: boolean;
             /** Model */
             model: string;
+            model_budget?: components["schemas"]["ModelBudgetConfig"] | null;
         };
         /** LlmUsageDailyPointOut */
         LlmUsageDailyPointOut: {
@@ -5006,6 +5126,72 @@ export interface components {
              * @description 并入的正式概念 id
              */
             target_concept_id: string;
+        };
+        /** ModelBudgetConfig */
+        ModelBudgetConfig: {
+            /**
+             * Answer Output
+             * @default 4096
+             */
+            answer_output: number;
+            /** Context Window */
+            context_window?: number | null;
+            /** Input Limit */
+            input_limit?: number | null;
+            /** Max Output */
+            max_output?: number | null;
+            /**
+             * Summary Output
+             * @default 1024
+             */
+            summary_output: number;
+        };
+        /** ModelCapabilityOut */
+        ModelCapabilityOut: {
+            /**
+             * Answer Output
+             * @default 4096
+             */
+            answer_output: number;
+            /** Context Window */
+            context_window?: number | null;
+            /** Input Limit */
+            input_limit?: number | null;
+            /** Max Output */
+            max_output?: number | null;
+            /** Sources */
+            sources?: {
+                [key: string]: string;
+            };
+            /**
+             * Summary Output
+             * @default 1024
+             */
+            summary_output: number;
+        };
+        /** ModelRequestOut */
+        ModelRequestOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code: string | null;
+            estimate: components["schemas"]["InputEstimate"];
+            /** Id */
+            id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "STARTED" | "COMPLETED" | "FAILED" | "BLOCKED";
+            /** Turn Id */
+            turn_id: string;
+            /** Usage */
+            usage: {
+                [key: string]: number;
+            } | null;
         };
         /**
          * OperationStatus
@@ -8167,6 +8353,112 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_context_api_chat_sessions__session_id__context_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextViewOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    preview_context_api_chat_sessions__session_id__context_estimates_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContextPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextViewOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

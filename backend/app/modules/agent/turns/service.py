@@ -31,6 +31,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.base import utcnow
 from app.modules.agent.budget.policy import POLICY_VERSION
 from app.modules.agent.budget.service import cleanup
+from app.modules.agent.context_budget.policy import policy_for
+from app.modules.agent.context_budget.service import bind_context
 from app.modules.agent.graph import CHAT_GRAPH_VERSION
 from app.modules.agent.message_service import validate_sendable_chat
 from app.modules.agent.models import ChatMessage, ChatSession
@@ -55,6 +57,7 @@ from app.modules.settings.config import (
     LlmProviderConfig,
     agent_default_auth_mode,
     llm_consent,
+    llm_provider_fingerprint,
     load_llm_provider,
     load_web_search_config,
     memory_outbound_enabled,
@@ -378,6 +381,11 @@ async def resume_blocked_reason(
     图版本、原供应商身份、记忆外发与联网可用性逐项检查；不满足返回等待原因。
     provider 为 None（未配置）由调用方先行分流（worker 等待 / resume 拒绝）。
     """
+    if execution.get("context_policy_version") != 1:
+        return (
+            ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
+            "原轮次缺少兼容的输入预算记录，请停止后重新提问",
+        )
     if execution.get("budget_policy_version") != POLICY_VERSION:
         return (
             ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
@@ -537,6 +545,7 @@ class ChatTurnService:
         )
         user_timezone = serialize_timezone(await asyncio.to_thread(resolve_user_timezone, data_dir))
         memory_allowed = await asyncio.to_thread(_memory_outbound_allowed, data_dir)
+        _, consent_current = await asyncio.to_thread(llm_consent, data_dir)
         fingerprint = request_fingerprint(payload)
         execution: dict[str, Any] = {
             "web_search": payload.web_search,
@@ -545,11 +554,14 @@ class ChatTurnService:
             "user_timezone": user_timezone,
             "page": payload.page.model_dump(mode="json") if payload.page is not None else None,
             "provider_model": provider.model,
+            "provider_fingerprint": llm_provider_fingerprint(provider),
+            "outbound_consent_required": consent_current,
             # 恢复上下文快照（票 02，规格 §10）：原供应商身份（不含凭据）、图
             # 版本——续跑前比对，不静默换服务、不盲目重放不兼容图状态。
             "provider_base_url": provider.base_url,
             "graph_version": CHAT_GRAPH_VERSION,
             "budget_policy_version": POLICY_VERSION,
+            "context_policy_version": 1,
         }
         now = utcnow()
         turn_id = str(uuid4())
@@ -571,6 +583,7 @@ class ChatTurnService:
                     execution=execution,
                     now=now,
                 )
+                await bind_context(session, turn_id, session_id, policy_for(provider))
         except IntegrityError:
             # 并发重复提交（同 request_id 或同会话抢占）按库内事实分流。
             turn = await _resolve_submit_race(session_factory, payload, session_id, fingerprint)

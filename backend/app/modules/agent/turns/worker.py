@@ -36,7 +36,7 @@ from time import perf_counter
 from typing import Any, cast
 from uuid import uuid4
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AnyMessage, SystemMessage
 from langgraph.checkpoint.base import BaseCheckpointSaver  # pyright: ignore[reportMissingTypeStubs]
 from loguru import logger
 from sqlalchemy import select
@@ -49,6 +49,8 @@ from app.modules.agent.budget.policy import POLICY_VERSION
 from app.modules.agent.budget.service import restore
 from app.modules.agent.citations import parse_citation_reply, parse_library_citation_reply
 from app.modules.agent.context import ChatContextTooLargeError
+from app.modules.agent.context_budget.schemas import ContextPolicy
+from app.modules.agent.context_budget.service import context_input, restore_messages, save_messages
 from app.modules.agent.graph import (
     CHAT_PROMPT_VERSION,
     CHAT_RESEARCH_PROMPT_VERSION,
@@ -336,10 +338,14 @@ class _TurnExecutor:
             return
         is_resume = turn.attempt > 1
         execution = load_execution(turn)
-        if execution.get("budget_policy_version") != POLICY_VERSION:
+        if (
+            execution.get("budget_policy_version") != POLICY_VERSION
+            or execution.get("context_policy_version") != 1
+            or await context_input(self._session_factory, turn.id) is None
+        ):
             await self._wait(
                 ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
-                "原轮次缺少兼容的工具预算记录，请停止后重新提问",
+                "原轮次缺少兼容的预算记录，请停止后重新提问",
             )
             return
         provider = await asyncio.to_thread(load_llm_provider, self._data_dir)
@@ -358,6 +364,14 @@ class _TurnExecutor:
             if blocked is not None:
                 await self._wait(blocked[0], blocked[1])
                 return
+        elif (provider.base_url, provider.model) != (
+            execution.get("provider_base_url"),
+            execution.get("provider_model"),
+        ):
+            await self._wait(
+                ChatTurnWaitingKind.PROVIDER_CHANGED, "AI 服务已变更，请恢复原配置或停止后重新提问"
+            )
+            return
         try:
             await self._drive(turn, execution, provider, resume=is_resume)
         except TurnCheckpointMissingError:
@@ -386,6 +400,13 @@ class _TurnExecutor:
         web_search_provider = await self._resolve_web_search(bool(execution.get("web_search")))
         page = self._page_snapshot(execution.get("page"))
         user_timezone = parse_timezone(execution.get("user_timezone"))
+        bound = await context_input(self._session_factory, turn.id)
+        if bound is None:
+            raise CodedHTTPException(
+                code="MODEL_CONTEXT_INCOMPATIBLE",
+                status_code=409,
+                detail="原轮次缺少输入预算快照，请停止后重新提问",
+            )
         prompt_context = await session_context(
             self._session_factory,
             session_id,
@@ -393,23 +414,20 @@ class _TurnExecutor:
             memory_allowed=bool(execution.get("memory_injection_allowed")),
             page=page,
             user_timezone=user_timezone,
+            input_messages=restore_messages(bound),
         )
         context_messages: list[Any] = list(prompt_context.messages)
         resume_replaces: str | None = None
         if resume:
             # 续跑：原 system 提示与已注入记忆用首次执行固化的快照（规格 §10——
             # 已进入上下文的材料保持原快照，不随会话 / 配置漂移重建）。
-            snapshot_prompt = execution.get("system_prompt")
-            if isinstance(snapshot_prompt, str) and snapshot_prompt:
-                context_messages = [
-                    SystemMessage(content=snapshot_prompt),
-                    HumanMessage(content=user_content or ""),
-                ]
             # 替换边界由流在 checkpoint 验证通过后发（ChatRevisionEvent）——不在
             # 此预发，避免 checkpoint 缺失分流被 revision 事件污染 last_seq。
             resume_replaces = await self._pending_segment()
         else:
-            await self._persist_execution_snapshot(turn, execution, prompt_context)
+            context_messages = await self._persist_execution_snapshot(
+                turn, execution, prompt_context
+            )
         budget = await self._restore_budget(resume)
         turn_mode = AuthMode(str(execution.get("auth_mode") or AuthMode.REQUEST_APPROVAL))
         if turn.attempt > 1:
@@ -438,6 +456,13 @@ class _TurnExecutor:
             budget=budget,
             turn_id=self._ctx.turn_id,
             turn_claim_token=self._ctx.claim_token,
+            context_policy=ContextPolicy.model_validate_json(bound.policy_json),
+            data_dir=self._data_dir,
+            provider_fingerprint=execution.get("provider_fingerprint"),
+            outbound_consent_required=bool(execution.get("outbound_consent_required")),
+            memory_injected=bool(
+                execution.get("injected_memories") or prompt_context.learner_memories
+            ),
         )
         outcome = ChatStreamOutcome()
         stream = message_service.stream_chat_reply(
@@ -553,13 +578,13 @@ class _TurnExecutor:
 
     async def _persist_execution_snapshot(
         self, turn: ChatTurn, execution: dict[str, Any], prompt_context: SessionPromptContext
-    ) -> None:
+    ) -> list[AnyMessage]:
         """首次执行起固化恢复上下文（规格 §10）：原 system 提示与已注入记忆。
 
         已固化不覆盖（checkpoint 缺失后从头重跑的二次固化保持原快照）。
         """
         if "system_prompt" in execution:
-            return
+            return prompt_context.messages
         system_prompt = next(
             (m for m in prompt_context.messages if isinstance(m, SystemMessage)), None
         )
@@ -569,11 +594,21 @@ class _TurnExecutor:
             "injected_memories": list(prompt_context.learner_memories),
         }
         async with self._session_factory() as session, session.begin():
+            guard = AgentRuntimeContext(
+                self._session_factory,
+                turn.session_id,
+                turn_id=turn.id,
+                turn_claim_token=self._ctx.claim_token,
+            )
+            if not await guard.turn_write_allowed(session):
+                raise _TurnCancelled
             row = await session.get(ChatTurn, self._ctx.turn_id)
             if row is None or row.claim_token != self._ctx.claim_token:
-                return
+                raise _ClaimLost
+            messages = await save_messages(session, turn.id, prompt_context.messages)
             row.execution_json = json.dumps(execution, ensure_ascii=False, separators=(",", ":"))
             row.updated_at = utcnow()
+            return messages
 
     async def _restore_budget(self, resume: bool) -> ToolCallBudget:
         """工具准入/字符读取消费事实，独立提交预算保持 effect 口径。"""

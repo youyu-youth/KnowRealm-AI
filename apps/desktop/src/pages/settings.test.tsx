@@ -840,6 +840,13 @@ describe("设置页供应商分区", () => {
         model: "qwen-plus",
         api_key: "sk-abc",
         clear_api_key: false,
+        model_budget: {
+          input_limit: null,
+          context_window: null,
+          max_output: null,
+          answer_output: 4096,
+          summary_output: 1024,
+        },
       },
     ]);
 

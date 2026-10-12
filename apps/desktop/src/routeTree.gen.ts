@@ -15,6 +15,7 @@ import { Route as LibraryRouteImport } from "./pages/library";
 import { Route as OnboardingRouteImport } from "./pages/onboarding";
 import { Route as SettingsRouteImport } from "./pages/settings";
 import { Route as SpacesRouteImport } from "./pages/spaces";
+import { Route as ChatContextSessionIdRouteImport } from "./pages/chat-context.$sessionId";
 import { Route as ChatIndexRouteImport } from "./pages/chat.index";
 import { Route as ChatSessionIdRouteImport } from "./pages/chat.$sessionId";
 import { Route as RecordsRecordIdRouteImport } from "./pages/records.$recordId";
@@ -50,6 +51,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const SpacesRoute = SpacesRouteImport.update({
   id: "/spaces",
   path: "/spaces",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ChatContextSessionIdRoute = ChatContextSessionIdRouteImport.update({
+  id: "/chat-context/$sessionId",
+  path: "/chat-context/$sessionId",
   getParentRoute: () => rootRouteImport,
 } as any);
 const ChatIndexRoute = ChatIndexRouteImport.update({
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   "/onboarding": typeof OnboardingRoute;
   "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
+  "/chat-context/$sessionId": typeof ChatContextSessionIdRoute;
   "/chat/$sessionId": typeof ChatSessionIdRoute;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
@@ -104,6 +111,7 @@ export interface FileRoutesByTo {
   "/library": typeof LibraryRoute;
   "/onboarding": typeof OnboardingRoute;
   "/settings": typeof SettingsRoute;
+  "/chat-context/$sessionId": typeof ChatContextSessionIdRoute;
   "/chat/$sessionId": typeof ChatSessionIdRoute;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
@@ -119,6 +127,7 @@ export interface FileRoutesById {
   "/onboarding": typeof OnboardingRoute;
   "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
+  "/chat-context/$sessionId": typeof ChatContextSessionIdRoute;
   "/chat/$sessionId": typeof ChatSessionIdRoute;
   "/records/$recordId": typeof RecordsRecordIdRoute;
   "/spaces/$courseId": typeof SpacesCourseIdRoute;
@@ -135,6 +144,7 @@ export interface FileRouteTypes {
     | "/onboarding"
     | "/settings"
     | "/spaces"
+    | "/chat-context/$sessionId"
     | "/chat/$sessionId"
     | "/records/$recordId"
     | "/spaces/$courseId"
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | "/library"
     | "/onboarding"
     | "/settings"
+    | "/chat-context/$sessionId"
     | "/chat/$sessionId"
     | "/records/$recordId"
     | "/spaces/$courseId"
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | "/onboarding"
     | "/settings"
     | "/spaces"
+    | "/chat-context/$sessionId"
     | "/chat/$sessionId"
     | "/records/$recordId"
     | "/spaces/$courseId"
@@ -177,6 +189,7 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute;
   SettingsRoute: typeof SettingsRoute;
   SpacesRoute: typeof SpacesRouteWithChildren;
+  ChatContextSessionIdRoute: typeof ChatContextSessionIdRoute;
   ChatSessionIdRoute: typeof ChatSessionIdRoute;
   RecordsRecordIdRoute: typeof RecordsRecordIdRoute;
   ChatIndexRoute: typeof ChatIndexRoute;
@@ -224,6 +237,13 @@ declare module "@tanstack/react-router" {
       path: "/spaces";
       fullPath: "/spaces";
       preLoaderRoute: typeof SpacesRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/chat-context/$sessionId": {
+      id: "/chat-context/$sessionId";
+      path: "/chat-context/$sessionId";
+      fullPath: "/chat-context/$sessionId";
+      preLoaderRoute: typeof ChatContextSessionIdRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/chat/": {
@@ -293,6 +313,7 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   SettingsRoute: SettingsRoute,
   SpacesRoute: SpacesRouteWithChildren,
+  ChatContextSessionIdRoute: ChatContextSessionIdRoute,
   ChatSessionIdRoute: ChatSessionIdRoute,
   RecordsRecordIdRoute: RecordsRecordIdRoute,
   ChatIndexRoute: ChatIndexRoute,

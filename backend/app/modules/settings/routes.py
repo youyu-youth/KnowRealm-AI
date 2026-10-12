@@ -23,6 +23,7 @@ from app.modules.settings.config import (
     save_tencent_asr_provider,
     save_web_search_provider,
 )
+from app.modules.settings.model_budget import ModelBudgetConfig, resolve_capability
 from app.modules.settings.schemas import (
     ExternalProcessingConsentOut,
     LlmConsentOut,
@@ -65,12 +66,16 @@ router = APIRouter(
 )
 
 
-def _provider_out(base_url: str, api_key: str, model: str) -> LlmProviderOut:
+def _provider_out(
+    base_url: str, api_key: str, model: str, model_budget: ModelBudgetConfig | None = None
+) -> LlmProviderOut:
     return LlmProviderOut(
         base_url=base_url,
         model=model,
         has_api_key=bool(api_key),
         api_key_hint=f"••••{api_key[-4:]}" if api_key else None,
+        model_budget=model_budget,
+        capability=resolve_capability(base_url, model, model_budget),
     )
 
 
@@ -129,7 +134,9 @@ async def get_llm_provider(request: Request) -> LlmProviderStateOut:
     provider = await asyncio.to_thread(load_llm_provider, request.app.state.data_dir)
     return LlmProviderStateOut(
         provider=(
-            _provider_out(provider.base_url, provider.api_key, provider.model)
+            _provider_out(
+                provider.base_url, provider.api_key, provider.model, provider.model_budget
+            )
             if provider is not None
             else None
         )
@@ -148,9 +155,13 @@ async def put_llm_provider(
         api_key=body.api_key,
         model=body.model,
         clear_api_key=body.clear_api_key,
+        model_budget=body.model_budget,
+        replace_model_budget="model_budget" in body.model_fields_set,
     )
     return LlmProviderStateOut(
-        provider=_provider_out(provider.base_url, provider.api_key, provider.model)
+        provider=_provider_out(
+            provider.base_url, provider.api_key, provider.model, provider.model_budget
+        )
     )
 
 

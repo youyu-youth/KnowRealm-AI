@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import cast, get_args
 from zoneinfo import ZoneInfo
 
+from app.modules.settings.model_budget import ModelBudgetConfig
 from app.modules.settings.schemas import (
     QUIZ_COUNT_CHOICES,
     DarkThemeId,
@@ -34,6 +35,7 @@ class LlmProviderConfig:
     base_url: str
     api_key: str
     model: str
+    model_budget: ModelBudgetConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -152,7 +154,13 @@ def load_llm_provider(data_dir: Path) -> LlmProviderConfig | None:
     model = provider.get("model")
     if not all(isinstance(value, str) for value in (base_url, api_key, model)):
         return None
-    return LlmProviderConfig(cast(str, base_url), cast(str, api_key), cast(str, model))
+    budget = provider.get("model_budget")
+    return LlmProviderConfig(
+        cast(str, base_url),
+        cast(str, api_key),
+        cast(str, model),
+        ModelBudgetConfig.model_validate(budget) if isinstance(budget, dict) else None,
+    )
 
 
 def save_llm_provider(
@@ -162,14 +170,27 @@ def save_llm_provider(
     api_key: str,
     model: str,
     clear_api_key: bool,
+    model_budget: ModelBudgetConfig | None = None,
+    replace_model_budget: bool = False,
 ) -> LlmProviderConfig:
     path = data_dir / "config" / "providers.json"
     providers = _read_json(path)
     current = load_llm_provider(data_dir)
     saved_key = "" if clear_api_key else api_key or (current.api_key if current else "")
-    providers["llm"] = {"base_url": base_url, "api_key": saved_key, "model": model}
+    if (
+        not replace_model_budget
+        and current
+        and (current.base_url, current.model) == (base_url, model)
+    ):
+        model_budget = current.model_budget
+    providers["llm"] = {
+        "base_url": base_url,
+        "api_key": saved_key,
+        "model": model,
+        "model_budget": model_budget.model_dump() if model_budget is not None else None,
+    }
     _write_json(path, providers)
-    return LlmProviderConfig(base_url, saved_key, model)
+    return LlmProviderConfig(base_url, saved_key, model, model_budget)
 
 
 def load_web_search_provider(data_dir: Path) -> WebSearchProviderConfig | None:

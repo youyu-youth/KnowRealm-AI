@@ -2551,7 +2551,10 @@
         "generic": "回答生成等待处理；恢复条件后可继续",
         "BACKGROUND_TASK": "正在等待后台处理结果，完成后自动继续回答",
         "tasks": "关联后台任务",
-        "taskType": { "RUN": "执行任务", "JOB": "后台处理" },
+        "taskType": {
+          "RUN": "执行任务",
+          "JOB": "后台处理"
+        },
         "taskStatus": {
           "PENDING": "排队中",
           "RUNNING": "执行中",
@@ -2583,6 +2586,43 @@
         "cancelled": "回答已停止，以下是已生成的部分内容",
         "failed": "回答生成失败，以下是已生成的部分内容",
         "interrupted": "回答生成被中断，以下是已生成的部分内容"
+      }
+    },
+    "contextView": {
+      "title": "上下文管理",
+      "open": "查看上下文",
+      "back": "返回对话",
+      "session": "当前会话",
+      "actual": "本轮实际输入",
+      "actualHint": "逐次展示最后一个轮次的完整请求计量。拦截的请求不会发送给模型。",
+      "next": "下一轮预估",
+      "nextHint": "按当前模型、会话范围和未发送草稿估算。后续工具结果与页面提示可能改变输入；发送前会重新检查。",
+      "unknown": "未知",
+      "noActual": "此轮尚无模型请求记录。旧轮次不会补造输入或用量。",
+      "inputTokens": "估算输入 Token",
+      "usableBudget": "可用输入预算",
+      "outputReserve": "回答输出预留",
+      "safetyMargin": "安全余量（20%）",
+      "remaining": "剩余输入预算",
+      "input_limit": "输入上限",
+      "context_window": "总窗口",
+      "max_output": "输出上限",
+      "approximate": "近似 Token 计量（{{tokenizer}}），含完整工具定义与协议开销，非供应商计费值。",
+      "inventory": "包含 {{messages}} 条消息、{{tools}} 个工具定义。材料与学习者上下文计入系统提示。",
+      "request": "请求 {{count}}",
+      "usage": "供应商用量：输入 {{input}} · 输出 {{output}} Token",
+      "configure": "配置模型能力",
+      "components": {
+        "system": "系统提示与材料",
+        "messages": "消息与工具结果",
+        "tools": "工具定义",
+        "protocol": "协议开销"
+      },
+      "status": {
+        "STARTED": "已准入，完成状态待确认",
+        "COMPLETED": "已调用完成",
+        "FAILED": "调用失败",
+        "BLOCKED": "已拦截，未调用"
       }
     }
   },
@@ -2938,6 +2978,20 @@
         "total": "总 tokens",
         "errors": "失败"
       }
+    },
+    "modelBudget": {
+      "title": "模型能力与输入预算",
+      "hint": "能力绑定当前端点和模型。留空使用可信官方值；未知或自定义部署须填写输入上限或总窗口。所有数值单位为 Token，保存后生效。",
+      "input_limit": "输入上限",
+      "context_window": "总窗口",
+      "max_output": "供应商输出上限",
+      "answer_output": "回答输出预留",
+      "summary_output": "摘要输出预留",
+      "unknown": "未知，请配置",
+      "userSource": "用户覆盖",
+      "officialSource": "官方来源 · {{count}} Token",
+      "officialSourceLabel": "官方来源",
+      "openSourceFailed": "无法打开官方来源，请稍后重试。"
     }
   },
   "providerGuide": {
@@ -3387,7 +3441,10 @@
     "CHAT_TURN_RESUME_CONFLICT": "当前状态不能继续该轮次",
     "CHAT_TURN_RESUME_UNSAFE": "该轮次无法安全继续，请停止后重新提问",
     "CHAT_TURN_RESUME_CONDITION_UNMET": "继续条件尚未满足，请先处理等待原因",
-    "CHAT_TURN_CANCEL_IN_PROGRESS": "该轮次已受理停止，不能继续"
+    "CHAT_TURN_CANCEL_IN_PROGRESS": "该轮次已受理停止，不能继续",
+    "MODEL_CAPABILITY_REQUIRED": "请在 AI 服务设置中配置此端点和模型的输入上限或总窗口。",
+    "MODEL_INPUT_BUDGET_EXCEEDED": "完整模型输入无法容纳在可用预算内。请缩短提问、减少材料或调整模型能力配置。",
+    "MODEL_CONTEXT_INCOMPATIBLE": "原轮次缺少兼容的输入预算快照。请停止后重新提问。"
   },
   "agent": {
     "run": {

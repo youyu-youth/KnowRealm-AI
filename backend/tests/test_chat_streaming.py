@@ -73,6 +73,7 @@ from app.modules.search.segment_service import (
 )
 from app.modules.search.tokenizer import tokenize
 from app.modules.settings.config import save_llm_provider, save_web_search_provider
+from app.modules.settings.model_budget import ModelBudgetConfig
 from app.modules.summary.models import AiSummary
 from app.modules.transcript.sentences import content_hash
 
@@ -806,6 +807,7 @@ async def streaming_chat_app(
         api_key="sk-test",
         model="stub-chat-model",
         clear_api_key=False,
+        model_budget=ModelBudgetConfig(context_window=128000),
     )
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
@@ -2057,6 +2059,7 @@ async def test_web_search_mounting_matrix_tool_visibility(
         api_key="sk-test",
         model="stub-chat-model",
         clear_api_key=False,
+        model_budget=ModelBudgetConfig(context_window=128000),
     )
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
@@ -2354,6 +2357,7 @@ async def test_scope_mounting_matrix_tool_visibility(
         api_key="sk-test",
         model="stub-chat-model",
         clear_api_key=False,
+        model_budget=ModelBudgetConfig(context_window=128000),
     )
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):
@@ -3309,6 +3313,7 @@ async def test_free_session_with_course_page_snapshot_keeps_tool_matrix(
         api_key="sk-test",
         model="stub-chat-model",
         clear_api_key=False,
+        model_budget=ModelBudgetConfig(context_window=128000),
     )
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):

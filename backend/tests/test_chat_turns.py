@@ -25,6 +25,7 @@ from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
 from app.modules.settings.config import grant_llm_consent, save_llm_provider
+from app.modules.settings.model_budget import ModelBudgetConfig
 
 TOKEN = "test-launch-token"
 STUB_REPLY = ["回答", "完成", "了"]
@@ -132,6 +133,7 @@ async def turns_app(
         api_key="sk-test",
         model="stub-chat-model",
         clear_api_key=False,
+        model_budget=ModelBudgetConfig(context_window=128000),
     )
     # 外发同意（恢复重验前置，票 02 规格 §12）：续跑用例按已同意用户现场。
     grant_llm_consent(tmp_path)
@@ -611,6 +613,7 @@ async def test_t04_request_id_idempotency_and_conflicts(
             api_key="sk-test",
             model="another-model",
             clear_api_key=False,
+            model_budget=ModelBudgetConfig(context_window=128000),
         )
         drifted = await submit(client, session_id, "幂等问题", request_id="req-t04-0001")
         assert drifted.status_code == 202

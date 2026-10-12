@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -12,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
   DropdownMenu,
@@ -98,7 +99,19 @@ export function ChatConversationView({
     stop,
     resume,
   } = useChatTurns(sessionId);
-  const [composerValue, setComposerValue] = useState(initialPrompt ?? "");
+  const composerValue = useChatUiStore(
+    (state) => state.draftsBySession[sessionId] ?? initialPrompt ?? "",
+  );
+  const setDraft = useChatUiStore((state) => state.setDraft);
+  useEffect(() => {
+    if (
+      initialPrompt !== undefined &&
+      useChatUiStore.getState().draftsBySession[sessionId] === undefined
+    ) {
+      setDraft(sessionId, initialPrompt);
+    }
+  }, [initialPrompt, sessionId, setDraft]);
+  const setComposerValue = (value: string) => setDraft(sessionId, value);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [recordPickOpen, setRecordPickOpen] = useState(false);
@@ -223,6 +236,13 @@ export function ChatConversationView({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-0.5 pt-1">
+          <Link
+            to="/chat-context/$sessionId"
+            params={{ sessionId }}
+            className={buttonVariants({ variant: "ghost", size: "sm" })}
+          >
+            {t("chat.contextView.open")}
+          </Link>
           <Button
             variant="ghost"
             size="icon-sm"

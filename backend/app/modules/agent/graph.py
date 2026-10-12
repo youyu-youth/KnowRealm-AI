@@ -35,6 +35,7 @@ from langgraph.types import Command, Interrupt
 from loguru import logger
 
 from app.modules.agent.budget.middleware import ToolBudgetMiddleware
+from app.modules.agent.context_budget.middleware import InputBudgetMiddleware
 from app.modules.agent.middleware.cancel_guard import TurnCancelGuardMiddleware
 from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
@@ -152,6 +153,7 @@ from app.modules.agent.tools.web_search import web_search
 from app.modules.agent.turns.background import interrupt_bindings, resume_results
 from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
+from app.shared.errors import CodedHTTPException
 
 CHAT_PROMPT_VERSION = "chat-library-scope-v26"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
@@ -351,7 +353,7 @@ CHAT_AGENT_CONFIG = AgentConfig()
 LIBRARY_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_library,))
 
 
-def _resolve_agent_config(
+def resolve_agent_config(
     *, retrieval: bool, web_search_enabled: bool, research: bool = False
 ) -> AgentConfig:
     """按「检索挂载 × web_search × 研究」组合出当轮装配：变体维持常量，
@@ -784,7 +786,7 @@ async def stream_chat_reply(
     - 统一 Agent 运行时上下文（工单 01）承载全部工具运行期状态并单对绑定/重置：
       范围会话（scope ∈ RETRIEVAL_SCOPES）注入 search_library，web_search_provider
       非 None 时挂载联网工具，mode=RESEARCH 追加挂载 propose_ingest，search_courses
-      / propose_memory / create_course 恒挂载（装配组合见 _resolve_agent_config）；
+      / propose_memory / create_course 恒挂载（装配组合见 resolve_agent_config）；
       工具执行期恒挂 ToolCallIdentityMiddleware 绑定逻辑调用身份（票 02 幂等）；
     - 事件分发：AIMessageChunk 文本 → token、tool_call_chunks 拼全 → tool_call、
       ToolMessage → tool_result；token 用量跨工具循环累加；
@@ -807,7 +809,7 @@ async def stream_chat_reply(
     # 检索归因（CB-08）：本轮资料检索命中合计（None=未检索，0=检索无命中）。
     retrieval_count: int | None = None
     try:
-        base_config = _resolve_agent_config(
+        base_config = resolve_agent_config(
             retrieval=runtime.scope in RETRIEVAL_SCOPES,
             web_search_enabled=runtime.web_search_provider is not None,
             research=runtime.mode == ChatMode.RESEARCH,
@@ -827,6 +829,14 @@ async def stream_chat_reply(
                 ToolBudgetMiddleware(),
             ),
         )
+        if runtime.context_policy is not None:
+            base_config = replace(
+                base_config,
+                middleware=(
+                    *base_config.middleware,
+                    InputBudgetMiddleware(runtime, runtime.context_policy),
+                ),
+            )
         agent = build_chat_agent(
             build_chat_model(provider, http_client),
             checkpointer,
@@ -963,9 +973,20 @@ async def stream_chat_reply(
     except GeneratorExit:
         # 客户端断开 / 用户停止：半截回答不落库、不落埋点，直接终止。
         raise
-    except Exception:
+    except Exception as exc:
         # 带栈落日志：真机「回答生成失败」只打码不打栈曾令排障无据。
-        logger.exception("chat_stream_failed", error_code="CHAT_STREAM_FAILED")
+        if isinstance(exc, CodedHTTPException):
+            logger.warning("chat_stream_rejected", error_code=exc.code)
+        elif runtime.context_policy is not None:
+            # 调用栈局部变量可能回显完整输入；预算轮次只记可关联的异常元数据。
+            logger.error(
+                "chat_stream_failed",
+                error_code="CHAT_STREAM_FAILED",
+                error_type=type(exc).__name__,
+                turn_id=runtime.turn_id,
+            )
+        else:
+            logger.exception("chat_stream_failed", error_code="CHAT_STREAM_FAILED")
         await write_llm_call_log(
             session_factory=runtime.session_factory,
             graph_name="chat",

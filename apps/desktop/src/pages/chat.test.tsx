@@ -21,6 +21,7 @@ import App from "@/App";
 import { applyLanguage } from "@/i18n";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
+import { useChatUiStore } from "@/features/chat/chatUiStore";
 import { setRecordingKeepAwake } from "@/services/tauri/recording";
 import { openWebUrl } from "@/services/tauri/webLinks";
 
@@ -261,6 +262,7 @@ function turnFlowHandlers(
 }
 
 afterEach(() => {
+  useChatUiStore.setState({ draftsBySession: {} });
   cleanup();
   window.history.replaceState(null, "", "/");
   vi.mocked(setRecordingKeepAwake).mockReset().mockResolvedValue(undefined);
@@ -268,6 +270,81 @@ afterEach(() => {
 });
 
 describe("AI 对话", () => {
+  it("上下文独立页面往返与切换会话保留隔离草稿，草稿不进入 URL", async () => {
+    const sessions = [
+      chatSession(FIRST_SESSION_ID, { title: "第一会话" }),
+      chatSession(SECOND_SESSION_ID, { title: "第二会话" }),
+    ];
+    const previews: unknown[] = [];
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json(sessions),
+      ),
+      ...sessions.map((session) =>
+        http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/${session.id}`, () =>
+          HttpResponse.json(session),
+        ),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/:sessionId/context/estimates`,
+        async ({ request, params }) => {
+          previews.push(await request.json());
+          return HttpResponse.json({
+            session_id: params.sessionId,
+            version: 1,
+            segment: 1,
+            actual_turn_id: null,
+            actual: [],
+            next_estimate: null,
+            next_error_code: "MODEL_CAPABILITY_REQUIRED",
+          });
+        },
+      ),
+    );
+    renderAt(`/chat/${FIRST_SESSION_ID}`);
+    const input = await screen.findByRole("textbox", { name: "提问输入框" });
+    fireEvent.change(input, { target: { value: "第一会话的未发送草稿" } });
+    fireEvent.click(screen.getByRole("link", { name: "查看上下文" }));
+    expect(
+      await screen.findByRole("heading", { name: "上下文管理" }),
+    ).toBeVisible();
+    expect(window.location.pathname).toBe(`/chat-context/${FIRST_SESSION_ID}`);
+    expect(window.location.search).toBe("");
+    await waitFor(() =>
+      expect(previews).toEqual([
+        expect.objectContaining({ content: "第一会话的未发送草稿" }),
+      ]),
+    );
+    fireEvent.click(screen.getByRole("combobox", { name: "当前会话" }));
+    const second = await screen.findByRole("option", { name: "第二会话" });
+    fireEvent.pointerDown(second);
+    fireEvent.pointerUp(second);
+    fireEvent.click(second);
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(
+        `/chat-context/${SECOND_SESSION_ID}`,
+      ),
+    );
+    fireEvent.click(screen.getByRole("link", { name: "返回对话" }));
+    expect(
+      await screen.findByRole("textbox", { name: "提问输入框" }),
+    ).toHaveValue("");
+    fireEvent.change(screen.getByRole("textbox", { name: "提问输入框" }), {
+      target: { value: "第二会话草稿" },
+    });
+    fireEvent.click(screen.getByRole("link", { name: /第一会话/ }));
+    await waitFor(() =>
+      expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "提问输入框" })).toHaveValue(
+        "第一会话的未发送草稿",
+      ),
+    );
+    expect(useChatUiStore.getState().draftsBySession[SECOND_SESSION_ID]).toBe(
+      "第二会话草稿",
+    );
+  });
   it("空态如实展示引导卡，不出现对话列表", async () => {
     renderAt("/chat");
 

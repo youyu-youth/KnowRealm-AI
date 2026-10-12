@@ -3152,6 +3152,127 @@
         "title": "ConfirmRelationDecision",
         "type": "object"
       },
+      "ContextPolicy": {
+        "properties": {
+          "base_url": {
+            "title": "Base Url",
+            "type": "string"
+          },
+          "capability": {
+            "$ref": "#/components/schemas/ModelCapabilityOut"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "version": {
+            "const": 1,
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "base_url",
+          "model",
+          "capability"
+        ],
+        "title": "ContextPolicy",
+        "type": "object"
+      },
+      "ContextPreviewRequest": {
+        "properties": {
+          "content": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Content",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatPageSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "web_search": {
+            "default": false,
+            "title": "Web Search",
+            "type": "boolean"
+          }
+        },
+        "title": "ContextPreviewRequest",
+        "type": "object"
+      },
+      "ContextViewOut": {
+        "properties": {
+          "actual": {
+            "items": {
+              "$ref": "#/components/schemas/ModelRequestOut"
+            },
+            "title": "Actual",
+            "type": "array"
+          },
+          "actual_turn_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Turn Id"
+          },
+          "next_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Error Code"
+          },
+          "next_estimate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InputEstimate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "segment": {
+            "title": "Segment",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_id",
+          "version",
+          "segment",
+          "actual_turn_id",
+          "actual",
+          "next_estimate",
+          "next_error_code"
+        ],
+        "title": "ContextViewOut",
+        "type": "object"
+      },
       "CourseCreate": {
         "properties": {
           "course_type": {
@@ -4152,6 +4273,93 @@
           "updated_at"
         ],
         "title": "InboxRecordOut",
+        "type": "object"
+      },
+      "InputEstimate": {
+        "properties": {
+          "components": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Components",
+            "type": "object"
+          },
+          "counting": {
+            "const": "APPROXIMATE",
+            "default": "APPROXIMATE",
+            "title": "Counting",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "input_capacity": {
+            "title": "Input Capacity",
+            "type": "integer"
+          },
+          "input_fingerprint": {
+            "title": "Input Fingerprint",
+            "type": "string"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "message_count": {
+            "title": "Message Count",
+            "type": "integer"
+          },
+          "output_reserve": {
+            "title": "Output Reserve",
+            "type": "integer"
+          },
+          "policy": {
+            "$ref": "#/components/schemas/ContextPolicy"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "safety_margin": {
+            "title": "Safety Margin",
+            "type": "integer"
+          },
+          "tokenizer": {
+            "default": "utf8_bytes/2",
+            "title": "Tokenizer",
+            "type": "string"
+          },
+          "tool_count": {
+            "title": "Tool Count",
+            "type": "integer"
+          },
+          "usable_budget": {
+            "title": "Usable Budget",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "policy",
+          "input_tokens",
+          "components",
+          "output_reserve",
+          "input_capacity",
+          "safety_margin",
+          "usable_budget",
+          "remaining",
+          "message_count",
+          "tool_count",
+          "input_fingerprint"
+        ],
+        "title": "InputEstimate",
         "type": "object"
       },
       "KnowledgePointAction": {
@@ -5282,6 +5490,16 @@
             "title": "Base Url",
             "type": "string"
           },
+          "capability": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelCapabilityOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "has_api_key": {
             "title": "Has Api Key",
             "type": "boolean"
@@ -5289,6 +5507,16 @@
           "model": {
             "title": "Model",
             "type": "string"
+          },
+          "model_budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelBudgetConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -5361,6 +5589,16 @@
             "minLength": 1,
             "title": "Model",
             "type": "string"
+          },
+          "model_budget": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelBudgetConfig"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -5698,6 +5936,197 @@
           "target_concept_id"
         ],
         "title": "MergeDecision",
+        "type": "object"
+      },
+      "ModelBudgetConfig": {
+        "properties": {
+          "answer_output": {
+            "default": 4096,
+            "maximum": 100000000.0,
+            "minimum": 1.0,
+            "title": "Answer Output",
+            "type": "integer"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "maximum": 100000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "input_limit": {
+            "anyOf": [
+              {
+                "maximum": 100000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Limit"
+          },
+          "max_output": {
+            "anyOf": [
+              {
+                "maximum": 100000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Output"
+          },
+          "summary_output": {
+            "default": 1024,
+            "maximum": 100000000.0,
+            "minimum": 1.0,
+            "title": "Summary Output",
+            "type": "integer"
+          }
+        },
+        "title": "ModelBudgetConfig",
+        "type": "object"
+      },
+      "ModelCapabilityOut": {
+        "properties": {
+          "answer_output": {
+            "default": 4096,
+            "maximum": 100000000.0,
+            "minimum": 1.0,
+            "title": "Answer Output",
+            "type": "integer"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "maximum": 100000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "input_limit": {
+            "anyOf": [
+              {
+                "maximum": 100000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Limit"
+          },
+          "max_output": {
+            "anyOf": [
+              {
+                "maximum": 100000000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Output"
+          },
+          "sources": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "object"
+          },
+          "summary_output": {
+            "default": 1024,
+            "maximum": 100000000.0,
+            "minimum": 1.0,
+            "title": "Summary Output",
+            "type": "integer"
+          }
+        },
+        "title": "ModelCapabilityOut",
+        "type": "object"
+      },
+      "ModelRequestOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/InputEstimate"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "STARTED",
+              "COMPLETED",
+              "FAILED",
+              "BLOCKED"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage"
+          }
+        },
+        "required": [
+          "id",
+          "turn_id",
+          "status",
+          "estimate",
+          "usage",
+          "error_code",
+          "created_at"
+        ],
+        "title": "ModelRequestOut",
         "type": "object"
       },
       "OperationStatus": {
@@ -12303,6 +12732,174 @@
         "summary": "Rename Chat Session",
         "tags": [
           "chat-sessions"
+        ]
+      }
+    },
+    "/api/chat-sessions/{session_id}/context": {
+      "get": {
+        "operationId": "get_context_api_chat_sessions__session_id__context_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextViewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get Context",
+        "tags": [
+          "chat-context"
+        ]
+      }
+    },
+    "/api/chat-sessions/{session_id}/context/estimates": {
+      "post": {
+        "operationId": "preview_context_api_chat_sessions__session_id__context_estimates_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextViewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Preview Context",
+        "tags": [
+          "chat-context"
         ]
       }
     },

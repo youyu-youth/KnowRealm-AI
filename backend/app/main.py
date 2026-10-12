@@ -23,6 +23,7 @@ from app.core.version import APP_VERSION
 from app.db.engine import create_database
 from app.db.migrations import run_migrations
 from app.modules.agent import chat_sessions
+from app.modules.agent.context_budget.routes import router as chat_context_router
 from app.modules.agent.auth_mode import router as agent_auth_mode_router
 from app.modules.agent.operations.plan_draft import plan_draft_spec
 from app.modules.agent.response_process import recover_processes
@@ -530,6 +531,7 @@ def create_app(
     app.include_router(source_anchors.router)
     app.include_router(chat_sessions.router)
     app.include_router(chat_turns_router)
+    app.include_router(chat_context_router)
     app.include_router(agent_auth_mode_router)
     app.include_router(agent_runs_routes.router)
     app.include_router(profile.router)
