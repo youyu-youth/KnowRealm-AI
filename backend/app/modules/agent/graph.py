@@ -13,6 +13,7 @@ from deepagents import (
 from deepagents.backends.protocol import (  # pyright: ignore[reportMissingTypeStubs]
     BackendProtocol,
 )
+from deepagents.middleware.filesystem import FilesystemMiddleware
 from langchain.agents.middleware.types import (  # pyright: ignore[reportMissingTypeStubs]
     AgentMiddleware,
     AgentState,
@@ -450,6 +451,12 @@ def build_agent(
         skills=list(config.skills) if config.skills is not None else None,
         backend=config.backend,
         middleware=[
+            # 当前没有可见 read_file 入口，大 JSON 必须完整进入最终输入闸门。
+            FilesystemMiddleware(
+                backend=config.backend,
+                tool_token_limit_before_evict=None,
+                human_message_token_limit_before_evict=None,
+            ),
             ExcludeDeepAgentToolsMiddleware(),
             NoopSummarizationMiddleware(),
             *config.middleware,

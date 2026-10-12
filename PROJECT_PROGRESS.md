@@ -1,4 +1,4 @@
-> **最后更新**：2026-10-12（批量计划编译工单 01 收口：两入口共享编译/落库，保持现有协议、事务与恢复，净减 114 行；相关后端 136、前端 29 项通过；后端全量 1192 通过、2 个既有失败及全量 Pyright 6 项在原基点复现，真实模型/外网/Tauri 未验收。见 `.scratch/agent-plan-compilation/implementation.md`。）
+> **最后更新**：2026-10-12（上下文管理工单 01 收口：模型能力配置、每次完整请求预算闸门、输入快照与独立查看页；核心后端 51 项及相关失败 7 项复验通过，前端导航/草稿通过，既有全量失败单独复现；当前为 20% 余量近似计量，真实模型/Tauri/系统缩放待 06。见 `.scratch/agent-context/implementation.md`。）
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
 
@@ -89,6 +89,7 @@
 | **Agent 时间能力 v1** | 时间提示行（time_hint 动态段：用户时区当前时间到秒＋星期＋工具指引，每轮重建不落库）＋resolve_user_timezone（偏好 timezone 首消费方，null/坏值回退系统本地；accept 读取→AcceptedMessage→AgentRuntimeContext.user_timezone，改设置下一轮生效）；四只读工具恒挂载（get_current_time/convert_time/shift_datetime/diff_datetime，共享 tools/time_utils.py 纯函数：IANA 解析、naive 按用户时区 aware 化、weekday 中文、{ok,...} 结构化载荷；计入 calls_used 预算；DST＝zoneinfo 墙上钟点语义 fold=0）；计划锚点四处（generate/regenerate/plan_confirm×2）统一 local_today() 系统本地（流外确认链不可达 data_dir 不读偏好——默认用户两口径一致，显式跨时区凌晨差一天＝已知边界备案）；prompt chat v22/research v23；GLOSSARY.md「时间提示（Time Hint）」词条 | 工单 done（.scratch/agent-time-v1/01）；门禁＝新增 28 测试（helper/四工具/预算/提示行注入/偏好时区解析＋美东 DST 两固定样例）＋既有同步（版本断言两处/字节一致测试剥离时间行/挂载矩阵 7 处）全量绿＋ruff＋pyright＋OpenAPI --check；GPT 方案 7/10 裁定轻量版；剩用户真机验收（清单在工单，不代勾） |
 | 设置 | 偏好（外观/通用/关闭行为/自启/快捷键自定义/重启恢复）、档案（昵称/头像）、LLM/ASR 供应商卡+连通性手动测试、数据目录（切换/迁移/重启，desktop.json）、全量导出/导入/滚动备份、首启向导四步、**服务与用量分区（30 天 LLM 用量聚合+趋势图+缺 key 徽章）** | 单 active 供应商；连通性仅手动（真实计费） |
 | **独立明暗主题系统（待完整真机验收）** | 四套内置主题、两组独立预览及选择；复用偏好 API 与共享提交锁，保存失败对账及冲突保护；目录隔离缓存与工作区启动核对；图表原实例换色并保留统计折叠状态 | .scratch/desktop-theme-system/validation.md；权威文档已批准并同步。后端相关 78 项、前端相关 50 项及构建通过；真实 WebView2 四主题页面、Windows 系统外观事件、三档字号与窄窗已验证；冷启动全矩阵、Windows 200%、持续聊天/录音、迁移后缓存及完整视觉对照未全部验收，本期不新增 Agent Tool |
+| **上下文管理 01（后续票未实施）** | 端点/模型能力与输出配置；0046 按需会话状态、轮次原输入/策略快照及逐次计量；最内层 Middleware 覆盖完整消息/材料/工具定义/工具 JSON，超限不调用；独立上下文路由、实际/预估分离、版本追溯及隔离草稿；恢复保留原输入/消费并重验当前同意 | `.scratch/agent-context/implementation.md`；核心后端 51 项、相关失败 7 项复验、前端新增导航及范围门禁/构建通过；前端相关 90 通过、1 个基点既有超时。全量后端 1191/10、前端 718/10 后逐项复核，剩余既有失败单独登记。四主题/英文/窄窗/键盘/reduced-motion 为浏览器模拟；当前计量为 20% 余量近似，摘要/取回/固定/排除由 02～05 接续，真实模型/Tauri/系统缩放待 06 |
 | 界面语言 | 中英全量切换（含首启向导语言步）、en.json 全量真译+一致性防线、后端错误码化（ADR-0017 附加字段）、前端错误码翻译消费+壳层命令码化 | 内容语言与界面语言解耦（prompt 固化指令） |
 | 导出 | 总结/知识点本地导出、习题/Todo 本地导出（markdown） | 聚合导出验收待用户（ready-for-human） |
 | 评测 | 习题 Groundedness 评测样本集与评审 checklist（docs/evaluation/） | 样本采集待用户（阻塞项） |
@@ -145,7 +146,7 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 │  ├─ app/shared/         deps/errors(带码 HTTPException)/events/prompts/schemas
 │  ├─ app/core/           data_dir/logging/loop/version
 │  ├─ app/db/             engine/base/migrations（SQL 迁移执行器，PRAGMA user_version 推进）
-│  └─ migrations/         0001~0045 手写 SQL，四位编号连续递增不可跳号
+│  └─ migrations/         0001~0046 手写 SQL，四位编号连续递增不可跳号
 ├─ packages/api-types/    OpenAPI → TS 类型生成（后端 schema 变更后必须重新 generate）
 ├─ docs/                  权威文档 + ADR + 评测 + 规则镜像（正本在 .claude/rules/）
 └─ .scratch/              工单 tracker（25 个 feature 目录）

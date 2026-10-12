@@ -7,9 +7,11 @@ from typing import Any
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.tools import tool
 from sqlalchemy import text
 
 from app.modules.agent.context_budget.policy import estimate_input, policy_for
+from app.modules.agent.graph import AgentConfig
 from app.modules.settings.config import LlmProviderConfig
 from app.modules.settings.model_budget import ModelBudgetConfig, resolve_capability
 from app.shared.errors import CodedHTTPException
@@ -89,6 +91,7 @@ async def test_public_request_snapshot_and_next_estimate_are_distinct(
         assert len(view["actual"]) == 1
         actual = view["actual"][0]
         assert actual["status"] == "COMPLETED" and actual["usage"] is None
+        assert actual["context_version"] == 1
         assert actual["estimate"]["tool_count"] > 0
         assert actual["estimate"]["message_count"] == len(captured[0])
         assert actual["estimate"]["components"]["system"] > 0
@@ -209,3 +212,53 @@ async def test_provider_capability_updates_keep_bound_turn_policy(
         assert view["actual"][0]["estimate"]["policy"]["capability"]["context_window"] == 128000
         assert view["next_estimate"]["policy"]["capability"]["context_window"] == 1000
         assert len(captured) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("input_limit, calls", [(128000, 2), (25000, 1)])
+async def test_large_json_receipt_is_complete_or_blocked_before_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    input_limit: int,
+    calls: int,
+) -> None:
+    receipt = json.dumps({"ok": True, "receipt": "x" * 90000})
+
+    @tool
+    async def large_receipt() -> str:
+        """Return a complete business receipt."""
+        return receipt
+
+    def receipt_config(**_kwargs: object) -> AgentConfig:
+        return AgentConfig(tools=(large_receipt,))
+
+    monkeypatch.setattr("app.modules.agent.graph.resolve_agent_config", receipt_config)
+    async with turns_app(
+        tmp_path, monkeypatch, replies=[ToolCallReply("large_receipt", {}), ["完成"]]
+    ) as (_app, client, captured):
+        sid = await create_session(client)
+        assert (
+            await client.put(
+                "/api/settings/providers/llm",
+                json={
+                    "base_url": "https://stub.example.com/v1",
+                    "model": "stub-chat-model",
+                    "model_budget": {"context_window": 128000, "input_limit": input_limit},
+                },
+            )
+        ).status_code == 200
+        turn_id = (
+            await submit(client, sid, "读取回执", request_id="context-large-receipt")
+        ).json()["id"]
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == ("COMPLETED" if calls == 2 else "FAILED")
+        assert len(captured) == calls
+        if calls == 2:
+            assert (
+                next(message.content for message in captured[1] if isinstance(message, ToolMessage))
+                == receipt
+            )
+        else:
+            view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+            assert view["actual"][-1]["status"] == "BLOCKED"
+            assert view["actual"][-1]["estimate"]["components"]["messages"] > 45000

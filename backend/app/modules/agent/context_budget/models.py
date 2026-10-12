@@ -1,10 +1,11 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ISODateTime, utcnow
+from app.modules.agent.context_budget.schemas import ModelRequestStatus
 
 
 class ChatContextState(Base):
@@ -32,7 +33,9 @@ class ChatModelRequest(Base):
     turn_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("chat_turns.id", ondelete="CASCADE")
     )
-    status: Mapped[str] = mapped_column(String(20))
+    status: Mapped[ModelRequestStatus] = mapped_column(
+        Enum(ModelRequestStatus, native_enum=False, length=20)
+    )
     input_fingerprint: Mapped[str] = mapped_column(String(64))
     estimate_json: Mapped[str] = mapped_column(Text)
     usage_json: Mapped[str | None] = mapped_column(Text, default=None)

@@ -2623,7 +2623,8 @@
         "COMPLETED": "已调用完成",
         "FAILED": "调用失败",
         "BLOCKED": "已拦截，未调用"
-      }
+      },
+      "versions": "轮次 {{turn}} · 上下文版本 {{version}} · 预算策略 {{policy}}"
     }
   },
   "settings": {

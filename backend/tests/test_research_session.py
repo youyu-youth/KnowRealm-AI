@@ -45,6 +45,7 @@ from app.modules.agent.tools.propose_ingest import (
     propose_ingest,
 )
 from app.modules.settings.config import save_llm_provider
+from app.modules.settings.model_budget import ModelBudgetConfig
 
 TOKEN = "test-launch-token"
 NOW = "2026-09-20T08:00:00.000000Z"
@@ -438,6 +439,7 @@ async def streaming_research_app(
         api_key="sk-test",
         model="stub-chat-model",
         clear_api_key=False,
+        model_budget=ModelBudgetConfig(context_window=128000),
     )
     app = create_app(data_dir=tmp_path, launch_token=TOKEN)
     async with app.router.lifespan_context(app):

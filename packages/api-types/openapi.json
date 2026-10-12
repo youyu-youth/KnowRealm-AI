@@ -6065,6 +6065,17 @@
       },
       "ModelRequestOut": {
         "properties": {
+          "context_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Version"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -6089,14 +6100,7 @@
             "type": "string"
           },
           "status": {
-            "enum": [
-              "STARTED",
-              "COMPLETED",
-              "FAILED",
-              "BLOCKED"
-            ],
-            "title": "Status",
-            "type": "string"
+            "$ref": "#/components/schemas/ModelRequestStatus"
           },
           "turn_id": {
             "title": "Turn Id",
@@ -6121,6 +6125,7 @@
           "id",
           "turn_id",
           "status",
+          "context_version",
           "estimate",
           "usage",
           "error_code",
@@ -6128,6 +6133,16 @@
         ],
         "title": "ModelRequestOut",
         "type": "object"
+      },
+      "ModelRequestStatus": {
+        "enum": [
+          "STARTED",
+          "COMPLETED",
+          "FAILED",
+          "BLOCKED"
+        ],
+        "title": "ModelRequestStatus",
+        "type": "string"
       },
       "OperationStatus": {
         "enum": [

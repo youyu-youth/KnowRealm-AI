@@ -315,6 +315,13 @@ describe("AI 对话", () => {
         expect.objectContaining({ content: "第一会话的未发送草稿" }),
       ]),
     );
+    fireEvent.click(screen.getByRole("tab", { name: "下一轮预估" }));
+    await waitFor(() => expect(window.location.search).toBe("?view=next"));
+    expect(
+      await screen.findByText(
+        "请在 AI 服务设置中配置此端点和模型的输入上限或总窗口。",
+      ),
+    ).toBeVisible();
     fireEvent.click(screen.getByRole("combobox", { name: "当前会话" }));
     const second = await screen.findByRole("option", { name: "第二会话" });
     fireEvent.pointerDown(second);
@@ -325,6 +332,7 @@ describe("AI 对话", () => {
         `/chat-context/${SECOND_SESSION_ID}`,
       ),
     );
+    expect(window.location.search).toBe("?view=next");
     fireEvent.click(screen.getByRole("link", { name: "返回对话" }));
     expect(
       await screen.findByRole("textbox", { name: "提问输入框" }),

@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -31,10 +32,18 @@ class InputEstimate(BaseModel):
     error_code: str | None = None
 
 
+class ModelRequestStatus(StrEnum):
+    STARTED = "STARTED"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    BLOCKED = "BLOCKED"
+
+
 class ModelRequestOut(BaseModel):
     id: str
     turn_id: str
-    status: Literal["STARTED", "COMPLETED", "FAILED", "BLOCKED"]
+    status: ModelRequestStatus
+    context_version: int | None
     estimate: InputEstimate
     usage: dict[str, int] | None
     error_code: str | None

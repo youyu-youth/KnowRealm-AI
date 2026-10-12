@@ -2643,7 +2643,8 @@
         "COMPLETED": "Call completed",
         "FAILED": "Call failed",
         "BLOCKED": "Blocked; no model call"
-      }
+      },
+      "versions": "Turn {{turn}} · context version {{version}} · budget policy {{policy}}"
     }
   },
   "settings": {

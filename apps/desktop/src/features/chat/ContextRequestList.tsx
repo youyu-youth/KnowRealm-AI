@@ -45,6 +45,14 @@ export function ContextRequestList({
             </span>
           </CollapsibleTrigger>
           <CollapsibleContent className="px-2 pt-4">
+            <p className="text-label text-muted-foreground mb-4 break-all">
+              {t("chat.contextView.versions", {
+                turn: request.turn_id,
+                version:
+                  request.context_version ?? t("chat.contextView.unknown"),
+                policy: request.estimate.policy.version,
+              })}
+            </p>
             <ContextBudgetDetails estimate={request.estimate} />
             <p className="text-label text-muted-foreground mt-4">
               {t("chat.contextView.usage", {

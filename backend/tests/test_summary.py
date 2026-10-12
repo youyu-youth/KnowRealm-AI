@@ -264,14 +264,15 @@ async def test_llm_provider_masks_key_preserves_empty_update_and_invalidates_con
     assert missing.status_code == 200
     assert missing.json() == {"provider": None}
     assert saved.status_code == 200
-    assert saved.json() == {
-        "provider": {
-            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen-plus",
-            "has_api_key": True,
-            "api_key_hint": "••••alue",
-        }
+    provider = saved.json()["provider"]
+    assert {key: provider[key] for key in ("base_url", "model", "has_api_key", "api_key_hint")} == {
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "model": "qwen-plus",
+        "has_api_key": True,
+        "api_key_hint": "••••alue",
     }
+    assert provider["model_budget"] is None
+    assert provider["capability"]["context_window"] == 1000000
     assert "sk-secret-value" not in saved.text
     assert consent.status_code == 200
     assert consent.json()["current"] is True

@@ -120,6 +120,7 @@ from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import (
     LlmProviderConfig,
     agent_default_auth_mode,
+    llm_provider_fingerprint,
     load_llm_provider,
     load_web_search_config,
 )
@@ -458,7 +459,7 @@ class _TurnExecutor:
             turn_claim_token=self._ctx.claim_token,
             context_policy=ContextPolicy.model_validate_json(bound.policy_json),
             data_dir=self._data_dir,
-            provider_fingerprint=execution.get("provider_fingerprint"),
+            provider_fingerprint=llm_provider_fingerprint(provider),
             outbound_consent_required=bool(execution.get("outbound_consent_required")),
             memory_injected=bool(
                 execution.get("injected_memories") or prompt_context.learner_memories

@@ -1,7 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from langchain_core.messages import AnyMessage, messages_from_dict, messages_to_dict
 from sqlalchemy import select
@@ -117,6 +117,7 @@ async def view_context(
             if turn_id
             else []
         )
+        bound = await session.get(ChatContextInput, turn_id) if turn_id else None
         result = ContextViewOut(
             session_id=session_id,
             version=state.version,
@@ -126,7 +127,8 @@ async def view_context(
                 ModelRequestOut(
                     id=row.id,
                     turn_id=row.turn_id,
-                    status=cast(Any, row.status),
+                    status=row.status,
+                    context_version=bound.context_version if bound else None,
                     estimate=json.loads(row.estimate_json),
                     usage=json.loads(row.usage_json) if row.usage_json else None,
                     error_code=row.error_code,

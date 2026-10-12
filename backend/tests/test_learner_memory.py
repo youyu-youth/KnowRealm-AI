@@ -33,6 +33,7 @@ from app.modules.learner.service import build_learner_context
 from app.modules.library.proposals import ProposalService
 from app.modules.library.schemas import ChatScope
 from app.modules.settings.config import save_llm_provider
+from app.modules.settings.model_budget import ModelBudgetConfig
 
 TOKEN = "test-launch-token"
 NOW = "2026-09-20T08:00:00.000000Z"
@@ -528,6 +529,7 @@ async def test_accept_derives_memory_injection_flag(tmp_path: Path) -> None:
             api_key="sk-test",
             model="stub-chat-model",
             clear_api_key=False,
+            model_budget=ModelBudgetConfig(context_window=128000),
         )
         assert (await injection_allowed()) is False
         # 授予同意（绑定当前供应商指纹）→ 注入。

@@ -10,7 +10,7 @@ from langchain.agents.middleware.types import (  # pyright: ignore[reportMissing
 
 from app.modules.agent.context_budget.models import ChatModelRequest
 from app.modules.agent.context_budget.policy import estimate_input
-from app.modules.agent.context_budget.schemas import ContextPolicy
+from app.modules.agent.context_budget.schemas import ContextPolicy, ModelRequestStatus
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.runtime import AgentRuntimeContext
 from app.modules.settings.config import (
@@ -40,7 +40,9 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         )
         row = ChatModelRequest(
             turn_id=self.runtime.turn_id,
-            status="BLOCKED" if estimate.error_code else "STARTED",
+            status=ModelRequestStatus.BLOCKED
+            if estimate.error_code
+            else ModelRequestStatus.STARTED,
             input_fingerprint=estimate.input_fingerprint,
             estimate_json=estimate.model_dump_json(),
             error_code=estimate.error_code,
@@ -58,7 +60,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         try:
             response = await handler(request)
         except Exception:
-            await self._finish(row.id, "FAILED", None)
+            await self._finish(row.id, ModelRequestStatus.FAILED, None)
             raise
         usage = next(
             (
@@ -75,7 +77,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                 if key in ("input_tokens", "output_tokens", "total_tokens")
                 and isinstance(value, int)
             } or None
-        await self._finish(row.id, "COMPLETED", usage)
+        await self._finish(row.id, ModelRequestStatus.COMPLETED, usage)
         return response
 
     async def _check_outbound(self) -> None:
@@ -108,12 +110,14 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                 detail="AI 或记忆外发同意已失效，请恢复同意后重新提问",
             )
 
-    async def _finish(self, request_id: str, status: str, usage: object) -> None:
+    async def _finish(self, request_id: str, status: ModelRequestStatus, usage: object) -> None:
         async with self.runtime.session_factory() as session, session.begin():
             if not await self.runtime.turn_write_allowed(session):
                 raise TurnCancelledError
             row = await session.get(ChatModelRequest, request_id)
             if row is not None:
                 row.status = status
-                row.error_code = "CHAT_STREAM_FAILED" if status == "FAILED" else None
+                row.error_code = (
+                    "CHAT_STREAM_FAILED" if status == ModelRequestStatus.FAILED else None
+                )
                 row.usage_json = json.dumps(usage) if usage is not None else None

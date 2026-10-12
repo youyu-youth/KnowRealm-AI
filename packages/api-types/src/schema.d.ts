@@ -5171,6 +5171,8 @@ export interface components {
         };
         /** ModelRequestOut */
         ModelRequestOut: {
+            /** Context Version */
+            context_version: number | null;
             /**
              * Created At
              * Format: date-time
@@ -5181,11 +5183,7 @@ export interface components {
             estimate: components["schemas"]["InputEstimate"];
             /** Id */
             id: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "STARTED" | "COMPLETED" | "FAILED" | "BLOCKED";
+            status: components["schemas"]["ModelRequestStatus"];
             /** Turn Id */
             turn_id: string;
             /** Usage */
@@ -5193,6 +5191,11 @@ export interface components {
                 [key: string]: number;
             } | null;
         };
+        /**
+         * ModelRequestStatus
+         * @enum {string}
+         */
+        ModelRequestStatus: "STARTED" | "COMPLETED" | "FAILED" | "BLOCKED";
         /**
          * OperationStatus
          * @enum {string}
