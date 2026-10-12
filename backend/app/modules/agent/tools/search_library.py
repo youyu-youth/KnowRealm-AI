@@ -3,8 +3,8 @@
 五档挂载会话（RECORD / LIBRARY_ITEM / COURSE / ALL）统一只挂本工具：作用域
 与目标 id 由统一 Agent 运行时上下文承载（工单 01 起随每轮流式生成绑定，
 见 agent/runtime.py），AgentConfig 挂载变体保持常量；FREE 不挂任何检索工具。
-工具预算（contract §3）在此生效：每轮调用次数上限、单次载荷截断、累计回喂
-截断——超限截断并附 truncated 说明，不静默丢弃。
+预算 module 负责每轮准入与消费；本工具保留结构化载荷裁剪：单次与累计回喂
+超限截断并附 truncated 说明，不静默丢弃。
 
 search_transcript 已退出模型可见工具面（迁移期记录级子串兜底由本工具经
 服务继承）；web_search 为独立联网工具，与本地检索互不冒充。
@@ -15,8 +15,8 @@ from typing import cast
 
 from langchain_core.tools import tool
 
+from app.modules.agent.budget.service import budgeted, format_output, mark_output
 from app.modules.agent.runtime import (
-    MAX_TOOL_CALLS_PER_TURN,
     ToolCallBudget,
     current_agent_runtime,
 )
@@ -31,8 +31,7 @@ from app.modules.library.retrieval import (
     RetrievalScope,
 )
 
-# 本工具的载荷截断预算（contract §3 冻结值）；调用次数上限与累计器随统一
-# 运行时上下文（MAX_TOOL_CALLS_PER_TURN / ToolCallBudget，见 agent/runtime.py）。
+# 本工具的载荷裁剪参数（contract §3 冻结值）；累计消费由预算 module 恢复。
 TOOL_RESULT_MAX_CHARS = 4_000
 TOOL_ROUND_OUTPUT_MAX_CHARS = 12_000
 
@@ -108,7 +107,7 @@ def _truncate_payload(body: dict[str, object], budget: ToolCallBudget) -> tuple[
         body["truncated"] = True
         body["message"] = "检索结果超出本轮预算已截断，可用更具体的关键词收窄查询。"
     payload = serialized()
-    budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload, truncated
 
 
@@ -139,7 +138,14 @@ def _payload(
     return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
 
 
+def _budget_rejection() -> str:
+    return _payload(
+        message="本轮检索次数已达上限，请基于已获得的检索结果直接回答，并说明检索范围。"
+    )
+
+
 @tool
+@budgeted(_budget_rejection)
 async def search_library(query: str) -> str:
     """在本次对话范围的学习资料（转写、文档分片、资料正文）中检索原文片段。
 
@@ -157,11 +163,6 @@ async def search_library(query: str) -> str:
     needle = query.strip()
     if not needle:
         return _payload(message="检索词不能为空。")
-    if context.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return _payload(
-            message="本轮检索次数已达上限，请基于已获得的检索结果直接回答，并说明检索范围。"
-        )
-    context.budget.calls_used += 1
     # 检索异常不炸整轮流（同 web_search 先例）：错误载荷 ok=false，模型可据此说明。
     try:
         async with context.session_factory() as session:
@@ -188,5 +189,4 @@ async def search_library(query: str) -> str:
             "当前范围内未找到相关原文；可换同义词或相关关键词重试（不超过 2 次），"
             "仍无命中请如实回答「当前资料中未找到」。"
         )
-    payload, _truncated = _truncate_payload(body, context.budget)
-    return payload
+    return await format_output(lambda budget: _truncate_payload(body, budget)[0])

@@ -11,7 +11,8 @@ import json
 
 from langchain_core.tools import tool
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.agent.tools.listing import (
     dump_payload,
     invalid_limit_message,
@@ -37,7 +38,12 @@ def _course_row(course: Course) -> dict[str, object]:
     }
 
 
+def _budget_rejection() -> str:
+    return dump_payload("courses", message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。")
+
+
 @tool
+@budgeted(_budget_rejection)
 async def search_courses(query: str | None = None, limit: int | None = None) -> str:
     """查找用户的课程：给名称时按名称查找候选，省略名称时列出全部课程。
 
@@ -66,11 +72,6 @@ async def search_courses(query: str | None = None, limit: int | None = None) -> 
         shown_limit = resolved
     else:
         shown_limit = SEARCH_COURSES_LIMIT
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return dump_payload(
-            "courses", message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。"
-        )
-    runtime.budget.calls_used += 1
     # 查询异常不炸整轮流（同 search_library 先例）：错误载荷 ok=false，模型可据此说明。
     try:
         async with runtime.session_factory() as session:
@@ -90,7 +91,7 @@ async def search_courses(query: str | None = None, limit: int | None = None) -> 
             total=total,
             truncated=truncated,
         )
-        runtime.budget.chars_fed += len(payload)
+        mark_output(payload)
         return payload
     if not courses:
         return dump_payload(
@@ -110,5 +111,5 @@ async def search_courses(query: str | None = None, limit: int | None = None) -> 
     )
     # 字符数累计进统一预算；载荷天然有界（候选 ≤SEARCH_COURSES_LIMIT × 各字段
     # 上限），无需单工具截断，累计值由 search_library 的截断逻辑统一执法。
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload

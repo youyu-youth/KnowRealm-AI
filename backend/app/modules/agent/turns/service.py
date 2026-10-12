@@ -29,6 +29,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
+from app.modules.agent.budget.policy import POLICY_VERSION
+from app.modules.agent.budget.service import cleanup
 from app.modules.agent.graph import CHAT_GRAPH_VERSION
 from app.modules.agent.message_service import validate_sendable_chat
 from app.modules.agent.models import ChatMessage, ChatSession
@@ -376,6 +378,11 @@ async def resume_blocked_reason(
     图版本、原供应商身份、记忆外发与联网可用性逐项检查；不满足返回等待原因。
     provider 为 None（未配置）由调用方先行分流（worker 等待 / resume 拒绝）。
     """
+    if execution.get("budget_policy_version") != POLICY_VERSION:
+        return (
+            ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
+            "原轮次缺少兼容的工具预算记录，请停止后重新提问",
+        )
     if execution.get("graph_version") != CHAT_GRAPH_VERSION:
         return (
             ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
@@ -507,6 +514,7 @@ class ChatTurnService:
             )
             turn.compacted_seq = turn.last_seq
             await session.execute(delete(ChatTurnEvent).where(ChatTurnEvent.turn_id == turn_id))
+            await cleanup(session, turn)
             return snapshot
 
     @staticmethod
@@ -541,6 +549,7 @@ class ChatTurnService:
             # 版本——续跑前比对，不静默换服务、不盲目重放不兼容图状态。
             "provider_base_url": provider.base_url,
             "graph_version": CHAT_GRAPH_VERSION,
+            "budget_policy_version": POLICY_VERSION,
         }
         now = utcnow()
         turn_id = str(uuid4())

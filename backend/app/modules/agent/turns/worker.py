@@ -45,6 +45,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.base import utcnow
 from app.modules.agent import message_service
 from app.modules.agent.auth_mode import clamp_resume_auth_mode
+from app.modules.agent.budget.policy import POLICY_VERSION
+from app.modules.agent.budget.service import restore
 from app.modules.agent.citations import parse_citation_reply, parse_library_citation_reply
 from app.modules.agent.context import ChatContextTooLargeError
 from app.modules.agent.graph import (
@@ -72,7 +74,6 @@ from app.modules.agent.models import ChatMessage
 from app.modules.agent.operations.registry import budget_counted_effect_tool_names
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.runtime import (
-    BUDGET_COUNTED_TOOL_NAMES,
     AgentRuntimeContext,
     ToolCallBudget,
 )
@@ -335,6 +336,12 @@ class _TurnExecutor:
             return
         is_resume = turn.attempt > 1
         execution = load_execution(turn)
+        if execution.get("budget_policy_version") != POLICY_VERSION:
+            await self._wait(
+                ChatTurnWaitingKind.GRAPH_INCOMPATIBLE,
+                "原轮次缺少兼容的工具预算记录，请停止后重新提问",
+            )
+            return
         provider = await asyncio.to_thread(load_llm_provider, self._data_dir)
         if provider is None or not provider.api_key:
             if is_resume:
@@ -569,31 +576,15 @@ class _TurnExecutor:
             row.updated_at = utcnow()
 
     async def _restore_budget(self, resume: bool) -> ToolCallBudget:
-        """预算跨恢复累计重建（规格 §10）：calls_used 从事件、operations 从
-        效果行；操作口径只数递增入口的行（记忆 / 入库逐项不消耗操作预算）。"""
-        if not resume:
-            return ToolCallBudget()
-        async with self._session_factory() as session:
-            events = await list_turn_events(session, self._ctx.turn_id)
-            operations = await count_turn_effects(
-                session,
-                self._ctx.turn_id,
-                tool_names=budget_counted_effect_tool_names(),
-            )
-        calls = 0
-        for row in events:
-            if row.type != ChatTurnEventType.TOOL_CALL.value:
-                continue
-            try:
-                payload: object = json.loads(row.payload_json)
-            except ValueError:
-                continue
-            if not isinstance(payload, dict):
-                continue
-            tool = cast(dict[str, object], payload).get("tool")
-            if isinstance(tool, str) and tool in BUDGET_COUNTED_TOOL_NAMES:
-                calls += 1
-        return ToolCallBudget(calls_used=calls, operations_created=operations)
+        """工具准入/字符读取消费事实，独立提交预算保持 effect 口径。"""
+        calls, chars = await restore(self._session_factory, self._ctx.turn_id)
+        operations = 0
+        if resume:
+            async with self._session_factory() as session:
+                operations = await count_turn_effects(
+                    session, self._ctx.turn_id, tool_names=budget_counted_effect_tool_names()
+                )
+        return ToolCallBudget(calls_used=calls, chars_fed=chars, operations_created=operations)
 
     async def _wait(self, kind: ChatTurnWaitingKind, detail: str) -> None:
         """真正等待（规格 §7）：释放执行槽、保留内容与已提交事实，等用户处理。"""

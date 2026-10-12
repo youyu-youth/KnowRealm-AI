@@ -1,0 +1,116 @@
+{
+  "baseline": "c43e3954467f92e16771965f01b522183dc65568",
+  "date": "2026-10-12",
+  "backend": "uv run pytest <files> --basetemp=.pytest-tmp-budget-final-<group> -q",
+  "groups": [
+    {
+      "group": 0,
+      "files": [
+        "tests/test_agent_auth_mode.py",
+        "tests/test_agent_multi_source_run.py",
+        "tests/test_agent_time.py",
+        "tests/test_audio_transcription.py",
+        "tests/test_chat_streaming.py",
+        "tests/test_chat_turns_recovery.py",
+        "tests/test_document_cleanup.py",
+        "tests/test_job_runner.py",
+        "tests/test_learning_consumer.py",
+        "tests/test_library_ingest.py",
+        "tests/test_llm_usage_settings.py",
+        "tests/test_profile.py",
+        "tests/test_recording_sessions.py",
+        "tests/test_search.py",
+        "tests/test_shared_refs.py",
+        "tests/test_text_captures.py",
+        "tests/test_tool_budget.py"
+      ],
+      "passed": 306,
+      "failed": 0
+    },
+    {
+      "group": 1,
+      "files": [
+        "tests/test_agent_batch_run.py",
+        "tests/test_agent_operations.py",
+        "tests/test_agent_undo_retry.py",
+        "tests/test_capture_batches.py",
+        "tests/test_chat_turn_event_writes.py",
+        "tests/test_course_brain.py",
+        "tests/test_document_import.py",
+        "tests/test_knowledge_points.py",
+        "tests/test_learning_goals.py",
+        "tests/test_library_lifecycle.py",
+        "tests/test_mastery.py",
+        "tests/test_quiz_tests.py",
+        "tests/test_records.py",
+        "tests/test_segment_backfill.py",
+        "tests/test_soft_delete_recompute_guard.py",
+        "tests/test_today.py",
+        "tests/test_transcript_control_plane.py"
+      ],
+      "passed": 350,
+      "failed": 1
+    },
+    {
+      "group": 2,
+      "files": [
+        "tests/test_agent_delete_and_move.py",
+        "tests/test_agent_run_waiting.py",
+        "tests/test_archive.py",
+        "tests/test_chat_knowledge_point_save.py",
+        "tests/test_chat_turns.py",
+        "tests/test_course_brain_retrieval_eval.py",
+        "tests/test_error_code_guard.py",
+        "tests/test_learner_memory.py",
+        "tests/test_learning_plans.py",
+        "tests/test_library_retrieval.py",
+        "tests/test_plan_editing.py",
+        "tests/test_quizzes.py",
+        "tests/test_research_session.py",
+        "tests/test_segment_search.py",
+        "tests/test_source_anchors.py",
+        "tests/test_today_plan_items.py",
+        "tests/test_web_clip.py"
+      ],
+      "passed": 258,
+      "failed": 1
+    },
+    {
+      "group": 3,
+      "files": [
+        "tests/test_agent_modify_actions.py",
+        "tests/test_agent_runs.py",
+        "tests/test_asr_provider_settings.py",
+        "tests/test_chat_sessions.py",
+        "tests/test_chat_turns_background.py",
+        "tests/test_courses.py",
+        "tests/test_error_codes.py",
+        "tests/test_learning.py",
+        "tests/test_library.py",
+        "tests/test_library_retrieval_eval.py",
+        "tests/test_preferences.py",
+        "tests/test_record_organization.py",
+        "tests/test_review_materials.py",
+        "tests/test_server_process.py",
+        "tests/test_summary.py",
+        "tests/test_todos.py",
+        "tests/test_web_search.py"
+      ],
+      "passed": 277,
+      "failed": 0
+    }
+  ],
+  "finalChat": {
+    "command": "uv run pytest tests/test_tool_budget.py tests/test_chat_turns.py tests/test_chat_turns_background.py tests/test_chat_turns_recovery.py tests/test_chat_turn_event_writes.py --basetemp=.pytest-tmp-budget-final-chat -q",
+    "passed": 74
+  },
+  "baselineFailures": [
+    "tests/test_document_import.py::test_unexpected_io_and_parser_errors_are_not_retryable_or_logged",
+    "tests/test_quizzes.py::test_quiz_last_count_preference_round_trip[asyncio]"
+  ],
+  "notVerified": [
+    "real model",
+    "external network",
+    "Tauri/WebView2"
+  ]
+}

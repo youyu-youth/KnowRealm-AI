@@ -1,4 +1,4 @@
-> **最后更新**：2026-10-12（Operation module 工单 01 收口：确认、自动执行和 Run 共用受控执行 implementation；22 个动作解除应用器审批 ORM 耦合；相关 267 用例通过，两轴静态审查无未解决项。全量 1167 通过、2 个既有失败在原始基准复现；触及类型/规范/OpenAPI 通过，全量 Pyright 6 个既有问题保留；真实模型/Tauri 未验收。见 `.scratch/operation-module-refactor/implementation.md`。）
+> **最后更新**：2026-10-12（工具预算工单 01 收口：16 项工具统一持久准入，6 次共享调用与 5 次提交分立，字符跨恢复累计及并发裁剪、计量取消窗口通过；最终预算/ChatTurn 74 用例通过，分组全量 1191 通过、2 个既有失败及全量 Pyright 6 项在原始基点复现；触及类型/规范/OpenAPI 通过，真实模型/外网/Tauri 未验收。见 `.scratch/tool-budget-runtime/implementation.md`。）
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
 
@@ -33,6 +33,7 @@
 - AI 对话重设计门禁：`pnpm test -- --maxWorkers=4` 424/424、`pnpm lint`、前端触及文件 Prettier、`pnpm build`（内嵌 tsc）通过；chat 测试 19 项（原 16 项行为断言保留，重命名/删除改走 ⋯ 菜单路径；新增筛选/收藏、建议卡/工具开关与多回答引用聚合用例）。真机 Tauri sidecar + WebView2 CDP 目检：亮/暗两态、根字号 18px（L 档）无横向溢出、1200px 窄窗右栏自动收起且左栏保留、引用聚合（多回答 [n] 去重）与工具开关（chat-accent）实测正常。
 - 右栏「来源引用」列表收口（2026-09-16）：超过 4 条只预览前 4 条，列表下方「查看全部 N 条」按钮打开 Dialog 滚动展示全部引用，条目点击行为与右栏一致（record 跳转写页定位、web 经系统浏览器）。新增 `ChatCitationsDialog.tsx`（复用 `ChatCitationList` / `useOpenCitation` 与 `components/ui/dialog`），i18n zh/en 同交，后端零改动。门禁：`pnpm test -- --maxWorkers=4` 460/460（chat.test.tsx 新增截断+弹窗用例）、`pnpm lint`、触及文件 Prettier、`pnpm build`（内嵌 tsc）通过；真机目检待用户验收。
 - Tavily 联网搜索错误语义与单轮熔断已收口（2026-09-22）：401/429/432/433/5xx 映射为可操作错误码与 `retryable`，401/432/433 在本轮首错后不再真实出网；Agent 收到 `retryable=false` 后停止换词重试，普通/研究 prompt 版本升至 v12/v13；SSE 与前端公开契约不变。
+- 工具预算（2026-10-12）收拢到 `agent/budget/`：16 项工具在原挂载范围内共享 6 次，框架参数错误与已准入失败计数；迁移 0045 固化身份/指纹/版本与独立输出数值，同逻辑调用恢复不重扣，字符计量与检索裁剪同事务且跨 checkpoint/重启累计。独立 5 次提交及原 effect/授权保持，重生成成功回执先于再次生成恢复；旧轮次缺少兼容预算版本时保留内容走原等待/停止/新问路径，计量处取消复用原 CANCELLED 收口。最终预算/ChatTurn 74 用例、两轴审查、触及类型/规范/OpenAPI 通过；分组全量 1191 通过、2 个既有失败已在基点复现，真实模型/外网/Tauri 未验收。证据：`.scratch/tool-budget-runtime/implementation.md`。
 - 下一扩展方向（扩展文档 §40.4「P2 统一序列」）：F1 ✅ → **A1+A2 ✅ 已交付**（2026-09-13 三票完结，剩用户真机验收）：票 01「分片 FTS 索引地基」✅（迁移 0020 `segment_search_index` FTS5 表、search 模块 `SegmentSearchService` 维护+检索服务、finalizer/realign/存量回填三处写路径同事务挂点、main.py 启动幂等回填、`tests/test_segment_search.py` 7 项，user_version 断言 11 处同步 19→20）；票 02「检索工具与 SSE 工具事件」✅（`agent/tools/search_transcript.py` `search_transcript`：FTS top-8 逐字命中 + 时间戳/页码，无分片回退 transcript 子串；挂载变体 `MOUNTED_CHAT_AGENT_CONFIG`、`tool_call`/`tool_result` SSE 事件、usage 跨模型调用累加、>30k 工具指引、`CHAT_PROMPT_VERSION`=chat-mount-cite-v3）；票 03「前端工具状态卡 + 文档收尾」✅（SSE 两新事件分发、`useChatStream` 工具状态临时态、消息流内工具过程现已升级为紧凑摘要与持久化历史（迁移 0041）；数据模型升 v2.5、扩展文档 §40 A1/A2 回写、GLOSSARY.md 增「分片索引」「检索过程」词条）→ A3 ✅（2026-09-14 四票完结，ADR-0021，见 §3「学习事件/证据」行）→ **B1 web_search ✅**（2026-09-14 两票完结，见 §3「AI 对话」行与扩展文档 §40.3 B1 行）→ **B2 跨记录问答 ✅（2026-09-14 单票全栈完结，.scratch/cross-record-qa/，后端 488 + 前端 440 绿）**：scope 四档显式列（迁移 0022）、`search_library` 跨记录工具（FTS+LIKE 兜底、互斥挂载）、标题清单上下文、跨记录引用（校验器裁定归属+record_title 快照）、web_search 挂载语义延伸、前端范围胶囊/新建菜单/课程对话 Tab/右栏接真；数据模型升 v2.7、错误码清单 +3。**F4 Course Brain V1 已完结（2026-09-15~16，.scratch/course-brain-v1/ 十二票，ADR-0022，数据模型 v2.8，见 §3）**；「对话转学习资产 V1」已完结（2026-09-15，.scratch/chat-to-knowledge-point/，基线 Phase 2 已定项）。B3「Tutor 场景包」待决策；B5 sqlite-vec 结论已定=延后（CB-01 评测），触发条件=真实语料词汇不重合失败。
 
 ---
@@ -141,7 +142,7 @@ KnowRealm-AI（pnpm workspace + uv 后端，无根 package.json）
 │  ├─ app/shared/         deps/errors(带码 HTTPException)/events/prompts/schemas
 │  ├─ app/core/           data_dir/logging/loop/version
 │  ├─ app/db/             engine/base/migrations（SQL 迁移执行器，PRAGMA user_version 推进）
-│  └─ migrations/         0001~0042 手写 SQL，四位编号连续递增不可跳号
+│  └─ migrations/         0001~0045 手写 SQL，四位编号连续递增不可跳号
 ├─ packages/api-types/    OpenAPI → TS 类型生成（后端 schema 变更后必须重新 generate）
 ├─ docs/                  权威文档 + ADR + 评测 + 规则镜像（正本在 .claude/rules/）
 └─ .scratch/              工单 tracker（25 个 feature 目录）

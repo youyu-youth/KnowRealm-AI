@@ -9,7 +9,8 @@ import json
 
 from langchain_core.tools import tool
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.learning_plan.service import GoalService
 
 
@@ -20,7 +21,12 @@ def _payload(goal: dict[str, object] | None, *, ok: bool = True, message: str = 
     return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
 
 
+def _budget_rejection() -> str:
+    return _payload(None, message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。")
+
+
 @tool
+@budgeted(_budget_rejection)
 async def get_goal(goal_id: str) -> str:
     """按 id 查询单个学习目标的完整信息（标题、类型、状态、期限、投入与范围确认状态）。
 
@@ -33,9 +39,6 @@ async def get_goal(goal_id: str) -> str:
         return json.dumps(
             {"ok": False, "error": "AGENT_CONTEXT_UNBOUND", "goal": None}, ensure_ascii=False
         )
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return _payload(None, message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。")
-    runtime.budget.calls_used += 1
     try:
         async with runtime.session_factory() as session:
             goal = await GoalService.get(session, goal_id)
@@ -63,5 +66,5 @@ async def get_goal(goal_id: str) -> str:
             "updated_at": goal.updated_at.strftime("%Y-%m-%d %H:%M"),
         }
     )
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload

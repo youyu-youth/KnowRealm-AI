@@ -11,7 +11,8 @@ from datetime import UTC, datetime
 
 from langchain_core.tools import tool
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.agent.tools.time_utils import resolve_timezone_arg, time_payload
 
 
@@ -23,7 +24,15 @@ def _payload(body: dict[str, object], *, ok: bool = True, message: str = "") -> 
     return payload
 
 
+def _budget_rejection() -> str:
+    return _payload(
+        {"current": None},
+        message="本轮查询次数已达上限，请基于已获得的结果直接回答。",
+    )
+
+
 @tool
+@budgeted(_budget_rejection)
 async def get_current_time(timezone: str | None = None) -> str:
     """获取当前日期与时间（精确到秒），可选目标时区。
 
@@ -36,16 +45,10 @@ async def get_current_time(timezone: str | None = None) -> str:
         return _payload(
             {"current": None}, ok=False, message="当前对话未绑定运行时上下文，无法获取时间。"
         )
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return _payload(
-            {"current": None},
-            message="本轮查询次数已达上限，请基于已获得的结果直接回答。",
-        )
-    runtime.budget.calls_used += 1
     try:
         tz = resolve_timezone_arg(timezone) if timezone else (runtime.user_timezone or UTC)
         payload = _payload({"current": time_payload(datetime.now(tz))})
     except ValueError as exc:
         return _payload({"current": None}, ok=False, message=str(exc))
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload

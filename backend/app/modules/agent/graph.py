@@ -34,6 +34,7 @@ from langgraph.graph.state import (  # pyright: ignore[reportMissingTypeStubs]
 from langgraph.types import Command, Interrupt
 from loguru import logger
 
+from app.modules.agent.budget.middleware import ToolBudgetMiddleware
 from app.modules.agent.middleware.cancel_guard import TurnCancelGuardMiddleware
 from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
@@ -820,7 +821,11 @@ async def stream_chat_reply(
         # 逻辑调用身份绑定（票 02 幂等）：namespace＝当轮 checkpoint thread。
         base_config = replace(
             base_config,
-            middleware=(*base_config.middleware, ToolCallIdentityMiddleware(thread)),
+            middleware=(
+                *base_config.middleware,
+                ToolCallIdentityMiddleware(thread),
+                ToolBudgetMiddleware(),
+            ),
         )
         agent = build_chat_agent(
             build_chat_model(provider, http_client),

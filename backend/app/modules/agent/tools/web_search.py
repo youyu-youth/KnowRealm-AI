@@ -10,6 +10,7 @@ import json
 import httpx
 from langchain_core.tools import tool
 
+from app.modules.agent.budget.service import budgeted
 from app.modules.agent.runtime import current_agent_runtime
 from app.modules.search.web_search import WebSearchError
 
@@ -36,7 +37,18 @@ def _payload(
     return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
 
 
+def _budget_rejection() -> str:
+    return _payload(
+        [],
+        ok=False,
+        message="本轮工具调用已达上限，请基于已有结果回答。",
+        error_code="TOOL_CALL_LIMIT",
+        retryable=False,
+    )
+
+
 @tool
+@budgeted(_budget_rejection)
 async def web_search(query: str) -> str:
     """联网搜索公开网络信息。
 

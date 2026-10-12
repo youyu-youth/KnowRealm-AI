@@ -10,7 +10,8 @@ from datetime import UTC
 
 from langchain_core.tools import tool
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.agent.tools.time_utils import (
     parse_datetime_arg,
     resolve_timezone_arg,
@@ -25,7 +26,15 @@ def _payload(body: dict[str, object], *, ok: bool = True, message: str = "") -> 
     return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
 
 
+def _budget_rejection() -> str:
+    return _payload(
+        {"result": None},
+        message="本轮查询次数已达上限，请基于已获得的结果直接回答。",
+    )
+
+
 @tool
+@budgeted(_budget_rejection)
 async def convert_time(
     datetime_value: str, to_timezone: str, from_timezone: str | None = None
 ) -> str:
@@ -41,12 +50,6 @@ async def convert_time(
         return _payload(
             {"result": None}, ok=False, message="当前对话未绑定运行时上下文，无法换算时间。"
         )
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return _payload(
-            {"result": None},
-            message="本轮查询次数已达上限，请基于已获得的结果直接回答。",
-        )
-    runtime.budget.calls_used += 1
     user_tz = runtime.user_timezone or UTC
     try:
         target_tz = resolve_timezone_arg(to_timezone)
@@ -60,5 +63,5 @@ async def convert_time(
             "result": time_payload(source.astimezone(target_tz)),
         }
     )
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload

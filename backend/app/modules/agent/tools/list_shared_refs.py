@@ -10,7 +10,8 @@ import json
 
 from langchain_core.tools import tool
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.agent.tools.listing import (
     dump_payload,
     invalid_limit_message,
@@ -20,7 +21,14 @@ from app.modules.agent.tools.listing import (
 from app.modules.library.shared_refs import SharedRefService
 
 
+def _budget_rejection() -> str:
+    return dump_payload(
+        "shared_refs", message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。"
+    )
+
+
 @tool
+@budgeted(_budget_rejection)
 async def list_shared_refs(course_id: str, limit: int | None = None) -> str:
     """列出一门课程（知识空间）引用的外部共享资料（条目 id、标题、来源类型、
     归属空间、是否可用、引用时间）。
@@ -40,11 +48,6 @@ async def list_shared_refs(course_id: str, limit: int | None = None) -> str:
     shown_limit = resolve_list_limit(limit)
     if shown_limit is None:
         return dump_payload("shared_refs", ok=False, message=invalid_limit_message())
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return dump_payload(
-            "shared_refs", message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。"
-        )
-    runtime.budget.calls_used += 1
     try:
         async with runtime.session_factory() as session:
             refs = await SharedRefService.list_for_course(session, course_id)
@@ -75,5 +78,5 @@ async def list_shared_refs(course_id: str, limit: int | None = None) -> str:
         total=total,
         truncated=truncated,
     )
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload

@@ -6,11 +6,17 @@ from typing import Literal
 from langchain_core.tools import tool
 from langgraph.types import interrupt
 
+from app.modules.agent.budget.service import budgeted
 from app.modules.agent.runtime import current_agent_runtime
 from app.modules.agent.turns.background import prepare_wait
 
 
+def _budget_rejection() -> str:
+    return json.dumps({"ok": False, "error": "TASK_REFERENCE_UNAVAILABLE"})
+
+
 @tool
+@budgeted(_budget_rejection)
 async def wait_for_task(target_type: Literal["RUN", "JOB"], target_id: str) -> str:
     """等待本会话已提交的后台 Run 或 Job，取得真实结构化结果后继续回答。
 

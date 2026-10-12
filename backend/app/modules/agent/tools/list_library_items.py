@@ -11,7 +11,8 @@ from uuid import UUID
 
 from langchain_core.tools import tool
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.agent.tools.listing import (
     dump_payload,
     invalid_limit_message,
@@ -22,7 +23,12 @@ from app.modules.library.schemas import LibraryItemListQuery, LibrarySourceType
 from app.modules.library.service import LibraryService
 
 
+def _budget_rejection() -> str:
+    return dump_payload("items", message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。")
+
+
 @tool
+@budgeted(_budget_rejection)
 async def list_library_items(
     source_type: str | None = None,
     course_id: str | None = None,
@@ -65,11 +71,6 @@ async def list_library_items(
                 "items", ok=False, message="course_id 格式不正确；请先用 search_courses 查找确认。"
             )
     needle = (q or "").strip() or None
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return dump_payload(
-            "items", message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。"
-        )
-    runtime.budget.calls_used += 1
     # 查询异常不炸整轮流（同 search_courses 先例）：错误载荷 ok=false，模型可据此说明。
     try:
         async with runtime.session_factory() as session:
@@ -102,5 +103,5 @@ async def list_library_items(
         total=total,
         truncated=truncated,
     )
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload

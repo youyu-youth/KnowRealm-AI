@@ -868,14 +868,27 @@ async def test_t22_budget_accumulates_across_recovery(
         submitted = await submit(client, session_id, "预算问题", request_id="req-t22-0001")
         turn_id = str(submitted.json()["id"])
         await wait_running_progress(client, turn_id, min_seq=1)
-        # 直插 6 条 tool_call 事件＝首轮已把共享检索预算用满（真实事件形状）；
-        # last_seq 同步推进（执行侧续跑的 seq 分配以此为准）。
+        # Q3/Q4：消费事实独立于展示事件；模拟首轮六个已提交准入窗口。
+        # 展示事件继续保留以验证恢复投影，但不再用于重建额度。
         async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
             for seq in range(2, 8):
                 payload = json.dumps(
                     {"tool": "search_library", "query": "q", "tool_call_id": f"call-b{seq}"},
                     ensure_ascii=False,
                     separators=(",", ":"),
+                )
+                await connection.execute(
+                    "INSERT INTO chat_turn_budget_calls"
+                    " (id, turn_id, namespace, logical_call_id, tool_name,"
+                    " args_fingerprint, policy_version) VALUES (?, ?, ?, ?, ?, ?, 1)",
+                    (
+                        f"budget-{seq}",
+                        turn_id,
+                        f"chat-turn-{turn_id}",
+                        f"call-b{seq}",
+                        "search_library",
+                        effect_args_fingerprint({"query": "q"}),
+                    ),
                 )
                 await connection.execute(
                     "INSERT INTO chat_turn_events (turn_id, seq, attempt, output_revision,"

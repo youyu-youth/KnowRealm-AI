@@ -10,7 +10,8 @@ import json
 from langchain_core.tools import tool
 from loguru import logger
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.learning_plan.service import GoalService, PlanService
 
 
@@ -21,7 +22,12 @@ def _payload(plan: dict[str, object] | None, *, ok: bool = True, message: str = 
     return json.dumps(body, ensure_ascii=False, separators=(",", ":"))
 
 
+def _budget_rejection() -> str:
+    return _payload(None, message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。")
+
+
 @tool
+@budgeted(_budget_rejection)
 async def get_plan(goal_id: str) -> str:
     """按目标 id 查询当前生效的学习计划（阶段、逐项内容、排期日期、时长、状态与生成理由）。
 
@@ -35,9 +41,6 @@ async def get_plan(goal_id: str) -> str:
             {"ok": False, "error": "AGENT_CONTEXT_UNBOUND", "plan": None},
             ensure_ascii=False,
         )
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return _payload(None, message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。")
-    runtime.budget.calls_used += 1
     try:
         async with runtime.session_factory() as session:
             goal = await GoalService.get(session, goal_id)
@@ -47,7 +50,7 @@ async def get_plan(goal_id: str) -> str:
                     ok=False,
                     message="目标不存在或所属课程已删除；请先用 list_goals 确认目标 id，不要猜测。",
                 )
-                runtime.budget.chars_fed += len(payload)
+                mark_output(payload)
                 return payload
             plan = await PlanService.get_active_for_goal(session, goal.id)
             if plan is None:
@@ -55,7 +58,7 @@ async def get_plan(goal_id: str) -> str:
                     None,
                     message="该目标还没有生效的学习计划；可用 generate_learning_plan 生成草案。",
                 )
-                runtime.budget.chars_fed += len(payload)
+                mark_output(payload)
                 return payload
             items = await PlanService.list_items(session, plan.id)
             projection = PlanService.plan_out(plan, items, course_id=goal.course_id)
@@ -63,5 +66,5 @@ async def get_plan(goal_id: str) -> str:
         logger.warning("get_plan_failed", error_code="PLAN_QUERY_FAILED")
         return _payload(None, ok=False, message="计划查询暂时失败，请稍后重试。")
     payload = _payload(projection.model_dump(mode="json"))
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload

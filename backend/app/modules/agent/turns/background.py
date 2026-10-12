@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utcnow
 from app.modules.agent.runs.models import AgentOperation, AgentRun
 from app.modules.agent.runs.schemas import RUN_TERMINAL_STATUSES, RunStatus
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, AgentRuntimeContext
+from app.modules.agent.runtime import AgentRuntimeContext
 from app.modules.agent.turns.effects import current_tool_call_identity
 from app.modules.agent.turns.models import ChatTurn, ChatTurnRun, ChatTurnWait
 from app.modules.agent.turns.schemas import ChatTurnStatus, ChatTurnTaskOut
@@ -137,8 +137,6 @@ async def prepare_wait(
             if existing.target_type != target_type or existing.target_id != target_id:
                 return None
             return existing
-        if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-            return None
         source_operation_id: str | None = None
         if target_type == "RUN":
             run = await session.get(AgentRun, target_id)
@@ -178,7 +176,6 @@ async def prepare_wait(
         result = await source_result(session, wait)
         if result is not None:
             wait.result_json = json.dumps(result, ensure_ascii=False)
-        runtime.budget.calls_used += 1
         return wait
 
 

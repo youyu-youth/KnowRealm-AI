@@ -15,53 +15,18 @@ from typing import cast
 from sqlalchemy import CursorResult, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.modules.agent.budget.policy import (
+    MAX_TOOL_CALLS_PER_TURN as MAX_TOOL_CALLS_PER_TURN,
+)
+from app.modules.agent.budget.policy import (
+    ToolCallBudget as ToolCallBudget,
+)
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatScope
 from app.modules.agent.turns.models import ChatTurn
 from app.modules.agent.turns.schemas import ChatTurnStatus
 from app.modules.search.web_search import SearchProvider
 from app.modules.settings.config import LlmProviderConfig
-
-
-@dataclass
-class ToolCallBudget:
-    """每轮（每条用户消息）的工具调用预算累计器：随运行时上下文每轮重建。
-
-    资料检索（search_library）与对象查询（search_courses）共用同一预算
-    （spec 实施决策 16：调用数与字符数累计）；operations_created 是操作类
-    提案的独立累计（每轮上限 MAX_OPERATION_PROPOSALS_PER_TURN）。
-    """
-
-    calls_used: int = 0
-    chars_fed: int = 0
-    operations_created: int = 0
-
-
-# 每轮工具调用次数上限（contract §3 冻结值；共享预算，执法点在各工具内，
-# 工单 01 起随 ToolCallBudget 收敛到本模块，02/03 操作工具同源引用）。
-MAX_TOOL_CALLS_PER_TURN = 6
-
-# 递增 budget.calls_used 的工具名全集（票 02 预算恢复单一来源：与各工具内
-# `budget.calls_used += 1` 执法面对齐；新增计数工具须同步本名单）。
-BUDGET_COUNTED_TOOL_NAMES = frozenset(
-    {
-        "convert_time",
-        "diff_datetime",
-        "generate_learning_plan",
-        "get_current_time",
-        "get_goal",
-        "get_plan",
-        "list_course_records",
-        "list_goals",
-        "list_library_items",
-        "list_shared_refs",
-        "regenerate_plan",
-        "search_courses",
-        "search_library",
-        "shift_datetime",
-        "wait_for_task",
-    }
-)
 
 # 每轮操作类提案上限（spec 实施决策 16：超限拒绝而非截断——截断会让确认卡
 # 出现用户没见过的操作；量级对齐既有提案工具先例）。

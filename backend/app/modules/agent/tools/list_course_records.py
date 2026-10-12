@@ -10,7 +10,8 @@ import json
 
 from langchain_core.tools import tool
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.agent.tools.listing import (
     dump_payload,
     invalid_limit_message,
@@ -20,7 +21,12 @@ from app.modules.agent.tools.listing import (
 from app.modules.record.service import RecordService
 
 
+def _budget_rejection() -> str:
+    return dump_payload("records", message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。")
+
+
 @tool
+@budgeted(_budget_rejection)
 async def list_course_records(course_id: str, limit: int | None = None) -> str:
     """列出一门课程下的全部学习记录（id、标题、来源类型、状态、创建时间，按创建时间降序）。
 
@@ -38,11 +44,6 @@ async def list_course_records(course_id: str, limit: int | None = None) -> str:
     shown_limit = resolve_list_limit(limit)
     if shown_limit is None:
         return dump_payload("records", ok=False, message=invalid_limit_message())
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return dump_payload(
-            "records", message="本轮查询次数已达上限，请基于已获得的查询结果直接回答。"
-        )
-    runtime.budget.calls_used += 1
     # 查询异常不炸整轮流（同 search_courses 先例）：错误载荷 ok=false，模型可据此说明。
     try:
         async with runtime.session_factory() as session:
@@ -73,5 +74,5 @@ async def list_course_records(course_id: str, limit: int | None = None) -> str:
         total=total,
         truncated=truncated,
     )
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload

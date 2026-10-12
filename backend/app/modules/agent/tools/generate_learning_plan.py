@@ -13,7 +13,8 @@ import json
 from langchain_core.tools import tool
 from loguru import logger
 
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.budget.service import budgeted, mark_output
+from app.modules.agent.runtime import current_agent_runtime
 from app.modules.learning_plan.generation import (
     PlanGenerationService,
     draft_summary,
@@ -26,7 +27,19 @@ from app.shared.errors import CodedHTTPException
 GENERATE_PLAN_TOOL_NAME = "generate_learning_plan"
 
 
+def _budget_rejection() -> str:
+    return json.dumps(
+        {
+            "ok": False,
+            "error": "TOOL_CALL_LIMIT",
+            "message": "本轮工具调用已达上限，请基于已获得的结果回答。",
+        },
+        ensure_ascii=False,
+    )
+
+
 @tool
+@budgeted(_budget_rejection)
 async def generate_learning_plan(goal_id: str) -> str:
     """为目标生成学习计划草案（不落库）：用户说「帮我生成学习计划 / 制定四周计划」时使用。
 
@@ -42,16 +55,6 @@ async def generate_learning_plan(goal_id: str) -> str:
     runtime = current_agent_runtime()
     if runtime is None:
         return json.dumps({"ok": False, "error": "AGENT_CONTEXT_UNBOUND"}, ensure_ascii=False)
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return json.dumps(
-            {
-                "ok": False,
-                "error": "TOOL_CALL_LIMIT",
-                "message": "本轮工具调用已达上限，请基于已获得的结果回答。",
-            },
-            ensure_ascii=False,
-        )
-    runtime.budget.calls_used += 1
     if runtime.llm_provider is None or not runtime.llm_provider.api_key:
         return json.dumps({"ok": False, "error": "LLM_PROVIDER_UNCONFIGURED"}, ensure_ascii=False)
     try:
@@ -114,7 +117,7 @@ async def generate_learning_plan(goal_id: str) -> str:
             ),
         }
         payload = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
-        runtime.budget.chars_fed += len(payload)
+        mark_output(payload)
         return payload
     assert outcome.plan is not None and outcome.constraints is not None
     body = {
@@ -130,7 +133,7 @@ async def generate_learning_plan(goal_id: str) -> str:
         ),
     }
     payload = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
-    runtime.budget.chars_fed += len(payload)
+    mark_output(payload)
     return payload
 
 

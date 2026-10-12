@@ -235,6 +235,15 @@ async def test_wait_resume_preserves_proposals_and_execution_anchors(
         assert user["turn"]["result"]["research_proposals"] == done["research_proposals"]
         async with app.state.session_factory() as session:
             assert await session.scalar(text("SELECT COUNT(*) FROM chat_turn_waits")) == 1
+            assert (
+                await session.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM chat_turn_budget_calls"
+                        " WHERE tool_name='wait_for_task'"
+                    )
+                )
+                == 1
+            )
             assert await session.scalar(text("SELECT COUNT(*) FROM library_items")) == 1
             assert await session.scalar(text("SELECT COUNT(*) FROM courses")) == 1
             assert await session.scalar(text("SELECT COUNT(*) FROM agent_proposals")) == 4
@@ -393,6 +402,15 @@ async def test_t19_history_preserves_active_dependencies_then_releases(
         async with app.state.session_factory() as session:
             assert await session.scalar(text("SELECT COUNT(*) FROM agent_operations")) == 2
             assert await session.scalar(text("SELECT COUNT(*) FROM chat_turn_waits")) == 1
+            assert (
+                await session.scalar(
+                    text(
+                        "SELECT COUNT(*) FROM chat_turn_budget_calls"
+                        " WHERE tool_name='wait_for_task'"
+                    )
+                )
+                == 1
+            )
         assert (await client.post(f"/api/chat-turns/{turn_id}/cancel")).status_code == 200
         purges = await asyncio.gather(
             client.post("/api/agent/runs/purge-finished"),

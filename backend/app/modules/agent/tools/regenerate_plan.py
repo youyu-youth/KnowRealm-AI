@@ -15,13 +15,17 @@ from itertools import groupby
 
 from langchain_core.tools import tool
 from loguru import logger
+from sqlalchemy import select
 
+from app.modules.agent.budget.service import budgeted
 from app.modules.agent.operations.plan_regenerate import (
     REGENERATE_PLAN_ACTION,
     build_plan_regenerate_snapshot,
 )
 from app.modules.agent.operations.registry import submit_operation
-from app.modules.agent.runtime import MAX_TOOL_CALLS_PER_TURN, current_agent_runtime
+from app.modules.agent.runtime import current_agent_runtime
+from app.modules.agent.turns.effects import EffectStatus, current_tool_call_identity
+from app.modules.agent.turns.models import ChatTurnToolEffect
 from app.modules.learning_plan.generation import (
     LockedDigest,
     PlanGenerationService,
@@ -97,7 +101,19 @@ def build_regenerate_payload(
     return PlanRegenerateCore(goal_id=goal_id, phases=phases)
 
 
+def _budget_rejection() -> str:
+    return json.dumps(
+        {
+            "ok": False,
+            "error": "TOOL_CALL_LIMIT",
+            "message": "本轮工具调用已达上限，请基于已获得的结果回答。",
+        },
+        ensure_ascii=False,
+    )
+
+
 @tool
+@budgeted(_budget_rejection)
 async def regenerate_plan(goal_id: str) -> str:
     """为目标重新生成学习计划（写操作，需用户在确认卡确认）：用户说「重新排一份计划 /
     目标变了帮我重排」且该目标已有生效计划时使用。
@@ -110,16 +126,24 @@ async def regenerate_plan(goal_id: str) -> str:
     runtime = current_agent_runtime()
     if runtime is None:
         return json.dumps({"ok": False, "error": "AGENT_CONTEXT_UNBOUND"}, ensure_ascii=False)
-    if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
-        return json.dumps(
-            {
-                "ok": False,
-                "error": "TOOL_CALL_LIMIT",
-                "message": "本轮工具调用已达上限，请基于已获得的结果回答。",
-            },
-            ensure_ascii=False,
-        )
-    runtime.budget.calls_used += 1
+    identity = current_tool_call_identity()
+    if runtime.turn_id is not None and identity is not None:
+        # 原始工具参数已由预算准入核对；成功回执优先于重新生成及目标状态读取。
+        async with runtime.session_factory() as session, session.begin():
+            if not await runtime.turn_write_allowed(session):
+                return _structured_failure("CHAT_TURN_CANCELLED", "该轮次已停止")
+            effect = await session.scalar(
+                select(ChatTurnToolEffect).where(
+                    ChatTurnToolEffect.turn_id == runtime.turn_id,
+                    ChatTurnToolEffect.namespace == identity.namespace,
+                    ChatTurnToolEffect.logical_call_id == identity.logical_call_id,
+                    ChatTurnToolEffect.effect_index == 0,
+                    ChatTurnToolEffect.tool_name == REGENERATE_PLAN_ACTION,
+                    ChatTurnToolEffect.status == EffectStatus.SUCCEEDED.value,
+                )
+            )
+            if effect is not None and effect.result_json is not None:
+                return effect.result_json
     if runtime.llm_provider is None or not runtime.llm_provider.api_key:
         return json.dumps({"ok": False, "error": "LLM_PROVIDER_UNCONFIGURED"}, ensure_ascii=False)
     today = local_today()
