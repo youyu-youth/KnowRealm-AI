@@ -107,6 +107,8 @@
 
 **明确待做（已有工单）：**
 
+- **Agent 会话上下文管理 V1**（2026-10-12，Q1～Q30、六票及 01→02→03→04→05→06 依赖已批准）：规格 `.scratch/agent-context/spec.md` 与工单 `.scratch/agent-context/issues/` 为 `ready-for-agent`，覆盖完整请求预算、可追溯分块摘要、固定/排除/重置、受限取回、持久恢复及独立页面；已拆票、未实现，仅 01 无前置，ADR/术语增补仍仅提案，真实模型与 Tauri 验收在 06。
+
 - ~~`concept-mastery-v1/06`~~（✅ 2026-09-18 完结，ADR-0023）。**Concept Mastery V1 链整体完结**，资料库 V1 + 知识起点扩展波次（扩展文档 §41/§42）已解锁待开工。
 - `ai-summary/03-long-summary-quality-recovery`（**deferred**，2026-09-20 用户拍板先不做）：>30k 长总结 map-reduce、90s 超时/不自动重试语义、手动重试复用 Job、ACTIVE 校验、llm_call_logs 字段补全、评测样本。现状仍是 chat 侧对 >30k 转写做降级提示（`agent/context.py` CHAT_TRANSCRIPT_MAX_CHARS=30000），总结侧无长文处理；重新开工前按当时现状复核票面。
 - `markdown-export/03` 聚合导出（`ready-for-human`，代码完成仅剩用户验收后关票）。
