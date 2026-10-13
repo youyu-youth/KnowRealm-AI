@@ -5,6 +5,8 @@ import binascii
 import json
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
 from hashlib import sha256
 from typing import cast
 
@@ -15,7 +17,7 @@ from langchain_core.messages import (
     messages_from_dict,
     messages_to_dict,
 )
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.context_budget.models import (
@@ -38,6 +40,43 @@ from app.modules.agent.turns.models import ChatTurn
 from app.modules.library.retrieval import LibraryRetrievalService, RetrievalScope
 from app.modules.record.service import RecordService
 from app.shared.errors import CodedHTTPException
+
+
+@dataclass
+class _ReadCache:
+    # 仅在一次重验证内复用；共享关系/删除状态不一定改变正文版本。
+    materials: dict[tuple[str, str], tuple[str, str, str] | CodedHTTPException] = field(
+        default_factory=dict[tuple[str, str], tuple[str, str, str] | CodedHTTPException]
+    )
+    legacy: dict[str, tuple[ToolMessage, AIMessage, str]] = field(
+        default_factory=dict[str, tuple[ToolMessage, AIMessage, str]]
+    )
+    evidence: set[tuple[str, str, str | None, str | None]] = field(
+        default_factory=set[tuple[str, str, str | None, str | None]]
+    )
+    before: tuple[datetime, str] | None = None
+    exhausted: bool = False
+
+
+async def _read_material(
+    session: AsyncSession, chat: ChatSession, kind: str, target: str, cache: _ReadCache | None
+) -> tuple[str, str, str]:
+    key = kind, target
+    if cache is None:
+        return await LibraryRetrievalService.read_source(
+            session, _material_scope(chat), kind, target
+        )
+    if key not in cache.materials:
+        try:
+            cache.materials[key] = await LibraryRetrievalService.read_source(
+                session, _material_scope(chat), kind, target
+            )
+        except CodedHTTPException as exc:
+            cache.materials[key] = exc
+    value = cache.materials[key]
+    if isinstance(value, CodedHTTPException):
+        raise value
+    return value
 
 
 def digest(content: str) -> str:
@@ -95,7 +134,9 @@ def _material_scope(chat: ChatSession) -> RetrievalScope:
     return RetrievalScope(chat.scope, chat.record_id, chat.library_item_id, chat.course_id)
 
 
-async def _messages(session: AsyncSession, session_id: str, segment: int) -> list[ChatMessage]:
+async def _messages(
+    session: AsyncSession, session_id: str, segment: int, target: str | None = None
+) -> list[ChatMessage]:
     rows = (
         await session.execute(
             select(ChatMessage, ChatContextInput.segment, ChatTurn.id)
@@ -108,6 +149,7 @@ async def _messages(session: AsyncSession, session_id: str, segment: int) -> lis
             )
             .outerjoin(ChatContextInput, ChatContextInput.turn_id == ChatTurn.id)
             .where(ChatMessage.session_id == session_id, ChatMessage.role != ChatRole.SYSTEM)
+            .where(ChatMessage.id == target if target is not None else true())
             .order_by(ChatMessage.created_at, ChatMessage.id)
         )
     ).all()
@@ -115,7 +157,9 @@ async def _messages(session: AsyncSession, session_id: str, segment: int) -> lis
     return [row for row, bound, _turn in rows if (bound if bound is not None else 1) == segment]
 
 
-async def _outputs(session: AsyncSession, session_id: str, segment: int) -> list[ChatContextOutput]:
+async def _outputs(
+    session: AsyncSession, session_id: str, segment: int, target: str | None = None
+) -> list[ChatContextOutput]:
     return list(
         (
             await session.scalars(
@@ -123,13 +167,16 @@ async def _outputs(session: AsyncSession, session_id: str, segment: int) -> list
                 .join(ChatTurn, ChatTurn.id == ChatContextOutput.turn_id)
                 .join(ChatContextInput, ChatContextInput.turn_id == ChatTurn.id)
                 .where(ChatTurn.session_id == session_id, ChatContextInput.segment == segment)
+                .where(ChatContextOutput.id == target if target is not None else true())
                 .order_by(ChatContextOutput.created_at, ChatContextOutput.id)
             )
         ).all()
     )
 
 
-async def _message_source(session: AsyncSession, row: ChatMessage) -> ContextSourceOut:
+async def _message_source(
+    session: AsyncSession, row: ChatMessage, cache: _ReadCache | None = None
+) -> ContextSourceOut:
     turn_id = await session.scalar(
         select(ChatTurn.id).where(
             or_(ChatTurn.user_message_id == row.id, ChatTurn.final_message_id == row.id)
@@ -147,14 +194,16 @@ async def _message_source(session: AsyncSession, row: ChatMessage) -> ContextSou
         chat = await session.get(ChatSession, row.session_id)
         assert chat is not None
         try:
-            await validate_evidence(session, chat, json.loads(row.citations_json))
+            await validate_evidence(session, chat, json.loads(row.citations_json), cache)
             result.locator["citations_state"] = "VALID"
         except CodedHTTPException:
             result.locator["citations_state"] = "STALE"
     return result
 
 
-async def validate_evidence(session: AsyncSession, chat: ChatSession, value: object) -> None:
+async def validate_evidence(
+    session: AsyncSession, chat: ChatSession, value: object, cache: _ReadCache | None = None
+) -> None:
     """历史摘录不能绕过当前资料归属、版本和逐字证据校验。"""
     if not isinstance(value, list):
         return
@@ -166,17 +215,25 @@ async def validate_evidence(session: AsyncSession, chat: ChatSession, value: obj
         target = hit.get("record_id") or hit.get("library_item_id")
         if not isinstance(target, str):
             continue
-        _, content, version = await LibraryRetrievalService.read_source(
-            session, _material_scope(chat), kind, target
-        )
         quote = hit.get("quote")
         expected = hit.get("source_version")
+        key = (
+            kind,
+            target,
+            str(expected) if expected is not None else None,
+            (quote if isinstance(quote, str) else None),
+        )
+        if cache is not None and key in cache.evidence:
+            continue
+        _, content, version = await _read_material(session, chat, kind, target, cache)
         if (isinstance(quote, str) and quote not in content) or (
             expected is not None and str(expected) != version
         ):
             raise CodedHTTPException(
                 code="CONTEXT_SOURCE_STALE", status_code=409, detail="原文证据或来源版本已变化"
             )
+        if cache is not None:
+            cache.evidence.add(key)
 
 
 def _output_source(row: ChatContextOutput) -> ContextSourceOut:
@@ -299,8 +356,65 @@ async def search_context(
         )
 
 
+async def _legacy_message(
+    session: AsyncSession, session_id: str, segment: int, target: str, cache: _ReadCache
+) -> tuple[ToolMessage, AIMessage, str] | None:
+    if target in cache.legacy or cache.exhausted:
+        return cache.legacy.get(target)
+    statement = (
+        select(ChatModelRequest)
+        .join(ChatTurn, ChatTurn.id == ChatModelRequest.turn_id)
+        .join(ChatContextInput, ChatContextInput.turn_id == ChatTurn.id)
+        .where(
+            ChatTurn.session_id == session_id,
+            ChatContextInput.segment == segment,
+            ChatModelRequest.purpose == "ANSWER",
+        )
+        .order_by(ChatModelRequest.created_at.desc(), ChatModelRequest.id.desc())
+    )
+    if cache.before is not None:
+        created_at, request_id = cache.before
+        statement = statement.where(
+            or_(
+                ChatModelRequest.created_at < created_at,
+                and_(ChatModelRequest.created_at == created_at, ChatModelRequest.id < request_id),
+            )
+        )
+    requests = await session.stream_scalars(statement.execution_options(yield_per=1))
+    try:
+        async for request in requests:
+            cache.before = request.created_at, request.id
+            if not request.messages_json:
+                continue
+            messages = messages_from_dict(json.loads(request.messages_json))
+            pairs: dict[str, AIMessage] = {}
+            for message in messages:
+                if isinstance(message, AIMessage):
+                    for call in message.tool_calls:
+                        if call["id"] is not None:
+                            pairs.setdefault(call["id"], message)
+            for message in messages:
+                if isinstance(message, ToolMessage) and isinstance(message.content, str):
+                    pair = pairs.get(message.tool_call_id)
+                    if pair is not None:
+                        identity = message.id or digest(
+                            json.dumps(messages_to_dict([message]), ensure_ascii=False)
+                        )
+                        cache.legacy.setdefault(identity, (message, pair, request.turn_id))
+            if target in cache.legacy:
+                return cache.legacy[target]
+        cache.exhausted = True
+        return None
+    finally:
+        await requests.close()
+
+
 async def read_context(
-    factory: async_sessionmaker[AsyncSession], session_id: str, body: ContextReadRequest
+    factory: async_sessionmaker[AsyncSession],
+    session_id: str,
+    body: ContextReadRequest,
+    *,
+    _cache: _ReadCache | None = None,
 ) -> ContextReadOut:
     async with factory() as session:
         chat, segment, version = await _scope(session, session_id)
@@ -311,21 +425,21 @@ async def read_context(
         content = ""
         if kind == "message":
             row = next(
-                (row for row in await _messages(session, session_id, segment) if row.id == target),
+                iter(await _messages(session, session_id, segment, target)),
                 None,
             )
             if row:
-                source, content = await _message_source(session, row), row.content
+                source, content = await _message_source(session, row, _cache), row.content
         elif kind == "output":
             row_output = next(
-                (row for row in await _outputs(session, session_id, segment) if row.id == target),
+                iter(await _outputs(session, session_id, segment, target)),
                 None,
             )
             if row_output:
                 source, content = _output_source(row_output), row_output.content
         elif kind in ("record", "library"):
-            title, content, source_version = await LibraryRetrievalService.read_source(
-                session, _material_scope(chat), kind, target
+            title, content, source_version = await _read_material(
+                session, chat, kind, target, _cache
             )
             source = ContextSourceOut(
                 source_id=body.source_id,
@@ -336,63 +450,29 @@ async def read_context(
             )
         if source is None and kind == "message":
             # 压缩来源中的工具消息由已计量请求重建；不存在正文时绝不伪造。
-            requests = (
-                await session.scalars(
-                    select(ChatModelRequest)
-                    .join(ChatTurn, ChatTurn.id == ChatModelRequest.turn_id)
-                    .join(ChatContextInput, ChatContextInput.turn_id == ChatTurn.id)
-                    .where(
-                        ChatTurn.session_id == session_id,
-                        ChatContextInput.segment == segment,
-                        ChatModelRequest.purpose == "ANSWER",
+            legacy = await _legacy_message(
+                session, session_id, segment, target, _cache or _ReadCache()
+            )
+            if legacy is not None:
+                message, pair, turn_id = legacy
+                if message.name == "search_library":
+                    await validate_evidence(
+                        session, chat, json.loads(message.text).get("evidence_hits"), _cache
                     )
-                    .order_by(ChatModelRequest.created_at.desc(), ChatModelRequest.id.desc())
+                source = ContextSourceOut(
+                    source_id=body.source_id,
+                    kind="message",
+                    title=message.name or "tool",
+                    version=digest(message.text),
+                    turn_id=turn_id,
+                    locator={
+                        "tool_call_id": message.tool_call_id,
+                        "paired_message_id": pair.id,
+                        "tool": message.name,
+                        "paired_tool_calls": json.dumps(pair.tool_calls, ensure_ascii=False),
+                    },
                 )
-            ).all()
-            for request in requests:
-                if not request.messages_json:
-                    continue
-                messages = messages_from_dict(json.loads(request.messages_json))
-                message = next(
-                    (
-                        m
-                        for m in messages
-                        if (m.id or digest(json.dumps(messages_to_dict([m]), ensure_ascii=False)))
-                        == target
-                    ),
-                    None,
-                )
-                if isinstance(message, ToolMessage) and isinstance(message.content, str):
-                    pair = next(
-                        (
-                            m
-                            for m in messages
-                            if isinstance(m, AIMessage)
-                            and any(c["id"] == message.tool_call_id for c in m.tool_calls)
-                        ),
-                        None,
-                    )
-                    if pair is None:
-                        continue
-                    if message.name == "search_library":
-                        await validate_evidence(
-                            session, chat, json.loads(message.content).get("evidence_hits")
-                        )
-                    source = ContextSourceOut(
-                        source_id=body.source_id,
-                        kind="message",
-                        title=message.name or "tool",
-                        version=digest(message.content),
-                        turn_id=request.turn_id,
-                        locator={
-                            "tool_call_id": message.tool_call_id,
-                            "paired_message_id": pair.id,
-                            "tool": message.name,
-                            "paired_tool_calls": json.dumps(pair.tool_calls, ensure_ascii=False),
-                        },
-                    )
-                    content = message.content
-                    break
+                content = message.text
         if source is None:
             raise CodedHTTPException(
                 code="CONTEXT_SOURCE_UNAVAILABLE",
@@ -455,6 +535,8 @@ async def read_context(
 async def validate_read_results(
     factory: async_sessionmaker[AsyncSession], session_id: str, messages: list[AnyMessage]
 ) -> list[AnyMessage]:
+    cache = _ReadCache()
+    reads: dict[tuple[str, str | None], CodedHTTPException | None] = {}
     result: list[AnyMessage] = []
     for message in messages:
         if not isinstance(message, ToolMessage) or message.name not in (
@@ -473,21 +555,27 @@ async def validate_read_results(
             source = body.get("source")
             if message.name == "read_context" and isinstance(source, dict):
                 source = cast(dict[str, object], source)
-                await read_context(
-                    factory,
-                    session_id,
-                    ContextReadRequest.model_validate(
-                        {
-                            "source_id": source.get("source_id"),
-                            "version": source.get("version"),
-                            "max_chars": 1,
-                        }
-                    ),
+                request = ContextReadRequest.model_validate(
+                    {
+                        "source_id": source.get("source_id"),
+                        "version": source.get("version"),
+                        "max_chars": 1,
+                    }
                 )
+                key = request.source_id, request.version
+                if key not in reads:
+                    try:
+                        await read_context(factory, session_id, request, _cache=cache)
+                        reads[key] = None
+                    except CodedHTTPException as exc:
+                        reads[key] = exc
+                failure = reads[key]
+                if failure is not None:
+                    raise failure
             elif message.name == "search_library":
                 async with factory() as session:
                     chat, _, _ = await _scope(session, session_id)
-                    await validate_evidence(session, chat, body.get("evidence_hits"))
+                    await validate_evidence(session, chat, body.get("evidence_hits"), cache)
         except CodedHTTPException as exc:
             # 只标记当前模型投影失效，不回写旧结果、回执或字符消费事实。
             message = message.model_copy(

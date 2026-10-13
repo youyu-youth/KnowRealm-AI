@@ -2,12 +2,19 @@
 
 import asyncio
 import json
+from datetime import timedelta
 from math import ceil
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    BaseMessage,
+    ToolMessage,
+    messages_to_dict,
+)
 from langchain_core.tools import tool
 from sqlalchemy import func, select, text
 
@@ -15,6 +22,7 @@ from app.modules.agent.budget.service import budgeted
 from app.modules.agent.context_budget.models import (
     ChatContextOutput,
     ChatContextState,
+    ChatModelRequest,
 )
 from app.modules.agent.graph import AgentConfig
 from app.modules.agent.models import ChatMessage
@@ -34,6 +42,224 @@ from tests.test_conversation_compaction import configure, seed_history, summary_
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_revalidation_reuses_material_and_rechecks_versions_and_visibility(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.modules.agent.context_budget.retrieval import validate_read_results
+    from app.modules.library.retrieval import LibraryRetrievalService
+    from tests.test_shared_refs import (
+        COURSE_AGENT,
+        ITEM_ML_PAPER,
+        REC_ML_PAPER,
+        seed_full_corpus,
+        seed_ref,
+    )
+
+    async with turns_app(tmp_path, monkeypatch) as (app, client, _captured):
+        factory = app.state.session_factory
+        await seed_full_corpus(factory)
+        await seed_ref(factory, COURSE_AGENT, ITEM_ML_PAPER)
+        sid = await create_session(client, scope="COURSE", course_id=COURSE_AGENT)
+        original = (
+            await client.post(
+                f"/api/chat-sessions/{sid}/context/sources/read",
+                json={"source_id": f"record:{REC_ML_PAPER}"},
+            )
+        ).json()
+        hit = {
+            "record_id": REC_ML_PAPER,
+            "source_version": original["source"]["version"],
+            "quote": original["content"][:20],
+        }
+        messages: list[AnyMessage] = [
+            ToolMessage(
+                content=json.dumps({"evidence_hits": [hit, hit]}),
+                name="search_library",
+                tool_call_id=f"search-{i}",
+            )
+            for i in range(12)
+        ]
+        messages.append(
+            ToolMessage(content=json.dumps(original), name="read_context", tool_call_id="read")
+        )
+        messages.append(
+            ToolMessage(
+                content=json.dumps({"evidence_hits": [{**hit, "quote": "不存在的摘录"}]}),
+                name="search_library",
+                tool_call_id="bad-quote",
+            )
+        )
+        calls = 0
+        read_source = LibraryRetrievalService.read_source
+
+        async def counted(*args: Any, **kwargs: Any) -> tuple[str, str, str]:
+            nonlocal calls
+            calls += 1
+            return await read_source(*args, **kwargs)
+
+        monkeypatch.setattr(LibraryRetrievalService, "read_source", counted)
+        checked = await validate_read_results(factory, sid, messages)
+        assert checked[:-1] == messages[:-1]
+        assert json.loads(checked[-1].text)["error"] == "CONTEXT_SOURCE_STALE"
+        assert calls == 1, f"same material loaded {calls} times in one validation pass"
+        async with factory() as db, db.begin():
+            await db.execute(
+                text("UPDATE transcripts SET source_version=source_version+1 WHERE record_id=:id"),
+                {"id": REC_ML_PAPER},
+            )
+        checked = await validate_read_results(factory, sid, messages)
+        assert all(json.loads(m.text)["error"] == "CONTEXT_SOURCE_STALE" for m in checked)
+        async with factory() as db, db.begin():
+            await db.execute(
+                text(
+                    "DELETE FROM course_shared_refs WHERE course_id=:cid AND library_item_id=:iid"
+                ),
+                {"cid": COURSE_AGENT, "iid": ITEM_ML_PAPER},
+            )
+        checked = await validate_read_results(factory, sid, messages)
+        assert all(json.loads(m.text)["error"] == "CONTEXT_SOURCE_UNAVAILABLE" for m in checked)
+        assert "error" not in json.loads(messages[0].text)
+
+
+@pytest.mark.anyio
+async def test_revalidation_decodes_legacy_snapshots_once_and_reads_history_by_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy import event
+
+    from app.modules.agent.context_budget import retrieval
+
+    async with turns_app(tmp_path, monkeypatch) as (app, client, _captured):
+        sid = await create_session(client)
+        turn = (await submit(client, sid, "seed", request_id="validation-cache")).json()["id"]
+        assert (await wait_terminal(client, turn))["status"] == "COMPLETED"
+        ids = await seed_history(app, sid, 20, 1000)
+        tools = [
+            ToolMessage(content=f"legacy text {i}", id=f"legacy-{i}", tool_call_id=f"call-{i}")
+            for i in range(2)
+        ]
+        older_tool = ToolMessage(
+            content="older tool text", id="legacy-older", tool_call_id="call-old"
+        )
+        snapshot = json.dumps(
+            messages_to_dict(
+                [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {"name": "web_search", "args": {}, "id": m.tool_call_id} for m in tools
+                        ],
+                    ),
+                    *tools,
+                ]
+            )
+        )
+        async with app.state.session_factory() as db, db.begin():
+            row = await db.scalar(
+                select(ChatModelRequest).where(
+                    ChatModelRequest.turn_id == turn, ChatModelRequest.purpose == "ANSWER"
+                )
+            )
+            assert row is not None
+            row.messages_json = snapshot
+            db.add(
+                ChatModelRequest(
+                    turn_id=turn,
+                    status=row.status,
+                    input_fingerprint=row.input_fingerprint,
+                    estimate_json=row.estimate_json,
+                    created_at=row.created_at - timedelta(seconds=1),
+                    messages_json=json.dumps(
+                        messages_to_dict(
+                            [
+                                AIMessage(
+                                    content="old history" * 5000,
+                                    tool_calls=[
+                                        {"name": "web_search", "args": {}, "id": "call-old"}
+                                    ],
+                                ),
+                                older_tool,
+                            ]
+                        )
+                    ),
+                )
+            )
+            db.add(
+                ChatModelRequest(
+                    turn_id=turn,
+                    status=row.status,
+                    input_fingerprint=row.input_fingerprint,
+                    estimate_json=row.estimate_json,
+                    created_at=row.created_at - timedelta(seconds=2),
+                    messages_json="[]",
+                )
+            )
+        sources = [
+            (
+                await client.post(
+                    f"/api/chat-sessions/{sid}/context/sources/read", json={"source_id": source_id}
+                )
+            ).json()
+            for source_id in [*ids[:2], *(f"message:{m.id}" for m in [*tools, older_tool])]
+        ]
+        assert all("source" in source for source in sources), sources
+        decodes = 0
+        loaded_messages = 0
+        loaded_requests = 0
+        decoder = retrieval.messages_from_dict
+
+        def counted_decode(value: Any) -> list[BaseMessage]:
+            nonlocal decodes
+            decodes += 1
+            return decoder(value)
+
+        def loaded(_row: ChatMessage, _context: Any) -> None:
+            nonlocal loaded_messages
+            loaded_messages += 1
+
+        def loaded_request(_row: ChatModelRequest, _context: Any) -> None:
+            nonlocal loaded_requests
+            loaded_requests += 1
+
+        monkeypatch.setattr(retrieval, "messages_from_dict", counted_decode)
+        event.listen(ChatMessage, "load", loaded)
+        event.listen(ChatModelRequest, "load", loaded_request)
+        try:
+            messages: list[AnyMessage] = [
+                ToolMessage(content=json.dumps(source), name="read_context", tool_call_id=str(i))
+                for i, source in enumerate(sources)
+            ]
+            assert (
+                await retrieval.validate_read_results(app.state.session_factory, sid, messages)
+                == messages
+            )
+            assert decodes == 2, f"two request snapshots decoded {decodes} times"
+            assert loaded_requests == 2, (
+                f"loaded {loaded_requests} snapshots for two needed snapshots"
+            )
+            assert loaded_messages == 2, f"loaded {loaded_messages} messages for two source IDs"
+            async with app.state.session_factory() as db, db.begin():
+                row = await db.scalar(
+                    select(ChatModelRequest)
+                    .where(ChatModelRequest.turn_id == turn)
+                    .order_by(ChatModelRequest.created_at.desc())
+                )
+                assert row is not None
+                row.messages_json = "[]"
+            checked = await retrieval.validate_read_results(
+                app.state.session_factory, sid, messages
+            )
+            assert checked[:2] == messages[:2]
+            assert all(
+                json.loads(m.text)["error"] == "CONTEXT_SOURCE_UNAVAILABLE" for m in checked[2:4]
+            )
+            assert checked[4] == messages[4]
+        finally:
+            event.remove(ChatMessage, "load", loaded)
+            event.remove(ChatModelRequest, "load", loaded_request)
 
 
 @pytest.mark.anyio
