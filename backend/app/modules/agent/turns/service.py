@@ -842,16 +842,29 @@ class ChatTurnService:
                         detail=f"CHAT_TURN_RESUME_CONDITION_UNMET：{blocked[1]}",
                     )
             now = utcnow()
-            turn.status = ChatTurnStatus.QUEUED.value
-            turn.waiting_reason = None
-            if reason is not None and reason.kind == ChatTurnWaitingKind.CONTEXT_COMPACTION_LIMIT:
-                from app.modules.agent.context_budget.models import ChatContextInput
+            # 领取原等待快照；迟到的继续不能消费后续新等待的额度。
+            claimed = await session.scalar(
+                update(ChatTurn)
+                .where(
+                    ChatTurn.id == turn_id,
+                    ChatTurn.status == status.value,
+                    ChatTurn.updated_at == turn.updated_at,
+                    ChatTurn.cancel_requested.is_(False),
+                )
+                .values(status=ChatTurnStatus.QUEUED.value, waiting_reason=None, updated_at=now)
+                .returning(ChatTurn.id)
+            )
+            if claimed is not None:
+                if (
+                    reason is not None
+                    and reason.kind == ChatTurnWaitingKind.CONTEXT_COMPACTION_LIMIT
+                ):
+                    from app.modules.agent.context_budget.models import ChatContextInput
 
-                bound = await session.get(ChatContextInput, turn_id)
-                if bound:
-                    bound.summary_allowance += 4
-            turn.updated_at = now
-            await ensure_turn_job(session, turn_id, now)
+                    bound = await session.get(ChatContextInput, turn_id)
+                    if bound:
+                        bound.summary_allowance += 4
+                await ensure_turn_job(session, turn_id, now)
         return await ChatTurnService.get_snapshot(session_factory, turn_id)
 
     @staticmethod

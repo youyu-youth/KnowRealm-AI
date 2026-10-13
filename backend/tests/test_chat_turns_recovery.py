@@ -612,6 +612,174 @@ async def test_resume_preserves_output_and_cursor(tmp_path: Path, status: str) -
         assert resumed == authoritative
 
 
+@pytest.mark.anyio
+@pytest.mark.parametrize("interleaving", ["queued", "next_wait", "cancelled"])
+async def test_concurrent_compaction_resume_adds_allowance_once(
+    tmp_path: Path, interleaving: str
+) -> None:
+    from sqlalchemy import func, select
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+    from app.db.base import utcnow
+    from app.modules.agent.budget.policy import POLICY_VERSION
+    from app.modules.agent.context_budget.models import ChatContextInput
+    from app.modules.agent.context_budget.policy import policy_for
+    from app.modules.agent.context_budget.service import bind_context
+    from app.modules.agent.graph import CHAT_GRAPH_VERSION
+    from app.modules.agent.turns.models import ChatTurn
+    from app.modules.agent.turns.runtime import ActiveTurnRegistry
+    from app.modules.agent.turns.schemas import ChatTurnWaitingKind
+    from app.modules.agent.turns.service import ChatTurnService, turn_job_input
+    from app.modules.jobs.models import ProcessingJob
+    from app.modules.settings.config import LlmProviderConfig
+    from app.shared.errors import CodedHTTPException
+    from tests.test_agent_undo_retry import bare_db
+
+    provider = LlmProviderConfig(
+        "https://stub.example.com/v1",
+        "sk-test",
+        "stub-chat-model",
+        ModelBudgetConfig(context_window=128000),
+    )
+    save_llm_provider(
+        tmp_path,
+        base_url=provider.base_url,
+        api_key=provider.api_key,
+        model=provider.model,
+        clear_api_key=False,
+        model_budget=provider.model_budget,
+    )
+    grant_llm_consent(tmp_path)
+    async with bare_db(tmp_path) as factory:
+        seed = await _seed_turn(factory)
+        async with factory() as session, session.begin():
+            turn = await session.get(ChatTurn, seed.turn_id)
+            assert turn is not None
+            turn.status = "WAITING_USER"
+            turn.waiting_reason = json.dumps(
+                {"kind": "CONTEXT_COMPACTION_LIMIT", "detail": "额度耗尽"}
+            )
+            turn.execution_json = json.dumps(
+                {
+                    "context_policy_version": 1,
+                    "budget_policy_version": POLICY_VERSION,
+                    "graph_version": CHAT_GRAPH_VERSION,
+                    "provider_base_url": provider.base_url,
+                    "provider_model": provider.model,
+                }
+            )
+            await bind_context(session, seed.turn_id, seed.session_id, policy_for(provider))
+
+        first_read = asyncio.Event()
+        both_read = asyncio.Event()
+        release_second = asyncio.Event()
+        reads = 0
+
+        class ReadBarrierSession(AsyncSession):
+            async def get(self, entity: Any, ident: Any, **kwargs: Any) -> Any:
+                nonlocal reads
+                row = await super().get(entity, ident, **kwargs)
+                if entity is ChatTurn and ident == seed.turn_id and reads < 2:
+                    reads += 1
+                    assert row is not None and row.status == "WAITING_USER"
+                    if reads == 1:
+                        first_read.set()
+                        await both_read.wait()
+                    else:
+                        both_read.set()
+                        await release_second.wait()
+                return row
+
+        gated_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
+            factory.kw["bind"],
+            class_=ReadBarrierSession,
+            expire_on_commit=False,
+        )
+        first_task = asyncio.create_task(
+            ChatTurnService.resume_turn(
+                session_factory=gated_factory,
+                data_dir=tmp_path,
+                turn_id=seed.turn_id,
+            )
+        )
+        await asyncio.wait_for(first_read.wait(), timeout=10)
+        second_task = asyncio.create_task(
+            ChatTurnService.resume_turn(
+                session_factory=gated_factory,
+                data_dir=tmp_path,
+                turn_id=seed.turn_id,
+            )
+        )
+        try:
+            first = await asyncio.wait_for(first_task, timeout=10)
+            assert first is not None and first.status == "QUEUED"
+            if interleaving == "next_wait":
+                async with factory() as session, session.begin():
+                    turn = await session.get(ChatTurn, seed.turn_id)
+                    assert turn is not None
+                    turn.status = "RUNNING"
+                    turn.updated_at = utcnow()
+                    job = await session.scalar(
+                        select(ProcessingJob).where(
+                            ProcessingJob.input_json == turn_job_input(seed.turn_id)
+                        )
+                    )
+                    assert job is not None
+                    job.status = "SUCCEEDED"
+                assert await ChatTurnService.finalize_waiting(
+                    session_factory=factory,
+                    turn_id=seed.turn_id,
+                    claim_token="claim-test",
+                    kind=ChatTurnWaitingKind.CONTEXT_COMPACTION_LIMIT,
+                    detail="额度耗尽",
+                )
+            elif interleaving == "cancelled":
+                cancelled = await ChatTurnService.cancel_turn(
+                    session_factory=factory, turn_id=seed.turn_id, active=ActiveTurnRegistry()
+                )
+                assert cancelled is not None and cancelled.status == "CANCELLED"
+            release_second.set()
+            second = await asyncio.wait_for(second_task, timeout=10)
+            assert (
+                second is not None
+                and second.status
+                == {
+                    "queued": "QUEUED",
+                    "next_wait": "WAITING_USER",
+                    "cancelled": "CANCELLED",
+                }[interleaving]
+            )
+            async with factory() as session:
+                bound = await session.get(ChatContextInput, seed.turn_id)
+                assert bound is not None and bound.summary_allowance == 8
+                jobs = await session.scalar(
+                    select(func.count())
+                    .select_from(ProcessingJob)
+                    .where(
+                        ProcessingJob.input_json == turn_job_input(seed.turn_id),
+                    )
+                )
+                assert jobs == 1
+            if interleaving == "cancelled":
+                with pytest.raises(CodedHTTPException, match="CHAT_TURN_CANCEL_IN_PROGRESS"):
+                    await ChatTurnService.resume_turn(
+                        session_factory=factory, data_dir=tmp_path, turn_id=seed.turn_id
+                    )
+            else:
+                for _ in range(2):
+                    repeated = await ChatTurnService.resume_turn(
+                        session_factory=factory, data_dir=tmp_path, turn_id=seed.turn_id
+                    )
+                    assert repeated is not None and repeated.status == "QUEUED"
+                async with factory() as session:
+                    bound = await session.get(ChatContextInput, seed.turn_id)
+                    assert bound is not None
+                    assert bound.summary_allowance == (12 if interleaving == "next_wait" else 8)
+        finally:
+            release_second.set()
+            await asyncio.gather(first_task, second_task, return_exceptions=True)
+
+
 # ---------------------------------------------------------------------------
 # T09：五项工具第三项提交后崩溃 → 只补后两项，五项身份稳定。
 # 崩溃现场＝前 3 项效果行已 SUCCEEDED（同事务业务）；恢复重放整工具调用。
