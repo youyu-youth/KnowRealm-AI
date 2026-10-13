@@ -46,16 +46,12 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             )
         )
         # 原始请求跨 checkpoint 恢复不变，摘要只改变本次模型可见投影。
-        request_identity = estimate_input(
-            self.policy,
-            ([request.system_message] if request.system_message else []) + request.messages,
-            request.tools,
-        ).input_fingerprint
         estimate = estimate_input(
             self.policy,
             ([request.system_message] if request.system_message else []) + request.messages,
             request.tools,
         )
+        request_identity = estimate.input_fingerprint
         if estimate.input_tokens >= estimate.usable_budget * 0.8:
             request = request.override(
                 messages=await project_outputs(self.runtime, request.messages)
