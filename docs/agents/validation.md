@@ -20,6 +20,29 @@ pwsh -NoProfile -File scripts/check-changed.ps1 -Base <已核实的提交>
 
 ## CI 与失败处理
 
+### 本地与 CI 共用的测试入口
+
+依赖安装沿用 frozen lockfile；最终验收和基点比较使用同一个入口：
+
+```powershell
+uv run --frozen --directory backend python -m scripts.run_tests all
+uv run --frozen --directory backend python -m scripts.run_tests frontend src/pages/chat.test.tsx
+uv run --frozen --directory backend python -m scripts.run_tests backend tests/test_context_retrieval.py
+```
+
+`all` 顺序执行两套测试，前端固定单 worker；测试失败后仍执行另一套，超时或中断则停止后续执行。单套支持文件或 pytest node ID 筛选，不能传额外运行器参数改变验收条件。全量、基点安装和基点复测等耗资源任务顺序执行；轻量只读检查可并行。筛选运行只证明该范围，不替代全量。具体参数以 `backend/scripts/run_tests.py` 为唯一来源，CI 直接调用它。
+
+每次执行输出 `.pytest-tmp-runs/<时间-随机标识>/<suite>/`，包含：
+
+- `tests.log`：运行器详细进度及结束时的慢用例耗时。运行期间可用 `Get-Content <日志绝对路径> -Tail 30 -Wait` 观察；后端输出不缓冲，长用例由 pytest 的 faulthandler 打印线程栈。
+- `result.json`：源码提交、脏工作区标记、完整命令、工作目录、开始/结束时间、PID、耗时、时限、原生退出码和状态。
+
+默认每套上限一小时，`--timeout <秒>` 可缩短诊断运行；这不是单个业务测试的等待时间。超时终止本次子进程树并返回 124，中断返回 130；原生测试失败码继续传播。`FAILED`、`TIMED_OUT`、`INTERRUPTED`、`START_FAILED` 分别记录，不能统称为测试失败或通过。外部强制终止来不及完成记录时，`RUNNING` 仅表示缺少结束证据。记录中的脏工作区标记不是源码快照，需要连同本次 diff 固定证据。
+
+基点使用其自身的同一入口及独立依赖，保存当前和基点两个结果目录；最终记录引用原命令、状态及失败形态。临时数据库单独放在 backend 专用 basetemp，不混入日志目录，不自动删除用户资源。已有历史失败仍按原规则复核，不增加豁免。
+
+CI 两个 job 在结束时保存上述日志目录，测试失败也执行，保留七天；没有启动测试时不伪造报告。上传范围只包含运行记录与测试日志，不包含 basetemp 数据库、依赖或用户数据。
+
 [Checks 工作流](../../.github/workflows/check.yml) 在 push、PR 和手动触发时使用 Windows runner、只读仓库权限、锁文件安装依赖。`checks` job 执行脚本自检、改动范围检查、API 契约、双语防线和既有 Agent 输入/恢复/工具预算/错误登记回归；`tests` job 复用已有 FFmpeg 准备脚本并执行前后端全量测试。失败保持红灯，其他独立验证步骤仍运行；没有 allow-failure 或整组排除。
 
 新增工作流并不等于远端已经执行或已经设置分支保护。首次 push 后核对 Actions 的安装、用例、跳过项和结果；若需要合并强制门禁，再在仓库设置中指定所需检查。
@@ -53,7 +76,13 @@ pwsh -NoProfile -File scripts/check-changed.ps1 -Base <已核实的提交>
 
 供应商、密钥、外发同意变化的恢复行为仍按既有入口验收；模型替身验证确定性边界，真实供应商验证实际用量与语义效果，两者分别记录。
 
+预算测试在执行轮次前先验证夹具的场景前提：使用生产完整输入计量，确认实际工具定义参与计量、输入是否触发压缩、原输入应能容纳还是应超限。前提变化应明确报告实际输入、预算和工具成本，先校准场景，保留独立的预算边界、重试次数和持久消费断言；不扩大等待超时来掩盖场景变化。现有例子为 `test_conversation_compaction.py` 的 `assert_compaction_fixture`。
+
 ## 验收证据
+
+开工时在当前工单中明确至少一条完整验证路径：真实生产入口 → 处理/裁剪 → 持久化 → Tool/API 消费 → 模型输入或页面。列出测试数据、替身边界、通过条件和证据位置。优先复用已有夹具及测试；模型/网络替身只替换外部边界，不绕过本票要验证的生产处理。
+
+桌面票同时给出可重复的人工步骤和固定测试数据；每项记录 `PASS / FAIL / NOT_TRIGGERED / NOT_RUN`。大输出、自动压缩等未触发时记 `NOT_TRIGGERED`，模型未实际调用 Tool 时不能证明取回或权限拦截。03 的示例见 [桌面验收步骤](../../.scratch/agent-context/03-desktop-acceptance.md)。
 
 工单清单旁注明证据层级；勾选表示该条声明的范围通过。把尚需真实验证的要求拆成独立未勾选条目，避免统一勾选后仅在末尾补免责声明。示例：
 

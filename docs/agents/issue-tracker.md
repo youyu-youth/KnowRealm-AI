@@ -12,6 +12,8 @@ Issues and specs for this repo live as markdown files in `.scratch/`.
 
 ## 验收证据
 
+开工时在票内列出真实生产入口到消费端的验证路径、数据、替身边界及通过条件；桌面票附可重复的人工步骤。复用 [validation.md](validation.md) 的执行与证据口径，不另建重复规范。未触发与未执行分别记录，不能代勾验收。
+
 清单条目旁注明验证层级和证据位置；自动化、模型/网络替身、真实 API/SQLite/Worker、真实模型与真实 Tauri/WebView2 分别记录。尚未验证的真实要求保留独立未勾选条目，不能用浏览器模拟或构建通过代勾。功能实现完成与完整真实验收分别说明；记录方式和基点复测见 [validation.md](validation.md)。
 
 ## When a skill says "publish to the issue tracker"

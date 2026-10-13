@@ -50,7 +50,16 @@ jobs:
       - name: Agent input, recovery, tool budget and error registry
         if: ${{ !cancelled() }}
         working-directory: backend
-        run: uv run --frozen pytest --basetemp=.pytest-tmp-ci-agent -q --tb=short tests/test_context_budget.py tests/test_chat_turns_recovery.py tests/test_tool_budget.py tests/test_error_code_guard.py
+        run: uv run --frozen python -m scripts.run_tests backend tests/test_test_runner.py tests/test_context_budget.py tests/test_chat_turns_recovery.py tests/test_tool_budget.py tests/test_error_code_guard.py --timeout 1200
+      - name: Preserve test diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: checks-test-diagnostics
+          path: .pytest-tmp-runs/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
   tests:
     runs-on: windows-latest
@@ -81,8 +90,17 @@ jobs:
           $binaryRoot >> $env:GITHUB_PATH
       - name: Frontend suite
         if: ${{ !cancelled() }}
-        run: pnpm --filter @knowrealm/desktop test --maxWorkers=1
+        run: uv run --frozen --directory backend python -m scripts.run_tests frontend
       - name: Backend suite
         if: ${{ !cancelled() }}
         working-directory: backend
-        run: uv run --frozen pytest --basetemp=.pytest-tmp-ci-full -q --tb=short
+        run: uv run --frozen python -m scripts.run_tests backend
+      - name: Preserve test diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: full-test-diagnostics
+          path: .pytest-tmp-runs/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7

@@ -119,6 +119,22 @@ async def configure(client: Any, window: int = 40000) -> None:
     assert response.status_code == 200
 
 
+async def assert_compaction_fixture(client: Any, session_id: str, *, fits: bool) -> None:
+    response = await client.post(
+        f"/api/chat-sessions/{session_id}/context/estimates", json={"content": "继续"}
+    )
+    assert response.status_code == 200, response.text
+    estimate = response.json()["next_estimate"]
+    assert estimate is not None and estimate["tool_count"] > 0, response.text
+    diagnostic = (
+        f"预算夹具前提变化：input={estimate['input_tokens']} "
+        f"budget={estimate['usable_budget']} tools={estimate['components']['tools']}；"
+        "检查工具定义/材料成本和目标场景，不扩大等待超时"
+    )
+    assert estimate["input_tokens"] >= estimate["usable_budget"] * 0.8, diagnostic
+    assert (estimate["remaining"] >= 0) == fits, diagnostic
+
+
 async def wait_summary_calls(calls: list[Any], count: int) -> None:
     for _ in range(200):
         if len(calls) >= count:
@@ -246,6 +262,7 @@ async def test_summary_sdk_json_mode_compatibility(
             sid = await create_session(client)
             await seed_history(_app, sid, 45 if case == "resume" else 16, 1000)
             await configure(client, 45000 if case == "transient" else 40000)
+            await assert_compaction_fixture(client, sid, fits=False)
             tid = (await submit(client, sid, "继续", request_id=f"json-mode-{case}")).json()["id"]
             if case == "resume":
                 from tests.test_chat_turns_recovery import wait_stable_status
@@ -647,6 +664,7 @@ async def test_invalid_summary_never_activates_and_only_safe_input_falls_back(
         sid = await create_session(client)
         ids = await seed_history(app, sid, 8, size)
         await configure(client, 45000)
+        await assert_compaction_fixture(client, sid, fits=expected == "COMPLETED")
         turn_id = (
             await submit(client, sid, "继续", request_id=f"compaction-invalid-{size}")
         ).json()["id"]
