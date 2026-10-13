@@ -9,7 +9,7 @@ from langchain.agents.middleware.types import (  # pyright: ignore[reportMissing
     ModelRequest,
 )
 from langchain_core.messages import messages_to_dict
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from app.modules.agent.context_budget.compaction import compact
 from app.modules.agent.context_budget.models import ChatModelRequest
@@ -37,6 +37,12 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Awaitable[Any]]
     ) -> Any:
         await self._check_outbound()
+        # 原始请求跨 checkpoint 恢复不变，摘要只改变本次模型可见投影。
+        request_identity = estimate_input(
+            self.policy,
+            ([request.system_message] if request.system_message else []) + request.messages,
+            request.tools,
+        ).input_fingerprint
         messages = await compact(
             self.runtime,
             self.policy,
@@ -48,7 +54,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         )
         request = request.override(messages=messages)
         try:
-            return await self._invoke(request, handler)
+            return await self._invoke(request, handler, request_identity=request_identity)
         except openai.BadRequestError as exc:
             code = exc.code or ""
             if code not in ("context_length_exceeded", "max_context_length_exceeded"):
@@ -66,13 +72,11 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             )
             if messages == request.messages:
                 raise
-            original = estimate_input(
-                self.policy,
-                ([request.system_message] if request.system_message else []) + request.messages,
-                request.tools,
-            )
             return await self._invoke(
-                request.override(messages=messages), handler, retry_of=original.input_fingerprint
+                request.override(messages=messages),
+                handler,
+                request_identity=request_identity,
+                retry_of=request_identity,
             )
 
     async def _invoke(
@@ -80,6 +84,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         request: ModelRequest[Any],
         handler: Callable[[ModelRequest[Any]], Awaitable[Any]],
         *,
+        request_identity: str,
         retry_of: str | None = None,
     ) -> Any:
         await self._check_outbound()
@@ -102,11 +107,18 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         async with self.runtime.session_factory() as session, session.begin():
             if not await self.runtime.turn_write_allowed(session):
                 raise TurnCancelledError
-            if retry_of and await session.scalar(
+            if await session.scalar(
                 select(ChatModelRequest.id)
                 .where(
                     ChatModelRequest.turn_id == self.runtime.turn_id,
-                    ChatModelRequest.retry_of == retry_of,
+                    or_(
+                        ChatModelRequest.retry_of == request_identity,
+                        # 旧版已准入重试仍按恢复后的实际输入识别，不补发请求。
+                        and_(
+                            ChatModelRequest.retry_of.is_not(None),
+                            ChatModelRequest.input_fingerprint == estimate.input_fingerprint,
+                        ),
+                    ),
                 )
                 .limit(1)
             ):

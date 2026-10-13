@@ -19,6 +19,7 @@ from app.modules.agent.context_budget.models import (
     ChatCompaction,
     ChatContextInput,
     ChatContextState,
+    ChatModelRequest,
 )
 from app.modules.agent.context_budget.policy import policy_for
 from app.modules.agent.models import ChatMessage
@@ -199,8 +200,15 @@ def test_summary_planning_uses_effective_supplier_output_limit() -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "overflow_attempts,expected_budgets",
+    [((3,), [(1, 1), (1, 1)]), ((1, 3), [(0, 1), (0, 1), (1, 1)])],
+)
 async def test_provider_overflow_retries_model_once_without_replaying_business_tool(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    overflow_attempts: tuple[int, ...],
+    expected_budgets: list[tuple[int, int]],
 ) -> None:
     calls: list[Any] = []
     summary_model(monkeypatch, calls)
@@ -217,7 +225,7 @@ async def test_provider_overflow_retries_model_once_without_replaying_business_t
                 runtime = current_agent_runtime()
                 assert runtime is not None
                 budgets.append((runtime.budget.calls_used, runtime.budget.operations_created))
-            if attempts == 3:
+            if attempts in overflow_attempts:
                 raise openai.BadRequestError(
                     "context too long",
                     response=httpx.Response(
@@ -267,12 +275,98 @@ async def test_provider_overflow_retries_model_once_without_replaying_business_t
         ).json()["id"]
         result = await wait_terminal(client, turn_id)
         assert result["status"] == "COMPLETED", result
-        assert attempts == 4 and len(captured) == 3
-        assert budgets == [(1, 1), (1, 1)]
+        assert attempts == 3 + len(overflow_attempts) and len(captured) == 3
+        assert budgets == expected_budgets
         courses = (await client.get("/api/courses")).json()
         assert len([course for course in courses if course["name"] == "压缩课程"]) == 1
         view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
-        assert len([row for row in view["actual"] if row["purpose"] == "ANSWER"]) == 4
+        assert len([row for row in view["actual"] if row["purpose"] == "ANSWER"]) == attempts
+        async with app.state.session_factory() as db:
+            retries = list(
+                (
+                    await db.scalars(
+                        select(ChatModelRequest.retry_of).where(
+                            ChatModelRequest.turn_id == turn_id,
+                            ChatModelRequest.retry_of.is_not(None),
+                        )
+                    )
+                ).all()
+            )
+            assert len(set(retries)) == len(overflow_attempts)
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("window,legacy_retry", [(128000, False), (40000, False), (40000, True)])
+async def test_restart_cannot_re_admit_consumed_overflow_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, window: int, legacy_retry: bool
+) -> None:
+    calls: list[Any] = []
+    summary_model(monkeypatch, calls)
+    attempts = 0
+    retry_started = asyncio.Event()
+    gate = asyncio.Event()
+
+    class OverflowModel(StubChatModel):
+        async def _astream(
+            self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any
+        ) -> AsyncIterator[ChatGenerationChunk]:
+            nonlocal attempts
+            attempts += 1
+            if attempts != 2:
+                raise openai.BadRequestError(
+                    "context too long",
+                    response=httpx.Response(
+                        400, request=httpx.Request("POST", "https://stub.example.com")
+                    ),
+                    body={"code": "context_length_exceeded"},
+                )
+            retry_started.set()
+            await gate.wait()
+            async for item in super()._astream(messages, stop, run_manager, **kwargs):
+                yield item
+
+    def build(*args: Any, **kwargs: Any) -> OverflowModel:
+        return OverflowModel()
+
+    monkeypatch.setattr("app.modules.agent.graph.build_chat_model", build)
+    async with recovery_app(tmp_path, monkeypatch) as (app, client, _captured):
+        sid = await create_session(client)
+        await seed_history(app, sid, 16, 1000)
+        await configure(client, window)
+        turn_id = (await submit(client, sid, "继续", request_id="overflow-retry-restart")).json()[
+            "id"
+        ]
+        await asyncio.wait_for(retry_started.wait(), 15)
+        async with app.state.session_factory() as db, db.begin():
+            requests = list(
+                (
+                    await db.scalars(
+                        select(ChatModelRequest)
+                        .where(
+                            ChatModelRequest.turn_id == turn_id,
+                            ChatModelRequest.purpose == "ANSWER",
+                        )
+                        .order_by(ChatModelRequest.created_at, ChatModelRequest.id)
+                    )
+                ).all()
+            )
+            assert len(requests) == 2 and requests[-1].retry_of is not None
+            if window == 40000:
+                assert requests[-1].retry_of != requests[0].input_fingerprint
+            if legacy_retry:
+                requests[-1].retry_of = requests[0].input_fingerprint
+        before = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        summary_count = len(calls)
+
+    async with recovery_app(tmp_path, monkeypatch) as (_app, client, _captured):
+        result = await wait_terminal(client, turn_id)
+        assert result["status"] == "FAILED", result
+        assert result["error_code"] == "MODEL_INPUT_BUDGET_EXCEEDED", result
+        after = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert attempts == 2
+        assert len(calls) == summary_count
+        assert after["compactions"] == before["compactions"]
+        assert len([row for row in after["actual"] if row["purpose"] == "ANSWER"]) == 2
 
 
 @pytest.mark.anyio

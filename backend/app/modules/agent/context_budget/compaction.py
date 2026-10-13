@@ -351,7 +351,7 @@ async def _run_chunks(
             ]
             if not estimate_input(policy, trial, tools).error_code:
                 break
-            # 全部结果进入归并；不截断栏目，也不提前激活无法容纳的摘要。
+            # 对末块累计摘要再次压缩；不截断栏目，也不提前激活无法容纳的摘要。
             async with runtime.session_factory() as session, session.begin():
                 row = await session.get(ChatCompaction, row_id)
                 assert row is not None
