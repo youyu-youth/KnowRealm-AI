@@ -2445,6 +2445,15 @@
         "reject": "取消重排",
         "hint": "确认后新版本生效、旧版本只读保留；带「保留」标记的是你手动锁定过的项，原样带入不被重排。",
         "lockedBadge": "保留"
+      },
+      "contextPin": {
+        "title": "修改固定上下文",
+        "accept": "确认修改",
+        "failed": "修改失败",
+        "failedDetail": "修改失败：{{reason}}",
+        "reject": "拒绝",
+        "rejected": "已拒绝固定设置修改",
+        "accepted": "固定设置已修改，下一轮生效"
       }
     },
     "authMode": {
@@ -2472,7 +2481,8 @@
       "notUndoable": "不可撤销：{{reason}}",
       "action": {
         "create_course": "创建课程",
-        "add_text_record_to_course": "保存文本记录"
+        "add_text_record_to_course": "保存文本记录",
+        "change_context_pin": "修改固定上下文"
       }
     },
     "coursePicker": {
@@ -2535,7 +2545,11 @@
       "details": "回答过程详情",
       "historyIncomplete": "过程历史保存不完整",
       "conversation": "对话消息",
-      "jumpToLatest": "回到最新"
+      "jumpToLatest": "回到最新",
+      "toolNames": {
+        "get_context_settings": "查看固定设置",
+        "change_context_pin": "修改固定内容"
+      }
     },
     "turn": {
       "stopping": "正在停止",
@@ -2703,6 +2717,48 @@
       },
       "finding": "正在查找会话原文",
       "reading": "正在读取来源片段"
+    },
+    "pins": {
+      "retryLatest": "采用最新版本重试",
+      "showText": "查看固定原文",
+      "title": "固定内容",
+      "nextHint": "修改在下一轮生效；要立即改变，请返回聊天停止当前轮。",
+      "empty": "暂无固定内容。可添加明确约束，或从原文取回页面选择片段。",
+      "modes": {
+        "TEXT": "短文本",
+        "SNIPPET": "原文片段",
+        "OBJECT": "优先资料"
+      },
+      "status": {
+        "VALID": "有效",
+        "STALE": "来源已变化，暂停注入",
+        "UNAVAILABLE": "来源失效，暂停注入"
+      },
+      "injected": "本次请求已注入",
+      "notInjected": "本次请求未注入",
+      "update": "更新",
+      "remove": "解除固定",
+      "textLabel": "明确约束或关键决定",
+      "textPlaceholder": "输入希望后续每轮保留的原文",
+      "add": "固定内容",
+      "saving": "正在保存…",
+      "cancelEdit": "取消编辑",
+      "saved": "已保存设置版本 {{version}}，从下一轮生效",
+      "selectionLabel": "选择要固定的原文",
+      "selectionHint": "当前选中 {{count}} 个字符；可用鼠标拖选或 Shift + 方向键调整。",
+      "addSnippet": "固定选中片段",
+      "updateSnippet": "更新固定片段",
+      "addObject": "优先使用此资料",
+      "updateObject": "更新优先资料",
+      "objectHint": "固定资料只提高取材优先级，正文仍受预算控制。",
+      "adjust": "解除或调整固定内容",
+      "actionLabel": "操作",
+      "targetLabel": "目标内容或身份",
+      "actions": {
+        "ADD": "新增固定",
+        "UPDATE": "更新固定",
+        "REMOVE": "解除固定"
+      }
     }
   },
   "settings": {
@@ -3528,7 +3584,10 @@
     "CONTEXT_SOURCE_STALE": "来源版本已变化。请重新查找并读取当前原文。",
     "CONTEXT_CURSOR_INVALID": "读取游标无效或已过期。请从头读取当前来源。",
     "CONTEXT_READ_BUDGET_EXHAUSTED": "本轮原文读取额度不足。请减少读取字符数，或在下一轮继续。",
-    "TOOL_CALL_IDENTITY_CONFLICT": "工具输出与原逻辑调用身份不匹配，无法安全复用。请停止后重新提问。"
+    "TOOL_CALL_IDENTITY_CONFLICT": "工具输出与原逻辑调用身份不匹配，无法安全复用。请停止后重新提问。",
+    "CONTEXT_VERSION_CONFLICT": "固定设置已变化。请刷新后重试。",
+    "CONTEXT_PIN_NOT_FOUND": "固定条目不存在。请刷新。",
+    "CONTEXT_PINS_TOO_LARGE": "固定内容与必需输入超过预算，本轮未调用模型。请解除或调整固定内容。"
   },
   "agent": {
     "run": {

@@ -344,6 +344,16 @@ export function ChatConversationView({
         {/* 等待 / 中断轮次的处理入口（票 02）：等待原因 + 继续 / 停止；继续只
             重验恢复条件重新排队，不批准提案、不构成重新授权。 */}
         <ChatTurnWaitingCard turn={turn} onResume={resume} onStop={stop} />
+        {turn?.error_code === "CONTEXT_PINS_TOO_LARGE" ? (
+          <Link
+            to="/chat-context/$sessionId"
+            params={{ sessionId }}
+            search={{ view: "next" }}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            {t("chat.pins.adjust")}
+          </Link>
+        ) : null}
         <ContextCompactionList batches={compaction.data?.compactions ?? []} />
         {/* MEMORY 提案就地确认卡（工单 06）：done 后出现，确认/拒绝即定局；
             本轮注入记忆的展示在右栏上下文面板。 */}

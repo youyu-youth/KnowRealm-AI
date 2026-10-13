@@ -21,7 +21,7 @@ def _rejection() -> str:
     return json.dumps({"ok": False, "error": "TOOL_CALL_LIMIT"})
 
 
-def _bounded(body: dict[str, object], budget: ToolCallBudget) -> str:
+def bounded_context_output(body: dict[str, object], budget: ToolCallBudget) -> str:
     limit = min(TOOL_RESULT_MAX_CHARS, TOOL_ROUND_OUTPUT_MAX_CHARS - budget.chars_fed)
     payload = json.dumps(body, ensure_ascii=False)
     if len(payload) > limit:
@@ -67,7 +67,7 @@ async def search_context(query: str = "", cursor: str | None = None, limit: int 
                 else "REQUEST_VALIDATION_FAILED",
             }
         )
-    return await format_output(lambda budget: _bounded(result.model_dump(), budget))
+    return await format_output(lambda budget: bounded_context_output(result.model_dump(), budget))
 
 
 @tool
@@ -112,4 +112,4 @@ async def read_context(
                 else "REQUEST_VALIDATION_FAILED",
             }
         )
-    return await format_output(lambda budget: _bounded(result.model_dump(), budget))
+    return await format_output(lambda budget: bounded_context_output(result.model_dump(), budget))

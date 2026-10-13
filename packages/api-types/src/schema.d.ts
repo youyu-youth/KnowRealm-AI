@@ -387,6 +387,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat-sessions/{session_id}/context/pins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Pins */
+        post: operations["update_pins_api_chat_sessions__session_id__context_pins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat-sessions/{session_id}/context/sources/read": {
         parameters: {
             query?: never;
@@ -4128,6 +4145,86 @@ export interface components {
              */
             relation_id: string;
         };
+        /** ContextPinChange */
+        ContextPinChange: {
+            /**
+             * Action
+             * @default ADD
+             * @enum {string}
+             */
+            action: "ADD" | "UPDATE" | "REMOVE";
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /**
+             * Expected Version
+             * @description 查看上下文获得的预期设置版本
+             */
+            expected_version: number;
+            /** Mode */
+            mode?: ("TEXT" | "SNIPPET" | "OBJECT") | null;
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /** Pin Id */
+            pin_id?: string | null;
+            /** Source Id */
+            source_id?: string | null;
+            /** Source Version */
+            source_version?: string | null;
+        };
+        /** ContextPinOut */
+        ContextPinOut: {
+            /**
+             * Content
+             * @default
+             */
+            content: string;
+            /** Id */
+            id: string;
+            /**
+             * Injected
+             * @default false
+             */
+            injected: boolean;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "TEXT" | "SNIPPET" | "OBJECT";
+            /**
+             * Offset
+             * @default 0
+             */
+            offset: number;
+            /** Reason */
+            reason?: string | null;
+            /** Source Id */
+            source_id?: string | null;
+            /** Source Version */
+            source_version?: string | null;
+            /**
+             * Status
+             * @default VALID
+             * @enum {string}
+             */
+            status: "VALID" | "STALE" | "UNAVAILABLE";
+            /** Title */
+            title: string;
+        };
+        /** ContextPinsOut */
+        ContextPinsOut: {
+            /** Pins */
+            pins: components["schemas"]["ContextPinOut"][];
+            /** Session Id */
+            session_id: string;
+            /** Version */
+            version: number;
+        };
         /** ContextPolicy */
         ContextPolicy: {
             /** Base Url */
@@ -4235,6 +4332,8 @@ export interface components {
             active_summary?: components["schemas"]["CompactionOut"] | null;
             /** Actual */
             actual: components["schemas"]["ModelRequestOut"][];
+            /** Actual Pins */
+            actual_pins?: components["schemas"]["ContextPinOut"][];
             /** Actual Turn Id */
             actual_turn_id: string | null;
             /** Compactions */
@@ -4242,6 +4341,8 @@ export interface components {
             /** Next Error Code */
             next_error_code: string | null;
             next_estimate: components["schemas"]["InputEstimate"] | null;
+            /** Pins */
+            pins?: components["schemas"]["ContextPinOut"][];
             /** Segment */
             segment: number;
             /** Session Id */
@@ -5789,7 +5890,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -8637,6 +8738,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContextViewOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_pins_api_chat_sessions__session_id__context_pins_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContextPinChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextPinsOut"];
                 };
             };
             /** @description Forbidden */

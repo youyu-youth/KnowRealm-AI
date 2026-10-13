@@ -291,6 +291,7 @@ class ProposalType(StrEnum):
     # 第三阶段工单 01：学习目标创建与修改（目标域写动作，确认卡 + 三档授权）。
     OP_GOAL_CREATE = "OP_GOAL_CREATE"
     OP_GOAL_UPDATE = "OP_GOAL_UPDATE"
+    OP_CONTEXT_PIN = "OP_CONTEXT_PIN"
     # 第三阶段工单 02：学习计划确认（L2 批量创建：计划头 + 计划项；草案确认卡）。
     OP_PLAN_CONFIRM = "OP_PLAN_CONFIRM"
     # 第三阶段工单 03：计划项编辑 / 完成与重生成（L1 就地写 + L2 换代）。

@@ -7,6 +7,8 @@ export const Route = createFileRoute("/chat-context/$sessionId")({
   ): {
     view?: "actual" | "next" | "sources";
     source?: string;
+    pin?: string;
+    pinVersion?: number;
     q?: string;
     cursor?: string;
     searchCursor?: string;
@@ -14,6 +16,12 @@ export const Route = createFileRoute("/chat-context/$sessionId")({
     quote?: string;
     offset?: number;
   } => ({
+    pin: typeof search.pin === "string" ? search.pin.slice(0, 36) : undefined,
+    pinVersion:
+      Number.isSafeInteger(Number(search.pinVersion)) &&
+      Number(search.pinVersion) > 0
+        ? Number(search.pinVersion)
+        : undefined,
     view:
       search.view === "next" || search.view === "sources"
         ? search.view

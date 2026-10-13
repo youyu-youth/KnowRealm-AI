@@ -13,6 +13,7 @@ from typing import cast
 from langchain_core.messages import (
     AIMessage,
     AnyMessage,
+    BaseMessage,
     ToolMessage,
     messages_from_dict,
     messages_to_dict,
@@ -21,6 +22,7 @@ from sqlalchemy import and_, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.context_budget.models import (
+    ChatCompaction,
     ChatContextInput,
     ChatContextOutput,
     ChatContextState,
@@ -436,6 +438,10 @@ async def read_context(
                 None,
             )
             if row_output:
+                if row_output.tool_name in ("get_context_settings", "change_context_pin"):
+                    await _validate_pin_bindings(
+                        session, chat, json.loads(row_output.content), segment
+                    )
                 source, content = _output_source(row_output), row_output.content
         elif kind in ("record", "library"):
             title, content, source_version = await _read_material(
@@ -455,6 +461,8 @@ async def read_context(
             )
             if legacy is not None:
                 message, pair, turn_id = legacy
+                await _validate_pin_message(session, chat, message, segment)
+                await _validate_pin_message(session, chat, pair, segment)
                 if message.name == "search_library":
                     await validate_evidence(
                         session, chat, json.loads(message.text).get("evidence_hits"), _cache
@@ -532,6 +540,60 @@ async def read_context(
         )
 
 
+async def _validate_pin_bindings(
+    session: AsyncSession,
+    chat: ChatSession,
+    body: object,
+    segment: int,
+    *,
+    project: bool = False,
+) -> None:
+    if isinstance(body, list):
+        for item in cast(list[object], body):
+            await _validate_pin_bindings(session, chat, item, segment, project=project)
+    elif isinstance(body, dict):
+        fields = cast(dict[str, object], body)
+        source_id = fields.get("source_id")
+        if isinstance(source_id, str) and (
+            fields.get("content") or (fields.get("title") and fields.get("title") != source_id)
+        ):
+            try:
+                _, _, version = await read_pin_source(session, chat, source_id, segment)
+                if fields.get("mode") == "SNIPPET" and version != fields.get("source_version"):
+                    raise CodedHTTPException(
+                        code="CONTEXT_SOURCE_STALE", status_code=409, detail="固定来源已变化"
+                    )
+            except CodedHTTPException as exc:
+                if not project:
+                    raise
+                if "content" in fields:
+                    fields["content"] = ""
+                if "title" in fields:
+                    fields["title"] = source_id
+                if "status" in fields:
+                    fields["status"] = (
+                        "STALE" if exc.code == "CONTEXT_SOURCE_STALE" else "UNAVAILABLE"
+                    )
+                    fields["reason"] = exc.code
+                    fields["injected"] = False
+        for value in fields.values():
+            await _validate_pin_bindings(session, chat, value, segment, project=project)
+
+
+async def _validate_pin_message(
+    session: AsyncSession, chat: ChatSession, message: BaseMessage, segment: int
+) -> None:
+    if isinstance(message, AIMessage):
+        for call in message.tool_calls:
+            if call["name"] == "change_context_pin":
+                await _validate_pin_bindings(session, chat, call["args"], segment)
+    elif isinstance(message, ToolMessage) and message.name in (
+        "get_context_settings",
+        "change_context_pin",
+    ):
+        await _validate_pin_bindings(session, chat, json.loads(message.text), segment)
+
+
 async def validate_read_results(
     factory: async_sessionmaker[AsyncSession], session_id: str, messages: list[AnyMessage]
 ) -> list[AnyMessage]:
@@ -539,6 +601,48 @@ async def validate_read_results(
     reads: dict[tuple[str, str | None], CodedHTTPException | None] = {}
     result: list[AnyMessage] = []
     for message in messages:
+        if (
+            isinstance(message, AIMessage)
+            and any(call["name"] == "change_context_pin" for call in message.tool_calls)
+        ) or (
+            isinstance(message, ToolMessage)
+            and message.name in ("get_context_settings", "change_context_pin")
+        ):
+            async with factory() as session:
+                chat, segment, _ = await _scope(session, session_id)
+                if isinstance(message, AIMessage):
+                    calls = json.loads(json.dumps(message.tool_calls))
+                    content = json.dumps(message.content, ensure_ascii=False)
+                    for call in calls:
+                        if call["name"] == "change_context_pin":
+                            original = call["args"].get("content")
+                            await _validate_pin_bindings(
+                                session, chat, call["args"], segment, project=True
+                            )
+                            if original and not call["args"].get("content"):
+                                content = content.replace(
+                                    json.dumps(original, ensure_ascii=False)[1:-1],
+                                    "[失效来源原文已移除]",
+                                )
+                    message = message.model_copy(
+                        update={
+                            "tool_calls": calls,
+                            "content": json.loads(content),
+                            "additional_kwargs": {
+                                key: value
+                                for key, value in message.additional_kwargs.items()
+                                if key != "tool_calls"
+                            },
+                        }
+                    )
+                else:
+                    body = json.loads(message.text)
+                    await _validate_pin_bindings(session, chat, body, segment, project=True)
+                    message = message.model_copy(
+                        update={"content": json.dumps(body, ensure_ascii=False)}
+                    )
+            result.append(message)
+            continue
         if not isinstance(message, ToolMessage) or message.name not in (
             "read_context",
             "search_library",
@@ -588,3 +692,114 @@ async def validate_read_results(
             )
         result.append(message)
     return result
+
+
+async def read_pin_source(
+    session: AsyncSession, chat: ChatSession, source_id: str, segment: int
+) -> tuple[str, str, str]:
+    kind, sep, target = source_id.partition(":")
+    if not sep:
+        kind, target = "message", source_id
+    if kind in ("record", "library"):
+        return await LibraryRetrievalService.read_source(
+            session, _material_scope(chat), kind, target
+        )
+    if kind == "message":
+        rows = await _messages(session, chat.id, segment, target)
+        if rows:
+            row = rows[0]
+            if row.citations_json:
+                await validate_evidence(session, chat, json.loads(row.citations_json))
+            return row.content[:120], row.content, digest(row.content)
+        legacy = await _legacy_message(session, chat.id, segment, target, _ReadCache())
+        if legacy:
+            message, _pair, _turn = legacy
+            await _validate_pin_message(session, chat, message, segment)
+            await _validate_pin_message(session, chat, _pair, segment)
+            if message.name == "search_library":
+                await validate_evidence(
+                    session, chat, json.loads(message.text).get("evidence_hits")
+                )
+            elif message.name == "read_context":
+                raw = json.loads(message.text)
+                if raw.get("source"):
+                    source = raw["source"]
+                    _, _, version = await read_pin_source(
+                        session, chat, source["source_id"], segment
+                    )
+                    if version != source["version"]:
+                        raise CodedHTTPException(
+                            code="CONTEXT_SOURCE_STALE", status_code=409, detail="原文来源已变化"
+                        )
+            return message.name or "tool", message.text, digest(message.text)
+    if kind == "output":
+        outputs = await _outputs(session, chat.id, segment, target)
+        if outputs:
+            row_output = outputs[0]
+            if row_output.tool_name in ("get_context_settings", "change_context_pin"):
+                await _validate_pin_bindings(session, chat, json.loads(row_output.content), segment)
+            if row_output.tool_name in ("search_library", "read_context"):
+                raw = json.loads(row_output.content)
+                if row_output.tool_name == "search_library":
+                    await validate_evidence(session, chat, raw.get("evidence_hits"))
+                elif raw.get("source"):
+                    source = raw["source"]
+                    _, _, version = await read_pin_source(
+                        session, chat, source["source_id"], segment
+                    )
+                    if version != source["version"]:
+                        raise CodedHTTPException(
+                            code="CONTEXT_SOURCE_STALE", status_code=409, detail="输出来源已变化"
+                        )
+            return row_output.tool_name, row_output.content, row_output.content_hash
+    raise CodedHTTPException(
+        code="CONTEXT_SOURCE_UNAVAILABLE", status_code=404, detail="来源不属于当前会话或段"
+    )
+
+
+async def validate_compaction_sources(
+    session: AsyncSession, session_id: str, plan_json: str
+) -> None:
+    """摘要是派生内容：原消息关联证据和工具读取失效时不能继续注入或激活。"""
+    chat = await session.get(ChatSession, session_id)
+    if chat is None:
+        raise CodedHTTPException(
+            code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话已删除"
+        )
+    cache = _ReadCache()
+    for identity, source in json.loads(plan_json)["sources"].items():
+        row = await session.get(ChatMessage, identity)
+        if row and row.citations_json:
+            await validate_evidence(session, chat, json.loads(row.citations_json), cache)
+        for message in messages_from_dict(json.loads(source["wire"])):
+            state = await session.get(ChatContextState, session_id)
+            await _validate_pin_message(session, chat, message, state.segment if state else 1)
+            if not isinstance(message, ToolMessage):
+                continue
+            if message.name == "search_library":
+                await validate_evidence(
+                    session, chat, json.loads(message.text).get("evidence_hits"), cache
+                )
+            elif message.name == "read_context":
+                raw = json.loads(message.text)
+                if raw.get("source"):
+                    read_source = raw["source"]
+                    state = await session.get(ChatContextState, session_id)
+                    _, _, version = await read_pin_source(
+                        session, chat, read_source["source_id"], state.segment if state else 1
+                    )
+                    if version != read_source["version"]:
+                        raise CodedHTTPException(
+                            code="CONTEXT_SOURCE_STALE", status_code=409, detail="摘要来源已变化"
+                        )
+
+
+async def validate_summary_messages(
+    factory: async_sessionmaker[AsyncSession], session_id: str, messages: Sequence[AnyMessage]
+) -> None:
+    async with factory() as session:
+        for message in messages:
+            if (message.id or "").startswith("summary-"):
+                row = await session.get(ChatCompaction, (message.id or "").removeprefix("summary-"))
+                if row:
+                    await validate_compaction_sources(session, session_id, row.plan_json)

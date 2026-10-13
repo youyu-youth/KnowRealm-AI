@@ -2465,6 +2465,15 @@
         "reject": "Cancel regeneration",
         "hint": "Confirming activates the new version and keeps the old one read-only; items marked \"kept\" are your locked items, carried over untouched.",
         "lockedBadge": "kept"
+      },
+      "contextPin": {
+        "title": "Change pinned context",
+        "accept": "Confirm change",
+        "failed": "Change failed",
+        "failedDetail": "Change failed: {{reason}}",
+        "reject": "Reject",
+        "rejected": "Pinned settings change rejected",
+        "accepted": "Pinned settings changed for the next turn"
       }
     },
     "authMode": {
@@ -2492,7 +2501,8 @@
       "notUndoable": "Not undoable: {{reason}}",
       "action": {
         "create_course": "Create course",
-        "add_text_record_to_course": "Save text record"
+        "add_text_record_to_course": "Save text record",
+        "change_context_pin": "Change pinned context"
       }
     },
     "coursePicker": {
@@ -2555,7 +2565,11 @@
       "details": "Response process details",
       "historyIncomplete": "Process history was not fully saved",
       "conversation": "Conversation messages",
-      "jumpToLatest": "Jump to latest"
+      "jumpToLatest": "Jump to latest",
+      "toolNames": {
+        "get_context_settings": "View pinned settings",
+        "change_context_pin": "Change pinned context"
+      }
     },
     "turn": {
       "stopping": "Stopping",
@@ -2723,6 +2737,48 @@
       },
       "finding": "Finding session source text",
       "reading": "Reading source excerpt"
+    },
+    "pins": {
+      "retryLatest": "Retry with latest version",
+      "showText": "Show pinned text",
+      "title": "Pinned context",
+      "nextHint": "Changes apply next turn. To change the active turn, return to chat and stop it first.",
+      "empty": "No pinned context. Add an explicit constraint or select a source fragment.",
+      "modes": {
+        "TEXT": "Short text",
+        "SNIPPET": "Source fragment",
+        "OBJECT": "Priority material"
+      },
+      "status": {
+        "VALID": "Valid",
+        "STALE": "Source changed; injection paused",
+        "UNAVAILABLE": "Source unavailable; injection paused"
+      },
+      "injected": "Included in this request",
+      "notInjected": "Not included in this request",
+      "update": "Update",
+      "remove": "Unpin",
+      "textLabel": "Explicit constraint or key decision",
+      "textPlaceholder": "Enter the exact text to retain in future turns",
+      "add": "Pin context",
+      "saving": "Saving…",
+      "cancelEdit": "Cancel editing",
+      "saved": "Settings version {{version}} saved; applies next turn",
+      "selectionLabel": "Select source text to pin",
+      "selectionHint": "{{count}} characters selected. Drag to select or use Shift + arrow keys.",
+      "addSnippet": "Pin selected fragment",
+      "updateSnippet": "Update pinned fragment",
+      "addObject": "Prioritize this material",
+      "updateObject": "Update priority material",
+      "objectHint": "Pinning material gives it priority; its body remains subject to the input budget.",
+      "adjust": "Unpin or adjust pinned context",
+      "actionLabel": "Action",
+      "targetLabel": "Target text or identity",
+      "actions": {
+        "ADD": "Add pin",
+        "UPDATE": "Update pin",
+        "REMOVE": "Remove pin"
+      }
     }
   },
   "settings": {
@@ -3548,7 +3604,10 @@
     "CONTEXT_SOURCE_STALE": "The source version has changed. Search again to read the current text.",
     "CONTEXT_CURSOR_INVALID": "The read cursor is invalid or expired. Read the current source from the start.",
     "CONTEXT_READ_BUDGET_EXHAUSTED": "The source reading budget is exhausted. Read fewer characters or continue next turn.",
-    "TOOL_CALL_IDENTITY_CONFLICT": "The tool output does not match the original logical call. Stop and ask again."
+    "TOOL_CALL_IDENTITY_CONFLICT": "The tool output does not match the original logical call. Stop and ask again.",
+    "CONTEXT_VERSION_CONFLICT": "Pinned settings changed. Refresh and try again.",
+    "CONTEXT_PIN_NOT_FOUND": "Pinned entry not found. Please refresh.",
+    "CONTEXT_PINS_TOO_LARGE": "Pinned and required input exceed the budget. No model was called. Unpin or adjust pinned context."
   },
   "agent": {
     "run": {

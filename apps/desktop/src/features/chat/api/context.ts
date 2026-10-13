@@ -2,6 +2,14 @@ import type { components } from "@knowrealm/api-types";
 import { apiFetch } from "@/services/http/client";
 
 export const contextApi = {
+  changePin: (
+    sessionId: string,
+    body: components["schemas"]["ContextPinChange"],
+  ) =>
+    apiFetch<components["schemas"]["ContextPinsOut"]>(
+      `/api/chat-sessions/${sessionId}/context/pins`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
   search: (
     sessionId: string,
     body: components["schemas"]["ContextSearchRequest"],

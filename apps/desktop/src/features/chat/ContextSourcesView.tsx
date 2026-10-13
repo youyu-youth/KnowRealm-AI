@@ -167,6 +167,8 @@ export function ContextSourcesView({ sessionId }: { sessionId: string }) {
         <ContextSourceReader
           sessionId={sessionId}
           sourceId={search.source}
+          pinId={search.pin}
+          pinVersion={search.pinVersion}
           version={search.version}
           cursor={search.cursor}
           quote={search.quote}

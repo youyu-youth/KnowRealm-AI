@@ -48,6 +48,13 @@ function ExecutedResultRow({
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   if (result === null) return null;
+  if (action === "change_context_pin") {
+    return (
+      <p className="text-label text-muted-foreground">
+        {t("chat.pins.saved", { version: result.version })}
+      </p>
+    );
+  }
   if (action === "create_course" && typeof result.course_id === "string") {
     return (
       <Link

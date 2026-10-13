@@ -8,16 +8,22 @@ from langchain.agents.middleware.types import (  # pyright: ignore[reportMissing
     AgentMiddleware,
     ModelRequest,
 )
-from langchain_core.messages import messages_to_dict
+from langchain_core.messages import SystemMessage, messages_to_dict
 from sqlalchemy import and_, or_, select
 
 from app.modules.agent.context_budget.compaction import compact
-from app.modules.agent.context_budget.materials import select_material
 from app.modules.agent.context_budget.models import ChatModelRequest
 from app.modules.agent.context_budget.outputs import project_outputs
+from app.modules.agent.context_budget.pins import inject_pins, select_pinned_material, turn_pins
 from app.modules.agent.context_budget.policy import estimate_input, request_usage
-from app.modules.agent.context_budget.retrieval import validate_read_results
-from app.modules.agent.context_budget.schemas import ContextPolicy, ModelRequestStatus
+from app.modules.agent.context_budget.retrieval import (
+    validate_read_results,
+    validate_summary_messages,
+)
+from app.modules.agent.context_budget.schemas import (
+    ContextPolicy,
+    ModelRequestStatus,
+)
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.runtime import AgentRuntimeContext
 from app.modules.settings.config import (
@@ -40,6 +46,9 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Awaitable[Any]]
     ) -> Any:
         await self._check_outbound()
+        await validate_summary_messages(
+            self.runtime.session_factory, self.runtime.session_id, request.messages
+        )
         request = request.override(
             messages=await validate_read_results(
                 self.runtime.session_factory, self.runtime.session_id, request.messages
@@ -56,11 +65,24 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             request = request.override(
                 messages=await project_outputs(self.runtime, request.messages)
             )
-        request = request.override(
-            system_message=await select_material(
-                self.runtime, self.policy, request.system_message, request.messages, request.tools
-            )
+        pins_json, segment = await turn_pins(self.runtime)
+        system, pin_system, _, overflow = await select_pinned_material(
+            self.runtime,
+            self.policy,
+            pins_json,
+            segment,
+            request.system_message,
+            request.messages,
+            request.tools,
         )
+        request = request.override(system_message=system)
+        if overflow:
+            return await self._invoke(
+                request,
+                handler,
+                request_identity=request_identity,
+                pin_system=pin_system,
+            )
         messages = await compact(
             self.runtime,
             self.policy,
@@ -72,7 +94,12 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         )
         request = request.override(messages=messages)
         try:
-            return await self._invoke(request, handler, request_identity=request_identity)
+            return await self._invoke(
+                request,
+                handler,
+                request_identity=request_identity,
+                pin_system=pin_system,
+            )
         except openai.BadRequestError as exc:
             code = exc.code or ""
             if code not in ("context_length_exceeded", "max_context_length_exceeded"):
@@ -95,6 +122,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                 handler,
                 request_identity=request_identity,
                 retry_of=request_identity,
+                pin_system=pin_system,
             )
 
     async def _invoke(
@@ -104,10 +132,33 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         *,
         request_identity: str,
         retry_of: str | None = None,
+        pin_system: SystemMessage | None = None,
     ) -> Any:
         await self._check_outbound()
+        await validate_summary_messages(
+            self.runtime.session_factory, self.runtime.session_id, request.messages
+        )
+        request = request.override(
+            messages=await validate_read_results(
+                self.runtime.session_factory, self.runtime.session_id, request.messages
+            )
+        )
+        pins_json, segment = await turn_pins(self.runtime)
+        system, pins, overflow = await inject_pins(
+            self.runtime.session_factory,
+            self.runtime.session_id,
+            pins_json,
+            segment,
+            pin_system,
+            request.messages,
+            request.tools,
+            self.policy,
+        )
+        request = request.override(system_message=system)
         messages = ([request.system_message] if request.system_message else []) + request.messages
         estimate = estimate_input(self.policy, messages, request.tools)
+        if overflow:
+            estimate.error_code = "CONTEXT_PINS_TOO_LARGE"
         request = request.override(
             model_settings={**request.model_settings, "max_tokens": estimate.output_reserve}
         )
@@ -121,6 +172,9 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             error_code=estimate.error_code,
             messages_json=json.dumps(messages_to_dict(request.messages), ensure_ascii=False),
             retry_of=retry_of,
+            pins_json=json.dumps(
+                [pin.model_dump(mode="json") for pin in pins or []], ensure_ascii=False
+            ),
         )
         async with self.runtime.session_factory() as session, session.begin():
             if not await self.runtime.turn_write_allowed(session):

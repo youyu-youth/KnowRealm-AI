@@ -57,6 +57,32 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 const SESSION_ID = "session-1";
 
+it("固定确认卡展示动作、目标和预期版本，确认后显示持久结果", async () => {
+  const proposal = proposalFixture({
+    proposal_type: "OP_CONTEXT_PIN",
+    payload: {
+      action: "ADD",
+      mode: "TEXT",
+      content: "固定原文",
+      expected_version: 7,
+    },
+    snapshot: { version: 7, pins_json: "[]" },
+  });
+  listProposals.mockResolvedValue([proposal]);
+  listOperations.mockResolvedValue([]);
+  confirmProposal.mockResolvedValue({
+    ...proposal,
+    status: "APPLIED",
+    result: { version: 8, pins: [] },
+  });
+  renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+  expect(await screen.findByText("固定原文")).toBeVisible();
+  expect(screen.getByText("7")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "确认修改" }));
+  await screen.findByText("已保存设置版本 8，从下一轮生效");
+  expect(confirmProposal).toHaveBeenCalledWith("p-1", undefined);
+});
+
 const SCHOOL_PAYLOAD = {
   name: "高中物理",
   learning_context: "SCHOOL",

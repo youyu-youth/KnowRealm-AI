@@ -74,6 +74,182 @@ function renderAt(path = "/") {
   return render(<App />);
 }
 
+it("上下文页面固定、编辑和解除提交持久版本，实际与下一轮配置分开", async () => {
+  let version = 1;
+  let pins: components["schemas"]["ContextPinOut"][] = [];
+  const writes: components["schemas"]["ContextPinChange"][] = [];
+  const view = () => ({
+    session_id: FIRST_SESSION_ID,
+    version,
+    segment: 1,
+    actual_turn_id: null,
+    actual: [],
+    actual_pins: [],
+    pins,
+    next_estimate: null,
+    next_error_code: null,
+  });
+  server.use(
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+      HttpResponse.json([chatSession(FIRST_SESSION_ID, { title: "固定验证" })]),
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`, () =>
+      HttpResponse.json(chatSession(FIRST_SESSION_ID, { title: "固定验证" })),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/estimates`,
+      () => HttpResponse.json(view()),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/pins`,
+      async ({ request }) => {
+        const body =
+          (await request.json()) as components["schemas"]["ContextPinChange"];
+        writes.push(body);
+        if (body.expected_version !== version)
+          return HttpResponse.json(
+            { code: "CONTEXT_VERSION_CONFLICT", detail: "设置已变化" },
+            { status: 409 },
+          );
+        version++;
+        pins =
+          body.action === "REMOVE"
+            ? []
+            : [
+                {
+                  id: "pin-1",
+                  mode: "TEXT",
+                  content: body.content,
+                  title: body.content,
+                  status: "VALID",
+                  injected: false,
+                  offset: 0,
+                },
+              ];
+        return HttpResponse.json({
+          session_id: FIRST_SESSION_ID,
+          version,
+          pins,
+        });
+      },
+    ),
+  );
+  renderAt(`/chat-context/${FIRST_SESSION_ID}?view=next`);
+  const input = await screen.findByRole("textbox", {
+    name: "明确约束或关键决定",
+  });
+  fireEvent.change(input, { target: { value: "所有例子使用 Python" } });
+  fireEvent.click(screen.getByRole("button", { name: "固定内容" }));
+  expect(
+    await screen.findByText("已保存设置版本 2，从下一轮生效"),
+  ).toBeVisible();
+  expect(await screen.findByText("所有例子使用 Python")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "更新" }));
+  fireEvent.change(
+    screen.getByRole("textbox", { name: "明确约束或关键决定" }),
+    { target: { value: "所有例子使用 TypeScript" } },
+  );
+  const editForm = screen
+    .getByRole("textbox", { name: "明确约束或关键决定" })
+    .closest("form");
+  if (!editForm) throw new Error("固定编辑表单缺失");
+  fireEvent.click(within(editForm).getByRole("button", { name: "更新" }));
+  await screen.findByText("已保存设置版本 3，从下一轮生效");
+  await screen.findByText("所有例子使用 TypeScript", { selector: "p" });
+  fireEvent.click(screen.getByRole("button", { name: "解除固定" }));
+  await screen.findByText("已保存设置版本 4，从下一轮生效");
+  expect(writes.map((body) => [body.action, body.expected_version])).toEqual([
+    ["ADD", 1],
+    ["UPDATE", 2],
+    ["REMOVE", 3],
+  ]);
+  fireEvent.click(screen.getByRole("tab", { name: "本轮实际输入" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("textbox", { name: "明确约束或关键决定" }),
+    ).not.toBeInTheDocument(),
+  );
+});
+
+it("来源页面固定选中原文时提交来源身份、版本和原始偏移", async () => {
+  const writes: unknown[] = [];
+  const view = {
+    session_id: FIRST_SESSION_ID,
+    version: 7,
+    segment: 1,
+    actual_turn_id: null,
+    actual: [],
+    pins: [],
+    next_estimate: null,
+    next_error_code: null,
+  };
+  server.use(
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+      HttpResponse.json([chatSession(FIRST_SESSION_ID, {})]),
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`, () =>
+      HttpResponse.json(chatSession(FIRST_SESSION_ID, {})),
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/:id/context`, () =>
+      HttpResponse.json(view),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/estimates`,
+      () => HttpResponse.json(view),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/sources/search`,
+      () => HttpResponse.json({ sources: [], next_cursor: null, remaining: 0 }),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/sources/read`,
+      () =>
+        HttpResponse.json({
+          source: {
+            source_id: "message:original",
+            kind: "message",
+            title: "来源",
+            version: "v3",
+            locator: {},
+          },
+          content: "必须使用 Python",
+          offset: 2400,
+          next_cursor: null,
+          remaining: 0,
+        }),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/pins`,
+      async ({ request }) => {
+        writes.push(await request.json());
+        return HttpResponse.json({
+          session_id: FIRST_SESSION_ID,
+          version: 8,
+          pins: [],
+        });
+      },
+    ),
+  );
+  renderAt(
+    `/chat-context/${FIRST_SESSION_ID}?view=sources&source=message%3Aoriginal`,
+  );
+  const button = await screen.findByRole("button", { name: "固定选中片段" });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  await screen.findByText("已保存设置版本 8，从下一轮生效");
+  expect(writes).toEqual([
+    expect.objectContaining({
+      expected_version: 7,
+      action: "ADD",
+      mode: "SNIPPET",
+      content: "必须使用 Python",
+      source_id: "message:original",
+      source_version: "v3",
+      offset: 2400,
+    }),
+  ]);
+});
+
 function messageRow(
   id: string,
   role: string,

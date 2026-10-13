@@ -27,6 +27,7 @@ import {
   isPlanItemType,
 } from "@/features/learningPlan/planItemTypes";
 import { Button } from "@/components/ui/button";
+import { chatKeys } from "@/features/chat/api/keys";
 
 type ChatOperationProposalCardProps = {
   sessionId: string;
@@ -1309,6 +1310,52 @@ type OperationCardSpec = {
 };
 
 const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
+  OP_CONTEXT_PIN: {
+    label: (key) => `chat.operationProposal.contextPin.${key}`,
+    PreviewFields: ({ payload, t }) => (
+      <>
+        <div>
+          <dt>{t("chat.pins.actionLabel")}</dt>
+          <dd>
+            {t(`chat.pins.actions.${fieldString(payload, "action") ?? "ADD"}`)}
+          </dd>
+        </div>
+        <div>
+          <dt>{t("chat.contextView.version")}</dt>
+          <dd>{fieldNumber(payload, "expected_version")}</dd>
+        </div>
+        <div>
+          <dt>{t("chat.pins.targetLabel")}</dt>
+          <dd className="whitespace-pre-wrap">
+            {fieldString(payload, "content") ||
+              fieldString(payload, "source_id") ||
+              fieldString(payload, "pin_id")}
+          </dd>
+        </div>
+        {fieldString(payload, "source_version") ? (
+          <div>
+            <dt>{t("chat.contextSources.version")}</dt>
+            <dd className="break-all">
+              {fieldString(payload, "source_version")}
+            </dd>
+          </div>
+        ) : null}
+        <div>
+          <dt className="sr-only">{t("chat.contextView.next")}</dt>
+          <dd className="text-label text-muted-foreground">
+            {t("chat.pins.nextHint")}
+          </dd>
+        </div>
+      </>
+    ),
+    SettledRow: ({ status, result, t }) => (
+      <p className="text-label text-muted-foreground">
+        {status === "APPLIED"
+          ? t("chat.pins.saved", { version: fieldNumber(result, "version") })
+          : t("chat.operationProposal.contextPin.rejected")}
+      </p>
+    ),
+  },
   COURSE_CREATE: {
     label: (key) => `chat.operationProposal.${key}`,
     PreviewFields: CourseCreatePreviewFields,
@@ -1595,7 +1642,12 @@ function ActionableProposalRow({
     ? t(`errors.${proposal.error_code}`, proposal.error_code)
     : null;
   const snapshotStale =
-    status === "FAILED" && proposal.error_code === "OPERATION_SNAPSHOT_STALE";
+    status === "FAILED" &&
+    (proposal.error_code === "OPERATION_SNAPSHOT_STALE" ||
+      (proposal.proposal_type === "OP_CONTEXT_PIN" &&
+        ["CONTEXT_VERSION_CONFLICT", "CONTEXT_SOURCE_STALE"].includes(
+          proposal.error_code ?? "",
+        )));
   const spec = CARD_BY_TYPE[proposal.proposal_type];
   const PreviewFields = spec.PreviewFields;
   const DraftEditor = spec.DraftEditor;
@@ -1784,6 +1836,11 @@ export function ChatOperationProposalCard({
         // 共享引用提案确认 / 拒绝：失效引用缓存（清单与候选，desktop-state.md
         // 「相关列表/聚合 key」——staleTime 60s 内不会自愈）。
         const proposal = proposals.find((item) => item.id === proposalId);
+        if (proposal?.proposal_type === "OP_CONTEXT_PIN") {
+          void queryClient.invalidateQueries({
+            queryKey: [...chatKeys.all, "context", sessionId],
+          });
+        }
         if (
           proposal !== undefined &&
           SHARED_REF_PROPOSAL_TYPES.has(proposal.proposal_type)

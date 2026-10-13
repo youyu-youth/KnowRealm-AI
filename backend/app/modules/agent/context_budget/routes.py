@@ -2,8 +2,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
+from app.modules.agent.context_budget.pins import change_pins
 from app.modules.agent.context_budget.retrieval import read_context, search_context
 from app.modules.agent.context_budget.schemas import (
+    ContextPinChange,
+    ContextPinsOut,
     ContextPreviewRequest,
     ContextReadOut,
     ContextReadRequest,
@@ -34,6 +37,11 @@ async def get_context(session_id: UUID, request: Request) -> ContextViewOut:
         str(session_id),
         ContextPreviewRequest(),
     )
+
+
+@router.post("/api/chat-sessions/{session_id}/context/pins", response_model=ContextPinsOut)
+async def update_pins(session_id: UUID, body: ContextPinChange, request: Request) -> ContextPinsOut:
+    return await change_pins(request.app.state.session_factory, str(session_id), body)
 
 
 @router.post("/api/chat-sessions/{session_id}/context/estimates", response_model=ContextViewOut)

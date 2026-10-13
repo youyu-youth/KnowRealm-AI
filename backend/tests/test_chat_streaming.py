@@ -1134,7 +1134,8 @@ async def test_long_mounted_stream_reads_confirmed_assets_and_valid_citations(
             )
         oversized = await send_message(client, session_id, "材料过长时不发送给模型")
         assert [event for event, _ in oversized] == ["status", "error"]
-        assert oversized[-1][1]["code"] == "CHAT_CONTEXT_TOO_LARGE"
+        # 新增资产改变来源版本，旧引用先失效，不能进入后续预算或模型请求。
+        assert oversized[-1][1]["code"] == "CONTEXT_SOURCE_STALE"
         assert len(captured) == 2
 
 
@@ -1858,7 +1859,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v26"
+        assert rows[0][3] == "chat-library-scope-v28"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2404,6 +2405,10 @@ async def test_scope_mounting_matrix_tool_visibility(
             # 计划工具（工单 05：plan_batch_operations）+ 学习目标四工具与计划
             # 三工具（第三阶段工单 01/02，顺序 = 装配段）。
             assert await visible(free_id) == [
+                "search_context",
+                "read_context",
+                "get_context_settings",
+                "change_context_pin",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2442,6 +2447,10 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(record_session_id) == [
                 "search_library",
+                "search_context",
+                "read_context",
+                "get_context_settings",
+                "change_context_pin",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2480,6 +2489,10 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(course_session_id) == [
                 "search_library",
+                "search_context",
+                "read_context",
+                "get_context_settings",
+                "change_context_pin",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2518,6 +2531,10 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(all_session_id) == [
                 "search_library",
+                "search_context",
+                "read_context",
+                "get_context_settings",
+                "change_context_pin",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2562,6 +2579,10 @@ async def test_scope_mounting_matrix_tool_visibility(
             assert await visible(course_session_id, web=True) == [
                 "search_library",
                 "web_search",
+                "search_context",
+                "read_context",
+                "get_context_settings",
+                "change_context_pin",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2601,6 +2622,10 @@ async def test_scope_mounting_matrix_tool_visibility(
             assert await visible(all_session_id, web=True) == [
                 "search_library",
                 "web_search",
+                "search_context",
+                "read_context",
+                "get_context_settings",
+                "change_context_pin",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2640,6 +2665,10 @@ async def test_scope_mounting_matrix_tool_visibility(
             assert await visible(record_session_id, web=True) == [
                 "search_library",
                 "web_search",
+                "search_context",
+                "read_context",
+                "get_context_settings",
+                "change_context_pin",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",

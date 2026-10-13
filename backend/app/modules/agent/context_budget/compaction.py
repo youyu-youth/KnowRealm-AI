@@ -144,6 +144,9 @@ async def _guard(
 ) -> ChatContextInput:
     if not await runtime.turn_write_allowed(session):
         raise TurnCancelledError
+    from app.modules.agent.context_budget.retrieval import validate_compaction_sources
+
+    await validate_compaction_sources(session, runtime.session_id, row.plan_json)
     bound = await session.get(ChatContextInput, runtime.turn_id)
     if bound is None or (bound.context_version, bound.segment, bound.summary_id) != (
         row.context_version,
@@ -191,6 +194,10 @@ async def compact(
                 .limit(1)
             )
         if cached:
+            from app.modules.agent.context_budget.retrieval import validate_compaction_sources
+
+            async with runtime.session_factory() as session:
+                await validate_compaction_sources(session, runtime.session_id, cached.plan_json)
             cached_plan = json.loads(cached.plan_json)
             current_sources = dict(_source(message) for message in messages)
             inherited = set(cached_plan.get("inherited_ids", []))

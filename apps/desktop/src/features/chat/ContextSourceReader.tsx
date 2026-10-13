@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { contextApi } from "@/features/chat/api/context";
 import { chatKeys } from "@/features/chat/api/keys";
+import { ContextSourcePinActions } from "@/features/chat/ContextSourcePinActions";
 
 export function ContextSourceReader({
   sessionId,
@@ -14,6 +15,8 @@ export function ContextSourceReader({
   quote,
   offset,
   onContinue,
+  pinId,
+  pinVersion,
 }: {
   sessionId: string;
   sourceId: string;
@@ -22,6 +25,8 @@ export function ContextSourceReader({
   quote?: string;
   offset?: number;
   onContinue: (cursor?: string) => void;
+  pinId?: string;
+  pinVersion?: number;
 }) {
   const { t } = useTranslation();
   const body = {
@@ -60,6 +65,13 @@ export function ContextSourceReader({
       ) : null}
       {read.data ? (
         <>
+          <ContextSourcePinActions
+            key={`${read.data.source.version}:${read.data.offset}:${pinId ?? ""}`}
+            sessionId={sessionId}
+            original={read.data}
+            pinId={pinId}
+            pinVersion={pinVersion}
+          />
           <p className="text-body break-words">{read.data.source.title}</p>
           <dl className="text-label text-muted-foreground flex flex-col gap-1 break-all">
             <div>

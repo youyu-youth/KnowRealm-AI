@@ -212,7 +212,11 @@ export function ChatResponseProcess({ process }: { process: Process }) {
       );
     }
     return [
-      t("chat.process.tool", { tool: entry.tool }),
+      t("chat.process.tool", {
+        tool: t(`chat.process.toolNames.${entry.tool}`, {
+          defaultValue: entry.tool,
+        }),
+      }),
       entry.query,
       t(`chat.process.toolStatus.${entry.status}`),
     ]

@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.agent.schemas import ChatPageSnapshot
 from app.modules.settings.model_budget import ModelCapabilityOut
@@ -90,6 +92,8 @@ class ContextViewOut(BaseModel):
     next_error_code: str | None
     compactions: list[CompactionOut] = Field(default_factory=lambda: list[CompactionOut]())
     active_summary: CompactionOut | None = None
+    pins: list[ContextPinOut] = Field(default_factory=lambda: list[ContextPinOut]())
+    actual_pins: list[ContextPinOut] = Field(default_factory=lambda: list[ContextPinOut]())
 
 
 class ContextPreviewRequest(BaseModel):
@@ -136,3 +140,65 @@ class ContextReadOut(BaseModel):
     offset: int
     next_cursor: str | None
     remaining: int
+
+
+class ContextPin(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str
+    mode: Literal["TEXT", "SNIPPET", "OBJECT"]
+    content: str = ""
+    source_id: str | None = None
+    source_version: str | None = None
+    offset: int = 0
+    title: str
+
+
+class ContextPinOut(ContextPin):
+    status: Literal["VALID", "STALE", "UNAVAILABLE"] = "VALID"
+    reason: str | None = None
+    injected: bool = False
+
+
+class ContextPinChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1, description="查看上下文获得的预期设置版本")
+    action: Literal["ADD", "UPDATE", "REMOVE"] = "ADD"
+    pin_id: str | None = Field(default=None, max_length=36)
+    mode: Literal["TEXT", "SNIPPET", "OBJECT"] | None = None
+    content: str = Field(default="", max_length=8000)
+    source_id: str | None = Field(default=None, max_length=200)
+    source_version: str | None = Field(default=None, max_length=128)
+    offset: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def validate_change(self) -> ContextPinChange:
+        if self.action == "ADD" and self.pin_id:
+            raise ValueError("ADD cannot replace an existing pin")
+        if self.action in ("UPDATE", "REMOVE") and not self.pin_id:
+            raise ValueError("pin_id is required")
+        if self.action == "REMOVE":
+            return self
+        if self.mode is None:
+            raise ValueError("mode is required")
+        if self.mode == "TEXT":
+            if not self.content.strip() or self.source_id is not None:
+                raise ValueError("explicit text without source_id is required")
+        elif not self.source_id or not self.source_version:
+            raise ValueError("explicit source_id and source_version are required")
+        elif self.mode == "SNIPPET" and not self.content.strip():
+            raise ValueError("exact source text is required")
+        elif self.mode == "OBJECT" and (
+            not self.source_id.startswith(("record:", "library:")) or self.content
+        ):
+            raise ValueError("object must identify a material without copying its body")
+        return self
+
+
+class ContextPinPayload(ContextPinChange):
+    session_id: str = Field(min_length=36, max_length=36)
+
+
+class ContextPinsOut(BaseModel):
+    session_id: str
+    version: int
+    pins: list[ContextPinOut]

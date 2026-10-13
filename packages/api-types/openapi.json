@@ -3237,6 +3237,209 @@
         "title": "ConfirmRelationDecision",
         "type": "object"
       },
+      "ContextPinChange": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "ADD",
+            "enum": [
+              "ADD",
+              "UPDATE",
+              "REMOVE"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "content": {
+            "default": "",
+            "maxLength": 8000,
+            "title": "Content",
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "查看上下文获得的预期设置版本",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "TEXT",
+                  "SNIPPET",
+                  "OBJECT"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "offset": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "pin_id": {
+            "anyOf": [
+              {
+                "maxLength": 36,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin Id"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "ContextPinChange",
+        "type": "object"
+      },
+      "ContextPinOut": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "default": "",
+            "title": "Content",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "injected": {
+            "default": false,
+            "title": "Injected",
+            "type": "boolean"
+          },
+          "mode": {
+            "enum": [
+              "TEXT",
+              "SNIPPET",
+              "OBJECT"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "offset": {
+            "default": 0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          },
+          "status": {
+            "default": "VALID",
+            "enum": [
+              "VALID",
+              "STALE",
+              "UNAVAILABLE"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "mode",
+          "title"
+        ],
+        "title": "ContextPinOut",
+        "type": "object"
+      },
+      "ContextPinsOut": {
+        "properties": {
+          "pins": {
+            "items": {
+              "$ref": "#/components/schemas/ContextPinOut"
+            },
+            "title": "Pins",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_id",
+          "version",
+          "pins"
+        ],
+        "title": "ContextPinsOut",
+        "type": "object"
+      },
       "ContextPolicy": {
         "properties": {
           "base_url": {
@@ -3548,6 +3751,13 @@
             "title": "Actual",
             "type": "array"
           },
+          "actual_pins": {
+            "items": {
+              "$ref": "#/components/schemas/ContextPinOut"
+            },
+            "title": "Actual Pins",
+            "type": "array"
+          },
           "actual_turn_id": {
             "anyOf": [
               {
@@ -3586,6 +3796,13 @@
                 "type": "null"
               }
             ]
+          },
+          "pins": {
+            "items": {
+              "$ref": "#/components/schemas/ContextPinOut"
+            },
+            "title": "Pins",
+            "type": "array"
           },
           "segment": {
             "title": "Segment",
@@ -7599,6 +7816,7 @@
           "OP_UNDO",
           "OP_GOAL_CREATE",
           "OP_GOAL_UPDATE",
+          "OP_CONTEXT_PIN",
           "OP_PLAN_CONFIRM",
           "OP_PLAN_ITEM_UPDATE",
           "OP_PLAN_ITEM_COMPLETE",
@@ -13350,6 +13568,95 @@
           }
         },
         "summary": "Preview Context",
+        "tags": [
+          "chat-context"
+        ]
+      }
+    },
+    "/api/chat-sessions/{session_id}/context/pins": {
+      "post": {
+        "operationId": "update_pins_api_chat_sessions__session_id__context_pins_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextPinChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextPinsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update Pins",
         "tags": [
           "chat-context"
         ]

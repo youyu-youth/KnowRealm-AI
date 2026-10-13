@@ -893,7 +893,7 @@ async def test_compaction_usage_projects_all_batches_of_owning_turn(
                 segment=1,
                 status="COMPLETED",
                 requests_used=2,
-                plan_json='{"chunks": [[]]}',
+                plan_json='{"chunks": [[]], "sources": {}}',
                 results_json=f"[{summary}]",
                 summary_json=summary,
                 covered_json="[]",
@@ -905,7 +905,7 @@ async def test_compaction_usage_projects_all_batches_of_owning_turn(
                 segment=1,
                 status=batch_status,
                 requests_used=2,
-                plan_json='{"chunks": [[]]}',
+                plan_json='{"chunks": [[]], "sources": {}}',
                 covered_json="[]",
             )
             db.add_all([first, second])

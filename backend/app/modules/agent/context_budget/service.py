@@ -23,6 +23,7 @@ from app.modules.agent.context_budget.models import (
 )
 from app.modules.agent.context_budget.policy import estimate_input, policy_for
 from app.modules.agent.context_budget.schemas import (
+    ContextPinOut,
     ContextPolicy,
     ContextPreviewRequest,
     ContextViewOut,
@@ -53,6 +54,15 @@ async def bind_context(
     session: AsyncSession, turn_id: str, session_id: str, policy: ContextPolicy
 ) -> None:
     state = await initialize_context(session, session_id)
+    if state.summary_id:
+        from app.modules.agent.context_budget.retrieval import validate_compaction_sources
+
+        summary = await session.get(ChatCompaction, state.summary_id)
+        if summary:
+            try:
+                await validate_compaction_sources(session, session_id, summary.plan_json)
+            except CodedHTTPException:
+                state.summary_id = None
     session.add(
         ChatContextInput(
             turn_id=turn_id,
@@ -60,6 +70,7 @@ async def bind_context(
             policy_json=policy.model_dump_json(),
             segment=state.segment,
             summary_id=state.summary_id,
+            pins_json=state.pins_json,
         )
     )
 
@@ -136,6 +147,15 @@ async def apply_history(
                         result.extend(saved[start + 1 :])
         result.append(message)
     summary = await session.get(ChatCompaction, summary_id) if summary_id else None
+    if summary:
+        from app.modules.agent.context_budget.retrieval import validate_compaction_sources
+
+        owner = await session.get(ChatTurn, summary.turn_id)
+        if owner:
+            try:
+                await validate_compaction_sources(session, owner.session_id, summary.plan_json)
+            except CodedHTTPException:
+                summary = None
     if summary and summary.status == "COMPLETED":
         covered = set(json.loads(summary.covered_json))
         result = [message for message in result if message.id not in covered]
@@ -199,6 +219,15 @@ async def view_context(
             next_estimate=None,
             next_error_code=None,
         )
+        from app.modules.agent.context_budget.pins import resolve_pins
+
+        result.pins = await resolve_pins(session, chat, state.pins_json, state.segment)
+        answer = next((row for row in reversed(requests) if row.purpose == "ANSWER"), None)
+        result.actual_pins = (
+            [ContextPinOut.model_validate(pin) for pin in json.loads(answer.pins_json)]
+            if answer
+            else []
+        )
         from app.modules.agent.context_budget.compaction import compaction_out
 
         compactions = (
@@ -225,6 +254,14 @@ async def view_context(
                 if item.status != "COMPLETED":
                     item.status = "CANCELLED"
         active = await session.get(ChatCompaction, state.summary_id) if state.summary_id else None
+        if active:
+            from app.modules.agent.context_budget.retrieval import validate_compaction_sources
+
+            try:
+                await validate_compaction_sources(session, session_id, active.plan_json)
+            except CodedHTTPException:
+                active = None
+                state.summary_id = None
         if active:
             active_bound = await session.get(ChatContextInput, active.turn_id)
             active_used = await session.scalar(
@@ -267,8 +304,35 @@ async def view_context(
         )
         async with session_factory() as session:
             preview_messages = await apply_history(session, context.messages, state.summary_id)
+        from app.modules.agent.context_budget.pins import select_pinned_material
+        from app.modules.agent.runtime import AgentRuntimeContext
+
+        system = next((m for m in preview_messages if isinstance(m, SystemMessage)), None)
+        history: list[AnyMessage] = [
+            m for m in preview_messages if not isinstance(m, SystemMessage)
+        ]
+        runtime = AgentRuntimeContext(
+            session_factory=session_factory,
+            session_id=session_id,
+            scope=context.scope,
+            record_id=context.record_id,
+            library_item_id=context.library_item_id,
+            course_id=context.course_id,
+        )
+        system, _, result.pins, pin_overflow = await select_pinned_material(
+            runtime,
+            policy,
+            state.pins_json,
+            state.segment,
+            system,
+            history,
+            config.tools,
+        )
+        preview_messages = ([system] if system else []) + history
         result.next_estimate = estimate_input(policy, preview_messages, config.tools)
-        result.next_error_code = result.next_estimate.error_code
+        result.next_error_code = (
+            "CONTEXT_PINS_TOO_LARGE" if pin_overflow else result.next_estimate.error_code
+        )
     except CodedHTTPException as exc:
         result.next_error_code = exc.code
     except ChatContextTooLargeError:
