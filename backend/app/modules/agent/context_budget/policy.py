@@ -2,7 +2,7 @@ import json
 from collections.abc import Sequence
 from hashlib import sha256
 from math import ceil
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.messages import AnyMessage, convert_to_openai_messages
 from langchain_core.utils.function_calling import convert_to_openai_tool
@@ -20,6 +20,16 @@ def policy_for(provider: LlmProviderConfig) -> ContextPolicy:
 
 def _encoded(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def request_usage(usage: object) -> dict[str, int] | None:
+    if not isinstance(usage, dict):
+        return None
+    return {
+        key: value
+        for key, value in cast(dict[str, object], usage).items()
+        if key in ("input_tokens", "output_tokens", "total_tokens") and isinstance(value, int)
+    } or None
 
 
 def estimate_input(

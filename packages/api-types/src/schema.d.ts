@@ -3885,7 +3885,10 @@ export interface components {
         };
         /** CompactionOut */
         CompactionOut: {
-            /** Allowance */
+            /**
+             * Allowance
+             * @description 所属轮次的摘要请求总额度
+             */
             allowance: number;
             /** Completed Chunks */
             completed_chunks: number;
@@ -3895,7 +3898,10 @@ export interface components {
             error_code: string | null;
             /** Id */
             id: string;
-            /** Requests Used */
+            /**
+             * Requests Used
+             * @description 当前压缩批次的实际摘要请求次数
+             */
             requests_used: number;
             /**
              * Status
@@ -3905,6 +3911,11 @@ export interface components {
             summary: components["schemas"]["ConversationSummary"] | null;
             /** Total Chunks */
             total_chunks: number;
+            /**
+             * Turn Requests Used
+             * @description 所属轮次所有批次的累计实际摘要请求次数
+             */
+            turn_requests_used: number;
         };
         /** ConceptAnchorSourceOut */
         ConceptAnchorSourceOut: {

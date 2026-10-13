@@ -2629,7 +2629,7 @@
     },
     "compaction": {
       "title": "会话压缩",
-      "progress": "分块 {{completed}}/{{total}} · 摘要请求 {{used}}/{{allowance}}",
+      "progress": "分块 {{completed}}/{{total}} · 本批请求 {{used}} · 所属轮次摘要请求 {{turnUsed}}/{{allowance}}",
       "showSummary": "查看六栏摘要与来源",
       "summaryHint": "摘要是可追溯的派生内容，不保证语义无损，不作为逐字证据、长期记忆或执行许可。",
       "covered": "程序记录覆盖 {{count}} 条消息来源",

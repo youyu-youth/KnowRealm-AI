@@ -25,7 +25,7 @@ from app.modules.agent.context_budget.models import (
     ChatContextState,
     ChatModelRequest,
 )
-from app.modules.agent.context_budget.policy import estimate_input
+from app.modules.agent.context_budget.policy import estimate_input, request_usage
 from app.modules.agent.context_budget.schemas import (
     CompactionOut,
     ContextPolicy,
@@ -34,6 +34,7 @@ from app.modules.agent.context_budget.schemas import (
 )
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.runtime import AgentRuntimeContext
+from app.modules.llm.service import is_json_schema_rejection, json_mode_prompt
 from app.modules.settings.model_budget import output_reserve
 from app.shared.errors import CodedHTTPException
 
@@ -55,7 +56,7 @@ def summary_message(row: ChatCompaction) -> AIMessage:
     return AIMessage(content=SUMMARY_PREFIX + cast(str, row.summary_json), id=f"summary-{row.id}")
 
 
-def compaction_out(row: ChatCompaction, allowance: int) -> CompactionOut:
+def compaction_out(row: ChatCompaction, allowance: int, turn_requests_used: int) -> CompactionOut:
     plan = json.loads(row.plan_json)
     return CompactionOut(
         id=row.id,
@@ -63,6 +64,7 @@ def compaction_out(row: ChatCompaction, allowance: int) -> CompactionOut:
         completed_chunks=len(json.loads(row.results_json)),
         total_chunks=len(plan["chunks"]),
         requests_used=row.requests_used,
+        turn_requests_used=turn_requests_used,
         allowance=allowance,
         covered_message_ids=json.loads(row.covered_json),
         summary=json.loads(row.summary_json) if row.summary_json else None,
@@ -70,12 +72,13 @@ def compaction_out(row: ChatCompaction, allowance: int) -> CompactionOut:
     )
 
 
-def _summary_input(previous: object, chunk: object) -> list[AnyMessage]:
+def _summary_input(previous: object, chunk: object, *, json_mode: bool = False) -> list[AnyMessage]:
+    prompt = json.dumps({"previous_summary": previous, "new_history": chunk}, ensure_ascii=False)
+    if json_mode:
+        prompt = json_mode_prompt(prompt, ConversationSummary)
     return [
         SystemMessage(SUMMARY_PROMPT),
-        HumanMessage(
-            json.dumps({"previous_summary": previous, "new_history": chunk}, ensure_ascii=False)
-        ),
+        HumanMessage(prompt),
     ]
 
 
@@ -361,14 +364,6 @@ async def _run_chunks(
             continue
         previous = results[-1] if results else plan["previous"]
         chunk = plan["chunks"][len(results)]
-        summary_input = _summary_input(previous, chunk)
-        summary_estimate = estimate_input(policy, summary_input, [SUMMARY_TOOL], summary=True)
-        if summary_estimate.error_code:
-            raise CodedHTTPException(
-                code=summary_estimate.error_code,
-                status_code=409,
-                detail="增量摘要输入超限，保留分块等待调整",
-            )
         allowed = {
             part["source_id"] for block in plan["chunks"][: len(results) + 1] for part in block
         }
@@ -379,7 +374,23 @@ async def _run_chunks(
                 for item in items
                 for source_id in item["source_ids"]
             )
-        for _retry in range(2):
+        while True:
+            method = cast(
+                Literal["json_schema", "json_mode"], plan.get("summary_method", "json_schema")
+            )
+            summary_input = _summary_input(previous, chunk, json_mode=method == "json_mode")
+            summary_estimate = estimate_input(
+                policy,
+                summary_input,
+                [SUMMARY_TOOL] if method == "json_schema" else [],
+                summary=True,
+            )
+            if summary_estimate.error_code:
+                raise CodedHTTPException(
+                    code=summary_estimate.error_code,
+                    status_code=409,
+                    detail="增量摘要输入超限，保留分块等待调整",
+                )
             request_id = ""
             await outbound_check()
             async with runtime.session_factory() as session, session.begin():
@@ -416,10 +427,13 @@ async def _run_chunks(
                 response = cast(
                     dict[str, Any],
                     await model.with_structured_output(
-                        ConversationSummary, method="json_schema", include_raw=True, strict=True
+                        ConversationSummary,
+                        method=method,
+                        include_raw=True,
+                        strict=True if method == "json_schema" else None,
+                        max_tokens=summary_estimate.output_reserve,
                     ).ainvoke(
                         summary_input,
-                        max_tokens=summary_estimate.output_reserve,
                         config={"tags": ["nostream", "conversation-summary"], "callbacks": []},
                     ),
                 )
@@ -444,11 +458,19 @@ async def _run_chunks(
                         ),
                     )
                     retries = plan.setdefault("retried_chunks", [])
-                    retry_allowed = transient and len(results) not in retries
-                    if retry_allowed:
+                    transient_retry = transient and len(results) not in retries
+                    format_fallback = (
+                        method == "json_schema"
+                        and isinstance(exc, openai.BadRequestError)
+                        and is_json_schema_rejection(exc)
+                    )
+                    if transient_retry:
                         retries.append(len(results))
+                    if format_fallback:
+                        plan["summary_method"] = "json_mode"
+                    if transient_retry or format_fallback:
                         row.plan_json = json.dumps(plan, ensure_ascii=False)
-                if retry_allowed:
+                if transient_retry or format_fallback:
                     continue
                 raise
             async with runtime.session_factory() as session, session.begin():
@@ -458,7 +480,7 @@ async def _run_chunks(
                 request = await session.get(ChatModelRequest, request_id)
                 assert request is not None
                 request.status = ModelRequestStatus.COMPLETED
-                usage = getattr(response.get("raw"), "usage_metadata", None)
+                usage = request_usage(getattr(response.get("raw"), "usage_metadata", None))
                 request.usage_json = json.dumps(usage) if usage else None
                 row.results_json = json.dumps([*results, summary.model_dump()], ensure_ascii=False)
             break

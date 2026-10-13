@@ -2767,6 +2767,7 @@
       "CompactionOut": {
         "properties": {
           "allowance": {
+            "description": "所属轮次的摘要请求总额度",
             "title": "Allowance",
             "type": "integer"
           },
@@ -2797,6 +2798,7 @@
             "type": "string"
           },
           "requests_used": {
+            "description": "当前压缩批次的实际摘要请求次数",
             "title": "Requests Used",
             "type": "integer"
           },
@@ -2824,6 +2826,11 @@
           "total_chunks": {
             "title": "Total Chunks",
             "type": "integer"
+          },
+          "turn_requests_used": {
+            "description": "所属轮次所有批次的累计实际摘要请求次数",
+            "title": "Turn Requests Used",
+            "type": "integer"
           }
         },
         "required": [
@@ -2832,6 +2839,7 @@
           "completed_chunks",
           "total_chunks",
           "requests_used",
+          "turn_requests_used",
           "allowance",
           "covered_message_ids",
           "summary",

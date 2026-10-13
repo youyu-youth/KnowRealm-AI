@@ -4,15 +4,16 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx2 as httpx
 import openai
 import pytest
-from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
+from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, convert_to_messages
 from langchain_core.outputs import ChatGenerationChunk
 from langchain_core.runnables import RunnableLambda
-from sqlalchemy import select
+from langchain_openai import ChatOpenAI
+from sqlalchemy import func, select
 
 from app.modules.agent.context_budget.compaction import ConversationSummary, compact, plan_chunks
 from app.modules.agent.context_budget.models import (
@@ -21,7 +22,9 @@ from app.modules.agent.context_budget.models import (
     ChatContextState,
     ChatModelRequest,
 )
-from app.modules.agent.context_budget.policy import policy_for
+from app.modules.agent.context_budget.policy import estimate_input, policy_for
+from app.modules.agent.context_budget.schemas import ContextPolicy
+from app.modules.agent.context_budget.service import bind_context
 from app.modules.agent.models import ChatMessage
 from app.modules.agent.runtime import AgentRuntimeContext, current_agent_runtime
 from app.modules.agent.schemas import ChatRole
@@ -29,6 +32,7 @@ from app.modules.agent.turns.models import ChatTurn
 from app.modules.agent.turns.service import turn_job_input
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus
+from app.modules.llm.service import build_chat_model
 from app.modules.settings.config import LlmProviderConfig
 from app.modules.settings.model_budget import ModelBudgetConfig
 from tests.test_chat_turns import (
@@ -121,6 +125,196 @@ async def wait_summary_calls(calls: list[Any], count: int) -> None:
             return
         await asyncio.sleep(0.1)
     pytest.fail("摘要请求未到达模型接缝")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "case", ["native", "fallback", "transient", "invalid", "auth", "config", "resume"]
+)
+async def test_summary_sdk_json_mode_compatibility(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    payloads: list[dict[str, Any]] = []
+    transient_sent = False
+
+    async def transport(request: httpx.Request) -> httpx.Response:
+        nonlocal transient_sent
+        body = json.loads(request.content)
+        if not body.get("response_format"):
+            chunks: list[dict[str, Any]] = [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": "完成"},
+                    "finish_reason": None,
+                },
+                {"index": 0, "delta": {}, "finish_reason": "stop"},
+            ]
+            wire = "".join(
+                "data: "
+                + json.dumps(
+                    {
+                        "id": "answer",
+                        "object": "chat.completion.chunk",
+                        "created": 0,
+                        "model": "stub-chat-model",
+                        "choices": [chunk],
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n\n"
+                for chunk in chunks
+            )
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/event-stream"},
+                content=wire + "data: [DONE]\n\n",
+            )
+        payloads.append(body)
+        runtime = current_agent_runtime()
+        assert runtime is not None
+        async with runtime.session_factory() as db:
+            used = await db.scalar(
+                select(func.sum(ChatCompaction.requests_used)).where(
+                    ChatCompaction.turn_id == runtime.turn_id
+                )
+            )
+            started = await db.scalar(
+                select(ChatModelRequest.id).where(
+                    ChatModelRequest.turn_id == runtime.turn_id,
+                    ChatModelRequest.purpose == "SUMMARY",
+                    ChatModelRequest.status == "STARTED",
+                )
+            )
+            assert used == len(payloads) and started is not None
+        mode = body["response_format"]["type"]
+        if mode == "json_schema" and case != "native":
+            status = 401 if case == "auth" else 400
+            message = "response_format type json_schema is not supported; use json_object"
+            if case == "auth":
+                message = "Invalid API key"
+            elif case == "config":
+                message = "max_tokens must be a positive integer"
+            return httpx.Response(
+                status, json={"error": {"message": message, "code": "invalid_request_error"}}
+            )
+        if case == "transient" and not transient_sent:
+            transient_sent = True
+            return httpx.Response(503, json={"error": {"message": "unavailable"}})
+        data, _end = json.JSONDecoder().raw_decode(body["messages"][-1]["content"])
+        summary: dict[str, Any] = data["previous_summary"] or {
+            key: [] for key in ConversationSummary.model_fields
+        }
+        if not summary["goals"] and data["new_history"]:
+            summary["goals"] = [
+                {"text": "继续任务", "source_ids": [data["new_history"][0]["source_id"]]}
+            ]
+        content = "invalid JSON" if case == "invalid" else json.dumps(summary, ensure_ascii=False)
+        return httpx.Response(
+            200,
+            json={
+                "id": "summary",
+                "object": "chat.completion",
+                "created": 0,
+                "model": "stub-chat-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": content},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18},
+            },
+        )
+
+    async with openai.DefaultAsyncHttpxClient(
+        transport=httpx.MockTransport(transport), trust_env=False
+    ) as sdk_client:
+
+        def patches(patch: pytest.MonkeyPatch) -> None:
+            def sdk_model(provider: LlmProviderConfig, _client: object) -> ChatOpenAI:
+                return build_chat_model(provider, sdk_client)
+
+            patch.setattr("app.modules.llm.service.ChatOpenAI", ChatOpenAI)
+            patch.setattr("app.modules.agent.graph.build_chat_model", sdk_model)
+
+        async with recovery_app(tmp_path, monkeypatch, patches=patches) as (
+            _app,
+            client,
+            _captured,
+        ):
+            sid = await create_session(client)
+            await seed_history(_app, sid, 45 if case == "resume" else 16, 1000)
+            await configure(client)
+            tid = (await submit(client, sid, "继续", request_id=f"json-mode-{case}")).json()["id"]
+            if case == "resume":
+                from tests.test_chat_turns_recovery import wait_stable_status
+
+                waiting = await wait_stable_status(client, tid, ("WAITING_USER",))
+                assert waiting["waiting_reason"]["kind"] == "CONTEXT_COMPACTION_LIMIT"
+                assert len(payloads) == 4
+                view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+                assert view["active_summary"] is None
+                assert view["compactions"][0]["completed_chunks"] == 3
+            else:
+                result = await wait_terminal(client, tid)
+                assert result["status"] == (
+                    "FAILED" if case in ("invalid", "auth", "config") else "COMPLETED"
+                ), result
+        if case == "resume":
+            async with recovery_app(tmp_path, monkeypatch, patches=patches) as (
+                _app,
+                client,
+                _captured,
+            ):
+                assert (
+                    await client.post(f"/api/chat-turns/{tid}/resume", json={})
+                ).status_code == 200
+                result = await wait_terminal(client, tid)
+                assert result["status"] == "COMPLETED", result
+                view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+                assert view["compactions"][0]["requests_used"] == len(payloads) <= 8
+        else:
+            async with recovery_app(tmp_path, monkeypatch, patches=patches) as (
+                _app,
+                client,
+                _captured,
+            ):
+                view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        summaries = [row for row in view["actual"] if row["purpose"] == "SUMMARY"]
+        assert len(summaries) == len(payloads)
+        assert view["compactions"][0]["requests_used"] == len(payloads)
+        modes = [body["response_format"]["type"] for body in payloads]
+        if case == "native":
+            assert set(modes) == {"json_schema"}
+        elif case in ("auth", "config"):
+            assert modes == ["json_schema"] and view["active_summary"] is None
+        else:
+            assert modes[0] == "json_schema" and set(modes[1:]) == {"json_object"}
+            assert summaries[0]["status"] == "FAILED" and summaries[0]["usage"] is None
+        for row, body in zip(summaries, payloads, strict=True):
+            if row["status"] == "COMPLETED":
+                assert row["usage"] == {
+                    "input_tokens": 12,
+                    "output_tokens": 6,
+                    "total_tokens": 18,
+                }
+            assert (
+                body.get("max_tokens", body.get("max_completion_tokens"))
+                == row["estimate"]["output_reserve"]
+                == 1024
+            )
+            if body["response_format"]["type"] == "json_object":
+                assert "JSON Schema" in body["messages"][-1]["content"]
+                messages = cast(list[AnyMessage], convert_to_messages(body["messages"]))
+                expected = estimate_input(
+                    ContextPolicy.model_validate(row["estimate"]["policy"]),
+                    messages,
+                    [],
+                    summary=True,
+                )
+                assert row["estimate"]["input_tokens"] == expected.input_tokens
+                assert row["estimate"]["tool_count"] == 0
 
 
 @pytest.mark.anyio
@@ -598,7 +792,11 @@ async def test_four_calls_wait_and_explicit_continue_adds_four(
 ) -> None:
     calls: list[Any] = []
     summary_model(monkeypatch, calls)
-    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+    async with turns_app(tmp_path, monkeypatch, replies=[["完成"], ["再次完成"]]) as (
+        app,
+        client,
+        captured,
+    ):
         sid = await create_session(client)
         await seed_history(app, sid, 45, 1000)
         await configure(client)
@@ -620,6 +818,115 @@ async def test_four_calls_wait_and_explicit_continue_adds_four(
         after = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
         assert after["compactions"][0]["allowance"] == 8
         assert 4 < len(calls) <= 8
+        active = after["active_summary"]
+        assert active["requests_used"] == len(calls) and active["allowance"] == 8
+        await configure(client, window=200000)
+        second = (
+            await submit(client, sid, "继续下一步", request_id="compaction-quota-next")
+        ).json()["id"]
+        assert (await wait_terminal(client, second))["status"] == "COMPLETED"
+        next_view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert next_view["actual_turn_id"] == second and next_view["compactions"] == []
+        assert next_view["active_summary"] == active
+        assert len(calls) == active["requests_used"]
+        async with app.state.session_factory() as db:
+            assert (await db.get(ChatContextInput, turn_id)).summary_allowance == 8
+            assert (await db.get(ChatContextInput, second)).summary_allowance == 4
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "batch_status,turn_status",
+    [("WAITING", "WAITING_USER"), ("FAILED", "FAILED"), ("RUNNING", "CANCELLED")],
+)
+async def test_compaction_usage_projects_all_batches_of_owning_turn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, batch_status: str, turn_status: str
+) -> None:
+    """持久事实夹具验证 REST 投影，不以合成分块记录代替模型/Worker 执行验收。"""
+    async with turns_app(tmp_path, monkeypatch) as (app, client, _captured):
+        sid = await create_session(client)
+        policy = policy_for(
+            LlmProviderConfig(
+                "https://stub.example.com/v1",
+                "key",
+                "stub-chat-model",
+                ModelBudgetConfig(context_window=40000),
+            )
+        )
+        summary = json.dumps({key: [] for key in ConversationSummary.model_fields})
+        async with app.state.session_factory() as db, db.begin():
+            message = ChatMessage(session_id=sid, role=ChatRole.USER, content="继续")
+            db.add(message)
+            await db.flush()
+            turn = ChatTurn(
+                session_id=sid,
+                user_message_id=message.id,
+                request_id="usage-owner",
+                request_fingerprint="owner",
+                status=turn_status,
+            )
+            db.add(turn)
+            await db.flush()
+            await bind_context(db, turn.id, sid, policy)
+            first = ChatCompaction(
+                turn_id=turn.id,
+                input_fingerprint="first",
+                context_version=1,
+                segment=1,
+                status="COMPLETED",
+                requests_used=2,
+                plan_json='{"chunks": [[]]}',
+                results_json=f"[{summary}]",
+                summary_json=summary,
+                covered_json="[]",
+            )
+            second = ChatCompaction(
+                turn_id=turn.id,
+                input_fingerprint="second",
+                context_version=1,
+                segment=1,
+                status=batch_status,
+                requests_used=2,
+                plan_json='{"chunks": [[]]}',
+                covered_json="[]",
+            )
+            db.add_all([first, second])
+            await db.flush()
+            (await db.get(ChatContextState, sid)).summary_id = first.id
+        view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert [row["requests_used"] for row in view["compactions"]] == [2, 2]
+        assert all(
+            row["turn_requests_used"] == 4 and row["allowance"] == 4 for row in view["compactions"]
+        )
+        assert view["compactions"][-1]["status"] == (
+            "CANCELLED" if turn_status == "CANCELLED" else batch_status
+        )
+        assert view["active_summary"]["requests_used"] == 2
+        assert view["active_summary"]["turn_requests_used"] == 4
+        async with app.state.session_factory() as db, db.begin():
+            (await db.get(ChatContextInput, turn.id)).summary_allowance = 8
+            (await db.get(ChatTurn, turn.id)).status = "CANCELLED"
+            message = ChatMessage(session_id=sid, role=ChatRole.USER, content="短问")
+            db.add(message)
+            await db.flush()
+            latest = ChatTurn(
+                session_id=sid,
+                user_message_id=message.id,
+                request_id="usage-next",
+                request_fingerprint="next",
+                status="COMPLETED",
+            )
+            db.add(latest)
+            await db.flush()
+            await bind_context(db, latest.id, sid, policy)
+        next_view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()
+        assert next_view["actual_turn_id"] == latest.id and next_view["compactions"] == []
+        assert next_view["active_summary"]["turn_requests_used"] == 4
+        assert next_view["active_summary"]["allowance"] == 8
+        async with app.state.session_factory() as db:
+            assert (await db.get(ChatContextInput, latest.id)).summary_allowance == 4
+            assert (await db.get(ChatCompaction, first.id)).requests_used == 2
+            assert (await db.get(ChatCompaction, second.id)).requests_used == 2
 
 
 @pytest.mark.anyio

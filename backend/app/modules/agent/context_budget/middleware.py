@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from typing import Any
 
 import openai
 from langchain.agents.middleware.types import (  # pyright: ignore[reportMissingTypeStubs]
@@ -13,7 +13,7 @@ from sqlalchemy import and_, or_, select
 
 from app.modules.agent.context_budget.compaction import compact
 from app.modules.agent.context_budget.models import ChatModelRequest
-from app.modules.agent.context_budget.policy import estimate_input
+from app.modules.agent.context_budget.policy import estimate_input, request_usage
 from app.modules.agent.context_budget.schemas import ContextPolicy, ModelRequestStatus
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.runtime import AgentRuntimeContext
@@ -152,14 +152,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             ),
             None,
         )
-        if isinstance(usage, dict):
-            usage = {
-                key: value
-                for key, value in cast(dict[str, object], usage).items()
-                if key in ("input_tokens", "output_tokens", "total_tokens")
-                and isinstance(value, int)
-            } or None
-        await self._finish(row.id, ModelRequestStatus.COMPLETED, usage)
+        await self._finish(row.id, ModelRequestStatus.COMPLETED, request_usage(usage))
         return response
 
     async def _check_outbound(self) -> None:

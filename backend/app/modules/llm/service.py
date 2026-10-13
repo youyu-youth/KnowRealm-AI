@@ -128,6 +128,21 @@ class StructuredGenerationError(Exception):
 SummaryGenerationError = StructuredGenerationError
 
 
+def is_json_schema_rejection(error: openai.BadRequestError) -> bool:
+    detail = f"{error} {error.response.text}".lower()
+    return (error.param or "").startswith("response_format") or any(
+        field in detail for field in ("response_format", "json_schema")
+    )
+
+
+def json_mode_prompt(prompt: str, schema: type[BaseModel]) -> str:
+    return (
+        prompt
+        + "\n必须只返回一个符合以下 JSON Schema 的 JSON 对象，不要输出其他内容：\n"
+        + json.dumps(schema.model_json_schema(), ensure_ascii=False)
+    )
+
+
 class _OpenAiCompatibleStructuredModel:
     def __init__(self, output_schema: type[BaseModel]) -> None:
         self._output_schema = output_schema
@@ -158,9 +173,9 @@ class _OpenAiCompatibleStructuredModel:
             )
             try:
                 raw_response = cast(dict[str, object], await structured.ainvoke(prompt))
-            except openai.BadRequestError:
-                # 端点不支持 json_schema（如 DeepSeek 只接受 json_object）。
-                # 400 拒绝请求不计费，此降级不构成额外的付费重试。
+            except openai.BadRequestError as exc:
+                if not is_json_schema_rejection(exc):
+                    raise
                 raw_response = await self._generate_json_mode(llm, prompt)
             output = raw_response.get("parsed")
             parsing_error = raw_response.get("parsing_error")
@@ -188,13 +203,8 @@ class _OpenAiCompatibleStructuredModel:
             include_raw=True,
             max_tokens=8192,
         )
-        schema_text = json.dumps(self._output_schema.model_json_schema(), ensure_ascii=False)
         # json_object 端点依赖提示词携带结构；8192 为推理模型（思考与正文同计费）留足输出空间
-        json_prompt = (
-            prompt
-            + "\n必须只返回一个符合以下 JSON Schema 的 JSON 对象，不要输出其他内容：\n"
-            + schema_text
-        )
+        json_prompt = json_mode_prompt(prompt, self._output_schema)
         return cast(dict[str, object], await structured.ainvoke(json_prompt))
 
 

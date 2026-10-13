@@ -72,8 +72,9 @@ class CompactionOut(BaseModel):
     status: Literal["RUNNING", "WAITING", "FAILED", "COMPLETED", "CANCELLED"]
     completed_chunks: int
     total_chunks: int
-    requests_used: int
-    allowance: int
+    requests_used: int = Field(description="当前压缩批次的实际摘要请求次数")
+    turn_requests_used: int = Field(description="所属轮次所有批次的累计实际摘要请求次数")
+    allowance: int = Field(description="所属轮次的摘要请求总额度")
     covered_message_ids: list[str]
     summary: ConversationSummary | None
     error_code: str | None

@@ -10,7 +10,7 @@ from langchain_core.messages import (
     messages_from_dict,
     messages_to_dict,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -214,8 +214,10 @@ async def view_context(
             if turn_id
             else []
         )
+        turn_requests_used = sum(row.requests_used for row in compactions)
         result.compactions = [
-            compaction_out(row, bound.summary_allowance if bound else 4) for row in compactions
+            compaction_out(row, bound.summary_allowance if bound else 4, turn_requests_used)
+            for row in compactions
         ]
         latest_turn = await session.get(ChatTurn, turn_id) if turn_id else None
         if latest_turn and latest_turn.status == "CANCELLED":
@@ -224,7 +226,15 @@ async def view_context(
                     item.status = "CANCELLED"
         active = await session.get(ChatCompaction, state.summary_id) if state.summary_id else None
         if active:
-            result.active_summary = compaction_out(active, bound.summary_allowance if bound else 4)
+            active_bound = await session.get(ChatContextInput, active.turn_id)
+            active_used = await session.scalar(
+                select(func.sum(ChatCompaction.requests_used)).where(
+                    ChatCompaction.turn_id == active.turn_id
+                )
+            )
+            result.active_summary = compaction_out(
+                active, active_bound.summary_allowance if active_bound else 4, int(active_used or 0)
+            )
     provider = await asyncio.to_thread(load_llm_provider, data_dir)
     if provider is None or not provider.api_key:
         result.next_error_code = "LLM_PROVIDER_UNCONFIGURED"

@@ -2649,7 +2649,7 @@
     },
     "compaction": {
       "title": "Conversation compaction",
-      "progress": "Chunks {{completed}}/{{total}} · Summary requests {{used}}/{{allowance}}",
+      "progress": "Chunks {{completed}}/{{total}} · Batch requests {{used}} · Turn summary requests {{turnUsed}}/{{allowance}}",
       "showSummary": "View summary and sources",
       "summaryHint": "This derived summary is traceable but may omit meaning. It is not verbatim evidence, long-term memory, or execution permission.",
       "covered": "Program coverage: {{count}} message sources",

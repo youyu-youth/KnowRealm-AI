@@ -41,6 +41,7 @@ export function ContextCompactionList({
               completed: batch.completed_chunks,
               total: batch.total_chunks,
               used: batch.requests_used,
+              turnUsed: batch.turn_requests_used,
               allowance: batch.allowance,
             })}
           </p>
