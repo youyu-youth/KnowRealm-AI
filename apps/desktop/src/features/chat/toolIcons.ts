@@ -11,6 +11,8 @@ import {
   ClipboardCheck,
   Clock,
   FileX,
+  FileSearch,
+  History,
   Flag,
   FolderArchive,
   FolderInput,
@@ -51,6 +53,8 @@ export const TOOL_ICONS: Record<string, typeof Wrench> = {
   search_library: Library,
   search_courses: GraduationCap,
   search_transcript: Search,
+  search_context: History,
+  read_context: FileSearch,
   web_search: Globe,
   // 列表与查询
   list_course_records: Rows3,

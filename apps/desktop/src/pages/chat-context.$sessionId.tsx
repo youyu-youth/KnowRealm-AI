@@ -4,8 +4,43 @@ import { ChatContextPage } from "@/features/chat/ChatContextPage";
 export const Route = createFileRoute("/chat-context/$sessionId")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { view?: "actual" | "next" } => ({
-    view: search.view === "next" ? "next" : undefined,
+  ): {
+    view?: "actual" | "next" | "sources";
+    source?: string;
+    q?: string;
+    cursor?: string;
+    searchCursor?: string;
+    version?: string;
+    quote?: string;
+    offset?: number;
+  } => ({
+    view:
+      search.view === "next" || search.view === "sources"
+        ? search.view
+        : undefined,
+    source:
+      typeof search.source === "string"
+        ? search.source.slice(0, 200)
+        : undefined,
+    q: typeof search.q === "string" ? search.q.slice(0, 200) : undefined,
+    cursor:
+      typeof search.cursor === "string"
+        ? search.cursor.slice(0, 2000)
+        : undefined,
+    searchCursor:
+      typeof search.searchCursor === "string"
+        ? search.searchCursor.slice(0, 2000)
+        : undefined,
+    version:
+      typeof search.version === "string"
+        ? search.version.slice(0, 128)
+        : undefined,
+    quote:
+      typeof search.quote === "string" ? search.quote.slice(0, 80) : undefined,
+    offset:
+      Number.isSafeInteger(Number(search.offset)) && Number(search.offset) >= 0
+        ? Number(search.offset)
+        : undefined,
   }),
   component: function ContextRoute() {
     const { sessionId } = Route.useParams();

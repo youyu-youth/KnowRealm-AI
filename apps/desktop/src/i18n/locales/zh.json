@@ -2654,6 +2654,53 @@
         "unfinished": "未完成事项",
         "questions": "待澄清问题"
       }
+    },
+    "contextSources": {
+      "title": "来源原文",
+      "original": "原文片段",
+      "identity": "来源身份",
+      "version": "来源版本",
+      "scopeHint": "只查找当前会话和当前上下文段。材料仍受挂载范围限制；普通查看不消耗 Agent 工具次数。",
+      "fragmentHint": "下面是限长原文片段。工具 JSON 的片段不能当作完整业务回执，摘要也不能代替原文证据。",
+      "content": "来源正文",
+      "emptyContent": "来源尚无正文。请等待处理完成后重试。",
+      "remaining": "从字符 {{offset}} 开始，剩余 {{count}} 字符",
+      "continueRead": "继续读取",
+      "restartRead": "从头读取",
+      "searchLabel": "查找原消息、材料或工具输出",
+      "searchPlaceholder": "输入关键词；留空列出历史来源",
+      "search": "查找",
+      "results": "可读取来源",
+      "noResults": "未找到来源",
+      "noResultsHint": "尝试其他关键词。旧记录未保存的工具正文无法取回。",
+      "continueSearch": "继续查找（剩余 {{count}} 项）",
+      "restartSearch": "返回首批来源",
+      "locator": {
+        "message_id": "消息",
+        "role": "消息角色",
+        "created_at": "创建时间",
+        "start_offset": "起始字符",
+        "end_offset": "结束字符",
+        "tool": "工具",
+        "tool_call_id": "逻辑调用",
+        "paired_message_id": "配对消息",
+        "segment_id": "原文分片",
+        "record_start_ms": "起始毫秒",
+        "record_id": "学习记录",
+        "library_id": "资料",
+        "quote": "原文摘录",
+        "paired_tool_calls": "配对工具调用",
+        "citations_state": "引用有效性",
+        "page_no": "页码"
+      },
+      "kinds": {
+        "message": "原消息",
+        "output": "工具输出",
+        "record": "学习记录",
+        "library": "资料来源"
+      },
+      "finding": "正在查找会话原文",
+      "reading": "正在读取来源片段"
     }
   },
   "settings": {
@@ -3474,7 +3521,12 @@
     "CHAT_TURN_CANCEL_IN_PROGRESS": "该轮次已受理停止，不能继续",
     "MODEL_CAPABILITY_REQUIRED": "请在 AI 服务设置中配置此端点和模型的输入上限或总窗口。",
     "MODEL_INPUT_BUDGET_EXCEEDED": "完整模型输入无法容纳在可用预算内。请缩短提问、减少材料或调整模型能力配置。",
-    "MODEL_CONTEXT_INCOMPATIBLE": "原轮次缺少兼容的输入预算快照。请停止后重新提问。"
+    "MODEL_CONTEXT_INCOMPATIBLE": "原轮次缺少兼容的输入预算快照。请停止后重新提问。",
+    "CONTEXT_SOURCE_UNAVAILABLE": "来源已失效、不属于当前会话或段，或旧记录未保存正文。请重新查找可用来源。",
+    "CONTEXT_SOURCE_STALE": "来源版本已变化。请重新查找并读取当前原文。",
+    "CONTEXT_CURSOR_INVALID": "读取游标无效或已过期。请从头读取当前来源。",
+    "CONTEXT_READ_BUDGET_EXHAUSTED": "本轮原文读取额度不足。请减少读取字符数，或在下一轮继续。",
+    "TOOL_CALL_IDENTITY_CONFLICT": "工具输出与原逻辑调用身份不匹配，无法安全复用。请停止后重新提问。"
   },
   "agent": {
     "run": {

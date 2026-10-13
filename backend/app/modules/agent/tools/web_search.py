@@ -11,6 +11,7 @@ import httpx
 from langchain_core.tools import tool
 
 from app.modules.agent.budget.service import budgeted
+from app.modules.agent.context_budget.outputs import save_web_output
 from app.modules.agent.runtime import current_agent_runtime
 from app.modules.search.web_search import WebSearchError
 
@@ -86,7 +87,7 @@ async def web_search(query: str) -> str:
         )
     if not hits:
         return _payload([], message="未找到相关结果；可换同义词或相关关键词重试。")
-    return _payload(
+    inline = _payload(
         [
             {
                 "title": hit.title,
@@ -95,4 +96,9 @@ async def web_search(query: str) -> str:
             }
             for hit in hits
         ]
+    )
+    return await save_web_output(
+        query,
+        _payload([{"title": hit.title, "url": hit.url, "content": hit.content} for hit in hits]),
+        inline,
     )

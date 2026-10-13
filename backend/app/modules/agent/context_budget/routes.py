@@ -2,7 +2,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 
-from app.modules.agent.context_budget.schemas import ContextPreviewRequest, ContextViewOut
+from app.modules.agent.context_budget.retrieval import read_context, search_context
+from app.modules.agent.context_budget.schemas import (
+    ContextPreviewRequest,
+    ContextReadOut,
+    ContextReadRequest,
+    ContextSearchOut,
+    ContextSearchRequest,
+    ContextViewOut,
+)
 from app.modules.agent.context_budget.service import view_context
 from app.shared.deps import require_launch_token
 from app.shared.schemas import ErrorResponse
@@ -35,3 +43,19 @@ async def preview_context(
     return await view_context(
         request.app.state.session_factory, request.app.state.data_dir, str(session_id), body
     )
+
+
+@router.post(
+    "/api/chat-sessions/{session_id}/context/sources/search", response_model=ContextSearchOut
+)
+async def search_sources(
+    session_id: UUID, body: ContextSearchRequest, request: Request
+) -> ContextSearchOut:
+    return await search_context(request.app.state.session_factory, str(session_id), body)
+
+
+@router.post("/api/chat-sessions/{session_id}/context/sources/read", response_model=ContextReadOut)
+async def read_source(
+    session_id: UUID, body: ContextReadRequest, request: Request
+) -> ContextReadOut:
+    return await read_context(request.app.state.session_factory, str(session_id), body)

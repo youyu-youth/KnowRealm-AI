@@ -21,6 +21,7 @@ import { chatKeys } from "@/features/chat/api/keys";
 import { ContextBudgetDetails } from "@/features/chat/ContextBudgetDetails";
 import { ContextRequestList } from "@/features/chat/ContextRequestList";
 import { ContextCompactionList } from "@/features/chat/ContextCompactionList";
+import { ContextSourcesView } from "@/features/chat/ContextSourcesView";
 import {
   selectWebSearchEnabled,
   useChatUiStore,
@@ -32,6 +33,12 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { view } = useSearch({ from: "/chat-context/$sessionId" });
+  const readSource = (source: string) =>
+    void navigate({
+      to: "/chat-context/$sessionId",
+      params: { sessionId },
+      search: { view: "sources", source },
+    });
   const [page] = useState(derivePageSnapshot);
   const sessions = useQuery({
     queryKey: chatKeys.list(),
@@ -161,11 +168,11 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
         <Tabs
           value={view ?? "actual"}
           onValueChange={(value) => {
-            if (value === "actual" || value === "next")
+            if (value === "actual" || value === "next" || value === "sources")
               void navigate({
                 to: "/chat-context/$sessionId",
                 params: { sessionId },
-                search: { view: value === "next" ? "next" : undefined },
+                search: { view: value === "actual" ? undefined : value },
               });
           }}
           className="min-h-0 flex-1 gap-0"
@@ -175,6 +182,9 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
               {t("chat.contextView.actual")}
             </TabsTrigger>
             <TabsTrigger value="next">{t("chat.contextView.next")}</TabsTrigger>
+            <TabsTrigger value="sources">
+              {t("chat.contextSources.title")}
+            </TabsTrigger>
           </TabsList>
           <TabsContent
             value="actual"
@@ -188,6 +198,7 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
             <ContextCompactionList
               batches={context.data.compactions ?? []}
               showSummary
+              onReadSource={readSource}
             />
           </TabsContent>
           <TabsContent
@@ -213,7 +224,15 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
                 context.data.active_summary ? [context.data.active_summary] : []
               }
               showSummary
+              onReadSource={readSource}
             />
+          </TabsContent>
+          <TabsContent
+            value="sources"
+            className="min-h-0 overflow-y-auto px-6 pb-6 max-sm:px-3"
+            tabIndex={0}
+          >
+            <ContextSourcesView sessionId={sessionId} />
           </TabsContent>
         </Tabs>
       ) : null}

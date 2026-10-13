@@ -38,6 +38,7 @@ from loguru import logger
 from app.modules.agent.budget.middleware import ToolBudgetMiddleware
 from app.modules.agent.context_budget.compaction import CompactionWaiting
 from app.modules.agent.context_budget.middleware import InputBudgetMiddleware
+from app.modules.agent.context_budget.outputs import ContextOutputMiddleware
 from app.modules.agent.middleware.cancel_guard import TurnCancelGuardMiddleware
 from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
@@ -78,6 +79,7 @@ from app.modules.agent.tools.confirm_plan import (
     CONFIRM_PLAN_TOOL_NAME,
     confirm_plan,
 )
+from app.modules.agent.tools.context_retrieval import read_context, search_context
 from app.modules.agent.tools.convert_time import convert_time
 from app.modules.agent.tools.create_course import (
     CREATE_COURSE_TOOL_NAME,
@@ -157,7 +159,7 @@ from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 from app.shared.errors import CodedHTTPException
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v26"
+CHAT_PROMPT_VERSION = "chat-library-scope-v27"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
@@ -167,12 +169,12 @@ CHAT_PROMPT_VERSION = "chat-library-scope-v26"
 # 时间能力 v1：时间提示行 + 时间工具族四工具；工单 05：共享引用三工具与指引；
 # 第三阶段工单 06：计划创建类步骤与输出引用指引；工单 07：多资料建课编排
 # 指引——四类来源、建目标与末步草案产出步骤）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v27"
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v28"
 CHAT_RECURSION_LIMIT = 25
 # 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
 # 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
 # 工具集合、图结构或 checkpoint 状态语义变化时 bump。
-CHAT_GRAPH_VERSION = "chat-graph-v3"
+CHAT_GRAPH_VERSION = "chat-graph-v4"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
@@ -389,6 +391,8 @@ def resolve_agent_config(
     config = AgentConfig(
         tools=(
             *config.tools,
+            search_context,
+            read_context,
             search_courses,
             list_course_records,
             list_library_items,
@@ -835,6 +839,7 @@ async def stream_chat_reply(
                 *base_config.middleware,
                 ToolCallIdentityMiddleware(thread),
                 ToolBudgetMiddleware(),
+                ContextOutputMiddleware(),
             ),
         )
         if runtime.context_policy is not None:

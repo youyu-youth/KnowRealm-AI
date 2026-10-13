@@ -31,6 +31,8 @@ const TOOL_COPY: Record<string, string> = {
   search_library: "chat.tools.activity.library",
   search_courses: "chat.tools.activity.courseSearch",
   search_transcript: "chat.tools.activity",
+  search_context: "chat.contextSources.finding",
+  read_context: "chat.contextSources.reading",
 };
 
 type ToolEntry = Extract<ChatProcessEntry, { kind: "tool" }>;

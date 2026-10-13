@@ -387,6 +387,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat-sessions/{session_id}/context/sources/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read Source */
+        post: operations["read_source_api_chat_sessions__session_id__context_sources_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-sessions/{session_id}/context/sources/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Search Sources */
+        post: operations["search_sources_api_chat_sessions__session_id__context_sources_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat-sessions/{session_id}/messages": {
         parameters: {
             query?: never;
@@ -4121,6 +4155,80 @@ export interface components {
              * @default false
              */
             web_search: boolean;
+        };
+        /** ContextReadOut */
+        ContextReadOut: {
+            /** Content */
+            content: string;
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Offset */
+            offset: number;
+            /** Remaining */
+            remaining: number;
+            source: components["schemas"]["ContextSourceOut"];
+        };
+        /** ContextReadRequest */
+        ContextReadRequest: {
+            /** Cursor */
+            cursor?: string | null;
+            /**
+             * Max Chars
+             * @default 1600
+             */
+            max_chars: number;
+            /** Offset */
+            offset?: number | null;
+            /** Quote */
+            quote?: string | null;
+            /** Source Id */
+            source_id: string;
+            /** Version */
+            version?: string | null;
+        };
+        /** ContextSearchOut */
+        ContextSearchOut: {
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Remaining */
+            remaining: number;
+            /** Sources */
+            sources: components["schemas"]["ContextSourceOut"][];
+        };
+        /** ContextSearchRequest */
+        ContextSearchRequest: {
+            /** Cursor */
+            cursor?: string | null;
+            /**
+             * Limit
+             * @default 8
+             */
+            limit: number;
+            /**
+             * Query
+             * @default
+             */
+            query: string;
+        };
+        /** ContextSourceOut */
+        ContextSourceOut: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "message" | "output" | "record" | "library";
+            /** Locator */
+            locator?: {
+                [key: string]: string | number | null;
+            };
+            /** Source Id */
+            source_id: string;
+            /** Title */
+            title: string;
+            /** Turn Id */
+            turn_id?: string | null;
+            /** Version */
+            version: string;
         };
         /** ContextViewOut */
         ContextViewOut: {
@@ -8529,6 +8637,116 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContextViewOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    read_source_api_chat_sessions__session_id__context_sources_read_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContextReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextReadOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    search_sources_api_chat_sessions__session_id__context_sources_search_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContextSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextSearchOut"];
                 };
             };
             /** @description Forbidden */

@@ -12,8 +12,11 @@ from langchain_core.messages import messages_to_dict
 from sqlalchemy import and_, or_, select
 
 from app.modules.agent.context_budget.compaction import compact
+from app.modules.agent.context_budget.materials import select_material
 from app.modules.agent.context_budget.models import ChatModelRequest
+from app.modules.agent.context_budget.outputs import project_outputs
 from app.modules.agent.context_budget.policy import estimate_input, request_usage
+from app.modules.agent.context_budget.retrieval import validate_read_results
 from app.modules.agent.context_budget.schemas import ContextPolicy, ModelRequestStatus
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.runtime import AgentRuntimeContext
@@ -37,12 +40,31 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         self, request: ModelRequest[Any], handler: Callable[[ModelRequest[Any]], Awaitable[Any]]
     ) -> Any:
         await self._check_outbound()
+        request = request.override(
+            messages=await validate_read_results(
+                self.runtime.session_factory, self.runtime.session_id, request.messages
+            )
+        )
         # 原始请求跨 checkpoint 恢复不变，摘要只改变本次模型可见投影。
         request_identity = estimate_input(
             self.policy,
             ([request.system_message] if request.system_message else []) + request.messages,
             request.tools,
         ).input_fingerprint
+        estimate = estimate_input(
+            self.policy,
+            ([request.system_message] if request.system_message else []) + request.messages,
+            request.tools,
+        )
+        if estimate.input_tokens >= estimate.usable_budget * 0.8:
+            request = request.override(
+                messages=await project_outputs(self.runtime, request.messages)
+            )
+        request = request.override(
+            system_message=await select_material(
+                self.runtime, self.policy, request.system_message, request.messages, request.tools
+            )
+        )
         messages = await compact(
             self.runtime,
             self.policy,

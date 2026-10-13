@@ -96,3 +96,43 @@ class ContextPreviewRequest(BaseModel):
     content: str = Field(default="", max_length=8000)
     web_search: bool = False
     page: ChatPageSnapshot | None = None
+
+
+class ContextSourceOut(BaseModel):
+    source_id: str
+    kind: Literal["message", "output", "record", "library"]
+    title: str
+    version: str
+    turn_id: str | None = None
+    locator: dict[str, str | int | None] = Field(default_factory=dict)
+
+
+class ContextSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    query: str = Field(default="", max_length=200)
+    cursor: str | None = Field(default=None, max_length=2000)
+    limit: int = Field(default=8, ge=1, le=8)
+
+
+class ContextSearchOut(BaseModel):
+    sources: list[ContextSourceOut]
+    next_cursor: str | None
+    remaining: int
+
+
+class ContextReadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    source_id: str = Field(min_length=1, max_length=200)
+    version: str | None = Field(default=None, max_length=128)
+    cursor: str | None = Field(default=None, max_length=2000)
+    max_chars: int = Field(default=1600, ge=1, le=2400)
+    quote: str | None = Field(default=None, max_length=80)
+    offset: int | None = Field(default=None, ge=0)
+
+
+class ContextReadOut(BaseModel):
+    source: ContextSourceOut
+    content: str
+    offset: int
+    next_cursor: str | None
+    remaining: int

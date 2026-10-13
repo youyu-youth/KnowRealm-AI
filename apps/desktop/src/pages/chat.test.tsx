@@ -270,6 +270,116 @@ afterEach(() => {
 });
 
 describe("AI 对话", () => {
+  it("上下文原文查找、分段续读与失效反馈复用公开读取入口", async () => {
+    const source = {
+      source_id: "message:original",
+      kind: "message",
+      title: "早期约束",
+      version: "v1",
+      locator: {
+        message_id: "original",
+        quote: "前半段约束",
+        start_offset: 8000,
+      },
+    };
+    const reads: unknown[] = [];
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+        HttpResponse.json([
+          chatSession(FIRST_SESSION_ID, { title: "原文会话" }),
+        ]),
+      ),
+      http.get(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+        () =>
+          HttpResponse.json(
+            chatSession(FIRST_SESSION_ID, { title: "原文会话" }),
+          ),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/estimates`,
+        () =>
+          HttpResponse.json({
+            session_id: FIRST_SESSION_ID,
+            version: 1,
+            segment: 1,
+            actual_turn_id: null,
+            actual: [],
+            next_estimate: null,
+            next_error_code: null,
+          }),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/sources/search`,
+        () =>
+          HttpResponse.json({
+            sources: [source],
+            next_cursor: null,
+            remaining: 0,
+          }),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/sources/read`,
+        async ({ request }) => {
+          const body =
+            (await request.json()) as components["schemas"]["ContextReadRequest"];
+          reads.push(body);
+          if (body.cursor)
+            return HttpResponse.json({
+              source,
+              content: "后半段约束",
+              offset: 2400,
+              next_cursor: null,
+              remaining: 0,
+            });
+          return HttpResponse.json({
+            source,
+            content: "前半段约束",
+            offset: 0,
+            next_cursor: "next",
+            remaining: 600,
+          });
+        },
+      ),
+    );
+    renderAt(`/chat-context/${FIRST_SESSION_ID}?view=sources`);
+    await screen.findByRole("heading", { name: "上下文管理" });
+    fireEvent.click(await screen.findByRole("tab", { name: "来源原文" }));
+    fireEvent.click(await screen.findByRole("button", { name: /早期约束/ }));
+    expect(await screen.findByLabelText("来源正文")).toHaveTextContent(
+      "前半段约束",
+    );
+    expect(reads[0]).toEqual(
+      expect.objectContaining({ quote: "前半段约束", offset: 8000 }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "继续读取" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("来源正文")).toHaveTextContent("后半段约束"),
+    );
+    expect(reads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          source_id: "message:original",
+          version: "v1",
+          cursor: "next",
+        }),
+      ]),
+    );
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/sources/read`,
+        () =>
+          HttpResponse.json(
+            { code: "CONTEXT_SOURCE_STALE", detail: "来源版本已变化" },
+            { status: 409 },
+          ),
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "从头读取" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "来源版本已变化",
+    );
+  });
   it("上下文独立页面往返与切换会话保留隔离草稿，草稿不进入 URL", async () => {
     const sessions = [
       chatSession(FIRST_SESSION_ID, { title: "第一会话" }),

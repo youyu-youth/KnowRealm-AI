@@ -245,7 +245,7 @@ async def test_summary_sdk_json_mode_compatibility(
         ):
             sid = await create_session(client)
             await seed_history(_app, sid, 45 if case == "resume" else 16, 1000)
-            await configure(client)
+            await configure(client, 45000 if case == "transient" else 40000)
             tid = (await submit(client, sid, "继续", request_id=f"json-mode-{case}")).json()["id"]
             if case == "resume":
                 from tests.test_chat_turns_recovery import wait_stable_status
@@ -526,7 +526,7 @@ async def test_restart_cannot_re_admit_consumed_overflow_retry(
     async with recovery_app(tmp_path, monkeypatch) as (app, client, _captured):
         sid = await create_session(client)
         await seed_history(app, sid, 16, 1000)
-        await configure(client, window)
+        await configure(client, window + 4000 if window == 40000 else window)
         turn_id = (await submit(client, sid, "继续", request_id="overflow-retry-restart")).json()[
             "id"
         ]
@@ -646,7 +646,7 @@ async def test_invalid_summary_never_activates_and_only_safe_input_falls_back(
     async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
         sid = await create_session(client)
         ids = await seed_history(app, sid, 8, size)
-        await configure(client)
+        await configure(client, 45000)
         turn_id = (
             await submit(client, sid, "继续", request_id=f"compaction-invalid-{size}")
         ).json()["id"]

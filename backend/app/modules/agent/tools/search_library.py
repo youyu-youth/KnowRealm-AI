@@ -177,10 +177,28 @@ async def search_library(query: str) -> str:
                 needle,
                 SEARCH_LIBRARY_LIMIT,
             )
+            evidence: list[dict[str, object]] = []
+            for hit in result.evidence_hits:
+                kind = "record" if hit.record_id else "library"
+                target = hit.record_id or hit.library_item_id
+                if target is None:
+                    continue
+                _, _, version = await LibraryRetrievalService.read_source(
+                    session,
+                    RetrievalScope(
+                        scope=context.scope,
+                        record_id=context.record_id,
+                        library_item_id=context.library_item_id,
+                        course_id=context.course_id,
+                    ),
+                    kind,
+                    target,
+                )
+                evidence.append({**_hit_payload(hit), "source_version": version})
     except Exception:
         return _payload(message="检索暂时失败，请稍后重试。", ok=False)
     body: dict[str, object] = {
-        "evidence_hits": [_hit_payload(hit) for hit in result.evidence_hits],
+        "evidence_hits": evidence,
         "asset_matches": [_asset_payload(match) for match in result.asset_matches],
         "concept_hints": [_concept_payload(hint) for hint in result.concept_hints],
     }

@@ -14,6 +14,7 @@ transcript 恒为事实源，B2 迁移期语义收编）；COURSE 档例外仅�
 纯文本资料无分片，FTS 路径永不命中）。
 """
 
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, cast
 
@@ -358,6 +359,136 @@ class LibraryRetrievalService:
     """检索唯一深模块：`search_library` 工具与评测/后续业务模块的共用入口。"""
 
     @staticmethod
+    def source_positions(
+        content: str, parts: Sequence[tuple[str, str]]
+    ) -> Iterator[tuple[str, int, int]]:
+        position = 0
+        for part_id, text_content in parts:
+            start = content.find(text_content, position)
+            if start >= 0:
+                position = start + len(text_content)
+                yield part_id, start, position
+
+    @staticmethod
+    async def source_offset(
+        session: AsyncSession, kind: str, source_id: str, segment_id: str, content: str, quote: str
+    ) -> int:
+        """已验证宿主内按真实分片定位，避免重复摘录命中前面的另一个片段。"""
+        from sqlalchemy import select
+
+        from app.modules.record.service import RecordService
+        from app.modules.transcript.models import DocumentSegment
+        from app.shared.errors import CodedHTTPException
+
+        if kind == "record" and segment_id == f"transcript:{source_id}":
+            return content.find(quote)
+        if kind == "record":
+            segments = await RecordService.get_transcript_segments(session, source_id)
+            parts = [(part.id, part.content) for part in segments]
+            if not parts:
+                documents = await RecordService.get_document_segments(session, source_id)
+                parts = [(part.id, part.content) for part in documents]
+        else:
+            parts = list(
+                (
+                    await session.execute(
+                        select(DocumentSegment.id, DocumentSegment.content)
+                        .where(
+                            DocumentSegment.library_item_id == source_id,
+                            DocumentSegment.record_id.is_(None),
+                        )
+                        .order_by(DocumentSegment.sequence_no, DocumentSegment.id)
+                    )
+                )
+                .tuples()
+                .all()
+            )
+        for part_id, start, end in LibraryRetrievalService.source_positions(content, parts):
+            if part_id == segment_id and quote in content[start:end]:
+                return start + content[start:end].index(quote)
+        raise CodedHTTPException(
+            code="CONTEXT_SOURCE_STALE", status_code=409, detail="命中分片已失效，请重新查找"
+        )
+
+    @staticmethod
+    async def read_source(
+        session: AsyncSession, scope: RetrievalScope, kind: str, source_id: str
+    ) -> tuple[str, str, str]:
+        """复用检索谓词读取当前原文；不接受路径，也不把共享引用变成写权限。"""
+        from hashlib import sha256
+
+        from app.modules.record.service import RecordService
+        from app.shared.errors import CodedHTTPException
+
+        params = {**_bind_params(scope), "source_id": source_id}
+        if kind == "record":
+            filters = {
+                ChatScope.RECORD: _RECORD_FILTER.replace("ts.record_id", "r.id"),
+                ChatScope.LIBRARY_ITEM: _ITEM_RECORD_FILTER.replace("ts.record_id", "r.id"),
+                ChatScope.COURSE: _COURSE_FILTER,
+                ChatScope.ALL: _ALL_FILTER,
+            }
+            predicate = filters.get(scope.scope, "0")
+            title = await session.scalar(
+                text(
+                    "SELECT r.title FROM records r WHERE r.id=:source_id "
+                    f"AND r.deleted_at IS NULL AND ({predicate})"
+                ),
+                params,
+            )
+            if title is not None and await LibraryRetrievalService._scope_alive(session, scope):
+                transcript = await RecordService.get_transcript(session, source_id)
+                if transcript is None:
+                    parts = await RecordService.get_document_segments(session, source_id)
+                    if parts:
+                        content = "\n\n".join(part.content for part in parts)
+                        return str(title), content, sha256(content.encode()).hexdigest()
+                    raise CodedHTTPException(
+                        code="TRANSCRIPT_NOT_READY", status_code=409, detail="原文尚未生成"
+                    )
+                return str(title), transcript.content, str(transcript.source_version)
+        elif kind == "library":
+            filters = {
+                ChatScope.LIBRARY_ITEM: _ITEM_DIRECT_LIB,
+                ChatScope.COURSE: _ITEM_DIRECT_COURSE,
+                ChatScope.ALL: _ITEM_DIRECT_ALL,
+            }
+            predicate = filters.get(scope.scope, "0").replace("ds.library_item_id", "li.id")
+            title = await session.scalar(
+                text(
+                    "SELECT li.title FROM library_items li WHERE li.id=:source_id "
+                    f"AND li.deleted_at IS NULL AND li.status='ACTIVE' AND ({predicate})"
+                ),
+                params,
+            )
+            if title is not None and await LibraryRetrievalService._scope_alive(session, scope):
+                parts = (
+                    (
+                        await session.execute(
+                            text(
+                                "SELECT content FROM document_segments "
+                                "WHERE library_item_id=:source_id "
+                                "AND record_id IS NULL ORDER BY sequence_no, id"
+                            ),
+                            params,
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                content = "\n\n".join(str(part) for part in parts)
+                if not content:
+                    from app.modules.library.service import LibraryService
+
+                    content = (
+                        await LibraryService.get_content(session, source_id, 2**31 - 1)
+                    ).content
+                return str(title), content, sha256(content.encode()).hexdigest()
+        raise CodedHTTPException(
+            code="CONTEXT_SOURCE_UNAVAILABLE", status_code=404, detail="来源已失效或不属于当前范围"
+        )
+
+    @staticmethod
     async def search(
         session: AsyncSession,
         scope: RetrievalScope,
@@ -578,9 +709,7 @@ class LibraryRetrievalService:
                     ),
                     {"ids": host_item_ids},
                 )
-                item_course = {
-                    cast(str, row[0]): cast("str | None", row[1]) for row in rows.all()
-                }
+                item_course = {cast(str, row[0]): cast("str | None", row[1]) for row in rows.all()}
         evidence: list[EvidenceHit] = []
         for recall in recalls[:limit]:
             row = recall.row
@@ -735,9 +864,7 @@ class LibraryRetrievalService:
                 "WHERE r.id = :record_id)"
             ),
             ChatScope.LIBRARY_ITEM: "li.id = :library_item_id",
-            ChatScope.COURSE: (
-                f"(li.course_id = :course_id OR li.id IN ({_SHARED_ITEM_IDS_SQL}))"
-            ),
+            ChatScope.COURSE: (f"(li.course_id = :course_id OR li.id IN ({_SHARED_ITEM_IDS_SQL}))"),
             ChatScope.ALL: "TRUE",
         }[scope]
         return text(
@@ -756,8 +883,7 @@ class LibraryRetrievalService:
                 "WHERE lir.library_item_id = :library_item_id)"
             ),
             ChatScope.COURSE: (
-                f"(records.course_id = :course_id "
-                f"OR records.id IN ({_SHARED_RECORD_IDS_SQL}))"
+                f"(records.course_id = :course_id OR records.id IN ({_SHARED_RECORD_IDS_SQL}))"
             ),
             ChatScope.ALL: (
                 "(records.course_id IS NULL OR EXISTS (SELECT 1 FROM courses c "

@@ -19,9 +19,11 @@ const COLUMNS = [
 export function ContextCompactionList({
   batches,
   showSummary = false,
+  onReadSource,
 }: {
   batches: components["schemas"]["CompactionOut"][];
   showSummary?: boolean;
+  onReadSource?: (sourceId: string) => void;
 }) {
   const { t } = useTranslation();
   if (batches.length === 0) return null;
@@ -77,7 +79,19 @@ export function ContextCompactionList({
                           </p>
                           <p className="text-label text-muted-foreground break-all">
                             {t("chat.compaction.sources")}{" "}
-                            {item.source_ids.join(", ")}
+                            {onReadSource
+                              ? item.source_ids.map((sourceId) => (
+                                  <Button
+                                    key={sourceId}
+                                    variant="link"
+                                    size="sm"
+                                    className="h-auto max-w-full p-0 text-left break-all whitespace-normal"
+                                    onClick={() => onReadSource(sourceId)}
+                                  >
+                                    {sourceId}
+                                  </Button>
+                                ))
+                              : item.source_ids.join(", ")}
                           </p>
                         </li>
                       ))}

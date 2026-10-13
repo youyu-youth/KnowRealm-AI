@@ -2674,6 +2674,53 @@
         "unfinished": "Unfinished tasks",
         "questions": "Open questions"
       }
+    },
+    "contextSources": {
+      "title": "Source text",
+      "original": "Original excerpt",
+      "identity": "Source ID",
+      "version": "Source version",
+      "scopeHint": "Search is limited to this session and context segment. Materials follow the mounted scope. Viewing does not consume Agent tool calls.",
+      "fragmentHint": "This is a bounded text excerpt. A JSON fragment is not a complete business receipt, and a summary is not source evidence.",
+      "content": "Source content",
+      "emptyContent": "This source has no content yet. Retry after processing finishes.",
+      "remaining": "From character {{offset}}, {{count}} characters remaining",
+      "continueRead": "Read next excerpt",
+      "restartRead": "Read from start",
+      "searchLabel": "Find messages, materials or tool outputs",
+      "searchPlaceholder": "Enter keywords; leave empty to list history sources",
+      "search": "Search",
+      "results": "Readable sources",
+      "noResults": "No sources found",
+      "noResultsHint": "Try other keywords. Tool content missing from older records cannot be recovered.",
+      "continueSearch": "More sources ({{count}} remaining)",
+      "restartSearch": "First sources",
+      "locator": {
+        "message_id": "Message",
+        "role": "Role",
+        "created_at": "Created",
+        "start_offset": "Start character",
+        "end_offset": "End character",
+        "tool": "Tool",
+        "tool_call_id": "Logical call",
+        "paired_message_id": "Paired message",
+        "segment_id": "Source segment",
+        "record_start_ms": "Start (ms)",
+        "record_id": "Record",
+        "library_id": "Library item",
+        "quote": "Quote",
+        "paired_tool_calls": "Paired tool calls",
+        "citations_state": "Citation validity",
+        "page_no": "Page"
+      },
+      "kinds": {
+        "message": "Message",
+        "output": "Tool output",
+        "record": "Record",
+        "library": "Library source"
+      },
+      "finding": "Finding session source text",
+      "reading": "Reading source excerpt"
     }
   },
   "settings": {
@@ -3494,7 +3541,12 @@
     "CHAT_TURN_CANCEL_IN_PROGRESS": "This turn has a pending stop and cannot be resumed",
     "MODEL_CAPABILITY_REQUIRED": "Configure an input limit or context window for this endpoint and model in AI settings.",
     "MODEL_INPUT_BUDGET_EXCEEDED": "The full model input exceeds the usable budget. Shorten your question, reduce materials or adjust model capabilities.",
-    "MODEL_CONTEXT_INCOMPATIBLE": "This turn has no compatible input budget snapshot. Stop it and ask again."
+    "MODEL_CONTEXT_INCOMPATIBLE": "This turn has no compatible input budget snapshot. Stop it and ask again.",
+    "CONTEXT_SOURCE_UNAVAILABLE": "The source is unavailable, outside this session or segment, or missing from older records. Search for an available source.",
+    "CONTEXT_SOURCE_STALE": "The source version has changed. Search again to read the current text.",
+    "CONTEXT_CURSOR_INVALID": "The read cursor is invalid or expired. Read the current source from the start.",
+    "CONTEXT_READ_BUDGET_EXHAUSTED": "The source reading budget is exhausted. Read fewer characters or continue next turn.",
+    "TOOL_CALL_IDENTITY_CONFLICT": "The tool output does not match the original logical call. Stop and ask again."
   },
   "agent": {
     "run": {

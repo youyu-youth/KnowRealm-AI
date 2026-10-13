@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import Enum, ForeignKey, Integer, String, Text
+from sqlalchemy import Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ISODateTime, utcnow
@@ -67,4 +67,22 @@ class ChatCompaction(Base):
     covered_json: Mapped[str] = mapped_column(Text)
     requests_used: Mapped[int] = mapped_column(Integer, default=0)
     error_code: Mapped[str | None] = mapped_column(String(50), default=None)
+    created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+
+
+class ChatContextOutput(Base):
+    __tablename__ = "chat_context_outputs"
+    __table_args__ = (UniqueConstraint("turn_id", "namespace", "logical_call_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    turn_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_turns.id", ondelete="CASCADE")
+    )
+    namespace: Mapped[str] = mapped_column(Text)
+    logical_call_id: Mapped[str] = mapped_column(Text)
+    tool_name: Mapped[str] = mapped_column(Text)
+    args_fingerprint: Mapped[str] = mapped_column(String(64))
+    content: Mapped[str] = mapped_column(Text)
+    inline_content: Mapped[str | None] = mapped_column(Text, default=None)
+    content_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
