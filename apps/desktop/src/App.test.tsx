@@ -44,6 +44,7 @@ describe("工作台骨架", () => {
       await screen.findByRole("heading", { name: "学习趋势" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "收件箱" })).toBeEnabled();
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
     expect(screen.getByRole("button", { name: "开始录音" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("link", { name: "知识空间" }));
@@ -83,6 +84,7 @@ describe("工作台骨架", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "录音处理服务暂时不可用",
     );
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
     expect(screen.getByRole("button", { name: "开始录音" })).toBeEnabled();
   });
 
@@ -210,6 +212,7 @@ describe("工作台骨架", () => {
     );
 
     render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
     fireEvent.click(await screen.findByRole("button", { name: "导入资料" }));
     expect(screen.getByRole("heading", { name: "导入资料" })).toBeVisible();
     expect(screen.queryByRole("option", { name: "已归档" })).toBeNull();
@@ -217,6 +220,7 @@ describe("工作台骨架", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(importCalls).toBe(0);
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
     fireEvent.click(screen.getByRole("button", { name: "导入资料" }));
     const courseSelect = screen.getByRole("combobox", { name: "所属课程" });
     await waitFor(() => expect(courseSelect).toBeEnabled());
@@ -398,6 +402,7 @@ describe("工作台骨架", () => {
           : Promise.reject(new Error("未能恢复系统休眠")),
       );
       render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
       fireEvent.click(await screen.findByRole("button", { name: "开始录音" }));
       fireEvent.change(screen.getByLabelText("录音标题（可选）"), {
         target: { value: "录音测试" },
@@ -484,6 +489,7 @@ describe("工作台骨架", () => {
     );
 
     render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
     fireEvent.click(await screen.findByRole("button", { name: "导入资料" }));
     fireEvent.change(screen.getByLabelText("选择文件"), {
       target: { files: [new File(["RIFFaudio"], "第一讲.wav")] },

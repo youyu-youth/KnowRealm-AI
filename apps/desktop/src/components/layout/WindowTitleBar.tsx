@@ -9,7 +9,7 @@ import {
   Square,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Ref } from "react";
 import { useTranslation } from "react-i18next";
 import {
   APP_SIDEBAR_ID,
@@ -21,7 +21,11 @@ import { getDesktopWindow } from "@/services/tauri/window";
 const controlClass =
   "h-full w-12 rounded-none transition-none active:translate-y-0 active:bg-surface-strong focus-visible:ring-inset max-sm:w-10";
 
-export function WindowTitleBar() {
+export function WindowTitleBar({
+  searchHostRef,
+}: {
+  searchHostRef?: Ref<HTMLDivElement>;
+}) {
   const { t } = useTranslation();
   const [appWindow] = useState(getDesktopWindow);
   const [state, setState] = useState({ focused: true, maximized: false });
@@ -190,6 +194,7 @@ export function WindowTitleBar() {
           </p>
         ) : null}
       </div>
+      <div ref={searchHostRef} className="mr-2 shrink-0" />
       <div
         role="group"
         aria-label={t("windowTitleBar.controls")}

@@ -235,10 +235,22 @@ describe("命令面板", () => {
     ).toBeVisible();
   });
 
-  it("顶栏搜索按钮唤起同一面板", async () => {
+  it("标题栏搜索按钮位于最小化左侧并唤起同一面板", async () => {
     renderAt();
 
-    fireEvent.click(await screen.findByRole("button", { name: "搜索" }));
+    const search = await screen.findByRole("button", { name: "搜索" });
+    const titleBar = screen.getByRole("banner", { name: "窗口标题栏" });
+    expect(within(titleBar).getByRole("button", { name: "搜索" })).toBe(search);
+    expect(
+      screen.queryByRole("banner", { name: "快速捕获" }),
+    ).not.toBeInTheDocument();
+    expect(search).not.toHaveAttribute("data-tauri-drag-region");
+    expect(
+      search.compareDocumentPosition(
+        within(titleBar).getByRole("button", { name: "最小化" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(search);
     expect(await paletteInput()).toBeInTheDocument();
   });
 

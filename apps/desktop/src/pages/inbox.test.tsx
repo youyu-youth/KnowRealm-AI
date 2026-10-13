@@ -191,6 +191,7 @@ describe("文本捕获", () => {
     mockRecordDetail(NOTE_RECORD_ID, courseSelected ? COURSE_ID : null);
 
     renderAt();
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
     fireEvent.click(await screen.findByRole("button", { name: "粘贴文本" }));
 
     expect(
@@ -208,6 +209,7 @@ describe("文本捕获", () => {
     );
     expect(window.location.pathname).toBe("/");
 
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
     fireEvent.click(screen.getByRole("button", { name: "粘贴文本" }));
     const reopened = screen.getByRole("combobox", { name: "所属课程" });
     await waitFor(() => expect(reopened).toBeEnabled());

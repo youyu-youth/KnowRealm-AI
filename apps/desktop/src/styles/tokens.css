@@ -1,4 +1,5 @@
 @theme inline {
+  --ease-capture: cubic-bezier(0.23, 1, 0.32, 1);
   --color-spaces-accent: var(--spaces-accent);
   --color-spaces-soft: var(--spaces-soft);
   --color-spaces-cover: var(--spaces-cover);

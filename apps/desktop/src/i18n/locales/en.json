@@ -50,6 +50,8 @@
   },
   "capture": {
     "label": "Quick capture",
+    "floatingHint": "Hover to expand quick capture; drag or use arrow keys to move",
+    "recordingActive": "A recording is in progress. Finish it before starting another",
     "note": "New Quick Note",
     "import": "Import material",
     "record": "Start recording",

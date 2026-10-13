@@ -5,24 +5,22 @@ import {
   Bot,
   CalendarDays,
   ChevronDown,
-  ClipboardPaste,
   Inbox,
   Library,
-  Mic,
-  NotebookPen,
   Search,
   Settings,
-  Upload,
   UserRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
   type CSSProperties,
 } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -44,6 +42,8 @@ import { AppearanceSync } from "@/features/settings/AppearanceSync";
 import { useSavePreference } from "@/features/settings/useSavePreference";
 import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
 import { SidebarResizeHandle } from "@/components/layout/SidebarResizeHandle";
+import { CaptureFloatingToolbar } from "@/components/layout/CaptureFloatingToolbar";
+import { TitleBarSearchHostContext } from "@/components/layout/titleBarSearchHostContext";
 import {
   APP_SIDEBAR_ID,
   useSidebarUiStore,
@@ -88,13 +88,6 @@ const navigationItems = [
   { labelKey: "nav.profile", icon: UserRound },
 ] as const;
 
-const captureItems = [
-  { labelKey: "capture.note", icon: NotebookPen },
-  { labelKey: "capture.paste", icon: ClipboardPaste },
-  { labelKey: "capture.import", icon: Upload },
-  { labelKey: "capture.record", icon: Mic },
-] as const;
-
 const activeNavClass =
   "flex h-9 items-center gap-3 overflow-hidden rounded-md bg-surface-subtle px-3 text-body font-semibold text-ink-strong transition-colors focus-visible:ring-3 focus-visible:ring-ring/40";
 const inactiveNavClass =
@@ -107,6 +100,7 @@ type ExitRisks = {
 
 export function AppShell() {
   const { t } = useTranslation();
+  const searchHost = useContext(TitleBarSearchHostContext);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [importOpen, setImportOpen] = useState(false);
@@ -274,7 +268,10 @@ export function AppShell() {
     }
   }, [exitPending, t]);
 
-  const openCapture = (labelKey: (typeof captureItems)[number]["labelKey"]) => {
+  const openCapture = (
+    labelKey:
+      "capture.note" | "capture.paste" | "capture.import" | "capture.record",
+  ) => {
     if (labelKey === "capture.note") openQuickNote();
     if (labelKey === "capture.paste") setTextCapture("PASTE");
     if (labelKey === "capture.import") setImportOpen(true);
@@ -469,48 +466,9 @@ export function AppShell() {
       </aside>
 
       <div className="bg-paper border-border-subtle max-compact:rounded-none max-compact:border-y-0 max-compact:border-r-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">
-        <header
-          aria-label={t("capture.label")}
-          className="h-topbar border-border-subtle px-content flex shrink-0 items-center justify-between gap-4 border-b"
-        >
-          <div className="flex min-w-0 items-center gap-1">
-            <RecordingExperience onAccepted={openRecord} />
-            {captureItems.map(({ labelKey, icon: Icon }) => {
-              const label = t(labelKey);
-              const isRecord = labelKey === "capture.record";
-              return (
-                <Button
-                  key={labelKey}
-                  variant="ghost"
-                  size="sm"
-                  disabled={isRecord && recordingActive}
-                  onClick={() => openCapture(labelKey)}
-                  className={cn(
-                    "disabled:pointer-events-auto disabled:opacity-70",
-                    "disabled:hover:bg-transparent",
-                  )}
-                  aria-label={label}
-                >
-                  <Icon data-icon="inline-start" aria-hidden="true" />
-                  <span className="max-compact:sr-only">{label}</span>
-                </Button>
-              );
-            })}
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPaletteOpen(true)}
-            aria-label={t("commandPalette.openButton")}
-            aria-keyshortcuts="Control+K"
-            className="text-ink-muted min-w-24 justify-between"
-          >
-            <Search data-icon="inline-start" aria-hidden="true" />
-            <span className="text-label font-label">
-              {t("commandPalette.shortcutBadge")}
-            </span>
-          </Button>
-        </header>
+        <div className="px-content flex shrink-0 items-center py-2 empty:hidden">
+          <RecordingExperience onAccepted={openRecord} />
+        </div>
         {shortcutUnavailable ? (
           <Alert className="mx-content mb-2 w-auto">
             <AlertDescription>
@@ -530,7 +488,29 @@ export function AppShell() {
             <Outlet />
           </QuickNoteContext>
         </main>
+        <CaptureFloatingToolbar
+          onCapture={openCapture}
+          recordingActive={recordingActive}
+        />
       </div>
+      {searchHost
+        ? createPortal(
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPaletteOpen(true)}
+              aria-label={t("commandPalette.openButton")}
+              aria-keyshortcuts="Control+K"
+              className="text-ink-muted min-w-24 justify-between"
+            >
+              <Search data-icon="inline-start" aria-hidden="true" />
+              <span className="text-label font-label">
+                {t("commandPalette.shortcutBadge")}
+              </span>
+            </Button>,
+            searchHost,
+          )
+        : null}
       <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}

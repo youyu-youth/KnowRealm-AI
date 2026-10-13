@@ -50,6 +50,8 @@
   },
   "capture": {
     "label": "快速捕获",
+    "floatingHint": "悬停展开快速捕获；拖动调整位置，方向键移动",
+    "recordingActive": "已有录音进行中，请先结束当前录音",
     "note": "新建速记",
     "import": "导入资料",
     "record": "开始录音",

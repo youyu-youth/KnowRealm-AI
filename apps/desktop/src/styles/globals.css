@@ -18,6 +18,56 @@
 @source "../../node_modules/@streamdown/math/dist/*.js";
 
 @layer components {
+  .capture-floating-actions {
+    visibility: hidden;
+    opacity: 0;
+    transform: translateY(4px);
+    transition:
+      opacity 150ms var(--ease-capture),
+      transform 150ms var(--ease-capture),
+      visibility 150ms;
+  }
+
+  .capture-floating-actions[data-side="top"] {
+    bottom: 100%;
+    padding-top: 0.25rem;
+    padding-bottom: 0.5rem;
+  }
+  .capture-floating-actions[data-side="bottom"] {
+    top: 100%;
+    padding-bottom: 0.25rem;
+    padding-top: 0.5rem;
+    transform: translateY(-4px);
+  }
+  .capture-floating-actions[data-open] {
+    visibility: visible;
+    opacity: 1;
+    transform: none;
+  }
+  .capture-fab {
+    transition-property:
+      color, background-color, border-color, opacity, transform;
+    transition-duration: 150ms;
+  }
+  .capture-fab[data-dragging] {
+    cursor: grabbing;
+    transition: none;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .capture-fab:not(:disabled):not([aria-disabled="true"]):hover {
+      transform: scale(1.04);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .capture-floating-actions,
+    .capture-fab {
+      transform: none !important;
+      transition: none;
+    }
+  }
+
   .inbox-workspace {
     container: inbox / inline-size;
     display: flex;

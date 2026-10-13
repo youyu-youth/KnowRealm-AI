@@ -1,0 +1,23 @@
+<!doctype html><html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div>
+<script type="module">
+import RefreshRuntime from '/@react-refresh';
+RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$=()=>{}; window.$RefreshSig$=()=>type=>type; window.__vite_plugin_react_preamble_installed__=true;
+history.replaceState(null, '', '/chat-context/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa?view=sources&source=message:original&version=v1');
+window.__TAURI_INTERNALS__={invoke: async(command)=>command==='get_sidecar_config'?{baseUrl:'http://preview.invalid',token:'preview'}:command==='get_onboarding_state'?true:1,transformCallback:()=>1,unregisterCallback:()=>{}};
+const source={source_id:'message:original',kind:'message',title:'首轮约束：保留引用来源与原始事实',version:'v1',locator:{message_id:'original',role:'USER',start_offset:0,end_offset:2400}};
+const session={id:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',title:'机器学习期末复习',mode:'ASK',scope:'FREE',record_id:null,course_id:null,record_deleted:false,course_deleted:false,library_item_deleted:false,created_at:'2026-10-13T08:00:00Z',updated_at:'2026-10-13T08:00:00Z'};
+const realFetch=window.fetch.bind(window);
+window.fetch=async(input,init)=>{
+  const url=String(input); if(!url.startsWith('http://preview.invalid'))return realFetch(input,init);
+  const path=new URL(url).pathname;
+  const data=path.endsWith('/sources/read')?{source,content:'请保留原始学习记录和引用来源。任何自动摘要都不能代替逐字原文证据。\n\n我们先复习梯度下降，再比较批量、随机和小批量三种方法。复习过程中需要保留尚未澄清的问题。\n\n这是用于浏览器布局检查的来源示例，实际读取入口已通过真实 SQLite 与框架工具验收。',offset:0,next_cursor:'next',remaining:3260}:
+  path.endsWith('/sources/search')?{sources:[source,{...source,source_id:'output:example',kind:'output',title:'web_search — 参考材料检索结果'}],next_cursor:null,remaining:0}:
+  path.includes('/context')?{session_id:session.id,version:1,segment:1,actual_turn_id:null,actual:[],next_estimate:null,next_error_code:null}:
+  path==='/api/chat-sessions'?[session]:path.startsWith('/api/chat-sessions/')?session:
+  path==='/api/settings/preferences'?{theme:'LIGHT',theme_catalog:'precision-light',font_size:'M',language:'zh',timezone:'Asia/Shanghai'}:
+  path==='/api/profile'?{id:'self',display_name:'原文读取验收',primary_role:'STUDENT'}:
+  path.includes('providers')?{}:[];
+  return new Response(JSON.stringify(data),{status:200,headers:{'Content-Type':'application/json'}});
+};
+await import('/src/main.tsx');
+</script></body></html>

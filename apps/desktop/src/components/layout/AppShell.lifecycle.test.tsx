@@ -132,6 +132,7 @@ describe("桌面生命周期", () => {
     );
     expect(screen.getAllByText(/Ctrl\+Alt\+N/)).toHaveLength(1);
 
+    fireEvent.click(screen.getByRole("button", { name: "快速捕获" }));
     fireEvent.click(await screen.findByRole("button", { name: "新建速记" }));
     expect(
       await screen.findByRole("heading", { name: "新建速记" }),
