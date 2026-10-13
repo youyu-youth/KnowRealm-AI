@@ -1,0 +1,16 @@
+{
+  "model": "deepseek-v4-flash",
+  "session_id": "409cd9e9-9ac7-43e5-b11d-20ce7875db97",
+  "turn_id": "14ea40b4-9312-4356-8add-1b0888952d77",
+  "status": "COMPLETED",
+  "error_code": null,
+  "tools": [
+    "search_context",
+    "read_context",
+    "read_context"
+  ],
+  "has_verbatim_passphrase": true,
+  "started_at": "2026-10-13T08:59:43.576756Z",
+  "finished_at": "2026-10-13T09:00:10.247407Z",
+  "data_dir": "E:\\workspace\\project\\my\\KnowRealm-AI\\backend\\.pytest-tmp-03-real-stream-d9dcc365"
+}

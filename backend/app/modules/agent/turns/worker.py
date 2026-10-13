@@ -329,6 +329,7 @@ class _TurnExecutor:
         self._last_flush = perf_counter()
         self._state = _StreamState()
         self._cancel_event = asyncio.Event()
+        self._flush_stopped = asyncio.Event()
         # 停机联动：runner 循环 stopped 置位即停止生成（不写终态——重启对账
         # 把 RUNNING 翻 INTERRUPTED，保留内容）。
         self._shutdown_event = stopped if stopped is not None else asyncio.Event()
@@ -483,6 +484,7 @@ class _TurnExecutor:
             resume=resume,
             resume_replaces=resume_replaces,
         )
+        self._flush_stopped.clear()
         watcher = asyncio.create_task(self._watch_stop())
         flusher = asyncio.create_task(self._flush_loop())
         consume = asyncio.create_task(self._consume(stream))
@@ -495,7 +497,11 @@ class _TurnExecutor:
             )
         finally:
             watcher.cancel()
-            flusher.cancel()
+            # 定时刷新可能正在提交 SQLite 事务，完成/停止先等待提交释放写锁。
+            self._flush_stopped.set()
+            await flusher
+            with contextlib.suppress(asyncio.CancelledError):
+                await watcher
         if consume not in done:
             # 取消 / 停机先到：落实停止（不等待下一条 token），部分输出尽力持久。
             consume.cancel()
@@ -675,8 +681,12 @@ class _TurnExecutor:
 
     async def _flush_loop(self) -> None:
         """周期性冲刷 token 批缓冲：模型慢（分片间隔 > 批窗口）时输出仍及时可见。"""
-        while True:
-            await asyncio.sleep(TOKEN_FLUSH_INTERVAL_SECONDS)
+        while not self._flush_stopped.is_set():
+            try:
+                await asyncio.wait_for(self._flush_stopped.wait(), TOKEN_FLUSH_INTERVAL_SECONDS)
+                return
+            except TimeoutError:
+                pass
             with contextlib.suppress(_ClaimLost):
                 await self._flush_buffer(force=True)
 
