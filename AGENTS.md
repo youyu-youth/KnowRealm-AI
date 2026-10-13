@@ -110,16 +110,11 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 5. **（必须遵循）**涉及 `langchain` / `langGraph` / `Deep Agents` 等 Agent 相关代码的编写、设计、搭建时，必须先使用 **langchain mcp 工具**（`langchain-docs`，` langchain-reference`）查询官方文档与 API 参考，**复用现成能力、避免重复造轮子**；或使用 `.agents/skills/` / `.zcode/skills/` / `.claude/skills/` 下的相关 skills（langchain-* / langgraph-* / deep-agents-*）。
 
-6. 编码时必要时遵循 SOLID、KISS、DRY、YAGNI，保持高内聚、低耦合，避免过度设计与无意义抽象。
+6. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
 
-7. 根据实际场景合理使用 Service、Adapter、Strategy、Factory、Registry、Pipeline、State Machine、Event 等设计模式，不要为了套模式而套模式。
-
-8. UI 文案新增或修改时，必须同步更新 `zh.json` 与 `en.json`（两边 key 一致；en 缺失会被一致性防线脚本拦截）。
-
-9. agent相关功能，多使用Middleware 中间件等 （优先遵循），如果框架自带的Middleware不能满足需求，则进行自定义的Middleware
-10. 使用animate  相关 skills 构建 desktop 动画和动效，增加ux 体验
-11. desktop端界面的修改都需要考虑到多主题的适配和兼容
-12. 新增 HTTP 错误码时，同步登记 `docs/后端错误码清单.md` 与 `zh.json`、`en.json` 的 `errors`；三方登记防线见 `backend/tests/test_error_code_guard.py`
+7. agent相关功能，多使用Middleware 中间件等 （优先遵循），如果框架自带的Middleware不能满足需求，则进行自定义的Middleware
+8. desktop端界面的修改都需要考虑到多主题的适配和兼容
+9. 新增 HTTP 错误码时，同步登记 `docs/后端错误码清单.md` 与 `zh.json`、`en.json` 的 `errors`；三方登记防线见 `backend/tests/test_error_code_guard.py`
 
 
 
@@ -193,16 +188,3 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 ### Domain docs
 单上下文布局：根目录 `GLOSSARY.md` + `docs/adr/`。见 `docs/agents/domain.md`。
-
-
-## 参考
-- LangGraph 文档： https://langchain-ai.github.io/langgraph/
-- LangChain 文档： https://python.langchain.com/docs/
-- DeepAgents 文档：https://docs.langchain.com/oss/python/deepagents
-- FastAPI 文档： https://fastapi.tiangolo.com/
-- shadcn ui 文档：https://ui.shadcn.com/docs
-- tauri 文档参考：https://v2.tauri.app/reference/cli/
-- tauri 能力：https://tauri.app/zh-cn/reference/acl/capability/
-- tauri配置：https://tauri.app/zh-cn/reference/config/
-- tauri快捷键配置：https://tauri.app/zh-cn/reference/javascript/global-shortcut/
-- tauri触觉反馈:https://tauri.app/zh-cn/reference/javascript/haptics/
