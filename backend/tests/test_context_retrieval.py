@@ -683,6 +683,21 @@ async def test_large_output_projection_preserves_snapshot_and_is_readable(
         # 终态清理工具预算不能提前清理仍可取回的正文。
         async with app.state.session_factory() as db:
             assert await db.scalar(select(func.count()).select_from(ChatContextOutput)) == 1
+        from app.core.data_dir import ensure_data_dir
+        from app.modules.data.archive import export_archive, restore_archive
+        from tests.test_archive import running_app
+
+        archive = await export_archive(tmp_path, include_secrets=False)
+        restored = ensure_data_dir(tmp_path / "restored")
+        await restore_archive(restored, tmp_path / "exports" / archive)
+        async with running_app(restored) as (restored_app, restored_client):
+            restored_page = await restored_client.post(f"{base}/read", json=body)
+            assert restored_page.status_code == 200, restored_page.text
+            assert restored_page.json() == page
+            assert (await restored_client.delete(f"/api/chat-sessions/{sid}")).status_code == 204
+            assert (await restored_client.post(f"{base}/read", json=body)).status_code == 404
+            async with restored_app.state.session_factory() as db:
+                assert (await db.scalars(select(ChatContextOutput))).one().content == original
         assert (await client.delete(f"/api/chat-sessions/{sid}")).status_code == 204
         assert (await client.post(f"{base}/read", json=body)).status_code == 404
 

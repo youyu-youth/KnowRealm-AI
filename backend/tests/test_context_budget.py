@@ -3,7 +3,9 @@
 import asyncio
 import json
 from pathlib import Path
+from sqlite3 import connect
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -15,6 +17,7 @@ from app.modules.agent.graph import AgentConfig
 from app.modules.settings.config import LlmProviderConfig
 from app.modules.settings.model_budget import ModelBudgetConfig, resolve_capability
 from app.shared.errors import CodedHTTPException
+from tests.test_archive import build_partial_db
 from tests.test_chat_turns import (
     GatedReply,
     ToolCallReply,
@@ -30,6 +33,42 @@ from tests.test_chat_turns_recovery import recovery_app
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_upgrade_initializes_context_on_demand_without_rewriting_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_path = tmp_path / "knowrealm.db"
+    build_partial_db(db_path, upto=45)
+    sid, message_id = str(uuid4()), str(uuid4())
+    stamp = "2026-10-01T00:00:00.000000Z"
+    with connect(db_path) as db:
+        db.execute(
+            "INSERT INTO chat_sessions (id, mode, scope, created_at, updated_at) "
+            "VALUES (?, 'ASK', 'FREE', ?, ?)",
+            (sid, stamp, stamp),
+        )
+        db.execute(
+            "INSERT INTO chat_messages (id, session_id, role, content, created_at) "
+            "VALUES (?, ?, 'USER', '升级前原消息', ?)",
+            (message_id, sid, stamp),
+        )
+        original = db.execute("SELECT * FROM chat_messages").fetchall()
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        async with app.state.session_factory() as db:
+            assert (
+                await db.execute(text("SELECT count(*) FROM chat_context_states"))
+            ).scalar() == 0
+        assert not captured
+        view = await client.get(f"/api/chat-sessions/{sid}/context")
+        assert view.status_code == 200, view.text
+        history = await client.get(f"/api/chat-sessions/{sid}/context/history")
+        assert history.status_code == 200, history.text
+        with connect(db_path) as db:
+            assert db.execute("SELECT * FROM chat_messages").fetchall() == original
+            assert db.execute("SELECT count(*) FROM chat_context_states").fetchone()[0] == 1
+        assert not captured
 
 
 def test_capabilities_are_endpoint_bound_and_overrides_win() -> None:

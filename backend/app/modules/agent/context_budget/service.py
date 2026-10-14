@@ -29,7 +29,7 @@ from app.modules.agent.context_budget.schemas import (
     ContextViewOut,
     ModelRequestOut,
 )
-from app.modules.agent.models import ChatSession
+from app.modules.agent.session_service import ChatSessionService
 from app.modules.agent.turns.models import ChatTurn
 from app.modules.settings.config import (
     llm_consent,
@@ -178,7 +178,7 @@ async def view_context(
     preview: ContextPreviewRequest,
 ) -> ContextViewOut:
     async with session_factory() as session, session.begin():
-        chat = await session.get(ChatSession, session_id)
+        chat = await ChatSessionService.get(session, session_id)
         if chat is None:
             raise CodedHTTPException(
                 code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"

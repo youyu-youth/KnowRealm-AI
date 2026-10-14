@@ -144,11 +144,12 @@ async def wait_summary_calls(calls: list[Any], count: int) -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("base_url", ["https://stub.example.com/v1", "https://api.deepseek.com"])
 @pytest.mark.parametrize(
-    "case", ["native", "fallback", "transient", "invalid", "auth", "config", "resume"]
+    "case", ["native", "fallback", "transient", "invalid", "length", "auth", "config", "resume"]
 )
 async def test_summary_sdk_json_mode_compatibility(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, base_url: str
 ) -> None:
     payloads: list[dict[str, Any]] = []
     transient_sent = False
@@ -157,6 +158,8 @@ async def test_summary_sdk_json_mode_compatibility(
         nonlocal transient_sent
         body = json.loads(request.content)
         if not body.get("response_format"):
+            if base_url == "https://api.deepseek.com":
+                assert body["max_tokens"] == 4096 and "max_completion_tokens" not in body
             chunks: list[dict[str, Any]] = [
                 {
                     "index": 0,
@@ -236,7 +239,7 @@ async def test_summary_sdk_json_mode_compatibility(
                     {
                         "index": 0,
                         "message": {"role": "assistant", "content": content},
-                        "finish_reason": "stop",
+                        "finish_reason": "length" if case == "length" else "stop",
                     }
                 ],
                 "usage": {"prompt_tokens": 12, "completion_tokens": 6, "total_tokens": 18},
@@ -262,6 +265,19 @@ async def test_summary_sdk_json_mode_compatibility(
             sid = await create_session(client)
             await seed_history(_app, sid, 45 if case == "resume" else 16, 1000)
             await configure(client, 45000 if case == "transient" else 40000)
+            if base_url == "https://api.deepseek.com":
+                from app.modules.settings.config import grant_llm_consent
+
+                changed = await client.put(
+                    "/api/settings/providers/llm",
+                    json={
+                        "base_url": base_url,
+                        "model": "stub-chat-model",
+                        "model_budget": {"context_window": 45000 if case == "transient" else 40000},
+                    },
+                )
+                assert changed.status_code == 200
+                grant_llm_consent(tmp_path)
             await assert_compaction_fixture(client, sid, fits=False)
             tid = (await submit(client, sid, "继续", request_id=f"json-mode-{case}")).json()["id"]
             if case == "resume":
@@ -276,10 +292,15 @@ async def test_summary_sdk_json_mode_compatibility(
             else:
                 result = await wait_terminal(client, tid)
                 assert result["status"] == (
-                    "FAILED" if case in ("invalid", "auth", "config") else "COMPLETED"
+                    "FAILED" if case in ("invalid", "length", "auth", "config") else "COMPLETED"
                 ), result
         if case == "resume":
-            async with recovery_app(tmp_path, monkeypatch, patches=patches) as (
+            async with recovery_app(
+                tmp_path,
+                monkeypatch,
+                patches=patches,
+                provider=(base_url, "sk-test", "stub-chat-model"),
+            ) as (
                 _app,
                 client,
                 _captured,
@@ -310,7 +331,11 @@ async def test_summary_sdk_json_mode_compatibility(
             assert modes[0] == "json_schema" and set(modes[1:]) == {"json_object"}
             assert summaries[0]["status"] == "FAILED" and summaries[0]["usage"] is None
         for row, body in zip(summaries, payloads, strict=True):
-            if row["status"] == "COMPLETED":
+            if base_url == "https://api.deepseek.com":
+                assert body["max_tokens"] == 1024 and "max_completion_tokens" not in body
+            if row["status"] == "COMPLETED" or (
+                case in ("invalid", "length") and body["response_format"]["type"] == "json_object"
+            ):
                 assert row["usage"] == {
                     "input_tokens": 12,
                     "output_tokens": 6,
@@ -412,6 +437,20 @@ def test_summary_planning_uses_effective_supplier_output_limit() -> None:
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
+    "error_body,expected_status",
+    [
+        ({"code": "context_length_exceeded"}, "COMPLETED"),
+        (
+            {"code": "InvalidParameter", "message": "Range of input length should be [1, 32768]"},
+            "COMPLETED",
+        ),
+        (
+            {"code": "InvalidParameter", "message": "Range of max_tokens should be [1, 8192]"},
+            "FAILED",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
     "overflow_attempts,expected_budgets",
     [((3,), [(1, 1), (1, 1)]), ((1, 3), [(0, 1), (0, 1), (1, 1)])],
 )
@@ -420,6 +459,8 @@ async def test_provider_overflow_retries_model_once_without_replaying_business_t
     monkeypatch: pytest.MonkeyPatch,
     overflow_attempts: tuple[int, ...],
     expected_budgets: list[tuple[int, int]],
+    error_body: dict[str, str],
+    expected_status: str,
 ) -> None:
     calls: list[Any] = []
     summary_model(monkeypatch, calls)
@@ -442,7 +483,7 @@ async def test_provider_overflow_retries_model_once_without_replaying_business_t
                     response=httpx.Response(
                         400, request=httpx.Request("POST", "https://stub.example.com")
                     ),
-                    body={"code": "context_length_exceeded"},
+                    body=error_body,
                 )
             async for item in super()._astream(messages, stop, run_manager, **kwargs):
                 yield item
@@ -485,7 +526,10 @@ async def test_provider_overflow_retries_model_once_without_replaying_business_t
             )
         ).json()["id"]
         result = await wait_terminal(client, turn_id)
-        assert result["status"] == "COMPLETED", result
+        assert result["status"] == expected_status, result
+        if expected_status == "FAILED":
+            assert attempts == overflow_attempts[0]
+            return
         assert attempts == 3 + len(overflow_attempts) and len(captured) == 3
         assert budgets == expected_budgets
         courses = (await client.get("/api/courses")).json()
@@ -581,7 +625,7 @@ async def test_restart_cannot_re_admit_consumed_overflow_retry(
 
 
 @pytest.mark.anyio
-async def test_planning_failure_keeps_safe_original_input(
+async def test_small_window_compacts_without_speculative_summary_reserve(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: list[Any] = []
@@ -610,19 +654,34 @@ async def test_planning_failure_keeps_safe_original_input(
             )
         )
         messages: list[AnyMessage] = [
-            HumanMessage("x" * 3100, id="h1"),
-            AIMessage("x" * 3100, id="a1"),
+            HumanMessage("x" * 6000, id="h1"),
+            AIMessage("x" * 6000, id="a1"),
             HumanMessage("continue", id="h2"),
         ]
 
         async def outbound() -> None:
             pass
 
+        original_plan = plan_chunks(policy, messages[:2], None)
         result = await compact(runtime, policy, messages, None, [], StubChatModel(), outbound)
-        assert result == messages and not calls
+        assert result != messages and calls
+        assert not estimate_input(policy, result, []).error_code
         async with app.state.session_factory() as db:
             row = await db.scalar(select(ChatCompaction).where(ChatCompaction.turn_id == turn_id))
-            assert row.status == "FAILED" and row.requests_used == 0
+            assert row.status == "COMPLETED" and row.requests_used == len(calls)
+            plan = json.loads(row.plan_json)
+            assert len(calls) > 1
+            assert plan["chunks"] != original_plan["chunks"]
+            for source_id, source in plan["sources"].items():
+                assert (
+                    "".join(
+                        part["fragment"]
+                        for block in plan["chunks"]
+                        for part in block
+                        if part["source_id"] == source_id
+                    )
+                    == source["wire"]
+                )
 
 
 @pytest.mark.anyio
@@ -802,6 +861,34 @@ async def test_complete_chunks_activate_and_next_turn_uses_summary(
         assert (await wait_terminal(client, second))["status"] == "COMPLETED"
         assert any((message.id or "").startswith("summary-") for message in captured[-1])
         assert not set(covered) & {message.id for message in captured[-1]}
+        from sqlite3 import connect
+
+        from app.core.data_dir import ensure_data_dir
+        from app.modules.data.archive import create_rolling_backup, export_archive, restore_archive
+        from tests.test_archive import running_app
+
+        active = (await client.get(f"/api/chat-sessions/{sid}/context")).json()["active_summary"]
+        backup_dir = tmp_path / "summary-backup"
+        backup_dir.mkdir()
+        backup = await create_rolling_backup(tmp_path / "knowrealm.db", backup_dir)
+        with connect(backup) as db:
+            assert (
+                db.execute(
+                    "SELECT summary_json FROM chat_compactions WHERE id=?", (batch["id"],)
+                ).fetchone()[0]
+                == saved.summary_json
+            )
+        archive = await export_archive(tmp_path, include_secrets=False)
+        target = ensure_data_dir(tmp_path / "summary-restored")
+        await restore_archive(target, tmp_path / "exports" / archive)
+        async with running_app(target) as (_restored_app, restored_client):
+            restored = await restored_client.get(f"/api/chat-sessions/{sid}/context")
+            assert restored.status_code == 200, restored.text
+            assert restored.json()["active_summary"] == active
+            assert (await restored_client.delete(f"/api/chat-sessions/{sid}")).status_code == 204
+            assert (
+                await restored_client.get(f"/api/chat-sessions/{sid}/context")
+            ).status_code == 404
 
 
 @pytest.mark.anyio

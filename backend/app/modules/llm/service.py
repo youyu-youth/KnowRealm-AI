@@ -1,7 +1,7 @@
 import json
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 from uuid import uuid4
 
 import openai
@@ -262,6 +262,17 @@ class OpenAiCompatiblePlanSuggestionsModel(_OpenAiCompatibleStructuredModel):
 
     def __init__(self) -> None:
         super().__init__(PlanSuggestions)
+
+
+def chat_output_parameters(base_url: str, limit: int) -> dict[str, Any]:
+    # DeepSeek 使用 max_tokens；extra_body 避开 ChatOpenAI 的参数重命名。
+    if base_url.rstrip("/") in (
+        "https://api.deepseek.com",
+        "https://api.deepseek.com/v1",
+        "https://api.deepseek.com/beta",
+    ):
+        return {"extra_body": {"max_tokens": limit}}
+    return {"max_tokens": limit}
 
 
 def build_chat_model(

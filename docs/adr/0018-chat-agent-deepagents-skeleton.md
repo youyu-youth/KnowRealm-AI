@@ -14,6 +14,10 @@ Chat Agent（`backend/app/modules/chat/graph.py`）原以 LangChain `create_agen
 - **每轮重建上下文 + checkpoint 只承载当轮的既有语义不变**：不启用 deepagents 的跨 thread 持久记忆；长期记忆仍归业务表。
 - **依赖引入**：`deepagents>=0.7.13,<0.8`。uv 解析顺带升级 langchain 1.3.16→1.3.18、langchain-core 1.6.0→1.6.3、langsmith 0.11.1→0.12.4（同主版本内，423 项全量测试验证无破坏）；deepagents 传递带入 langchain-anthropic、langchain-google-genai、google-genai、cryptography 等，本地 sidecar 形态可接受。
 
+## 当前阶段关联
+
+[ADR-0028：持久会话上下文与完整请求准入](0028-durable-conversation-context-and-request-budget.md) 阶段性替代空骨架迁移时无产品压缩及固定十轮尾裁的行为；默认框架摘要仍禁用，主骨架、提示注入、业务事实与 checkpoint 分离及内置工具隔离继续有效。以下迁移记录保留为历史决策。
+
 ## Considered Options
 
 | 方案 | 结论 |

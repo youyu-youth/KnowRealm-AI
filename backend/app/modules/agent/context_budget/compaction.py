@@ -34,7 +34,11 @@ from app.modules.agent.context_budget.schemas import (
 )
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.runtime import AgentRuntimeContext
-from app.modules.llm.service import is_json_schema_rejection, json_mode_prompt
+from app.modules.llm.service import (
+    chat_output_parameters,
+    is_json_schema_rejection,
+    json_mode_prompt,
+)
 from app.modules.settings.model_budget import output_reserve
 from app.shared.errors import CodedHTTPException
 
@@ -101,19 +105,43 @@ def plan_chunks(
     policy: ContextPolicy, history: Sequence[AnyMessage], previous: object
 ) -> dict[str, Any]:
     sources = dict(_source(message) for message in history)
+    fragments = [
+        {"source_id": source_id, "fragment": source["wire"]}
+        for source_id, source in sources.items()
+    ]
+    return {
+        "sources": sources,
+        "chunks": _plan_fragments(policy, fragments, previous),
+        "previous": previous,
+    }
+
+
+def _plan_fragments(
+    policy: ContextPolicy,
+    fragments: Sequence[dict[str, str]],
+    previous: object,
+    *,
+    reserve: int | None = None,
+    json_mode: bool = False,
+) -> list[list[dict[str, str]]]:
     chunks: list[list[dict[str, str]]] = []
     current: list[dict[str, str]] = []
-    # 每块预留一份最大摘要；恢复使用已持久的分块，绝不重新尾裁原文。
-    reserve = output_reserve(policy.capability, summary=True) * 3
-    for source_id, source in sources.items():
-        remaining = source["wire"]
+    # 预留不足时按实际旧摘要规划；后续累计摘要超限则重分未处理片段。
+    if reserve is None:
+        reserve = output_reserve(policy.capability, summary=True) * 3
+    for fragment in fragments:
+        source_id = fragment["source_id"]
+        remaining = fragment["fragment"]
         while remaining:
             low, high = 0, len(remaining)
             while low < high:
                 mid = (low + high + 1) // 2
                 candidate = [*current, {"source_id": source_id, "fragment": remaining[:mid]}]
                 estimate = estimate_input(
-                    policy, _summary_input(previous, candidate), [SUMMARY_TOOL], summary=True
+                    policy,
+                    _summary_input(previous, candidate, json_mode=json_mode),
+                    [] if json_mode else [SUMMARY_TOOL],
+                    summary=True,
                 )
                 if estimate.remaining >= reserve:
                     low = mid
@@ -121,6 +149,9 @@ def plan_chunks(
                     high = mid - 1
             if low == 0:
                 if not current:
+                    if reserve:
+                        reserve = 0
+                        continue
                     raise CodedHTTPException(
                         code="MODEL_INPUT_BUDGET_EXCEEDED",
                         status_code=409,
@@ -136,7 +167,7 @@ def plan_chunks(
                 current = []
     if current:
         chunks.append(current)
-    return {"sources": sources, "chunks": chunks, "previous": previous}
+    return chunks
 
 
 async def _guard(
@@ -395,6 +426,23 @@ async def _run_chunks(
                 summary=True,
             )
             if summary_estimate.error_code:
+                if chunk:
+                    pending = [part for block in plan["chunks"][len(results) :] for part in block]
+                    chunks = await asyncio.to_thread(
+                        _plan_fragments,
+                        policy,
+                        pending,
+                        previous,
+                        reserve=0,
+                        json_mode=method == "json_mode",
+                    )
+                    async with runtime.session_factory() as session, session.begin():
+                        row = await session.get(ChatCompaction, row_id)
+                        assert row is not None
+                        await _guard(session, runtime, row)
+                        plan["chunks"] = [*plan["chunks"][: len(results)], *chunks]
+                        row.plan_json = json.dumps(plan, ensure_ascii=False)
+                    break
                 raise CodedHTTPException(
                     code=summary_estimate.error_code,
                     status_code=409,
@@ -431,6 +479,7 @@ async def _run_chunks(
                     request_id = request.id
             if waiting:
                 raise CompactionWaiting
+            response: dict[str, Any] | None = None
             try:
                 # 独立调用不进入 Agent 工具循环；SDK 重试关闭，每次出网先持久准入。
                 response = cast(
@@ -440,7 +489,7 @@ async def _run_chunks(
                         method=method,
                         include_raw=True,
                         strict=True if method == "json_schema" else None,
-                        max_tokens=summary_estimate.output_reserve,
+                        **chat_output_parameters(policy.base_url, summary_estimate.output_reserve),
                     ).ainvoke(
                         summary_input,
                         config={"tags": ["nostream", "conversation-summary"], "callbacks": []},
@@ -457,6 +506,17 @@ async def _run_chunks(
                     assert request is not None
                     request.status = ModelRequestStatus.FAILED
                     request.error_code = "CHAT_STREAM_FAILED"
+                    usage = request_usage(
+                        getattr(response.get("raw"), "usage_metadata", None) if response else None
+                    )
+                    if isinstance(exc, openai.LengthFinishReasonError) and exc.completion.usage:
+                        raw_usage = exc.completion.usage
+                        usage = {
+                            "input_tokens": raw_usage.prompt_tokens,
+                            "output_tokens": raw_usage.completion_tokens,
+                            "total_tokens": raw_usage.total_tokens,
+                        }
+                    request.usage_json = json.dumps(usage) if usage else None
                     transient = isinstance(
                         exc,
                         (

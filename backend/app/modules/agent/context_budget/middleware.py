@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 import openai
 from langchain.agents.middleware.types import (  # pyright: ignore[reportMissingTypeStubs]
@@ -26,6 +26,7 @@ from app.modules.agent.context_budget.schemas import (
 )
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.runtime import AgentRuntimeContext
+from app.modules.llm.service import chat_output_parameters
 from app.modules.settings.config import (
     llm_consent,
     llm_provider_fingerprint,
@@ -102,7 +103,13 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             )
         except openai.BadRequestError as exc:
             code = exc.code or ""
-            if code not in ("context_length_exceeded", "max_context_length_exceeded"):
+            raw_body = cast(object, exc.body)
+            body = cast(dict[str, object], raw_body) if isinstance(raw_body, dict) else {}
+            message = str(body.get("message", "")).lower()
+            if code not in ("context_length_exceeded", "max_context_length_exceeded") and not (
+                message.startswith("range of input length should be [1,")
+                or ("maximum context length" in message and "tokens" in message)
+            ):
                 raise
             # 只重试当前模型请求；handler 不执行已提交的工具节点。
             messages = await compact(
@@ -160,7 +167,10 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         if overflow:
             estimate.error_code = "CONTEXT_PINS_TOO_LARGE"
         request = request.override(
-            model_settings={**request.model_settings, "max_tokens": estimate.output_reserve}
+            model_settings={
+                **request.model_settings,
+                **chat_output_parameters(self.policy.base_url, estimate.output_reserve),
+            }
         )
         row = ChatModelRequest(
             turn_id=self.runtime.turn_id,
