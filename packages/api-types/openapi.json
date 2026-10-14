@@ -7436,6 +7436,14 @@
             ],
             "title": "Last Route"
           },
+          "layout_mode": {
+            "enum": [
+              "SIDEBAR",
+              "TOP"
+            ],
+            "title": "Layout Mode",
+            "type": "string"
+          },
           "light_theme_id": {
             "enum": [
               "LIGHT_DEFAULT",
@@ -7474,6 +7482,7 @@
           }
         },
         "required": [
+          "layout_mode",
           "theme",
           "light_theme_id",
           "dark_theme_id",
@@ -7580,6 +7589,22 @@
             ],
             "description": "上次界面路由；null 表示默认页",
             "title": "Last Route"
+          },
+          "layout_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "SIDEBAR",
+                  "TOP"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "导航布局",
+            "title": "Layout Mode"
           },
           "light_theme_id": {
             "anyOf": [

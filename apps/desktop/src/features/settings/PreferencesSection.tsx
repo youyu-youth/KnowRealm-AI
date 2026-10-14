@@ -128,6 +128,7 @@ function AppearancePreferences({
   const theme = useSavePreference();
   const fontScale = useSavePreference();
   const language = useSavePreference();
+  const layout = useSavePreference();
 
   return (
     <div className="flex flex-col gap-7">
@@ -188,6 +189,34 @@ function AppearancePreferences({
 
       <ThemeChoices mode="LIGHT" preferences={preferences} />
       <ThemeChoices mode="DARK" preferences={preferences} />
+
+      <SettingsChoiceRow label={t("settings.preferences.layoutLegend")}>
+        <RadioGroup
+          className="flex flex-wrap gap-x-5 gap-y-3"
+          value={preferences.layout_mode ?? "SIDEBAR"}
+          onValueChange={(value) => {
+            if (value === "SIDEBAR" || value === "TOP")
+              layout.mutate({ layout_mode: value });
+          }}
+          disabled={layout.isPending}
+        >
+          {(["SIDEBAR", "TOP"] as const).map((item) => {
+            const id = `preference-layout-${item}`;
+            return (
+              <Field key={id} orientation="horizontal" className="w-auto">
+                <RadioGroupItem id={id} value={item} />
+                <FieldLabel htmlFor={id}>
+                  {t(`settings.preferences.layout.${item}`)}
+                </FieldLabel>
+              </Field>
+            );
+          })}
+        </RadioGroup>
+        <SaveError
+          error={layout.error}
+          onRetry={() => layout.variables && layout.mutate(layout.variables)}
+        />
+      </SettingsChoiceRow>
 
       <SettingsChoiceRow label={t("settings.preferences.fontScaleLegend")}>
         <RadioGroup

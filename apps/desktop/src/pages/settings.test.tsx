@@ -96,9 +96,9 @@ describe("设置页分类导航", () => {
   it("合法深链可直接定位", async () => {
     renderAt("/settings?section=appearance");
     expect(
-      await screen.findByRole("tab", { name: "外观与语言" }),
+      await screen.findByRole("tab", { name: "外观与布局" }),
     ).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("heading", { name: "外观与语言" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "外观与布局" })).toBeVisible();
     expect(
       screen.queryByText("管理个人资料、智能服务、应用偏好与本地数据。"),
     ).not.toBeInTheDocument();
@@ -359,6 +359,7 @@ type PreferencesOut = components["schemas"]["PreferencesOut"];
 
 const PREFERENCES_URL = `${TEST_SIDECAR_URL}/api/settings/preferences`;
 const DEFAULT_PREFERENCES: PreferencesOut = {
+  layout_mode: "SIDEBAR",
   theme: "SYSTEM",
   light_theme_id: "LIGHT_DEFAULT",
   dark_theme_id: "DARK_DEFAULT",
@@ -396,7 +397,7 @@ describe("设置页偏好分区", () => {
     renderAt("/settings?section=appearance");
 
     expect(
-      await screen.findByRole("heading", { name: "外观与语言" }),
+      await screen.findByRole("heading", { name: "外观与布局" }),
     ).toBeVisible();
     expect(await screen.findByRole("radio", { name: "深色" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "大" })).toBeChecked();

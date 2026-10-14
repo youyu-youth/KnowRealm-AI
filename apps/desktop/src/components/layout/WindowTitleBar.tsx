@@ -1,3 +1,6 @@
+import { useQuery } from "@tanstack/react-query";
+import { settingsApi } from "@/features/settings/api/settings";
+import { settingsKeys } from "@/features/settings/api/keys";
 import {
   ArrowLeft,
   ArrowRight,
@@ -27,6 +30,10 @@ export function WindowTitleBar({
   searchHostRef?: Ref<HTMLDivElement>;
 }) {
   const { t } = useTranslation();
+  const preferences = useQuery({
+    queryKey: settingsKeys.preferences,
+    queryFn: settingsApi.getPreferences,
+  });
   const [appWindow] = useState(getDesktopWindow);
   const [state, setState] = useState({ focused: true, maximized: false });
   const [error, setError] = useState<string | null>(null);
@@ -107,9 +114,12 @@ export function WindowTitleBar({
       data-tauri-drag-region
       data-focused={state.focused}
       data-maximized={state.maximized}
-      className="bg-canvas border-border-subtle text-ink h-titlebar data-[focused=false]:text-muted-foreground relative z-60 flex shrink-0 items-center border-b select-none"
+      className="bg-sidebar text-ink h-titlebar data-[focused=false]:text-muted-foreground relative z-60 flex shrink-0 items-center select-none"
     >
-      <div className="flex h-full shrink-0 items-center pl-2">
+      <div
+        hidden={preferences.data?.layout_mode === "TOP"}
+        className="flex h-full shrink-0 items-center pl-2"
+      >
         <Button
           variant="ghost"
           size="icon-sm"

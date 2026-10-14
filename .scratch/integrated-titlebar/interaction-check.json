@@ -1,0 +1,9 @@
+{
+  "collapse": true,
+  "expand": true,
+  "keyboardFocus": {
+    "tag": "BUTTON",
+    "visible": true,
+    "shadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px, oklab(0 0 0 / 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px"
+  }
+}

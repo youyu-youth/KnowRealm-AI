@@ -26,6 +26,7 @@
   },
   "nav": {
     "resizeSidebar": "调整侧边栏宽度",
+    "moreNavigation": "更多导航",
     "label": "工作区导航",
     "today": "今日",
     "inbox": "收件箱",
@@ -2817,7 +2818,7 @@
       "dataGroup": "数据",
       "profile": "个人资料",
       "ai": "AI 服务",
-      "appearance": "外观与语言",
+      "appearance": "外观与布局",
       "desktop": "桌面行为",
       "general": "通用偏好",
       "data": "数据与存储",
@@ -2944,6 +2945,11 @@
       "retry": "重试",
       "appearanceTitle": "外观",
       "themeLegend": "深色模式",
+      "layoutLegend": "导航布局",
+      "layout": {
+        "SIDEBAR": "侧边栏布局",
+        "TOP": "顶部导航布局"
+      },
       "theme": {
         "LIGHT": "浅色",
         "DARK": "深色",

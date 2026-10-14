@@ -256,6 +256,7 @@ def llm_consent(data_dir: Path) -> tuple[str | None, bool]:
 
 
 THEME_CHOICES = ("LIGHT", "DARK", "SYSTEM")
+LAYOUT_MODES = ("SIDEBAR", "TOP")
 LIGHT_THEME_IDS = get_args(LightThemeId)
 DARK_THEME_IDS = get_args(DarkThemeId)
 DEFAULT_LIGHT_THEME_ID = "LIGHT_DEFAULT"
@@ -275,6 +276,7 @@ DEFAULT_QUIZ_LAST_COUNT = 5
 # settings.json 只保留用户的偏离项，consent 等未知键经读改写天然保留。
 PREFERENCE_DEFAULTS: dict[str, object] = {
     "theme": DEFAULT_THEME,
+    "layout_mode": "SIDEBAR",
     "light_theme_id": DEFAULT_LIGHT_THEME_ID,
     "dark_theme_id": DEFAULT_DARK_THEME_ID,
     "font_scale": DEFAULT_FONT_SCALE,
@@ -291,6 +293,7 @@ PREFERENCE_DEFAULTS: dict[str, object] = {
 def load_preferences(data_dir: Path) -> dict[str, object]:
     settings = _read_json(data_dir / "config" / "settings.json")
     theme = settings.get("theme")
+    layout_mode = settings.get("layout_mode")
     light_theme_id = settings.get("light_theme_id")
     dark_theme_id = settings.get("dark_theme_id")
     font_scale = settings.get("font_scale")
@@ -303,6 +306,7 @@ def load_preferences(data_dir: Path) -> dict[str, object]:
     last_route = settings.get("last_route")
     return {
         "theme": theme if theme in THEME_CHOICES else DEFAULT_THEME,
+        "layout_mode": layout_mode if layout_mode in LAYOUT_MODES else "SIDEBAR",
         "light_theme_id": (
             light_theme_id if light_theme_id in LIGHT_THEME_IDS else DEFAULT_LIGHT_THEME_ID
         ),

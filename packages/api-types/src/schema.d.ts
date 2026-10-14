@@ -5785,6 +5785,11 @@ export interface components {
             /** Last Route */
             last_route: string | null;
             /**
+             * Layout Mode
+             * @enum {string}
+             */
+            layout_mode: "SIDEBAR" | "TOP";
+            /**
              * Light Theme Id
              * @enum {string}
              */
@@ -5837,6 +5842,11 @@ export interface components {
              * @description 上次界面路由；null 表示默认页
              */
             last_route?: string | null;
+            /**
+             * Layout Mode
+             * @description 导航布局
+             */
+            layout_mode?: ("SIDEBAR" | "TOP") | null;
             /**
              * Light Theme Id
              * @description 明亮主题 ID

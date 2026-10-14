@@ -1,16 +1,5 @@
 import { Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import {
-  Archive,
-  BookOpenText,
-  Bot,
-  CalendarDays,
-  ChevronDown,
-  Inbox,
-  Library,
-  Search,
-  Settings,
-  UserRound,
-} from "lucide-react";
+import { BookOpenText, ChevronDown, Search, Settings } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   useCallback,
@@ -41,6 +30,12 @@ import { CommandPalette } from "@/features/search/components/CommandPalette";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
 import { useSavePreference } from "@/features/settings/useSavePreference";
 import { SidebarUserArea } from "@/components/layout/SidebarUserArea";
+import { TopNavigation } from "@/components/layout/TopNavigation";
+import {
+  activeNavClass,
+  inactiveNavClass,
+  navigationItems,
+} from "@/components/layout/navigationItems";
 import { SidebarResizeHandle } from "@/components/layout/SidebarResizeHandle";
 import { CaptureFloatingToolbar } from "@/components/layout/CaptureFloatingToolbar";
 import { TitleBarSearchHostContext } from "@/components/layout/titleBarSearchHostContext";
@@ -79,20 +74,6 @@ import {
   type CloseBehaviorPreference,
 } from "@/services/tauri/preferences";
 
-const navigationItems = [
-  { labelKey: "nav.today", icon: CalendarDays, to: "/" },
-  { labelKey: "nav.inbox", icon: Inbox, to: "/inbox" },
-  { labelKey: "nav.spaces", icon: Archive, to: "/spaces" },
-  { labelKey: "nav.chat", icon: Bot, to: "/chat" },
-  { labelKey: "nav.library", icon: Library, to: "/library" },
-  { labelKey: "nav.profile", icon: UserRound },
-] as const;
-
-const activeNavClass =
-  "flex h-9 items-center gap-3 overflow-hidden rounded-md bg-surface-subtle px-3 text-body font-semibold text-ink-strong transition-colors focus-visible:ring-3 focus-visible:ring-ring/40";
-const inactiveNavClass =
-  "flex h-9 items-center gap-3 overflow-hidden rounded-md px-3 text-body font-medium text-muted-foreground transition-colors hover:bg-surface-subtle hover:text-ink-strong focus-visible:ring-3 focus-visible:ring-ring/40";
-
 type ExitRisks = {
   recording: boolean;
   unsavedText: boolean;
@@ -120,6 +101,7 @@ export function AppShell() {
     queryKey: settingsKeys.preferences,
     queryFn: settingsApi.getPreferences,
   });
+  const topNavigation = preferences.data?.layout_mode === "TOP";
   // 上次界面恢复：偏好首次到达且仍停在默认页时回上次路由（桌面启动总落默认页；
   // 该前提同时保证显式打开的路径不被恢复覆盖）。设置页路由不参与记忆，目标不存在
   // 由现有 NotFound 兜底。恢复导航造成的路径变化由 in-flight 标记挡住，不触发写入；
@@ -304,13 +286,20 @@ export function AppShell() {
   );
 
   return (
-    <div className="bg-canvas text-foreground max-compact:p-0 flex h-full min-w-0 overflow-hidden p-2">
+    <div
+      className={cn(
+        "bg-sidebar text-foreground max-compact:p-0 flex h-full min-w-0 overflow-hidden p-2",
+        topNavigation && "flex-col",
+      )}
+    >
       <AppearanceSync />
       <AppToasts />
+      {topNavigation && <TopNavigation courseId={activeCourseId} />}
       <aside
         id={APP_SIDEBAR_ID}
+        hidden={topNavigation}
         aria-label={t("nav.label")}
-        inert={sidebarCollapsed}
+        inert={sidebarCollapsed || topNavigation}
         style={
           {
             "--sidebar-width":
@@ -319,7 +308,11 @@ export function AppShell() {
         }
         className={cn(
           "app-sidebar bg-sidebar relative flex h-full shrink-0 transition-[width] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
-          sidebarCollapsed ? "w-0 overflow-hidden" : "w-[var(--sidebar-width)]",
+          topNavigation
+            ? "hidden"
+            : sidebarCollapsed
+              ? "w-0 overflow-hidden"
+              : "w-[var(--sidebar-width)]",
         )}
       >
         {/* Toggle 只裁切，内容与导航保持挂载；容器宽度决定文字可见性。 */}
@@ -462,10 +455,10 @@ export function AppShell() {
             </Link>
           </AppTooltip>
         </div>
-        {!sidebarCollapsed && <SidebarResizeHandle />}
+        {!sidebarCollapsed && !topNavigation && <SidebarResizeHandle />}
       </aside>
 
-      <div className="bg-paper border-border-subtle max-compact:rounded-none max-compact:border-y-0 max-compact:border-r-0 flex min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">
+      <div className="bg-paper border-border-subtle max-compact:rounded-none max-compact:border-y-0 max-compact:border-r-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border">
         <div className="px-content flex shrink-0 items-center py-2 empty:hidden">
           <RecordingExperience onAccepted={openRecord} />
         </div>

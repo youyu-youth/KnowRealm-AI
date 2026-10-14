@@ -14,6 +14,7 @@ from app.main import create_app
 TOKEN = "test-launch-token"
 
 DEFAULTS = {
+    "layout_mode": "SIDEBAR",
     "theme": "SYSTEM",
     "light_theme_id": "LIGHT_DEFAULT",
     "dark_theme_id": "DARK_DEFAULT",
@@ -73,6 +74,41 @@ async def test_get_preferences_returns_defaults_without_writing_file(tmp_path: P
     assert response.status_code == 200
     assert response.json() == DEFAULTS
     assert not settings_path(tmp_path).exists()
+
+
+@pytest.mark.anyio
+async def test_layout_persists_across_app_restart_and_reset_keeps_other_keys(
+    tmp_path: Path,
+) -> None:
+    write_settings(tmp_path, {"theme": "DARK", "custom": {"kept": True}})
+    async with running_app(tmp_path) as (_app, client):
+        response = await client.put("/api/settings/preferences", json={"layout_mode": "TOP"})
+        assert response.status_code == 200
+        assert response.json()["layout_mode"] == "TOP"
+    assert read_settings(tmp_path) == {
+        "layout_mode": "TOP",
+        "theme": "DARK",
+        "custom": {"kept": True},
+    }
+    async with running_app(tmp_path) as (_app, client):
+        response = await client.get("/api/settings/preferences")
+        assert response.json()["layout_mode"] == "TOP"
+        response = await client.put("/api/settings/preferences", json={"layout_mode": "SIDEBAR"})
+        assert response.json()["layout_mode"] == "SIDEBAR"
+    assert read_settings(tmp_path) == {"theme": "DARK", "custom": {"kept": True}}
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("invalid", [None, "BOTTOM", [], {}])
+async def test_corrupt_layout_falls_back_without_rewriting_file(
+    tmp_path: Path, invalid: object
+) -> None:
+    stored = {"layout_mode": invalid, "theme": "DARK", "custom": 42}
+    write_settings(tmp_path, stored)
+    async with running_app(tmp_path) as (_app, client):
+        response = await client.get("/api/settings/preferences")
+        assert response.json() == {**DEFAULTS, "theme": "DARK"}
+    assert read_settings(tmp_path) == stored
 
 
 @pytest.mark.anyio
@@ -284,6 +320,8 @@ async def test_put_empty_body_keeps_everything_unchanged(tmp_path: Path) -> None
     "payload",
     [
         {"theme": "BLUE"},
+        {"layout_mode": "BOTTOM"},
+        {"layout_mode": None},
         {"font_scale": "XL"},
         {"language": "fr"},
         {"language": None},

@@ -138,6 +138,7 @@ class LlmConsentOut(BaseModel):
 
 
 class PreferencesOut(BaseModel):
+    layout_mode: Literal["SIDEBAR", "TOP"]
     theme: Literal["LIGHT", "DARK", "SYSTEM"]
     light_theme_id: LightThemeId
     dark_theme_id: DarkThemeId
@@ -232,6 +233,7 @@ class PreferencesUpdate(BaseModel):
     timezone/last_route 显式 null 各表跟随系统/默认页。"""
 
     theme: Literal["LIGHT", "DARK", "SYSTEM"] | None = Field(default=None, description="界面模式")
+    layout_mode: Literal["SIDEBAR", "TOP"] | None = Field(default=None, description="导航布局")
     light_theme_id: LightThemeId | None = Field(default=None, description="明亮主题 ID")
     dark_theme_id: DarkThemeId | None = Field(default=None, description="暗黑主题 ID")
     font_scale: Literal["S", "M", "L"] | None = Field(default=None, description="字号档位")
@@ -266,6 +268,7 @@ class PreferencesUpdate(BaseModel):
     def reject_explicit_null(self) -> Self:
         for field in (
             "theme",
+            "layout_mode",
             "light_theme_id",
             "dark_theme_id",
             "font_scale",

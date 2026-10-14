@@ -121,6 +121,7 @@ function preferencesOut(
   overrides: Partial<components["schemas"]["PreferencesOut"]> = {},
 ): components["schemas"]["PreferencesOut"] {
   return {
+    layout_mode: "SIDEBAR",
     theme: "SYSTEM",
     light_theme_id: "LIGHT_DEFAULT",
     dark_theme_id: "DARK_DEFAULT",

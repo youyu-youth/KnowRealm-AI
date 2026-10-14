@@ -1,0 +1,930 @@
+[
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 1223.2000732421875,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      },
+      {
+        "text": "资产库",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "zh",
+    "theme": "LIGHT_DEFAULT",
+    "width": 1440,
+    "font": 16
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 873.5,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      },
+      {
+        "text": "资产库",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "zh",
+    "theme": "LIGHT_DEFAULT",
+    "width": 1099,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 574.2999877929688,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "zh",
+    "theme": "LIGHT_DEFAULT",
+    "width": 800,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 436.3999938964844,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "zh",
+    "theme": "LIGHT_DEFAULT",
+    "width": 600,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 1223.2000732421875,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      },
+      {
+        "text": "资产库",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "zh",
+    "theme": "DARK_DEFAULT",
+    "width": 1440,
+    "font": 16
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 873.5,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      },
+      {
+        "text": "资产库",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "zh",
+    "theme": "DARK_DEFAULT",
+    "width": 1099,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 574.2999877929688,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "zh",
+    "theme": "DARK_DEFAULT",
+    "width": 800,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 436.3999938964844,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "zh",
+    "theme": "DARK_DEFAULT",
+    "width": 600,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 1223.2000732421875,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      },
+      {
+        "text": "资产库",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "zh",
+    "theme": "LIGHT_SAGE",
+    "width": 1440,
+    "font": 16
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 873.5,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      },
+      {
+        "text": "资产库",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "zh",
+    "theme": "LIGHT_SAGE",
+    "width": 1099,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 574.2999877929688,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "zh",
+    "theme": "LIGHT_SAGE",
+    "width": 800,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 436.3999938964844,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "zh",
+    "theme": "LIGHT_SAGE",
+    "width": 600,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 1223.2000732421875,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      },
+      {
+        "text": "资产库",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "zh",
+    "theme": "DARK_INK",
+    "width": 1440,
+    "font": 16
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 873.5,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      },
+      {
+        "text": "资产库",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "zh",
+    "theme": "DARK_INK",
+    "width": 1099,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 574.2999877929688,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      },
+      {
+        "text": "AI 对话",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "zh",
+    "theme": "DARK_INK",
+    "width": 800,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 436.3999938964844,
+    "links": [
+      {
+        "text": "今日",
+        "fits": true
+      },
+      {
+        "text": "收件箱",
+        "fits": true
+      },
+      {
+        "text": "知识空间",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "zh",
+    "theme": "DARK_INK",
+    "width": 600,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 1182.862548828125,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      },
+      {
+        "text": "AI Chat",
+        "fits": true
+      },
+      {
+        "text": "Library",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "en",
+    "theme": "LIGHT_DEFAULT",
+    "width": 1440,
+    "font": 16
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 828.125,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      },
+      {
+        "text": "AI Chat",
+        "fits": true
+      },
+      {
+        "text": "Library",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "en",
+    "theme": "LIGHT_DEFAULT",
+    "width": 1099,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 528.9249877929688,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "en",
+    "theme": "LIGHT_DEFAULT",
+    "width": 800,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 436.3999938964844,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "en",
+    "theme": "LIGHT_DEFAULT",
+    "width": 600,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 1182.862548828125,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      },
+      {
+        "text": "AI Chat",
+        "fits": true
+      },
+      {
+        "text": "Library",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "en",
+    "theme": "DARK_DEFAULT",
+    "width": 1440,
+    "font": 16
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 828.125,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      },
+      {
+        "text": "AI Chat",
+        "fits": true
+      },
+      {
+        "text": "Library",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "en",
+    "theme": "DARK_DEFAULT",
+    "width": 1099,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 528.9249877929688,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "en",
+    "theme": "DARK_DEFAULT",
+    "width": 800,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 436.3999938964844,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "en",
+    "theme": "DARK_DEFAULT",
+    "width": 600,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 1182.862548828125,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      },
+      {
+        "text": "AI Chat",
+        "fits": true
+      },
+      {
+        "text": "Library",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "en",
+    "theme": "LIGHT_SAGE",
+    "width": 1440,
+    "font": 16
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 828.125,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      },
+      {
+        "text": "AI Chat",
+        "fits": true
+      },
+      {
+        "text": "Library",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "en",
+    "theme": "LIGHT_SAGE",
+    "width": 1099,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 528.9249877929688,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "en",
+    "theme": "LIGHT_SAGE",
+    "width": 800,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 436.3999938964844,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "en",
+    "theme": "LIGHT_SAGE",
+    "width": 600,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 1182.862548828125,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      },
+      {
+        "text": "AI Chat",
+        "fits": true
+      },
+      {
+        "text": "Library",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "en",
+    "theme": "DARK_INK",
+    "width": 1440,
+    "font": 16
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 828.125,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      },
+      {
+        "text": "AI Chat",
+        "fits": true
+      },
+      {
+        "text": "Library",
+        "fits": true
+      }
+    ],
+    "more": false,
+    "border": "0px",
+    "language": "en",
+    "theme": "DARK_INK",
+    "width": 1099,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 528.9249877929688,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      },
+      {
+        "text": "Knowledge Spaces",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "en",
+    "theme": "DARK_INK",
+    "width": 800,
+    "font": 18
+  },
+  {
+    "overflow": false,
+    "sidebarHidden": true,
+    "navigationWidth": 436.3999938964844,
+    "links": [
+      {
+        "text": "Today",
+        "fits": true
+      },
+      {
+        "text": "Inbox",
+        "fits": true
+      }
+    ],
+    "more": true,
+    "border": "0px",
+    "language": "en",
+    "theme": "DARK_INK",
+    "width": 600,
+    "font": 18
+  }
+]

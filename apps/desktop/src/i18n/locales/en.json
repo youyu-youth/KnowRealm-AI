@@ -26,6 +26,7 @@
   },
   "nav": {
     "resizeSidebar": "Resize sidebar",
+    "moreNavigation": "More navigation",
     "label": "Workspace navigation",
     "today": "Today",
     "inbox": "Inbox",
@@ -2837,7 +2838,7 @@
       "dataGroup": "Data",
       "profile": "Profile",
       "ai": "AI services",
-      "appearance": "Appearance & language",
+      "appearance": "Appearance & layout",
       "desktop": "Desktop behavior",
       "general": "General preferences",
       "data": "Data & storage",
@@ -2964,6 +2965,11 @@
       "retry": "Retry",
       "appearanceTitle": "Appearance",
       "themeLegend": "Dark mode",
+      "layoutLegend": "Navigation layout",
+      "layout": {
+        "SIDEBAR": "Sidebar layout",
+        "TOP": "Top navigation layout"
+      },
       "theme": {
         "LIGHT": "Light",
         "DARK": "Dark",
