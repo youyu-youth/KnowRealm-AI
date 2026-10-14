@@ -2474,6 +2474,15 @@
         "reject": "Reject",
         "rejected": "Pinned settings change rejected",
         "accepted": "Pinned settings changed for the next turn"
+      },
+      "contextRules": {
+        "title": "Change context settings",
+        "accept": "Confirm change",
+        "failed": "Change failed",
+        "failedDetail": "Change failed: {{reason}}",
+        "reject": "Reject",
+        "rejected": "Context change rejected",
+        "accepted": "Context settings changed, effective next turn"
       }
     },
     "authMode": {
@@ -2502,7 +2511,9 @@
       "action": {
         "create_course": "Create course",
         "add_text_record_to_course": "Save text record",
-        "change_context_pin": "Change pinned context"
+        "change_context_pin": "Change pinned context",
+        "change_context_rules": "Change context settings",
+        "list_context_history": "List history turn identities"
       }
     },
     "coursePicker": {
@@ -2568,7 +2579,9 @@
       "jumpToLatest": "Jump to latest",
       "toolNames": {
         "get_context_settings": "View pinned settings",
-        "change_context_pin": "Change pinned context"
+        "change_context_pin": "Change pinned context",
+        "change_context_rules": "Change context settings",
+        "list_context_history": "List history turn identities"
       }
     },
     "turn": {
@@ -2752,7 +2765,8 @@
       "status": {
         "VALID": "Valid",
         "STALE": "Source changed; injection paused",
-        "UNAVAILABLE": "Source unavailable; injection paused"
+        "UNAVAILABLE": "Source unavailable; injection paused",
+        "EXCLUDED": "Paused by exclusion"
       },
       "injected": "Included in this request",
       "notInjected": "Not included in this request",
@@ -2778,6 +2792,38 @@
         "ADD": "Add pin",
         "UPDATE": "Update pin",
         "REMOVE": "Remove pin"
+      }
+    },
+    "contextRules": {
+      "title": "Exclusions and history",
+      "summary": "Segment {{segment}} · {{turns}} excluded turns / {{sources}} sources · {{included}} selected older turns",
+      "hint": "Changes apply next turn. Exclusions take priority over pins and history inclusion. Only traceable sources can be filtered; unattributed paraphrases in other messages may remain.",
+      "reset": "Reset context",
+      "resetHint": "Start a new segment, stop automatic use and retrieval of older history, and clear the active summary. Keep original messages, pins, exclusions, material scope, long-term memory and authorization. Independent background tasks continue. Older turns require explicit selection to be included again.",
+      "confirmReset": "Start new segment",
+      "cancel": "Cancel",
+      "restoreSource": "Restore source",
+      "excludeSource": "Exclude this material source",
+      "history": "History turns",
+      "emptyHistory": "No history turns to select yet. Return to chat and send a question first.",
+      "turnState": "Segment {{segment}} · {{state}}",
+      "excluded": "Excluded",
+      "included": "Included",
+      "old": "Older segment, not included",
+      "restoreTurn": "Restore this turn",
+      "excludeTurn": "Exclude this turn",
+      "includeTurn": "Include this older turn",
+      "previous": "Previous page",
+      "next": "Next page",
+      "currentSession": "Current session",
+      "saved": "Settings saved: segment {{segment}}, version {{version}}, effective next turn",
+      "actions": {
+        "EXCLUDE_TURN": "Exclude turns",
+        "RESTORE_TURN": "Restore turns",
+        "EXCLUDE_SOURCE": "Exclude material source",
+        "RESTORE_SOURCE": "Restore material source",
+        "RESET": "Reset context",
+        "INCLUDE_HISTORY": "Include selected older turns"
       }
     }
   },
@@ -3607,7 +3653,9 @@
     "TOOL_CALL_IDENTITY_CONFLICT": "The tool output does not match the original logical call. Stop and ask again.",
     "CONTEXT_VERSION_CONFLICT": "Pinned settings changed. Refresh and try again.",
     "CONTEXT_PIN_NOT_FOUND": "Pinned entry not found. Please refresh.",
-    "CONTEXT_PINS_TOO_LARGE": "Pinned and required input exceed the budget. No model was called. Unpin or adjust pinned context."
+    "CONTEXT_PINS_TOO_LARGE": "Pinned and required input exceed the budget. No model was called. Unpin or adjust pinned context.",
+    "CONTEXT_SOURCE_EXCLUDED": "Source excluded. Restore it in next-turn settings.",
+    "CONTEXT_HISTORY_RANGE_INVALID": "History range is outside this session, incomplete or changed. Select it again."
   },
   "agent": {
     "run": {

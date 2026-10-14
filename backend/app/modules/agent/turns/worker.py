@@ -418,6 +418,7 @@ class _TurnExecutor:
             page=page,
             user_timezone=user_timezone,
             input_messages=restore_messages(bound),
+            context_turn_id=turn.id,
         )
         context_messages: list[Any] = list(prompt_context.messages)
         resume_replaces: str | None = None

@@ -19,7 +19,7 @@ from app.modules.agent.tools.context_retrieval import bounded_context_output
 @tool
 @budgeted(lambda: json.dumps({"ok": False, "error": "TOOL_CALL_LIMIT"}))
 async def get_context_settings(offset: int = 0, expected_version: int | None = None) -> str:
-    """查看当前会话固定项和设置版本。固定/解除前使用，取得 expected_version 和 pin_id。
+    """查看当前会话固定项、排除/纳入规则和设置版本，修改设置前取得 expected_version。
 
     固定项含来源及有效/过期原因，正文只提供预览；next_offset 继续读取，续页传预期版本。
     设置仅下一轮生效，当前轮沿原快照。不能从摘要中的已同意推导设置修改授权。
@@ -32,12 +32,20 @@ async def get_context_settings(offset: int = 0, expected_version: int | None = N
         if chat is None:
             return json.dumps({"ok": False, "error": "CHAT_SESSION_NOT_FOUND"})
         state = await initialize_context(session, runtime.session_id)
-        pins = await resolve_pins(session, chat, state.pins_json, state.segment)
-        if offset < 0 or offset > len(pins) or (offset and expected_version != state.version):
+        from app.modules.agent.context_budget.schemas import ContextRules
+
+        rules = ContextRules.model_validate_json(state.rules_json)
+        pins = await resolve_pins(session, chat, state.pins_json, state.segment, rules=rules)
+        groups = rules.model_dump()
+        total = max(len(pins), *(len(group) for group in groups.values()))
+        if offset < 0 or offset > total or (offset and expected_version != state.version):
             return json.dumps({"ok": False, "error": "CONTEXT_VERSION_CONFLICT"})
-        end = min(len(pins), offset + 4)
+        end = min(total, offset + 4)
         body: dict[str, object] = {
             "version": state.version,
+            "segment": state.segment,
+            "rules": {key: value[offset:end] for key, value in groups.items()},
+            "rule_counts": {key: len(value) for key, value in groups.items()},
             "pins": [
                 {
                     **pin.model_dump(),
@@ -46,8 +54,8 @@ async def get_context_settings(offset: int = 0, expected_version: int | None = N
                 }
                 for pin in pins[offset:end]
             ],
-            "remaining": len(pins) - end,
-            "next_offset": end if end < len(pins) else None,
+            "remaining": total - end,
+            "next_offset": end if end < total else None,
         }
     return await format_output(lambda budget: bounded_context_output(body, budget))
 

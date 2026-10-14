@@ -74,6 +74,213 @@ function renderAt(path = "/") {
   return render(<App />);
 }
 
+it("上下文排除、重置和选择旧轮共用持久版本，实际快照保持原设置", async () => {
+  let version = 1;
+  let segment = 1;
+  let excluded = false;
+  let included = true;
+  const writes: components["schemas"]["ContextRuleChange"][] = [];
+  const view = () => ({
+    session_id: FIRST_SESSION_ID,
+    version,
+    segment,
+    actual_turn_id: "original-turn",
+    actual: [],
+    actual_pins: [],
+    pins: [],
+    next_estimate: null,
+    next_error_code: null,
+    rules: {
+      excluded_turn_ids: excluded ? ["original-turn"] : [],
+      excluded_source_ids: [],
+      included_turn_ids: included && segment > 1 ? ["original-turn"] : [],
+    },
+    actual_segment: 1,
+    actual_rules: {
+      excluded_turn_ids: [],
+      excluded_source_ids: [],
+      included_turn_ids: [],
+    },
+  });
+  server.use(
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+      HttpResponse.json([chatSession(FIRST_SESSION_ID, {})]),
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`, () =>
+      HttpResponse.json(chatSession(FIRST_SESSION_ID, {})),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/estimates`,
+      () => HttpResponse.json(view()),
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/history`, () =>
+      HttpResponse.json({
+        version,
+        turns: [
+          {
+            turn_id: "original-turn",
+            segment: 1,
+            status: "COMPLETED",
+            title: "明确选择的原轮",
+            excluded,
+            included: included && !excluded,
+          },
+        ],
+        next_offset: null,
+      }),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/rules`,
+      async ({ request }) => {
+        const body =
+          (await request.json()) as components["schemas"]["ContextRuleChange"];
+        writes.push(body);
+        if (body.expected_version !== version)
+          return HttpResponse.json(
+            { code: "CONTEXT_VERSION_CONFLICT", detail: "设置已变化" },
+            { status: 409 },
+          );
+        if (body.action === "EXCLUDE_TURN") excluded = true;
+        if (body.action === "RESTORE_TURN") excluded = false;
+        if (body.action === "RESET") {
+          segment++;
+          included = false;
+        }
+        if (body.action === "INCLUDE_HISTORY") included = true;
+        version++;
+        return HttpResponse.json({
+          session_id: FIRST_SESSION_ID,
+          version,
+          segment,
+          rules: view().rules,
+        });
+      },
+    ),
+  );
+  renderAt(`/chat-context/${FIRST_SESSION_ID}?view=next`);
+  await screen.findByRole(
+    "heading",
+    { name: "排除与历史承接" },
+    { timeout: 5000 },
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "排除此轮" }));
+  await screen.findByRole("button", { name: "恢复此轮" });
+  fireEvent.click(screen.getByRole("button", { name: "重置上下文" }));
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByText(/独立后台任务继续运行/)).toBeVisible();
+  fireEvent.click(within(dialog).getByRole("button", { name: "开启新段" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  const include = await screen.findByRole("button", { name: "纳入此旧轮" });
+  expect(include).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "恢复此轮" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "纳入此旧轮" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "纳入此旧轮" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "纳入此旧轮" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(writes.map((body) => [body.action, body.expected_version])).toEqual([
+    ["EXCLUDE_TURN", 1],
+    ["RESET", 2],
+    ["RESTORE_TURN", 3],
+    ["INCLUDE_HISTORY", 4],
+  ]);
+  expect(writes[3].turn_ids).toEqual(["original-turn"]);
+  fireEvent.click(screen.getByRole("tab", { name: "本轮实际输入" }));
+  expect(
+    await screen.findByText(
+      "第 1 段 · 排除 0 轮 / 0 个来源 · 明确纳入 0 轮旧历史",
+    ),
+  ).toBeVisible();
+});
+
+it("资料原文排除提交明确来源版本，冲突不会显示成功", async () => {
+  const writes: components["schemas"]["ContextRuleChange"][] = [];
+  const view = {
+    session_id: FIRST_SESSION_ID,
+    version: 7,
+    segment: 1,
+    actual_turn_id: null,
+    actual: [],
+    actual_pins: [],
+    pins: [],
+    next_estimate: null,
+    next_error_code: null,
+  };
+  server.use(
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+      HttpResponse.json([chatSession(FIRST_SESSION_ID, {})]),
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`, () =>
+      HttpResponse.json(chatSession(FIRST_SESSION_ID, {})),
+    ),
+    http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/:id/context`, () =>
+      HttpResponse.json(view),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/estimates`,
+      () => HttpResponse.json(view),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/sources/search`,
+      () => HttpResponse.json({ sources: [], next_cursor: null, remaining: 0 }),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/sources/read`,
+      () =>
+        HttpResponse.json({
+          source: {
+            source_id: "record:material",
+            kind: "record",
+            title: "材料",
+            version: "source-v3",
+            locator: {},
+          },
+          content: "真实资料片段",
+          offset: 0,
+          next_cursor: null,
+          remaining: 0,
+        }),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/chat-sessions/:id/context/rules`,
+      async ({ request }) => {
+        writes.push(
+          (await request.json()) as components["schemas"]["ContextRuleChange"],
+        );
+        return HttpResponse.json(
+          {
+            code: "CONTEXT_VERSION_CONFLICT",
+            detail: "设置已变化，请刷新后重试",
+          },
+          { status: 409 },
+        );
+      },
+    ),
+  );
+  renderAt(
+    `/chat-context/${FIRST_SESSION_ID}?view=sources&source=record%3Amaterial`,
+  );
+  const button = await screen.findByRole("button", { name: "排除此资料来源" });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+  await screen.findByText(/设置已变化/);
+  expect(writes).toEqual([
+    {
+      action: "EXCLUDE_SOURCE",
+      expected_version: 7,
+      source_id: "record:material",
+      source_version: "source-v3",
+    },
+  ]);
+  expect(screen.queryByText(/设置已保存/)).not.toBeInTheDocument();
+});
+
 it("上下文页面固定、编辑和解除提交持久版本，实际与下一轮配置分开", async () => {
   let version = 1;
   let pins: components["schemas"]["ContextPinOut"][] = [];

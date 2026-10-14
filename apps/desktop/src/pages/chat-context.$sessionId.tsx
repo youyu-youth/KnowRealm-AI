@@ -15,7 +15,13 @@ export const Route = createFileRoute("/chat-context/$sessionId")({
     version?: string;
     quote?: string;
     offset?: number;
+    historyOffset?: number;
   } => ({
+    historyOffset:
+      Number.isSafeInteger(Number(search.historyOffset)) &&
+      Number(search.historyOffset) >= 0
+        ? Number(search.historyOffset)
+        : undefined,
     pin: typeof search.pin === "string" ? search.pin.slice(0, 36) : undefined,
     pinVersion:
       Number.isSafeInteger(Number(search.pinVersion)) &&

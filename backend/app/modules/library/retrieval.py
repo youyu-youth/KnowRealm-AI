@@ -489,6 +489,34 @@ class LibraryRetrievalService:
         )
 
     @staticmethod
+    async def read_asset_title(
+        session: AsyncSession, scope: RetrievalScope, kind: str, source_id: str
+    ) -> str:
+        """导航来源沿原标题查询范围重验；导航可见不等于正文可读。"""
+        from app.shared.errors import CodedHTTPException
+
+        if scope.scope in _RETRIEVAL_SCOPES and await LibraryRetrievalService._scope_alive(
+            session, scope
+        ):
+            statement = (
+                LibraryRetrievalService._asset_records_sql(scope.scope, "records.id = :source_id")
+                if kind == "record"
+                else LibraryRetrievalService._asset_items_sql(scope.scope, "li.id = :source_id")
+            )
+            row = (
+                await session.execute(
+                    statement, {**_bind_params(scope), "source_id": source_id, "limit": 1}
+                )
+            ).first()
+            if row:
+                return str(row.title)
+        raise CodedHTTPException(
+            code="CONTEXT_SOURCE_UNAVAILABLE",
+            status_code=404,
+            detail="导航来源已失效或不属于当前范围",
+        )
+
+    @staticmethod
     async def search(
         session: AsyncSession,
         scope: RetrievalScope,

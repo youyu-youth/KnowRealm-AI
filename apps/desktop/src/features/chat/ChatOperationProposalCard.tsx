@@ -1310,6 +1310,55 @@ type OperationCardSpec = {
 };
 
 const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
+  OP_CONTEXT_RULES: {
+    label: (key) => `chat.operationProposal.contextRules.${key}`,
+    PreviewFields: ({ payload, t }) => (
+      <>
+        <div>
+          <dt>{t("chat.pins.actionLabel")}</dt>
+          <dd>
+            {t(`chat.contextRules.actions.${fieldString(payload, "action")}`)}
+          </dd>
+        </div>
+        <div>
+          <dt>{t("chat.contextView.version")}</dt>
+          <dd>{fieldNumber(payload, "expected_version")}</dd>
+        </div>
+        <div>
+          <dt>{t("chat.pins.targetLabel")}</dt>
+          <dd className="break-all whitespace-pre-wrap">
+            {fieldString(payload, "source_id") ??
+              (Array.isArray(payload.turn_ids) && payload.turn_ids.length
+                ? payload.turn_ids.join(", ")
+                : t("chat.contextRules.currentSession"))}
+          </dd>
+        </div>
+        {fieldString(payload, "source_version") ? (
+          <div>
+            <dt>{t("chat.contextSources.version")}</dt>
+            <dd>{fieldString(payload, "source_version")}</dd>
+          </div>
+        ) : null}
+        <p>
+          {t(
+            fieldString(payload, "action") === "RESET"
+              ? "chat.contextRules.resetHint"
+              : "chat.contextRules.hint",
+          )}
+        </p>
+      </>
+    ),
+    SettledRow: ({ status, result, t }) => (
+      <p className="text-label text-muted-foreground">
+        {status === "APPLIED"
+          ? t("chat.contextRules.saved", {
+              version: fieldNumber(result, "version"),
+              segment: fieldNumber(result, "segment"),
+            })
+          : t("chat.operationProposal.contextRules.rejected")}
+      </p>
+    ),
+  },
   OP_CONTEXT_PIN: {
     label: (key) => `chat.operationProposal.contextPin.${key}`,
     PreviewFields: ({ payload, t }) => (
@@ -1644,7 +1693,9 @@ function ActionableProposalRow({
   const snapshotStale =
     status === "FAILED" &&
     (proposal.error_code === "OPERATION_SNAPSHOT_STALE" ||
-      (proposal.proposal_type === "OP_CONTEXT_PIN" &&
+      (["OP_CONTEXT_PIN", "OP_CONTEXT_RULES"].includes(
+        proposal.proposal_type,
+      ) &&
         ["CONTEXT_VERSION_CONFLICT", "CONTEXT_SOURCE_STALE"].includes(
           proposal.error_code ?? "",
         )));
@@ -1836,10 +1887,19 @@ export function ChatOperationProposalCard({
         // 共享引用提案确认 / 拒绝：失效引用缓存（清单与候选，desktop-state.md
         // 「相关列表/聚合 key」——staleTime 60s 内不会自愈）。
         const proposal = proposals.find((item) => item.id === proposalId);
-        if (proposal?.proposal_type === "OP_CONTEXT_PIN") {
+        if (
+          proposal &&
+          ["OP_CONTEXT_PIN", "OP_CONTEXT_RULES"].includes(
+            proposal.proposal_type,
+          )
+        ) {
           void queryClient.invalidateQueries({
             queryKey: [...chatKeys.all, "context", sessionId],
           });
+          for (const resource of ["context-history", "source", "sources"])
+            void queryClient.invalidateQueries({
+              queryKey: [...chatKeys.all, resource, sessionId],
+            });
         }
         if (
           proposal !== undefined &&

@@ -2454,6 +2454,15 @@
         "reject": "拒绝",
         "rejected": "已拒绝固定设置修改",
         "accepted": "固定设置已修改，下一轮生效"
+      },
+      "contextRules": {
+        "title": "修改上下文设置",
+        "accept": "确认修改",
+        "failed": "修改失败",
+        "failedDetail": "修改失败：{{reason}}",
+        "reject": "拒绝",
+        "rejected": "已拒绝上下文修改",
+        "accepted": "上下文设置已修改，下一轮生效"
       }
     },
     "authMode": {
@@ -2482,7 +2491,9 @@
       "action": {
         "create_course": "创建课程",
         "add_text_record_to_course": "保存文本记录",
-        "change_context_pin": "修改固定上下文"
+        "change_context_pin": "修改固定上下文",
+        "change_context_rules": "修改上下文设置",
+        "list_context_history": "查看历史轮次身份"
       }
     },
     "coursePicker": {
@@ -2548,7 +2559,9 @@
       "jumpToLatest": "回到最新",
       "toolNames": {
         "get_context_settings": "查看固定设置",
-        "change_context_pin": "修改固定内容"
+        "change_context_pin": "修改固定内容",
+        "change_context_rules": "修改上下文设置",
+        "list_context_history": "查看历史轮次身份"
       }
     },
     "turn": {
@@ -2732,7 +2745,8 @@
       "status": {
         "VALID": "有效",
         "STALE": "来源已变化，暂停注入",
-        "UNAVAILABLE": "来源失效，暂停注入"
+        "UNAVAILABLE": "来源失效，暂停注入",
+        "EXCLUDED": "因排除暂停"
       },
       "injected": "本次请求已注入",
       "notInjected": "本次请求未注入",
@@ -2758,6 +2772,38 @@
         "ADD": "新增固定",
         "UPDATE": "更新固定",
         "REMOVE": "解除固定"
+      }
+    },
+    "contextRules": {
+      "title": "排除与历史承接",
+      "summary": "第 {{segment}} 段 · 排除 {{turns}} 轮 / {{sources}} 个来源 · 明确纳入 {{included}} 轮旧历史",
+      "hint": "这些设置从下一轮生效。排除优先于固定及旧历史纳入；只能过滤有来源身份的内容，其他消息中的无来源转述可能仍然存在。",
+      "reset": "重置上下文",
+      "resetHint": "开启新段，停止自动承接和取回旧历史，清空有效摘要；保留原消息、固定、排除、资料范围、长期记忆和授权。独立后台任务继续运行。旧轮须明确选择后才能重新纳入。",
+      "confirmReset": "开启新段",
+      "cancel": "取消",
+      "restoreSource": "恢复来源",
+      "excludeSource": "排除此资料来源",
+      "history": "历史轮次",
+      "emptyHistory": "还没有可选择的历史轮次。返回聊天发送提问后再查看。",
+      "turnState": "第 {{segment}} 段 · {{state}}",
+      "excluded": "已排除",
+      "included": "已纳入",
+      "old": "旧段未纳入",
+      "restoreTurn": "恢复此轮",
+      "excludeTurn": "排除此轮",
+      "includeTurn": "纳入此旧轮",
+      "previous": "上一页",
+      "next": "下一页",
+      "currentSession": "当前会话",
+      "saved": "设置已保存：第 {{segment}} 段，版本 {{version}}，下一轮生效",
+      "actions": {
+        "EXCLUDE_TURN": "排除轮次",
+        "RESTORE_TURN": "恢复轮次",
+        "EXCLUDE_SOURCE": "排除资料来源",
+        "RESTORE_SOURCE": "恢复资料来源",
+        "RESET": "重置上下文",
+        "INCLUDE_HISTORY": "纳入明确旧轮"
       }
     }
   },
@@ -3587,7 +3633,9 @@
     "TOOL_CALL_IDENTITY_CONFLICT": "工具输出与原逻辑调用身份不匹配，无法安全复用。请停止后重新提问。",
     "CONTEXT_VERSION_CONFLICT": "固定设置已变化。请刷新后重试。",
     "CONTEXT_PIN_NOT_FOUND": "固定条目不存在。请刷新。",
-    "CONTEXT_PINS_TOO_LARGE": "固定内容与必需输入超过预算，本轮未调用模型。请解除或调整固定内容。"
+    "CONTEXT_PINS_TOO_LARGE": "固定内容与必需输入超过预算，本轮未调用模型。请解除或调整固定内容。",
+    "CONTEXT_SOURCE_EXCLUDED": "来源已被排除，请在下一轮设置中恢复。",
+    "CONTEXT_HISTORY_RANGE_INVALID": "历史范围不属于此会话、尚未完成或已变化，请重新选择。"
   },
   "agent": {
     "run": {

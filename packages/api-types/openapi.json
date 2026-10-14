@@ -3237,6 +3237,85 @@
         "title": "ConfirmRelationDecision",
         "type": "object"
       },
+      "ContextHistoryOut": {
+        "properties": {
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/ContextHistoryTurnOut"
+            },
+            "title": "Turns",
+            "type": "array"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "turns",
+          "next_offset"
+        ],
+        "title": "ContextHistoryOut",
+        "type": "object"
+      },
+      "ContextHistoryTurnOut": {
+        "properties": {
+          "excluded": {
+            "title": "Excluded",
+            "type": "boolean"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          },
+          "segment": {
+            "title": "Segment",
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatTurnStatus"
+              },
+              {
+                "const": "INCOMPLETE",
+                "type": "string"
+              }
+            ],
+            "title": "Status"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "turn_id": {
+            "title": "Turn Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn_id",
+          "segment",
+          "status",
+          "title",
+          "excluded",
+          "included"
+        ],
+        "title": "ContextHistoryTurnOut",
+        "type": "object"
+      },
       "ContextPinChange": {
         "additionalProperties": false,
         "properties": {
@@ -3396,7 +3475,8 @@
             "enum": [
               "VALID",
               "STALE",
-              "UNAVAILABLE"
+              "UNAVAILABLE",
+              "EXCLUDED"
             ],
             "title": "Status",
             "type": "string"
@@ -3605,6 +3685,127 @@
         "title": "ContextReadRequest",
         "type": "object"
       },
+      "ContextRuleChange": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "EXCLUDE_TURN",
+              "RESTORE_TURN",
+              "EXCLUDE_SOURCE",
+              "RESTORE_SOURCE",
+              "RESET",
+              "INCLUDE_HISTORY"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "expected_version": {
+            "description": "当前会话设置版本",
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "record:或library:资料身份",
+            "title": "Source Id"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "选择资料时的来源版本",
+            "title": "Source Version"
+          },
+          "turn_ids": {
+            "description": "明确选择的轮次身份",
+            "items": {
+              "maxLength": 43,
+              "minLength": 36,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Turn Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version",
+          "action"
+        ],
+        "title": "ContextRuleChange",
+        "type": "object"
+      },
+      "ContextRules": {
+        "additionalProperties": false,
+        "properties": {
+          "excluded_source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded Source Ids",
+            "type": "array"
+          },
+          "excluded_turn_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded Turn Ids",
+            "type": "array"
+          },
+          "included_turn_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Included Turn Ids",
+            "type": "array"
+          }
+        },
+        "title": "ContextRules",
+        "type": "object"
+      },
+      "ContextRulesOut": {
+        "properties": {
+          "rules": {
+            "$ref": "#/components/schemas/ContextRules"
+          },
+          "segment": {
+            "title": "Segment",
+            "type": "integer"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "session_id",
+          "version",
+          "segment",
+          "rules"
+        ],
+        "title": "ContextRulesOut",
+        "type": "object"
+      },
       "ContextSearchOut": {
         "properties": {
           "next_cursor": {
@@ -3758,6 +3959,27 @@
             "title": "Actual Pins",
             "type": "array"
           },
+          "actual_rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContextRules"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "actual_segment": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Segment"
+          },
           "actual_turn_id": {
             "anyOf": [
               {
@@ -3803,6 +4025,9 @@
             },
             "title": "Pins",
             "type": "array"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/ContextRules"
           },
           "segment": {
             "title": "Segment",
@@ -7817,6 +8042,7 @@
           "OP_GOAL_CREATE",
           "OP_GOAL_UPDATE",
           "OP_CONTEXT_PIN",
+          "OP_CONTEXT_RULES",
           "OP_PLAN_CONFIRM",
           "OP_PLAN_ITEM_UPDATE",
           "OP_PLAN_ITEM_COMPLETE",
@@ -13573,6 +13799,113 @@
         ]
       }
     },
+    "/api/chat-sessions/{session_id}/context/history": {
+      "get": {
+        "operationId": "get_history_api_chat_sessions__session_id__context_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expected_version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expected Version"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Get History",
+        "tags": [
+          "chat-context"
+        ]
+      }
+    },
     "/api/chat-sessions/{session_id}/context/pins": {
       "post": {
         "operationId": "update_pins_api_chat_sessions__session_id__context_pins_post",
@@ -13657,6 +13990,95 @@
           }
         },
         "summary": "Update Pins",
+        "tags": [
+          "chat-context"
+        ]
+      }
+    },
+    "/api/chat-sessions/{session_id}/context/rules": {
+      "post": {
+        "operationId": "update_rules_api_chat_sessions__session_id__context_rules_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContextRuleChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextRulesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update Rules",
         "tags": [
           "chat-context"
         ]

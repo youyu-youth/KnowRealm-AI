@@ -22,6 +22,7 @@ from app.modules.agent.context_budget.schemas import (
     ContextPinOut,
     ContextPinsOut,
     ContextPolicy,
+    ContextRules,
 )
 from app.modules.agent.models import ChatSession
 from app.modules.agent.runtime import AgentRuntimeContext
@@ -32,7 +33,12 @@ PIN_ADAPTER = TypeAdapter(list[ContextPin])
 
 
 async def resolve_pins(
-    session: AsyncSession, chat: ChatSession, pins_json: str, segment: int
+    session: AsyncSession,
+    chat: ChatSession,
+    pins_json: str,
+    segment: int,
+    *,
+    rules: ContextRules | None = None,
 ) -> list[ContextPinOut]:
     result: list[ContextPinOut] = []
     for pin in PIN_ADAPTER.validate_json(pins_json):
@@ -40,7 +46,7 @@ async def resolve_pins(
         if pin.source_id:
             try:
                 title, content, version = await read_pin_source(
-                    session, chat, pin.source_id, segment
+                    session, chat, pin.source_id, segment, rules=rules
                 )
                 if pin.mode == "SNIPPET" and (
                     version != pin.source_version
@@ -53,7 +59,13 @@ async def resolve_pins(
                 if pin.mode == "OBJECT":
                     item.source_version = version
             except CodedHTTPException as exc:
-                item.status = "STALE" if exc.code == "CONTEXT_SOURCE_STALE" else "UNAVAILABLE"
+                item.status = (
+                    "EXCLUDED"
+                    if exc.code == "CONTEXT_SOURCE_EXCLUDED"
+                    else "STALE"
+                    if exc.code == "CONTEXT_SOURCE_STALE"
+                    else "UNAVAILABLE"
+                )
                 item.reason = exc.code
         result.append(item)
     return result
@@ -82,7 +94,10 @@ async def capture_pin_state(
         )
     version = None
     if change.action != "REMOVE" and change.source_id:
-        _, content, version = await read_pin_source(session, chat, change.source_id, state.segment)
+        # 固定动作不修改排除设置；已排除来源仍可固定但暂停注入。
+        _, content, version = await read_pin_source(
+            session, chat, change.source_id, state.segment, rules=ContextRules()
+        )
         if version != change.source_version or (
             change.mode == "SNIPPET"
             and content[change.offset : change.offset + len(change.content)] != change.content
@@ -126,7 +141,9 @@ async def change_pins_core(
         assert change.mode is not None
         title = change.content[:120]
         if change.source_id:
-            title, _, _ = await read_pin_source(session, chat, change.source_id, state.segment)
+            title, _, _ = await read_pin_source(
+                session, chat, change.source_id, state.segment, rules=ContextRules()
+            )
         pins.append(
             ContextPin(
                 id=change.pin_id or str(uuid4()),
@@ -144,7 +161,13 @@ async def change_pins_core(
     return ContextPinsOut(
         session_id=session_id,
         version=state.version,
-        pins=await resolve_pins(session, chat, state.pins_json, state.segment),
+        pins=await resolve_pins(
+            session,
+            chat,
+            state.pins_json,
+            state.segment,
+            rules=ContextRules.model_validate_json(state.rules_json),
+        ),
     )
 
 

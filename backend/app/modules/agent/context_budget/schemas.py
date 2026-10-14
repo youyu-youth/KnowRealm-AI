@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.modules.agent.schemas import ChatPageSnapshot
+from app.modules.agent.turns.schemas import ChatTurnStatus
 from app.modules.settings.model_budget import ModelCapabilityOut
 
 
@@ -94,6 +95,9 @@ class ContextViewOut(BaseModel):
     active_summary: CompactionOut | None = None
     pins: list[ContextPinOut] = Field(default_factory=lambda: list[ContextPinOut]())
     actual_pins: list[ContextPinOut] = Field(default_factory=lambda: list[ContextPinOut]())
+    rules: ContextRules = Field(default_factory=lambda: ContextRules())
+    actual_rules: ContextRules | None = None
+    actual_segment: int | None = None
 
 
 class ContextPreviewRequest(BaseModel):
@@ -154,7 +158,7 @@ class ContextPin(BaseModel):
 
 
 class ContextPinOut(ContextPin):
-    status: Literal["VALID", "STALE", "UNAVAILABLE"] = "VALID"
+    status: Literal["VALID", "STALE", "UNAVAILABLE", "EXCLUDED"] = "VALID"
     reason: str | None = None
     injected: bool = False
 
@@ -202,3 +206,78 @@ class ContextPinsOut(BaseModel):
     session_id: str
     version: int
     pins: list[ContextPinOut]
+
+
+class ContextRules(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    excluded_turn_ids: list[str] = Field(default_factory=list[str])
+    excluded_source_ids: list[str] = Field(default_factory=list[str])
+    included_turn_ids: list[str] = Field(default_factory=list[str])
+
+
+class ContextRuleChange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_version: int = Field(ge=1, description="当前会话设置版本")
+    action: Literal[
+        "EXCLUDE_TURN",
+        "RESTORE_TURN",
+        "EXCLUDE_SOURCE",
+        "RESTORE_SOURCE",
+        "RESET",
+        "INCLUDE_HISTORY",
+    ]
+    turn_ids: list[Annotated[str, Field(min_length=36, max_length=43)]] = Field(
+        default_factory=list[str], max_length=100, description="明确选择的轮次身份"
+    )
+    source_id: str | None = Field(
+        default=None, max_length=200, description="record:或library:资料身份"
+    )
+    source_version: str | None = Field(
+        default=None, max_length=128, description="选择资料时的来源版本"
+    )
+
+    @model_validator(mode="after")
+    def validate_action(self) -> ContextRuleChange:
+        if self.action in ("EXCLUDE_TURN", "RESTORE_TURN", "INCLUDE_HISTORY"):
+            if not self.turn_ids or self.source_id or self.source_version:
+                raise ValueError("explicit turn_ids without source are required")
+        elif self.action in ("EXCLUDE_SOURCE", "RESTORE_SOURCE"):
+            if (
+                self.turn_ids
+                or not self.source_id
+                or not self.source_id.startswith(("record:", "library:"))
+            ):
+                raise ValueError("explicit material source_id is required")
+            if self.action == "EXCLUDE_SOURCE" and not self.source_version:
+                raise ValueError("source_version is required")
+        elif self.turn_ids or self.source_id or self.source_version:
+            raise ValueError("reset does not accept a range")
+        if len(set(self.turn_ids)) != len(self.turn_ids):
+            raise ValueError("duplicate turns")
+        return self
+
+
+class ContextRulePayload(ContextRuleChange):
+    session_id: str = Field(min_length=36, max_length=36)
+
+
+class ContextRulesOut(BaseModel):
+    session_id: str
+    version: int
+    segment: int
+    rules: ContextRules
+
+
+class ContextHistoryTurnOut(BaseModel):
+    turn_id: str
+    segment: int
+    status: ChatTurnStatus | Literal["INCOMPLETE"]
+    title: str
+    excluded: bool
+    included: bool
+
+
+class ContextHistoryOut(BaseModel):
+    version: int
+    turns: list[ContextHistoryTurnOut]
+    next_offset: int | None

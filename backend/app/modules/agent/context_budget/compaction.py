@@ -146,7 +146,9 @@ async def _guard(
         raise TurnCancelledError
     from app.modules.agent.context_budget.retrieval import validate_compaction_sources
 
-    await validate_compaction_sources(session, runtime.session_id, row.plan_json)
+    await validate_compaction_sources(
+        session, runtime.session_id, row.plan_json, turn_id=runtime.turn_id
+    )
     bound = await session.get(ChatContextInput, runtime.turn_id)
     if bound is None or (bound.context_version, bound.segment, bound.summary_id) != (
         row.context_version,

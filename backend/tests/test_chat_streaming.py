@@ -1859,7 +1859,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v28"
+        assert rows[0][3] == "chat-library-scope-v30"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2409,6 +2409,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "read_context",
                 "get_context_settings",
                 "change_context_pin",
+                "change_context_rules",
+                "list_context_history",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2451,6 +2453,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "read_context",
                 "get_context_settings",
                 "change_context_pin",
+                "change_context_rules",
+                "list_context_history",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2493,6 +2497,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "read_context",
                 "get_context_settings",
                 "change_context_pin",
+                "change_context_rules",
+                "list_context_history",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2535,6 +2541,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "read_context",
                 "get_context_settings",
                 "change_context_pin",
+                "change_context_rules",
+                "list_context_history",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2583,6 +2591,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "read_context",
                 "get_context_settings",
                 "change_context_pin",
+                "change_context_rules",
+                "list_context_history",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2626,6 +2636,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "read_context",
                 "get_context_settings",
                 "change_context_pin",
+                "change_context_rules",
+                "list_context_history",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",
@@ -2669,6 +2681,8 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "read_context",
                 "get_context_settings",
                 "change_context_pin",
+                "change_context_rules",
+                "list_context_history",
                 "search_courses",
                 "list_course_records",
                 "list_library_items",

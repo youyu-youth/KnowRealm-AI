@@ -590,7 +590,8 @@ async def test_compacted_source_is_read_through_real_framework_tool(
     async with turns_app(tmp_path, monkeypatch, replies=[["压缩完成"]]) as (app, client, captured):
         sid = await create_session(client)
         ids = await seed_history(app, sid, 16, 1000)
-        await configure(client)
+        # 设置工具扩展后，留出原文读取闭环成本，仍由长历史触发压缩。
+        await configure(client, 50000)
         turn = (await submit(client, sid, "继续", request_id="retrieval-compact")).json()["id"]
         assert (await wait_terminal(client, turn))["status"] == "COMPLETED"
         view = (await client.get(f"/api/chat-sessions/{sid}/context")).json()

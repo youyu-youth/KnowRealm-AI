@@ -274,6 +274,7 @@ async def _load_library_context(
     scope: ChatScope,
     course_id: str | None,
     library_item_id: str | None = None,
+    excluded_sources: list[str] | None = None,
 ) -> LibraryContext:
     """范围会话的清单上下文（标题 + 日期 + 有无转写）。
 
@@ -283,8 +284,25 @@ async def _load_library_context(
     """
     if scope == ChatScope.LIBRARY_ITEM:
         item = await _require_library_item(session, library_item_id)
-        rows = await _scope_library_rows(session, scope, item.id)
+        excluded = excluded_sources or []
+        rows = [
+            row
+            for row in await _scope_library_rows(session, scope, item.id)
+            if f"record:{row[0]}" not in excluded
+        ]
         record_materials, item_materials = await _load_scope_materials(session, scope, item.id)
+        record_materials = [
+            material
+            for material in record_materials
+            if f"record:{material.record_id}" not in excluded
+        ]
+        item_materials = [
+            material
+            for material in item_materials
+            if f"library:{material.library_item_id}" not in excluded
+        ]
+        if f"library:{item.id}" in excluded:
+            record_materials, item_materials, rows = [], [], []
         parts = [
             f"【来源：{material.title}】\n{material.transcript}" for material in record_materials
         ]
@@ -307,7 +325,11 @@ async def _load_library_context(
         scope_label = f"课程「{course.name}」" if course is not None else "课程"
     else:
         scope_label = "全部资料"
-    rows = await _scope_library_rows(session, scope, course_id)
+    rows = [
+        row
+        for row in await _scope_library_rows(session, scope, course_id)
+        if f"record:{row[0]}" not in (excluded_sources or [])
+    ]
     return LibraryContext(
         scope_label=scope_label,
         records=tuple(
@@ -503,6 +525,7 @@ async def session_context(
     user_timezone: tzinfo | None = None,
     preview_content: str | None = None,
     input_messages: list[AnyMessage] | None = None,
+    context_turn_id: str | None = None,
 ) -> SessionPromptContext:
     async with session_factory() as session:
         chat = await ChatSessionService.get(session, session_id)
@@ -527,19 +550,45 @@ async def session_context(
                 .order_by(ChatMessage.created_at, ChatMessage.id)
             )
         ).all()
+        from app.modules.agent.context_budget.rules import (
+            context_rules,
+            evidence_excluded,
+            history_identities,
+            turn_allowed,
+        )
+
+        segment, rules = await context_rules(
+            session, session_id, turn_id=context_turn_id, current=context_turn_id is None
+        )
+        identities = await history_identities(session, session_id, list(rows))
+        rows = [
+            row
+            for row in rows
+            if row.role == ChatRole.SYSTEM
+            or (
+                turn_allowed(rules, segment, *identities.get(row.id, (None, 1, ""))[:2])
+                and not evidence_excluded(
+                    json.loads(row.citations_json) if row.citations_json else [], rules
+                )
+            )
+        ]
         record_context = None
         transcript_text: str | None = None
-        record_id: str | None = None
+        record_id: str | None = chat.record_id
         retrieval_course_id: str | None = None
         library_context: LibraryContext | None = None
-        if chat.record_id is not None:
-            record = await RecordService.get(session, chat.record_id)
-            if record is None:
-                raise CodedHTTPException(
-                    code="CHAT_RECORD_UNAVAILABLE",
-                    status_code=409,
-                    detail="CHAT_RECORD_UNAVAILABLE：原记录已删除",
-                )
+        record = await RecordService.get(session, chat.record_id) if chat.record_id else None
+        if chat.record_id and record is None:
+            raise CodedHTTPException(
+                code="CHAT_RECORD_UNAVAILABLE",
+                status_code=409,
+                detail="CHAT_RECORD_UNAVAILABLE：原记录已删除",
+            )
+        if record:
+            # 排除资料只改变选材，课程范围与独立记忆范围保留。
+            retrieval_course_id = record.course_id
+            record_context = RecordContext(transcript="")
+        if record and f"record:{record.id}" not in rules.excluded_source_ids:
             transcript = await RecordService.get_transcript(session, record.id)
             if transcript is None:
                 raise CodedHTTPException(
@@ -550,8 +599,6 @@ async def session_context(
             record_context = RecordContext(transcript=transcript.content)
             transcript_text = transcript.content
             record_id = record.id
-            # 检索边界课程 = 记录所属课程（概念扩展用；RECORD 记录集边界由 record_id 保证）。
-            retrieval_course_id = record.course_id
             if len(transcript.content) > CHAT_TRANSCRIPT_MAX_CHARS:
                 summary = await session.scalar(
                     select(AiSummary)
@@ -595,11 +642,13 @@ async def session_context(
                 item = await _require_library_item(session, chat.library_item_id)
                 retrieval_course_id = item.course_id
                 library_context = await _load_library_context(
-                    session, chat.scope, None, chat.library_item_id
+                    session, chat.scope, None, chat.library_item_id, rules.excluded_source_ids
                 )
             else:
                 retrieval_course_id = chat.course_id
-                library_context = await _load_library_context(session, chat.scope, chat.course_id)
+                library_context = await _load_library_context(
+                    session, chat.scope, chat.course_id, excluded_sources=rules.excluded_source_ids
+                )
         # 学习者记忆块（工单 06）：确定性聚合，注入范围 = 全局偏好恒可 +
         # 课程状态仅对应课程范围（scope != ALL 且有边界课程）；关闭外发即零注入。
         learner = await build_learner_context(
@@ -615,15 +664,35 @@ async def session_context(
         time_hint = (
             format_time_hint(datetime.now(user_timezone)) if user_timezone is not None else None
         )
-        context_rows = [
-            ContextRow(
-                id=row.id,
-                role=row.role,
-                content=row.content,
-                cited_excerpts=_cited_excerpts(row.citations_json, chat.record_id),
+        from app.modules.agent.context_budget.retrieval import validate_evidence
+
+        context_rows: list[ContextRow] = []
+        for row in rows:
+            valid_citations: list[object] = []
+            invalid_citations = False
+            if row.citations_json:
+                try:
+                    value: object = json.loads(row.citations_json)
+                except ValueError:
+                    value = None
+                citations = cast(list[object], value) if isinstance(value, list) else []
+                invalid_citations = not isinstance(value, list)
+                for citation in citations:
+                    try:
+                        await validate_evidence(session, chat, [citation], rules=rules)
+                        valid_citations.append(citation)
+                    except CodedHTTPException:
+                        invalid_citations = True
+            context_rows.append(
+                ContextRow(
+                    id=row.id,
+                    role=row.role,
+                    content=row.content
+                    if not invalid_citations
+                    else "此历史回复的引用来源已失效，原文暂停使用。",
+                    cited_excerpts=_cited_excerpts(json.dumps(valid_citations), chat.record_id),
+                )
             )
-            for row in rows
-        ]
         if preview_content is not None:
             if context_rows and context_rows[-1].role == ChatRole.USER:
                 context_rows.pop()

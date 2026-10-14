@@ -12,6 +12,8 @@ import {
   Clock,
   FileX,
   FileSearch,
+  FilterX,
+  ListOrdered,
   Pin,
   Settings2,
   History,
@@ -59,6 +61,8 @@ export const TOOL_ICONS: Record<string, typeof Wrench> = {
   read_context: FileSearch,
   get_context_settings: Settings2,
   change_context_pin: Pin,
+  change_context_rules: FilterX,
+  list_context_history: ListOrdered,
   web_search: Globe,
   // 列表与查询
   list_course_records: Rows3,

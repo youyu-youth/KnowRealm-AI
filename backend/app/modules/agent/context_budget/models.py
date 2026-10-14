@@ -17,6 +17,7 @@ class ChatContextState(Base):
     segment: Mapped[int] = mapped_column(Integer, default=1)
     summary_id: Mapped[str | None] = mapped_column(String(36), default=None)
     pins_json: Mapped[str] = mapped_column(Text, default="[]")
+    rules_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 class ChatContextInput(Base):
@@ -31,6 +32,7 @@ class ChatContextInput(Base):
     summary_id: Mapped[str | None] = mapped_column(String(36), default=None)
     summary_allowance: Mapped[int] = mapped_column(Integer, default=4)
     pins_json: Mapped[str] = mapped_column(Text, default="[]")
+    rules_json: Mapped[str] = mapped_column(Text, default="{}")
 
 
 class ChatModelRequest(Base):

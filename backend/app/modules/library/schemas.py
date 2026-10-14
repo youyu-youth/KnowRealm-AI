@@ -292,6 +292,7 @@ class ProposalType(StrEnum):
     OP_GOAL_CREATE = "OP_GOAL_CREATE"
     OP_GOAL_UPDATE = "OP_GOAL_UPDATE"
     OP_CONTEXT_PIN = "OP_CONTEXT_PIN"
+    OP_CONTEXT_RULES = "OP_CONTEXT_RULES"
     # 第三阶段工单 02：学习计划确认（L2 批量创建：计划头 + 计划项；草案确认卡）。
     OP_PLAN_CONFIRM = "OP_PLAN_CONFIRM"
     # 第三阶段工单 03：计划项编辑 / 完成与重生成（L1 就地写 + L2 换代）。

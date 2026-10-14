@@ -29,6 +29,7 @@ import {
 import { useWebSearchAvailability } from "@/features/chat/useWebSearchAvailability";
 import { derivePageSnapshot } from "@/features/chat/pageSnapshot";
 import { ContextPinsView } from "@/features/chat/ContextPinsView";
+import { ContextRulesView } from "@/features/chat/ContextRulesView";
 
 export function ChatContextPage({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation();
@@ -196,6 +197,16 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
               {t("chat.contextView.actualHint")}
             </p>
             <ContextRequestList requests={context.data.actual} />
+            {context.data.actual_rules ? (
+              <ContextRulesView
+                key={`actual:${sessionId}`}
+                sessionId={sessionId}
+                version={context.data.version}
+                segment={context.data.actual_segment ?? 1}
+                rules={context.data.actual_rules}
+                readOnly
+              />
+            ) : null}
             <ContextPinsView
               sessionId={sessionId}
               version={context.data.version}
@@ -231,6 +242,15 @@ export function ChatContextPage({ sessionId }: { sessionId: string }) {
               version={context.data.version}
               pins={context.data.pins ?? []}
             />
+            {context.data.rules ? (
+              <ContextRulesView
+                key={sessionId}
+                sessionId={sessionId}
+                version={context.data.version}
+                segment={context.data.segment}
+                rules={context.data.rules}
+              />
+            ) : null}
             <ContextCompactionList
               batches={
                 context.data.active_summary ? [context.data.active_summary] : []

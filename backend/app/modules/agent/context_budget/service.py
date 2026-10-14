@@ -71,6 +71,7 @@ async def bind_context(
             segment=state.segment,
             summary_id=state.summary_id,
             pins_json=state.pins_json,
+            rules_json=state.rules_json,
         )
     )
 
@@ -103,13 +104,17 @@ async def save_messages(
     original = restore_messages(snapshot)
     if original is not None:
         return original
-    messages = await apply_history(session, messages, snapshot.summary_id)
+    messages = await apply_history(session, messages, snapshot.summary_id, turn_id=turn_id)
     snapshot.messages_json = json.dumps(messages_to_dict(messages), ensure_ascii=False)
     return messages
 
 
 async def apply_history(
-    session: AsyncSession, messages: list[AnyMessage], summary_id: str | None
+    session: AsyncSession,
+    messages: list[AnyMessage],
+    summary_id: str | None,
+    *,
+    turn_id: str | None = None,
 ) -> list[AnyMessage]:
     from app.modules.agent.context_budget.compaction import summary_message
 
@@ -153,7 +158,9 @@ async def apply_history(
         owner = await session.get(ChatTurn, summary.turn_id)
         if owner:
             try:
-                await validate_compaction_sources(session, owner.session_id, summary.plan_json)
+                await validate_compaction_sources(
+                    session, owner.session_id, summary.plan_json, turn_id=turn_id
+                )
             except CodedHTTPException:
                 summary = None
     if summary and summary.status == "COMPLETED":
@@ -201,6 +208,9 @@ async def view_context(
             session_id=session_id,
             version=state.version,
             segment=state.segment,
+            rules=json.loads(state.rules_json),
+            actual_rules=json.loads(bound.rules_json) if bound else None,
+            actual_segment=bound.segment if bound else None,
             actual_turn_id=turn_id,
             actual=[
                 ModelRequestOut(
@@ -220,8 +230,15 @@ async def view_context(
             next_error_code=None,
         )
         from app.modules.agent.context_budget.pins import resolve_pins
+        from app.modules.agent.context_budget.schemas import ContextRules
 
-        result.pins = await resolve_pins(session, chat, state.pins_json, state.segment)
+        result.pins = await resolve_pins(
+            session,
+            chat,
+            state.pins_json,
+            state.segment,
+            rules=ContextRules.model_validate_json(state.rules_json),
+        )
         answer = next((row for row in reversed(requests) if row.purpose == "ANSWER"), None)
         result.actual_pins = (
             [ContextPinOut.model_validate(pin) for pin in json.loads(answer.pins_json)]

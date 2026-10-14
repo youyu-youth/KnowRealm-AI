@@ -16,6 +16,7 @@ from typing import cast
 from langchain_core.tools import tool
 
 from app.modules.agent.budget.service import budgeted, format_output, mark_output
+from app.modules.agent.context_budget.rules import search_material
 from app.modules.agent.runtime import (
     ToolCallBudget,
     current_agent_runtime,
@@ -166,8 +167,9 @@ async def search_library(query: str) -> str:
     # 检索异常不炸整轮流（同 web_search 先例）：错误载荷 ok=false，模型可据此说明。
     try:
         async with context.session_factory() as session:
-            result = await LibraryRetrievalService.search(
+            result = await search_material(
                 session,
+                context.session_id,
                 RetrievalScope(
                     scope=context.scope,
                     record_id=context.record_id,

@@ -1,6 +1,6 @@
 # 工单导航
 
-2026-10-13：用户已明确调用 `/implement` 实施 01～04。01 证据见 [implementation.md](../implementation.md)，02 现状/已知边界见 [02-implementation.md](../02-implementation.md) 与 `PROJECT_PROGRESS.md`；03 实现及后续修复见 [03-implementation.md](../03-implementation.md)；04 固定上下文证据见 [04-implementation.md](../04-implementation.md)。05～06 尚未实施，完整真实模型/桌面验收保留 06。
+2026-10-14：实施授权已覆盖 01～05。01 证据见 [implementation.md](../implementation.md)，02 现状/已知边界见 [02-implementation.md](../02-implementation.md) 与 `PROJECT_PROGRESS.md`；03 实现及后续修复见 [03-implementation.md](../03-implementation.md)；04 固定上下文见 [04-implementation.md](../04-implementation.md)；05 排除、重置和明确旧轮纳入见 [05-implementation.md](../05-implementation.md)。06 尚未实施，完整真实模型/桌面验收保留 06。
 
 | 工单 | 交付 | 阻塞 |
 | --- | --- | --- |
@@ -31,4 +31,4 @@
 | C19 | 01～05 每条外发及读取路径；06 的组合验收 |
 | C20 | 03 的输出生命周期；06 的完整备份/迁移/删除组合 |
 
-依据：[规格](../spec.md)。当前实施授权已覆盖 01～04，不自动实施 05/06或关闭父规格；权威 ADR 和术语变更须另按仓库提案流程批准。
+依据：[规格](../spec.md)。当前实施授权已覆盖 01～05，不自动实施 06 或关闭父规格；权威 ADR 和术语变更须另按仓库提案流程批准。

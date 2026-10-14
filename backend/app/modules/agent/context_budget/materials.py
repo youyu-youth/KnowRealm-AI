@@ -7,6 +7,7 @@ from typing import Any
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
 from app.modules.agent.context_budget.policy import estimate_input
+from app.modules.agent.context_budget.rules import search_material
 from app.modules.agent.context_budget.schemas import ContextPolicy
 from app.modules.agent.runtime import AgentRuntimeContext
 from app.modules.library.retrieval import LibraryRetrievalService, RetrievalScope
@@ -64,7 +65,7 @@ async def select_material(
         ):
             return system
         query = next((m.text for m in reversed(messages) if isinstance(m, HumanMessage)), "")
-        result = await LibraryRetrievalService.search(session, scope, query)
+        result = await search_material(session, runtime.session_id, scope, query)
     replacement = json.dumps(
         {
             "source_id": f"{kind}:{source_id}",

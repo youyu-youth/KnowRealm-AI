@@ -83,6 +83,28 @@ it("固定确认卡展示动作、目标和预期版本，确认后显示持久�
   expect(confirmProposal).toHaveBeenCalledWith("p-1", undefined);
 });
 
+it("重置确认卡显示当前会话与保留项，确认后展示新段持久结果", async () => {
+  const proposal = proposalFixture({
+    proposal_type: "OP_CONTEXT_RULES",
+    payload: { action: "RESET", turn_ids: [], expected_version: 7 },
+    snapshot: { version: 7, segment: 1, rules: {} },
+  });
+  listProposals.mockResolvedValue([proposal]);
+  listOperations.mockResolvedValue([]);
+  confirmProposal.mockResolvedValue({
+    ...proposal,
+    status: "APPLIED",
+    result: { version: 8, segment: 2, rules: {} },
+  });
+  renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+  expect(await screen.findByText("当前会话")).toBeVisible();
+  expect(screen.getByText("7")).toBeVisible();
+  expect(screen.getByText(/独立后台任务继续运行/)).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "确认修改" }));
+  await screen.findByText("设置已保存：第 2 段，版本 8，下一轮生效");
+  expect(confirmProposal).toHaveBeenCalledWith("p-1", undefined);
+});
+
 const SCHOOL_PAYLOAD = {
   name: "高中物理",
   learning_context: "SCHOOL",

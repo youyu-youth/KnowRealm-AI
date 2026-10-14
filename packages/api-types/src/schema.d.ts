@@ -387,6 +387,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat-sessions/{session_id}/context/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get History */
+        get: operations["get_history_api_chat_sessions__session_id__context_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat-sessions/{session_id}/context/pins": {
         parameters: {
             query?: never;
@@ -398,6 +415,23 @@ export interface paths {
         put?: never;
         /** Update Pins */
         post: operations["update_pins_api_chat_sessions__session_id__context_pins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat-sessions/{session_id}/context/rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Update Rules */
+        post: operations["update_rules_api_chat_sessions__session_id__context_rules_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4145,6 +4179,30 @@ export interface components {
              */
             relation_id: string;
         };
+        /** ContextHistoryOut */
+        ContextHistoryOut: {
+            /** Next Offset */
+            next_offset: number | null;
+            /** Turns */
+            turns: components["schemas"]["ContextHistoryTurnOut"][];
+            /** Version */
+            version: number;
+        };
+        /** ContextHistoryTurnOut */
+        ContextHistoryTurnOut: {
+            /** Excluded */
+            excluded: boolean;
+            /** Included */
+            included: boolean;
+            /** Segment */
+            segment: number;
+            /** Status */
+            status: components["schemas"]["ChatTurnStatus"] | "INCOMPLETE";
+            /** Title */
+            title: string;
+            /** Turn Id */
+            turn_id: string;
+        };
         /** ContextPinChange */
         ContextPinChange: {
             /**
@@ -4212,7 +4270,7 @@ export interface components {
              * @default VALID
              * @enum {string}
              */
-            status: "VALID" | "STALE" | "UNAVAILABLE";
+            status: "VALID" | "STALE" | "UNAVAILABLE" | "EXCLUDED";
             /** Title */
             title: string;
         };
@@ -4283,6 +4341,53 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /** ContextRuleChange */
+        ContextRuleChange: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "EXCLUDE_TURN" | "RESTORE_TURN" | "EXCLUDE_SOURCE" | "RESTORE_SOURCE" | "RESET" | "INCLUDE_HISTORY";
+            /**
+             * Expected Version
+             * @description 当前会话设置版本
+             */
+            expected_version: number;
+            /**
+             * Source Id
+             * @description record:或library:资料身份
+             */
+            source_id?: string | null;
+            /**
+             * Source Version
+             * @description 选择资料时的来源版本
+             */
+            source_version?: string | null;
+            /**
+             * Turn Ids
+             * @description 明确选择的轮次身份
+             */
+            turn_ids?: string[];
+        };
+        /** ContextRules */
+        ContextRules: {
+            /** Excluded Source Ids */
+            excluded_source_ids?: string[];
+            /** Excluded Turn Ids */
+            excluded_turn_ids?: string[];
+            /** Included Turn Ids */
+            included_turn_ids?: string[];
+        };
+        /** ContextRulesOut */
+        ContextRulesOut: {
+            rules: components["schemas"]["ContextRules"];
+            /** Segment */
+            segment: number;
+            /** Session Id */
+            session_id: string;
+            /** Version */
+            version: number;
+        };
         /** ContextSearchOut */
         ContextSearchOut: {
             /** Next Cursor */
@@ -4334,6 +4439,9 @@ export interface components {
             actual: components["schemas"]["ModelRequestOut"][];
             /** Actual Pins */
             actual_pins?: components["schemas"]["ContextPinOut"][];
+            actual_rules?: components["schemas"]["ContextRules"] | null;
+            /** Actual Segment */
+            actual_segment?: number | null;
             /** Actual Turn Id */
             actual_turn_id: string | null;
             /** Compactions */
@@ -4343,6 +4451,7 @@ export interface components {
             next_estimate: components["schemas"]["InputEstimate"] | null;
             /** Pins */
             pins?: components["schemas"]["ContextPinOut"][];
+            rules?: components["schemas"]["ContextRules"];
             /** Segment */
             segment: number;
             /** Session Id */
@@ -5890,7 +5999,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_CONTEXT_RULES" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -8769,6 +8878,60 @@ export interface operations {
             };
         };
     };
+    get_history_api_chat_sessions__session_id__context_history_get: {
+        parameters: {
+            query?: {
+                offset?: number;
+                expected_version?: number | null;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextHistoryOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     update_pins_api_chat_sessions__session_id__context_pins_post: {
         parameters: {
             query?: never;
@@ -8793,6 +8956,61 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ContextPinsOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_rules_api_chat_sessions__session_id__context_rules_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ContextRuleChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextRulesOut"];
                 };
             };
             /** @description Forbidden */

@@ -48,10 +48,15 @@ function ExecutedResultRow({
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   if (result === null) return null;
-  if (action === "change_context_pin") {
+  if (action === "change_context_pin" || action === "change_context_rules") {
     return (
       <p className="text-label text-muted-foreground">
-        {t("chat.pins.saved", { version: result.version })}
+        {t(
+          action === "change_context_pin"
+            ? "chat.pins.saved"
+            : "chat.contextRules.saved",
+          { version: result.version, segment: result.segment },
+        )}
       </p>
     );
   }

@@ -574,5 +574,5 @@ async def test_research_stream_done_carries_research_proposals(
             )
         ).fetchone()
     assert log is not None
-    assert log[0] == "chat-research-scope-v29"
+    assert log[0] == "chat-research-scope-v31"
     assert log[1] is None

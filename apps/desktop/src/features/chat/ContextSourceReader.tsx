@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { contextApi } from "@/features/chat/api/context";
 import { chatKeys } from "@/features/chat/api/keys";
 import { ContextSourcePinActions } from "@/features/chat/ContextSourcePinActions";
+import { ContextSourceExcludeAction } from "@/features/chat/ContextSourceExcludeAction";
 
 export function ContextSourceReader({
   sessionId,
@@ -72,6 +73,14 @@ export function ContextSourceReader({
             pinId={pinId}
             pinVersion={pinVersion}
           />
+          {read.data.source.kind === "record" ||
+          read.data.source.kind === "library" ? (
+            <ContextSourceExcludeAction
+              sessionId={sessionId}
+              sourceId={read.data.source.source_id}
+              sourceVersion={read.data.source.version}
+            />
+          ) : null}
           <p className="text-body break-words">{read.data.source.title}</p>
           <dl className="text-label text-muted-foreground flex flex-col gap-1 break-all">
             <div>
