@@ -25,9 +25,9 @@ pub fn write(config_dir: &Path, archive: &Path) -> io::Result<()> {
 /// 读取并删除待导入意图（一次性）；缺失/损坏一律返回 None 且不留文件。
 pub fn take(config_dir: &Path) -> Option<PendingImport> {
     let path = config_dir.join(FILE_NAME);
-    let pending = fs::read(&path)
-        .ok()
-        .and_then(|contents| serde_json::from_slice::<PendingImport>(&contents).ok());
+    // 缺失即常态（无待导入意图的启动）：read 失败直接返回，不存在可删的文件。
+    let contents = fs::read(&path).ok()?;
+    let pending = serde_json::from_slice::<PendingImport>(&contents).ok();
     if let Err(error) = fs::remove_file(&path) {
         eprintln!("failed to remove {}: {error}", path.display());
     }
