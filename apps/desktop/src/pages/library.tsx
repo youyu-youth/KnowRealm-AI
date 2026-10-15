@@ -20,9 +20,7 @@ export const Route = createFileRoute("/library")({
     ...(isLibraryView(search.view) && search.view !== "all"
       ? { view: search.view }
       : {}),
-    ...(isLibraryLayout(search.layout) && search.layout !== "list"
-      ? { layout: search.layout }
-      : {}),
+    ...(isLibraryLayout(search.layout) ? { layout: search.layout } : {}),
     ...(isLibrarySourceTypeFilter(search.sourceType)
       ? { sourceType: search.sourceType }
       : {}),

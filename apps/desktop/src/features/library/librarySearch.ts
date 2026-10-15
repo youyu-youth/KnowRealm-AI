@@ -34,7 +34,7 @@ export type LibrarySelType = (typeof librarySelTypes)[number];
 export type LibrarySearch = {
   domain?: Exclude<LibraryDomain, "all">;
   view?: Exclude<LibraryView, "all">;
-  layout?: Exclude<LibraryLayout, "list">;
+  layout?: LibraryLayout;
   sourceType?: LibrarySourceTypeFilter;
   availability?: LibraryAvailabilityFilter;
   courseId?: string;

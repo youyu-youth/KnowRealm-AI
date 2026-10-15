@@ -3255,6 +3255,40 @@
     "shortcutBadge": "Ctrl K"
   },
   "library": {
+    "workspace": {
+      "allCourses": "All courses",
+      "classify": "Organize into courses",
+      "classifyHint": "Open Inbox to organize unclassified records",
+      "filters": "Filter",
+      "availability": "Availability",
+      "visibleCount": "{{count}} items",
+      "types": "Source type",
+      "allTypes": "All types",
+      "layout": "Layout",
+      "retry": "Retry",
+      "close": "Close details",
+      "loadError": "Some content could not be loaded. Please retry."
+    },
+    "cards": {
+      "formats": {
+        "markdown": "Markdown",
+        "pdf": "PDF",
+        "txt": "TXT · Text",
+        "html": "HTML · Web",
+        "docx": "DOCX",
+        "audio": "Audio",
+        "document": "Document",
+        "book": "Book",
+        "asset": "Learning asset"
+      },
+      "openDetails": "Preview and manage",
+      "unfavorite": "Remove favorite",
+      "previewError": "Preview unavailable. Open details to retry.",
+      "openPreview": "Open to view content and source information",
+      "recordPreview": "Open the record to view its transcript, summary and learning content",
+      "waveformDemo": "Illustrative waveform · not actual audio data",
+      "actions": "View details and actions for “{{title}}”"
+    },
     "title": "Library",
     "description": "Browse your learning sources, records and confirmed assets in one place",
     "loading": "Loading…",
@@ -3276,7 +3310,8 @@
     "groups": {
       "smart": "Smart views",
       "domain": "Categories",
-      "courses": "Recent courses",
+      "courses": "Courses",
+      "moreCourses": "More ({{count}})",
       "noCourses": "No courses yet",
       "viewAllCourses": "View all"
     },

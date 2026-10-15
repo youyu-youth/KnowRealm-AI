@@ -3,6 +3,12 @@ import {
   Archive,
   ArchiveRestore,
   BookOpen,
+  Clock3,
+  ChevronDown,
+  FolderOpen,
+  Search,
+  SlidersHorizontal,
+  X,
   ExternalLink,
   FileText,
   FolderSearch,
@@ -25,6 +31,17 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LibraryCard } from "@/features/library/components/LibraryCard";
+import "@/features/library/library.css";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
 import { formatSize } from "@/lib/utils";
 import {
   AddLibraryItemDialog,
@@ -39,12 +56,14 @@ import { openWebUrl } from "@/services/tauri/webLinks";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetBody,
+  SheetClose,
+} from "@/components/ui/sheet";
 import {
   Empty,
   EmptyDescription,
@@ -80,6 +99,7 @@ import type {
 } from "@/features/library/librarySearch";
 
 const PAGE_SIZE = 50;
+const VISIBLE_COURSE_LIMIT = 6;
 
 const domainValues: LibraryDomain[] = ["all", "sources", "records", "assets"];
 const viewValues: LibraryView[] = [
@@ -124,10 +144,16 @@ const ROW_SHELL =
   "hover:bg-surface-subtle rounded-xl border border-solid transition-colors";
 const ROW_SELECTED = "bg-surface-strong";
 
-function captureSourceType(captureType: string): string {
+function captureSourceType(
+  captureType: LibraryRecordOut["capture_type"],
+): LibraryItemOut["source_type"] {
   return captureType === "RECORDING" || captureType === "AUDIO_IMPORT"
     ? "AUDIO"
-    : "DOCUMENT";
+    : captureType === "PASTE" || captureType === "QUICK_NOTE"
+      ? "TEXT"
+      : captureType === "CLIP"
+        ? "WEB"
+        : "DOCUMENT";
 }
 
 function formatDateTime(iso: string): string {
@@ -148,7 +174,7 @@ function SourceTypeIcon({ sourceType }: { sourceType: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// 左侧导航：智能视图 / 领域分类 / 最近 Course（仅筛选器，不展开树）
+// 课程筛选：保留选中课程，其余超量课程收进菜单。
 
 function SidebarNav({
   search,
@@ -160,88 +186,109 @@ function SidebarNav({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { courses } = useActiveCourses();
+  const selectedCourse = courses.find(
+    (course) => course.id === search.courseId,
+  );
+  const firstCourses = courses.slice(0, VISIBLE_COURSE_LIMIT);
+  const visibleCourses =
+    selectedCourse && !firstCourses.includes(selectedCourse)
+      ? [...firstCourses.slice(0, VISIBLE_COURSE_LIMIT - 1), selectedCourse]
+      : firstCourses;
+  const hiddenCourses = courses.filter(
+    (course) => !visibleCourses.includes(course),
+  );
   const navItemClass =
-    "focus-visible:ring-ring/40 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-body transition-colors hover:bg-surface-subtle focus-visible:ring-3 focus-visible:outline-hidden";
+    "focus-visible:ring-ring/40 flex w-full items-center gap-2 rounded-lg px-3 py-4 text-left text-body transition-colors hover:bg-surface-subtle focus-visible:ring-3 focus-visible:outline-hidden";
   const navItemActiveClass = "bg-surface-strong font-medium";
 
   const setPatch = (patch: LibrarySearch) =>
     onSearchChange({ ...search, ...patch });
 
   return (
-    <nav aria-label={t("library.title")} className="space-y-5">
-      <div>
-        <p className="text-label text-muted-foreground font-label mb-1 px-2">
-          {t("library.groups.smart")}
-        </p>
-        {viewValues.map((view) => (
-          <button
-            key={view}
-            type="button"
-            onClick={() =>
-              setPatch({ view: view === "all" ? undefined : view })
-            }
-            className={`${navItemClass} ${(search.view ?? "all") === view ? navItemActiveClass : ""}`}
-            aria-current={(search.view ?? "all") === view ? "true" : undefined}
+    <nav
+      aria-label={t("library.groups.courses")}
+      className="library-course-nav"
+    >
+      <div className="mb-3 flex items-center justify-between gap-2 px-2">
+        <p className="text-body font-semibold">{t("library.groups.courses")}</p>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          aria-label={t("library.groups.viewAllCourses")}
+          onClick={() => void navigate({ to: "/spaces" })}
+        >
+          <Plus aria-hidden />
+        </Button>
+      </div>
+      <button
+        type="button"
+        className={`${navItemClass} ${!search.courseId ? navItemActiveClass : ""}`}
+        aria-current={!search.courseId ? "true" : undefined}
+        onClick={() => setPatch({ courseId: undefined })}
+      >
+        <LayoutGrid className="size-6 shrink-0" aria-hidden />
+        <span>{t("library.workspace.allCourses")}</span>
+      </button>
+      {visibleCourses.map((course) => (
+        <button
+          key={course.id}
+          type="button"
+          className={`${navItemClass} ${search.courseId === course.id ? navItemActiveClass : ""}`}
+          aria-current={search.courseId === course.id ? "true" : undefined}
+          title={course.name}
+          onClick={() => setPatch({ courseId: course.id })}
+        >
+          <BookOpen className="size-6 shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">{course.name}</span>
+        </button>
+      ))}
+      {hiddenCourses.length > 0 ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" className="library-more-courses" />}
           >
-            {t(`library.views.${view}`)}
-          </button>
-        ))}
-      </div>
-      <div>
-        <p className="text-label text-muted-foreground font-label mb-1 px-2">
-          {t("library.groups.domain")}
+            {t("library.groups.moreCourses", { count: hiddenCourses.length })}
+            <ChevronDown aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="max-h-64 max-w-72 overflow-y-auto">
+            <DropdownMenuGroup>
+              {hiddenCourses.map((course) => (
+                <DropdownMenuItem
+                  key={course.id}
+                  title={course.name}
+                  onClick={() => setPatch({ courseId: course.id })}
+                >
+                  <BookOpen aria-hidden />
+                  <span className="truncate">{course.name}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+      {courses.length === 0 ? (
+        <p className="text-muted-foreground px-2 py-3 text-sm">
+          {t("library.groups.noCourses")}
         </p>
-        {/* 「全部」由顶部四分类承载，左侧领域分类只列三个具体域（票面口径） */}
-        {domainValues
-          .filter((domain) => domain !== "all")
-          .map((domain) => (
-            <button
-              key={domain}
-              type="button"
-              onClick={() => setPatch({ domain })}
-              className={`${navItemClass} ${search.domain === domain ? navItemActiveClass : ""}`}
-              aria-current={search.domain === domain ? "true" : undefined}
-            >
-              {t(`library.domains.${domain}`)}
-            </button>
-          ))}
-      </div>
-      <div>
-        <p className="text-label text-muted-foreground font-label mb-1 px-2">
-          {t("library.groups.courses")}
-        </p>
-        <div className="max-h-48 overflow-y-auto">
-          {courses.slice(0, 6).map((course) => (
-            <button
-              key={course.id}
-              type="button"
-              onClick={() =>
-                setPatch(
-                  search.courseId === course.id
-                    ? { courseId: undefined }
-                    : { courseId: course.id },
-                )
-              }
-              className={`${navItemClass} truncate ${search.courseId === course.id ? navItemActiveClass : ""}`}
-              aria-current={search.courseId === course.id ? "true" : undefined}
-            >
-              {course.name}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => void navigate({ to: "/spaces" })}
-            className={`${navItemClass} text-muted-foreground`}
-          >
-            {t("library.groups.viewAllCourses")}
-          </button>
-          {courses.length === 0 ? (
-            <p className="text-muted-foreground px-2 py-1.5 text-sm">
-              {t("library.groups.noCourses")}
-            </p>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
+      <Button
+        variant="ghost"
+        className="mt-2 w-full justify-start"
+        onClick={() => void navigate({ to: "/spaces" })}
+      >
+        {t("library.groups.viewAllCourses")}
+      </Button>
+      <Button
+        variant="outline"
+        className="library-classify-link"
+        onClick={() => void navigate({ to: "/inbox" })}
+      >
+        <FolderOpen className="size-7" aria-hidden />
+        <span>{t("library.workspace.classify")}</span>
+        <span className="text-muted-foreground text-label">
+          {t("library.workspace.classifyHint")}
+        </span>
+      </Button>
     </nav>
   );
 }
@@ -304,7 +351,7 @@ function ItemRow({
             className={
               item.favorite
                 ? "opacity-100"
-                : "opacity-0 group-hover:opacity-100"
+                : "opacity-100 sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100"
             }
             aria-label={t("library.favoriteToggle")}
             aria-pressed={item.favorite}
@@ -411,54 +458,6 @@ function AssetRow({
         </span>
       </button>
     </li>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// 网格卡片
-
-type CardEntry = {
-  id: string;
-  sourceType: string;
-  title: string;
-  updatedAt: string;
-  favorite: boolean;
-};
-
-function ItemCard({
-  entry,
-  selected,
-  onSelect,
-}: {
-  entry: CardEntry;
-  selected: boolean;
-  onSelect: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={`hover:bg-surface-subtle flex h-full flex-col gap-2 rounded-xl border border-solid p-3 text-left transition-colors ${selected ? "bg-surface-strong" : ""}`}
-    >
-      <span className="flex items-center gap-2">
-        <SourceTypeIcon sourceType={entry.sourceType} />
-        <span className="text-label text-muted-foreground">
-          {t(`library.sourceTypes.${entry.sourceType}`)}
-        </span>
-        {entry.favorite ? (
-          <Star
-            className="text-ink ml-auto size-3.5 fill-current"
-            aria-label={t("library.favoriteToggle")}
-          />
-        ) : null}
-      </span>
-      <span className="text-body line-clamp-2 font-medium">{entry.title}</span>
-      <span className="text-muted-foreground text-label mt-auto truncate">
-        {formatDateTime(entry.updatedAt)}
-      </span>
-    </button>
   );
 }
 
@@ -988,6 +987,7 @@ function Inspector({
   if (search.selType === "item") {
     return (
       <ItemInspector
+        key={search.sel}
         itemId={search.sel}
         onManualPaste={onManualPaste}
         onReingest={onReingest}
@@ -1027,7 +1027,9 @@ export function LibraryPage({
   onSearchChange: (next: LibrarySearch) => void;
 }) {
   const { t } = useTranslation();
-  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(
+    Boolean(search.sel && search.selType),
+  );
   const [ingestOpen, setIngestOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const [ingestInitial, setIngestInitial] = useState<
@@ -1035,7 +1037,8 @@ export function LibraryPage({
   >(undefined);
   const domain = search.domain ?? "all";
   const view = search.view ?? "all";
-  const layout = search.layout ?? "list";
+  const layout = search.layout ?? "grid";
+  const { courses } = useActiveCourses();
 
   const itemsParams = useMemo<LibraryItemsParams>(
     () => ({
@@ -1092,7 +1095,7 @@ export function LibraryPage({
 
   const select = (selType: LibrarySelType, id: string) => {
     onSearchChange({ ...search, sel: id, selType });
-    if (window.innerWidth < 1280) setInspectorOpen(true);
+    setInspectorOpen(true);
   };
 
   const backfill = itemsQuery.data?.backfill;
@@ -1104,7 +1107,14 @@ export function LibraryPage({
     backfill !== null && backfill !== undefined && backfill.status === "FAILED";
 
   const isListPending =
-    (domain === "sources" || domain === "all") && itemsQuery.isPending;
+    ((domain === "sources" || domain === "all") && itemsQuery.isPending) ||
+    ((domain === "records" || domain === "all") && recordsQuery.isPending) ||
+    ((domain === "assets" || domain === "all") && assetsQuery.isPending);
+  const failedQueries = [
+    ...(domain === "sources" || domain === "all" ? [itemsQuery] : []),
+    ...(domain === "records" || domain === "all" ? [recordsQuery] : []),
+    ...(domain === "assets" || domain === "all" ? [assetsQuery] : []),
+  ].filter((query) => query.isError);
   const isEmptyList =
     domain === "sources"
       ? allItems.length === 0
@@ -1121,7 +1131,7 @@ export function LibraryPage({
   };
   const openExistingItem = (itemId: string) => {
     onSearchChange({ ...search, sel: itemId, selType: "item" });
-    if (window.innerWidth < 1280) setInspectorOpen(true);
+    setInspectorOpen(true);
   };
   const inspectorBody = (
     <Inspector
@@ -1146,26 +1156,249 @@ export function LibraryPage({
   );
 
   return (
-    <section className="work-surface-enter max-w-workbench px-content mx-auto min-h-full py-8">
-      <header className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-section font-section text-ink">
-            {t("library.title")}
-          </h1>
-          <p className="text-muted-foreground text-body">
-            {t("library.description")}
-          </p>
+    <section className="library-workspace">
+      <aside className="library-course-sidebar">
+        <SidebarNav search={search} onSearchChange={onSearchChange} />
+      </aside>
+      <div className="library-main">
+        <header className="library-header">
+          <div className="min-w-0">
+            <h1 className="text-library-title text-ink-strong font-semibold">
+              {t("library.title")}
+            </h1>
+            <p className="text-muted-foreground text-body mt-1">
+              {t("library.description")}
+            </p>
+          </div>
+          <div className="library-header-actions">
+            <div className="library-search">
+              <Search
+                className="text-library-muted size-4 shrink-0"
+                aria-hidden
+              />
+              <Input
+                value={search.q ?? ""}
+                onChange={(event) =>
+                  onSearchChange({ ...search, q: event.target.value })
+                }
+                placeholder={t("library.filters.searchPlaceholder")}
+                aria-label={t("library.filters.searchLabel")}
+              />
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="outline" size="sm" />}
+              >
+                <SlidersHorizontal aria-hidden />
+                {t("library.workspace.filters")}
+                {search.availability ? (
+                  <span className="size-1.5 rounded-full bg-current" />
+                ) : null}
+                <ChevronDown aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>
+                    {t("library.workspace.availability")}
+                  </DropdownMenuLabel>
+                  {availabilityFilters.map((state) => (
+                    <DropdownMenuCheckboxItem
+                      key={state}
+                      checked={search.availability === state}
+                      disabled={domain === "records" || domain === "assets"}
+                      onCheckedChange={() =>
+                        onSearchChange({
+                          ...search,
+                          availability:
+                            search.availability === state ? undefined : state,
+                        })
+                      }
+                    >
+                      {t(`library.availability.${state}`)}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button onClick={() => openIngestDialog()}>
+              <Plus aria-hidden />
+              {t("library.ingest.open")}
+            </Button>
+            <Button variant="outline" onClick={() => setOrganizeOpen(true)}>
+              <Sparkles aria-hidden />
+              {t("library.organize.open")}
+            </Button>
+          </div>
+        </header>
+        <div className="library-viewbar">
+          <Tabs
+            value={domain}
+            onValueChange={(next) =>
+              onSearchChange({
+                ...search,
+                domain:
+                  next === "all"
+                    ? undefined
+                    : (next as Exclude<LibraryDomain, "all">),
+              })
+            }
+          >
+            <TabsList variant="line" className="library-domain-tabs">
+              {domainValues.map((tabDomain) => (
+                <TabsTrigger key={tabDomain} value={tabDomain}>
+                  {t(`library.domains.${tabDomain}`)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <div
+            className="library-smart-views"
+            role="group"
+            aria-label={t("library.groups.smart")}
+          >
+            {viewValues
+              .filter((value) => value !== "all")
+              .map((chipView) => {
+                const Icon = {
+                  all: LayoutGrid,
+                  recent: Clock3,
+                  favorites: Star,
+                  needsReview: Wrench,
+                  archived: Archive,
+                  trash: Trash2,
+                }[chipView];
+                return (
+                  <ToggleChip
+                    key={chipView}
+                    active={view === chipView}
+                    onClick={() =>
+                      onSearchChange({
+                        ...search,
+                        view: view === chipView ? undefined : chipView,
+                      })
+                    }
+                  >
+                    <Icon className="size-4" aria-hidden />
+                    {t(`library.views.${chipView}`)}
+                  </ToggleChip>
+                );
+              })}
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => openIngestDialog()}>
-            <Plus className="size-4" aria-hidden />
-            {t("library.ingest.open")}
-          </Button>
-          <Button variant="outline" onClick={() => setOrganizeOpen(true)}>
-            <Sparkles className="size-4" aria-hidden />
-            {t("library.organize.open")}
-          </Button>
+        <div className="library-content-toolbar">
+          <div className="flex min-w-0 items-center gap-3">
+            <LayoutGrid
+              className="text-library-ink size-6 shrink-0"
+              aria-hidden
+            />
+            <h2 className="text-library-heading text-ink-strong min-w-0 font-semibold break-words">
+              {courses.find((course) => course.id === search.courseId)?.name ??
+                (search.courseId
+                  ? t("library.filters.courseFilterActive")
+                  : t("library.workspace.allCourses"))}
+            </h2>
+            <span className="text-library-muted text-body shrink-0">
+              {t("library.workspace.visibleCount", {
+                count:
+                  (domain === "all" || domain === "sources"
+                    ? allItems.length
+                    : 0) +
+                  filteredRecords.length +
+                  filteredAssets.length,
+              })}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {domain !== "records" && domain !== "assets" ? (
+              <div
+                className="library-type-filters"
+                role="group"
+                aria-label={t("library.workspace.types")}
+              >
+                <ToggleChip
+                  active={!search.sourceType}
+                  onClick={() =>
+                    onSearchChange({ ...search, sourceType: undefined })
+                  }
+                >
+                  {t("library.workspace.allTypes")}
+                </ToggleChip>
+                {sourceTypeFilters.map((type) => {
+                  const Icon = sourceTypeIcon[type] ?? FileText;
+                  return (
+                    <ToggleChip
+                      key={type}
+                      active={search.sourceType === type}
+                      onClick={() =>
+                        onSearchChange({
+                          ...search,
+                          sourceType:
+                            search.sourceType === type ? undefined : type,
+                        })
+                      }
+                    >
+                      <Icon className="size-4" aria-hidden />
+                      {t(`library.sourceTypes.${type}`)}
+                    </ToggleChip>
+                  );
+                })}
+              </div>
+            ) : null}
+            <div
+              className="flex items-center gap-1"
+              role="group"
+              aria-label={t("library.workspace.layout")}
+            >
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("library.layout.list")}
+                aria-pressed={layout === "list"}
+                onClick={() => onSearchChange({ ...search, layout: "list" })}
+              >
+                <ListIcon aria-hidden />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={t("library.layout.grid")}
+                aria-pressed={layout === "grid"}
+                onClick={() => onSearchChange({ ...search, layout: "grid" })}
+              >
+                <LayoutGrid aria-hidden />
+              </Button>
+            </div>
+          </div>
         </div>
+        <div className="library-mobile-courses">
+          <SidebarNav search={search} onSearchChange={onSearchChange} />
+        </div>
+        {search.availability || search.courseId ? (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {search.availability ? (
+              <ToggleChip
+                active
+                onClick={() =>
+                  onSearchChange({ ...search, availability: undefined })
+                }
+              >
+                {t(`library.availability.${search.availability}`)}
+                <X className="ml-1 inline size-3" aria-hidden />
+              </ToggleChip>
+            ) : null}
+            {search.courseId ? (
+              <ToggleChip
+                active
+                onClick={() =>
+                  onSearchChange({ ...search, courseId: undefined })
+                }
+              >
+                {t("library.filters.courseFilterActive")}
+                <X className="ml-1 inline size-3" aria-hidden />
+              </ToggleChip>
+            ) : null}
+          </div>
+        ) : null}
         {backfillFailed ? (
           <div
             className="border-danger text-muted-foreground bg-surface-raised flex items-center gap-2 rounded-lg border border-solid px-3 py-1.5 text-sm"
@@ -1188,134 +1421,25 @@ export function LibraryPage({
             })}
           </div>
         ) : null}
-      </header>
 
-      <div className="mt-4 grid min-h-0 gap-3 xl:grid-cols-[12rem_minmax(0,1fr)_clamp(20rem,28vw,28rem)]">
-        <div className="hidden xl:block">
-          <SidebarNav search={search} onSearchChange={onSearchChange} />
-        </div>
-
-        <main className="min-w-0 space-y-3">
-          {/* 窄屏：智能视图以 chips 呈现（左导航在 xl 以下隐藏） */}
-          <div className="flex flex-wrap gap-1.5 xl:hidden">
-            {viewValues.map((chipView) => (
-              <ToggleChip
-                key={chipView}
-                active={view === chipView}
-                onClick={() =>
-                  onSearchChange({
-                    ...search,
-                    view: chipView === "all" ? undefined : chipView,
-                  })
-                }
-              >
-                {t(`library.views.${chipView}`)}
-              </ToggleChip>
-            ))}
-          </div>
-
-          <Tabs
-            value={domain}
-            onValueChange={(next) =>
-              onSearchChange({
-                ...search,
-                domain:
-                  next === "all"
-                    ? undefined
-                    : (next as Exclude<LibraryDomain, "all">),
-              })
-            }
-          >
-            <TabsList className="w-full justify-start overflow-x-auto">
-              {domainValues.map((tabDomain) => (
-                <TabsTrigger key={tabDomain} value={tabDomain}>
-                  {t(`library.domains.${tabDomain}`)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Input
-              value={search.q ?? ""}
-              onChange={(event) =>
-                onSearchChange({ ...search, q: event.target.value })
+        {failedQueries.length ? (
+          <Alert variant="destructive" className="mb-3">
+            <AlertDescription>
+              {t("library.workspace.loadError")}
+            </AlertDescription>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                failedQueries.forEach((query) => void query.refetch())
               }
-              placeholder={t("library.filters.searchPlaceholder")}
-              className="h-8 max-w-64"
-              aria-label={t("library.filters.searchLabel")}
-            />
-            {domain !== "records" && domain !== "assets" ? (
-              <div className="flex flex-wrap gap-1.5">
-                {sourceTypeFilters.map((type) => (
-                  <ToggleChip
-                    key={type}
-                    active={search.sourceType === type}
-                    onClick={() =>
-                      onSearchChange({
-                        ...search,
-                        sourceType:
-                          search.sourceType === type ? undefined : type,
-                      })
-                    }
-                  >
-                    {t(`library.sourceTypes.${type}`)}
-                  </ToggleChip>
-                ))}
-              </div>
-            ) : null}
-            {domain !== "records" && domain !== "assets" ? (
-              <div className="flex flex-wrap gap-1.5">
-                {availabilityFilters.map((state) => (
-                  <ToggleChip
-                    key={state}
-                    active={search.availability === state}
-                    onClick={() =>
-                      onSearchChange({
-                        ...search,
-                        availability:
-                          search.availability === state ? undefined : state,
-                      })
-                    }
-                  >
-                    {t(`library.availability.${state}`)}
-                  </ToggleChip>
-                ))}
-              </div>
-            ) : null}
-            {search.courseId ? (
-              <ToggleChip
-                active
-                onClick={() =>
-                  onSearchChange({ ...search, courseId: undefined })
-                }
-              >
-                {t("library.filters.courseFilterActive")}
-              </ToggleChip>
-            ) : null}
-            <div className="ml-auto flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("library.layout.list")}
-                aria-pressed={layout === "list"}
-                onClick={() => onSearchChange({ ...search, layout: undefined })}
-              >
-                <ListIcon />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={t("library.layout.grid")}
-                aria-pressed={layout === "grid"}
-                onClick={() => onSearchChange({ ...search, layout: "grid" })}
-              >
-                <LayoutGrid />
-              </Button>
-            </div>
-          </div>
-
-          <div className="max-h-[calc(100vh-var(--spacing-titlebar)-17rem)] overflow-y-auto pr-0.5">
+            >
+              {t("library.workspace.retry")}
+            </Button>
+          </Alert>
+        ) : null}
+        <div className="library-results">
+          <div className="min-w-0">
             {view === "trash" ? (
               <Alert className="mb-3">
                 <AlertDescription>{t("library.trash.banner")}</AlertDescription>
@@ -1325,7 +1449,7 @@ export function LibraryPage({
               <div className="text-muted-foreground flex items-center gap-2 py-8 text-sm">
                 <Spinner className="size-4" /> {t("library.loading")}
               </div>
-            ) : isEmptyList ? (
+            ) : isEmptyList && failedQueries.length === 0 ? (
               <Empty className="border-t border-solid bg-transparent px-0 py-8">
                 <EmptyHeader className="max-w-reading text-left">
                   <EmptyMedia className="text-muted-foreground">
@@ -1344,17 +1468,21 @@ export function LibraryPage({
                 </EmptyHeader>
               </Empty>
             ) : layout === "grid" ? (
-              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 2xl:grid-cols-3">
+              <ul
+                className="library-masonry"
+                aria-label={t("library.layout.grid")}
+              >
                 {domain === "sources" || domain === "all"
                   ? allItems.map((item) => (
                       <li key={item.id}>
-                        <ItemCard
+                        <LibraryCard
                           entry={{
                             id: item.id,
                             sourceType: item.source_type,
                             title: item.title,
                             updatedAt: item.updated_at,
-                            favorite: item.favorite,
+                            courseName: item.course_name,
+                            item,
                           }}
                           selected={
                             search.selType === "item" && search.sel === item.id
@@ -1367,19 +1495,42 @@ export function LibraryPage({
                 {domain === "records" || domain === "all"
                   ? filteredRecords.map((record) => (
                       <li key={record.id}>
-                        <ItemCard
+                        <LibraryCard
                           entry={{
                             id: record.id,
                             sourceType: captureSourceType(record.capture_type),
                             title: record.title,
                             updatedAt: record.updated_at,
-                            favorite: false,
+                            courseName: record.course_name,
+                            durationMs: record.duration_ms,
+                            status: t(`spaces.records.status.${record.status}`),
                           }}
                           selected={
                             search.selType === "record" &&
                             search.sel === record.id
                           }
                           onSelect={() => select("record", record.id)}
+                        />
+                      </li>
+                    ))
+                  : null}
+                {domain === "assets" || domain === "all"
+                  ? filteredAssets.map((asset) => (
+                      <li key={asset.id}>
+                        <LibraryCard
+                          entry={{
+                            id: asset.id,
+                            sourceType: "ASSET",
+                            title: asset.name,
+                            updatedAt: asset.updated_at,
+                            courseName: asset.course_name,
+                            detail: asset.detail,
+                          }}
+                          selected={
+                            search.selType === "asset" &&
+                            search.sel === asset.id
+                          }
+                          onSelect={() => select("asset", asset.id)}
                         />
                       </li>
                     ))
@@ -1428,24 +1579,39 @@ export function LibraryPage({
               </ul>
             )}
           </div>
-        </main>
-
-        <aside className="bg-surface-raised hidden max-h-[calc(100vh-var(--spacing-titlebar)-11rem)] overflow-y-auto rounded-xl border border-solid p-4 xl:block">
-          {inspectorBody}
-        </aside>
+        </div>
       </div>
-
-      <Dialog open={inspectorOpen} onOpenChange={setInspectorOpen}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto xl:hidden">
-          <DialogHeader>
-            <DialogTitle>{t("library.inspector.title")}</DialogTitle>
-            <DialogDescription className="sr-only">
-              {t("library.inspector.noneSelected")}
-            </DialogDescription>
-          </DialogHeader>
-          {inspectorOpen ? inspectorBody : null}
-        </DialogContent>
-      </Dialog>
+      <Sheet
+        open={inspectorOpen}
+        onOpenChange={setInspectorOpen}
+        onOpenChangeComplete={(open) => {
+          if (!open)
+            onSearchChange({ ...search, sel: undefined, selType: undefined });
+        }}
+      >
+        <SheetContent className="library-preview-sheet" showCloseButton={false}>
+          <SheetHeader className="flex-row items-center justify-between gap-3 border-b">
+            <div>
+              <SheetTitle>{t("library.inspector.title")}</SheetTitle>
+              <SheetDescription className="sr-only">
+                {t("library.description")}
+              </SheetDescription>
+            </div>
+            <SheetClose
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t("library.workspace.close")}
+                />
+              }
+            >
+              <X aria-hidden />
+            </SheetClose>
+          </SheetHeader>
+          <SheetBody>{inspectorBody}</SheetBody>
+        </SheetContent>
+      </Sheet>
 
       <AddLibraryItemDialog
         open={ingestOpen}

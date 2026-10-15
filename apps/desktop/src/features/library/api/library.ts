@@ -63,9 +63,9 @@ export const libraryApi = {
   },
   getItem: (itemId: string) =>
     apiFetch<LibraryItemDetailOut>(`/api/library/items/${itemId}`),
-  getItemContent: (itemId: string) =>
+  getItemContent: (itemId: string, limit?: number) =>
     apiFetch<components["schemas"]["LibraryItemContentOut"]>(
-      `/api/library/items/${itemId}/content`,
+      `/api/library/items/${itemId}/content${limit === undefined ? "" : `?limit=${limit}`}`,
     ),
   patchItem: (itemId: string, body: LibraryItemPatchBody) =>
     apiFetch<LibraryItemOut>(`/api/library/items/${itemId}`, {

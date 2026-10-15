@@ -153,7 +153,7 @@ function mockLibraryEndpoints(options?: {
 }
 
 function renderAt(path: string) {
-  // jsdom resizeTo 不改 innerWidth：直接桩成宽屏，走常驻检查器路径（不开 Dialog）
+  // jsdom resizeTo 不改 innerWidth，使用明确的桌面视口。
   Object.defineProperty(window, "innerWidth", {
     value: 1440,
     configurable: true,
@@ -172,6 +172,66 @@ afterEach(() => {
 });
 
 describe("LibraryPage 工作台", () => {
+  it("卡片右键菜单复用收藏请求，并能打开原有预览管理抽屉", async () => {
+    mockLibraryEndpoints();
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/library/items`, () =>
+        HttpResponse.json({
+          items: [itemOut({ favorite: favoritePatch !== null })],
+          total: 1,
+          backfill: null,
+        }),
+      ),
+    );
+    renderAt("/library?domain=sources");
+    const title = await screen.findByRole("button", {
+      name: "第3讲 傅里叶变换",
+    });
+    expect(title.closest("article")).toHaveAttribute("data-format", "audio");
+    fireEvent.contextMenu(title, { clientX: 120, clientY: 180, button: 2 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "收藏" }));
+    await waitFor(() =>
+      expect(favoritePatch).toEqual({ id: ITEM_ID, body: { favorite: true } }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "查看《第3讲 傅里叶变换》详情与操作",
+      }),
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "取消收藏" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("menuitem", { name: "预览与管理" }));
+    expect(await screen.findByRole("dialog", { name: "详情" })).toBeVisible();
+  });
+
+  it("回收站卡片菜单只保留预览管理，不允许收藏或 AI 解读", async () => {
+    mockLibraryEndpoints();
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/library/items`, () =>
+        HttpResponse.json({
+          items: [itemOut({ deleted_at: "2026-10-01T00:00:00Z" })],
+          total: 1,
+          backfill: null,
+        }),
+      ),
+    );
+    renderAt("/library?view=trash&domain=sources");
+    fireEvent.contextMenu(
+      await screen.findByRole("button", { name: "第3讲 傅里叶变换" }),
+      { clientX: 120, clientY: 180, button: 2 },
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "预览与管理" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("menuitem", { name: "收藏" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "AI 解读" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("默认可浏览：无关键词即列出资料条目（列表内搜索是可选导航）", async () => {
     mockLibraryEndpoints();
     renderAt("/library");
@@ -179,6 +239,134 @@ describe("LibraryPage 工作台", () => {
     expect(await screen.findByText("未归类速记")).toBeVisible();
     // 全部域默认混入学习记录
     expect(await screen.findByText("傅里叶变换入门")).toBeVisible();
+  });
+
+  it("课程超过六个时收进更多菜单，选择后保持可见及原有筛选", async () => {
+    mockLibraryEndpoints();
+    const longName = "第九门课程名称很长需要省略但仍能读取完整名称";
+    const courses = Array.from({ length: 9 }, (_, index) => ({
+      id: `course-${index}`,
+      name: index === 8 ? longName : `课程 ${index + 1}`,
+      status: "ACTIVE",
+      scene: "CAREER",
+      created_at: "2026-10-01T08:00:00Z",
+      updated_at: "2026-10-01T08:00:00Z",
+    }));
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () =>
+        HttpResponse.json(courses),
+      ),
+    );
+    renderAt("/library?domain=sources&view=recent");
+    // jsdom 不解析响应式媒体查询；取桌面课程栏，另一份用于窄窗。
+    const [nav] = await screen.findAllByRole("navigation", { name: "课程" });
+    const more = await within(nav).findByRole("button", { name: "更多（3）" });
+    expect(
+      within(nav).queryByRole("button", { name: longName }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(more);
+    fireEvent.click(await screen.findByRole("menuitem", { name: longName }));
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get("courseId")).toBe(
+        "course-8",
+      ),
+    );
+    expect(within(nav).getByRole("button", { name: longName })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(within(nav).getByRole("button", { name: longName })).toHaveAttribute(
+      "title",
+      longName,
+    );
+    expect(
+      within(nav).queryByRole("button", { name: "课程 6" }),
+    ).not.toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get("domain")).toBe(
+      "sources",
+    );
+    expect(new URLSearchParams(window.location.search).get("view")).toBe(
+      "recent",
+    );
+    await waitFor(() =>
+      expect(
+        itemRequests.some(
+          (url) => new URL(url).searchParams.get("course_id") === "course-8",
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("默认瀑布流包含学习资产，切换列表后仍保留资产及 URL 视图", async () => {
+    mockLibraryEndpoints();
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/library/assets`, () =>
+        HttpResponse.json([
+          {
+            id: "asset-one",
+            course_id: COURSE_ID,
+            course_name: "高等数学",
+            name: "频谱与时域",
+            detail: "频谱描述信号的频率成分。",
+            record_id: RECORD_ID,
+            record_title: "傅里叶变换入门",
+            generation_status: "CONFIRMED",
+            importance: 3,
+            created_at: "2026-09-01T08:00:00Z",
+            updated_at: "2026-09-03T08:00:00Z",
+          },
+        ]),
+      ),
+    );
+    renderAt("/library?domain=assets");
+    expect(await screen.findByText("频谱与时域")).toBeVisible();
+    expect(screen.getByText("频谱描述信号的频率成分。")).toBeVisible();
+    expect(screen.getByRole("button", { name: "网格视图" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "列表视图" }));
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get("layout")).toBe(
+        "list",
+      ),
+    );
+    expect(screen.getByText("频谱与时域")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "网格视图" }));
+    await waitFor(() =>
+      expect(screen.getByText("频谱描述信号的频率成分。")).toBeVisible(),
+    );
+  });
+
+  it("窄窗与宽窗统一使用覆盖式抽屉，关闭后清除选中资料", async () => {
+    mockLibraryEndpoints();
+    renderAt("/library");
+    const title = await screen.findByText("第3讲 傅里叶变换");
+    Object.defineProperty(window, "innerWidth", {
+      value: 1000,
+      configurable: true,
+    });
+    fireEvent.click(title);
+    expect(await screen.findByRole("dialog", { name: "详情" })).toBeVisible();
+    Object.defineProperty(window, "innerWidth", {
+      value: 1440,
+      configurable: true,
+    });
+    fireEvent(window, new Event("resize"));
+    const drawer = screen.getByRole("dialog", { name: "详情" });
+    expect(drawer).toBeVisible();
+    expect(await within(drawer).findByText("来源信息")).toBeVisible();
+    fireEvent.click(within(drawer).getByRole("button", { name: "关闭详情" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "详情" }),
+      ).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).has("sel")).toBe(
+        false,
+      ),
+    );
   });
 
   it("添加资料入口：按钮打开三标签入库对话框", async () => {
@@ -339,15 +527,23 @@ describe("LibraryPage 工作台", () => {
     ).toBeVisible();
     expect(await screen.findByText("files/x/x.ogg")).toBeVisible();
 
-    // 切到学习记录并选中：检查器显示来源资料回链
+    // 关闭覆盖式预览后，再切换到学习记录。
+    fireEvent.click(screen.getByRole("button", { name: "关闭详情" }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "详情" }),
+      ).not.toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole("tab", { name: "学习记录" }));
-    // 检查器（aside）中的派生记录同名：取不在 aside 内的列表行
+    // 取列表中的学习记录。
     const listRowText = (await screen.findAllByText("傅里叶变换入门")).find(
-      (node) => node.closest("aside") === null,
+      (node) => node.closest("[role=dialog]") === null,
     );
     expect(listRowText).toBeDefined();
     const recordRow = (listRowText as HTMLElement).closest("li") as HTMLElement;
-    fireEvent.click(within(recordRow).getByRole("button"));
+    fireEvent.click(
+      within(recordRow).getByRole("button", { name: "傅里叶变换入门" }),
+    );
     const inspector = await screen.findByText("来源资料");
     expect(inspector).toBeVisible();
     expect(
@@ -451,13 +647,9 @@ describe("LibraryPage 工作台", () => {
     );
     renderAt("/library");
     fireEvent.click(await screen.findByText("第3讲 傅里叶变换"));
-    // 左侧导航「归档」视图同名：作用域限定在检查器 aside（DOM 序最后一个
-    // complementary——前一个是应用壳的工作区导航）
-    const inspector =
-      screen.getAllByRole("complementary")[
-        screen.getAllByRole("complementary").length - 1
-      ];
-    expect(inspector).toBeDefined();
+    const inspector = await screen.findByRole("dialog", {
+      name: "详情",
+    });
     fireEvent.click(
       await within(inspector as HTMLElement).findByRole("button", {
         name: "归档",

@@ -1,4 +1,20 @@
 :root {
+  --library-ink: light-dark(#111b49, #e3e8ff);
+  --library-muted: light-dark(#52618b, #b6c0dd);
+  --library-format-pdf: light-dark(#9c493d, #e9a497);
+  --library-format-markdown: light-dark(#685095, #c7afea);
+  --library-format-txt: light-dark(#726049, #cbbb9f);
+  --library-format-html: light-dark(#336e79, #98cdd5);
+  --library-format-docx: light-dark(#395f9d, #9ebcf1);
+  --library-format-audio: light-dark(#75439b, #d1a7ed);
+  --library-format-asset: light-dark(#3d7651, #a2d7ae);
+  --library-pdf-surface: light-dark(#fff0ec, #33272a);
+  --library-markdown-surface: light-dark(#f3efff, #2c293f);
+  --library-txt-surface: light-dark(#fff6df, #342f24);
+  --library-html-surface: light-dark(#eaf7f5, #233635);
+  --library-docx-surface: light-dark(#edf5ff, #253349);
+  --library-audio-surface: light-dark(#f7edff, #34273f);
+  --library-asset-surface: light-dark(#edf7eb, #28382b);
   --spaces-accent: light-dark(#008455, #75d8ac);
   --spaces-soft: color-mix(in oklch, var(--spaces-accent) 8%, var(--paper));
   --spaces-cover: light-dark(#f1eee7, #292b29);
