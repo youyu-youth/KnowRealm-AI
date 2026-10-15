@@ -2,6 +2,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -9,7 +10,19 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.db.base import utcnow
+from app.db.engine import create_database
 from app.main import create_app
+from app.modules.agent.models import ChatSession
+from app.modules.agent.runtime import (
+    AgentRuntimeContext,
+    bind_agent_runtime_context,
+    reset_agent_runtime_context,
+)
+from app.modules.agent.schemas import ChatMode, ChatScope
+from app.modules.agent.tools.list_recent_learning import list_recent_learning
+from app.modules.data.archive import vacuum_into
+from app.modules.quiz.models import QuizTest, QuizTestItem
+from app.modules.today.resume import LearningResumeService
 
 TOKEN = "test-launch-token"
 
@@ -729,3 +742,220 @@ async def test_stats_fall_back_after_chat_session_soft_delete(tmp_path: Path) ->
         after = (await client.get("/api/today/stats")).json()
 
     assert after["chat_turn_count"] == 1
+
+
+RESUME_URL = "/api/today/continue-learning"
+
+
+async def seed_resume_targets(app: FastAPI, client: httpx.AsyncClient) -> tuple[str, str, str, str]:
+    course_id = await create_course(client, "接力课程")
+    record_id, quiz_id, test_id, chat_id = (str(uuid4()) for _ in range(4))
+    await insert_stats_record(app, record_id, course_id=course_id)
+    await insert_stats_quiz(app, quiz_id, record_id)
+    async with app.state.session_factory() as session, session.begin():
+        session.add(QuizTest(id=test_id, course_id=course_id, mode="MOCK", status="IN_PROGRESS"))
+        session.add(
+            ChatSession(id=chat_id, mode=ChatMode.ASK, scope=ChatScope.FREE, title="真实对话")
+        )
+        await session.flush()
+        session.add(QuizTestItem(id=str(uuid4()), test_id=test_id, quiz_id=quiz_id, sequence_no=1))
+    await insert_stats_chat_message(app, str(uuid4()), chat_id, "USER")
+    return course_id, record_id, test_id, chat_id
+
+
+@pytest.mark.anyio
+async def test_resume_real_visits_order_tabs_current_metadata_and_management(
+    tmp_path: Path,
+) -> None:
+    async with running_today_app(tmp_path) as (app, client):
+        course_id, record_id, test_id, chat_id = await seed_resume_targets(app, client)
+        assert (await client.get(RESUME_URL)).json() == []
+        before = (await client.get("/api/today/stats")).json()
+        for kind, target in [
+            ("RECORD", record_id),
+            ("QUIZ_TEST", test_id),
+            ("CHAT_SESSION", chat_id),
+        ]:
+            response = await client.put(RESUME_URL, json={"kind": kind, "target_id": target})
+            assert response.status_code == 204, response.text
+        rows = (await client.get(RESUME_URL)).json()
+        assert [row["target_id"] for row in rows] == [chat_id, test_id, record_id]
+        assert rows[1]["answered_count"] == 0 and rows[1]["total_count"] == 1
+        assert rows[1]["href"] == f"/spaces/{course_id}/tests/{test_id}"
+        response = await client.put(
+            RESUME_URL, json={"kind": "RECORD", "target_id": record_id, "record_tab": "transcript"}
+        )
+        assert response.status_code == 204
+        rows = (await client.get(RESUME_URL)).json()
+        assert len(rows) == 3 and rows[0]["href"] == f"/records/{record_id}?tab=transcript"
+        visited_at = rows[0]["visited_at"]
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE records SET title='新标题' WHERE id=:id"), {"id": record_id}
+            )
+        rows = (await client.get(RESUME_URL)).json()
+        assert rows[0]["title"] == "新标题" and rows[0]["visited_at"] == visited_at
+        assert (await client.delete(f"{RESUME_URL}/RECORD/{record_id}")).status_code == 204
+        assert len((await client.get(RESUME_URL)).json()) == 2
+        assert (await client.delete(RESUME_URL)).status_code == 204
+        assert (await client.get(RESUME_URL)).json() == []
+        assert (await client.get("/api/today/stats")).json() == before
+        assert (await client.get(f"/api/records/{record_id}")).status_code == 200
+        assert (
+            await client.put(RESUME_URL, json={"kind": "RECORD", "target_id": record_id})
+        ).status_code == 204
+        async with app.state.session_factory() as session:
+            assert await session.scalar(text("SELECT COUNT(*) FROM learning_events")) == 0
+
+
+@pytest.mark.anyio
+async def test_resume_filters_before_limit_and_honors_current_lifecycle(tmp_path: Path) -> None:
+    async with running_today_app(tmp_path) as (app, client):
+        course_id, record_id, test_id, chat_id = await seed_resume_targets(app, client)
+        for kind, target in [
+            ("RECORD", record_id),
+            ("QUIZ_TEST", test_id),
+            ("CHAT_SESSION", chat_id),
+        ]:
+            assert (
+                await client.put(RESUME_URL, json={"kind": kind, "target_id": target})
+            ).status_code == 204
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE quiz_test_items SET answered_at=:now WHERE test_id=:id"),
+                {"id": test_id, "now": _iso_ms(utcnow())},
+            )
+        rows = (await client.get(RESUME_URL)).json()
+        assert next(row for row in rows if row["kind"] == "QUIZ_TEST")["answered_count"] == 1
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE quiz_tests SET status='COMPLETED' WHERE id=:id"), {"id": test_id}
+            )
+            await session.execute(
+                text("UPDATE chat_sessions SET deleted_at=:now WHERE id=:id"),
+                {"id": chat_id, "now": _iso_ms(utcnow())},
+            )
+        rows = (await client.get(RESUME_URL, params={"limit": 1})).json()
+        assert [row["target_id"] for row in rows] == [record_id]
+        assert (
+            await client.put(RESUME_URL, json={"kind": "QUIZ_TEST", "target_id": test_id})
+        ).status_code == 409
+        linked_chat_id = str(uuid4())
+        async with app.state.session_factory() as session, session.begin():
+            session.add(
+                ChatSession(
+                    id=linked_chat_id,
+                    mode=ChatMode.ASK,
+                    scope=ChatScope.RECORD,
+                    record_id=record_id,
+                    course_id=course_id,
+                )
+            )
+        await insert_stats_chat_message(app, str(uuid4()), linked_chat_id, "USER")
+        assert (
+            await client.put(
+                RESUME_URL,
+                json={
+                    "kind": "CHAT_SESSION",
+                    "target_id": linked_chat_id,
+                },
+            )
+        ).status_code == 204
+        assert (await client.delete(f"/api/records/{record_id}")).status_code == 204
+        assert (await client.get(RESUME_URL)).json() == []
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE records SET deleted_at=NULL WHERE id=:id"), {"id": record_id}
+            )
+        assert record_id in [row["target_id"] for row in (await client.get(RESUME_URL)).json()]
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE courses SET deleted_at=:now WHERE id=:id"),
+                {"id": course_id, "now": _iso_ms(utcnow())},
+            )
+        assert (await client.get(RESUME_URL)).json() == []
+
+
+@pytest.mark.anyio
+async def test_resume_bounds_validation_and_launch_token(tmp_path: Path) -> None:
+    async with running_today_app(tmp_path) as (app, client):
+        record_id = ""
+        for _ in range(31):
+            record_id = str(uuid4())
+            await insert_stats_record(app, record_id, course_id=None)
+            assert (
+                await client.put(RESUME_URL, json={"kind": "RECORD", "target_id": record_id})
+            ).status_code == 204
+        assert len((await client.get(RESUME_URL, params={"limit": 30})).json()) == 30
+        async with app.state.session_factory() as session:
+            assert await session.scalar(text("SELECT COUNT(*) FROM learning_resume_entries")) == 30
+        for body in [
+            {"kind": "RECORD", "target_id": "not-an-id"},
+            {"kind": "OTHER", "target_id": str(uuid4())},
+            {"kind": "RECORD", "target_id": record_id, "record_tab": "settings"},
+            {"kind": "CHAT_SESSION", "target_id": str(uuid4()), "record_tab": "summary"},
+        ]:
+            assert (await client.put(RESUME_URL, json=body)).status_code == 422
+        assert (await client.get(RESUME_URL, params={"limit": 0})).status_code == 422
+        assert (
+            await client.put(RESUME_URL, json={"kind": "RECORD", "target_id": str(uuid4())})
+        ).status_code == 404
+        assert (
+            await client.delete(RESUME_URL, headers={"X-KnowRealm-Token": "wrong"})
+        ).status_code == 403
+        assert len((await client.get(RESUME_URL)).json()) == 3
+
+
+@pytest.mark.anyio
+async def test_resume_agent_excludes_current_chat_is_readonly_and_budgeted(tmp_path: Path) -> None:
+    import json
+
+    async with running_today_app(tmp_path) as (app, client):
+        _, record_id, _, chat_id = await seed_resume_targets(app, client)
+        for kind, target in [("RECORD", record_id), ("CHAT_SESSION", chat_id)]:
+            await client.put(RESUME_URL, json={"kind": kind, "target_id": target})
+        before = (await client.get(RESUME_URL)).json()
+        runtime = AgentRuntimeContext(session_factory=app.state.session_factory, session_id=chat_id)
+        token = bind_agent_runtime_context(runtime)
+        try:
+            payload = json.loads(await list_recent_learning.ainvoke({"limit": 1}))
+            assert payload["ok"] and payload["total"] == 1
+            assert payload["recent_learning"][0]["target_id"] == record_id
+            assert "content" not in payload["recent_learning"][0]
+            assert not json.loads(await list_recent_learning.ainvoke({"limit": 0}))["ok"]
+            for _ in range(12):
+                await list_recent_learning.ainvoke({})
+            last = json.loads(await list_recent_learning.ainvoke({}))
+            assert not last["ok"] and "上限" in last["message"]
+        finally:
+            reset_agent_runtime_context(token)
+        assert (await client.get(RESUME_URL)).json() == before
+        assert not json.loads(await list_recent_learning.ainvoke({}))["ok"]
+
+
+@pytest.mark.anyio
+async def test_resume_survives_restart_and_database_snapshot_is_directory_local(
+    tmp_path: Path,
+) -> None:
+    data_dir, other_dir = tmp_path / "first", tmp_path / "second"
+    snapshot = tmp_path / "snapshot.db"
+    async with running_today_app(data_dir) as (app, client):
+        _, record_id, _, _ = await seed_resume_targets(app, client)
+        await client.put(
+            RESUME_URL, json={"kind": "RECORD", "target_id": record_id, "record_tab": "transcript"}
+        )
+        expected = (await client.get(RESUME_URL)).json()
+        await vacuum_into(data_dir / "knowrealm.db", snapshot)
+    async with running_today_app(data_dir) as (_, client):
+        assert (await client.get(RESUME_URL)).json() == expected
+    async with running_today_app(other_dir) as (_, client):
+        assert (await client.get(RESUME_URL)).json() == []
+    engine, factory = create_database(snapshot)
+    try:
+        async with factory() as session:
+            assert [
+                entry.model_dump(mode="json")
+                for entry in await LearningResumeService.list_recent(session)
+            ] == expected
+    finally:
+        await engine.dispose()

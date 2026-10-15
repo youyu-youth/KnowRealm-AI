@@ -1,3 +1,4 @@
+import { learningPlanKeys } from "@/features/learningPlan/api/keys";
 import { type ComponentType, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
@@ -1884,6 +1885,7 @@ export function ChatOperationProposalCard({
         void queryClient.invalidateQueries({
           queryKey: [...libraryKeys.all, "proposals"],
         });
+        void queryClient.invalidateQueries({ queryKey: learningPlanKeys.all });
         // 共享引用提案确认 / 拒绝：失效引用缓存（清单与候选，desktop-state.md
         // 「相关列表/聚合 key」——staleTime 60s 内不会自愈）。
         const proposal = proposals.find((item) => item.id === proposalId);

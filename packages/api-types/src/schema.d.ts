@@ -2732,6 +2732,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/today/continue-learning": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Continue Learning */
+        get: operations["list_continue_learning_api_today_continue_learning_get"];
+        /** Record Learning Visit */
+        put: operations["record_learning_visit_api_today_continue_learning_put"];
+        post?: never;
+        /** Clear Continue Learning */
+        delete: operations["clear_continue_learning_api_today_continue_learning_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/today/continue-learning/{kind}/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Continue Learning */
+        delete: operations["remove_continue_learning_api_today_continue_learning__kind___target_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/today/pending-summaries": {
         parameters: {
             query?: never;
@@ -2762,6 +2798,40 @@ export interface paths {
          *     催办；勾选完成走课程嵌套计划项端点（与计划 Tab 状态一致）。
          */
         get: operations["list_due_plan_items_api_today_plan_items_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/today/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Progress */
+        get: operations["get_progress_api_today_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/today/recent-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Recent Assets */
+        get: operations["list_recent_assets_api_today_recent_assets_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5069,6 +5139,39 @@ export interface components {
          * @enum {string}
          */
         LearningDepth: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+        /** LearningResumeOut */
+        LearningResumeOut: {
+            /** Answered Count */
+            answered_count?: number | null;
+            /** Course Id */
+            course_id?: string | null;
+            /** Course Name */
+            course_name?: string | null;
+            /** Href */
+            href: string;
+            kind: components["schemas"]["ResumeKind"];
+            /** Record Tab */
+            record_tab?: ("summary" | "transcript" | "knowledge-points" | "quiz" | "review" | "todo") | null;
+            /** Target Id */
+            target_id: string;
+            /** Title */
+            title: string | null;
+            /** Total Count */
+            total_count?: number | null;
+            /** Visited At */
+            visited_at: string;
+        };
+        /** LearningResumeUpdate */
+        LearningResumeUpdate: {
+            kind: components["schemas"]["ResumeKind"];
+            /** Record Tab */
+            record_tab?: ("summary" | "transcript" | "knowledge-points" | "quiz" | "review" | "todo") | null;
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+        };
         /**
          * LibraryAssetOut
          * @description 「学习资产」联邦行（02=已确认知识点；其余资产经 Record 检查器触达）。
@@ -6308,6 +6411,44 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
+        /** RecentAssetListOut */
+        RecentAssetListOut: {
+            /** Items */
+            items: components["schemas"]["RecentAssetOut"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** RecentAssetOut */
+        RecentAssetOut: {
+            /** Asset At */
+            asset_at: string;
+            /** Asset Count */
+            asset_count: number;
+            /**
+             * Asset Type
+             * @enum {string}
+             */
+            asset_type: "summary" | "knowledge_point" | "quiz" | "review_material";
+            /** Course Id */
+            course_id: string | null;
+            /** Course Name */
+            course_name: string | null;
+            /** Href */
+            href: string;
+            /** Record Id */
+            record_id: string;
+            /** Record Title */
+            record_title: string;
+            /**
+             * Time Basis
+             * @enum {string}
+             */
+            time_basis: "confirmed" | "created";
+        };
         /** RecordClassificationRequest */
         RecordClassificationRequest: {
             /**
@@ -6420,6 +6561,11 @@ export interface components {
         RecordingSessionUpdate: {
             target_state: components["schemas"]["RecordingSessionTargetState"];
         };
+        /**
+         * ResumeKind
+         * @enum {string}
+         */
+        ResumeKind: "RECORD" | "QUIZ_TEST" | "CHAT_SESSION";
         /**
          * ReviewMaterialAction
          * @enum {string}
@@ -6828,6 +6974,50 @@ export interface components {
             /** Course Id */
             course_id?: string | null;
         };
+        /** TodayCompletedItemOut */
+        TodayCompletedItemOut: {
+            action_type: components["schemas"]["PlanItemType"];
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+            /** Content */
+            content: string;
+            /** Course Id */
+            course_id: string;
+            /**
+             * Course Name
+             * @description 来源知识空间名（跨空间并列标注）
+             */
+            course_name: string;
+            /**
+             * Estimated Minutes
+             * @description 预估投入分钟数
+             */
+            estimated_minutes?: number | null;
+            /** Goal Id */
+            goal_id: string;
+            /** Goal Title */
+            goal_title: string;
+            /** Item Id */
+            item_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Plan Version */
+            plan_version: number;
+            /**
+             * Scheduled Date
+             * Format: date
+             * @description 排期日期（早于今天即逾期）
+             */
+            scheduled_date: string;
+            /**
+             * User Locked
+             * @description 用户锁定项（重生成原样保留）
+             */
+            user_locked: boolean;
+        };
         /**
          * TodayPlanItemOut
          * @description 今日待学的计划项投影（跨空间）：排期日 ≤ 今天且未完成的 ACTIVE 计划项。
@@ -6870,6 +7060,51 @@ export interface components {
              * @description 用户锁定项（重生成原样保留）
              */
             user_locked: boolean;
+        };
+        /** TodayProgressCourseOut */
+        TodayProgressCourseOut: {
+            /** Course Id */
+            course_id: string;
+            /** Course Name */
+            course_name: string;
+        };
+        /** TodayProgressOut */
+        TodayProgressOut: {
+            /** Completed Count */
+            completed_count: number;
+            /** Completed Items */
+            completed_items: components["schemas"]["TodayCompletedItemOut"][];
+            /** Courses */
+            courses: components["schemas"]["TodayProgressCourseOut"][];
+            /**
+             * Date
+             * Format: date
+             */
+            date: string;
+            /**
+             * Day End
+             * Format: date-time
+             * @description 电脑本地次日零点对应的 UTC 时间，不含边界
+             */
+            day_end: string;
+            /**
+             * Day Start
+             * Format: date-time
+             * @description 电脑本地当天零点对应的 UTC 时间
+             */
+            day_start: string;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Overdue Count */
+            overdue_count: number;
+            /** Pending Count */
+            pending_count: number;
+            /** Remaining Estimated Minutes */
+            remaining_estimated_minutes: number | null;
+            /** Unestimated Count */
+            unestimated_count: number;
         };
         /** TodayStatsOut */
         TodayStatsOut: {
@@ -19560,6 +19795,223 @@ export interface operations {
             };
         };
     };
+    list_continue_learning_api_today_continue_learning_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningResumeOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    record_learning_visit_api_today_continue_learning_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningResumeUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    clear_continue_learning_api_today_continue_learning_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    remove_continue_learning_api_today_continue_learning__kind___target_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                kind: components["schemas"]["ResumeKind"];
+                target_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     list_pending_summaries_api_today_pending_summaries_get: {
         parameters: {
             query?: never;
@@ -19627,6 +20079,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TodayPlanItemOut"][];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_progress_api_today_progress_get: {
+        parameters: {
+            query?: {
+                course_id?: string | null;
+                order?: "date" | "duration";
+                offset?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TodayProgressOut"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_recent_assets_api_today_recent_assets_get: {
+        parameters: {
+            query?: {
+                asset_type?: ("summary" | "knowledge_point" | "quiz" | "review_material") | null;
+                course_id?: string | null;
+                offset?: number;
+                limit?: number;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecentAssetListOut"];
                 };
             };
             /** @description Forbidden */

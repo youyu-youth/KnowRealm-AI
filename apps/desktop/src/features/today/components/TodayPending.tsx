@@ -152,7 +152,7 @@ export function TodayPending({
             tabIndex={0}
             role="region"
             aria-label={t("today.workspace.pendingList")}
-            className="today-pending-list mt-3 overflow-y-auto"
+            className="today-pending-list mt-3"
           >
             <ul aria-label={t("today.todoListLabel")} className="grid gap-1">
               {filter !== "processing"

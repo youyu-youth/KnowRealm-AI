@@ -112,8 +112,40 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/recording-sessions`, () =>
     HttpResponse.json([]),
   ),
+  http.get(`${TEST_SIDECAR_URL}/api/today/continue-learning`, () =>
+    HttpResponse.json([]),
+  ),
+  http.put(
+    `${TEST_SIDECAR_URL}/api/today/continue-learning`,
+    () => new HttpResponse(null, { status: 204 }),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/today/pending-summaries`, () =>
     HttpResponse.json([]),
+  ),
+  http.get(`${TEST_SIDECAR_URL}/api/today/recent-assets`, ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    return HttpResponse.json({
+      items: [],
+      total: 0,
+      offset: Number(params.get("offset") ?? 0),
+      limit: Number(params.get("limit") ?? 5),
+    });
+  }),
+  http.get(`${TEST_SIDECAR_URL}/api/today/progress`, () =>
+    HttpResponse.json({
+      date: new Date().toLocaleDateString("en-CA"),
+      day_start: new Date().toISOString(),
+      day_end: new Date().toISOString(),
+      completed_count: 0,
+      pending_count: 0,
+      overdue_count: 0,
+      remaining_estimated_minutes: 0,
+      unestimated_count: 0,
+      courses: [],
+      completed_items: [],
+      offset: 0,
+      limit: 20,
+    }),
   ),
   http.get(`${TEST_SIDECAR_URL}/api/today/plan-items`, () =>
     HttpResponse.json([]),

@@ -1,3 +1,4 @@
+import { learningPlanKeys } from "@/features/learningPlan/api/keys";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -124,6 +125,7 @@ export function useChatTurns(sessionId: string) {
     void queryClient.invalidateQueries({
       queryKey: agentKeys.sessionOperations(sessionId),
     });
+    void queryClient.invalidateQueries({ queryKey: learningPlanKeys.all });
     void queryClient.invalidateQueries({ queryKey: agentKeys.runs() });
     void queryClient.invalidateQueries({ queryKey: sharedRefsKeys.all });
     void queryClient.invalidateQueries({

@@ -1,8 +1,9 @@
-from datetime import date, timedelta
-from typing import cast
+from datetime import UTC, date, datetime, time, timedelta
+from typing import Literal, cast
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.db.base import utcnow
 from app.modules.agent.models import ChatMessage, ChatSession
@@ -25,11 +26,49 @@ from app.modules.record.models import Record
 from app.modules.record.schemas import RecordStatus
 from app.modules.summary.models import AiSummary
 from app.modules.today.schemas import (
+    TodayCompletedItemOut,
     TodayPlanItemOut,
+    TodayProgressCourseOut,
+    TodayProgressOut,
     TodayStatsOut,
     TodaySummaryTodoOut,
     TodayTrendPointOut,
 )
+
+
+def local_day_bounds(day: date) -> tuple[datetime, datetime]:
+    # 分别转换本地零点，保留夏令时切换日的 23/25 小时边界。
+    return (
+        datetime.combine(day, time.min).astimezone(UTC),
+        datetime.combine(day + timedelta(days=1), time.min).astimezone(UTC),
+    )
+
+
+def _due_plan_conditions(day: date) -> tuple[ColumnElement[bool], ...]:
+    return (
+        LearningPlanItem.status == PlanItemStatus.PENDING,
+        LearningPlanItem.scheduled_date <= day.isoformat(),
+        LearningPlan.status == PlanStatus.ACTIVE,
+        LearningGoal.status == GoalStatus.ACTIVE,
+    )
+
+
+def _plan_item_out(
+    item: LearningPlanItem, plan: LearningPlan, goal: LearningGoal, course_name: str
+) -> TodayPlanItemOut:
+    return TodayPlanItemOut(
+        item_id=item.id,
+        plan_id=plan.id,
+        course_id=goal.course_id,
+        course_name=course_name,
+        goal_id=goal.id,
+        goal_title=goal.title,
+        action_type=PlanItemType(item.action_type),
+        content=item.content,
+        estimated_minutes=item.estimated_minutes,
+        scheduled_date=date.fromisoformat(item.scheduled_date),
+        user_locked=item.user_locked,
+    )
 
 
 class TodayService:
@@ -77,10 +116,7 @@ class TodayService:
                 .join(LearningGoal, LearningGoal.id == LearningPlan.goal_id)
                 .join(Course, Course.id == LearningGoal.course_id)
                 .where(
-                    LearningPlanItem.status == PlanItemStatus.PENDING,
-                    LearningPlanItem.scheduled_date <= local_today().isoformat(),
-                    LearningPlan.status == PlanStatus.ACTIVE,
-                    LearningGoal.status == GoalStatus.ACTIVE,
+                    *_due_plan_conditions(local_today()),
                     Course.deleted_at.is_(None),
                 )
                 .order_by(
@@ -91,21 +127,83 @@ class TodayService:
             )
         ).all()
         return [
-            TodayPlanItemOut(
-                item_id=item.id,
-                plan_id=plan.id,
-                course_id=goal.course_id,
-                course_name=course_name,
-                goal_id=goal.id,
-                goal_title=goal.title,
-                action_type=PlanItemType(item.action_type),
-                content=item.content,
-                estimated_minutes=item.estimated_minutes,
-                scheduled_date=date.fromisoformat(item.scheduled_date),
-                user_locked=item.user_locked,
-            )
-            for item, plan, goal, course_name in rows
+            _plan_item_out(item, plan, goal, course_name) for item, plan, goal, course_name in rows
         ]
+
+    @staticmethod
+    async def progress(
+        session: AsyncSession,
+        *,
+        course_id: str | None = None,
+        order: Literal["date", "duration"] = "date",
+        offset: int = 0,
+        limit: int = 20,
+    ) -> TodayProgressOut:
+        day = local_today()
+        start, end = local_day_bounds(day)
+        # 单条 SELECT 固定 SQLite 读取快照，汇总/课程并集/分页不会跨事务漂移。
+        rows = (
+            await session.execute(
+                select(LearningPlanItem, LearningPlan, LearningGoal, Course.name)
+                .join(LearningPlan, LearningPlan.id == LearningPlanItem.plan_id)
+                .join(LearningGoal, LearningGoal.id == LearningPlan.goal_id)
+                .join(Course, Course.id == LearningGoal.course_id)
+                .where(
+                    Course.deleted_at.is_(None),
+                    or_(
+                        and_(*_due_plan_conditions(day)),
+                        and_(
+                            LearningPlanItem.status == PlanItemStatus.DONE,
+                            LearningPlanItem.completed_at >= start,
+                            LearningPlanItem.completed_at < end,
+                        ),
+                    ),
+                )
+            )
+        ).all()
+        courses = {goal.course_id: name for _item, _plan, goal, name in rows}
+        pending: list[LearningPlanItem] = []
+        completed: list[TodayCompletedItemOut] = []
+        for item, plan, goal, name in rows:
+            if course_id is not None and goal.course_id != course_id:
+                continue
+            if item.status == PlanItemStatus.PENDING:
+                pending.append(item)
+            else:
+                assert item.completed_at is not None  # 查询日界限已排除 NULL
+                completed.append(
+                    TodayCompletedItemOut(
+                        **_plan_item_out(item, plan, goal, name).model_dump(),
+                        plan_version=plan.plan_version,
+                        completed_at=item.completed_at,
+                    )
+                )
+        completed.sort(key=lambda item: (item.completed_at, item.item_id), reverse=True)
+        if order == "duration":
+            completed.sort(
+                key=lambda item: (
+                    item.estimated_minutes is None,
+                    -(item.estimated_minutes or 0),
+                )
+            )
+        known = [item.estimated_minutes for item in pending if item.estimated_minutes is not None]
+        return TodayProgressOut(
+            date=day,
+            day_start=start,
+            day_end=end,
+            completed_count=len(completed),
+            pending_count=len(pending),
+            overdue_count=sum(item.scheduled_date < day.isoformat() for item in pending),
+            remaining_estimated_minutes=sum(known) if known or not pending else None,
+            unestimated_count=len(pending) - len(known),
+            courses=[
+                TodayProgressCourseOut(course_id=key, course_name=name)
+                for key, name in sorted(courses.items(), key=lambda pair: (pair[1], pair[0]))
+            ],
+            completed_items=completed[offset : offset + limit],
+            offset=offset,
+            limit=limit,
+        )
 
     @staticmethod
     async def stats(session: AsyncSession) -> TodayStatsOut:

@@ -84,6 +84,25 @@ vi.stubGlobal("scrollTo", vi.fn());
 
 beforeEach(() => {
   server.use(
+    http.get(`${TEST_SIDECAR_URL}/api/today/progress`, () =>
+      HttpResponse.json({
+        date: todayStr(),
+        day_start: new Date().toISOString(),
+        day_end: new Date().toISOString(),
+        completed_count: 0,
+        pending_count: 2,
+        overdue_count: 1,
+        remaining_estimated_minutes: 50,
+        unestimated_count: 0,
+        completed_items: [],
+        offset: 0,
+        limit: 20,
+        courses: [planItem, overdueItem].map(({ course_id, course_name }) => ({
+          course_id,
+          course_name,
+        })),
+      }),
+    ),
     http.get(`${TEST_SIDECAR_URL}/api/records/${todo.record_id}/summary`, () =>
       HttpResponse.json({ summary: null, action_required: "NONE" }),
     ),
@@ -215,7 +234,7 @@ describe("今日待学双源清单", () => {
         new URLSearchParams(window.location.search).get("inspector"),
       ).toBeNull(),
     );
-    expect(screen.getByRole("button", { name: "今日行动" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "当前专注" })).toHaveFocus();
     expect(screen.getByRole("button", { name: "暂停" })).toBeInTheDocument();
   });
 

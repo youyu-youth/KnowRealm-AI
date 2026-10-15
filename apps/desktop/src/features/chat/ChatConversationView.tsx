@@ -1,3 +1,4 @@
+import { useLearningVisit } from "@/features/today/useLearningVisit";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
@@ -91,6 +92,14 @@ export function ChatConversationView({
   initialPrompt,
 }: ChatConversationViewProps) {
   const { t, i18n } = useTranslation();
+  useLearningVisit(
+    { kind: "CHAT_SESSION", target_id: sessionId },
+    messages.isSuccess &&
+      messages.data.length > 0 &&
+      !recordDeleted &&
+      !courseDeleted &&
+      !libraryItemDeleted,
+  );
   const {
     isStreaming,
     stopping,

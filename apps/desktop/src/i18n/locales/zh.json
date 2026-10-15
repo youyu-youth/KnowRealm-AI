@@ -133,6 +133,83 @@
     "submitting": "正在导入"
   },
   "today": {
+    "recentAssets": {
+      "title": "近期学习产出",
+      "filter": "筛选产出类型",
+      "types": {
+        "all": "全部类型",
+        "summary": "总结",
+        "knowledge_point": "知识点",
+        "quiz": "习题",
+        "review_material": "复习资料"
+      },
+      "counts": {
+        "summary": "{{count}} 份总结",
+        "knowledge_point": "{{count}} 个知识点",
+        "quiz": "{{count}} 道习题",
+        "review_material": "{{count}} 份复习资料"
+      },
+      "list": "近期学习产出列表",
+      "confirmed": "确认于 {{time}}",
+      "created": "创建于 {{time}}",
+      "unclassified": "未归类",
+      "showAll": "查看全部",
+      "collapse": "收起",
+      "pagination": "近期产出分页",
+      "empty": "暂无此类学习产出",
+      "emptyHint": "捕获内容并完成总结确认后，可在来源记录整理学习资产。",
+      "error": "近期学习产出暂时无法读取"
+    },
+    "progress": {
+      "title": "今日计划进展",
+      "completed": "今日已完成",
+      "pending": "待完成",
+      "overdue": "其中逾期",
+      "knownEstimated": "剩余已估时合计",
+      "remaining": "剩余预计投入",
+      "unestimated": "待估时",
+      "unknownCount": "另有 {{count}} 项未估时",
+      "basis": "仅统计学习计划 · 按电脑本地日期 · 投入为预估",
+      "completedAt": "完成于 {{time}}",
+      "estimated": "预估 {{minutes}} 分钟",
+      "version": "计划 v{{version}}",
+      "completedList": "今日已完成计划项",
+      "emptyCompleted": "今天还没有完成的计划项。",
+      "error": "今日进展暂时无法读取",
+      "sortCompleted": "完成时间 ↓",
+      "selectedCourse": "已选课程",
+      "pagination": "已完成列表分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "page": "第 {{page}} / {{pages}} 页"
+    },
+    "resume": {
+      "empty": "打开学习记录、未交卷测验或已有对话后，可在这里继续。",
+      "loadFailed": "暂时无法读取续学记录。",
+      "saveFailed": "续学记录未能更新，请重试。",
+      "clear": "清空记录",
+      "clearTitle": "清空继续学习记录？",
+      "clearDescription": "仅清除最近访问记录，不会删除资料、测验或对话。重新打开后会再次出现。",
+      "cancel": "取消",
+      "remove": "移除“{{title}}”的续学记录",
+      "lastOpened": "上次打开 {{time}}",
+      "answers": "已答 {{answered}} / {{total}} 题",
+      "types": {
+        "RECORD": "学习记录",
+        "QUIZ_TEST": "模拟测验",
+        "CHAT_SESSION": "AI 对话"
+      },
+      "fallback": {
+        "RECORD": "未命名学习记录",
+        "QUIZ_TEST": "未完成测验",
+        "CHAT_SESSION": "未命名对话"
+      },
+      "continue": {
+        "RECORD": "继续阅读",
+        "QUIZ_TEST": "继续作答",
+        "CHAT_SESSION": "继续对话"
+      }
+    },
     "title": "今日",
     "description": "从真实学习进度继续，而不是从示例任务开始。",
     "loading": "正在读取今日待办",
@@ -2559,6 +2636,9 @@
       "conversation": "对话消息",
       "jumpToLatest": "回到最新",
       "toolNames": {
+        "list_recent_assets": "查询近期学习产出",
+        "list_recent_learning": "查询最近学习",
+        "get_today_progress": "查询今日进展",
         "get_context_settings": "查看固定设置",
         "change_context_pin": "修改固定内容",
         "change_context_rules": "修改上下文设置",

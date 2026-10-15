@@ -1,15 +1,9 @@
 import { useContext } from "react";
 import { Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  BookOpen,
-  ClipboardCheck,
-  MessagesSquare,
-  PencilLine,
-} from "lucide-react";
+import { ClipboardCheck, MessagesSquare, PencilLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { StatusTag } from "@/components/common/StatusTag";
+import { TodayContinueLearning } from "@/features/today/components/TodayContinueLearning";
 import { QuickNoteContext } from "@/features/text-capture/QuickNoteContext";
 import { cn } from "@/lib/utils";
 
@@ -18,33 +12,7 @@ export function TodayQuickStart() {
   const openQuickNote = useContext(QuickNoteContext);
   return (
     <>
-      <section className="today-panel bg-today-soft flex flex-wrap items-center gap-3 p-4">
-        <BookOpen className="size-6 shrink-0" aria-hidden="true" />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-label font-medium">
-              {t("today.overview.continueTitle")}
-            </h2>
-            <StatusTag>{t("today.stats.insights.sampleTag")}</StatusTag>
-          </div>
-          <p className="text-body mt-1 font-medium">
-            {t("today.overview.continueItem")}
-          </p>
-          <p className="text-label text-ink-muted mt-1">
-            {t("today.workspace.continueHint")}
-          </p>
-        </div>
-        <Link
-          to="/spaces"
-          className={cn(
-            buttonVariants({ variant: "outline", size: "sm" }),
-            "text-today-accent",
-          )}
-        >
-          {t("today.overview.openCourses")}
-          <ArrowRight data-icon="inline-end" aria-hidden="true" />
-        </Link>
-      </section>
+      <TodayContinueLearning />
       <section aria-labelledby="today-quick-title" className="today-panel p-4">
         <h2 id="today-quick-title" className="today-heading">
           {t("today.workspace.quickStart")}

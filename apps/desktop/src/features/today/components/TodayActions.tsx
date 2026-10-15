@@ -1,9 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { StatusTag } from "@/components/common/StatusTag";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -14,6 +13,8 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { todayApi, type TodaySummaryTodo } from "@/features/today/api/today";
 import { todayKeys } from "@/features/today/api/keys";
+import { TodayProgressSummary } from "@/features/today/components/TodayProgressSummary";
+import { TodayCompletedTasks } from "@/features/today/components/TodayCompletedTasks";
 import { TodayTodos } from "@/features/today/components/TodayTodos";
 
 type Props = {
@@ -34,32 +35,83 @@ export function TodayActions({
   onFocus,
 }: Props) {
   const { t } = useTranslation();
-  const { course = "all", order = "date" } = useSearch({ from: "/" });
+  const {
+    course = "all",
+    order = "date",
+    action_status: status = "pending",
+    completed_page: page = 1,
+  } = useSearch({ from: "/" });
   const navigate = useNavigate({ from: "/" });
-  const [status, setStatus] = useState<"pending" | "done">("pending");
   const plans = useQuery({
     queryKey: todayKeys.planItems,
     queryFn: todayApi.planItems,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
-  const courses = [
-    ...new Map(
-      (plans.data ?? []).map((item) => [item.course_id, item.course_name]),
-    ).entries(),
-  ];
-  const sample = !plans.isPending && !plans.isError && plans.data.length === 0;
-  const rows = ["scheduling", "docker", "cache", "set"];
+  const progress = useQuery({
+    queryKey: todayKeys.progress(course, order, page),
+    queryFn: () => todayApi.progress(course, order, page),
+    // 翻页保留控件与焦点；换课程时不展示上一课程的汇总。
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery?.queryKey[2] === course ? previousData : undefined,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+  });
+  const data = progress.isError ? undefined : progress.data;
+  const courses = data?.courses ?? [];
+  useEffect(() => {
+    if (data && page > Math.max(1, Math.ceil(data.completed_count / 20))) {
+      void navigate({
+        search: (previous) => ({ ...previous, completed_page: 1 }),
+        replace: true,
+      });
+    }
+  }, [data, navigate, page]);
+  const dateSortLabel = t(
+    status === "done"
+      ? "today.progress.sortCompleted"
+      : "today.workspace.sortDate",
+  );
   return (
     <section
       aria-labelledby="today-actions-title"
-      className="today-panel today-actions overflow-hidden"
+      className="today-panel today-actions"
     >
-      <h2 id="today-actions-title" className="today-heading px-4 pt-4">
+      <h2 id="today-actions-title" className="today-heading shrink-0 px-4 pt-4">
         {t("today.workspace.actions")}
       </h2>
+      {progress.isError ? (
+        <div
+          role="alert"
+          className="text-label text-destructive shrink-0 px-4 py-2"
+        >
+          {t("today.progress.error")}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void progress.refetch()}
+          >
+            {t("today.retry")}
+          </Button>
+        </div>
+      ) : data ? (
+        <TodayProgressSummary progress={data} />
+      ) : (
+        <p role="status" className="text-label text-ink-muted px-4 py-2">
+          {t("today.loading")}
+        </p>
+      )}
       <Tabs
         value={status}
         onValueChange={(value) =>
-          setStatus(value === "done" ? "done" : "pending")
+          void navigate({
+            search: (previous) => ({
+              ...previous,
+              action_status: value === "done" ? "done" : "pending",
+              completed_page: 1,
+            }),
+            replace: true,
+          })
         }
         className="today-actions-tabs mt-2 gap-0"
       >
@@ -71,12 +123,14 @@ export function TodayActions({
             >
               {t("today.workspace.toDo")}{" "}
               <span className="ml-1 tabular-nums">
-                {sample ? 4 : (plans.data?.length ?? 0)}
+                {data?.pending_count ?? "—"}
               </span>
             </TabsTrigger>
             <TabsTrigger value="done" className="px-3 py-2">
-              {t("today.workspace.done")}
-              <StatusTag>{t("today.stats.insights.sampleTag")}</StatusTag>
+              {t("today.progress.completed")}{" "}
+              <span className="ml-1 tabular-nums">
+                {data?.completed_count ?? "—"}
+              </span>
             </TabsTrigger>
           </TabsList>
           <div className="flex flex-wrap gap-2">
@@ -87,6 +141,7 @@ export function TodayActions({
                   search: (previous) => ({
                     ...previous,
                     course: value ?? "all",
+                    completed_page: 1,
                   }),
                   replace: true,
                 })
@@ -100,17 +155,17 @@ export function TodayActions({
                 <SelectValue>
                   {course === "all"
                     ? t("today.workspace.allCourses")
-                    : (courses.find(([id]) => id === course)?.[1] ??
-                      t("today.workspace.allCourses"))}
+                    : (courses.find((item) => item.course_id === course)
+                        ?.course_name ?? t("today.progress.selectedCourse"))}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">
                   {t("today.workspace.allCourses")}
                 </SelectItem>
-                {courses.map(([id, name]) => (
-                  <SelectItem key={id} value={id}>
-                    {name}
+                {courses.map((item) => (
+                  <SelectItem key={item.course_id} value={item.course_id}>
+                    {item.course_name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -122,6 +177,7 @@ export function TodayActions({
                   search: (previous) => ({
                     ...previous,
                     order: value === "duration" ? "duration" : "date",
+                    completed_page: 1,
                   }),
                   replace: true,
                 })
@@ -133,15 +189,13 @@ export function TodayActions({
                 className="text-label"
               >
                 <SelectValue>
-                  {t(
-                    `today.workspace.${order === "duration" ? "sortDuration" : "sortDate"}`,
-                  )}
+                  {order === "duration"
+                    ? t("today.workspace.sortDuration")
+                    : dateSortLabel}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="date">
-                  {t("today.workspace.sortDate")}
-                </SelectItem>
+                <SelectItem value="date">{dateSortLabel}</SelectItem>
                 <SelectItem value="duration">
                   {t("today.workspace.sortDuration")}
                 </SelectItem>
@@ -176,58 +230,11 @@ export function TodayActions({
             selectedItemId={selectedItemId}
             onFocus={onFocus}
           />
-          {sample && course === "all" ? (
-            <div>
-              <div className="flex items-center gap-2 px-4 pt-3">
-                <StatusTag>{t("today.stats.insights.sampleTag")}</StatusTag>
-                <span className="text-label text-ink-muted">
-                  {t("today.workspace.sampleTasks")}
-                </span>
-              </div>
-              <ul className="divide-border-subtle mt-2 divide-y">
-                {rows.map((key, index) => (
-                  <li key={key} className="today-task-row px-4 py-3">
-                    <Checkbox
-                      checked={false}
-                      disabled
-                      aria-label={t(`today.workspace.tasks.${key}.title`)}
-                    />
-                    <div className="min-w-0">
-                      <p className="text-body font-semibold">
-                        {t(`today.workspace.tasks.${key}.title`)}
-                      </p>
-                      <p className="text-label text-ink-muted mt-0.5">
-                        {t(`today.workspace.tasks.${key}.detail`)}
-                      </p>
-                    </div>
-                    <span className="text-label text-ink-muted">
-                      {t(`today.workspace.tasks.${key}.course`)}
-                    </span>
-                    <span className="text-label text-ink-muted">
-                      {t("today.planTodos.minutes", {
-                        minutes: index % 2 === 0 ? 60 : 45,
-                      })}
-                      <span className="mt-0.5 block">
-                        {t("today.planTodos.today")}
-                      </span>
-                    </span>
-                    <StatusTag tone={index === 1 ? "warning" : "neutral"}>
-                      {t(
-                        index === 1
-                          ? "today.planTodos.overdue"
-                          : "today.workspace.notStarted",
-                      )}
-                    </StatusTag>
-                    <span />
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : !plans.isPending &&
-            !plans.isError &&
-            !(plans.data ?? []).some(
-              (item) => course === "all" || item.course_id === course,
-            ) ? (
+          {!plans.isPending &&
+          !plans.isError &&
+          !(plans.data ?? []).some(
+            (item) => course === "all" || item.course_id === course,
+          ) ? (
             <p className="text-label text-ink-muted p-5">
               {t("today.workspace.noTasks")}
             </p>
@@ -237,30 +244,14 @@ export function TodayActions({
           value="done"
           className="today-action-list m-0 p-4"
           tabIndex={0}
+          aria-busy={progress.isFetching}
         >
-          <p className="text-label text-ink-muted mb-3">
-            {t("today.workspace.completedHint")}
-          </p>
-          <ul className="divide-border-subtle divide-y">
-            {["cache", "set"].map((key) => (
-              <li key={key} className="flex items-center gap-3 py-3">
-                <Checkbox
-                  checked
-                  disabled
-                  aria-label={t(`today.workspace.tasks.${key}.title`)}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-body font-medium">
-                    {t(`today.workspace.tasks.${key}.title`)}
-                  </p>
-                  <p className="text-label text-ink-muted mt-1">
-                    {t(`today.workspace.tasks.${key}.course`)}
-                  </p>
-                </div>
-                <StatusTag>{t("today.stats.insights.sampleTag")}</StatusTag>
-              </li>
-            ))}
-          </ul>
+          {progress.isPlaceholderData ? (
+            <p role="status" className="text-label text-ink-muted">
+              {t("today.loading")}
+            </p>
+          ) : null}
+          {data ? <TodayCompletedTasks progress={data} page={page} /> : null}
         </TabsContent>
       </Tabs>
     </section>

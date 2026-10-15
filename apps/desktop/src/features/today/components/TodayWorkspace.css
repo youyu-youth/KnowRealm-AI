@@ -43,12 +43,11 @@
   line-height: 1.4;
 }
 
-.today-pane-switcher {
-  display: flex;
-  flex-shrink: 0;
+.today-header-actions {
+  user-select: none;
 }
 
-.today-pane-switcher button {
+.today-header-actions button {
   transition: none;
 }
 
@@ -56,9 +55,13 @@
   display: grid;
   flex: 1;
   min-height: 0;
-  align-items: stretch;
-  gap: 0;
-  overflow: hidden;
+  align-items: start;
+  align-content: start;
+  gap: calc(var(--spacing) * 4);
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--today-surface);
 }
 
@@ -100,13 +103,8 @@
 }
 
 .today-left {
-  overflow: hidden;
+  min-width: 0;
   background: var(--today-surface);
-}
-
-.today-pending,
-.today-pending-tabs {
-  flex: 1;
 }
 
 .today-pending-tabs > [data-slot="tabs-list"] {
@@ -115,10 +113,6 @@
 
 .today-pending-list {
   min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .today-pending-item:has([aria-pressed="true"]) {
@@ -126,11 +120,7 @@
 }
 
 .today-assets-list {
-  max-height: 38%;
   flex-shrink: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .today-center,
@@ -139,35 +129,15 @@
   min-height: 0;
 }
 
-.today-center-content {
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-}
-
-.today-workbench {
-  overflow: hidden;
-  scrollbar-gutter: auto;
-}
-
 .today-actions {
   container: today-actions / inline-size;
   display: flex;
   min-height: 0;
-  flex: 1;
   flex-direction: column;
-}
-
-.today-actions-tabs {
-  flex: 1;
 }
 
 .today-action-list {
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .today-task-row {
@@ -202,13 +172,8 @@
 
 .today-secondary {
   display: grid;
-  max-height: 38%;
   flex-shrink: 0;
-  border-top: 1px solid var(--today-border);
   gap: calc(var(--spacing) * 3);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .today-stats {
@@ -218,9 +183,6 @@
 .today-rail {
   flex-direction: column;
   gap: calc(var(--spacing) * 3);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
 }
 
 .today-focus {
@@ -276,27 +238,16 @@
 .today-preview-body {
   max-height: none;
   flex: 1;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  overflow: visible;
 }
 
 .today-preview-content {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
-.today-grid > :is(.today-left, .today-center, .today-rail) {
+.today-rail {
   display: none;
-}
-
-.today-grid[data-panel="pending"] > .today-left {
-  display: flex;
-}
-
-.today-grid[data-panel="actions"] > .today-center {
-  display: block;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -333,17 +284,13 @@
   }
 }
 
-/* 内容选择决定详情；窄窗口用同一分区入口返回主工作区。 */
+/* 行动与待处理始终共存；详情在宽窗并排、窄窗追加展示。 */
 .today-rail {
   background: var(--today-soft);
-  border-left: 1px solid var(--today-border);
   gap: 0;
 }
 .today-grid:not([data-inspector="closed"]) > .today-rail {
   display: flex;
-}
-.today-grid:not([data-inspector="closed"]) > :is(.today-left, .today-center) {
-  display: none;
 }
 .today-rail[data-detail="summary"] .today-focus-slot,
 .today-rail[data-detail="focus"] > .today-preview {
@@ -355,23 +302,12 @@
 }
 .today-focus-slot {
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .today-focus-slot .today-focus {
   background: transparent;
 }
 .today-header {
   border-bottom: 1px solid var(--today-border);
-}
-.today-pane-switcher {
-  padding-block: calc(var(--spacing) * 2);
-  user-select: none;
-}
-.today-task-header {
-  position: sticky;
-  top: 0;
-  z-index: 1;
 }
 .today-task-row[data-selected="true"],
 .today-pending-item:has([aria-pressed="true"]) {
@@ -415,21 +351,27 @@
     transition: none;
   }
 }
-@container today (min-width: 52rem) {
-  .today-grid:not([data-inspector="closed"]) {
+@container today (min-width: 64rem) {
+  .today-grid {
     grid-template-columns: minmax(0, 1fr) var(--spacing-today-inspector);
   }
-  .today-grid[data-panel="actions"] > .today-center {
-    display: block;
-  }
-  .today-grid[data-panel="pending"] > .today-left {
-    display: flex;
+  .today-rail {
+    grid-column: 1 / -1;
   }
 }
 
-.today-workspace[data-dragging-task="true"]
-  .today-pane-switcher
-  button[aria-controls="today-pane-review"] {
+@container today (min-width: 88rem) {
+  .today-grid:not([data-inspector="closed"]) {
+    grid-template-columns:
+      minmax(0, 1fr) var(--spacing-today-inspector)
+      var(--spacing-today-inspector);
+  }
+  .today-rail {
+    grid-column: auto;
+  }
+}
+
+.today-workspace[data-dragging-task="true"] #today-focus-trigger {
   outline: 2px dashed var(--today-accent);
   outline-offset: 2px;
   background: var(--today-soft);

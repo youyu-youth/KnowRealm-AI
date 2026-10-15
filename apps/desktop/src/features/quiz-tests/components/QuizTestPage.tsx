@@ -1,3 +1,4 @@
+import { useLearningVisit } from "@/features/today/useLearningVisit";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Check, ChevronLeft, ChevronRight } from "lucide-react";
@@ -62,6 +63,11 @@ export function QuizTestPage({
     refetchInterval: (query) =>
       query.state.data?.status === "GRADING" ? 1500 : false,
   });
+
+  useLearningVisit(
+    { kind: "QUIZ_TEST", target_id: testId },
+    test.isSuccess && test.data.status === "IN_PROGRESS",
+  );
 
   const patchView = (next: TestView) => {
     void navigate({

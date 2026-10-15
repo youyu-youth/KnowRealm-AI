@@ -1,3 +1,5 @@
+import { LearningResumeLink } from "@/features/today/components/LearningResumeLink";
+import { parseResumeHref } from "@/features/today/resumeTarget";
 import type { AnchorHTMLAttributes } from "react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
@@ -58,6 +60,12 @@ export function ChatMarkdown({
             </button>
           );
         }
+        const target = typeof href === "string" ? parseResumeHref(href) : null;
+        if (target)
+          return (
+            <LearningResumeLink target={target}>{children}</LearningResumeLink>
+          );
+        if (href?.startsWith("/")) return <>{children}</>;
         return <a href={href}>{children}</a>;
       },
     };

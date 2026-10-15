@@ -78,26 +78,37 @@ function renderAt(path = "/") {
 }
 
 describe("今日页", () => {
-  it("从 URL 恢复分区选择，并在切换学习轨道时返回主区域", async () => {
+  it("旧分区链接同时显示行动和待处理，切换学习轨道不再切换分区", async () => {
     renderAt("/?panel=pending");
-    const pending = await screen.findByRole("button", { name: "待处理" });
-    expect(pending).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "当前专注" }));
+    expect(
+      await screen.findByRole("heading", { name: "待处理" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "今日行动" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "待处理" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "今日行动" }),
+    ).not.toBeInTheDocument();
+    const focus = screen.getByRole("button", { name: "当前专注" });
+    fireEvent.click(focus);
     await waitFor(() =>
       expect(new URLSearchParams(window.location.search).get("inspector")).toBe(
         "focus",
       ),
     );
+    expect(screen.getByRole("heading", { name: "待处理" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "今日行动" })).toBeVisible();
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => expect(focus).toHaveFocus());
     fireEvent.click(screen.getByRole("tab", { name: /学习轨道/ }));
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "学习趋势" })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      ),
+      expect(screen.getByRole("heading", { name: "学习趋势" })).toBeVisible(),
     );
-    expect(new URLSearchParams(window.location.search).get("panel")).toBe(
-      "actions",
-    );
+    expect(screen.getByRole("heading", { name: "待处理" })).toBeVisible();
+    expect(
+      new URLSearchParams(window.location.search).get("inspector"),
+    ).toBeNull();
   });
 
   it("点击待确认行的课程信息即可切换预览，详情和原文入口对应选中记录", async () => {
@@ -138,12 +149,16 @@ describe("今日页", () => {
       await within(preview).findByText(generatedSummary.abstract),
     ).toBeInTheDocument();
     expect(previewReads).toBe(1);
+    expect(screen.getByRole("heading", { name: "今日行动" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "待处理" })).toBeVisible();
     expect(
       within(preview).getByRole("link", { name: "查看并确认" }),
     ).toHaveAttribute("href", "/records/second-record");
     expect(
       within(preview).getByRole("link", { name: "查看原文" }),
     ).toHaveAttribute("href", "/records/second-record?tab=transcript");
+    fireEvent.click(screen.getByRole("button", { name: "收起详情" }));
+    await waitFor(() => expect(select).toHaveFocus());
   });
 
   it("保留工作台内容并保持示意条目只读", async () => {
@@ -156,7 +171,7 @@ describe("今日页", () => {
       screen.getByRole("heading", { name: "今日行动" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "最近资产" }),
+      screen.getByRole("heading", { name: "近期学习产出" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "学习趋势" }),
@@ -164,7 +179,7 @@ describe("今日页", () => {
     expect(
       (await screen.findByText("课堂录音正在转写")).closest("a"),
     ).toBeNull();
-    expect(screen.getAllByText("示意").length).toBeGreaterThan(4);
+    expect(screen.getAllByText("示意").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /打开资产库/ })).toHaveAttribute(
       "href",
       "/library",

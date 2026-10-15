@@ -1,3 +1,4 @@
+import { learningPlanKeys } from "@/features/learningPlan/api/keys";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -59,6 +60,7 @@ export function EditCourseForm({
       await queryClient.invalidateQueries({
         queryKey: courseKeys.detail(course.id),
       });
+      await queryClient.invalidateQueries({ queryKey: learningPlanKeys.all });
       await queryClient.invalidateQueries({ queryKey: courseKeys.lists() });
       await onSaved();
     },

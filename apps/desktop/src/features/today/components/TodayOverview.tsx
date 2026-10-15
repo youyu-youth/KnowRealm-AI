@@ -1,12 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import {
-  HardDrive,
-  Inbox,
-  ListTodo,
-  PanelRightClose,
-  Timer,
-} from "lucide-react";
+import { HardDrive, PanelRightClose, Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,6 +13,7 @@ import { TodayPending } from "@/features/today/components/TodayPending";
 import { TodayQuickStart } from "@/features/today/components/TodayQuickStart";
 import { TodayStatsBand } from "@/features/today/components/TodayStatsBand";
 import { TodaySummaryPreview } from "@/features/today/components/TodaySummaryPreview";
+import { useTodayRefresh } from "@/features/today/useTodayRefresh";
 import "@/features/today/components/TodayWorkspace.css";
 import { Button } from "@/components/ui/button";
 
@@ -33,7 +28,7 @@ export function TodayOverview() {
   } = useSearch({ from: "/" });
   const navigate = useNavigate({ from: "/" });
   const [draggingTask, setDraggingTask] = useState(false);
-  const [now, setNow] = useState(() => new Date());
+  const now = useTodayRefresh();
   const pending = useQuery({
     queryKey: todayKeys.pendingSummaries,
     queryFn: todayApi.pendingSummaries,
@@ -46,7 +41,6 @@ export function TodayOverview() {
     pending.data?.find((record) => record.record_id === selectedId) ??
     pending.data?.[0];
   const detail = inspector ?? (panel === "review" ? "summary" : undefined);
-  const mainPanel = panel === "review" ? "pending" : panel;
   const focusTask =
     plans.data?.find((item) => item.item_id === focusedItemId) ??
     plans.data?.[0];
@@ -54,6 +48,7 @@ export function TodayOverview() {
     if (!plans.data?.some((item) => item.item_id === id)) return;
     void navigate({
       search: (previous) => ({ ...previous, inspector: "focus", task: id }),
+      resetScroll: false,
       replace: true,
     });
   };
@@ -69,10 +64,6 @@ export function TodayOverview() {
     });
 
   useEffect(() => {
-    const tick = window.setInterval(() => setNow(new Date()), 60_000);
-    return () => window.clearInterval(tick);
-  }, []);
-  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       if (
@@ -87,14 +78,17 @@ export function TodayOverview() {
         void navigate({
           search: (previous) => ({
             ...previous,
-            panel: mainPanel,
+            panel: "actions",
             inspector: undefined,
           }),
+          resetScroll: false,
           replace: true,
         });
         document
           .querySelector<HTMLButtonElement>(
-            `.today-pane-switcher [aria-pressed="true"]`,
+            detail === "summary"
+              ? `.today-pending [aria-controls="today-summary-preview"][aria-pressed="true"]`
+              : "#today-focus-trigger",
           )
           ?.focus();
         return;
@@ -116,17 +110,20 @@ export function TodayOverview() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigate, detail, mainPanel]);
+  }, [navigate, detail]);
   useEffect(() => {
-    if (detail === "summary") {
-      const preview = document.getElementById("today-summary-preview");
-      preview?.focus({ preventScroll: true });
-      preview?.scrollIntoView({ block: "nearest" });
-    }
-    if (detail === "focus")
+    if (!detail) return;
+    const frame = window.requestAnimationFrame(() => {
       document
-        .getElementById("today-focus-title")
+        .getElementById(
+          detail === "summary" ? "today-summary-preview" : "today-focus-title",
+        )
         ?.focus({ preventScroll: true });
+      document
+        .getElementById("today-pane-review")
+        ?.scrollIntoView({ block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [detail, selectedId, focusedItemId]);
   const date = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     year: "numeric",
@@ -140,7 +137,7 @@ export function TodayOverview() {
       <Tabs
         value={view}
         onValueChange={(value) => setView(String(value))}
-        className="today-workspace-tabs gap-3"
+        className="today-workspace-tabs gap-0"
       >
         <header className="today-header flex flex-wrap items-center justify-between gap-3 px-4 py-2">
           <div className="flex flex-wrap items-center gap-3">
@@ -167,89 +164,49 @@ export function TodayOverview() {
               <kbd className="text-label font-sans opacity-80">Ctrl 2</kbd>
             </TabsTrigger>
           </TabsList>
-          <p className="text-label text-ink-muted flex items-center gap-2">
-            <HardDrive className="size-4" aria-hidden="true" />
-            {t("today.workspace.local")}
-          </p>
-        </header>
-        <div
-          className="today-pane-switcher items-center gap-1 px-4"
-          role="group"
-          aria-label={t("today.workspace.panelSwitch")}
-        >
-          {(["actions", "pending"] as const).map((value) => (
+          <div className="today-header-actions ml-auto flex flex-wrap items-center justify-end gap-3">
+            <p className="text-label text-ink-muted flex items-center gap-2">
+              <HardDrive className="size-4" aria-hidden="true" />
+              {t("today.workspace.local")}
+            </p>
             <Button
-              key={value}
               size="sm"
-              variant={mainPanel === value ? "secondary" : "ghost"}
-              aria-pressed={mainPanel === value}
-              aria-controls={`today-pane-${value}`}
+              variant={detail === "focus" ? "secondary" : "ghost"}
+              id="today-focus-trigger"
+              title={t("today.workspace.dropFocus")}
+              onDragOver={(event) => {
+                if (
+                  event.dataTransfer.types.includes(
+                    "application/x-knowrealm-plan-item",
+                  )
+                ) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "copy";
+                }
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                openFocus(
+                  event.dataTransfer.getData(
+                    "application/x-knowrealm-plan-item",
+                  ),
+                );
+              }}
+              aria-pressed={detail === "focus"}
+              aria-controls="today-pane-review"
               onClick={() =>
                 void navigate({
-                  search: (previous) => ({
-                    ...previous,
-                    panel: value,
-                    inspector: undefined,
-                  }),
+                  search: (previous) => ({ ...previous, inspector: "focus" }),
+                  resetScroll: false,
                   replace: true,
                 })
               }
             >
-              {value === "pending" ? (
-                <Inbox aria-hidden="true" />
-              ) : (
-                <ListTodo aria-hidden="true" />
-              )}
-              {t(
-                value === "pending"
-                  ? "today.workspace.pending"
-                  : view === "orbit"
-                    ? "today.stats.title"
-                    : "today.workspace.actions",
-              )}
-              {value === "pending" && pending.data?.length ? (
-                <span className="text-label text-ink-muted tabular-nums">
-                  {t("today.workspace.awaitingCount", {
-                    count: pending.data.length,
-                  })}
-                </span>
-              ) : null}
+              <Timer aria-hidden="true" />
+              {t("today.workspace.focus.title")}
             </Button>
-          ))}
-          <Button
-            size="sm"
-            variant={detail === "focus" ? "secondary" : "ghost"}
-            className="ml-auto"
-            title={t("today.workspace.dropFocus")}
-            onDragOver={(event) => {
-              if (
-                event.dataTransfer.types.includes(
-                  "application/x-knowrealm-plan-item",
-                )
-              ) {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "copy";
-              }
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              openFocus(
-                event.dataTransfer.getData("application/x-knowrealm-plan-item"),
-              );
-            }}
-            aria-pressed={detail === "focus"}
-            aria-controls="today-pane-review"
-            onClick={() =>
-              void navigate({
-                search: (previous) => ({ ...previous, inspector: "focus" }),
-                replace: true,
-              })
-            }
-          >
-            <Timer aria-hidden="true" />
-            {t("today.workspace.focus.title")}
-          </Button>
-        </div>
+          </div>
+        </header>
         <div
           className="today-grid"
           onDragStart={(event) => {
@@ -261,45 +218,11 @@ export function TodayOverview() {
               setDraggingTask(true);
           }}
           onDragEnd={() => setDraggingTask(false)}
-          data-panel={mainPanel}
           data-inspector={detail ?? "closed"}
           tabIndex={0}
           role="region"
           aria-label={t("today.workspace.workArea")}
         >
-          <aside
-            id="today-pane-pending"
-            aria-label={t("today.workspace.pending")}
-            className="today-pending-workspace today-left"
-            tabIndex={0}
-          >
-            <TodayPending
-              summaries={pending.data ?? []}
-              pending={pending.isPending}
-              error={pending.isError}
-              onRetry={() => void pending.refetch()}
-              selectedId={selected?.record_id}
-              onSelect={(id) => {
-                void navigate({
-                  search: (previous) => ({
-                    ...previous,
-                    record: id,
-                    panel: "review",
-                    inspector: "summary",
-                  }),
-                  replace: true,
-                });
-              }}
-            />
-            <div
-              className="today-assets-list"
-              role="region"
-              aria-label={t("today.overview.assetsTitle")}
-              tabIndex={0}
-            >
-              <TodayAssets />
-            </div>
-          </aside>
           <div id="today-pane-actions" className="today-center min-w-0">
             <TabsContent
               value="workbench"
@@ -331,6 +254,40 @@ export function TodayOverview() {
             </TabsContent>
           </div>
           <aside
+            id="today-pane-pending"
+            aria-label={t("today.workspace.pending")}
+            className="today-pending-workspace today-left"
+            tabIndex={0}
+          >
+            <TodayPending
+              summaries={pending.data ?? []}
+              pending={pending.isPending}
+              error={pending.isError}
+              onRetry={() => void pending.refetch()}
+              selectedId={selected?.record_id}
+              onSelect={(id) => {
+                void navigate({
+                  search: (previous) => ({
+                    ...previous,
+                    record: id,
+                    panel: "review",
+                    inspector: "summary",
+                  }),
+                  resetScroll: false,
+                  replace: true,
+                });
+              }}
+            />
+            <div
+              className="today-assets-list"
+              role="region"
+              aria-label={t("today.recentAssets.title")}
+              tabIndex={0}
+            >
+              <TodayAssets />
+            </div>
+          </aside>
+          <aside
             id="today-pane-review"
             aria-label={t("today.rightRail.label")}
             className="today-rail min-w-0"
@@ -353,14 +310,17 @@ export function TodayOverview() {
                   void navigate({
                     search: (previous) => ({
                       ...previous,
-                      panel: mainPanel,
+                      panel: "actions",
                       inspector: undefined,
                     }),
+                    resetScroll: false,
                     replace: true,
                   });
                   document
                     .querySelector<HTMLButtonElement>(
-                      `.today-pane-switcher [aria-pressed="true"]`,
+                      detail === "summary"
+                        ? `.today-pending [aria-controls="today-summary-preview"][aria-pressed="true"]`
+                        : "#today-focus-trigger",
                     )
                     ?.focus();
                 }}

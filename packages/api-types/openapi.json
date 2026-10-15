@@ -5566,6 +5566,146 @@
         "title": "LearningDepth",
         "type": "string"
       },
+      "LearningResumeOut": {
+        "properties": {
+          "answered_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered Count"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "course_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Name"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ResumeKind"
+          },
+          "record_tab": {
+            "anyOf": [
+              {
+                "enum": [
+                  "summary",
+                  "transcript",
+                  "knowledge-points",
+                  "quiz",
+                  "review",
+                  "todo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Tab"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "total_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Count"
+          },
+          "visited_at": {
+            "title": "Visited At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "target_id",
+          "title",
+          "visited_at",
+          "href"
+        ],
+        "title": "LearningResumeOut",
+        "type": "object"
+      },
+      "LearningResumeUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ResumeKind"
+          },
+          "record_tab": {
+            "anyOf": [
+              {
+                "enum": [
+                  "summary",
+                  "transcript",
+                  "knowledge-points",
+                  "quiz",
+                  "review",
+                  "todo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Tab"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "target_id"
+        ],
+        "title": "LearningResumeUpdate",
+        "type": "object"
+      },
       "LibraryAssetOut": {
         "description": "「学习资产」联邦行（02=已确认知识点；其余资产经 Record 检查器触达）。",
         "properties": {
@@ -9125,6 +9265,114 @@
         "title": "QuizTestSummaryOut",
         "type": "object"
       },
+      "RecentAssetListOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecentAssetOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "offset",
+          "limit"
+        ],
+        "title": "RecentAssetListOut",
+        "type": "object"
+      },
+      "RecentAssetOut": {
+        "properties": {
+          "asset_at": {
+            "title": "Asset At",
+            "type": "string"
+          },
+          "asset_count": {
+            "title": "Asset Count",
+            "type": "integer"
+          },
+          "asset_type": {
+            "enum": [
+              "summary",
+              "knowledge_point",
+              "quiz",
+              "review_material"
+            ],
+            "title": "Asset Type",
+            "type": "string"
+          },
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Id"
+          },
+          "course_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course Name"
+          },
+          "href": {
+            "title": "Href",
+            "type": "string"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "record_title": {
+            "title": "Record Title",
+            "type": "string"
+          },
+          "time_basis": {
+            "enum": [
+              "confirmed",
+              "created"
+            ],
+            "title": "Time Basis",
+            "type": "string"
+          }
+        },
+        "required": [
+          "asset_type",
+          "record_id",
+          "record_title",
+          "course_id",
+          "course_name",
+          "asset_count",
+          "asset_at",
+          "time_basis",
+          "href"
+        ],
+        "title": "RecentAssetOut",
+        "type": "object"
+      },
       "RecordClassificationRequest": {
         "properties": {
           "course_id": {
@@ -9447,6 +9695,15 @@
         ],
         "title": "RecordingSessionUpdate",
         "type": "object"
+      },
+      "ResumeKind": {
+        "enum": [
+          "RECORD",
+          "QUIZ_TEST",
+          "CHAT_SESSION"
+        ],
+        "title": "ResumeKind",
+        "type": "string"
       },
       "ReviewMaterialAction": {
         "enum": [
@@ -10548,6 +10805,90 @@
         "title": "TextCaptureCreate",
         "type": "object"
       },
+      "TodayCompletedItemOut": {
+        "properties": {
+          "action_type": {
+            "$ref": "#/components/schemas/PlanItemType"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "course_name": {
+            "description": "来源知识空间名（跨空间并列标注）",
+            "title": "Course Name",
+            "type": "string"
+          },
+          "estimated_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "预估投入分钟数",
+            "title": "Estimated Minutes"
+          },
+          "goal_id": {
+            "title": "Goal Id",
+            "type": "string"
+          },
+          "goal_title": {
+            "title": "Goal Title",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "plan_version": {
+            "title": "Plan Version",
+            "type": "integer"
+          },
+          "scheduled_date": {
+            "description": "排期日期（早于今天即逾期）",
+            "format": "date",
+            "title": "Scheduled Date",
+            "type": "string"
+          },
+          "user_locked": {
+            "description": "用户锁定项（重生成原样保留）",
+            "title": "User Locked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "item_id",
+          "plan_id",
+          "course_id",
+          "course_name",
+          "goal_id",
+          "goal_title",
+          "action_type",
+          "content",
+          "scheduled_date",
+          "user_locked",
+          "plan_version",
+          "completed_at"
+        ],
+        "title": "TodayCompletedItemOut",
+        "type": "object"
+      },
       "TodayPlanItemOut": {
         "description": "今日待学的计划项投影（跨空间）：排期日 ≤ 今天且未完成的 ACTIVE 计划项。\n\n勾选完成走课程嵌套的计划项端点（item_id + plan_id + course_id 三元组即\n完整定位）；goal_title / course_name 供分组标注来源。",
         "properties": {
@@ -10620,6 +10961,110 @@
           "user_locked"
         ],
         "title": "TodayPlanItemOut",
+        "type": "object"
+      },
+      "TodayProgressCourseOut": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "course_name": {
+            "title": "Course Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_id",
+          "course_name"
+        ],
+        "title": "TodayProgressCourseOut",
+        "type": "object"
+      },
+      "TodayProgressOut": {
+        "properties": {
+          "completed_count": {
+            "title": "Completed Count",
+            "type": "integer"
+          },
+          "completed_items": {
+            "items": {
+              "$ref": "#/components/schemas/TodayCompletedItemOut"
+            },
+            "title": "Completed Items",
+            "type": "array"
+          },
+          "courses": {
+            "items": {
+              "$ref": "#/components/schemas/TodayProgressCourseOut"
+            },
+            "title": "Courses",
+            "type": "array"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "day_end": {
+            "description": "电脑本地次日零点对应的 UTC 时间，不含边界",
+            "format": "date-time",
+            "title": "Day End",
+            "type": "string"
+          },
+          "day_start": {
+            "description": "电脑本地当天零点对应的 UTC 时间",
+            "format": "date-time",
+            "title": "Day Start",
+            "type": "string"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "overdue_count": {
+            "title": "Overdue Count",
+            "type": "integer"
+          },
+          "pending_count": {
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "remaining_estimated_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining Estimated Minutes"
+          },
+          "unestimated_count": {
+            "title": "Unestimated Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "day_start",
+          "day_end",
+          "completed_count",
+          "pending_count",
+          "overdue_count",
+          "remaining_estimated_minutes",
+          "unestimated_count",
+          "courses",
+          "completed_items",
+          "offset",
+          "limit"
+        ],
+        "title": "TodayProgressOut",
         "type": "object"
       },
       "TodayStatsOut": {
@@ -29964,6 +30409,321 @@
         ]
       }
     },
+    "/api/today/continue-learning": {
+      "delete": {
+        "operationId": "clear_continue_learning_api_today_continue_learning_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Clear Continue Learning",
+        "tags": [
+          "today"
+        ]
+      },
+      "get": {
+        "operationId": "list_continue_learning_api_today_continue_learning_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 3,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LearningResumeOut"
+                  },
+                  "title": "Response List Continue Learning Api Today Continue Learning Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Continue Learning",
+        "tags": [
+          "today"
+        ]
+      },
+      "put": {
+        "operationId": "record_learning_visit_api_today_continue_learning_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningResumeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Record Learning Visit",
+        "tags": [
+          "today"
+        ]
+      }
+    },
+    "/api/today/continue-learning/{kind}/{target_id}": {
+      "delete": {
+        "operationId": "remove_continue_learning_api_today_continue_learning__kind___target_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ResumeKind"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Target Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Remove Continue Learning",
+        "tags": [
+          "today"
+        ]
+      }
+    },
     "/api/today/pending-summaries": {
       "get": {
         "operationId": "list_pending_summaries_api_today_pending_summaries_get",
@@ -30106,6 +30866,260 @@
           }
         },
         "summary": "List Due Plan Items",
+        "tags": [
+          "today"
+        ]
+      }
+    },
+    "/api/today/progress": {
+      "get": {
+        "operationId": "get_progress_api_today_progress_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "course_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "date",
+              "enum": [
+                "date",
+                "duration"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TodayProgressOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Get Progress",
+        "tags": [
+          "today"
+        ]
+      }
+    },
+    "/api/today/recent-assets": {
+      "get": {
+        "operationId": "list_recent_assets_api_today_recent_assets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "asset_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "summary",
+                    "knowledge_point",
+                    "quiz",
+                    "review_material"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Asset Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "course_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Course Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecentAssetListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Recent Assets",
         "tags": [
           "today"
         ]

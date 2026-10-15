@@ -133,6 +133,92 @@
     "submitting": "Importing"
   },
   "today": {
+    "recentAssets": {
+      "title": "Recent learning outputs",
+      "filter": "Filter output type",
+      "types": {
+        "all": "All types",
+        "summary": "Summaries",
+        "knowledge_point": "Knowledge points",
+        "quiz": "Questions",
+        "review_material": "Review materials"
+      },
+      "counts": {
+        "summary_one": "{{count}} summary",
+        "summary_other": "{{count}} summaries",
+        "knowledge_point_one": "{{count}} knowledge point",
+        "knowledge_point_other": "{{count}} knowledge points",
+        "quiz_one": "{{count}} question",
+        "quiz_other": "{{count}} questions",
+        "review_material_one": "{{count}} review material",
+        "review_material_other": "{{count}} review materials",
+        "summary": "{{count}} summaries",
+        "knowledge_point": "{{count}} knowledge points",
+        "quiz": "{{count}} questions",
+        "review_material": "{{count}} review materials"
+      },
+      "list": "Recent learning outputs list",
+      "confirmed": "Confirmed {{time}}",
+      "created": "Created {{time}}",
+      "unclassified": "Unclassified",
+      "showAll": "View all",
+      "collapse": "Collapse",
+      "pagination": "Recent outputs pagination",
+      "empty": "No learning outputs of this type yet",
+      "emptyHint": "Capture content and confirm its summary, then organize learning assets in the source record.",
+      "error": "Recent learning outputs could not be loaded"
+    },
+    "progress": {
+      "title": "Today's plan progress",
+      "completed": "Completed today",
+      "pending": "To do",
+      "overdue": "Overdue",
+      "knownEstimated": "Known remaining estimate",
+      "remaining": "Estimated remaining effort",
+      "unestimated": "Not estimated",
+      "unknownCount_one": "{{count}} more task without an estimate",
+      "unknownCount_other": "{{count}} more tasks without estimates",
+      "basis": "Learning plans only · Computer's local date · Effort is estimated",
+      "completedAt": "Completed at {{time}}",
+      "estimated": "Estimated {{minutes}} min",
+      "version": "Plan v{{version}}",
+      "completedList": "Plan tasks completed today",
+      "emptyCompleted": "No plan tasks completed today yet.",
+      "error": "Today's progress could not be loaded",
+      "sortCompleted": "Completion time ↓",
+      "selectedCourse": "Selected course",
+      "pagination": "Completed tasks pagination",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{page}} of {{pages}}"
+    },
+    "resume": {
+      "empty": "Open a learning record, an unfinished test, or an existing conversation to continue here.",
+      "loadFailed": "Unable to load recent learning.",
+      "saveFailed": "Could not update recent learning. Please try again.",
+      "clear": "Clear history",
+      "clearTitle": "Clear recent learning?",
+      "clearDescription": "Only recent visits will be removed. Your materials, tests, and conversations will remain. Opening them again adds them back.",
+      "cancel": "Cancel",
+      "remove": "Remove \"{{title}}\" from recent learning",
+      "lastOpened": "Last opened {{time}}",
+      "answers": "{{answered}} / {{total}} answered",
+      "types": {
+        "RECORD": "Learning record",
+        "QUIZ_TEST": "Practice test",
+        "CHAT_SESSION": "AI conversation"
+      },
+      "fallback": {
+        "RECORD": "Untitled learning record",
+        "QUIZ_TEST": "Unfinished test",
+        "CHAT_SESSION": "Untitled conversation"
+      },
+      "continue": {
+        "RECORD": "Continue reading",
+        "QUIZ_TEST": "Continue test",
+        "CHAT_SESSION": "Continue conversation"
+      }
+    },
     "title": "Today",
     "description": "Pick up from your real learning progress, not from sample tasks.",
     "loading": "Loading today's tasks",
@@ -2579,6 +2665,9 @@
       "conversation": "Conversation messages",
       "jumpToLatest": "Jump to latest",
       "toolNames": {
+        "list_recent_assets": "Recent learning outputs",
+        "list_recent_learning": "Recent learning",
+        "get_today_progress": "Check today's progress",
         "get_context_settings": "View pinned settings",
         "change_context_pin": "Change pinned context",
         "change_context_rules": "Change context settings",

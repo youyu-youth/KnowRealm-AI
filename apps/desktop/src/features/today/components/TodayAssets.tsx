@@ -1,6 +1,4 @@
-import { Link } from "@tanstack/react-router";
 import {
-  ArrowRight,
   BookOpen,
   CheckCircle2,
   FileText,
@@ -9,51 +7,14 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { StatusTag } from "@/components/common/StatusTag";
+import { TodayRecentAssets } from "@/features/today/components/TodayRecentAssets";
 
 export function TodayAssets() {
   const { t } = useTranslation();
   return (
     <>
-      <section
-        aria-labelledby="today-assets-title"
-        className="border-border-subtle border-t p-4"
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <h2 id="today-assets-title" className="today-heading">
-              {t("today.overview.assetsTitle")}
-            </h2>
-            <StatusTag>{t("today.stats.insights.sampleTag")}</StatusTag>
-          </div>
-          <Link
-            to="/library"
-            className="text-label text-today-accent inline-flex items-center gap-1 hover:underline"
-          >
-            {t("today.overview.openLibrary")}
-            <ArrowRight className="size-3.5" aria-hidden="true" />
-          </Link>
-        </div>
-        <ul className="divide-border-subtle mt-2 divide-y">
-          {["reviewMaterial", "knowledgePoint", "summary"].map((key) => (
-            <li key={key} className="flex items-start gap-3 py-4">
-              <FileText className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
-              <div className="min-w-0">
-                <p className="text-body font-medium">
-                  {t(`today.overview.assets.${key}.title`)}
-                </p>
-                <p className="text-label text-ink-muted mt-1">
-                  {t(`today.overview.assets.${key}.type`)} ·{" "}
-                  {t(`today.overview.assets.${key}.source`)}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
-      <section
-        aria-labelledby="today-chain-title"
-        className="border-border-subtle border-t p-4"
-      >
+      <TodayRecentAssets />
+      <section aria-labelledby="today-chain-title" className="p-4">
         <h2
           id="today-chain-title"
           className="text-body text-ink-muted font-medium"
@@ -81,7 +42,7 @@ export function TodayAssets() {
       </section>
       <section
         aria-label={t("today.rightRail.achievementTitle")}
-        className="border-border-subtle flex items-start gap-3 border-t p-4"
+        className="flex items-start gap-3 p-4"
       >
         <Trophy className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">

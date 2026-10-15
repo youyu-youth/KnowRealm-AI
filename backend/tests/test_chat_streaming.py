@@ -1859,7 +1859,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v30"
+        assert rows[0][3] == "chat-library-scope-v34"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -2419,6 +2419,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "shift_datetime",
                 "diff_datetime",
                 "list_goals",
+                "list_recent_learning",
+                "list_recent_assets",
+                "get_today_progress",
                 "get_goal",
                 "get_plan",
                 "generate_learning_plan",
@@ -2463,6 +2466,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "shift_datetime",
                 "diff_datetime",
                 "list_goals",
+                "list_recent_learning",
+                "list_recent_assets",
+                "get_today_progress",
                 "get_goal",
                 "get_plan",
                 "generate_learning_plan",
@@ -2507,6 +2513,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "shift_datetime",
                 "diff_datetime",
                 "list_goals",
+                "list_recent_learning",
+                "list_recent_assets",
+                "get_today_progress",
                 "get_goal",
                 "get_plan",
                 "generate_learning_plan",
@@ -2551,6 +2560,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "shift_datetime",
                 "diff_datetime",
                 "list_goals",
+                "list_recent_learning",
+                "list_recent_assets",
+                "get_today_progress",
                 "get_goal",
                 "get_plan",
                 "generate_learning_plan",
@@ -2601,6 +2613,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "shift_datetime",
                 "diff_datetime",
                 "list_goals",
+                "list_recent_learning",
+                "list_recent_assets",
+                "get_today_progress",
                 "get_goal",
                 "get_plan",
                 "generate_learning_plan",
@@ -2646,6 +2661,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "shift_datetime",
                 "diff_datetime",
                 "list_goals",
+                "list_recent_learning",
+                "list_recent_assets",
+                "get_today_progress",
                 "get_goal",
                 "get_plan",
                 "generate_learning_plan",
@@ -2691,6 +2709,9 @@ async def test_scope_mounting_matrix_tool_visibility(
                 "shift_datetime",
                 "diff_datetime",
                 "list_goals",
+                "list_recent_learning",
+                "list_recent_assets",
+                "get_today_progress",
                 "get_goal",
                 "get_plan",
                 "generate_learning_plan",

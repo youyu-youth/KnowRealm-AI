@@ -48,6 +48,31 @@ class TodayStatsOut(BaseModel):
     chat_turn_count: int = Field(description="问答轮次（用户提问消息数）")
 
 
+class TodayCompletedItemOut(TodayPlanItemOut):
+    plan_version: int
+    completed_at: datetime
+
+
+class TodayProgressCourseOut(BaseModel):
+    course_id: str
+    course_name: str
+
+
+class TodayProgressOut(BaseModel):
+    date: date
+    day_start: datetime = Field(description="电脑本地当天零点对应的 UTC 时间")
+    day_end: datetime = Field(description="电脑本地次日零点对应的 UTC 时间，不含边界")
+    completed_count: int
+    pending_count: int
+    overdue_count: int
+    remaining_estimated_minutes: int | None
+    unestimated_count: int
+    courses: list[TodayProgressCourseOut]
+    completed_items: list[TodayCompletedItemOut]
+    offset: int
+    limit: int
+
+
 class TodayTrendPointOut(BaseModel):
     date: str = Field(description="捕获日（ISO 日期）")
     total_ms: int = Field(

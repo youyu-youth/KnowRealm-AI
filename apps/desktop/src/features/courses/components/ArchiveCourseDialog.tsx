@@ -1,3 +1,4 @@
+import { learningPlanKeys } from "@/features/learningPlan/api/keys";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -38,6 +39,7 @@ export function ArchiveCourseDialog({
           queryKey: courseKeys.detail(course.id),
           exact: true,
         }),
+        queryClient.invalidateQueries({ queryKey: learningPlanKeys.all }),
         queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
       ]);
       onOpenChange(false);

@@ -1,3 +1,4 @@
+import { learningPlanKeys } from "@/features/learningPlan/api/keys";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
@@ -76,6 +77,7 @@ export function CourseDetailPage({
           queryKey: courseKeys.detail(courseId),
           exact: true,
         }),
+        queryClient.invalidateQueries({ queryKey: learningPlanKeys.all }),
         queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
       ]);
       appToast.add({ description: t("spaces.archive.restoreDone") });

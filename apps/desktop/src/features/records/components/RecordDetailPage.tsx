@@ -1,3 +1,4 @@
+import { useLearningVisit } from "@/features/today/useLearningVisit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
@@ -75,6 +76,10 @@ export function RecordDetailPage({
         : failureCount < 2,
   });
   const isProcessing = processingStatuses.has(record.data?.status ?? "");
+  useLearningVisit(
+    { kind: "RECORD", target_id: recordId, record_tab: tab },
+    record.isSuccess && !isDeleting,
+  );
 
   const invalidateRecord = useCallback(
     async (includeSummary = true) => {

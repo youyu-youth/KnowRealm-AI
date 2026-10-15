@@ -1,3 +1,4 @@
+import { learningPlanKeys } from "@/features/learningPlan/api/keys";
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -65,6 +66,7 @@ export function AgentRunProgress({ runId }: { runId: string }) {
   useEffect(() => {
     const sessionId = run.data?.session_id;
     if (!runActive && sessionId != null) {
+      void queryClient.invalidateQueries({ queryKey: learningPlanKeys.all });
       void queryClient.invalidateQueries({
         queryKey: libraryKeys.sessionProposals(sessionId),
       });

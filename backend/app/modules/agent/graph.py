@@ -102,9 +102,12 @@ from app.modules.agent.tools.generate_learning_plan import (
 from app.modules.agent.tools.get_current_time import get_current_time
 from app.modules.agent.tools.get_goal import get_goal
 from app.modules.agent.tools.get_plan import get_plan
+from app.modules.agent.tools.get_today_progress import get_today_progress
 from app.modules.agent.tools.list_course_records import list_course_records
 from app.modules.agent.tools.list_goals import list_goals
 from app.modules.agent.tools.list_library_items import list_library_items
+from app.modules.agent.tools.list_recent_assets import list_recent_assets
+from app.modules.agent.tools.list_recent_learning import list_recent_learning
 from app.modules.agent.tools.list_shared_refs import list_shared_refs
 from app.modules.agent.tools.move_record_course import (
     MOVE_RECORD_COURSE_TOOL_NAME,
@@ -161,7 +164,7 @@ from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 from app.shared.errors import CodedHTTPException
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v30"
+CHAT_PROMPT_VERSION = "chat-library-scope-v34"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
@@ -171,12 +174,12 @@ CHAT_PROMPT_VERSION = "chat-library-scope-v30"
 # 时间能力 v1：时间提示行 + 时间工具族四工具；工单 05：共享引用三工具与指引；
 # 第三阶段工单 06：计划创建类步骤与输出引用指引；工单 07：多资料建课编排
 # 指引——四类来源、建目标与末步草案产出步骤）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v31"
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v35"
 CHAT_RECURSION_LIMIT = 25
 # 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
 # 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
 # 工具集合、图结构或 checkpoint 状态语义变化时 bump。
-CHAT_GRAPH_VERSION = "chat-graph-v6"
+CHAT_GRAPH_VERSION = "chat-graph-v9"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
@@ -410,6 +413,9 @@ def resolve_agent_config(
             shift_datetime,
             diff_datetime,
             list_goals,
+            list_recent_learning,
+            list_recent_assets,
+            get_today_progress,
             get_goal,
             get_plan,
             generate_learning_plan,
@@ -589,7 +595,7 @@ def _tool_result_event(message: ToolMessage) -> ChatToolResultEvent:
             payload = None
         if isinstance(payload, dict):
             body = cast(dict[str, object], payload)
-            for key in ("evidence_hits", "hits", "courses"):
+            for key in ("evidence_hits", "hits", "courses", "recent_learning", "completed_items"):
                 value = body.get(key)
                 if isinstance(value, list):
                     hits = len(cast(list[object], value))
