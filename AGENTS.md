@@ -112,7 +112,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 6. agent相关功能，多使用Middleware 中间件等 （优先遵循），如果框架自带的Middleware不能满足需求，则进行自定义的Middleware
 7. desktop端界面的修改都需要考虑到多主题的适配和兼容
 8. 新增 HTTP 错误码时，同步登记 `docs/后端错误码清单.md` 与 `zh.json`、`en.json` 的 `errors`；三方登记防线见 `backend/tests/test_error_code_guard.py`
-
+9. 实现工单产生的临时测试文件或者日志文件不要git commit 或者 git add
 
 
 

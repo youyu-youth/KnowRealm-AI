@@ -207,6 +207,9 @@ docs/code-review/
 录音文件
 
 .scratch/**/**.sh
+.scratch/evidence/**
+.scratch/validation-**
+.scratch/**.log
 opencode.jsonc
 .mcp.json
 img

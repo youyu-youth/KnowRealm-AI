@@ -78,6 +78,14 @@ backend/
 
 **多使用Middleware 中间件等**
 
+
+## KnowRealm-AI产品AI能力实现的相关准则
+**本规范仅适用于 KnowRealm-AI 产品内部的 AI / Agent 能力调用：**
+
+- KnowRealm-AI 中能通过脚本、程序逻辑或工具稳定完成的任务，应优先使用确定性方案，不调用 LLM。
+- 只有脚本难以实现，或任务涉及语义理解、推理、生成等能力时，才使用 LLM。
+- **总体原则：**KnowRealm-AI 内部脚本优先、LLM 次之，以降低 Token 消耗、延迟和运行成本。
+
 ## 关键机制
 
 ### 启动握手（与 Tauri 壳的协议）
