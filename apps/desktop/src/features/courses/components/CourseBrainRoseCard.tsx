@@ -1,5 +1,6 @@
 import { useAppearanceSnapshot } from "@/hooks/useAppearanceSnapshot";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { ChartBar, ChartPie } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { BaseChart } from "@/charts/BaseChart";
@@ -127,12 +128,78 @@ type CourseBrainRoseCardProps = {
   className?: string;
 };
 
+function buildOutlineOption(
+  concepts: BrainConcept[],
+): echarts.EChartsCoreOption {
+  const palette = chartPalette();
+  const fontSize = rootFontSize() * 0.8125;
+  return {
+    animation: !prefersReducedMotion(),
+    animationDuration: 200,
+    animationDurationUpdate: 0,
+    grid: {
+      left: 0,
+      right: fontSize * 2,
+      top: 0,
+      bottom: 0,
+      containLabel: true,
+    },
+    xAxis: {
+      type: "value",
+      show: false,
+      max: ({ max }: { max: number }) => Math.max(4, max + 1),
+    },
+    yAxis: {
+      type: "category",
+      inverse: true,
+      data: concepts.map((concept) => concept.canonical_name),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        color: palette.foreground,
+        fontSize,
+        width: fontSize * 8,
+        overflow: "truncate",
+        margin: fontSize,
+      },
+    },
+    tooltip: {
+      ...darkTooltipStyle(),
+      trigger: "item",
+      renderMode: "richText",
+      confine: true,
+    },
+    series: [
+      {
+        type: "bar",
+        barWidth: fontSize * 0.65,
+        showBackground: true,
+        backgroundStyle: { color: palette.border, borderRadius: fontSize },
+        itemStyle: {
+          color: getComputedStyle(document.documentElement)
+            .getPropertyValue("--course-accent")
+            .trim(),
+          borderRadius: fontSize,
+        },
+        label: {
+          show: true,
+          position: "right",
+          color: palette.mutedForeground,
+          fontSize,
+        },
+        data: concepts.map((concept) => concept.occurrence_count),
+      },
+    ],
+  };
+}
+
 /** 概览 Tab 概念分布卡：真实 Concept Top 分布玫瑰图；未就绪时给构建引导空态。 */
 export function CourseBrainRoseCard({
   course,
   className,
 }: CourseBrainRoseCardProps) {
   const { t } = useTranslation();
+  const [chartType, setChartType] = useState<"bar" | "rose">("bar");
   useAppearanceSnapshot();
   const view = useCourseBrainView(course.id);
   const triggerBuild = useTriggerBuild(course.id);
@@ -149,7 +216,12 @@ export function CourseBrainRoseCard({
         .slice(0, ROSE_TOP_N),
     [concepts.data],
   );
-  const option = top.length > 0 ? buildRoseOption(top, t) : null;
+  const option =
+    top.length > 0
+      ? chartType === "bar"
+        ? buildOutlineOption(top)
+        : buildRoseOption(top, t)
+      : null;
   const ariaLabel = t("spaces.courseDetail.brain.rose.aria", {
     course: course.name,
   });
@@ -157,7 +229,31 @@ export function CourseBrainRoseCard({
   return (
     <SurfaceCard
       title={t("spaces.courseDetail.brain.rose.title")}
-      className={className}
+      className={`course-overview-section course-contour ${className ?? ""}`}
+      action={
+        top.length > 0 ? (
+          <div className="flex items-center gap-1">
+            <span className="text-label text-ink-muted mr-1">
+              {t("spaces.courseDetail.brain.rose.frequency")}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={t("spaces.courseDetail.brain.rose.toggle")}
+              aria-pressed={chartType === "rose"}
+              onClick={() =>
+                setChartType((current) => (current === "bar" ? "rose" : "bar"))
+              }
+            >
+              {chartType === "bar" ? (
+                <ChartPie aria-hidden="true" />
+              ) : (
+                <ChartBar aria-hidden="true" />
+              )}
+            </Button>
+          </div>
+        ) : undefined
+      }
     >
       {view.phase === "loading" || concepts.isPending ? (
         <p
@@ -168,23 +264,28 @@ export function CourseBrainRoseCard({
           {t("spaces.courseDetail.brain.rose.title")}
         </p>
       ) : view.phase === "error" ? (
-        <p role="alert" className="text-body text-destructive py-8">
-          {t("spaces.detail.errorDescription")}
-        </p>
+        <div>
+          <p role="alert" className="text-body text-destructive py-4">
+            {t("spaces.detail.errorDescription")}
+          </p>
+          <Button variant="outline" size="sm" onClick={view.retry}>
+            {t("spaces.detail.retry")}
+          </Button>
+        </div>
       ) : concepts.isError ? (
         <p role="alert" className="text-body text-destructive py-8">
           {concepts.error.message}
         </p>
       ) : option ? (
-        <div className="mt-2 flex min-w-0 flex-col gap-5 @2xl:flex-row @2xl:items-start">
-          <div className="h-72 w-full min-w-0 @2xl:max-w-[24rem]">
+        <div className="mt-2 min-w-0">
+          <div className="course-contour-chart">
             <BaseChart
               option={option}
               ariaLabel={ariaLabel}
               className="h-full w-full"
             />
           </div>
-          <div className="@2xl:border-border-subtle min-w-0 flex-1 @2xl:border-l @2xl:pl-5">
+          <div className="sr-only">
             <ul className="divide-border-subtle flex flex-col divide-y">
               {top.map((concept) => (
                 <li
@@ -222,7 +323,7 @@ export function CourseBrainRoseCard({
           ) : (
             <Button
               size="sm"
-              disabled={triggerBuild.isPending}
+              disabled={triggerBuild.isPending || course.status === "ARCHIVED"}
               onClick={() => triggerBuild.mutate()}
             >
               {triggerBuild.isPending ? (
@@ -237,6 +338,11 @@ export function CourseBrainRoseCard({
               )}
             </Button>
           )}
+          {triggerBuild.isError ? (
+            <p role="alert" className="text-label text-destructive">
+              {triggerBuild.error.message}
+            </p>
+          ) : null}
         </div>
       )}
     </SurfaceCard>

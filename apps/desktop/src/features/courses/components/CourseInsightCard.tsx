@@ -31,7 +31,7 @@ export function CourseInsightCard({
         </span>
       }
       sample
-      className="bg-surface-subtle border-transparent"
+      className="course-overview-section course-insight"
     >
       <ul className="mt-3 flex flex-col gap-2.5">
         {suggestions.map((suggestion) => (
@@ -54,7 +54,12 @@ export function CourseInsightCard({
           </li>
         ))}
       </ul>
-      <Button variant="outline" size="sm" className="mt-4" onClick={onOpenChat}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="course-insight-action mt-3"
+        onClick={onOpenChat}
+      >
         {t("spaces.courseDetail.insight.cta")}
       </Button>
     </SurfaceCard>

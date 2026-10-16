@@ -34,6 +34,7 @@ import {
 const MAX_TEXT_BYTES = 1024 * 1024;
 
 type TextCaptureDialogProps = {
+  initialCourseId?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   captureType: TextCaptureMode;
@@ -49,10 +50,11 @@ export function TextCaptureDialog({
   onAccepted,
   focusRequest = 0,
   onDirtyChange,
+  initialCourseId = null,
 }: TextCaptureDialogProps) {
   const { t } = useTranslation();
   const [content, setContent] = useState("");
-  const [courseId, setCourseId] = useState<string | null>(null);
+  const [courseId, setCourseId] = useState<string | null>(initialCourseId);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const showCourse = captureType === "PASTE";
   const courses = useQuery({

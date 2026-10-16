@@ -38,6 +38,7 @@ import {
 } from "@/components/layout/navigationItems";
 import { SidebarResizeHandle } from "@/components/layout/SidebarResizeHandle";
 import { CaptureFloatingToolbar } from "@/components/layout/CaptureFloatingToolbar";
+import { CaptureActionsContext } from "@/components/layout/captureActionsContext";
 import { TitleBarSearchHostContext } from "@/components/layout/titleBarSearchHostContext";
 import {
   APP_SIDEBAR_ID,
@@ -85,6 +86,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [importOpen, setImportOpen] = useState(false);
+  const [captureCourseId, setCaptureCourseId] = useState<string | null>(null);
   const [textCapture, setTextCapture] = useState<TextCaptureMode | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [textCaptureFocusRequest, setTextCaptureFocusRequest] = useState(0);
@@ -111,6 +113,7 @@ export function AppShell() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const activeCourses = useActiveCourses();
   const activeCourseId = pathname.match(/^\/spaces\/([^/]+)/)?.[1];
+  const courseWorkspace = /^\/spaces\/[^/]+\/?$/.test(pathname);
   const sidebarCourses = selectSidebarCourses(
     activeCourses.courses,
     activeCourseId,
@@ -254,10 +257,15 @@ export function AppShell() {
     labelKey:
       "capture.note" | "capture.paste" | "capture.import" | "capture.record",
   ) => {
+    setCaptureCourseId(activeCourseId ?? null);
     if (labelKey === "capture.note") openQuickNote();
     if (labelKey === "capture.paste") setTextCapture("PASTE");
     if (labelKey === "capture.import") setImportOpen(true);
-    if (labelKey === "capture.record") setRecordingOpen(true);
+    if (labelKey === "capture.record") {
+      if (!recordingActive)
+        useRecordingUiStore.getState().setCourseId(activeCourseId ?? null);
+      setRecordingOpen(true);
+    }
   };
 
   const openRecord = useCallback(
@@ -273,6 +281,7 @@ export function AppShell() {
   const handleTextAccepted = useCallback(
     async (result: TextCaptureAccepted, courseSelected: boolean) => {
       if (courseSelected) {
+        await queryClient.invalidateQueries({ queryKey: recordKeys.all });
         await navigate({
           to: "/records/$recordId",
           params: { recordId: result.record_id },
@@ -477,14 +486,18 @@ export function AppShell() {
           </Alert>
         ) : null}
         <main className="bg-paper min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-          <QuickNoteContext value={openQuickNote}>
-            <Outlet />
-          </QuickNoteContext>
+          <CaptureActionsContext value={openCapture}>
+            <QuickNoteContext value={openQuickNote}>
+              <Outlet />
+            </QuickNoteContext>
+          </CaptureActionsContext>
         </main>
-        <CaptureFloatingToolbar
-          onCapture={openCapture}
-          recordingActive={recordingActive}
-        />
+        {!courseWorkspace && (
+          <CaptureFloatingToolbar
+            onCapture={openCapture}
+            recordingActive={recordingActive}
+          />
+        )}
       </div>
       {searchHost
         ? createPortal(
@@ -509,11 +522,14 @@ export function AppShell() {
         onOpenChange={setPaletteOpen}
         onCaptureCommand={openCapture}
       />
-      <DocumentImportDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-        onAccepted={openRecord}
-      />
+      {importOpen && (
+        <DocumentImportDialog
+          open={importOpen}
+          initialCourseId={captureCourseId}
+          onOpenChange={setImportOpen}
+          onAccepted={openRecord}
+        />
+      )}
       {textCapture ? (
         <TextCaptureDialog
           open
@@ -521,6 +537,7 @@ export function AppShell() {
             if (!open) setTextCapture(null);
           }}
           captureType={textCapture}
+          initialCourseId={captureCourseId}
           focusRequest={textCaptureFocusRequest}
           onDirtyChange={(dirty) => {
             textCaptureDirtyRef.current = dirty;

@@ -812,8 +812,10 @@
           "tooltipMastery": "掌握状态：{{status}}"
         },
         "rose": {
-          "title": "概念分布",
-          "aria": "「{{course}}」概念重要度分布玫瑰图"
+          "title": "知识的轮廓",
+          "aria": "「{{course}}」核心概念出现次数分布",
+          "frequency": "出现次数",
+          "toggle": "切换条形图 / 玫瑰图"
         },
         "view": {
           "graph": "图谱",
@@ -945,6 +947,7 @@
         "myCourses": "我的课程"
       },
       "hero": {
+        "addMaterials": "添加资料",
         "follow": "关注",
         "following": "已关注",
         "openCourse": "打开课程",
@@ -981,6 +984,9 @@
         "quizSetsUnit": "个"
       },
       "gps": {
+        "evidenceEmptyTitle": "尚未足够学习证据",
+        "evidenceTitle": "学习证据正在积累",
+        "evidenceDescription": "已确认 {{total}} 个概念，其中 {{verified}} 个已有验证证据。继续学习并完成习题，以提升证据覆盖率。",
         "title": "知识GPS · 掌握状态",
         "tabTitle": "知识GPS · 掌握状态",
         "confirmedConcepts": "已确认概念",
@@ -1049,8 +1055,18 @@
         "sampleToast": "示意数据：该学习入口将在知识点域接入后开放。"
       },
       "recentRecords": {
+        "actions": "记录操作 {{title}}",
+        "open": "打开",
         "title": "最近学习记录",
         "unavailable": "学习记录暂时无法读取。"
+      },
+      "navigation": "课程导航",
+      "capture": {
+        "label": "课程资料采集",
+        "clip": "剪藏",
+        "hint": "文档、文本、网页与录音，汇入这门课程",
+        "local": "本地存储",
+        "archived": "课程已归档，恢复后可继续添加资料"
       },
       "chat": {
         "title": "课程对话",

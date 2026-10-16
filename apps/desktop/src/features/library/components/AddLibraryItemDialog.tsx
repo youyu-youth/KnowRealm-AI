@@ -25,6 +25,7 @@ import { ApiError } from "@/services/http/client";
 export type IngestTab = "web" | "file" | "text";
 
 export type AddLibraryItemInitial = {
+  courseId?: string;
   tab?: IngestTab;
   url?: string;
   originUri?: string;
@@ -41,11 +42,13 @@ export function AddLibraryItemDialog({
   onOpenChange,
   initial,
   onOpenItem,
+  onAccepted,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initial?: AddLibraryItemInitial;
   onOpenItem: (itemId: string) => void;
+  onAccepted?: (result: LibraryIngestAccepted) => void;
 }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -56,7 +59,9 @@ export function AddLibraryItemDialog({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [content, setContent] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [courseId, setCourseId] = useState<string | null>(null);
+  const [courseId, setCourseId] = useState<string | null>(
+    initial?.courseId ?? null,
+  );
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
@@ -117,6 +122,7 @@ export function AddLibraryItemDialog({
       void queryClient.invalidateQueries({ queryKey: libraryKeys.all });
       // 立即可见 + 处理状态由列表轮询派生（解析中 → 可检索/失败）。
       close(true);
+      onAccepted?.(accepted);
       return accepted;
     } catch (exc) {
       if (exc instanceof ApiError) {

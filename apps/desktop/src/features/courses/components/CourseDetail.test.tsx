@@ -188,7 +188,9 @@ describe("课程详情与编辑", () => {
     expect(screen.getAllByText("学业学习").length).toBeGreaterThan(0);
     expect(screen.getAllByText("本科").length).toBeGreaterThan(0);
     expect(screen.getAllByText("专业课").length).toBeGreaterThan(0);
-    expect(screen.getByText("理解进程、内存与文件系统。")).toBeInTheDocument();
+    expect(
+      screen.getAllByText("理解进程、内存与文件系统。").length,
+    ).toBeGreaterThan(0);
     expect(screen.getByText("暂无热词")).toBeInTheDocument();
     expect(screen.getByText("课程核心概览")).toBeInTheDocument();
   });
@@ -245,7 +247,9 @@ describe("课程详情与编辑", () => {
     ).toBeInTheDocument();
     expect(window.location.search).toBe("?tab=chat");
     // 课程对话已接真（B2）：不再有「示意」标记，展示发起课程会话的 CTA。
-    expect(screen.queryByText("示意")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("tabpanel")).queryByText("示意"),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", {
         name: "开启「操作系统」课程问答",
@@ -258,7 +262,7 @@ describe("课程详情与编辑", () => {
     renderAt(ROUTE_PATH);
 
     expect(
-      await screen.findByRole("heading", { name: "概念分布" }),
+      await screen.findByRole("heading", { name: "知识的轮廓" }),
     ).toBeInTheDocument();
     expect(
       await screen.findByText(
@@ -568,6 +572,75 @@ describe("课程详情与编辑", () => {
     );
   });
 
+  it("课程采集栏复用文档与文本弹窗并预选当前课程", async () => {
+    let submitted: unknown;
+    server.use(
+      http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
+      http.get(`${TEST_SIDECAR_URL}/api/courses`, () =>
+        HttpResponse.json([schoolCourse]),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/text-captures`,
+        async ({ request }) => {
+          submitted = await request.json();
+          return HttpResponse.json(
+            { record_id: "record-added", summary_job_id: null },
+            { status: 202 },
+          );
+        },
+      ),
+    );
+    renderAt(ROUTE_PATH);
+
+    fireEvent.click(await screen.findByRole("button", { name: "添加资料" }));
+    const importDialog = await screen.findByRole("dialog");
+    await waitFor(() =>
+      expect(within(importDialog).getByRole("combobox")).toHaveTextContent(
+        schoolCourse.name,
+      ),
+    );
+    fireEvent.click(within(importDialog).getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "粘贴文本" }));
+    const pasteDialog = await screen.findByRole("dialog");
+    await waitFor(() =>
+      expect(within(pasteDialog).getByRole("combobox")).toHaveTextContent(
+        schoolCourse.name,
+      ),
+    );
+    fireEvent.change(within(pasteDialog).getByRole("textbox"), {
+      target: { value: "课程采集正文" },
+    });
+    fireEvent.click(within(pasteDialog).getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(submitted).toEqual({
+        capture_type: "PASTE",
+        content: "课程采集正文",
+        course_id: COURSE_ID,
+      }),
+    );
+  });
+
+  it("归档课程禁用新增采集入口但保留已有学习记录入口", async () => {
+    server.use(
+      http.get(DETAIL_URL, () =>
+        HttpResponse.json({ ...schoolCourse, status: "ARCHIVED" }),
+      ),
+    );
+    renderAt(ROUTE_PATH);
+
+    expect(
+      await screen.findByRole("button", { name: "添加资料" }),
+    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "导入资料" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "粘贴文本" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "剪藏" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "打开课程" })).toBeEnabled();
+  });
+
   it("打开课程进入最近一条学习记录", async () => {
     server.use(
       http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
@@ -696,11 +769,20 @@ describe("课程详情与编辑", () => {
 
     const recentCard = recent.closest("section");
     expect(recentCard).not.toBeNull();
-    fireEvent.click(
+    expect(
       within(recentCard as HTMLElement).getByRole("button", {
         name: /查看全部/,
       }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      within(recentCard as HTMLElement).getByRole("button", {
+        name: "记录操作 学习记录 1",
+      }),
     );
+    expect(
+      await screen.findByRole("menuitem", { name: "打开" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "查看全部" }));
     await waitFor(() => expect(window.location.search).toBe("?tab=records"));
   });
 

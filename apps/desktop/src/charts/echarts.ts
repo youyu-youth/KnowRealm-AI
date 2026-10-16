@@ -2,6 +2,7 @@
 import * as echarts from "echarts/core";
 import {
   GraphChart,
+  BarChart,
   LineChart,
   PieChart,
   RadarChart,
@@ -16,6 +17,7 @@ import { SVGRenderer } from "echarts/renderers";
 
 echarts.use([
   GraphChart,
+  BarChart,
   LineChart,
   PieChart,
   RadarChart,

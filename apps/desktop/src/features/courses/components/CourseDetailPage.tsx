@@ -1,7 +1,18 @@
 import { learningPlanKeys } from "@/features/learningPlan/api/keys";
-import { Link, useNavigate } from "@tanstack/react-router";
-import { ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import {
+  BookOpen,
+  CalendarDays,
+  ChevronRight,
+  Files,
+  FileText,
+  GitBranch,
+  Map,
+  MessagesSquare,
+  Network,
+  NotebookPen,
+} from "lucide-react";
+import { useContext, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -23,18 +34,16 @@ import { courseApi } from "@/features/courses/api/courses";
 import { ApiError } from "@/services/http/client";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
-import { CourseBrainRoseCard } from "@/features/courses/components/CourseBrainRoseCard";
 import { CourseBrainTab } from "@/features/courses/components/CourseBrainTab";
 import { CourseChatTab } from "@/features/courses/components/CourseChatTab";
-import { CourseCoreOverview } from "@/features/courses/components/CourseCoreOverview";
 import { CourseEditSheet } from "@/features/courses/components/CourseEditSheet";
 import { CourseHero } from "@/features/courses/components/CourseHero";
 import { CourseInfoPanel } from "@/features/courses/components/CourseInfoPanel";
-import { CourseInsightCard } from "@/features/courses/components/CourseInsightCard";
 import { CourseLearningChainTab } from "@/features/courses/components/CourseLearningChainTab";
-import { CourseMasteryGpsCard } from "@/features/courses/components/CourseMasteryGpsCard";
-import { CourseRecentRecordsCard } from "@/features/courses/components/CourseRecentRecordsCard";
-import { CourseRecommendedPointsCard } from "@/features/courses/components/CourseRecommendedPointsCard";
+import { CourseOverview } from "@/features/courses/components/CourseOverview";
+import { CourseCaptureDock } from "@/features/courses/components/CourseCaptureDock";
+import { CaptureActionsContext } from "@/components/layout/captureActionsContext";
+import "@/features/courses/courseDetail.css";
 import { CourseRecordsPanel } from "@/features/courses/components/CourseRecordsPanel";
 import { ArchiveCourseDialog } from "@/features/courses/components/ArchiveCourseDialog";
 import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDialog";
@@ -63,7 +72,7 @@ export function CourseDetailPage({
   onDeleted,
 }: CourseDetailPageProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
+  const openCapture = useContext(CaptureActionsContext);
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(initialEditing);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -162,221 +171,202 @@ export function CourseDetailPage({
   )[0]?.id;
 
   return (
-    <section className="work-surface-enter flex h-full min-h-0 min-w-0 flex-col">
-      <div className="px-content shrink-0 pt-6">
-        <div className="max-w-workbench mx-auto min-w-0">
-          <nav
-            aria-label={t("spaces.courseDetail.breadcrumb.label")}
-            className="text-label text-ink-muted flex min-w-0 items-center gap-1.5"
-          >
-            <Link to="/spaces" className="hover:text-ink-strong shrink-0">
-              {t("nav.spaces")}
-            </Link>
-            <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="shrink-0">
-              {t("spaces.courseDetail.breadcrumb.myCourses")}
-            </span>
-            <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
-            <span
-              aria-current="page"
-              className="text-ink-strong min-w-0 truncate font-medium"
-              title={detail.name}
-            >
-              {detail.name}
-            </span>
-          </nav>
-
+    <section className="course-detail">
+      <Tabs
+        value={tab}
+        orientation="vertical"
+        onValueChange={(value) => onTabChange(asCourseTab(value))}
+        className="course-workspace"
+      >
+        <aside
+          className="course-sidebar"
+          aria-label={t("spaces.detail.infoTitle")}
+        >
           <CourseHero
             course={detail}
             latestRecordId={latestRecordId}
             onOpenInfo={() => setInfoOpen(true)}
-            className="mt-4"
+            onAddMaterials={() => openCapture?.("capture.import")}
           />
-        </div>
-      </div>
-
-      <Tabs
-        value={tab}
-        onValueChange={(value) => onTabChange(asCourseTab(value))}
-        className="mt-5 min-h-0 flex-1"
-      >
-        <div className="px-content shrink-0">
-          <div className="max-w-workbench mx-auto min-w-0">
-            <TabsList
-              variant="line"
-              className="border-border [&_[data-slot=tabs-trigger][data-active]]:text-ink-strong gap-1 overflow-x-auto border-b pb-2 [&_[data-slot=tabs-trigger][data-active]::after]:opacity-100"
+          <TabsList
+            variant="line"
+            className="course-tabs"
+            aria-label={t("spaces.courseDetail.navigation")}
+          >
+            <TabsTrigger value="overview">
+              <BookOpen aria-hidden="true" />
+              {t("spaces.detail.tabs.overview")}
+            </TabsTrigger>
+            <TabsTrigger value="chain">
+              <GitBranch aria-hidden="true" />
+              {t("spaces.detail.tabs.chain")}
+            </TabsTrigger>
+            <TabsTrigger value="plan">
+              <CalendarDays aria-hidden="true" />
+              {t("spaces.detail.tabs.plan")}
+            </TabsTrigger>
+            <TabsTrigger value="shared">
+              <Files aria-hidden="true" />
+              {t("spaces.detail.tabs.shared")}
+            </TabsTrigger>
+            <TabsTrigger value="records">
+              <FileText aria-hidden="true" />
+              {t("spaces.detail.tabs.records")}
+            </TabsTrigger>
+            <TabsTrigger value="tests">
+              <NotebookPen aria-hidden="true" />
+              {t("spaces.detail.tabs.tests")}
+            </TabsTrigger>
+            <TabsTrigger value="map">
+              <Network aria-hidden="true" />
+              {t("spaces.detail.tabs.map")}
+            </TabsTrigger>
+            <TabsTrigger value="gps">
+              <Map aria-hidden="true" />
+              {t("spaces.detail.tabs.gps")}
+            </TabsTrigger>
+            <TabsTrigger value="chat">
+              <MessagesSquare aria-hidden="true" />
+              {t("spaces.detail.tabs.chat")}
+            </TabsTrigger>
+          </TabsList>
+          <div className="course-sidebar-info">
+            <CourseInfoPanel
+              course={detail}
+              records={records.data ?? []}
+              onEdit={() => setEditOpen(true)}
+              onDelete={() => setDeleteOpen(true)}
+              onArchive={() => setArchiveOpen(true)}
+              onRestore={() => restoreCourse.mutate()}
+              restorePending={restoreCourse.isPending}
+            />
+          </div>
+        </aside>
+        <div className="course-workspace-main">
+          <div className="course-breadcrumb">
+            <nav
+              aria-label={t("spaces.courseDetail.breadcrumb.label")}
+              className="text-label text-ink-muted flex min-w-0 items-center gap-1.5"
             >
-              <TabsTrigger value="overview">
-                {t("spaces.detail.tabs.overview")}
-              </TabsTrigger>
-              <TabsTrigger value="chain">
-                {t("spaces.detail.tabs.chain")}
-              </TabsTrigger>
-              <TabsTrigger value="plan">
-                {t("spaces.detail.tabs.plan")}
-              </TabsTrigger>
-              <TabsTrigger value="shared">
-                {t("spaces.detail.tabs.shared")}
-              </TabsTrigger>
-              <TabsTrigger value="records">
-                {t("spaces.detail.tabs.records")}
-              </TabsTrigger>
-              <TabsTrigger value="tests">
-                {t("spaces.detail.tabs.tests")}
-              </TabsTrigger>
-              <TabsTrigger value="map">
-                {t("spaces.detail.tabs.map")}
-              </TabsTrigger>
-              <TabsTrigger value="gps">
-                {t("spaces.detail.tabs.gps")}
-              </TabsTrigger>
-              <TabsTrigger value="chat">
-                {t("spaces.detail.tabs.chat")}
-              </TabsTrigger>
-            </TabsList>
-          </div>
-        </div>
-
-        <TabsContent
-          value="overview"
-          className="view-switch-enter min-h-0 flex-1"
-        >
-          <div className="px-content h-full min-h-0 pt-5 pb-6">
-            <div className="max-w-workbench mx-auto grid h-full min-h-0 gap-6 xl:grid-cols-[minmax(0,1fr)_clamp(14rem,18vw,17rem)]">
-              <div className="@container min-h-0 min-w-0 overflow-y-auto pr-1 pb-2">
-                <div className="flex min-w-0 flex-col gap-6">
-                  <CourseCoreOverview course={detail} />
-                  <CourseBrainRoseCard course={detail} />
-                  <div className="grid min-w-0 gap-6 @2xl:grid-cols-2">
-                    <CourseRecentRecordsCard
-                      courseId={courseId}
-                      onViewAll={() => onTabChange("records")}
-                    />
-                    <CourseMasteryGpsCard
-                      course={detail}
-                      onViewAll={() => onTabChange("gps")}
-                      onOpenBrain={() => onTabChange("map")}
-                    />
-                  </div>
-                  <div className="grid min-w-0 gap-6 @2xl:grid-cols-2">
-                    <CourseInsightCard
-                      course={detail}
-                      onOpenChat={() => void navigate({ to: "/chat" })}
-                    />
-                    <CourseRecommendedPointsCard course={detail} />
-                  </div>
-                </div>
-              </div>
-              <aside
-                className="border-border-subtle hidden min-h-0 min-w-0 overflow-y-auto border-l pb-2 pl-5 xl:block"
-                aria-label={t("spaces.detail.infoTitle")}
+              <Link to="/spaces" className="hover:text-ink-strong shrink-0">
+                {t("nav.spaces")}
+              </Link>
+              <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="shrink-0">
+                {t("spaces.courseDetail.breadcrumb.myCourses")}
+              </span>
+              <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />
+              <span
+                aria-current="page"
+                className="text-ink-strong min-w-0 truncate font-medium"
+                title={detail.name}
               >
-                <CourseInfoPanel
+                {detail.name}
+              </span>
+            </nav>
+          </div>
+
+          <TabsContent
+            value="overview"
+            className="view-switch-enter min-h-0 flex-1"
+          >
+            <CourseOverview course={detail} onTabChange={onTabChange} />
+          </TabsContent>
+
+          <TabsContent
+            value="chain"
+            className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="px-content">
+              <div className="max-w-workbench mx-auto pt-5 pb-8">
+                <CourseLearningChainTab course={detail} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent
+            value="plan"
+            className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="px-content">
+              <div className="max-w-workbench mx-auto pt-5 pb-8">
+                <LearningPlanTab courseId={courseId} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent
+            value="shared"
+            className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="px-content">
+              <div className="max-w-workbench mx-auto pt-5 pb-8">
+                <SharedRefsTab courseId={courseId} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent
+            value="records"
+            className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="px-content">
+              <div className="max-w-workbench mx-auto pt-5 pb-8">
+                <CourseRecordsPanel courseId={courseId} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent
+            value="tests"
+            className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="px-content">
+              <div className="max-w-workbench mx-auto pt-5 pb-8">
+                <QuizTestsPanel courseId={courseId} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent
+            value="map"
+            className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="px-content">
+              <div className="max-w-workbench mx-auto pt-5 pb-8">
+                <CourseBrainTab course={detail} />
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent
+            value="gps"
+            className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="px-content">
+              <div className="max-w-workbench mx-auto pt-5 pb-8">
+                <KnowledgeGpsTab
                   course={detail}
-                  records={records.data ?? []}
-                  onEdit={() => setEditOpen(true)}
-                  onDelete={() => setDeleteOpen(true)}
-                  onArchive={() => setArchiveOpen(true)}
-                  onRestore={() => restoreCourse.mutate()}
-                  restorePending={restoreCourse.isPending}
+                  statusFilter={masteryStatus}
+                  onStatusFilterChange={onMasteryStatusChange}
+                  onOpenBrain={() => onTabChange("map")}
                 />
-              </aside>
+              </div>
             </div>
-          </div>
-        </TabsContent>
+          </TabsContent>
 
-        <TabsContent
-          value="chain"
-          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="px-content">
-            <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <CourseLearningChainTab course={detail} />
+          <TabsContent
+            value="chat"
+            className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
+          >
+            <div className="px-content">
+              <div className="max-w-workbench mx-auto pt-5 pb-8">
+                <CourseChatTab course={detail} />
+              </div>
             </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="plan"
-          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="px-content">
-            <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <LearningPlanTab courseId={courseId} />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="shared"
-          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="px-content">
-            <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <SharedRefsTab courseId={courseId} />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="records"
-          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="px-content">
-            <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <CourseRecordsPanel courseId={courseId} />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="tests"
-          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="px-content">
-            <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <QuizTestsPanel courseId={courseId} />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="map"
-          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="px-content">
-            <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <CourseBrainTab course={detail} />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="gps"
-          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="px-content">
-            <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <KnowledgeGpsTab
-                course={detail}
-                statusFilter={masteryStatus}
-                onStatusFilterChange={onMasteryStatusChange}
-                onOpenBrain={() => onTabChange("map")}
-              />
-            </div>
-          </div>
-        </TabsContent>
-
-        <TabsContent
-          value="chat"
-          className="view-switch-enter min-h-0 flex-1 overflow-y-auto"
-        >
-          <div className="px-content">
-            <div className="max-w-workbench mx-auto pt-5 pb-8">
-              <CourseChatTab course={detail} />
-            </div>
-          </div>
-        </TabsContent>
+          </TabsContent>
+          <CourseCaptureDock course={detail} />
+        </div>
       </Tabs>
 
       <Sheet open={infoOpen} onOpenChange={setInfoOpen}>

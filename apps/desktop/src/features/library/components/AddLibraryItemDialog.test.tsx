@@ -74,6 +74,7 @@ afterEach(() => {
 describe("AddLibraryItemDialog", () => {
   it("网页标签提交 URL 入库并携带课程", async () => {
     const bodies: unknown[] = [];
+    const onAccepted = vi.fn();
     server.use(
       http.post(
         `${TEST_SIDECAR_URL}/api/library/ingest`,
@@ -84,7 +85,10 @@ describe("AddLibraryItemDialog", () => {
       ),
       http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
     );
-    renderDialog();
+    renderDialog({
+      initial: { tab: "web", courseId: "course-prefilled" },
+      onAccepted,
+    });
     const urlInput = screen.getByLabelText("网页地址");
     fireEvent.change(urlInput, {
       target: { value: "https://example.com/article" },
@@ -93,9 +97,11 @@ describe("AddLibraryItemDialog", () => {
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({
       source: "web",
+      course_id: "course-prefilled",
       url: "https://example.com/article",
       allow_duplicate: false,
     });
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledWith(ACCEPTED));
   });
 
   it("判重 409 展示打开已有/仍然保留，保留时携带 allow_duplicate 重发", async () => {

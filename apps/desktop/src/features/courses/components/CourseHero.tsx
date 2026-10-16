@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { ChevronRight, FolderOpen, Info, Star } from "lucide-react";
+import { FolderOpen, Info, PlusCircle, Star } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { appToast } from "@/components/common/appToastManager";
@@ -55,6 +55,7 @@ type CourseHeroProps = {
   latestRecordId?: string;
   /** 窄窗口下打开课程信息 Sheet；宽窗口由页面右栏承担。 */
   onOpenInfo?: () => void;
+  onAddMaterials: () => void;
   className?: string;
 };
 
@@ -62,6 +63,7 @@ export function CourseHero({
   course,
   latestRecordId,
   onOpenInfo,
+  onAddMaterials,
   className,
 }: CourseHeroProps) {
   const { t } = useTranslation();
@@ -85,34 +87,38 @@ export function CourseHero({
   }
 
   return (
-    <header
-      className={`flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:gap-5 ${className ?? ""}`}
-    >
-      <div className="size-24 shrink-0 overflow-hidden rounded-lg">
+    <header className={`course-hero ${className ?? ""}`}>
+      <div className="course-detail-cover">
         <CourseCoverArt course={course} />
+        <span>
+          {course.name.match(/[A-Za-z][A-Za-z0-9.+#-]*/)?.[0] ??
+            course.name.slice(0, 6)}
+        </span>
       </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div className="flex min-w-0 flex-col gap-3">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="text-headline font-headline text-ink-strong min-w-0 break-words">
-              {course.name}
-            </h1>
+            <h1 className="course-name">{course.name}</h1>
             <CourseStatusTag course={course} />
           </div>
           <CourseMetaTags course={course} className="mt-2" />
           <p
-            className="text-body text-muted-foreground max-w-reading mt-2 line-clamp-2"
+            className="course-description text-body text-muted-foreground mt-2 line-clamp-2"
             title={description}
           >
             {description}
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="course-hero-actions">
+          <Button className="course-open-button" onClick={openCourse}>
+            <FolderOpen data-icon="inline-start" aria-hidden="true" />
+            {t("spaces.courseDetail.hero.openCourse")}
+          </Button>
           {onOpenInfo ? (
             <Button
               variant="outline"
               size="sm"
-              className="xl:hidden"
+              className="course-info-trigger"
               onClick={onOpenInfo}
             >
               <Info data-icon="inline-start" aria-hidden="true" />
@@ -134,10 +140,14 @@ export function CourseHero({
               ? t("spaces.courseDetail.hero.following")
               : t("spaces.courseDetail.hero.follow")}
           </Button>
-          <Button size="sm" onClick={openCourse}>
-            <FolderOpen data-icon="inline-start" aria-hidden="true" />
-            {t("spaces.courseDetail.hero.openCourse")}
-            <ChevronRight data-icon="inline-end" aria-hidden="true" />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={course.status === "ARCHIVED"}
+            onClick={onAddMaterials}
+          >
+            <PlusCircle data-icon="inline-start" aria-hidden="true" />
+            {t("spaces.courseDetail.hero.addMaterials")}
           </Button>
         </div>
       </div>

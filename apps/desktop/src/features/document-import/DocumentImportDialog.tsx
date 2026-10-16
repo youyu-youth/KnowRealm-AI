@@ -37,6 +37,7 @@ type ImportVariables = {
 };
 
 type DocumentImportDialogProps = {
+  initialCourseId?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAccepted: (result: CaptureBatchAccepted) => void | Promise<void>;
@@ -46,11 +47,12 @@ export function DocumentImportDialog({
   open,
   onOpenChange,
   onAccepted,
+  initialCourseId = null,
 }: DocumentImportDialogProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const fileInput = useRef<HTMLInputElement>(null);
-  const [courseId, setCourseId] = useState<string | null>(null);
+  const [courseId, setCourseId] = useState<string | null>(initialCourseId);
   const [files, setFiles] = useState<File[]>([]);
   const courses = useQuery({
     queryKey: courseKeys.list(),

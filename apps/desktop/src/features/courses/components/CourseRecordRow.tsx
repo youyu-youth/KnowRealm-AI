@@ -89,6 +89,11 @@ export function CourseRecordRow({
           ) : null}
         </span>
       </span>
+      {variant === "compact" ? (
+        <span className="course-record-open" aria-hidden="true">
+          {t("spaces.courseDetail.recentRecords.open")}
+        </span>
+      ) : null}
       {variant === "full" ? (
         <span
           className={cn(

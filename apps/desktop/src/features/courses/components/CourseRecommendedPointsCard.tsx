@@ -1,4 +1,4 @@
-import { FileText, RefreshCw } from "lucide-react";
+import { ArrowUpRight, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { appToast } from "@/components/common/appToastManager";
@@ -21,7 +21,7 @@ export function CourseRecommendedPointsCard({
   );
 
   return (
-    <section className="flex min-w-0 flex-col">
+    <section className="course-recommendations">
       <header className="flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <h2 className="text-section font-section text-ink-strong min-w-0 truncate">
@@ -41,19 +41,12 @@ export function CourseRecommendedPointsCard({
           {t("spaces.courseDetail.recommend.refresh")}
         </Button>
       </header>
-      <ul
-        key={batch}
-        className="view-switch-enter border-border-subtle divide-border-subtle mt-2 flex flex-col divide-y border-t"
-      >
-        {points.map((point) => (
-          <li
-            key={point.id}
-            className="hover:bg-surface-subtle flex min-w-0 items-center gap-3 rounded-md py-2.5 transition-colors duration-[120ms]"
-          >
-            <FileText
-              className="text-ink-faint size-4 shrink-0"
-              aria-hidden="true"
-            />
+      <ul key={batch} className="course-recommendations-list">
+        {points.map((point, index) => (
+          <li key={point.id} className="course-recommendation">
+            <span className="course-recommendation-index" aria-hidden="true">
+              {String(index + 1).padStart(2, "0")}
+            </span>
             <div className="min-w-0 flex-1">
               <p
                 className="text-body-dense text-ink-strong truncate font-medium"
@@ -72,14 +65,15 @@ export function CourseRecommendedPointsCard({
             <Button
               variant="ghost"
               size="sm"
-              className="shrink-0"
+              className="course-recommendation-action shrink-0"
+              aria-label={`${t("spaces.courseDetail.recommend.go")} ${t(point.titleKey)}`}
               onClick={() =>
                 appToast.add({
                   description: t("spaces.courseDetail.recommend.sampleToast"),
                 })
               }
             >
-              {t("spaces.courseDetail.recommend.go")}
+              <ArrowUpRight aria-hidden="true" />
             </Button>
           </li>
         ))}

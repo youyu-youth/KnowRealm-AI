@@ -383,13 +383,17 @@ describe("Course Brain 页面", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { name: "概念分布" }),
+      await screen.findByRole("heading", { name: "知识的轮廓" }),
     ).toBeInTheDocument();
     expect(
       await screen.findByRole("img", {
-        name: "「操作系统」概念重要度分布玫瑰图",
+        name: "「操作系统」核心概念出现次数分布",
       }),
     ).toBeInTheDocument();
     expect(screen.getAllByText("6 次出现").length).toBeGreaterThan(0);
+    const toggle = screen.getByRole("button", { name: "切换条形图 / 玫瑰图" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
   });
 });

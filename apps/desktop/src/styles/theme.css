@@ -1,4 +1,6 @@
 :root {
+  --course-accent: light-dark(#68734e, #bccb99);
+  --course-soft: color-mix(in oklch, var(--course-accent) 8%, var(--paper));
   --library-ink: light-dark(#111b49, #e3e8ff);
   --library-muted: light-dark(#52618b, #b6c0dd);
   --library-format-pdf: light-dark(#9c493d, #e9a497);

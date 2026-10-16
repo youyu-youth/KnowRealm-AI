@@ -821,8 +821,10 @@
           "tooltipMastery": "Mastery: {{status}}"
         },
         "rose": {
-          "title": "Concept distribution",
-          "aria": "Concept importance distribution rose chart for {{course}}"
+          "title": "Knowledge outline",
+          "aria": "Core concept occurrence distribution for {{course}}",
+          "frequency": "Occurrences",
+          "toggle": "Switch bar / rose chart"
         },
         "view": {
           "graph": "Graph",
@@ -955,6 +957,7 @@
         "myCourses": "My courses"
       },
       "hero": {
+        "addMaterials": "Add material",
         "follow": "Follow",
         "following": "Following",
         "openCourse": "Open course",
@@ -991,6 +994,9 @@
         "quizSetsUnit": "sets"
       },
       "gps": {
+        "evidenceEmptyTitle": "More learning evidence needed",
+        "evidenceTitle": "Learning evidence is growing",
+        "evidenceDescription": "{{total}} confirmed concepts, {{verified}} with verified evidence. Keep learning and practicing to improve coverage.",
         "title": "Knowledge GPS · Mastery",
         "tabTitle": "Knowledge GPS · Mastery",
         "confirmedConcepts": "Confirmed concepts",
@@ -1059,8 +1065,18 @@
         "sampleToast": "Sample data: this study entry opens once the knowledge point domain is available."
       },
       "recentRecords": {
+        "actions": "Record actions for {{title}}",
+        "open": "Open",
         "title": "Recent learning records",
         "unavailable": "Learning records are unavailable right now."
+      },
+      "navigation": "Course navigation",
+      "capture": {
+        "label": "Capture course material",
+        "clip": "Web clip",
+        "hint": "Bring documents, text, web pages and recordings into this course",
+        "local": "Stored locally",
+        "archived": "Restore this archived course to add material"
       },
       "chat": {
         "title": "Course chat",

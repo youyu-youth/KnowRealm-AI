@@ -1,4 +1,15 @@
 @theme inline {
+  --color-course-accent: var(--course-accent);
+  --color-course-soft: var(--course-soft);
+  --spacing-course-rail: 17.5rem;
+  --spacing-course-contour: 14rem;
+  --spacing-course-cover: 8.25rem;
+  --text-course-title: 2.25rem;
+  --text-course-title--line-height: 1.25;
+  --text-course-section: 1.125rem;
+  --text-course-section--line-height: 1.5;
+  --text-course-stat: 2.125rem;
+  --font-course-display: Georgia, "Noto Serif SC", "SimSun", serif;
   --color-library-ink: var(--library-ink);
   --color-library-muted: var(--library-muted);
   --color-library-format-pdf: var(--library-format-pdf);

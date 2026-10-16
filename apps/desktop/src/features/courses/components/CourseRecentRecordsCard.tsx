@@ -1,9 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, MoreVertical } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { SurfaceCard } from "@/components/common/SurfaceCard";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { CourseRecordRow } from "@/features/courses/components/CourseRecordRow";
 import { recordKeys } from "@/features/records/api/keys";
 import { recordApi } from "@/features/records/api/records";
@@ -17,6 +24,7 @@ export function CourseRecentRecordsCard({
   onViewAll: () => void;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const records = useQuery({
     queryKey: recordKeys.courseList(courseId),
     queryFn: () => recordApi.listForCourse(courseId),
@@ -27,6 +35,7 @@ export function CourseRecentRecordsCard({
 
   return (
     <SurfaceCard
+      className="course-overview-section course-recent-records"
       title={t("spaces.courseDetail.recentRecords.title")}
       action={
         records.data && records.data.length > 0 ? (
@@ -46,9 +55,18 @@ export function CourseRecentRecordsCard({
           {t("spaces.records.loading")}
         </p>
       ) : records.isError ? (
-        <p className="text-body-dense text-ink-muted mt-3">
-          {t("spaces.courseDetail.recentRecords.unavailable")}
-        </p>
+        <div className="mt-3 flex flex-col items-start gap-2">
+          <p role="alert" className="text-body-dense text-ink-muted">
+            {t("spaces.courseDetail.recentRecords.unavailable")}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void records.refetch()}
+          >
+            {t("spaces.detail.retry")}
+          </Button>
+        </div>
       ) : recent.length === 0 ? (
         <p className="text-body-dense text-ink-muted mt-3">
           {t("spaces.records.emptyTitle")}
@@ -56,8 +74,44 @@ export function CourseRecentRecordsCard({
       ) : (
         <ul className="mt-1 flex flex-col gap-1">
           {recent.map((record) => (
-            <li key={record.id} className="min-w-0">
-              <CourseRecordRow record={record} variant="compact" />
+            <li key={record.id} className="flex min-w-0 items-center">
+              <div className="min-w-0 flex-1">
+                <CourseRecordRow record={record} variant="compact" />
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t(
+                        "spaces.courseDetail.recentRecords.actions",
+                        {
+                          title:
+                            record.title.trim() || t("spaces.records.untitled"),
+                        },
+                      )}
+                    />
+                  }
+                >
+                  <MoreVertical aria-hidden="true" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() =>
+                      void navigate({
+                        to: "/records/$recordId",
+                        params: { recordId: record.id },
+                      })
+                    }
+                  >
+                    {t("spaces.courseDetail.recentRecords.open")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={onViewAll}>
+                    {t("spaces.insights.viewAll")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           ))}
         </ul>

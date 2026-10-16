@@ -22,6 +22,7 @@ export function CourseMasteryGpsCard({
 
   return (
     <SurfaceCard
+      className="course-overview-section course-mastery"
       title={t("spaces.courseDetail.gps.title")}
       action={
         <Button variant="ghost" size="sm" onClick={onViewAll}>
@@ -70,29 +71,46 @@ export function CourseMasteryGpsCard({
           </div>
         ) : (
           <div className="mt-3 flex min-w-0 flex-col gap-4">
-            <dl className="border-border-subtle grid grid-cols-2 gap-x-4 border-b pb-3">
-              <div className="min-w-0">
-                <dd className="text-stat font-section text-ink-strong tabular-nums">
-                  {mastery.data.confirmed_concept_count}
-                </dd>
-                <dt className="text-label text-ink-muted mt-0.5">
-                  {t("spaces.courseDetail.gps.confirmedConcepts")}
-                </dt>
-              </div>
-              <div className="min-w-0">
-                <dd className="text-stat font-section text-ink-strong tabular-nums">
-                  {t("spaces.courseDetail.gps.percentValue", {
-                    percent: Math.round(mastery.data.coverage * 100),
+            <div className="course-mastery-summary">
+              <dl className="grid grid-cols-2 gap-x-4">
+                <div className="min-w-0">
+                  <dd className="course-stat">
+                    {mastery.data.confirmed_concept_count}
+                  </dd>
+                  <dt className="text-label text-ink-muted mt-0.5">
+                    {t("spaces.courseDetail.gps.confirmedConcepts")}
+                  </dt>
+                </div>
+                <div className="min-w-0">
+                  <dd className="course-stat">
+                    {t("spaces.courseDetail.gps.percentValue", {
+                      percent: Math.round(mastery.data.coverage * 100),
+                    })}
+                  </dd>
+                  <dt className="text-label text-ink-muted mt-0.5">
+                    {t("spaces.courseDetail.gps.coverage")}
+                  </dt>
+                </div>
+              </dl>
+              <div className="course-mastery-description">
+                <p className="text-body-dense font-medium">
+                  {t(
+                    mastery.data.verified_concept_count === 0
+                      ? "spaces.courseDetail.gps.evidenceEmptyTitle"
+                      : "spaces.courseDetail.gps.evidenceTitle",
+                  )}
+                </p>
+                <p className="text-label text-ink-muted mt-1">
+                  {t("spaces.courseDetail.gps.evidenceDescription", {
+                    total: mastery.data.confirmed_concept_count,
+                    verified: mastery.data.verified_concept_count,
                   })}
-                </dd>
-                <dt className="text-label text-ink-muted mt-0.5">
-                  {t("spaces.courseDetail.gps.coverage")}
-                </dt>
+                </p>
               </div>
-            </dl>
+            </div>
             <MasteryStatusCounts
               counts={mastery.data.status_counts}
-              className="grid grid-cols-2 gap-x-4 gap-y-2"
+              className="course-mastery-counts"
               itemClassName="gap-2"
               valueClassName="w-6 shrink-0"
             />
