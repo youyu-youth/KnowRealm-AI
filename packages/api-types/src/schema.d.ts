@@ -5874,7 +5874,7 @@ export interface components {
              * Dark Theme Id
              * @enum {string}
              */
-            dark_theme_id: "DARK_DEFAULT" | "DARK_INK";
+            dark_theme_id: "DARK_DEFAULT" | "DARK_INK" | "DARK_TOKYO_NIGHT";
             /**
              * Font Scale
              * @enum {string}
@@ -5896,7 +5896,7 @@ export interface components {
              * Light Theme Id
              * @enum {string}
              */
-            light_theme_id: "LIGHT_DEFAULT" | "LIGHT_SAGE";
+            light_theme_id: "LIGHT_DEFAULT" | "LIGHT_SAGE" | "LIGHT_RETRO_WARM";
             /** Quick Note Shortcut */
             quick_note_shortcut: string;
             /** Quiz Last Count */
@@ -5929,7 +5929,7 @@ export interface components {
              * Dark Theme Id
              * @description 暗黑主题 ID
              */
-            dark_theme_id?: ("DARK_DEFAULT" | "DARK_INK") | null;
+            dark_theme_id?: ("DARK_DEFAULT" | "DARK_INK" | "DARK_TOKYO_NIGHT") | null;
             /**
              * Font Scale
              * @description 字号档位
@@ -5954,7 +5954,7 @@ export interface components {
              * Light Theme Id
              * @description 明亮主题 ID
              */
-            light_theme_id?: ("LIGHT_DEFAULT" | "LIGHT_SAGE") | null;
+            light_theme_id?: ("LIGHT_DEFAULT" | "LIGHT_SAGE" | "LIGHT_RETRO_WARM") | null;
             /**
              * Quick Note Shortcut
              * @description 速记快捷键 accelerator

@@ -20,6 +20,10 @@ export const APPEARANCE_THEMES = {
       preview: ["#eff1f4", "#fafafb", "#ffffff", "#1a1c20"],
     },
     { id: "LIGHT_SAGE", preview: ["#e8eeec", "#f5f8f6", "#ffffff", "#263c35"] },
+    {
+      id: "LIGHT_RETRO_WARM",
+      preview: ["#f4e7bf", "#fbf1c7", "#fff7d6", "#458588"],
+    },
   ],
   DARK: [
     {
@@ -27,6 +31,10 @@ export const APPEARANCE_THEMES = {
       preview: ["#0d0f12", "#131519", "#20242a", "#f2f4f7"],
     },
     { id: "DARK_INK", preview: ["#0e1620", "#15212e", "#213244", "#e7eef7"] },
+    {
+      id: "DARK_TOKYO_NIGHT",
+      preview: ["#161722", "#1a1b26", "#24283b", "#3d59a1"],
+    },
   ],
 } as const satisfies {
   LIGHT: readonly {

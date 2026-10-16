@@ -8,8 +8,8 @@ from app.modules.settings.model_budget import ModelBudgetConfig, ModelCapability
 
 QUIZ_COUNT_CHOICES = (3, 5, 10)
 
-LightThemeId = Literal["LIGHT_DEFAULT", "LIGHT_SAGE"]
-DarkThemeId = Literal["DARK_DEFAULT", "DARK_INK"]
+LightThemeId = Literal["LIGHT_DEFAULT", "LIGHT_SAGE", "LIGHT_RETRO_WARM"]
+DarkThemeId = Literal["DARK_DEFAULT", "DARK_INK", "DARK_TOKYO_NIGHT"]
 
 
 class ExternalProcessingConsentOut(BaseModel):

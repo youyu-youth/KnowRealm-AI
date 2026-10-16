@@ -966,106 +966,120 @@ describe("独立主题选择", () => {
     delete document.documentElement.dataset.theme;
   });
 
-  it("当前组立即应用、保存中禁止冲突，另一组只保存并在切换模式时恢复", async () => {
-    let current: PreferencesOut = { ...DEFAULT_PREFERENCES, theme: "LIGHT" };
-    let release: (() => void) | undefined;
-    let delay = true;
-    const bodies: object[] = [];
-    server.use(
-      http.get(PREFERENCES_URL, () => HttpResponse.json(current)),
-      http.put(PREFERENCES_URL, async ({ request }) => {
-        const patch = (await request.json()) as object;
-        bodies.push(patch);
-        if (delay)
-          await new Promise<void>((resolve) => {
-            release = resolve;
-          });
-        current = { ...current, ...patch };
-        return HttpResponse.json(current);
-      }),
-    );
-    renderAt("/settings?section=appearance");
-    fireEvent.click(await screen.findByRole("radio", { name: "柔和青灰" }));
-    await waitFor(() =>
-      expect(document.documentElement.dataset.theme).toBe("LIGHT_SAGE"),
-    );
-    expect(screen.getByRole("radio", { name: "克制墨蓝" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByRole("radio", { name: "深色" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(current.light_theme_id).toBe("LIGHT_DEFAULT");
-    await waitFor(() => expect(release).toBeDefined());
-    delay = false;
-    act(() => release?.());
-    await waitFor(() =>
-      expect(
-        screen.getByRole("radio", { name: "克制墨蓝" }),
-      ).not.toHaveAttribute("aria-disabled", "true"),
-    );
-    fireEvent.click(screen.getByRole("radio", { name: "克制墨蓝" }));
-    await waitFor(() => expect(current.dark_theme_id).toBe("DARK_INK"));
-    expect(document.documentElement.dataset.theme).toBe("LIGHT_SAGE");
-    await waitFor(() =>
-      expect(screen.getByRole("radio", { name: "深色" })).not.toHaveAttribute(
+  it.each([
+    ["柔和青灰", "LIGHT_SAGE", "克制墨蓝", "DARK_INK"],
+    ["复古暖黄", "LIGHT_RETRO_WARM", "Tokyo Night Dark", "DARK_TOKYO_NIGHT"],
+  ])(
+    "%s 当前组立即应用、另一组只保存并在切换模式时恢复",
+    async (lightName, lightId, darkName, darkId) => {
+      let current: PreferencesOut = { ...DEFAULT_PREFERENCES, theme: "LIGHT" };
+      let release: (() => void) | undefined;
+      let delay = true;
+      const bodies: object[] = [];
+      server.use(
+        http.get(PREFERENCES_URL, () => HttpResponse.json(current)),
+        http.put(PREFERENCES_URL, async ({ request }) => {
+          const patch = (await request.json()) as object;
+          bodies.push(patch);
+          if (delay)
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          current = { ...current, ...patch };
+          return HttpResponse.json(current);
+        }),
+      );
+      renderAt("/settings?section=appearance");
+      fireEvent.click(await screen.findByRole("radio", { name: lightName }));
+      await waitFor(() =>
+        expect(document.documentElement.dataset.theme).toBe(lightId),
+      );
+      expect(screen.getByRole("radio", { name: darkName })).toHaveAttribute(
         "aria-disabled",
         "true",
-      ),
-    );
-    fireEvent.click(screen.getByRole("radio", { name: "深色" }));
-    await waitFor(() =>
-      expect(document.documentElement.dataset.theme).toBe("DARK_INK"),
-    );
-    await waitFor(() => expect(bodies).toHaveLength(3));
-    expect(bodies).toEqual([
-      { light_theme_id: "LIGHT_SAGE" },
-      { dark_theme_id: "DARK_INK" },
-      { theme: "DARK" },
-    ]);
-    expect(screen.getByRole("radio", { name: "柔和青灰" })).toBeChecked();
-  }, 15_000);
+      );
+      expect(screen.getByRole("radio", { name: "深色" })).toHaveAttribute(
+        "aria-disabled",
+        "true",
+      );
+      expect(current.light_theme_id).toBe("LIGHT_DEFAULT");
+      await waitFor(() => expect(release).toBeDefined());
+      delay = false;
+      act(() => release?.());
+      await waitFor(() =>
+        expect(
+          screen.getByRole("radio", { name: darkName }),
+        ).not.toHaveAttribute("aria-disabled", "true"),
+      );
+      fireEvent.click(screen.getByRole("radio", { name: darkName }));
+      await waitFor(() => expect(current.dark_theme_id).toBe(darkId));
+      expect(document.documentElement.dataset.theme).toBe(lightId);
+      await waitFor(() =>
+        expect(screen.getByRole("radio", { name: "深色" })).not.toHaveAttribute(
+          "aria-disabled",
+          "true",
+        ),
+      );
+      fireEvent.click(screen.getByRole("radio", { name: "深色" }));
+      await waitFor(() =>
+        expect(document.documentElement.dataset.theme).toBe(darkId),
+      );
+      await waitFor(() => expect(bodies).toHaveLength(3));
+      expect(bodies).toEqual([
+        { light_theme_id: lightId },
+        { dark_theme_id: darkId },
+        { theme: "DARK" },
+      ]);
+      expect(screen.getByRole("radio", { name: lightName })).toBeChecked();
+    },
+    15_000,
+  );
 
-  it("失败后读回可能已提交的事实并允许重试；读回失败则保留最后确认值", async () => {
-    let current: PreferencesOut = { ...DEFAULT_PREFERENCES, theme: "LIGHT" };
-    let fail = true;
-    let unreadable = false;
-    server.use(
-      http.get(PREFERENCES_URL, () =>
-        unreadable ? HttpResponse.error() : HttpResponse.json(current),
-      ),
-      http.put(PREFERENCES_URL, async ({ request }) => {
-        const patch = (await request.json()) as object;
-        if (!unreadable) current = { ...current, ...patch };
-        return fail ? HttpResponse.error() : HttpResponse.json(current);
-      }),
-    );
-    renderAt("/settings?section=appearance");
-    fireEvent.click(await screen.findByRole("radio", { name: "柔和青灰" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "主题保存遇到问题",
-    );
-    expect(screen.getByRole("radio", { name: "柔和青灰" })).toBeChecked();
-    expect(document.documentElement.dataset.theme).toBe("LIGHT_SAGE");
-    fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("radio", { name: "默认明亮" }),
-      ).not.toHaveAttribute("aria-disabled", "true"),
-    );
-    fail = true;
-    unreadable = true;
-    fireEvent.click(screen.getByRole("radio", { name: "默认明亮" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "主题保存遇到问题",
-    );
-    expect(screen.getByRole("radio", { name: "柔和青灰" })).toBeChecked();
-    expect(document.documentElement.dataset.theme).toBe("LIGHT_SAGE");
-  }, 15_000);
+  it.each([
+    ["柔和青灰", "LIGHT_SAGE"],
+    ["复古暖黄", "LIGHT_RETRO_WARM"],
+  ])(
+    "%s 失败后读回事实并允许重试；读回失败保留最后确认值",
+    async (lightName, lightId) => {
+      let current: PreferencesOut = { ...DEFAULT_PREFERENCES, theme: "LIGHT" };
+      let fail = true;
+      let unreadable = false;
+      server.use(
+        http.get(PREFERENCES_URL, () =>
+          unreadable ? HttpResponse.error() : HttpResponse.json(current),
+        ),
+        http.put(PREFERENCES_URL, async ({ request }) => {
+          const patch = (await request.json()) as object;
+          if (!unreadable) current = { ...current, ...patch };
+          return fail ? HttpResponse.error() : HttpResponse.json(current);
+        }),
+      );
+      renderAt("/settings?section=appearance");
+      fireEvent.click(await screen.findByRole("radio", { name: lightName }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "主题保存遇到问题",
+      );
+      expect(screen.getByRole("radio", { name: lightName })).toBeChecked();
+      expect(document.documentElement.dataset.theme).toBe(lightId);
+      fail = false;
+      fireEvent.click(screen.getByRole("button", { name: "重试" }));
+      await waitFor(() =>
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+      );
+      await waitFor(() =>
+        expect(
+          screen.getByRole("radio", { name: "默认明亮" }),
+        ).not.toHaveAttribute("aria-disabled", "true"),
+      );
+      fail = true;
+      unreadable = true;
+      fireEvent.click(screen.getByRole("radio", { name: "默认明亮" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "主题保存遇到问题",
+      );
+      expect(screen.getByRole("radio", { name: lightName })).toBeChecked();
+      expect(document.documentElement.dataset.theme).toBe(lightId);
+    },
+    15_000,
+  );
 });

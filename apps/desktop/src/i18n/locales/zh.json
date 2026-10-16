@@ -3097,7 +3097,9 @@
         "LIGHT_DEFAULT": "默认明亮",
         "LIGHT_SAGE": "柔和青灰",
         "DARK_DEFAULT": "默认暗黑",
-        "DARK_INK": "克制墨蓝"
+        "DARK_INK": "克制墨蓝",
+        "LIGHT_RETRO_WARM": "复古暖黄",
+        "DARK_TOKYO_NIGHT": "Tokyo Night Dark"
       },
       "savingTheme": "正在保存主题…",
       "themeSaveFailed": "主题保存遇到问题，已恢复可确认的外观。请重试。",

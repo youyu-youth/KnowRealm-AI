@@ -7543,7 +7543,8 @@
           "dark_theme_id": {
             "enum": [
               "DARK_DEFAULT",
-              "DARK_INK"
+              "DARK_INK",
+              "DARK_TOKYO_NIGHT"
             ],
             "title": "Dark Theme Id",
             "type": "string"
@@ -7587,7 +7588,8 @@
           "light_theme_id": {
             "enum": [
               "LIGHT_DEFAULT",
-              "LIGHT_SAGE"
+              "LIGHT_SAGE",
+              "LIGHT_RETRO_WARM"
             ],
             "title": "Light Theme Id",
             "type": "string"
@@ -7674,7 +7676,8 @@
               {
                 "enum": [
                   "DARK_DEFAULT",
-                  "DARK_INK"
+                  "DARK_INK",
+                  "DARK_TOKYO_NIGHT"
                 ],
                 "type": "string"
               },
@@ -7751,7 +7754,8 @@
               {
                 "enum": [
                   "LIGHT_DEFAULT",
-                  "LIGHT_SAGE"
+                  "LIGHT_SAGE",
+                  "LIGHT_RETRO_WARM"
                 ],
                 "type": "string"
               },

@@ -150,7 +150,7 @@ export function TodayOverview() {
             <TabsTrigger
               value="workbench"
               aria-keyshortcuts="Control+1"
-              className="data-active:bg-primary data-active:text-today-primary-foreground dark:data-active:bg-today-accent dark:data-active:text-today-primary-foreground hover:bg-today-soft gap-2 px-3 py-1.5 focus-visible:ring-2"
+              className="data-active:bg-today-tab-selected data-active:text-today-primary-foreground dark:data-active:bg-today-tab-selected dark:data-active:text-today-primary-foreground hover:bg-today-soft gap-2 px-3 py-1.5 focus-visible:ring-2"
             >
               {t("today.workspace.workbench")}
               <kbd className="text-label font-sans opacity-80">Ctrl 1</kbd>
@@ -158,7 +158,7 @@ export function TodayOverview() {
             <TabsTrigger
               value="orbit"
               aria-keyshortcuts="Control+2"
-              className="data-active:bg-primary data-active:text-today-primary-foreground dark:data-active:bg-today-accent dark:data-active:text-today-primary-foreground hover:bg-today-soft gap-2 px-3 py-1.5 focus-visible:ring-2"
+              className="data-active:bg-today-tab-selected data-active:text-today-primary-foreground dark:data-active:bg-today-tab-selected dark:data-active:text-today-primary-foreground hover:bg-today-soft gap-2 px-3 py-1.5 focus-visible:ring-2"
             >
               {t("today.workspace.orbit")}
               <kbd className="text-label font-sans opacity-80">Ctrl 2</kbd>

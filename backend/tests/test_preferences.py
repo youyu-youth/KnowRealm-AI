@@ -112,8 +112,14 @@ async def test_corrupt_layout_falls_back_without_rewriting_file(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "light,dark",
+    [("LIGHT_SAGE", "DARK_INK"), ("LIGHT_RETRO_WARM", "DARK_TOKYO_NIGHT")],
+)
 async def test_independent_themes_preserve_mode_and_reset_by_removing_only_default_keys(
     tmp_path: Path,
+    light: str,
+    dark: str,
 ) -> None:
     write_settings(tmp_path, {"theme": "DARK", "language": "en", "custom": {"kept": True}})
     async with running_app(tmp_path) as (_app, client):
@@ -124,17 +130,17 @@ async def test_independent_themes_preserve_mode_and_reset_by_removing_only_defau
             "language": "en",
             "custom": {"kept": True},
         }
-        for patch in ({"light_theme_id": "LIGHT_SAGE"}, {"dark_theme_id": "DARK_INK"}):
+        for patch in ({"light_theme_id": light}, {"dark_theme_id": dark}):
             assert (await client.put("/api/settings/preferences", json=patch)).status_code == 200
         for mode in ("LIGHT", "DARK", "SYSTEM"):
             result = await client.put("/api/settings/preferences", json={"theme": mode})
-            assert result.json()["light_theme_id"] == "LIGHT_SAGE"
-            assert result.json()["dark_theme_id"] == "DARK_INK"
+            assert result.json()["light_theme_id"] == light
+            assert result.json()["dark_theme_id"] == dark
         await client.put("/api/settings/preferences", json={"light_theme_id": "LIGHT_DEFAULT"})
         reread = await client.get("/api/settings/preferences")
-    assert reread.json() == {**DEFAULTS, "dark_theme_id": "DARK_INK", "language": "en"}
+    assert reread.json() == {**DEFAULTS, "dark_theme_id": dark, "language": "en"}
     assert read_settings(tmp_path) == {
-        "dark_theme_id": "DARK_INK",
+        "dark_theme_id": dark,
         "language": "en",
         "custom": {"kept": True},
     }
@@ -146,6 +152,8 @@ async def test_independent_themes_preserve_mode_and_reset_by_removing_only_defau
     [
         ("light_theme_id", "dark_theme_id", "DARK_INK", "DARK_INK"),
         ("dark_theme_id", "light_theme_id", "LIGHT_SAGE", "LIGHT_SAGE"),
+        ("light_theme_id", "dark_theme_id", "DARK_TOKYO_NIGHT", "DARK_TOKYO_NIGHT"),
+        ("dark_theme_id", "light_theme_id", "LIGHT_RETRO_WARM", "LIGHT_RETRO_WARM"),
     ],
 )
 @pytest.mark.parametrize("invalid", [None, "", "REMOVED", "wrong-mode", [], {}])
@@ -349,6 +357,8 @@ async def test_put_empty_body_keeps_everything_unchanged(tmp_path: Path) -> None
         {"dark_theme_id": "REMOVED"},
         {"light_theme_id": "DARK_INK"},
         {"dark_theme_id": "LIGHT_SAGE"},
+        {"light_theme_id": "DARK_TOKYO_NIGHT"},
+        {"dark_theme_id": "LIGHT_RETRO_WARM"},
         {"font_scale": None},
         {"close_behavior": None},
         {"autostart": None},

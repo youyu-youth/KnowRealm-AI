@@ -68,6 +68,8 @@
   --color-today-border: var(--today-border);
   --color-today-primary: var(--today-primary);
   --color-today-primary-foreground: var(--today-primary-foreground);
+  --color-today-tab-selected: var(--today-tab-selected);
+  --color-today-filter-selected: var(--today-filter-selected);
   --color-today-focus: var(--today-focus);
   --text-today-section: 1.125rem;
   --text-today-section--line-height: 1.4;

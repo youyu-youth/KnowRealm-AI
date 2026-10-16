@@ -118,7 +118,7 @@ export function TodayPending({
             <TabsTrigger
               key={value}
               value={value}
-              className="bg-today-soft data-active:bg-primary data-active:text-today-primary-foreground dark:data-active:bg-today-primary dark:data-active:text-today-primary-foreground text-label h-7 flex-none gap-1 px-2 py-1.5"
+              className="bg-today-soft data-active:bg-today-filter-selected data-active:text-today-primary-foreground dark:data-active:bg-today-filter-selected dark:data-active:text-today-primary-foreground text-label h-7 flex-none gap-1 px-2 py-1.5"
             >
               {t(`today.workspace.${key}`)}
               <span className="tabular-nums">

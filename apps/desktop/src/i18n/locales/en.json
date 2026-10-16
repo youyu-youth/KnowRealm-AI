@@ -3126,7 +3126,9 @@
         "LIGHT_DEFAULT": "Default light",
         "LIGHT_SAGE": "Soft sage",
         "DARK_DEFAULT": "Default dark",
-        "DARK_INK": "Quiet ink"
+        "DARK_INK": "Quiet ink",
+        "LIGHT_RETRO_WARM": "Retro warm",
+        "DARK_TOKYO_NIGHT": "Tokyo Night Dark"
       },
       "savingTheme": "Saving theme…",
       "themeSaveFailed": "There was a problem saving the theme. Using the confirmed appearance. Please retry.",
