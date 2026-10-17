@@ -960,8 +960,7 @@
         "addMaterials": "Add material",
         "follow": "Follow",
         "following": "Following",
-        "openCourse": "Open course",
-        "noRecordsToast": "No records yet. Use Note or Record in the top bar to create the first one."
+        "viewDetails": "View course details"
       },
       "chain": {
         "label": "Learning chain",
@@ -1093,7 +1092,7 @@
         "recentLearning": "Last studied",
         "resources": "Resources",
         "addTag": "Add tag",
-        "sheetDescription": "Review course fields, key terms, and resources."
+        "sheetDescription": "Review course details and related resources."
       },
       "mock": {
         "chapters": {

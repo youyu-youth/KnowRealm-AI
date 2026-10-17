@@ -1,8 +1,6 @@
-import { useNavigate } from "@tanstack/react-router";
-import { FolderOpen, Info, PlusCircle, Star } from "lucide-react";
+import { Info, PlusCircle, Star } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { appToast } from "@/components/common/appToastManager";
 import { Button } from "@/components/ui/button";
 import type { CourseDetail } from "@/features/courses/api/types";
 import { courseDetailSeed } from "@/features/courses/courseDetailInsights";
@@ -51,40 +49,22 @@ function CourseCoverArt({ course }: { course: CourseDetail }) {
 
 type CourseHeroProps = {
   course: CourseDetail;
-  /** 最近一条学习记录；无记录时为空。 */
-  latestRecordId?: string;
-  /** 窄窗口下打开课程信息 Sheet；宽窗口由页面右栏承担。 */
-  onOpenInfo?: () => void;
+  onOpenInfo: () => void;
   onAddMaterials: () => void;
   className?: string;
 };
 
 export function CourseHero({
   course,
-  latestRecordId,
   onOpenInfo,
   onAddMaterials,
   className,
 }: CourseHeroProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [following, setFollowing] = useState(false);
 
   const description =
     course.description?.trim() || t("spaces.detail.noDescription");
-
-  function openCourse() {
-    if (latestRecordId) {
-      void navigate({
-        to: "/records/$recordId",
-        params: { recordId: latestRecordId },
-      });
-      return;
-    }
-    appToast.add({
-      description: t("spaces.courseDetail.hero.noRecordsToast"),
-    });
-  }
 
   return (
     <header className={`course-hero ${className ?? ""}`}>
@@ -110,21 +90,10 @@ export function CourseHero({
           </p>
         </div>
         <div className="course-hero-actions">
-          <Button className="course-open-button" onClick={openCourse}>
-            <FolderOpen data-icon="inline-start" aria-hidden="true" />
-            {t("spaces.courseDetail.hero.openCourse")}
+          <Button className="course-open-button" onClick={onOpenInfo}>
+            <Info data-icon="inline-start" aria-hidden="true" />
+            {t("spaces.courseDetail.hero.viewDetails")}
           </Button>
-          {onOpenInfo ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="course-info-trigger"
-              onClick={onOpenInfo}
-            >
-              <Info data-icon="inline-start" aria-hidden="true" />
-              {t("spaces.detail.infoTitle")}
-            </Button>
-          ) : null}
           <Button
             variant="outline"
             size="sm"

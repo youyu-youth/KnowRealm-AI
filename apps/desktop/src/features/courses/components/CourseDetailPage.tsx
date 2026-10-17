@@ -18,13 +18,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { appToast } from "@/components/common/appToastManager";
 import {
-  Sheet,
-  SheetBody,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { asCourseTab, type CourseTab } from "@/features/courses/courseTabs";
@@ -39,14 +38,15 @@ import { CourseChatTab } from "@/features/courses/components/CourseChatTab";
 import { CourseEditSheet } from "@/features/courses/components/CourseEditSheet";
 import { CourseHero } from "@/features/courses/components/CourseHero";
 import { CourseInfoPanel } from "@/features/courses/components/CourseInfoPanel";
+import { CourseSidebarActions } from "@/features/courses/components/CourseSidebarActions";
+import { ArchiveCourseDialog } from "@/features/courses/components/ArchiveCourseDialog";
+import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDialog";
 import { CourseLearningChainTab } from "@/features/courses/components/CourseLearningChainTab";
 import { CourseOverview } from "@/features/courses/components/CourseOverview";
 import { CourseCaptureDock } from "@/features/courses/components/CourseCaptureDock";
 import { CaptureActionsContext } from "@/components/layout/captureActionsContext";
 import "@/features/courses/courseDetail.css";
 import { CourseRecordsPanel } from "@/features/courses/components/CourseRecordsPanel";
-import { ArchiveCourseDialog } from "@/features/courses/components/ArchiveCourseDialog";
-import { DeleteCourseDialog } from "@/features/courses/components/DeleteCourseDialog";
 import { KnowledgeGpsTab } from "@/features/courses/components/KnowledgeGpsTab";
 import { LearningPlanTab } from "@/features/learningPlan/components/LearningPlanTab";
 import { QuizTestsPanel } from "@/features/quiz-tests/components/QuizTestsPanel";
@@ -75,9 +75,9 @@ export function CourseDetailPage({
   const openCapture = useContext(CaptureActionsContext);
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(initialEditing);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [archiveOpen, setArchiveOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const restoreCourse = useMutation({
     mutationFn: () => courseApi.unarchive(courseId),
     onSuccess: async () => {
@@ -166,9 +166,6 @@ export function CourseDetailPage({
   }
 
   const detail = course.data;
-  const latestRecordId = [...(records.data ?? [])].sort((left, right) =>
-    right.created_at.localeCompare(left.created_at),
-  )[0]?.id;
 
   return (
     <section className="course-detail">
@@ -182,65 +179,63 @@ export function CourseDetailPage({
           className="course-sidebar"
           aria-label={t("spaces.detail.infoTitle")}
         >
-          <CourseHero
-            course={detail}
-            latestRecordId={latestRecordId}
-            onOpenInfo={() => setInfoOpen(true)}
-            onAddMaterials={() => openCapture?.("capture.import")}
-          />
-          <TabsList
-            variant="line"
-            className="course-tabs"
-            aria-label={t("spaces.courseDetail.navigation")}
-          >
-            <TabsTrigger value="overview">
-              <BookOpen aria-hidden="true" />
-              {t("spaces.detail.tabs.overview")}
-            </TabsTrigger>
-            <TabsTrigger value="chain">
-              <GitBranch aria-hidden="true" />
-              {t("spaces.detail.tabs.chain")}
-            </TabsTrigger>
-            <TabsTrigger value="plan">
-              <CalendarDays aria-hidden="true" />
-              {t("spaces.detail.tabs.plan")}
-            </TabsTrigger>
-            <TabsTrigger value="shared">
-              <Files aria-hidden="true" />
-              {t("spaces.detail.tabs.shared")}
-            </TabsTrigger>
-            <TabsTrigger value="records">
-              <FileText aria-hidden="true" />
-              {t("spaces.detail.tabs.records")}
-            </TabsTrigger>
-            <TabsTrigger value="tests">
-              <NotebookPen aria-hidden="true" />
-              {t("spaces.detail.tabs.tests")}
-            </TabsTrigger>
-            <TabsTrigger value="map">
-              <Network aria-hidden="true" />
-              {t("spaces.detail.tabs.map")}
-            </TabsTrigger>
-            <TabsTrigger value="gps">
-              <Map aria-hidden="true" />
-              {t("spaces.detail.tabs.gps")}
-            </TabsTrigger>
-            <TabsTrigger value="chat">
-              <MessagesSquare aria-hidden="true" />
-              {t("spaces.detail.tabs.chat")}
-            </TabsTrigger>
-          </TabsList>
-          <div className="course-sidebar-info">
-            <CourseInfoPanel
+          <div className="course-sidebar-content">
+            <CourseHero
               course={detail}
-              records={records.data ?? []}
-              onEdit={() => setEditOpen(true)}
-              onDelete={() => setDeleteOpen(true)}
-              onArchive={() => setArchiveOpen(true)}
-              onRestore={() => restoreCourse.mutate()}
-              restorePending={restoreCourse.isPending}
+              onOpenInfo={() => setInfoOpen(true)}
+              onAddMaterials={() => openCapture?.("capture.import")}
             />
+            <TabsList
+              variant="line"
+              className="course-tabs"
+              aria-label={t("spaces.courseDetail.navigation")}
+            >
+              <TabsTrigger value="overview">
+                <BookOpen aria-hidden="true" />
+                {t("spaces.detail.tabs.overview")}
+              </TabsTrigger>
+              <TabsTrigger value="chain">
+                <GitBranch aria-hidden="true" />
+                {t("spaces.detail.tabs.chain")}
+              </TabsTrigger>
+              <TabsTrigger value="plan">
+                <CalendarDays aria-hidden="true" />
+                {t("spaces.detail.tabs.plan")}
+              </TabsTrigger>
+              <TabsTrigger value="shared">
+                <Files aria-hidden="true" />
+                {t("spaces.detail.tabs.shared")}
+              </TabsTrigger>
+              <TabsTrigger value="records">
+                <FileText aria-hidden="true" />
+                {t("spaces.detail.tabs.records")}
+              </TabsTrigger>
+              <TabsTrigger value="tests">
+                <NotebookPen aria-hidden="true" />
+                {t("spaces.detail.tabs.tests")}
+              </TabsTrigger>
+              <TabsTrigger value="map">
+                <Network aria-hidden="true" />
+                {t("spaces.detail.tabs.map")}
+              </TabsTrigger>
+              <TabsTrigger value="gps">
+                <Map aria-hidden="true" />
+                {t("spaces.detail.tabs.gps")}
+              </TabsTrigger>
+              <TabsTrigger value="chat">
+                <MessagesSquare aria-hidden="true" />
+                {t("spaces.detail.tabs.chat")}
+              </TabsTrigger>
+            </TabsList>
           </div>
+          <CourseSidebarActions
+            course={detail}
+            onEdit={() => setEditOpen(true)}
+            onArchive={() => setArchiveOpen(true)}
+            onDelete={() => setDeleteOpen(true)}
+            onRestore={() => restoreCourse.mutate()}
+            restorePending={restoreCourse.isPending}
+          />
         </aside>
         <div className="course-workspace-main">
           <div className="course-breadcrumb">
@@ -369,15 +364,15 @@ export function CourseDetailPage({
         </div>
       </Tabs>
 
-      <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
-        <SheetContent className="sm:max-w-md">
-          <SheetHeader className="sr-only">
-            <SheetTitle>{t("spaces.detail.infoTitle")}</SheetTitle>
-            <SheetDescription>
+      <Dialog open={infoOpen} onOpenChange={setInfoOpen}>
+        <DialogContent className="max-h-dvh overflow-y-auto sm:max-w-lg">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{t("spaces.detail.infoTitle")}</DialogTitle>
+            <DialogDescription>
               {t("spaces.courseDetail.info.sheetDescription")}
-            </SheetDescription>
-          </SheetHeader>
-          <SheetBody>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-w-0 p-2 pt-6">
             <CourseInfoPanel
               course={detail}
               records={records.data ?? []}
@@ -385,20 +380,10 @@ export function CourseDetailPage({
                 setInfoOpen(false);
                 setEditOpen(true);
               }}
-              onDelete={() => {
-                setInfoOpen(false);
-                setDeleteOpen(true);
-              }}
-              onArchive={() => {
-                setInfoOpen(false);
-                setArchiveOpen(true);
-              }}
-              onRestore={() => restoreCourse.mutate()}
-              restorePending={restoreCourse.isPending}
             />
-          </SheetBody>
-        </SheetContent>
-      </Sheet>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <CourseEditSheet
         course={detail}

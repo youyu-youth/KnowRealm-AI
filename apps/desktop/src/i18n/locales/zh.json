@@ -950,8 +950,7 @@
         "addMaterials": "添加资料",
         "follow": "关注",
         "following": "已关注",
-        "openCourse": "打开课程",
-        "noRecordsToast": "暂无学习记录，可用顶部「速记 / 录音」创建第一条。"
+        "viewDetails": "查看课程详细信息"
       },
       "chain": {
         "label": "学习链",
@@ -1083,7 +1082,7 @@
         "recentLearning": "最近学习",
         "resources": "相关资源",
         "addTag": "添加标签",
-        "sheetDescription": "查看课程字段、热词与相关资源。"
+        "sheetDescription": "查看课程详细信息与相关资源。"
       },
       "mock": {
         "chapters": {

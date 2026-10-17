@@ -192,6 +192,13 @@ describe("课程详情与编辑", () => {
       screen.getAllByText("理解进程、内存与文件系统。").length,
     ).toBeGreaterThan(0);
     expect(screen.getByText("暂无热词")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "查看课程详细信息" }));
+    expect(screen.getByRole("dialog", { name: "课程信息" })).toBeVisible();
+    expect(
+      within(screen.getByRole("dialog", { name: "课程信息" })).queryByText(
+        "暂无热词",
+      ),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("课程核心概览")).toBeInTheDocument();
   });
 
@@ -624,7 +631,7 @@ describe("课程详情与编辑", () => {
     );
   });
 
-  it("归档课程禁用新增采集入口但保留已有学习记录入口", async () => {
+  it("归档课程禁用新增采集入口但保留课程信息入口", async () => {
     server.use(
       http.get(DETAIL_URL, () =>
         HttpResponse.json({ ...schoolCourse, status: "ARCHIVED" }),
@@ -638,34 +645,52 @@ describe("课程详情与编辑", () => {
     expect(screen.getByRole("button", { name: "导入资料" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "粘贴文本" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "剪藏" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "打开课程" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "查看课程详细信息" }),
+    ).toBeEnabled();
   });
 
-  it("打开课程进入最近一条学习记录", async () => {
+  it("查看课程信息展示相关资源且不跳转学习记录，不提供归档与删除", async () => {
     server.use(
       http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)),
       http.get(RECORDS_URL, () => HttpResponse.json(records)),
     );
     renderAt(ROUTE_PATH);
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开课程" }));
-
-    await waitFor(() =>
-      expect(window.location.pathname).toBe(`/records/${records[0].id}`),
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看课程详细信息" }),
     );
+    const dialog = await screen.findByRole("dialog", { name: "课程信息" });
+    expect(within(dialog).getByText("课程名称")).toBeVisible();
+    expect(await within(dialog).findByText("音频导入 · 速记")).toBeVisible();
+    expect(
+      within(dialog).queryByRole("button", { name: "归档课程" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: "删除课程" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: "添加标签" }),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("热词")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe(ROUTE_PATH);
   });
 
-  it("没有学习记录时打开课程给出捕获引导", async () => {
+  it("没有学习记录也能查看课程信息并关闭后继续导航", async () => {
     server.use(http.get(DETAIL_URL, () => HttpResponse.json(schoolCourse)));
     renderAt(ROUTE_PATH);
 
-    fireEvent.click(await screen.findByRole("button", { name: "打开课程" }));
-
-    expect(
-      await screen.findByText(
-        "暂无学习记录，可用顶部「速记 / 录音」创建第一条。",
-      ),
-    ).toBeInTheDocument();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看课程详细信息" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "课程信息" });
+    expect(within(dialog).getByText("相关资源")).toBeVisible();
+    fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "学习链" }));
+    await waitFor(() => expect(window.location.search).toBe("?tab=chain"));
   });
 
   it("学习记录加载中保持稳定状态", async () => {
@@ -864,6 +889,9 @@ describe("课程详情与编辑", () => {
     );
     renderAt(ROUTE_PATH);
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看课程详细信息" }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "编辑课程" }));
     const nameField = await screen.findByRole("textbox", { name: "课程名称" });
     fireEvent.change(nameField, { target: { value: "操作系统导论" } });
@@ -873,7 +901,7 @@ describe("课程详情与编辑", () => {
       await screen.findByRole("heading", { name: "操作系统导论" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "编辑课程" }),
+      screen.getByRole("button", { name: "查看课程详细信息" }),
     ).toBeInTheDocument();
     expect(detailCalls).toBeGreaterThanOrEqual(2);
     expect(patchToken).toBe(TEST_LAUNCH_TOKEN);
@@ -907,6 +935,9 @@ describe("课程详情与编辑", () => {
     );
     renderAt(ROUTE_PATH);
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看课程详细信息" }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "编辑课程" }));
     fireEvent.click(screen.getByRole("radio", { name: /职业技能/ }));
     fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
@@ -955,6 +986,9 @@ describe("课程详情与编辑", () => {
     );
     renderAt(ROUTE_PATH);
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看课程详细信息" }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "编辑课程" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "课程名称" }), {
       target: { value: "操作系统导论" },
@@ -986,6 +1020,9 @@ describe("课程详情与编辑", () => {
     );
     renderAt(ROUTE_PATH);
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "查看课程详细信息" }),
+    );
     fireEvent.click(await screen.findByRole("button", { name: "编辑课程" }));
     const nameField = await screen.findByRole("textbox", { name: "课程名称" });
     fireEvent.change(nameField, { target: { value: "操作系统导论" } });
@@ -1017,7 +1054,7 @@ describe("课程详情与编辑", () => {
     );
     renderAt(ROUTE_PATH);
 
-    fireEvent.click(await screen.findByRole("button", { name: "编辑课程" }));
+    fireEvent.click(await screen.findByRole("button", { name: "添加标签" }));
     const hotWords = screen.getByRole("textbox", { name: "手动热词" });
     const tooMany = Array.from(
       { length: 101 },
@@ -1049,9 +1086,12 @@ describe("课程详情与编辑", () => {
     expect(patchBody).toMatchObject({
       hot_words: ["进程", "文件系统", "内存"],
     });
-    const infoPanel = screen.getByRole("complementary", {
-      name: "课程信息",
-    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("textbox", { name: "手动热词" }),
+      ).not.toBeInTheDocument(),
+    );
+    const infoPanel = screen.getByRole("complementary", { name: "课程信息" });
     expect(within(infoPanel).getByText("进程")).toBeInTheDocument();
     expect(within(infoPanel).getByText("文件系统")).toBeInTheDocument();
     expect(within(infoPanel).getByText("内存")).toBeInTheDocument();
@@ -1083,7 +1123,7 @@ describe("课程详情与编辑", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认归档" }));
 
     await waitFor(() => {
-      expect(within(infoPanel).getByText("(ARCHIVED)")).toBeVisible();
+      expect(within(infoPanel).getByText("已归档")).toBeVisible();
       expect(
         within(infoPanel).getByRole("button", { name: "恢复课程" }),
       ).toBeVisible();
@@ -1093,7 +1133,7 @@ describe("课程详情与编辑", () => {
     );
 
     await waitFor(() => {
-      expect(within(infoPanel).getByText("(ACTIVE)")).toBeVisible();
+      expect(within(infoPanel).getByText("进行中")).toBeVisible();
       expect(
         within(infoPanel).getByRole("button", { name: "归档课程" }),
       ).toBeVisible();
