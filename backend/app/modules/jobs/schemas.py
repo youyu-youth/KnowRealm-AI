@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class ProcessingJobType(StrEnum):
+    PRACTICE_PREPARE = "PRACTICE_PREPARE"
     AUDIO_TRANSCODE = "AUDIO_TRANSCODE"
     ASR = "ASR"
     DOCUMENT_PARSE = "DOCUMENT_PARSE"

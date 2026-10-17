@@ -62,7 +62,9 @@ from app.modules.learner import routes as learner_routes
 from app.modules.learning import routes as learning_routes
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.service import MasteryService
+from app.modules.learning_plan import practice_routes
 from app.modules.learning_plan import routes as learning_plan_routes
+from app.modules.learning_plan.practice_worker import practice_spec
 from app.modules.library import routes as library_routes
 from app.modules.library import shared_refs_routes
 from app.modules.library.backfill import backfill_spec, ensure_backfill_enqueued
@@ -426,6 +428,14 @@ def create_app(
                             record_notifier,
                         ),
                     ),
+                    (
+                        "practice_prepare",
+                        lambda: JobRunner(
+                            practice_spec(session_factory, resolved_data_dir),
+                            session_factory,
+                            record_notifier,
+                        ),
+                    ),
                     # ChatTurn 双执行槽（票 01）：会话 A/B 独立推进，数据库条件领取
                     # 防双领取；轮次状态以 chat_turns 为唯一事实源。
                     *[
@@ -507,6 +517,7 @@ def create_app(
     app.include_router(course_brain_routes.router)
     app.include_router(learning_routes.router)
     app.include_router(learning_plan_routes.router)
+    app.include_router(practice_routes.router)
     app.include_router(audio_imports.router)
     app.include_router(capture_batches.router)
     app.include_router(settings_routes.router)

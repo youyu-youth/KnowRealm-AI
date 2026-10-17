@@ -2556,6 +2556,15 @@
         "reject": "拒绝",
         "rejected": "已拒绝上下文修改",
         "accepted": "上下文设置已修改，下一轮生效"
+      },
+      "practice": {
+        "title": "计划练习操作",
+        "confirm": "确认",
+        "reject": "拒绝",
+        "pending": "等待确认",
+        "failed": "执行失败",
+        "accept": "确认",
+        "failedDetail": "执行失败：{{reason}}"
       }
     },
     "authMode": {
@@ -3144,7 +3153,10 @@
         "ingest_local_document": "导入本地文档",
         "add_shared_ref": "添加共享引用",
         "create_goal": "创建学习目标",
-        "generate_plan_draft": "生成学习计划草案"
+        "generate_plan_draft": "生成学习计划草案",
+        "confirm_practice_requirements": "确认练习要求",
+        "prepare_plan_practice": "准备计划练习",
+        "cancel_practice_preparation": "取消练习匹配"
       },
       "operationStatus": {
         "PLANNED": "待执行",
@@ -3773,7 +3785,14 @@
     "CONTEXT_PIN_NOT_FOUND": "固定条目不存在。请刷新。",
     "CONTEXT_PINS_TOO_LARGE": "固定内容与必需输入超过预算，本轮未调用模型。请解除或调整固定内容。",
     "CONTEXT_SOURCE_EXCLUDED": "来源已被排除，请在下一轮设置中恢复。",
-    "CONTEXT_HISTORY_RANGE_INVALID": "历史范围不属于此会话、尚未完成或已变化，请重新选择。"
+    "CONTEXT_HISTORY_RANGE_INVALID": "历史范围不属于此会话、尚未完成或已变化，请重新选择。",
+    "PRACTICE_REQUIREMENTS_STALE": "练习要求或计划内容已变化，请刷新并重新确认",
+    "PRACTICE_SOURCE_INVALID": "资料已变化、失效或不属于本课程，请刷新后重新确认来源",
+    "PRACTICE_ITEM_UNAVAILABLE": "仅当前生效计划、进行中目标且未跳过的练习项可操作",
+    "PRACTICE_REQUEST_CONFLICT": "已有匹配任务或请求身份冲突，请刷新查看实际状态",
+    "PRACTICE_EXECUTION_CANCELLED": "匹配已取消或执行归属失效，已确认要求保留",
+    "PRACTICE_MATCH_INVALID": "模型未完整返回真实候选身份，本次未准备题集，可重试",
+    "PRACTICE_CONFIRMATION_REQUIRED": "请先通过确认卡明确确认主题、题量、题型及资料集合"
   },
   "agent": {
     "run": {
@@ -3789,5 +3808,65 @@
       "undoneMark": "已撤销",
       "staleHint": "目标已变化，请重新整理该项"
     }
+  },
+  "practice": {
+    "title": "准备计划练习",
+    "planItem": "计划项",
+    "topic": "练习主题",
+    "count": "精确题量",
+    "types": "允许题型",
+    "sources": "确认的资料范围",
+    "inventory": "（已采纳 {{count}} 题，尚未按题型及主题筛选）",
+    "confirmHint": "请核对主题、数量、题型和完整资料集合。保存只更新练习要求，不修改计划正文；新增来源必须明确确认。",
+    "confirm": "确认并保存要求",
+    "loading": "正在读取练习要求…",
+    "failed": "操作未完成，请刷新查看实际状态后重试",
+    "retry": "重新准备",
+    "prepare": "准备题集",
+    "back": "返回学习计划",
+    "revision": "要求修订 {{revision}}",
+    "target": "恰好 {{count}} 题",
+    "sourceUnavailable": "来源已失效，请修改要求",
+    "stale": "计划正文已变化，请重新确认练习要求",
+    "edit": "修改要求 / 确认扩源",
+    "closeEdit": "收起修改",
+    "scanned": "已匹配 {{examined}} / {{total}} 道候选题",
+    "scanComplete": "已检查课程全部合格候选",
+    "scanPartial": "尚未完成全课程匹配",
+    "related": "{{count}} 道符合确认主题的题",
+    "suggestions": "可补充的课程资料",
+    "suggestionHint": "以下资料的候选题经模型判定与主题相关。它们尚未加入范围；请在修改要求中勾选并确认，拒绝时保留原要求。",
+    "cancel": "取消本次匹配",
+    "stageHint": "本阶段仅准备题集，支持离开后回来查看；实际作答将在后续版本接入。参考答案不会在此展示。",
+    "saved": "操作已保存，可查询计划练习状态",
+    "rejected": "已拒绝，原要求与练习保留",
+    "type": {
+      "MULTIPLE_CHOICE": "单选",
+      "MULTIPLE_SELECT": "多选",
+      "TRUE_FALSE": "判断",
+      "FILL_BLANK": "填空",
+      "SHORT_ANSWER": "简答"
+    },
+    "status": {
+      "PENDING": "已受理，等待匹配",
+      "RUNNING": "正在匹配真实习题",
+      "SUCCEEDED": "匹配已结束",
+      "FAILED": "匹配失败，可恢复重试",
+      "CANCELLED": "本次匹配已取消"
+    },
+    "outcome": {
+      "READY": "已准备恰好 {{count}} 道相关且不同的题",
+      "INSUFFICIENT": "确认范围内只有 {{related}} 道相关题，目标为 {{count}} 题",
+      "INCOMPLETE": "匹配尚未完整完成，已确认相关 {{related}} 道，目标为 {{count}} 题"
+    },
+    "refresh": "刷新状态",
+    "reloadSources": "重新读取来源并核对（保留输入）",
+    "basis": {
+      "TOPIC_CONCEPT": "考查主题核心概念",
+      "TOPIC_APPLICATION": "应用主题知识",
+      "OUT_OF_TOPIC": "偏离主题",
+      "UNCERTAIN": "相关性无法确认"
+    },
+    "sourcesReloaded": "来源已重新读取，未保存输入已保留，请核对后确认"
   }
 }

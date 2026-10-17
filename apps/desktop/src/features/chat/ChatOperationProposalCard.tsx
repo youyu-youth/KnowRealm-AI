@@ -1310,7 +1310,86 @@ type OperationCardSpec = {
   DraftEditor?: ComponentType<DraftEditorProps>;
 };
 
+function PracticePreviewFields({ payload, snapshot, t }: PreviewFieldsProps) {
+  const titles = snapshot?.source_titles;
+  return (
+    <>
+      <div>
+        <dt>{t("practice.planItem")}</dt>
+        <dd className="wrap-anywhere">
+          {fieldString(payload, "plan_content") ??
+            fieldString(payload, "item_id")}
+        </dd>
+      </div>
+      {fieldString(payload, "topic") ? (
+        <div>
+          <dt>{t("practice.topic")}</dt>
+          <dd>{fieldString(payload, "topic")}</dd>
+        </div>
+      ) : null}
+      {fieldNumber(payload, "question_count") != null ? (
+        <div>
+          <dt>{t("practice.count")}</dt>
+          <dd>{fieldNumber(payload, "question_count")}</dd>
+        </div>
+      ) : null}
+      {Array.isArray(payload.question_types) ? (
+        <div>
+          <dt>{t("practice.types")}</dt>
+          <dd>
+            {payload.question_types
+              .filter((value): value is string => typeof value === "string")
+              .map((value) => t(`practice.type.${value}`))
+              .join(" · ")}
+          </dd>
+        </div>
+      ) : null}
+      {Array.isArray(payload.record_ids) ? (
+        <div>
+          <dt>{t("practice.sources")}</dt>
+          <dd>
+            {payload.record_ids
+              .filter((value): value is string => typeof value === "string")
+              .map((id) => (
+                <p key={id} className="wrap-anywhere">
+                  {titles && typeof titles === "object"
+                    ? String(Reflect.get(titles, id) ?? id)
+                    : id}{" "}
+                  · {id}
+                </p>
+              ))}
+          </dd>
+        </div>
+      ) : null}
+      {fieldNumber(payload, "requirements_revision") != null ? (
+        <p>
+          {t("practice.revision", {
+            revision: fieldNumber(payload, "requirements_revision"),
+          })}
+        </p>
+      ) : null}
+      {fieldString(payload, "preparation_id") ? (
+        <p>{fieldString(payload, "preparation_id")}</p>
+      ) : null}
+      <p>{t("practice.confirmHint")}</p>
+    </>
+  );
+}
+
+const practiceCard: OperationCardSpec = {
+  label: (key) => `chat.operationProposal.practice.${key}`,
+  PreviewFields: PracticePreviewFields,
+  SettledRow: ({ status, t }) => (
+    <p className="text-label text-ink-muted">
+      {t(status === "APPLIED" ? "practice.saved" : "practice.rejected")}
+    </p>
+  ),
+};
+
 const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
+  OP_PRACTICE_REQUIREMENTS: practiceCard,
+  OP_PRACTICE_PREPARE: practiceCard,
+  OP_PRACTICE_CANCEL: practiceCard,
   OP_CONTEXT_RULES: {
     label: (key) => `chat.operationProposal.contextRules.${key}`,
     PreviewFields: ({ payload, t }) => (

@@ -1,5 +1,7 @@
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from math import ceil
 from time import perf_counter
 from typing import Any, Protocol, cast
 from uuid import uuid4
@@ -14,12 +16,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.base import utcnow
 from app.modules.course_brain.schemas import CourseBrainExtractionBatch
 from app.modules.knowledge_point.schemas import KnowledgePointBatch
+from app.modules.learning_plan.practice_schemas import PracticeMatchOutput
 from app.modules.learning_plan.schemas import PlanDraft, PlanSuggestions
 from app.modules.library.schemas import OrganizeSuggestionBatch
 from app.modules.llm.models import LlmCallLog
 from app.modules.quiz.schemas import QuizBatch, ShortAnswerGrade
 from app.modules.review_material.schemas import ReviewMaterialContent, ReviewMaterialDraft
 from app.modules.settings.config import LlmProviderConfig
+from app.modules.settings.model_budget import output_reserve, resolve_capability
 from app.modules.summary.schemas import SummaryContent
 from app.modules.todo.schemas import TodoBatch
 
@@ -144,8 +148,9 @@ def json_mode_prompt(prompt: str, schema: type[BaseModel]) -> str:
 
 
 class _OpenAiCompatibleStructuredModel:
-    def __init__(self, output_schema: type[BaseModel]) -> None:
+    def __init__(self, output_schema: type[BaseModel], *, output_limit: int | None = None) -> None:
         self._output_schema = output_schema
+        self._output_limit = output_limit
 
     async def generate(
         self,
@@ -163,6 +168,11 @@ class _OpenAiCompatibleStructuredModel:
                 api_key=SecretStr(api_key),
                 timeout=90,
                 max_retries=0,
+                **(
+                    chat_output_parameters(base_url, self._output_limit)
+                    if self._output_limit
+                    else {}
+                ),
                 http_async_client=http_client,
             )
             structured = llm.with_structured_output(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
@@ -184,7 +194,8 @@ class _OpenAiCompatibleStructuredModel:
             if output is None and parsing_error is not None:
                 # include_raw 会吞掉 JSON 解析/schema 违规的真实错误；上抛让
                 # _call_structured_model 按"输出无效"归类（而非误导性的 None 校验）。
-                raise cast(BaseException, parsing_error)
+                if self._output_limit is None:
+                    raise cast(BaseException, parsing_error)
             return StructuredModelResult(
                 output=output,
                 token_usage=cast(dict[str, object], usage) if isinstance(usage, dict) else {},
@@ -197,11 +208,16 @@ class _OpenAiCompatibleStructuredModel:
         llm: ChatOpenAI,
         prompt: str,
     ) -> dict[str, object]:
+        output_parameters: dict[str, Any] = (
+            chat_output_parameters(str(llm.openai_api_base or ""), self._output_limit)
+            if self._output_limit
+            else {"max_tokens": 8192}
+        )
         structured = llm.with_structured_output(  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
             self._output_schema,
             method="json_mode",
             include_raw=True,
-            max_tokens=8192,
+            **output_parameters,
         )
         # json_object 端点依赖提示词携带结构；8192 为推理模型（思考与正文同计费）留足输出空间
         json_prompt = json_mode_prompt(prompt, self._output_schema)
@@ -264,6 +280,11 @@ class OpenAiCompatiblePlanSuggestionsModel(_OpenAiCompatibleStructuredModel):
         super().__init__(PlanSuggestions)
 
 
+class OpenAiCompatiblePracticeMatchModel(_OpenAiCompatibleStructuredModel):
+    def __init__(self, output_limit: int) -> None:
+        super().__init__(PracticeMatchOutput, output_limit=output_limit)
+
+
 def chat_output_parameters(base_url: str, limit: int) -> dict[str, Any]:
     # DeepSeek 使用 max_tokens；extra_body 避开 ChatOpenAI 的参数重命名。
     if base_url.rstrip("/") in (
@@ -309,6 +330,7 @@ async def write_llm_call_log(
     latency_ms: int,
     retrieval_count: int | None = None,
     error_code: str | None = None,
+    write_guard: Callable[[AsyncSession], Awaitable[bool]] | None = None,
 ) -> None:
     """llm_call_logs 统一埋点（只记元数据，不落 prompt 与输出正文）。
 
@@ -317,6 +339,8 @@ async def write_llm_call_log(
     """
     try:
         async with session_factory() as session, session.begin():
+            if write_guard is not None and not await write_guard(session):
+                return
             session.add(
                 LlmCallLog(
                     request_id=str(uuid4()),
@@ -349,6 +373,7 @@ async def _call_structured_model(
     prompt_version: str,
     output_schema: type[BaseModel],
     invalid_output_code: str,
+    write_guard: Callable[[AsyncSession], Awaitable[bool]] | None = None,
 ) -> _StructuredCallResult:
     started = perf_counter()
     token_usage: dict[str, object] = {}
@@ -382,6 +407,7 @@ async def _call_structured_model(
         token_usage=token_usage,
         latency_ms=latency_ms,
         error_code=error_code,
+        write_guard=write_guard,
     )
     if failure is not None:
         # 结构化失败此前全程无日志（错误码只进 DB）；真实校验错误内联进消息，
@@ -659,3 +685,49 @@ async def call_plan_suggestions_model(
         token_usage=result.token_usage,
         latency_ms=result.latency_ms,
     )
+
+
+async def call_practice_match_model(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    provider: LlmProviderConfig,
+    prompt: str,
+    write_guard: Callable[[AsyncSession], Awaitable[bool]],
+) -> PracticeMatchOutput:
+    capability = resolve_capability(provider.base_url, provider.model, provider.model_budget)
+    output_limit = output_reserve(capability)
+    limits = [
+        limit
+        for limit in (
+            capability.input_limit,
+            capability.context_window - output_limit if capability.context_window else None,
+        )
+        if limit is not None
+    ]
+    # shortcut: 与聊天一致用 UTF-8 两字节/token 及20%余量，供应商 tokenizer 统一后替换。
+    input_tokens = (
+        ceil(
+            len(
+                (
+                    prompt + json.dumps(PracticeMatchOutput.model_json_schema(), ensure_ascii=False)
+                ).encode()
+            )
+            / 2
+        )
+        + 128
+    )
+    if input_tokens > min(limits) * 0.8:
+        raise StructuredGenerationError("MODEL_INPUT_BUDGET_EXCEEDED")
+    result = await _call_structured_model(
+        session_factory=session_factory,
+        structured_model=OpenAiCompatiblePracticeMatchModel(output_limit),
+        provider=provider,
+        prompt=prompt,
+        graph_name="plan-practice",
+        graph_node="match",
+        prompt_version="practice-match-v1",
+        output_schema=PracticeMatchOutput,
+        invalid_output_code="LLM_OUTPUT_INVALID",
+        write_guard=write_guard,
+    )
+    return cast(PracticeMatchOutput, result.content)

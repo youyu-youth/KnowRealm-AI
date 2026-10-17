@@ -114,6 +114,12 @@ from app.modules.agent.tools.move_record_course import (
     move_record_course,
 )
 from app.modules.agent.tools.plan_batch_operations import plan_batch_operations
+from app.modules.agent.tools.practice import (
+    cancel_practice_preparation,
+    confirm_practice_requirements,
+    get_plan_practice,
+    prepare_plan_practice,
+)
 from app.modules.agent.tools.propose_ingest import (
     PROPOSE_INGEST_TOOL_NAME,
     propose_ingest,
@@ -196,6 +202,9 @@ class TurnCheckpointMissingError(Exception):
 OPERATION_TOOL_NAMES = frozenset(
     {
         "change_context_pin",
+        "confirm_practice_requirements",
+        "prepare_plan_practice",
+        "cancel_practice_preparation",
         "change_context_rules",
         "list_context_history",
         CREATE_COURSE_TOOL_NAME,
@@ -418,6 +427,10 @@ def resolve_agent_config(
             get_today_progress,
             get_goal,
             get_plan,
+            get_plan_practice,
+            confirm_practice_requirements,
+            prepare_plan_practice,
+            cancel_practice_preparation,
             generate_learning_plan,
             propose_memory,
             create_course,

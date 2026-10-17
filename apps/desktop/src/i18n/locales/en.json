@@ -2585,6 +2585,15 @@
         "reject": "Reject",
         "rejected": "Context change rejected",
         "accepted": "Context settings changed, effective next turn"
+      },
+      "practice": {
+        "title": "Plan practice action",
+        "confirm": "Confirm",
+        "reject": "Reject",
+        "pending": "Awaiting confirmation",
+        "failed": "Action failed",
+        "accept": "Confirm",
+        "failedDetail": "Action failed: {{reason}}"
       }
     },
     "authMode": {
@@ -3173,7 +3182,10 @@
         "ingest_local_document": "Import local document",
         "add_shared_ref": "Add shared reference",
         "create_goal": "Create learning goal",
-        "generate_plan_draft": "Generate study plan draft"
+        "generate_plan_draft": "Generate study plan draft",
+        "confirm_practice_requirements": "Confirm practice requirements",
+        "prepare_plan_practice": "Prepare plan practice",
+        "cancel_practice_preparation": "Cancel practice matching"
       },
       "operationStatus": {
         "PLANNED": "Planned",
@@ -3802,7 +3814,14 @@
     "CONTEXT_PIN_NOT_FOUND": "Pinned entry not found. Please refresh.",
     "CONTEXT_PINS_TOO_LARGE": "Pinned and required input exceed the budget. No model was called. Unpin or adjust pinned context.",
     "CONTEXT_SOURCE_EXCLUDED": "Source excluded. Restore it in next-turn settings.",
-    "CONTEXT_HISTORY_RANGE_INVALID": "History range is outside this session, incomplete or changed. Select it again."
+    "CONTEXT_HISTORY_RANGE_INVALID": "History range is outside this session, incomplete or changed. Select it again.",
+    "PRACTICE_REQUIREMENTS_STALE": "Practice requirements or plan content changed. Refresh and confirm again.",
+    "PRACTICE_SOURCE_INVALID": "A source changed, is unavailable or belongs to another course. Refresh and confirm sources again.",
+    "PRACTICE_ITEM_UNAVAILABLE": "Practice changes require an active plan and goal, and an item that has not been skipped.",
+    "PRACTICE_REQUEST_CONFLICT": "Matching is already active or the request identity conflicts. Refresh to check its state.",
+    "PRACTICE_EXECUTION_CANCELLED": "Matching was cancelled or its execution is no longer valid. Confirmed requirements are retained.",
+    "PRACTICE_MATCH_INVALID": "The model did not return a complete valid set of candidate identities. No question set was prepared; retry is available.",
+    "PRACTICE_CONFIRMATION_REQUIRED": "Explicitly confirm the topic, count, types and source set using the confirmation card first."
   },
   "agent": {
     "run": {
@@ -3818,5 +3837,65 @@
       "undoneMark": "Undone",
       "staleHint": "The item changed; please reorganize it"
     }
+  },
+  "practice": {
+    "title": "Prepare plan practice",
+    "planItem": "Plan item",
+    "topic": "Practice topic",
+    "count": "Exact question count",
+    "types": "Allowed question types",
+    "sources": "Confirmed source records",
+    "inventory": "({{count}} adopted questions, before type and topic filtering)",
+    "confirmHint": "Check the topic, exact count, types and complete source set. Saving updates practice requirements only. Additional sources require explicit confirmation.",
+    "confirm": "Confirm and save requirements",
+    "loading": "Loading practice requirements…",
+    "failed": "The action did not complete. Refresh to check its actual state before retrying.",
+    "retry": "Prepare again",
+    "prepare": "Prepare questions",
+    "back": "Back to learning plan",
+    "revision": "Requirements revision {{revision}}",
+    "target": "Exactly {{count}} questions",
+    "sourceUnavailable": "Source unavailable; update requirements",
+    "stale": "The plan text has changed. Confirm the requirements again.",
+    "edit": "Edit requirements / confirm sources",
+    "closeEdit": "Close editor",
+    "scanned": "Matched {{examined}} / {{total}} candidate questions",
+    "scanComplete": "All eligible course candidates checked",
+    "scanPartial": "Course matching is incomplete",
+    "related": "{{count}} questions match the confirmed topic",
+    "suggestions": "Additional course sources",
+    "suggestionHint": "The model found topic-related questions in these records. They are outside the confirmed scope. Select and confirm them in the requirements editor, or keep the original requirements.",
+    "cancel": "Cancel matching",
+    "stageHint": "This stage prepares questions only. You may leave and return to check progress. Answering will be connected in a later version. Reference answers are not shown here.",
+    "saved": "Action saved. Check plan practice for its current state.",
+    "rejected": "Rejected. Existing requirements and practice are retained.",
+    "type": {
+      "MULTIPLE_CHOICE": "Single choice",
+      "MULTIPLE_SELECT": "Multiple choice",
+      "TRUE_FALSE": "True / false",
+      "FILL_BLANK": "Fill in the blank",
+      "SHORT_ANSWER": "Short answer"
+    },
+    "status": {
+      "PENDING": "Accepted; waiting to match",
+      "RUNNING": "Matching existing questions",
+      "SUCCEEDED": "Matching finished",
+      "FAILED": "Matching failed; retry available",
+      "CANCELLED": "Matching cancelled"
+    },
+    "outcome": {
+      "READY": "Exactly {{count}} relevant, distinct questions are ready",
+      "INSUFFICIENT": "{{related}} relevant questions in the confirmed scope; {{count}} required",
+      "INCOMPLETE": "Matching is incomplete: {{related}} relevant questions found; {{count}} required"
+    },
+    "refresh": "Refresh state",
+    "reloadSources": "Reload sources and review (keep input)",
+    "basis": {
+      "TOPIC_CONCEPT": "Tests core topic concepts",
+      "TOPIC_APPLICATION": "Applies topic knowledge",
+      "OUT_OF_TOPIC": "Outside the topic",
+      "UNCERTAIN": "Relevance is uncertain"
+    },
+    "sourcesReloaded": "Sources reloaded. Your input is retained; review it before confirming."
   }
 }

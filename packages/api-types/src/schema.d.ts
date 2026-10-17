@@ -1548,6 +1548,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan-items/{item_id}/practice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Practice */
+        get: operations["get_practice_api_plan_items__item_id__practice_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan-items/{item_id}/practice/preparations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Preparation */
+        post: operations["post_preparation_api_plan_items__item_id__practice_preparations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan-items/{item_id}/practice/preparations/{preparation_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Preparation */
+        post: operations["cancel_preparation_api_plan_items__item_id__practice_preparations__preparation_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan-items/{item_id}/practice/requirements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Requirements */
+        put: operations["put_requirements_api_plan_items__item_id__practice_requirements_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/processing-jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -4934,6 +5002,11 @@ export interface components {
              */
             title?: string | null;
         };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
         /**
          * InboxRecordOut
          * @description 收件箱条目：RecordOut + 列表展示用元信息。
@@ -5861,6 +5934,143 @@ export interface components {
             plan_version: number;
             status: components["schemas"]["PlanStatus"];
         };
+        /**
+         * PracticeMatchReason
+         * @enum {string}
+         */
+        PracticeMatchReason: "TOPIC_CONCEPT" | "TOPIC_APPLICATION" | "OUT_OF_TOPIC" | "UNCERTAIN";
+        /** PracticePreparationOut */
+        PracticePreparationOut: {
+            /** Course Scan Complete */
+            course_scan_complete: boolean;
+            /** Eligible Count */
+            eligible_count: number;
+            /** Entry Path */
+            entry_path: string;
+            /** Error Code */
+            error_code: string | null;
+            /** Examined Count */
+            examined_count: number;
+            /** Id */
+            id: string;
+            /** Item Id */
+            item_id: string;
+            /** Job Id */
+            job_id: string;
+            outcome: components["schemas"]["PreparationStatus"] | null;
+            /** Related Count */
+            related_count: number;
+            /** Requirements Revision */
+            requirements_revision: number;
+            /** Selected Count */
+            selected_count: number;
+            /** Sources */
+            sources: components["schemas"]["PracticeSourceOut"][];
+            /** Status */
+            status: string;
+            /** Suggestions */
+            suggestions: components["schemas"]["PracticeSourceOut"][];
+            /** Target Count */
+            target_count: number;
+            /** Total Candidates */
+            total_candidates: number;
+        };
+        /** PracticePrepareRequest */
+        PracticePrepareRequest: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Requirements Revision */
+            requirements_revision: number;
+        };
+        /** PracticeRequirementsOut */
+        PracticeRequirementsOut: {
+            /**
+             * Confirmed At
+             * Format: date-time
+             */
+            confirmed_at: string;
+            /** Id */
+            id: string;
+            /** Plan Content */
+            plan_content: string;
+            /** Question Count */
+            question_count: number;
+            /** Question Types */
+            question_types: components["schemas"]["QuizQuestionType"][];
+            /** Record Ids */
+            record_ids: string[];
+            /** Revision */
+            revision: number;
+            /** Source Versions */
+            source_versions: {
+                [key: string]: string;
+            };
+            /** Topic */
+            topic: string;
+        };
+        /** PracticeRequirementsUpdate */
+        PracticeRequirementsUpdate: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Plan Content */
+            plan_content: string;
+            /** Question Count */
+            question_count: number;
+            /** Question Types */
+            question_types: components["schemas"]["QuizQuestionType"][];
+            /** Record Ids */
+            record_ids: string[];
+            /** Source Versions */
+            source_versions: {
+                [key: string]: string;
+            };
+            /** Topic */
+            topic: string;
+        };
+        /** PracticeSourceOut */
+        PracticeSourceOut: {
+            /** Eligible Count */
+            eligible_count: number;
+            /** Matching Basis */
+            matching_basis?: components["schemas"]["PracticeMatchReason"][];
+            /** Record Id */
+            record_id: string;
+            /**
+             * Related Count
+             * @default 0
+             */
+            related_count: number;
+            /** Title */
+            title: string;
+            /**
+             * Version
+             * @default
+             */
+            version: string;
+        };
+        /** PracticeStateOut */
+        PracticeStateOut: {
+            /** Course Id */
+            course_id: string;
+            /** Editable */
+            editable: boolean;
+            /** Item Id */
+            item_id: string;
+            /** Plan Content */
+            plan_content: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Preparations */
+            preparations: components["schemas"]["PracticePreparationOut"][];
+            requirements: components["schemas"]["PracticeRequirementsOut"] | null;
+            /** Requirements Stale */
+            requirements_stale: boolean;
+            /** Sources */
+            sources: components["schemas"]["PracticeSourceOut"][];
+        };
         /** PreferencesOut */
         PreferencesOut: {
             /** Autostart */
@@ -5977,6 +6187,11 @@ export interface components {
             timezone?: string | null;
         };
         /**
+         * PreparationStatus
+         * @enum {string}
+         */
+        PreparationStatus: "READY" | "INSUFFICIENT" | "INCOMPLETE";
+        /**
          * PrimaryRole
          * @enum {string}
          */
@@ -6029,7 +6244,7 @@ export interface components {
          * ProcessingJobType
          * @enum {string}
          */
-        ProcessingJobType: "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING" | "REVIEW_MATERIAL_GENERATION" | "CONCEPT_EXTRACTION" | "WEB_FETCH" | "LIBRARY_BACKFILL" | "INDEX_REBUILD" | "AGENT_RUN" | "PLAN_DRAFT" | "CHAT_TURN";
+        ProcessingJobType: "PRACTICE_PREPARE" | "AUDIO_TRANSCODE" | "ASR" | "DOCUMENT_PARSE" | "SUMMARY" | "KNOWLEDGE_EXTRACTION" | "QUIZ_GENERATION" | "TODO_GENERATION" | "QUIZ_GRADING" | "REVIEW_MATERIAL_GENERATION" | "CONCEPT_EXTRACTION" | "WEB_FETCH" | "LIBRARY_BACKFILL" | "INDEX_REBUILD" | "AGENT_RUN" | "PLAN_DRAFT" | "CHAT_TURN";
         /**
          * ProcessingJobWaitingReason
          * @enum {string}
@@ -6112,7 +6327,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_CONTEXT_RULES" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_CONTEXT_RULES" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT" | "OP_PRACTICE_REQUIREMENTS" | "OP_PRACTICE_PREPARE" | "OP_PRACTICE_CANCEL";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -7318,6 +7533,19 @@ export interface components {
             content: string;
             /** Expected Source Version */
             expected_source_version: number;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
         };
         /** WebSearchProviderOut */
         WebSearchProviderOut: {
@@ -13994,6 +14222,147 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_practice_api_plan_items__item_id__practice_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticeStateOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_preparation_api_plan_items__item_id__practice_preparations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PracticePrepareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticePreparationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_preparation_api_plan_items__item_id__practice_preparations__preparation_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+                preparation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticePreparationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_requirements_api_plan_items__item_id__practice_requirements_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PracticeRequirementsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticeRequirementsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

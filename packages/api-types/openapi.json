@@ -5031,6 +5031,19 @@
         "title": "GoalUpdate",
         "type": "object"
       },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
       "InboxRecordOut": {
         "description": "收件箱条目：RecordOut + 列表展示用元信息。\n\nfile_size_bytes 为该记录全部文件（record_files，未软删）大小之和，无文件为 None；\ncontent_chars 为当前生效转写/正文的字符数，转写未就绪为 None。",
         "properties": {
@@ -7526,6 +7539,380 @@
         "title": "PlanVersionOut",
         "type": "object"
       },
+      "PracticeMatchReason": {
+        "enum": [
+          "TOPIC_CONCEPT",
+          "TOPIC_APPLICATION",
+          "OUT_OF_TOPIC",
+          "UNCERTAIN"
+        ],
+        "title": "PracticeMatchReason",
+        "type": "string"
+      },
+      "PracticePreparationOut": {
+        "properties": {
+          "course_scan_complete": {
+            "title": "Course Scan Complete",
+            "type": "boolean"
+          },
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "entry_path": {
+            "title": "Entry Path",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "examined_count": {
+            "title": "Examined Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "outcome": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreparationStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "related_count": {
+            "title": "Related Count",
+            "type": "integer"
+          },
+          "requirements_revision": {
+            "title": "Requirements Revision",
+            "type": "integer"
+          },
+          "selected_count": {
+            "title": "Selected Count",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/PracticeSourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/PracticeSourceOut"
+            },
+            "title": "Suggestions",
+            "type": "array"
+          },
+          "target_count": {
+            "title": "Target Count",
+            "type": "integer"
+          },
+          "total_candidates": {
+            "title": "Total Candidates",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "item_id",
+          "entry_path",
+          "job_id",
+          "requirements_revision",
+          "status",
+          "outcome",
+          "target_count",
+          "eligible_count",
+          "related_count",
+          "selected_count",
+          "examined_count",
+          "total_candidates",
+          "course_scan_complete",
+          "error_code",
+          "sources",
+          "suggestions"
+        ],
+        "title": "PracticePreparationOut",
+        "type": "object"
+      },
+      "PracticePrepareRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "requirements_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Requirements Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "requirements_revision"
+        ],
+        "title": "PracticePrepareRequest",
+        "type": "object"
+      },
+      "PracticeRequirementsOut": {
+        "properties": {
+          "confirmed_at": {
+            "format": "date-time",
+            "title": "Confirmed At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "plan_content": {
+            "title": "Plan Content",
+            "type": "string"
+          },
+          "question_count": {
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "question_types": {
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestionType"
+            },
+            "title": "Question Types",
+            "type": "array"
+          },
+          "record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Record Ids",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Source Versions",
+            "type": "object"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "plan_content",
+          "topic",
+          "question_count",
+          "question_types",
+          "record_ids",
+          "source_versions",
+          "confirmed_at"
+        ],
+        "title": "PracticeRequirementsOut",
+        "type": "object"
+      },
+      "PracticeRequirementsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "plan_content": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Plan Content",
+            "type": "string"
+          },
+          "question_count": {
+            "exclusiveMinimum": 0.0,
+            "title": "Question Count",
+            "type": "integer"
+          },
+          "question_types": {
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestionType"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Question Types",
+            "type": "array"
+          },
+          "record_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Record Ids",
+            "type": "array"
+          },
+          "source_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Source Versions",
+            "type": "object"
+          },
+          "topic": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "plan_content",
+          "topic",
+          "question_count",
+          "question_types",
+          "record_ids",
+          "source_versions"
+        ],
+        "title": "PracticeRequirementsUpdate",
+        "type": "object"
+      },
+      "PracticeSourceOut": {
+        "properties": {
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "matching_basis": {
+            "items": {
+              "$ref": "#/components/schemas/PracticeMatchReason"
+            },
+            "title": "Matching Basis",
+            "type": "array"
+          },
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "related_count": {
+            "default": 0,
+            "title": "Related Count",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "version": {
+            "default": "",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "record_id",
+          "title",
+          "eligible_count"
+        ],
+        "title": "PracticeSourceOut",
+        "type": "object"
+      },
+      "PracticeStateOut": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "string"
+          },
+          "editable": {
+            "title": "Editable",
+            "type": "boolean"
+          },
+          "item_id": {
+            "title": "Item Id",
+            "type": "string"
+          },
+          "plan_content": {
+            "title": "Plan Content",
+            "type": "string"
+          },
+          "plan_id": {
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "preparations": {
+            "items": {
+              "$ref": "#/components/schemas/PracticePreparationOut"
+            },
+            "title": "Preparations",
+            "type": "array"
+          },
+          "requirements": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PracticeRequirementsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requirements_stale": {
+            "title": "Requirements Stale",
+            "type": "boolean"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/PracticeSourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "item_id",
+          "course_id",
+          "plan_id",
+          "plan_content",
+          "editable",
+          "requirements_stale",
+          "requirements",
+          "preparations",
+          "sources"
+        ],
+        "title": "PracticeStateOut",
+        "type": "object"
+      },
       "PreferencesOut": {
         "properties": {
           "autostart": {
@@ -7828,6 +8215,15 @@
         "title": "PreferencesUpdate",
         "type": "object"
       },
+      "PreparationStatus": {
+        "enum": [
+          "READY",
+          "INSUFFICIENT",
+          "INCOMPLETE"
+        ],
+        "title": "PreparationStatus",
+        "type": "string"
+      },
       "PrimaryRole": {
         "enum": [
           "STUDENT",
@@ -7990,6 +8386,7 @@
       },
       "ProcessingJobType": {
         "enum": [
+          "PRACTICE_PREPARE",
           "AUDIO_TRANSCODE",
           "ASR",
           "DOCUMENT_PARSE",
@@ -8220,7 +8617,10 @@
           "OP_SHARED_REF_REMOVE",
           "OP_LIBRARY_ITEM_INGEST",
           "OP_LOCAL_DOCUMENT_INGEST",
-          "OP_PLAN_DRAFT"
+          "OP_PLAN_DRAFT",
+          "OP_PRACTICE_REQUIREMENTS",
+          "OP_PRACTICE_PREPARE",
+          "OP_PRACTICE_CANCEL"
         ],
         "title": "ProposalType",
         "type": "string"
@@ -11586,6 +11986,46 @@
           "expected_source_version"
         ],
         "title": "TranscriptUpdateRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       },
       "WebSearchProviderOut": {
@@ -21818,6 +22258,272 @@
         "summary": "List Library Records",
         "tags": [
           "library"
+        ]
+      }
+    },
+    "/api/plan-items/{item_id}/practice": {
+      "get": {
+        "operationId": "get_practice_api_plan_items__item_id__practice_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeStateOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Practice",
+        "tags": [
+          "plan-practice"
+        ]
+      }
+    },
+    "/api/plan-items/{item_id}/practice/preparations": {
+      "post": {
+        "operationId": "post_preparation_api_plan_items__item_id__practice_preparations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PracticePrepareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticePreparationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Preparation",
+        "tags": [
+          "plan-practice"
+        ]
+      }
+    },
+    "/api/plan-items/{item_id}/practice/preparations/{preparation_id}/cancel": {
+      "post": {
+        "operationId": "cancel_preparation_api_plan_items__item_id__practice_preparations__preparation_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "preparation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Preparation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticePreparationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel Preparation",
+        "tags": [
+          "plan-practice"
+        ]
+      }
+    },
+    "/api/plan-items/{item_id}/practice/requirements": {
+      "put": {
+        "operationId": "put_requirements_api_plan_items__item_id__practice_requirements_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PracticeRequirementsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeRequirementsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Put Requirements",
+        "tags": [
+          "plan-practice"
         ]
       }
     },

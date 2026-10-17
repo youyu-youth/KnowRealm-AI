@@ -439,6 +439,19 @@ function PlanItemRow({
             {item.reason}
           </p>
         ) : null}
+        {item.action_type === "PRACTICE_QUIZ" ? (
+          <Link
+            to="/plan-items/$itemId/practice"
+            params={{ itemId: item.id }}
+            className={buttonVariants({
+              variant: "outline",
+              size: "sm",
+              className: "mt-3",
+            })}
+          >
+            {t("practice.title")}
+          </Link>
+        ) : null}
       </div>
       {editable && !done && !skipped ? (
         <div className="flex shrink-0 items-center gap-1">
