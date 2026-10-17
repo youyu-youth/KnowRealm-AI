@@ -1,16 +1,19 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
+import { focusManager } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import App from "@/App";
-import type { RecordStudy } from "@/features/learningPlan/api/study";
+import { createQueryClient } from "@/app/queryClient";
+import { studyKey, type RecordStudy } from "@/features/learningPlan/api/study";
 import { server } from "@/mocks/server";
 import { TEST_SIDECAR_URL } from "@/mocks/handlers";
 
@@ -201,6 +204,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  focusManager.setFocused(undefined);
   window.history.replaceState(null, "", "/");
 });
 
@@ -309,7 +313,7 @@ it("共享记录保持只读，页签仍可切换并返回原计划项", async (
   );
 });
 
-it("窗口返回后资料变共享只读会关闭旧写弹窗，并保留可用的读取刷新", async () => {
+it("仅局部窗口返回重查一次，并关闭共享资料的旧写弹窗", async () => {
   state.visit_id = "current-visit";
   state.source = state.sources[0];
   state.source_status = "AVAILABLE";
@@ -318,9 +322,27 @@ it("窗口返回后资料变共享只读会关闭旧写弹窗，并保留可用�
     "",
     `/records/${RECORD}?studyItem=${ITEM}&studyVisit=current-visit`,
   );
-  render(<App />);
+  let reads = 0;
+  server.use(
+    http.get(BASE, () => {
+      reads++;
+      return HttpResponse.json(state);
+    }),
+  );
+  const queryClient = createQueryClient();
+  render(<App queryClient={queryClient} />);
   fireEvent.click(await screen.findByRole("button", { name: "删除学习记录" }));
   await screen.findByRole("dialog");
+  const initialReads = reads;
+  await act(async () => {
+    queryClient.setQueryData([...studyKey(ITEM), ""], state, {
+      updatedAt: Date.now() - 60_001,
+    });
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+  });
+  expect(queryClient.isFetching({ queryKey: studyKey(ITEM) })).toBe(0);
+  expect(reads).toBe(initialReads);
   state = { ...state, source: { ...state.sources[0], read_only: true } };
   fireEvent(window, new Event("focus"));
   await screen.findByText("共享来源 · 只读");
@@ -328,6 +350,7 @@ it("窗口返回后资料变共享只读会关闭旧写弹窗，并保留可用�
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
   expect(screen.getByRole("button", { name: "刷新资料" })).toBeEnabled();
+  expect(reads).toBe(initialReads + 1);
 });
 
 it("从计划学习发起资产生成携带请求课程供服务端复核", async () => {

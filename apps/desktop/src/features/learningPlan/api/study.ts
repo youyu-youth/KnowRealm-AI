@@ -32,7 +32,7 @@ export function useRecordStudy(itemId?: string, q = "") {
     enabled: !!itemId,
     placeholderData: (previous) =>
       previous?.item.id === itemId ? previous : undefined,
+    // 进入时重验访问身份及共享范围；窗口返回由记录学习页局部处理。
     refetchOnMount: "always",
-    refetchOnWindowFocus: true,
   });
 }

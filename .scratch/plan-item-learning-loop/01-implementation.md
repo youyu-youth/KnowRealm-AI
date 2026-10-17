@@ -74,3 +74,11 @@
 2026-10-17 核实用户指出的包级方向环真实存在：`learning_plan.study` 导入 `today.resume_models`，而 today 聚合又依赖 learning_plan，违反 `fastapi.md` 的下游方向；它不是运行时 ImportError。沿用现有 `learning_plan.audit` 的注册钩子方式，将页签查询归回 `LearningResumeService.record_tab`，由 `main.create_app` 注入读取器。首次明确启动仍在原领域事务内读取已有页签，此后普通访问不反写本项；未装配 today 的隔离领域使用默认 summary。HTTP、数据表及前端契约不变，没有新增模型调用。
 
 验证：AST 检查 learning_plan 下已无 today 导入；复用资料学习 13 项及今日恢复/重启 2 项，**15 项全部通过**，证据 `.pytest-tmp-runs/20261017T091123Z-bc3ca1d1/backend/`。三个触及 Python 文件 Ruff check/format、Pyright（0 错误）及 OpenAPI `--check` 通过。现有测试覆盖此次保留的行为，未新增重复测试，未重跑全量或原生桌面验收；之前的全量失败结论保持。
+
+## 补评修复：统一窗口返回的学习范围重查
+
+核实学习查询的 `refetchOnWindowFocus: true` 覆盖了全局 false，与 `desktop-state.md` 相反，同时记录学习页还监听局部 focus。TanStack Query v5 的默认焦点通知实际来自 visibilitychange，自动刷新还受缓存新鲜度及请求去重影响，因此不宣称每次 focus 必然发两次请求。本次删除该 Query 覆盖项，继承全局禁止自动焦点重查的策略，仅保留记录学习页在窗口返回时主动校验访问身份与共享范围的路径。`refetchOnMount: "always"` 用于进入页面时重验范围，不受“不 refetchOnWindowFocus”条款限制，保留并补充原因注释；没有修改 rules 或全局 QueryClient。
+
+扩充原共享弹窗集成用例，使用生产 QueryClient、真实 Router/Query 与 MSW，验证缓存过期后的 Query 焦点通知不发学习查询，局部 focus 只新增一次查询，共享只读状态到达后旧写弹窗关闭、读取刷新仍可用。定向 RED `20261017T091511Z-dfda9807/frontend/` 复现自动焦点多发一次请求，修复后 `20261017T091553Z-9518722a/frontend/` **6 项全部通过**。早期检查曾要求重挂载复用新鲜缓存，该要求会改变原有入口重验策略，已从最终测试范围移除。此次未改后端或接口，未重跑全量、浏览器矩阵及原生桌面，既有验收边界不变。
+
+`pwsh -NoProfile -File scripts/check-changed.ps1` 本次改动范围检查通过：触及文件 ESLint、Prettier、两份 TS 及生产构建均通过；Vite 保留既有大块警告。日志 `.pytest-tmp-runs/record-study-20261017/focus-check-changed.log`。
