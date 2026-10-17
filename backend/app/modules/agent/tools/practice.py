@@ -11,6 +11,7 @@ from app.modules.agent.operations.practice import (
     PracticeCancelPayload,
     PracticePreparePayload,
     PracticeRequirementsPayload,
+    PracticeRoundStartPayload,
 )
 from app.modules.agent.operations.registry import lenient_tool_args_schema, submit_operation
 from app.modules.agent.runs.schemas import AuthMode
@@ -89,4 +90,20 @@ async def cancel_practice_preparation(**kwargs: Any) -> str:
         return json.dumps({"ok": False, "error": "AGENT_CONTEXT_UNBOUND"})
     return json.dumps(
         await submit_operation(runtime, "cancel_practice_preparation", kwargs), ensure_ascii=False
+    )
+
+
+@tool(args_schema=lenient_tool_args_schema(PracticeRoundStartPayload))
+async def start_plan_practice(**kwargs: Any) -> str:
+    """准备完成后开始（或继续）一轮计划练习，返回轮次状态与作答入口；不代替用户作答。
+
+    requirements_revision 来自 get_plan_practice；request_id 用新 UUID，重试沿用原 UUID。
+    已有轮次时返回该轮（评分中返回评分状态，不建新轮）。用户须在返回的 paper_path
+    页面自己作答；完成后由用户用 complete_plan_item 明确确认，不能代答或自动完成。
+    """
+    runtime = current_agent_runtime()
+    if runtime is None:
+        return json.dumps({"ok": False, "error": "AGENT_CONTEXT_UNBOUND"})
+    return json.dumps(
+        await submit_operation(runtime, "start_plan_practice", kwargs), ensure_ascii=False
     )

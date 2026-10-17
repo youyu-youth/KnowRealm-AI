@@ -311,6 +311,7 @@ function ExamPaper({
       locked={!answering}
       pending={pendingItemId === item.id}
       reviewing={reviewing}
+      planMode={planMode}
       draft={drafts[item.id]}
       onDraftChange={(itemId, value) =>
         setDrafts((current) => ({ ...current, [itemId]: value }))
@@ -321,18 +322,37 @@ function ExamPaper({
   );
 
   const currentSection = sections[Math.min(activeSection, sections.length - 1)];
+  const planMode = data.mode === "PLAN" && data.plan_item_id !== null;
 
   return (
     <section className="work-surface-enter max-w-workbench px-content mx-auto py-8">
       <Link
-        to="/spaces/$courseId"
-        params={{ courseId }}
-        search={{ tab: "tests" }}
+        to={
+          planMode && data.plan_item_id
+            ? "/plan-items/$itemId/practice"
+            : "/spaces/$courseId"
+        }
+        params={
+          planMode && data.plan_item_id
+            ? { itemId: data.plan_item_id }
+            : { courseId }
+        }
+        search={planMode ? undefined : { tab: "tests" }}
         className="text-body text-muted-foreground hover:text-ink-strong focus-visible:ring-ring/40 -ml-1 flex w-fit items-center gap-1.5 rounded-sm focus-visible:ring-3"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
-        {t("spaces.simulations.paper.back")}
+        {planMode
+          ? t("practice.planPaper.backToPlan")
+          : t("spaces.simulations.paper.back")}
       </Link>
+
+      {planMode ? (
+        <p className="text-label text-learning-foreground bg-learning-soft mt-3 w-fit rounded-xs px-2 py-1">
+          {t("practice.planPaper.badge", {
+            round: data.practice_round_no ?? "",
+          })}
+        </p>
+      ) : null}
 
       {!answering ? (
         <p
@@ -408,13 +428,15 @@ function ExamPaper({
                 {t("spaces.simulations.paper.allAnswered")}
               </p>
             ) : null}
-            <Button
-              variant="ghost"
-              className="text-muted-foreground mt-2 w-full"
-              onClick={() => setConfirmAbandon(true)}
-            >
-              {t("spaces.simulations.paper.abandonButton")}
-            </Button>
+            {planMode ? null : (
+              <Button
+                variant="ghost"
+                className="text-muted-foreground mt-2 w-full"
+                onClick={() => setConfirmAbandon(true)}
+              >
+                {t("spaces.simulations.paper.abandonButton")}
+              </Button>
+            )}
           </aside>
         ) : reviewing ? (
           <ResultSummary

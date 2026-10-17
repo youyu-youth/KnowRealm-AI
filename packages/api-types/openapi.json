@@ -7821,6 +7821,177 @@
         "title": "PracticeRequirementsUpdate",
         "type": "object"
       },
+      "PracticeRoundOut": {
+        "description": "最近一轮计划练习投影：作答与评分状态分开，揭示前不含答案。",
+        "properties": {
+          "answered_count": {
+            "title": "Answered Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "entry_path": {
+            "title": "Entry Path",
+            "type": "string"
+          },
+          "graded_count": {
+            "title": "Graded Count",
+            "type": "integer"
+          },
+          "grading_complete": {
+            "title": "Grading Complete",
+            "type": "boolean"
+          },
+          "paper_path": {
+            "title": "Paper Path",
+            "type": "string"
+          },
+          "requirements_revision": {
+            "title": "Requirements Revision",
+            "type": "integer"
+          },
+          "round_no": {
+            "title": "Round No",
+            "type": "integer"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "score_denominator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Denominator"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/PracticeRoundSourceOut"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "test_id": {
+            "title": "Test Id",
+            "type": "string"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "unscored_count": {
+            "title": "Unscored Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "test_id",
+          "round_no",
+          "requirements_revision",
+          "status",
+          "entry_path",
+          "paper_path",
+          "total_count",
+          "answered_count",
+          "graded_count",
+          "unscored_count",
+          "score",
+          "score_denominator",
+          "grading_complete",
+          "started_at",
+          "completed_at",
+          "sources"
+        ],
+        "title": "PracticeRoundOut",
+        "type": "object"
+      },
+      "PracticeRoundSourceOut": {
+        "properties": {
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "record_id",
+          "title",
+          "valid"
+        ],
+        "title": "PracticeRoundSourceOut",
+        "type": "object"
+      },
+      "PracticeRoundStart": {
+        "additionalProperties": false,
+        "properties": {
+          "preparation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preparation Id"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "requirements_revision": {
+            "exclusiveMinimum": 0.0,
+            "title": "Requirements Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "request_id",
+          "requirements_revision"
+        ],
+        "title": "PracticeRoundStart",
+        "type": "object"
+      },
       "PracticeSourceOut": {
         "properties": {
           "eligible_count": {
@@ -7903,6 +8074,16 @@
           "requirements_stale": {
             "title": "Requirements Stale",
             "type": "boolean"
+          },
+          "round": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PracticeRoundOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "sources": {
             "items": {
@@ -8633,7 +8814,8 @@
           "OP_PLAN_DRAFT",
           "OP_PRACTICE_REQUIREMENTS",
           "OP_PRACTICE_PREPARE",
-          "OP_PRACTICE_CANCEL"
+          "OP_PRACTICE_CANCEL",
+          "OP_PRACTICE_ROUND_START"
         ],
         "title": "ProposalType",
         "type": "string"
@@ -9316,6 +9498,28 @@
           "mode": {
             "$ref": "#/components/schemas/QuizTestMode"
           },
+          "plan_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Item Id"
+          },
+          "practice_round_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Practice Round No"
+          },
           "record_id": {
             "title": "Record Id",
             "type": "null"
@@ -9468,12 +9672,30 @@
             "$ref": "#/components/schemas/QuizQuestionType"
           },
           "quiz_id": {
-            "title": "Quiz Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiz Id"
           },
           "record_id": {
             "title": "Record Id",
             "type": "string"
+          },
+          "record_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Title"
           },
           "result": {
             "anyOf": [
@@ -9499,6 +9721,17 @@
           "sequence_no": {
             "title": "Sequence No",
             "type": "integer"
+          },
+          "source_valid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Valid"
           },
           "stem": {
             "title": "Stem",
@@ -9586,7 +9819,8 @@
       "QuizTestMode": {
         "enum": [
           "MOCK",
-          "ADAPTIVE"
+          "ADAPTIVE",
+          "PLAN"
         ],
         "title": "QuizTestMode",
         "type": "string"
@@ -9633,6 +9867,28 @@
           },
           "mode": {
             "$ref": "#/components/schemas/QuizTestMode"
+          },
+          "plan_item_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Item Id"
+          },
+          "practice_round_no": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Practice Round No"
           },
           "record_id": {
             "title": "Record Id",
@@ -22721,6 +22977,76 @@
           }
         },
         "summary": "Put Requirements",
+        "tags": [
+          "plan-practice"
+        ]
+      }
+    },
+    "/api/plan-items/{item_id}/practice/rounds": {
+      "post": {
+        "description": "开始或继续一轮计划练习：从 READY 准备结果建卷，已有轮次直接返回。",
+        "operationId": "post_round_api_plan_items__item_id__practice_rounds_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PracticeRoundStart"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeRoundOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Round",
         "tags": [
           "plan-practice"
         ]

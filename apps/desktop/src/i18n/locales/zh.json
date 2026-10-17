@@ -3793,6 +3793,9 @@
     "PRACTICE_EXECUTION_CANCELLED": "匹配已取消或执行归属失效，已确认要求保留",
     "PRACTICE_MATCH_INVALID": "模型未完整返回真实候选身份，本次未准备题集，可重试",
     "PRACTICE_CONFIRMATION_REQUIRED": "请先通过确认卡明确确认主题、题量、题型及资料集合",
+    "PRACTICE_PREPARATION_STALE": "题集已过期、不足或与当前要求不符，请重新准备后再开始",
+    "PRACTICE_ROUND_CONFLICT": "轮次请求与已有轮次或请求身份冲突，请刷新查看实际轮次",
+    "PRACTICE_ROUND_OP_UNAVAILABLE": "计划练习轮次暂不支持该操作",
     "PLAN_STUDY_UNAVAILABLE": "该计划项当前仅可查看，请返回计划刷新状态",
     "PLAN_STUDY_SOURCE_INVALID": "关联资料不存在或已不可见，请重新关联",
     "PLAN_STUDY_VISIT_STALE": "本次计划学习访问已失效，请重新启动",
@@ -3841,7 +3844,7 @@
     "suggestions": "可补充的课程资料",
     "suggestionHint": "以下资料的候选题经模型判定与主题相关。它们尚未加入范围；请在修改要求中勾选并确认，拒绝时保留原要求。",
     "cancel": "取消本次匹配",
-    "stageHint": "本阶段仅准备题集，支持离开后回来查看；实际作答将在后续版本接入。参考答案不会在此展示。",
+    "stageHint": "本阶段先准备题集（可离开后回来查看），准备恰好足量后即可开始一轮练习；作答在独立练习页完成，交卷后回这里查看进度并自行确认完成计划项。参考答案不会提前展示。",
     "saved": "操作已保存，可查询计划练习状态",
     "rejected": "已拒绝，原要求与练习保留",
     "type": {
@@ -3871,7 +3874,32 @@
       "OUT_OF_TOPIC": "偏离主题",
       "UNCERTAIN": "相关性无法确认"
     },
-    "sourcesReloaded": "来源已重新读取，未保存输入已保留，请核对后确认"
+    "sourcesReloaded": "来源已重新读取，未保存输入已保留，请核对后确认",
+    "round": {
+      "cardLabel": "本轮计划练习",
+      "title": "第 {{round}} 轮练习",
+      "revision": "按第 {{revision}} 次确认的要求建卷",
+      "progress": "已答 {{answered}} / {{total}} 题，已评分 {{graded}} 题",
+      "unscored": "{{count}} 题尚未评分，成绩暂为部分成绩",
+      "score": "成绩 {{score}}%（实际评分分母 {{denominator}} 题）",
+      "sourceInvalidList": "来源已失效（保留固定题面，原资料入口停用）：{{titles}}",
+      "continue": "继续本轮练习",
+      "result": "查看本轮结果",
+      "start": "开始练习",
+      "grading": "正在评分，可离开稍后回来查看",
+      "status": {
+        "IN_PROGRESS": "进行中",
+        "GRADING": "评分中",
+        "GRADING_FAILED": "评分未完成，可重试未评分题",
+        "COMPLETED": "已完成",
+        "ABANDONED": "已放弃"
+      }
+    },
+    "planPaper": {
+      "backToPlan": "返回计划练习",
+      "badge": "计划练习 · 第 {{round}} 轮（题面固定于启动时）",
+      "sourceInvalid": "来源已失效：{{title}}"
+    }
   },
   "study": {
     "backToPlan": "返回学习计划",

@@ -95,13 +95,21 @@ async def concept_names(
     quizzes: list[Quiz],
 ) -> dict[str, str]:
     """批量解析主概念展示名；名字快照仅作展示，归属事实以 concept_id 为准。"""
-    concept_ids = {item.concept_id for item in quizzes if item.concept_id is not None}
-    if not concept_ids:
+    return await concept_name_map(
+        session, {item.concept_id for item in quizzes if item.concept_id is not None}
+    )
+
+
+async def concept_name_map(
+    session: AsyncSession,
+    concept_ids: set[str | None],
+) -> dict[str, str]:
+    """按概念 id 集合解析展示名（冻结题面的概念归属与 Quiz 行共用）。"""
+    ids = {value for value in concept_ids if value is not None}
+    if not ids:
         return {}
     rows = (
-        await session.execute(
-            select(Concept.id, Concept.canonical_name).where(Concept.id.in_(concept_ids))
-        )
+        await session.execute(select(Concept.id, Concept.canonical_name).where(Concept.id.in_(ids)))
     ).all()
     return {row[0]: row[1] for row in rows}
 

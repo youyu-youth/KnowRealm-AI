@@ -3822,6 +3822,9 @@
     "PRACTICE_EXECUTION_CANCELLED": "Matching was cancelled or its execution is no longer valid. Confirmed requirements are retained.",
     "PRACTICE_MATCH_INVALID": "The model did not return a complete valid set of candidate identities. No question set was prepared; retry is available.",
     "PRACTICE_CONFIRMATION_REQUIRED": "Explicitly confirm the topic, count, types and source set using the confirmation card first.",
+    "PRACTICE_PREPARATION_STALE": "The prepared question set is stale, short of the count or no longer matches the requirements. Prepare again before starting.",
+    "PRACTICE_ROUND_CONFLICT": "The round request conflicts with an existing round or request identity. Refresh to check the actual round.",
+    "PRACTICE_ROUND_OP_UNAVAILABLE": "This operation is not available for plan practice rounds yet.",
     "PLAN_STUDY_UNAVAILABLE": "This plan item is currently read only. Return to the plan and refresh.",
     "PLAN_STUDY_SOURCE_INVALID": "The linked material is unavailable. Select another material.",
     "PLAN_STUDY_VISIT_STALE": "This plan study visit expired. Start again from the plan item.",
@@ -3870,7 +3873,7 @@
     "suggestions": "Additional course sources",
     "suggestionHint": "The model found topic-related questions in these records. They are outside the confirmed scope. Select and confirm them in the requirements editor, or keep the original requirements.",
     "cancel": "Cancel matching",
-    "stageHint": "This stage prepares questions only. You may leave and return to check progress. Answering will be connected in a later version. Reference answers are not shown here.",
+    "stageHint": "This stage first prepares the question set (you can leave and come back). Once exactly enough questions are ready, start a practice round; answering happens on the practice page, then return here to review progress and confirm the plan item yourself. Reference answers are never shown early.",
     "saved": "Action saved. Check plan practice for its current state.",
     "rejected": "Rejected. Existing requirements and practice are retained.",
     "type": {
@@ -3900,7 +3903,32 @@
       "OUT_OF_TOPIC": "Outside the topic",
       "UNCERTAIN": "Relevance is uncertain"
     },
-    "sourcesReloaded": "Sources reloaded. Your input is retained; review it before confirming."
+    "sourcesReloaded": "Sources reloaded. Your input is retained; review it before confirming.",
+    "round": {
+      "cardLabel": "Current practice round",
+      "title": "Round {{round}}",
+      "revision": "Built from confirmed requirements revision {{revision}}",
+      "progress": "Answered {{answered}} / {{total}}, graded {{graded}}",
+      "unscored": "{{count}} questions are unscored; the score is partial for now",
+      "score": "Score {{score}}% (denominator: {{denominator}} graded questions)",
+      "sourceInvalidList": "Source no longer available (frozen questions kept, source link disabled): {{titles}}",
+      "continue": "Continue this round",
+      "result": "View round results",
+      "start": "Start practice",
+      "grading": "Grading in progress; you can leave and check back later",
+      "status": {
+        "IN_PROGRESS": "In progress",
+        "GRADING": "Grading",
+        "GRADING_FAILED": "Grading incomplete; unscored questions can be retried",
+        "COMPLETED": "Completed",
+        "ABANDONED": "Abandoned"
+      }
+    },
+    "planPaper": {
+      "backToPlan": "Back to plan practice",
+      "badge": "Plan practice · round {{round}} (questions frozen at start)",
+      "sourceInvalid": "Source no longer available: {{title}}"
+    }
   },
   "study": {
     "backToPlan": "Back to learning plan",

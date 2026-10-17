@@ -255,6 +255,108 @@ it("刷新来源版本保留编辑输入，并由用户显式重新读取确认�
   });
 });
 
+function readyPreparation() {
+  state.preparations = [
+    {
+      id: "prep",
+      item_id: ITEM,
+      entry_path: `/plan-items/${ITEM}/practice`,
+      job_id: "job",
+      requirements_revision: 1,
+      status: "SUCCEEDED",
+      outcome: "READY",
+      target_count: 15,
+      eligible_count: 15,
+      related_count: 15,
+      selected_count: 15,
+      examined_count: 16,
+      total_candidates: 16,
+      course_scan_complete: true,
+      error_code: null,
+      sources: [{ ...source, matching_basis: ["TOPIC_CONCEPT"] }],
+      suggestions: [],
+    },
+  ];
+}
+
+const round = {
+  test_id: "t0000000-0000-4000-8000-000000000001",
+  round_no: 1,
+  requirements_revision: 1,
+  status: "IN_PROGRESS",
+  entry_path: `/plan-items/${ITEM}/practice`,
+  paper_path: `/spaces/${"c0000000-0000-4000-8000-000000000001"}/tests/t0000000-0000-4000-8000-000000000001`,
+  total_count: 15,
+  answered_count: 6,
+  graded_count: 0,
+  unscored_count: 0,
+  score: null,
+  score_denominator: null,
+  grading_complete: false,
+  started_at: "2026-10-17T00:00:00Z",
+  completed_at: null,
+  sources: [
+    { record_id: source.record_id, title: "Redis 核心资料", valid: true },
+  ],
+};
+
+it("题集就绪后开始练习进入同一轮，重试保留请求身份", async () => {
+  savedRequirements();
+  readyPreparation();
+  const requests: string[] = [];
+  server.use(
+    http.post(`${BASE}/rounds`, async ({ request }) => {
+      const body = (await request.json()) as { request_id: string };
+      requests.push(body.request_id);
+      if (requests.length === 1) return HttpResponse.error();
+      state = { ...state, round: { ...round } };
+      return HttpResponse.json(state.round);
+    }),
+  );
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "开始练习" }));
+  await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: "开始练习" }));
+  await screen.findByText("第 1 轮练习 · 进行中");
+  expect(requests[0]).toBe(requests[1]);
+  expect(screen.getByText("已答 6 / 15 题，已评分 0 题")).toBeInTheDocument();
+  const link = screen.getByRole("link", { name: "继续本轮练习" });
+  expect(link).toHaveAttribute(
+    "href",
+    "/spaces/c0000000-0000-4000-8000-000000000001/tests/t0000000-0000-4000-8000-000000000001?view=single",
+  );
+});
+
+it("评分中的轮次展示部分成绩与实际分母，不提供开始入口", async () => {
+  savedRequirements();
+  state = {
+    ...state,
+    round: {
+      ...round,
+      status: "GRADING_FAILED",
+      answered_count: 15,
+      graded_count: 9,
+      unscored_count: 6,
+      score: 0.5,
+      score_denominator: 9,
+      grading_complete: true,
+    },
+  };
+  render(<App />);
+  await screen.findByText("第 1 轮练习 · 评分未完成，可重试未评分题");
+  expect(screen.getByText("已答 15 / 15 题，已评分 9 题")).toBeInTheDocument();
+  expect(screen.getByText("成绩 50%（实际评分分母 9 题）")).toBeInTheDocument();
+  expect(
+    screen.getByText("6 题尚未评分，成绩暂为部分成绩"),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "开始练习" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "查看本轮结果" }),
+  ).toBeInTheDocument();
+});
+
 it("来源失效后仍可取消旧选择并确认有效来源", async () => {
   savedRequirements();
   state.sources = [second];

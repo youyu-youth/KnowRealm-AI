@@ -5,15 +5,18 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.learning_plan import practice
+from app.modules.learning_plan import practice, practice_round
 from app.modules.learning_plan.practice_schemas import (
     PracticePreparationOut,
     PracticePrepareRequest,
     PracticeRequirementsOut,
     PracticeRequirementsUpdate,
+    PracticeRoundOut,
+    PracticeRoundStart,
     PracticeStateOut,
 )
 from app.shared.deps import get_db, require_launch_token
+from app.shared.errors import CodedHTTPException
 
 router = APIRouter(
     prefix="/api/plan-items", tags=["plan-practice"], dependencies=[Depends(require_launch_token)]
@@ -52,3 +55,26 @@ async def cancel_preparation(
 ) -> PracticePreparationOut:
     async with session.begin():
         return await practice.cancel(session, str(item_id), str(preparation_id))
+
+
+@router.post("/{item_id}/practice/rounds", response_model=PracticeRoundOut)
+async def post_round(
+    item_id: UUID, payload: PracticeRoundStart, session: AsyncSession = Depends(get_db)
+) -> PracticeRoundOut:
+    """开始或继续一轮计划练习：从 READY 准备结果建卷，已有轮次直接返回。
+
+    并发兜底：部分唯一索引拦截第二个建卷事务时，败方在重查后拿到同一轮。"""
+    conflict: CodedHTTPException | None = None
+    try:
+        async with session.begin():
+            return await practice_round.start_round(session, str(item_id), payload)
+    except CodedHTTPException as exc:
+        if exc.code != "PRACTICE_ROUND_CONFLICT":
+            raise
+        conflict = exc
+    async with session.begin():
+        current = await practice_round.latest_round(session, str(item_id))
+        if current is None:
+            assert conflict is not None
+            raise conflict
+        return await practice_round.round_out(session, current)

@@ -52,6 +52,15 @@ class QuizTest(Base):
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     deleted_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+    # 计划练习轮次（mode=PLAN）专用：挂计划项、要求修订与轮次号；request_id 供重放幂等。
+    plan_item_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("learning_plan_items.id", ondelete="CASCADE"), default=None
+    )
+    practice_round_no: Mapped[int | None] = mapped_column(Integer, default=None)
+    requirements_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("practice_requirements.id", ondelete="CASCADE"), default=None
+    )
+    request_id: Mapped[str | None] = mapped_column(String(36), default=None)
 
 
 class QuizTestItem(Base):
@@ -61,8 +70,12 @@ class QuizTestItem(Base):
     test_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("quiz_tests.id", ondelete="CASCADE")
     )
-    quiz_id: Mapped[str] = mapped_column(String(36), ForeignKey("quizzes.id"))
+    # 原题身份仅追溯（物理删除置空）；计划练习的题面与判分依据读 frozen_json。
+    quiz_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("quizzes.id", ondelete="SET NULL"), default=None
+    )
     sequence_no: Mapped[int] = mapped_column(Integer)
+    frozen_json: Mapped[str | None] = mapped_column(Text, default=None)
     user_answer_json: Mapped[str | None] = mapped_column(Text, default=None)
     result: Mapped[str | None] = mapped_column(String(10), default=None)
     score: Mapped[float | None] = mapped_column(Float, default=None)

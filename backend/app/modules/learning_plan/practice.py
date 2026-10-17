@@ -389,21 +389,29 @@ async def state(session: AsyncSession, item_id: str) -> PracticeStateOut:
         )
     )
     versions = await source_versions(session, [row[0] for row in sources])
-    return PracticeStateOut(
-        item_id=item.id,
-        course_id=goal.course_id,
-        plan_id=plan.id,
-        plan_content=item.content,
-        editable=plan.status == "ACTIVE" and goal.status == "ACTIVE" and item.status != "SKIPPED",
-        requirements_stale=req is not None and req.plan_content != item.content,
-        requirements=req,
-        preparations=[await preparation_out(session, row) for row in preparations],
-        sources=[
-            PracticeSourceOut(
-                record_id=id_, title=title, eligible_count=count, version=versions[id_]
-            )
-            for id_, title, count in sources
-        ],
+    from app.modules.learning_plan.practice_round import attach_round
+
+    return await attach_round(
+        session,
+        item_id,
+        PracticeStateOut(
+            item_id=item.id,
+            course_id=goal.course_id,
+            plan_id=plan.id,
+            plan_content=item.content,
+            editable=plan.status == "ACTIVE"
+            and goal.status == "ACTIVE"
+            and item.status != "SKIPPED",
+            requirements_stale=req is not None and req.plan_content != item.content,
+            requirements=req,
+            preparations=[await preparation_out(session, row) for row in preparations],
+            sources=[
+                PracticeSourceOut(
+                    record_id=id_, title=title, eligible_count=count, version=versions[id_]
+                )
+                for id_, title, count in sources
+            ],
+        ),
     )
 
 

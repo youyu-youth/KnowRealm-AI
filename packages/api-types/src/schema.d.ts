@@ -1616,6 +1616,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan-items/{item_id}/practice/rounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Round
+         * @description 开始或继续一轮计划练习：从 READY 准备结果建卷，已有轮次直接返回。
+         */
+        post: operations["post_round_api_plan_items__item_id__practice_rounds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/plan-items/{item_id}/study": {
         parameters: {
             query?: never;
@@ -6086,6 +6106,68 @@ export interface components {
             /** Topic */
             topic: string;
         };
+        /**
+         * PracticeRoundOut
+         * @description 最近一轮计划练习投影：作答与评分状态分开，揭示前不含答案。
+         */
+        PracticeRoundOut: {
+            /** Answered Count */
+            answered_count: number;
+            /** Completed At */
+            completed_at: string | null;
+            /** Entry Path */
+            entry_path: string;
+            /** Graded Count */
+            graded_count: number;
+            /** Grading Complete */
+            grading_complete: boolean;
+            /** Paper Path */
+            paper_path: string;
+            /** Requirements Revision */
+            requirements_revision: number;
+            /** Round No */
+            round_no: number;
+            /** Score */
+            score: number | null;
+            /** Score Denominator */
+            score_denominator: number | null;
+            /** Sources */
+            sources: components["schemas"]["PracticeRoundSourceOut"][];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Status */
+            status: string;
+            /** Test Id */
+            test_id: string;
+            /** Total Count */
+            total_count: number;
+            /** Unscored Count */
+            unscored_count: number;
+        };
+        /** PracticeRoundSourceOut */
+        PracticeRoundSourceOut: {
+            /** Record Id */
+            record_id: string;
+            /** Title */
+            title: string;
+            /** Valid */
+            valid: boolean;
+        };
+        /** PracticeRoundStart */
+        PracticeRoundStart: {
+            /** Preparation Id */
+            preparation_id?: string | null;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Requirements Revision */
+            requirements_revision: number;
+        };
         /** PracticeSourceOut */
         PracticeSourceOut: {
             /** Eligible Count */
@@ -6124,6 +6206,7 @@ export interface components {
             requirements: components["schemas"]["PracticeRequirementsOut"] | null;
             /** Requirements Stale */
             requirements_stale: boolean;
+            round?: components["schemas"]["PracticeRoundOut"] | null;
             /** Sources */
             sources: components["schemas"]["PracticeSourceOut"][];
         };
@@ -6383,7 +6466,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_CONTEXT_RULES" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT" | "OP_PRACTICE_REQUIREMENTS" | "OP_PRACTICE_PREPARE" | "OP_PRACTICE_CANCEL";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_CONTEXT_RULES" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT" | "OP_PRACTICE_REQUIREMENTS" | "OP_PRACTICE_PREPARE" | "OP_PRACTICE_CANCEL" | "OP_PRACTICE_ROUND_START";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -6591,6 +6674,10 @@ export interface components {
             /** Items */
             items: components["schemas"]["QuizTestItemOut"][];
             mode: components["schemas"]["QuizTestMode"];
+            /** Plan Item Id */
+            plan_item_id?: string | null;
+            /** Practice Round No */
+            practice_round_no?: number | null;
             /** Record Id */
             record_id: null;
             /** Score */
@@ -6623,14 +6710,18 @@ export interface components {
             options: string[];
             question_type: components["schemas"]["QuizQuestionType"];
             /** Quiz Id */
-            quiz_id: string;
+            quiz_id: string | null;
             /** Record Id */
             record_id: string;
+            /** Record Title */
+            record_title?: string | null;
             result: components["schemas"]["QuizTestItemResult"] | null;
             /** Score */
             score: number | null;
             /** Sequence No */
             sequence_no: number;
+            /** Source Valid */
+            source_valid?: boolean | null;
             /** Stem */
             stem: string;
             /** User Answer */
@@ -6651,7 +6742,7 @@ export interface components {
          * QuizTestMode
          * @enum {string}
          */
-        QuizTestMode: "MOCK" | "ADAPTIVE";
+        QuizTestMode: "MOCK" | "ADAPTIVE" | "PLAN";
         /**
          * QuizTestStatus
          * @enum {string}
@@ -6670,6 +6761,10 @@ export interface components {
             /** Id */
             id: string;
             mode: components["schemas"]["QuizTestMode"];
+            /** Plan Item Id */
+            plan_item_id?: string | null;
+            /** Practice Round No */
+            practice_round_no?: number | null;
             /** Record Id */
             record_id: null;
             /** Score */
@@ -14483,6 +14578,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PracticeRequirementsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_round_api_plan_items__item_id__practice_rounds_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PracticeRoundStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticeRoundOut"];
                 };
             };
             /** @description Validation Error */

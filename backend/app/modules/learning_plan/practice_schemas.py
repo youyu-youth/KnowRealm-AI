@@ -106,6 +106,42 @@ class PracticeStateOut(BaseModel):
     requirements: PracticeRequirementsOut | None
     preparations: list[PracticePreparationOut]
     sources: list[PracticeSourceOut]
+    round: "PracticeRoundOut | None" = None
+
+
+class PracticeRoundStart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
+    requirements_revision: int = Field(gt=0)
+    preparation_id: UUID | None = None
+
+
+class PracticeRoundSourceOut(BaseModel):
+    record_id: str
+    title: str
+    valid: bool
+
+
+class PracticeRoundOut(BaseModel):
+    """最近一轮计划练习投影：作答与评分状态分开，揭示前不含答案。"""
+
+    test_id: str
+    round_no: int
+    requirements_revision: int
+    status: str
+    entry_path: str
+    paper_path: str
+    total_count: int
+    answered_count: int
+    graded_count: int
+    unscored_count: int
+    score: float | None
+    score_denominator: int | None
+    grading_complete: bool
+    started_at: datetime
+    completed_at: datetime | None
+    sources: list[PracticeRoundSourceOut]
 
 
 class MatchDecision(BaseModel):

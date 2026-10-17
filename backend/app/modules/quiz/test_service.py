@@ -1,6 +1,7 @@
 import asyncio
 import json
 from collections import Counter
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -16,6 +17,7 @@ from app.modules.course.schemas import CourseStatus
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.learning.events import write_learning_event
+from app.modules.quiz.frozen import FrozenFace, face_of
 from app.modules.quiz.models import Quiz, QuizTest, QuizTestItem
 from app.modules.quiz.schemas import (
     QuizDifficulty,
@@ -24,7 +26,7 @@ from app.modules.quiz.schemas import (
     QuizLearningEventType,
     QuizQuestionType,
 )
-from app.modules.quiz.service import concept_names
+from app.modules.quiz.service import concept_name_map
 from app.modules.quiz.test_schemas import (
     QuizTestAiGradeOut,
     QuizTestAnswerRequest,
@@ -76,6 +78,8 @@ def _summary_out(test: QuizTest, total_count: int, answered_count: int) -> QuizT
         completed_at=test.completed_at,
         created_at=test.created_at,
         updated_at=test.updated_at,
+        plan_item_id=test.plan_item_id,
+        practice_round_no=test.practice_round_no,
     )
 
 
@@ -186,7 +190,11 @@ class QuizTestService:
                         QuizTestItem.deleted_at.is_(None),
                     ),
                 )
-                .where(QuizTest.course_id == course_id, QuizTest.deleted_at.is_(None))
+                .where(
+                    QuizTest.course_id == course_id,
+                    QuizTest.deleted_at.is_(None),
+                    QuizTest.mode != QuizTestMode.PLAN.value,
+                )
                 .group_by(QuizTest.id)
                 .order_by(QuizTest.created_at.desc())
             )
@@ -233,6 +241,7 @@ class QuizTestService:
         async with session.begin():
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能再作答")
+            await _ensure_plan_round_writable(session, test)
             if test.status != QuizTestStatus.IN_PROGRESS:
                 raise CodedHTTPException(
                     code="QUIZ_TEST_CLOSED",
@@ -254,7 +263,7 @@ class QuizTestService:
                 )
             quiz = await _item_quiz(session, item)
             if item.answered_at is None:
-                await _grade_and_record(session, test, item, quiz, body.answer)
+                await _grade_and_record(session, test, item, face_of(item, quiz), body.answer)
             return await _detail_out(session, test)
 
     @staticmethod
@@ -262,6 +271,13 @@ class QuizTestService:
         async with session.begin():
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能再放弃")
+            if test.mode == QuizTestMode.PLAN.value:
+                # 放弃旧轮属 04 的安全重练链（先展示已答进度并确认），本票不开旁路。
+                raise CodedHTTPException(
+                    code="PRACTICE_ROUND_OP_UNAVAILABLE",
+                    status_code=409,
+                    detail="计划练习轮次暂不支持放弃，请完成作答或等待重练能力",
+                )
             if test.status != QuizTestStatus.IN_PROGRESS:
                 raise CodedHTTPException(
                     code="QUIZ_TEST_NOT_IN_PROGRESS",
@@ -285,6 +301,7 @@ class QuizTestService:
         async with session.begin():
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能交卷")
+            await _ensure_plan_round_writable(session, test)
             if test.status != QuizTestStatus.IN_PROGRESS:
                 raise CodedHTTPException(
                     code="QUIZ_TEST_CLOSED",
@@ -371,9 +388,34 @@ async def _ensure_course_active(
         raise CodedHTTPException(status_code=409, code="COURSE_ARCHIVED", detail=detail)
 
 
-async def _item_quiz(session: AsyncSession, item: QuizTestItem) -> Quiz:
-    quiz = await session.get(Quiz, item.quiz_id)
-    if quiz is None or quiz.deleted_at is not None:
+type PlanRoundGuard = Callable[[AsyncSession, QuizTest], Awaitable[None]]
+
+_plan_round_guard: PlanRoundGuard | None = None
+
+
+def register_plan_round_guard(guard: PlanRoundGuard) -> None:
+    """组合根注入计划约束校验，保持 quiz ← learning_plan 单向依赖（02 注册先例）。"""
+    global _plan_round_guard
+    _plan_round_guard = guard
+
+
+async def _ensure_plan_round_writable(session: AsyncSession, test: QuizTest) -> None:
+    """计划练习写护栏：历史版本/完结目标/跳过项不提供新作答（结果仍可查看）。"""
+    if test.mode != QuizTestMode.PLAN.value or test.plan_item_id is None:
+        return
+    if _plan_round_guard is None:
+        raise CodedHTTPException(
+            code="PRACTICE_ITEM_UNAVAILABLE",
+            status_code=409,
+            detail="该计划练习所属计划项已不可作答，请回到计划查看既有结果",
+        )
+    await _plan_round_guard(session, test)
+
+
+async def _item_quiz(session: AsyncSession, item: QuizTestItem) -> Quiz | None:
+    """原题行（可空）：计划练习题面在冻结副本中，原题软删/物理删除后仍可作答评分。"""
+    quiz = await session.get(Quiz, item.quiz_id) if item.quiz_id is not None else None
+    if (quiz is None or quiz.deleted_at is not None) and item.frozen_json is None:
         raise CodedHTTPException(
             code="QUIZ_TEST_QUESTION_NOT_FOUND", status_code=404, detail="试卷题目不存在"
         )
@@ -393,17 +435,11 @@ async def _item_counts(session: AsyncSession, test_id: str) -> tuple[int, int]:
 
 
 async def _short_answer_count(session: AsyncSession, test_id: str) -> int:
-    return cast(
-        int,
-        await session.scalar(
-            select(func.count(QuizTestItem.id))
-            .join(Quiz, Quiz.id == QuizTestItem.quiz_id)
-            .where(
-                QuizTestItem.test_id == test_id,
-                QuizTestItem.deleted_at.is_(None),
-                Quiz.question_type == QuizQuestionType.SHORT_ANSWER,
-            )
-        ),
+    """简答题计数按轮次题面（冻结副本优先），原题删除不影响交卷判定。"""
+    rows = await _round_items(session, test_id)
+    return sum(
+        QuizQuestionType(face_of(item, quiz).question_type) is QuizQuestionType.SHORT_ANSWER
+        for item, quiz in rows
     )
 
 
@@ -461,25 +497,54 @@ def _grading_job(test_id: str, *, provider_fingerprint: str, now: datetime) -> P
     )
 
 
+async def _round_items(
+    session: AsyncSession, test_id: str
+) -> list[tuple[QuizTestItem, Quiz | None]]:
+    """卷面题与原题行（可空）：冻结副本在 face_of 中优先，原题缺失不阻塞。"""
+    return [
+        (row[0], row[1])
+        for row in (
+            await session.execute(
+                select(QuizTestItem, Quiz)
+                .outerjoin(Quiz, Quiz.id == QuizTestItem.quiz_id)
+                .where(
+                    QuizTestItem.test_id == test_id,
+                    QuizTestItem.deleted_at.is_(None),
+                )
+                .order_by(QuizTestItem.sequence_no)
+            )
+        ).all()
+        if row[0].frozen_json is not None or row[1] is not None
+    ]
+
+
+async def _alive_record_ids(
+    session: AsyncSession, course_id: str, record_ids: set[str]
+) -> set[str]:
+    """来源当前有效性：未软删且仍归属本课程（移出课程即失效，只标注不破坏轮次）。"""
+    if not record_ids:
+        return set()
+    return set(
+        await session.scalars(
+            select(Record.id).where(
+                Record.id.in_(record_ids),
+                Record.course_id == course_id,
+                Record.deleted_at.is_(None),
+            )
+        )
+    )
+
+
 async def finalize_completed_test(session: AsyncSession, test: QuizTest, now: datetime) -> None:
     """整卷完成落账：score=已计分题等权平均（失败题排除出分母）、COMPLETED、
     QUIZ_TEST_COMPLETED 事件（幂等键，重评完成不重复落）——须在 COMPLETED 事务内调用。"""
-    rows = (
-        await session.execute(
-            select(QuizTestItem.score, Quiz.question_type)
-            .join(Quiz, Quiz.id == QuizTestItem.quiz_id)
-            .where(
-                QuizTestItem.test_id == test.id,
-                QuizTestItem.deleted_at.is_(None),
-            )
-        )
-    ).all()
-    counted = [score for score, _ in rows if score is not None]
+    rows = [(item, face_of(item, quiz)) for item, quiz in await _round_items(session, test.id)]
+    counted = [item.score for item, _ in rows if item.score is not None]
     test.score = sum(counted) / len(counted) if counted else None
     test.status = QuizTestStatus.COMPLETED
     test.completed_at = now
     test.updated_at = now
-    type_counts = Counter(question_type for _, question_type in rows)
+    type_counts = Counter(face.question_type for _, face in rows)
     await write_learning_event(
         session,
         course_id=test.course_id,
@@ -502,22 +567,26 @@ async def finalize_completed_test(session: AsyncSession, test: QuizTest, now: da
 
 
 async def _detail_out(session: AsyncSession, test: QuizTest) -> QuizTestDetailOut:
-    rows = (
-        await session.execute(
-            select(QuizTestItem, Quiz)
-            .join(Quiz, Quiz.id == QuizTestItem.quiz_id)
-            .where(
-                QuizTestItem.test_id == test.id,
-                QuizTestItem.deleted_at.is_(None),
-            )
-            .order_by(QuizTestItem.sequence_no)
-        )
-    ).all()
+    rows = await _round_items(session, test.id)
     # 正确答案与解析仅在终态（COMPLETED / GRADING_FAILED）揭示：作答期泄漏即泄漏未来卷
     reveal = test.status in (QuizTestStatus.COMPLETED, QuizTestStatus.GRADING_FAILED)
-    names = await concept_names(session, [quiz for _, quiz in rows if quiz.concept_id is not None])
+    faces = [(item, face_of(item, quiz)) for item, quiz in rows]
+    plan_round = test.mode == QuizTestMode.PLAN.value
+    alive = (
+        await _alive_record_ids(session, test.course_id, {face.record_id for _, face in faces})
+        if plan_round
+        else None
+    )
+    names = await concept_name_map(session, {face.concept_id for _, face in faces})
     items = [
-        _item_out(item, quiz, names.get(quiz.concept_id), reveal=reveal) for item, quiz in rows
+        _item_out(
+            item,
+            face,
+            names.get(face.concept_id) if face.concept_id is not None else None,
+            reveal=reveal,
+            source_valid=(face.record_id in alive) if alive is not None else None,
+        )
+        for item, face in faces
     ]
     summary = _summary_out(test, len(items), sum(item.answered_at is not None for item in items))
     return QuizTestDetailOut(**summary.model_dump(), items=items)
@@ -525,21 +594,22 @@ async def _detail_out(session: AsyncSession, test: QuizTest) -> QuizTestDetailOu
 
 def _item_out(
     item: QuizTestItem,
-    quiz: Quiz,
+    face: FrozenFace,
     concept_name: str | None,
     *,
     reveal: bool,
+    source_valid: bool | None = None,
 ) -> QuizTestItemOut:
     return QuizTestItemOut(
         id=item.id,
         quiz_id=item.quiz_id,
-        record_id=quiz.record_id,
+        record_id=face.record_id,
         sequence_no=item.sequence_no,
-        question_type=QuizQuestionType(quiz.question_type),
-        stem=quiz.stem,
-        options=cast(list[str], json.loads(quiz.options_json)),
-        difficulty=QuizDifficulty(quiz.difficulty),
-        concept_id=quiz.concept_id,
+        question_type=QuizQuestionType(face.question_type),
+        stem=face.stem,
+        options=face.options,
+        difficulty=QuizDifficulty(face.difficulty),
+        concept_id=face.concept_id,
         concept_name=concept_name,
         user_answer=cast(
             int | str | list[int] | list[str] | None,
@@ -549,11 +619,13 @@ def _item_out(
         score=item.score,
         correct_answer=cast(
             int | str | list[int] | list[list[str]] | None,
-            _decode_json(quiz.correct_answer_json) if reveal else None,
+            _decode_json(face.correct_answer) if reveal else None,
         ),
-        explanation=quiz.explanation if reveal else None,
+        explanation=face.explanation if reveal else None,
         ai_grade=_ai_grade_out(item),
         answered_at=item.answered_at,
+        record_title=face.record_title or None,
+        source_valid=source_valid,
     )
 
 
@@ -573,16 +645,17 @@ def _ai_grade_out(item: QuizTestItem) -> QuizTestAiGradeOut | None:
 
 
 def _grade_objective(
-    quiz: Quiz,
+    face: FrozenFace,
     answer: object,
 ) -> tuple[QuizTestItemResult, float, int | list[int] | list[str]]:
     """客观题判分：多选全对才得分；填空逐空判分，部分空对=PARTIAL 按空比例计分。
 
+    判分依据来自轮次题面（计划练习=冻结副本，普通测试=原题行）。
     返回值第三项为规范化后的落库作答（填空逐空去首尾空白）。
     """
-    question_type = QuizQuestionType(quiz.question_type)
-    options = cast(list[str], json.loads(quiz.options_json))
-    correct = cast(object, json.loads(quiz.correct_answer_json))
+    question_type = QuizQuestionType(face.question_type)
+    options = face.options
+    correct = cast(object, _decode_json(face.correct_answer))
     if question_type in (QuizQuestionType.MULTIPLE_CHOICE, QuizQuestionType.TRUE_FALSE):
         if not isinstance(answer, int) or not isinstance(correct, int):
             raise CodedHTTPException(
@@ -654,7 +727,7 @@ async def record_test_answer_event(
     session: AsyncSession,
     test: QuizTest,
     item: QuizTestItem,
-    quiz: Quiz,
+    face: FrozenFace,
     result: QuizTestItemResult,
     score: float,
     *,
@@ -666,19 +739,19 @@ async def record_test_answer_event(
     await write_learning_event(
         session,
         course_id=test.course_id,
-        concept_id=quiz.concept_id,
+        concept_id=face.concept_id,
         event_type=QuizLearningEventType.ANSWERED,
         source_type=QuizLearningEventSourceType.QUESTION,
-        source_id=quiz.id,
+        source_id=face.quiz_id,
         idempotency_key=f"quiz-answered:test:{item.id}",
         result=result.value,
         score=score,
-        difficulty=quiz.difficulty,
+        difficulty=face.difficulty,
         occurred_at=occurred_at,
         created_at=created_at,
         metadata={
             "test_id": test.id,
-            "question_type": quiz.question_type,
+            "question_type": face.question_type,
             "sequence_no": item.sequence_no,
         },
     )
@@ -688,10 +761,10 @@ async def _grade_and_record(
     session: AsyncSession,
     test: QuizTest,
     item: QuizTestItem,
-    quiz: Quiz,
+    face: FrozenFace,
     answer: int | str | list[int] | list[str],
 ) -> None:
-    question_type = QuizQuestionType(quiz.question_type)
+    question_type = QuizQuestionType(face.question_type)
     result: QuizTestItemResult | None
     score: float | None
     stored: int | str | list[int] | list[str] = answer
@@ -703,7 +776,7 @@ async def _grade_and_record(
         result = None
         score = None
     else:
-        result, score, stored = _grade_objective(quiz, cast(object, answer))
+        result, score, stored = _grade_objective(face, cast(object, answer))
     now = utcnow()
     updated = await session.execute(
         update(QuizTestItem)
@@ -725,5 +798,5 @@ async def _grade_and_record(
         return
     if result is not None:
         await record_test_answer_event(
-            session, test, item, quiz, result, cast(float, score), occurred_at=now
+            session, test, item, face, result, cast(float, score), occurred_at=now
         )

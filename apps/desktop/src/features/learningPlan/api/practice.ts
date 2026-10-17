@@ -5,6 +5,7 @@ import { learningPlanKeys } from "@/features/learningPlan/api/keys";
 export type PracticeState = components["schemas"]["PracticeStateOut"];
 export type RequirementsUpdate =
   components["schemas"]["PracticeRequirementsUpdate"];
+export type PracticeRound = components["schemas"]["PracticeRoundOut"];
 export type QuestionType = components["schemas"]["QuizQuestionType"];
 
 export const practiceKey = (itemId: string) =>
@@ -33,4 +34,12 @@ export const practiceApi = {
       `${base(itemId)}/preparations/${preparationId}/cancel`,
       { method: "POST" },
     ),
+  startRound: (itemId: string, revision: number, requestId: string) =>
+    apiFetch<PracticeRound>(`${base(itemId)}/rounds`, {
+      method: "POST",
+      body: JSON.stringify({
+        request_id: requestId,
+        requirements_revision: revision,
+      }),
+    }),
 };

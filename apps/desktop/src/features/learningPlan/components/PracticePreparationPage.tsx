@@ -1,5 +1,6 @@
 import { PracticeRequirementsForm } from "@/features/learningPlan/components/PracticeRequirementsForm";
 import { PracticePreparationResult } from "@/features/learningPlan/components/PracticePreparationResult";
+import { PracticeRoundCard } from "@/features/learningPlan/components/PracticeRoundCard";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -14,6 +15,7 @@ export function PracticePreparationPage({ itemId }: { itemId: string }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const request = useRef<{ revision: number; id: string } | null>(null);
+  const roundRequest = useRef<string | null>(null);
   const prepareButton = useRef<HTMLButtonElement>(null);
   const focusAfterSave = useRef(false);
   const query = useQuery({
@@ -23,7 +25,7 @@ export function PracticePreparationPage({ itemId }: { itemId: string }) {
     refetchInterval: (query) =>
       query.state.data?.preparations.some((prep) =>
         ["PENDING", "RUNNING"].includes(prep.status),
-      )
+      ) || (query.state.data?.round?.status === "GRADING" ? true : false)
         ? 1000
         : false,
   });
@@ -46,6 +48,13 @@ export function PracticePreparationPage({ itemId }: { itemId: string }) {
       return refresh();
     },
   });
+  const startRound = useMutation({
+    mutationFn: (revision: number) => {
+      roundRequest.current ??= crypto.randomUUID();
+      return practiceApi.startRound(itemId, revision, roundRequest.current);
+    },
+    onSuccess: () => refresh(),
+  });
   const cancel = useMutation({
     mutationFn: (id: string) => practiceApi.cancel(itemId, id),
     onSuccess: refresh,
@@ -66,7 +75,15 @@ export function PracticePreparationPage({ itemId }: { itemId: string }) {
   const active = state.preparations.some((prep) =>
     ["PENDING", "RUNNING"].includes(prep.status),
   );
-  const error = prepare.error ?? cancel.error;
+  const error = prepare.error ?? cancel.error ?? startRound.error;
+  const readyToStart =
+    !state.round &&
+    state.editable &&
+    !state.requirements_stale &&
+    req !== null &&
+    latest !== undefined &&
+    latest.status === "SUCCEEDED" &&
+    latest.outcome === "READY";
   return (
     <section className="mx-auto w-full max-w-3xl space-y-6 p-6">
       <Link
@@ -86,6 +103,9 @@ export function PracticePreparationPage({ itemId }: { itemId: string }) {
           {state.plan_content}
         </p>
       </header>
+      {state.round ? (
+        <PracticeRoundCard round={state.round} courseId={state.course_id} />
+      ) : null}
       {req ? (
         <div className="space-y-2">
           <h2 className="text-section text-ink">
@@ -121,6 +141,14 @@ export function PracticePreparationPage({ itemId }: { itemId: string }) {
               >
                 {t(latest ? "practice.retry" : "practice.prepare")}
               </Button>
+              {readyToStart ? (
+                <Button
+                  disabled={startRound.isPending}
+                  onClick={() => startRound.mutate(req.revision)}
+                >
+                  {t("practice.round.start")}
+                </Button>
+              ) : null}
               <Button
                 variant="outline"
                 onClick={() => setEditing((value) => !value)}

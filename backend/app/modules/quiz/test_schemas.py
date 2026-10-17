@@ -10,6 +10,7 @@ from app.modules.quiz.schemas import QuizDifficulty, QuizQuestionType
 class QuizTestMode(StrEnum):
     MOCK = "MOCK"
     ADAPTIVE = "ADAPTIVE"
+    PLAN = "PLAN"
 
 
 class QuizTestStatus(StrEnum):
@@ -89,6 +90,9 @@ class QuizTestSummaryOut(BaseModel):
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # 计划练习轮次专用；普通模拟测试为 None。
+    plan_item_id: str | None = None
+    practice_round_no: int | None = None
 
     @field_serializer("started_at", "created_at", "updated_at")
     def serialize_utc(self, value: datetime) -> str:
@@ -124,7 +128,7 @@ class QuizTestAiGradeOut(BaseModel):
 
 class QuizTestItemOut(BaseModel):
     id: str
-    quiz_id: str
+    quiz_id: str | None
     record_id: str
     sequence_no: int
     question_type: QuizQuestionType
@@ -140,6 +144,9 @@ class QuizTestItemOut(BaseModel):
     explanation: str | None = None
     ai_grade: QuizTestAiGradeOut | None = None
     answered_at: datetime | None
+    # 计划练习轮次专用：冻结的来源名称与当前有效性（来源软删/移出课程即失效）。
+    record_title: str | None = None
+    source_valid: bool | None = None
 
     @field_serializer("answered_at")
     def serialize_answered_at(self, value: datetime | None) -> str | None:

@@ -30,6 +30,8 @@ type TestQuestionCardProps = {
   pending: boolean;
   /** 终态批改展示（COMPLETED / GRADING_FAILED） */
   reviewing: boolean;
+  /** 计划练习轮次：概念归属固定只读，展示来源与失效标注 */
+  planMode?: boolean;
   /** 未提交草稿（由卷面按题持有，切题回看不丢） */
   draft?: QuizTestAnswer;
   onDraftChange: (itemId: string, value: QuizTestAnswer) => void;
@@ -43,6 +45,7 @@ export function TestQuestionCard({
   locked,
   pending,
   reviewing,
+  planMode = false,
   draft,
   onDraftChange,
   onSubmit,
@@ -65,15 +68,26 @@ export function TestQuestionCard({
             </span>
             <span>{t(`record.detail.quiz.difficulty.${item.difficulty}`)}</span>
             {item.result ? <VerdictTag result={item.result} /> : null}
+            {planMode && item.source_valid === false ? (
+              <span className="text-warning-foreground">
+                {t("practice.planPaper.sourceInvalid", {
+                  title: item.record_title ?? "",
+                })}
+              </span>
+            ) : planMode && item.record_title ? (
+              <span>{item.record_title}</span>
+            ) : null}
           </div>
           <QuizConceptField
             recordId={item.record_id}
-            quizId={item.quiz_id}
+            quizId={item.quiz_id ?? ""}
             courseId={courseId}
             conceptId={item.concept_id}
             conceptName={item.concept_name}
-            editable={!disabled}
-            onUpdated={(concept) => onConceptUpdated(item.quiz_id, concept)}
+            editable={planMode ? false : !disabled}
+            onUpdated={(concept) =>
+              onConceptUpdated(item.quiz_id ?? "", concept)
+            }
           />
           {item.question_type === "FILL_BLANK" ? null : (
             <p className="text-body text-ink mt-2 break-words">{item.stem}</p>

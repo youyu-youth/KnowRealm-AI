@@ -9,12 +9,14 @@ from app.modules.agent.operations.registry import OperationLevel, OperationSpec,
 from app.modules.agent.runs.models import AgentOperation, AgentRun
 from app.modules.agent.runs.schemas import AuthMode, OperationAuthorization
 from app.modules.agent.turns.models import ChatTurn
-from app.modules.learning_plan import practice
+from app.modules.learning_plan import practice, practice_round
 from app.modules.learning_plan.practice_schemas import (
     PracticePreparationOut,
     PracticePrepareRequest,
     PracticeRequirementsOut,
     PracticeRequirementsUpdate,
+    PracticeRoundOut,
+    PracticeRoundStart,
 )
 from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
@@ -32,6 +34,10 @@ class PracticeCancelPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
     item_id: str = Field(description="目标计划项 id")
     preparation_id: str = Field(description="要取消的准备请求 id")
+
+
+class PracticeRoundStartPayload(PracticeRoundStart):
+    item_id: str = Field(description="已完成题集准备的计划项 id")
 
 
 async def confirm(
@@ -56,6 +62,13 @@ async def cancel(
     session: AsyncSession, payload: PracticeCancelPayload, _execution_id: str
 ) -> PracticePreparationOut:
     return await practice.cancel(session, payload.item_id, payload.preparation_id)
+
+
+async def start_round_op(
+    session: AsyncSession, payload: PracticeRoundStartPayload, _execution_id: str
+) -> PracticeRoundOut:
+    core = PracticeRoundStart.model_validate(payload.model_dump(exclude={"item_id"}))
+    return await practice_round.start_round(session, payload.item_id, core)
 
 
 class PracticeSnapshot(BaseModel):
@@ -127,6 +140,18 @@ register_operation(
         applier=cancel,
         target_resolver=lambda p: ("plan_item", p.item_id),
         undo_reason="取消保留要求，可显式重试",
+    )
+)
+register_operation(
+    OperationSpec(
+        action="start_plan_practice",
+        proposal_type=ProposalType.OP_PRACTICE_ROUND_START,
+        level=OperationLevel.L1,
+        payload_schema=PracticeRoundStartPayload,
+        result_schema=PracticeRoundOut,
+        applier=start_round_op,
+        target_resolver=lambda p: ("plan_item", p.item_id),
+        undo_reason="轮次由用户在页面作答，开始不产生需撤销的写入",
     )
 )
 

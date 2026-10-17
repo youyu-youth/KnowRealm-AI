@@ -34,6 +34,7 @@ from app.modules.llm.service import (
     StructuredGenerationError,
     call_quiz_grading_model,
 )
+from app.modules.quiz.frozen import FrozenFace, face_of
 from app.modules.quiz.models import Quiz, QuizTest, QuizTestItem
 from app.modules.quiz.schemas import QuizQuestionType, ShortAnswerGrade
 from app.modules.quiz.test_schemas import QuizTestItemResult, QuizTestStatus
@@ -130,48 +131,48 @@ async def execute(
     session_factory: async_sessionmaker[AsyncSession],
     model: QuizGradingModel,
 ) -> dict[str, object]:
-    """逐题评分待评简答（result 为 NULL 即未评成功者，重评自然跳过已评题）。"""
+    """逐题评分待评简答（result 为 NULL 即未评成功者，重评自然跳过已评题）。
+
+    题面与参考答案取轮次事实（计划练习=冻结副本，普通测试=原题行）。"""
     async with session_factory() as session:
         rows = (
             await session.execute(
-                select(
-                    QuizTestItem.id,
-                    QuizTestItem.quiz_id,
-                    QuizTestItem.user_answer_json,
-                    Quiz.stem,
-                    Quiz.correct_answer_json,
-                )
-                .join(Quiz, Quiz.id == QuizTestItem.quiz_id)
+                select(QuizTestItem, Quiz)
+                .outerjoin(Quiz, Quiz.id == QuizTestItem.quiz_id)
                 .where(
                     QuizTestItem.test_id == ctx.test_id,
                     QuizTestItem.deleted_at.is_(None),
-                    Quiz.question_type == QuizQuestionType.SHORT_ANSWER,
                     QuizTestItem.result.is_(None),
                 )
                 .order_by(QuizTestItem.sequence_no)
             )
         ).all()
+    targets: list[tuple[str, str, FrozenFace]] = []
+    for item, quiz in rows:
+        face = face_of(item, quiz)
+        if face.question_type == QuizQuestionType.SHORT_ANSWER.value:
+            targets.append((item.id, cast(str, item.user_answer_json), face))
     graded = 0
     failed = 0
-    for item_id, quiz_id, user_answer_json, stem, correct_answer_json in rows:
+    for item_id, user_answer_json, face in targets:
         try:
             call = await call_quiz_grading_model(
                 session_factory=session_factory,
                 quiz_grading_model=model,
                 provider=ctx.provider,
                 prompt=build_grading_prompt(
-                    stem=stem,
-                    reference=cast(str, json.loads(cast(str, correct_answer_json))),
-                    answer=cast(str, json.loads(cast(str, user_answer_json))),
+                    stem=face.stem,
+                    reference=cast(str, json.loads(face.correct_answer)),
+                    answer=cast(str, json.loads(user_answer_json)),
                 ),
                 prompt_version=PROMPT_VERSION,
             )
         except StructuredGenerationError as exc:
             failed += 1
-            await _land_item_grade(session_factory, ctx.test_id, item_id, quiz_id, None, exc.code)
+            await _land_item_grade(session_factory, ctx.test_id, item_id, face, None, exc.code)
             continue
         graded += 1
-        await _land_item_grade(session_factory, ctx.test_id, item_id, quiz_id, call.content, None)
+        await _land_item_grade(session_factory, ctx.test_id, item_id, face, call.content, None)
     return {"graded": graded, "failed": failed}
 
 
@@ -179,7 +180,7 @@ async def _land_item_grade(
     session_factory: async_sessionmaker[AsyncSession],
     test_id: str,
     item_id: str,
-    quiz_id: str,
+    face: FrozenFace,
     grade: ShortAnswerGrade | None,
     error_code: str | None,
 ) -> None:
@@ -208,15 +209,14 @@ async def _land_item_grade(
                 separators=(",", ":"),
             )
             test = await session.get(QuizTest, test_id)
-            quiz = await session.get(Quiz, quiz_id)
-            if test is not None and quiz is not None:
+            if test is not None:
                 # 事件代表作答行为：评分落行在评分时刻，occurred_at 取作答时刻
                 # （交卷闸门要求全部作答，answered_at 必非空）。
                 await record_test_answer_event(
                     session,
                     test,
                     item,
-                    quiz,
+                    face,
                     verdict,
                     grade.score,
                     occurred_at=cast(datetime, item.answered_at),
