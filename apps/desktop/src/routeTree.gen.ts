@@ -22,6 +22,7 @@ import { Route as RecordsRecordIdRouteImport } from "./pages/records.$recordId";
 import { Route as SpacesIndexRouteImport } from "./pages/spaces.index";
 import { Route as SpacesCourseIdRouteImport } from "./pages/spaces.$courseId";
 import { Route as PlanItemsItemIdPracticeRouteImport } from "./pages/plan-items.$itemId.practice";
+import { Route as PlanItemsItemIdStudyRouteImport } from "./pages/plan-items.$itemId.study";
 import { Route as SpacesCourseIdTestsTestIdRouteImport } from "./pages/spaces.$courseId_.tests.$testId";
 
 const IndexRoute = IndexRouteImport.update({
@@ -89,6 +90,11 @@ const PlanItemsItemIdPracticeRoute = PlanItemsItemIdPracticeRouteImport.update({
   path: "/plan-items/$itemId/practice",
   getParentRoute: () => rootRouteImport,
 } as any);
+const PlanItemsItemIdStudyRoute = PlanItemsItemIdStudyRouteImport.update({
+  id: "/plan-items/$itemId/study",
+  path: "/plan-items/$itemId/study",
+  getParentRoute: () => rootRouteImport,
+} as any);
 const SpacesCourseIdTestsTestIdRoute =
   SpacesCourseIdTestsTestIdRouteImport.update({
     id: "/$courseId_/tests/$testId",
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   "/chat/": typeof ChatIndexRoute;
   "/spaces/": typeof SpacesIndexRoute;
   "/plan-items/$itemId/practice": typeof PlanItemsItemIdPracticeRoute;
+  "/plan-items/$itemId/study": typeof PlanItemsItemIdStudyRoute;
   "/spaces/$courseId/tests/$testId": typeof SpacesCourseIdTestsTestIdRoute;
 }
 export interface FileRoutesByTo {
@@ -125,6 +132,7 @@ export interface FileRoutesByTo {
   "/chat": typeof ChatIndexRoute;
   "/spaces": typeof SpacesIndexRoute;
   "/plan-items/$itemId/practice": typeof PlanItemsItemIdPracticeRoute;
+  "/plan-items/$itemId/study": typeof PlanItemsItemIdStudyRoute;
   "/spaces/$courseId/tests/$testId": typeof SpacesCourseIdTestsTestIdRoute;
 }
 export interface FileRoutesById {
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   "/chat/": typeof ChatIndexRoute;
   "/spaces/": typeof SpacesIndexRoute;
   "/plan-items/$itemId/practice": typeof PlanItemsItemIdPracticeRoute;
+  "/plan-items/$itemId/study": typeof PlanItemsItemIdStudyRoute;
   "/spaces/$courseId_/tests/$testId": typeof SpacesCourseIdTestsTestIdRoute;
 }
 export interface FileRouteTypes {
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | "/chat/"
     | "/spaces/"
     | "/plan-items/$itemId/practice"
+    | "/plan-items/$itemId/study"
     | "/spaces/$courseId/tests/$testId";
   fileRoutesByTo: FileRoutesByTo;
   to:
@@ -175,6 +185,7 @@ export interface FileRouteTypes {
     | "/chat"
     | "/spaces"
     | "/plan-items/$itemId/practice"
+    | "/plan-items/$itemId/study"
     | "/spaces/$courseId/tests/$testId";
   id:
     | "__root__"
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
     | "/chat/"
     | "/spaces/"
     | "/plan-items/$itemId/practice"
+    | "/plan-items/$itemId/study"
     | "/spaces/$courseId_/tests/$testId";
   fileRoutesById: FileRoutesById;
 }
@@ -206,6 +218,7 @@ export interface RootRouteChildren {
   RecordsRecordIdRoute: typeof RecordsRecordIdRoute;
   ChatIndexRoute: typeof ChatIndexRoute;
   PlanItemsItemIdPracticeRoute: typeof PlanItemsItemIdPracticeRoute;
+  PlanItemsItemIdStudyRoute: typeof PlanItemsItemIdStudyRoute;
 }
 
 declare module "@tanstack/react-router" {
@@ -301,6 +314,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof PlanItemsItemIdPracticeRouteImport;
       parentRoute: typeof rootRouteImport;
     };
+    "/plan-items/$itemId/study": {
+      id: "/plan-items/$itemId/study";
+      path: "/plan-items/$itemId/study";
+      fullPath: "/plan-items/$itemId/study";
+      preLoaderRoute: typeof PlanItemsItemIdStudyRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
     "/spaces/$courseId_/tests/$testId": {
       id: "/spaces/$courseId_/tests/$testId";
       path: "/$courseId/tests/$testId";
@@ -338,6 +358,7 @@ const rootRouteChildren: RootRouteChildren = {
   RecordsRecordIdRoute: RecordsRecordIdRoute,
   ChatIndexRoute: ChatIndexRoute,
   PlanItemsItemIdPracticeRoute: PlanItemsItemIdPracticeRoute,
+  PlanItemsItemIdStudyRoute: PlanItemsItemIdStudyRoute,
 };
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -1146,6 +1146,18 @@ function PlanItemUpdatePreviewFields({
       after,
     });
   }
+  if (fieldString(payload, "record_id")) {
+    entries.push({
+      label: t("study.recordField"),
+      before:
+        fieldString(snapshot, "record_title") ??
+        fieldString(snapshot, "record_id"),
+      after:
+        fieldString(snapshot, "proposed_record_title") ??
+        fieldString(payload, "record_id") ??
+        "",
+    });
+  }
   return (
     <>
       <div className="flex gap-2">
@@ -1614,13 +1626,23 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
   OP_PLAN_ITEM_UPDATE: {
     label: (key) => `chat.operationProposal.planItemUpdate.${key}`,
     PreviewFields: PlanItemUpdatePreviewFields,
-    SettledRow: (props) => (
-      <SettledTextRow
-        {...props}
-        appliedTextKey="chat.operationProposal.planItemUpdate.accepted"
-        rejectedTextKey="chat.operationProposal.planItemUpdate.rejected"
-      />
-    ),
+    SettledRow: (props) =>
+      fieldString(props.result, "entry_path") ? (
+        <SettledActionRow
+          {...props}
+          appliedTextKey="chat.operationProposal.planItemUpdate.accepted"
+          rejectedTextKey="chat.operationProposal.planItemUpdate.rejected"
+          openLabel={props.t("study.openItem")}
+          openTo="/plan-items/$itemId/study"
+          openParams={{ itemId: fieldString(props.result, "item_id") ?? "" }}
+        />
+      ) : (
+        <SettledTextRow
+          {...props}
+          appliedTextKey="chat.operationProposal.planItemUpdate.accepted"
+          rejectedTextKey="chat.operationProposal.planItemUpdate.rejected"
+        />
+      ),
   },
   OP_PLAN_ITEM_COMPLETE: {
     label: (key) => `chat.operationProposal.planItemComplete.${key}`,

@@ -281,6 +281,10 @@ async def test_legacy_nonterminal_turn_requires_stop_and_new_question(
             " DROP TABLE chat_context_states;"
             " DROP TABLE learning_resume_entries;"
             " DROP TABLE practice_preparations; DROP TABLE practice_requirements;"
+            " ALTER TABLE learning_plan_items DROP COLUMN study_visit_id;"
+            " ALTER TABLE learning_plan_items DROP COLUMN study_record_id;"
+            " ALTER TABLE learning_plan_items DROP COLUMN study_started_at;"
+            " ALTER TABLE learning_plan_items DROP COLUMN study_tab;"
             " PRAGMA user_version=44;"
         )
     async with recovery_app(tmp_path, monkeypatch, replies=[["新回答"]]) as (app, client, captured):

@@ -969,6 +969,10 @@ class PlanItemStateSnapshot(BaseModel):
     estimated_minutes: int | None = None
     status: str
     user_locked: bool
+    record_id: str | None = None
+    record_title: str | None = None
+    proposed_record_title: str | None = None
+    proposed_record_version: str | None = None
 
 
 class PlanItemUpdateResult(BaseModel):
@@ -980,6 +984,7 @@ class PlanItemUpdateResult(BaseModel):
     before: dict[str, Any]
     after: dict[str, Any]
     user_locked: bool = Field(description="手动编辑后置位（重生成原样保留）")
+    entry_path: str | None = Field(default=None, description="资料关联修改后的计划项学习入口")
 
 
 class PlanItemCompletePayload(BaseModel):

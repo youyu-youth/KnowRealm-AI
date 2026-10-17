@@ -79,6 +79,11 @@ class LearningPlanItem(Base):
     status: Mapped[str] = mapped_column(String(20), default="PENDING")
     user_locked: Mapped[bool] = mapped_column(Boolean, default=False)
     completed_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+    study_visit_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    # 保留启动时身份，来源物理删除后仍能解释本次访问失效。
+    study_record_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    study_started_at: Mapped[datetime | None] = mapped_column(ISODateTime, default=None)
+    study_tab: Mapped[str] = mapped_column(String(30), default="summary")
     reason_json: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)

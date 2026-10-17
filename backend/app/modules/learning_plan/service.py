@@ -459,6 +459,14 @@ class PlanItemService:
         plan = await session.get(LearningPlan, item.plan_id)
         assert plan is not None  # FK 保证行存在
         PlanItemService.require_active_plan(plan)
+        if item.action_type == "STUDY_RECORD":
+            goal = await session.get(LearningGoal, plan.goal_id)
+            if goal is None or goal.status != "ACTIVE":
+                raise CodedHTTPException(
+                    code="PLAN_STUDY_UNAVAILABLE",
+                    status_code=409,
+                    detail="目标已完结，仅可查看既有学习结果",
+                )
 
     @staticmethod
     async def update_core(
@@ -476,6 +484,16 @@ class PlanItemService:
             if value is not None
         }
         if changes:
+            if payload.record_id is not None:
+                from app.modules.learning_plan.study import context, require_source
+
+                _item, _plan, goal = await context(session, item.id, writable=True)
+                await require_source(session, goal.course_id, payload.record_id)
+                if item.record_id != payload.record_id:
+                    item.study_visit_id = None
+                    item.study_record_id = None
+                    item.study_started_at = None
+                    item.study_tab = "summary"
             for field, value in changes.items():
                 setattr(item, field, value)
             item.user_locked = True
@@ -556,6 +574,10 @@ class PlanItemService:
             await PlanItemService.update_core(session, item, payload)
 
         async with session.begin():
+            if payload.record_id is not None:
+                from app.modules.learning_plan.study import lock_item
+
+                await lock_item(session, item_id)
             return await PlanItemService._apply_manual_change(
                 session,
                 course_id=course_id,
@@ -611,6 +633,10 @@ class PlanItemService:
         """完成事务内核心：DONE + 完成时间戳（学习时长统计口径；重复完成
         保留首次时间戳，跳过后完成补写时间戳）。"""
         await PlanItemService._require_item_plan_active(session, item)
+        if item.action_type == "STUDY_RECORD" and item.status == "SKIPPED":
+            raise CodedHTTPException(
+                code="PLAN_STUDY_UNAVAILABLE", status_code=409, detail="已跳过的资料项不可执行完成"
+            )
         item.status = PlanItemStatus.DONE.value
         if item.completed_at is None:
             item.completed_at = utcnow()

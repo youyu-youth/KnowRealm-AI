@@ -1,11 +1,11 @@
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_serializer, model_validator
 
-RecordResumeTab = Literal["summary", "transcript", "knowledge-points", "quiz", "review", "todo"]
+from app.modules.record.schemas import RecordContentTab as RecordResumeTab
 
 
 class ResumeKind(StrEnum):

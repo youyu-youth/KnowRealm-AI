@@ -3821,7 +3821,11 @@
     "PRACTICE_REQUEST_CONFLICT": "Matching is already active or the request identity conflicts. Refresh to check its state.",
     "PRACTICE_EXECUTION_CANCELLED": "Matching was cancelled or its execution is no longer valid. Confirmed requirements are retained.",
     "PRACTICE_MATCH_INVALID": "The model did not return a complete valid set of candidate identities. No question set was prepared; retry is available.",
-    "PRACTICE_CONFIRMATION_REQUIRED": "Explicitly confirm the topic, count, types and source set using the confirmation card first."
+    "PRACTICE_CONFIRMATION_REQUIRED": "Explicitly confirm the topic, count, types and source set using the confirmation card first.",
+    "PLAN_STUDY_UNAVAILABLE": "This plan item is currently read only. Return to the plan and refresh.",
+    "PLAN_STUDY_SOURCE_INVALID": "The linked material is unavailable. Select another material.",
+    "PLAN_STUDY_VISIT_STALE": "This plan study visit expired. Start again from the plan item.",
+    "PLAN_STUDY_CONFIRMATION_REQUIRED": "Confirm the specific material before changing the link."
   },
   "agent": {
     "run": {
@@ -3897,5 +3901,31 @@
       "UNCERTAIN": "Relevance is uncertain"
     },
     "sourcesReloaded": "Sources reloaded. Your input is retained; review it before confirming."
+  },
+  "study": {
+    "backToPlan": "Back to learning plan",
+    "backToItem": "Back to plan item",
+    "honestBoundary": "Only explicit starts from this item and the last viewed tab are recorded. Confirm completion yourself; these facts do not measure reading time or mastery.",
+    "readonly": "Historical plans, finished goals and skipped items only show existing study records.",
+    "sharedReadonly": "Shared source · Read only",
+    "changeSource": "Change linked material",
+    "missing": "No material is linked. Select and confirm a source.",
+    "unavailable": "The original source was deleted, moved out of scope, or is no longer shared. Link another material.",
+    "chooseSource": "Select linked material",
+    "searchSource": "Search materials visible in this course",
+    "truncated": "Showing the first 50 results. Search by title to narrow the list.",
+    "noSources": "No matching available materials. Adjust your search or add materials first.",
+    "confirmSource": "Confirm this material",
+    "lastStarted": "Last started from this item: {{time}} · Tab: {{tab}}",
+    "notStarted": "Study has not been started from this plan item.",
+    "continue": "Continue studying material",
+    "start": "Start studying material",
+    "complete": "I confirm this plan item is complete",
+    "completed": "Plan item completed. You can continue studying.",
+    "staleVisit": "This visit expired or the plan or source changed. Return to the plan item and start again.",
+    "savingTab": "Saving tab…",
+    "openItem": "Open material study",
+    "viewResult": "View study record",
+    "recordField": "Linked material"
   }
 }

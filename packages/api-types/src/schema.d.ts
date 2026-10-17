@@ -1616,6 +1616,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/plan-items/{item_id}/study": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Study */
+        get: operations["get_study_api_plan_items__item_id__study_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan-items/{item_id}/study/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Study */
+        post: operations["start_study_api_plan_items__item_id__study_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan-items/{item_id}/study/tab": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Study Tab */
+        put: operations["save_study_tab_api_plan_items__item_id__study_tab_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/processing-jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -5876,6 +5927,11 @@ export interface components {
              */
             estimated_minutes?: number | null;
             /**
+             * Record Id
+             * @description 人工确认的资料关联，仅学习资料项可修改
+             */
+            record_id?: string | null;
+            /**
              * Scheduled Date
              * @description 排期日期（按日）
              */
@@ -6711,6 +6767,70 @@ export interface components {
          * @enum {string}
          */
         RecordStatus: "NOTE" | "DRAFT" | "CONTENT_PROCESSING" | "SUMMARY_PENDING" | "SUMMARY_PROCESSING" | "SUMMARY_READY" | "COMPLETED" | "FAILED";
+        /** RecordStudyOut */
+        RecordStudyOut: {
+            /** Course Id */
+            course_id: string;
+            /** Editable */
+            editable: boolean;
+            /** Entry Path */
+            entry_path: string;
+            /** Goal Id */
+            goal_id: string;
+            item: components["schemas"]["PlanItemOut"];
+            /** Plan Id */
+            plan_id: string;
+            source: components["schemas"]["StudySourceOut"] | null;
+            /**
+             * Source Status
+             * @enum {string}
+             */
+            source_status: "AVAILABLE" | "MISSING" | "UNAVAILABLE";
+            /** Sources */
+            sources: components["schemas"]["StudySourceOut"][];
+            /** Sources Truncated */
+            sources_truncated: boolean;
+            /** Started At */
+            started_at: string | null;
+            /**
+             * Tab
+             * @enum {string}
+             */
+            tab: "summary" | "transcript" | "knowledge-points" | "quiz" | "review" | "todo";
+            /** Visit Id */
+            visit_id: string | null;
+        };
+        /** RecordStudyStart */
+        RecordStudyStart: {
+            /**
+             * Record Id
+             * Format: uuid
+             */
+            record_id: string;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
+        /** RecordStudyTabUpdate */
+        RecordStudyTabUpdate: {
+            /**
+             * Record Id
+             * Format: uuid
+             */
+            record_id: string;
+            /**
+             * Tab
+             * @enum {string}
+             */
+            tab: "summary" | "transcript" | "knowledge-points" | "quiz" | "review" | "todo";
+            /**
+             * Visit Id
+             * Format: uuid
+             */
+            visit_id: string;
+        };
         /** RecordUpgradeAccepted */
         RecordUpgradeAccepted: {
             record: components["schemas"]["RecordOut"];
@@ -7031,6 +7151,15 @@ export interface components {
          * @enum {string}
          */
         SourceAnchorType: "AUDIO_SEGMENT" | "DOCUMENT_SEGMENT" | "USER_NOTE" | "CHAT_MESSAGE";
+        /** StudySourceOut */
+        StudySourceOut: {
+            /** Read Only */
+            read_only: boolean;
+            /** Record Id */
+            record_id: string;
+            /** Title */
+            title: string;
+        };
         /**
          * SummaryAction
          * @enum {string}
@@ -14354,6 +14483,115 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PracticeRequirementsOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_study_api_plan_items__item_id__study_get: {
+        parameters: {
+            query?: {
+                q?: string;
+            };
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordStudyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_study_api_plan_items__item_id__study_start_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordStudyStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordStudyOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    save_study_tab_api_plan_items__item_id__study_tab_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordStudyTabUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordStudyOut"];
                 };
             };
             /** @description Validation Error */

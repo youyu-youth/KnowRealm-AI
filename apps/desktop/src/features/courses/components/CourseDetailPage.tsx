@@ -57,6 +57,7 @@ type CourseDetailPageProps = {
   tab: CourseTab;
   initialEditing?: boolean;
   masteryStatus?: MasteryStatus;
+  planItemId?: string;
   onTabChange: (tab: CourseTab) => void;
   onMasteryStatusChange: (status?: MasteryStatus) => void;
   onDeleted: () => void | Promise<void>;
@@ -67,6 +68,7 @@ export function CourseDetailPage({
   tab,
   initialEditing = false,
   masteryStatus,
+  planItemId,
   onTabChange,
   onMasteryStatusChange,
   onDeleted,
@@ -285,7 +287,7 @@ export function CourseDetailPage({
           >
             <div className="px-content">
               <div className="max-w-workbench mx-auto pt-5 pb-8">
-                <LearningPlanTab courseId={courseId} />
+                <LearningPlanTab courseId={courseId} focusItemId={planItemId} />
               </div>
             </div>
           </TabsContent>

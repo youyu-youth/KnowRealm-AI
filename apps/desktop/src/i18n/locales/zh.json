@@ -3792,7 +3792,11 @@
     "PRACTICE_REQUEST_CONFLICT": "已有匹配任务或请求身份冲突，请刷新查看实际状态",
     "PRACTICE_EXECUTION_CANCELLED": "匹配已取消或执行归属失效，已确认要求保留",
     "PRACTICE_MATCH_INVALID": "模型未完整返回真实候选身份，本次未准备题集，可重试",
-    "PRACTICE_CONFIRMATION_REQUIRED": "请先通过确认卡明确确认主题、题量、题型及资料集合"
+    "PRACTICE_CONFIRMATION_REQUIRED": "请先通过确认卡明确确认主题、题量、题型及资料集合",
+    "PLAN_STUDY_UNAVAILABLE": "该计划项当前仅可查看，请返回计划刷新状态",
+    "PLAN_STUDY_SOURCE_INVALID": "关联资料不存在或已不可见，请重新关联",
+    "PLAN_STUDY_VISIT_STALE": "本次计划学习访问已失效，请重新启动",
+    "PLAN_STUDY_CONFIRMATION_REQUIRED": "关联资料需要您确认具体记录"
   },
   "agent": {
     "run": {
@@ -3868,5 +3872,31 @@
       "UNCERTAIN": "相关性无法确认"
     },
     "sourcesReloaded": "来源已重新读取，未保存输入已保留，请核对后确认"
+  },
+  "study": {
+    "backToPlan": "返回学习计划",
+    "backToItem": "返回原计划项",
+    "honestBoundary": "这里只记录从本计划项启动及最后查看的页签；完成请自行确认，不代表阅读时长或掌握度。",
+    "readonly": "历史计划、完结目标及已跳过项仅可查看既有学习记录。",
+    "sharedReadonly": "共享来源 · 只读",
+    "changeSource": "更换关联资料",
+    "missing": "此计划项尚未关联资料，请选择并确认。",
+    "unavailable": "原资料已删除、移出课程或共享引用已失效，请重新关联。",
+    "chooseSource": "选择关联资料",
+    "searchSource": "搜索本课程可见资料",
+    "truncated": "仅显示前 50 条，请输入标题缩小范围。",
+    "noSources": "没有匹配的有效资料，请调整搜索或先添加资料。",
+    "confirmSource": "确认关联此资料",
+    "lastStarted": "最近从本项启动：{{time}} · 页签：{{tab}}",
+    "notStarted": "尚未从本计划项启动学习。",
+    "continue": "继续学习资料",
+    "start": "开始学习资料",
+    "complete": "我确认此计划项已完成",
+    "completed": "计划项已完成，可继续学习巩固。",
+    "staleVisit": "本次访问已失效，或计划及来源已变化，请返回原计划项查看并重新启动。",
+    "savingTab": "正在保存页签…",
+    "openItem": "打开资料学习",
+    "viewResult": "查看学习记录",
+    "recordField": "关联资料"
   }
 }

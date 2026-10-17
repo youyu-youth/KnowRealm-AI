@@ -7,7 +7,12 @@ import { CourseDetailPage } from "@/features/courses/components/CourseDetailPage
 export const Route = createFileRoute("/spaces/$courseId")({
   validateSearch: (
     search: Record<string, unknown>,
-  ): { tab: CourseTab; edit?: boolean; mastery?: MasteryStatus } => {
+  ): {
+    tab: CourseTab;
+    edit?: boolean;
+    mastery?: MasteryStatus;
+    planItem?: string;
+  } => {
     const editing =
       search.edit === true || search.edit === "true" || search.edit === "1";
     const mastery = isMasteryStatus(search.mastery)
@@ -17,6 +22,9 @@ export const Route = createFileRoute("/spaces/$courseId")({
       tab: asCourseTab(search.tab),
       ...(editing ? { edit: true } : {}),
       ...(mastery ? { mastery } : {}),
+      ...(typeof search.planItem === "string"
+        ? { planItem: search.planItem }
+        : {}),
     };
   },
   component: CourseDetailRoute,
@@ -24,7 +32,7 @@ export const Route = createFileRoute("/spaces/$courseId")({
 
 export function CourseDetailRoute() {
   const { courseId } = Route.useParams();
-  const { tab, edit, mastery } = Route.useSearch();
+  const { tab, edit, mastery, planItem } = Route.useSearch();
   const navigate = Route.useNavigate();
   return (
     <CourseDetailPage
@@ -32,6 +40,7 @@ export function CourseDetailRoute() {
       tab={tab}
       initialEditing={edit}
       masteryStatus={mastery}
+      planItemId={planItem}
       onTabChange={(nextTab) =>
         void navigate({
           to: "/spaces/$courseId",

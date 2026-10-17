@@ -63,6 +63,7 @@ from app.modules.learning import routes as learning_routes
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.service import MasteryService
 from app.modules.learning_plan import practice_routes
+from app.modules.learning_plan import study_routes
 from app.modules.learning_plan import routes as learning_plan_routes
 from app.modules.learning_plan.practice_worker import practice_spec
 from app.modules.library import routes as library_routes
@@ -518,6 +519,7 @@ def create_app(
     app.include_router(learning_routes.router)
     app.include_router(learning_plan_routes.router)
     app.include_router(practice_routes.router)
+    app.include_router(study_routes.router)
     app.include_router(audio_imports.router)
     app.include_router(capture_batches.router)
     app.include_router(settings_routes.router)

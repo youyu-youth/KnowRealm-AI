@@ -37,6 +37,7 @@ from app.modules.learning_plan.audit import register_manual_audit_recorder
 from app.modules.learning_plan.models import LearningGoal, LearningPlan, LearningPlanItem
 from app.modules.learning_plan.schemas import PlanItemUpdate
 from app.modules.learning_plan.service import PlanItemService
+from app.modules.library.models import AgentProposal
 from app.modules.library.schemas import ProposalType
 from app.shared.errors import CodedHTTPException
 
@@ -45,7 +46,7 @@ UPDATE_PLAN_ITEM_ACTION = "update_plan_item"
 COMPLETE_PLAN_ITEM_ACTION = "complete_plan_item"
 
 # 项级可修改字段（快照 / 回执 before/after 投影的键集）。
-PLAN_ITEM_UPDATE_FIELDS = ("scheduled_date", "estimated_minutes", "content")
+PLAN_ITEM_UPDATE_FIELDS = ("scheduled_date", "estimated_minutes", "content", "record_id")
 
 
 async def load_item_context(
@@ -90,6 +91,7 @@ def item_state_snapshot(
         estimated_minutes=item.estimated_minutes,
         status=item.status,
         user_locked=item.user_locked,
+        record_id=item.record_id,
     )
 
 
@@ -102,7 +104,17 @@ async def capture_plan_item_state(
     if found is None:
         raise _item_not_found()
     _require_item(found)
-    return item_state_snapshot(found)
+    snapshot = item_state_snapshot(found)
+    if isinstance(payload, PlanItemUpdatePayload) and payload.record_id is not None:
+        from app.modules.learning_plan.study import context, require_source, source
+
+        item, _plan, goal = await context(session, payload.item_id, writable=True)
+        linked = await source(session, goal.course_id, item.record_id)
+        proposed = await require_source(session, goal.course_id, payload.record_id)
+        snapshot.record_title = linked.title if linked else None
+        snapshot.proposed_record_title = proposed.title
+        snapshot.proposed_record_version = str(proposed.updated_at)
+    return snapshot
 
 
 def resolve_plan_item_target(
@@ -116,6 +128,15 @@ async def apply_plan_item_update(
 ) -> PlanItemUpdateResult:
     """OP_PLAN_ITEM_UPDATE 应用器（调用方事务内）：经领域核心就地修改 +
     user_locked 置位，返回修改字段 before / after 对照。"""
+    if payload.record_id is not None:
+        # 自动档与批量 Run 不能替代资料对象的人工确认。
+        proposal = await session.get(AgentProposal, _execution_id)
+        if proposal is None or proposal.proposal_type != ProposalType.OP_PLAN_ITEM_UPDATE:
+            raise CodedHTTPException(
+                code="PLAN_STUDY_CONFIRMATION_REQUIRED",
+                status_code=409,
+                detail="资料关联变更需要用户确认具体记录",
+            )
     found = await load_item_context(session, payload.item_id)
     if found is None:
         raise _item_not_found()
@@ -138,6 +159,7 @@ async def apply_plan_item_update(
         before={key: before[key] for key in changed},
         after={key: after[key] for key in changed},
         user_locked=item.user_locked,
+        entry_path=f"/plan-items/{item.id}/study" if payload.record_id else None,
     )
 
 

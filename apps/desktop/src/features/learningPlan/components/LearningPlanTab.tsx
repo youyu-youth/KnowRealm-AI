@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { components } from "@knowrealm/api-types";
 import { Bot, Lock, MessageSquare } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { StatusTag } from "@/components/common/StatusTag";
@@ -35,8 +35,9 @@ import {
   isPlanItemType,
 } from "@/features/learningPlan/planItemTypes";
 import { ApiError } from "@/services/http/client";
+import { useRecordStudy } from "@/features/learningPlan/api/study";
 
-type LearningPlanTabProps = { courseId: string };
+type LearningPlanTabProps = { courseId: string; focusItemId?: string };
 
 type GoalStatus = components["schemas"]["GoalStatus"];
 
@@ -55,9 +56,14 @@ const GOAL_STATUS_LABEL_KEYS: Record<GoalStatus, string> = {
  * 时回落最近的历史目标只读展示，并保留"设定新目标"引导。空态两档：完全无目标
  * → 引导对话设定目标（新建目标主路径＝对话，本 Tab 为手动兜底与日常执行面）；
  * 有目标无计划 → 引导对话生成计划草案。 */
-export function LearningPlanTab({ courseId }: LearningPlanTabProps) {
+export function LearningPlanTab({
+  courseId,
+  focusItemId,
+}: LearningPlanTabProps) {
   const { t } = useTranslation();
   const goals = useLearningGoals(courseId);
+  const focused = useRecordStudy(focusItemId);
+  const focus = focused.data?.course_id === courseId ? focused.data : undefined;
   // null = 跟随默认目标（进行中优先）；显式选择后固定该目标。
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
 
@@ -89,6 +95,7 @@ export function LearningPlanTab({ courseId }: LearningPlanTabProps) {
   const fallbackGoal = goals.data?.find((goal) => goal.status !== "ACTIVE");
   const currentGoal =
     goals.data?.find((goal) => goal.id === selectedGoalId) ??
+    goals.data?.find((goal) => goal.id === focus?.goal_id) ??
     activeGoal ??
     fallbackGoal;
 
@@ -110,6 +117,8 @@ export function LearningPlanTab({ courseId }: LearningPlanTabProps) {
         goal={currentGoal}
         goals={goals.data ?? []}
         onGoalChange={setSelectedGoalId}
+        focusedPlanId={focus?.plan_id}
+        focusItemId={focusItemId}
       />
       {activeGoal == null ? (
         <GuideCard
@@ -127,11 +136,15 @@ function GoalWorkspace({
   goal,
   goals,
   onGoalChange,
+  focusedPlanId,
+  focusItemId,
 }: {
   courseId: string;
   goal: LearningGoal;
   goals: LearningGoal[];
   onGoalChange: (goalId: string) => void;
+  focusedPlanId?: string;
+  focusItemId?: string;
 }) {
   const { t } = useTranslation();
   const versions = usePlanVersions(courseId, goal.id);
@@ -141,7 +154,8 @@ function GoalWorkspace({
   const activeVersion = versions.data?.find(
     (version) => version.status === "ACTIVE",
   );
-  const currentPlanId = selectedPlanId ?? activeVersion?.id ?? null;
+  const currentPlanId =
+    selectedPlanId ?? focusedPlanId ?? activeVersion?.id ?? null;
   const plan = usePlanDetail(courseId, currentPlanId);
 
   if (versions.isError) {
@@ -262,6 +276,7 @@ function GoalWorkspace({
           onRetry={() => void plan.refetch()}
           plan={plan.data}
           editable={editable}
+          focusItemId={focusItemId}
         />
       </section>
     </div>
@@ -275,6 +290,7 @@ function PlanBody({
   onRetry,
   plan,
   editable,
+  focusItemId,
 }: {
   courseId: string;
   isPending: boolean;
@@ -282,6 +298,7 @@ function PlanBody({
   onRetry: () => void;
   plan: PlanDetail | undefined;
   editable: boolean;
+  focusItemId?: string;
 }) {
   const { t } = useTranslation();
 
@@ -324,6 +341,7 @@ function PlanBody({
                 planId={plan.id}
                 item={item}
                 editable={editable}
+                focused={item.id === focusItemId}
               />
             ))}
           </ul>
@@ -342,13 +360,21 @@ function PlanItemRow({
   planId,
   item,
   editable,
+  focused,
 }: {
   courseId: string;
   planId: string;
   item: PlanItem;
   editable: boolean;
+  focused?: boolean;
 }) {
   const { t, i18n } = useTranslation();
+  const row = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    if (!focused) return;
+    row.current?.focus();
+    row.current?.scrollIntoView?.({ block: "nearest" });
+  }, [focused]);
   const [editing, setEditing] = useState(false);
   const complete = useCompletePlanItem();
   const skip = useSkipPlanItem(courseId);
@@ -382,7 +408,11 @@ function PlanItemRow({
   const done = item.status === "DONE";
   const skipped = item.status === "SKIPPED";
   return (
-    <li className="flex min-w-0 items-start gap-3 py-3">
+    <li
+      ref={row}
+      tabIndex={-1}
+      className="focus-visible:ring-ring flex min-w-0 items-start gap-3 rounded-sm py-3 focus-visible:ring-2"
+    >
       <Checkbox
         aria-label={t("learningPlan.item.completeLabel", {
           content: item.content,
@@ -438,6 +468,19 @@ function PlanItemRow({
           <p className="text-label text-ink-faint mt-1" title={item.reason}>
             {item.reason}
           </p>
+        ) : null}
+        {item.action_type === "STUDY_RECORD" ? (
+          <Link
+            to="/plan-items/$itemId/study"
+            params={{ itemId: item.id }}
+            className={buttonVariants({
+              variant: "outline",
+              size: "sm",
+              className: "mt-3",
+            })}
+          >
+            {t(editable && !skipped ? "study.openItem" : "study.viewResult")}
+          </Link>
         ) : null}
         {item.action_type === "PRACTICE_QUIZ" ? (
           <Link

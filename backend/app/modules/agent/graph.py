@@ -102,6 +102,7 @@ from app.modules.agent.tools.generate_learning_plan import (
 from app.modules.agent.tools.get_current_time import get_current_time
 from app.modules.agent.tools.get_goal import get_goal
 from app.modules.agent.tools.get_plan import get_plan
+from app.modules.agent.tools.get_plan_study import get_plan_study
 from app.modules.agent.tools.get_today_progress import get_today_progress
 from app.modules.agent.tools.list_course_records import list_course_records
 from app.modules.agent.tools.list_goals import list_goals
@@ -185,7 +186,7 @@ CHAT_RECURSION_LIMIT = 25
 # 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
 # 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
 # 工具集合、图结构或 checkpoint 状态语义变化时 bump。
-CHAT_GRAPH_VERSION = "chat-graph-v9"
+CHAT_GRAPH_VERSION = "chat-graph-v10"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
@@ -428,6 +429,7 @@ def resolve_agent_config(
             get_goal,
             get_plan,
             get_plan_practice,
+            get_plan_study,
             confirm_practice_requirements,
             prepare_plan_practice,
             cancel_practice_preparation,

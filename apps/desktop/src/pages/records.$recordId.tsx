@@ -1,14 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { RecordDetailPage } from "@/features/records/components/RecordDetailPage";
+import { RecordStudySession } from "@/features/learningPlan/components/RecordStudySession";
 
 type RecordDetailSearch = {
   tab?: "transcript" | "knowledge-points" | "quiz" | "review" | "todo";
   highlight?: string;
   segmentId?: string;
+  studyItem?: string;
+  studyVisit?: string;
 };
 
 export const Route = createFileRoute("/records/$recordId")({
   validateSearch: (search: Record<string, unknown>): RecordDetailSearch => ({
+    ...(typeof search.studyItem === "string" &&
+    typeof search.studyVisit === "string"
+      ? { studyItem: search.studyItem, studyVisit: search.studyVisit }
+      : {}),
     ...(search.tab === "transcript" ||
     search.tab === "knowledge-points" ||
     search.tab === "quiz" ||
@@ -28,8 +35,35 @@ export const Route = createFileRoute("/records/$recordId")({
 
 export function RecordDetailRoute() {
   const { recordId } = Route.useParams();
-  const { tab = "summary", highlight, segmentId } = Route.useSearch();
+  const {
+    tab = "summary",
+    highlight,
+    segmentId,
+    studyItem,
+    studyVisit,
+  } = Route.useSearch();
   const navigate = Route.useNavigate();
+  if (studyItem && studyVisit)
+    return (
+      <RecordStudySession
+        key={`${studyItem}-${studyVisit}`}
+        itemId={studyItem}
+        visitId={studyVisit}
+        recordId={recordId}
+        tab={tab}
+        onTabChange={(nextTab) =>
+          void navigate({
+            to: "/records/$recordId",
+            search: {
+              tab: nextTab === "summary" ? undefined : nextTab,
+              studyItem,
+              studyVisit,
+            },
+            replace: true,
+          })
+        }
+      />
+    );
   return (
     <RecordDetailPage
       recordId={recordId}

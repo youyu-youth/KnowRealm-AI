@@ -35,6 +35,8 @@ export type RecordDetailTab =
   "summary" | "transcript" | "knowledge-points" | "quiz" | "review" | "todo";
 
 type RecordDetailPageProps = {
+  readOnly?: boolean;
+  backLink?: React.ReactNode;
   recordId: string;
   tab: RecordDetailTab;
   /** 引用跳转带来的转写定位摘录；在转写中找不到时提示“原文已变动”。 */
@@ -55,6 +57,8 @@ const processingStatuses = new Set([
 ]);
 
 export function RecordDetailPage({
+  readOnly = false,
+  backLink,
   recordId,
   tab,
   highlight,
@@ -186,22 +190,23 @@ export function RecordDetailPage({
 
   return (
     <section className="work-surface-enter max-w-workbench px-content mx-auto flex min-h-full min-w-0 flex-col py-8">
-      {detail.course_id ? (
-        <Link
-          to="/spaces/$courseId"
-          params={{ courseId: detail.course_id }}
-          search={{ tab: "records" }}
-          className={backLinkClass}
-        >
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          {t("record.detail.backToCourseRecords")}
-        </Link>
-      ) : (
-        <Link to="/inbox" className={backLinkClass}>
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          {t("record.detail.backToInbox")}
-        </Link>
-      )}
+      {backLink ??
+        (detail.course_id ? (
+          <Link
+            to="/spaces/$courseId"
+            params={{ courseId: detail.course_id }}
+            search={{ tab: "records" }}
+            className={backLinkClass}
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            {t("record.detail.backToCourseRecords")}
+          </Link>
+        ) : (
+          <Link to="/inbox" className={backLinkClass}>
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            {t("record.detail.backToInbox")}
+          </Link>
+        ))}
 
       <header className="mt-5 flex min-w-0 items-baseline justify-between gap-4">
         <h1
@@ -220,16 +225,23 @@ export function RecordDetailPage({
               void recordExport.exportAsset(asset, recordId, title)
             }
           />
-          <DeleteRecordDialog
-            recordId={detail.id}
-            courseId={detail.course_id}
-            title={title}
-            onDeletingChange={setIsDeleting}
-            onDeleted={onDeleted}
-          />
+          {!readOnly ? (
+            <DeleteRecordDialog
+              recordId={detail.id}
+              courseId={detail.course_id}
+              title={title}
+              onDeletingChange={setIsDeleting}
+              onDeleted={onDeleted}
+            />
+          ) : null}
         </div>
       </header>
       <RecordMetadata detail={detail} />
+      {readOnly ? (
+        <p role="status" className="text-muted-foreground mt-3">
+          {t("study.sharedReadonly")}
+        </p>
+      ) : null}
       <RecordExportStatus
         state={recordExport.state}
         onOpenFile={(path) => void recordExport.openSavedFile(path)}
@@ -320,72 +332,79 @@ export function RecordDetailPage({
           )}
         </p>
 
-        <TabsContent
-          value="summary"
-          className="border-border mt-6 border-t pt-8"
+        <fieldset
+          disabled={readOnly}
+          role={readOnly ? "group" : "presentation"}
+          className="min-w-0"
         >
-          <SummaryPanel
-            record={detail}
-            onRecordAssetsChanged={invalidateSummaryDependents}
-          />
-        </TabsContent>
+          <TabsContent
+            value="summary"
+            className="border-border mt-6 border-t pt-8"
+          >
+            <SummaryPanel
+              record={detail}
+              onRecordAssetsChanged={invalidateSummaryDependents}
+            />
+          </TabsContent>
 
-        <TabsContent
-          value="transcript"
-          className="border-border mt-6 min-w-0 border-t pt-8"
-        >
-          <TranscriptPanel
-            record={detail}
-            highlight={tab === "transcript" ? highlight : undefined}
-            segmentId={tab === "transcript" ? segmentId : undefined}
-            enabled={tab === "transcript" && !isDeleting}
-            onRecordAssetsChanged={invalidateRecord}
-          />
-        </TabsContent>
+          <TabsContent
+            value="transcript"
+            className="border-border mt-6 min-w-0 border-t pt-8"
+          >
+            <TranscriptPanel
+              record={detail}
+              highlight={tab === "transcript" ? highlight : undefined}
+              segmentId={tab === "transcript" ? segmentId : undefined}
+              enabled={tab === "transcript" && !isDeleting}
+              onRecordAssetsChanged={invalidateRecord}
+            />
+          </TabsContent>
 
-        <TabsContent
-          value="knowledge-points"
-          className="border-border mt-6 min-w-0 border-t pt-8"
-        >
-          <KnowledgePointPanel
-            recordId={recordId}
-            onOpenSummary={() => onTabChange("summary")}
-          />
-        </TabsContent>
+          <TabsContent
+            value="knowledge-points"
+            className="border-border mt-6 min-w-0 border-t pt-8"
+          >
+            <KnowledgePointPanel
+              recordId={recordId}
+              onOpenSummary={() => onTabChange("summary")}
+            />
+          </TabsContent>
 
-        <TabsContent
-          value="quiz"
-          className="border-border mt-6 min-w-0 border-t pt-8"
-        >
-          <QuizPanel
-            recordId={recordId}
-            courseId={detail.course_id}
-            onOpenSummary={() => onTabChange("summary")}
-          />
-        </TabsContent>
+          <TabsContent
+            value="quiz"
+            className="border-border mt-6 min-w-0 border-t pt-8"
+          >
+            <QuizPanel
+              recordId={recordId}
+              courseId={detail.course_id}
+              onOpenSummary={() => onTabChange("summary")}
+            />
+          </TabsContent>
 
-        <TabsContent
-          value="review"
-          className="border-border mt-6 min-w-0 border-t pt-8"
-        >
-          <ReviewMaterialPanel
-            recordId={recordId}
-            enabled={
-              tab === "review" && !isDeleting && detail.status === "COMPLETED"
-            }
-            onOpenSummary={() => onTabChange("summary")}
-          />
-        </TabsContent>
+          <TabsContent
+            value="review"
+            className="border-border mt-6 min-w-0 border-t pt-8"
+          >
+            <ReviewMaterialPanel
+              readOnly={readOnly}
+              recordId={recordId}
+              enabled={
+                tab === "review" && !isDeleting && detail.status === "COMPLETED"
+              }
+              onOpenSummary={() => onTabChange("summary")}
+            />
+          </TabsContent>
 
-        <TabsContent
-          value="todo"
-          className="border-border mt-6 min-w-0 border-t pt-8"
-        >
-          <TodoPanel
-            recordId={recordId}
-            onOpenSummary={() => onTabChange("summary")}
-          />
-        </TabsContent>
+          <TabsContent
+            value="todo"
+            className="border-border mt-6 min-w-0 border-t pt-8"
+          >
+            <TodoPanel
+              recordId={recordId}
+              onOpenSummary={() => onTabChange("summary")}
+            />
+          </TabsContent>
+        </fieldset>
       </Tabs>
     </section>
   );

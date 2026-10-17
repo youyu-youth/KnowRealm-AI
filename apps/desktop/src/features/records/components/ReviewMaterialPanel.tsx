@@ -12,12 +12,14 @@ import { ReviewMaterialWorkbench } from "@/features/records/components/ReviewMat
 import { settingsApi } from "@/features/settings/api/settings";
 
 type ReviewMaterialPanelProps = {
+  readOnly?: boolean;
   recordId: string;
   enabled: boolean;
   onOpenSummary: () => void;
 };
 
 export function ReviewMaterialPanel({
+  readOnly = false,
   recordId,
   enabled,
   onOpenSummary,
@@ -48,7 +50,7 @@ export function ReviewMaterialPanel({
 
   // 首次生成完成（active job → v1 落地）自动打开 HITL 工作台；调整完成仅刷新预览
   useEffect(() => {
-    if (!enabled || !review.data) return;
+    if (readOnly || !enabled || !review.data) return;
     if (review.data.active_job_id) {
       sawActiveJobRef.current = true;
       return;
@@ -58,7 +60,7 @@ export function ReviewMaterialPanel({
       setWorkbenchOpen(true);
     }
     sawActiveJobRef.current = false;
-  }, [enabled, review.data]);
+  }, [enabled, readOnly, review.data]);
 
   if (!enabled) return null;
   if (review.isPending)
@@ -196,12 +198,14 @@ export function ReviewMaterialPanel({
     <>
       {content}
       {/* 弹窗挂在稳定位置：生成/调整进行中与阅读态之间切换时不重挂载 */}
-      <ReviewMaterialWorkbench
-        recordId={recordId}
-        open={workbenchOpen}
-        onOpenChange={setWorkbenchOpen}
-        read={review.data}
-      />
+      {!readOnly ? (
+        <ReviewMaterialWorkbench
+          recordId={recordId}
+          open={workbenchOpen}
+          onOpenChange={setWorkbenchOpen}
+          read={review.data}
+        />
+      ) : null}
     </>
   );
 }

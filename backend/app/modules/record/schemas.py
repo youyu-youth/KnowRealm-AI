@@ -1,10 +1,13 @@
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, field_serializer
 
 from app.modules.capture.schemas import CaptureType
+
+RecordContentTab = Literal["summary", "transcript", "knowledge-points", "quiz", "review", "todo"]
 
 
 class RecordStatus(StrEnum):

@@ -17,7 +17,7 @@ from pydantic import (
 )
 
 
-def _serialize_utc(value: datetime) -> str:
+def serialize_plan_time(value: datetime) -> str:
     utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
     return utc_value.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
@@ -114,7 +114,7 @@ class GoalOut(BaseModel):
 
     @field_serializer("created_at", "updated_at")
     def serialize_utc(self, value: datetime) -> str:
-        return _serialize_utc(value)
+        return serialize_plan_time(value)
 
 
 class GoalCreateCore(BaseModel):
@@ -318,7 +318,7 @@ class PlanItemOut(BaseModel):
 
     @field_serializer("completed_at")
     def serialize_completed_at(self, value: datetime | None) -> str | None:
-        return None if value is None else _serialize_utc(value)
+        return None if value is None else serialize_plan_time(value)
 
 
 class PlanOut(BaseModel):
@@ -362,6 +362,9 @@ class PlanItemUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     scheduled_date: date | None = Field(default=None, description="排期日期（按日）")
+    record_id: str | None = Field(
+        default=None, pattern=_UUID_PATTERN, description="人工确认的资料关联，仅学习资料项可修改"
+    )
     estimated_minutes: int | None = Field(default=None, gt=0, le=600, description="预估投入分钟数")
     content: str | None = Field(
         default=None, min_length=1, max_length=200, description="计划项内容"
