@@ -29,8 +29,8 @@ from app.modules.learning_plan.practice import (
     latest_requirements,
     load_context,
     lock_item,
+    require_confirmed_sources,
     require_preparation_authority,
-    require_sources,
     requirements_out,
     source_versions,
 )
@@ -73,7 +73,7 @@ async def validate_execution(
     req = requirements_out(req_row)
     if req.plan_content != item.content:
         raise conflict()
-    await require_sources(session, goal.course_id, req.record_ids)
+    await require_confirmed_sources(session, goal.course_id, req)
     if row.authority == "AGENT":
         await require_preparation_authority(session, job.id)
     return row, req, goal.course_id

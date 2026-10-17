@@ -10,7 +10,7 @@
 - 只从本课程归属、有效资料中的 ACTIVE 已采纳原题取候选，确定性过滤题型、越界与规范化重复副本。模型只判定真实候选身份及相关类别，不生成题，不读取用户答案；优先匹配确认范围，足量后停止，缺题才检查其他归属资料以形成建议。
 - READY 必须恰好 N 道确定相关且不同的题；不确定判定、扫描预算未完为 INCOMPLETE；完整检查且没有不确定项才可报告 INSUFFICIENT。未确认来源只形成建议，不能入选。
 - 公共投影只含要求、任务状态、目标/合格/实际检索数量、资料和结构化匹配依据，不提供题干、选项、参考答案。内部保留要求修订、计划正文基线、选中原题、匹配类别及原题/来源版本散列，03 建卷提交时仍须重验。
-- 来源/题目变化、旧要求、取消、权限降级在最终写事务和独立计量事务重验；LLM 平台复用供应商、外发同意、预算与 LlmCallLog，不另建旁路调度或计费。
+- 来源/题目变化在受理事务及 Worker 执行校验中与已确认版本基线比对；旧要求、取消、权限降级在最终写事务和独立计量事务重验。LLM 平台复用供应商、外发同意、预算与 LlmCallLog，不另建旁路调度或计费。
 
 ## 固定验证路径
 
@@ -48,7 +48,13 @@
 - 前端基点 27 通过 / 6 失败，记录 `practice-browser-20261017/baseline-frontend/`；6 个相同失败为 RecordDetail 1、CommandPalette 1、LearningPlanTab 3、toolIcons 唯一性 1。
 - 本票同步现有夹具：工具装配矩阵的七种场景精确名单加入四个练习工具；旧库回拨 0044 前按依赖顺序清除 0052 两张新表。定向命令 `uv run --frozen --directory backend python -m scripts.run_tests backend tests/test_chat_streaming.py::test_scope_mounting_matrix_tool_visibility tests/test_tool_budget.py::test_legacy_nonterminal_turn_requires_stop_and_new_question` 为 5 通过，记录 `.pytest-tmp-runs/20261017T044157Z-4afb34a0/backend/`；两文件 Ruff/format/Pyright 也通过，见 `fixture-pyright.log`。没有削弱断言、修改旧迁移或扩大历史修复。
 
-上述 `practice-browser-20261017/...` 均相对 `.pytest-tmp-runs/`。最终本票后端 22、前端 5、关联夹具补验 5 均通过；全量原始失败与 32 个基点复现的历史失败明确分开，未重复全量，也未把补验换算成新的全量通过数。
+上述 `practice-browser-20261017/...` 均相对 `.pytest-tmp-runs/`。首次交付时本票后端 22、前端 5、关联夹具补验 5 均通过；全量原始失败与 32 个基点复现的历史失败明确分开，未重复全量，也未把补验换算成新的全量通过数。
+
+## 来源确认版本的后续复核修复（2026-10-17）
+
+- 缺口真实存在：确认后修改资料更新时间或题干，准备接口仍返回 202；已受理但执行前修改题干，Worker 也会成功。原 writeback 仅对照执行开始时的版本，不能代替确认时的来源基线。RED 证据分别为 `.pytest-tmp-runs/20261017T050416Z-43f56477/backend/`（2 项）及 `.pytest-tmp-runs/20261017T050456Z-2a5c9278/backend/`（1 项）。
+- 复用已有 `source_versions` 与 `PRACTICE_SOURCE_INVALID`，领域服务统一校验已确认的归属、有效性和版本。受理在既有写锁/事务内校验后才创建任务；Worker 的执行及提交/计量校验也使用同一确认基线，覆盖排队期间漂移，模型调用前即拒绝。页面与 Agent 共用 `prepare`，不增加旁路入口、迁移或 HTTP 契约。
+- 新增 3 项回归验证受理拒绝且无准备记录/任务/计量、要求保留、重新确认后同一未受理请求可重试，以及排队漂移时零模型外发、旧请求重放返回原任务。完整 `tests/test_practice_preparation.py` 为 25 项通过，证据 `.pytest-tmp-runs/20261017T050524Z-9dad8fb1/backend/`；`pwsh -NoProfile -File scripts/check-changed.ps1` 的 Ruff、格式及 Pyright 均通过。此次仅后端小范围修复，未重跑全库、真实模型或原生桌面验收。
 
 ## 临时资源与数据
 

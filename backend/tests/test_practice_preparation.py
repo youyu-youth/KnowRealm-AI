@@ -17,6 +17,9 @@ from app.modules.agent.runtime import (
     bind_agent_runtime_context,
     reset_agent_runtime_context,
 )
+from app.modules.jobs.models import ProcessingJob
+from app.modules.learning_plan import practice_worker
+from app.modules.learning_plan.practice_models import PracticePreparation
 from app.modules.llm import service as llm_service
 from app.modules.llm.models import LlmCallLog
 from app.modules.quiz.models import Quiz
@@ -237,6 +240,96 @@ async def terminal(client: Any) -> dict[str, Any]:
             return latest
         await asyncio.sleep(0.05)
     pytest.fail("production worker did not finish")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("change", ["record", "quiz"])
+async def test_prepare_rejects_changed_confirmed_source_before_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    async with plan_app(tmp_path) as (client, factory):
+        await seed(factory)
+        model = configure(tmp_path, monkeypatch)
+        await add_questions(factory, RECORD_ID, 15)
+        await save(client, [RECORD_ID])
+        await run_sql(
+            "UPDATE records SET updated_at='2026-10-18T00:00:00Z' WHERE id=:id"
+            if change == "record"
+            else "UPDATE quizzes SET stem=stem || ' 更新' WHERE record_id=:id",
+            {"id": RECORD_ID},
+            factory,
+        )
+        request_id = str(uuid4())
+        response = await client.post(
+            BASE + "/preparations",
+            json={"request_id": request_id, "requirements_revision": 1},
+        )
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == "PRACTICE_SOURCE_INVALID"
+        state = (await client.get(BASE)).json()
+        assert state["requirements"]["revision"] == 1
+        assert state["preparations"] == []
+        async with factory() as session:
+            assert await session.scalar(select(func.count()).select_from(PracticePreparation)) == 0
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(ProcessingJob)
+                    .where(ProcessingJob.job_type == "PRACTICE_PREPARE")
+                )
+                == 0
+            )
+            assert await session.scalar(select(func.count()).select_from(LlmCallLog)) == 0
+        assert model.prompts == []
+        await save(client, [RECORD_ID])
+        await start(client, 2, request_id)
+        assert (await terminal(client))["selected_count"] == 15
+
+
+@pytest.mark.anyio
+async def test_worker_rejects_source_changed_after_acceptance_before_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    validate = practice_worker.validate_execution
+
+    async def pause_execution(session: Any, ctx: Any) -> Any:
+        entered.set()
+        await release.wait()
+        return await validate(session, ctx)
+
+    monkeypatch.setattr(practice_worker, "validate_execution", pause_execution)
+    async with plan_app(tmp_path) as (client, factory):
+        await seed(factory)
+        model = configure(tmp_path, monkeypatch)
+        await add_questions(factory, RECORD_ID, 15)
+        await save(client, [RECORD_ID])
+        request_id = str(uuid4())
+        try:
+            accepted = await start(client, 1, request_id)
+            await asyncio.wait_for(entered.wait(), 5)
+            await run_sql(
+                "UPDATE quizzes SET stem=stem || ' 更新' WHERE record_id=:id",
+                {"id": RECORD_ID},
+                factory,
+            )
+        finally:
+            release.set()
+        result = await terminal(client)
+        assert result["status"] == "FAILED", result
+        assert result["error_code"] == "PRACTICE_SOURCE_INVALID"
+        assert result["selected_count"] == 0
+        assert model.prompts == []
+        async with factory() as session:
+            assert await session.scalar(select(func.count()).select_from(LlmCallLog)) == 0
+        replay = await client.post(
+            BASE + "/preparations",
+            json={"request_id": request_id, "requirements_revision": 1},
+        )
+        assert replay.status_code == 202
+        assert replay.json()["id"] == accepted["id"]
+        assert replay.json()["status"] == "FAILED"
 
 
 @pytest.mark.anyio

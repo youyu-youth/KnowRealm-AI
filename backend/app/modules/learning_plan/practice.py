@@ -112,6 +112,14 @@ async def require_sources(session: AsyncSession, course_id: str, record_ids: lis
         raise conflict("PRACTICE_SOURCE_INVALID")
 
 
+async def require_confirmed_sources(
+    session: AsyncSession, course_id: str, req: PracticeRequirementsOut
+) -> None:
+    await require_sources(session, course_id, req.record_ids)
+    if await source_versions(session, req.record_ids) != req.source_versions:
+        raise conflict("PRACTICE_SOURCE_INVALID")
+
+
 async def confirm_requirements(
     session: AsyncSession, item_id: str, payload: PracticeRequirementsUpdate
 ) -> PracticeRequirementsOut:
@@ -284,7 +292,7 @@ async def prepare(
     req = requirements_out(req_row)
     if req.plan_content != item.content:
         raise conflict()
-    await require_sources(session, goal.course_id, req.record_ids)
+    await require_confirmed_sources(session, goal.course_id, req)
     active = await session.scalar(
         select(ProcessingJob.id).where(
             ProcessingJob.job_type == ProcessingJobType.PRACTICE_PREPARE,
