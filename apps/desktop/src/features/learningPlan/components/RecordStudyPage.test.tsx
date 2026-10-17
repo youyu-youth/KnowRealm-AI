@@ -348,7 +348,7 @@ it("从计划学习发起资产生成携带请求课程供服务端复核", asyn
       `${TEST_SIDECAR_URL}/api/records/${RECORD}/summary-jobs`,
       ({ request }) => {
         requestCourse = new URL(request.url).searchParams.get(
-          "request_course_id",
+          "course_id",
         );
         return HttpResponse.json(
           { detail: "共享来源只读", code: "SHARED_REF_ASSET_READ_ONLY" },

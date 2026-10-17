@@ -25,7 +25,7 @@ import {
 import type { components } from "@knowrealm/api-types";
 
 const courseContextQuery = (courseId?: string) =>
-  courseId ? `?request_course_id=${encodeURIComponent(courseId)}` : "";
+  courseId ? `?course_id=${encodeURIComponent(courseId)}` : "";
 
 export const recordApi = {
   get: (recordId: string) => apiFetch<RecordOut>(`/api/records/${recordId}`),

@@ -16,6 +16,7 @@ from app.modules.agent.runtime import (
     reset_agent_runtime_context,
 )
 from app.modules.library.models import CourseSharedRef, LibraryItem, LibraryItemRecord
+from app.modules.settings.config import grant_llm_consent, save_llm_provider
 from tests.test_plan_editing import (
     COURSE_ID,
     ITEM_ID,
@@ -220,9 +221,23 @@ async def test_shared_source_is_visible_read_only_and_loses_entry_after_unshare(
         await seed_study(factory)
         await run_sql("UPDATE records SET course_id=NULL", {}, factory)
         assert (await client.patch(ITEM, json={"record_id": RECORD_ID})).status_code == 409
+        owner_course = (
+            await client.post(
+                "/api/courses",
+                json={
+                    "name": "资料原课程",
+                    "learning_context": "INTEREST",
+                    "depth": "BEGINNER",
+                },
+            )
+        ).json()["id"]
+        await run_sql("UPDATE records SET course_id=:course", {"course": owner_course}, factory)
         async with factory() as session, session.begin():
             shared = LibraryItem(
-                source_type="DOCUMENT", title="共享资料", content_hash="study-shared"
+                course_id=owner_course,
+                source_type="DOCUMENT",
+                title="共享资料",
+                content_hash="study-shared",
             )
             session.add(shared)
             await session.flush()
@@ -231,9 +246,16 @@ async def test_shared_source_is_visible_read_only_and_loses_entry_after_unshare(
             session.add(CourseSharedRef(course_id=COURSE_ID, library_item_id=shared_id))
         current = (await client.get(BASE)).json()
         assert current["source"]["read_only"] is True
-        guarded = await client.post(
-            f"/api/records/{RECORD_ID}/summary-jobs?request_course_id={COURSE_ID}"
+        data_dir = tmp_path / "KnowRealm"
+        save_llm_provider(
+            data_dir,
+            base_url="http://127.0.0.1:1/v1",
+            api_key="test-key",
+            model="test-model",
+            clear_api_key=False,
         )
+        grant_llm_consent(data_dir)
+        guarded = await client.post(f"/api/records/{RECORD_ID}/summary-jobs?course_id={COURSE_ID}")
         assert guarded.status_code == 409 and guarded.json()["code"] == "SHARED_REF_ASSET_READ_ONLY"
         assert (await client.patch(ITEM, json={"record_id": RECORD_ID})).status_code == 200
         assert (
