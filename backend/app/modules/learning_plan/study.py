@@ -122,44 +122,46 @@ async def lock_item(session: AsyncSession, item_id: str) -> None:
 
 
 async def start(session: AsyncSession, item_id: str, body: RecordStudyStart) -> RecordStudyOut:
-    await lock_item(session, item_id)
-    item, _plan, goal = await context(session, item_id, writable=True)
-    if item.record_id != str(body.record_id):
-        raise unavailable("PLAN_STUDY_SOURCE_INVALID")
-    await require_source(session, goal.course_id, str(body.record_id))
-    if item.study_visit_id != str(body.request_id):
-        if item.study_visit_id is None:
-            # 仅在明确启动时借用记录已有页签；普通访问不反写本项事实。
-            saved_tab = await session.scalar(
-                select(LearningResumeEntry.record_tab).where(
-                    LearningResumeEntry.kind == "RECORD",
-                    LearningResumeEntry.target_id == item.record_id,
+    async with session.begin():
+        await lock_item(session, item_id)
+        item, _plan, goal = await context(session, item_id, writable=True)
+        if item.record_id != str(body.record_id):
+            raise unavailable("PLAN_STUDY_SOURCE_INVALID")
+        await require_source(session, goal.course_id, str(body.record_id))
+        if item.study_visit_id != str(body.request_id):
+            if item.study_visit_id is None:
+                # 仅在明确启动时借用记录已有页签；普通访问不反写本项事实。
+                saved_tab = await session.scalar(
+                    select(LearningResumeEntry.record_tab).where(
+                        LearningResumeEntry.kind == "RECORD",
+                        LearningResumeEntry.target_id == item.record_id,
+                    )
                 )
-            )
-            item.study_tab = saved_tab or "summary"
-        item.study_visit_id = str(body.request_id)
-        item.study_record_id = item.record_id
-        item.study_started_at = utcnow()
-    await session.flush()
-    return await state(session, item_id)
+                item.study_tab = saved_tab or "summary"
+            item.study_visit_id = str(body.request_id)
+            item.study_record_id = item.record_id
+            item.study_started_at = utcnow()
+        await session.flush()
+        return await state(session, item_id)
 
 
 async def save_tab(
     session: AsyncSession, item_id: str, body: RecordStudyTabUpdate
 ) -> RecordStudyOut:
-    await lock_item(session, item_id)
-    item, _plan, goal = await context(session, item_id, writable=True)
-    if (
-        item.study_visit_id != str(body.visit_id)
-        or item.study_record_id != str(body.record_id)
-        or item.record_id != str(body.record_id)
-    ):
-        raise unavailable("PLAN_STUDY_VISIT_STALE")
-    record = await require_source(session, goal.course_id, str(body.record_id))
-    item.study_tab = (
-        "summary"
-        if body.tab in ("quiz", "review", "todo") and record.status != "COMPLETED"
-        else body.tab
-    )
-    await session.flush()
-    return await state(session, item_id)
+    async with session.begin():
+        await lock_item(session, item_id)
+        item, _plan, goal = await context(session, item_id, writable=True)
+        if (
+            item.study_visit_id != str(body.visit_id)
+            or item.study_record_id != str(body.record_id)
+            or item.record_id != str(body.record_id)
+        ):
+            raise unavailable("PLAN_STUDY_VISIT_STALE")
+        record = await require_source(session, goal.course_id, str(body.record_id))
+        item.study_tab = (
+            "summary"
+            if body.tab in ("quiz", "review", "todo") and record.status != "COMPLETED"
+            else body.tab
+        )
+        await session.flush()
+        return await state(session, item_id)

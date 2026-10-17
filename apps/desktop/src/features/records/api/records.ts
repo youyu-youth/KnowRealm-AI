@@ -24,6 +24,9 @@ import {
 } from "@/services/http/client";
 import type { components } from "@knowrealm/api-types";
 
+const courseContextQuery = (courseId?: string) =>
+  courseId ? `?request_course_id=${encodeURIComponent(courseId)}` : "";
+
 export const recordApi = {
   get: (recordId: string) => apiFetch<RecordOut>(`/api/records/${recordId}`),
   listInbox: () => apiFetch<InboxRecordOut[]>("/api/inbox"),
@@ -92,16 +95,20 @@ export const recordApi = {
       { method: "POST" },
     );
   },
-  submitKnowledgePoints: (recordId: string) =>
+  submitKnowledgePoints: (recordId: string, requestCourseId?: string) =>
     apiFetch<components["schemas"]["KnowledgePointJobAccepted"]>(
-      `/api/records/${recordId}/knowledge-point-jobs`,
+      `/api/records/${recordId}/knowledge-point-jobs${courseContextQuery(requestCourseId)}`,
       { method: "POST" },
     ),
   getQuizzes: (recordId: string) =>
     apiFetch<QuizReadOut>(`/api/records/${recordId}/quizzes`),
-  submitQuizGeneration(recordId: string, body: QuizGenerateRequest) {
+  submitQuizGeneration(
+    recordId: string,
+    body: QuizGenerateRequest,
+    requestCourseId?: string,
+  ) {
     return apiFetch<components["schemas"]["QuizJobAccepted"]>(
-      `/api/records/${recordId}/quiz-jobs`,
+      `/api/records/${recordId}/quiz-jobs${courseContextQuery(requestCourseId)}`,
       { method: "POST", body: JSON.stringify(body) },
     );
   },
@@ -242,9 +249,9 @@ export const recordApi = {
       { method: "POST", body: JSON.stringify({ status }) },
     );
   },
-  submitSummary: (recordId: string) =>
+  submitSummary: (recordId: string, requestCourseId?: string) =>
     apiFetch<components["schemas"]["SummaryJobAccepted"]>(
-      `/api/records/${recordId}/summary-jobs`,
+      `/api/records/${recordId}/summary-jobs${courseContextQuery(requestCourseId)}`,
       { method: "POST" },
     ),
   adjustSummary(

@@ -60,12 +60,14 @@ type QuizObjectiveAnswer =
   components["schemas"]["QuizObjectiveAnswerRequest"]["answer"];
 
 type QuizPanelProps = {
+  requestCourseId?: string;
   recordId: string;
   courseId: string | null;
   onOpenSummary: () => void;
 };
 
 export function QuizPanel({
+  requestCourseId,
   recordId,
   courseId,
   onOpenSummary,
@@ -248,6 +250,7 @@ export function QuizPanel({
       ) : null}
 
       <GenerateQuizDialog
+        requestCourseId={requestCourseId}
         recordId={recordId}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -1153,10 +1156,12 @@ function patchQuizConcept(
 }
 
 function GenerateQuizDialog({
+  requestCourseId,
   recordId,
   open,
   onOpenChange,
 }: {
+  requestCourseId?: string;
   recordId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1174,7 +1179,7 @@ function GenerateQuizDialog({
   const savePreference = useSavePreference();
   const submit = useMutation({
     mutationFn: (body: components["schemas"]["QuizGenerateRequest"]) =>
-      recordApi.submitQuizGeneration(recordId, body),
+      recordApi.submitQuizGeneration(recordId, body, requestCourseId),
     onSuccess: async (_data, variables) => {
       onOpenChange(false);
       await Promise.all([

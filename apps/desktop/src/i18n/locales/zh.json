@@ -3897,6 +3897,7 @@
     "savingTab": "正在保存页签…",
     "openItem": "打开资料学习",
     "viewResult": "查看学习记录",
-    "recordField": "关联资料"
+    "recordField": "关联资料",
+    "refreshSource": "刷新资料"
   }
 }

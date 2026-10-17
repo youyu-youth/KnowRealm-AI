@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   studyApi,
@@ -27,6 +28,12 @@ export function RecordStudySession({
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const study = useRecordStudy(itemId);
+  const { refetch } = study;
+  useEffect(() => {
+    const refresh = () => void refetch();
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [refetch]);
   const save = useMutation({
     scope: { id: `study-tab-${itemId}` },
     mutationFn: (nextTab: StudyTab) =>
@@ -84,6 +91,8 @@ export function RecordStudySession({
         </p>
       ) : null}
       <RecordDetailPage
+        key={data.source.read_only ? "shared" : "owned"}
+        requestCourseId={data.course_id}
         recordId={recordId}
         tab={tab}
         readOnly={data.source.read_only}

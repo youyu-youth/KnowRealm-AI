@@ -29,11 +29,13 @@ export type KnowledgePointValues =
   components["schemas"]["KnowledgePointWriteRequest"];
 
 type KnowledgePointPanelProps = {
+  requestCourseId?: string;
   recordId: string;
   onOpenSummary: () => void;
 };
 
 export function KnowledgePointPanel({
+  requestCourseId,
   recordId,
   onOpenSummary,
 }: KnowledgePointPanelProps) {
@@ -46,7 +48,8 @@ export function KnowledgePointPanel({
       query.state.data?.active_job_id ? 2_000 : false,
   });
   const submit = useMutation({
-    mutationFn: () => recordApi.submitKnowledgePoints(recordId),
+    mutationFn: () =>
+      recordApi.submitKnowledgePoints(recordId, requestCourseId),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: recordKeys.knowledgePoints(recordId),

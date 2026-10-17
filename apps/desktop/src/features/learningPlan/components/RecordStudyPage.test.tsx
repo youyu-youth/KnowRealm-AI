@@ -308,3 +308,61 @@ it("共享记录保持只读，页签仍可切换并返回原计划项", async (
     `/plan-items/${ITEM}/study`,
   );
 });
+
+it("窗口返回后资料变共享只读会关闭旧写弹窗，并保留可用的读取刷新", async () => {
+  state.visit_id = "current-visit";
+  state.source = state.sources[0];
+  state.source_status = "AVAILABLE";
+  window.history.replaceState(
+    null,
+    "",
+    `/records/${RECORD}?studyItem=${ITEM}&studyVisit=current-visit`,
+  );
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "删除学习记录" }));
+  await screen.findByRole("dialog");
+  state = { ...state, source: { ...state.sources[0], read_only: true } };
+  fireEvent(window, new Event("focus"));
+  await screen.findByText("共享来源 · 只读");
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  expect(screen.getByRole("button", { name: "刷新资料" })).toBeEnabled();
+});
+
+it("从计划学习发起资产生成携带请求课程供服务端复核", async () => {
+  state.visit_id = "current-visit";
+  state.source = state.sources[0];
+  state.source_status = "AVAILABLE";
+  let requestCourse: string | null = null;
+  server.use(
+    http.get(`${TEST_SIDECAR_URL}/api/records/${RECORD}/summary`, () =>
+      HttpResponse.json({
+        summary: null,
+        action_required: "GENERATE",
+        active_job_id: null,
+        blocked_reason: null,
+      }),
+    ),
+    http.post(
+      `${TEST_SIDECAR_URL}/api/records/${RECORD}/summary-jobs`,
+      ({ request }) => {
+        requestCourse = new URL(request.url).searchParams.get(
+          "request_course_id",
+        );
+        return HttpResponse.json(
+          { detail: "共享来源只读", code: "SHARED_REF_ASSET_READ_ONLY" },
+          { status: 409 },
+        );
+      },
+    ),
+  );
+  window.history.replaceState(
+    null,
+    "",
+    `/records/${RECORD}?studyItem=${ITEM}&studyVisit=current-visit`,
+  );
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "生成总结" }));
+  await waitFor(() => expect(requestCourse).toBe(COURSE));
+});

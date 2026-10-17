@@ -3926,6 +3926,7 @@
     "savingTab": "Saving tab…",
     "openItem": "Open material study",
     "viewResult": "View study record",
-    "recordField": "Linked material"
+    "recordField": "Linked material",
+    "refreshSource": "Refresh material"
   }
 }

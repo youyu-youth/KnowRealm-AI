@@ -16,11 +16,13 @@ import { settingsApi } from "@/features/settings/api/settings";
 import { todayKeys } from "@/features/today/api/keys";
 
 type SummaryPanelProps = {
+  requestCourseId?: string;
   record: RecordOut;
   onRecordAssetsChanged: () => void | Promise<void>;
 };
 
 export function SummaryPanel({
+  requestCourseId,
   record,
   onRecordAssetsChanged,
 }: SummaryPanelProps) {
@@ -30,6 +32,7 @@ export function SummaryPanel({
         showWhenMissing={record.status === "COMPLETED"}
       />
       <SummaryContent
+        requestCourseId={requestCourseId}
         record={record}
         onRecordAssetsChanged={onRecordAssetsChanged}
       />
@@ -72,7 +75,11 @@ function SummaryProviderSettings({
   );
 }
 
-function SummaryContent({ record, onRecordAssetsChanged }: SummaryPanelProps) {
+function SummaryContent({
+  record,
+  onRecordAssetsChanged,
+  requestCourseId,
+}: SummaryPanelProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const recordId = record.id;
@@ -93,7 +100,7 @@ function SummaryContent({ record, onRecordAssetsChanged }: SummaryPanelProps) {
       queryClient.invalidateQueries({ queryKey: todayKeys.pendingSummaries }),
     ]);
   const submit = useMutation({
-    mutationFn: () => recordApi.submitSummary(recordId),
+    mutationFn: () => recordApi.submitSummary(recordId, requestCourseId),
     onSuccess: () => void refresh(),
   });
   const upgrade = useMutation({

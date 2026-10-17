@@ -36,6 +36,7 @@ export type RecordDetailTab =
 
 type RecordDetailPageProps = {
   readOnly?: boolean;
+  requestCourseId?: string;
   backLink?: React.ReactNode;
   recordId: string;
   tab: RecordDetailTab;
@@ -58,6 +59,7 @@ const processingStatuses = new Set([
 
 export function RecordDetailPage({
   readOnly = false,
+  requestCourseId,
   backLink,
   recordId,
   tab,
@@ -240,6 +242,13 @@ export function RecordDetailPage({
       {readOnly ? (
         <p role="status" className="text-muted-foreground mt-3">
           {t("study.sharedReadonly")}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void invalidateRecord()}
+          >
+            {t("study.refreshSource")}
+          </Button>
         </p>
       ) : null}
       <RecordExportStatus
@@ -342,6 +351,7 @@ export function RecordDetailPage({
             className="border-border mt-6 border-t pt-8"
           >
             <SummaryPanel
+              requestCourseId={requestCourseId}
               record={detail}
               onRecordAssetsChanged={invalidateSummaryDependents}
             />
@@ -365,6 +375,7 @@ export function RecordDetailPage({
             className="border-border mt-6 min-w-0 border-t pt-8"
           >
             <KnowledgePointPanel
+              requestCourseId={requestCourseId}
               recordId={recordId}
               onOpenSummary={() => onTabChange("summary")}
             />
@@ -375,6 +386,7 @@ export function RecordDetailPage({
             className="border-border mt-6 min-w-0 border-t pt-8"
           >
             <QuizPanel
+              requestCourseId={requestCourseId}
               recordId={recordId}
               courseId={detail.course_id}
               onOpenSummary={() => onTabChange("summary")}

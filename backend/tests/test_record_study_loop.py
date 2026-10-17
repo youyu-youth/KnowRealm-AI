@@ -231,6 +231,10 @@ async def test_shared_source_is_visible_read_only_and_loses_entry_after_unshare(
             session.add(CourseSharedRef(course_id=COURSE_ID, library_item_id=shared_id))
         current = (await client.get(BASE)).json()
         assert current["source"]["read_only"] is True
+        guarded = await client.post(
+            f"/api/records/{RECORD_ID}/summary-jobs?request_course_id={COURSE_ID}"
+        )
+        assert guarded.status_code == 409 and guarded.json()["code"] == "SHARED_REF_ASSET_READ_ONLY"
         assert (await client.patch(ITEM, json={"record_id": RECORD_ID})).status_code == 200
         assert (
             await client.post(

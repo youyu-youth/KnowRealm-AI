@@ -31,13 +31,11 @@ async def get_study(
 async def start_study(
     item_id: UUID, body: RecordStudyStart, session: AsyncSession = Depends(get_db)
 ) -> RecordStudyOut:
-    async with session.begin():
-        return await study.start(session, str(item_id), body)
+    return await study.start(session, str(item_id), body)
 
 
 @router.put("/{item_id}/study/tab", response_model=RecordStudyOut)
 async def save_study_tab(
     item_id: UUID, body: RecordStudyTabUpdate, session: AsyncSession = Depends(get_db)
 ) -> RecordStudyOut:
-    async with session.begin():
-        return await study.save_tab(session, str(item_id), body)
+    return await study.save_tab(session, str(item_id), body)
