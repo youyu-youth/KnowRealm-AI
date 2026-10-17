@@ -62,8 +62,7 @@ from app.modules.learner import routes as learner_routes
 from app.modules.learning import routes as learning_routes
 from app.modules.learning.consumer import EvidenceConsumer
 from app.modules.learning.service import MasteryService
-from app.modules.learning_plan import practice_routes
-from app.modules.learning_plan import study_routes
+from app.modules.learning_plan import practice_routes, study_routes
 from app.modules.learning_plan import routes as learning_plan_routes
 from app.modules.learning_plan.practice_worker import practice_spec
 from app.modules.library import routes as library_routes
