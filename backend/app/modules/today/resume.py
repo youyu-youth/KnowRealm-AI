@@ -24,6 +24,16 @@ RESUME_HISTORY_LIMIT = 30
 
 class LearningResumeService:
     @staticmethod
+    async def record_tab(session: AsyncSession, record_id: str) -> RecordResumeTab | None:
+        saved_tab = await session.scalar(
+            select(LearningResumeEntry.record_tab).where(
+                LearningResumeEntry.kind == ResumeKind.RECORD,
+                LearningResumeEntry.target_id == record_id,
+            )
+        )
+        return cast(RecordResumeTab | None, saved_tab)
+
+    @staticmethod
     async def resolve(
         session: AsyncSession, entry: LearningResumeEntry
     ) -> LearningResumeOut | None:

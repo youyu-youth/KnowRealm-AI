@@ -65,6 +65,7 @@ from app.modules.learning.service import MasteryService
 from app.modules.learning_plan import practice_routes, study_routes
 from app.modules.learning_plan import routes as learning_plan_routes
 from app.modules.learning_plan.practice_worker import practice_spec
+from app.modules.learning_plan.study import register_record_tab_reader
 from app.modules.library import routes as library_routes
 from app.modules.library import shared_refs_routes
 from app.modules.library.backfill import backfill_spec, ensure_backfill_enqueued
@@ -106,6 +107,7 @@ from app.modules.summary import summaries
 from app.modules.summary.graph import build_summary_graph
 from app.modules.summary.worker import summary_spec
 from app.modules.today import today
+from app.modules.today.resume import LearningResumeService
 from app.modules.todo import todos
 from app.modules.todo.worker import todo_spec
 from app.modules.transcript.audio_worker import audio_spec
@@ -502,6 +504,7 @@ def create_app(
         openapi_url="/api/openapi.json",
         lifespan=lifespan,
     )
+    register_record_tab_reader(LearningResumeService.record_tab)
     app.state.launch_token = launch_token
     app.state.record_notifier = record_notifier
     app.state.turn_broadcaster = turn_broadcaster

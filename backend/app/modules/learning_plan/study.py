@@ -1,5 +1,6 @@
 """计划资料学习领域能力；页面与 Agent 共用可见性及生命周期约束。"""
 
+from collections.abc import Awaitable, Callable
 from typing import cast
 
 from sqlalchemy import Select, or_, select, update
@@ -18,8 +19,17 @@ from app.modules.learning_plan.study_schemas import (
 from app.modules.library.shared_refs import shared_alive_record_ids
 from app.modules.record.models import Record
 from app.modules.record.schemas import RecordContentTab
-from app.modules.today.resume_models import LearningResumeEntry
 from app.shared.errors import CodedHTTPException
+
+type RecordTabReader = Callable[[AsyncSession, str], Awaitable[RecordContentTab | None]]
+
+_record_tab_reader: RecordTabReader | None = None
+
+
+def register_record_tab_reader(reader: RecordTabReader) -> None:
+    """组合根注入 today 页签读取器，避免领域反向依赖下游模块。"""
+    global _record_tab_reader
+    _record_tab_reader = reader
 
 
 def unavailable(code: str = "PLAN_STUDY_UNAVAILABLE") -> CodedHTTPException:
@@ -131,11 +141,10 @@ async def start(session: AsyncSession, item_id: str, body: RecordStudyStart) -> 
         if item.study_visit_id != str(body.request_id):
             if item.study_visit_id is None:
                 # 仅在明确启动时借用记录已有页签；普通访问不反写本项事实。
-                saved_tab = await session.scalar(
-                    select(LearningResumeEntry.record_tab).where(
-                        LearningResumeEntry.kind == "RECORD",
-                        LearningResumeEntry.target_id == item.record_id,
-                    )
+                saved_tab = (
+                    await _record_tab_reader(session, str(body.record_id))
+                    if _record_tab_reader is not None
+                    else None
                 )
                 item.study_tab = saved_tab or "summary"
             item.study_visit_id = str(body.request_id)

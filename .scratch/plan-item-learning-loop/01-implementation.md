@@ -68,3 +68,9 @@
 浏览器补验脚本曾因 Vite 入口带时间戳未匹配 IPC 拦截、误写迁移请求字段及对含刷新按钮的提示使用整段精确文本匹配而失败；均为脚本前提/定位修正，没有用这些失败声称产品通过。最终动态变化补验独立执行通过，测试 API 与 Vite 进程已按本次 PID 清理。
 
 基点证据已复制回当前工作区的忽略目录。测试生成路由文件仅有行尾差异；确认后执行 `git worktree remove --force` 已移除本次登记，但目录清理返回 `Directory not empty`。核对绝对路径后使用原生 PowerShell 清理残留，被自动审批以 `blocked by policy` 拒绝；未再换方式删除。残留路径 `E:/workspace/project/my/KnowRealm-AI-study01-baseline` 不属于交付提交，也没有借机清理用户的其他 worktree。
+
+## 补评修复：移除学习计划对 today 的反向依赖
+
+2026-10-17 核实用户指出的包级方向环真实存在：`learning_plan.study` 导入 `today.resume_models`，而 today 聚合又依赖 learning_plan，违反 `fastapi.md` 的下游方向；它不是运行时 ImportError。沿用现有 `learning_plan.audit` 的注册钩子方式，将页签查询归回 `LearningResumeService.record_tab`，由 `main.create_app` 注入读取器。首次明确启动仍在原领域事务内读取已有页签，此后普通访问不反写本项；未装配 today 的隔离领域使用默认 summary。HTTP、数据表及前端契约不变，没有新增模型调用。
+
+验证：AST 检查 learning_plan 下已无 today 导入；复用资料学习 13 项及今日恢复/重启 2 项，**15 项全部通过**，证据 `.pytest-tmp-runs/20261017T091123Z-bc3ca1d1/backend/`。三个触及 Python 文件 Ruff check/format、Pyright（0 错误）及 OpenAPI `--check` 通过。现有测试覆盖此次保留的行为，未新增重复测试，未重跑全量或原生桌面验收；之前的全量失败结论保持。
