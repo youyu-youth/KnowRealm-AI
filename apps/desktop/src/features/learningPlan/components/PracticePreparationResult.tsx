@@ -1,6 +1,7 @@
 import type { components } from "@knowrealm/api-types";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { PracticeSourceList } from "@/features/learningPlan/components/PracticeSourceList";
 
 export function PracticePreparationResult({
   latest,
@@ -46,46 +47,14 @@ export function PracticePreparationResult({
           })}
         </p>
       ) : null}
-      <ul className="text-body space-y-1">
-        {latest.sources.map((source) => (
-          <li key={source.record_id}>
-            {source.title} ·{" "}
-            {t("practice.related", { count: source.related_count })}
-            {source.matching_basis?.length ? (
-              <span>
-                {" "}
-                ·{" "}
-                {source.matching_basis
-                  .map((reason) => t(`practice.basis.${reason}`))
-                  .join(" · ")}
-              </span>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+      <PracticeSourceList sources={latest.sources} />
       {latest.suggestions.length ? (
         <div className="space-y-2">
           <h3 className="text-section">{t("practice.suggestions")}</h3>
           <p className="text-label text-ink-muted">
             {t("practice.suggestionHint")}
           </p>
-          <ul className="text-body space-y-1">
-            {latest.suggestions.map((source) => (
-              <li key={source.record_id}>
-                {source.title} ·{" "}
-                {t("practice.related", { count: source.related_count })}
-                {source.matching_basis?.length ? (
-                  <span>
-                    {" "}
-                    ·{" "}
-                    {source.matching_basis
-                      .map((reason) => t(`practice.basis.${reason}`))
-                      .join(" · ")}
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
+          <PracticeSourceList sources={latest.suggestions} />
         </div>
       ) : null}
       {["PENDING", "RUNNING"].includes(latest.status) ? (

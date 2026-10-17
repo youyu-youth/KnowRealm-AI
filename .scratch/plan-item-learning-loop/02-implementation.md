@@ -56,6 +56,12 @@
 - 复用已有 `source_versions` 与 `PRACTICE_SOURCE_INVALID`，领域服务统一校验已确认的归属、有效性和版本。受理在既有写锁/事务内校验后才创建任务；Worker 的执行及提交/计量校验也使用同一确认基线，覆盖排队期间漂移，模型调用前即拒绝。页面与 Agent 共用 `prepare`，不增加旁路入口、迁移或 HTTP 契约。
 - 新增 3 项回归验证受理拒绝且无准备记录/任务/计量、要求保留、重新确认后同一未受理请求可重试，以及排队漂移时零模型外发、旧请求重放返回原任务。完整 `tests/test_practice_preparation.py` 为 25 项通过，证据 `.pytest-tmp-runs/20261017T050524Z-9dad8fb1/backend/`；`pwsh -NoProfile -File scripts/check-changed.ps1` 的 Ruff、格式及 Pyright 均通过。此次仅后端小范围修复，未重跑全库、真实模型或原生桌面验收。
 
+## 前端组件复核（2026-10-17）
+
+结果来源与补源建议的两段同形渲染已合并为 Feature 内的 `PracticeSourceList`；Page 中仅展示确认资料名称的列表保持其独立语义。要求表单原样移至 `PracticeRequirementsForm`，保留 `item_id` key、草稿基线、刷新保留输入和保存后焦点；Page 从 359 行缩为 163 行。规范的约 150 行阈值针对单组件 JSX，当前 Page/Form 主 JSX 返回段分别为 93/139 行，无需为文件总行数继续拆分。
+
+复用原有页面测试，仅在缺题补源用例补充两类来源匹配依据的可见断言；5 项全过，证据 `.pytest-tmp-runs/20261017T051204Z-765fbf58/frontend/`。`scripts/check-changed.ps1` 的 ESLint、Prettier、两份 TS 检查及 Vite 构建全部通过。UI 扫描仍把使用公共 Button/Checkbox/Input 的三个文件报为缺少局部 focus/hover，已核对公共组件继承样式并保留焦点测试，不重复添加 CSS；未重跑完整浏览器矩阵或原生桌面验收。
+
 ## 临时资源与数据
 
 浏览器独立服务端口 43179/1438 已停止，浏览器已关闭。测试数据库、模型替身、Playwright 脚本、日志及截图均留在被忽略的 `.pytest-tmp-runs/`，不加入提交；没有操作用户生产数据。验证中曾使用独立基点 worktree 和各自安装的依赖以复核历史失败。

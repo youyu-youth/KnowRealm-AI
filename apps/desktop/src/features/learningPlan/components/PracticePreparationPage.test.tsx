@@ -138,12 +138,14 @@ it("缺题建议不自动扩源，用户选择并确认后保存新的修订", a
       total_candidates: 15,
       course_scan_complete: true,
       error_code: null,
-      sources: [source],
-      suggestions: [second],
+      sources: [{ ...source, matching_basis: ["TOPIC_CONCEPT"] }],
+      suggestions: [{ ...second, matching_basis: ["TOPIC_APPLICATION"] }],
     },
   ];
   render(<App />);
   await screen.findByText("确认范围内只有 8 道相关题，目标为 15 题");
+  expect(screen.getByText("· 考查主题核心概念")).toBeInTheDocument();
+  expect(screen.getByText("· 应用主题知识")).toBeInTheDocument();
   expect(confirmed).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "修改要求 / 确认扩源" }));
   expect(
