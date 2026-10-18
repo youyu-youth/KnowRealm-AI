@@ -339,6 +339,7 @@ class QuizTestService:
         async with session.begin():
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能重新评分")
+            await _ensure_plan_round_writable(session, test)
             if test.status != QuizTestStatus.GRADING_FAILED:
                 raise CodedHTTPException(
                     code="QUIZ_TEST_NOT_REGRADABLE",
@@ -472,6 +473,9 @@ async def _transition_to_grading(
     """GRADING 落账事务（供应商文件 IO 在事务外完成后进入）：状态复核 + 建评分 job。"""
     async with session.begin():
         test = await _test(session, test_id)
+        # 配置 IO 期间计划可能失效；实际建任务的事务内重新校验并持锁到提交。
+        await _ensure_plan_round_writable(session, test)
+        await _ensure_course_active(session, test, "已归档课程的模拟测试不能评分")
         if test.status != expected_status:
             raise CodedHTTPException(status_code=409, code=stale_code, detail=stale_detail)
         now = utcnow()

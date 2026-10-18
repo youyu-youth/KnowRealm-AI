@@ -120,7 +120,7 @@ function proposalFixture(
     status: string;
     session_id: string | null;
     error_code: string | null;
-    result: Record<string, string> | null;
+    result: Record<string, unknown> | null;
     proposal_type: string;
     payload: Record<string, unknown>;
     snapshot: Record<string, unknown> | null;
@@ -183,6 +183,98 @@ beforeEach(() => {
   listProposals.mockResolvedValue([]);
   listOperations.mockResolvedValue([]);
   get.mockResolvedValue({ id: "course-1", name: "Python 学习" });
+});
+
+describe("ChatOperationProposalCard — 开始计划练习", () => {
+  const payload = {
+    item_id: "plan-item-redis",
+    requirements_revision: 3,
+    request_id: "request-round-1",
+    preparation_id: "preparation-redis",
+  };
+  const result = {
+    round_no: 1,
+    total_count: 15,
+    status: "IN_PROGRESS",
+    paper_path: "/spaces/course-redis/tests/test-redis",
+    entry_path: "/plan-items/plan-item-redis/practice",
+  };
+
+  it.each(["preparation-redis", null])(
+    "默认授权确认卡展示参数，确认后提供本轮与计划入口（题集 %s）",
+    async (preparationId) => {
+      const proposal = proposalFixture({
+        proposal_type: "OP_PRACTICE_ROUND_START",
+        payload: { ...payload, preparation_id: preparationId },
+      });
+      listProposals.mockResolvedValue([proposal]);
+      confirmProposal.mockResolvedValue({
+        ...proposal,
+        status: "APPLIED",
+        result,
+      });
+      renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+
+      expect(await screen.findByText(payload.item_id)).toBeVisible();
+      expect(screen.getByText("要求修订 3")).toBeVisible();
+      expect(
+        screen.getByText(preparationId ?? "使用本计划项最近一次准备的题集"),
+      ).toBeVisible();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(confirmProposal).not.toHaveBeenCalled();
+      fireEvent.click(
+        screen.getByRole("button", { name: "确认开始或继续练习" }),
+      );
+
+      expect(
+        await screen.findByRole("link", { name: "打开本轮练习" }),
+      ).toHaveAttribute("href", result.paper_path);
+      expect(
+        screen.getByRole("link", { name: "返回计划练习" }),
+      ).toHaveAttribute("href", result.entry_path);
+      expect(screen.getByText(/第 1 轮练习/)).toBeVisible();
+      expect(confirmProposal).toHaveBeenCalledWith("p-1", undefined);
+    },
+  );
+
+  it("拒绝后不显示作答入口，也不执行开始操作", async () => {
+    const proposal = proposalFixture({
+      proposal_type: "OP_PRACTICE_ROUND_START",
+      payload,
+    });
+    listProposals.mockResolvedValue([proposal]);
+    rejectProposal.mockResolvedValue({ ...proposal, status: "REJECTED" });
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "取消本次开始" }),
+    );
+    expect(await screen.findByText("已取消，已有练习保持不变。")).toBeVisible();
+    expect(rejectProposal).toHaveBeenCalledWith("p-1");
+    expect(confirmProposal).not.toHaveBeenCalled();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("重新进入聊天从持久回执恢复轮次状态和入口，不再次执行", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        proposal_type: "OP_PRACTICE_ROUND_START",
+        payload,
+        status: "APPLIED",
+        result: { ...result, status: "GRADING" },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText(/评分中/)).toBeVisible();
+    expect(screen.getByRole("link", { name: "打开本轮练习" })).toHaveAttribute(
+      "href",
+      result.paper_path,
+    );
+    expect(screen.getByRole("link", { name: "返回计划练习" })).toHaveAttribute(
+      "href",
+      result.entry_path,
+    );
+    expect(confirmProposal).not.toHaveBeenCalled();
+  });
 });
 
 describe("ChatOperationProposalCard", () => {

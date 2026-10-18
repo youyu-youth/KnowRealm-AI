@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import type { components } from "@knowrealm/api-types";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -12,6 +13,8 @@ import {
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "@/App";
+import { createQueryClient } from "@/app/queryClient";
+import { quizTestKeys } from "@/features/quiz-tests/api/keys";
 import { TEST_LAUNCH_TOKEN, TEST_SIDECAR_URL } from "@/mocks/handlers";
 import { server } from "@/mocks/server";
 
@@ -139,14 +142,15 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
-function renderAt(path: string) {
+function renderAt(path: string, queryClient = createQueryClient()) {
   window.history.replaceState(null, "", path);
-  return render(<App />);
+  return render(<App queryClient={queryClient} />);
 }
 
 function mockPaper(response: QuizTestDetail = detail) {
   return server.use(
     http.get(COURSE_URL, () => HttpResponse.json(course)),
+    http.get(`${COURSE_URL}/records`, () => HttpResponse.json([])),
     http.get(TESTS_URL, () =>
       HttpResponse.json({ items: [summary], blocked_reason: null }),
     ),
@@ -167,6 +171,68 @@ function mockPaper(response: QuizTestDetail = detail) {
 }
 
 describe("模拟测试卷面作答", () => {
+  it.each([
+    ["single", "IN_PROGRESS"],
+    ["sectioned", "GRADING_FAILED"],
+    ["full", "COMPLETED"],
+  ] as const)(
+    "来源清理后空题集：%s / %s 显示说明并可返回",
+    async (view, status) => {
+      mockPaper({ ...detail, status, total_count: 0, items: [] });
+      renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=${view}`);
+
+      expect(await screen.findByText("暂无可显示的题目")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "交卷" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "重新评分" }),
+      ).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "返回模拟测试" }));
+      expect(
+        await screen.findByRole("list", { name: "模拟测试历史" }),
+      ).toBeInTheDocument();
+      expect(window.location.pathname).toBe(`/spaces/${COURSE_ID}`);
+    },
+  );
+
+  it("当前题在刷新后被清理时收敛索引，全部清理后显示空态", async () => {
+    let response = detail;
+    mockPaper();
+    server.use(http.get(TEST_URL, () => HttpResponse.json(response)));
+    const queryClient = createQueryClient();
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=single`, queryClient);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "跳到第 3 题（简答题）" }),
+    );
+    expect(await screen.findByText(shortItem.stem)).toBeInTheDocument();
+
+    response = { ...detail, total_count: 2, items: [mcItem, fillBlankItem] };
+    await act(() =>
+      queryClient.invalidateQueries({ queryKey: quizTestKeys.detail(TEST_ID) }),
+    );
+    expect(
+      await screen.findByRole("textbox", { name: "第 1 空" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/第 2 \/ 2 题/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "上一题" }));
+    expect(screen.getByRole("button", { name: "上一题" })).toBeDisabled();
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    expect(screen.getByText(mcItem.stem)).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(
+      screen.getByRole("textbox", { name: "第 1 空" }),
+    ).toBeInTheDocument();
+
+    response = { ...detail, total_count: 0, items: [] };
+    await act(() =>
+      queryClient.invalidateQueries({ queryKey: quizTestKeys.detail(TEST_ID) }),
+    );
+    expect(await screen.findByText("暂无可显示的题目")).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(screen.getByText("暂无可显示的题目")).toBeInTheDocument();
+  });
+
   it("三档展示形式随切且 view 同步到 URL", async () => {
     mockPaper();
     renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=single`);
@@ -432,6 +498,44 @@ function completedDetail(): QuizTestDetail {
 }
 
 describe("交卷评分与结果页", () => {
+  it.each(["COMPLETED", "GRADING_FAILED"] as const)(
+    "PLAN %s 结果保留计划入口并隐藏普通重考",
+    async (status) => {
+      const planItemId = "55555555-5555-4555-8555-555555555555";
+      mockPaper({
+        ...completedDetail(),
+        mode: "PLAN",
+        plan_item_id: planItemId,
+        practice_round_no: 1,
+        status,
+      });
+      renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=full`);
+
+      expect(
+        await screen.findByRole("link", { name: "返回计划练习" }),
+      ).toHaveAttribute("href", `/plan-items/${planItemId}/practice`);
+      expect(screen.getByText("37")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "再考一张" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it.each(["COMPLETED", "GRADING_FAILED"] as const)(
+    "MOCK %s 结果仍可再考一张并返回普通测试列表",
+    async (status) => {
+      mockPaper({ ...completedDetail(), status });
+      renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=full`);
+
+      fireEvent.click(await screen.findByRole("button", { name: "再考一张" }));
+      expect(
+        await screen.findByRole("list", { name: "模拟测试历史" }),
+      ).toBeInTheDocument();
+      expect(window.location.pathname).toBe(`/spaces/${COURSE_ID}`);
+      expect(window.location.search).toContain("tab=tests");
+    },
+  );
+
   const SUBMIT_URL = `${TEST_URL}/submit`;
   const REGRADE_URL = `${TEST_URL}/regrade`;
 

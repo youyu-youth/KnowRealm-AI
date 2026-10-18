@@ -20,9 +20,12 @@ from app.modules.agent.runtime import (
     bind_agent_runtime_context,
     reset_agent_runtime_context,
 )
+from app.modules.jobs.models import ProcessingJob
 from app.modules.llm import service as llm_service
+from app.modules.quiz import test_service
 from app.modules.quiz.models import QuizTest, QuizTestItem
 from app.modules.record.models import LearningEvent
+from app.modules.settings.config import LlmProviderConfig
 from tests.test_plan_editing import (
     COURSE_ID,
     ITEM_ID,
@@ -45,10 +48,11 @@ COMPLETE = f"/api/courses/{COURSE_ID}/plans/{PLAN_ID}/items/{ITEM_ID}/complete"
 
 
 class GradingModel:
-    """顺序吐 CORRECT/PARTIAL；可暂停以制造 GRADING 在途窗口。"""
+    """顺序吐 PARTIAL；可注入无效输出或暂停以制造 GRADING 在途窗口。"""
 
-    def __init__(self, count: int) -> None:
+    def __init__(self, count: int, *, invalid_count: int = 0) -> None:
         self.remaining = count
+        self.invalid_count = invalid_count
         self.calls = 0
         self.prompts: list[str] = []
         self.pause = False
@@ -64,7 +68,7 @@ class GradingModel:
         self.remaining -= 1
         return llm_service.StructuredModelResult(
             output={
-                "verdict": "PARTIAL",
+                "verdict": "WRONG" if self.calls <= self.invalid_count else "PARTIAL",
                 "score": 0.5,
                 "confidence": 0.9,
                 "rationale": "覆盖一半要点",
@@ -232,6 +236,36 @@ async def test_round_same_across_replay_restart_and_grading(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("failed_count", [1, 15])
+async def test_completed_round_with_unscored_items_is_not_grading_complete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed_count: int
+) -> None:
+    # WRONG + score=0.5 经真实输出校验失败，Worker 保留未评分题并继续处理。
+    model = GradingModel(15, invalid_count=failed_count)
+    async with practice_app(tmp_path, model) as (client, factory):
+        await seed(factory)
+        await ready_fifteen(client, factory, tmp_path, monkeypatch)
+        test_id = (await begin(client, 1)).json()["test_id"]
+        paper = (await client.get(f"/api/quiz-tests/{test_id}")).json()
+        await answer_all(client, paper)
+        submitted = await client.post(f"/api/quiz-tests/{test_id}/submit")
+        assert submitted.status_code == 200, submitted.text
+        done = await wait_status(client, test_id, ("COMPLETED", "GRADING_FAILED"))
+        assert done["status"] == "COMPLETED"
+        failed = [item for item in done["items"] if item["result"] is None]
+        assert len(failed) == failed_count
+        assert all(item["ai_grade"]["error_code"] == "LLM_OUTPUT_INVALID" for item in failed)
+        round_ = (await client.get(BASE)).json()["round"]
+        assert round_["status"] == "COMPLETED"
+        assert round_["total_count"] == round_["answered_count"] == 15
+        assert round_["graded_count"] == 15 - failed_count
+        assert round_["unscored_count"] == failed_count
+        assert round_["score_denominator"] == (15 - failed_count or None)
+        assert round_["score"] == (0.5 if failed_count < 15 else None)
+        assert round_["grading_complete"] is False
+
+
+@pytest.mark.anyio
 async def test_frozen_paper_survives_source_change_and_invalidation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -375,6 +409,9 @@ async def test_manual_completion_keeps_first_timestamp_after_objective_round(
                 json={"item_id": item["id"], "answer": 0},
             )
             assert answer.status_code == 200, answer.text
+        before_submit = (await client.get(BASE)).json()["round"]
+        assert before_submit["graded_count"] == 15
+        assert before_submit["grading_complete"] is False
         submit = await client.post(f"/api/quiz-tests/{test_id}/submit")
         assert submit.status_code == 200
         assert submit.json()["status"] == "COMPLETED"  # 客观题同步落终态
@@ -421,6 +458,116 @@ async def test_legacy_answer_entry_respects_plan_constraints(
         assert abandon.json()["code"] == "PRACTICE_ROUND_OP_UNAVAILABLE"
         readable = await client.get(f"/api/quiz-tests/{test_id}")
         assert readable.status_code == 200  # 历史仍可查看既有结果
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("action", "during_provider_io"),
+    [("submit", True), ("regrade", True), ("regrade", False)],
+)
+@pytest.mark.parametrize(
+    "invalidate_sql",
+    [
+        "UPDATE learning_plans SET status='SUPERSEDED'",
+        "UPDATE learning_goals SET status='COMPLETED'",
+        "UPDATE learning_plan_items SET status='SKIPPED'",
+    ],
+    ids=["historical-plan", "finished-goal", "skipped-item"],
+)
+async def test_grading_rejects_invalid_plan_at_submission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    during_provider_io: bool,
+    invalidate_sql: str,
+) -> None:
+    model = GradingModel(15)
+    async with practice_app(tmp_path, model) as (client, factory):
+        await seed(factory)
+        await ready_fifteen(client, factory, tmp_path, monkeypatch)
+        test_id = (await begin(client, 1)).json()["test_id"]
+        paper = (await client.get(f"/api/quiz-tests/{test_id}")).json()
+        await answer_all(client, paper)
+        expected_status = "IN_PROGRESS" if action == "submit" else "GRADING_FAILED"
+        if action == "regrade":
+            # 本测试只验证重评入口约束，失败态为初始夹具，不替换评分提交事务。
+            await run_sql(
+                "UPDATE quiz_tests SET status='GRADING_FAILED' WHERE id=:id",
+                {"id": test_id},
+                factory,
+            )
+        before = (await client.get(f"/api/quiz-tests/{test_id}")).json()
+        async with factory() as session:
+            events_before = await session.scalar(select(func.count()).select_from(LearningEvent))
+
+        read_provider = test_service._require_grading_provider  # pyright: ignore[reportPrivateUsage]
+
+        async def provider_after_change(data_dir: Path) -> LlmProviderConfig:
+            provider = await read_provider(data_dir)
+            if during_provider_io:
+                # 用独立 SQLite 事务固定复现配置 IO 期间的计划变化。
+                await run_sql(invalidate_sql, {}, factory)
+            return provider
+
+        monkeypatch.setattr(test_service, "_require_grading_provider", provider_after_change)
+        if not during_provider_io:
+            await run_sql(invalidate_sql, {}, factory)
+
+        response = await client.post(f"/api/quiz-tests/{test_id}/{action}")
+        assert response.status_code == 409, response.text
+        assert response.json()["code"] == "PRACTICE_ITEM_UNAVAILABLE"
+        after = (await client.get(f"/api/quiz-tests/{test_id}")).json()
+        assert after["status"] == expected_status
+        assert after["items"] == before["items"]
+        assert model.calls == 0
+        async with factory() as session:
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(ProcessingJob)
+                    .where(ProcessingJob.job_type == "QUIZ_GRADING")
+                )
+                == 0
+            )
+            assert (
+                await session.scalar(select(func.count()).select_from(LearningEvent))
+                == events_before
+            )
+
+
+@pytest.mark.anyio
+async def test_accepted_grading_finishes_after_plan_becomes_historical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = GradingModel(15)
+    model.pause = True
+    async with practice_app(tmp_path, model) as (client, factory):
+        await seed(factory)
+        await ready_fifteen(client, factory, tmp_path, monkeypatch)
+        test_id = (await begin(client, 1)).json()["test_id"]
+        paper = (await client.get(f"/api/quiz-tests/{test_id}")).json()
+        await answer_all(client, paper)
+        submitted = await client.post(f"/api/quiz-tests/{test_id}/submit")
+        assert submitted.status_code == 200, submitted.text
+        assert submitted.json()["status"] == "GRADING"
+        try:
+            await asyncio.wait_for(model.started.wait(), 5)
+            await run_sql("UPDATE learning_plans SET status='SUPERSEDED'", {}, factory)
+        finally:
+            model.release.set()
+        done = await wait_status(client, test_id, ("COMPLETED", "GRADING_FAILED"))
+        assert done["status"] == "COMPLETED"
+        assert all(item["result"] == "PARTIAL" for item in done["items"])
+        assert model.calls == 15
+        async with factory() as session:
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(ProcessingJob)
+                    .where(ProcessingJob.job_type == "QUIZ_GRADING")
+                )
+                == 1
+            )
 
 
 @pytest.mark.anyio
@@ -477,12 +624,13 @@ async def test_migration_0054_upgrades_existing_rows(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("auth_mode", [AuthMode.REQUEST_APPROVAL, AuthMode.AUTO_APPROVE])
 async def test_agent_starts_round_via_controlled_tool_without_answers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, auth_mode: AuthMode
 ) -> None:
     async with practice_app(tmp_path, GradingModel(0)) as (client, factory):
         await seed(factory)
-        await ready_fifteen(client, factory, tmp_path, monkeypatch)
+        prepared = await ready_fifteen(client, factory, tmp_path, monkeypatch)
         chat = (await client.post("/api/chat-sessions", json={})).json()["id"]
         tools = {
             tool.name: tool
@@ -492,7 +640,7 @@ async def test_agent_starts_round_via_controlled_tool_without_answers(
             AgentRuntimeContext(
                 session_factory=factory,
                 session_id=chat,
-                auth_mode=AuthMode.AUTO_APPROVE,
+                auth_mode=auth_mode,
             )
         )
         try:
@@ -502,11 +650,32 @@ async def test_agent_starts_round_via_controlled_tool_without_answers(
                         "item_id": ITEM_ID,
                         "request_id": str(uuid4()),
                         "requirements_revision": 1,
+                        "preparation_id": prepared["id"],
                     }
                 )
             )
             assert result["ok"] is True, result
-            round_ = result["executed"]["result"]
+            if auth_mode is AuthMode.REQUEST_APPROVAL:
+                assert "executed" not in result
+                proposal_id = result["proposals"][0]["proposal_id"]
+                pending = (await client.get("/api/proposals", params={"session_id": chat})).json()
+                proposal = next(row for row in pending if row["id"] == proposal_id)
+                assert proposal["proposal_type"] == "OP_PRACTICE_ROUND_START"
+                assert proposal["status"] == "PENDING"
+                assert proposal["payload"]["item_id"] == ITEM_ID
+                assert proposal["payload"]["requirements_revision"] == 1
+                assert proposal["payload"]["preparation_id"] == prepared["id"]
+                async with factory() as session:
+                    assert await session.scalar(select(func.count()).select_from(QuizTest)) == 0
+                confirmed = await client.post(f"/api/proposals/{proposal_id}/confirm")
+                assert confirmed.status_code == 200, confirmed.text
+                assert confirmed.json()["status"] == "APPLIED"
+                round_ = confirmed.json()["result"]
+                restored = (await client.get("/api/proposals", params={"session_id": chat})).json()
+                assert next(row for row in restored if row["id"] == proposal_id)["result"] == round_
+                assert "秘密" not in json.dumps(restored, ensure_ascii=False)
+            else:
+                round_ = result["executed"]["result"]
             assert round_["round_no"] == 1
             assert round_["total_count"] == 15
             assert round_["paper_path"].startswith(f"/spaces/{COURSE_ID}/tests/")
@@ -514,6 +683,8 @@ async def test_agent_starts_round_via_controlled_tool_without_answers(
             state = json.loads(await tools["get_plan_practice"].ainvoke({"item_id": ITEM_ID}))
             assert state["practice"]["round"]["test_id"] == round_["test_id"]
             assert "stem" not in json.dumps(state, ensure_ascii=False)
+            async with factory() as session:
+                assert await session.scalar(select(func.count()).select_from(QuizTest)) == 1
         finally:
             reset_agent_runtime_context(token)
 

@@ -27,7 +27,7 @@ import {
   PLAN_ITEM_TYPE_KEYS,
   isPlanItemType,
 } from "@/features/learningPlan/planItemTypes";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { chatKeys } from "@/features/chat/api/keys";
 
 type ChatOperationProposalCardProps = {
@@ -1322,7 +1322,12 @@ type OperationCardSpec = {
   DraftEditor?: ComponentType<DraftEditorProps>;
 };
 
-function PracticePreviewFields({ payload, snapshot, t }: PreviewFieldsProps) {
+function PracticePreviewFields({
+  payload,
+  snapshot,
+  t,
+  hintKey = "practice.confirmHint",
+}: PreviewFieldsProps & { hintKey?: string }) {
   const titles = snapshot?.source_titles;
   return (
     <>
@@ -1383,7 +1388,7 @@ function PracticePreviewFields({ payload, snapshot, t }: PreviewFieldsProps) {
       {fieldString(payload, "preparation_id") ? (
         <p>{fieldString(payload, "preparation_id")}</p>
       ) : null}
-      <p>{t("practice.confirmHint")}</p>
+      <p>{t(hintKey)}</p>
     </>
   );
 }
@@ -1402,6 +1407,60 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
   OP_PRACTICE_REQUIREMENTS: practiceCard,
   OP_PRACTICE_PREPARE: practiceCard,
   OP_PRACTICE_CANCEL: practiceCard,
+  OP_PRACTICE_ROUND_START: {
+    label: (key) => `chat.operationProposal.practiceRound.${key}`,
+    PreviewFields: (props) => (
+      <>
+        <PracticePreviewFields {...props} hintKey="practice.round.startHint" />
+        {!fieldString(props.payload, "preparation_id") ? (
+          <p>{props.t("practice.round.latestPreparation")}</p>
+        ) : null}
+      </>
+    ),
+    SettledRow: ({ status, result, t }) => {
+      if (status === "REJECTED") {
+        return (
+          <p className="text-label text-ink-muted">
+            {t("chat.operationProposal.practiceRound.rejected")}
+          </p>
+        );
+      }
+      const paperPath = fieldString(result, "paper_path");
+      const entryPath = fieldString(result, "entry_path");
+      return (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-label text-ink-muted">
+            {t("practice.round.title", {
+              round: fieldNumber(result, "round_no"),
+            })}
+            {" · "}
+            {t("practice.target", {
+              count: fieldNumber(result, "total_count") ?? 0,
+            })}
+            {" · "}
+            {t(`practice.round.status.${fieldString(result, "status")}`)}
+          </p>
+          {paperPath ? (
+            <Link
+              to={paperPath}
+              search={{ view: "single" }}
+              className={buttonVariants({ variant: "outline", size: "xs" })}
+            >
+              {t("practice.round.open")}
+            </Link>
+          ) : null}
+          {entryPath ? (
+            <Link
+              to={entryPath}
+              className={buttonVariants({ variant: "outline", size: "xs" })}
+            >
+              {t("practice.planPaper.backToPlan")}
+            </Link>
+          ) : null}
+        </div>
+      );
+    },
+  },
   OP_CONTEXT_RULES: {
     label: (key) => `chat.operationProposal.contextRules.${key}`,
     PreviewFields: ({ payload, t }) => (

@@ -1223,6 +1223,8 @@
         "title": "模拟测试",
         "description": "本卷共 {{count}} 题，逐题提交后锁定，不可修改。",
         "loading": "正在读取试卷",
+        "emptyTitle": "暂无可显示的题目",
+        "emptyDescription": "来源题目可能已被清理，无法继续展示此试卷。",
         "errorTitle": "试卷暂时无法读取",
         "back": "返回模拟测试",
         "shortage": "题库中只有 {{count}} 道符合条件的习题，已全部选入。",
@@ -2557,6 +2559,13 @@
         "rejected": "已拒绝上下文修改",
         "accepted": "上下文设置已修改，下一轮生效"
       },
+      "practiceRound": {
+        "accept": "确认开始或继续练习",
+        "reject": "取消本次开始",
+        "rejected": "已取消，已有练习保持不变。",
+        "failed": "计划练习未能开始",
+        "failedDetail": "计划练习未能开始：{{reason}}"
+      },
       "practice": {
         "title": "计划练习操作",
         "confirm": "确认",
@@ -3886,6 +3895,9 @@
       "continue": "继续本轮练习",
       "result": "查看本轮结果",
       "start": "开始练习",
+      "startHint": "确认后按已确认要求开始练习；已有轮次则继续该轮或查看状态，不创建新轮。请在练习页自行作答，计划项完成仍需另行确认。",
+      "latestPreparation": "使用本计划项最近一次准备的题集",
+      "open": "打开本轮练习",
       "grading": "正在评分，可离开稍后回来查看",
       "status": {
         "IN_PROGRESS": "进行中",

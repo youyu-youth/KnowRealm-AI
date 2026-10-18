@@ -107,6 +107,45 @@ export function QuizTestPage({
     );
   }
 
+  if (test.data.items.length === 0) {
+    const planItemId =
+      test.data.mode === "PLAN" ? test.data.plan_item_id : null;
+    return (
+      <section className="work-surface-enter max-w-workbench px-content mx-auto py-8">
+        <h1 className="text-headline font-headline text-ink-strong">
+          {t("spaces.simulations.paper.emptyTitle")}
+        </h1>
+        <p role="status" className="text-body text-muted-foreground mt-2">
+          {t("spaces.simulations.paper.emptyDescription")}
+        </p>
+        <Button
+          variant="outline"
+          className="mt-6"
+          onClick={() =>
+            void navigate(
+              planItemId
+                ? {
+                    to: "/plan-items/$itemId/practice",
+                    params: { itemId: planItemId },
+                  }
+                : {
+                    to: "/spaces/$courseId",
+                    params: { courseId },
+                    search: { tab: "tests" },
+                  },
+            )
+          }
+        >
+          {t(
+            planItemId
+              ? "practice.planPaper.backToPlan"
+              : "spaces.simulations.paper.back",
+          )}
+        </Button>
+      </section>
+    );
+  }
+
   return (
     <ExamPaper
       courseId={courseId}
@@ -235,9 +274,10 @@ function ExamPaper({
     () => buildSections(items, t),
     [items, t],
   );
-  const [activeIndex, setActiveIndex] = useState(() =>
+  const [selectedIndex, setActiveIndex] = useState(() =>
     firstUnansweredIndex(items),
   );
+  const activeIndex = Math.min(selectedIndex, items.length - 1);
   const [activeSection, setActiveSection] = useState(() =>
     firstUnansweredSection(sections, items),
   );
@@ -261,15 +301,15 @@ function ExamPaper({
         return;
       }
       if (event.key === "ArrowLeft") {
-        setActiveIndex((current) => Math.max(0, current - 1));
+        setActiveIndex(Math.max(0, activeIndex - 1));
       }
       if (event.key === "ArrowRight") {
-        setActiveIndex((current) => Math.min(items.length - 1, current + 1));
+        setActiveIndex(Math.min(items.length - 1, activeIndex + 1));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view, items.length]);
+  }, [view, items.length, activeIndex]);
 
   const sectionIndexFor = (item: QuizTestItem) => {
     const index = sections.findIndex((section) =>
@@ -509,9 +549,7 @@ function ExamPaper({
                   variant="ghost"
                   className="disabled:cursor-not-allowed disabled:opacity-40"
                   disabled={activeIndex === 0}
-                  onClick={() =>
-                    setActiveIndex((current) => Math.max(0, current - 1))
-                  }
+                  onClick={() => setActiveIndex(Math.max(0, activeIndex - 1))}
                 >
                   <ChevronLeft className="size-4" />
                   {t("spaces.simulations.paper.prev")}
@@ -520,8 +558,8 @@ function ExamPaper({
                   <Button
                     variant="outline"
                     onClick={() =>
-                      setActiveIndex((current) =>
-                        Math.min(items.length - 1, current + 1),
+                      setActiveIndex(
+                        Math.min(items.length - 1, activeIndex + 1),
                       )
                     }
                   >
@@ -811,9 +849,11 @@ function ResultSummary({
           {regradeError}
         </p>
       ) : null}
-      <Button variant="outline" className="mt-2 w-full" onClick={onRetake}>
-        {t("spaces.simulations.paper.result.retakeButton")}
-      </Button>
+      {data.mode !== "PLAN" ? (
+        <Button variant="outline" className="mt-2 w-full" onClick={onRetake}>
+          {t("spaces.simulations.paper.result.retakeButton")}
+        </Button>
+      ) : null}
     </aside>
   );
 }

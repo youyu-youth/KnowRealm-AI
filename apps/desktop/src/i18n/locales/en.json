@@ -1239,6 +1239,8 @@
         "description_one": "This paper has {{count}} question; each answer locks in on submit and cannot be changed.",
         "description_other": "This paper has {{count}} questions; each answer locks in on submit and cannot be changed.",
         "loading": "Loading paper",
+        "emptyTitle": "No questions to display",
+        "emptyDescription": "The source questions may have been permanently deleted, so this paper can no longer be displayed.",
         "errorTitle": "Paper could not be loaded",
         "back": "Back to Mock Tests",
         "shortage_one": "Only {{count}} matching question is in the bank; it has been selected.",
@@ -2586,6 +2588,13 @@
         "rejected": "Context change rejected",
         "accepted": "Context settings changed, effective next turn"
       },
+      "practiceRound": {
+        "accept": "Confirm starting or continuing practice",
+        "reject": "Cancel this start",
+        "rejected": "Cancelled; existing practice is unchanged.",
+        "failed": "Plan practice could not start",
+        "failedDetail": "Plan practice could not start: {{reason}}"
+      },
       "practice": {
         "title": "Plan practice action",
         "confirm": "Confirm",
@@ -3915,6 +3924,9 @@
       "continue": "Continue this round",
       "result": "View round results",
       "start": "Start practice",
+      "startHint": "Confirm to start practice with the confirmed requirements. If a round exists, continue it or view its status without creating another. Answer on the practice page yourself; completing the plan item requires a separate confirmation.",
+      "latestPreparation": "Use this plan item's most recently prepared question set",
+      "open": "Open this practice round",
       "grading": "Grading in progress; you can leave and check back later",
       "status": {
         "IN_PROGRESS": "In progress",

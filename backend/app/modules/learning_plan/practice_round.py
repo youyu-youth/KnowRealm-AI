@@ -84,7 +84,7 @@ async def round_out(session: AsyncSession, test: QuizTest) -> PracticeRoundOut:
         unscored_count=answered - graded,
         score=test.score,
         score_denominator=graded if graded else None,
-        grading_complete=test.status == QuizTestStatus.COMPLETED.value,
+        grading_complete=test.status == QuizTestStatus.COMPLETED.value and graded == len(items),
         started_at=test.started_at,
         completed_at=test.completed_at,
         sources=[
@@ -216,6 +216,8 @@ async def attach_round(
 async def _plan_round_guard(session: AsyncSession, test: QuizTest) -> None:
     """计划练习写护栏（quiz 域经 register_plan_round_guard 调用）：复用
     load_context 的计划版本/目标/跳过三态判定，页面与 Agent 同一口径。"""
+    await practice.lock_item(session, cast(str, test.plan_item_id))
     await practice.load_context(session, cast(str, test.plan_item_id), writable=True)
+
 
 test_service.register_plan_round_guard(_plan_round_guard)

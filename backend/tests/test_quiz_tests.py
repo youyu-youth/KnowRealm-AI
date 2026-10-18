@@ -182,6 +182,39 @@ async def test_create_list_and_detail_quiz_test_use_only_active_selected_questio
 
 
 @pytest.mark.anyio
+async def test_mock_paper_without_frozen_items_after_source_purge(tmp_path: Path) -> None:
+    async with running_app(tmp_path) as (app, client):
+        await seed_course_quizzes(app)
+        created = await client.post(
+            f"/api/courses/{COURSE_ID}/quiz-tests",
+            json={"question_types": ["MULTIPLE_CHOICE", "TRUE_FALSE"], "total_count": 5},
+        )
+        assert created.status_code == 201
+        test_id = created.json()["test"]["id"]
+        before = await client.get(f"/api/quiz-tests/{test_id}")
+        assert len(before.json()["items"]) == 2
+
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("DELETE FROM records WHERE id = :record_id"), {"record_id": RECORD_ID}
+            )
+            rows = (
+                await session.execute(
+                    text("SELECT quiz_id, frozen_json FROM quiz_test_items WHERE test_id = :id"),
+                    {"id": test_id},
+                )
+            ).all()
+            assert len(rows) == 2
+            assert all(row.quiz_id is None and row.frozen_json is None for row in rows)
+
+        after = await client.get(f"/api/quiz-tests/{test_id}")
+        assert after.status_code == 200
+        assert after.json()["mode"] == "MOCK"
+        assert after.json()["items"] == []
+        assert after.json()["total_count"] == 0
+
+
+@pytest.mark.anyio
 async def test_create_quiz_test_rejects_empty_bank_and_archived_course(tmp_path: Path) -> None:
     empty_dir = tmp_path / "empty"
     async with running_app(empty_dir) as (app, client):
