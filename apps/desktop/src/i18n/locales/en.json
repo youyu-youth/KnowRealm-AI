@@ -3671,7 +3671,7 @@
     "KP_BATCH_NOT_FOUND": "The Knowledge Point batch does not exist.",
     "KP_BATCH_STALE": "The batch is outdated (the summary was replaced or the course was archived).",
     "LAUNCH_TOKEN_INVALID": "You are not allowed to access the local service.",
-    "LLM_OUTPUT_INVALID": "The provider did not return a valid summary structure.",
+    "LLM_OUTPUT_INVALID": "The AI response format is invalid. Please try again.",
     "LLM_PROVIDER_UNCONFIGURED": "Configure an LLM provider (including its API key) first.",
     "MIXED_INPUT_MODE": "A recording handoff cannot include uploaded files.",
     "QUICK_NOTE_NO_COURSE": "Quick Notes cannot be linked to a course.",
