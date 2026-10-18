@@ -1,0 +1,40 @@
+.practice-workspace {
+  container: practice / inline-size;
+}
+
+.practice-layout {
+  display: grid;
+  align-items: start;
+  gap: 2rem;
+}
+
+.practice-requirements {
+  padding: 1.5rem;
+  background: var(--surface-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.practice-disclosure > summary {
+  cursor: pointer;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--ink-muted);
+  font-size: var(--text-body);
+  line-height: 1.55;
+  border-radius: var(--radius-xs);
+}
+
+.practice-disclosure > summary:hover {
+  color: var(--ink);
+}
+
+.practice-disclosure > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+
+@container practice (min-width: 58rem) {
+  .practice-layout:has(> .practice-requirements) {
+    grid-template-columns: minmax(0, 1fr) var(--spacing-practice-rail);
+  }
+}

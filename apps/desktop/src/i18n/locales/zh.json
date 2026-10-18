@@ -3835,6 +3835,22 @@
     }
   },
   "practice": {
+    "workspace": {
+      "title": "计划练习",
+      "next": "下一轮练习要求",
+      "requirements": "已确认的练习要求",
+      "sourceCount": "已确认 {{count}} 份来源资料",
+      "editor": "确认练习要求",
+      "readyToPrepare": "练习范围已确认",
+      "prepareHint": "按已确认的主题、题型和来源匹配习题。找到足量题目后，即可开始作答。",
+      "safetyHint": "匹配和评分时可离开，稍后返回继续。参考答案不会提前展示；计划项完成需另行确认。",
+      "score": "本轮成绩",
+      "denominator": "实际评分分母 {{count}} 题",
+      "roundRequirements": "查看本轮启动时的要求与来源",
+      "matching": "题集匹配",
+      "matchDetails": "查看匹配详情",
+      "matchId": "匹配编号：{{id}}"
+    },
     "title": "准备计划练习",
     "planItem": "计划项",
     "topic": "练习主题",

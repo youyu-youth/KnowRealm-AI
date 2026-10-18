@@ -1,4 +1,5 @@
 @theme inline {
+  --spacing-practice-rail: 20rem;
   --color-course-accent: var(--course-accent);
   --color-course-soft: var(--course-soft);
   --spacing-course-rail: 17.5rem;

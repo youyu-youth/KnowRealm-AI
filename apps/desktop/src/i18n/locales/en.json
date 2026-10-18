@@ -3864,6 +3864,22 @@
     }
   },
   "practice": {
+    "workspace": {
+      "title": "Plan practice",
+      "next": "Requirements for the next round",
+      "requirements": "Confirmed requirements",
+      "sourceCount": "{{count}} confirmed source records",
+      "editor": "Confirm practice requirements",
+      "readyToPrepare": "Your practice scope is confirmed",
+      "prepareHint": "Match questions to the confirmed topic, types and sources. Start answering once enough questions are ready.",
+      "safetyHint": "You can leave while matching or grading and return later. Reference answers stay hidden until submission. Confirm plan item completion separately.",
+      "score": "Round score",
+      "denominator": "Actual grading denominator: {{count}} questions",
+      "roundRequirements": "View this round's original requirements and sources",
+      "matching": "Question matching",
+      "matchDetails": "View matching details",
+      "matchId": "Matching ID: {{id}}"
+    },
     "title": "Prepare plan practice",
     "planItem": "Plan item",
     "topic": "Practice topic",

@@ -69,31 +69,38 @@ export function PracticeRequirementsForm({
         save.mutate();
       }}
     >
-      <label className="text-body block space-y-2">
-        <span>{t("practice.topic")}</span>
-        <Input
-          required
-          maxLength={200}
-          value={topic}
-          onChange={(event) => setTopic(event.target.value)}
-        />
-      </label>
-      <label className="text-body block space-y-2">
-        <span>{t("practice.count")}</span>
-        <Input
-          required
-          type="number"
-          min={1}
-          step={1}
-          value={count}
-          onChange={(event) => setCount(event.target.value)}
-        />
-      </label>
+      <div className="grid gap-5 sm:grid-cols-3">
+        <label className="text-body block space-y-2 sm:col-span-2">
+          <span>{t("practice.topic")}</span>
+          <Input
+            required
+            maxLength={200}
+            value={topic}
+            onChange={(event) => setTopic(event.target.value)}
+          />
+        </label>
+        <label className="text-body block space-y-2">
+          <span>{t("practice.count")}</span>
+          <Input
+            required
+            type="number"
+            min={1}
+            step={1}
+            value={count}
+            onChange={(event) => setCount(event.target.value)}
+          />
+        </label>
+      </div>
       <fieldset className="space-y-2">
-        <legend className="text-body mb-2">{t("practice.types")}</legend>
-        <div className="flex flex-wrap gap-4">
+        <legend className="text-body mb-2 font-medium">
+          {t("practice.types")}
+        </legend>
+        <div className="flex flex-wrap gap-3">
           {TYPES.map((type) => (
-            <label key={type} className="text-body flex items-center gap-2">
+            <label
+              key={type}
+              className="text-body bg-surface-subtle has-checked:bg-surface-strong flex cursor-pointer items-center gap-2 rounded-md px-3 py-2"
+            >
               <Checkbox
                 checked={types.includes(type)}
                 onCheckedChange={(checked) =>
@@ -110,11 +117,13 @@ export function PracticeRequirementsForm({
         </div>
       </fieldset>
       <fieldset className="space-y-3">
-        <legend className="text-body mb-2">{t("practice.sources")}</legend>
+        <legend className="text-body mb-2 font-medium">
+          {t("practice.sources")}
+        </legend>
         {sources.map((source) => (
           <label
             key={source.record_id}
-            className="text-body flex items-start gap-2"
+            className="text-body bg-surface-subtle has-checked:bg-surface-strong flex cursor-pointer items-start gap-3 rounded-md p-3"
           >
             <Checkbox
               checked={records.includes(source.record_id)}
@@ -128,7 +137,7 @@ export function PracticeRequirementsForm({
             />
             <span className="min-w-0 wrap-anywhere">
               {source.title}{" "}
-              <span className="text-ink-muted">
+              <span className="text-label text-ink-muted mt-1 block">
                 {t("practice.inventory", { count: source.eligible_count })}
               </span>
             </span>
@@ -153,24 +162,41 @@ export function PracticeRequirementsForm({
           ))}
       </fieldset>
       <p className="text-label text-ink-muted">{t("practice.confirmHint")}</p>
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() =>
-          void reload().then((current) => {
-            if (current) {
-              setSources(current.sources);
-              setBaseline({
-                revision: current.requirements?.revision ?? 0,
-                planContent: current.plan_content,
-              });
-              setReloaded(true);
-            }
-          })
-        }
-      >
-        {t("practice.reloadSources")}
-      </Button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto min-h-9 whitespace-normal"
+          onClick={() =>
+            void reload().then((current) => {
+              if (current) {
+                setSources(current.sources);
+                setBaseline({
+                  revision: current.requirements?.revision ?? 0,
+                  planContent: current.plan_content,
+                });
+                setReloaded(true);
+              }
+            })
+          }
+        >
+          {t("practice.reloadSources")}
+        </Button>
+        <Button
+          type="submit"
+          className="h-auto min-h-9 whitespace-normal"
+          disabled={
+            save.isPending ||
+            !topic.trim() ||
+            !Number.isSafeInteger(Number(count)) ||
+            Number(count) < 1 ||
+            !types.length ||
+            !records.length
+          }
+        >
+          {t("practice.confirm")}
+        </Button>
+      </div>
       {reloaded ? (
         <p role="status" className="text-label text-ink-muted">
           {t("practice.sourcesReloaded")}
@@ -185,19 +211,6 @@ export function PracticeRequirementsForm({
             : t("practice.failed")}
         </p>
       ) : null}
-      <Button
-        type="submit"
-        disabled={
-          save.isPending ||
-          !topic.trim() ||
-          !Number.isSafeInteger(Number(count)) ||
-          Number(count) < 1 ||
-          !types.length ||
-          !records.length
-        }
-      >
-        {t("practice.confirm")}
-      </Button>
     </form>
   );
 }

@@ -3,37 +3,37 @@ version: beta
 name: KnowRealm-AI Desktop
 description: 面向学习与 Agent 协作的分层桌面工作台；本文件定义后续实现目标
 colors:
-  canvas: "#E9EDF0"
-  sidebar: "#E2E8EB"
-  paper: "#F5F7F8"
-  surface-subtle: "#EDF1F3"
-  surface-strong: "#E1E7EB"
+  canvas: "#EFF1F4"
+  sidebar: "#F3F4F6"
+  paper: "#FAFAFB"
+  surface-subtle: "#F1F2F4"
+  surface-strong: "#E8EAF0"
   surface-raised: "#FFFFFF"
   surface-overlay: "#FFFFFF"
-  border-subtle: "#D9E0E5"
-  border-control: "#73818D"
-  border-strong: "#657786"
-  ink: "#354351"
-  ink-strong: "#293744"
-  neutral-foreground: "#4B5A68"
-  text-muted: "#586876"
-  text-faint: "#85929D"
-  focus: "#286A75"
-  learning: "#286A75"
-  learning-foreground: "#245F69"
-  learning-soft: "#E1EEF0"
-  primary: "#293F50"
-  primary-foreground: "#FFFFFF"
-  dialog-button-secondary: "#E1E7EB"
-  dialog-button-secondary-hover: "#D9E0E5"
+  border-subtle: "#E3E5E9"
+  border-control: "#D5D8DE"
+  border-strong: "#BBC0C9"
+  ink: "#2F3239"
+  ink-strong: "#1A1C20"
+  neutral-foreground: "#4B4F58"
+  text-muted: "#666B75"
+  text-faint: "#858B96"
+  focus: "#2F3239"
+  learning: "#2F3239"
+  learning-foreground: "#1A1C20"
+  learning-soft: "#ECEDEF"
+  primary: "#1A1C20"
+  primary-foreground: "#FAFAFB"
+  dialog-button-secondary: "#E8EAF0"
+  dialog-button-secondary-hover: "#E3E5E9"
   info-foreground: "#2D648F"
-  info-soft: "#D5DFE7"
+  info-soft: "#D9E2EA"
   success-foreground: "#1F6A49"
-  success-soft: "#D3E0DC"
+  success-soft: "#D7E3DF"
   warning-foreground: "#81560C"
-  warning-soft: "#E2DDD2"
+  warning-soft: "#E7E0D5"
   danger: "#AA3344"
-  danger-soft: "#E9D8DB"
+  danger-soft: "#EDDADE"
   dark-canvas: "#0D0F12"
   dark-sidebar: "#101216"
   dark-paper: "#131519"
@@ -131,7 +131,7 @@ shadows:
 
 KnowRealm 是本地优先的个人学习与工作 Agent 工作台。用户在同一窗口捕获材料、整理资产、阅读理解、练习复习，并通过对话发起受控任务。视觉应支持长时间专注与高频切换，让来源、当前对象、处理状态和下一步动作始终清楚。
 
-**设计主张：有材料层次的学习工作台。** 明亮默认主题以雾灰应用底承载清晰内容面，深蓝灰文字与低饱和青灰强调保持柔和层级；暗黑默认主题采用冷黑灰材料、中性浅色文字与焦点。辨识度来自内容结构、学习链和来源关系。操作区讲求效率，阅读区提供舒展空间，Agent 提案保留人的判断位置。
+**设计主张：有材料层次的学习工作台。** 明亮默认主题沿用浅灰应用底、中性灰文字和黑白灰强调，以独立内容面保持清晰层级；暗黑默认主题采用冷黑灰材料、中性浅色文字与焦点。辨识度来自内容结构、学习链和来源关系。操作区讲求效率，阅读区提供舒展空间，Agent 提案保留人的判断位置。
 
 本文件同时服务 Operate（操作）与 Read（阅读）场景。采用 impeccable 的任务优先原则，结合桌面设计中的空间分工、可发现操作和就地审阅：留白围绕内容安排，控件明确表达用途，AI 建议与目标对象保持邻近。
 
@@ -142,7 +142,7 @@ KnowRealm 是本地优先的个人学习与工作 Agent 工作台。用户在同
 | 现有规范或截图中的问题 | 对界面的影响 | 本规范的处理 |
 | --- | --- | --- |
 | 相邻背景过近，又允许主工作面长期接近白色 | 大面积亮底缺少可辨结构，浅灰卡片也显得平 | 用应用底、导航、工作面、内容面分工；要求真实截图中层级可辨 |
-| 默认主题禁止任何强调色，其他主题另开例外 | 选择、主动作、学习路径都争用黑灰，页面间配色难统一 | 建立低饱和学习强调色与独立的业务状态色，统一角色而不强制所有主题同色 |
+| 默认主题禁止任何强调色，其他主题另开例外 | 选择、主动作、学习路径都争用黑灰，页面间配色难统一 | 默认主题以中性灰表达学习强调，业务状态使用独立语义色，其他主题按自身配色表达同一角色 |
 | 分区标题接近正文，所有区域密度相同 | 结果、要求、过程说明呈现为同等重量的文字段 | 按操作、阅读、结果定义字号与密度；摘要先于过程 |
 | 固定居中内容和统一最大宽度被用于工作台 | 两侧浪费而中间拥挤，宽窗没有带来效率 | 工作区自适应填满；只对连续阅读正文限宽 |
 | 所有工作面都禁止整体纵向滚动 | 长内容被拆成许多小滚动区或强制 Tabs | 应用壳固定；连续工作面允许一个主滚动区，多面板按任务分别滚动 |
@@ -169,30 +169,30 @@ frontmatter 给出完整目标色值；以下规定使用关系。颜色通过�
 
 | 角色 | 明亮目标 | 暗黑目标 | 用途 |
 | --- | --- | --- | --- |
-| `canvas` | `#E9EDF0` | `#0D0F12` | 窗口底、面板间隙，承担整体环境色 |
-| `sidebar` | `#E2E8EB` | `#101216` | 导航、窗口外围，退后于内容 |
-| `paper` | `#F5F7F8` | `#131519` | 主工作面、连续阅读区域 |
-| `surface-subtle` | `#EDF1F3` | `#181B20` | 分组、轻量工具区、可交互项 hover |
-| `surface-strong` | `#E1E7EB` | `#1D2026` | 中性选中、按下、需要较强区分的区域 |
+| `canvas` | `#EFF1F4` | `#0D0F12` | 窗口底、面板间隙，承担整体环境色 |
+| `sidebar` | `#F3F4F6` | `#101216` | 导航、窗口外围，退后于内容 |
+| `paper` | `#FAFAFB` | `#131519` | 主工作面、连续阅读区域 |
+| `surface-subtle` | `#F1F2F4` | `#181B20` | 分组、轻量工具区、可交互项 hover |
+| `surface-strong` | `#E8EAF0` | `#1D2026` | 中性选中、按下、需要较强区分的区域 |
 | `surface-raised` | `#FFFFFF` | `#20242A` | 独立成果、编辑器或预览内容面 |
 | `surface-overlay` | `#FFFFFF` | `#1A1D22` | 菜单、Popover、Dialog 与临时检查器 |
-| `ink-strong` / `ink` | `#293744` / `#354351` | `#F2F4F7` / `#D5D8DE` | 标题、关键结果 / 正文 |
-| `text-muted` | `#586876` | `#9196A1` | 元数据、来源说明、辅助标签 |
-| `learning` / `learning-soft` | `#286A75` / `#E1EEF0` | `#D5D8DE` / `#24272C` | 学习强调、焦点与轻量选中材料 |
-| `primary` / `primary-foreground` | `#293F50` / `#FFFFFF` | `#F2F4F7` / `#131519` | 实色主按钮及其文字 |
-| `dialog-button-secondary` / `dialog-button-secondary-hover` | `#E1E7EB` / `#D9E0E5` | `#303640` / `#464D59` | 对话框次按钮、关闭按钮的默认 / hover 实色背景，文字使用 `ink` |
+| `ink-strong` / `ink` | `#1A1C20` / `#2F3239` | `#F2F4F7` / `#D5D8DE` | 标题、关键结果 / 正文 |
+| `text-muted` | `#666B75` | `#9196A1` | 元数据、来源说明、辅助标签 |
+| `learning` / `learning-soft` | `#2F3239` / `#ECEDEF` | `#D5D8DE` / `#24272C` | 学习强调、焦点与轻量选中材料 |
+| `primary` / `primary-foreground` | `#1A1C20` / `#FAFAFB` | `#F2F4F7` / `#131519` | 实色主按钮及其文字 |
+| `dialog-button-secondary` / `dialog-button-secondary-hover` | `#E8EAF0` / `#E3E5E9` | `#303640` / `#464D59` | 对话框次按钮、关闭按钮的默认 / hover 实色背景，文字使用 `ink` |
 
 - 应用底、主工作面和独立内容面在正常亮度下须能辨认；不要求每屏机械展示全部色阶。多列工作台通常同时具备环境层、内容层和一个状态层。
 - 纯白允许用于清楚有边界的内容面和浮层；不将窗口、侧栏、工作面、卡片全部设为同一种白。阅读正文可以占较大浅色面积，但其外围、工具和边界须建立空间关系。
 - 页面不靠加深所有边框补层次。先分配色面，再调整布局和文字权重；只有结构仍不清楚时再增加边界。
 - `text-faint` 只用于非必要装饰和非交互辅助标记；placeholder、来源链接、说明和必要状态使用可读文字色。
-- 标题使用柔和深蓝灰，避免近黑超粗大字；暗色正文避免大面积纯白。
+- 明亮默认主题标题使用 `ink-strong`，正文使用 `ink`，避免将所有文字都设为最深色或超粗字重；暗色正文避免大面积纯白。
 
 ### 强调、状态与类别
 
-- 一屏选定一个强调色家族。明亮默认主题采用青灰强调与深蓝灰主按钮；暗黑默认主题采用中性浅色强调、浅底深字主按钮。强调用于当前学习步骤、链接、选中标记与焦点，不能把每个标题或图标染色。
+- 一屏选定一个强调色家族。明亮默认主题采用中性深灰强调与深底浅字主按钮；暗黑默认主题采用中性浅色强调、浅底深字主按钮。强调用于当前学习步骤、链接、选中标记与焦点，不能把每个标题或图标染色。
 - 常见工作台以约 5% 以内的强调色面积作为起始检查，不设机械像素配额。图谱、媒体内容和业务图表按信息需要使用颜色。
-- 成功、提醒、危险只用于对应业务事实。青灰学习强调与绿色成功同时出现时，附文字、图标或形状，不能靠色相区分。
+- 成功、提醒、危险只用于对应业务事实。主题学习强调与绿色成功同时出现时，附文字、图标或形状，不能靠色相区分。
 - 多系列图表、资产格式和课程分类可使用低饱和类别色；同一类别在列表、详情、图表中一致，配合标记、线型和图例。禁止把类别色解释为掌握度或风险。
 - 不引入紫色作为默认亮色主题的品牌基调；既有专属主题与有意义的格式分类色可保留，不能扩散成所有页面的装饰配色。
 - 链接提供下划线或其他非颜色线索，正文中的引用标记有明确可点击外观。
@@ -224,6 +224,7 @@ frontmatter 给出完整目标色值；以下规定使用关系。颜色通过�
 ### 边界与对比度
 
 - `border-subtle` 仅分隔装饰性结构；交互控件若依靠边界识别，使用 `border-control`（实现映射到现有 `--input`）并验证相邻背景对比。
+- 明亮默认主题的 `border-control`、`border-strong` 同样沿用低对比材料边界色；不能仅靠这些浅色边界识别输入控件，必要轮廓可使用 `neutral-foreground`，焦点使用 `focus`，并按实际背景验证 3:1。
 - 暗黑默认主题的边界沿用冷黑灰配方，`dark-border-control` 与 `dark-border-strong` 只承担低对比材料边界，不保证单独满足控件识别所需的 3:1；需要明确轮廓时使用 `dark-neutral-foreground` 等现有较亮颜色并实测，焦点使用 `dark-focus`。按钮仍遵守下文无常驻描边的规则。
 - 普通文字、placeholder、按钮与说明至少 4.5:1；大文字至少 3:1。识别控件所需的轮廓、焦点和关键图形至少 3:1。
 - 焦点环默认 2px 实色 `focus`，外留 2px；在选中面和实色按钮周围也须可辨。不要把环透明化到无法识别。
@@ -234,6 +235,7 @@ frontmatter 给出完整目标色值；以下规定使用关系。颜色通过�
 
 保留 LIGHT、DARK、SYSTEM 模式，以及 LIGHT_DEFAULT、LIGHT_SAGE、LIGHT_RETRO_WARM、DARK_DEFAULT、DARK_INK、DARK_TOKYO_NIGHT 六个现有主题 ID。SYSTEM 是跟随系统策略。各模式分别记忆主题，切换不改变布局、组件结构、字号、圆角或当前任务。
 
+- 明亮默认主题的背景、文字、边界、焦点和主按钮沿用前版浅灰与黑白灰配方；仅恢复颜色，保留现有布局、排版、密度、圆角、阴影与对话框交互规则。增强 A 状态前景色保留，状态软底按恢复后的 `paper` 重新计算。
 - 本次目标配方适用于两套默认主题的后续升级；其他主题保留自身青灰、暖黄、墨蓝或 Tokyo Night 材料气质，并匹配相同的表面、文字、状态、选择、焦点角色。
 - 暗黑默认主题的环境、普通文字、边界和主按钮保持本文件的冷黑灰配方；信息、成功、提醒与危险使用上文独立状态色，不恢复旧版布局、密度、圆角、阴影、分割线或按钮样式。其他暗色主题保留自己的配色，不被默认主题覆盖。
 - 不用默认色值覆盖全部主题。Tokyo Night 可保留其蓝紫关系；暖黄主题使用协调的深青按钮与暖色内容面。

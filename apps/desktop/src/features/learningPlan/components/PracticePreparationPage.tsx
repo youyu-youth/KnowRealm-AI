@@ -1,6 +1,8 @@
 import { PracticeRequirementsForm } from "@/features/learningPlan/components/PracticeRequirementsForm";
 import { PracticePreparationResult } from "@/features/learningPlan/components/PracticePreparationResult";
 import { PracticeRoundCard } from "@/features/learningPlan/components/PracticeRoundCard";
+import { PracticeRequirementsPanel } from "@/features/learningPlan/components/PracticeRequirementsPanel";
+import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
@@ -22,6 +24,7 @@ import {
 } from "@/features/learningPlan/api/practice";
 import { quizTestKeys } from "@/features/quiz-tests/api/keys";
 import { ApiError } from "@/services/http/client";
+import "@/features/learningPlan/components/PracticePreparation.css";
 
 export function PracticePreparationPage({
   itemId,
@@ -41,7 +44,11 @@ export function PracticePreparationPage({
     null,
   );
   const prepareButton = useRef<HTMLButtonElement>(null);
+  const editor = useRef<HTMLElement>(null);
   const focusAfterSave = useRef(false);
+  useEffect(() => {
+    if (editing) editor.current?.querySelector("input")?.focus();
+  }, [editing]);
   const query = useQuery({
     queryKey: practiceKey(itemId),
     queryFn: () => practiceApi.state(itemId),
@@ -158,21 +165,27 @@ export function PracticePreparationPage({
     state.rounds?.find((round) => round.test_id === selectedRoundId) ??
     state.round;
   return (
-    <section className="mx-auto w-full max-w-3xl space-y-6 p-6">
-      <Link
-        to="/spaces/$courseId"
-        params={{ courseId: state.course_id }}
-        search={{ tab: "plan" }}
-        className={buttonVariants({ variant: "ghost", size: "sm" })}
-      >
-        {t("practice.back")}
-      </Link>
-      <Button variant="ghost" size="sm" onClick={() => void query.refetch()}>
-        {t("practice.refresh")}
-      </Button>
+    <section className="practice-workspace w-full min-w-0 space-y-6 p-4 pb-24 sm:p-6 sm:pb-24">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          to="/spaces/$courseId"
+          params={{ courseId: state.course_id }}
+          search={{ tab: "plan" }}
+          className={buttonVariants({ variant: "ghost", size: "sm" })}
+        >
+          <ArrowLeft aria-hidden="true" />
+          {t("practice.back")}
+        </Link>
+        <Button variant="ghost" size="sm" onClick={() => void query.refetch()}>
+          <RefreshCw aria-hidden="true" />
+          {t("practice.refresh")}
+        </Button>
+      </div>
       <header className="space-y-2">
-        <h1 className="text-headline text-ink">{t("practice.title")}</h1>
-        <p className="text-body text-ink-muted wrap-anywhere">
+        <h1 className="text-headline text-ink font-semibold">
+          {t("practice.workspace.title")}
+        </h1>
+        <p className="text-body max-w-reading text-ink-muted wrap-anywhere">
           {state.plan_content}
         </p>
       </header>
@@ -209,120 +222,124 @@ export function PracticePreparationPage({
           ))}
         </nav>
       ) : null}
-      {selected ? (
-        <PracticeRoundCard
-          key={selected.test_id}
-          round={selected}
-          courseId={state.course_id}
-          itemId={itemId}
-          editable={state.editable}
-        />
-      ) : null}
-      {req ? (
-        <div className="space-y-2">
-          {state.round ? (
-            <p className="text-label text-ink-muted">
-              {t("practice.recovery.nextRequirements")}
-            </p>
+      <div className="practice-layout">
+        <div className="min-w-0 space-y-6">
+          {selected ? (
+            <PracticeRoundCard
+              key={selected.test_id}
+              round={selected}
+              courseId={state.course_id}
+              itemId={itemId}
+              editable={state.editable}
+              primary={!readyToStart}
+            />
           ) : null}
-          <h2 className="text-section text-ink">
-            {t("practice.revision", { revision: req.revision })}
-          </h2>
-          <p className="text-body wrap-anywhere">
-            {req.topic} · {t("practice.target", { count: req.question_count })}
-          </p>
-          <p className="text-label text-ink-muted">
-            {req.question_types
-              .map((type) => t(`practice.type.${type}`))
-              .join(" · ")}
-          </p>
-          <ul className="text-body list-inside list-disc">
-            {req.record_ids.map((id) => (
-              <li key={id}>
-                {state.sources.find((source) => source.record_id === id)
-                  ?.title ?? t("practice.sourceUnavailable")}
-              </li>
-            ))}
-          </ul>
-          {state.requirements_stale ? (
-            <p role="alert">{t("practice.stale")}</p>
+          {latest ? (
+            <PracticePreparationResult
+              latest={latest}
+              cancelPending={cancel.isPending}
+              onCancel={(id) => cancel.mutate(id)}
+            />
+          ) : req && !selected ? (
+            <div className="bg-surface-raised space-y-3 rounded-xl p-6">
+              <h2 className="text-ink text-base font-semibold">
+                {t("practice.workspace.readyToPrepare")}
+              </h2>
+              <p className="text-body text-ink-muted">
+                {t("practice.workspace.prepareHint")}
+              </p>
+            </div>
           ) : null}
-          {state.editable ? (
-            <div className="flex flex-wrap gap-2">
-              <Button
-                ref={prepareButton}
-                variant={state.round ? "outline" : "default"}
-                disabled={
-                  active || prepare.isPending || state.requirements_stale
-                }
-                onClick={() =>
-                  state.round
-                    ? setRestartConfirmation(state.round)
-                    : prepare.mutate({ revision: req.revision })
-                }
-              >
-                {t(
-                  state.round
-                    ? "practice.recovery.restart"
-                    : latest
-                      ? "practice.retry"
-                      : "practice.prepare",
-                )}
-              </Button>
-              {readyToStart ? (
+          {req && state.editable ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap justify-end gap-3">
                 <Button
-                  disabled={startRound.isPending}
+                  ref={prepareButton}
+                  variant={state.round || readyToStart ? "outline" : "default"}
+                  disabled={
+                    active || prepare.isPending || state.requirements_stale
+                  }
                   onClick={() =>
-                    startRound.mutate({
-                      revision: req.revision,
-                      preparationId: latest.id,
-                    })
+                    state.round
+                      ? setRestartConfirmation(state.round)
+                      : prepare.mutate({ revision: req.revision })
                   }
                 >
                   {t(
                     state.round
-                      ? "practice.recovery.startNext"
-                      : "practice.round.start",
+                      ? "practice.recovery.restart"
+                      : latest
+                        ? "practice.retry"
+                        : "practice.prepare",
                   )}
                 </Button>
-              ) : null}
-              <Button
-                variant="outline"
-                onClick={() => setEditing((value) => !value)}
-              >
-                {t(editing ? "practice.closeEdit" : "practice.edit")}
-              </Button>
+                {readyToStart ? (
+                  <Button
+                    disabled={startRound.isPending}
+                    onClick={() =>
+                      startRound.mutate({
+                        revision: req.revision,
+                        preparationId: latest.id,
+                      })
+                    }
+                  >
+                    {t(
+                      state.round
+                        ? "practice.recovery.startNext"
+                        : "practice.round.start",
+                    )}
+                    <ArrowRight aria-hidden="true" />
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-label text-ink-muted">
+                {t("practice.workspace.safetyHint")}
+              </p>
             </div>
           ) : null}
+          {state.editable && (!req || editing) ? (
+            <section
+              ref={editor}
+              id="practice-requirements-editor"
+              aria-label={t("practice.workspace.editor")}
+              className="bg-surface-raised space-y-5 rounded-xl p-4 sm:p-6"
+            >
+              <h2 className="text-ink text-base font-semibold">
+                {t("practice.workspace.editor")}
+              </h2>
+              {state.round ? (
+                <p className="text-body text-ink-muted">
+                  {t("practice.recovery.nextRequirements")}
+                </p>
+              ) : null}
+              <PracticeRequirementsForm
+                key={state.item_id}
+                state={state}
+                reload={() => query.refetch().then((result) => result.data)}
+                saved={() => {
+                  focusAfterSave.current = true;
+                  setEditing(false);
+                  void refresh();
+                }}
+              />
+            </section>
+          ) : null}
+          {error ? (
+            <p role="alert" className="text-body text-danger">
+              {error instanceof ApiError
+                ? t(`errors.${error.code}`, {
+                    defaultValue: t("practice.failed"),
+                  })
+                : t("practice.failed")}
+            </p>
+          ) : null}
         </div>
-      ) : null}
-      {state.editable && (!req || editing) ? (
-        <PracticeRequirementsForm
-          key={state.item_id}
+        <PracticeRequirementsPanel
           state={state}
-          reload={() => query.refetch().then((result) => result.data)}
-          saved={() => {
-            focusAfterSave.current = true;
-            setEditing(false);
-            void refresh();
-          }}
+          editing={editing}
+          onEdit={() => setEditing((value) => !value)}
         />
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-body text-danger">
-          {error instanceof ApiError
-            ? t(`errors.${error.code}`, { defaultValue: t("practice.failed") })
-            : t("practice.failed")}
-        </p>
-      ) : null}
-      {latest ? (
-        <PracticePreparationResult
-          latest={latest}
-          cancelPending={cancel.isPending}
-          onCancel={(id) => cancel.mutate(id)}
-        />
-      ) : null}
-      <p className="text-label text-ink-muted">{t("practice.stageHint")}</p>
+      </div>
       <Dialog
         open={restartConfirmation !== null}
         onOpenChange={(open) => {
@@ -344,9 +361,9 @@ export function PracticePreparationPage({
               )}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
+          <DialogFooter className="border-0 bg-transparent">
             <Button
-              variant="outline"
+              variant="secondary"
               onClick={() => setRestartConfirmation(null)}
             >
               {t("practice.recovery.cancel")}

@@ -93,6 +93,7 @@ function savedRequirements() {
     source_versions: { [source.record_id]: source.version },
     confirmed_at: "2026-10-17T00:00:00Z",
   };
+  return state.requirements;
 }
 
 it("首次合并确认要求，未明确数量前不能准备，不修改计划正文", async () => {
@@ -323,7 +324,7 @@ it("题集就绪后开始练习进入同一轮，重试保留请求身份", asyn
   fireEvent.click(await screen.findByRole("button", { name: "开始练习" }));
   await screen.findByRole("alert");
   fireEvent.click(screen.getByRole("button", { name: "开始练习" }));
-  await screen.findByText("第 1 轮练习 · 进行中");
+  await screen.findByRole("heading", { name: "第 1 轮练习" });
   expect(requests[0]).toBe(requests[1]);
   expect(screen.getByText("已答 6 / 15 题，已评分 0 题")).toBeInTheDocument();
   const link = screen.getByRole("link", { name: "继续本轮练习" });
@@ -349,9 +350,11 @@ it("评分中的轮次展示部分成绩与实际分母，不提供开始入口"
     },
   };
   render(<App />);
-  await screen.findByText("第 1 轮练习 · 评分未完成，可重试未评分题");
+  await screen.findByText("评分未完成，可重试未评分题");
   expect(screen.getByText("已答 15 / 15 题，已评分 9 题")).toBeInTheDocument();
-  expect(screen.getByText("成绩 50%（实际评分分母 9 题）")).toBeInTheDocument();
+  expect(
+    screen.getByRole("group", { name: "成绩 50%（实际评分分母 9 题）" }),
+  ).toBeInTheDocument();
   expect(
     screen.getByText("6 题尚未评分，成绩暂为部分成绩"),
   ).toBeInTheDocument();
@@ -425,7 +428,7 @@ it("已完成但仅评分13题时显示部分分母，失败重试沿用身份�
     ),
   );
   render(<App />);
-  await screen.findByText("成绩 50%（实际评分分母 13 题）");
+  await screen.findByRole("group", { name: "成绩 50%（实际评分分母 13 题）" });
   expect(
     screen.getByText("2 题尚未评分，成绩暂为部分成绩"),
   ).toBeInTheDocument();
@@ -434,7 +437,7 @@ it("已完成但仅评分13题时显示部分分母，失败重试沿用身份�
     "请先配置（包含密钥的）LLM Provider",
   );
   fireEvent.click(screen.getByRole("button", { name: "重试未评分题" }));
-  await screen.findByText("成绩 50%（实际评分分母 15 题）");
+  await screen.findByRole("group", { name: "成绩 50%（实际评分分母 15 题）" });
   expect(requests[0]).toBe(requests[1]);
   expect(
     screen.queryByRole("button", { name: "重试未评分题" }),
@@ -503,19 +506,19 @@ it("历史轮次通过URL切换，默认选择最近启动轮而非较高分旧�
     }),
   );
   render(<App />);
-  await screen.findByText("第 2 轮练习 · 进行中");
+  await screen.findByRole("heading", { name: "第 2 轮练习" });
   fireEvent.click(screen.getByRole("link", { name: "第 1 轮练习" }));
-  await screen.findByText("成绩 90%（实际评分分母 15 题）");
+  await screen.findByRole("group", { name: "成绩 90%（实际评分分母 15 题）" });
   expect(window.location.search).toContain(`round=${round.test_id}`);
   fireEvent.click(screen.getByRole("link", { name: "第 2 轮练习 · 最近启动" }));
-  await screen.findByText("第 2 轮练习 · 进行中");
+  await screen.findByRole("heading", { name: "第 2 轮练习" });
   expect(
-    screen.queryByText("成绩 90%（实际评分分母 15 题）"),
+    screen.queryByRole("group", { name: "成绩 90%（实际评分分母 15 题）" }),
   ).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("link", { name: "第 1 轮练习" }));
-  await screen.findByText("成绩 90%（实际评分分母 15 题）");
+  await screen.findByRole("group", { name: "成绩 90%（实际评分分母 15 题）" });
   fireEvent.click(screen.getByRole("button", { name: "开始新一轮练习" }));
-  await screen.findByText("第 3 轮练习 · 进行中");
+  await screen.findByRole("heading", { name: "第 3 轮练习" });
   expect(window.location.search).toContain("round=t3");
 });
 
@@ -549,4 +552,35 @@ it("已放弃历史轮仍提供只读卷面入口", async () => {
   expect(
     await screen.findByRole("link", { name: "查看本轮结果" }),
   ).toHaveAttribute("href", round.paper_path + "?view=single");
+});
+
+it("本轮快照与下轮要求分区展示，展开详情和修改入口可达", async () => {
+  const original = { ...savedRequirements(), topic: "本轮 Redis 持久化" };
+  readyPreparation();
+  state.round = { ...round, requirements: original };
+  state.requirements = {
+    ...original,
+    revision: 2,
+    topic: "下一轮 Redis 集群",
+    question_count: 20,
+  };
+  render(<App />);
+  await screen.findByRole("heading", { name: "下一轮练习要求" });
+  expect(screen.getByText("下一轮 Redis 集群")).toBeVisible();
+  expect(screen.getByText("本轮 Redis 持久化 · 恰好 15 题")).not.toBeVisible();
+  fireEvent.click(screen.getByText("查看本轮启动时的要求与来源"));
+  expect(screen.getByText("本轮 Redis 持久化 · 恰好 15 题")).toBeVisible();
+  expect(
+    screen.getByText("已匹配 16 / 16 道候选题", { exact: false }),
+  ).not.toBeVisible();
+  fireEvent.click(screen.getByText("查看匹配详情"));
+  expect(
+    screen.getByText("已匹配 16 / 16 道候选题", { exact: false }),
+  ).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "修改要求 / 确认扩源" }));
+  expect(screen.getByRole("textbox", { name: "练习主题" })).toHaveFocus();
+  expect(screen.getByRole("spinbutton", { name: "精确题量" })).toHaveValue(20);
+  expect(
+    screen.getByRole("link", { name: "继续本轮练习" }),
+  ).toBeInTheDocument();
 });
