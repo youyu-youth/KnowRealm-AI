@@ -32,3 +32,11 @@ class PracticePreparation(Base):
     authority: Mapped[str] = mapped_column(String(20))
     result_json: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+
+
+class PracticeRoundRequest(Base):
+    __tablename__ = "practice_round_requests"
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    test_id: Mapped[str] = mapped_column(ForeignKey("quiz_tests.id", ondelete="CASCADE"))
+    payload_json: Mapped[str] = mapped_column(Text)

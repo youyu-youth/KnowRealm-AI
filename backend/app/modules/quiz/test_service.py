@@ -18,7 +18,7 @@ from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.schemas import ProcessingJobStatus, ProcessingJobType
 from app.modules.learning.events import write_learning_event
 from app.modules.quiz.frozen import FrozenFace, face_of
-from app.modules.quiz.models import Quiz, QuizTest, QuizTestItem
+from app.modules.quiz.models import PracticeGradingRequest, Quiz, QuizTest, QuizTestItem
 from app.modules.quiz.schemas import (
     QuizDifficulty,
     QuizGenerationStatus,
@@ -272,11 +272,11 @@ class QuizTestService:
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能再放弃")
             if test.mode == QuizTestMode.PLAN.value:
-                # 放弃旧轮属 04 的安全重练链（先展示已答进度并确认），本票不开旁路。
+                # 只能经重练确认和原子切轮放弃旧轮，避免准备失败丢失可作答进度。
                 raise CodedHTTPException(
                     code="PRACTICE_ROUND_OP_UNAVAILABLE",
                     status_code=409,
-                    detail="计划练习轮次暂不支持放弃，请完成作答或等待重练能力",
+                    detail="请通过重新练习确认后切换轮次，旧答案会保留",
                 )
             if test.status != QuizTestStatus.IN_PROGRESS:
                 raise CodedHTTPException(
@@ -340,7 +340,12 @@ class QuizTestService:
             test = await _test(session, test_id)
             await _ensure_course_active(session, test, "已归档课程的模拟测试不能重新评分")
             await _ensure_plan_round_writable(session, test)
-            if test.status != QuizTestStatus.GRADING_FAILED:
+            plan_round = test.mode == QuizTestMode.PLAN.value
+            if plan_round and test.status == QuizTestStatus.GRADING:
+                return await _detail_out(session, test)
+            if test.status != QuizTestStatus.GRADING_FAILED and not (
+                plan_round and test.status == QuizTestStatus.COMPLETED
+            ):
                 raise CodedHTTPException(
                     code="QUIZ_TEST_NOT_REGRADABLE",
                     status_code=409,
@@ -348,6 +353,12 @@ class QuizTestService:
                 )
 
         provider = await _require_grading_provider(data_dir)
+        if plan_round:
+            async with session.begin():
+                await retry_plan_grading(
+                    session, data_dir, test_id, str(uuid4()), provider=provider
+                )
+                return await _detail_out(session, test)
         return await _transition_to_grading(
             session,
             test_id,
@@ -356,6 +367,60 @@ class QuizTestService:
             stale_detail="只有评分失败的测试可以重新评分",
             provider_fingerprint=llm_provider_fingerprint(provider),
         )
+
+
+async def retry_plan_grading(
+    session: AsyncSession,
+    data_dir: Path,
+    test_id: str,
+    request_id: str,
+    *,
+    provider: LlmProviderConfig | None = None,
+) -> str | None:
+    """调用方事务内受理计划重评；成功题不重置，任务身份持久去重。"""
+    test = await _test(session, test_id)
+    await _ensure_plan_round_writable(session, test)
+    await _ensure_course_active(session, test, "已归档课程不能重新评分")
+    if test.mode != QuizTestMode.PLAN.value or test.status not in (
+        QuizTestStatus.GRADING,
+        QuizTestStatus.GRADING_FAILED,
+        QuizTestStatus.COMPLETED,
+    ):
+        raise CodedHTTPException(
+            code="QUIZ_TEST_NOT_REGRADABLE", status_code=409, detail="只有已交卷的计划练习可重试"
+        )
+    replay = await session.get(PracticeGradingRequest, request_id)
+    if replay is not None:
+        if replay.test_id != test_id:
+            raise CodedHTTPException(
+                code="PRACTICE_REQUEST_CONFLICT", status_code=409, detail="重试请求对象变化"
+            )
+        return replay.job_id
+    active = await session.scalar(
+        select(ProcessingJob.id).where(
+            ProcessingJob.job_type == ProcessingJobType.QUIZ_GRADING,
+            func.json_extract(ProcessingJob.input_json, "$.test_id") == test_id,
+            ProcessingJob.status.in_([ProcessingJobStatus.PENDING, ProcessingJobStatus.RUNNING]),
+        )
+    )
+    if active:
+        session.add(PracticeGradingRequest(request_id=request_id, test_id=test_id, job_id=active))
+        await session.flush()
+        return active
+    if all(item.result is not None for item, _ in await _round_items(session, test_id)):
+        session.add(PracticeGradingRequest(request_id=request_id, test_id=test_id, job_id=None))
+        await session.flush()
+        return None
+    provider = provider or grading_provider(data_dir)
+    now = utcnow()
+    job = _grading_job(test_id, provider_fingerprint=llm_provider_fingerprint(provider), now=now)
+    test.status = QuizTestStatus.GRADING
+    test.updated_at = now
+    session.add(job)
+    await session.flush()
+    session.add(PracticeGradingRequest(request_id=request_id, test_id=test_id, job_id=job.id))
+    await session.flush()
+    return job.id
 
 
 class QuizTestBlocked(Exception):
@@ -446,10 +511,12 @@ async def _short_answer_count(session: AsyncSession, test_id: str) -> int:
 
 async def _require_grading_provider(data_dir: Path) -> LlmProviderConfig:
     """简答评分的 LLM 前置（与习题生成同口径）：未配置供应商或未同意外发一律 409。"""
-    provider, consent = await asyncio.gather(
-        asyncio.to_thread(load_llm_provider, data_dir),
-        asyncio.to_thread(llm_consent, data_dir),
-    )
+    return await asyncio.to_thread(grading_provider, data_dir)
+
+
+def grading_provider(data_dir: Path) -> LlmProviderConfig:
+    """只读取小型本地配置，受控事务内不执行网络或模型调用。"""
+    provider, consent = load_llm_provider(data_dir), llm_consent(data_dir)
     if provider is None or not provider.api_key:
         raise CodedHTTPException(
             code="LLM_PROVIDER_UNCONFIGURED", status_code=409, detail="请先配置 LLM Provider"
@@ -546,7 +613,7 @@ async def finalize_completed_test(session: AsyncSession, test: QuizTest, now: da
     counted = [item.score for item, _ in rows if item.score is not None]
     test.score = sum(counted) / len(counted) if counted else None
     test.status = QuizTestStatus.COMPLETED
-    test.completed_at = now
+    test.completed_at = test.completed_at or now
     test.updated_at = now
     type_counts = Counter(face.question_type for _, face in rows)
     await write_learning_event(
@@ -593,6 +660,9 @@ async def _detail_out(session: AsyncSession, test: QuizTest) -> QuizTestDetailOu
         for item, face in faces
     ]
     summary = _summary_out(test, len(items), sum(item.answered_at is not None for item in items))
+    if plan_round:
+        scores = [item.score for item in items if item.score is not None]
+        summary.score = sum(scores) / len(scores) if scores else None
     return QuizTestDetailOut(**summary.model_dump(), items=items)
 
 

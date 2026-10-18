@@ -261,6 +261,7 @@ class PreparationResult(BaseModel):
     sources: list[PracticeSourceOut]
     suggestions: list[PracticeSourceOut]
     selected: list[Candidate] = Field(default_factory=list[Candidate])
+    reused_count: int = 0
 
 
 def candidate_fingerprint(pool: list[Candidate]) -> str:
@@ -272,6 +273,8 @@ def candidate_fingerprint(pool: list[Candidate]) -> str:
 async def prepare(
     session: AsyncSession, item_id: str, payload: PracticePrepareRequest, *, authority: str
 ) -> PracticePreparationOut:
+    from app.modules.learning_plan.practice_round import validate_repractice
+
     await lock_item(session, item_id)
     item, _plan, goal = await load_context(session, item_id, writable=True)
     existing = await session.scalar(
@@ -279,10 +282,17 @@ async def prepare(
     )
     if existing:
         req = await session.get(PracticeRequirements, existing.requirements_id)
+        job = await session.get(ProcessingJob, existing.job_id)
+        assert job is not None
+        request_data = json.loads(job.input_json).get("request")
         if (
             existing.item_id != item_id
             or req is None
             or req.revision != payload.requirements_revision
+            or (
+                request_data is not None
+                and PracticePrepareRequest.model_validate(request_data) != payload
+            )
         ):
             raise conflict("PRACTICE_REQUEST_CONFLICT")
         return await preparation_out(session, existing)
@@ -292,6 +302,8 @@ async def prepare(
     req = requirements_out(req_row)
     if req.plan_content != item.content:
         raise conflict()
+    if payload.expected_round_id is not None:
+        await validate_repractice(session, item_id, payload)
     await require_confirmed_sources(session, goal.course_id, req)
     active = await session.scalar(
         select(ProcessingJob.id).where(
@@ -308,7 +320,7 @@ async def prepare(
         job_type=ProcessingJobType.PRACTICE_PREPARE,
         status=ProcessingJobStatus.PENDING,
         max_attempts=1,
-        input_json=json.dumps({"item_id": item_id}),
+        input_json=json.dumps({"item_id": item_id, "request": payload.model_dump(mode="json")}),
     )
     session.add(job)
     await session.flush()
@@ -341,6 +353,8 @@ async def preparation_out(
     ).one()
     req = requirements_out(req_row)
     result = PreparationResult.model_validate_json(row.result_json) if row.result_json else None
+    request_data = json.loads(job.input_json).get("request")
+    request = PracticePrepareRequest.model_validate(request_data) if request_data else None
     return PracticePreparationOut(
         id=row.id,
         item_id=row.item_id,
@@ -359,6 +373,10 @@ async def preparation_out(
         error_code=job.error_code,
         sources=result.sources if result else [],
         suggestions=result.suggestions if result else [],
+        expected_round_id=str(request.expected_round_id)
+        if request and request.expected_round_id
+        else None,
+        reused_count=result.reused_count if result else 0,
     )
 
 

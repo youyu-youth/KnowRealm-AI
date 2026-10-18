@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
@@ -37,7 +37,7 @@ from app.modules.llm.service import (
 from app.modules.quiz.frozen import FrozenFace, face_of
 from app.modules.quiz.models import Quiz, QuizTest, QuizTestItem
 from app.modules.quiz.schemas import QuizQuestionType, ShortAnswerGrade
-from app.modules.quiz.test_schemas import QuizTestItemResult, QuizTestStatus
+from app.modules.quiz.test_schemas import QuizTestItemResult, QuizTestMode, QuizTestStatus
 from app.modules.quiz.test_service import finalize_completed_test, record_test_answer_event
 from app.modules.quiz.worker import preflight
 from app.modules.record.models import Record
@@ -155,6 +155,10 @@ async def execute(
     graded = 0
     failed = 0
     for item_id, user_answer_json, face in targets:
+        async with session_factory() as session:
+            job = await session.get(ProcessingJob, ctx.job_id)
+            if job is None or job.status != ProcessingJobStatus.RUNNING:
+                break
         try:
             call = await call_quiz_grading_model(
                 session_factory=session_factory,
@@ -169,10 +173,14 @@ async def execute(
             )
         except StructuredGenerationError as exc:
             failed += 1
-            await _land_item_grade(session_factory, ctx.test_id, item_id, face, None, exc.code)
+            await _land_item_grade(
+                session_factory, ctx.test_id, item_id, face, None, exc.code, job_id=ctx.job_id
+            )
             continue
         graded += 1
-        await _land_item_grade(session_factory, ctx.test_id, item_id, face, call.content, None)
+        await _land_item_grade(
+            session_factory, ctx.test_id, item_id, face, call.content, None, job_id=ctx.job_id
+        )
     return {"graded": graded, "failed": failed}
 
 
@@ -183,6 +191,8 @@ async def _land_item_grade(
     face: FrozenFace,
     grade: ShortAnswerGrade | None,
     error_code: str | None,
+    *,
+    job_id: str,
 ) -> None:
     """单题评分落库（一题一事务，崩溃后已落题不重评）。
 
@@ -191,6 +201,19 @@ async def _land_item_grade(
     """
     now = utcnow()
     async with session_factory() as session, session.begin():
+        test = await session.get(QuizTest, test_id)
+        if test is not None and test.mode == QuizTestMode.PLAN.value:
+            await session.execute(
+                update(ProcessingJob).where(ProcessingJob.id == job_id).values(id=ProcessingJob.id)
+            )
+            job = await session.get(ProcessingJob, job_id, populate_existing=True)
+            await session.refresh(test)
+            if (
+                job is None
+                or job.status != ProcessingJobStatus.RUNNING
+                or test.status != QuizTestStatus.GRADING
+            ):
+                return
         item = await session.get(QuizTestItem, item_id)
         if item is None or item.result is not None:
             return

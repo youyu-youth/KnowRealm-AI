@@ -120,6 +120,7 @@ from app.modules.agent.tools.practice import (
     confirm_practice_requirements,
     get_plan_practice,
     prepare_plan_practice,
+    retry_plan_practice_grading,
     start_plan_practice,
 )
 from app.modules.agent.tools.propose_ingest import (
@@ -208,6 +209,7 @@ OPERATION_TOOL_NAMES = frozenset(
         "prepare_plan_practice",
         "cancel_practice_preparation",
         "start_plan_practice",
+        "retry_plan_practice_grading",
         "change_context_rules",
         "list_context_history",
         CREATE_COURSE_TOOL_NAME,
@@ -436,6 +438,7 @@ def resolve_agent_config(
             prepare_plan_practice,
             cancel_practice_preparation,
             start_plan_practice,
+            retry_plan_practice_grading,
             generate_learning_plan,
             propose_memory,
             create_course,

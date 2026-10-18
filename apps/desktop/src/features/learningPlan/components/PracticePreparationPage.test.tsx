@@ -140,6 +140,7 @@ it("缺题建议不自动扩源，用户选择并确认后保存新的修订", a
       error_code: null,
       sources: [{ ...source, matching_basis: ["TOPIC_CONCEPT"] }],
       suggestions: [{ ...second, matching_basis: ["TOPIC_APPLICATION"] }],
+      reused_count: 0,
     },
   ];
   render(<App />);
@@ -195,6 +196,7 @@ it("准备请求网络失败后保留请求身份，离开页面不取消已受�
           error_code: null,
           sources: [],
           suggestions: [],
+          reused_count: 0,
         },
       ];
       return HttpResponse.json(state.preparations[0], { status: 202 });
@@ -275,11 +277,15 @@ function readyPreparation() {
       error_code: null,
       sources: [{ ...source, matching_basis: ["TOPIC_CONCEPT"] }],
       suggestions: [],
+      reused_count: 0,
     },
   ];
 }
 
 const round = {
+  version: "round-version-1",
+  reused_count: 0,
+  retry_available: false,
   test_id: "t0000000-0000-4000-8000-000000000001",
   round_no: 1,
   requirements_revision: 1,
@@ -372,4 +378,175 @@ it("来源失效后仍可取消旧选择并确认有效来源", async () => {
     record_ids: [second.record_id],
     source_versions: { [second.record_id]: second.version },
   });
+});
+
+it("已完成但仅评分13题时显示部分分母，失败重试沿用身份并刷新结果", async () => {
+  savedRequirements();
+  state.round = {
+    ...round,
+    status: "COMPLETED",
+    answered_count: 15,
+    graded_count: 13,
+    unscored_count: 2,
+    score: 0.5,
+    score_denominator: 13,
+    retry_available: true,
+    grading_errors: { "14": "LLM_OUTPUT_INVALID" },
+  };
+  const requests: string[] = [];
+  server.use(
+    http.post(
+      `${BASE}/rounds/${round.test_id}/retries`,
+      async ({ request }) => {
+        const body = (await request.json()) as { request_id: string };
+        requests.push(body.request_id);
+        if (requests.length === 1)
+          return HttpResponse.json(
+            {
+              code: "LLM_PROVIDER_UNCONFIGURED",
+              detail: "Provider unavailable",
+            },
+            { status: 409 },
+          );
+        state.round = {
+          ...round,
+          status: "COMPLETED",
+          answered_count: 15,
+          score: 0.5,
+          graded_count: 15,
+          unscored_count: 0,
+          grading_complete: true,
+          retry_available: false,
+          grading_errors: {},
+          score_denominator: 15,
+        };
+        return HttpResponse.json(state.round);
+      },
+    ),
+  );
+  render(<App />);
+  await screen.findByText("成绩 50%（实际评分分母 13 题）");
+  expect(
+    screen.getByText("2 题尚未评分，成绩暂为部分成绩"),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "重试未评分题" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "请先配置（包含密钥的）LLM Provider",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "重试未评分题" }));
+  await screen.findByText("成绩 50%（实际评分分母 15 题）");
+  expect(requests[0]).toBe(requests[1]);
+  expect(
+    screen.queryByRole("button", { name: "重试未评分题" }),
+  ).not.toBeInTheDocument();
+});
+
+it("6/15重练须先确认放弃影响，取消无请求，准备后仍能继续旧轮", async () => {
+  savedRequirements();
+  state.round = { ...round };
+  const bodies: unknown[] = [];
+  server.use(
+    http.post(`${BASE}/preparations`, async ({ request }) => {
+      bodies.push(await request.json());
+      readyPreparation();
+      state.preparations[0].expected_round_id = round.test_id;
+      state.preparations[0].reused_count = 15;
+      return HttpResponse.json(state.preparations[0], { status: 202 });
+    }),
+  );
+  render(<App />);
+  fireEvent.click(await screen.findByRole("button", { name: "重新练习" }));
+  await screen.findByRole("dialog");
+  expect(screen.getByText(/旧轮已答 6 \/ 15 题/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "保留当前轮" }));
+  expect(bodies).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "重新练习" }));
+  fireEvent.click(screen.getByRole("button", { name: "确认并准备新轮" }));
+  await screen.findByRole("button", { name: "开始新一轮练习" });
+  expect(bodies).toEqual([
+    expect.objectContaining({
+      expected_round_id: round.test_id,
+      expected_round_version: "round-version-1",
+      abandon_confirmed: true,
+    }),
+  ]);
+  expect(
+    screen.getByRole("link", { name: "继续本轮练习" }),
+  ).toBeInTheDocument();
+});
+
+it("历史轮次通过URL切换，默认选择最近启动轮而非较高分旧轮", async () => {
+  savedRequirements();
+  readyPreparation();
+  const latest = { ...round, test_id: "t2", round_no: 2, answered_count: 0 };
+  const old = {
+    ...round,
+    status: "COMPLETED",
+    answered_count: 15,
+    graded_count: 15,
+    score: 0.9,
+    score_denominator: 15,
+    grading_complete: true,
+  };
+  state.round = latest;
+  state.rounds = [latest, old];
+  state.preparations[0].expected_round_id = latest.test_id;
+  server.use(
+    http.post(`${BASE}/rounds`, () => {
+      const next = { ...latest, test_id: "t3", round_no: 3 };
+      state = {
+        ...state,
+        round: next,
+        rounds: [next, ...(state.rounds ?? [])],
+      };
+      return HttpResponse.json(next);
+    }),
+  );
+  render(<App />);
+  await screen.findByText("第 2 轮练习 · 进行中");
+  fireEvent.click(screen.getByRole("link", { name: "第 1 轮练习" }));
+  await screen.findByText("成绩 90%（实际评分分母 15 题）");
+  expect(window.location.search).toContain(`round=${round.test_id}`);
+  fireEvent.click(screen.getByRole("link", { name: "第 2 轮练习 · 最近启动" }));
+  await screen.findByText("第 2 轮练习 · 进行中");
+  expect(
+    screen.queryByText("成绩 90%（实际评分分母 15 题）"),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("link", { name: "第 1 轮练习" }));
+  await screen.findByText("成绩 90%（实际评分分母 15 题）");
+  fireEvent.click(screen.getByRole("button", { name: "开始新一轮练习" }));
+  await screen.findByText("第 3 轮练习 · 进行中");
+  expect(window.location.search).toContain("round=t3");
+});
+
+it("历史计划仅查看结果，不开放评分重试和重练", async () => {
+  savedRequirements();
+  state.editable = false;
+  state.round = {
+    ...round,
+    status: "COMPLETED",
+    answered_count: 15,
+    graded_count: 13,
+    unscored_count: 2,
+    retry_available: true,
+  };
+  render(<App />);
+  await screen.findByRole("link", { name: "查看本轮结果" });
+  expect(
+    screen.queryByRole("button", { name: "重试未评分题" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "重新练习" }),
+  ).not.toBeInTheDocument();
+});
+
+it("已放弃历史轮仍提供只读卷面入口", async () => {
+  savedRequirements();
+  state.round = { ...round, test_id: "new-round", round_no: 2 };
+  state.rounds = [state.round, { ...round, status: "ABANDONED" }];
+  render(<App />);
+  fireEvent.click(await screen.findByRole("link", { name: "第 1 轮练习" }));
+  expect(
+    await screen.findByRole("link", { name: "查看本轮结果" }),
+  ).toHaveAttribute("href", round.paper_path + "?view=single");
 });

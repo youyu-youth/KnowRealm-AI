@@ -1628,8 +1628,27 @@ export interface paths {
         /**
          * Post Round
          * @description 开始或继续一轮计划练习：从 READY 准备结果建卷，已有轮次直接返回。
+         *
+         *     并发兜底：部分唯一索引拦截第二个建卷事务时，败方在重查后拿到同一轮。
          */
         post: operations["post_round_api_plan_items__item_id__practice_rounds_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/plan-items/{item_id}/practice/rounds/{test_id}/retries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Round Grading */
+        post: operations["retry_round_grading_api_plan_items__item_id__practice_rounds__test_id__retries_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6010,6 +6029,14 @@ export interface components {
             plan_version: number;
             status: components["schemas"]["PlanStatus"];
         };
+        /** PracticeGradingRetry */
+        PracticeGradingRetry: {
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+        };
         /**
          * PracticeMatchReason
          * @enum {string}
@@ -6027,6 +6054,8 @@ export interface components {
             error_code: string | null;
             /** Examined Count */
             examined_count: number;
+            /** Expected Round Id */
+            expected_round_id?: string | null;
             /** Id */
             id: string;
             /** Item Id */
@@ -6038,6 +6067,11 @@ export interface components {
             related_count: number;
             /** Requirements Revision */
             requirements_revision: number;
+            /**
+             * Reused Count
+             * @default 0
+             */
+            reused_count: number;
             /** Selected Count */
             selected_count: number;
             /** Sources */
@@ -6053,6 +6087,15 @@ export interface components {
         };
         /** PracticePrepareRequest */
         PracticePrepareRequest: {
+            /**
+             * Abandon Confirmed
+             * @default false
+             */
+            abandon_confirmed: boolean;
+            /** Expected Round Id */
+            expected_round_id?: string | null;
+            /** Expected Round Version */
+            expected_round_version?: string | null;
             /**
              * Request Id
              * Format: uuid
@@ -6117,14 +6160,35 @@ export interface components {
             completed_at: string | null;
             /** Entry Path */
             entry_path: string;
+            /** Error Code */
+            error_code?: string | null;
             /** Graded Count */
             graded_count: number;
             /** Grading Complete */
             grading_complete: boolean;
+            /** Grading Errors */
+            grading_errors?: {
+                [key: string]: string;
+            };
+            /** Grading Job Id */
+            grading_job_id?: string | null;
+            /** Grading Job Status */
+            grading_job_status?: string | null;
             /** Paper Path */
             paper_path: string;
+            requirements?: components["schemas"]["PracticeRequirementsOut"] | null;
             /** Requirements Revision */
             requirements_revision: number;
+            /**
+             * Retry Available
+             * @default false
+             */
+            retry_available: boolean;
+            /**
+             * Reused Count
+             * @default 0
+             */
+            reused_count: number;
             /** Round No */
             round_no: number;
             /** Score */
@@ -6146,6 +6210,11 @@ export interface components {
             total_count: number;
             /** Unscored Count */
             unscored_count: number;
+            /**
+             * Version
+             * @default
+             */
+            version: string;
         };
         /** PracticeRoundSourceOut */
         PracticeRoundSourceOut: {
@@ -6207,6 +6276,8 @@ export interface components {
             /** Requirements Stale */
             requirements_stale: boolean;
             round?: components["schemas"]["PracticeRoundOut"] | null;
+            /** Rounds */
+            rounds?: components["schemas"]["PracticeRoundOut"][];
             /** Sources */
             sources: components["schemas"]["PracticeSourceOut"][];
         };
@@ -6466,7 +6537,7 @@ export interface components {
          * ProposalType
          * @enum {string}
          */
-        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_CONTEXT_RULES" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT" | "OP_PRACTICE_REQUIREMENTS" | "OP_PRACTICE_PREPARE" | "OP_PRACTICE_CANCEL" | "OP_PRACTICE_ROUND_START";
+        ProposalType: "ORGANIZE" | "MEMORY" | "RESEARCH_INGEST" | "COURSE_CREATE" | "TEXT_RECORD_ADD" | "OP_COURSE_UPDATE" | "OP_COURSE_ARCHIVE" | "OP_COURSE_RESTORE" | "OP_LIBRARY_ITEM_UPDATE" | "OP_LIBRARY_ITEM_ARCHIVE" | "OP_LIBRARY_ITEM_RESTORE" | "OP_RECORD_SOFT_DELETE" | "OP_COURSE_SOFT_DELETE" | "OP_RECORD_MOVE_COURSE" | "OP_BATCH" | "OP_UNDO" | "OP_GOAL_CREATE" | "OP_GOAL_UPDATE" | "OP_CONTEXT_PIN" | "OP_CONTEXT_RULES" | "OP_PLAN_CONFIRM" | "OP_PLAN_ITEM_UPDATE" | "OP_PLAN_ITEM_COMPLETE" | "OP_PLAN_REGENERATE" | "OP_SHARED_REF_ADD" | "OP_SHARED_REF_REMOVE" | "OP_LIBRARY_ITEM_INGEST" | "OP_LOCAL_DOCUMENT_INGEST" | "OP_PLAN_DRAFT" | "OP_PRACTICE_REQUIREMENTS" | "OP_PRACTICE_PREPARE" | "OP_PRACTICE_CANCEL" | "OP_PRACTICE_ROUND_START" | "OP_PRACTICE_GRADING_RETRY";
         /** PurgeResultOut */
         PurgeResultOut: {
             /** Operations Deleted */
@@ -14605,6 +14676,44 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PracticeRoundStart"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PracticeRoundOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_round_grading_api_plan_items__item_id__practice_rounds__test_id__retries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path: {
+                item_id: string;
+                test_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PracticeGradingRetry"];
             };
         };
         responses: {

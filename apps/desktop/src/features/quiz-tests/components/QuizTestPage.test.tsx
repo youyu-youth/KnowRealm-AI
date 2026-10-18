@@ -149,6 +149,22 @@ function renderAt(path: string, queryClient = createQueryClient()) {
 
 function mockPaper(response: QuizTestDetail = detail) {
   return server.use(
+    http.get(
+      `${TEST_SIDECAR_URL}/api/plan-items/:itemId/practice`,
+      ({ params }) =>
+        HttpResponse.json({
+          item_id: params.itemId,
+          course_id: COURSE_ID,
+          plan_id: "plan-1",
+          plan_content: "做15道题",
+          editable: true,
+          requirements_stale: false,
+          requirements: null,
+          sources: [],
+          preparations: [],
+          round: null,
+        }),
+    ),
     http.get(COURSE_URL, () => HttpResponse.json(course)),
     http.get(`${COURSE_URL}/records`, () => HttpResponse.json([])),
     http.get(TESTS_URL, () =>
@@ -498,6 +514,61 @@ function completedDetail(): QuizTestDetail {
 }
 
 describe("交卷评分与结果页", () => {
+  it("PLAN已完成的部分成绩可重试未评分题并刷新真实结果", async () => {
+    const planItemId = "55555555-5555-4555-8555-555555555555";
+    const paper = {
+      ...completedDetail(),
+      mode: "PLAN" as const,
+      plan_item_id: planItemId,
+    };
+    mockPaper(paper);
+    let requested = false;
+    let attempts = 0;
+    server.use(
+      http.post(
+        `${TEST_SIDECAR_URL}/api/plan-items/${planItemId}/practice/rounds/${TEST_ID}/retries`,
+        () => {
+          requested = true;
+          attempts += 1;
+          if (attempts === 1)
+            return HttpResponse.json(
+              {
+                code: "LLM_PROVIDER_UNCONFIGURED",
+                detail: "Provider unavailable",
+              },
+              { status: 409 },
+            );
+          mockPaper({
+            ...paper,
+            score: 0.5,
+            items: paper.items.map((item) => ({
+              ...item,
+              result: "PARTIAL",
+              score: 0.5,
+            })),
+          });
+          return HttpResponse.json({
+            test_id: TEST_ID,
+            grading_job_id: "grade-1",
+          });
+        },
+      ),
+    );
+    renderAt(`/spaces/${COURSE_ID}/tests/${TEST_ID}?view=full`);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "重试未评分题" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "请先配置（包含密钥的）LLM Provider",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "重试未评分题" }));
+    await screen.findByText("50");
+    expect(requested).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "重试未评分题" }),
+    ).not.toBeInTheDocument();
+  });
+
   it.each(["COMPLETED", "GRADING_FAILED"] as const)(
     "PLAN %s 结果保留计划入口并隐藏普通重考",
     async (status) => {
@@ -513,7 +584,10 @@ describe("交卷评分与结果页", () => {
 
       expect(
         await screen.findByRole("link", { name: "返回计划练习" }),
-      ).toHaveAttribute("href", `/plan-items/${planItemId}/practice`);
+      ).toHaveAttribute(
+        "href",
+        `/plan-items/${planItemId}/practice?round=${TEST_ID}`,
+      );
       expect(screen.getByText("37")).toBeInTheDocument();
       expect(
         screen.queryByRole("button", { name: "再考一张" }),

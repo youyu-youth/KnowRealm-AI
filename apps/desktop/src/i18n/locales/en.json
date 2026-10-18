@@ -2595,6 +2595,13 @@
         "failed": "Plan practice could not start",
         "failedDetail": "Plan practice could not start: {{reason}}"
       },
+      "practiceGrading": {
+        "accept": "Confirm retrying unscored questions",
+        "reject": "Cancel this retry",
+        "rejected": "Retry cancelled; existing grades are kept",
+        "failed": "Grading retry could not be accepted",
+        "failedDetail": "Grading retry could not be accepted: {{reason}}"
+      },
       "practice": {
         "title": "Plan practice action",
         "confirm": "Confirm",
@@ -2698,6 +2705,7 @@
       "conversation": "Conversation messages",
       "jumpToLatest": "Jump to latest",
       "toolNames": {
+        "retry_plan_practice_grading": "Retry unscored plan practice questions",
         "list_recent_assets": "Recent learning outputs",
         "list_recent_learning": "Recent learning",
         "get_today_progress": "Check today's progress",
@@ -3194,6 +3202,7 @@
         "generate_plan_draft": "Generate study plan draft",
         "confirm_practice_requirements": "Confirm practice requirements",
         "prepare_plan_practice": "Prepare plan practice",
+        "retry_plan_practice_grading": "Retry unscored plan practice questions",
         "cancel_practice_preparation": "Cancel practice matching"
       },
       "operationStatus": {
@@ -3833,7 +3842,7 @@
     "PRACTICE_CONFIRMATION_REQUIRED": "Explicitly confirm the topic, count, types and source set using the confirmation card first.",
     "PRACTICE_PREPARATION_STALE": "The prepared question set is stale, short of the count or no longer matches the requirements. Prepare again before starting.",
     "PRACTICE_ROUND_CONFLICT": "The round request conflicts with an existing round or request identity. Refresh to check the actual round.",
-    "PRACTICE_ROUND_OP_UNAVAILABLE": "This operation is not available for plan practice rounds yet.",
+    "PRACTICE_ROUND_OP_UNAVAILABLE": "Confirm Practice again to switch rounds. Previous answers will be kept.",
     "PLAN_STUDY_UNAVAILABLE": "This plan item is currently read only. Return to the plan and refresh.",
     "PLAN_STUDY_SOURCE_INVALID": "The linked material is unavailable. Select another material.",
     "PLAN_STUDY_VISIT_STALE": "This plan study visit expired. Start again from the plan item.",
@@ -3913,6 +3922,22 @@
       "UNCERTAIN": "Relevance is uncertain"
     },
     "sourcesReloaded": "Sources reloaded. Your input is retained; review it before confirming.",
+    "recovery": {
+      "restart": "Practice again",
+      "startNext": "Start next round",
+      "retryGrading": "Retry unscored questions",
+      "retryHint": "Only unscored questions in this round will be graded. Answers, successful grades and plan completion remain unchanged. An existing grading task returns its current status.",
+      "history": "Practice round history",
+      "latest": "Latest started",
+      "reused": "Not enough new questions; this round reuses {{count}} previous questions within the same sources",
+      "itemError": "Question {{number}} grading failed",
+      "abandonImpact": "You answered {{answered}} / {{total}} questions. Prepare a new set first; the current round is abandoned only when the next round starts successfully. Previous answers are kept. Failure or cancellation lets you continue the current round.",
+      "restartImpact": "Prepare a new round using the latest confirmed requirements. Previous results are kept and submitted rounds continue grading. First plan completion remains unchanged.",
+      "cancel": "Keep current round",
+      "confirm": "Confirm and prepare next round",
+      "nextRequirements": "The current round keeps its original requirements; changes below apply to the next round",
+      "readonly": "Historical plans, finished goals and skipped items are read-only"
+    },
     "round": {
       "cardLabel": "Current practice round",
       "title": "Round {{round}}",
@@ -3924,7 +3949,7 @@
       "continue": "Continue this round",
       "result": "View round results",
       "start": "Start practice",
-      "startHint": "Confirm to start practice with the confirmed requirements. If a round exists, continue it or view its status without creating another. Answer on the practice page yourself; completing the plan item requires a separate confirmation.",
+      "startHint": "Confirm to start or continue using the prepared set. A set explicitly prepared for practice again safely starts a new round and keeps history. Answer on the practice page yourself; completing the plan item requires a separate confirmation.",
       "latestPreparation": "Use this plan item's most recently prepared question set",
       "open": "Open this practice round",
       "grading": "Grading in progress; you can leave and check back later",

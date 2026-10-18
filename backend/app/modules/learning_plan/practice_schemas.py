@@ -65,6 +65,15 @@ class PracticePrepareRequest(BaseModel):
 
     request_id: UUID
     requirements_revision: int = Field(gt=0)
+    expected_round_id: UUID | None = None
+    expected_round_version: str | None = None
+    abandon_confirmed: bool = False
+
+    @model_validator(mode="after")
+    def check_round_baseline(self) -> "PracticePrepareRequest":
+        if (self.expected_round_id is None) != (self.expected_round_version is None):
+            raise ValueError("重练须同时指定当前轮次和进度版本")
+        return self
 
 
 class PracticeSourceOut(BaseModel):
@@ -94,6 +103,8 @@ class PracticePreparationOut(BaseModel):
     error_code: str | None
     sources: list[PracticeSourceOut]
     suggestions: list[PracticeSourceOut]
+    expected_round_id: str | None = None
+    reused_count: int = 0
 
 
 class PracticeStateOut(BaseModel):
@@ -107,6 +118,7 @@ class PracticeStateOut(BaseModel):
     preparations: list[PracticePreparationOut]
     sources: list[PracticeSourceOut]
     round: "PracticeRoundOut | None" = None
+    rounds: list["PracticeRoundOut"] = Field(default_factory=list["PracticeRoundOut"])
 
 
 class PracticeRoundStart(BaseModel):
@@ -142,6 +154,20 @@ class PracticeRoundOut(BaseModel):
     started_at: datetime
     completed_at: datetime | None
     sources: list[PracticeRoundSourceOut]
+    version: str = ""
+    requirements: PracticeRequirementsOut | None = None
+    grading_job_id: str | None = None
+    grading_job_status: str | None = None
+    error_code: str | None = None
+    grading_errors: dict[str, str] = Field(default_factory=dict[str, str])
+    retry_available: bool = False
+    reused_count: int = 0
+
+
+class PracticeGradingRetry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: UUID
 
 
 class MatchDecision(BaseModel):

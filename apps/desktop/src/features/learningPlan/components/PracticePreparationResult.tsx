@@ -28,6 +28,11 @@ export function PracticePreparationResult({
           })}
         </p>
       ) : null}
+      {latest.reused_count > 0 ? (
+        <p className="text-body text-ink-muted">
+          {t("practice.recovery.reused", { count: latest.reused_count })}
+        </p>
+      ) : null}
       <p className="text-label text-ink-muted">
         {t("practice.scanned", {
           examined: latest.examined_count,

@@ -277,6 +277,92 @@ describe("ChatOperationProposalCard — 开始计划练习", () => {
   });
 });
 
+describe("ChatOperationProposalCard — 评分恢复与重练", () => {
+  it("已交卷轮重练确认说明保留结果，不声称会放弃旧轮", async () => {
+    listProposals.mockResolvedValue([
+      proposalFixture({
+        proposal_type: "OP_PRACTICE_PREPARE",
+        payload: {
+          item_id: "plan-item",
+          expected_round_id: "submitted-round",
+          requirements_revision: 1,
+          abandon_confirmed: false,
+        },
+        snapshot: {
+          round_id: "submitted-round",
+          version: "version-1",
+          answered_count: 15,
+          total_count: 15,
+        },
+      }),
+    ]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(
+      await screen.findByText(/按最新已确认要求准备新轮，旧轮结果保留/),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/成功启动新轮时才放弃旧轮/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("重练确认卡展示6/15进度及保留旧轮的准备顺序", async () => {
+    const proposal = proposalFixture({
+      proposal_type: "OP_PRACTICE_PREPARE",
+      payload: {
+        item_id: "plan-item",
+        expected_round_id: "old-round",
+        requirements_revision: 1,
+        abandon_confirmed: true,
+      },
+      snapshot: {
+        round_id: "old-round",
+        version: "version-1",
+        answered_count: 6,
+        total_count: 15,
+      },
+    });
+    listProposals.mockResolvedValue([proposal]);
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    expect(await screen.findByText(/旧轮已答 6 \/ 15 题/)).toBeVisible();
+    expect(confirmProposal).not.toHaveBeenCalled();
+  });
+
+  it("默认授权重试可确认，回执按真实状态展示且可恢复查询", async () => {
+    const proposal = proposalFixture({
+      proposal_type: "OP_PRACTICE_GRADING_RETRY",
+      payload: {
+        item_id: "plan-item",
+        test_id: "old-round",
+        request_id: "retry-request",
+      },
+    });
+    listProposals.mockResolvedValue([proposal]);
+    confirmProposal.mockResolvedValue({
+      ...proposal,
+      status: "APPLIED",
+      result: {
+        status: "COMPLETED",
+        test_id: "old-round",
+        entry_path: "/plan-items/plan-item/practice",
+        grading_job_id: "grading-1",
+      },
+    });
+    renderWithQuery(<ChatOperationProposalCard sessionId={SESSION_ID} />);
+    const retryButton = await screen.findByRole("button", {
+      name: "确认重试未评分题",
+    });
+    expect(screen.getByText(/仅补齐本轮未评分题/)).toBeVisible();
+    fireEvent.click(retryButton);
+    expect(
+      await screen.findByRole("link", { name: "查看本轮结果" }),
+    ).toHaveAttribute("href", "/plan-items/plan-item/practice");
+    expect(
+      screen.queryByText("正在评分，可离开稍后回来查看"),
+    ).not.toBeInTheDocument();
+    expect(confirmProposal).toHaveBeenCalledWith("p-1", undefined);
+  });
+});
+
 describe("ChatOperationProposalCard", () => {
   it("恢复查询无提案时不渲染", () => {
     const { container } = renderWithQuery(

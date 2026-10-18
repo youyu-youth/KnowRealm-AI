@@ -35,8 +35,10 @@ from app.modules.learning_plan.practice import (
     source_versions,
 )
 from app.modules.learning_plan.practice_models import PracticePreparation
+from app.modules.learning_plan.practice_round import used_quiz_ids, validate_repractice
 from app.modules.learning_plan.practice_schemas import (
     PracticeMatchReason,
+    PracticePrepareRequest,
     PracticeRequirementsOut,
     PracticeSourceOut,
     PreparationStatus,
@@ -76,6 +78,11 @@ async def validate_execution(
     await require_confirmed_sources(session, goal.course_id, req)
     if row.authority == "AGENT":
         await require_preparation_authority(session, job.id)
+    request_data = json.loads(job.input_json).get("request")
+    if request_data:
+        request = PracticePrepareRequest.model_validate(request_data)
+        if request.expected_round_id is not None:
+            await validate_repractice(session, row.item_id, request)
     return row, req, goal.course_id
 
 
@@ -107,9 +114,12 @@ def matching_result(
     versions: dict[str, str],
     *,
     finished: bool,
+    used: set[str] | None = None,
 ) -> PreparationResult:
     scoped = [candidate for candidate in pool if candidate.record_id in req.record_ids]
     related = [candidate for candidate in scoped if candidate.quiz_id in relevant]
+    if used:
+        related.sort(key=lambda candidate: candidate.quiz_id in used)
     complete = (
         finished
         and examined == len(pool)
@@ -139,6 +149,11 @@ def matching_result(
             if source.record_id not in req.record_ids and source.related_count > 0
         ],
         selected=related[: req.question_count] if outcome == PreparationStatus.READY else [],
+        reused_count=sum(
+            candidate.quiz_id in (used or set()) for candidate in related[: req.question_count]
+        )
+        if outcome == PreparationStatus.READY
+        else 0,
     )
 
 
@@ -172,6 +187,7 @@ def practice_spec(
         async with factory() as session, session.begin():
             row, req, course_id = await validate_execution(session, ctx)
             pool = await candidates(session, course_id, req)
+            used = await used_quiz_ids(session, row.item_id)
             versions = await source_versions(
                 session, list(set(req.record_ids) | {candidate.record_id for candidate in pool})
             )
@@ -185,6 +201,7 @@ def practice_spec(
             raise conflict("LLM_PROVIDER_UNCONFIGURED")
         # 确定性调用预算；用尽只标记未完成，不把部分范围当成全课程不足。
         scoped = [candidate for candidate in pool if candidate.record_id in req.record_ids]
+        scoped.sort(key=lambda candidate: candidate.quiz_id in used)
         other = [candidate for candidate in pool if candidate.record_id not in req.record_ids]
         batches = [
             group[offset : offset + 30]
@@ -241,7 +258,7 @@ def practice_spec(
                 row.result_json = matching_result(
                     pool, req, relevant, examined, versions, finished=False
                 ).model_dump_json()
-        result = matching_result(pool, req, relevant, examined, versions, finished=True)
+        result = matching_result(pool, req, relevant, examined, versions, finished=True, used=used)
         result.provider_fingerprint = (
             llm_provider_fingerprint(initial_provider) if pool and initial_provider else None
         )

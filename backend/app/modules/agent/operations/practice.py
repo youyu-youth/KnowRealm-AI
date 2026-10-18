@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.data_dir import bound_data_dir
 from app.modules.agent.auth_mode import effective_session_auth_mode
 from app.modules.agent.operations.registry import OperationLevel, OperationSpec, register_operation
 from app.modules.agent.runs.models import AgentOperation, AgentRun
@@ -11,6 +12,7 @@ from app.modules.agent.runs.schemas import AuthMode, OperationAuthorization
 from app.modules.agent.turns.models import ChatTurn
 from app.modules.learning_plan import practice, practice_round
 from app.modules.learning_plan.practice_schemas import (
+    PracticeGradingRetry,
     PracticePreparationOut,
     PracticePrepareRequest,
     PracticeRequirementsOut,
@@ -40,6 +42,31 @@ class PracticeRoundStartPayload(PracticeRoundStart):
     item_id: str = Field(description="已完成题集准备的计划项 id")
 
 
+class PracticeGradingRetryPayload(PracticeGradingRetry):
+    item_id: str = Field(description="目标计划项 id")
+    test_id: str = Field(description="get_plan_practice 查询的已交卷轮次 id")
+
+
+class PracticePreparationSnapshot(BaseModel):
+    round_id: str | None
+    version: str | None
+    answered_count: int
+    total_count: int
+
+
+async def capture_preparation(
+    session: AsyncSession, payload: PracticePreparePayload
+) -> PracticePreparationSnapshot:
+    current = await practice_round.latest_round(session, payload.item_id)
+    out = await practice_round.round_out(session, current) if current else None
+    return PracticePreparationSnapshot(
+        round_id=out.test_id if out else None,
+        version=out.version if out else None,
+        answered_count=out.answered_count if out else 0,
+        total_count=out.total_count if out else 0,
+    )
+
+
 async def confirm(
     session: AsyncSession, payload: PracticeRequirementsPayload, execution_id: str
 ) -> PracticeRequirementsOut:
@@ -52,8 +79,12 @@ async def confirm(
 
 
 async def prepare(
-    session: AsyncSession, payload: PracticePreparePayload, _execution_id: str
+    session: AsyncSession, payload: PracticePreparePayload, execution_id: str
 ) -> PracticePreparationOut:
+    if payload.abandon_confirmed:
+        proposal = await session.get(AgentProposal, execution_id)
+        if proposal is None or proposal.proposal_type != ProposalType.OP_PRACTICE_PREPARE:
+            raise practice.conflict("PRACTICE_CONFIRMATION_REQUIRED")
     core = PracticePrepareRequest.model_validate(payload.model_dump(exclude={"item_id"}))
     return await practice.prepare(session, payload.item_id, core, authority="AGENT")
 
@@ -69,6 +100,21 @@ async def start_round_op(
 ) -> PracticeRoundOut:
     core = PracticeRoundStart.model_validate(payload.model_dump(exclude={"item_id"}))
     return await practice_round.start_round(session, payload.item_id, core)
+
+
+async def retry_grading_op(
+    session: AsyncSession, payload: PracticeGradingRetryPayload, _execution_id: str
+) -> PracticeRoundOut:
+    data_dir = bound_data_dir()
+    if data_dir is None:
+        raise practice.conflict("LLM_PROVIDER_UNCONFIGURED")
+    return await practice_round.retry_grading(
+        session,
+        data_dir,
+        payload.item_id,
+        payload.test_id,
+        PracticeGradingRetry(request_id=payload.request_id),
+    )
 
 
 class PracticeSnapshot(BaseModel):
@@ -126,6 +172,7 @@ register_operation(
         payload_schema=PracticePreparePayload,
         result_schema=PracticePreparationOut,
         applier=prepare,
+        capture_state=capture_preparation,
         target_resolver=lambda p: ("plan_item", p.item_id),
         undo_reason="匹配任务可通过取消入口停止",
     )
@@ -185,3 +232,16 @@ async def validate_preparation_authority(session: AsyncSession, job_id: str) -> 
 
 
 practice.register_preparation_authorizer(validate_preparation_authority)
+
+register_operation(
+    OperationSpec(
+        action="retry_plan_practice_grading",
+        proposal_type=ProposalType.OP_PRACTICE_GRADING_RETRY,
+        level=OperationLevel.L1,
+        payload_schema=PracticeGradingRetryPayload,
+        result_schema=PracticeRoundOut,
+        applier=retry_grading_op,
+        target_resolver=lambda p: ("plan_item", p.item_id),
+        undo_reason="评分只补齐缺口，成功结果及学习事实保留",
+    )
+)

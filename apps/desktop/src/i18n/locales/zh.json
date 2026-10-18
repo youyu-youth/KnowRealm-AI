@@ -2566,6 +2566,13 @@
         "failed": "计划练习未能开始",
         "failedDetail": "计划练习未能开始：{{reason}}"
       },
+      "practiceGrading": {
+        "accept": "确认重试未评分题",
+        "reject": "取消本次重试",
+        "rejected": "已取消重试，已有评分保留",
+        "failed": "评分重试未能受理",
+        "failedDetail": "评分重试未能受理：{{reason}}"
+      },
       "practice": {
         "title": "计划练习操作",
         "confirm": "确认",
@@ -2669,6 +2676,7 @@
       "conversation": "对话消息",
       "jumpToLatest": "回到最新",
       "toolNames": {
+        "retry_plan_practice_grading": "重试计划练习未评分题",
         "list_recent_assets": "查询近期学习产出",
         "list_recent_learning": "查询最近学习",
         "get_today_progress": "查询今日进展",
@@ -3165,6 +3173,7 @@
         "generate_plan_draft": "生成学习计划草案",
         "confirm_practice_requirements": "确认练习要求",
         "prepare_plan_practice": "准备计划练习",
+        "retry_plan_practice_grading": "重试计划练习未评分题",
         "cancel_practice_preparation": "取消练习匹配"
       },
       "operationStatus": {
@@ -3804,7 +3813,7 @@
     "PRACTICE_CONFIRMATION_REQUIRED": "请先通过确认卡明确确认主题、题量、题型及资料集合",
     "PRACTICE_PREPARATION_STALE": "题集已过期、不足或与当前要求不符，请重新准备后再开始",
     "PRACTICE_ROUND_CONFLICT": "轮次请求与已有轮次或请求身份冲突，请刷新查看实际轮次",
-    "PRACTICE_ROUND_OP_UNAVAILABLE": "计划练习轮次暂不支持该操作",
+    "PRACTICE_ROUND_OP_UNAVAILABLE": "请通过重新练习确认后切换轮次，旧答案会保留",
     "PLAN_STUDY_UNAVAILABLE": "该计划项当前仅可查看，请返回计划刷新状态",
     "PLAN_STUDY_SOURCE_INVALID": "关联资料不存在或已不可见，请重新关联",
     "PLAN_STUDY_VISIT_STALE": "本次计划学习访问已失效，请重新启动",
@@ -3884,6 +3893,22 @@
       "UNCERTAIN": "相关性无法确认"
     },
     "sourcesReloaded": "来源已重新读取，未保存输入已保留，请核对后确认",
+    "recovery": {
+      "restart": "重新练习",
+      "startNext": "开始新一轮练习",
+      "retryGrading": "重试未评分题",
+      "retryHint": "仅补齐本轮未评分题；答案和已成功评分结果保持不变，不改变计划完成状态。已有评分任务将返回当前状态。",
+      "history": "练习轮次历史",
+      "latest": "最近启动",
+      "reused": "新题不足，本轮复用此前 {{count}} 道题，资料范围不变",
+      "itemError": "第 {{number}} 题评分失败",
+      "abandonImpact": "旧轮已答 {{answered}} / {{total}} 题。确认后先准备新题集，成功启动新轮时才放弃旧轮；旧答案保留，准备失败或取消仍可继续旧轮。",
+      "restartImpact": "按最新已确认要求准备新轮，旧轮结果保留；正在评分的旧轮继续评分，不改变首次计划完成时间。",
+      "cancel": "保留当前轮",
+      "confirm": "确认并准备新轮",
+      "nextRequirements": "当前轮使用启动时要求；以下修改只用于下一轮",
+      "readonly": "历史计划、已完结目标或跳过项仅可查看已有结果"
+    },
     "round": {
       "cardLabel": "本轮计划练习",
       "title": "第 {{round}} 轮练习",
@@ -3895,7 +3920,7 @@
       "continue": "继续本轮练习",
       "result": "查看本轮结果",
       "start": "开始练习",
-      "startHint": "确认后按已确认要求开始练习；已有轮次则继续该轮或查看状态，不创建新轮。请在练习页自行作答，计划项完成仍需另行确认。",
+      "startHint": "确认后按已准备题集开始或继续练习；明确重练的准备将安全开启新轮并保留历史。请在练习页自行作答，计划项完成仍需另行确认。",
       "latestPreparation": "使用本计划项最近一次准备的题集",
       "open": "打开本轮练习",
       "grading": "正在评分，可离开稍后回来查看",

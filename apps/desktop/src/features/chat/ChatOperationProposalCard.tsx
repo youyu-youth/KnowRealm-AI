@@ -1388,6 +1388,22 @@ function PracticePreviewFields({
       {fieldString(payload, "preparation_id") ? (
         <p>{fieldString(payload, "preparation_id")}</p>
       ) : null}
+      {fieldString(payload, "expected_round_id") ? (
+        <p>
+          {t(
+            payload.abandon_confirmed === true
+              ? "practice.recovery.abandonImpact"
+              : "practice.recovery.restartImpact",
+            {
+              answered: fieldNumber(snapshot, "answered_count") ?? 0,
+              total: fieldNumber(snapshot, "total_count") ?? 0,
+            },
+          )}
+        </p>
+      ) : null}
+      {fieldString(payload, "test_id") ? (
+        <p>{fieldString(payload, "test_id")}</p>
+      ) : null}
       <p>{t(hintKey)}</p>
     </>
   );
@@ -1460,6 +1476,33 @@ const CARD_BY_TYPE: Record<string, OperationCardSpec> = {
         </div>
       );
     },
+  },
+  OP_PRACTICE_GRADING_RETRY: {
+    ...practiceCard,
+    label: (key) => `chat.operationProposal.practiceGrading.${key}`,
+    PreviewFields: (props) => (
+      <PracticePreviewFields {...props} hintKey="practice.recovery.retryHint" />
+    ),
+    SettledRow: ({ status, result, t }) => (
+      <div className="space-y-2">
+        <p>
+          {t(
+            status === "APPLIED"
+              ? `practice.round.status.${fieldString(result, "status")}`
+              : "practice.rejected",
+          )}
+        </p>
+        {fieldString(result, "entry_path") ? (
+          <Link
+            to={fieldString(result, "entry_path") ?? "/"}
+            search={{ round: fieldString(result, "test_id") ?? undefined }}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            {t("practice.round.result")}
+          </Link>
+        ) : null}
+      </div>
+    ),
   },
   OP_CONTEXT_RULES: {
     label: (key) => `chat.operationProposal.contextRules.${key}`,

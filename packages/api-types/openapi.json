@@ -7552,6 +7552,21 @@
         "title": "PlanVersionOut",
         "type": "object"
       },
+      "PracticeGradingRetry": {
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id"
+        ],
+        "title": "PracticeGradingRetry",
+        "type": "object"
+      },
       "PracticeMatchReason": {
         "enum": [
           "TOPIC_CONCEPT",
@@ -7591,6 +7606,17 @@
             "title": "Examined Count",
             "type": "integer"
           },
+          "expected_round_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Round Id"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -7619,6 +7645,11 @@
           },
           "requirements_revision": {
             "title": "Requirements Revision",
+            "type": "integer"
+          },
+          "reused_count": {
+            "default": 0,
+            "title": "Reused Count",
             "type": "integer"
           },
           "selected_count": {
@@ -7677,6 +7708,34 @@
       "PracticePrepareRequest": {
         "additionalProperties": false,
         "properties": {
+          "abandon_confirmed": {
+            "default": false,
+            "title": "Abandon Confirmed",
+            "type": "boolean"
+          },
+          "expected_round_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Round Id"
+          },
+          "expected_round_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Round Version"
+          },
           "request_id": {
             "format": "uuid",
             "title": "Request Id",
@@ -7844,6 +7903,17 @@
             "title": "Entry Path",
             "type": "string"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "graded_count": {
             "title": "Graded Count",
             "type": "integer"
@@ -7852,12 +7922,61 @@
             "title": "Grading Complete",
             "type": "boolean"
           },
+          "grading_errors": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Grading Errors",
+            "type": "object"
+          },
+          "grading_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grading Job Id"
+          },
+          "grading_job_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grading Job Status"
+          },
           "paper_path": {
             "title": "Paper Path",
             "type": "string"
           },
+          "requirements": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PracticeRequirementsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "requirements_revision": {
             "title": "Requirements Revision",
+            "type": "integer"
+          },
+          "retry_available": {
+            "default": false,
+            "title": "Retry Available",
+            "type": "boolean"
+          },
+          "reused_count": {
+            "default": 0,
+            "title": "Reused Count",
             "type": "integer"
           },
           "round_no": {
@@ -7913,6 +8032,11 @@
           "unscored_count": {
             "title": "Unscored Count",
             "type": "integer"
+          },
+          "version": {
+            "default": "",
+            "title": "Version",
+            "type": "string"
           }
         },
         "required": [
@@ -8084,6 +8208,13 @@
                 "type": "null"
               }
             ]
+          },
+          "rounds": {
+            "items": {
+              "$ref": "#/components/schemas/PracticeRoundOut"
+            },
+            "title": "Rounds",
+            "type": "array"
           },
           "sources": {
             "items": {
@@ -8815,7 +8946,8 @@
           "OP_PRACTICE_REQUIREMENTS",
           "OP_PRACTICE_PREPARE",
           "OP_PRACTICE_CANCEL",
-          "OP_PRACTICE_ROUND_START"
+          "OP_PRACTICE_ROUND_START",
+          "OP_PRACTICE_GRADING_RETRY"
         ],
         "title": "ProposalType",
         "type": "string"
@@ -22984,7 +23116,7 @@
     },
     "/api/plan-items/{item_id}/practice/rounds": {
       "post": {
-        "description": "开始或继续一轮计划练习：从 READY 准备结果建卷，已有轮次直接返回。",
+        "description": "开始或继续一轮计划练习：从 READY 准备结果建卷，已有轮次直接返回。\n\n并发兜底：部分唯一索引拦截第二个建卷事务时，败方在重查后拿到同一轮。",
         "operationId": "post_round_api_plan_items__item_id__practice_rounds_post",
         "parameters": [
           {
@@ -23047,6 +23179,85 @@
           }
         },
         "summary": "Post Round",
+        "tags": [
+          "plan-practice"
+        ]
+      }
+    },
+    "/api/plan-items/{item_id}/practice/rounds/{test_id}/retries": {
+      "post": {
+        "operationId": "retry_round_grading_api_plan_items__item_id__practice_rounds__test_id__retries_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "test_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Test Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PracticeGradingRetry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PracticeRoundOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Round Grading",
         "tags": [
           "plan-practice"
         ]

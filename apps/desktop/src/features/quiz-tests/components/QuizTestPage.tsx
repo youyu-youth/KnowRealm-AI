@@ -2,7 +2,8 @@ import { useLearningVisit } from "@/features/today/useLearningVisit";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowLeft, Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { practiceApi, practiceKey } from "@/features/learningPlan/api/practice";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +28,7 @@ import {
   type TestView,
 } from "@/features/quiz-tests/api/types";
 import { TestQuestionCard } from "@/features/quiz-tests/components/TestQuestionCard";
+import { ApiError } from "@/services/http/client";
 import type { QuizConceptChange } from "@/features/records/components/QuizConceptField";
 
 const SECTION_NUMERALS = ["一", "二", "三", "四", "五"] as const;
@@ -127,6 +129,7 @@ export function QuizTestPage({
                 ? {
                     to: "/plan-items/$itemId/practice",
                     params: { itemId: planItemId },
+                    search: { round: test.data.id },
                   }
                 : {
                     to: "/spaces/$courseId",
@@ -174,7 +177,16 @@ function ExamPaper({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const items = data.items;
-  const answering = data.status === "IN_PROGRESS";
+  const planItemId = data.mode === "PLAN" ? data.plan_item_id : null;
+  const planState = useQuery({
+    queryKey: practiceKey(planItemId ?? ""),
+    queryFn: () => practiceApi.state(planItemId ?? ""),
+    enabled: planItemId !== null,
+    staleTime: 0,
+  });
+  const writable = planItemId === null || planState.data?.editable === true;
+  const answering = data.status === "IN_PROGRESS" && writable;
+  const retryRequest = useRef<string | null>(null);
   const reviewing =
     data.status === "COMPLETED" || data.status === "GRADING_FAILED";
 
@@ -209,6 +221,10 @@ function ExamPaper({
         return next;
       });
       queryClient.setQueryData(quizTestKeys.detail(data.id), result);
+      if (planItemId)
+        void queryClient.invalidateQueries({
+          queryKey: practiceKey(planItemId),
+        });
     },
     onError: () =>
       queryClient.invalidateQueries({ queryKey: quizTestKeys.detail(data.id) }),
@@ -217,6 +233,10 @@ function ExamPaper({
     mutationFn: () => quizTestApi.submit(data.id),
     onSuccess: (result) => {
       queryClient.setQueryData(quizTestKeys.detail(data.id), result);
+      if (planItemId)
+        void queryClient.invalidateQueries({
+          queryKey: practiceKey(planItemId),
+        });
       void queryClient.invalidateQueries({
         queryKey: quizTestKeys.list(data.course_id),
       });
@@ -225,9 +245,26 @@ function ExamPaper({
     onError: () => setConfirmSubmit(true),
   });
   const regrade = useMutation({
-    mutationFn: () => quizTestApi.regrade(data.id),
-    onSuccess: (result) =>
-      queryClient.setQueryData(quizTestKeys.detail(data.id), result),
+    mutationFn: async () => {
+      if (planItemId) {
+        retryRequest.current ??= crypto.randomUUID();
+        await practiceApi.retryGrading(
+          planItemId,
+          data.id,
+          retryRequest.current,
+        );
+        return quizTestApi.get(data.id);
+      }
+      return quizTestApi.regrade(data.id);
+    },
+    onSuccess: (result) => {
+      retryRequest.current = null;
+      queryClient.setQueryData(quizTestKeys.detail(data.id), result);
+      if (planItemId)
+        void queryClient.invalidateQueries({
+          queryKey: practiceKey(planItemId),
+        });
+    },
   });
   /** 主概念变更后按 quiz_id 就地更新题位缓存，再失效拉取服务端权威状态 */
   const applyConcept = (quizId: string, concept: QuizConceptChange) => {
@@ -377,7 +414,7 @@ function ExamPaper({
             ? { itemId: data.plan_item_id }
             : { courseId }
         }
-        search={planMode ? undefined : { tab: "tests" }}
+        search={planMode ? { round: data.id } : { tab: "tests" }}
         className="text-body text-muted-foreground hover:text-ink-strong focus-visible:ring-ring/40 -ml-1 flex w-fit items-center gap-1.5 rounded-sm focus-visible:ring-3"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
@@ -482,7 +519,16 @@ function ExamPaper({
           <ResultSummary
             data={data}
             regradePending={regrade.isPending}
-            regradeError={regrade.isError ? regrade.error.message : null}
+            writable={writable}
+            regradeError={
+              regrade.isError
+                ? planMode && regrade.error instanceof ApiError
+                  ? t(`errors.${regrade.error.code}`, {
+                      defaultValue: t("practice.failed"),
+                    })
+                  : regrade.error.message
+                : null
+            }
             onRegrade={() => regrade.mutate()}
             onRetake={() =>
               void navigate({
@@ -779,12 +825,14 @@ function ResultSummary({
   regradeError,
   onRegrade,
   onRetake,
+  writable,
 }: {
   data: QuizTestDetail;
   regradePending: boolean;
   regradeError: string | null;
   onRegrade: () => void;
   onRetake: () => void;
+  writable: boolean;
 }) {
   const { t } = useTranslation();
   const counts = { correct: 0, wrong: 0, partial: 0, unscored: 0, review: 0 };
@@ -833,7 +881,9 @@ function ResultSummary({
           </p>
         ) : null}
       </div>
-      {data.status === "GRADING_FAILED" ? (
+      {writable &&
+      (data.status === "GRADING_FAILED" ||
+        (data.mode === "PLAN" && counts.unscored > 0)) ? (
         <Button
           variant="outline"
           className="mt-5 w-full"
@@ -841,7 +891,11 @@ function ResultSummary({
           onClick={onRegrade}
         >
           {regradePending ? <Spinner aria-hidden="true" /> : null}
-          {t("spaces.simulations.paper.result.regradeButton")}
+          {t(
+            data.mode === "PLAN"
+              ? "practice.recovery.retryGrading"
+              : "spaces.simulations.paper.result.regradeButton",
+          )}
         </Button>
       ) : null}
       {regradeError ? (

@@ -61,6 +61,17 @@ class QuizTest(Base):
         String(36), ForeignKey("practice_requirements.id", ondelete="CASCADE"), default=None
     )
     request_id: Mapped[str | None] = mapped_column(String(36), default=None)
+    preparation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("practice_preparations.id"), default=None
+    )
+
+
+class PracticeGradingRequest(Base):
+    __tablename__ = "practice_grading_requests"
+
+    request_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    test_id: Mapped[str] = mapped_column(ForeignKey("quiz_tests.id", ondelete="CASCADE"))
+    job_id: Mapped[str | None] = mapped_column(ForeignKey("processing_jobs.id", ondelete="CASCADE"))
 
 
 class QuizTestItem(Base):

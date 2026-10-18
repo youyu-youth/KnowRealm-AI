@@ -2,11 +2,12 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.learning_plan import practice, practice_round
 from app.modules.learning_plan.practice_schemas import (
+    PracticeGradingRetry,
     PracticePreparationOut,
     PracticePrepareRequest,
     PracticeRequirementsOut,
@@ -78,3 +79,17 @@ async def post_round(
             assert conflict is not None
             raise conflict
         return await practice_round.round_out(session, current)
+
+
+@router.post("/{item_id}/practice/rounds/{test_id}/retries", response_model=PracticeRoundOut)
+async def retry_round_grading(
+    item_id: UUID,
+    test_id: UUID,
+    payload: PracticeGradingRetry,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> PracticeRoundOut:
+    async with session.begin():
+        return await practice_round.retry_grading(
+            session, request.app.state.data_dir, str(item_id), str(test_id), payload
+        )
