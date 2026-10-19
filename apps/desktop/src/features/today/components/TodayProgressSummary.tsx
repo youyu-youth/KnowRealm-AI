@@ -9,7 +9,7 @@ export function TodayProgressSummary({
   const { t } = useTranslation();
   const minutes = progress.remaining_estimated_minutes;
   return (
-    <div className="shrink-0 px-4 py-3">
+    <div className="today-progress-summary shrink-0 px-4 py-2">
       <dl
         aria-label={t("today.progress.title")}
         className="text-label flex flex-wrap gap-x-6 gap-y-2"

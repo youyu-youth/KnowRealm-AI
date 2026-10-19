@@ -16,7 +16,6 @@ import type { TodayPlanItem } from "@/features/today/api/today";
 
 type Props = {
   item: TodayPlanItem;
-  index: number;
   expanded?: boolean;
   selected: boolean;
   busy: boolean;
@@ -27,7 +26,6 @@ type Props = {
 
 export function TodayPlanTask({
   item,
-  index,
   expanded = false,
   selected,
   busy,
@@ -39,11 +37,7 @@ export function TodayPlanTask({
   const navigate = useNavigate();
   return (
     <TodayItemMenu
-      className={
-        expanded
-          ? "today-plan-card"
-          : "today-task-row hover:bg-today-soft px-3 py-2.5 transition-colors"
-      }
+      className={expanded ? "today-plan-card" : "today-task-row"}
       title={item.content}
       data-selected={selected}
       quickAction={!expanded}
@@ -80,11 +74,6 @@ export function TodayPlanTask({
       ]}
     >
       {!expanded && (
-        <span className="today-task-rank" aria-hidden="true">
-          {String(index + 1).padStart(2, "0")}
-        </span>
-      )}
-      {!expanded && (
         <Checkbox
           aria-label={t("today.planTodos.completeLabel", {
             content: item.content,
@@ -108,27 +97,39 @@ export function TodayPlanTask({
           title={item.content}
         >
           <span
-            className={expanded ? "today-plan-card-title" : "block truncate"}
+            className={expanded ? "today-plan-card-title" : "today-task-title"}
           >
             {item.content}
           </span>
         </Link>
-        <p
-          className={
-            expanded
-              ? "today-plan-card-goal text-label text-ink-muted mt-2"
-              : "text-label text-ink-muted mt-0.5 truncate"
-          }
-          title={item.goal_title}
-        >
-          {item.goal_title}
-        </p>
+        {expanded && (
+          <p
+            className="today-plan-card-goal text-label text-ink-muted mt-2"
+            title={item.goal_title}
+          >
+            {item.goal_title}
+          </p>
+        )}
       </div>
-      <span className="today-plan-task-course text-label text-ink-muted break-words">
+      <span
+        className="today-plan-task-course text-label text-ink-muted break-words"
+        title={
+          expanded
+            ? item.course_name
+            : `${item.course_name} · ${item.goal_title}`
+        }
+      >
         {expanded && (
           <BookOpen className="size-4 shrink-0" aria-hidden="true" />
         )}
-        {item.course_name}
+        {expanded ? (
+          item.course_name
+        ) : (
+          <>
+            <span className="min-w-0 truncate">{item.course_name}</span>
+            <span className="min-w-0 truncate"> · {item.goal_title}</span>
+          </>
+        )}
       </span>
       <div className="today-plan-task-meta text-label text-ink-muted">
         <p className="text-label text-muted-foreground mt-0.5 grid gap-1">
@@ -153,13 +154,14 @@ export function TodayPlanTask({
       {busy ? (
         <span
           role="status"
-          className="text-label text-ink-muted flex items-center gap-1"
+          className="today-plan-task-status text-label text-ink-muted flex items-center gap-1"
         >
           <Spinner className="size-3" />
           {t("today.workspace.completing")}
         </span>
       ) : (
         <StatusTag
+          className="today-plan-task-status"
           tone={isOverdue(item.scheduled_date) ? "warning" : "neutral"}
         >
           {t(

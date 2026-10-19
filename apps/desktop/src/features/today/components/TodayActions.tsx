@@ -110,12 +110,9 @@ export function TodayActions({
         }
         className="today-actions-tabs gap-0"
       >
-        <div className="today-actions-toolbar border-border-subtle border-b px-2 pb-2">
-          <TabsList variant="line" className="today-actions-status h-auto p-0">
-            <TabsTrigger
-              value="pending"
-              className="data-active:text-today-accent data-active:after:bg-today-accent px-3 py-2"
-            >
+        <div className="today-actions-toolbar">
+          <TabsList className="today-actions-status">
+            <TabsTrigger value="pending">
               <span className="truncate">{t("today.workspace.toDo")}</span>{" "}
               <span className="ml-1 tabular-nums">
                 {data?.pending_count ?? "—"}
@@ -123,7 +120,6 @@ export function TodayActions({
             </TabsTrigger>
             <TabsTrigger
               value="done"
-              className="px-3 py-2"
               aria-label={`${t("today.progress.completed")} ${data?.completed_count ?? "—"}`}
             >
               <span className="truncate">
@@ -141,17 +137,6 @@ export function TodayActions({
           className="today-action-list m-0"
           tabIndex={0}
         >
-          <div
-            aria-hidden="true"
-            className="today-task-row today-task-header bg-today-soft text-label text-ink-muted px-3 py-2"
-          >
-            <span />
-            <span>{t("today.workspace.task")}</span>
-            <span>{t("today.workspace.courseColumn")}</span>
-            <span>{t("today.workspace.durationColumn")}</span>
-            <span>{t("today.workspace.statusColumn")}</span>
-            <span />
-          </div>
           <TodayTodos
             summaries={summaries}
             isSummariesPending={loading}

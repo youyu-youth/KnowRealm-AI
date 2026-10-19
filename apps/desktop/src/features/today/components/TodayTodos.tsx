@@ -109,18 +109,17 @@ export function TodayTodos({
         {t("today.todoTitle")}
       </h3>
       {hasPlanItems ? (
-        <div className="mt-2">
+        <div className="today-task-preview">
           <p className="text-label text-ink-faint font-label">
             {t("today.planTodos.groupLabel")}
           </p>
           <ul
             aria-label={t("today.planTodos.listLabel")}
-            className="divide-border-subtle mt-1.5 grid divide-y"
+            className="today-task-preview-list"
           >
-            {visibleItems.slice(0, 3).map((item, index) => (
+            {visibleItems.slice(0, 3).map((item) => (
               <li
                 key={item.item_id}
-                data-priority
                 className="min-w-0"
                 aria-busy={
                   complete.isPending &&
@@ -129,7 +128,6 @@ export function TodayTodos({
               >
                 <TodayPlanTask
                   item={item}
-                  index={index}
                   selected={selectedItemId === item.item_id}
                   busy={
                     complete.isPending &&
@@ -150,7 +148,7 @@ export function TodayTodos({
             render={
               <Button
                 ref={moreButton}
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 className="today-view-plans"
               />

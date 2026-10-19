@@ -101,7 +101,7 @@ export function TodayPlanItemsDialog({
             className="today-plan-card-grid"
             aria-label={t("today.planDialog.list")}
           >
-            {items.map((item, index) => (
+            {items.map((item) => (
               <li
                 key={item.item_id}
                 className="min-w-0"
@@ -110,7 +110,6 @@ export function TodayPlanItemsDialog({
                 <TodayPlanTask
                   expanded
                   item={item}
-                  index={index}
                   selected={selectedItemId === item.item_id}
                   busy={busyItemId === item.item_id}
                   disabled={isCompleting}
