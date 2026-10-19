@@ -174,6 +174,7 @@ describe("今日页统计带", () => {
     expect(screen.getByRole("tab", { name: /工作台/ })).toBeInTheDocument();
     expect(screen.getByText("近期学习产出")).toBeInTheDocument();
     expect(screen.getByText("AI 助手")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "学习流程与成就" }));
     expect(screen.getByText("学习成就")).toBeInTheDocument();
 
     expect(

@@ -78,17 +78,89 @@ function renderAt(path = "/") {
 }
 
 describe("今日页", () => {
+  it("从计划项窗口专注任务后关闭窗口，并将焦点移至专注区", async () => {
+    const tasks = Array.from({ length: 4 }, (_, index) => ({
+      item_id: `focus-task-${index}`,
+      plan_id: "plan",
+      course_id: COURSE_ID,
+      course_name: "操作系统",
+      goal_id: "goal",
+      goal_title: "比较进程调度策略",
+      action_type: "STUDY_RECORD",
+      content: `调度练习 ${index + 1}`,
+      scheduled_date: "2026-10-19",
+      estimated_minutes: 30,
+      user_locked: false,
+    }));
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/today/plan-items`, () =>
+        HttpResponse.json(tasks),
+      ),
+    );
+    renderAt();
+    fireEvent.click(await screen.findByRole("button", { name: /查看更多/ }));
+    const dialog = await screen.findByRole("dialog", { name: "今日计划项" });
+    const fourth = within(dialog).getAllByRole("listitem")[3];
+    fireEvent.click(within(fourth).getByRole("button", { name: "专注此任务" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(new URLSearchParams(window.location.search).get("task")).toBe(
+        tasks[3].item_id,
+      ),
+    );
+    const focusTitle = screen.getByRole("heading", { name: "当前专注" });
+    await waitFor(() => expect(focusTitle).toHaveFocus());
+    expect(focusTitle.closest("section")).toHaveTextContent(tasks[3].content);
+  });
+
+  it("资料示例联动切换，临时笔记与计时状态跨视图保留", async () => {
+    renderAt();
+    const recentMaterials = await screen.findByRole("region", {
+      name: "最近资料",
+    });
+    expect(within(recentMaterials).getAllByRole("button")).toHaveLength(3);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /MySQL 初始化脚本/ }),
+    );
+    const materials = screen.getByRole("region", { name: "学习资料" });
+    expect(
+      within(materials).getByRole("heading", { name: "MySQL 初始化脚本" }),
+    ).toBeVisible();
+    fireEvent.click(
+      within(materials).getByRole("button", { name: "下一份示例资料" }),
+    );
+    expect(
+      within(materials).getByRole("heading", { name: "Nginx 静态站点配置" }),
+    ).toBeVisible();
+    fireEvent.click(within(materials).getByRole("tab", { name: "随手笔记" }));
+    fireEvent.change(within(materials).getByRole("textbox"), {
+      target: { value: "比较命名卷与绑定挂载" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始" }));
+    fireEvent.click(screen.getByRole("tab", { name: /学习轨道/ }));
+    await screen.findByRole("heading", { name: "学习趋势" });
+    expect(screen.getByRole("button", { name: "暂停" })).toBeEnabled();
+    expect(within(materials).getByRole("textbox")).toHaveValue(
+      "比较命名卷与绑定挂载",
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /工作台/ }));
+    expect(screen.getByRole("button", { name: "暂停" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "结束" }));
+  });
+
   it("旧分区链接同时显示行动和待处理，切换学习轨道不再切换分区", async () => {
     renderAt("/?panel=pending");
     expect(
       await screen.findByRole("heading", { name: "待处理" }),
     ).toBeVisible();
-    expect(screen.getByRole("heading", { name: "今日行动" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "待办事项" })).toBeVisible();
     expect(
       screen.queryByRole("button", { name: "待处理" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "今日行动" }),
+      screen.queryByRole("button", { name: "待办事项" }),
     ).not.toBeInTheDocument();
     const focus = screen.getByRole("button", { name: "当前专注" });
     fireEvent.click(focus);
@@ -98,7 +170,7 @@ describe("今日页", () => {
       ),
     );
     expect(screen.getByRole("heading", { name: "待处理" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "今日行动" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "待办事项" })).toBeVisible();
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(focus).toHaveFocus());
     fireEvent.click(screen.getByRole("tab", { name: /学习轨道/ }));
@@ -149,7 +221,7 @@ describe("今日页", () => {
       await within(preview).findByText(generatedSummary.abstract),
     ).toBeInTheDocument();
     expect(previewReads).toBe(1);
-    expect(screen.getByRole("heading", { name: "今日行动" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "待办事项" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "待处理" })).toBeVisible();
     expect(
       within(preview).getByRole("link", { name: "查看并确认" }),
@@ -164,11 +236,14 @@ describe("今日页", () => {
   it("保留工作台内容并保持示意条目只读", async () => {
     renderAt();
 
+    fireEvent.click(
+      await screen.findByRole("button", { name: "学习流程与成就" }),
+    );
     expect(
       await screen.findByRole("heading", { name: "学习流程" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "今日行动" }),
+      screen.getByRole("heading", { name: "待办事项" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "近期学习产出" }),

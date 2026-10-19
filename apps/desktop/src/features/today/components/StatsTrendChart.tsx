@@ -13,6 +13,7 @@ function buildTrendOption(
   points: TodayTrendPoint[],
   showSymbol: boolean,
   t: TFunction,
+  bars: boolean,
 ) {
   const palette = chartPalette();
   const accent = cssVar("--today-accent");
@@ -25,7 +26,7 @@ function buildTrendOption(
   return {
     animation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     textStyle: { fontSize },
-    grid: { left: 32, right: 16, top: 24, bottom: 24 },
+    grid: { left: bars ? 8 : 32, right: 16, top: 24, bottom: 24 },
     tooltip: {
       trigger: "axis",
       ...darkTooltipStyle(),
@@ -35,7 +36,7 @@ function buildTrendOption(
     xAxis: {
       type: "category",
       data: points.map((point) => point.date),
-      boundaryGap: false,
+      boundaryGap: bars,
       axisTick: { show: false },
       axisLine: { lineStyle: { color: border } },
       axisLabel: {
@@ -46,6 +47,7 @@ function buildTrendOption(
       },
     },
     yAxis: {
+      show: !bars,
       type: "value",
       name: t("today.stats.trendUnit"),
       nameTextStyle: { color: muted, fontSize },
@@ -55,7 +57,16 @@ function buildTrendOption(
     },
     series: [
       {
-        type: "line",
+        type: bars ? "bar" : "line",
+        barMaxWidth: 10,
+        label: {
+          show: bars,
+          position: "top",
+          color: muted,
+          fontSize,
+          formatter: (item: { value: number }) =>
+            `${item.value}${t("today.stats.insights.unitH")}`,
+        },
         name: t("today.stats.title"),
         // y 轴以小时计；7 天档显示空心圆点，30 天档点距过密仅保留 tooltip。
         data: points.map((point) =>
@@ -66,7 +77,7 @@ function buildTrendOption(
         symbol: "circle",
         symbolSize: 6,
         itemStyle: {
-          color: palette.card,
+          color: bars ? accent : palette.card,
           borderColor: accent,
           borderWidth: 1.5,
         },
@@ -81,6 +92,7 @@ type StatsTrendChartProps = {
   showSymbol: boolean;
   ariaLabel: string;
   className?: string;
+  bars?: boolean;
 };
 
 export function StatsTrendChart({
@@ -88,10 +100,11 @@ export function StatsTrendChart({
   showSymbol,
   ariaLabel,
   className,
+  bars = false,
 }: StatsTrendChartProps) {
   const { t } = useTranslation();
   useAppearanceSnapshot();
-  const option = buildTrendOption(points, showSymbol, t);
+  const option = buildTrendOption(points, showSymbol, t, bars);
   return (
     <BaseChart option={option} ariaLabel={ariaLabel} className={className} />
   );

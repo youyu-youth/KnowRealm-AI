@@ -250,6 +250,58 @@
     "submitting": "正在导入"
   },
   "today": {
+    "planDialog": {
+      "viewMore": "查看更多",
+      "title": "今日计划项",
+      "count": "{{count}} 项待完成计划，包含已逾期的计划项",
+      "list": "全部今日计划项",
+      "close": "关闭计划项窗口"
+    },
+    "redesign": {
+      "taskTitle": "待办事项",
+      "sampleTask": "用 Docker Compose 编排多容器应用",
+      "sampleCourse": "Docker 与容器化 · 示例",
+      "sampleDescription": "通过 Docker Compose 编排 web + 数据库等多容器应用，理解服务依赖、命名卷与自定义网络。",
+      "learningGoal": "学习目标",
+      "goalProgress": "示例目标完成进度",
+      "sampleGoals": {
+        "0": "配置服务依赖（web、db、redis）",
+        "1": "创建命名卷，实现数据持久化",
+        "2": "自定义网络与服务互访",
+        "3": "启动并验证整体运行效果"
+      },
+      "nextTask": "换一项",
+      "materials": "学习资料",
+      "notes": "随手笔记",
+      "preparation": "最近资料",
+      "openLibrary": "资料库",
+      "previousMaterial": "上一份示例资料",
+      "nextMaterial": "下一份示例资料",
+      "codePreview": "示例代码预览",
+      "materialSampleHint": "示例资料，仅供预览；不会创建或修改本地文件。",
+      "noteHint": "本页临时草稿，离开今日后清空；正式记录请用速记。",
+      "notePlaceholder": "记下刚刚想到的内容…",
+      "quickCapture": "快速捕获",
+      "footerHint": "Esc 关闭预览 · Ctrl + K 打开命令面板",
+      "moreInsights": "学习流程与成就",
+      "examples": {
+        "compose": {
+          "title": "Docker Compose 配置（核心概念）",
+          "shortTitle": "docker-compose.yml 示例",
+          "description": "使用声明式配置描述多个服务，通过端口映射访问 web 应用，并连接数据库。"
+        },
+        "mysql": {
+          "title": "MySQL 初始化脚本",
+          "shortTitle": "MySQL 初始化脚本",
+          "description": "创建学习数据库与笔记表，演示容器启动阶段的基础数据初始化。"
+        },
+        "nginx": {
+          "title": "Nginx 静态站点配置",
+          "shortTitle": "Nginx 配置示例",
+          "description": "监听 HTTP 端口并提供静态页面，作为多容器应用的 web 服务示例。"
+        }
+      }
+    },
     "recentAssets": {
       "title": "近期学习产出",
       "filter": "筛选产出类型",
@@ -280,13 +332,13 @@
     "progress": {
       "title": "今日计划进展",
       "completed": "今日已完成",
+      "completedShort": "已完成",
       "pending": "待完成",
       "overdue": "其中逾期",
       "knownEstimated": "剩余已估时合计",
       "remaining": "剩余预计投入",
       "unestimated": "待估时",
       "unknownCount": "另有 {{count}} 项未估时",
-      "basis": "仅统计学习计划 · 按电脑本地日期 · 投入为预估",
       "completedAt": "完成于 {{time}}",
       "estimated": "预估 {{minutes}} 分钟",
       "version": "计划 v{{version}}",
@@ -294,6 +346,7 @@
       "emptyCompleted": "今天还没有完成的计划项。",
       "error": "今日进展暂时无法读取",
       "sortCompleted": "完成时间 ↓",
+      "sortCompletedShort": "完成 ↓",
       "selectedCourse": "已选课程",
       "pagination": "已完成列表分页",
       "previous": "上一页",
@@ -521,6 +574,8 @@
       "allCourses": "全部课程",
       "sort": "任务排序",
       "sortDate": "到期时间 ↑",
+      "sortDateShort": "到期 ↑",
+      "sortDurationShort": "时长 ↓",
       "sortDuration": "预估时长 ↓",
       "task": "任务",
       "columns": "课程 · 时长 · 状态",

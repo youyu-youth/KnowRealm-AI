@@ -36,6 +36,16 @@
   --course-cover-4-to: #c6bfd2;
   --course-cover-opacity: 0.09;
 
+  --today-focus-surface: #fac092;
+  --today-actions-header: color-mix(
+    in oklch,
+    var(--today-accent) 14%,
+    var(--today-surface)
+  );
+  --today-focus-ink: #282626;
+  --today-focus-muted: #655044;
+  --today-clock: #f0f1f4;
+  --today-clock-ink: #30323b;
   --today-ink: #253140;
   --today-muted: #617081;
   --today-border: #e1e6ed;
@@ -124,6 +134,11 @@
   --course-cover-4-to: #3d3745;
   --course-cover-opacity: 0.12;
 
+  --today-focus-surface: #583d30;
+  --today-focus-ink: #fff0e1;
+  --today-focus-muted: #e3c5b1;
+  --today-clock: #262930;
+  --today-clock-ink: #f2f3f5;
   --today-ink: #d5d8de;
   --today-muted: #9196a1;
   --today-border: #242831;
@@ -203,6 +218,11 @@
     --course-cover-4-to: #3d3745;
     --course-cover-opacity: 0.12;
 
+    --today-focus-surface: #583d30;
+    --today-focus-ink: #fff0e1;
+    --today-focus-muted: #e3c5b1;
+    --today-clock: #262930;
+    --today-clock-ink: #f2f3f5;
     --today-ink: #d5d8de;
     --today-muted: #9196a1;
     --today-border: #242831;

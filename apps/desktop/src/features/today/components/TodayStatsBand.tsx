@@ -138,6 +138,7 @@ export function TodayStatsBand({ compact = false }: { compact?: boolean }) {
                 </div>
               ) : null}
               <StatsTrendChart
+                bars={compact}
                 points={windowPoints}
                 showSymbol={days === 7}
                 ariaLabel={t("today.stats.trendChartLabel")}

@@ -250,6 +250,59 @@
     "submitting": "Importing"
   },
   "today": {
+    "planDialog": {
+      "viewMore": "View more",
+      "title": "Today's plan tasks",
+      "count_one": "{{count}} pending task, including overdue tasks",
+      "count_other": "{{count}} pending tasks, including overdue tasks",
+      "list": "All tasks due today",
+      "close": "Close plan tasks"
+    },
+    "redesign": {
+      "taskTitle": "Tasks",
+      "sampleTask": "Build a multi-container app with Docker Compose",
+      "sampleCourse": "Docker & containers · Example",
+      "sampleDescription": "Orchestrate web and database services with Docker Compose. Explore dependencies, named volumes and custom networks.",
+      "learningGoal": "Learning goal",
+      "goalProgress": "Example goal progress",
+      "sampleGoals": {
+        "0": "Configure service dependencies (web, db, redis)",
+        "1": "Persist data using named volumes",
+        "2": "Connect services on a custom network",
+        "3": "Start and verify the application"
+      },
+      "nextTask": "Next task",
+      "materials": "Study materials",
+      "notes": "Scratch notes",
+      "preparation": "Recent materials",
+      "openLibrary": "Library",
+      "previousMaterial": "Previous example material",
+      "nextMaterial": "Next example material",
+      "codePreview": "Example code preview",
+      "materialSampleHint": "Example materials for preview only. No local files are created or changed.",
+      "noteHint": "Temporary draft, cleared when you leave Today. Use Quick note to save a record.",
+      "notePlaceholder": "Capture a thought…",
+      "quickCapture": "Quick capture",
+      "footerHint": "Esc closes preview · Ctrl + K opens command palette",
+      "moreInsights": "Learning flow & achievements",
+      "examples": {
+        "compose": {
+          "title": "Docker Compose configuration (core concepts)",
+          "shortTitle": "docker-compose.yml example",
+          "description": "Declare services, expose a web application with port mapping, and connect a database."
+        },
+        "mysql": {
+          "title": "MySQL initialization script",
+          "shortTitle": "MySQL initialization script",
+          "description": "Create a learning database and notes table as an example of container initialization."
+        },
+        "nginx": {
+          "title": "Nginx static site configuration",
+          "shortTitle": "Nginx configuration example",
+          "description": "Listen for HTTP requests and serve static pages as the web service of a multi-container application."
+        }
+      }
+    },
     "recentAssets": {
       "title": "Recent learning outputs",
       "filter": "Filter output type",
@@ -288,6 +341,7 @@
     "progress": {
       "title": "Today's plan progress",
       "completed": "Completed today",
+      "completedShort": "Done",
       "pending": "To do",
       "overdue": "Overdue",
       "knownEstimated": "Known remaining estimate",
@@ -295,7 +349,6 @@
       "unestimated": "Not estimated",
       "unknownCount_one": "{{count}} more task without an estimate",
       "unknownCount_other": "{{count}} more tasks without estimates",
-      "basis": "Learning plans only · Computer's local date · Effort is estimated",
       "completedAt": "Completed at {{time}}",
       "estimated": "Estimated {{minutes}} min",
       "version": "Plan v{{version}}",
@@ -303,6 +356,7 @@
       "emptyCompleted": "No plan tasks completed today yet.",
       "error": "Today's progress could not be loaded",
       "sortCompleted": "Completion time ↓",
+      "sortCompletedShort": "Done ↓",
       "selectedCourse": "Selected course",
       "pagination": "Completed tasks pagination",
       "previous": "Previous",
@@ -530,6 +584,8 @@
       "allCourses": "All courses",
       "sort": "Sort tasks",
       "sortDate": "Due date ↑",
+      "sortDateShort": "Due ↑",
+      "sortDurationShort": "Time ↓",
       "sortDuration": "Estimated duration ↓",
       "task": "Task",
       "columns": "Course · Duration · Status",

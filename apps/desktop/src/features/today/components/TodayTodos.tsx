@@ -1,19 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-  ArrowRight,
-  CalendarClock,
-  Check,
-  ExternalLink,
-  Timer,
-} from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
-import { TodayItemMenu } from "@/features/today/components/TodayItemMenu";
+import { ArrowRight } from "lucide-react";
+import { useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogTrigger } from "@/components/ui/dialog";
+import { TodayPlanTask } from "@/features/today/components/TodayPlanTask";
+import { TodayPlanItemsDialog } from "@/features/today/components/TodayPlanItemsDialog";
 import { useTranslation } from "react-i18next";
 
-import { StatusTag } from "@/components/common/StatusTag";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Spinner } from "@/components/ui/spinner";
 import { useCompletePlanItem } from "@/features/learningPlan/api/learningPlan";
 import { toastMutationError } from "@/features/learningPlan/components/LearningPlanTab";
 import {
@@ -48,8 +42,10 @@ export function TodayTodos({
   selectedItemId,
   onFocus,
 }: TodayTodosProps) {
-  const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
+  const { t } = useTranslation();
+  const [allOpen, setAllOpen] = useState(false);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const returnToFocus = useRef(false);
   const planItems = useQuery({
     queryKey: todayKeys.planItems,
     queryFn: todayApi.planItems,
@@ -71,7 +67,7 @@ export function TodayTodos({
       </p>
     );
   }
-  if ((showSummaries && isSummariesError) || planItems.isError) {
+  if (!allOpen && ((showSummaries && isSummariesError) || planItems.isError)) {
     return (
       <div role="alert" className="border-border-subtle mt-4 border-t pt-4">
         <h3 className="text-body-dense text-destructive font-medium">
@@ -103,7 +99,7 @@ export function TodayTodos({
     );
   const hasPlanItems = visibleItems.length > 0;
   const hasSummaries = showSummaries && (summaries?.length ?? 0) > 0;
-  if (!hasPlanItems && !hasSummaries) {
+  if (!allOpen && !hasPlanItems && !hasSummaries) {
     return null;
   }
 
@@ -121,141 +117,76 @@ export function TodayTodos({
             aria-label={t("today.planTodos.listLabel")}
             className="divide-border-subtle mt-1.5 grid divide-y"
           >
-            {visibleItems.map((item) => (
+            {visibleItems.slice(0, 3).map((item, index) => (
               <li
                 key={item.item_id}
+                data-priority
                 className="min-w-0"
                 aria-busy={
                   complete.isPending &&
                   complete.variables?.itemId === item.item_id
                 }
               >
-                <TodayItemMenu
-                  className="today-task-row hover:bg-today-soft px-3 py-2.5 transition-colors"
-                  title={item.content}
-                  data-selected={selectedItemId === item.item_id}
-                  draggable
-                  onDragStart={(event) => {
-                    event.dataTransfer.setData(
-                      "application/x-knowrealm-plan-item",
-                      item.item_id,
-                    );
-                    event.dataTransfer.effectAllowed = "copy";
-                  }}
-                  actions={[
-                    {
-                      label: t("today.workspace.focusSelected"),
-                      icon: Timer,
-                      run: () => onFocus(item.item_id),
-                    },
-                    {
-                      label: t("today.workspace.openPlan"),
-                      icon: ExternalLink,
-                      run: () =>
-                        void navigate({
-                          to: "/spaces/$courseId",
-                          params: { courseId: item.course_id },
-                          search: { tab: "plan" },
-                        }),
-                    },
-                    {
-                      label: t("today.workspace.markComplete"),
-                      icon: Check,
-                      disabled:
-                        complete.isPending &&
-                        complete.variables?.itemId === item.item_id,
-                      run: () => completeItem(item),
-                    },
-                  ]}
-                >
-                  <Checkbox
-                    aria-label={t("today.planTodos.completeLabel", {
-                      content: item.content,
-                    })}
-                    // 受控绑定未完成态（计划 Tab checked={done} 同构）：列表项
-                    // 本就只含待学项、完成即随缓存失效离开列表，恒 false 让
-                    // 失败回执后不可能残留假勾选（非受控点击即翻转，会与
-                    // 服务端 PENDING 不一致）。
-                    checked={false}
-                    disabled={
-                      complete.isPending &&
-                      complete.variables?.itemId === item.item_id
-                    }
-                    onCheckedChange={() => completeItem(item)}
-                    className="mt-1"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      to="/spaces/$courseId"
-                      params={{ courseId: item.course_id }}
-                      search={{ tab: "plan" }}
-                      className="hover:text-today-accent block font-medium transition-colors"
-                      title={item.content}
-                    >
-                      <span className="line-clamp-2 break-words">
-                        {item.content}
-                      </span>
-                    </Link>
-                    <p
-                      className="text-label text-ink-muted mt-0.5 truncate"
-                      title={item.goal_title}
-                    >
-                      {item.goal_title}
-                    </p>
-                  </div>
-                  <span className="text-label text-ink-muted break-words">
-                    {item.course_name}
-                  </span>
-                  <div className="text-label text-ink-muted">
-                    <p className="text-label text-muted-foreground mt-0.5 grid gap-1">
-                      {item.estimated_minutes != null ? (
-                        <span>
-                          {t("today.planTodos.minutes", {
-                            minutes: item.estimated_minutes,
-                          })}
-                        </span>
-                      ) : null}
-                      <span
-                        className="inline-flex items-center gap-0.5"
-                        title={t("today.planTodos.scheduledTitle")}
-                      >
-                        <CalendarClock aria-hidden="true" className="size-3" />
-                        {formatDueLabel(
-                          item.scheduled_date,
-                          i18n.resolvedLanguage,
-                          t,
-                        )}
-                      </span>
-                    </p>
-                  </div>
-                  {complete.isPending &&
-                  complete.variables?.itemId === item.item_id ? (
-                    <span
-                      role="status"
-                      className="text-label text-ink-muted flex items-center gap-1"
-                    >
-                      <Spinner className="size-3" />
-                      {t("today.workspace.completing")}
-                    </span>
-                  ) : (
-                    <StatusTag
-                      tone={
-                        isOverdue(item.scheduled_date) ? "warning" : "neutral"
-                      }
-                    >
-                      {t(
-                        isOverdue(item.scheduled_date)
-                          ? "today.planTodos.overdue"
-                          : "today.workspace.notStarted",
-                      )}
-                    </StatusTag>
-                  )}
-                </TodayItemMenu>
+                <TodayPlanTask
+                  item={item}
+                  index={index}
+                  selected={selectedItemId === item.item_id}
+                  busy={
+                    complete.isPending &&
+                    complete.variables?.itemId === item.item_id
+                  }
+                  disabled={complete.isPending}
+                  onFocus={onFocus}
+                  onComplete={completeItem}
+                />
               </li>
             ))}
           </ul>
         </div>
       ) : null}
+      {(hasPlanItems || allOpen) && (
+        <Dialog open={allOpen} onOpenChange={setAllOpen}>
+          <DialogTrigger
+            render={
+              <Button
+                ref={moreButton}
+                variant="outline"
+                size="sm"
+                className="today-view-plans"
+              />
+            }
+          >
+            {t("today.planDialog.viewMore")}
+            <span className="tabular-nums">{visibleItems.length}</span>
+            <ArrowRight aria-hidden="true" />
+          </DialogTrigger>
+          <TodayPlanItemsDialog
+            items={visibleItems}
+            allItems={planItems.data ?? []}
+            selectedItemId={selectedItemId}
+            busyItemId={
+              complete.isPending ? complete.variables?.itemId : undefined
+            }
+            isCompleting={complete.isPending}
+            error={planItems.isError}
+            onRetry={() => void planItems.refetch()}
+            onComplete={completeItem}
+            onFocus={(id) => {
+              returnToFocus.current = true;
+              setAllOpen(false);
+              onFocus(id);
+            }}
+            finalFocus={() => {
+              const target = returnToFocus.current
+                ? document.getElementById("today-focus-title")
+                : (moreButton.current ??
+                  document.getElementById("today-actions-title"));
+              returnToFocus.current = false;
+              return target;
+            }}
+          />
+        </Dialog>
+      )}
       {hasSummaries ? (
         <div className={hasPlanItems ? "mt-3" : "mt-2"}>
           <p className="text-label text-ink-faint font-label">
@@ -295,35 +226,4 @@ export function TodayTodos({
       ) : null}
     </div>
   );
-}
-
-// 排期日是按日字符串：与「今日零点」直接比 Date 即得两档判断（逾期 / 即今天）。
-function startOfDay(value: Date): number {
-  return new Date(
-    value.getFullYear(),
-    value.getMonth(),
-    value.getDate(),
-  ).getTime();
-}
-
-function isOverdue(scheduledDate: string): boolean {
-  return (
-    startOfDay(new Date(`${scheduledDate}T00:00:00`)) < startOfDay(new Date())
-  );
-}
-
-// 排期日即今天显示「今天」，早于今天显示月日（逾期徽章另标）。
-function formatDueLabel(
-  scheduledDate: string,
-  language: string | undefined,
-  t: (key: string) => string,
-): string {
-  const due = new Date(`${scheduledDate}T00:00:00`);
-  if (startOfDay(due) === startOfDay(new Date())) {
-    return t("today.planTodos.today");
-  }
-  return new Intl.DateTimeFormat(language, {
-    month: "short",
-    day: "numeric",
-  }).format(due);
 }

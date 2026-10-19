@@ -7,6 +7,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { todayKeys } from "@/features/today/api/keys";
 import { todayApi } from "@/features/today/api/today";
 import { TodayActions } from "@/features/today/components/TodayActions";
+import { TodayStudyMaterials } from "@/features/today/components/TodayStudyMaterials";
+import { TodayMaterialPreparation } from "@/features/today/components/TodayMaterialPreparation";
 import { TodayAssets } from "@/features/today/components/TodayAssets";
 import { TodayFocus } from "@/features/today/components/TodayFocus";
 import { TodayPending } from "@/features/today/components/TodayPending";
@@ -27,6 +29,7 @@ export function TodayOverview() {
     task: focusedItemId,
   } = useSearch({ from: "/" });
   const navigate = useNavigate({ from: "/" });
+  const [materialIndex, setMaterialIndex] = useState(0);
   const [draggingTask, setDraggingTask] = useState(false);
   const now = useTodayRefresh();
   const pending = useQuery({
@@ -120,7 +123,9 @@ export function TodayOverview() {
         )
         ?.focus({ preventScroll: true });
       document
-        .getElementById("today-pane-review")
+        .getElementById(
+          detail === "summary" ? "today-pane-review" : "today-focus-title",
+        )
         ?.scrollIntoView({ block: "nearest" });
     });
     return () => window.cancelAnimationFrame(frame);
@@ -208,99 +213,111 @@ export function TodayOverview() {
           </div>
         </header>
         <div
-          className="today-grid"
-          onDragStart={(event) => {
-            if (
-              event.dataTransfer.types.includes(
-                "application/x-knowrealm-plan-item",
-              )
-            )
-              setDraggingTask(true);
-          }}
-          onDragEnd={() => setDraggingTask(false)}
-          data-inspector={detail ?? "closed"}
+          className="today-page-scroll"
           tabIndex={0}
           role="region"
           aria-label={t("today.workspace.workArea")}
         >
-          <div id="today-pane-actions" className="today-center min-w-0">
-            <TabsContent
-              value="workbench"
-              className="today-center-content today-workbench m-0 flex flex-col gap-3"
-              tabIndex={0}
-            >
-              <TodayActions
-                summaries={pending.data}
-                loading={pending.isPending}
-                error={pending.isError}
-                onRetry={() => void pending.refetch()}
-                selectedItemId={focusedItemId}
-                onFocus={openFocus}
-              />
-              <div className="today-secondary">
-                <TodayStatsBand compact />
-                <TodayQuickStart />
+          <TabsContent value={view} keepMounted className="m-0">
+            {view === "orbit" && (
+              <div className="today-orbit">
+                <TodayStatsBand />
               </div>
-            </TabsContent>
-            <TabsContent
-              value="orbit"
-              className="today-center-content m-0"
-              tabIndex={0}
-            >
-              <TodayStatsBand />
-              <div className="mt-3">
-                <TodayQuickStart />
-              </div>
-            </TabsContent>
-          </div>
-          <aside
-            id="today-pane-pending"
-            aria-label={t("today.workspace.pending")}
-            className="today-pending-workspace today-left"
-            tabIndex={0}
-          >
-            <TodayPending
-              summaries={pending.data ?? []}
-              pending={pending.isPending}
-              error={pending.isError}
-              onRetry={() => void pending.refetch()}
-              selectedId={selected?.record_id}
-              onSelect={(id) => {
-                void navigate({
-                  search: (previous) => ({
-                    ...previous,
-                    record: id,
-                    panel: "review",
-                    inspector: "summary",
-                  }),
-                  resetScroll: false,
-                  replace: true,
-                });
-              }}
-            />
+            )}
             <div
-              className="today-assets-list"
-              role="region"
-              aria-label={t("today.recentAssets.title")}
-              tabIndex={0}
+              className="today-grid"
+              data-inspector={detail ?? "closed"}
+              onDragStart={(event) => {
+                if (
+                  event.dataTransfer.types.includes(
+                    "application/x-knowrealm-plan-item",
+                  )
+                )
+                  setDraggingTask(true);
+              }}
+              onDragEnd={() => setDraggingTask(false)}
             >
-              <TodayAssets />
+              <div id="today-pane-actions" className="today-task-column">
+                <TodayActions
+                  summaries={pending.data}
+                  loading={pending.isPending}
+                  error={pending.isError}
+                  onRetry={() => void pending.refetch()}
+                  selectedItemId={focusTask?.item_id}
+                  onFocus={openFocus}
+                />
+              </div>
+              <div className="today-focus-column">
+                <TodayFocus
+                  task={focusTask}
+                  onDropTask={openFocus}
+                  onNextTask={
+                    plans.data && plans.data.length > 1
+                      ? () => {
+                          const items = plans.data;
+                          if (!items?.length) return;
+                          const index = items.findIndex(
+                            (item) => item.item_id === focusTask?.item_id,
+                          );
+                          openFocus(items[(index + 1) % items.length].item_id);
+                        }
+                      : undefined
+                  }
+                />
+                <TodayStudyMaterials
+                  selected={materialIndex}
+                  onSelect={setMaterialIndex}
+                />
+              </div>
+              <aside
+                id="today-pane-pending"
+                aria-label={t("today.workspace.pending")}
+                className="today-pending-workspace"
+              >
+                <TodayMaterialPreparation
+                  selected={materialIndex}
+                  onSelect={setMaterialIndex}
+                />
+                <TodayPending
+                  summaries={pending.data ?? []}
+                  pending={pending.isPending}
+                  error={pending.isError}
+                  onRetry={() => void pending.refetch()}
+                  selectedId={selected?.record_id}
+                  onSelect={(id) => {
+                    void navigate({
+                      search: (previous) => ({
+                        ...previous,
+                        record: id,
+                        panel: "review",
+                        inspector: "summary",
+                      }),
+                      resetScroll: false,
+                      replace: true,
+                    });
+                  }}
+                />
+                <div
+                  className="today-assets-list"
+                  role="region"
+                  aria-label={t("today.recentAssets.title")}
+                  tabIndex={0}
+                >
+                  <TodayAssets />
+                </div>
+              </aside>
             </div>
-          </aside>
+            <TodayQuickStart showStats={view !== "orbit"} />
+          </TabsContent>
           <aside
             id="today-pane-review"
             aria-label={t("today.rightRail.label")}
-            className="today-rail min-w-0"
-            data-detail={detail}
-            tabIndex={0}
+            className="today-summary-inspector"
+            hidden={detail !== "summary"}
           >
             <div className="today-inspector-toolbar flex items-center justify-between gap-2 px-3 py-2">
               <p className="text-label text-ink-muted">
-                {t(
-                  detail === "summary"
-                    ? "today.workspace.preview.tab"
-                    : "today.workspace.focus.title",
-                )}
+                {t("today.workspace.preview.tab")}
               </p>
               <Button
                 size="icon-sm"
@@ -318,18 +335,13 @@ export function TodayOverview() {
                   });
                   document
                     .querySelector<HTMLButtonElement>(
-                      detail === "summary"
-                        ? `.today-pending [aria-controls="today-summary-preview"][aria-pressed="true"]`
-                        : "#today-focus-trigger",
+                      `.today-pending [aria-controls="today-summary-preview"][aria-pressed="true"]`,
                     )
                     ?.focus();
                 }}
               >
                 <PanelRightClose aria-hidden="true" />
               </Button>
-            </div>
-            <div className="today-focus-slot">
-              <TodayFocus task={focusTask} onDropTask={openFocus} />
             </div>
             <TodaySummaryPreview
               key={selected?.record_id ?? "sample"}
@@ -339,6 +351,12 @@ export function TodayOverview() {
               active={detail === "summary"}
             />
           </aside>
+          <footer className="today-footer text-label text-ink-muted">
+            <HardDrive className="size-3.5" aria-hidden="true" />
+            {t("today.workspace.local")}
+            <span aria-hidden="true">·</span>
+            {t("today.redesign.footerHint")}
+          </footer>
         </div>
       </Tabs>
     </div>

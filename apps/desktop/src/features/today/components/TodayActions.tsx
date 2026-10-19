@@ -3,18 +3,12 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { todayApi, type TodaySummaryTodo } from "@/features/today/api/today";
 import { todayKeys } from "@/features/today/api/keys";
 import { TodayProgressSummary } from "@/features/today/components/TodayProgressSummary";
 import { TodayCompletedTasks } from "@/features/today/components/TodayCompletedTasks";
+import { TodayPlanFilters } from "@/features/today/components/TodayPlanFilters";
 import { TodayTodos } from "@/features/today/components/TodayTodos";
 
 type Props = {
@@ -67,40 +61,41 @@ export function TodayActions({
       });
     }
   }, [data, navigate, page]);
-  const dateSortLabel = t(
-    status === "done"
-      ? "today.progress.sortCompleted"
-      : "today.workspace.sortDate",
-  );
   return (
     <section
       aria-labelledby="today-actions-title"
       className="today-panel today-actions"
     >
-      <h2 id="today-actions-title" className="today-heading shrink-0 px-4 pt-4">
-        {t("today.workspace.actions")}
-      </h2>
-      {progress.isError ? (
-        <div
-          role="alert"
-          className="text-label text-destructive shrink-0 px-4 py-2"
+      <div className="today-actions-header">
+        <h2
+          tabIndex={-1}
+          id="today-actions-title"
+          className="today-heading shrink-0 px-4 pt-4"
         >
-          {t("today.progress.error")}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void progress.refetch()}
+          {t("today.redesign.taskTitle")}
+        </h2>
+        {progress.isError ? (
+          <div
+            role="alert"
+            className="text-label text-destructive shrink-0 px-4 py-2"
           >
-            {t("today.retry")}
-          </Button>
-        </div>
-      ) : data ? (
-        <TodayProgressSummary progress={data} />
-      ) : (
-        <p role="status" className="text-label text-ink-muted px-4 py-2">
-          {t("today.loading")}
-        </p>
-      )}
+            {t("today.progress.error")}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void progress.refetch()}
+            >
+              {t("today.retry")}
+            </Button>
+          </div>
+        ) : data ? (
+          <TodayProgressSummary progress={data} />
+        ) : (
+          <p role="status" className="text-label text-ink-muted px-4 py-2">
+            {t("today.loading")}
+          </p>
+        )}
+      </div>
       <Tabs
         value={status}
         onValueChange={(value) =>
@@ -113,95 +108,33 @@ export function TodayActions({
             replace: true,
           })
         }
-        className="today-actions-tabs mt-2 gap-0"
+        className="today-actions-tabs gap-0"
       >
-        <div className="today-actions-toolbar border-border-subtle flex flex-wrap items-center justify-between gap-2 border-b px-3 pb-2">
-          <TabsList variant="line" className="h-auto p-0">
+        <div className="today-actions-toolbar border-border-subtle border-b px-2 pb-2">
+          <TabsList variant="line" className="today-actions-status h-auto p-0">
             <TabsTrigger
               value="pending"
               className="data-active:text-today-accent data-active:after:bg-today-accent px-3 py-2"
             >
-              {t("today.workspace.toDo")}{" "}
+              <span className="truncate">{t("today.workspace.toDo")}</span>{" "}
               <span className="ml-1 tabular-nums">
                 {data?.pending_count ?? "—"}
               </span>
             </TabsTrigger>
-            <TabsTrigger value="done" className="px-3 py-2">
-              {t("today.progress.completed")}{" "}
+            <TabsTrigger
+              value="done"
+              className="px-3 py-2"
+              aria-label={`${t("today.progress.completed")} ${data?.completed_count ?? "—"}`}
+            >
+              <span className="truncate">
+                {t("today.progress.completedShort")}
+              </span>
               <span className="ml-1 tabular-nums">
                 {data?.completed_count ?? "—"}
               </span>
             </TabsTrigger>
           </TabsList>
-          <div className="flex flex-wrap gap-2">
-            <Select
-              value={course}
-              onValueChange={(value) =>
-                void navigate({
-                  search: (previous) => ({
-                    ...previous,
-                    course: value ?? "all",
-                    completed_page: 1,
-                  }),
-                  replace: true,
-                })
-              }
-            >
-              <SelectTrigger
-                size="sm"
-                aria-label={t("today.workspace.courseFilter")}
-                className="text-label max-w-40"
-              >
-                <SelectValue>
-                  {course === "all"
-                    ? t("today.workspace.allCourses")
-                    : (courses.find((item) => item.course_id === course)
-                        ?.course_name ?? t("today.progress.selectedCourse"))}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">
-                  {t("today.workspace.allCourses")}
-                </SelectItem>
-                {courses.map((item) => (
-                  <SelectItem key={item.course_id} value={item.course_id}>
-                    {item.course_name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={order}
-              onValueChange={(value) =>
-                void navigate({
-                  search: (previous) => ({
-                    ...previous,
-                    order: value === "duration" ? "duration" : "date",
-                    completed_page: 1,
-                  }),
-                  replace: true,
-                })
-              }
-            >
-              <SelectTrigger
-                size="sm"
-                aria-label={t("today.workspace.sort")}
-                className="text-label"
-              >
-                <SelectValue>
-                  {order === "duration"
-                    ? t("today.workspace.sortDuration")
-                    : dateSortLabel}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="date">{dateSortLabel}</SelectItem>
-                <SelectItem value="duration">
-                  {t("today.workspace.sortDuration")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <TodayPlanFilters courses={courses} />
         </div>
         <TabsContent
           value="pending"

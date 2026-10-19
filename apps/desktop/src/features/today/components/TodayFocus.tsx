@@ -1,7 +1,8 @@
-import { Clock3, Pause, Play, Square, Timer } from "lucide-react";
+import { Pause, Play, Settings2, Shuffle, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { StatusTag } from "@/components/common/StatusTag";
 import {
   Dialog,
@@ -18,9 +19,11 @@ import type { TodayPlanItem } from "@/features/today/api/today";
 export function TodayFocus({
   task,
   onDropTask,
+  onNextTask,
 }: {
   task?: TodayPlanItem;
   onDropTask?: (id: string) => void;
+  onNextTask?: () => void;
 }) {
   const { t } = useTranslation();
   const [dragOver, setDragOver] = useState(false);
@@ -31,9 +34,11 @@ export function TodayFocus({
   );
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("25");
+  const [goals, setGoals] = useState([true, true, false, false]);
   const deadline = useRef(0);
   const [boundTask, setBoundTask] = useState<TodayPlanItem>();
-  const activeTask = phase === "ready" ? task : boundTask;
+  const activeTask =
+    phase === "running" || phase === "paused" ? boundTask : task;
 
   useEffect(() => {
     if (phase !== "running") return;
@@ -96,84 +101,149 @@ export function TodayFocus({
         if (id) onDropTask?.(id);
       }}
     >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2
-          id="today-focus-title"
-          tabIndex={-1}
-          className="today-heading flex items-center gap-2"
-        >
-          <Timer className="size-5" aria-hidden="true" />
-          {t("today.workspace.focus.title")}
-        </h2>
-        <div className="flex items-center gap-2">
-          <StatusTag>{t("today.stats.insights.sampleTag")}</StatusTag>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={phase === "running" || phase === "paused"}
-            onClick={() => {
-              setDraft(String(duration));
-              setEditing(true);
-            }}
+      <div className="today-focus-copy">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2
+            id="today-focus-title"
+            tabIndex={-1}
+            className="text-label font-semibold"
           >
-            {t("today.workspace.focus.edit")}
-          </Button>
+            {t("today.workspace.focus.title")}
+          </h2>
+          <span className="text-label today-focus-meta">
+            {activeTask?.course_name ?? t("today.redesign.sampleCourse")}
+          </span>
+          {!activeTask && (
+            <StatusTag>{t("today.stats.insights.sampleTag")}</StatusTag>
+          )}
         </div>
+        <p className="today-focus-task" title={activeTask?.content}>
+          {activeTask?.content ?? t("today.redesign.sampleTask")}
+        </p>
+        <p className="today-focus-description">
+          {activeTask?.goal_title ?? t("today.redesign.sampleDescription")}
+        </p>
+        <div className="today-focus-goals">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-body font-semibold">
+              {t("today.redesign.learningGoal")}
+            </p>
+            {activeTask ? (
+              <span className="text-label">
+                {activeTask.estimated_minutes == null
+                  ? t("today.progress.unestimated")
+                  : t("today.planTodos.minutes", {
+                      minutes: activeTask.estimated_minutes,
+                    })}
+              </span>
+            ) : (
+              <>
+                <span className="text-body font-semibold tabular-nums">
+                  {goals.filter(Boolean).length} / {goals.length}
+                </span>
+                <progress
+                  className="today-goal-progress"
+                  value={goals.filter(Boolean).length}
+                  max={goals.length}
+                  aria-label={t("today.redesign.goalProgress")}
+                />
+                <span className="text-label tabular-nums">
+                  {Math.round(
+                    (goals.filter(Boolean).length / goals.length) * 100,
+                  )}
+                  %
+                </span>
+              </>
+            )}
+          </div>
+          {activeTask ? (
+            <p className="text-label mt-3 break-words">
+              {activeTask.goal_title} · {activeTask.scheduled_date}
+            </p>
+          ) : (
+            <div className="today-goal-list">
+              {goals.map((checked, index) => (
+                <label key={index} className="flex items-start gap-2">
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(value) =>
+                      setGoals((previous) =>
+                        previous.map((goal, i) =>
+                          i === index ? value === true : goal,
+                        ),
+                      )
+                    }
+                  />
+                  <span>{t(`today.redesign.sampleGoals.${index}`)}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+        {task &&
+          boundTask?.item_id !== task.item_id &&
+          (phase === "running" || phase === "paused") && (
+            <p role="status" className="text-label mt-3">
+              {t("today.workspace.nextFocus", { title: task.content })}
+            </p>
+          )}
+        <p className="text-label today-focus-meta mt-3">
+          {t("today.workspace.focus.demoHint")}
+        </p>
       </div>
-      <div className="today-focus-layout mt-4 flex flex-wrap items-center justify-center gap-4">
-        <div className="today-focus-timer size-today-timer relative shrink-0">
+      <div className="today-focus-clock-column">
+        <div className="today-focus-timer">
           <svg
-            viewBox="0 0 160 160"
-            className="size-full -rotate-90"
+            viewBox="0 0 200 200"
+            className="today-clock-ticks"
             aria-hidden="true"
           >
             <circle
-              cx="80"
-              cy="80"
-              r="70"
+              cx="100"
+              cy="100"
+              r="94"
               fill="none"
-              stroke="var(--today-border)"
-              strokeWidth="9"
+              stroke="var(--today-surface)"
+              strokeWidth="7"
             />
+            {Array.from({ length: 30 }, (_, index) => (
+              <line
+                key={index}
+                x1="100"
+                y1="17"
+                x2="100"
+                y2={index % 5 === 0 ? "28" : "24"}
+                transform={`rotate(${index * 12} 100 100)`}
+                stroke="currentColor"
+                strokeWidth={index % 5 === 0 ? "1.5" : "1"}
+              />
+            ))}
             <circle
-              cx="80"
-              cy="80"
-              r="70"
+              cx="100"
+              cy="100"
+              r="94"
               fill="none"
-              stroke="var(--today-focus)"
-              strokeWidth="9"
-              strokeLinecap="round"
+              stroke="var(--today-focus-muted)"
+              strokeWidth="3"
               pathLength="100"
               strokeDasharray={`${progress * 100} 100`}
+              transform="rotate(-90 100 100)"
             />
           </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className="today-clock-content">
             <p
               role="timer"
               aria-label={t("today.workspace.focus.remaining")}
-              className="text-stat font-headline tabular-nums"
+              className="today-clock-time"
             >
               {time}
             </p>
-            <p className="text-label text-ink-muted mt-1">
+            <p className="text-label mt-1">
               {t(`today.workspace.focus.${phase}`)}
             </p>
-          </div>
-        </div>
-        <div className="today-focus-controls min-w-0 flex-1 basis-32">
-          <p
-            className="text-body line-clamp-2 font-semibold break-words"
-            title={activeTask?.content}
-          >
-            {activeTask?.content ?? t("today.workspace.focus.sampleTask")}
-          </p>
-          <p className="text-label text-ink-muted mt-1">
-            {activeTask?.course_name ?? t("today.workspace.focus.sampleCourse")}
-          </p>
-          <div className="mt-3 flex gap-2">
             <Button
-              variant="outline"
-              className="h-8 min-w-0 flex-1 gap-1 px-2 text-xs"
+              className="today-clock-start mt-3"
+              size="sm"
               onClick={
                 phase === "running"
                   ? () => {
@@ -197,48 +267,55 @@ export function TodayFocus({
                 `today.workspace.focus.${phase === "running" ? "pause" : phase === "paused" ? "resume" : "start"}`,
               )}
             </Button>
-            <Button
-              variant="outline"
-              className="h-8 gap-1 px-2 text-xs"
-              disabled={phase === "ready" || phase === "ended"}
-              onClick={() => {
-                setRemaining(0);
-                setPhase("ended");
-              }}
-            >
-              <Square aria-hidden="true" />
-              {t("today.workspace.focus.end")}
-            </Button>
           </div>
         </div>
-      </div>
-      {task &&
-      boundTask?.item_id !== task.item_id &&
-      (phase === "running" || phase === "paused") ? (
-        <p role="status" className="text-label text-ink-muted mt-3">
-          {t("today.workspace.nextFocus", { title: task.content })}
-        </p>
-      ) : null}
-      {onDropTask ? (
-        <p className="text-label text-ink-muted mt-3">
-          {t("today.workspace.dropFocus")}
-        </p>
-      ) : null}
-      <p className="text-label text-ink-muted mt-3 flex items-center justify-center gap-1">
-        <Clock3 className="size-3.5" aria-hidden="true" />
-        {t("today.workspace.focus.switchHint")}
-      </p>
-      <div className="border-border-subtle text-label text-ink-muted mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-        <span>
+        <div className="today-focus-buttons">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={phase === "running" || phase === "paused" || !onNextTask}
+            onClick={onNextTask}
+          >
+            <Shuffle aria-hidden="true" />
+            {t("today.redesign.nextTask")}
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label={t("today.workspace.focus.edit")}
+            disabled={phase === "running" || phase === "paused"}
+            onClick={() => {
+              setDraft(String(duration));
+              setEditing(true);
+            }}
+          >
+            <Settings2 aria-hidden="true" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={phase === "ready" || phase === "ended"}
+            onClick={() => {
+              setRemaining(0);
+              setPhase("ended");
+            }}
+          >
+            <Square aria-hidden="true" />
+            {t("today.workspace.focus.end")}
+          </Button>
+        </div>
+        <p className="text-label today-focus-meta mt-2 text-center">
           {t("today.workspace.focus.progress", {
             elapsed: Math.floor((duration * 60 - remaining) / 60),
             duration,
           })}
-        </span>
+        </p>
+        {onDropTask && (
+          <p className="text-label today-focus-meta mt-1 text-center">
+            {t("today.workspace.dropFocus")}
+          </p>
+        )}
       </div>
-      <p className="text-label text-ink-muted mt-2">
-        {t("today.workspace.focus.demoHint")}
-      </p>
       <Dialog open={editing} onOpenChange={setEditing}>
         <DialogContent>
           <DialogHeader>

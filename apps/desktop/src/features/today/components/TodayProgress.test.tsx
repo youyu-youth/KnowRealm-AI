@@ -5,6 +5,7 @@ import {
   fireEvent,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   createMemoryHistory,
@@ -97,6 +98,161 @@ afterEach(() => {
 });
 
 describe("今日真实进展", () => {
+  it("首屏只显示三项，查看更多打开全部卡片，关闭返回原入口", async () => {
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/today/plan-items`, () =>
+        HttpResponse.json(
+          Array.from({ length: 8 }, (_, index) => ({
+            ...item,
+            item_id: `task-${index}`,
+            content: `学习任务 ${index + 1}`,
+          })),
+        ),
+      ),
+      http.get(endpoint, () =>
+        HttpResponse.json({ ...progress, pending_count: 8 }),
+      ),
+    );
+    renderAt();
+    expect(
+      await screen.findByRole("link", { name: "学习任务 1" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: "学习任务 4" }),
+    ).not.toBeInTheDocument();
+    const more = screen.getByRole("button", { name: /查看更多/ });
+    fireEvent.click(more);
+    const dialog = await screen.findByRole("dialog", { name: "今日计划项" });
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(8);
+    expect(
+      within(dialog).getByRole("link", { name: "学习任务 8" }),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByRole("button", { name: "完成计划项「学习任务 8」" }),
+    ).toBeEnabled();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await waitFor(() => expect(more).toHaveFocus());
+    expect(
+      screen.queryByRole("link", { name: "学习任务 8" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("窗口内完成失败保留卡片，成功后同步列表，最后一项完成后可关闭空窗口", async () => {
+    let done = false;
+    let fail = true;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/today/plan-items`, () =>
+        HttpResponse.json(done ? [] : [item]),
+      ),
+      http.get(endpoint, () =>
+        HttpResponse.json({
+          ...progress,
+          pending_count: done ? 0 : 1,
+          completed_count: done ? 1 : 0,
+        }),
+      ),
+      http.post(
+        `${TEST_SIDECAR_URL}/api/courses/${item.course_id}/plans/${item.plan_id}/items/${item.item_id}/complete`,
+        () => {
+          if (fail)
+            return HttpResponse.json({ detail: "failed" }, { status: 500 });
+          done = true;
+          return HttpResponse.json({});
+        },
+      ),
+    );
+    renderAt();
+    fireEvent.click(await screen.findByRole("button", { name: /查看更多/ }));
+    const dialog = await screen.findByRole("dialog", { name: "今日计划项" });
+    const complete = within(dialog).getByRole("button", { name: /完成计划项/ });
+    fireEvent.click(complete);
+    await waitFor(() => expect(complete).toBeEnabled());
+    expect(
+      within(dialog).getByRole("link", { name: item.content }),
+    ).toBeVisible();
+    fail = false;
+    fireEvent.click(complete);
+    await waitFor(() =>
+      expect(within(dialog).getByRole("status")).toHaveTextContent(
+        "暂无待完成计划项",
+      ),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "关闭计划项窗口" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "待办事项" })).toHaveFocus(),
+    );
+    expect(screen.getByRole("tab", { name: "今日已完成 1" })).toBeVisible();
+  });
+
+  it("窗口与侧栏共享课程筛选和排序 URL 状态", async () => {
+    const other = {
+      ...item,
+      item_id: "other-task",
+      course_id: "other-course",
+      course_name: "数据库",
+      content: "比较隔离级别",
+      estimated_minutes: 90,
+    };
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/today/plan-items`, () =>
+        HttpResponse.json([item, other]),
+      ),
+      http.get(endpoint, () =>
+        HttpResponse.json({
+          ...progress,
+          pending_count: 2,
+          courses: [
+            ...progress.courses,
+            { course_id: other.course_id, course_name: other.course_name },
+          ],
+        }),
+      ),
+    );
+    const { router } = renderAt();
+    fireEvent.click(await screen.findByRole("button", { name: /查看更多/ }));
+    const dialog = await screen.findByRole("dialog", { name: "今日计划项" });
+    fireEvent.click(within(dialog).getByRole("combobox", { name: "任务排序" }));
+    const duration = await screen.findByRole("option", { name: "预估时长 ↓" });
+    fireEvent.pointerDown(duration);
+    fireEvent.pointerUp(duration);
+    fireEvent.click(duration);
+    await waitFor(() =>
+      expect(router.state.location.search.order).toBe("duration"),
+    );
+    expect(within(dialog).getAllByRole("listitem")[0]).toHaveTextContent(
+      other.content,
+    );
+    fireEvent.click(
+      within(dialog).getByRole("combobox", { name: "按课程筛选" }),
+    );
+    const option = await screen.findByRole("option", { name: "数据库" });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+    await waitFor(() =>
+      expect(router.state.location.search.course).toBe(other.course_id),
+    );
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(1);
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "关闭计划项窗口" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole("link", { name: other.content })).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: item.content }),
+    ).not.toBeInTheDocument();
+  });
+
   it("完成失败保留原项，成功后更新概览及只读完成列表", async () => {
     let done = false;
     let fail = true;

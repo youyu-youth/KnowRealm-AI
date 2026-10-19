@@ -35,12 +35,13 @@ export function TodayProgressSummary({
           </div>
         ))}
       </dl>
-      <p className="text-label text-ink-muted mt-2">
-        {t("today.progress.basis")}
-        {progress.unestimated_count > 0
-          ? ` · ${t("today.progress.unknownCount", { count: progress.unestimated_count })}`
-          : null}
-      </p>
+      {progress.unestimated_count > 0 && (
+        <p className="text-label text-ink-muted mt-2">
+          {t("today.progress.unknownCount", {
+            count: progress.unestimated_count,
+          })}
+        </p>
+      )}
     </div>
   );
 }
