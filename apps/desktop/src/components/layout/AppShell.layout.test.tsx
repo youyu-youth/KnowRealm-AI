@@ -184,9 +184,10 @@ describe("Desktop 布局切换", () => {
       "aria-current",
       "page",
     );
-    expect(
-      navigation.getByRole("button", { name: "学习画像（未接入）" }),
-    ).toBeDisabled();
+    expect(navigation.getByRole("link", { name: "学习画像" })).toHaveAttribute(
+      "href",
+      "/profile",
+    );
     expect(
       screen.getByRole("button", { name: "近期课程" }),
     ).toBeInTheDocument();

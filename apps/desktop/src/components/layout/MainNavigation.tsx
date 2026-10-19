@@ -99,7 +99,7 @@ export function MainNavigation() {
       {navigationItems.slice(0, visibleCount).map((item) => {
         const Icon = item.icon;
         const label = t(item.labelKey);
-        return "to" in item ? (
+        return (
           <Link
             key={item.labelKey}
             to={item.to}
@@ -112,18 +112,6 @@ export function MainNavigation() {
             <Icon className="size-4 shrink-0" aria-hidden="true" />
             {label}
           </Link>
-        ) : (
-          <Button
-            key={item.labelKey}
-            variant="ghost"
-            disabled
-            aria-label={t("nav.unavailableLabel", { label })}
-            title={t("nav.unavailableLabel", { label })}
-            className="shrink-0 whitespace-nowrap"
-          >
-            <Icon data-icon="inline-start" aria-hidden="true" />
-            {label}
-          </Button>
         );
       })}
       {overflow.length > 0 && (

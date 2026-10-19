@@ -7,11 +7,14 @@ import {
   PieChart,
   RadarChart,
   SankeyChart,
+  HeatmapChart,
 } from "echarts/charts";
 import {
   GridComponent,
   RadarComponent,
   TooltipComponent,
+  CalendarComponent,
+  VisualMapPiecewiseComponent,
 } from "echarts/components";
 import { SVGRenderer } from "echarts/renderers";
 
@@ -22,9 +25,12 @@ echarts.use([
   PieChart,
   RadarChart,
   SankeyChart,
+  HeatmapChart,
   GridComponent,
   RadarComponent,
   TooltipComponent,
+  CalendarComponent,
+  VisualMapPiecewiseComponent,
   SVGRenderer,
 ]);
 

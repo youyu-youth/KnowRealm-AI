@@ -98,10 +98,10 @@ describe("侧边栏底部用户区", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "个人资料" })).toBeVisible(),
     );
-    // "学习画像"仍是禁用的未接入导航项，用户区不激活它。
-    expect(
-      screen.getByRole("button", { name: "学习画像（未接入）" }),
-    ).toBeDisabled();
+    expect(screen.getByRole("link", { name: "学习画像" })).toHaveAttribute(
+      "href",
+      "/profile",
+    );
   });
 
   it("有昵称与头像时同步展示", async () => {

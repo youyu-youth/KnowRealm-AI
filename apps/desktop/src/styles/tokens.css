@@ -1,4 +1,14 @@
 @theme inline {
+  --spacing-profile-rail: 17rem;
+  --spacing-profile-summary: 23rem;
+  --spacing-profile-sections: 9rem;
+  --spacing-profile-actions: 15rem;
+  --spacing-profile-heatmap: 12rem;
+  --text-profile-month: 4.75rem;
+  --text-profile-title: 2.25rem;
+  --text-profile-title--line-height: 1.4;
+  --text-profile-section: 1rem;
+  --text-profile-section--line-height: 1.5;
   --spacing-practice-rail: 20rem;
   --color-course-accent: var(--course-accent);
   --color-course-soft: var(--course-soft);

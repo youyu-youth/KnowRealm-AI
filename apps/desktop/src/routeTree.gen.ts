@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from "./pages/index";
 import { Route as InboxRouteImport } from "./pages/inbox";
 import { Route as LibraryRouteImport } from "./pages/library";
 import { Route as OnboardingRouteImport } from "./pages/onboarding";
+import { Route as ProfileRouteImport } from "./pages/profile";
 import { Route as SettingsRouteImport } from "./pages/settings";
 import { Route as SpacesRouteImport } from "./pages/spaces";
 import { Route as ChatContextSessionIdRouteImport } from "./pages/chat-context.$sessionId";
@@ -43,6 +44,11 @@ const LibraryRoute = LibraryRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: "/onboarding",
   path: "/onboarding",
+  getParentRoute: () => rootRouteImport,
+} as any);
+const ProfileRoute = ProfileRouteImport.update({
+  id: "/profile",
+  path: "/profile",
   getParentRoute: () => rootRouteImport,
 } as any);
 const SettingsRoute = SettingsRouteImport.update({
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   "/inbox": typeof InboxRoute;
   "/library": typeof LibraryRoute;
   "/onboarding": typeof OnboardingRoute;
+  "/profile": typeof ProfileRoute;
   "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
   "/chat-context/$sessionId": typeof ChatContextSessionIdRoute;
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   "/inbox": typeof InboxRoute;
   "/library": typeof LibraryRoute;
   "/onboarding": typeof OnboardingRoute;
+  "/profile": typeof ProfileRoute;
   "/settings": typeof SettingsRoute;
   "/chat-context/$sessionId": typeof ChatContextSessionIdRoute;
   "/chat/$sessionId": typeof ChatSessionIdRoute;
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   "/inbox": typeof InboxRoute;
   "/library": typeof LibraryRoute;
   "/onboarding": typeof OnboardingRoute;
+  "/profile": typeof ProfileRoute;
   "/settings": typeof SettingsRoute;
   "/spaces": typeof SpacesRouteWithChildren;
   "/chat-context/$sessionId": typeof ChatContextSessionIdRoute;
@@ -160,6 +169,7 @@ export interface FileRouteTypes {
     | "/inbox"
     | "/library"
     | "/onboarding"
+    | "/profile"
     | "/settings"
     | "/spaces"
     | "/chat-context/$sessionId"
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | "/inbox"
     | "/library"
     | "/onboarding"
+    | "/profile"
     | "/settings"
     | "/chat-context/$sessionId"
     | "/chat/$sessionId"
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | "/inbox"
     | "/library"
     | "/onboarding"
+    | "/profile"
     | "/settings"
     | "/spaces"
     | "/chat-context/$sessionId"
@@ -211,6 +223,7 @@ export interface RootRouteChildren {
   InboxRoute: typeof InboxRoute;
   LibraryRoute: typeof LibraryRoute;
   OnboardingRoute: typeof OnboardingRoute;
+  ProfileRoute: typeof ProfileRoute;
   SettingsRoute: typeof SettingsRoute;
   SpacesRoute: typeof SpacesRouteWithChildren;
   ChatContextSessionIdRoute: typeof ChatContextSessionIdRoute;
@@ -249,6 +262,13 @@ declare module "@tanstack/react-router" {
       path: "/onboarding";
       fullPath: "/onboarding";
       preLoaderRoute: typeof OnboardingRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/profile": {
+      id: "/profile";
+      path: "/profile";
+      fullPath: "/profile";
+      preLoaderRoute: typeof ProfileRouteImport;
       parentRoute: typeof rootRouteImport;
     };
     "/settings": {
@@ -351,6 +371,7 @@ const rootRouteChildren: RootRouteChildren = {
   InboxRoute: InboxRoute,
   LibraryRoute: LibraryRoute,
   OnboardingRoute: OnboardingRoute,
+  ProfileRoute: ProfileRoute,
   SettingsRoute: SettingsRoute,
   SpacesRoute: SpacesRouteWithChildren,
   ChatContextSessionIdRoute: ChatContextSessionIdRoute,

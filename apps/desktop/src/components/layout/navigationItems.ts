@@ -13,7 +13,7 @@ export const navigationItems = [
   { labelKey: "nav.spaces", icon: Archive, to: "/spaces" },
   { labelKey: "nav.chat", icon: Bot, to: "/chat" },
   { labelKey: "nav.library", icon: Library, to: "/library" },
-  { labelKey: "nav.profile", icon: UserRound },
+  { labelKey: "nav.profile", icon: UserRound, to: "/profile" },
 ] as const;
 
 export const activeNavClass =
