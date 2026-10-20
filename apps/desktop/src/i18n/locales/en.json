@@ -284,7 +284,6 @@
       "notePlaceholder": "Capture a thought…",
       "quickCapture": "Quick capture",
       "footerHint": "Esc closes preview · Ctrl + K opens command palette",
-      "moreInsights": "Learning flow & achievements",
       "examples": {
         "compose": {
           "title": "Docker Compose configuration (core concepts)",
@@ -302,41 +301,6 @@
           "description": "Listen for HTTP requests and serve static pages as the web service of a multi-container application."
         }
       }
-    },
-    "recentAssets": {
-      "title": "Recent learning outputs",
-      "filter": "Filter output type",
-      "types": {
-        "all": "All types",
-        "summary": "Summaries",
-        "knowledge_point": "Knowledge points",
-        "quiz": "Questions",
-        "review_material": "Review materials"
-      },
-      "counts": {
-        "summary_one": "{{count}} summary",
-        "summary_other": "{{count}} summaries",
-        "knowledge_point_one": "{{count}} knowledge point",
-        "knowledge_point_other": "{{count}} knowledge points",
-        "quiz_one": "{{count}} question",
-        "quiz_other": "{{count}} questions",
-        "review_material_one": "{{count}} review material",
-        "review_material_other": "{{count}} review materials",
-        "summary": "{{count}} summaries",
-        "knowledge_point": "{{count}} knowledge points",
-        "quiz": "{{count}} questions",
-        "review_material": "{{count}} review materials"
-      },
-      "list": "Recent learning outputs list",
-      "confirmed": "Confirmed {{time}}",
-      "created": "Created {{time}}",
-      "unclassified": "Unclassified",
-      "showAll": "View all",
-      "collapse": "Collapse",
-      "pagination": "Recent outputs pagination",
-      "empty": "No learning outputs of this type yet",
-      "emptyHint": "Capture content and confirm its summary, then organize learning assets in the source record.",
-      "error": "Recent learning outputs could not be loaded"
     },
     "recentMaterials": {
       "list": "Recent materials",
@@ -419,24 +383,12 @@
     },
     "overview": {
       "chainTitle": "Today's learning chain",
-      "chain": {
-        "capture": "Capture",
-        "captureHint": "Material entered the local workspace",
-        "processing": "Process",
-        "processingHint": "Transcribing and structuring",
-        "summary": "Confirm summary",
-        "summaryHint": "Waiting for your review",
-        "assets": "Learning assets",
-        "assetsHint": "Knowledge Points, questions, and Review Material"
-      },
       "actionsTitle": "Action flow",
       "assetsTitle": "Recent assets",
       "openInbox": "Open Inbox",
-      "openLibrary": "Open Library",
       "openCourses": "View courses",
       "continueTitle": "Continue learning",
       "continueItem": "Operating Systems · Processes and threads",
-      "achievementSample": "7-day streak · 6.5 focused hours this week",
       "actions": {
         "processing": {
           "title": "Class recording is being transcribed",
@@ -535,7 +487,6 @@
       "assistantTitle": "AI assistant",
       "assistantDescription": "How can I help with your learning?",
       "askPlaceholder": "Ask a question, or @ a course / material",
-      "achievementTitle": "Learning achievements",
       "reviewProgress": "View learning progress"
     },
     "workspace": {
@@ -567,13 +518,6 @@
       "processing": "Processing",
       "openRecord": "Open record “{{title}}”",
       "filterEmpty": "No pending items in this category",
-      "flow": "Learning workflow",
-      "flowHints": {
-        "capture": "Collect material",
-        "processing": "Transcribe & organize",
-        "summary": "Human review",
-        "assets": "Build knowledge"
-      },
       "continueHint": "Pick up where you left off",
       "quickStart": "Quick start",
       "noteHint": "Capture ideas and learning notes",

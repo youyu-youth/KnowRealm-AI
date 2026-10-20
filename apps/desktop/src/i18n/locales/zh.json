@@ -283,7 +283,6 @@
       "notePlaceholder": "记下刚刚想到的内容…",
       "quickCapture": "快速捕获",
       "footerHint": "Esc 关闭预览 · Ctrl + K 打开命令面板",
-      "moreInsights": "学习流程与成就",
       "examples": {
         "compose": {
           "title": "Docker Compose 配置（核心概念）",
@@ -301,33 +300,6 @@
           "description": "监听 HTTP 端口并提供静态页面，作为多容器应用的 web 服务示例。"
         }
       }
-    },
-    "recentAssets": {
-      "title": "近期学习产出",
-      "filter": "筛选产出类型",
-      "types": {
-        "all": "全部类型",
-        "summary": "总结",
-        "knowledge_point": "知识点",
-        "quiz": "习题",
-        "review_material": "复习资料"
-      },
-      "counts": {
-        "summary": "{{count}} 份总结",
-        "knowledge_point": "{{count}} 个知识点",
-        "quiz": "{{count}} 道习题",
-        "review_material": "{{count}} 份复习资料"
-      },
-      "list": "近期学习产出列表",
-      "confirmed": "确认于 {{time}}",
-      "created": "创建于 {{time}}",
-      "unclassified": "未归类",
-      "showAll": "查看全部",
-      "collapse": "收起",
-      "pagination": "近期产出分页",
-      "empty": "暂无此类学习产出",
-      "emptyHint": "捕获内容并完成总结确认后，可在来源记录整理学习资产。",
-      "error": "近期学习产出暂时无法读取"
     },
     "recentMaterials": {
       "list": "最近资料列表",
@@ -409,24 +381,12 @@
     },
     "overview": {
       "chainTitle": "今日学习链",
-      "chain": {
-        "capture": "捕获",
-        "captureHint": "资料已进入本地工作台",
-        "processing": "处理",
-        "processingHint": "转写与结构化处理中",
-        "summary": "确认总结",
-        "summaryHint": "等待人工确认",
-        "assets": "学习资产",
-        "assetsHint": "知识点、习题与复习资料"
-      },
       "actionsTitle": "行动流",
       "assetsTitle": "最近资产",
       "openInbox": "打开收件箱",
-      "openLibrary": "打开资产库",
       "openCourses": "查看课程",
       "continueTitle": "继续学习",
       "continueItem": "操作系统 · 进程与线程",
-      "achievementSample": "连续学习 7 天 · 本周专注 6.5 小时",
       "actions": {
         "processing": {
           "title": "课堂录音正在转写",
@@ -525,7 +485,6 @@
       "assistantTitle": "AI 助手",
       "assistantDescription": "有什么可以帮你解决学习中的问题？",
       "askPlaceholder": "输入问题，或 @ 课程 / 资料",
-      "achievementTitle": "学习成就",
       "reviewProgress": "查看学习进度"
     },
     "workspace": {
@@ -557,13 +516,6 @@
       "processing": "处理中",
       "openRecord": "打开记录「{{title}}」",
       "filterEmpty": "这个分类暂无待处理事项",
-      "flow": "学习流程",
-      "flowHints": {
-        "capture": "收集资料",
-        "processing": "转写与整理",
-        "summary": "人工确认",
-        "assets": "沉淀知识"
-      },
       "continueHint": "从上次的学习内容继续",
       "quickStart": "快速开始",
       "noteHint": "记录灵感与学习要点",

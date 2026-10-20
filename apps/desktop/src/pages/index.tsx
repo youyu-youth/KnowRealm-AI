@@ -1,11 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { TodayOverview } from "@/features/today/components/TodayOverview";
-import type { AssetType } from "@/features/today/api/today";
 
 type TodaySearch = {
-  asset_type?: AssetType | "all";
-  assets_expanded?: boolean;
-  assets_page?: number;
   view?: "orbit" | "workbench";
   course?: string;
   order?: "duration" | "date";
@@ -19,21 +15,6 @@ type TodaySearch = {
 
 export const Route = createFileRoute("/")({
   validateSearch: (search: Record<string, unknown>): TodaySearch => ({
-    asset_type:
-      search.asset_type === "summary" ||
-      search.asset_type === "knowledge_point" ||
-      search.asset_type === "quiz" ||
-      search.asset_type === "review_material"
-        ? search.asset_type
-        : "all",
-    assets_expanded:
-      search.assets_expanded === true || search.assets_expanded === "true",
-    assets_page:
-      Number.isSafeInteger(Number(search.assets_page)) &&
-      Number(search.assets_page) > 0 &&
-      Number(search.assets_page) <= Math.floor(Number.MAX_SAFE_INTEGER / 20)
-        ? Number(search.assets_page)
-        : 1,
     view: search.view === "orbit" ? ("orbit" as const) : ("workbench" as const),
     course: typeof search.course === "string" ? search.course : "all",
     action_status: search.action_status === "done" ? "done" : "pending",

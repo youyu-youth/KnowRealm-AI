@@ -125,15 +125,6 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/today/pending-summaries`, () =>
     HttpResponse.json([]),
   ),
-  http.get(`${TEST_SIDECAR_URL}/api/today/recent-assets`, ({ request }) => {
-    const params = new URL(request.url).searchParams;
-    return HttpResponse.json({
-      items: [],
-      total: 0,
-      offset: Number(params.get("offset") ?? 0),
-      limit: Number(params.get("limit") ?? 5),
-    });
-  }),
   http.get(`${TEST_SIDECAR_URL}/api/today/progress`, () =>
     HttpResponse.json({
       date: new Date().toLocaleDateString("en-CA"),

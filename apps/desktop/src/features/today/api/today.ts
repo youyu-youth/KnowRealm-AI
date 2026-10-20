@@ -12,22 +12,10 @@ export type TodayStats = components["schemas"]["TodayStatsOut"];
 export type TodayTrendPoint = components["schemas"]["TodayTrendPointOut"];
 export type TodayPlanItem = components["schemas"]["TodayPlanItemOut"];
 export type TodayProgress = components["schemas"]["TodayProgressOut"];
-export type RecentAsset = components["schemas"]["RecentAssetOut"];
-export type RecentAssetList = components["schemas"]["RecentAssetListOut"];
-export type AssetType = RecentAsset["asset_type"];
 
 export type TrendDays = 7 | 30;
 
 export const todayApi = {
-  recentAssets: (type: AssetType | "all", expanded: boolean, page: number) => {
-    const limit = expanded ? 20 : 5;
-    const search = new URLSearchParams({
-      limit: String(limit),
-      offset: String(expanded ? (page - 1) * limit : 0),
-    });
-    if (type !== "all") search.set("asset_type", type);
-    return apiFetch<RecentAssetList>(`/api/today/recent-assets?${search}`);
-  },
   progress: (course: string, order: "date" | "duration", page: number) => {
     const search = new URLSearchParams({
       order,

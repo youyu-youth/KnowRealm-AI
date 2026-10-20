@@ -9,7 +9,6 @@ import { todayApi } from "@/features/today/api/today";
 import { TodayActions } from "@/features/today/components/TodayActions";
 import { TodayStudyMaterials } from "@/features/today/components/TodayStudyMaterials";
 import { TodayMaterialPreparation } from "@/features/today/components/TodayMaterialPreparation";
-import { TodayAssets } from "@/features/today/components/TodayAssets";
 import { TodayFocus } from "@/features/today/components/TodayFocus";
 import { TodayPending } from "@/features/today/components/TodayPending";
 import { TodayQuickStart } from "@/features/today/components/TodayQuickStart";
@@ -294,14 +293,6 @@ export function TodayOverview() {
                     });
                   }}
                 />
-                <div
-                  className="today-assets-list"
-                  role="region"
-                  aria-label={t("today.recentAssets.title")}
-                  tabIndex={0}
-                >
-                  <TodayAssets />
-                </div>
               </aside>
             </div>
             <TodayQuickStart showStats={view !== "orbit"} />

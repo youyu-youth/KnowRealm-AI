@@ -1,11 +1,8 @@
 import { learningPlanKeys } from "@/features/learningPlan/api/keys";
-import type { AssetType, TrendDays } from "@/features/today/api/today";
+import type { TrendDays } from "@/features/today/api/today";
 
 export const todayKeys = {
   all: ["today"] as const,
-  recentAssets: ["today", "recent-assets"] as const,
-  assets: (type: AssetType | "all", expanded: boolean, page: number) =>
-    ["today", "recent-assets", type, expanded, page] as const,
   continueLearning: ["today", "continue-learning"] as const,
   pendingSummaries: ["today", "pending-summaries"] as const,
   // 今日待学计划项的键挂在 learningPlan 域前缀下：计划 Tab 的完成/编辑/跳过

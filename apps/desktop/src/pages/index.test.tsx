@@ -288,29 +288,16 @@ describe("今日页", () => {
   it("保留工作台内容并保持示意条目只读", async () => {
     renderAt();
 
-    fireEvent.click(
-      await screen.findByRole("button", { name: "学习流程与成就" }),
-    );
     expect(
-      await screen.findByRole("heading", { name: "学习流程" }),
+      await screen.findByRole("heading", { name: "待办事项" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "待办事项" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "近期学习产出" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "学习趋势" }),
+      await screen.findByRole("heading", { name: "学习趋势" }),
     ).toBeInTheDocument();
     expect(
       (await screen.findByText("课堂录音正在转写")).closest("a"),
     ).toBeNull();
     expect(screen.getAllByText("示意").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /打开资产库/ })).toHaveAttribute(
-      "href",
-      "/library",
-    );
   });
 
   it("列出待确认总结并直达对应记录", async () => {

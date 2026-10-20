@@ -51,8 +51,7 @@
   align-items: start;
 }
 .today-panel,
-.today-pending,
-.today-assets-list {
+.today-pending {
   min-width: 0;
   background: var(--today-surface);
   border: 1px solid var(--today-border);
@@ -349,17 +348,6 @@
 }
 .today-pending-item {
   border-radius: var(--radius-md);
-}
-.today-assets-list {
-  overflow: hidden;
-}
-#today-recent-assets-list {
-  max-height: var(--spacing-today-side-list);
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-.today-supporting-assets {
-  border-top: 1px solid var(--today-border);
 }
 .today-focus {
   display: grid;

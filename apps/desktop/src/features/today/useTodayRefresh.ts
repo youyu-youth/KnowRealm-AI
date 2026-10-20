@@ -2,7 +2,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { learningPlanKeys } from "@/features/learningPlan/api/keys";
-import { todayKeys } from "@/features/today/api/keys";
 import { libraryKeys } from "@/features/library/api/keys";
 import { RECENT_MATERIALS_PARAMS } from "@/features/today/api/today";
 
@@ -18,7 +17,6 @@ export function useTodayRefresh() {
       const changed = day !== current.toDateString();
       day = current.toDateString();
       setNow(current);
-      void queryClient.invalidateQueries({ queryKey: todayKeys.recentAssets });
       void queryClient.invalidateQueries({
         queryKey: libraryKeys.items(RECENT_MATERIALS_PARAMS),
       });
