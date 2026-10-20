@@ -7,9 +7,10 @@ type TodaySearch = {
   order?: "duration" | "date";
   action_status?: "pending" | "done";
   completed_page?: number;
+  pending_filter?: "all" | "summary" | "processing";
+  pending_page?: number;
   panel?: "actions" | "pending" | "review";
-  inspector?: "summary" | "focus";
-  record?: string;
+  inspector?: "focus";
   task?: string;
 };
 
@@ -18,6 +19,16 @@ export const Route = createFileRoute("/")({
     view: search.view === "orbit" ? ("orbit" as const) : ("workbench" as const),
     course: typeof search.course === "string" ? search.course : "all",
     action_status: search.action_status === "done" ? "done" : "pending",
+    pending_filter:
+      search.pending_filter === "summary" ||
+      search.pending_filter === "processing"
+        ? search.pending_filter
+        : "all",
+    pending_page:
+      Number.isSafeInteger(Number(search.pending_page)) &&
+      Number(search.pending_page) > 0
+        ? Number(search.pending_page)
+        : 1,
     completed_page:
       Number.isSafeInteger(Number(search.completed_page)) &&
       Number(search.completed_page) > 0
@@ -29,12 +40,8 @@ export const Route = createFileRoute("/")({
       search.panel === "pending" || search.panel === "review"
         ? search.panel
         : ("actions" as const),
-    record: typeof search.record === "string" ? search.record : undefined,
     task: typeof search.task === "string" ? search.task : undefined,
-    inspector:
-      search.inspector === "summary" || search.inspector === "focus"
-        ? search.inspector
-        : undefined,
+    inspector: search.inspector === "focus" ? search.inspector : undefined,
   }),
   component: TodayPage,
 });

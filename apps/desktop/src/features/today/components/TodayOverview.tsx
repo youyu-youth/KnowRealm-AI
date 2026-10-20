@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
-import { HardDrive, PanelRightClose, Timer } from "lucide-react";
+import { HardDrive, Timer } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,7 +13,6 @@ import { TodayFocus } from "@/features/today/components/TodayFocus";
 import { TodayPending } from "@/features/today/components/TodayPending";
 import { TodayQuickStart } from "@/features/today/components/TodayQuickStart";
 import { TodayStatsBand } from "@/features/today/components/TodayStatsBand";
-import { TodaySummaryPreview } from "@/features/today/components/TodaySummaryPreview";
 import { useTodayRefresh } from "@/features/today/useTodayRefresh";
 import "@/features/today/components/TodayWorkspace.css";
 import { Button } from "@/components/ui/button";
@@ -22,9 +21,7 @@ export function TodayOverview() {
   const { t, i18n } = useTranslation();
   const {
     view = "workbench",
-    panel = "actions",
     inspector,
-    record: selectedId,
     task: focusedItemId,
   } = useSearch({ from: "/" });
   const navigate = useNavigate({ from: "/" });
@@ -39,10 +36,7 @@ export function TodayOverview() {
     queryKey: todayKeys.planItems,
     queryFn: todayApi.planItems,
   });
-  const selected =
-    pending.data?.find((record) => record.record_id === selectedId) ??
-    pending.data?.[0];
-  const detail = inspector ?? (panel === "review" ? "summary" : undefined);
+  const detail = inspector;
   const focusTask =
     plans.data?.find((item) => item.item_id === focusedItemId) ??
     plans.data?.[0];
@@ -86,13 +80,7 @@ export function TodayOverview() {
           resetScroll: false,
           replace: true,
         });
-        document
-          .querySelector<HTMLButtonElement>(
-            detail === "summary"
-              ? `.today-pending [aria-controls="today-summary-preview"][aria-pressed="true"]`
-              : "#today-focus-trigger",
-          )
-          ?.focus();
+        document.getElementById("today-focus-trigger")?.focus();
         return;
       }
       if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey)
@@ -117,18 +105,14 @@ export function TodayOverview() {
     if (!detail) return;
     const frame = window.requestAnimationFrame(() => {
       document
-        .getElementById(
-          detail === "summary" ? "today-summary-preview" : "today-focus-title",
-        )
+        .getElementById("today-focus-title")
         ?.focus({ preventScroll: true });
       document
-        .getElementById(
-          detail === "summary" ? "today-pane-review" : "today-focus-title",
-        )
+        .getElementById("today-focus-title")
         ?.scrollIntoView({ block: "nearest" });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [detail, selectedId, focusedItemId]);
+  }, [detail, focusedItemId]);
   const date = new Intl.DateTimeFormat(i18n.resolvedLanguage, {
     year: "numeric",
     month: "long",
@@ -197,7 +181,7 @@ export function TodayOverview() {
                 );
               }}
               aria-pressed={detail === "focus"}
-              aria-controls="today-pane-review"
+              aria-controls="today-focus-title"
               onClick={() =>
                 void navigate({
                   search: (previous) => ({ ...previous, inspector: "focus" }),
@@ -279,66 +263,11 @@ export function TodayOverview() {
                   pending={pending.isPending}
                   error={pending.isError}
                   onRetry={() => void pending.refetch()}
-                  selectedId={selected?.record_id}
-                  onSelect={(id) => {
-                    void navigate({
-                      search: (previous) => ({
-                        ...previous,
-                        record: id,
-                        panel: "review",
-                        inspector: "summary",
-                      }),
-                      resetScroll: false,
-                      replace: true,
-                    });
-                  }}
                 />
               </aside>
             </div>
             <TodayQuickStart showStats={view !== "orbit"} />
           </TabsContent>
-          <aside
-            id="today-pane-review"
-            aria-label={t("today.rightRail.label")}
-            className="today-summary-inspector"
-            hidden={detail !== "summary"}
-          >
-            <div className="today-inspector-toolbar flex items-center justify-between gap-2 px-3 py-2">
-              <p className="text-label text-ink-muted">
-                {t("today.workspace.preview.tab")}
-              </p>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t("today.workspace.closeInspector")}
-                onClick={() => {
-                  void navigate({
-                    search: (previous) => ({
-                      ...previous,
-                      panel: "actions",
-                      inspector: undefined,
-                    }),
-                    resetScroll: false,
-                    replace: true,
-                  });
-                  document
-                    .querySelector<HTMLButtonElement>(
-                      `.today-pending [aria-controls="today-summary-preview"][aria-pressed="true"]`,
-                    )
-                    ?.focus();
-                }}
-              >
-                <PanelRightClose aria-hidden="true" />
-              </Button>
-            </div>
-            <TodaySummaryPreview
-              key={selected?.record_id ?? "sample"}
-              record={selected}
-              loading={pending.isPending}
-              error={pending.isError}
-              active={detail === "summary"}
-            />
-          </aside>
           <footer className="today-footer text-label text-ink-muted">
             <HardDrive className="size-3.5" aria-hidden="true" />
             {t("today.workspace.local")}

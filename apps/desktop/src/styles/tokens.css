@@ -88,7 +88,7 @@
   --spacing-today-timer: 15rem;
   --spacing-today-task-column: 20rem;
   --spacing-today-material: 12rem;
-  --spacing-today-side-list: 7rem;
+  --spacing-today-pending-row: 5.25rem;
   --spacing-today-main: 38rem;
   --spacing-today-plans-dialog: 52rem;
   --spacing-today-plans-dialog-height: 38rem;
@@ -105,7 +105,6 @@
   --color-today-clock-ink: var(--today-clock-ink);
   --spacing-today-duration: 5rem;
   --spacing-today-status: 4rem;
-  --spacing-today-preview-min: 22rem;
   --spacing-today-rail: 18rem;
   --spacing-today-inspector: 22rem;
   --font-heading: var(--font-sans);

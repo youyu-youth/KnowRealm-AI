@@ -235,7 +235,7 @@ describe("今日页", () => {
     ).toBeNull();
   });
 
-  it("点击待确认行的课程信息即可切换预览，详情和原文入口对应选中记录", async () => {
+  it("点击待确认记录直接打开详情，不再请求或展示今日总结预览", async () => {
     let previewReads = 0;
     const second = { ...todo, record_id: "second-record", title: "第二份总结" };
     server.use(
@@ -254,35 +254,154 @@ describe("今日页", () => {
           action_required: "NONE",
         });
       }),
-    );
-    renderAt();
-    const select = await screen.findByRole("button", {
-      name: "预览总结「第二份总结」",
-    });
-    expect(previewReads).toBe(0);
-    fireEvent.click(within(select).getByText("操作系统"));
-    await waitFor(() => expect(select).toHaveAttribute("aria-pressed", "true"));
-    await waitFor(() =>
-      expect(new URLSearchParams(window.location.search).get("inspector")).toBe(
-        "summary",
+      http.get(`${TEST_SIDECAR_URL}/api/records/second-record`, () =>
+        HttpResponse.json({ detail: "记录不存在" }, { status: 404 }),
       ),
     );
-    const preview = screen.getByRole("region", { name: "待确认总结" });
-    expect(preview).toHaveFocus();
+    renderAt();
+    const link = await screen.findByRole("link", {
+      name: "打开记录「第二份总结」",
+    });
+    expect(previewReads).toBe(0);
     expect(
-      await within(preview).findByText(generatedSummary.abstract),
-    ).toBeInTheDocument();
-    expect(previewReads).toBe(1);
-    expect(screen.getByRole("heading", { name: "待办事项" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "待处理" })).toBeVisible();
+      screen.queryByRole("region", { name: "待确认总结" }),
+    ).not.toBeInTheDocument();
+    expect(link).toHaveAttribute("href", "/records/second-record");
+    fireEvent.click(within(link).getByText("操作系统"));
+    await waitFor(() =>
+      expect(window.location.pathname).toBe("/records/second-record"),
+    );
+    expect(previewReads).toBe(0);
+  });
+
+  it("待处理按页浏览，切换筛选重置页码并保存在地址栏", async () => {
+    server.use(
+      http.get(TODAY_URL, () =>
+        HttpResponse.json(
+          Array.from({ length: 5 }, (_, i) => ({
+            ...todo,
+            record_id: `pending-${i}`,
+            title: `待处理记录 ${i + 1}`,
+          })),
+        ),
+      ),
+    );
+    renderAt();
+    const list = await screen.findByRole("list", { name: "待处理记录列表" });
+    await within(list).findByRole("link", { name: "打开记录「待处理记录 1」" });
+    expect(within(list).getAllByRole("link")).toHaveLength(2);
+    const pagination = screen.getByRole("navigation", {
+      name: "待处理记录分页",
+    });
     expect(
-      within(preview).getByRole("link", { name: "查看并确认" }),
-    ).toHaveAttribute("href", "/records/second-record");
+      within(pagination).getByRole("button", { name: "上一页" }),
+    ).toBeDisabled();
+    fireEvent.click(within(pagination).getByRole("button", { name: "下一页" }));
     expect(
-      within(preview).getByRole("link", { name: "查看原文" }),
-    ).toHaveAttribute("href", "/records/second-record?tab=transcript");
-    fireEvent.click(screen.getByRole("button", { name: "收起详情" }));
-    await waitFor(() => expect(select).toHaveFocus());
+      await within(list).findByRole("link", {
+        name: "打开记录「待处理记录 3」",
+      }),
+    ).toBeVisible();
+    expect(
+      new URLSearchParams(window.location.search).get("pending_page"),
+    ).toBe("2");
+    fireEvent.click(screen.getByRole("tab", { name: /处理中\s*0/ }));
+    expect(await screen.findByText("这个分类暂无待处理事项")).toBeVisible();
+    expect(
+      new URLSearchParams(window.location.search).get("pending_page"),
+    ).toBe("1");
+    expect(
+      new URLSearchParams(window.location.search).get("pending_filter"),
+    ).toBe("processing");
+  });
+
+  it("过期的总结预览链接不会重新打开预览，超出页码回到最后一页", async () => {
+    server.use(http.get(TODAY_URL, () => HttpResponse.json([todo])));
+    renderAt(
+      "/?panel=review&inspector=summary&pending_filter=summary&pending_page=99",
+    );
+    expect(
+      await screen.findByRole("link", { name: /操作系统第一讲/ }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("region", { name: "待确认总结" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        new URLSearchParams(window.location.search).get("pending_page"),
+      ).toBe("1"),
+    );
+  });
+
+  it("待处理去重已就绪记录，保留处理中和失败状态及原文入口", async () => {
+    server.use(
+      http.get(TODAY_URL, () => HttpResponse.json([todo])),
+      http.get(`${TEST_SIDECAR_URL}/api/inbox`, () =>
+        HttpResponse.json([
+          {
+            id: RECORD_ID,
+            course_id: COURSE_ID,
+            title: todo.title,
+            status: "SUMMARY_READY",
+            capture_type: "DOCUMENT_IMPORT",
+          },
+          {
+            id: "processing-record",
+            title: "课堂录音",
+            status: "CONTENT_PROCESSING",
+            capture_type: "RECORDING",
+          },
+          {
+            id: "failed-record",
+            title: "失败网页",
+            status: "FAILED",
+            capture_type: "CLIP",
+          },
+          {
+            id: "completed-record",
+            title: "已完成记录",
+            status: "COMPLETED",
+            capture_type: "QUICK_NOTE",
+          },
+        ]),
+      ),
+      http.get(`${TEST_SIDECAR_URL}/api/records/failed-record`, () =>
+        HttpResponse.json({ detail: "记录不存在" }, { status: 404 }),
+      ),
+    );
+    renderAt();
+    const list = await screen.findByRole("list", { name: "待处理记录列表" });
+    expect(
+      await within(list).findByRole("link", { name: "打开记录「课堂录音」" }),
+    ).toBeVisible();
+    expect(
+      within(list).getAllByRole("link", { name: /操作系统第一讲/ }),
+    ).toHaveLength(1);
+    expect(
+      screen.queryByRole("link", { name: /已完成记录/ }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /处理中\s*1/ }));
+    await waitFor(() =>
+      expect(within(list).getAllByRole("link")).toHaveLength(1),
+    );
+    expect(within(list).getByText("内容处理中")).toBeVisible();
+    fireEvent.click(screen.getByRole("tab", { name: /全部\s*3/ }));
+    const pagination = await screen.findByRole("navigation", {
+      name: "待处理记录分页",
+    });
+    fireEvent.click(within(pagination).getByRole("button", { name: "下一页" }));
+    expect(await within(list).findByText("失败网页")).toBeVisible();
+    expect(within(list).getByText("处理失败")).toBeVisible();
+    fireEvent.click(
+      within(list).getByRole("button", { name: "「失败网页」的快捷操作" }),
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "查看原文" }));
+    await waitFor(() =>
+      expect(window.location.pathname).toBe("/records/failed-record"),
+    );
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe(
+      "transcript",
+    );
   });
 
   it("保留工作台内容并保持示意条目只读", async () => {
@@ -294,9 +413,7 @@ describe("今日页", () => {
     expect(
       await screen.findByRole("heading", { name: "学习趋势" }),
     ).toBeInTheDocument();
-    expect(
-      (await screen.findByText("课堂录音正在转写")).closest("a"),
-    ).toBeNull();
+    expect(await screen.findByText("这个分类暂无待处理事项")).toBeVisible();
     expect(screen.getAllByText("示意").length).toBeGreaterThan(0);
   });
 
@@ -316,7 +433,7 @@ describe("今日页", () => {
     expect(link).toHaveAttribute("href", `/records/${RECORD_ID}`);
     expect(screen.getAllByText("操作系统").length).toBeGreaterThan(0);
     expect(
-      screen.getByRole("list", { name: "待确认总结列表" }),
+      screen.getByRole("list", { name: "待处理记录列表" }),
     ).toBeInTheDocument();
     expect(screen.queryByText("今天没有待处理事项")).not.toBeInTheDocument();
   });
