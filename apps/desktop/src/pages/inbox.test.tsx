@@ -647,6 +647,9 @@ describe("收件箱桌面交互", () => {
       "较早速记",
     );
     fireEvent.click(screen.getByRole("checkbox", { name: "选择 较早速记" }));
+    expect(
+      screen.getByRole("checkbox", { name: "选择本页全部内容" }),
+    ).toHaveAttribute("aria-checked", "mixed");
     fireEvent.click(screen.getByRole("tab", { name: "列表" }));
     await waitFor(() => expect(window.location.search).toContain("view=list"));
     expect(window.location.search).toContain("sort=oldest");
@@ -672,6 +675,11 @@ describe("收件箱桌面交互", () => {
         ).getAllByRole("listitem")[0],
       ).toHaveTextContent("较新速记"),
     );
+    fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
+    await waitFor(() => expect(window.location.search).not.toContain("type="));
+    expect(
+      screen.getByRole("checkbox", { name: "选择 较早速记" }),
+    ).toHaveAttribute("aria-checked", "false");
   });
 
   it("更多菜单与右键菜单进入原有确认流程，取消不提交", async () => {

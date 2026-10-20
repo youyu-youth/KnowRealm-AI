@@ -74,6 +74,21 @@
     flex-direction: column;
     height: 100%;
     overflow: hidden;
+    background: var(--surface-subtle);
+  }
+
+  .inbox-toolbar {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .inbox-filter-count {
+    min-width: 1.25rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in oklch, currentColor 10%, transparent);
+    font-size: var(--text-label);
+    line-height: 1.5;
+    text-align: center;
   }
 
   .inbox-grid {
@@ -94,7 +109,7 @@
     padding: 1rem;
     border: 1px solid var(--border);
     border-radius: var(--radius-xl);
-    background: var(--paper);
+    background: var(--surface-raised);
   }
 
   .inbox-card[draggable="true"] {
@@ -109,19 +124,14 @@
   }
 
   .inbox-card-actions {
-    position: absolute;
-    inset-inline-end: 0.75rem;
-    inset-block-start: -1.25rem;
-    z-index: 1;
     display: flex;
     align-items: center;
-    gap: 0.25rem;
-    padding: 0.25rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--popover);
-    box-shadow: 0 4px 12px
-      color-mix(in oklch, var(--ink-strong) 10%, transparent);
+    gap: 0;
+    flex-shrink: 0;
+  }
+
+  .inbox-card-preview:hover {
+    background: var(--surface-subtle);
   }
 
   .inbox-document-thumb {
@@ -148,11 +158,11 @@
 
   .inbox-course-tray {
     flex-shrink: 0;
-    max-height: 45%;
+    max-height: 40%;
     overflow-y: auto;
-    padding-block: 1rem;
+    padding-block: 0.75rem;
     border-top: 1px solid var(--border);
-    background: var(--paper);
+    background: var(--surface-subtle);
   }
 
   .inbox-course-grid {
@@ -167,7 +177,7 @@
   }
 
   .inbox-course-target {
-    min-height: 6rem;
+    min-height: 4.5rem;
     min-width: 0;
     justify-content: flex-start;
     white-space: normal;
@@ -181,14 +191,19 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 3rem;
-    height: 3rem;
-    border-radius: var(--radius-lg);
-    background: var(--inbox-soft);
-    color: var(--inbox-accent);
+    width: 2rem;
+    height: 2rem;
+    color: var(--ink-muted);
   }
   .inbox-course-arrow {
     margin-inline-start: auto;
+    color: var(--ink-muted);
+  }
+  .inbox-course-tray[data-active] .inbox-course-target {
+    border-color: var(--border-strong);
+  }
+  .inbox-course-tray[data-active] .inbox-course-icon,
+  .inbox-course-tray[data-active] .inbox-course-arrow {
     color: var(--inbox-accent);
   }
   .inbox-course-target[aria-disabled="true"] {
@@ -197,6 +212,12 @@
 
   .inbox-list-columns {
     display: none;
+  }
+  .inbox-list {
+    overflow: hidden;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    background: var(--surface-raised);
   }
   @container inbox (width >= 45rem) {
     .inbox-list-columns {
@@ -222,28 +243,15 @@
     transform: scale(0.97);
   }
 
-  @media (hover: none), (pointer: coarse) {
-    .inbox-card-actions {
-      position: static;
-      align-self: flex-end;
-      margin-top: 0.5rem;
-    }
-  }
   @media (hover: hover) and (pointer: fine) {
-    .inbox-card-check:not([data-checked]),
     .inbox-card-actions {
       opacity: 0;
-    }
-    .inbox-card-actions {
       pointer-events: none;
       transition: opacity 150ms var(--ease-inbox);
     }
     .inbox-card:hover {
       border-color: var(--border-strong);
     }
-    .inbox-card:hover .inbox-card-check,
-    .inbox-card:focus-within .inbox-card-check,
-    .inbox-card[data-selected] .inbox-card-check,
     .inbox-card:hover .inbox-card-actions,
     .inbox-card:focus-within .inbox-card-actions,
     .inbox-card[data-selected] .inbox-card-actions {
@@ -252,6 +260,15 @@
     }
     .inbox-card[data-selected]:hover {
       border-color: var(--inbox-accent);
+    }
+  }
+  @media (forced-colors: active) {
+    .inbox-card[data-selected] {
+      outline: 2px solid Highlight;
+    }
+    .inbox-type-tab[data-active],
+    .inbox-view-tab[data-active] {
+      outline: 2px solid Highlight;
     }
   }
   @media (prefers-reduced-motion: reduce) {

@@ -64,11 +64,11 @@
   --color-inbox-accent: var(--inbox-accent);
   --color-inbox-soft: var(--inbox-soft);
   --spacing-inbox-card: 17rem;
-  --spacing-inbox-card-height: 14.5rem;
+  --spacing-inbox-card-height: 15rem;
   --spacing-inbox-course: 14rem;
-  --text-inbox-title: 1.875rem;
+  --text-inbox-title: 1.5rem;
   --text-inbox-title--line-height: 1.3;
-  --text-inbox-card: 1.125rem;
+  --text-inbox-card: 1rem;
   --text-inbox-card--line-height: 1.5;
   --ease-inbox: cubic-bezier(0.23, 1, 0.32, 1);
   --color-filter-active-background: var(--filter-active-background);

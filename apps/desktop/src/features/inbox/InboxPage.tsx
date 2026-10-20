@@ -377,7 +377,9 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
             {pageRecords.length ? (
               <ul
                 aria-label={t("inbox.listLabel")}
-                className={view === "desk" ? "inbox-grid" : "min-w-0 space-y-2"}
+                className={
+                  view === "desk" ? "inbox-grid" : "inbox-list min-w-0"
+                }
               >
                 {pageRecords.map((record) =>
                   view === "desk" ? (
@@ -499,7 +501,7 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
           </div>
 
           {view === "list" ? (
-            <aside className="border-border bg-background sticky top-4 hidden max-h-[calc(100vh-var(--spacing-titlebar)-7rem)] min-h-[calc(100vh-var(--spacing-titlebar)-9.5rem)] min-w-0 self-start overflow-y-auto rounded-xl border shadow-[0_4px_16px_rgb(15_23_42/0.045)] xl:block">
+            <aside className="border-border bg-surface-raised sticky top-4 hidden max-h-[calc(100vh-var(--spacing-titlebar)-7rem)] min-h-[calc(100vh-var(--spacing-titlebar)-9.5rem)] min-w-0 self-start overflow-y-auto rounded-xl border xl:block">
               <InboxPreview
                 record={selectedRecord}
                 onClose={() => updateSearch({ record: undefined })}
@@ -524,6 +526,7 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
         <div className="flex min-h-9 flex-wrap items-center gap-3">
           <Checkbox
             checked={allPageSelected}
+            indeterminate={!allPageSelected && selectedOnPage.length > 0}
             disabled={bulkPending}
             onCheckedChange={(checked) => {
               const next = new Set(selectedIds);
@@ -543,7 +546,7 @@ export function InboxPage({ search, onSearchChange }: InboxPageProps) {
               <Button
                 variant="ghost"
                 size="xs"
-                className="bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 dark:bg-blue-950/50 dark:text-blue-300"
+                className="bg-surface-strong text-ink hover:bg-surface-subtle"
                 disabled={bulkPending}
                 onClick={() => setSelectedIds(new Set())}
               >
@@ -707,7 +710,7 @@ function InboxRow({
   const meta = inboxMetaText(record, t);
   return (
     <li
-      className={`group border-border bg-background relative grid min-h-[72px] min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-xl border px-4 shadow-[0_1px_2px_rgb(15_23_42/0.035)] transition-[border-color,background-color,box-shadow] ${selected ? "border-foreground/25 bg-surface-subtle shadow-[0_3px_10px_rgb(15_23_42/0.06)]" : "hover:border-foreground/20 hover:shadow-[0_3px_10px_rgb(15_23_42/0.05)]"}`}
+      className={`inbox-row group border-border relative grid min-h-18 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b px-4 last:border-b-0 ${selected || checked ? "bg-inbox-soft" : "hover:bg-surface-subtle"}`}
     >
       <Checkbox
         checked={checked}
@@ -722,7 +725,7 @@ function InboxRow({
         aria-label={t("inbox.preview.action", { title })}
       >
         <span className="flex min-w-0 items-center gap-3">
-          <span className="border-border bg-surface-subtle text-foreground flex size-10 shrink-0 items-center justify-center rounded-lg border">
+          <span className="text-muted-foreground flex size-8 shrink-0 items-center justify-center">
             <CaptureIcon type={record.capture_type} />
           </span>
           <span className="min-w-0">
@@ -755,7 +758,7 @@ function InboxRow({
           {formatInboxListDate(record.created_at)}
         </time>
       </button>
-      <div className="bg-background/95 absolute right-3 flex items-center gap-1 rounded-lg pl-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+      <div className="bg-surface-raised absolute right-3 flex items-center gap-1 rounded-lg pl-2 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
         <div>
           <InboxRowActions
             record={record}

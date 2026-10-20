@@ -14,7 +14,7 @@ export const PROCESSING_STATUSES = new Set([
 ]);
 
 export const inboxStatusClassNames = {
-  NOTE: "bg-success-soft text-success-foreground",
+  NOTE: "bg-surface-subtle text-muted-foreground",
   DRAFT: "bg-surface-subtle text-muted-foreground",
   CONTENT_PROCESSING: "bg-chat-accent-soft text-chat-accent",
   SUMMARY_PENDING: "bg-chat-accent-soft text-chat-accent",

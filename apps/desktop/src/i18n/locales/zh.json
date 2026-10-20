@@ -1952,7 +1952,7 @@
   },
   "inbox": {
     "workspace": {
-      "summary": "{{count}} 项未归类 · 今日新增 {{today}} · 可升级 {{upgradable}} · 处理中 {{processing}} · 失败 {{failed}}",
+      "summary": "{{count}} 项待整理，今日新增 {{today}} 项",
       "viewLabel": "收件箱视图",
       "desk": "桌面",
       "list": "列表",
@@ -1971,6 +1971,7 @@
       "web": "网页",
       "text": "文本",
       "waveformDemo": "波形示意 · 点击查看内容",
+      "audioPreview": "查看音频内容",
       "waiting": {
         "CONSENT_REQUIRED": "等待授权",
         "ASR_KEY_REQUIRED": "需配置转写密钥",
@@ -1980,6 +1981,7 @@
       "coursesHint": "拖动记录到目标课程，或选择后点击课程",
       "dropHint": "释放后确认归类",
       "courseTargetHint": "选择内容后归类到这里",
+      "courseTargetReady": "点击归类所选内容",
       "previousCourses": "查看上一组课程",
       "nextCourses": "查看下一组课程",
       "classifyInto": "归类所选内容到 {{course}}",

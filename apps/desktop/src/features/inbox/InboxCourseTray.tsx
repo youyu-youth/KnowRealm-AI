@@ -10,6 +10,7 @@ import {
   type MouseEvent,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { AppTooltip } from "@/components/common/AppTooltip";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useActiveCourses } from "@/features/courses/api/queries";
@@ -74,10 +75,11 @@ export function InboxCourseTray({
   return (
     <section
       className="inbox-course-tray"
+      data-active={dragging || canClassify || undefined}
       aria-label={t("inbox.workspace.coursesTitle")}
     >
       <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <h2 className="text-inbox-card text-ink-strong font-semibold">
+        <h2 className="text-section text-ink font-semibold">
           {t("inbox.workspace.coursesTitle")}
         </h2>
         <p className="inbox-course-hint text-body-dense text-muted-foreground min-w-0 flex-1">
@@ -97,24 +99,28 @@ export function InboxCourseTray({
             {t("inbox.workspace.allCourses")}
             <ArrowRight aria-hidden="true" className="size-3.5" />
           </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            disabled={!scrollState.previous}
-            aria-label={t("inbox.workspace.previousCourses")}
-            onClick={(event) => scrollCourses(-1, event)}
-          >
-            <ArrowLeft aria-hidden="true" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            disabled={!scrollState.next}
-            aria-label={t("inbox.workspace.nextCourses")}
-            onClick={(event) => scrollCourses(1, event)}
-          >
-            <ArrowRight aria-hidden="true" />
-          </Button>
+          <AppTooltip label={t("inbox.workspace.previousCourses")} side="top">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={!scrollState.previous}
+              aria-label={t("inbox.workspace.previousCourses")}
+              onClick={(event) => scrollCourses(-1, event)}
+            >
+              <ArrowLeft aria-hidden="true" />
+            </Button>
+          </AppTooltip>
+          <AppTooltip label={t("inbox.workspace.nextCourses")} side="top">
+            <Button
+              variant="outline"
+              size="icon-sm"
+              disabled={!scrollState.next}
+              aria-label={t("inbox.workspace.nextCourses")}
+              onClick={(event) => scrollCourses(1, event)}
+            >
+              <ArrowRight aria-hidden="true" />
+            </Button>
+          </AppTooltip>
         </div>
         <div className="min-w-0">{children}</div>
       </div>
@@ -142,7 +148,7 @@ export function InboxCourseTray({
             <Button
               key={course.id}
               variant="ghost"
-              className="inbox-course-target border-border bg-paper hover:border-inbox-accent hover:bg-inbox-soft hover:text-foreground aria-disabled:hover:border-border aria-disabled:hover:bg-paper data-drop-active:border-inbox-accent data-drop-active:bg-inbox-soft data-drop-active:outline-inbox-accent h-auto gap-3 rounded-xl p-4 data-dragging:border-dashed data-drop-active:outline"
+              className="inbox-course-target border-border bg-surface-raised hover:border-inbox-accent hover:bg-inbox-soft hover:text-foreground aria-disabled:hover:border-border aria-disabled:hover:bg-surface-raised data-drop-active:border-inbox-accent data-drop-active:bg-inbox-soft data-drop-active:outline-inbox-accent h-auto gap-3 rounded-lg border p-3 data-dragging:border-dashed data-drop-active:outline"
               data-drop-active={
                 (dragging && hoveredCourse === course.id) || undefined
               }
@@ -150,6 +156,7 @@ export function InboxCourseTray({
               aria-label={t("inbox.workspace.classifyInto", {
                 course: course.name,
               })}
+              title={course.name}
               aria-disabled={disabled || (!canClassify && !dragging)}
               onClick={() => {
                 if (!disabled && canClassify) onClassify(course.id);
@@ -185,20 +192,22 @@ export function InboxCourseTray({
             >
               <span className="inbox-course-icon">
                 {dragging && hoveredCourse === course.id ? (
-                  <FolderOpen aria-hidden="true" className="size-7" />
+                  <FolderOpen aria-hidden="true" className="size-5" />
                 ) : (
-                  <Folder aria-hidden="true" className="size-7" />
+                  <Folder aria-hidden="true" className="size-5" />
                 )}
               </span>
               <span className="min-w-0 text-left">
-                <span className="text-inbox-card text-ink-strong line-clamp-2 font-semibold break-words whitespace-normal">
+                <span className="text-body text-ink line-clamp-2 font-medium break-words whitespace-normal">
                   {course.name}
                 </span>
                 <span className="text-label text-muted-foreground mt-1 block whitespace-normal">
                   {t(
                     dragging && hoveredCourse === course.id
                       ? "inbox.workspace.dropHint"
-                      : "inbox.workspace.courseTargetHint",
+                      : canClassify
+                        ? "inbox.workspace.courseTargetReady"
+                        : "inbox.workspace.courseTargetHint",
                   )}
                 </span>
               </span>

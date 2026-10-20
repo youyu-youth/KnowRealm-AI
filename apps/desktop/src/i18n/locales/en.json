@@ -1966,7 +1966,7 @@
   },
   "inbox": {
     "workspace": {
-      "summary": "{{count}} unfiled · {{today}} added today · {{upgradable}} upgradable · {{processing}} processing · {{failed}} failed",
+      "summary": "{{count}} items to organize, {{today}} added today",
       "viewLabel": "Inbox view",
       "desk": "Desk",
       "list": "List",
@@ -1985,6 +1985,7 @@
       "web": "Web page",
       "text": "Text",
       "waveformDemo": "Illustrative waveform · Click to preview",
+      "audioPreview": "Preview audio content",
       "waiting": {
         "CONSENT_REQUIRED": "Awaiting consent",
         "ASR_KEY_REQUIRED": "ASR key required",
@@ -1994,6 +1995,7 @@
       "coursesHint": "Drag a record to a course, or select records and click a course",
       "dropHint": "Release to confirm filing",
       "courseTargetHint": "Select content to file here",
+      "courseTargetReady": "Click to file selected content",
       "previousCourses": "View previous courses",
       "nextCourses": "View next courses",
       "classifyInto": "File selected content into {{course}}",
