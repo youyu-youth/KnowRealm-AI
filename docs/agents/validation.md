@@ -41,9 +41,9 @@ uv run --frozen --directory backend python -m scripts.run_tests backend tests/te
 
 基点使用其自身的同一入口及独立依赖，保存当前和基点两个结果目录；最终记录引用原命令、状态及失败形态。临时数据库单独放在 backend 专用 basetemp，不混入日志目录，不自动删除用户资源。已有历史失败仍按原规则复核，不增加豁免。
 
-CI 两个 job 在结束时保存上述日志目录，测试失败也执行，保留七天；没有启动测试时不伪造报告。上传范围只包含运行记录与测试日志，不包含 basetemp 数据库、依赖或用户数据。
+手动全量测试的 `tests` job 在结束时保存上述日志目录，测试失败也执行，保留七天；没有启动测试时不伪造报告。上传范围只包含运行记录与测试日志，不包含 basetemp 数据库、依赖或用户数据。
 
-[Checks 工作流](../../.github/workflows/check.yml) 在 push、PR 和手动触发时使用 Windows runner、只读仓库权限、锁文件安装依赖。`checks` job 执行脚本自检、改动范围检查、API 契约、双语防线和既有 Agent 输入/恢复/工具预算/错误登记回归；`tests` job 复用已有 FFmpeg 准备脚本并执行前后端全量测试。失败保持红灯，其他独立验证步骤仍运行；没有 allow-failure 或整组排除。
+[Checks 工作流](../../.github/workflows/check.yml) 在 push、PR 和手动触发时使用 Windows runner、只读仓库权限、锁文件安装依赖。自动运行的 `checks` job 只执行改动范围检查、API 契约和双语一致性；`tests` job 仅在 Actions 页面手动 Run workflow（`workflow_dispatch`）时执行，复用已有 FFmpeg 准备脚本及前后端全量测试入口，保留全部用例。脚本自身改动仍在本地运行自检；Agent 相关改动按下文运行已有针对性回归。轻量检查通过只证明上述范围，不代表全量测试通过；已执行的检查失败仍保持红灯。
 
 新增工作流并不等于远端已经执行或已经设置分支保护。首次 push 后核对 Actions 的安装、用例、跳过项和结果；若需要合并强制门禁，再在仓库设置中指定所需检查。
 

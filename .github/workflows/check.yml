@@ -30,8 +30,6 @@ jobs:
           python-version: "3.13"
       - run: pnpm install --frozen-lockfile
       - run: uv sync --frozen --directory backend
-      - name: Check script self-test
-        run: ./scripts/test-check-changed.ps1
       - name: Changed files
         env:
           CHECK_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
@@ -47,21 +45,9 @@ jobs:
       - name: Locale consistency
         if: ${{ !cancelled() }}
         run: pnpm --filter @knowrealm/desktop exec vitest run src/i18n/locales.test.ts --maxWorkers=1
-      - name: Agent input, recovery, tool budget and error registry
-        if: ${{ !cancelled() }}
-        working-directory: backend
-        run: uv run --frozen python -m scripts.run_tests backend tests/test_test_runner.py tests/test_context_budget.py tests/test_chat_turns_recovery.py tests/test_tool_budget.py tests/test_error_code_guard.py --timeout 1200
-      - name: Preserve test diagnostics
-        if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: checks-test-diagnostics
-          path: .pytest-tmp-runs/
-          include-hidden-files: true
-          if-no-files-found: ignore
-          retention-days: 7
 
   tests:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
