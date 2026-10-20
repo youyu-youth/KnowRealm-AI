@@ -32,6 +32,7 @@ from test_chat_turns_recovery import _seed_turn  # pyright: ignore[reportPrivate
 from test_server_process import wait_for_sidecar
 
 from app.modules.capture.web_clip import ClipContent, WebClipError
+from app.modules.jobs.runner import JobRunner
 from app.modules.settings.config import grant_llm_consent, save_llm_provider
 from app.modules.settings.model_budget import ModelBudgetConfig
 
@@ -147,8 +148,10 @@ async def test_wait_resume_preserves_proposals_and_execution_anchors(
     from app.modules.llm import service as llm_service
 
     release = asyncio.Event()
+    fetched = asyncio.Event()
 
     async def fetch(_self: object, url: str) -> ClipContent:
+        fetched.set()
         await release.wait()
         return ClipContent(text="后台正文。" * 40, title="资料", metadata={"url": url})
 
@@ -211,7 +214,17 @@ async def test_wait_resume_preserves_proposals_and_execution_anchors(
         memory_id = before[1]["proposal_id"]
         research_id = before[2]["proposals"][0]["proposal_id"]
         if restart:
+            await asyncio.wait_for(fetched.wait(), 5)
+            original_stop = JobRunner[Any, Any, Any].stop
+
+            def stop_and_release(worker: JobRunner[Any, Any, Any]) -> None:
+                original_stop(worker)
+                release.set()
+
+            # 所有 Worker 同步停领后放行网络替身，关闭才能收尾且回答不会提前续跑。
+            monkeypatch.setattr(JobRunner, "stop", stop_and_release)
             await stack.aclose()
+            monkeypatch.setattr(JobRunner, "stop", original_stop)
             app, client, captured = await stack.enter_async_context(
                 turns_app(tmp_path, monkeypatch, replies=continuation)
             )
