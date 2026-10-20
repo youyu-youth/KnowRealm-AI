@@ -76,10 +76,10 @@
   flex-direction: column;
   height: var(--spacing-today-main);
   overflow: clip;
-  background: var(--paper);
+  background: var(--today-actions-surface);
   --today-ink: var(--foreground);
   --today-primary: var(--foreground);
-  --today-muted: var(--ink-neutral);
+  --today-muted: color-mix(in oklch, var(--ink-neutral) 80%, var(--foreground));
 }
 .today-actions-header,
 .today-actions-toolbar {
@@ -353,7 +353,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0.85fr);
   gap: calc(var(--spacing) * 5);
-  padding: calc(var(--spacing) * 6);
+  padding: calc(var(--spacing) * 5);
   background: var(--today-focus-surface);
   color: var(--today-focus-ink);
   border-color: transparent;
@@ -378,15 +378,15 @@
   text-wrap: balance;
 }
 .today-focus-description {
-  margin-top: calc(var(--spacing) * 3);
+  margin-top: calc(var(--spacing) * 2);
   color: var(--today-focus-muted);
   font-size: var(--text-body);
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
 .today-focus-goals {
-  margin-top: calc(var(--spacing) * 4);
-  padding-top: calc(var(--spacing) * 4);
+  margin-top: calc(var(--spacing) * 3);
+  padding-top: calc(var(--spacing) * 3);
   border-top: 1px solid
     color-mix(in srgb, var(--today-focus-ink) 12%, transparent);
 }
@@ -409,8 +409,8 @@
 .today-goal-list {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: calc(var(--spacing) * 3);
-  margin-top: calc(var(--spacing) * 4);
+  gap: calc(var(--spacing) * 2);
+  margin-top: calc(var(--spacing) * 3);
   font-size: var(--text-label);
   color: var(--today-focus-muted);
 }
@@ -628,6 +628,10 @@
   opacity: 1;
 }
 @container today (min-width: 52rem) {
+  .today-focus-column {
+    min-height: var(--spacing-today-main);
+    grid-template-rows: minmax(min-content, 1fr) auto;
+  }
   .today-grid {
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.8fr);
   }

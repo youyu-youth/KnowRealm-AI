@@ -37,6 +37,7 @@
   --course-cover-opacity: 0.09;
 
   --today-focus-surface: #fac092;
+  --today-actions-surface: light-dark(#d6c8b2, #332f29);
   --today-actions-header: color-mix(
     in oklch,
     var(--today-accent) 14%,

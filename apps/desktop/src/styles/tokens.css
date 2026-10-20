@@ -74,6 +74,7 @@
   --color-filter-active-background: var(--filter-active-background);
   --color-filter-active-foreground: var(--filter-active-foreground);
   --color-today-accent: var(--today-accent);
+  --color-today-actions-surface: var(--today-actions-surface);
   --color-today-soft: var(--today-soft);
   --color-today-muted: var(--today-muted);
   --color-today-border: var(--today-border);
@@ -84,7 +85,7 @@
   --color-today-focus: var(--today-focus);
   --text-today-section: 1.125rem;
   --text-today-section--line-height: 1.4;
-  --spacing-today-timer: 17rem;
+  --spacing-today-timer: 15rem;
   --spacing-today-task-column: 20rem;
   --spacing-today-material: 12rem;
   --spacing-today-side-list: 7rem;
@@ -95,7 +96,7 @@
   --text-today-plan-title: 1rem;
   --radius-today-pill: 99rem;
   --spacing-today-clock-face: 4rem;
-  --text-today-focus: 2.125rem;
+  --text-today-focus: 1.875rem;
   --text-today-clock: 3.125rem;
   --color-today-focus-surface: var(--today-focus-surface);
   --color-today-focus-ink: var(--today-focus-ink);
