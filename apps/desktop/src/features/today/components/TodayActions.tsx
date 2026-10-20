@@ -3,7 +3,13 @@ import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { todayApi, type TodaySummaryTodo } from "@/features/today/api/today";
 import { todayKeys } from "@/features/today/api/keys";
 import { TodayProgressSummary } from "@/features/today/components/TodayProgressSummary";
@@ -96,82 +102,91 @@ export function TodayActions({
           </p>
         )}
       </div>
-      <Tabs
-        value={status}
-        onValueChange={(value) =>
-          void navigate({
-            search: (previous) => ({
-              ...previous,
-              action_status: value === "done" ? "done" : "pending",
-              completed_page: 1,
-            }),
-            replace: true,
-          })
-        }
-        className="today-actions-tabs gap-0"
-      >
+      <div className="today-actions-body">
         <div className="today-actions-toolbar">
-          <TabsList className="today-actions-status">
-            <TabsTrigger value="pending">
-              <span className="truncate">{t("today.workspace.toDo")}</span>{" "}
-              <span className="ml-1 tabular-nums">
-                {data?.pending_count ?? "—"}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger
-              value="done"
-              aria-label={`${t("today.progress.completed")} ${data?.completed_count ?? "—"}`}
+          <Select
+            value={status}
+            onValueChange={(value) =>
+              void navigate({
+                search: (previous) => ({
+                  ...previous,
+                  action_status: value === "done" ? "done" : "pending",
+                  completed_page: 1,
+                }),
+                replace: true,
+              })
+            }
+          >
+            <SelectTrigger
+              size="sm"
+              className="today-actions-status"
+              aria-label={t("today.progress.statusFilter")}
             >
-              <span className="truncate">
-                {t("today.progress.completedShort")}
-              </span>
-              <span className="ml-1 tabular-nums">
+              <SelectValue>
+                {t(
+                  status === "done"
+                    ? "today.progress.completedShort"
+                    : "today.workspace.toDo",
+                )}{" "}
+                {status === "done"
+                  ? (data?.completed_count ?? "—")
+                  : (data?.pending_count ?? "—")}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent className="today-status-options">
+              <SelectItem value="pending">
+                {t("today.workspace.toDo")} {data?.pending_count ?? "—"}
+              </SelectItem>
+              <SelectItem value="done">
+                {t("today.progress.completedShort")}{" "}
                 {data?.completed_count ?? "—"}
-              </span>
-            </TabsTrigger>
-          </TabsList>
+              </SelectItem>
+            </SelectContent>
+          </Select>
           <TodayPlanFilters courses={courses} />
         </div>
-        <TabsContent
-          value="pending"
-          className="today-action-list m-0"
-          tabIndex={0}
-        >
-          <TodayTodos
-            summaries={summaries}
-            isSummariesPending={loading}
-            isSummariesError={error}
-            onRetrySummaries={onRetry}
-            showSummaries={false}
-            course={course}
-            order={order}
-            selectedItemId={selectedItemId}
-            onFocus={onFocus}
-          />
-          {!plans.isPending &&
-          !plans.isError &&
-          !(plans.data ?? []).some(
-            (item) => course === "all" || item.course_id === course,
-          ) ? (
-            <p className="text-label text-ink-muted p-5">
-              {t("today.workspace.noTasks")}
-            </p>
-          ) : null}
-        </TabsContent>
-        <TabsContent
-          value="done"
-          className="today-action-list m-0 p-4"
-          tabIndex={0}
-          aria-busy={progress.isFetching}
-        >
-          {progress.isPlaceholderData ? (
-            <p role="status" className="text-label text-ink-muted">
-              {t("today.loading")}
-            </p>
-          ) : null}
-          {data ? <TodayCompletedTasks progress={data} page={page} /> : null}
-        </TabsContent>
-      </Tabs>
+        {status === "pending" ? (
+          <div className="today-action-list">
+            <TodayTodos
+              summaries={summaries}
+              isSummariesPending={loading}
+              isSummariesError={error}
+              onRetrySummaries={onRetry}
+              showSummaries={false}
+              course={course}
+              order={order}
+              selectedItemId={selectedItemId}
+              onFocus={onFocus}
+            />
+            {!plans.isPending &&
+            !plans.isError &&
+            !(plans.data ?? []).some(
+              (item) => course === "all" || item.course_id === course,
+            ) ? (
+              <p
+                role="status"
+                className="today-actions-empty text-label text-ink-muted"
+              >
+                {t("today.workspace.noTasks")}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <div
+            className="today-action-list today-completed-preview"
+            aria-busy={progress.isFetching}
+          >
+            {progress.isPlaceholderData ? (
+              <p role="status" className="text-label text-ink-muted">
+                {t("today.loading")}
+              </p>
+            ) : null}
+            {data ? (
+              <TodayCompletedTasks progress={data} page={page} preview />
+            ) : null}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

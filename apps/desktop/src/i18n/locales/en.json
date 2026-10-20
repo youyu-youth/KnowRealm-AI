@@ -341,6 +341,7 @@
     "progress": {
       "title": "Today's plan progress",
       "completed": "Completed today",
+      "statusFilter": "Task status",
       "completedShort": "Done",
       "pending": "To do",
       "overdue": "Overdue",

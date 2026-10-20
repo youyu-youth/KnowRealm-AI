@@ -104,7 +104,7 @@ export function TodayTodos({
   }
 
   return (
-    <div className="min-w-0">
+    <div className="today-todos-content min-w-0">
       <h3 className="text-label text-ink-muted sr-only font-medium">
         {t("today.todoTitle")}
       </h3>

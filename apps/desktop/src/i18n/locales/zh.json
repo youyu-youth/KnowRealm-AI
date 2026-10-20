@@ -332,6 +332,7 @@
     "progress": {
       "title": "今日计划进展",
       "completed": "今日已完成",
+      "statusFilter": "任务状态",
       "completedShort": "已完成",
       "pending": "待完成",
       "overdue": "其中逾期",

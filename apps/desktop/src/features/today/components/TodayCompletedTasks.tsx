@@ -1,16 +1,24 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Check } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import type { TodayProgress } from "@/features/today/api/today";
 
 export function TodayCompletedTasks({
   progress,
   page,
+  preview = false,
 }: {
   progress: TodayProgress;
   page: number;
+  preview?: boolean;
 }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate({ from: "/" });
@@ -39,20 +47,23 @@ export function TodayCompletedTasks({
     <>
       {progress.completed_count === 0 ? (
         <p
-          id="today-completed-list"
+          id={preview ? undefined : "today-completed-list"}
           tabIndex={-1}
-          className="text-label text-ink-muted"
+          className="today-actions-empty text-label text-ink-muted"
         >
           {t("today.progress.emptyCompleted")}
         </p>
       ) : (
         <ul
-          id="today-completed-list"
+          id={preview ? undefined : "today-completed-list"}
           tabIndex={-1}
           aria-label={t("today.progress.completedList")}
           className="divide-border-subtle divide-y"
         >
-          {progress.completed_items.map((item) => (
+          {(preview
+            ? progress.completed_items.slice(0, 3)
+            : progress.completed_items
+          ).map((item) => (
             <li
               key={item.item_id}
               className="flex min-w-0 flex-wrap items-start gap-3 py-3"
@@ -62,10 +73,16 @@ export function TodayCompletedTasks({
                 aria-hidden="true"
               />
               <div className="min-w-0 flex-1">
-                <p className="text-body font-medium break-words">
+                <p
+                  className="today-completed-title text-body font-medium break-words"
+                  title={item.content}
+                >
                   {item.content}
                 </p>
-                <p className="text-label text-ink-muted mt-1 break-words">
+                <p
+                  className="today-completed-course text-label text-ink-muted mt-1 break-words"
+                  title={`${item.course_name} · ${item.goal_title} · ${t("today.progress.version", { version: item.plan_version })}`}
+                >
                   {item.course_name} · {item.goal_title} ·{" "}
                   {t("today.progress.version", { version: item.plan_version })}
                 </p>
@@ -96,7 +113,31 @@ export function TodayCompletedTasks({
           ))}
         </ul>
       )}
-      {pages > 1 ? (
+      {preview && progress.completed_count > 0 ? (
+        <Dialog>
+          <DialogTrigger
+            render={
+              <Button
+                variant="secondary"
+                size="sm"
+                className="today-view-plans"
+              />
+            }
+          >
+            {t("today.planDialog.viewMore")}
+            <span className="tabular-nums">{progress.completed_count}</span>
+            <ArrowRight aria-hidden="true" />
+          </DialogTrigger>
+          <DialogContent
+            className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl"
+            aria-describedby={undefined}
+          >
+            <DialogTitle>{t("today.progress.completedList")}</DialogTitle>
+            <TodayCompletedTasks progress={progress} page={page} />
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {!preview && pages > 1 ? (
         <nav
           aria-label={t("today.progress.pagination")}
           className="mt-3 flex flex-wrap items-center justify-end gap-2"

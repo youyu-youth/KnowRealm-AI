@@ -97,6 +97,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+async function selectStatus(name: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: "任务状态" }));
+  const option = await screen.findByRole("option", { name });
+  fireEvent.pointerDown(option);
+  fireEvent.pointerUp(option);
+  fireEvent.click(option);
+}
+
 describe("今日真实进展", () => {
   it("首屏只显示三项，查看更多打开全部卡片，关闭返回原入口", async () => {
     server.use(
@@ -189,7 +197,7 @@ describe("今日真实进展", () => {
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "待办事项" })).toHaveFocus(),
     );
-    expect(screen.getByRole("tab", { name: "今日已完成 1" })).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "任务状态" })).toBeVisible();
   });
 
   it("窗口与侧栏共享课程筛选和排序 URL 状态", async () => {
@@ -295,12 +303,20 @@ describe("今日真实进展", () => {
     fireEvent.click(checkbox);
     await waitFor(() => expect(checkbox).toBeEnabled());
     expect(checkbox).not.toBeChecked();
-    expect(screen.getByRole("tab", { name: "待完成 1" })).toBeVisible();
-    expect(screen.getByRole("tab", { name: "今日已完成 0" })).toBeVisible();
+    expect(
+      screen.getByRole("combobox", { name: "任务状态" }),
+    ).toHaveTextContent("待完成 1");
+    expect(screen.getByLabelText("今日计划进展")).toHaveTextContent(
+      "今日已完成0",
+    );
     fail = false;
     fireEvent.click(checkbox);
-    const completed = await screen.findByRole("tab", { name: "今日已完成 1" });
-    fireEvent.click(completed);
+    await waitFor(() =>
+      expect(screen.getByLabelText("今日计划进展")).toHaveTextContent(
+        "今日已完成1",
+      ),
+    );
+    await selectStatus("已完成 1");
     expect(
       await screen.findByRole("list", { name: "今日已完成计划项" }),
     ).toHaveTextContent("阅读调度器");
@@ -340,14 +356,21 @@ describe("今日真实进展", () => {
     );
     const { router } = renderAt("/?action_status=done&completed_page=2");
     expect(await screen.findByText("第二页任务")).toBeVisible();
-    expect(screen.getByRole("tab", { name: "今日已完成 21" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
+    expect(
+      screen.getByRole("combobox", { name: "任务状态" }),
+    ).toHaveTextContent("已完成 21");
+    fireEvent.click(screen.getByRole("button", { name: /查看更多/ }));
+    await screen.findByRole("dialog", { name: "今日已完成计划项" });
     expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "上一页" }));
-    expect(await screen.findByText("第一页任务")).toBeVisible();
+    expect(
+      await within(screen.getByRole("dialog")).findByText("第一页任务"),
+    ).toBeVisible();
     expect(router.state.location.search.completed_page).toBe(1);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole("combobox", { name: "任务排序" }));
     const durationOption = await screen.findByRole("option", {
       name: "预估时长 ↓",
@@ -358,11 +381,18 @@ describe("今日真实进展", () => {
     await waitFor(() =>
       expect(router.state.location.search.order).toBe("duration"),
     );
+    fireEvent.click(screen.getByRole("button", { name: /查看更多/ }));
     const nextPage = await screen.findByRole("button", { name: "下一页" });
     nextPage.focus();
     fireEvent.click(nextPage);
-    expect(await screen.findByText("第二页任务")).toBeVisible();
+    expect(
+      await within(screen.getByRole("dialog")).findByText("第二页任务"),
+    ).toBeVisible();
     expect(screen.getByRole("button", { name: "上一页" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
     fireEvent.click(screen.getByRole("combobox", { name: "按课程筛选" }));
     const courseOption = await screen.findByRole("option", {
       name: "响应式编程",
@@ -374,10 +404,50 @@ describe("今日真实进展", () => {
       expect(router.state.location.search.completed_page).toBe(1),
     );
     expect(
-      await screen.findByRole("tab", { name: "今日已完成 1" }),
+      await screen.findByRole("combobox", { name: "任务状态" }),
     ).toBeVisible();
     expect(router.state.location.search.course).toBe(item.course_id);
     expect(requests.some((query) => query.includes("offset=20"))).toBe(true);
+  });
+
+  it("已完成仅预览三项，查看更多保留本页所有事项并恢复焦点", async () => {
+    server.use(
+      http.get(endpoint, () =>
+        HttpResponse.json({
+          ...progress,
+          completed_count: 8,
+          completed_items: Array.from({ length: 8 }, (_, index) => ({
+            ...item,
+            item_id: `done-${index}`,
+            content: `已完成任务 ${index + 1}`,
+            plan_version: 1,
+            completed_at: "2026-10-15T06:00:00Z",
+          })),
+        }),
+      ),
+    );
+    const { router } = renderAt();
+    await screen.findByRole("combobox", { name: "任务状态" });
+    await waitFor(() =>
+      expect(screen.getByLabelText("今日计划进展")).toHaveTextContent(
+        "今日已完成8",
+      ),
+    );
+    await selectStatus("已完成 8");
+    await waitFor(() =>
+      expect(router.state.location.search.action_status).toBe("done"),
+    );
+    expect(screen.getAllByRole("listitem")).toHaveLength(3);
+    expect(screen.queryByText("已完成任务 4")).not.toBeInTheDocument();
+    const more = screen.getByRole("button", { name: /查看更多/ });
+    fireEvent.click(more);
+    const dialog = await screen.findByRole("dialog", {
+      name: "今日已完成计划项",
+    });
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(8);
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => expect(more).toHaveFocus());
   });
 
   it("无估时与部分估时如实显示；请求失败不伪造零值，局部重试恢复", async () => {
@@ -406,7 +476,9 @@ describe("今日真实进展", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "今日进展暂时无法读取",
     );
-    expect(screen.getByRole("tab", { name: "今日已完成 —" })).toBeVisible();
+    expect(
+      screen.getByRole("combobox", { name: "任务状态" }),
+    ).toHaveTextContent("待完成 —");
     failure = false;
     partial = true;
     fireEvent.click(screen.getByRole("button", { name: "重新读取" }));
@@ -435,7 +507,11 @@ describe("今日真实进展", () => {
       }),
     );
     const { router } = renderAt("/?action_status=done&completed_page=2");
-    await screen.findByRole("tab", { name: "今日已完成 21" });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "任务状态" }),
+      ).toHaveTextContent("已完成 21"),
+    );
     const baseline = reads;
     vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     fireEvent(document, new Event("visibilitychange"));
@@ -460,7 +536,7 @@ describe("今日真实进展", () => {
     );
     fireEvent(window, new Event("focus"));
     expect(await screen.findByText("今天还没有完成的计划项。")).toBeVisible();
-    fireEvent.click(screen.getByRole("tab", { name: "待完成 0" }));
+    await selectStatus("待完成 0");
     expect(
       await screen.findByText("暂无待完成计划项，可在课程中制定学习计划。"),
     ).toBeVisible();
