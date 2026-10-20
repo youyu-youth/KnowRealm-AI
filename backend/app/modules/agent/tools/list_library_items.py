@@ -19,7 +19,7 @@ from app.modules.agent.tools.listing import (
     resolve_list_limit,
     truncated_notice,
 )
-from app.modules.library.schemas import LibraryItemListQuery, LibrarySourceType
+from app.modules.library.schemas import LibraryItemListQuery, LibraryItemOrder, LibrarySourceType
 from app.modules.library.service import LibraryService
 
 
@@ -34,8 +34,9 @@ async def list_library_items(
     course_id: str | None = None,
     q: str | None = None,
     limit: int | None = None,
+    order: LibraryItemOrder = LibraryItemOrder.UPDATED,
 ) -> str:
-    """列出资料库条目（id、标题、来源类型、归属课程名、更新时间，按更新时间降序）。
+    """列出资料库条目（id、标题、来源类型、归属课程名、入库与更新时间）。
 
     用户想知道资料库里有哪些条目、或整理前需要先看到条目清单时使用。可按
     来源类型（AUDIO / DOCUMENT / WEB / BOOK / TEXT）、归属课程（course_id，
@@ -43,6 +44,8 @@ async def list_library_items(
     元数据）过滤，全部省略 = 列全部。limit 是返回条数：用户要全部时省略，
     明确要 N 条时传 N；省略时最多返回 100 条，超出时载荷带 total 与
     truncated，请如实转述总数。默认不含已归档与回收站中的条目。
+    order 默认 updated（最近修改）；查询最近导入/入库的资料时使用 created，
+    按入库时间降序。例如最近导入三份资料使用 order=created、limit=3。
     """
     runtime = current_agent_runtime()
     if runtime is None:
@@ -81,6 +84,7 @@ async def list_library_items(
                     source_type=parsed_source,
                     course_id=parsed_course,
                     q=needle,
+                    order=order,
                 ),
             )
     except Exception:
@@ -96,6 +100,7 @@ async def list_library_items(
                 "source_type": item.source_type,
                 "course_name": item.course_name,
                 "updated_at": item.updated_at.strftime("%Y-%m-%d %H:%M"),
+                "created_at": item.created_at.strftime("%Y-%m-%d %H:%M"),
             }
             for item in out.items
         ],

@@ -517,9 +517,6 @@
   font-size: var(--text-label);
   line-height: 1.6;
 }
-.today-material-entry[aria-pressed="true"] {
-  background: var(--today-soft);
-}
 .today-material-entry {
   padding-block: calc(var(--spacing) * 1.5);
 }

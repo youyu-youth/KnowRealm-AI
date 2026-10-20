@@ -894,3 +894,35 @@ async def _proposal_routes_body(tmp_path: Path) -> None:
         assert (
             await client.post("/api/proposals/00000000-0000-4000-8000-00000000dead/reject")
         ).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_library_items_order_by_created_before_limit(tmp_path: Path) -> None:
+    async with running_app(tmp_path) as (_app, client, session_factory):
+        ids = [f"b0000000-0000-4000-8000-{index:012d}" for index in range(7)]
+        for index, item_id in enumerate(ids):
+            await insert(
+                "INSERT INTO library_items (id, source_type, title, content_hash, "
+                "metadata_json, status, created_at, updated_at, deleted_at) VALUES "
+                "(:id, :type, :title, :id, '{}', :status, :created, :updated, :deleted)",
+                {
+                    "id": item_id,
+                    "type": ["DOCUMENT", "WEB", "AUDIO", "BOOK", "TEXT", "WEB", "WEB"][index],
+                    "title": f"原始资料 {index}",
+                    "status": "ARCHIVED" if index == 5 else "ACTIVE",
+                    "created": f"2026-10-{[1, 2, 3, 3, 4, 9, 9][index]:02d}T08:00:00.000000Z",
+                    "updated": f"2026-10-{10 - index:02d}T08:00:00.000000Z",
+                    "deleted": NOW if index == 6 else None,
+                },
+                session_factory,
+            )
+        recent = await client.get("/api/library/items", params={"order": "created", "limit": 3})
+        assert recent.status_code == 200
+        assert [item["id"] for item in recent.json()["items"]] == [ids[4], ids[3], ids[2]]
+        assert recent.json()["total"] == 5
+        assert all(item["course_id"] is None for item in recent.json()["items"])
+        default = await client.get("/api/library/items", params={"limit": 3})
+        assert [item["id"] for item in default.json()["items"]] == ids[:3]
+        assert (
+            await client.get("/api/library/items", params={"order": "invalid"})
+        ).status_code == 422

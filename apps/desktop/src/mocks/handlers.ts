@@ -19,6 +19,9 @@ export const preferencesPayload = {
 };
 
 export const handlers = [
+  http.get(`${TEST_SIDECAR_URL}/api/library/items`, () =>
+    HttpResponse.json({ items: [], total: 0, backfill: null }),
+  ),
   http.get(`${TEST_SIDECAR_URL}/api/courses`, () => HttpResponse.json([])),
   http.get(`${TEST_SIDECAR_URL}/api/inbox`, () => HttpResponse.json([])),
   // 共享引用清单（工单 05）：课程详情共享 Tab 的默认查询兜底（空清单）。

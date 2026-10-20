@@ -5485,6 +5485,11 @@ export interface components {
             /** Total */
             total: number;
         };
+        /**
+         * LibraryItemOrder
+         * @enum {string}
+         */
+        LibraryItemOrder: "updated" | "created";
         /** LibraryItemOut */
         LibraryItemOut: {
             /** @default EMPTY */
@@ -13562,6 +13567,7 @@ export interface operations {
                 unclassified?: boolean;
                 availability?: components["schemas"]["LibraryAvailability"] | null;
                 q?: string | null;
+                order?: components["schemas"]["LibraryItemOrder"];
             };
             header?: {
                 "x-knowrealm-token"?: string | null;

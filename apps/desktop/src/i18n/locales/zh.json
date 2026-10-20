@@ -329,6 +329,11 @@
       "emptyHint": "捕获内容并完成总结确认后，可在来源记录整理学习资产。",
       "error": "近期学习产出暂时无法读取"
     },
+    "recentMaterials": {
+      "list": "最近资料列表",
+      "empty": "暂无最近资料",
+      "error": "最近资料暂时无法读取"
+    },
     "progress": {
       "title": "今日计划进展",
       "completed": "今日已完成",

@@ -78,6 +78,55 @@ function renderAt(path = "/") {
 }
 
 describe("今日页", () => {
+  it("速记保存后仍停留今日页，并刷新最近资料", async () => {
+    let saved = false;
+    server.use(
+      http.get(`${TEST_SIDECAR_URL}/api/library/items`, () =>
+        HttpResponse.json({
+          items: saved
+            ? [
+                {
+                  id: "quick-source",
+                  title: "刚刚保存的速记",
+                  source_type: "TEXT",
+                  availability: "RETRIEVABLE",
+                  created_at: "2026-10-20T02:00:00Z",
+                },
+              ]
+            : [],
+          total: saved ? 1 : 0,
+          backfill: null,
+        }),
+      ),
+      http.post(`${TEST_SIDECAR_URL}/api/text-captures`, () => {
+        saved = true;
+        return HttpResponse.json(
+          { record_id: RECORD_ID, summary_job_id: null },
+          { status: 202 },
+        );
+      }),
+    );
+    renderAt();
+    expect(await screen.findByText("暂无最近资料")).toBeVisible();
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "快速捕获" })).getByRole(
+        "button",
+        { name: "新建速记" },
+      ),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "新建速记" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "正文" }), {
+      target: { value: "刚刚保存的速记" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    const region = screen.getByRole("region", { name: "最近资料" });
+    expect(await within(region).findByText("刚刚保存的速记")).toBeVisible();
+    expect(window.location.pathname).toBe("/");
+  });
+
   it("从计划项窗口专注任务后关闭窗口，并将焦点移至专注区", async () => {
     const tasks = Array.from({ length: 4 }, (_, index) => ({
       item_id: `focus-task-${index}`,
@@ -115,16 +164,19 @@ describe("今日页", () => {
     expect(focusTitle.closest("section")).toHaveTextContent(tasks[3].content);
   });
 
-  it("资料示例联动切换，临时笔记与计时状态跨视图保留", async () => {
+  it("最近资料不再联动示例，临时笔记与计时状态跨视图保留", async () => {
     renderAt();
     const recentMaterials = await screen.findByRole("region", {
       name: "最近资料",
     });
-    expect(within(recentMaterials).getAllByRole("button")).toHaveLength(3);
-    fireEvent.click(
-      await screen.findByRole("button", { name: /MySQL 初始化脚本/ }),
-    );
+    expect(
+      await within(recentMaterials).findByText("暂无最近资料"),
+    ).toBeVisible();
+    expect(within(recentMaterials).queryByText("示意")).not.toBeInTheDocument();
     const materials = screen.getByRole("region", { name: "学习资料" });
+    fireEvent.click(
+      within(materials).getByRole("button", { name: "下一份示例资料" }),
+    );
     expect(
       within(materials).getByRole("heading", { name: "MySQL 初始化脚本" }),
     ).toBeVisible();

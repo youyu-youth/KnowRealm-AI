@@ -338,6 +338,11 @@
       "emptyHint": "Capture content and confirm its summary, then organize learning assets in the source record.",
       "error": "Recent learning outputs could not be loaded"
     },
+    "recentMaterials": {
+      "list": "Recent materials",
+      "empty": "No recent materials yet",
+      "error": "Recent materials could not be loaded"
+    },
     "progress": {
       "title": "Today's plan progress",
       "completed": "Completed today",

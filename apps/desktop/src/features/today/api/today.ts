@@ -1,5 +1,11 @@
 import type { components } from "@knowrealm/api-types";
 import { apiFetch } from "@/services/http/client";
+import type { LibraryItemsParams } from "@/features/library/api/library";
+
+export const RECENT_MATERIALS_PARAMS = {
+  order: "created",
+  limit: 3,
+} as const satisfies LibraryItemsParams;
 
 export type TodaySummaryTodo = components["schemas"]["TodaySummaryTodoOut"];
 export type TodayStats = components["schemas"]["TodayStatsOut"];

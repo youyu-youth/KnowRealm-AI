@@ -274,10 +274,7 @@ export function TodayOverview() {
                 aria-label={t("today.workspace.pending")}
                 className="today-pending-workspace"
               >
-                <TodayMaterialPreparation
-                  selected={materialIndex}
-                  onSelect={setMaterialIndex}
-                />
+                <TodayMaterialPreparation />
                 <TodayPending
                   summaries={pending.data ?? []}
                   pending={pending.isPending}

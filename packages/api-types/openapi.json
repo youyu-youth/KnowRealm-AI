@@ -6147,6 +6147,14 @@
         "title": "LibraryItemListOut",
         "type": "object"
       },
+      "LibraryItemOrder": {
+        "enum": [
+          "updated",
+          "created"
+        ],
+        "title": "LibraryItemOrder",
+        "type": "string"
+      },
       "LibraryItemOut": {
         "properties": {
           "availability": {
@@ -21433,6 +21441,15 @@
                 }
               ],
               "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/LibraryItemOrder",
+              "default": "updated"
             }
           },
           {

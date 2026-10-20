@@ -193,6 +193,7 @@ async def seed_library_item(
     status: str = "ACTIVE",
     deleted: bool = False,
     updated_at: str = NOW,
+    created_at: str = NOW,
 ) -> None:
     async with session_factory() as session, session.begin():
         await session.execute(
@@ -209,7 +210,7 @@ async def seed_library_item(
                 "title": title,
                 "hash": f"hash-{item_id}",
                 "status": status,
-                "now": NOW,
+                "now": created_at,
                 "updated": updated_at,
                 "deleted": NOW if deleted else None,
             },
@@ -2024,3 +2025,26 @@ async def test_turn_guard_serializes_cancel_with_business_commit(
         )
         assert payload["error"] == CHAT_TURN_CANCELLED
         assert await table_count(session_factory, f"SELECT count(*) FROM {table}") == 1
+
+
+@pytest.mark.anyio
+async def test_list_library_items_created_order_and_limit(tmp_path: Path) -> None:
+    async with bare_db(tmp_path) as session_factory:
+        for index in range(5):
+            await seed_library_item(
+                session_factory,
+                f"f0000000-0000-4000-8000-{index:012d}",
+                title=f"资料 {index}",
+                created_at=f"2026-10-{index + 1:02d}T08:00:00.000000Z",
+                updated_at=f"2026-10-{9 - index:02d}T08:00:00.000000Z",
+            )
+        payload = await invoke_bound_tool(
+            list_library_items, {"order": "created", "limit": 3}, session_factory
+        )
+        assert payload["ok"] is True
+        assert [item["title"] for item in payload["items"]] == ["资料 4", "资料 3", "资料 2"]
+        assert payload["items"][0]["created_at"] == "2026-10-05 08:00"
+        assert payload["total"] == 5 and payload["truncated"] is True
+        default = await invoke_bound_tool(list_library_items, {"limit": 1}, session_factory)
+        assert default["items"][0]["title"] == "资料 0"
+        assert list_library_items.args["order"]["default"] == "updated"

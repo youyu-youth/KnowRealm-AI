@@ -35,6 +35,7 @@ export type ProposalType = components["schemas"]["ProposalType"];
 export type LibraryItemPatchBody = components["schemas"]["LibraryItemPatch"];
 
 export type LibraryItemsParams = {
+  order?: components["schemas"]["LibraryItemOrder"];
   view?: LibraryView;
   sourceType?: LibrarySourceTypeFilter;
   availability?: LibraryAvailabilityFilter;
@@ -56,6 +57,7 @@ export const libraryApi = {
     if (params.q) search.set("q", params.q);
     if (params.offset) search.set("offset", String(params.offset));
     if (params.limit) search.set("limit", String(params.limit));
+    if (params.order) search.set("order", params.order);
     const query = search.toString();
     return apiFetch<LibraryItemListOut>(
       `/api/library/items${query ? `?${query}` : ""}`,
@@ -175,6 +177,7 @@ export const libraryApi = {
 export function useLibraryItems(
   params: LibraryItemsParams = {},
   options?: {
+    refetchOnMount?: boolean | "always";
     /** 基于最新数据的轮询间隔：PROCESSING 条目存在时返回间隔，终态返回 false。 */
     refetchIntervalMs?: (
       data: LibraryItemListOut | undefined,
@@ -185,6 +188,7 @@ export function useLibraryItems(
     queryKey: libraryKeys.items(params),
     queryFn: () => libraryApi.listItems(params),
     placeholderData: keepPreviousData,
+    refetchOnMount: options?.refetchOnMount,
     refetchInterval: options?.refetchIntervalMs
       ? (query) => options.refetchIntervalMs?.(query.state.data)
       : false,

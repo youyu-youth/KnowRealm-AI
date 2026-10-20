@@ -25,6 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DocumentImportDialog } from "@/features/document-import/DocumentImportDialog";
+import { libraryKeys } from "@/features/library/api/keys";
 import { RecordingExperience } from "@/features/recording/RecordingExperience";
 import { CommandPalette } from "@/features/search/components/CommandPalette";
 import { AppearanceSync } from "@/features/settings/AppearanceSync";
@@ -280,6 +281,7 @@ export function AppShell() {
 
   const handleTextAccepted = useCallback(
     async (result: TextCaptureAccepted, courseSelected: boolean) => {
+      await queryClient.invalidateQueries({ queryKey: libraryKeys.all });
       if (courseSelected) {
         await queryClient.invalidateQueries({ queryKey: recordKeys.all });
         await navigate({

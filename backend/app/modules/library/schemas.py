@@ -134,6 +134,11 @@ class LibraryItemListOut(BaseModel):
     backfill: BackfillStatusOut | None = None
 
 
+class LibraryItemOrder(StrEnum):
+    UPDATED = "updated"
+    CREATED = "created"
+
+
 class LibraryItemListQuery(BaseModel):
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=500)
@@ -143,6 +148,7 @@ class LibraryItemListQuery(BaseModel):
     unclassified: bool = False
     availability: LibraryAvailability | None = None
     q: str | None = None
+    order: LibraryItemOrder = LibraryItemOrder.UPDATED
 
 
 class LibraryItemPatch(BaseModel):

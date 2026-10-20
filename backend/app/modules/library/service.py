@@ -27,6 +27,7 @@ from app.modules.library.schemas import (
     LibraryItemDetailOut,
     LibraryItemListOut,
     LibraryItemListQuery,
+    LibraryItemOrder,
     LibraryItemOut,
     LibraryRecordListQuery,
     LibraryRecordOut,
@@ -215,7 +216,12 @@ class LibraryService:
                     LibraryItem.metadata_json.like(needle, escape="\\"),
                 )
             )
-        stmt = stmt.order_by(LibraryItem.updated_at.desc(), LibraryItem.id.desc())
+        sort_column = (
+            LibraryItem.created_at
+            if query.order == LibraryItemOrder.CREATED
+            else LibraryItem.updated_at
+        )
+        stmt = stmt.order_by(sort_column.desc(), LibraryItem.id.desc())
         total = cast(int, await session.scalar(select(func.count()).select_from(stmt.subquery())))
         items = list(
             (await session.execute(stmt.offset(query.offset).limit(query.limit))).scalars().all()
