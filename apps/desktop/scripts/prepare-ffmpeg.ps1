@@ -1,8 +1,9 @@
 $ErrorActionPreference = "Stop"
 
-$archiveName = "ffmpeg-n8.1.2-44-g7c533d0f86-win64-lgpl-shared-8.1.zip"
-$archiveSha256 = "e30201900132c0e3da178c63c7dac65aa0a0dcd971779546ae964b86b47bd499"
-$releaseUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-21-13-40/$archiveName"
+# 月末构建保留两年；普通每日构建仅保留 14 天。
+$archiveName = "ffmpeg-n8.1.2-50-g1a748fe2cd-win64-lgpl-shared-8.1.zip"
+$archiveSha256 = "e9712ffbdb03ef71bbab660c75b835bfe698ef6fad0247c76d8d394a39a3db63"
+$releaseUrl = "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/$archiveName"
 $desktopRoot = Split-Path -Parent $PSScriptRoot
 $binaryRoot = Join-Path $desktopRoot "src-tauri\binaries"
 $runtimeRoot = Join-Path $binaryRoot "ffmpeg-runtime"
@@ -51,8 +52,8 @@ try {
     @(
         "source=$releaseUrl"
         "archive_sha256=$archiveSha256"
-        "upstream_commit=48576f1"
-        "ffmpeg_version=n8.1.2-44-g7c533d0f86"
+        "upstream_commit=8267213e26c1031621e6e1210fe3aa4867214f6a"
+        "ffmpeg_version=n8.1.2-50-g1a748fe2cd"
         "variant=win64-lgpl-shared-8.1"
     ) | Set-Content -LiteralPath $sourceMarker -Encoding utf8
 }

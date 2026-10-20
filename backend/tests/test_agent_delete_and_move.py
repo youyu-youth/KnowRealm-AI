@@ -143,16 +143,12 @@ async def invoke_tool(
         reset_agent_runtime_context(token)
 
 
-async def scalar(
-    session_factory: async_sessionmaker[AsyncSession], sql: str
-) -> Any:
+async def scalar(session_factory: async_sessionmaker[AsyncSession], sql: str) -> Any:
     async with session_factory() as session:
         return (await session.execute(text(sql))).scalar_one()
 
 
-async def scalar_or_none(
-    session_factory: async_sessionmaker[AsyncSession], sql: str
-) -> Any:
+async def scalar_or_none(session_factory: async_sessionmaker[AsyncSession], sql: str) -> Any:
     async with session_factory() as session:
         return (await session.execute(text(sql))).scalar_one_or_none()
 
@@ -247,20 +243,19 @@ async def test_soft_delete_record_freezes_asset_counts_snapshot(tmp_path: Path) 
             {"id": QUIZ_ID, "record_id": RECORD_ID, "now": NOW},
             session_factory,
         )
-        payload = await invoke_tool(
-            soft_delete_record, session_factory, {"record_id": RECORD_ID}
-        )
+        payload = await invoke_tool(soft_delete_record, session_factory, {"record_id": RECORD_ID})
         assert payload["ok"] is True
         proposal = payload["proposals"][0]
         assert proposal["action"] == "soft_delete_record"
         # 创建不改业务事实：记录仍在。
-        assert await scalar(
-            session_factory,
-            f"SELECT deleted_at FROM records WHERE id = '{RECORD_ID}'",
-        ) is None
-        status, error_code, snapshot = await proposal_row(
-            session_factory, proposal["proposal_id"]
+        assert (
+            await scalar(
+                session_factory,
+                f"SELECT deleted_at FROM records WHERE id = '{RECORD_ID}'",
+            )
+            is None
         )
+        status, error_code, snapshot = await proposal_row(session_factory, proposal["proposal_id"])
         assert (status, error_code) == ("PENDING", None)
         assert snapshot is not None
         assert snapshot["title"] == "第 1 讲 一致性哈希"
@@ -319,9 +314,7 @@ async def test_soft_delete_record_confirm_cascades_and_recomputes_mastery(
             },
             session_factory,
         )
-        payload = await invoke_tool(
-            soft_delete_record, session_factory, {"record_id": RECORD_ID}
-        )
+        payload = await invoke_tool(soft_delete_record, session_factory, {"record_id": RECORD_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         async with session_factory() as session:
             confirmed = await ProposalService.confirm(session, proposal_id)
@@ -338,19 +331,26 @@ async def test_soft_delete_record_confirm_cascades_and_recomputes_mastery(
         assert deleted_at is not None
         # updated_at 纪律：写路径必须维护（seed 钉死过去时刻）。
         assert str(updated_at) != NOW
-        assert await scalar(
-            session_factory,
-            "SELECT deleted_at FROM todo_items WHERE id = 't0000000-0000-4000-8000-00000000000t'",
-        ) is not None
-        assert await scalar(
-            session_factory,
-            "SELECT status FROM processing_jobs WHERE id = 'j0000000-0000-4000-8000-00000000000j'",
-        ) == "CANCELLED"
+        assert (
+            await scalar(
+                session_factory,
+                "SELECT deleted_at FROM todo_items"
+                " WHERE id = 't0000000-0000-4000-8000-00000000000t'",
+            )
+            is not None
+        )
+        assert (
+            await scalar(
+                session_factory,
+                "SELECT status FROM processing_jobs"
+                " WHERE id = 'j0000000-0000-4000-8000-00000000000j'",
+            )
+            == "CANCELLED"
+        )
         # 掌握度重算已跑（快照行生成，algorithm_version 非 stale 哨兵）。
         algorithm_version = await scalar(
             session_factory,
-            f"SELECT algorithm_version FROM user_concept_mastery"
-            f" WHERE concept_id = '{CONCEPT_ID}'",
+            f"SELECT algorithm_version FROM user_concept_mastery WHERE concept_id = '{CONCEPT_ID}'",
         )
         assert algorithm_version is not None
         assert algorithm_version != "stale"
@@ -373,9 +373,7 @@ async def test_soft_delete_record_stale_when_asset_added_after_preview(
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory)
         await seed_record(session_factory)
-        payload = await invoke_tool(
-            soft_delete_record, session_factory, {"record_id": RECORD_ID}
-        )
+        payload = await invoke_tool(soft_delete_record, session_factory, {"record_id": RECORD_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         # 预览后用户新增知识点。
         await seed_kp(session_factory)
@@ -386,12 +384,18 @@ async def test_soft_delete_record_stale_when_asset_added_after_preview(
         status, error_code, _ = await proposal_row(session_factory, proposal_id)
         assert (status, error_code) == ("FAILED", "OPERATION_SNAPSHOT_STALE")
         # 新资产与记录不被删除、operation 不落（未发生）。
-        assert await scalar(
-            session_factory, f"SELECT deleted_at FROM records WHERE id = '{RECORD_ID}'"
-        ) is None
-        assert await scalar(
-            session_factory, f"SELECT deleted_at FROM knowledge_points WHERE id = '{KP_ID}'"
-        ) is None
+        assert (
+            await scalar(
+                session_factory, f"SELECT deleted_at FROM records WHERE id = '{RECORD_ID}'"
+            )
+            is None
+        )
+        assert (
+            await scalar(
+                session_factory, f"SELECT deleted_at FROM knowledge_points WHERE id = '{KP_ID}'"
+            )
+            is None
+        )
         assert await operation_row(session_factory, proposal_id) is None
 
 
@@ -401,9 +405,7 @@ async def test_soft_delete_record_target_missing_rejected_without_proposal(
 ) -> None:
     """目标不存在：结构化拒绝、零提案。"""
     async with bare_db(tmp_path) as session_factory:
-        payload = await invoke_tool(
-            soft_delete_record, session_factory, {"record_id": UNKNOWN_ID}
-        )
+        payload = await invoke_tool(soft_delete_record, session_factory, {"record_id": UNKNOWN_ID})
         assert payload["ok"] is False
         assert payload["error"] == "RECORD_NOT_FOUND"
         assert payload["proposals"] == []
@@ -421,9 +423,7 @@ async def test_delete_course_freezes_record_list_snapshot(tmp_path: Path) -> Non
         await seed_course(session_factory)
         await seed_record(session_factory, RECORD_ID)
         await seed_record(session_factory, RECORD_OTHER, title="第 2 讲 布隆过滤器")
-        payload = await invoke_tool(
-            delete_course, session_factory, {"course_id": COURSE_ID}
-        )
+        payload = await invoke_tool(delete_course, session_factory, {"course_id": COURSE_ID})
         assert payload["ok"] is True
         proposal = payload["proposals"][0]
         assert proposal["action"] == "delete_course"
@@ -448,9 +448,7 @@ async def test_delete_course_stale_when_record_added_after_approval(
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory)
         await seed_record(session_factory, RECORD_ID)
-        payload = await invoke_tool(
-            delete_course, session_factory, {"course_id": COURSE_ID}
-        )
+        payload = await invoke_tool(delete_course, session_factory, {"course_id": COURSE_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         # 批准后、执行前：向课程新增一条记录（影响清单实质差异）。
         await seed_record(session_factory, RECORD_OTHER, title="批准后新增")
@@ -461,13 +459,19 @@ async def test_delete_course_stale_when_record_added_after_approval(
         status, error_code, _ = await proposal_row(session_factory, proposal_id)
         assert (status, error_code) == ("FAILED", "OPERATION_SNAPSHOT_STALE")
         # 新增记录与课程都不被删除。
-        assert await scalar(
-            session_factory,
-            f"SELECT deleted_at FROM records WHERE id = '{RECORD_OTHER}'",
-        ) is None
-        assert await scalar(
-            session_factory, f"SELECT deleted_at FROM courses WHERE id = '{COURSE_ID}'"
-        ) is None
+        assert (
+            await scalar(
+                session_factory,
+                f"SELECT deleted_at FROM records WHERE id = '{RECORD_OTHER}'",
+            )
+            is None
+        )
+        assert (
+            await scalar(
+                session_factory, f"SELECT deleted_at FROM courses WHERE id = '{COURSE_ID}'"
+            )
+            is None
+        )
 
 
 @pytest.mark.anyio
@@ -478,9 +482,7 @@ async def test_delete_course_confirm_cascades_and_returns_record_count(
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory)
         await seed_record(session_factory, RECORD_ID)
-        payload = await invoke_tool(
-            delete_course, session_factory, {"course_id": COURSE_ID}
-        )
+        payload = await invoke_tool(delete_course, session_factory, {"course_id": COURSE_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         async with session_factory() as session:
             confirmed = await ProposalService.confirm(session, proposal_id)
@@ -538,9 +540,10 @@ async def test_move_record_freezes_original_course_and_moves_on_confirm(
         assert snapshot is not None
         assert snapshot["course_id"] == COURSE_ID
         # PENDING 期间零业务事实。
-        assert await scalar(
-            session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'"
-        ) == COURSE_ID
+        assert (
+            await scalar(session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'")
+            == COURSE_ID
+        )
 
         async with session_factory() as session:
             confirmed = await ProposalService.confirm(session, proposal["proposal_id"])
@@ -603,9 +606,10 @@ async def test_move_record_rejections(tmp_path: Path) -> None:
         assert exc_info.value.params == {"errorCode": "RECORD_MOVE_JOB_IN_PROGRESS"}
         status, error_code, _ = await proposal_row(session_factory, proposal_id)
         assert (status, error_code) == ("FAILED", "RECORD_MOVE_JOB_IN_PROGRESS")
-        assert await scalar(
-            session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'"
-        ) == COURSE_ID
+        assert (
+            await scalar(session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'")
+            == COURSE_ID
+        )
 
         # 任务终态后：同一 FAILED 提案再次确认成功（可重试）。
         await run_sql(
@@ -617,9 +621,10 @@ async def test_move_record_rejections(tmp_path: Path) -> None:
         async with session_factory() as session:
             confirmed = await ProposalService.confirm(session, proposal_id)
         assert confirmed.status.value == "APPLIED"
-        assert await scalar(
-            session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'"
-        ) == TARGET_COURSE
+        assert (
+            await scalar(session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'")
+            == TARGET_COURSE
+        )
 
         # 同课程 → 提交后确认被拒（RECORD_ALREADY_IN_COURSE）。
         payload = await invoke_tool(
@@ -769,9 +774,10 @@ async def test_move_record_preserves_history_attribution(tmp_path: Path) -> None
         async with session_factory() as session:
             confirmed = await ProposalService.confirm(session, proposal_id)
         assert confirmed.status.value == "APPLIED"
-        assert await scalar(
-            session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'"
-        ) == TARGET_COURSE
+        assert (
+            await scalar(session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'")
+            == TARGET_COURSE
+        )
         # 读取路径：记录可见于目标课程、退出原课程课程列表。
         async with session_factory() as session:
             target_records = await RecordService.list_for_course(session, TARGET_COURSE)
@@ -886,12 +892,16 @@ async def test_delete_and_move_auth_mode_dispatch(tmp_path: Path) -> None:
         assert move_payload["ok"] is True
         assert move_payload["proposals"][0]["status"] == "PENDING"
         # 业务零变化。
-        assert await scalar(
-            session_factory, f"SELECT deleted_at FROM records WHERE id = '{RECORD_ID}'"
-        ) is None
-        assert await scalar(
-            session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'"
-        ) == COURSE_ID
+        assert (
+            await scalar(
+                session_factory, f"SELECT deleted_at FROM records WHERE id = '{RECORD_ID}'"
+            )
+            is None
+        )
+        assert (
+            await scalar(session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'")
+            == COURSE_ID
+        )
 
         # FULL_ACCESS：迁移直执行（L2）。
         executed = await invoke_tool(
@@ -906,9 +916,10 @@ async def test_delete_and_move_auth_mode_dispatch(tmp_path: Path) -> None:
         assert receipt["level"] == "L2"
         assert receipt["auth_mode"] == "FULL_ACCESS"
         assert receipt["result"]["after_course_id"] == TARGET_COURSE
-        assert await scalar(
-            session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'"
-        ) == TARGET_COURSE
+        assert (
+            await scalar(session_factory, f"SELECT course_id FROM records WHERE id = '{RECORD_ID}'")
+            == TARGET_COURSE
+        )
 
         # FULL_ACCESS：删除直执行（L3）。
         executed = await invoke_tool(
@@ -921,9 +932,12 @@ async def test_delete_and_move_auth_mode_dispatch(tmp_path: Path) -> None:
         receipt = executed["executed"]
         assert receipt["action"] == "soft_delete_record"
         assert receipt["level"] == "L3"
-        assert await scalar(
-            session_factory, f"SELECT deleted_at FROM records WHERE id = '{RECORD_ID}'"
-        ) is not None
+        assert (
+            await scalar(
+                session_factory, f"SELECT deleted_at FROM records WHERE id = '{RECORD_ID}'"
+            )
+            is not None
+        )
         # 直执行 operation 行：授权依据 + 快照。
         operation = await _direct_operation_row(session_factory, receipt["operation_id"])
         assert operation is not None

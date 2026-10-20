@@ -44,15 +44,13 @@ def _unwired_calls(tree: ast.AST) -> list[int]:
 
 def _references_wiring(tree: ast.AST) -> bool:
     return any(
-        isinstance(node, ast.Attribute) and node.attr in WIRING_ATTRS
-        for node in ast.walk(tree)
+        isinstance(node, ast.Attribute) and node.attr in WIRING_ATTRS for node in ast.walk(tree)
     )
 
 
 def _defines_service_method(tree: ast.AST) -> bool:
     return any(
-        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name in DEFINITION_NAMES
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in DEFINITION_NAMES
         for node in ast.walk(tree)
     )
 

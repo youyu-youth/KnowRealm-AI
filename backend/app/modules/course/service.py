@@ -66,9 +66,7 @@ class CourseService:
         return course
 
     @staticmethod
-    async def update_core(
-        session: AsyncSession, course: Course, payload: CourseUpdate
-    ) -> Course:
+    async def update_core(session: AsyncSession, course: Course, payload: CourseUpdate) -> Course:
         """课程更新事务内核心（工单 03）：调用方拥有事务边界，HTTP 路由与
         Agent 应用器共用同一校验链（场景 / 阶段或深度条件校验同源）。
 
@@ -115,9 +113,7 @@ class CourseService:
         return course
 
     @staticmethod
-    async def set_status_core(
-        session: AsyncSession, course: Course, *, archived: bool
-    ) -> Course:
+    async def set_status_core(session: AsyncSession, course: Course, *, archived: bool) -> Course:
         """课程归档 / 恢复事务内核心（工单 03，历史推迟决策收口）：状态翻转
         ＋updated_at 维护。既有 ARCHIVED 三道读取闸门（summary / KP / quiz /
         todo 校验）零改动——归档只写状态，不级联不删数据；幂等守卫同 library
@@ -140,9 +136,7 @@ class CourseService:
         return course
 
     @staticmethod
-    async def set_status(
-        session: AsyncSession, course_id: str, *, archived: bool
-    ) -> Course | None:
+    async def set_status(session: AsyncSession, course_id: str, *, archived: bool) -> Course | None:
         """课程归档 / 恢复 HTTP 入口（None = 课程不存在或已删除）。"""
         async with session.begin():
             course = await CourseService.get(session, course_id)
@@ -169,9 +163,7 @@ class CourseService:
         return list((await session.scalars(statement)).all())
 
     @staticmethod
-    async def soft_delete_core(
-        session: AsyncSession, course: Course
-    ) -> "tuple[set[str], int]":
+    async def soft_delete_core(session: AsyncSession, course: Course) -> "tuple[set[str], int]":
         """课程软删事务内核心（工单 04 收拢，不得自行 begin）：级联软删记录＋
         取消非终态任务＋录音会话脱钩；返回（受影响 Concept 集合, 被级联软删的
         记录条数）——概念由调用方触发 Mastery 重算，计数进回执投影。删除纪律

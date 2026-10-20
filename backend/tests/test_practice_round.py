@@ -693,6 +693,7 @@ async def test_agent_starts_round_via_controlled_tool_without_answers(
 async def test_concurrent_second_start_returns_same_round(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from app.modules.learning_plan import practice
     from app.modules.learning_plan import practice_round as round_module
 
     async with practice_app(tmp_path, GradingModel(0)) as (client, factory):
@@ -704,7 +705,7 @@ async def test_concurrent_second_start_returns_same_round(
 
         async def lose_race(session: Any, item_id: str, payload: Any) -> Any:
             del session, item_id, payload
-            raise round_module._round_conflict()
+            raise practice.conflict("PRACTICE_ROUND_CONFLICT")
 
         monkeypatch.setattr(round_module, "start_round", lose_race)
         # 模拟并发败方：建卷事务被部分唯一索引拦截后重查返回同一轮。

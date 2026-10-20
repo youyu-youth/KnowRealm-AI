@@ -762,6 +762,9 @@ async def test_unexpected_io_and_parser_errors_are_not_retryable_or_logged(
     assert all(failure["error_code"] == "INTERNAL_ERROR" for failure in failures)
     assert all(failure["retryable"] is False for failure in failures)
     assert failed_query.status_code == 500
+    assert "job_execute_failed" in logs.getvalue()
+    assert "exception_type" in logs.getvalue()
+    assert all(item["job_id"] in logs.getvalue() for item in jobs)
     assert "private-source-path" not in logs.getvalue()
     assert "private-document-content" not in logs.getvalue()
     assert "private-job-query-stack" not in logs.getvalue()

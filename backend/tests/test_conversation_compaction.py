@@ -107,7 +107,8 @@ async def seed_history(app: Any, session_id: str, count: int, size: int) -> list
     return ids
 
 
-async def configure(client: Any, window: int = 40000) -> None:
+# 夹具窗口须容纳当前完整工具定义与系统提示，再由历史消息触发压缩。
+async def configure(client: Any, window: int = 60000) -> None:
     response = await client.put(
         "/api/settings/providers/llm",
         json={
@@ -264,7 +265,7 @@ async def test_summary_sdk_json_mode_compatibility(
         ):
             sid = await create_session(client)
             await seed_history(_app, sid, 45 if case == "resume" else 16, 1000)
-            await configure(client, 45000 if case == "transient" else 40000)
+            await configure(client, 65000 if case == "transient" else 60000)
             if base_url == "https://api.deepseek.com":
                 from app.modules.settings.config import grant_llm_consent
 
@@ -273,7 +274,7 @@ async def test_summary_sdk_json_mode_compatibility(
                     json={
                         "base_url": base_url,
                         "model": "stub-chat-model",
-                        "model_budget": {"context_window": 45000 if case == "transient" else 40000},
+                        "model_budget": {"context_window": 65000 if case == "transient" else 60000},
                     },
                 )
                 assert changed.status_code == 200
@@ -370,6 +371,7 @@ async def test_claim_takeover_rejects_old_summary_result(
         sid = await create_session(client)
         await seed_history(app, sid, 16, 1000)
         await configure(client)
+        await assert_compaction_fixture(client, sid, fits=False)
         turn_id = (await submit(client, sid, "继续", request_id="compaction-takeover")).json()["id"]
         await wait_summary_calls(calls, 1)
         async with app.state.session_factory() as db, db.begin():
@@ -402,6 +404,7 @@ async def test_input_identity_change_rejects_admitted_result(
         sid = await create_session(client)
         await seed_history(app, sid, 16, 1000)
         await configure(client)
+        await assert_compaction_fixture(client, sid, fits=False)
         turn_id = (await submit(client, sid, "继续", request_id="compaction-identity")).json()["id"]
         await wait_summary_calls(calls, 1)
         async with app.state.session_factory() as db, db.begin():
@@ -551,7 +554,7 @@ async def test_provider_overflow_retries_model_once_without_replaying_business_t
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("window,legacy_retry", [(128000, False), (40000, False), (40000, True)])
+@pytest.mark.parametrize("window,legacy_retry", [(128000, False), (60000, False), (60000, True)])
 async def test_restart_cannot_re_admit_consumed_overflow_retry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, window: int, legacy_retry: bool
 ) -> None:
@@ -587,7 +590,7 @@ async def test_restart_cannot_re_admit_consumed_overflow_retry(
     async with recovery_app(tmp_path, monkeypatch) as (app, client, _captured):
         sid = await create_session(client)
         await seed_history(app, sid, 16, 1000)
-        await configure(client, window + 4000 if window == 40000 else window)
+        await configure(client, window + 4000 if window == 60000 else window)
         turn_id = (await submit(client, sid, "继续", request_id="overflow-retry-restart")).json()[
             "id"
         ]
@@ -606,7 +609,7 @@ async def test_restart_cannot_re_admit_consumed_overflow_retry(
                 ).all()
             )
             assert len(requests) == 2 and requests[-1].retry_of is not None
-            if window == 40000:
+            if window == 60000:
                 assert requests[-1].retry_of != requests[0].input_fingerprint
             if legacy_retry:
                 requests[-1].retry_of = requests[0].input_fingerprint
@@ -700,6 +703,7 @@ async def test_transient_retry_is_counted_once(
         sid = await create_session(client)
         await seed_history(app, sid, 16, 1000)
         await configure(client)
+        await assert_compaction_fixture(client, sid, fits=False)
         turn_id = (await submit(client, sid, "继续", request_id="compaction-transient")).json()[
             "id"
         ]
@@ -722,7 +726,7 @@ async def test_invalid_summary_never_activates_and_only_safe_input_falls_back(
     async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
         sid = await create_session(client)
         ids = await seed_history(app, sid, 8, size)
-        await configure(client, 45000)
+        await configure(client, 60000)
         await assert_compaction_fixture(client, sid, fits=expected == "COMPLETED")
         turn_id = (
             await submit(client, sid, "继续", request_id=f"compaction-invalid-{size}")
@@ -748,6 +752,7 @@ async def test_restart_keeps_admission_count_and_completed_chunks(
         sid = await create_session(client)
         await seed_history(app, sid, 16, 1000)
         await configure(client)
+        await assert_compaction_fixture(client, sid, fits=False)
         turn_id = (
             await submit(client, sid, "继续", request_id=f"compaction-restart-{gate_at}")
         ).json()["id"]
@@ -778,6 +783,7 @@ async def test_restart_after_activation_does_not_repeat_summaries(
         sid = await create_session(client)
         await seed_history(app, sid, 16, 1000)
         await configure(client)
+        await assert_compaction_fixture(client, sid, fits=False)
         turn_id = (
             await submit(client, sid, "继续", request_id="compaction-activated-restart")
         ).json()["id"]
@@ -824,6 +830,7 @@ async def test_complete_chunks_activate_and_next_turn_uses_summary(
         sid = await create_session(client)
         ids = await seed_history(app, sid, 16, 1000)
         await configure(client)
+        await assert_compaction_fixture(client, sid, fits=False)
         turn_id = (await submit(client, sid, "继续", request_id="compaction-complete")).json()["id"]
         result = await wait_terminal(client, turn_id)
         assert result["status"] == "COMPLETED", result
@@ -903,8 +910,9 @@ async def test_four_calls_wait_and_explicit_continue_adds_four(
         captured,
     ):
         sid = await create_session(client)
-        await seed_history(app, sid, 45, 1000)
+        await seed_history(app, sid, 60, 1000)
         await configure(client)
+        await assert_compaction_fixture(client, sid, fits=False)
         turn_id = (await submit(client, sid, "继续", request_id="compaction-quota")).json()["id"]
         snapshot: dict[str, Any] = {}
         for _ in range(200):
@@ -1045,6 +1053,7 @@ async def test_cancelled_summary_cannot_commit_late_result(
         sid = await create_session(client)
         await seed_history(app, sid, 16, 1000)
         await configure(client)
+        await assert_compaction_fixture(client, sid, fits=False)
         turn_id = (await submit(client, sid, "继续", request_id="compaction-cancel")).json()["id"]
         for _ in range(200):
             if calls:

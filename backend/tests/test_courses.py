@@ -712,9 +712,7 @@ async def test_archive_and_unarchive_course_endpoints(tmp_path: Path) -> None:
         assert restored.json()["status"] == "ACTIVE"
         assert restored.json()["updated_at"] > archived.json()["updated_at"]
 
-        re_unarchive = await client.post(
-            f"/api/courses/{course_id}/unarchive", headers=headers
-        )
+        re_unarchive = await client.post(f"/api/courses/{course_id}/unarchive", headers=headers)
         assert re_unarchive.status_code == 409
         assert re_unarchive.json()["code"] == "COURSE_ALREADY_ACTIVE"
 

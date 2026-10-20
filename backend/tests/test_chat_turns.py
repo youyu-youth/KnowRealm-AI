@@ -1043,7 +1043,7 @@ async def test_startup_recovery_resumes_running_turn(
 ) -> None:
     gate = asyncio.Event()
     replies: list[StubReply] = [GatedReply(prefix=("崩溃前", "输出"), release=gate)]
-    async with turns_app(tmp_path, monkeypatch, replies=replies) as (app, client, captured):
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
         session_id = await create_session(client)
         submitted = await submit(client, session_id, "崩溃问题", request_id="req-recover-01")
         turn_id = cast(str, submitted.json()["id"])
@@ -1055,7 +1055,7 @@ async def test_startup_recovery_resumes_running_turn(
 
     # 重启（同一数据目录新实例）：启动对账把 RUNNING 翻 QUEUED，worker 自动
     # 续跑（attempt+1 / output_revision+1 / 不重新注入用户输入）。
-    async with turns_app(tmp_path, monkeypatch) as (_app2, client2, captured2):
+    async with turns_app(tmp_path, monkeypatch) as (_app2, client2, _captured2):
         state = await wait_terminal(client2, turn_id)
         assert state["status"] == "COMPLETED"
         # 权威最终正文（done 快照），未完成半截段被 revision 替换不再拼接。
@@ -1107,7 +1107,7 @@ async def test_startup_recovery_repairs_queued_turn_with_failed_job(
 ) -> None:
     gate = asyncio.Event()
     replies: list[StubReply] = [GatedReply(prefix=("崩溃前",), release=gate)]
-    async with turns_app(tmp_path, monkeypatch, replies=replies) as (app, client, captured):
+    async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):
         session_id = await create_session(client)
         submitted = await submit(client, session_id, "对账窗口问题", request_id="req-recover-03")
         turn_id = cast(str, submitted.json()["id"])

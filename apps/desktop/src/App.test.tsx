@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -45,7 +46,12 @@ describe("工作台骨架", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "收件箱" })).toBeEnabled();
     fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
-    expect(screen.getByRole("button", { name: "开始录音" })).toBeEnabled();
+    expect(
+      within(screen.getByRole("group", { name: "快速捕获" })).getByRole(
+        "button",
+        { name: "开始录音" },
+      ),
+    ).toBeEnabled();
 
     fireEvent.click(screen.getByRole("link", { name: "知识空间" }));
 
@@ -85,7 +91,12 @@ describe("工作台骨架", () => {
       "录音处理服务暂时不可用",
     );
     fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
-    expect(screen.getByRole("button", { name: "开始录音" })).toBeEnabled();
+    expect(
+      within(screen.getByRole("group", { name: "快速捕获" })).getByRole(
+        "button",
+        { name: "开始录音" },
+      ),
+    ).toBeEnabled();
   });
 
   it("通过真实 multipart 请求导入文档并进入记录级 Transcript", async () => {
@@ -213,7 +224,12 @@ describe("工作台骨架", () => {
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
-    fireEvent.click(await screen.findByRole("button", { name: "导入资料" }));
+    fireEvent.click(
+      await within(screen.getByRole("group", { name: "快速捕获" })).findByRole(
+        "button",
+        { name: "导入资料" },
+      ),
+    );
     expect(screen.getByRole("heading", { name: "导入资料" })).toBeVisible();
     expect(screen.queryByRole("option", { name: "已归档" })).toBeNull();
     expect(screen.getByRole("button", { name: "开始导入" })).toBeDisabled();
@@ -221,7 +237,12 @@ describe("工作台骨架", () => {
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(importCalls).toBe(0);
     fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
-    fireEvent.click(screen.getByRole("button", { name: "导入资料" }));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "快速捕获" })).getByRole(
+        "button",
+        { name: "导入资料" },
+      ),
+    );
     const courseSelect = screen.getByRole("combobox", { name: "所属课程" });
     await waitFor(() => expect(courseSelect).toBeEnabled());
     fireEvent.click(courseSelect);
@@ -403,12 +424,21 @@ describe("工作台骨架", () => {
       );
       render(<App />);
       fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
-      fireEvent.click(await screen.findByRole("button", { name: "开始录音" }));
+      fireEvent.click(
+        within(screen.getByRole("group", { name: "快速捕获" })).getByRole(
+          "button",
+          { name: "开始录音" },
+        ),
+      );
       fireEvent.change(screen.getByLabelText("录音标题（可选）"), {
         target: { value: "录音测试" },
       });
-      const startButtons = screen.getAllByRole("button", { name: "开始录音" });
-      fireEvent.click(startButtons[startButtons.length - 1]);
+      fireEvent.click(
+        within(screen.getByRole("dialog", { name: "开始录音" })).getByRole(
+          "button",
+          { name: "开始录音" },
+        ),
+      );
 
       fireEvent.click(await screen.findByRole("button", { name: "暂停录音" }));
       expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -490,7 +520,12 @@ describe("工作台骨架", () => {
 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
-    fireEvent.click(await screen.findByRole("button", { name: "导入资料" }));
+    fireEvent.click(
+      await within(screen.getByRole("group", { name: "快速捕获" })).findByRole(
+        "button",
+        { name: "导入资料" },
+      ),
+    );
     fireEvent.change(screen.getByLabelText("选择文件"), {
       target: { files: [new File(["RIFFaudio"], "第一讲.wav")] },
     });

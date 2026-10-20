@@ -127,9 +127,7 @@ class LibraryLifecycleService:
         return await LibraryService.item_out(session, item)
 
     @staticmethod
-    async def patch_core(
-        session: AsyncSession, item: LibraryItem, body: LibraryItemPatch
-    ) -> None:
+    async def patch_core(session: AsyncSession, item: LibraryItem, body: LibraryItemPatch) -> None:
         """重命名 / 归类 / 收藏事务内核心（工单 03）：调用方拥有事务边界，
         HTTP 路由与 Agent 应用器共用同一校验链；updated_at 统一维护
         （快照纪律显式不变量，spec 决策 12）。"""

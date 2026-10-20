@@ -20,9 +20,9 @@ import { courseApi } from "@/features/courses/api/courses";
 import { courseKeys } from "@/features/courses/api/keys";
 import {
   PlanDraftEditor,
-  planDraftItemCount,
   type DraftEditorProps,
 } from "@/features/chat/PlanDraftEditor";
+import { planDraftItemCount } from "@/features/chat/planDraftItems";
 import {
   PLAN_ITEM_TYPE_KEYS,
   isPlanItemType,

@@ -115,9 +115,9 @@ afterEach(() => {
   vi.mocked(setRecordingKeepAwake).mockReset().mockResolvedValue(undefined);
 });
 
-// 双源清单渲染在今日行动内，学习链复用同一真实查询。
+// 计划项在待办事项中，待确认总结在左侧待处理列表中。
 function actionFlow(): HTMLElement {
-  const heading = screen.getByRole("heading", { name: "今日行动" });
+  const heading = screen.getByRole("heading", { name: "待办事项" });
   const card = heading.closest("section");
   expect(card).not.toBeNull();
   return card as HTMLElement;
@@ -248,10 +248,13 @@ describe("今日待学双源清单", () => {
 
     render(<App />);
 
-    await screen.findByRole("heading", { name: "今日行动" });
+    await screen.findByRole("heading", { name: "待办事项" });
     const card = actionFlow();
+    const recordList = await screen.findByRole("list", {
+      name: "待处理记录列表",
+    });
     expect(
-      await within(card).findByRole("heading", { name: "等待确认的总结" }),
+      await within(recordList).findByRole("link", { name: /新录音 1/ }),
     ).toBeInTheDocument();
     // 双源分组标签。
     expect(within(card).getByText("学习计划")).toBeInTheDocument();
@@ -284,9 +287,6 @@ describe("今日待学双源清单", () => {
     expect(link).toHaveAttribute("href", `/spaces/${COURSE_ID}?tab=plan`);
 
     // 记录待办分组仍是去确认链接。
-    const recordList = screen.getByRole("list", {
-      name: "待确认总结列表",
-    });
     expect(
       within(recordList).getByRole("link", { name: /新录音 1/ }),
     ).toHaveAttribute("href", `/records/${todo.record_id}`);

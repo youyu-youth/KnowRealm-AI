@@ -129,16 +129,12 @@ async def invoke_tool(
         reset_agent_runtime_context(token)
 
 
-async def scalar(
-    session_factory: async_sessionmaker[AsyncSession], sql: str
-) -> Any:
+async def scalar(session_factory: async_sessionmaker[AsyncSession], sql: str) -> Any:
     async with session_factory() as session:
         return (await session.execute(text(sql))).scalar_one()
 
 
-async def row_one(
-    session_factory: async_sessionmaker[AsyncSession], sql: str
-) -> tuple[Any, ...]:
+async def row_one(session_factory: async_sessionmaker[AsyncSession], sql: str) -> tuple[Any, ...]:
     async with session_factory() as session:
         return tuple(
             (await session.execute(text(sql))).one(),
@@ -153,8 +149,7 @@ async def proposal_row(
         row = (
             await session.execute(
                 text(
-                    "SELECT status, error_code, snapshot_json FROM agent_proposals"
-                    " WHERE id = :id"
+                    "SELECT status, error_code, snapshot_json FROM agent_proposals WHERE id = :id"
                 ),
                 {"id": proposal_id},
             )
@@ -216,12 +211,11 @@ async def test_update_course_proposal_freezes_snapshot(tmp_path: Path) -> None:
         assert proposal["action"] == "update_course"
         assert proposal["status"] == "PENDING"
         # 创建不改业务事实：课程名未变（updated_at 纪律锚点也在）。
-        assert await scalar(
-            session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'"
-        ) == "Python 学习"
-        status, error_code, snapshot = await proposal_row(
-            session_factory, proposal["proposal_id"]
+        assert (
+            await scalar(session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'")
+            == "Python 学习"
         )
+        status, error_code, snapshot = await proposal_row(session_factory, proposal["proposal_id"])
         assert status == "PENDING"
         assert error_code is None
         assert snapshot is not None
@@ -249,9 +243,10 @@ async def test_update_course_confirm_applies_with_before_after_receipt(
         async with session_factory() as session:
             confirmed = await ProposalService.confirm(session, proposal_id)
         assert confirmed.status.value == "APPLIED"
-        assert await scalar(
-            session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'"
-        ) == "Python 进阶"
+        assert (
+            await scalar(session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'")
+            == "Python 进阶"
+        )
         # updated_at 纪律：写路径必须维护 updated_at（seed 钉死过去时刻）。
         updated_at = await scalar(
             session_factory, f"SELECT updated_at FROM courses WHERE id = '{COURSE_ID}'"
@@ -302,9 +297,10 @@ async def test_update_course_stale_snapshot_fails_without_overwriting(
         status, error_code, _ = await proposal_row(session_factory, proposal_id)
         assert (status, error_code) == ("FAILED", "OPERATION_SNAPSHOT_STALE")
         # 新修改不被覆盖、operation 不落（未发生）。
-        assert await scalar(
-            session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'"
-        ) == "手动改的名"
+        assert (
+            await scalar(session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'")
+            == "手动改的名"
+        )
         assert await operation_row(session_factory, proposal_id) is None
 
 
@@ -319,9 +315,7 @@ async def test_update_course_unknown_target_structured_error(tmp_path: Path) -> 
         )
         assert payload["ok"] is False
         assert payload["error"] == "COURSE_NOT_FOUND"
-        assert await scalar(
-            session_factory, "SELECT count(*) FROM agent_proposals"
-        ) == 0
+        assert await scalar(session_factory, "SELECT count(*) FROM agent_proposals") == 0
 
 
 @pytest.mark.anyio
@@ -349,18 +343,17 @@ async def test_archive_course_confirm_flips_status(tmp_path: Path) -> None:
     """归档确认：状态翻转 + updated_at 前进；operation 快照固化归档前 ACTIVE。"""
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory)
-        payload = await invoke_tool(
-            archive_course, session_factory, {"course_id": COURSE_ID}
-        )
+        payload = await invoke_tool(archive_course, session_factory, {"course_id": COURSE_ID})
         assert payload["ok"] is True
         proposal_id = payload["proposals"][0]["proposal_id"]
         _, _, snapshot = await proposal_row(session_factory, proposal_id)
         assert snapshot is not None and snapshot["status"] == "ACTIVE"
         async with session_factory() as session:
             await ProposalService.confirm(session, proposal_id)
-        assert await scalar(
-            session_factory, f"SELECT status FROM courses WHERE id = '{COURSE_ID}'"
-        ) == "ARCHIVED"
+        assert (
+            await scalar(session_factory, f"SELECT status FROM courses WHERE id = '{COURSE_ID}'")
+            == "ARCHIVED"
+        )
         updated_at = await scalar(
             session_factory, f"SELECT updated_at FROM courses WHERE id = '{COURSE_ID}'"
         )
@@ -372,9 +365,7 @@ async def test_archive_course_repeat_marks_failed(tmp_path: Path) -> None:
     """重复归档：领域幂等守卫拒绝（稳定错误码 → 提案 FAILED 可重试）。"""
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory, status="ARCHIVED")
-        payload = await invoke_tool(
-            archive_course, session_factory, {"course_id": COURSE_ID}
-        )
+        payload = await invoke_tool(archive_course, session_factory, {"course_id": COURSE_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         async with session_factory() as session:
             with pytest.raises(CodedHTTPException) as exc_info:
@@ -388,15 +379,14 @@ async def test_archive_course_repeat_marks_failed(tmp_path: Path) -> None:
 async def test_restore_course_confirm_returns_active(tmp_path: Path) -> None:
     async with bare_db(tmp_path) as session_factory:
         await seed_course(session_factory, status="ARCHIVED")
-        payload = await invoke_tool(
-            restore_course, session_factory, {"course_id": COURSE_ID}
-        )
+        payload = await invoke_tool(restore_course, session_factory, {"course_id": COURSE_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         async with session_factory() as session:
             await ProposalService.confirm(session, proposal_id)
-        assert await scalar(
-            session_factory, f"SELECT status FROM courses WHERE id = '{COURSE_ID}'"
-        ) == "ACTIVE"
+        assert (
+            await scalar(session_factory, f"SELECT status FROM courses WHERE id = '{COURSE_ID}'")
+            == "ACTIVE"
+        )
         operation = await operation_row(session_factory, proposal_id)
         assert operation is not None
         result = operation["result"]
@@ -435,8 +425,7 @@ async def test_update_library_item_confirm_renames_and_recategorizes(
             confirmed = await ProposalService.confirm(session, proposal_id)
         title, course_id, updated_at = await row_one(
             session_factory,
-            f"SELECT title, course_id, updated_at FROM library_items"
-            f" WHERE id = '{ITEM_ID}'",
+            f"SELECT title, course_id, updated_at FROM library_items WHERE id = '{ITEM_ID}'",
         )
         assert title == "新标题"
         assert course_id == COURSE_OTHER
@@ -470,28 +459,28 @@ async def test_update_library_item_stale_snapshot_fails(tmp_path: Path) -> None:
             with pytest.raises(CodedHTTPException) as exc_info:
                 await ProposalService.confirm(session, proposal_id)
         assert exc_info.value.params == {"errorCode": "OPERATION_SNAPSHOT_STALE"}
-        assert await scalar(
-            session_factory, f"SELECT title FROM library_items WHERE id = '{ITEM_ID}'"
-        ) == "页面手改"
+        assert (
+            await scalar(session_factory, f"SELECT title FROM library_items WHERE id = '{ITEM_ID}'")
+            == "页面手改"
+        )
 
 
 @pytest.mark.anyio
 async def test_archive_and_restore_library_item(tmp_path: Path) -> None:
     async with bare_db(tmp_path) as session_factory:
         await seed_item(session_factory)
-        payload = await invoke_tool(
-            archive_library_item, session_factory, {"item_id": ITEM_ID}
-        )
+        payload = await invoke_tool(archive_library_item, session_factory, {"item_id": ITEM_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         async with session_factory() as session:
             await ProposalService.confirm(session, proposal_id)
-        assert await scalar(
-            session_factory, f"SELECT status FROM library_items WHERE id = '{ITEM_ID}'"
-        ) == "ARCHIVED"
-        # 恢复：状态回到 ACTIVE + updated_at 前进。
-        payload = await invoke_tool(
-            restore_library_item, session_factory, {"item_id": ITEM_ID}
+        assert (
+            await scalar(
+                session_factory, f"SELECT status FROM library_items WHERE id = '{ITEM_ID}'"
+            )
+            == "ARCHIVED"
         )
+        # 恢复：状态回到 ACTIVE + updated_at 前进。
+        payload = await invoke_tool(restore_library_item, session_factory, {"item_id": ITEM_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         async with session_factory() as session:
             await ProposalService.confirm(session, proposal_id)
@@ -507,9 +496,7 @@ async def test_archive_and_restore_library_item(tmp_path: Path) -> None:
 async def test_archive_library_item_repeat_marks_failed(tmp_path: Path) -> None:
     async with bare_db(tmp_path) as session_factory:
         await seed_item(session_factory, status="ARCHIVED")
-        payload = await invoke_tool(
-            archive_library_item, session_factory, {"item_id": ITEM_ID}
-        )
+        payload = await invoke_tool(archive_library_item, session_factory, {"item_id": ITEM_ID})
         proposal_id = payload["proposals"][0]["proposal_id"]
         async with session_factory() as session:
             with pytest.raises(CodedHTTPException) as exc_info:
@@ -599,12 +586,11 @@ async def test_modify_actions_direct_execute_on_auto_approve(tmp_path: Path) -> 
         assert executed["action"] == "update_course"
         assert executed["level"] == "L1"
         assert executed["auth_mode"] == "AUTO_APPROVE"
-        assert await scalar(
-            session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'"
-        ) == "自动档改名"
-        assert await scalar(
-            session_factory, "SELECT count(*) FROM agent_proposals"
-        ) == 0
+        assert (
+            await scalar(session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'")
+            == "自动档改名"
+        )
+        assert await scalar(session_factory, "SELECT count(*) FROM agent_proposals") == 0
         async with session_factory() as session:
             op = (
                 await session.execute(
@@ -634,6 +620,7 @@ async def test_modify_actions_proposal_on_request_approval_kept(tmp_path: Path) 
         )
         assert payload["ok"] is True
         assert "proposals" in payload and "executed" not in payload
-        assert await scalar(
-            session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'"
-        ) == "Python 学习"
+        assert (
+            await scalar(session_factory, f"SELECT name FROM courses WHERE id = '{COURSE_ID}'")
+            == "Python 学习"
+        )

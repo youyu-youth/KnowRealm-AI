@@ -9,7 +9,7 @@ import { TodayPlanItemsDialog } from "@/features/today/components/TodayPlanItems
 import { useTranslation } from "react-i18next";
 
 import { useCompletePlanItem } from "@/features/learningPlan/api/learningPlan";
-import { toastMutationError } from "@/features/learningPlan/components/LearningPlanTab";
+import { toastMutationError } from "@/features/learningPlan/mutationError";
 import {
   todayApi,
   type TodayPlanItem,

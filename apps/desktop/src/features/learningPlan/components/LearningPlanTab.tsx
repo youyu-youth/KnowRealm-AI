@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { StatusTag } from "@/components/common/StatusTag";
-import { appToast } from "@/components/common/appToastManager";
+import { toastMutationError } from "@/features/learningPlan/mutationError";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,6 @@ import {
   PLAN_ITEM_TYPE_KEYS,
   isPlanItemType,
 } from "@/features/learningPlan/planItemTypes";
-import { ApiError } from "@/services/http/client";
 import { useRecordStudy } from "@/features/learningPlan/api/study";
 
 type LearningPlanTabProps = { courseId: string; focusItemId?: string };
@@ -809,13 +808,4 @@ function formatShortDate(value: string, language: string | undefined): string {
     month: "short",
     day: "numeric",
   }).format(date);
-}
-
-/** 计划项写动作失败回执（计划 Tab 与今日页双源共用）：后端错误码文案优先，
- * 无码回退调用方给的场景文案。 */
-export function toastMutationError(error: unknown, fallback: string) {
-  appToast.add({
-    description:
-      error instanceof ApiError && error.message ? error.message : fallback,
-  });
 }

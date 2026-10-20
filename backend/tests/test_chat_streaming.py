@@ -1183,7 +1183,7 @@ async def test_send_message_streams_status_tokens_then_done_and_persists(
 
 
 @pytest.mark.anyio
-async def test_context_contains_system_snapshot_and_last_ten_turns(
+async def test_context_contains_system_snapshot_and_all_completed_turns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async with streaming_chat_app(tmp_path, monkeypatch, replies=[list(STUB_REPLY)] * 12) as (
@@ -1206,12 +1206,12 @@ async def test_context_contains_system_snapshot_and_last_ten_turns(
         assert contents.count("回答完成了") == 10
         assert len(eleventh) == 1 + 10 * 2 + 1
 
-        # 存在 11 个完成轮后再发送：最旧轮不进上下文。
+        # 未触发预算压缩时，超过十轮仍保留完整历史。
         await send_message(client, session_id, "问题12")
         contents = [str(message.content) for message in captured[11]]
-        assert "问题1" not in contents
+        assert "问题1" in contents
         assert "问题2" in contents and "问题12" in contents
-        assert contents.count("回答完成了") == 10
+        assert contents.count("回答完成了") == 11
 
 
 @pytest.mark.anyio
@@ -3787,7 +3787,11 @@ async def test_response_process_separates_commentary_and_all_parallel_tools(
         assert user["response_processes"] == [process]
         assert history[-1]["content"] == "最终课程回答。"
         await send_message(client, session_id, "继续")
-        assert all("我先查询课程" not in str(message.content) for message in captured[-1])
+        assert all(
+            "我先查询课程" not in str(message.content)
+            for message in captured[-1]
+            if not isinstance(message, AIMessage) or not message.tool_calls
+        )
 
 
 @pytest.mark.anyio

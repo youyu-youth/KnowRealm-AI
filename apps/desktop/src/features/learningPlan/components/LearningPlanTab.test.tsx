@@ -350,7 +350,10 @@ describe("学习计划 Tab", () => {
     expect(await screen.findByText("历史版本 · 只读")).toBeInTheDocument();
     await screen.findByText("旧版条目一");
     expect(
-      screen.queryByRole("button", { name: "编辑" }),
+      within(screen.getByRole("region", { name: "计划版本区" })).queryByRole(
+        "button",
+        { name: "编辑" },
+      ),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "跳过" }),
@@ -380,7 +383,10 @@ describe("学习计划 Tab", () => {
     // 执行面整体只读：无编辑/跳过，勾选禁用（aria-disabled——Base UI 复选框
     // 渲染 span，B1 Switch 同坑）。
     expect(
-      screen.queryByRole("button", { name: "编辑" }),
+      within(screen.getByRole("region", { name: "计划版本区" })).queryByRole(
+        "button",
+        { name: "编辑" },
+      ),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "跳过" }),
@@ -446,7 +452,10 @@ describe("学习计划 Tab", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("已完结")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "编辑" }),
+      within(screen.getByRole("region", { name: "计划版本区" })).queryByRole(
+        "button",
+        { name: "编辑" },
+      ),
     ).not.toBeInTheDocument();
   });
 

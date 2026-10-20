@@ -19,7 +19,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-import aiosqlite
 import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -1175,35 +1174,19 @@ async def test_upgrade_migration_backfills_legacy_recovery_budget(tmp_path: Path
     路径，升级前落库的 WEB_FETCH 未终态任务仍为 1——重启恢复 attempts(1) <
     max(1) 不成立，直接终态 FAILED，违反 spec US32。0040 迁移（0022 回填
     先例）在 worker 恢复前对齐存量预算，中断 job 照常回 PENDING 自动续跑。"""
+    from tests.test_library import apply_migrations_upto
+
     db_path = tmp_path / "knowrealm.db"
-    await run_migrations(db_path)
+    await apply_migrations_upto(db_path, 39)
     engine, session_factory = create_database(db_path)
     try:
         await interrupt_mid_fetch(session_factory)
-        # 模拟升级前落库形态：预算=1、版本停在 0039（0040 为纯回填零 DDL，
-        # 回拨后重放迁移链即真实升级路径）。
+        # 在真实 0039 库中预置旧预算，再重放后续迁移。
         await run_sql(
             "UPDATE processing_jobs SET max_attempts = 1 WHERE job_type = 'WEB_FETCH'",
             {},
             session_factory,
         )
-        async with aiosqlite.connect(db_path) as connection:
-            # 真实升级前的库形态：版本 39 且无 0041/0042 新表（先落库后回拨，
-            # 须一并摘除本轮已建的新表，重放迁移链才是纯升级路径）。
-            await connection.execute("DROP TABLE IF EXISTS chat_model_requests")
-            await connection.execute("DROP TABLE IF EXISTS chat_context_inputs")
-            await connection.execute("DROP TABLE IF EXISTS chat_context_states")
-            await connection.execute("DROP TABLE IF EXISTS chat_turn_budget_outputs")
-            await connection.execute("DROP TABLE IF EXISTS chat_turn_budget_calls")
-            await connection.execute("DROP TABLE IF EXISTS chat_turn_events")
-            await connection.execute("DROP TABLE IF EXISTS chat_turn_waits")
-            await connection.execute("DROP TABLE IF EXISTS chat_turn_runs")
-            await connection.execute("DROP TABLE IF EXISTS chat_turn_tool_effects")
-            await connection.execute("DROP TABLE IF EXISTS chat_turns")
-            await connection.execute("DROP TABLE IF EXISTS chat_response_processes")
-            await connection.execute("PRAGMA user_version=39")
-            await connection.commit()
-
         await run_migrations(db_path)
         async with session_factory() as session:
             legacy = (

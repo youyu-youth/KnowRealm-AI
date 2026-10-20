@@ -261,7 +261,11 @@ export function TranscriptPanel({
               {t("record.detail.transcript.segmentsLoading")}
             </p>
           ) : timelineRows !== null ? (
-            <SourceTimeline rows={timelineRows} highlight={highlight} segmentId={segmentId} />
+            <SourceTimeline
+              rows={timelineRows}
+              highlight={highlight}
+              segmentId={segmentId}
+            />
           ) : (
             // 无分片记录（粘贴/速记）回落纯文本；分片读取失败时同样回落，正文仍可读。
             <TranscriptView
@@ -375,7 +379,9 @@ function SourceTimeline({
 }) {
   const { t } = useTranslation();
   const matchRowRef = useRef<HTMLLIElement | null>(null);
-  const segmentIndex = segmentId ? rows.findIndex((row) => row.id === segmentId) : -1;
+  const segmentIndex = segmentId
+    ? rows.findIndex((row) => row.id === segmentId)
+    : -1;
   const matchIndex =
     segmentIndex >= 0
       ? segmentIndex

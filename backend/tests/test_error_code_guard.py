@@ -47,7 +47,7 @@ def _translation_codes(locale: str) -> set[str]:
     """前端 i18n errors 区的码键全集。"""
     path = REPO_DIR / "apps" / "desktop" / "src" / "i18n" / "locales" / f"{locale}.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    errors = data.get("errors", {})
+    errors: dict[str, str] = data.get("errors", {})
     assert isinstance(errors, dict)
     return set(errors.keys())
 

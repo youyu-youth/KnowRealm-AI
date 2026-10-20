@@ -510,9 +510,7 @@ describe("TranscriptPanel", () => {
     server.use(
       http.get(JOBS_URL, () => HttpResponse.json({ jobs: [], progress: 1 })),
       http.get(TRANSCRIPT_URL, () =>
-        HttpResponse.json(
-          readyTranscript(`${quote}。${quote} 再提一次。`),
-        ),
+        HttpResponse.json(readyTranscript(`${quote}。${quote} 再提一次。`)),
       ),
       http.get(SEGMENTS_URL, () =>
         HttpResponse.json([

@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -320,9 +321,13 @@ describe("学习记录详情", () => {
     expect(screen.getByText("时间片轮转兼顾公平性。")).toBeVisible();
     expect(screen.getByRole("heading", { name: "重点清单" })).toBeVisible();
     expect(screen.getByText("比较调度算法")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "大纲树" })).toBeVisible();
+    const outline = screen
+      .getByRole("heading", { name: "大纲树" })
+      .closest("section")!;
+    expect(outline).toBeVisible();
     expect(screen.getByText("根级重点")).toBeVisible();
-    const branches = screen.getAllByRole("group");
+    const branches = within(outline).getAllByRole("group");
+    expect(branches).toHaveLength(4);
     expect(branches.every((branch) => branch.hasAttribute("open"))).toBe(true);
   });
 

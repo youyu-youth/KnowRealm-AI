@@ -83,20 +83,26 @@ export function buildLearningChain(records: RecordOut[]): LearningChain {
     failed: countOf(["FAILED"]),
   };
 
-  const flows = ([
-    { source: "capture", target: "transcribe", value: reached.transcribe },
-    { source: "capture", target: "notStarted", value: drops.notStarted },
-    { source: "capture", target: "failed", value: drops.failed },
-    { source: "transcribe", target: "summary", value: reached.summary },
-    { source: "transcribe", target: "transcribing", value: drops.transcribing },
-    { source: "summary", target: "confirm", value: reached.confirm },
-    { source: "summary", target: "summarizing", value: drops.summarizing },
-    {
-      source: "summary",
-      target: "pendingConfirm",
-      value: drops.pendingConfirm,
-    },
-  ] satisfies LearningChainFlow[]).filter((flow) => flow.value > 0);
+  const flows = (
+    [
+      { source: "capture", target: "transcribe", value: reached.transcribe },
+      { source: "capture", target: "notStarted", value: drops.notStarted },
+      { source: "capture", target: "failed", value: drops.failed },
+      { source: "transcribe", target: "summary", value: reached.summary },
+      {
+        source: "transcribe",
+        target: "transcribing",
+        value: drops.transcribing,
+      },
+      { source: "summary", target: "confirm", value: reached.confirm },
+      { source: "summary", target: "summarizing", value: drops.summarizing },
+      {
+        source: "summary",
+        target: "pendingConfirm",
+        value: drops.pendingConfirm,
+      },
+    ] satisfies LearningChainFlow[]
+  ).filter((flow) => flow.value > 0);
 
   return {
     total,

@@ -138,7 +138,13 @@ describe("文本捕获", () => {
     );
 
     renderAt();
-    fireEvent.click(await screen.findByRole("button", { name: "新建速记" }));
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "快速捕获" })).getByRole(
+        "button",
+        { name: "新建速记" },
+      ),
+    );
 
     expect(
       await screen.findByRole("heading", { name: "新建速记" }),
@@ -156,9 +162,9 @@ describe("文本捕获", () => {
     await waitFor(() => expect(submit).toBeEnabled());
     fireEvent.click(submit);
 
-    expect(await screen.findByRole("status", { name: "" })).toHaveTextContent(
-      "已保存到本地收件箱",
-    );
+    expect(
+      await screen.findByRole("status", { description: "已保存到本地收件箱" }),
+    ).toHaveTextContent("已保存到本地收件箱");
     await waitFor(() =>
       expect(
         screen.queryByRole("dialog", { name: "新建速记" }),
@@ -204,9 +210,9 @@ describe("文本捕获", () => {
       target: { value: "未归类粘贴正文" },
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    expect(await screen.findByRole("status", { name: "" })).toHaveTextContent(
-      "已保存到本地收件箱",
-    );
+    expect(
+      await screen.findByRole("status", { description: "已保存到本地收件箱" }),
+    ).toHaveTextContent("已保存到本地收件箱");
     expect(window.location.pathname).toBe("/");
 
     fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
@@ -232,7 +238,13 @@ describe("文本捕获", () => {
 
   it("空白正文与超过 1 MiB 的正文都不能提交", async () => {
     renderAt();
-    fireEvent.click(await screen.findByRole("button", { name: "新建速记" }));
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "快速捕获" })).getByRole(
+        "button",
+        { name: "新建速记" },
+      ),
+    );
     const submit = screen.getByRole("button", { name: "保存" });
     const body = screen.getByLabelText("正文");
 
@@ -264,7 +276,13 @@ describe("文本捕获", () => {
     );
 
     renderAt();
-    fireEvent.click(await screen.findByRole("button", { name: "新建速记" }));
+    fireEvent.click(await screen.findByRole("button", { name: "快速捕获" }));
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "快速捕获" })).getByRole(
+        "button",
+        { name: "新建速记" },
+      ),
+    );
     fireEvent.change(screen.getByLabelText("正文"), {
       target: { value: "会失败的正文" },
     });

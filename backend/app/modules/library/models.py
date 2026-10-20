@@ -65,9 +65,7 @@ class CourseSharedRef(Base):
     __tablename__ = "course_shared_refs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    course_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("courses.id", ondelete="CASCADE")
-    )
+    course_id: Mapped[str] = mapped_column(String(36), ForeignKey("courses.id", ondelete="CASCADE"))
     library_item_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("library_items.id", ondelete="CASCADE")
     )

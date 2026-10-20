@@ -1015,7 +1015,10 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
         )
 
     assert default.json() == {
+        "layout_mode": "SIDEBAR",
         "theme": "SYSTEM",
+        "light_theme_id": "LIGHT_DEFAULT",
+        "dark_theme_id": "DARK_DEFAULT",
         "font_scale": "M",
         "language": "zh",
         "timezone": None,
@@ -1026,7 +1029,10 @@ async def test_quiz_last_count_preference_round_trip(tmp_path: Path) -> None:
         "last_route": None,
     }
     assert updated.json() == {
+        "layout_mode": "SIDEBAR",
         "theme": "SYSTEM",
+        "light_theme_id": "LIGHT_DEFAULT",
+        "dark_theme_id": "DARK_DEFAULT",
         "font_scale": "M",
         "language": "zh",
         "timezone": None,
