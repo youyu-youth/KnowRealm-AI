@@ -14,6 +14,8 @@ export type ChatTurnStatus = components["schemas"]["ChatTurnStatus"];
 /** WAITING_USER 等待原因（票 02）：kind 判别等待类，detail 为后端原文。 */
 export type ChatTurnWaitingReason =
   components["schemas"]["ChatTurnWaitingReason"];
+export type ChatTurnResumeRequest =
+  components["schemas"]["ChatTurnResumeRequest"];
 export type ChatProcessEntry = NonNullable<
   ChatResponseProcess["entries"]
 >[number];

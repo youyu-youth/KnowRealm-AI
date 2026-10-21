@@ -11,6 +11,7 @@ import type {
   ChatSessionCreate,
   ChatTurn,
   ChatTurnResult,
+  ChatTurnResumeRequest,
   ChatTurnWaitingReason,
   ChatTurnsPage,
   KnowledgePointOut,
@@ -166,6 +167,23 @@ const processSchema: z.ZodType<ChatResponseProcess> = z.object({
         ]),
         hits: z.number().int().nonnegative().nullable(),
       }),
+      z.object({
+        kind: z.literal("delegation"),
+        id: z.string(),
+        execution_id: z.string(),
+        agent_id: z.literal("knowledge"),
+        execution_attempt: z.number().int().nonnegative(),
+        status: z.enum([
+          "QUEUED",
+          "RUNNING",
+          "COMPLETED",
+          "PARTIAL",
+          "FAILED",
+          "INTERRUPTED",
+          "CANCELLED",
+        ]),
+        error_code: z.string().nullable().optional(),
+      }),
     ]),
   ),
 });
@@ -194,6 +212,17 @@ function parseWaitingReason(
   return {
     kind: raw.kind as ChatTurnWaitingReason["kind"],
     detail: typeof raw.detail === "string" ? raw.detail : null,
+    snapshot_id: typeof raw.snapshot_id === "string" ? raw.snapshot_id : null,
+    delegations:
+      z
+        .array(
+          z.object({
+            execution_id: z.string(),
+            execution_attempt: z.number().int().positive(),
+            request_ids: z.array(z.string()).min(1),
+          }),
+        )
+        .safeParse(raw.delegations).data ?? [],
   };
 }
 
@@ -430,10 +459,10 @@ export const chatApi = {
       method: "POST",
     }),
   /** 继续执行（票 02）：重验恢复条件后重新排队；不批准提案、不构成重新授权。 */
-  resumeTurn: (turnId: string) =>
+  resumeTurn: (turnId: string, body?: ChatTurnResumeRequest) =>
     apiFetch<{ turn: ChatTurn }>(`/api/chat-turns/${turnId}/resume`, {
       method: "POST",
-      body: JSON.stringify({ decision_kind: "RETRY_AFTER_FIX" }),
+      body: JSON.stringify(body ?? { decision_kind: "RETRY_AFTER_FIX" }),
     }),
   turnEvents,
 };

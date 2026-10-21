@@ -3847,6 +3847,33 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** ChatProcessDelegation */
+        ChatProcessDelegation: {
+            /**
+             * Agent Id
+             * @default knowledge
+             * @constant
+             */
+            agent_id: "knowledge";
+            /** Error Code */
+            error_code?: string | null;
+            /** Execution Attempt */
+            execution_attempt: number;
+            /** Execution Id */
+            execution_id: string;
+            /** Id */
+            id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "delegation";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "QUEUED" | "RUNNING" | "COMPLETED" | "PARTIAL" | "FAILED" | "INTERRUPTED" | "CANCELLED";
+        };
         /** ChatProcessTool */
         ChatProcessTool: {
             /** Hits */
@@ -3906,7 +3933,7 @@ export interface components {
             /** Ended At */
             ended_at?: string | null;
             /** Entries */
-            entries?: (components["schemas"]["ChatProcessCommentary"] | components["schemas"]["ChatProcessTool"])[];
+            entries?: (components["schemas"]["ChatProcessCommentary"] | components["schemas"]["ChatProcessTool"] | components["schemas"]["ChatProcessDelegation"])[];
             /**
              * History Saved
              * @default true
@@ -4132,12 +4159,18 @@ export interface components {
          * @description 继续执行（票 02）：类型化决定；继续按钮不等于批准业务提案或重新授权。
          */
         ChatTurnResumeRequest: {
+            /** Decision Id */
+            decision_id?: string | null;
             /**
              * Decision Kind
              * @default RETRY_AFTER_FIX
-             * @constant
+             * @enum {string}
              */
-            decision_kind: "RETRY_AFTER_FIX";
+            decision_kind: "RETRY_AFTER_FIX" | "RETRY_DELEGATIONS" | "ACCEPT_PARTIAL";
+            /** Delegations */
+            delegations?: components["schemas"]["DelegationSelection"][];
+            /** Snapshot Id */
+            snapshot_id?: string | null;
         };
         /**
          * ChatTurnRevisionOut
@@ -4189,11 +4222,17 @@ export interface components {
         };
         /** ChatTurnTaskOut */
         ChatTurnTaskOut: {
+            /** Agent Id */
+            agent_id?: "knowledge" | null;
             /**
              * Control Scope
              * @enum {string}
              */
             control_scope: "EXCLUSIVE" | "SHARED" | "INDEPENDENT";
+            /** Execution Attempt */
+            execution_attempt?: number | null;
+            /** Execution Id */
+            execution_id?: string | null;
             /** Status */
             status: string;
             /** Target Id */
@@ -4209,15 +4248,19 @@ export interface components {
          * @description WAITING_USER 等待原因类型（票 02，规格 §7/§11/§12）。
          * @enum {string}
          */
-        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "OUTBOUND_CONSENT_REVOKED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING" | "BACKGROUND_TASK" | "CONTEXT_COMPACTION_LIMIT";
+        ChatTurnWaitingKind: "PROVIDER_UNAVAILABLE" | "PROVIDER_CHANGED" | "OUTBOUND_CONSENT_REVOKED" | "MEMORY_OUTBOUND_REVOKED" | "WEB_SEARCH_UNAVAILABLE" | "GRAPH_INCOMPATIBLE" | "CHECKPOINT_MISSING" | "BACKGROUND_TASK" | "CONTEXT_COMPACTION_LIMIT" | "DELEGATION_UNCERTAIN";
         /**
          * ChatTurnWaitingReason
          * @description 等待原因载荷（chat_turns.waiting_reason JSON）。
          */
         ChatTurnWaitingReason: {
+            /** Delegations */
+            delegations?: components["schemas"]["DelegationSelection"][];
             /** Detail */
             detail?: string | null;
             kind: components["schemas"]["ChatTurnWaitingKind"];
+            /** Snapshot Id */
+            snapshot_id?: string | null;
         };
         /**
          * ChatTurnsPage
@@ -4904,6 +4947,15 @@ export interface components {
         DataDirectoryLibraryStateOut: {
             /** Empty Library */
             empty_library: boolean;
+        };
+        /** DelegationSelection */
+        DelegationSelection: {
+            /** Execution Attempt */
+            execution_attempt: number;
+            /** Execution Id */
+            execution_id: string;
+            /** Request Ids */
+            request_ids: string[];
         };
         /** DerivedRecordOut */
         DerivedRecordOut: {

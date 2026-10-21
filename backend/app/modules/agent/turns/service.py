@@ -719,6 +719,9 @@ class ChatTurnService:
             now = utcnow()
             turn.cancel_requested = True
             turn.updated_at = now
+            from app.modules.agent.delegations.service import cancel_children
+
+            await cancel_children(session, turn_id, "用户停止了根任务")
             from app.modules.agent.runs.models import AgentRun
             from app.modules.agent.runs.schemas import RUN_TERMINAL_STATUSES
             from app.modules.agent.runs.service import RunControlService
@@ -830,6 +833,12 @@ class ChatTurnService:
                     detail="CHAT_TURN_RESUME_CONFLICT：当前状态不能继续",
                 )
             reason = parse_waiting_reason(turn.waiting_reason)
+            if reason is not None and reason.kind == ChatTurnWaitingKind.DELEGATION_UNCERTAIN:
+                raise CodedHTTPException(
+                    code="CHAT_TURN_RESUME_UNSAFE",
+                    status_code=409,
+                    detail="请选择重试知识任务或接受已有结果",
+                )
             if reason is not None and not reason.kind.resumable:
                 raise CodedHTTPException(
                     code="CHAT_TURN_RESUME_UNSAFE",
@@ -938,10 +947,17 @@ class ChatTurnService:
             )
             for turn_id in queued_ids:
                 await ensure_turn_job(session, turn_id, now)
+            from app.modules.agent.delegations.worker import recover
             from app.modules.agent.turns.background import reconcile_waits
+
+            delegation_cleanup = await recover(session)
 
             await reconcile_waits(session)
         if checkpointer is not None:
+            from app.modules.agent.delegations.service import thread_id
+
+            for execution_id in delegation_cleanup:
+                await checkpointer.adelete_thread(thread_id(execution_id))
             for turn_id in terminal_ids:
                 await checkpointer.adelete_thread(f"chat-turn-{turn_id}")
 
@@ -1106,6 +1122,9 @@ class ChatTurnService:
                 return False
             now = utcnow()
             turn.status = status.value
+            from app.modules.agent.delegations.service import cancel_children
+
+            await cancel_children(session, turn_id, "根任务已结束")
             turn.error_code = error_code
             turn.error_message = error_message
             turn.finished_at = now

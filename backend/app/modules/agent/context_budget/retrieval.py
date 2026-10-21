@@ -796,6 +796,7 @@ async def validate_read_results(
             "read_context",
             "search_context",
             "search_library",
+            "delegate_knowledge",
         ):
             result.append(message)
             continue
@@ -840,6 +841,10 @@ async def validate_read_results(
                         ),
                         _cache=cache,
                     )
+            elif message.name == "delegate_knowledge":
+                async with factory() as session:
+                    chat, _, _ = await _scope(session, session_id)
+                    await validate_evidence(session, chat, body.get("citations"))
             elif message.name == "search_library":
                 async with factory() as session:
                     chat, segment, _ = await _scope(session, session_id)
@@ -877,10 +882,12 @@ async def _validate_tool_sources(
     rules: ContextRules | None = None,
     cache: _ReadCache | None = None,
 ) -> None:
-    if name not in ("search_library", "read_context", "search_context"):
+    if name not in ("search_library", "read_context", "search_context", "delegate_knowledge"):
         return
     raw = json.loads(content)
-    if name == "search_library":
+    if name == "delegate_knowledge":
+        await validate_evidence(session, chat, raw.get("citations"), rules=rules)
+    elif name == "search_library":
         await validate_evidence(session, chat, raw.get("evidence_hits"), cache, rules=rules)
         from app.modules.agent.context_budget.rules import require_source_allowed
 

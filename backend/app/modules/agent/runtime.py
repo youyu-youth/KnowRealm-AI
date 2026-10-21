@@ -13,7 +13,7 @@ from datetime import tzinfo
 from pathlib import Path
 from typing import cast
 
-from sqlalchemy import CursorResult, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.budget.policy import (
@@ -86,6 +86,11 @@ class AgentRuntimeContext:
     provider_fingerprint: str | None = None
     outbound_consent_required: bool = False
     memory_injected: bool = False
+    execution_id: str | None = None
+    execution_attempt: int | None = None
+    execution_claim_token: str | None = None
+    retry_request_id: str | None = None
+    decision_id: str | None = None
 
     async def turn_write_allowed(self, session: AsyncSession) -> bool:
         """业务提交处最终校验（规格 §2/§11/§14，取消闸门 Middleware 之外的
@@ -95,6 +100,37 @@ class AgentRuntimeContext:
         SQLite 写锁直到本事务结束，避免 SELECT 放行后取消抢先提交；取消先
         提交或执行身份失配则匹配零行，拒绝新增副作用（规格 §6）。
         """
+        if self.execution_id is not None:
+            from app.modules.agent.delegations.models import AgentDelegation
+
+            if self.turn_id is None or self.execution_claim_token is None:
+                return False
+            child = (
+                select(AgentDelegation.id)
+                .where(
+                    AgentDelegation.id == self.execution_id,
+                    AgentDelegation.turn_id == self.turn_id,
+                    AgentDelegation.agent_id == self.agent_id.value,
+                    AgentDelegation.attempt == self.execution_attempt,
+                    AgentDelegation.claim_token == self.execution_claim_token,
+                    AgentDelegation.status == "RUNNING",
+                    AgentDelegation.cancel_requested.is_(False),
+                )
+                .exists()
+            )
+            allowed = await session.scalar(
+                update(ChatTurn)
+                .where(
+                    ChatTurn.id == self.turn_id,
+                    ChatTurn.session_id == self.session_id,
+                    ChatTurn.status.in_(("RUNNING", "WAITING_JOB")),
+                    ChatTurn.cancel_requested.is_(False),
+                    child,
+                )
+                .values(updated_at=ChatTurn.updated_at)
+                .returning(ChatTurn.id)
+            )
+            return allowed is not None
         if self.turn_id is None:
             return True
         result = cast(

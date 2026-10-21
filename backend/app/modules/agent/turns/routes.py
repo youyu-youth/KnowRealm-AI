@@ -370,6 +370,9 @@ async def cancel_chat_turn(turn_id: UUID, request: Request) -> ChatTurnCancelOut
         raise CodedHTTPException(
             code="CHAT_TURN_NOT_FOUND", status_code=404, detail="对话轮次不存在"
         )
+    from app.modules.agent.delegations.worker import cleanup_turn
+
+    await cleanup_turn(app.state.session_factory, app.state.chat_checkpointer, str(turn_id))
     return ChatTurnCancelOut(turn=snapshot)
 
 
@@ -383,6 +386,20 @@ async def resume_chat_turn(
     不构成重新授权、不改写原输入／模型／范围。继续与停止都是持久指令。
     """
     app = request.app
+    if _payload.decision_kind != "RETRY_AFTER_FIX":
+        from app.modules.agent.delegations.decisions import apply_decision
+
+        await apply_decision(app.state.session_factory, app.state.data_dir, str(turn_id), _payload)
+        if _payload.decision_kind == "ACCEPT_PARTIAL":
+            from app.modules.agent.delegations.worker import cleanup_turn
+
+            await cleanup_turn(app.state.session_factory, app.state.chat_checkpointer, str(turn_id))
+        snapshot = await ChatTurnService.get_snapshot(app.state.session_factory, str(turn_id))
+        if snapshot is None:
+            raise CodedHTTPException(
+                code="CHAT_TURN_NOT_FOUND", status_code=404, detail="对话轮次不存在"
+            )
+        return ChatTurnResumeOut(turn=snapshot)
     snapshot = await ChatTurnService.resume_turn(
         session_factory=app.state.session_factory,
         data_dir=app.state.data_dir,

@@ -1,5 +1,6 @@
 """单会话过滤规则；执行读取使用原轮快照，页面读取使用当前设置。"""
 
+import json
 from typing import Any, cast
 
 from pydantic import BaseModel
@@ -38,6 +39,13 @@ async def context_rules(
     session: AsyncSession, session_id: str, *, turn_id: str | None = None, current: bool = False
 ) -> tuple[int, ContextRules]:
     runtime = current_agent_runtime()
+    if not current and runtime and runtime.execution_id and runtime.session_id == session_id:
+        from app.modules.agent.delegations.models import AgentDelegation
+
+        child = await session.get(AgentDelegation, runtime.execution_id)
+        if child is not None:
+            frozen = json.loads(child.input_json)
+            return frozen["segment"], ContextRules.model_validate_json(frozen["rules_json"])
     if not current and turn_id is None and runtime and runtime.session_id == session_id:
         turn_id = runtime.turn_id
     bound = await session.get(ChatContextInput, turn_id) if turn_id else None

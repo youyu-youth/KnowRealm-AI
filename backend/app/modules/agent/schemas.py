@@ -340,7 +340,21 @@ class ChatProcessTool(BaseModel):
     hits: int | None = None
 
 
-ChatProcessEntry = Annotated[ChatProcessCommentary | ChatProcessTool, Field(discriminator="kind")]
+class ChatProcessDelegation(BaseModel):
+    kind: Literal["delegation"] = "delegation"
+    id: str
+    execution_id: str
+    agent_id: Literal["knowledge"] = "knowledge"
+    execution_attempt: int = Field(ge=0)
+    status: Literal[
+        "QUEUED", "RUNNING", "COMPLETED", "PARTIAL", "FAILED", "INTERRUPTED", "CANCELLED"
+    ]
+    error_code: str | None = None
+
+
+ChatProcessEntry = Annotated[
+    ChatProcessCommentary | ChatProcessTool | ChatProcessDelegation, Field(discriminator="kind")
+]
 ChatProcessStatus = Literal["RUNNING", "COMPLETED", "FAILED", "INTERRUPTED"]
 
 

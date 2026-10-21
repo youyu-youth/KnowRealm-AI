@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
+from app.modules.agent.delegations.schemas import DelegationSelection
 from app.modules.agent.runs.schemas import AuthMode
 from app.modules.agent.schemas import (
     ChatPageSnapshot,
@@ -102,6 +103,7 @@ class ChatTurnWaitingKind(StrEnum):
     CHECKPOINT_MISSING = "CHECKPOINT_MISSING"
     BACKGROUND_TASK = "BACKGROUND_TASK"
     CONTEXT_COMPACTION_LIMIT = "CONTEXT_COMPACTION_LIMIT"
+    DELEGATION_UNCERTAIN = "DELEGATION_UNCERTAIN"
 
     @property
     def resumable(self) -> bool:
@@ -120,6 +122,8 @@ class ChatTurnWaitingReason(BaseModel):
 
     kind: ChatTurnWaitingKind
     detail: str | None = None
+    snapshot_id: str | None = None
+    delegations: list[DelegationSelection] = Field(default_factory=list[DelegationSelection])
 
 
 class ChatTurnResumeRequest(BaseModel):
@@ -127,7 +131,12 @@ class ChatTurnResumeRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    decision_kind: Literal[Literal["RETRY_AFTER_FIX"]] = "RETRY_AFTER_FIX"
+    decision_kind: Literal["RETRY_AFTER_FIX", "RETRY_DELEGATIONS", "ACCEPT_PARTIAL"] = (
+        "RETRY_AFTER_FIX"
+    )
+    decision_id: str | None = Field(default=None, min_length=8, max_length=64)
+    snapshot_id: str | None = None
+    delegations: list[DelegationSelection] = Field(default_factory=list[DelegationSelection])
 
 
 class ChatTurnSubmitRequest(BaseModel):
@@ -178,6 +187,9 @@ class ChatTurnTaskOut(BaseModel):
     target_id: str
     status: str
     control_scope: Literal["EXCLUSIVE", "SHARED", "INDEPENDENT"]
+    execution_id: str | None = None
+    agent_id: Literal["knowledge"] | None = None
+    execution_attempt: int | None = None
 
 
 class ChatTurnOut(BaseModel):

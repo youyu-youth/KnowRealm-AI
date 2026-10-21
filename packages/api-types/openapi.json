@@ -1935,6 +1935,67 @@
         "title": "ChatProcessCommentary",
         "type": "object"
       },
+      "ChatProcessDelegation": {
+        "properties": {
+          "agent_id": {
+            "const": "knowledge",
+            "default": "knowledge",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "execution_attempt": {
+            "minimum": 0.0,
+            "title": "Execution Attempt",
+            "type": "integer"
+          },
+          "execution_id": {
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "delegation",
+            "default": "delegation",
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "COMPLETED",
+              "PARTIAL",
+              "FAILED",
+              "INTERRUPTED",
+              "CANCELLED"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "execution_id",
+          "execution_attempt",
+          "status"
+        ],
+        "title": "ChatProcessDelegation",
+        "type": "object"
+      },
       "ChatProcessTool": {
         "properties": {
           "hits": {
@@ -2061,6 +2122,7 @@
               "discriminator": {
                 "mapping": {
                   "commentary": "#/components/schemas/ChatProcessCommentary",
+                  "delegation": "#/components/schemas/ChatProcessDelegation",
                   "tool": "#/components/schemas/ChatProcessTool"
                 },
                 "propertyName": "kind"
@@ -2071,6 +2133,9 @@
                 },
                 {
                   "$ref": "#/components/schemas/ChatProcessTool"
+                },
+                {
+                  "$ref": "#/components/schemas/ChatProcessDelegation"
                 }
               ]
             },
@@ -2574,11 +2639,46 @@
         "additionalProperties": false,
         "description": "继续执行（票 02）：类型化决定；继续按钮不等于批准业务提案或重新授权。",
         "properties": {
+          "decision_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Id"
+          },
           "decision_kind": {
-            "const": "RETRY_AFTER_FIX",
             "default": "RETRY_AFTER_FIX",
+            "enum": [
+              "RETRY_AFTER_FIX",
+              "RETRY_DELEGATIONS",
+              "ACCEPT_PARTIAL"
+            ],
             "title": "Decision Kind",
             "type": "string"
+          },
+          "delegations": {
+            "items": {
+              "$ref": "#/components/schemas/DelegationSelection"
+            },
+            "title": "Delegations",
+            "type": "array"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
           }
         },
         "title": "ChatTurnResumeRequest",
@@ -2690,6 +2790,18 @@
       },
       "ChatTurnTaskOut": {
         "properties": {
+          "agent_id": {
+            "anyOf": [
+              {
+                "const": "knowledge",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
           "control_scope": {
             "enum": [
               "EXCLUSIVE",
@@ -2698,6 +2810,28 @@
             ],
             "title": "Control Scope",
             "type": "string"
+          },
+          "execution_attempt": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Attempt"
+          },
+          "execution_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
           },
           "status": {
             "title": "Status",
@@ -2736,7 +2870,8 @@
           "GRAPH_INCOMPATIBLE",
           "CHECKPOINT_MISSING",
           "BACKGROUND_TASK",
-          "CONTEXT_COMPACTION_LIMIT"
+          "CONTEXT_COMPACTION_LIMIT",
+          "DELEGATION_UNCERTAIN"
         ],
         "title": "ChatTurnWaitingKind",
         "type": "string"
@@ -2745,6 +2880,13 @@
         "additionalProperties": false,
         "description": "等待原因载荷（chat_turns.waiting_reason JSON）。",
         "properties": {
+          "delegations": {
+            "items": {
+              "$ref": "#/components/schemas/DelegationSelection"
+            },
+            "title": "Delegations",
+            "type": "array"
+          },
           "detail": {
             "anyOf": [
               {
@@ -2758,6 +2900,17 @@
           },
           "kind": {
             "$ref": "#/components/schemas/ChatTurnWaitingKind"
+          },
+          "snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Id"
           }
         },
         "required": [
@@ -4586,6 +4739,35 @@
           "empty_library"
         ],
         "title": "DataDirectoryLibraryStateOut",
+        "type": "object"
+      },
+      "DelegationSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "execution_attempt": {
+            "minimum": 1.0,
+            "title": "Execution Attempt",
+            "type": "integer"
+          },
+          "execution_id": {
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "request_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Request Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "execution_id",
+          "execution_attempt",
+          "request_ids"
+        ],
+        "title": "DelegationSelection",
         "type": "object"
       },
       "DerivedRecordOut": {

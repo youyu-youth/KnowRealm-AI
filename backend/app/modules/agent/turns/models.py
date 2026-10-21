@@ -81,6 +81,7 @@ class ChatTurnWait(Base):
     interrupt_id: Mapped[str | None] = mapped_column(String(64), default=None)
     result_json: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(ISODateTime, default=utcnow)
+    execution_attempt: Mapped[int | None] = mapped_column(Integer, default=None)
 
 
 class ChatTurnEvent(Base):

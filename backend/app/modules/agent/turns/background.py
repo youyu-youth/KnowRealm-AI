@@ -105,6 +105,14 @@ async def source_result(session: AsyncSession, wait: ChatTurnWait) -> dict[str, 
             "status": run.status if run is not None else "MISSING",
             "operations": outputs,
         }
+    from app.modules.agent.delegations.service import job_delegation, result_payload
+
+    child = await job_delegation(session, wait)
+    if child is not None:
+        result = result_payload(child)
+        if result is not None:
+            wait.execution_attempt = child.attempt
+        return result
     job = await session.get(ProcessingJob, wait.target_id)
     if job is not None and job.status in (ProcessingJobStatus.PENDING, ProcessingJobStatus.RUNNING):
         return None
@@ -144,6 +152,11 @@ async def prepare_wait(
                 return None
             await bind_run(session, runtime.turn_id, target_id, RunControlScope.SHARED)
         else:
+            from app.modules.agent.delegations.service import job_delegation
+
+            delegated = await job_delegation(
+                session, ChatTurnWait(turn_id=runtime.turn_id, target_id=target_id)
+            )
             # 任务引用必须来自本会话的已提交业务回执，不能凭模型猜 ID 取得结果。
             operation = await session.scalar(
                 select(AgentOperation)
@@ -157,10 +170,10 @@ async def prepare_wait(
                     ),
                 )
             )
-            if operation is None:
+            if operation is None and delegated is None:
                 return None
-            source_operation_id = operation.id
-            if operation.run_id is not None:
+            source_operation_id = operation.id if operation else None
+            if operation is not None and operation.run_id is not None:
                 await bind_run(session, runtime.turn_id, operation.run_id, RunControlScope.SHARED)
         wait = ChatTurnWait(
             id=str(uuid4()),
@@ -224,12 +237,18 @@ async def task_states(session: AsyncSession, turn_id: str) -> list[ChatTurnTaskO
     )
     for wait in waits:
         if wait.target_type == "JOB":
+            from app.modules.agent.delegations.service import job_delegation
+
+            child = await job_delegation(session, wait)
             job = await session.get(ProcessingJob, wait.target_id)
             states[("JOB", wait.target_id)] = ChatTurnTaskOut(
                 target_type="JOB",
                 target_id=wait.target_id,
-                status=job.status if job else "MISSING",
-                control_scope="SHARED",
+                status=child.status if child else job.status if job else "MISSING",
+                control_scope="EXCLUSIVE" if child else "SHARED",
+                execution_id=child.id if child else None,
+                agent_id="knowledge" if child else None,
+                execution_attempt=child.attempt if child else None,
             )
     return list(states.values())
 
@@ -266,7 +285,18 @@ async def reconcile_waits(session: AsyncSession) -> None:
             ).all()
         )
         ready = bool(waits)
+        from app.modules.agent.delegations.decisions import reconcile_uncertain
+
+        if await reconcile_uncertain(session, turn, waits):
+            continue
         for wait in waits:
+            from app.modules.agent.delegations.service import TERMINAL, job_delegation
+
+            child = await job_delegation(session, wait)
+            if child is not None and (
+                child.status not in TERMINAL or wait.execution_attempt != child.attempt
+            ):
+                wait.result_json = None
             if wait.result_json is None:
                 result = await source_result(session, wait)
                 if result is not None:
@@ -297,9 +327,13 @@ async def resume_results(
         for interrupt_id, wait_id in interrupts.items():
             wait = await session.get(ChatTurnWait, wait_id)
             if wait is not None and wait.turn_id == runtime.turn_id:
+                from app.modules.agent.delegations.service import job_delegation
+
+                child = await job_delegation(session, wait)
                 result = (
                     _result(wait.result_json)
                     if wait.result_json is not None
+                    and (child is None or wait.execution_attempt == child.attempt)
                     else await source_result(session, wait)
                 )
                 if result is not None:

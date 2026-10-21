@@ -201,6 +201,12 @@ export function ChatResponseProcess({ process }: { process: Process }) {
 
   function entryLabel(entry: ChatProcessEntry): string {
     if (entry.kind === "commentary") return entry.text;
+    if (entry.kind === "delegation")
+      return t("chat.delegation.progress", {
+        status: t(`chat.delegation.status.${entry.status}`),
+        id: entry.execution_id,
+        attempt: entry.execution_attempt,
+      });
     const copy = TOOL_COPY[entry.tool];
     if (copy && ["RUNNING", "SUCCEEDED", "FAILED"].includes(entry.status)) {
       return t(

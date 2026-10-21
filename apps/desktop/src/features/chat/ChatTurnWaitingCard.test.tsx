@@ -31,6 +31,38 @@ const waitingTurn: ChatTurn = {
 };
 
 describe("ChatTurnWaitingCard 后台等待", () => {
+  it("不确定请求展示两种明确决定，不沿用普通继续", () => {
+    const resume = vi.fn();
+    renderWithQuery(
+      <ChatTurnWaitingCard
+        turn={{
+          ...waitingTurn,
+          status: "WAITING_USER",
+          waiting_reason: {
+            kind: "DELEGATION_UNCERTAIN",
+            snapshot_id: "snapshot-1",
+            delegations: [
+              {
+                execution_id: "child-1",
+                execution_attempt: 1,
+                request_ids: ["request-1"],
+              },
+            ],
+          },
+        }}
+        onResume={resume}
+        onStop={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/重试可能再次计费/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "继续生成" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试知识任务" }));
+    expect(resume).toHaveBeenLastCalledWith("RETRY_DELEGATIONS");
+    fireEvent.click(screen.getByRole("button", { name: "接受已有结果" }));
+    expect(resume).toHaveBeenLastCalledWith("ACCEPT_PARTIAL");
+  });
   it("明确说明压缩继续会追加四次请求且不批准业务操作", () => {
     const resume = vi.fn();
     renderWithQuery(

@@ -2147,6 +2147,20 @@
     "error": "课程暂时无法读取，请关闭后重试。"
   },
   "chat": {
+    "delegation": {
+      "retry": "重试知识任务",
+      "acceptPartial": "接受已有结果",
+      "progress": "本地知识助手 · {{status}} · 第 {{attempt}} 次执行 · {{id}}",
+      "status": {
+        "QUEUED": "排队中",
+        "RUNNING": "执行中",
+        "COMPLETED": "已完成",
+        "PARTIAL": "部分完成",
+        "FAILED": "失败",
+        "INTERRUPTED": "等待选择",
+        "CANCELLED": "已取消"
+      }
+    },
     "title": "AI 对话",
     "description": "在这里向 AI 提问与追问；自由聊天会参考你的档案调整回答风格。",
     "newSession": "新建对话",
@@ -2809,6 +2823,7 @@
       "conversation": "对话消息",
       "jumpToLatest": "回到最新",
       "toolNames": {
+        "delegate_knowledge": "委派本地知识任务",
         "retry_plan_practice_grading": "重试计划练习未评分题",
         "list_recent_assets": "查询近期学习产出",
         "list_recent_learning": "查询最近学习",
@@ -2834,6 +2849,7 @@
         "submittedAt": "提问于 {{time}}",
         "generic": "回答生成等待处理；恢复条件后可继续",
         "BACKGROUND_TASK": "正在等待后台处理结果，完成后自动继续回答",
+        "DELEGATION_UNCERTAIN": "知识任务的模型请求结果不明。重试可能再次计费，也可接受已有结果；原请求与未知用量会保留。",
         "tasks": "关联后台任务",
         "taskType": {
           "RUN": "执行任务",

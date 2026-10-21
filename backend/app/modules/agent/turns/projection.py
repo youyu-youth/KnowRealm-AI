@@ -10,6 +10,7 @@ from typing import Any, cast
 
 from app.modules.agent.schemas import (
     ChatProcessCommentary,
+    ChatProcessDelegation,
     ChatProcessTool,
     ChatResponseProcessOut,
     ChatTurnRevisionOut,
@@ -44,15 +45,26 @@ def event_payload(row: ChatTurnEvent) -> dict[str, Any]:
 
 def project_entries(
     events: Sequence[ChatTurnEvent],
-) -> list[ChatProcessCommentary | ChatProcessTool]:
+) -> list[ChatProcessCommentary | ChatProcessTool | ChatProcessDelegation]:
     """按 seq 顺序把持久事件投影为过程条目（评注 + 工具卡）。"""
-    entries: list[ChatProcessCommentary | ChatProcessTool] = []
+    entries: list[ChatProcessCommentary | ChatProcessTool | ChatProcessDelegation] = []
+    delegations: dict[str, ChatProcessDelegation] = {}
     commentary_by_id: dict[str, ChatProcessCommentary] = {}
     tools_by_id: dict[str, ChatProcessTool] = {}
     for row in events:
         payload = event_payload(row)
         event_type = ChatTurnEventType(row.type)
-        if event_type == ChatTurnEventType.COMMENTARY:
+        if event_type == ChatTurnEventType.COMMENTARY and "execution_id" in payload:
+            execution_id = str(payload["execution_id"])
+            new = ChatProcessDelegation.model_validate({"id": execution_id, **payload})
+            previous = delegations.get(execution_id)
+            if previous is None:
+                entries.append(new)
+                delegations[execution_id] = new
+            else:
+                previous.status, previous.execution_attempt = new.status, new.execution_attempt
+                previous.error_code = new.error_code
+        elif event_type == ChatTurnEventType.COMMENTARY:
             segment_id = row.segment_id or ""
             text = str(payload.get("text") or "")
             if not text and segment_id not in commentary_by_id:

@@ -5,7 +5,11 @@ import { useTranslation } from "react-i18next";
 import type { AuthMode } from "@/features/agent/api/authMode";
 import { agentKeys } from "@/features/agent/api/authMode";
 import { chatApi } from "@/features/chat/api/chatSessions";
-import type { ChatResponseProcess, ChatTurn } from "@/features/chat/api/types";
+import type {
+  ChatResponseProcess,
+  ChatTurn,
+  ChatTurnResumeRequest,
+} from "@/features/chat/api/types";
 import { chatKeys } from "@/features/chat/api/keys";
 import { libraryKeys } from "@/features/library/api/keys";
 import { sharedRefsKeys } from "@/features/sharedRefs/api/keys";
@@ -78,6 +82,7 @@ export function useChatTurns(sessionId: string) {
   const pendingRequestIdRef = useRef<string | null>(null);
   // 当前订阅的轮次身份：防止迟到的旧订阅写回新轮次状态。
   const activeTurnIdRef = useRef<string | null>(null);
+  const decisionRef = useRef<{ key: string; id: string } | null>(null);
   // 本轮学习者记忆（工单 06）放 chatUiStore：消息流确认卡与右栏注入展示
   // 分属不同组件层，done 写入 / 发送与停止时清除（当轮语义，不落库）。
   const setTurnMemory = useChatUiStore((state) => state.setTurnMemory);
@@ -465,25 +470,48 @@ export function useChatTurns(sessionId: string) {
   }, [t, turn]);
 
   /** 继续执行（票 02）：等待 / 中断轮次的重验后重跑；不批准提案、不重新授权。 */
-  const resume = useCallback(() => {
-    const current = turn;
-    if (current === null) return;
-    void chatApi
-      .resumeTurn(current.id)
-      .then((result) => {
-        setStreamError(null);
-        hydrateSnapshot(result.turn);
-        startObservation(result.turn.id, result.turn.last_seq);
-      })
-      .catch((error: unknown) => {
-        // 条件未恢复 / 不可安全继续：域内裁决文案就地呈现（可处理后重试）。
-        setStreamError(
-          error instanceof ApiError
-            ? error.message
-            : t("chat.turn.resumeFailed"),
-        );
-      });
-  }, [hydrateSnapshot, startObservation, t, turn]);
+  const resume = useCallback(
+    (kind?: ChatTurnResumeRequest["decision_kind"]) => {
+      const current = turn;
+      if (current === null) return;
+      let body: ChatTurnResumeRequest | undefined;
+      if (kind && kind !== "RETRY_AFTER_FIX") {
+        const reason = current.waiting_reason;
+        if (!reason?.snapshot_id || !reason.delegations?.length) return;
+        const key = JSON.stringify([
+          current.id,
+          reason.snapshot_id,
+          kind,
+          reason.delegations,
+        ]);
+        if (decisionRef.current?.key !== key) {
+          decisionRef.current = { key, id: crypto.randomUUID() };
+        }
+        body = {
+          decision_kind: kind,
+          decision_id: decisionRef.current.id,
+          snapshot_id: reason.snapshot_id,
+          delegations: reason.delegations,
+        };
+      }
+      void chatApi
+        .resumeTurn(current.id, body)
+        .then((result) => {
+          setStreamError(null);
+          hydrateSnapshot(result.turn);
+          startObservation(result.turn.id, result.turn.last_seq);
+        })
+        .catch((error: unknown) => {
+          // 条件未恢复 / 不可安全继续：域内裁决文案就地呈现（可处理后重试）。
+          setStreamError(
+            error instanceof ApiError
+              ? error.message
+              : t("chat.turn.resumeFailed"),
+          );
+        });
+    },
+    [hydrateSnapshot, startObservation, t, turn],
+  );
 
   return {
     isStreaming,

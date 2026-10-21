@@ -128,8 +128,6 @@ from app.modules.settings.config import (
 from app.shared.errors import CodedHTTPException
 from app.shared.events import RecordInvalidationNotifier
 
-# 取消观察器轮询间隔：不依赖下一条 token 的持久取消落实时延上界。
-CANCEL_POLL_INTERVAL_SECONDS = 0.4
 # token 增量短批处理窗口（规格 §5：可批处理，但须先提交后通知）。
 TOKEN_FLUSH_INTERVAL_SECONDS = 0.25
 TOKEN_FLUSH_BATCH_SIZE = 64
@@ -144,6 +142,7 @@ CHAT_STREAM_FAILED = "CHAT_STREAM_FAILED"
 class _ClaimedTurn(ClaimedJob):
     turn_id: str
     claim_token: str
+    delegation_id: str | None = None
 
 
 class _TurnCancelled(Exception):
@@ -160,12 +159,24 @@ def turn_thread_id(turn_id: str) -> str:
 
 
 async def find_candidate(session: AsyncSession, now: datetime) -> ProcessingJob | None:
+    from app.modules.agent.delegations.models import AgentDelegation
+
+    parent_queued = (
+        select(AgentDelegation.id)
+        .join(ChatTurn, ChatTurn.id == AgentDelegation.turn_id)
+        .where(
+            AgentDelegation.job_id == ProcessingJob.id,
+            ChatTurn.status == "QUEUED",
+        )
+        .exists()
+    )
     return (
         await session.scalars(
             select(ProcessingJob)
             .where(
                 ProcessingJob.job_type == CHAT_TURN_JOB_TYPE.value,
                 ProcessingJob.status == ProcessingJobStatus.PENDING,
+                ~parent_queued,
                 (ProcessingJob.next_run_at.is_(None) | (ProcessingJob.next_run_at <= now)),
             )
             .order_by(ProcessingJob.created_at)
@@ -192,7 +203,14 @@ async def validate_claim(
         data: object = json.loads(job.input_json)
     except ValueError:
         return CancelClaim("turn_missing")
-    turn_id = cast(dict[str, object], data).get("turn_id") if isinstance(data, dict) else None
+    inputs = cast(dict[str, object], data) if isinstance(data, dict) else {}
+    if isinstance(inputs.get("delegation_id"), str) and "turn_id" not in inputs:
+        from app.modules.agent.delegations.worker import validate_claim as validate_delegation
+
+        return await validate_delegation(session, job, cast(str, inputs["delegation_id"]))
+    if "delegation_id" in inputs:
+        return CancelClaim("execution_target_conflict")
+    turn_id = inputs.get("turn_id")
     if not isinstance(turn_id, str):
         return CancelClaim("turn_missing")
     turn = await session.get(ChatTurn, turn_id)
@@ -216,6 +234,10 @@ async def claim_turn(
     排队期取消在此落实（cancel API 直收口 QUEUED 之外的兜底路径）；轮次已
     不可执行时收口 job 并交还原 ctx（execute 的身份核对会静默跳过）。
     """
+    if ctx.delegation_id is not None:
+        from app.modules.agent.delegations.worker import claim
+
+        return await claim(session, job, ctx, now)
     turn = await session.get(ChatTurn, ctx.turn_id)
     if turn is None:
         close_job(job, ProcessingJobStatus.CANCELLED, now)
@@ -266,6 +288,11 @@ async def apply_failure(
 ) -> bool:
     """执行失败收口：job FAILED + 轮次按执行身份条件翻 FAILED（唯一终态）。"""
     mark_failed(job, code=code, message="回答生成失败", now=now)
+    if ctx.delegation_id is not None:
+        from app.modules.agent.delegations.worker import failure
+
+        await failure(session, ctx, code)
+        return True
     turn = await session.get(ChatTurn, ctx.turn_id)
     if (
         turn is not None
@@ -273,6 +300,9 @@ async def apply_failure(
         and turn.claim_token == ctx.claim_token
     ):
         turn.status = ChatTurnStatus.FAILED.value
+        from app.modules.agent.delegations.service import cancel_children
+
+        await cancel_children(session, turn.id, "根执行失败")
         turn.error_code = code
         turn.error_message = "回答生成失败"
         turn.finished_at = now
@@ -673,15 +703,11 @@ class _TurnExecutor:
 
     async def _watch_stop(self) -> None:
         """独立轮询持久取消标记与停机事件：排队 / 生成 / 工具调用期间均可控制。"""
-        while not self._cancel_event.is_set():
-            if self._shutdown_event.is_set():
-                return
-            async with self._session_factory() as session:
-                turn = await session.get(ChatTurn, self._ctx.turn_id)
-                if turn is not None and bool(turn.cancel_requested):
-                    self._cancel_event.set()
-                    return
-            await asyncio.sleep(CANCEL_POLL_INTERVAL_SECONDS)
+        from app.modules.agent.turns.runtime import watch_turn_stop
+
+        await watch_turn_stop(
+            self._session_factory, self._ctx.turn_id, self._cancel_event, self._shutdown_event
+        )
 
     async def _flush_loop(self) -> None:
         """周期性冲刷 token 批缓冲：模型慢（分片间隔 > 批窗口）时输出仍及时可见。"""
@@ -940,6 +966,17 @@ async def execute(
     active: ActiveTurnRegistry,
 ) -> bool:
     """执行一轮生成：取消落实或完成后交 writeback 关 job（取消／失配也返回 True）。"""
+    if ctx.delegation_id is not None:
+        from app.modules.agent.delegations.worker import execute as execute_delegation
+
+        return await execute_delegation(
+            ctx,
+            runtime,
+            session_factory=session_factory,
+            data_dir=data_dir,
+            checkpointer=checkpointer,
+            broadcaster=broadcaster,
+        )
     active.register(ctx.turn_id)
     try:
         executor = _TurnExecutor(
@@ -989,8 +1026,14 @@ async def writeback(
         if job is None or job.status != ProcessingJobStatus.RUNNING:
             return False
         close_job(job, ProcessingJobStatus.SUCCEEDED, utcnow())
+        if ctx.delegation_id is not None:
+            from app.modules.agent.delegations.models import AgentDelegation
+
+            child = await session.get(AgentDelegation, ctx.delegation_id)
+            if child is not None and child.claim_token == ctx.claim_token:
+                job.result_json = child.result_json
         await session.flush()
-        turn = await session.get(ChatTurn, ctx.turn_id)
+        turn = await session.get(ChatTurn, ctx.turn_id) if ctx.delegation_id is None else None
         if turn is not None and turn.status == ChatTurnStatus.QUEUED.value:
             from app.modules.agent.turns.service import ensure_turn_job
 
@@ -1032,6 +1075,11 @@ def chat_turn_spec(
             job = await session.get(ProcessingJob, claim.job_id)
             if job is not None and job.status == ProcessingJobStatus.RUNNING:
                 mark_failed(job, code=CHAT_STREAM_FAILED, message="回答生成执行异常", now=now)
+            if claim.delegation_id is not None:
+                from app.modules.agent.delegations.worker import failure
+
+                await failure(session, claim, CHAT_STREAM_FAILED)
+                return True
         await ChatTurnService.finalize_terminal(
             session_factory=session_factory,
             turn_id=claim.turn_id,

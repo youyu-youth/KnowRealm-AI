@@ -62,6 +62,9 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             request.tools,
         )
         request_identity = estimate.input_fingerprint
+        if self.runtime.execution_id is not None:
+            # 子图没有父会话固定项或摘要，完整输入不容纳时由原准入拒绝。
+            return await self._invoke(request, handler, request_identity=request_identity)
         if estimate.input_tokens >= estimate.usable_budget * 0.8:
             request = request.override(
                 messages=await project_outputs(self.runtime, request.messages)
@@ -150,17 +153,20 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                 self.runtime.session_factory, self.runtime.session_id, request.messages
             )
         )
-        pins_json, segment = await turn_pins(self.runtime)
-        system, pins, overflow = await inject_pins(
-            self.runtime.session_factory,
-            self.runtime.session_id,
-            pins_json,
-            segment,
-            pin_system,
-            request.messages,
-            request.tools,
-            self.policy,
-        )
+        if self.runtime.execution_id is not None:
+            system, pins, overflow = request.system_message, [], False
+        else:
+            pins_json, segment = await turn_pins(self.runtime)
+            system, pins, overflow = await inject_pins(
+                self.runtime.session_factory,
+                self.runtime.session_id,
+                pins_json,
+                segment,
+                pin_system,
+                request.messages,
+                request.tools,
+                self.policy,
+            )
         request = request.override(system_message=system)
         messages = ([request.system_message] if request.system_message else []) + request.messages
         estimate = estimate_input(self.policy, messages, request.tools)
@@ -174,6 +180,9 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         )
         row = ChatModelRequest(
             turn_id=self.runtime.turn_id,
+            execution_id=self.runtime.execution_id,
+            execution_attempt=self.runtime.execution_attempt,
+            decision_id=self.runtime.decision_id,
             status=ModelRequestStatus.BLOCKED
             if estimate.error_code
             else ModelRequestStatus.STARTED,
@@ -181,7 +190,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             estimate_json=estimate.model_dump_json(),
             error_code=estimate.error_code,
             messages_json=json.dumps(messages_to_dict(request.messages), ensure_ascii=False),
-            retry_of=retry_of,
+            retry_of=retry_of or self.runtime.retry_request_id,
             pins_json=json.dumps(
                 [pin.model_dump(mode="json") for pin in pins or []], ensure_ascii=False
             ),
@@ -189,10 +198,22 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         async with self.runtime.session_factory() as session, session.begin():
             if not await self.runtime.turn_write_allowed(session):
                 raise TurnCancelledError
+            if self.runtime.execution_id is not None:
+                from app.modules.agent.delegations.models import AgentDelegation
+                from app.modules.agent.delegations.service import unresolved_requests
+                from app.modules.agent.delegations.worker import DelegationUncertain
+
+                child = await session.get(AgentDelegation, self.runtime.execution_id)
+                assert child is not None
+                unknown = await unresolved_requests(session, child)
+                if unknown and unknown != [self.runtime.retry_request_id]:
+                    raise DelegationUncertain
             if await session.scalar(
                 select(ChatModelRequest.id)
                 .where(
                     ChatModelRequest.turn_id == self.runtime.turn_id,
+                    ChatModelRequest.execution_id == self.runtime.execution_id,
+                    ChatModelRequest.decision_id.is_(None),
                     or_(
                         ChatModelRequest.retry_of == request_identity,
                         # 旧版已准入重试仍按恢复后的实际输入识别，不补发请求。
@@ -210,6 +231,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                     detail="该请求的超限重试已用尽",
                 )
             session.add(row)
+        self.runtime.retry_request_id = None
         if estimate.error_code:
             raise CodedHTTPException(
                 code=estimate.error_code,
@@ -218,6 +240,13 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             )
         try:
             response = await handler(request)
+        except (openai.APIConnectionError, openai.APITimeoutError):
+            if self.runtime.execution_id is not None:
+                from app.modules.agent.delegations.worker import DelegationUncertain
+
+                raise DelegationUncertain from None
+            await self._finish(row.id, ModelRequestStatus.FAILED, None, "CHAT_STREAM_FAILED")
+            raise
         except Exception:
             await self._finish(
                 row.id,
@@ -274,11 +303,17 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
         usage: object,
         error_code: str | None = None,
     ) -> None:
+        await self._check_outbound()
         async with self.runtime.session_factory() as session, session.begin():
             if not await self.runtime.turn_write_allowed(session):
                 raise TurnCancelledError
             row = await session.get(ChatModelRequest, request_id)
             if row is not None:
+                if (
+                    row.turn_id != self.runtime.turn_id
+                    or row.execution_id != self.runtime.execution_id
+                ):
+                    raise TurnCancelledError
                 row.status = status
                 row.error_code = (
                     error_code or "CHAT_STREAM_FAILED"

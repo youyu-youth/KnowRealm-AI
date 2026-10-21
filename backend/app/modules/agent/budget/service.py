@@ -85,6 +85,11 @@ async def admit(runtime: AgentRuntimeContext, tool_name: str, args: object) -> s
         return None
     if identity is None:
         raise BudgetRejected("AGENT_CONTEXT_UNBOUND")
+    if (
+        runtime.execution_id is not None
+        and identity.namespace != f"agent-delegation-{runtime.execution_id}"
+    ):
+        raise BudgetRejected("AGENT_CONTEXT_UNBOUND")
     fingerprint = effect_args_fingerprint(args)
     async with runtime.session_factory() as session, session.begin():
         # 条件 UPDATE 先取得写锁：身份、取消、最后名额裁决与消费同事务。
@@ -104,10 +109,16 @@ async def admit(runtime: AgentRuntimeContext, tool_name: str, args: object) -> s
         calls, chars = await totals(session, runtime.turn_id)
         runtime.budget.calls_used, runtime.budget.chars_fed = calls, chars
         if existing is not None:
-            if (existing.tool_name, existing.args_fingerprint, existing.policy_version) != (
+            if (
+                existing.tool_name,
+                existing.args_fingerprint,
+                existing.policy_version,
+                existing.execution_id,
+            ) != (
                 tool_name,
                 fingerprint,
                 POLICY_VERSION,
+                runtime.execution_id,
             ):
                 raise BudgetRejected("TOOL_CALL_IDENTITY_CONFLICT")
             return existing.id
@@ -123,6 +134,7 @@ async def admit(runtime: AgentRuntimeContext, tool_name: str, args: object) -> s
                 tool_name=tool_name,
                 args_fingerprint=fingerprint,
                 policy_version=POLICY_VERSION,
+                execution_id=runtime.execution_id,
             )
         )
         await session.flush()

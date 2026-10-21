@@ -51,6 +51,63 @@ function turnEventsHandler(events: string[], keepOpen = false) {
 const noop = () => undefined;
 
 describe("chatApi.turnEvents", () => {
+  it("保留委派进度与等待快照的身份供显式决定使用", async () => {
+    const entry = {
+      kind: "delegation",
+      id: "child-1",
+      execution_id: "child-1",
+      agent_id: "knowledge",
+      execution_attempt: 2,
+      status: "INTERRUPTED",
+      error_code: null,
+    };
+    const reason = {
+      kind: "DELEGATION_UNCERTAIN",
+      snapshot_id: "snapshot-1",
+      detail: "等待选择",
+      delegations: [
+        {
+          execution_id: "child-1",
+          execution_attempt: 2,
+          request_ids: ["request-1"],
+        },
+      ],
+    };
+    const process = {
+      id: TURN_ID,
+      session_id: SESSION_ID,
+      user_message_id: "m1",
+      assistant_message_id: null,
+      status: "RUNNING",
+      started_at: "2026-10-21T10:00:00Z",
+      updated_at: "2026-10-21T10:00:01Z",
+      ended_at: null,
+      elapsed_ms: 1000,
+      history_saved: true,
+      entries: [entry],
+    };
+    const { handler } = turnEventsHandler([
+      `event: status\ndata: ${JSON.stringify({ phase: "waiting_user", reason, process })}\n\n`,
+    ]);
+    server.use(handler);
+    const onStatus = vi.fn();
+    await chatApi.turnEvents(
+      TURN_ID,
+      0,
+      {
+        onStatus,
+        onToken: noop,
+        onToolCall: noop,
+        onToolResult: noop,
+        onDone: noop,
+        onError: noop,
+      },
+      undefined,
+    );
+    expect(onStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ reason, process }),
+    );
+  });
   it("按到达顺序逐 token 回调，done 携带完整内容与消息 id", async () => {
     const { handler } = turnEventsHandler([
       'event: status\ndata: {"phase":"generating"}\n\n',

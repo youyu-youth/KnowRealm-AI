@@ -2161,6 +2161,20 @@
     "error": "Courses could not be loaded; close this and try again."
   },
   "chat": {
+    "delegation": {
+      "retry": "Retry knowledge task",
+      "acceptPartial": "Accept available results",
+      "progress": "Local knowledge assistant · {{status}} · Attempt {{attempt}} · {{id}}",
+      "status": {
+        "QUEUED": "Queued",
+        "RUNNING": "Running",
+        "COMPLETED": "Completed",
+        "PARTIAL": "Partial",
+        "FAILED": "Failed",
+        "INTERRUPTED": "Awaiting your choice",
+        "CANCELLED": "Cancelled"
+      }
+    },
     "title": "AI Chat",
     "description": "Ask the AI questions and follow up here; free chats use your profile to tune the tone.",
     "newSession": "New chat",
@@ -2831,6 +2845,7 @@
       "conversation": "Conversation messages",
       "jumpToLatest": "Jump to latest",
       "toolNames": {
+        "delegate_knowledge": "Delegate local knowledge task",
         "retry_plan_practice_grading": "Retry unscored plan practice questions",
         "list_recent_assets": "Recent learning outputs",
         "list_recent_learning": "Recent learning",
@@ -2854,6 +2869,7 @@
       "waiting": {
         "sectionLabel": "Turn awaiting action",
         "BACKGROUND_TASK": "Waiting for background processing; the answer will continue automatically",
+        "DELEGATION_UNCERTAIN": "A knowledge request has an unknown outcome. Retrying may incur another charge, or you can accept available results. The original request and unknown usage are retained.",
         "tasks": "Linked background tasks",
         "taskType": {
           "RUN": "Agent task",

@@ -1,7 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { CircleAlert, PauseCircle } from "lucide-react";
-import type { ChatTurn } from "@/features/chat/api/types";
+import type {
+  ChatTurn,
+  ChatTurnResumeRequest,
+} from "@/features/chat/api/types";
 import { waitingReasonText } from "@/features/chat/useChatTurns";
 
 /** 不可安全继续的等待类（与后端 ChatTurnWaitingKind.resumable 同口径）。 */
@@ -9,7 +12,7 @@ const UNRESUMABLE_KINDS = new Set(["GRAPH_INCOMPATIBLE", "CHECKPOINT_MISSING"]);
 
 type ChatTurnWaitingCardProps = {
   turn: ChatTurn | null;
-  onResume: () => void;
+  onResume: (kind?: ChatTurnResumeRequest["decision_kind"]) => void;
   onStop: () => void;
 };
 
@@ -29,8 +32,11 @@ export function ChatTurnWaitingCard({
     return null;
   const waiting = status === "WAITING_USER" || background;
   const kind = waiting ? turn.waiting_reason?.kind : undefined;
+  const uncertain = kind === "DELEGATION_UNCERTAIN";
   const resumable =
-    !background && (!waiting || !kind || !UNRESUMABLE_KINDS.has(kind));
+    !background &&
+    !uncertain &&
+    (!waiting || !kind || !UNRESUMABLE_KINDS.has(kind));
   const label = waiting
     ? waitingReasonText(t, kind)
     : t("chat.turn.interrupted");
@@ -65,10 +71,19 @@ export function ChatTurnWaitingCard({
         >
           {turn.background_tasks?.map((task) => (
             <li key={`${task.target_type}-${task.target_id}`}>
-              {t(`chat.turn.waiting.taskType.${task.target_type}`)} ·{" "}
-              {t(`chat.turn.waiting.taskStatus.${task.status}`, {
-                defaultValue: task.status,
-              })}
+              {task.agent_id
+                ? t("chat.agents.knowledge.name")
+                : t(`chat.turn.waiting.taskType.${task.target_type}`)}{" "}
+              ·{" "}
+              {t(
+                task.execution_id
+                  ? `chat.delegation.status.${task.status}`
+                  : `chat.turn.waiting.taskStatus.${task.status}`,
+                {
+                  defaultValue: task.status,
+                },
+              )}
+              {task.execution_id ? ` · ${task.execution_id}` : ""}
             </li>
           ))}
         </ul>
@@ -78,7 +93,7 @@ export function ChatTurnWaitingCard({
           type="button"
           variant="outline"
           size="sm"
-          onClick={onResume}
+          onClick={() => onResume()}
           aria-label={t(
             kind === "CONTEXT_COMPACTION_LIMIT"
               ? "chat.compaction.continue"
@@ -91,6 +106,28 @@ export function ChatTurnWaitingCard({
               : "chat.turn.resume",
           )}
         </Button>
+      ) : null}
+      {uncertain ? (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={turn.cancel_requested}
+            onClick={() => onResume("RETRY_DELEGATIONS")}
+          >
+            {t("chat.delegation.retry")}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={turn.cancel_requested}
+            onClick={() => onResume("ACCEPT_PARTIAL")}
+          >
+            {t("chat.delegation.acceptPartial")}
+          </Button>
+        </>
       ) : null}
       <Button
         type="button"

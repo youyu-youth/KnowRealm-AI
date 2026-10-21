@@ -9,6 +9,29 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.modules.agent.turns.models import ChatTurn
+
+
+async def watch_turn_stop(
+    factory: async_sessionmaker[AsyncSession],
+    turn_id: str,
+    cancel: asyncio.Event,
+    stopped: asyncio.Event,
+) -> None:
+    while not cancel.is_set() and not stopped.is_set():
+        async with factory() as session:
+            turn = await session.get(ChatTurn, turn_id)
+            if (
+                turn is None
+                or turn.cancel_requested
+                or turn.status in ("CANCELLED", "FAILED", "COMPLETED")
+            ):
+                cancel.set()
+                return
+        await asyncio.sleep(0.4)
+
 
 class TurnEventBroadcaster:
     """轮次新事件通知：publish 永不阻塞生成（满即丢，订阅端超时兜底）。"""

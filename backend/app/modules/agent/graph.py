@@ -189,7 +189,7 @@ CHAT_RECURSION_LIMIT = 25
 # 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
 # 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
 # 工具集合、图结构或 checkpoint 状态语义变化时 bump。
-CHAT_GRAPH_VERSION = "chat-graph-v11"
+CHAT_GRAPH_VERSION = "chat-graph-v12"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
@@ -402,6 +402,10 @@ def resolve_agent_config(
             ),
         )
     config = LIBRARY_CHAT_AGENT_CONFIG if retrieval else CHAT_AGENT_CONFIG
+    if retrieval:
+        from app.modules.agent.tools.delegate_knowledge import delegate_knowledge
+
+        config = replace(config, tools=(*config.tools, delegate_knowledge))
     if web_search_enabled:
         config = replace(config, tools=(*config.tools, web_search))
     # 恒挂载段（操作工具组）：search_courses 课程查询 + list_course_records /
@@ -833,6 +837,7 @@ async def stream_chat_reply(
     outcome: ChatStreamOutcome,
     prompt_version: str = CHAT_PROMPT_VERSION,
     thread_id: str | None = None,
+    tool_namespace: str | None = None,
     cancel_check: Callable[[], bool] | None = None,
     resume: bool = False,
     resume_replaces: str | None = None,
@@ -890,7 +895,7 @@ async def stream_chat_reply(
             base_config,
             middleware=(
                 *base_config.middleware,
-                ToolCallIdentityMiddleware(thread),
+                ToolCallIdentityMiddleware(tool_namespace or thread),
                 ToolBudgetMiddleware(),
                 ContextOutputMiddleware(),
             ),
@@ -924,7 +929,10 @@ async def stream_chat_reply(
                 if isinstance(message, ToolMessage):
                     for event in _tool_business_events(message):
                         yield event
-            if not snapshot.next:
+            pending = interrupt_bindings(
+                [item for task in snapshot.tasks for item in task.interrupts]
+            )
+            if not snapshot.next and not pending:
                 # 图已完成、业务结果未提交：仅补写（规格 §8）——最终文本与
                 # 用量取自最终图状态，不调模型（模型调用次数不增加）。
                 for message in reversed(saved_messages):
@@ -939,9 +947,6 @@ async def stream_chat_reply(
                     break
                 return
             graph_input = None  # 续跑：复用现有图状态，不重复注入用户输入。
-            pending = interrupt_bindings(
-                [item for task in snapshot.tasks for item in task.interrupts]
-            )
             if pending:
                 results = await resume_results(runtime, pending)
                 if len(results) == len(pending):
