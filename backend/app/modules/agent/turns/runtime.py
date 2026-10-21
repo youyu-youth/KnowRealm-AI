@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.turns.models import ChatTurn
 
+CANCEL_POLL_INTERVAL_SECONDS = 0.4
+
 
 async def watch_turn_stop(
     factory: async_sessionmaker[AsyncSession],
@@ -30,7 +32,7 @@ async def watch_turn_stop(
             ):
                 cancel.set()
                 return
-        await asyncio.sleep(0.4)
+        await asyncio.sleep(CANCEL_POLL_INTERVAL_SECONDS)
 
 
 class TurnEventBroadcaster:

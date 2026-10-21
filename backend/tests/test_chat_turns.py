@@ -879,9 +879,9 @@ async def test_t11_cancel_committed_before_stream_end_rejects_completion(
     轮询相位无关；取消的原子性不得依赖观察器及时性，规格 §14「取消不依赖下
     一条 token」）。修复前同一时序落 COMPLETED＋最终消息＋done 事件。
     """
-    import app.modules.agent.turns.worker as turns_worker
+    import app.modules.agent.turns.runtime as turns_runtime
 
-    monkeypatch.setattr(turns_worker, "CANCEL_POLL_INTERVAL_SECONDS", 30.0)
+    monkeypatch.setattr(turns_runtime, "CANCEL_POLL_INTERVAL_SECONDS", 30.0)
     gate = asyncio.Event()
     replies: list[StubReply] = [GatedReply(prefix=("半截",), release=gate)]
     async with turns_app(tmp_path, monkeypatch, replies=replies) as (_app, client, _captured):

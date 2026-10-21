@@ -116,9 +116,12 @@ def timeout_external_model(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("kind", ["RETRY_DELEGATIONS", "ACCEPT_PARTIAL"])
+@pytest.mark.parametrize(
+    ("kind", "repeat_timeout"),
+    [("RETRY_DELEGATIONS", False), ("RETRY_DELEGATIONS", True), ("ACCEPT_PARTIAL", False)],
+)
 async def test_unknown_request_requires_bound_choice_and_keeps_unknown_usage(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str, repeat_timeout: bool
 ) -> None:
     release = asyncio.Event()
     async with turns_app(
@@ -127,6 +130,7 @@ async def test_unknown_request_requires_bound_choice_and_keeps_unknown_usage(
         replies=[
             ToolCallReply("delegate_knowledge", {"task": "检索事务隔离"}, "delegate-unknown"),
             None,
+            *([None] if repeat_timeout else []),
             *([GatedReply(("子报告",), release)] if kind == "RETRY_DELEGATIONS" else []),
             ["最终汇总"],
         ],
@@ -175,12 +179,34 @@ async def test_unknown_request_requires_bound_choice_and_keeps_unknown_usage(
         ).status_code == 409
         result = await client.post(f"/api/chat-turns/{turn_id}/resume", json=decision)
         assert result.status_code == 200, result.text
+        if repeat_timeout:
+            waiting = await wait_status(client, turn_id, "WAITING_USER")
+            next_reason = waiting["waiting_reason"]
+            assert next_reason["snapshot_id"] != reason["snapshot_id"]
+            assert len(captured) == 3
+            replay = await client.post(f"/api/chat-turns/{turn_id}/resume", json=decision)
+            assert replay.status_code == 200
+            assert replay.json()["turn"]["status"] == "WAITING_USER"
+            assert (
+                await client.post(
+                    f"/api/chat-turns/{turn_id}/resume",
+                    json={**decision, "decision_id": "stale-decision-2"},
+                )
+            ).status_code == 409
+            decision = {
+                **decision,
+                "decision_id": "stable-decision-2",
+                "snapshot_id": next_reason["snapshot_id"],
+                "delegations": next_reason["delegations"],
+            }
+            result = await client.post(f"/api/chat-turns/{turn_id}/resume", json=decision)
+            assert result.status_code == 200, result.text
         if kind == "RETRY_DELEGATIONS":
             for _ in range(100):
-                if len(captured) == 3:
+                if len(captured) == 3 + int(repeat_timeout):
                     break
                 await asyncio.sleep(0.05)
-            assert len(captured) == 3
+            assert len(captured) == 3 + int(repeat_timeout)
             assert not await writeback(old_claim, True, session_factory=app.state.session_factory)
             async with app.state.session_factory() as session:
                 assert (
@@ -193,7 +219,7 @@ async def test_unknown_request_requires_bound_choice_and_keeps_unknown_usage(
             release.set()
         assert (await wait_terminal(client, turn_id))["status"] == "COMPLETED"
         calls = len(captured)
-        assert calls == (4 if kind == "RETRY_DELEGATIONS" else 3)
+        assert calls == (4 + int(repeat_timeout) if kind == "RETRY_DELEGATIONS" else 3)
         assert (
             await client.post(f"/api/chat-turns/{turn_id}/resume", json=decision)
         ).status_code == 200
@@ -216,9 +242,13 @@ async def test_unknown_request_requires_bound_choice_and_keeps_unknown_usage(
             ).all()
             assert rows[0].status == "STARTED" and rows[0].usage_json is None
             if kind == "RETRY_DELEGATIONS":
-                assert rows[1].retry_of == rows[0].id
-                assert rows[1].decision_id == decision["decision_id"]
-                assert rows[1].status == "COMPLETED"
+                if repeat_timeout:
+                    assert rows[1].status == "STARTED" and rows[1].usage_json is None
+                    assert rows[1].retry_of == rows[0].id
+                    assert rows[1].decision_id == "stable-decision-1"
+                assert rows[-1].retry_of == rows[-2].id
+                assert rows[-1].decision_id == decision["decision_id"]
+                assert rows[-1].status == "COMPLETED"
             assert await session.scalar(text("SELECT count(*) FROM chat_turn_budget_calls")) == 1
 
 

@@ -54,13 +54,9 @@ class ChatModelRequest(Base):
     messages_json: Mapped[str | None] = mapped_column(Text, default=None)
     retry_of: Mapped[str | None] = mapped_column(String(64), default=None)
     pins_json: Mapped[str] = mapped_column(Text, default="[]")
-    execution_id: Mapped[str | None] = mapped_column(
-        ForeignKey(AgentDelegation.id), default=None
-    )
+    execution_id: Mapped[str | None] = mapped_column(ForeignKey(AgentDelegation.id), default=None)
     execution_attempt: Mapped[int | None] = mapped_column(Integer, default=None)
-    decision_id: Mapped[str | None] = mapped_column(
-        ForeignKey(DelegationDecision.id), default=None
-    )
+    decision_id: Mapped[str | None] = mapped_column(ForeignKey(DelegationDecision.id), default=None)
 
 
 class ChatCompaction(Base):

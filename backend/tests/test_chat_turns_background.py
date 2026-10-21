@@ -312,7 +312,9 @@ async def test_t16_wait_releases_slot_and_resumes_original_result(
                 "UPDATE chat_turn_runs SET cancel_requested=2",
                 "INSERT INTO chat_turn_runs SELECT * FROM chat_turn_runs",
                 "UPDATE chat_turn_waits SET target_type='INVALID'",
-                "INSERT INTO chat_turn_waits SELECT 'duplicate', turn_id, namespace,"
+                "INSERT INTO chat_turn_waits (id, turn_id, namespace, logical_call_id,"
+                " target_type, target_id, source_operation_id, interrupt_id, result_json,"
+                " created_at) SELECT 'duplicate', turn_id, namespace,"
                 " logical_call_id, target_type, target_id, source_operation_id,"
                 " interrupt_id, result_json, created_at FROM chat_turn_waits",
                 "UPDATE chat_turns SET compacted_seq=-1",

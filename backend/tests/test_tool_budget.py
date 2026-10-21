@@ -629,7 +629,7 @@ async def test_cancel_after_handler_before_measure_uses_cancelled_terminal(
         return await original(tool_name, args, held_handler)
 
     monkeypatch.setattr(middleware, "execute", held_execute)
-    monkeypatch.setattr("app.modules.agent.turns.worker.CANCEL_POLL_INTERVAL_SECONDS", 60)
+    monkeypatch.setattr("app.modules.agent.turns.runtime.CANCEL_POLL_INTERVAL_SECONDS", 60)
     async with recovery_app(
         tmp_path,
         monkeypatch,
