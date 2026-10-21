@@ -162,6 +162,18 @@ class ContextOutputMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignor
         return result
 
 
+def output_projection(row: ChatContextOutput) -> dict[str, object]:
+    return {
+        "ok": True,
+        "source_id": f"output:{row.id}",
+        "version": row.content_hash,
+        "total_chars": len(row.content),
+        "preview": row.content[:240],
+        "truncated": True,
+        "message": "大输出已保存，使用 read_context(source_id, version) 分段取回。",
+    }
+
+
 async def project_outputs(
     runtime: AgentRuntimeContext, messages: list[AnyMessage]
 ) -> list[AnyMessage]:
@@ -177,18 +189,7 @@ async def project_outputs(
     for message in messages:
         row = outputs.get(message.tool_call_id) if isinstance(message, ToolMessage) else None
         if row and message.content == row.content:
-            content = json.dumps(
-                {
-                    "ok": True,
-                    "source_id": f"output:{row.id}",
-                    "version": row.content_hash,
-                    "total_chars": len(row.content),
-                    "preview": row.content[:240],
-                    "truncated": True,
-                    "message": "大输出已保存，使用 read_context(source_id, version) 分段取回。",
-                },
-                ensure_ascii=False,
-            )
+            content = json.dumps(output_projection(row), ensure_ascii=False)
             result.append(message.model_copy(update={"content": content}))
         else:
             result.append(message)

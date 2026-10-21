@@ -84,6 +84,16 @@ Browser Use doctor 报 daemon/连接不可用，改用本机已安装的独立�
 
 真实验收：使用独立 data-dir 和已同意外发的真实供应商，准备两个资料主题；两个不同 general 对话各明确要求同时委派两项任务。记录模型是否实际输出同轮双 ToolCall、四个子/Job/request ID、峰值及 usage。刻意制造一支失败/不明，验证成功分支不重跑、逐分支重试/接受已有结果；等待时切会话、刷新、停止、真正重启。真实 Tauri/WebView2 再验键盘/窄窗/六主题，并分别记录 Windows 125%/150%/200%。未发出双调用记 NOT_TRIGGERED。
 
+## 长报告预算投影修复
+
+原报告投影为 `output:` 指针后，父输入重验证仍按 `KnowledgeResult` 解析，导致合法长报告变为错误结果。现在复用输出投影格式与会话来源过滤，核对指针、工具与调用身份后，对快照中的完整报告继续执行原报告和引用校验。
+
+验证使用真实公开提交 API、迁移 SQLite、Worker 和 Graph，只有外部模型为替身：两分支返回超过内联阈值的合法报告 → 保存输出快照 → 生产预算投影 → 父模型收到可读指针 → 公开 `read_context` 分页读取。跨分支/跨会话指针、篡改预览与版本、来源删除后拒绝读取均通过。
+
+- 新增回归先复现失败（`20261021T234135Z-d53f6662/backend`），修复后单项通过（`20261021T234219Z-fd2b2379/backend`）。
+- 统一入口运行 `tests/test_parallel_delegations.py tests/test_context_retrieval.py`：26 项通过，证据 `.pytest-tmp-runs/20261021T234249Z-fc68649e/backend/`；改动范围 Ruff、格式、Pyright 检查通过。
+- 本次未运行全量、真实模型或 Tauri/WebView2 验收，不扩大原验收结论。
+
 ## 双轴评审
 
 按 code-review 技能，以 `b743a0f` 为基点独立并行审查。

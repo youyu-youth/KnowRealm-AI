@@ -610,6 +610,79 @@ async def test_parent_input_validates_report_contract_and_branch_binding(
 
 
 @pytest.mark.anyio
+async def test_long_reports_remain_readable_after_budget_projection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_conversation_compaction import configure
+    from test_shared_refs import COURSE_ML, REC_ML_PAPER, seed_full_corpus
+
+    from app.modules.agent.context_budget.retrieval import validate_read_results
+
+    summary = "长报告正文。" * 5000
+    quote = "梯度下降通过反向传播迭代更新参数。"
+    routes = {
+        "root:long": [delegates("long"), ["汇总"]],
+        "child:long:A": [[f"{summary}\n证据[1]。\n[1] {quote}（来源：论文精读）"]],
+        "child:long:B": [[summary]],
+    }
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        factory = app.state.session_factory
+        await seed_full_corpus(factory)
+        route_model(monkeypatch, routes)
+        sid = await create_session(client, scope="COURSE", course_id=COURSE_ML)
+        await configure(client, 60000)
+        tid = (await submit(client, sid, "root:long", request_id="parallel-long")).json()["id"]
+        result = await wait_terminal(client, tid)
+        assert result["status"] == "COMPLETED", result
+        reports = {m.tool_call_id: m for m in captured[-1] if isinstance(m, ToolMessage)}
+        pointers = {key: json.loads(m.text) for key, m in reports.items()}
+        assert len(pointers) == 2
+        assert all(body.get("ok") is True and body.get("truncated") for body in pointers.values())
+        base = f"/api/chat-sessions/{sid}/context/sources/read"
+        for call_id, pointer in pointers.items():
+            request = {
+                "source_id": pointer["source_id"],
+                "version": pointer["version"],
+                "max_chars": 2400,
+            }
+            page = await client.post(base, json=request)
+            assert page.status_code == 200, page.text
+            body = page.json()
+            assert body["source"]["locator"]["tool_call_id"] == call_id
+            assert summary[:2000] in body["content"]
+            second = await client.post(base, json={**request, "cursor": body["next_cursor"]})
+            assert second.status_code == 200, second.text
+            assert second.json()["offset"] == 2400
+            assert body["remaining"] + 2400 == pointer["total_chars"]
+        valid = reports["delegate-A"]
+        pointer = pointers["delegate-A"]
+        invalid = [
+            valid.model_copy(update={"content": reports["delegate-B"].text}),
+            *[
+                valid.model_copy(update={"content": json.dumps({**pointer, **change})})
+                for change in (
+                    {"preview": "无来源注入结论"},
+                    {"version": "stale-version"},
+                    {"summary": "伪造的完整报告"},
+                )
+            ],
+        ]
+        checked = await validate_read_results(factory, sid, [valid, *invalid])
+        assert checked[0] == valid
+        assert all(json.loads(m.text).get("ok") is False for m in checked[1:])
+        other = await create_session(client, scope="COURSE", course_id=COURSE_ML)
+        checked = await validate_read_results(factory, other, [valid])
+        assert json.loads(checked[0].text)["ok"] is False
+        assert (await client.delete(f"/api/records/{REC_ML_PAPER}")).status_code == 204
+        checked = await validate_read_results(factory, sid, list(reports.values()))
+        by_call = {m.tool_call_id: m for m in checked if isinstance(m, ToolMessage)}
+        assert json.loads(by_call["delegate-A"].text)["ok"] is False
+        assert by_call["delegate-B"] == reports["delegate-B"]
+        unavailable = await client.post(base, json={"source_id": pointer["source_id"]})
+        assert unavailable.status_code == 404
+
+
+@pytest.mark.anyio
 async def test_deleted_source_is_removed_before_parallel_reports_enter_parent_model(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

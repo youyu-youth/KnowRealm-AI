@@ -845,9 +845,24 @@ async def validate_read_results(
                     )
             elif message.name == "delegate_knowledge":
                 async with factory() as session:
-                    from app.modules.agent.delegations.service import validate_report
+                    from app.modules.agent.context_budget.outputs import output_projection
+                    from app.modules.agent.context_budget.rules import require_source_allowed
+                    from app.modules.agent.delegations.service import conflict, validate_report
 
-                    chat, _, _ = await _scope(session, session_id)
+                    chat, segment, _ = await _scope(session, session_id)
+                    source_id = body.get("source_id")
+                    if isinstance(source_id, str) and source_id.startswith("output:"):
+                        await require_source_allowed(session, session_id, source_id)
+                        outputs = await _outputs(session, session_id, segment, source_id[7:])
+                        output = outputs[0] if outputs else None
+                        if (
+                            output is None
+                            or output.tool_name != message.name
+                            or output.logical_call_id != message.tool_call_id
+                            or body != output_projection(output)
+                        ):
+                            raise conflict("知识报告指针与原工具输出不一致")
+                        body = json.loads(output.content)
                     await validate_report(
                         session, session_id, body, logical_call_id=message.tool_call_id
                     )
