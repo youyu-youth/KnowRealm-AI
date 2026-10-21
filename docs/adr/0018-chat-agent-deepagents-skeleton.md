@@ -16,6 +16,8 @@ Chat Agent（`backend/app/modules/chat/graph.py`）原以 LangChain `create_agen
 
 ## 当前阶段关联
 
+[ADR-0030：有界专业 Agent 与持久委派](0030-bounded-professional-agents-and-durable-delegation.md)已批准 general/knowledge 独立入口及受控一级知识协作的演进方向；实施规格最终确认待答，尚未实现。不因此开放默认通用子代理、文件或 Shell；以下空骨架迁移记录仍是当时决策与验收事实。
+
 [ADR-0028：持久会话上下文与完整请求准入](0028-durable-conversation-context-and-request-budget.md) 阶段性替代空骨架迁移时无产品压缩及固定十轮尾裁的行为；默认框架摘要仍禁用，主骨架、提示注入、业务事实与 checkpoint 分离及内置工具隔离继续有效。以下迁移记录保留为历史决策。
 
 ## Considered Options

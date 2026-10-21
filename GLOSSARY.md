@@ -157,6 +157,18 @@ _Avoid_: 速记（裸用——那是捕获入口 Quick Note，两者是不同概
 
 ### AI 对话
 
+**业务 Agent（Business Agent）**:
+具有稳定职责、能力边界和独立或被委派入口的专业助手；本期约定为通用助手 general 与本地只读知识助手 knowledge。它不是对话模式或资料范围；架构决定见 [ADR-0030](docs/adr/0030-bounded-professional-agents-and-durable-delegation.md)。
+_Avoid_: ChatMode、ChatScope、每个业务模块一个 Agent
+
+**委派执行（Delegation Execution）**:
+根回答任务派生的独立专业工作，具有稳定身份、明确任务、受限上下文及可追溯结果；不等同于一次业务操作、业务 Run 或独立聊天会话。
+_Avoid_: Operation、Agent Run、聊天会话、后台任务（指代不明时）
+
+**根预算归属（Root Budget Owner）**:
+共同承担主助手与受委派助手消费的根回答任务；它标明共同额度归属，不代表执行身份或操作授权。
+_Avoid_: 执行权限、当前运行实例、授权档位
+
 **聊天会话（Chat Session）**:
 与 AI 的多轮对话实体——可以自由聊天，也可以挂载 Record、LibraryItem、Course 或全部资料；Tutor、Teach-back 等后续交互形态共用同一实体，不建第二套消息体系。UI 文案一律称"对话"。
 _Avoid_: 会话（裸用——与"学习会话/Record"撞词）、学习会话（那是 Record）
