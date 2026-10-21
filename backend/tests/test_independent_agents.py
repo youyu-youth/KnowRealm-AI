@@ -229,6 +229,63 @@ def test_general_composition_keeps_all_config_extensions(
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    "scope,source",
+    [
+        ("RECORD", "record"),
+        ("COURSE", "record"),
+        ("ALL", "record"),
+        ("LIBRARY_ITEM", "record"),
+        ("COURSE", "library"),
+        ("ALL", "library"),
+        ("LIBRARY_ITEM", "library"),
+    ],
+)
+async def test_knowledge_keeps_local_url_quotes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str, source: str
+) -> None:
+    quote = "项目主页位于 https://example.com/docs"
+    title = "论文精读" if source == "record" else "注意力机制综述"
+    item_id = ITEM_ML_PAPER if source == "record" else ITEM_ML_WEB
+    reply = (
+        f"本地资料给出了主页[1]。\n[1] {quote}（来源：{title}）\n"
+        "[2] 未检索网站 — https://example.invalid/proof"
+    )
+    async with turns_app(tmp_path, monkeypatch, replies=[[reply]]) as (app, client, _):
+        await seed_full_corpus(app.state.session_factory)
+        with connect(tmp_path / "knowrealm.db") as db:
+            if source == "record":
+                db.execute(
+                    "UPDATE transcripts SET content=? WHERE record_id=?", (quote, REC_ML_PAPER)
+                )
+            else:
+                db.execute(
+                    "UPDATE document_segments SET content=? WHERE library_item_id=?",
+                    (quote, item_id),
+                )
+        body: dict[str, Any] = {"agent_id": "knowledge", "scope": scope}
+        if scope == "COURSE":
+            body["course_id"] = COURSE_ML
+        elif scope == "RECORD":
+            body["record_id"] = REC_ML_PAPER
+        elif scope == "LIBRARY_ITEM":
+            body["library_item_id"] = item_id
+        sid = await create_session(client, **body)
+        submitted = await submit(client, sid, "请引用本地资料中的主页说明", request_id=str(uuid4()))
+        done = await wait_terminal(client, submitted.json()["id"])
+        assert done["status"] == "COMPLETED", done
+        history = (await client.get(f"/api/chat-sessions/{sid}/messages")).json()
+        answer = next(row for row in history if row["role"] == "ASSISTANT")
+        assert answer["content"] == "本地资料给出了主页[1]。"
+        assert len(answer["citations"]) == 1
+        citation = answer["citations"][0]
+        assert citation["source"] == source and citation["quote"] == quote
+        assert citation["record_id" if source == "record" else "library_item_id"] == (
+            REC_ML_PAPER if source == "record" else item_id
+        )
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("scope", ["FREE", "RECORD", "LIBRARY_ITEM", "COURSE", "ALL"])
 async def test_knowledge_does_not_publish_invented_web_citations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str

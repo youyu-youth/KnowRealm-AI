@@ -833,6 +833,7 @@ class _TurnExecutor:
             return
         citations: list[dict[str, int | str]] = []
         if prompt_context.should_parse_citations:
+            allow_web = prompt_context.agent_id != AgentId.KNOWLEDGE
             if prompt_context.library is not None:
                 scope_id = (
                     prompt_context.library_item_id
@@ -842,17 +843,16 @@ class _TurnExecutor:
                 records, items = await load_library_materials(
                     self._session_factory, prompt_context.scope, scope_id
                 )
-                parsed = parse_library_citation_reply(content, records, items)
+                parsed = parse_library_citation_reply(content, records, items, allow_web=allow_web)
             else:
                 parsed = parse_citation_reply(
                     content,
                     transcript=prompt_context.transcript or "",
                     record_id=prompt_context.record_id or "",
+                    allow_web=allow_web,
                 )
             content = parsed.content
             citations = parsed.citations
-            if prompt_context.agent_id == AgentId.KNOWLEDGE:
-                citations = [entry for entry in citations if entry.get("source") != "web"]
         if not content:
             await self._fail("EMPTY_REPLY", "回答为空，请重试")
             return

@@ -16,7 +16,7 @@
 - general 保留原工具；knowledge 在有效非 FREE 范围仅挂 `search_library`。FREE 仅分析直接提供文字，专业提示解释缺少来源；任何 mode/auth_mode 均不挂联网、业务写工具、提案、上下文修改、文件或委派。
 - KnowledgeToolGuardMiddleware 同时约束实际工具执行，拦截模型猜测的内置工具；原取消、工具身份、预算、输入/输出治理及模型工厂继续复用。
 - 配置拼装使用 `dataclasses.replace` 保留 tools/subagents/skills/backend/middleware 五个扩展点。预算预览与执行均按固定 Agent 身份选择同一工具面；测试同时比较公开 estimates 的 tool_count 与真实请求估算记录。
-- knowledge 的输出复用原引用解析，并剥离引用块、拒绝 web 条目，FREE 同样处理伪造引用；general 解析行为不变。
+- knowledge 的输出复用原引用解析，关闭 web 分流：含 URL 的摘录继续按本地原文校验，伪造网络引用拒绝；引用块照常剥离，FREE 同样处理伪造引用；general 解析行为不变。
 - 聊天图版本升至 `chat-graph-v11`。旧在途轮次沿现有版本兼容流程停止后新问，不把不同工具结构的 checkpoint 直接续跑。
 - 新建菜单从真实目录选择助手，再选原资料范围；记录挂载创建复用统一 mutation。当前会话的 FREE/RECORD/COURSE/ALL 范围切换保留身份；原课程、资料、知识点 CTA 省略身份时仍为 general。
 - 列表和标题持续显示身份；knowledge 联网开关禁用并解释原因，授权档入口显示只读说明。zh/en 同 key；OpenAPI/api-types 已重新生成，无新增 HTTP 错误码。
@@ -93,6 +93,13 @@ agent_proposals / agent_operations / agent_runs = 0 / 0 / 0
 ### Spec
 
 首轮：发现 knowledge 的通用解析器可能把模型编造的网站投影为正式 web 来源。已补五范围生产 Worker 回归并修正输出边界；独立评审复查无遗留规格问题。其余身份、能力、配置和创建路径无新增发现。
+
+## 本地 URL 引用评审修复（2026-10-21）
+
+- 修复 knowledge 将含 URL 的合法本地摘录先解析为 web、再误删的问题。两个解析器增加默认开启的 `allow_web` 参数，Worker 按固定 Agent 身份关闭 knowledge 的 web 分流，移除事后过滤；沿用本地原文校验和来源归属，不增加模型调用或改变通用助手行为。
+- 新增一个参数化 Worker 回归，共 7 项：RECORD/COURSE/ALL/LIBRARY_ITEM 的记录原文，以及 COURSE/ALL/LIBRARY_ITEM 的资料直挂正文。公开 API → 真实 SQLite/Worker → 引用解析 → 持久消息 GET；供应商为模型替身，输出同时包含合法本地 URL 摘录和伪造网络引用，断言只保留正确来源 ID 与原句。本用例验证输出校验，不声称模型实际调用了检索工具。
+- 红灯：统一入口 `20261021T074704Z-41215fb2/backend`，7 项均因引用列表为空失败。修复后执行 `uv run --frozen --directory backend python -m scripts.run_tests backend tests/test_independent_agents.py tests/test_chat_streaming.py tests/test_library_retrieval.py tests/test_shared_refs.py`，`20261021T074809Z-208a8c9b/backend` 135 项通过，包含原伪造引用防线和通用助手网络/混合引用回归。
+- `pwsh -NoProfile -File scripts/check-changed.ps1` 通过，触及文件 Ruff/格式/Pyright 均通过；未重跑全量、真实模型或原生桌面，原有未验收项保持不变。日志与临时数据库未 add/commit。
 
 ## 可重复桌面步骤与资源
 

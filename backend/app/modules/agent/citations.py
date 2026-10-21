@@ -134,12 +134,14 @@ def _library_item_entry(index: int, quote: str, item: LibraryItemMaterial) -> di
     return entry
 
 
-def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> ParsedReply:
+def parse_citation_reply(
+    text: str, *, transcript: str, record_id: str, allow_web: bool = True
+) -> ParsedReply:
     """从回答尾部识别「[n] 摘录」引用块：剥离入 citations，逐条校验。
 
     - 只有文末连续匹配引用行格式的部分才算引用块（行首容忍 > / - / * 等
       markdown 前缀），正文中的 [1] 角标不受影响；
-    - 行内含 URL → web 条目（仅非空检查）；其余按转写摘录校验：逐字命中
+    - 允许网络来源时，行内含 URL → web 条目（仅非空检查）；其余按转写摘录校验：逐字命中
       （≤80 字）直接保留，意译或超长的摘录经 ``_align_quote`` 在转写行中
       模糊对齐，达标则以真实原文替换展示；
     - 单记录会话归属即挂载记录：行尾混入的「（来源：标题）」标记剥除后再
@@ -154,7 +156,7 @@ def parse_citation_reply(text: str, *, transcript: str, record_id: str) -> Parse
     for index, quote in entries:
         if not quote or index < 1:
             continue
-        web = _web_entry(index, quote)
+        web = _web_entry(index, quote) if allow_web else None
         if web is not None:
             citations.append(web)
             continue
@@ -211,11 +213,13 @@ def parse_library_citation_reply(
     text: str,
     records: Sequence[LibraryRecordMaterial],
     items: Sequence[LibraryItemMaterial] = (),
+    *,
+    allow_web: bool = True,
 ) -> ParsedReply:
     """范围会话（COURSE/ALL/LIBRARY_ITEM，工单 04）的引用块解析：归属由校验器
     裁定，模型只写标题。
 
-    行分流：URL → web 条目（不逐字校验）；含「（来源：标题）」→ 标题等值定位
+    行分流：允许网络来源时，URL → web 条目（不逐字校验）；含「（来源：标题）」→ 标题等值定位
     候选（记录优先、资料条目次之——回填条目与记录同标题时，命中记录转写的
     走记录条目，命中资料直挂正文的走 library 条目），逐字命中（≤80 字）直接
     过（重名逐一验证取首过者），逐字不过仅在候选内模糊对齐（复用 _align_quote）；
@@ -229,7 +233,7 @@ def parse_library_citation_reply(
     for index, line in entries:
         if not line or index < 1:
             continue
-        web = _web_entry(index, line)
+        web = _web_entry(index, line) if allow_web else None
         if web is not None:
             citations.append(web)
             continue
