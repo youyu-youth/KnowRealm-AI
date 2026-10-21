@@ -65,6 +65,13 @@
 
 UI 沿现有语义令牌与 Button 原语。desktop-ui-mastery 小范围 lint 的 focus/hover 告警由共享 Button 的 focus-visible/hover 和过程行既有 Tailwind 焦点样式覆盖，不另复制样式；这不是浏览器或原生视觉验收证据。
 
+## RECORD 委派引用修复（2026-10-21）
+
+- 修复子 Worker 在 RECORD 范围使用全库引用候选的问题：按挂载记录 ID 复用 `LibraryRetrievalService.read_source` 读取当前有效原文，再用独立入口相同的 `parse_citation_reply` 解析。其余范围继续原解析路径，保留冻结规则及结果提交时的来源重验。
+- 扩展已有成功闭环测试为 COURSE、RECORD 无来源标题、RECORD 带来源标题三项。隔离库中另一个课程的较新记录具有相同标题与原句；真实 API/SQLite/Worker、检索及父图恢复执行，只有供应商被替换，断言子报告成功且引用始终指向挂载记录。
+- 红灯：统一入口 `20261021T121031Z-87853d37/backend`，COURSE 通过，两个 RECORD 场景均因子报告 FAILED 而失败。修复后执行 `uv run --frozen --directory backend python -m scripts.run_tests backend tests/test_agent_delegations.py tests/test_independent_agents.py`，`20261021T121124Z-da42887f/backend` 为 40 通过、1 失败；委派 14 项全部通过，唯一失败是独立入口 URL 测试在同步准备临时数据时遇到 `database is locked`，尚未进入被测解析。该项沿同入口单独复跑，`20261021T121446Z-4e2a2f77/backend` 1 项通过；不合写为一次联合全绿。
+- `pwsh -NoProfile -File scripts/check-changed.ps1` 最终通过：触及文件 Ruff、格式、Pyright 均通过；`git diff --check` 通过。未重跑全量、真实模型或原生桌面，原人工验收边界不变。临时数据库与日志未 add/commit。
+
 ## 人工复现与清理
 
 1. 在隔离数据目录配置并同意真实模型外发，创建带少量事务隔离原文的课程，以 general 在课程范围要求先委派检索再汇总；记录根 turn/delegation/Job/request/claim 关联。

@@ -31,10 +31,14 @@ def anyio_backend() -> str:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("scope", "source_suffix"),
+    [("COURSE", "（来源：论文精读）"), ("RECORD", ""), ("RECORD", "（来源：论文精读）")],
+)
 async def test_single_delegation_uses_knowledge_and_returns_to_original_parent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str, source_suffix: str
 ) -> None:
-    from test_shared_refs import COURSE_ML, REC_ML_PAPER, seed_full_corpus
+    from test_shared_refs import COURSE_ML, REC_AGENT_NOTE, REC_ML_PAPER, seed_full_corpus
 
     quote = "梯度下降通过反向传播迭代更新参数。"
     async with turns_app(
@@ -43,12 +47,22 @@ async def test_single_delegation_uses_knowledge_and_returns_to_original_parent(
         replies=[
             ToolCallReply("delegate_knowledge", {"task": "检索资料中的梯度下降原理"}, "delegate-1"),
             ToolCallReply("search_library", {"query": quote}, "search-1"),
-            [f"本地材料说明[1]。\n[1] {quote}（来源：论文精读）"],
+            [f"本地材料说明[1]。\n[1] {quote}{source_suffix}"],
             ["专业检索已完成，已取得原文证据"],
         ],
     ) as (app, client, captured):
         await seed_full_corpus(app.state.session_factory)
-        session_id = await create_session(client, scope="COURSE", course_id=COURSE_ML)
+        async with app.state.session_factory() as session, session.begin():
+            await session.execute(
+                text("UPDATE records SET title='论文精读', updated_at=:now WHERE id=:id"),
+                {"now": "2026-10-21T00:00:00.000000Z", "id": REC_AGENT_NOTE},
+            )
+            await session.execute(
+                text("UPDATE transcripts SET content=:quote WHERE record_id=:id"),
+                {"quote": quote, "id": REC_AGENT_NOTE},
+            )
+        mount = {"course_id": COURSE_ML} if scope == "COURSE" else {"record_id": REC_ML_PAPER}
+        session_id = await create_session(client, scope=scope, **mount)
         accepted = await submit(
             client, session_id, "委派检索再汇总", request_id="delegation-success-1"
         )

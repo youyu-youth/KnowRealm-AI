@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.db.base import utcnow
 from app.modules.agent.budget.policy import POLICY_VERSION, ToolCallBudget
 from app.modules.agent.budget.service import restore
-from app.modules.agent.citations import parse_library_citation_reply
+from app.modules.agent.citations import parse_citation_reply, parse_library_citation_reply
 from app.modules.agent.context_budget.retrieval import validate_evidence
 from app.modules.agent.context_budget.schemas import ContextPolicy, ContextRules
 from app.modules.agent.delegations.models import AgentDelegation
@@ -45,6 +45,7 @@ from app.modules.agent.turns.service import resume_blocked_reason
 from app.modules.jobs.models import ProcessingJob
 from app.modules.jobs.runner import CancelClaim, ClaimCheck, Ready, RunnerContext, WaitingClaim
 from app.modules.jobs.schemas import ProcessingJobStatus
+from app.modules.library.retrieval import LibraryRetrievalService, RetrievalScope
 from app.modules.settings.config import llm_provider_fingerprint, load_llm_provider
 from app.shared.errors import CodedHTTPException
 
@@ -299,15 +300,26 @@ async def execute(
                 ) from None
             await consume(False)
         content = outcome.final_text or ""
-        scope_id = (
-            runtime.library_item_id
-            if runtime.scope == ChatScope.LIBRARY_ITEM
-            else runtime.record_id
-            if runtime.scope == ChatScope.RECORD
-            else runtime.course_id
-        )
-        records, items = await load_library_materials(session_factory, runtime.scope, scope_id)
-        parsed = parse_library_citation_reply(content, records, items, allow_web=False)
+        if runtime.scope == ChatScope.RECORD:
+            record_id = runtime.record_id or ""
+            async with session_factory() as session:
+                _, transcript, _ = await LibraryRetrievalService.read_source(
+                    session,
+                    RetrievalScope(ChatScope.RECORD, record_id=record_id),
+                    "record",
+                    record_id,
+                )
+            parsed = parse_citation_reply(
+                content, transcript=transcript, record_id=record_id, allow_web=False
+            )
+        else:
+            scope_id = (
+                runtime.library_item_id
+                if runtime.scope == ChatScope.LIBRARY_ITEM
+                else runtime.course_id
+            )
+            records, items = await load_library_materials(session_factory, runtime.scope, scope_id)
+            parsed = parse_library_citation_reply(content, records, items, allow_web=False)
         async with session_factory() as session:
             chat = await session.get(ChatSession, root.session_id)
             assert chat is not None
