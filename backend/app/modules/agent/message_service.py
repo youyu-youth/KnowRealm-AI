@@ -168,7 +168,7 @@ class SessionPromptContext:
 
     @property
     def should_parse_citations(self) -> bool:
-        """挂载与范围会话恒解析引用块；自由聊天仅本轮联网时解析（产出 web 条目）。"""
+        """知识助手恒解析引用块；通用助手仅在挂载资料、限定范围或联网时解析。"""
         return (
             self.agent_id == AgentId.KNOWLEDGE
             or self.record_id is not None

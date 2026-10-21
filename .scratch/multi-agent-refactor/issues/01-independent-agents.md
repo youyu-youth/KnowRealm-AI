@@ -1,8 +1,9 @@
 # 01：general / knowledge 独立入口闭环
 
 Type: task
-Status: needs-info
-Blocked by: Q5 最终共享理解确认；文档提案已获 Q6 批准
+Status: ready-for-human
+Blocked by: 无；用户本轮已明确授权 implement 实施工单 01，Q6 文档范围已批准
+实施状态：代码已实现，双轴评审修正已复查；前端全量 869 通过，后端 1441 通过、1 项 sidecar 超时，基点对照见 [实施记录](../01-implementation.md)。真实模型与原生桌面验收待人工执行。
 规格：[spec.md](../spec.md) §1～4、10～12。
 
 ## 用户结果
@@ -12,15 +13,15 @@ Blocked by: Q5 最终共享理解确认；文档提案已获 Q6 批准
 ## 改动边界
 
 - [x] 依据 Q6 批准提案登记 ADR-0030、旧 ADR 阶段差异与术语；不改 rules。此项是文档登记，不是实现验收。
-- [ ] 会话 DDL 增加固定 agent_id 与旧记录默认 general；Pydantic、Service、创建/列表/详情贯通。
-- [ ] 提供真实 GET /api/agents；使用两项静态能力配置，不添加动态注册框架。
-- [ ] 保存 AgentConfig 的全部扩展点；复用原模型工厂、build_agent 及治理 Middleware。
-- [ ] general 既有能力保留；knowledge 使用专业只读提示与 search_library 白名单，FREE 不扩大范围。
-- [ ] 输入准入和装配看到的工具面一致；不是仅在 UI 隐藏写入口。knowledge 恶意请求写工具不得触发 Service/Operation。
-- [ ] 原 mode/scope 合法矩阵保留；knowledge 在任何 mode 不产生网络检索或入库提案，不绑定另一套消息体系。
-- [ ] NewChatButton、统一创建 mutation、范围切换和身份显示同步；旧课程/资料 CTA 默认不变。
-- [ ] zh/en 同 key；主题、键盘、长文本及窄窗适配；knowledge 联网/写操作状态准确解释。
-- [ ] OpenAPI/api-types 重新生成；新增 HTTP 错误码按现有三方登记（确有新增时）。
+- [x] 会话 DDL 增加固定 agent_id 与旧记录默认 general；Pydantic、Service、创建/列表/详情贯通。
+- [x] 提供真实 GET /api/agents；使用两项静态能力配置，不添加动态注册框架。
+- [x] 保存 AgentConfig 的全部扩展点；复用原模型工厂、build_agent 及治理 Middleware。
+- [x] general 既有能力保留；knowledge 使用专业只读提示与 search_library 白名单，FREE 不扩大范围。
+- [x] 输入准入和装配看到的工具面一致；不是仅在 UI 隐藏写入口。knowledge 恶意请求写工具不得触发 Service/Operation。
+- [x] 原 mode/scope 合法矩阵保留；knowledge 在任何 mode 不产生网络检索或入库提案，不绑定另一套消息体系。
+- [x] NewChatButton、统一创建 mutation、范围切换和身份显示同步；旧课程/资料 CTA 默认不变。
+- [x] zh/en 同 key；主题、键盘、长文本及窄窗适配；knowledge 联网/写操作状态准确解释。
+- [x] OpenAPI/api-types 重新生成；新增 HTTP 错误码按现有三方登记（确有新增时）。
 
 ## 验证路径
 
@@ -28,11 +29,11 @@ Blocked by: Q5 最终共享理解确认；文档提案已获 Q6 批准
 
 使用独立临时 SQLite 和真实 app/Worker；模型替身仅替换供应商。固定数据包含两个课程、跨课资料、归档及软删来源、旧会话与 FREE。
 
-- [ ] 自动化：旧载荷默认/重启归属、未知身份拒绝、不可 PATCH 改 Agent、范围隔离、FREE 无本地召回、knowledge 零写入、general 原写路径回归、五扩展点不丢失。
-- [ ] 现有回归：test_chat_sessions.py、test_chat_streaming.py、test_context_budget.py、相关前端聊天创建测试；仅在新增行为无覆盖处补测试。
-- [ ] 真实 API/SQLite/Worker + 模型替身：以上生产链贯通，保存输入观察和真实查询证据。
+- [x] 自动化：旧载荷默认/重启归属、未知身份拒绝、不可 PATCH 改 Agent、范围隔离、FREE 无本地召回、knowledge 零写入、general 原写路径回归、五扩展点不丢失。
+- [x] 现有回归：test_chat_sessions.py、test_chat_streaming.py、test_context_budget.py、相关前端聊天创建测试；仅在新增行为无覆盖处补测试。
+- [x] 真实 API/SQLite/Worker + 模型替身：以上生产链贯通，保存输入观察和真实查询证据。
 - [ ] 真实模型：实际命中本地检索并有可打开引用；没调用工具记 NOT_TRIGGERED。
-- [ ] 浏览器：各当前主题、窄窗、字号、中英、键盘与错误状态；不代替原生。
+- [x] 浏览器：各当前主题、窄窗、字号、中英、键盘与错误状态；不代替原生。
 - [ ] Tauri/WebView2 与 Windows 125%/150%/200%：选择、创建、重启读回和引用定位，未执行保持 NOT_RUN。
 
 ## 桌面重复步骤

@@ -1,7 +1,7 @@
 # Multi-Agent 改造：决策记录
 
 日期：2026-10-21。
-状态：Q1～Q4、Q6 保留；2026-10-21 四缺口专项 grill 的 Q7～Q9 已全部确认，设计已收敛，ADR-0030 细化已获批登记。Q5 实施确认尚未完成，规格与工单待正式回写，生产实现未开始。专项记录见 [architecture-gaps.md](architecture-gaps.md)。
+状态：Q1～Q4、Q6 保留；2026-10-21 四缺口专项 grill 的 Q7～Q9 已全部确认，设计已收敛，ADR-0030 细化已获批登记。Q5 已由用户本轮明确要求使用 implement 实施 01 获得授权；规格与工单已回写，01 实现及验证见 [实施记录](01-implementation.md)。专项记录见 [architecture-gaps.md](architecture-gaps.md)。
 
 ## 已由原方案确定
 
@@ -47,10 +47,10 @@
 - Q7 已确认：成功分支保留；不确定请求在兄弟安全分支收口后进入父 WAITING_USER，用户选择仅重试中断分支或接受已有结果，均保留原消费。
 - Q8 已确认：每次 delegate_knowledge(task) 仅一个子任务；可同轮两次并行 ToolCall，每次各计一次根工具额度，不新增批量等待模型。
 - Q9 已确认：批准专项记录第 3～5 节及 ADR-0030 的四点细化；明确失败按 Q2 汇总并结束，不确定请求才 WAITING_USER 选择；原根事件/seq 受控接纳子状态；独立稳定子线程/输入、优先续跑、业务先提交再清理。
-- 进度写入、输入/checkpoint 隔离、重试状态转换及框架机制实验证据见专项记录。设计收敛阶段已结束，未据此修改生产代码；规格与工单正式回写留待后续阶段。
+- 进度写入、输入/checkpoint 隔离、重试状态转换及框架机制实验证据见专项记录。设计收敛阶段当时未修改生产代码；规格与工单现已正式回写，01 的实施见独立记录。
 
-Q6 用户已选择“批准上述具体文档修改范围”，据此登记 ADR-0030、三个术语及项目进度；旧 ADR 只补阶段关联。Q5 尚未答复，不视作默认批准实施。
+Q6 用户已选择“批准上述具体文档修改范围”，据此登记 ADR-0030、三个术语及项目进度；旧 ADR 只补阶段关联。Q5 已由用户明确要求使用 implement 完成 01 获得实施确认；不据此扩展本轮到 02～04。
 
-后续先将 [architecture-gaps.md](architecture-gaps.md) 中 Q7～Q9 已确认决定回写 [spec.md](spec.md) 和四张纵向工单，再核对冻结条件；本轮不标记 ready-for-agent 或启动实现。真实模型和桌面未验条目保持独立状态，旧规格中的批量入参与笼统重试描述不能继续作为实现依据。
+Q7～Q9 已确认决定已回写 [spec.md](spec.md) 与对应纵向工单；01 按用户本轮授权实施，02～04 保持原依赖顺序待实施。真实模型和桌面未验条目保持独立状态；以当前已回写规格为实施依据。
 
 依据：根 AGENTS.md 与原方案要求 grill → spec → tickets；[grilling 技能](../../.agents/skills/grilling/SKILL.md)要求 “Do not act on it until the user confirms you have reached a shared understanding.” 权威文档按根 AGENTS.md 的具体提案批准规则处理。

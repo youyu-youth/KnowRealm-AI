@@ -1,7 +1,7 @@
 # Multi-Agent 首期实施规格
 
 Status: ready-for-agent
-日期：2026-10-21。Q7～Q9 四缺口决定已局部回写；实现状态：未开始。
+日期：2026-10-21。Q7～Q9 四缺口决定已局部回写；实现状态：01 独立入口已实现、ready-for-human；全量遗留失败与人工验收边界见实施记录；02～04 尚未开始，见 [01 实施记录](01-implementation.md)。
 设计依据：[用户指定方案](../../docs/multi-agent架构设计方案-参考openswe.md)；事实依据：[audit.md](audit.md)；已确认行为：[grill.md](grill.md)、[四缺口收敛记录](architecture-gaps.md)及 ADR-0030。
 
 ## 1. 范围与交付
