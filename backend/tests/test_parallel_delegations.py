@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -11,7 +11,7 @@ import openai
 import pytest
 from langchain_core.messages import AIMessageChunk, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGenerationChunk
-from sqlalchemy import text
+from sqlalchemy import Row, text
 from test_chat_turns import (
     GatedReply,
     StubChatModel,
@@ -598,6 +598,7 @@ async def test_parent_input_validates_report_contract_and_branch_binding(
         valid = reports[0]
         body = json.loads(valid.text)
         invalid = [
+            valid.model_copy(update={"content": "不是合法报告 JSON"}),
             valid.model_copy(update={"content": json.dumps({**body, "contract_version": 2})}),
             valid.model_copy(update={"tool_call_id": reports[1].tool_call_id}),
             valid.model_copy(update={"content": json.dumps({**body, "summary": "无来源注入结论"})}),
@@ -701,5 +702,229 @@ async def test_stop_cancels_both_running_children_and_rejects_late_reports(
                 )
                 assert all(not json.loads(result)["summary"] for result in results)
             assert len(captured) == 3
+        finally:
+            release.set()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("window", ["registered", "result_committed"])
+async def test_restart_before_parent_wake_reuses_both_branches_and_preserves_parent_thread(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, window: str
+) -> None:
+    blocked = asyncio.Event()
+    routes = {
+        "root:window": [delegates("window"), ["原两份报告汇总"]],
+        "child:window:A": [["证据 A"]],
+        "child:window:B": [["证据 B"]],
+    }
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        route_model(monkeypatch, routes)
+        saver = app.state.chat_checkpointer
+        put_writes, delete = saver.aput_writes, saver.adelete_thread
+        deleted: list[str] = []
+        gated_children: set[str] = set()
+
+        async def gate_writes(config: Any, writes: Any, task_id: Any, task_path: str = "") -> None:
+            thread = config.get("configurable", {}).get("thread_id", "")
+            if (
+                window == "registered"
+                and thread.startswith("chat-turn-")
+                and any(key == "__interrupt__" for key, _ in writes)
+            ):
+                blocked.set()
+                await asyncio.Event().wait()
+            await put_writes(config, writes, task_id, task_path)
+
+        async def gate_cleanup(thread: str) -> None:
+            if thread.startswith("agent-delegation-"):
+                deleted.append(thread)
+                if window == "result_committed":
+                    async with app.state.session_factory() as session:
+                        status = await session.scalar(
+                            text("SELECT status FROM agent_delegations WHERE id=:id"),
+                            {"id": thread.removeprefix("agent-delegation-")},
+                        )
+                    if status == "COMPLETED" and thread not in gated_children:
+                        gated_children.add(thread)
+                        blocked.set()
+                        await asyncio.Event().wait()
+            await delete(thread)
+
+        monkeypatch.setattr(saver, "aput_writes", gate_writes)
+        monkeypatch.setattr(saver, "adelete_thread", gate_cleanup)
+        sid = await create_session(client, scope="ALL")
+        tid = (await submit(client, sid, "root:window", request_id="parallel-window")).json()["id"]
+        await asyncio.wait_for(blocked.wait(), 10)
+        completed = 0
+        for _ in range(100):
+            async with app.state.session_factory() as session:
+                completed = await session.scalar(
+                    text("SELECT count(*) FROM agent_delegations WHERE status='COMPLETED'")
+                )
+            if completed == 2:
+                break
+            await asyncio.sleep(0.05)
+        assert completed == 2 and len(captured) == 3
+        state = await snapshot(client, tid)
+        assert state["status"] == ("RUNNING" if window == "registered" else "WAITING_JOB")
+        assert (
+            await saver.aget_tuple({"configurable": {"thread_id": f"chat-turn-{tid}"}}) is not None
+        )
+        async with app.state.session_factory() as session:
+            before = (
+                await session.execute(
+                    text(
+                        "SELECT id,job_id,input_json,result_json FROM agent_delegations "
+                        "ORDER BY logical_call_id"
+                    )
+                )
+            ).all()
+            parent_input = await session.scalar(
+                text("SELECT messages_json FROM chat_context_inputs WHERE turn_id=:id"), {"id": tid}
+            )
+        assert len(before) == 2
+        for row, branch in zip(before, ("A", "B"), strict=True):
+            frozen = json.loads(row.input_json)
+            assert frozen["task"] == f"child:window:{branch}"
+            assert frozen["task_id"] == row.id
+        if window == "registered":
+            assert {f"agent-delegation-{row.id}" for row in before} <= set(deleted)
+            for row in before:
+                assert (
+                    await saver.aget_tuple(
+                        {"configurable": {"thread_id": f"agent-delegation-{row.id}"}}
+                    )
+                    is None
+                )
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        route_model(monkeypatch, routes)
+        result = await wait_terminal(client, tid)
+        assert result["status"] == "COMPLETED", result
+        assert len(captured) == 1
+        async with app.state.session_factory() as session:
+            after = (
+                await session.execute(
+                    text(
+                        "SELECT id,job_id,input_json,result_json FROM agent_delegations "
+                        "ORDER BY logical_call_id"
+                    )
+                )
+            ).all()
+            assert after == before
+            assert (
+                await session.scalar(
+                    text("SELECT messages_json FROM chat_context_inputs WHERE turn_id=:id"),
+                    {"id": tid},
+                )
+                == parent_input
+            )
+            assert await session.scalar(text("SELECT count(*) FROM chat_turn_budget_calls")) == 2
+            assert (
+                await session.scalar(
+                    text("SELECT count(DISTINCT interrupt_id) FROM chat_turn_waits")
+                )
+                == 2
+            )
+            assert (
+                await session.scalar(
+                    text("SELECT count(*) FROM chat_model_requests WHERE execution_id IS NOT NULL")
+                )
+                == 2
+            )
+        for row in before:
+            assert (
+                await app.state.chat_checkpointer.aget_tuple(
+                    {"configurable": {"thread_id": f"agent-delegation-{row.id}"}}
+                )
+                is None
+            )
+
+
+@pytest.mark.anyio
+async def test_one_slot_writeback_fault_keeps_sibling_claim_and_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.modules.agent.turns import worker
+
+    release, fault = asyncio.Event(), asyncio.Event()
+    original = worker.writeback
+    routes = {
+        "root:slot": [delegates("slot"), ["汇总 A 与 B"]],
+        "child:slot:A": [GatedReply(("证据 A",), release)],
+        "child:slot:B": [["证据 B"]],
+        "root:fresh": [["执行槽仍可用"]],
+    }
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        route_model(monkeypatch, routes)
+
+        async def fail_one_writeback(ctx: Any, result: bool, **kwargs: Any) -> bool:
+            if ctx.delegation_id and not fault.is_set():
+                async with app.state.session_factory() as session:
+                    branch = await session.scalar(
+                        text("SELECT logical_call_id FROM agent_delegations WHERE id=:id"),
+                        {"id": ctx.delegation_id},
+                    )
+                if branch == "delegate-B":
+                    fault.set()
+                    raise RuntimeError("isolated slot writeback fault")
+            return await original(ctx, result, **kwargs)
+
+        monkeypatch.setattr(worker, "writeback", fail_one_writeback)
+        sid = await create_session(client, scope="ALL")
+        tid = (await submit(client, sid, "root:slot", request_id="parallel-slot-fault")).json()[
+            "id"
+        ]
+        try:
+            await asyncio.wait_for(fault.wait(), 10)
+            jobs: Sequence[Row[Any]] = []
+            for _ in range(100):
+                async with app.state.session_factory() as session:
+                    jobs = (
+                        await session.execute(
+                            text(
+                                "SELECT d.id,d.status,d.claim_token,j.status AS job_status "
+                                "FROM agent_delegations d JOIN processing_jobs j "
+                                "ON j.id=d.job_id ORDER BY d.logical_call_id"
+                            )
+                        )
+                    ).all()
+                if len(jobs) == 2 and jobs[1].job_status == "FAILED":
+                    break
+                await asyncio.sleep(0.05)
+            assert jobs[0].status == "RUNNING" and jobs[1].status == "COMPLETED"
+            assert jobs[1].job_status == "FAILED" and len(captured) == 3
+            saver = app.state.chat_checkpointer
+            assert (
+                await saver.aget_tuple({"configurable": {"thread_id": f"chat-turn-{tid}"}})
+                is not None
+            )
+            assert (
+                await saver.aget_tuple(
+                    {"configurable": {"thread_id": f"agent-delegation-{jobs[0].id}"}}
+                )
+                is not None
+            )
+            assert (
+                await saver.aget_tuple(
+                    {"configurable": {"thread_id": f"agent-delegation-{jobs[1].id}"}}
+                )
+                is None
+            )
+            claim = jobs[0].claim_token
+            release.set()
+            assert (await wait_terminal(client, tid))["status"] == "COMPLETED"
+            async with app.state.session_factory() as session:
+                assert (
+                    await session.scalar(
+                        text("SELECT claim_token FROM agent_delegations WHERE id=:id"),
+                        {"id": jobs[0].id},
+                    )
+                    == claim
+                )
+            fresh = await create_session(client)
+            next_id = (
+                await submit(client, fresh, "root:fresh", request_id="after-slot-fault")
+            ).json()["id"]
+            assert (await wait_terminal(client, next_id))["status"] == "COMPLETED"
         finally:
             release.set()

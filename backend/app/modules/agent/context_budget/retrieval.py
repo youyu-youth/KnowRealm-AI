@@ -803,8 +803,10 @@ async def validate_read_results(
         try:
             raw: object = json.loads(message.text)
         except ValueError:
-            result.append(message)
-            continue
+            if message.name != "delegate_knowledge" or message.status == "error":
+                result.append(message)
+                continue
+            raw = None
         body = cast(dict[str, object], raw) if isinstance(raw, dict) else {}
         try:
             source = body.get("source")
