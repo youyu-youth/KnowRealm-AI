@@ -12,7 +12,10 @@ const UNRESUMABLE_KINDS = new Set(["GRAPH_INCOMPATIBLE", "CHECKPOINT_MISSING"]);
 
 type ChatTurnWaitingCardProps = {
   turn: ChatTurn | null;
-  onResume: (kind?: ChatTurnResumeRequest["decision_kind"]) => void;
+  onResume: (
+    kind?: ChatTurnResumeRequest["decision_kind"],
+    executionIds?: string[],
+  ) => void;
   onStop: () => void;
 };
 
@@ -64,13 +67,16 @@ export function ChatTurnWaitingCard({
           })}
         </span>
       </p>
-      {background ? (
+      {background || uncertain ? (
         <ul
           aria-label={t("chat.turn.waiting.tasks")}
           className="text-label text-muted-foreground w-full"
         >
           {turn.background_tasks?.map((task) => (
-            <li key={`${task.target_type}-${task.target_id}`}>
+            <li
+              key={`${task.target_type}-${task.target_id}`}
+              className="break-all"
+            >
               {task.agent_id
                 ? t("chat.agents.knowledge.name")
                 : t(`chat.turn.waiting.taskType.${task.target_type}`)}{" "}
@@ -109,6 +115,25 @@ export function ChatTurnWaitingCard({
       ) : null}
       {uncertain ? (
         <>
+          {(turn.waiting_reason?.delegations?.length ?? 0) > 1 ? (
+            <div className="flex w-full min-w-0 flex-wrap gap-2">
+              {turn.waiting_reason?.delegations?.map((item) => (
+                <Button
+                  key={item.execution_id}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-auto min-w-0 break-all whitespace-normal"
+                  disabled={turn.cancel_requested}
+                  onClick={() =>
+                    onResume("RETRY_DELEGATIONS", [item.execution_id])
+                  }
+                >
+                  {t("chat.delegation.retryBranch", { id: item.execution_id })}
+                </Button>
+              ))}
+            </div>
+          ) : null}
           <Button
             type="button"
             variant="outline"

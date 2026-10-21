@@ -843,7 +843,12 @@ async def validate_read_results(
                     )
             elif message.name == "delegate_knowledge":
                 async with factory() as session:
+                    from app.modules.agent.delegations.service import validate_report
+
                     chat, _, _ = await _scope(session, session_id)
+                    await validate_report(
+                        session, session_id, body, logical_call_id=message.tool_call_id
+                    )
                     await validate_evidence(session, chat, body.get("citations"))
             elif message.name == "search_library":
                 async with factory() as session:
@@ -886,6 +891,9 @@ async def _validate_tool_sources(
         return
     raw = json.loads(content)
     if name == "delegate_knowledge":
+        from app.modules.agent.delegations.service import validate_report
+
+        await validate_report(session, chat.id, raw)
         await validate_evidence(session, chat, raw.get("citations"), rules=rules)
     elif name == "search_library":
         await validate_evidence(session, chat, raw.get("evidence_hits"), cache, rules=rules)

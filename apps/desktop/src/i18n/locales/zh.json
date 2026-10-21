@@ -2149,6 +2149,7 @@
   "chat": {
     "delegation": {
       "retry": "重试知识任务",
+      "retryBranch": "重试任务 {{id}}",
       "acceptPartial": "接受已有结果",
       "progress": "本地知识助手 · {{status}} · 第 {{attempt}} 次执行 · {{id}}",
       "status": {

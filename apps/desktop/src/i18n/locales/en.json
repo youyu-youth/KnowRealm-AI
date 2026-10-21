@@ -2163,6 +2163,7 @@
   "chat": {
     "delegation": {
       "retry": "Retry knowledge task",
+      "retryBranch": "Retry task {{id}}",
       "acceptPartial": "Accept available results",
       "progress": "Local knowledge assistant · {{status}} · Attempt {{attempt}} · {{id}}",
       "status": {

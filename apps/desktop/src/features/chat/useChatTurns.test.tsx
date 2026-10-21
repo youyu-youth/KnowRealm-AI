@@ -17,6 +17,7 @@ const { chatApi } = vi.hoisted(() => ({
     getTurn: vi.fn(),
     activeTurn: vi.fn(),
     cancelTurn: vi.fn(),
+    resumeTurn: vi.fn(),
   },
 }));
 
@@ -269,6 +270,50 @@ describe("useChatTurns 订阅与失效", () => {
 });
 
 describe("useChatTurns 停止与会话恢复", () => {
+  it("只提交所选不确定分支，并将选择纳入稳定决定身份", async () => {
+    const delegations = ["child-A", "child-B"].map((execution_id) => ({
+      execution_id,
+      execution_attempt: 1,
+      request_ids: [`request-${execution_id}`],
+    }));
+    chatApi.activeTurn.mockResolvedValue(
+      turnSnapshot({
+        status: "WAITING_USER",
+        waiting_reason: {
+          kind: "DELEGATION_UNCERTAIN",
+          snapshot_id: "snapshot-1",
+          delegations,
+        },
+      }),
+    );
+    chatApi.resumeTurn.mockReturnValue(new Promise(() => {}));
+    chatApi.turnEvents.mockReturnValue(new Promise(() => {}));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useChatTurns("s-1"), { wrapper });
+    await waitFor(() =>
+      expect(result.current.turn?.status).toBe("WAITING_USER"),
+    );
+    act(() => result.current.resume("RETRY_DELEGATIONS", ["child-B"]));
+    const first = chatApi.resumeTurn.mock.calls[0][1];
+    expect(first.delegations).toEqual([delegations[1]]);
+    act(() => result.current.resume("RETRY_DELEGATIONS", ["child-B"]));
+    expect(chatApi.resumeTurn.mock.calls[1][1].decision_id).toBe(
+      first.decision_id,
+    );
+    act(() => result.current.resume("RETRY_DELEGATIONS", ["child-A"]));
+    expect(chatApi.resumeTurn.mock.calls[2][1].decision_id).not.toBe(
+      first.decision_id,
+    );
+    act(() => result.current.resume("ACCEPT_PARTIAL"));
+    expect(chatApi.resumeTurn.mock.calls[3][1].delegations).toEqual(
+      delegations,
+    );
+  });
   it("停止发持久取消指令，不 abort 订阅连接", async () => {
     let finish: (() => void) | undefined;
     const { result } = await setup(

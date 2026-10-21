@@ -31,6 +31,32 @@ const waitingTurn: ChatTurn = {
 };
 
 describe("ChatTurnWaitingCard 后台等待", () => {
+  it("两个不确定分支可分别重试，接受部分结果仍覆盖全部", () => {
+    const resume = vi.fn();
+    renderWithQuery(
+      <ChatTurnWaitingCard
+        turn={{
+          ...waitingTurn,
+          status: "WAITING_USER",
+          waiting_reason: {
+            kind: "DELEGATION_UNCERTAIN",
+            snapshot_id: "snapshot-two",
+            delegations: ["child-A", "child-B"].map((execution_id) => ({
+              execution_id,
+              execution_attempt: 1,
+              request_ids: [`request-${execution_id}`],
+            })),
+          },
+        }}
+        onResume={resume}
+        onStop={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "重试任务 child-B" }));
+    expect(resume).toHaveBeenLastCalledWith("RETRY_DELEGATIONS", ["child-B"]);
+    fireEvent.click(screen.getByRole("button", { name: "接受已有结果" }));
+    expect(resume).toHaveBeenLastCalledWith("ACCEPT_PARTIAL");
+  });
   it("不确定请求展示两种明确决定，不沿用普通继续", () => {
     const resume = vi.fn();
     renderWithQuery(

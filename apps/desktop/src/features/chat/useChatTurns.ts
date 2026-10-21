@@ -471,18 +471,28 @@ export function useChatTurns(sessionId: string) {
 
   /** 继续执行（票 02）：等待 / 中断轮次的重验后重跑；不批准提案、不重新授权。 */
   const resume = useCallback(
-    (kind?: ChatTurnResumeRequest["decision_kind"]) => {
+    (
+      kind?: ChatTurnResumeRequest["decision_kind"],
+      executionIds?: string[],
+    ) => {
       const current = turn;
       if (current === null) return;
       let body: ChatTurnResumeRequest | undefined;
       if (kind && kind !== "RETRY_AFTER_FIX") {
         const reason = current.waiting_reason;
         if (!reason?.snapshot_id || !reason.delegations?.length) return;
+        const delegations =
+          kind === "RETRY_DELEGATIONS" && executionIds
+            ? reason.delegations.filter((item) =>
+                executionIds.includes(item.execution_id),
+              )
+            : reason.delegations;
+        if (!delegations.length) return;
         const key = JSON.stringify([
           current.id,
           reason.snapshot_id,
           kind,
-          reason.delegations,
+          delegations,
         ]);
         if (decisionRef.current?.key !== key) {
           decisionRef.current = { key, id: crypto.randomUUID() };
@@ -491,7 +501,7 @@ export function useChatTurns(sessionId: string) {
           decision_kind: kind,
           decision_id: decisionRef.current.id,
           snapshot_id: reason.snapshot_id,
-          delegations: reason.delegations,
+          delegations,
         };
       }
       void chatApi

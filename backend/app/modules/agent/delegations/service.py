@@ -1,7 +1,7 @@
 """委派登记、状态与受控结果：所有状态提交共享根写锁。"""
 
 import json
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from langchain_core.messages import messages_to_dict
@@ -274,4 +274,40 @@ async def cancel_children(session: AsyncSession, turn_id: str, reason: str) -> N
 def result_payload(child: AgentDelegation) -> dict[str, Any] | None:
     if child.status not in TERMINAL or child.result_json is None:
         return None
-    return KnowledgeResult.model_validate_json(child.result_json).model_dump(mode="json")
+    result = KnowledgeResult.model_validate_json(child.result_json)
+    if result.task_id != child.id or result.status != child.status:
+        raise conflict("知识报告与原子任务身份或状态不一致")
+    return result.model_dump(mode="json")
+
+
+async def validate_report(
+    session: AsyncSession,
+    session_id: str,
+    value: object,
+    *,
+    logical_call_id: str | None = None,
+) -> None:
+    """模型投影必须来自该分支的原持久报告，不能借用兄弟引用或改写结论。"""
+    if isinstance(value, dict):
+        body = cast(dict[str, object], value)
+        if (
+            body.get("ok") is False
+            and isinstance(body.get("error"), str)
+            and body.keys() <= {"ok", "error", "message"}
+        ):
+            return
+    try:
+        report = KnowledgeResult.model_validate(value)
+    except ValueError:
+        raise conflict("知识报告契约不合法") from None
+    child = await session.scalar(
+        select(AgentDelegation)
+        .join(ChatTurn, ChatTurn.id == AgentDelegation.turn_id)
+        .where(AgentDelegation.id == report.task_id, ChatTurn.session_id == session_id)
+    )
+    if (
+        child is None
+        or (logical_call_id is not None and child.logical_call_id != logical_call_id)
+        or result_payload(child) != report.model_dump(mode="json")
+    ):
+        raise conflict("知识报告与原委派分支不一致")

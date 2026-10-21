@@ -335,6 +335,7 @@ async def execute(
             status="COMPLETED" if content else "FAILED",
             summary=parsed.content,
             citations=[ChatCitationOut.model_validate(item) for item in parsed.citations],
+            gaps=[] if content else ["知识任务未返回报告，缺少该分支的证据"],
             error_code=None if content else "EMPTY_REPLY",
         )
         if await commit_result(runtime, result):
