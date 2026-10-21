@@ -17,6 +17,7 @@ type ChatComposerProps = {
   /** 联网搜索开关（已接真）：available=false 时置灰并经 tooltip 引导设置页。 */
   webSearchEnabled: boolean;
   webSearchAvailable: boolean;
+  webSearchUnavailableHint?: string;
   onToggleWebSearch: (next: boolean) => void;
   onValueChange: (value: string) => void;
   onSend: (content: string) => void;
@@ -33,6 +34,7 @@ export function ChatComposer({
   stopping = false,
   webSearchEnabled,
   webSearchAvailable,
+  webSearchUnavailableHint,
   onToggleWebSearch,
   onValueChange,
   onSend,
@@ -103,7 +105,10 @@ export function ChatComposer({
               webSearchButton
             ) : (
               <AppTooltip
-                label={t("chat.tools.webSearch.unavailable")}
+                label={
+                  webSearchUnavailableHint ??
+                  t("chat.tools.webSearch.unavailable")
+                }
                 side="top"
               >
                 <span className="inline-flex">{webSearchButton}</span>

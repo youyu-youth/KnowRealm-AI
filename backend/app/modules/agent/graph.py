@@ -40,6 +40,7 @@ from app.modules.agent.context_budget.compaction import CompactionWaiting
 from app.modules.agent.context_budget.middleware import InputBudgetMiddleware
 from app.modules.agent.context_budget.outputs import ContextOutputMiddleware
 from app.modules.agent.middleware.cancel_guard import TurnCancelGuardMiddleware
+from app.modules.agent.middleware.knowledge_guard import KnowledgeToolGuardMiddleware
 from app.modules.agent.middleware.skeleton import (
     ExcludeDeepAgentToolsMiddleware,
     NoopSummarizationMiddleware,
@@ -50,7 +51,7 @@ from app.modules.agent.runtime import (
     bind_agent_runtime_context,
     reset_agent_runtime_context,
 )
-from app.modules.agent.schemas import ChatMode, ChatScope
+from app.modules.agent.schemas import AgentId, ChatMode, ChatScope
 from app.modules.agent.tools.add_shared_ref import (
     ADD_SHARED_REF_TOOL_NAME,
     add_shared_ref,
@@ -188,7 +189,7 @@ CHAT_RECURSION_LIMIT = 25
 # 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
 # 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
 # 工具集合、图结构或 checkpoint 状态语义变化时 bump。
-CHAT_GRAPH_VERSION = "chat-graph-v10"
+CHAT_GRAPH_VERSION = "chat-graph-v11"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
@@ -377,18 +378,32 @@ CHAT_AGENT_CONFIG = AgentConfig()
 # 统一挂 search_library（作用域由统一 Agent 运行时上下文承载，工单 01 起）；
 # 自由聊天空配置。
 LIBRARY_CHAT_AGENT_CONFIG = AgentConfig(tools=(search_library,))
+KNOWLEDGE_AGENT_CONFIG = AgentConfig(tools=(search_library,))
 
 
 def resolve_agent_config(
-    *, retrieval: bool, web_search_enabled: bool, research: bool = False
+    *,
+    retrieval: bool,
+    web_search_enabled: bool,
+    research: bool = False,
+    agent_id: AgentId = AgentId.GENERAL,
 ) -> AgentConfig:
     """按「检索挂载 × web_search × 研究」组合出当轮装配：变体维持常量，
     web_search 生效时追加工具（frozen dataclass 实例化）；search_courses 与
     propose_memory 恒挂载（工单 01 操作工具组：课程查询在全部会话类型可用，
     先例=记忆提案工具）；propose_ingest 仅研究会话挂载（研究会话 V1）。"""
+    if AgentId(agent_id) == AgentId.KNOWLEDGE:
+        return replace(
+            KNOWLEDGE_AGENT_CONFIG,
+            tools=KNOWLEDGE_AGENT_CONFIG.tools if retrieval else (),
+            middleware=(
+                *KNOWLEDGE_AGENT_CONFIG.middleware,
+                KnowledgeToolGuardMiddleware(retrieval),
+            ),
+        )
     config = LIBRARY_CHAT_AGENT_CONFIG if retrieval else CHAT_AGENT_CONFIG
     if web_search_enabled:
-        config = AgentConfig(tools=(*config.tools, web_search))
+        config = replace(config, tools=(*config.tools, web_search))
     # 恒挂载段（操作工具组）：search_courses 课程查询 + list_course_records /
     # list_library_items 对象枚举（插队票 08：只读查询工具，无 operation 事实、
     # 不进 OPERATION_TOOL_NAMES）+ 时间工具族（时间能力 v1：get_current_time /
@@ -410,7 +425,8 @@ def resolve_agent_config(
     # 写 + regenerate_plan L2 换代确认卡）。
     # 工单 05：共享引用域三工具（list_shared_refs 只读 + add_shared_ref /
     # remove_shared_ref L1 写，写动作名 = 注册项 action = 工具函数名）。
-    config = AgentConfig(
+    config = replace(
+        config,
         tools=(
             *config.tools,
             search_context,
@@ -464,10 +480,10 @@ def resolve_agent_config(
             list_shared_refs,
             add_shared_ref,
             remove_shared_ref,
-        )
+        ),
     )
     if research:
-        config = AgentConfig(tools=(*config.tools, propose_ingest))
+        config = replace(config, tools=(*config.tools, propose_ingest))
     return config
 
 
@@ -858,6 +874,7 @@ async def stream_chat_reply(
     retrieval_count: int | None = None
     try:
         base_config = resolve_agent_config(
+            agent_id=runtime.agent_id,
             retrieval=runtime.scope in RETRIEVAL_SCOPES,
             web_search_enabled=runtime.web_search_provider is not None,
             research=runtime.mode == ChatMode.RESEARCH,

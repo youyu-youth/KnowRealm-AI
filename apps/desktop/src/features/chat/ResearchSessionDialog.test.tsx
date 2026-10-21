@@ -65,6 +65,7 @@ describe("ResearchSessionDialog", () => {
     fireEvent.click(submit);
     expect(mocks.mutate).toHaveBeenCalledWith(
       {
+        agent_id: "general",
         mode: "RESEARCH",
         scope: "ALL",
         prompt: "注意力机制变体的取舍",
@@ -91,6 +92,7 @@ describe("ResearchSessionDialog", () => {
     await waitFor(() => {
       expect(mocks.mutate).toHaveBeenCalledWith(
         {
+          agent_id: "general",
           mode: "RESEARCH",
           scope: "COURSE",
           course_id: "course-1",
@@ -110,6 +112,7 @@ describe("ResearchSessionDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "开始研究" }));
     expect(mocks.mutate).toHaveBeenCalledWith(
       {
+        agent_id: "general",
         mode: "RESEARCH",
         scope: "FREE",
         prompt: "某个时效性问题",

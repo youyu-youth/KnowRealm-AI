@@ -80,7 +80,7 @@ from app.modules.agent.runtime import (
     AgentRuntimeContext,
     ToolCallBudget,
 )
-from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatRole, ChatScope
+from app.modules.agent.schemas import AgentId, ChatMode, ChatPageSnapshot, ChatRole, ChatScope
 from app.modules.agent.turns.background import park_turn, reconcile_waits
 from app.modules.agent.turns.effects import count_turn_effects
 from app.modules.agent.turns.models import ChatTurn
@@ -400,7 +400,9 @@ class _TurnExecutor:
         """构建上下文与流并驱动执行到收尾（首次 / 续跑两形态共用）。"""
         session_id = turn.session_id
         user_content = await self._user_content(turn.user_message_id)
-        web_search_provider = await self._resolve_web_search(bool(execution.get("web_search")))
+        web_search_provider = await self._resolve_web_search(
+            bool(execution.get("web_search")) and execution.get("agent_id") != AgentId.KNOWLEDGE
+        )
         page = self._page_snapshot(execution.get("page"))
         user_timezone = parse_timezone(execution.get("user_timezone"))
         bound = await context_input(self._session_factory, turn.id)
@@ -443,6 +445,7 @@ class _TurnExecutor:
             )
             turn_mode = clamp_resume_auth_mode(session_id, turn_mode, current_default)
         runtime = AgentRuntimeContext(
+            agent_id=prompt_context.agent_id,
             session_factory=self._session_factory,
             session_id=session_id,
             scope=prompt_context.scope,

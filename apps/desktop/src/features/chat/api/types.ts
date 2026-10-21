@@ -17,7 +17,12 @@ export type ChatTurnWaitingReason =
 export type ChatProcessEntry = NonNullable<
   ChatResponseProcess["entries"]
 >[number];
-export type ChatSessionCreate = components["schemas"]["ChatSessionCreate"];
+// OpenAPI 生成器把带默认值的非空字段标为必填；旧入口仍允许省略 Agent。
+export type ChatSessionCreate = Omit<
+  components["schemas"]["ChatSessionCreate"],
+  "agent_id"
+> &
+  Partial<Pick<components["schemas"]["ChatSessionCreate"], "agent_id">>;
 export type ChatRecordOption = components["schemas"]["ChatRecordOption"];
 export type ChatCitation = components["schemas"]["ChatCitationOut"];
 /** 随消息携带的页面快照（通用 Agent 工单 01）：提示性信息，不构成授权。 */

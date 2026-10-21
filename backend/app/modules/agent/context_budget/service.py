@@ -315,6 +315,7 @@ async def view_context(
             user_timezone=await asyncio.to_thread(resolve_user_timezone, data_dir),
         )
         config = resolve_agent_config(
+            agent_id=context.agent_id,
             retrieval=context.scope != "FREE",
             web_search_enabled=web_search,
             research=context.mode == "RESEARCH",
@@ -329,6 +330,7 @@ async def view_context(
             m for m in preview_messages if not isinstance(m, SystemMessage)
         ]
         runtime = AgentRuntimeContext(
+            agent_id=context.agent_id,
             session_factory=session_factory,
             session_id=session_id,
             scope=context.scope,

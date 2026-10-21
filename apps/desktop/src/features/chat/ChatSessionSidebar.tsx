@@ -190,7 +190,13 @@ function ChatSessionRow({
             >
               {title}
             </span>
-            <span className="text-label text-muted-foreground mt-0.5 flex items-center gap-1.5">
+            <span className="text-label text-muted-foreground mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+              <span
+                className="shrink-0"
+                title={t(`chat.agents.${session.agent_id}.name`)}
+              >
+                {t(`chat.agents.${session.agent_id}.name`)}
+              </span>
               {session.record_deleted ? (
                 <span className="bg-destructive/10 text-destructive rounded-xs px-1.5 py-px">
                   {t("chat.recordDeleted")}

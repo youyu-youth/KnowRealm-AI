@@ -84,6 +84,45 @@ async def session_row(data_dir: Path, session_id: str) -> tuple[str | None, str 
 
 
 @pytest.mark.anyio
+async def test_agent_catalog_and_fixed_session_identity_survive_restart(tmp_path: Path) -> None:
+    async with running_chat_app(tmp_path) as (_app, client):
+        catalog = await client.get("/api/agents")
+        assert catalog.status_code == 200
+        assert [(item["id"], item["read_only"]) for item in catalog.json()] == [
+            ("general", False),
+            ("knowledge", True),
+        ]
+        assert (
+            await client.get("/api/agents", headers={"X-KnowRealm-Token": "wrong"})
+        ).status_code == 403
+        legacy = await client.post("/api/chat-sessions", json={})
+        assert legacy.json()["agent_id"] == "general"
+        created = await client.post("/api/chat-sessions", json={"agent_id": "knowledge"})
+        assert created.status_code == 201
+        session_id = created.json()["id"]
+        assert created.json()["agent_id"] == "knowledge"
+        assert (
+            await client.post("/api/chat-sessions", json={"agent_id": "unknown"})
+        ).status_code == 422
+        assert (
+            await client.patch(f"/api/chat-sessions/{session_id}", json={"agent_id": "general"})
+        ).status_code == 422
+    async with running_chat_app(tmp_path) as (_app, client):
+        assert (await client.get(f"/api/chat-sessions/{session_id}")).json()[
+            "agent_id"
+        ] == "knowledge"
+        listed = (await client.get("/api/chat-sessions")).json()
+        assert {row["id"]: row["agent_id"] for row in listed}[session_id] == "knowledge"
+        async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
+            row = await (
+                await connection.execute(
+                    "SELECT agent_id FROM chat_sessions WHERE id = ?", (session_id,)
+                )
+            ).fetchone()
+            assert row == ("knowledge",)
+
+
+@pytest.mark.anyio
 async def test_migration_0014_creates_chat_tables_and_advances_user_version(
     tmp_path: Path,
 ) -> None:

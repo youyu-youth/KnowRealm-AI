@@ -60,6 +60,7 @@ import { useWebSearchAvailability } from "@/features/chat/useWebSearchAvailabili
 import { cn } from "@/lib/utils";
 
 type ChatConversationViewProps = {
+  agentId: ChatSession["agent_id"];
   sessionId: string;
   mode: ChatSession["mode"];
   title: string;
@@ -77,6 +78,7 @@ type ChatConversationViewProps = {
 
 /** 中栏对话区：标题栏 + 范围 chips + 建议卡 + 消息流 + 输入区。 */
 export function ChatConversationView({
+  agentId,
   sessionId,
   mode,
   title,
@@ -145,12 +147,15 @@ export function ChatConversationView({
   );
   const toggleFavorite = useChatUiStore((state) => state.toggleFavorite);
   const research = mode === "RESEARCH";
+  const knowledge = agentId === "knowledge";
   // 联网搜索开关按会话记忆；默认值研究会话恒 ON，普通会话按范围取
   // （自由 ON / 挂载类范围 OFF，B2 延伸）。
   const mountedScope = scope !== "FREE";
   const webSearchAvailable = useWebSearchAvailability();
-  const webSearchEnabled = useChatUiStore((state) =>
-    selectWebSearchEnabled(state, sessionId, mountedScope, research),
+  const webSearchEnabled = useChatUiStore(
+    (state) =>
+      !knowledge &&
+      selectWebSearchEnabled(state, sessionId, mountedScope, research),
   );
   const setWebSearchEnabled = useChatUiStore(
     (state) => state.setWebSearchEnabled,
@@ -194,6 +199,7 @@ export function ChatConversationView({
       return;
     }
     createSession.mutate({
+      agent_id: agentId,
       mode: "ASK",
       scope: chip === "all" ? "ALL" : "FREE",
     });
@@ -253,6 +259,9 @@ export function ChatConversationView({
               </span>
             ) : null}
             {researchBadge}
+            <span className="bg-surface-subtle text-ink-muted rounded-xs px-1.5 py-px">
+              {t(`chat.agents.${agentId}.name`)}
+            </span>
             {scopeBadge}
             {formatChatTimestamp(t, i18n.language, updatedAt)}
           </p>
@@ -315,6 +324,11 @@ export function ChatConversationView({
           onSelectScope={handleSelectScope}
           disabled={createSession.isPending}
         />
+        {knowledge ? (
+          <p className="text-label text-muted-foreground mt-2">
+            {t("chat.agents.readOnly")}
+          </p>
+        ) : null}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col px-6 max-md:px-3">
@@ -409,7 +423,10 @@ export function ChatConversationView({
           isStreaming={isStreaming}
           stopping={stopping}
           webSearchEnabled={webSearchEnabled}
-          webSearchAvailable={webSearchAvailable}
+          webSearchAvailable={!knowledge && webSearchAvailable}
+          webSearchUnavailableHint={
+            knowledge ? t("chat.agents.readOnly") : undefined
+          }
           onToggleWebSearch={(next) => setWebSearchEnabled(sessionId, next)}
           onValueChange={setComposerValue}
           onSend={(content) =>
@@ -434,6 +451,7 @@ export function ChatConversationView({
         onOpenChange={setDeleteOpen}
       />
       <RecordMountDialog
+        agentId={agentId}
         open={recordPickOpen}
         onOpenChange={setRecordPickOpen}
       />
@@ -444,6 +462,7 @@ export function ChatConversationView({
         error={createSession.error?.message ?? null}
         onConfirm={(pickedCourseId) =>
           createSession.mutate({
+            agent_id: agentId,
             mode: "ASK",
             scope: "COURSE",
             course_id: pickedCourseId,

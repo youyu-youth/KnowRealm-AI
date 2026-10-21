@@ -1,5 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -24,20 +23,22 @@ import {
 } from "@/components/ui/select";
 import { chatApi } from "@/features/chat/api/chatSessions";
 import { chatKeys } from "@/features/chat/api/keys";
+import type { AgentId } from "@/features/chat/api/agents";
+import { useCreateChatSession } from "@/features/chat/useCreateChatSession";
 
 type RecordMountDialogProps = {
+  agentId?: AgentId;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
 /** 新建对话（自由 / 挂载记录）Dialog：新建菜单「挂载记录…」与范围胶囊「记录」共用。 */
 export function RecordMountDialog({
+  agentId = "general",
   open,
   onOpenChange,
 }: RecordMountDialogProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const [recordId, setRecordId] = useState<string | null>(null);
   const fieldId = useId();
   const records = useQuery({
@@ -48,17 +49,7 @@ export function RecordMountDialog({
   });
   const selected = records.data?.find((record) => record.id === recordId);
 
-  const createSession = useMutation({
-    mutationFn: () => chatApi.create({ mode: "ASK", record_id: recordId }),
-    onSuccess: async (session) => {
-      await queryClient.invalidateQueries({ queryKey: chatKeys.list() });
-      setOpenFalse();
-      await navigate({
-        to: "/chat/$sessionId",
-        params: { sessionId: session.id },
-      });
-    },
-  });
+  const createSession = useCreateChatSession();
 
   function setOpenFalse() {
     onOpenChange(false);
@@ -160,7 +151,12 @@ export function RecordMountDialog({
                   records.isError ||
                   records.isFetching))
             }
-            onClick={() => createSession.mutate()}
+            onClick={() =>
+              createSession.mutate(
+                { agent_id: agentId, mode: "ASK", record_id: recordId },
+                { onSuccess: setOpenFalse },
+              )
+            }
           >
             {createSession.isPending ? (
               <Spinner aria-label={t("chat.creating")} />

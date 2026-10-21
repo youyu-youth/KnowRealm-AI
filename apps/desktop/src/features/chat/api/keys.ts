@@ -2,6 +2,7 @@ import type { components } from "@knowrealm/api-types";
 
 export const chatKeys = {
   all: ["chat"] as const,
+  agents: () => [...chatKeys.all, "agents"] as const,
   contextHistory: (sessionId: string, offset: number, version: number) =>
     [...chatKeys.all, "context-history", sessionId, offset, version] as const,
   sources: (

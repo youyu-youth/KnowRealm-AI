@@ -38,6 +38,12 @@ export const handlers = [
   http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
     HttpResponse.json([]),
   ),
+  http.get(`${TEST_SIDECAR_URL}/api/agents`, () =>
+    HttpResponse.json([
+      { id: "general", purpose: "general_assistance", read_only: false },
+      { id: "knowledge", purpose: "local_knowledge", read_only: true },
+    ]),
+  ),
   // 会话轮次列表（票 01）：默认无在途轮次（打开会话时的活动轮次查询兜底）。
   http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/:id/turns`, () =>
     HttpResponse.json({ turns: [], next_before: null }),

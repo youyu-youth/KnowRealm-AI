@@ -886,6 +886,7 @@ describe("KnowledgePointPanel", () => {
     let createBody: unknown;
     const item = draftKnowledgePoint({ generation_status: "ACTIVE" });
     const chatSession: components["schemas"]["ChatSessionOut"] = {
+      agent_id: "general",
       id: sessionId,
       mode: "ASK",
       scope: "RECORD",

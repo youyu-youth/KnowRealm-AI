@@ -115,6 +115,14 @@
         "title": "AgentAuthModeSwitch",
         "type": "object"
       },
+      "AgentId": {
+        "enum": [
+          "general",
+          "knowledge"
+        ],
+        "title": "AgentId",
+        "type": "string"
+      },
       "AgentOperationOut": {
         "properties": {
           "action": {
@@ -325,6 +333,32 @@
           "finished_at"
         ],
         "title": "AgentOperationOut",
+        "type": "object"
+      },
+      "AgentOut": {
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/AgentId"
+          },
+          "purpose": {
+            "enum": [
+              "general_assistance",
+              "local_knowledge"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "read_only": {
+            "title": "Read Only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "read_only"
+        ],
+        "title": "AgentOut",
         "type": "object"
       },
       "AgentProposalOut": {
@@ -2115,6 +2149,10 @@
       "ChatSessionCreate": {
         "additionalProperties": false,
         "properties": {
+          "agent_id": {
+            "$ref": "#/components/schemas/AgentId",
+            "default": "general"
+          },
           "course_id": {
             "anyOf": [
               {
@@ -2194,6 +2232,9 @@
       },
       "ChatSessionOut": {
         "properties": {
+          "agent_id": {
+            "$ref": "#/components/schemas/AgentId"
+          },
           "course_deleted": {
             "default": false,
             "description": "COURSE 会话挂载课程已软删（运行时推导），会话只读",
@@ -2283,6 +2324,7 @@
         },
         "required": [
           "id",
+          "agent_id",
           "mode",
           "created_at",
           "updated_at"
@@ -14301,6 +14343,59 @@
         "summary": "Undo Run",
         "tags": [
           "agent-runs"
+        ]
+      }
+    },
+    "/api/agents": {
+      "get": {
+        "operationId": "list_agents_api_agents_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-knowrealm-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Knowrealm-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentOut"
+                  },
+                  "title": "Response List Agents Api Agents Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agents",
+        "tags": [
+          "agents"
         ]
       }
     },

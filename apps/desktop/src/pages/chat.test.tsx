@@ -55,6 +55,7 @@ function chatSession(
 ): ChatSessionOut {
   return {
     id,
+    agent_id: "general",
     mode: "ASK",
     scope: "FREE",
     title: null,
@@ -856,44 +857,65 @@ describe("AI 对话", () => {
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  it("新建菜单：自由聊天直达，挂载记录走选卡弹窗", async () => {
-    const created = chatSession(FIRST_SESSION_ID, {});
-    let freeBody: unknown;
-    server.use(
-      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
-        HttpResponse.json([]),
-      ),
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions`,
-        async ({ request }) => {
-          freeBody = await request.json();
-          return HttpResponse.json(created, { status: 201 });
-        },
-      ),
-      http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
-        HttpResponse.json([created]),
-      ),
-      http.get(
-        `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
-        () => HttpResponse.json(created),
-      ),
-    );
+  it.each(["general", "knowledge"] as const)(
+    "新建菜单选择 %s 后创建固定身份的自由对话",
+    async (agentId) => {
+      const created = chatSession(FIRST_SESSION_ID, { agent_id: agentId });
+      let freeBody: unknown;
+      server.use(
+        http.get(`${TEST_SIDECAR_URL}/api/chat-sessions/record-options`, () =>
+          HttpResponse.json([]),
+        ),
+        http.post(
+          `${TEST_SIDECAR_URL}/api/chat-sessions`,
+          async ({ request }) => {
+            freeBody = await request.json();
+            return HttpResponse.json(created, { status: 201 });
+          },
+        ),
+        http.get(`${TEST_SIDECAR_URL}/api/chat-sessions`, () =>
+          HttpResponse.json([created]),
+        ),
+        http.get(
+          `${TEST_SIDECAR_URL}/api/chat-sessions/${FIRST_SESSION_ID}`,
+          () => HttpResponse.json(created),
+        ),
+      );
 
-    renderAt("/chat");
-    fireEvent.click(await screen.findByRole("button", { name: "新建对话" }));
-    // 菜单四入口：自由聊天直达建会话。
-    fireEvent.click(await screen.findByRole("menuitem", { name: "自由聊天" }));
+      renderAt("/chat");
+      fireEvent.click(await screen.findByRole("button", { name: "新建对话" }));
+      const assistant = await screen.findByRole("menuitemradio", {
+        name: agentId === "knowledge" ? /本地知识助手/ : /通用助手/,
+      });
+      fireEvent.click(assistant);
+      expect(assistant).toHaveAttribute("aria-checked", "true");
+      // 菜单四入口：自由聊天直达建会话。
+      fireEvent.click(
+        await screen.findByRole("menuitem", { name: "自由聊天" }),
+      );
 
-    await waitFor(() =>
-      expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
-    );
-    expect(freeBody).toEqual({ mode: "ASK", scope: "FREE" });
-    expect(
-      await screen.findByRole("textbox", { name: "提问输入框" }),
-    ).toBeVisible();
-    // 空会话由建议卡承担引导，不再显示旧文案。
-    expect(await screen.findByText("你可以这样提问")).toBeVisible();
-  });
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
+      );
+      expect(freeBody).toEqual({
+        agent_id: agentId,
+        mode: "ASK",
+        scope: "FREE",
+      });
+      expect(
+        await screen.findByRole("textbox", { name: "提问输入框" }),
+      ).toBeVisible();
+      // 空会话由建议卡承担引导，不再显示旧文案。
+      expect(await screen.findByText("你可以这样提问")).toBeVisible();
+      if (agentId === "knowledge") {
+        expect(screen.getAllByText("本地知识助手").length).toBeGreaterThan(0);
+        expect(screen.getByRole("button", { name: "联网搜索" })).toBeDisabled();
+        expect(
+          screen.queryByRole("combobox", { name: "授权模式" }),
+        ).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it("新建时可挂载收件箱记录，无转写记录置灰并说明原因", async () => {
     const recordId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
@@ -964,7 +986,11 @@ describe("AI 对话", () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
     );
-    expect(body).toEqual({ mode: "ASK", record_id: recordId });
+    expect(body).toEqual({
+      agent_id: "general",
+      mode: "ASK",
+      record_id: recordId,
+    });
     // 对话框已关闭（挂载选择器消失）；会话右栏的授权模式开关是新常驻 combobox，
     // 断言收窄到对话框自身。
     expect(
@@ -2322,30 +2348,36 @@ describe("跨记录问答范围（B2）", () => {
     renderAt(`/chat/${session.id}`);
   }
 
-  it("范围胶囊点「全部资料」直接建会话并跳转", async () => {
-    const created = chatSession(FIRST_SESSION_ID, { scope: "ALL" });
-    let body: unknown;
-    scopeSessionPage(chatSession(SECOND_SESSION_ID, {}), [
-      http.post(
-        `${TEST_SIDECAR_URL}/api/chat-sessions`,
-        async ({ request }) => {
-          body = await request.json();
-          return HttpResponse.json(created, { status: 201 });
-        },
-      ),
-    ]);
+  it.each(["general", "knowledge"] as const)(
+    "%s 范围切换保留助手身份",
+    async (agentId) => {
+      const created = chatSession(FIRST_SESSION_ID, {
+        scope: "ALL",
+        agent_id: agentId,
+      });
+      let body: unknown;
+      scopeSessionPage(chatSession(SECOND_SESSION_ID, { agent_id: agentId }), [
+        http.post(
+          `${TEST_SIDECAR_URL}/api/chat-sessions`,
+          async ({ request }) => {
+            body = await request.json();
+            return HttpResponse.json(created, { status: 201 });
+          },
+        ),
+      ]);
 
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "切换到全部资料（将新建对话）",
-      }),
-    );
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "切换到全部资料（将新建对话）",
+        }),
+      );
 
-    await waitFor(() =>
-      expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
-    );
-    expect(body).toEqual({ mode: "ASK", scope: "ALL" });
-  });
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
+      );
+      expect(body).toEqual({ agent_id: agentId, mode: "ASK", scope: "ALL" });
+    },
+  );
 
   it("范围胶囊点「课程」打开选课弹窗，选定后创建 COURSE 会话", async () => {
     const created = chatSession(FIRST_SESSION_ID, {
@@ -2375,6 +2407,7 @@ describe("跨记录问答范围（B2）", () => {
       expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
     );
     expect(body).toEqual({
+      agent_id: "general",
       mode: "ASK",
       scope: "COURSE",
       course_id: COURSE_ID,
@@ -2413,6 +2446,7 @@ describe("跨记录问答范围（B2）", () => {
       expect(window.location.pathname).toBe(`/chat/${FIRST_SESSION_ID}`),
     );
     expect(body).toEqual({
+      agent_id: "general",
       mode: "ASK",
       scope: "COURSE",
       course_id: COURSE_ID,

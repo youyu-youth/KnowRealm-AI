@@ -3082,6 +3082,22 @@
         "RESET": "Reset context",
         "INCLUDE_HISTORY": "Include selected older turns"
       }
+    },
+    "agents": {
+      "label": "Choose assistant",
+      "scope": "Choose material scope",
+      "general": {
+        "name": "General assistant",
+        "description": "Chat, web search and controlled actions"
+      },
+      "knowledge": {
+        "name": "Local knowledge assistant",
+        "description": "Read-only analysis with sources and gaps"
+      },
+      "readOnly": "Analyzes current materials only; web search, writes and proposals are unavailable.",
+      "loadError": "Could not load assistants. Click to retry.",
+      "free": "Provided text only",
+      "freeDescription": "Analyze text you provide without local retrieval or web search"
     }
   },
   "settings": {

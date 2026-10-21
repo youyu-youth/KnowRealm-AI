@@ -132,6 +132,7 @@ export function ChatWorkspace({
           </div>
         ) : (
           <ChatConversationView
+            agentId={detail.data.agent_id}
             key={sessionId}
             sessionId={sessionId}
             mode={detail.data.mode}
@@ -152,6 +153,7 @@ export function ChatWorkspace({
 
       {sessionId !== undefined ? (
         <ChatContextPanel
+          agentId={detail.data?.agent_id ?? "general"}
           sessionId={sessionId}
           scope={detail.data?.scope ?? "FREE"}
           recordId={detail.data?.record_id ?? null}

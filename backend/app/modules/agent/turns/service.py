@@ -37,7 +37,7 @@ from app.modules.agent.graph import CHAT_GRAPH_VERSION
 from app.modules.agent.message_service import validate_sendable_chat
 from app.modules.agent.models import ChatMessage, ChatSession
 from app.modules.agent.runs.schemas import AuthMode
-from app.modules.agent.schemas import ChatRole
+from app.modules.agent.schemas import AgentId, ChatRole
 from app.modules.agent.turns.models import ChatTurn, ChatTurnEvent, ChatTurnRun
 from app.modules.agent.turns.projection import build_output_text, process_out_for, project_revisions
 from app.modules.agent.turns.runtime import ActiveTurnRegistry, TurnEventBroadcaster
@@ -267,6 +267,9 @@ async def _submit_in_transaction(
             code="CHAT_SESSION_NOT_FOUND", status_code=404, detail="对话不存在或已删除"
         )
     await validate_sendable_chat(session, chat)
+    execution["agent_id"] = chat.agent_id
+    if chat.agent_id == AgentId.KNOWLEDGE:
+        execution["web_search"] = False
     if await find_active_turn(session, session_id) is not None:
         raise _turn_in_progress_error()
     content = payload.content

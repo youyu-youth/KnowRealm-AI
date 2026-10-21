@@ -265,6 +265,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agents */
+        get: operations["list_agents_api_agents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/audio-imports": {
         parameters: {
             query?: never;
@@ -3085,6 +3102,11 @@ export interface components {
         AgentAuthModeSwitch: {
             to_mode: components["schemas"]["AuthMode"];
         };
+        /**
+         * AgentId
+         * @enum {string}
+         */
+        AgentId: "general" | "knowledge";
         /** AgentOperationOut */
         AgentOperationOut: {
             /** Action */
@@ -3147,6 +3169,17 @@ export interface components {
             undone_by: string | null;
             /** Updated At */
             updated_at: string;
+        };
+        /** AgentOut */
+        AgentOut: {
+            id: components["schemas"]["AgentId"];
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "general_assistance" | "local_knowledge";
+            /** Read Only */
+            read_only: boolean;
         };
         /** AgentProposalOut */
         AgentProposalOut: {
@@ -3915,6 +3948,8 @@ export interface components {
         ChatScope: "FREE" | "RECORD" | "LIBRARY_ITEM" | "COURSE" | "ALL";
         /** ChatSessionCreate */
         ChatSessionCreate: {
+            /** @default general */
+            agent_id: components["schemas"]["AgentId"];
             /**
              * Course Id
              * @description 课程范围会话挂载的课程
@@ -3947,6 +3982,7 @@ export interface components {
         };
         /** ChatSessionOut */
         ChatSessionOut: {
+            agent_id: components["schemas"]["AgentId"];
             /**
              * Course Deleted
              * @description COURSE 会话挂载课程已软删（运行时推导），会话只读
@@ -8931,6 +8967,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_agents_api_agents_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-knowrealm-token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

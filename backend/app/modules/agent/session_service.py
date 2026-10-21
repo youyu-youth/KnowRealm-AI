@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.base import utcnow
 from app.modules.agent.models import ChatMessage, ChatSession
 from app.modules.agent.schemas import (
+    AgentId,
     ChatMode,
     ChatRecordOption,
     ChatRole,
@@ -89,6 +90,7 @@ class ChatSessionService:
         session: AsyncSession,
         *,
         scope: ChatScope,
+        agent_id: AgentId = AgentId.GENERAL,
         mode: ChatMode = ChatMode.ASK,
         record_id: str | None = None,
         course_id: str | None = None,
@@ -197,6 +199,7 @@ class ChatSessionService:
                 concept_id=None,
                 library_item_id=library_item_id if scope == ChatScope.LIBRARY_ITEM else None,
                 mode=mode,
+                agent_id=agent_id,
                 scope=scope,
                 title=None,
                 created_at=now,

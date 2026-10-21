@@ -43,6 +43,7 @@ async def create_chat_session(
         session,
         scope=payload.scope or ChatScope.FREE,
         mode=payload.mode,
+        agent_id=payload.agent_id,
         record_id=str(payload.record_id) if payload.record_id is not None else None,
         course_id=str(payload.course_id) if payload.course_id is not None else None,
         library_item_id=(

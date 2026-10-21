@@ -3060,6 +3060,22 @@
         "RESET": "重置上下文",
         "INCLUDE_HISTORY": "纳入明确旧轮"
       }
+    },
+    "agents": {
+      "label": "选择助手",
+      "scope": "选择资料范围",
+      "general": {
+        "name": "通用助手",
+        "description": "问答、联网与受控业务操作"
+      },
+      "knowledge": {
+        "name": "本地知识助手",
+        "description": "只读分析当前资料，提供来源与缺口"
+      },
+      "readOnly": "仅分析当前资料；不支持联网、业务写入或提案。",
+      "loadError": "助手目录加载失败，点击重试",
+      "free": "仅当前文字",
+      "freeDescription": "分析你在对话中提供的文字，不检索本地资料或网络"
     }
   },
   "settings": {

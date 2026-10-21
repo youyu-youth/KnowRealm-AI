@@ -35,6 +35,17 @@ from app.modules.learning_plan.schemas import (
 from app.modules.library.schemas import ChatScope
 
 
+class AgentId(StrEnum):
+    GENERAL = "general"
+    KNOWLEDGE = "knowledge"
+
+
+class AgentOut(BaseModel):
+    id: AgentId
+    purpose: Literal["general_assistance", "local_knowledge"]
+    read_only: bool
+
+
 class ChatMode(StrEnum):
     ASK = "ASK"
     COURSE_QA = "COURSE_QA"
@@ -53,6 +64,7 @@ class ChatRole(StrEnum):
 class ChatSessionCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    agent_id: AgentId = AgentId.GENERAL
     mode: Literal[ChatMode.ASK, ChatMode.RESEARCH] = Field(
         default=ChatMode.ASK, description="会话模式（研究会话 V1 起放开 RESEARCH）"
     )
@@ -200,6 +212,7 @@ class ChatSessionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    agent_id: AgentId
     mode: ChatMode
     scope: ChatScope = Field(default=ChatScope.FREE, description="会话挂载范围")
     title: str | None = Field(default=None, description="会话标题，未重命名时为空")

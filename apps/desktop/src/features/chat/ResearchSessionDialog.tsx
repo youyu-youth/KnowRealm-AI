@@ -24,6 +24,7 @@ import { useWebSearchAvailability } from "@/features/chat/useWebSearchAvailabili
 import { cn } from "@/lib/utils";
 
 type ResearchSessionDialogProps = {
+  agentId?: import("@/features/chat/api/agents").AgentId;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
@@ -55,6 +56,7 @@ const SCOPES: {
 /** 新建研究会话弹窗（研究会话 V1）：研究问题（即标题，经 ?prompt= 预填输入框）、
  * 资料范围（默认全部资料）、联网开关（默认 ON，无搜索 key 明示降级）。 */
 export function ResearchSessionDialog({
+  agentId = "general",
   open,
   onOpenChange,
 }: ResearchSessionDialogProps) {
@@ -65,7 +67,8 @@ export function ResearchSessionDialog({
   const [webEnabled, setWebEnabled] = useState(true);
   const createSession = useCreateChatSession();
   const webSearchAvailable = useWebSearchAvailability();
-  const webOn = webEnabled && webSearchAvailable;
+  const knowledge = agentId === "knowledge";
+  const webOn = !knowledge && webEnabled && webSearchAvailable;
 
   const courses = useQuery({
     queryKey: courseKeys.list(),
@@ -101,6 +104,7 @@ export function ResearchSessionDialog({
     createSession.mutate(
       {
         mode: "RESEARCH",
+        agent_id: agentId,
         scope:
           scopeId === "all" ? "ALL" : scopeId === "course" ? "COURSE" : "FREE",
         ...(scopeId === "course" && selectedCourseId !== null
@@ -118,7 +122,11 @@ export function ResearchSessionDialog({
         <DialogHeader>
           <DialogTitle>{t("chat.research.dialogTitle")}</DialogTitle>
           <DialogDescription>
-            {t("chat.research.dialogDescription")}
+            {t(
+              knowledge
+                ? "chat.agents.readOnly"
+                : "chat.research.dialogDescription",
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -169,10 +177,18 @@ export function ResearchSessionDialog({
                   >
                     <span className="min-w-0 flex-1">
                       <span className="text-body-dense text-ink block font-medium">
-                        {t(scope.labelKey)}
+                        {t(
+                          knowledge && scope.id === "free"
+                            ? "chat.agents.free"
+                            : scope.labelKey,
+                        )}
                       </span>
                       <span className="text-label text-muted-foreground mt-0.5 block">
-                        {t(scope.descriptionKey)}
+                        {t(
+                          knowledge && scope.id === "free"
+                            ? "chat.agents.freeDescription"
+                            : scope.descriptionKey,
+                        )}
                       </span>
                     </span>
                     {scope.id === "all" ? (
@@ -262,15 +278,19 @@ export function ResearchSessionDialog({
                 {t("chat.research.webLabel")}
               </p>
               <p className="text-label text-muted-foreground mt-0.5">
-                {webSearchAvailable
-                  ? t("chat.research.webOnHint")
-                  : t("chat.research.webUnavailableHint")}
+                {knowledge
+                  ? t("chat.agents.readOnly")
+                  : webSearchAvailable
+                    ? t("chat.research.webOnHint")
+                    : t("chat.research.webUnavailableHint")}
               </p>
             </div>
             <Switch
               size="sm"
               checked={webOn}
-              disabled={!webSearchAvailable || createSession.isPending}
+              disabled={
+                knowledge || !webSearchAvailable || createSession.isPending
+              }
               onCheckedChange={setWebEnabled}
               aria-label={t("chat.research.webLabel")}
             />

@@ -24,7 +24,7 @@ from app.modules.agent.budget.policy import (
 )
 from app.modules.agent.context_budget.schemas import ContextPolicy
 from app.modules.agent.runs.schemas import AuthMode
-from app.modules.agent.schemas import ChatMode, ChatPageSnapshot, ChatScope
+from app.modules.agent.schemas import AgentId, ChatMode, ChatPageSnapshot, ChatScope
 from app.modules.agent.turns.models import ChatTurn
 from app.modules.agent.turns.schemas import ChatTurnStatus
 from app.modules.search.web_search import SearchProvider
@@ -52,6 +52,7 @@ class AgentRuntimeContext:
 
     session_factory: async_sessionmaker[AsyncSession]
     session_id: str
+    agent_id: AgentId = AgentId.GENERAL
     scope: ChatScope = ChatScope.FREE
     mode: ChatMode = ChatMode.ASK
     course_id: str | None = None

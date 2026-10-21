@@ -45,6 +45,7 @@ const TOOL_ICONS: Record<ChatToolId, typeof Globe> = {
 const CITATION_PREVIEW_COUNT = 4;
 
 type ChatContextPanelProps = {
+  agentId: ChatSession["agent_id"];
   sessionId: string;
   scope: ChatSession["scope"];
   recordId: string | null;
@@ -62,6 +63,7 @@ type ChatContextPanelProps = {
  * 与工具状态。联网搜索开关已接真（按会话记忆、发消息携带标志），其余三个为图 1 示意开关。
  */
 export function ChatContextPanel({
+  agentId,
   sessionId,
   scope,
   recordId,
@@ -73,6 +75,7 @@ export function ChatContextPanel({
   turnMemory,
 }: ChatContextPanelProps) {
   const { t } = useTranslation();
+  const knowledge = agentId === "knowledge";
   const tools = useChatUiStore((state) => state.tools);
   const toggleTool = useChatUiStore((state) => state.toggleTool);
   const mountedScope = scope !== "FREE";
@@ -209,7 +212,13 @@ export function ChatContextPanel({
 
       {/* 会话授权档位（通用 Agent 工单 02）：临时切换仅本会话生效，重启回落
           全局默认；切换先写审计。 */}
-      <ChatAuthModeSection sessionId={sessionId} />
+      {knowledge ? (
+        <p className="text-label text-muted-foreground px-5 pt-6">
+          {t("chat.agents.readOnly")}
+        </p>
+      ) : (
+        <ChatAuthModeSection sessionId={sessionId} />
+      )}
 
       <section className="px-5 pt-6">
         <h2 className="text-section font-section text-ink-strong">
@@ -253,9 +262,13 @@ export function ChatContextPanel({
           <ChatToolRow
             id="webSearch"
             label={t("chat.tools.webSearch.title")}
-            description={t("chat.tools.webSearch.description")}
+            description={t(
+              knowledge
+                ? "chat.agents.readOnly"
+                : "chat.tools.webSearch.description",
+            )}
             control={
-              webSearchAvailable ? (
+              !knowledge && webSearchAvailable ? (
                 <Switch
                   size="sm"
                   checked={webSearchOn}
@@ -267,7 +280,11 @@ export function ChatContextPanel({
                 />
               ) : (
                 <AppTooltip
-                  label={t("chat.tools.webSearch.unavailable")}
+                  label={t(
+                    knowledge
+                      ? "chat.agents.readOnly"
+                      : "chat.tools.webSearch.unavailable",
+                  )}
                   side="left"
                 >
                   <span className="flex items-center">
@@ -282,24 +299,26 @@ export function ChatContextPanel({
               )
             }
           />
-          {CHAT_DEMO_TOOL_IDS.map((id) => (
-            <ChatToolRow
-              key={id}
-              id={id}
-              label={t(`chat.tools.${id}.title`)}
-              description={t(`chat.tools.${id}.description`)}
-              badge={id === "codeRun" ? t("chat.tools.beta") : undefined}
-              control={
-                <Switch
-                  size="sm"
-                  checked={tools[id]}
-                  onCheckedChange={() => toggleTool(id)}
-                  aria-label={t(`chat.tools.${id}.title`)}
-                  className="data-checked:bg-chat-accent"
+          {!knowledge
+            ? CHAT_DEMO_TOOL_IDS.map((id) => (
+                <ChatToolRow
+                  key={id}
+                  id={id}
+                  label={t(`chat.tools.${id}.title`)}
+                  description={t(`chat.tools.${id}.description`)}
+                  badge={id === "codeRun" ? t("chat.tools.beta") : undefined}
+                  control={
+                    <Switch
+                      size="sm"
+                      checked={tools[id]}
+                      onCheckedChange={() => toggleTool(id)}
+                      aria-label={t(`chat.tools.${id}.title`)}
+                      className="data-checked:bg-chat-accent"
+                    />
+                  }
                 />
-              }
-            />
-          ))}
+              ))
+            : null}
         </ul>
       </section>
 

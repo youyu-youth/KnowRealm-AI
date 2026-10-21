@@ -35,6 +35,7 @@ from app.modules.agent.runs.models import AgentOperation
 from app.modules.agent.runs.schemas import OperationStatus
 from app.modules.agent.runs.service import list_nonterminal_runs
 from app.modules.agent.schemas import (
+    AgentId,
     ChatMessageOut,
     ChatMessageTurnOut,
     ChatMode,
@@ -143,6 +144,7 @@ class SessionPromptContext:
     """喂入 LLM 的上下文与范围会话的引用校验材料。"""
 
     messages: list[AnyMessage]
+    agent_id: AgentId = AgentId.GENERAL
     mode: ChatMode = ChatMode.ASK  # 研究会话（RESEARCH）换研究指令与提案工具
     scope: ChatScope = ChatScope.FREE
     transcript: str | None = None  # 挂载会话的当前转写全文；自由聊天为 None
@@ -172,6 +174,14 @@ class SessionPromptContext:
 
 async def validate_sendable_chat(session: AsyncSession, chat: ChatSession) -> None:
     """发送前校验（受理与执行共用）：挂载对象失效即拒绝（软删/归档，会话只读）。"""
+    try:
+        AgentId(chat.agent_id)
+    except ValueError as exc:
+        raise CodedHTTPException(
+            code="MODEL_CONTEXT_INCOMPATIBLE",
+            status_code=409,
+            detail="会话 Agent 身份无效，请新建对话",
+        ) from exc
     if chat.record_id is not None and (await RecordService.get(session, chat.record_id)) is None:
         raise CodedHTTPException(
             code="CHAT_RECORD_UNAVAILABLE",
@@ -700,15 +710,17 @@ async def session_context(
                 ContextRow(id="preview", role=ChatRole.USER, content=preview_content)
             )
         return SessionPromptContext(
+            agent_id=AgentId(chat.agent_id),
             mode=chat.mode,
             scope=chat.scope,
             messages=input_messages
             if input_messages is not None
             else build_context_messages(
                 context_rows,
+                agent_id=AgentId(chat.agent_id),
                 record=record_context,
                 library=library_context,
-                web_search=web_search,
+                web_search=web_search and chat.agent_id == AgentId.GENERAL,
                 learner=learner_block,
                 mode=chat.mode,
                 page_hint=page_hint,
@@ -721,7 +733,7 @@ async def session_context(
             course_id=retrieval_course_id,
             library=library_context,
             library_item_id=chat.library_item_id if chat.scope == ChatScope.LIBRARY_ITEM else None,
-            web_search=web_search,
+            web_search=web_search and chat.agent_id == AgentId.GENERAL,
             learner=learner_block,
             learner_memories=learner.memories,
             page=validated_page,
