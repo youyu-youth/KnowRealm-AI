@@ -14,7 +14,16 @@ from pathlib import Path
 from typing import BinaryIO, cast
 from uuid import uuid4
 
+from filelock import FileLock, Timeout
+
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def lock_path() -> Path:
+    common = subprocess.check_output(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=ROOT, text=True
+    ).strip()
+    return Path(common) / "knowrealm-tests.lock"
 
 
 def stop(process: subprocess.Popen[bytes]) -> None:
@@ -65,7 +74,12 @@ def run(command: list[str], cwd: Path, output: Path, timeout: float) -> int:
                 cwd=cwd,
                 stdout=log,
                 stderr=subprocess.STDOUT,
-                env={**os.environ, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"},
+                env={
+                    **os.environ,
+                    "PYTHONUNBUFFERED": "1",
+                    "PYTHONIOENCODING": "utf-8",
+                    "KNOWREALM_TEST_DIAGNOSTICS_DIR": str(output.resolve()),
+                },
                 start_new_session=os.name != "nt",
             )
             metadata["pid"] = process.pid
@@ -120,6 +134,18 @@ def main() -> int:
         for value in args.tests
     ):
         parser.error("tests 只接受文件或 node ID，不接受命令选项或 Shell 字符")
+    lock = FileLock(str(lock_path()), timeout=0, preserve_lock_file=True)
+    try:
+        lock.acquire()
+    except Timeout:
+        parser.exit(2, "当前仓库或其 worktree 已有测试运行，请等待其结束后重试。\n")
+    try:
+        return run_suites(args)
+    finally:
+        lock.release()
+
+
+def run_suites(args: argparse.Namespace) -> int:
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
     suites = ("frontend", "backend") if args.suite == "all" else (args.suite,)
     exit_code = 0
@@ -128,7 +154,8 @@ def main() -> int:
         if suite == "frontend":
             pnpm = shutil.which("pnpm")
             if pnpm is None:
-                parser.error("未找到 pnpm")
+                print("未找到 pnpm", file=sys.stderr)
+                return 2
             cwd = ROOT / "apps" / "desktop"
             command = [
                 pnpm,

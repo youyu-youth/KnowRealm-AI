@@ -1,4 +1,4 @@
-> **最后更新**：2026-10-21（Multi-Agent 01 general/knowledge 独立入口已实现：固定会话身份、只读能力白名单、共享 Harness、桌面入口与契约贯通；前端统一全量 869 通过，后端 1441 通过、1 项 sidecar 超时（基点同项复现）。真实 API/SQLite/Worker 使用供应商替身，浏览器六主题/双语/宽窄窗通过；真实模型、Tauri/WebView2 与 Windows 系统缩放未验。委派 02～04 尚未实现，证据见 `.scratch/multi-agent-refactor/01-implementation.md`。其他功能及验收边界见下表。）
+> **最后更新**：2026-10-21（开发会话复盘六项改进已落地：统一测试互斥、输出与浏览器预检、AGENTS 收敛、历史迁移夹具及 sidecar 诊断；相关回归 51 项、运行器收口复测 12 项通过，见 `.scratch/development-retro/implementation.md`。历史 sidecar 超时根因未确认。本轮未改生产业务；Multi-Agent 01 原全量和人工验收边界见下表。）
 > **用途**：任何 Agent（或人）接手开发前先读本文档，即可在不重读全部文档/代码的情况下恢复项目上下文。
 > **更新规约**：完结工单、合并分支、落定重大决策时，同步更新本文档对应小节；只保留当前有效信息，过期信息直接删除。
 

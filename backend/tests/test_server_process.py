@@ -16,6 +16,7 @@ from pathlib import Path
 import httpx
 import pytest
 
+from app.core.data_dir import DataDirectoryInUseError, DataDirectoryLock
 from app.db.migrations import run_migrations
 from app.modules.settings.config import LlmProviderConfig, llm_provider_fingerprint
 
@@ -29,6 +30,7 @@ def start_sidecar(
     asr_control: Path | None = None,
     fake_summary: bool = False,
     import_archive: Path | None = None,
+    startup_trace: Path | None = None,
 ) -> subprocess.Popen[bytes]:
     if asr_control is not None and ffmpeg_path is None:
         ffmpeg_path = (
@@ -50,7 +52,9 @@ def start_sidecar(
     command = [
         sys.executable,
         *(
-            [str(Path(__file__).with_name("sidecar_asr_fixture.py"))]
+            ["-m", "tests.sidecar_startup_probe", str(startup_trace)]
+            if startup_trace is not None
+            else [str(Path(__file__).with_name("sidecar_asr_fixture.py"))]
             if asr_control
             else ["-m", "app.server"]
         ),
@@ -486,15 +490,59 @@ def test_real_process_asr_failure_retry_and_delete_races(tmp_path: Path) -> None
         stop_process_tree(process)
 
 
+def record_sidecar_timeout(
+    process: subprocess.Popen[bytes],
+    data_dir: Path,
+    error: subprocess.TimeoutExpired,
+    tokens: tuple[str, ...],
+) -> Path:
+    try:
+        lock = DataDirectoryLock.acquire(data_dir)
+    except DataDirectoryInUseError:
+        locked = True
+    else:
+        locked = False
+        lock.release()
+    trace = data_dir.parent / "second-startup.json"
+    stdout = (error.stdout or b"").decode(errors="replace")
+    stderr = (error.stderr or b"").decode(errors="replace")
+    report: dict[str, object] = {
+        "pid": process.pid,
+        "returncode": process.poll(),
+        "timeout_seconds": error.timeout,
+        "data_directory_locked": locked,
+        "port_marker_seen": "KNOWREALM_SIDECAR_PORT=" in stdout,
+        "stages": json.loads(trace.read_text(encoding="utf-8")) if trace.exists() else [],
+        "stdout_tail": stdout[-4000:],
+        "stderr_tail": stderr[-16000:],
+    }
+    encoded = json.dumps(report, ensure_ascii=False, indent=2)
+    for token in tokens:
+        encoded = encoded.replace(token, "<REDACTED>")
+    output = Path(os.environ.get("KNOWREALM_TEST_DIAGNOSTICS_DIR", str(data_dir.parent)))
+    path = output / f"second-sidecar-timeout-{process.pid}.json"
+    path.write_text(encoded, encoding="utf-8")
+    return path
+
+
 def test_second_sidecar_cannot_open_locked_data_directory(tmp_path: Path) -> None:
     data_dir = tmp_path / "KnowRealm"
     first_token = secrets.token_urlsafe(32)
     first = start_sidecar(data_dir, first_token)
     try:
         wait_for_sidecar(first, first_token)
-        second = start_sidecar(data_dir, secrets.token_urlsafe(32))
+        second_token = secrets.token_urlsafe(32)
+        second = start_sidecar(
+            data_dir, second_token, startup_trace=tmp_path / "second-startup.json"
+        )
         try:
-            _, second_stderr = second.communicate(timeout=10)
+            try:
+                _, second_stderr = second.communicate(timeout=10)
+            except subprocess.TimeoutExpired as error:
+                report = record_sidecar_timeout(
+                    second, data_dir, error, (first_token, second_token)
+                )
+                pytest.fail(f"第二个 sidecar 超过 10 秒未退出；诊断：{report}", pytrace=False)
             assert second.returncode != 0
             assert "DATA_DIRECTORY_IN_USE" in second_stderr.decode(errors="replace")
         finally:
@@ -519,6 +567,31 @@ def test_second_sidecar_cannot_open_locked_data_directory(tmp_path: Path) -> Non
         wait_for_sidecar(after_crash, after_crash_token)
     finally:
         stop_process_tree(after_crash)
+
+
+def test_sidecar_timeout_diagnostics_preserve_phase_and_redact_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("KNOWREALM_TEST_DIAGNOSTICS_DIR", str(tmp_path))
+    data_dir = tmp_path / "KnowRealm"
+    data_dir.mkdir()
+    lock = DataDirectoryLock.acquire(data_dir)
+    trace = [{"stage": "before_app_import", "elapsed_seconds": 0}]
+    (tmp_path / "second-startup.json").write_text(json.dumps(trace), encoding="utf-8")
+    process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    try:
+        error = subprocess.TimeoutExpired(
+            "redacted-command", 10, output=b"", stderr=b"stack secret"
+        )
+        path = record_sidecar_timeout(process, data_dir, error, ("secret",))
+        report = json.loads(path.read_text(encoding="utf-8"))
+        assert report["data_directory_locked"] and report["returncode"] is None
+        assert not report["port_marker_seen"] and report["stages"] == trace
+        assert report["stderr_tail"] == "stack <REDACTED>"
+    finally:
+        process.kill()
+        process.wait(timeout=10)
+        lock.release()
 
 
 def test_real_process_imports_document_and_reads_it_after_restart(tmp_path: Path) -> None:

@@ -4,6 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import aiosqlite
 import httpx
@@ -11,6 +12,7 @@ import pytest
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
+from app.db import migrations
 from app.db.migrations import supported_user_version
 from app.modules.agent.budget.models import BudgetCall, BudgetOutput
 from app.modules.agent.budget.policy import POLICY_VERSION
@@ -259,36 +261,58 @@ async def test_legacy_nonterminal_turn_requires_stop_and_new_question(
 ) -> None:
     from app.modules.agent.turns.service import ChatTurnService
 
-    replies: list[StubReply] = [GatedReply(prefix=("已保存",), release=asyncio.Event())]
-    async with recovery_app(tmp_path, monkeypatch, replies=replies) as (app, client, _):
-        sid = await create_session(client)
-        turn_id = (await submit(client, sid, "旧问题", request_id="budget-legacy")).json()["id"]
-        await wait_running_progress(client, turn_id, min_seq=1)
-    async with bare_db(tmp_path) as factory:
-        async with factory() as session, session.begin():
-            turn = await session.get(ChatTurn, turn_id)
-            assert turn is not None
-            execution = json.loads(turn.execution_json)
-            execution.pop("budget_policy_version")
-            turn.execution_json = json.dumps(execution)
-            turn.status = status
-    # 恢复迁移 0044 的真实 schema，再经生产迁移链升级；不补造旧消费事实。
+    historical = tmp_path / "migrations-v44"
+    historical.mkdir()
+    for path in migrations.MIGRATIONS_DIR.glob("*.sql"):
+        if int(path.name[:4]) <= 44:
+            (historical / path.name).write_bytes(path.read_bytes())
+    with monkeypatch.context() as patch:
+        patch.setattr(migrations, "MIGRATIONS_DIR", historical)
+        await migrations.run_migrations(tmp_path / "knowrealm.db")
+    sid, turn_id, message_id = (str(uuid4()) for _ in range(3))
+    now = "2026-10-21T00:00:00.000000Z"
     async with aiosqlite.connect(tmp_path / "knowrealm.db") as connection:
-        await connection.executescript(
-            "DROP TABLE chat_context_outputs; DROP TABLE chat_compactions;"
-            " DROP TABLE chat_turn_budget_outputs; DROP TABLE chat_turn_budget_calls;"
-            " DROP TABLE chat_model_requests; DROP TABLE chat_context_inputs;"
-            " DROP TABLE chat_context_states;"
-            " DROP TABLE learning_resume_entries;"
-            " DROP TABLE practice_round_requests; DROP TABLE practice_grading_requests;"
-            " DROP TABLE practice_preparations; DROP TABLE practice_requirements;"
-            " ALTER TABLE learning_plan_items DROP COLUMN study_visit_id;"
-            " ALTER TABLE learning_plan_items DROP COLUMN study_record_id;"
-            " ALTER TABLE learning_plan_items DROP COLUMN study_started_at;"
-            " ALTER TABLE learning_plan_items DROP COLUMN study_tab;"
-            " ALTER TABLE chat_sessions DROP COLUMN agent_id;"
-            " PRAGMA user_version=44;"
+        assert await (await connection.execute("PRAGMA user_version")).fetchone() == (44,)
+        columns = await (await connection.execute("PRAGMA table_info(chat_sessions)")).fetchall()
+        assert "agent_id" not in {row[1] for row in columns}
+        assert (
+            await (
+                await connection.execute(
+                    "SELECT name FROM sqlite_master WHERE name='chat_turn_budget_calls'"
+                )
+            ).fetchone()
+            is None
         )
+        await connection.execute("PRAGMA foreign_keys=ON")
+        await connection.execute(
+            "INSERT INTO chat_sessions (id, mode, scope, created_at, updated_at) "
+            "VALUES (?, 'ASK', 'FREE', ?, ?)",
+            (sid, now, now),
+        )
+        await connection.execute(
+            "INSERT INTO chat_messages (id, session_id, role, content, created_at) "
+            "VALUES (?, ?, 'USER', '旧问题', ?)",
+            (message_id, sid, now),
+        )
+        await connection.execute(
+            "INSERT INTO chat_turns (id, session_id, user_message_id, request_id, "
+            "request_fingerprint, status, last_seq, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'budget-legacy', 'legacy', ?, 1, ?, ?)",
+            (turn_id, sid, message_id, status, now, now),
+        )
+        await connection.execute(
+            "INSERT INTO chat_turn_events (turn_id, seq, attempt, output_revision, "
+            "type, segment_id, payload_json, created_at) "
+            "VALUES (?, 1, 1, 1, 'token', 'legacy', ?, ?)",
+            (turn_id, json.dumps({"text": "已保存"}), now),
+        )
+        await connection.execute(
+            "INSERT INTO processing_jobs (id, job_type, status, progress, attempts, "
+            "max_attempts, input_json, created_at, updated_at) "
+            "VALUES (?, 'CHAT_TURN', 'PENDING', 0, 0, 3, ?, ?, ?)",
+            (str(uuid4()), json.dumps({"turn_id": turn_id}), now, now),
+        )
+        await connection.commit()
     async with recovery_app(tmp_path, monkeypatch, replies=[["新回答"]]) as (app, client, captured):
         assert await db_rows(tmp_path, "PRAGMA user_version") == [(supported_user_version(),)]
         if status in ("WAITING_USER", "WAITING_JOB"):

@@ -1,6 +1,6 @@
 # 验证与基点复测
 
-需要按改动范围检查、比较历史失败、建立隔离 worktree 或记录验收结果时阅读本文。工具版本及具体命令以仓库配置和 CI 为准。
+启动任何测试、按改动范围检查、比较历史失败、建立隔离 worktree 或记录验收结果前阅读本文。工具版本及具体命令以仓库配置和 CI 为准。
 
 ## 改动范围检查
 
@@ -24,6 +24,8 @@ pwsh -NoProfile -File scripts/check-changed.ps1 -Base <已核实的提交>
 
 依赖安装沿用 frozen lockfile；最终验收和基点比较使用同一个入口：
 
+前端命令表中的 `pnpm test` 是底层开发命令；实施和验收从本节统一入口启动。
+
 ```powershell
 uv run --frozen --directory backend python -m scripts.run_tests all
 uv run --frozen --directory backend python -m scripts.run_tests frontend src/pages/chat.test.tsx
@@ -31,6 +33,8 @@ uv run --frozen --directory backend python -m scripts.run_tests backend tests/te
 ```
 
 `all` 顺序执行两套测试，前端固定单 worker；测试失败后仍执行另一套，超时或中断则停止后续执行。单套支持文件或 pytest node ID 筛选，不能传额外运行器参数改变验收条件。全量、基点安装和基点复测等耗资源任务顺序执行；轻量只读检查可并行。筛选运行只证明该范围，不替代全量。具体参数以 `backend/scripts/run_tests.py` 为唯一来源，CI 直接调用它。
+
+新版入口在 Git common dir 的 `knowrealm-tests.lock` 持有 OS 锁，覆盖整个 `all`；同仓 worktree 的第二个运行器立即拒绝启动，进程退出后自动释放，残留锁文件不是占用证据。外部强杀后仍须核对本轮子进程，不能以锁可获得证明资源已清理。旧版本运行器、直接调用 pytest/Vitest 和依赖安装不参与此锁，仍须按上述顺序执行，不能宣称跨所有工具强制互斥。
 
 每次执行输出 `.pytest-tmp-runs/<时间-随机标识>/<suite>/`，包含：
 
@@ -69,6 +73,25 @@ uv run --frozen --directory backend python -m scripts.run_tests backend tests/te
 4. pytest 使用该 worktree 内独立 `.pytest-tmp-<任务名>`；长命令保留退出码和日志路径，先读失败摘要，必要时再读取对应堆栈。不同测试进程使用不同 basetemp。
 5. 创建时记录要清理的 worktree、测试目录与自启进程。清理前退出自建进程，核对解析后的绝对路径确实是本次专用目录；核对链接类型与目标，先移除链接本身，避免递归遍历其他工作区。仅清理自己创建的资源，保留用户已有 worktree 和脏改动。
 6. 清理被权限或策略拒绝时，报告原动作、拒绝原因和残留路径，不换删除方式绕过拒绝。证据记录清理状态，不能宣称工作区干净。
+
+## 工具输出与浏览器预检
+
+独立查询可以并行，但分别限制返回量：文档先取标题与命中段落，CodeGraph 每次聚焦一条调用链，日志先取结果摘要再取失败堆栈。发生截断时缩小范围，不重复读取整批材料。对已有准确路径的窄查询不再扩展到全仓检索。
+
+浏览器先确认独立 API 的令牌、目录响应及前端 Origin 的 CORS 预检，再初始化官方 Tauri mock；隔离测试服务通过 `create_app(cors_origins=[前端 Origin])` 装配，不扩大生产允许范围。菜单定位限定在聊天侧栏，断言唯一触发器、菜单展开与数据就绪后执行场景。使用条件等待；失败保留截图、页面异常和业务 HTTP 状态。可复用只读预检脚本（不创建会话、不调用模型）：
+
+```powershell
+$env:KNOWREALM_SMOKE_TOKEN = '<隔离服务的启动令牌>'
+python -X utf8 scripts/desktop_browser_smoke.py --frontend-url http://127.0.0.1:1437 --api-url http://127.0.0.1:43137 --output .scratch/<任务>/.tmp/browser-preflight
+```
+
+脚本使用本机已安装的 Python Playwright/Chromium 和项目官方 `@tauri-apps/api/mocks.js`，不安装依赖。无可用运行时则明确记录未执行；browser-use 需要用户浏览器授权时，不绕过该授权，独立无头浏览器验证须单独标注。预检通过只证明初始化和菜单可用，后续仍按工单验证业务及真实桌面边界。
+
+## 历史迁移夹具与 sidecar 超时
+
+升级测试先使用生产迁移执行器重放至指定旧版本，再填入该版本合法事实；升级前断言 `user_version`、关键列和应不存在的未来表。不从最新库 DROP 新列后冒充旧库。当前例子为 `test_tool_budget.py::test_legacy_nonterminal_turn_requires_stop_and_new_question`，仅在测试局部切换迁移目录，生产执行器不增加降级入口。
+
+`test_second_sidecar_cannot_open_locked_data_directory` 保留原 10 秒退出限制。第二进程使用测试启动探针记录导入前、导入完成和退出时间，8 秒时向 stderr 输出线程栈；超时记录进程存活状态、端口标记、实际目录锁探测及脱敏 stdout/stderr。通过统一入口运行时，诊断 JSON 保存至本次 `result.json` 同目录，随既有 CI 诊断产物保留。单次通过不能证明历史间歇超时已修复；先比较阶段和堆栈再决定修复，不增加超时或豁免。
 
 ## Agent 装配变更
 

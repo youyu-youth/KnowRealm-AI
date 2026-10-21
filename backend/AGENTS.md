@@ -13,7 +13,7 @@
 | 命令 | 说明 |
 | --- | --- |
 | `uv sync` | 安装依赖到 `.venv`（dev 依赖经 dependency-groups） |
-| `uv run pytest` | 全量测试；建议 `--basetemp .tmp/pytest-<tag>` 且测完删除（`*.tmp` 已被 gitignore） |
+| `uv run --frozen python -m scripts.run_tests backend` | 统一后端测试入口；筛选、基点、互斥与结果记录见 `../docs/agents/validation.md` |
 | `uv run ruff check .` / `uv run ruff format --check .` | lint 与格式门禁（target py312、line-length 100、select E/F/I/B/UP） |
 | `uv run pyright` | strict 模式，include `app` + `tests` |
 | `uv run python -m scripts.export_openapi ../packages/api-types/openapi.json [--check]` | 导出 / 校验 OpenAPI 契约 |

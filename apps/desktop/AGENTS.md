@@ -61,7 +61,7 @@ API 类型一律 `import ... from "@knowrealm/api-types"`（禁止手写重复�
 
 ### SSE
 
-`recordApi.subscribe`（原生 fetch + eventsource-parser 解析）只处理 `invalidate` 事件 → `invalidateQueries` → REST 重取；断线时非终态 Record 每 2 秒条件轮询（ADR-0008）。chat 流式回答走 `useChatStream`：流式文本是临时态，事实源始终是 chat_messages（REST），done 后失效重取。
+`recordApi.subscribe`（原生 fetch + eventsource-parser 解析）只处理 `invalidate` 事件 → `invalidateQueries` → REST 重取；断线时非终态 Record 每 2 秒条件轮询（ADR-0008）。chat 走 `useChatTurns.ts`：POST 提交轮次、GET 订阅持久事件、显式 cancel；切换会话或卸载仅关闭订阅。持久消息与轮次是事实源，完成后失效重取；旧 rules 的 POST 执行流描述以根目录“已核实的规范差异”为准。
 
 ### 界面语言（zh/en）
 

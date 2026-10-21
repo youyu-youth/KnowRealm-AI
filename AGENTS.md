@@ -59,7 +59,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 - `packages/api-types` — OpenAPI → TS 类型生成（前后端契约链：后端 schema 变更后须重新 generate）
 - 无根 package.json；前端 workspace 由 `pnpm-workspace.yaml` 定义，后端独立用 uv
 - 同仓多会话并行时：pytest 各自独立 basetemp（互踩会产生伪失败）、提交点名 add、git mv 后用 `--follow` 核对
-- 按改动检查或复现基点失败时，先读 `docs/agents/validation.md`；范围检查入口为 `scripts/check-changed.ps1`，CI 接线见 `.github/workflows/check.yml`。
+- 启动任何测试、按改动检查、基点安装或复测前，先读 `docs/agents/validation.md`；测试使用其中统一入口与顺序约束，范围检查入口为 `scripts/check-changed.ps1`，CI 接线见 `.github/workflows/check.yml`。
 
 ## 按任务定位功能入口
 
@@ -75,11 +75,6 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 | 学习证据与掌握度 | `backend/app/modules/learning/consumer.py`、`mastery.py` | Consumer 消费学习事实，Mastery 使用确定性算法；不要另建 LLM 掌握度计算链 |
 | 学习目标与计划 | `backend/app/modules/learning_plan/service.py`、`generation.py`、`scheduling.py`；`apps/desktop/src/features/learningPlan/` | 分别定位业务入口、生成与材料收集、确定性排期；Agent 接入继续追踪 `agent/operations/` 与 Run |
 | 项目脚本 | `scripts` | 仓库级脚本文件位置 |
-
-
-
-## 技术文档查询 使用 context7 mcp 或相关context7 skills
-
 
 
 
@@ -131,7 +126,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 ## 已核实的规范差异
 
-- 聊天当前契约是 POST 提交轮次、GET 订阅持久事件、显式 cancel；切换会话或卸载只关闭订阅。`apps/desktop/AGENTS.md` 的 `useChatStream` 及 `.claude/rules/desktop-state.md`、`fastapi.md` 的 POST 执行流描述尚未对齐；定位实现应从 `useChatTurns.ts` 与 `agent/turns/routes.py` 开始。
+- 聊天当前契约是 POST 提交轮次、GET 订阅持久事件、显式 cancel；切换会话或卸载只关闭订阅。`.claude/rules/desktop-state.md`、`fastapi.md` 的 POST 执行流描述尚未对齐；涉及聊天时以本段及 `useChatTurns.ts`、`agent/turns/routes.py` 的现行契约为准，不据旧描述恢复 POST 执行流。
 - `.claude/rules/data-layer.md` 要求迁移只写 DDL，但 `backend/migrations/0040_web_fetch_plan_draft_recovery_budget.sql` 已使用 UPDATE 回填存量任务。此处仅登记冲突；涉及同类迁移时明确提出处理方案，不自行扩大例外范围。
 
 
@@ -148,7 +143,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 
 ## 工具(tools)使用习惯，重要原则
 
-- 在探索或检索代码库时，优先使用 codegraph 相关工具来探索或检索代码
+- 代码定位按上方 CodeGraph 节执行；工具输出预算与桌面浏览器预检见 `docs/agents/validation.md`“工具输出与浏览器预检”。
 - 当需要爬取网页数据的时候，你可以使用firecrawl 相关工具来进行爬取
 - 技术文档查询时，使用 context7 mcp 来查询 文档
 - 如果使用 lsp 工具更为高效，如 pyright-lsp，则使用它
