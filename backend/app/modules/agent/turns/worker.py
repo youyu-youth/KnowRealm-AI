@@ -166,7 +166,7 @@ async def find_candidate(session: AsyncSession, now: datetime) -> ProcessingJob 
         .join(ChatTurn, ChatTurn.id == AgentDelegation.turn_id)
         .where(
             AgentDelegation.job_id == ProcessingJob.id,
-            ChatTurn.status == "QUEUED",
+            ChatTurn.status.in_(("QUEUED", "WAITING_USER", "INTERRUPTED")),
         )
         .exists()
     )
@@ -287,12 +287,16 @@ async def apply_failure(
     now: datetime,
 ) -> bool:
     """执行失败收口：job FAILED + 轮次按执行身份条件翻 FAILED（唯一终态）。"""
-    mark_failed(job, code=code, message="回答生成失败", now=now)
     if ctx.delegation_id is not None:
-        from app.modules.agent.delegations.worker import failure
+        from app.modules.agent.delegations.worker import failure, owns_claim
 
+        if not await owns_claim(session, ctx):
+            return True
+        await session.refresh(job)
+        mark_failed(job, code=code, message="回答生成失败", now=now)
         await failure(session, ctx, code)
         return True
+    mark_failed(job, code=code, message="回答生成失败", now=now)
     turn = await session.get(ChatTurn, ctx.turn_id)
     if (
         turn is not None
@@ -1022,6 +1026,11 @@ async def writeback(
 ) -> bool:
     """轮次已终态（完成 / 取消 / 失败收口 / 失配）：job 条件翻 SUCCEEDED。"""
     async with session_factory() as session, session.begin():
+        if ctx.delegation_id is not None:
+            from app.modules.agent.delegations.worker import owns_claim
+
+            if not await owns_claim(session, ctx):
+                return False
         job = await session.get(ProcessingJob, ctx.job_id)
         if job is None or job.status != ProcessingJobStatus.RUNNING:
             return False
@@ -1072,6 +1081,11 @@ def chat_turn_spec(
         # 不能永久占用会话（规格 §6）。
         now = utcnow()
         async with session_factory() as session, session.begin():
+            if claim.delegation_id is not None:
+                from app.modules.agent.delegations.worker import owns_claim
+
+                if not await owns_claim(session, claim):
+                    return True
             job = await session.get(ProcessingJob, claim.job_id)
             if job is not None and job.status == ProcessingJobStatus.RUNNING:
                 mark_failed(job, code=CHAT_STREAM_FAILED, message="回答生成执行异常", now=now)

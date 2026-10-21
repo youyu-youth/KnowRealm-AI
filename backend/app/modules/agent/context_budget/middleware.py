@@ -208,6 +208,23 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                 unknown = await unresolved_requests(session, child)
                 if unknown and unknown != [self.runtime.retry_request_id]:
                     raise DelegationUncertain
+                completed = await session.scalar(
+                    select(ChatModelRequest.id)
+                    .where(
+                        ChatModelRequest.turn_id == self.runtime.turn_id,
+                        ChatModelRequest.execution_id == self.runtime.execution_id,
+                        ChatModelRequest.execution_attempt < self.runtime.execution_attempt,
+                        ChatModelRequest.input_fingerprint == estimate.input_fingerprint,
+                        ChatModelRequest.status == ModelRequestStatus.COMPLETED,
+                    )
+                    .limit(1)
+                )
+                if completed is not None:
+                    raise CodedHTTPException(
+                        code="CHAT_TURN_RESUME_UNSAFE",
+                        status_code=409,
+                        detail="原模型请求已完成但图节点结果未保存，不能安全重发，请停止后新任务",
+                    )
             if await session.scalar(
                 select(ChatModelRequest.id)
                 .where(

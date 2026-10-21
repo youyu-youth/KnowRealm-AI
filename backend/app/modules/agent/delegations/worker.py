@@ -56,6 +56,20 @@ class DelegationUncertain(Exception):
     """存在未得到可靠完成结果的请求，必须由用户明确选择。"""
 
 
+async def owns_claim(session: AsyncSession, ctx: _ClaimedTurn) -> bool:
+    await session.execute(
+        update(ChatTurn).where(ChatTurn.id == ctx.turn_id).values(updated_at=ChatTurn.updated_at)
+    )
+    child = await session.get(AgentDelegation, ctx.delegation_id)
+    return (
+        child is not None
+        and child.turn_id == ctx.turn_id
+        and child.job_id == ctx.job_id
+        and child.claim_token == ctx.claim_token
+        and not child.cancel_requested
+    )
+
+
 async def validate_claim(
     session: AsyncSession, job: ProcessingJob, execution_id: str
 ) -> ClaimCheck[_ClaimedTurn]:
@@ -63,6 +77,12 @@ async def validate_claim(
 
     child = await session.get(AgentDelegation, execution_id)
     root = await session.get(ChatTurn, child.turn_id) if child else None
+    if (
+        root is not None
+        and not root.cancel_requested
+        and root.status in ("QUEUED", "WAITING_USER", "INTERRUPTED")
+    ):
+        return WaitingClaim("delegation_parent_waiting")
     if (
         child is None
         or child.job_id != job.id
@@ -117,10 +137,14 @@ async def failure(session: AsyncSession, ctx: _ClaimedTurn, code: str) -> None:
         child is None
         or root is None
         or root.cancel_requested
-        or root.status not in ("RUNNING", "WAITING_JOB")
         or child.claim_token != ctx.claim_token
         or child.status != "RUNNING"
     ):
+        return
+    if root.status in ("QUEUED", "WAITING_USER", "INTERRUPTED"):
+        await defer_for_parent(session, ctx)
+        return
+    if root.status not in ("RUNNING", "WAITING_JOB"):
         return
     unknown = await unresolved_requests(session, child)
     unsafe = code in ("MODEL_CONTEXT_INCOMPATIBLE", "CHAT_TURN_RESUME_UNSAFE")
@@ -132,6 +156,32 @@ async def failure(session: AsyncSession, ctx: _ClaimedTurn, code: str) -> None:
     child.result_json = KnowledgeResult(
         task_id=child.id, status=status, error_code=child.error_code, gaps=["知识任务未完成"]
     ).model_dump_json()
+    await emit_state(session, child)
+
+
+async def defer_for_parent(session: AsyncSession, ctx: _ClaimedTurn) -> None:
+    if not await owns_claim(session, ctx):
+        return
+    root = await session.get(ChatTurn, ctx.turn_id)
+    child = await session.get(AgentDelegation, ctx.delegation_id)
+    if (
+        root is None
+        or child is None
+        or child.status != "RUNNING"
+        or root.cancel_requested
+        or root.status not in ("QUEUED", "WAITING_USER", "INTERRUPTED")
+    ):
+        return
+    job = await session.get(ProcessingJob, ctx.job_id)
+    if job is None:
+        return
+    child.status, child.claim_token, child.updated_at = "QUEUED", None, utcnow()
+    job.status, job.finished_at, job.next_run_at, job.updated_at = (
+        ProcessingJobStatus.PENDING,
+        None,
+        None,
+        utcnow(),
+    )
     await emit_state(session, child)
 
 
@@ -209,7 +259,9 @@ async def execute(
         outcome = ChatStreamOutcome()
 
         async def consume(resume: bool) -> None:
-            async for _event in stream_chat_reply(
+            from app.modules.agent.turns.worker import ACLOSE_TIMEOUT_SECONDS
+
+            stream = stream_chat_reply(
                 checkpointer=checkpointer,
                 provider=provider,
                 context_messages=cast(list[AnyMessage], messages_from_dict(frozen["messages"])),
@@ -219,8 +271,13 @@ async def execute(
                 tool_namespace=thread_id(execution_id),
                 cancel_check=cancel.is_set,
                 resume=resume,
-            ):
-                pass
+            )
+            try:
+                async for _event in stream:
+                    pass
+            finally:
+                with contextlib.suppress(Exception):
+                    await asyncio.wait_for(stream.aclose(), ACLOSE_TIMEOUT_SECONDS)
 
         try:
             await consume(attempt > 1)
@@ -281,16 +338,19 @@ async def execute(
             {work, stopped, cancelled}, return_when=asyncio.FIRST_COMPLETED
         )
         if work not in done:
+            from app.modules.agent.turns.worker import ACLOSE_TIMEOUT_SECONDS
+
             work.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await work
+            with contextlib.suppress(asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(work, ACLOSE_TIMEOUT_SECONDS * 2)
         else:
             await work
     except (DelegationUncertain, openai.APIConnectionError, openai.APITimeoutError):
         async with session_factory() as session, session.begin():
             await failure(session, ctx, "CHAT_STREAM_FAILED")
     except TurnCancelledError:
-        pass
+        async with session_factory() as session, session.begin():
+            await defer_for_parent(session, ctx)
     except Exception as exc:
         logger.warning(
             "agent_delegation_failed", execution_id=execution_id, error_type=type(exc).__name__

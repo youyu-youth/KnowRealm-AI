@@ -34,17 +34,21 @@ def anyio_backend() -> str:
 async def test_single_delegation_uses_knowledge_and_returns_to_original_parent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from test_shared_refs import COURSE_ML, REC_ML_PAPER, seed_full_corpus
+
+    quote = "梯度下降通过反向传播迭代更新参数。"
     async with turns_app(
         tmp_path,
         monkeypatch,
         replies=[
-            ToolCallReply("delegate_knowledge", {"task": "检索本地资料中的事务隔离"}, "delegate-1"),
-            ToolCallReply("search_library", {"query": "事务 隔离"}, "search-1"),
-            ["当前资料中未找到事务隔离证据"],
-            ["专业检索已完成，当前资料中未找到证据"],
+            ToolCallReply("delegate_knowledge", {"task": "检索资料中的梯度下降原理"}, "delegate-1"),
+            ToolCallReply("search_library", {"query": quote}, "search-1"),
+            [f"本地材料说明[1]。\n[1] {quote}（来源：论文精读）"],
+            ["专业检索已完成，已取得原文证据"],
         ],
     ) as (app, client, captured):
-        session_id = await create_session(client, scope="ALL")
+        await seed_full_corpus(app.state.session_factory)
+        session_id = await create_session(client, scope="COURSE", course_id=COURSE_ML)
         accepted = await submit(
             client, session_id, "委派检索再汇总", request_id="delegation-success-1"
         )
@@ -60,6 +64,8 @@ async def test_single_delegation_uses_knowledge_and_returns_to_original_parent(
         ]
         assert reports[0]["status"] == "COMPLETED"
         assert reports[0]["contract_version"] == 1
+        assert reports[0]["citations"][0]["record_id"] == REC_ML_PAPER
+        assert reports[0]["citations"][0]["quote"] == quote
         tasks = result["background_tasks"]
         assert len(tasks) == 1 and tasks[0]["agent_id"] == "knowledge"
         assert tasks[0]["status"] == "COMPLETED"
@@ -114,13 +120,14 @@ def timeout_external_model(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_unknown_request_requires_bound_choice_and_keeps_unknown_usage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
+    release = asyncio.Event()
     async with turns_app(
         tmp_path,
         monkeypatch,
         replies=[
             ToolCallReply("delegate_knowledge", {"task": "检索事务隔离"}, "delegate-unknown"),
             None,
-            *([["子报告"]] if kind == "RETRY_DELEGATIONS" else []),
+            *([GatedReply(("子报告",), release)] if kind == "RETRY_DELEGATIONS" else []),
             ["最终汇总"],
         ],
     ) as (app, client, captured):
@@ -133,6 +140,24 @@ async def test_unknown_request_requires_bound_choice_and_keeps_unknown_usage(
         reason = waiting["waiting_reason"]
         assert reason["kind"] == "DELEGATION_UNCERTAIN"
         assert len(captured) == 2
+        from app.modules.agent.delegations.models import AgentDelegation
+        from app.modules.agent.turns.worker import (
+            _ClaimedTurn as ClaimedTurn,  # pyright: ignore[reportPrivateUsage]
+        )
+        from app.modules.agent.turns.worker import (
+            writeback,
+        )
+
+        async with app.state.session_factory() as session:
+            child = await session.get(AgentDelegation, reason["delegations"][0]["execution_id"])
+            assert child is not None and child.claim_token is not None
+            old_claim = ClaimedTurn(
+                job_id=child.job_id,
+                record_id="",
+                turn_id=turn_id,
+                delegation_id=child.id,
+                claim_token=child.claim_token,
+            )
         assert (
             await client.post(
                 f"/api/chat-turns/{turn_id}/resume", json={"decision_kind": "RETRY_AFTER_FIX"}
@@ -150,6 +175,22 @@ async def test_unknown_request_requires_bound_choice_and_keeps_unknown_usage(
         ).status_code == 409
         result = await client.post(f"/api/chat-turns/{turn_id}/resume", json=decision)
         assert result.status_code == 200, result.text
+        if kind == "RETRY_DELEGATIONS":
+            for _ in range(100):
+                if len(captured) == 3:
+                    break
+                await asyncio.sleep(0.05)
+            assert len(captured) == 3
+            assert not await writeback(old_claim, True, session_factory=app.state.session_factory)
+            async with app.state.session_factory() as session:
+                assert (
+                    await session.scalar(
+                        text("SELECT status FROM processing_jobs WHERE id=:id"),
+                        {"id": old_claim.job_id},
+                    )
+                    == "RUNNING"
+                )
+            release.set()
         assert (await wait_terminal(client, turn_id))["status"] == "COMPLETED"
         calls = len(captured)
         assert calls == (4 if kind == "RETRY_DELEGATIONS" else 3)
@@ -234,6 +275,10 @@ async def test_parent_wait_releases_slot_and_cancel_rejects_late_child(
                 runtime, execution_claim_token="stale-claim"
             ).turn_write_allowed(session)
             assert not await replace(runtime, execution_attempt=0).turn_write_allowed(session)
+            from app.modules.agent.budget.service import BudgetRejected, admit
+
+            with pytest.raises(BudgetRejected, match="AGENT_CONTEXT_UNBOUND"):
+                await admit(replace(runtime, turn_id=None), "search_library", {"query": "事务"})
         other = await create_session(client)
         other_id = (
             await submit(client, other, "其他请求", request_id="other-conversation-1")
@@ -330,11 +375,15 @@ async def test_parent_and_child_share_six_admissions(
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize("window", ["registered", "graph_completed", "result_committed"])
+@pytest.mark.parametrize(
+    "window",
+    ["registered", "graph_completed", "result_committed", "request_completed", "provider_wait"],
+)
 async def test_restart_reconciles_persistence_windows_without_repeating_child(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, window: str
 ) -> None:
     blocked = asyncio.Event()
+    child_blocked = asyncio.Event()
     async with turns_app(
         tmp_path,
         monkeypatch,
@@ -344,20 +393,41 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
         ],
     ) as (app, client, captured):
         saver = app.state.chat_checkpointer
-        put, delete = saver.aput, saver.adelete_thread
+        put, delete, put_writes = saver.aput, saver.adelete_thread, saver.aput_writes
+
+        async def request_gate(config: Any, writes: Any, task_id: Any, task_path: str = "") -> None:
+            thread = config.get("configurable", {}).get("thread_id", "")
+            if (
+                window in ("registered", "provider_wait")
+                and thread.startswith("chat-turn-")
+                and any(key == "__interrupt__" for key, _value in writes)
+            ):
+                blocked.set()
+                await asyncio.Event().wait()
+            if (
+                window == "request_completed"
+                and thread.startswith("agent-delegation-")
+                and any(key == "messages" for key, _value in writes)
+            ):
+                async with app.state.session_factory() as session:
+                    completed = await session.scalar(
+                        text(
+                            "SELECT count(*) FROM chat_model_requests "
+                            "WHERE execution_id IS NOT NULL AND status='COMPLETED'"
+                        )
+                    )
+                if completed:
+                    blocked.set()
+                    await asyncio.Event().wait()
+            await put_writes(config, writes, task_id, task_path)
 
         async def checkpoint_gate(
             config: Any, checkpoint: Any, metadata: Any, versions: Any
         ) -> Any:
             thread = config.get("configurable", {}).get("thread_id", "")
-            if window == "registered" and thread.startswith("chat-turn-"):
-                async with app.state.session_factory() as session:
-                    registered = await session.scalar(
-                        text("SELECT count(*) FROM agent_delegations")
-                    )
-                if registered:
-                    blocked.set()
-                    await asyncio.Event().wait()
+            if window == "provider_wait" and thread.startswith("agent-delegation-"):
+                child_blocked.set()
+                await asyncio.Event().wait()
             saved = await put(config, checkpoint, metadata, versions)
             if (
                 window == "graph_completed"
@@ -386,12 +456,19 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
         # 注入只停驻公开 checkpoint I/O；业务登记、模型请求、结果提交均执行真实路径。
         monkeypatch.setattr(saver, "aput", checkpoint_gate)
         monkeypatch.setattr(saver, "adelete_thread", cleanup_gate)
+        monkeypatch.setattr(saver, "aput_writes", request_gate)
         session_id = await create_session(client, scope="ALL")
         turn_id = (
             await submit(client, session_id, "委派检索", request_id="delegation-window-1")
         ).json()["id"]
         await asyncio.wait_for(blocked.wait(), 10)
+        assert (await snapshot(client, turn_id))["status"] == (
+            "RUNNING" if window in ("registered", "provider_wait") else "WAITING_JOB"
+        )
+        if window == "provider_wait":
+            await asyncio.wait_for(child_blocked.wait(), 10)
         if window == "registered":
+            completed = 0
             for _ in range(100):
                 async with app.state.session_factory() as session:
                     completed = await session.scalar(
@@ -401,12 +478,68 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
                     break
                 await asyncio.sleep(0.05)
             assert completed
-        assert len(captured) == 2
-    async with turns_app(tmp_path, monkeypatch, replies=[["汇总已有子报告"]]) as (
+        assert len(captured) == (1 if window == "provider_wait" else 2)
+    async with turns_app(
+        tmp_path,
+        monkeypatch,
+        replies=[]
+        if window == "request_completed"
+        else [["可靠子报告"], ["汇总已有子报告"]]
+        if window == "provider_wait"
+        else [["汇总已有子报告"]],
+    ) as (
         app,
         client,
         captured,
     ):
+        if window == "provider_wait":
+            from app.modules.settings.config import grant_llm_consent, save_llm_provider
+            from app.modules.settings.model_budget import ModelBudgetConfig
+
+            save_llm_provider(
+                tmp_path,
+                base_url="https://changed.example.com/v1",
+                api_key="sk-changed",
+                model="changed-model",
+                clear_api_key=False,
+                model_budget=ModelBudgetConfig(context_window=128000),
+            )
+            grant_llm_consent(tmp_path)
+            waiting = await wait_status(client, turn_id, "WAITING_USER")
+            assert waiting["waiting_reason"]["kind"] == "PROVIDER_CHANGED"
+            async with app.state.session_factory() as session:
+                assert (
+                    await session.scalar(text("SELECT status FROM agent_delegations")) == "QUEUED"
+                )
+                assert (
+                    await session.scalar(
+                        text(
+                            "SELECT status FROM processing_jobs "
+                            "WHERE id=(SELECT job_id FROM agent_delegations)"
+                        )
+                    )
+                    == "PENDING"
+                )
+            save_llm_provider(
+                tmp_path,
+                base_url="https://stub.example.com/v1",
+                api_key="sk-test",
+                model="stub-chat-model",
+                clear_api_key=False,
+                model_budget=ModelBudgetConfig(context_window=128000),
+            )
+            grant_llm_consent(tmp_path)
+            assert (
+                await client.post(
+                    f"/api/chat-turns/{turn_id}/resume", json={"decision_kind": "RETRY_AFTER_FIX"}
+                )
+            ).status_code == 200
+        if window == "request_completed":
+            waiting = await wait_status(client, turn_id, "WAITING_USER")
+            assert waiting["waiting_reason"]["kind"] == "CHECKPOINT_MISSING"
+            assert not captured
+            await client.post(f"/api/chat-turns/{turn_id}/cancel")
+            return
         result = await wait_terminal(client, turn_id)
         assert result["status"] == "COMPLETED", (
             result["error_code"],
@@ -414,7 +547,7 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
             len(captured),
             result["background_tasks"],
         )
-        assert len(captured) == 1
+        assert len(captured) == (2 if window == "provider_wait" else 1)
         async with app.state.session_factory() as session:
             assert await session.scalar(text("SELECT count(*) FROM agent_delegations")) == 1
             assert await session.scalar(text("SELECT count(*) FROM chat_turn_waits")) == 1

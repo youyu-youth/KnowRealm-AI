@@ -78,6 +78,8 @@ class BudgetRejected(Exception):
 
 async def admit(runtime: AgentRuntimeContext, tool_name: str, args: object) -> str | None:
     identity = current_tool_call_identity()
+    if runtime.execution_id is not None and runtime.turn_id is None:
+        raise BudgetRejected("AGENT_CONTEXT_UNBOUND")
     if runtime.turn_id is None:
         if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
             raise BudgetRejected("TOOL_CALL_LIMIT")
