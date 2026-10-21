@@ -64,14 +64,34 @@ describe("ChatTurnWaitingCard 后台等待", () => {
         turn={{
           ...waitingTurn,
           status: "WAITING_USER",
+          background_tasks: [
+            {
+              target_type: "JOB",
+              target_id: "job-A",
+              status: "COMPLETED",
+              control_scope: "EXCLUSIVE",
+              execution_id: "child-A",
+              agent_id: "knowledge",
+              execution_attempt: 1,
+            },
+            {
+              target_type: "JOB",
+              target_id: "job-B",
+              status: "INTERRUPTED",
+              control_scope: "EXCLUSIVE",
+              execution_id: "child-B",
+              agent_id: "knowledge",
+              execution_attempt: 1,
+            },
+          ],
           waiting_reason: {
             kind: "DELEGATION_UNCERTAIN",
             snapshot_id: "snapshot-1",
             delegations: [
               {
-                execution_id: "child-1",
+                execution_id: "child-B",
                 execution_attempt: 1,
-                request_ids: ["request-1"],
+                request_ids: ["request-B"],
               },
             ],
           },
@@ -81,6 +101,11 @@ describe("ChatTurnWaitingCard 后台等待", () => {
       />,
     );
     expect(screen.getByText(/重试可能再次计费/)).toBeInTheDocument();
+    const tasks = screen.getByRole("list", { name: "关联后台任务" });
+    expect(tasks).toHaveTextContent("已完成");
+    expect(tasks).toHaveTextContent("等待选择");
+    expect(tasks).toHaveTextContent("child-A");
+    expect(tasks).toHaveTextContent("child-B");
     expect(
       screen.queryByRole("button", { name: "继续生成" }),
     ).not.toBeInTheDocument();
