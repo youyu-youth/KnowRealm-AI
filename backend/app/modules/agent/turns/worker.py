@@ -851,6 +851,8 @@ class _TurnExecutor:
                 )
             content = parsed.content
             citations = parsed.citations
+            if prompt_context.agent_id == AgentId.KNOWLEDGE:
+                citations = [entry for entry in citations if entry.get("source") != "web"]
         if not content:
             await self._fail("EMPTY_REPLY", "回答为空，请重试")
             return

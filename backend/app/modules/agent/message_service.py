@@ -169,7 +169,12 @@ class SessionPromptContext:
     @property
     def should_parse_citations(self) -> bool:
         """挂载与范围会话恒解析引用块；自由聊天仅本轮联网时解析（产出 web 条目）。"""
-        return self.record_id is not None or self.library is not None or self.web_search
+        return (
+            self.agent_id == AgentId.KNOWLEDGE
+            or self.record_id is not None
+            or self.library is not None
+            or self.web_search
+        )
 
 
 async def validate_sendable_chat(session: AsyncSession, chat: ChatSession) -> None:

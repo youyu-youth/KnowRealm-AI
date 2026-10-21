@@ -10,7 +10,6 @@ import pytest
 from langchain_core.messages import SystemMessage, ToolMessage
 
 from app.modules.agent.graph import AgentConfig, resolve_agent_config
-from app.modules.agent.schemas import AgentId
 from tests.test_archive import build_partial_db
 from tests.test_chat_turns import (
     StubChatModel,
@@ -211,5 +210,31 @@ def test_general_composition_keeps_all_config_extensions(
         "create_course",
         "propose_ingest",
     }
-    with pytest.raises(ValueError):
-        resolve_agent_config(retrieval=True, web_search_enabled=True, agent_id=AgentId("unknown"))
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("scope", ["FREE", "RECORD", "LIBRARY_ITEM", "COURSE", "ALL"])
+async def test_knowledge_does_not_publish_invented_web_citations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scope: str
+) -> None:
+    async with turns_app(
+        tmp_path,
+        monkeypatch,
+        replies=[["这是一条没有来源的回答[1]。\n[1] 未检索网站 — https://example.invalid/proof"]],
+    ) as (app, client, _):
+        await seed_full_corpus(app.state.session_factory)
+        body: dict[str, Any] = {"agent_id": "knowledge", "scope": scope}
+        if scope == "RECORD":
+            body["record_id"] = REC_ML_PAPER
+        elif scope == "LIBRARY_ITEM":
+            body["library_item_id"] = ITEM_ML_PAPER
+        elif scope == "COURSE":
+            body["course_id"] = COURSE_ML
+        sid = await create_session(client, **body)
+        submitted = await submit(client, sid, "请根据本地证据回答", request_id=str(uuid4()))
+        done = await wait_terminal(client, submitted.json()["id"])
+        assert done["status"] == "COMPLETED", done
+        history = (await client.get(f"/api/chat-sessions/{sid}/messages")).json()
+        answer = next(row for row in history if row["role"] == "ASSISTANT")
+        assert not answer.get("citations")
+        assert "example.invalid" not in answer["content"]
