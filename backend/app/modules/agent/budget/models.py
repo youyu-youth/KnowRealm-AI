@@ -4,6 +4,7 @@ from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+from app.modules.agent.delegations.models import AgentDelegation
 
 
 class BudgetCall(Base):
@@ -20,7 +21,7 @@ class BudgetCall(Base):
     args_fingerprint: Mapped[str] = mapped_column(String(64))
     policy_version: Mapped[int] = mapped_column(Integer)
     execution_id: Mapped[str | None] = mapped_column(
-        ForeignKey("agent_delegations.id"), default=None
+        ForeignKey(AgentDelegation.id), default=None
     )
 
 

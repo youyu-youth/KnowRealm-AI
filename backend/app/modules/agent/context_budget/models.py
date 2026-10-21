@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, ISODateTime, utcnow
 from app.modules.agent.context_budget.schemas import ModelRequestStatus
+from app.modules.agent.delegations.models import AgentDelegation, DelegationDecision
 
 
 class ChatContextState(Base):
@@ -54,11 +55,11 @@ class ChatModelRequest(Base):
     retry_of: Mapped[str | None] = mapped_column(String(64), default=None)
     pins_json: Mapped[str] = mapped_column(Text, default="[]")
     execution_id: Mapped[str | None] = mapped_column(
-        ForeignKey("agent_delegations.id"), default=None
+        ForeignKey(AgentDelegation.id), default=None
     )
     execution_attempt: Mapped[int | None] = mapped_column(Integer, default=None)
     decision_id: Mapped[str | None] = mapped_column(
-        ForeignKey("agent_delegation_decisions.id"), default=None
+        ForeignKey(DelegationDecision.id), default=None
     )
 
 
