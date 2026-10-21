@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Stop"
 
+# pnpm may pass PowerShell 7 module paths to Windows PowerShell 5.1.
+$env:PSModulePath = "$PSHOME\Modules;$env:PSModulePath"
+
 # 月末构建保留两年；普通每日构建仅保留 14 天。
 $archiveName = "ffmpeg-n8.1.2-50-g1a748fe2cd-win64-lgpl-shared-8.1.zip"
 $archiveSha256 = "e9712ffbdb03ef71bbab660c75b835bfe698ef6fad0247c76d8d394a39a3db63"
