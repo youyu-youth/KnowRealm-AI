@@ -2459,6 +2459,7 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(record_session_id) == [
                 "search_library",
+                "delegate_knowledge",
                 "search_context",
                 "read_context",
                 "get_context_settings",
@@ -2513,6 +2514,7 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(course_session_id) == [
                 "search_library",
+                "delegate_knowledge",
                 "search_context",
                 "read_context",
                 "get_context_settings",
@@ -2567,6 +2569,7 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(all_session_id) == [
                 "search_library",
+                "delegate_knowledge",
                 "search_context",
                 "read_context",
                 "get_context_settings",
@@ -2626,6 +2629,7 @@ async def test_scope_mounting_matrix_tool_visibility(
             )
             assert await visible(course_session_id, web=True) == [
                 "search_library",
+                "delegate_knowledge",
                 "web_search",
                 "search_context",
                 "read_context",
@@ -2681,6 +2685,7 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(all_session_id, web=True) == [
                 "search_library",
+                "delegate_knowledge",
                 "web_search",
                 "search_context",
                 "read_context",
@@ -2736,6 +2741,7 @@ async def test_scope_mounting_matrix_tool_visibility(
             ]
             assert await visible(record_session_id, web=True) == [
                 "search_library",
+                "delegate_knowledge",
                 "web_search",
                 "search_context",
                 "read_context",
