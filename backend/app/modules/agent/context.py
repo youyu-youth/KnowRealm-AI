@@ -33,6 +33,16 @@ CHAT_WEB_SEARCH_GUIDANCE = (
     "中的配置或额度问题。"
 )
 CHAT_WEB_SEARCH_MOUNTED_GUIDANCE = "回答须优先依据学习材料，网络结果仅作为材料外的补充来源。"
+CHAT_DELEGATION_GUIDANCE = (
+    "本地知识任务协作：简单问题可直接处理；用户明确要求分工时，按其意图委派。"
+    "两个可独立处理的知识任务需要同时执行时，在同一条回复中发出两次 delegate_knowledge，"
+    "每次 task 仅携带其中一个任务；一次调用一个任务不表示一条回复只能调用一次。"
+    "先安排两个任务，再等待报告汇总，不要等任务一完成后才安排任务二，"
+    "也不要用自己检索替代用户明确要求的分工。有前后依赖的任务才按依赖顺序处理。"
+    "父任务与所有子任务共享单轮六次工具调用额度，委派和检索都计入；"
+    "两次委派后，其余工具合计仅余四次，不是每个助手各有六次。"
+    "超限表示共享工具额度耗尽，不表示只能委派一个助手；保留成功结果，如实说明缺口。"
+)
 # 批量整理指引（工单 05）：多条同类目标走计划工具，避免逐条确认的摩擦；是否
 # 需要整卡确认由后端按档位与阈值判定，指引本身不承诺自动执行。
 CHAT_BATCH_PLAN_GUIDANCE = (
@@ -315,7 +325,8 @@ def _library_instructions(library: LibraryContext) -> str:
     return (
         intro + "回答规则：\n"
         f"- {detail_rule}"
-        "单轮最多检索 6 次、结果超出预算会被截断；换同义词重试不超过 2 次，"
+        "单轮所有工具合计最多调用 6 次（委派也计入）、结果超出预算会被截断；"
+        "换同义词重试不超过 2 次，"
         "之后基于已有结果如实回答；\n"
         "- 检索结果三类：evidence_hits 是唯一可引用的逐字原文（含来源标题与"
         " 时间/页码定位）；asset_matches 是范围内对象的标题导航命中，不可当作"
@@ -355,7 +366,8 @@ def _research_instructions(library: LibraryContext | None) -> str:
     return (
         intro + CHAT_RESEARCH_PROTOCOL + "\n回答纪律：\n"
         "- 需要资料原文细节时，用 search_library 工具检索（2~6 个关键词）；"
-        "单轮最多检索 6 次、结果超出预算会被截断；检索结果三类中 evidence_hits "
+        "单轮所有工具合计最多调用 6 次（委派也计入）、结果超出预算会被截断；"
+        "检索结果三类中 evidence_hits "
         "是唯一可引用的逐字原文，asset_matches 与 concept_hints 不得当作原文引用；\n"
         "- 范围内检索不到可引用证据时，在「已有证据」如实说明「当前资料中未找到」，"
         "不得用自己的常识补成资料事实；\n"
@@ -531,6 +543,8 @@ def build_context_messages(
         if active_runs:
             content = f"{content}\n{format_active_run_summary(active_runs)}"
         if agent_id == AgentId.GENERAL:
+            if record is not None or library is not None:
+                content = f"{content}\n{CHAT_DELEGATION_GUIDANCE}"
             content = f"{content}\n{CHAT_ENUMERATION_GUIDANCE}"
             content = f"{content}\n{CHAT_BATCH_PLAN_GUIDANCE}"
             content = f"{content}\n{CHAT_UNDO_GUIDANCE}"

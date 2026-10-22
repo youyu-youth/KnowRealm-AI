@@ -114,6 +114,10 @@ Browser Use doctor 报 daemon/连接不可用，改用本机已安装的独立�
 
 删除本票隔离目录 `03-ui-data`、`03-ui-data-final` 和临时脚本 `03-ui-server.py`、`03-ui-check.py` 的 PowerShell 操作被自动审批拒绝（`blocked by policy`），未换方式绕过。上述资源仍在 `.scratch/multi-agent-refactor/.tmp/`，与浏览器截图/结果、测试运行日志一起保持未跟踪/忽略；均不 add/commit。
 
+## 2026-10-22：真实模型双委派反馈修复
+
+用户明确要求两知识助手同时处理，但模型先完成一支再委派第二支，第一支用完共享六次工具额度导致第二次准入失败。已补齐同回复双调用和共享预算指引、子任务少量关键词检索及准确的超限原因；图 v14。相关 61 项、预算与最终输入 37 项两批回归通过，真实 deepseek-v4-flash 在独立合成来源上同消息双委派、两子并行完成及父汇总通过，保留六次硬上限。完整计划、原始失败和真实请求证据见 [反馈修复记录](03-parallel-dispatch-fix.md)；原生桌面及用户实际资料仍待复测。
+
 ## 2026-10-22：重启测试闸门退出边界
 
 基点 `e6158c950a8c63aeb85cba1416180a0ec4a9f2e6`。代码只修改 `test_restart_before_parent_wake_reuses_both_branches_and_preserves_parent_thread`，原有业务断言经 AST 对照全部保留；生产 Worker、共享 `turns_app`、API、图装配及依赖未改，本项不新增产品或 Agent 能力入口。

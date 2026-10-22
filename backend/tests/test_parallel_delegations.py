@@ -9,7 +9,7 @@ from typing import Any, cast
 import httpx2
 import openai
 import pytest
-from langchain_core.messages import AIMessageChunk, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGenerationChunk
 from sqlalchemy import Row, text
 from test_chat_turns import (
@@ -161,10 +161,58 @@ async def test_two_waiting_roots_share_two_slots_and_resume_by_interrupt_id(
             == 2
         ]
         assert len(summaries) == 2 and len(captured) == 8
+        for messages in captured:
+            prompt = str(next(m.content for m in messages if isinstance(m, SystemMessage)))
+            task = str(next(m.content for m in reversed(messages) if isinstance(m, HumanMessage)))
+            if task.startswith("root:"):
+                assert "同一条回复中发出两次 delegate_knowledge" in prompt
+                assert "父任务与所有子任务共享" in prompt
+            else:
+                assert "不是本任务独享六次" in prompt
+                assert "优先用一至两次检索" in prompt
+                assert "未命中时删减关键词" in prompt
+                assert "同一条回复中发出两次 delegate_knowledge" not in prompt
         for messages in summaries:
             for message in messages:
                 if isinstance(message, ToolMessage) and message.name == "delegate_knowledge":
                     assert message.tool_call_id[-1] in json.loads(str(message.content))["summary"]
+
+
+@pytest.mark.anyio
+async def test_sequential_second_delegation_explains_shared_budget_exhaustion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    routes = {
+        "root:sequential": [
+            (ToolCallReply("delegate_knowledge", {"task": "child:sequential:A"}, "delegate-A"),),
+            (ToolCallReply("delegate_knowledge", {"task": "child:sequential:B"}, "delegate-B"),),
+            ["仅任务一完成，任务二因共享工具额度耗尽未安排"],
+        ],
+        "child:sequential:A": [
+            tuple(
+                ToolCallReply("search_library", {"query": "事务隔离"}, f"search-{index}")
+                for index in range(5)
+            ),
+            ["任务一已有证据"],
+        ],
+    }
+    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
+        route_model(monkeypatch, routes)
+        sid = await create_session(client, scope="ALL")
+        tid = (await submit(client, sid, "root:sequential", request_id="sequential-budget")).json()[
+            "id"
+        ]
+        assert (await wait_terminal(client, tid))["status"] == "COMPLETED"
+        message = next(
+            m for m in captured[-1] if isinstance(m, ToolMessage) and m.tool_call_id == "delegate-B"
+        )
+        rejected = json.loads(str(message.content))
+        assert rejected["error"] == "TOOL_CALL_LIMIT"
+        assert "父任务与所有子任务共享" in rejected["message"]
+        assert "不是只能委派一个" in rejected["message"]
+        async with app.state.session_factory() as session:
+            assert await session.scalar(text("SELECT count(*) FROM agent_delegations")) == 1
+            assert await session.scalar(text("SELECT count(*) FROM chat_turn_budget_calls")) == 6
 
 
 @pytest.mark.anyio
