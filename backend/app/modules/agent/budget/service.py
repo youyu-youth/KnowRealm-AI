@@ -6,7 +6,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
 from inspect import signature
-from typing import ParamSpec
+from typing import ParamSpec, cast
 from uuid import uuid4
 
 from sqlalchemy import delete, func, select
@@ -18,6 +18,7 @@ from app.modules.agent.budget.policy import (
     POLICIES,
     POLICY_VERSION,
     ToolCallBudget,
+    budget_snapshot,
 )
 from app.modules.agent.runtime import AgentRuntimeContext, current_agent_runtime
 from app.modules.agent.turns.effects import current_tool_call_identity, effect_args_fingerprint
@@ -200,7 +201,14 @@ async def execute[T](tool_name: str, args: object, handler: Callable[[], Awaitab
         call_id = await admit(runtime, tool_name, args)
     except BudgetRejected as exc:
         if exc.code == "TOOL_CALL_LIMIT":
-            return POLICIES[tool_name]()
+            rejected = cast(dict[str, object], json.loads(POLICIES[tool_name]()))
+            rejected.update(
+                ok=False,
+                error=exc.code,
+                retryable=False,
+                tool_budget=budget_snapshot(runtime.budget),
+            )
+            return json.dumps(rejected, ensure_ascii=False, separators=(",", ":"))
         return json.dumps({"ok": False, "error": exc.code})
     consumption = _Consumption(tool_name, call_id, str(uuid4()))
     token = _consumption.set(consumption)

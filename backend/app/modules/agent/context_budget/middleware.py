@@ -178,6 +178,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                 **chat_output_parameters(self.policy.base_url, estimate.output_reserve),
             }
         )
+        messages_json = json.dumps(messages_to_dict(request.messages), ensure_ascii=False)
         row = ChatModelRequest(
             turn_id=self.runtime.turn_id,
             execution_id=self.runtime.execution_id,
@@ -189,7 +190,7 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
             input_fingerprint=estimate.input_fingerprint,
             estimate_json=estimate.model_dump_json(),
             error_code=estimate.error_code,
-            messages_json=json.dumps(messages_to_dict(request.messages), ensure_ascii=False),
+            messages_json=messages_json,
             retry_of=retry_of or self.runtime.retry_request_id,
             pins_json=json.dumps(
                 [pin.model_dump(mode="json") for pin in pins or []], ensure_ascii=False
@@ -214,7 +215,8 @@ class InputBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[
                         ChatModelRequest.turn_id == self.runtime.turn_id,
                         ChatModelRequest.execution_id == self.runtime.execution_id,
                         ChatModelRequest.execution_attempt < self.runtime.execution_attempt,
-                        ChatModelRequest.input_fingerprint == estimate.input_fingerprint,
+                        # 兄弟消费可改变额度提示和工具集合，恢复仍是同一条冻结消息链。
+                        ChatModelRequest.messages_json == messages_json,
                         ChatModelRequest.status == ModelRequestStatus.COMPLETED,
                     )
                     .limit(1)

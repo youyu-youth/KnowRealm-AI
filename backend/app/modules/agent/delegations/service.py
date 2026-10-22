@@ -303,7 +303,7 @@ async def validate_report(
         if (
             body.get("ok") is False
             and isinstance(body.get("error"), str)
-            and body.keys() <= {"ok", "error", "message"}
+            and body.keys() <= {"ok", "error", "message", "retryable", "tool_budget"}
         ):
             return
     try:

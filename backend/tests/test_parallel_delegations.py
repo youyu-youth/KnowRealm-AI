@@ -11,6 +11,7 @@ import openai
 import pytest
 from langchain_core.messages import AIMessageChunk, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGenerationChunk
+from langchain_core.runnables import RunnableBinding
 from sqlalchemy import Row, text
 from test_chat_turns import (
     GatedReply,
@@ -30,16 +31,25 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
-def route_model(monkeypatch: pytest.MonkeyPatch, routes: dict[str, list[Any]]) -> None:
+def route_model(
+    monkeypatch: pytest.MonkeyPatch,
+    routes: dict[str, list[Any]],
+    requests: list[tuple[list[Any], list[str]]] | None = None,
+) -> None:
     from app.modules.llm import service
 
     base = cast(type[StubChatModel], service.ChatOpenAI)
 
     class RoutedModel(base):
+        def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+            return RunnableBinding(bound=self, kwargs={"tools": tools, **kwargs})
+
         async def _astream(
             self, messages: Any, stop: Any = None, run_manager: Any = None, **kwargs: Any
         ) -> AsyncIterator[ChatGenerationChunk]:
             type(self).captured.append(list(messages))
+            if requests is not None:
+                requests.append((list(messages), [tool.name for tool in kwargs.get("tools", [])]))
             prompt = str(next(m.content for m in reversed(messages) if isinstance(m, HumanMessage)))
             key = next(key for key in routes if key in prompt)
             reply = routes[key].pop(0)
@@ -374,6 +384,7 @@ async def test_parallel_children_compete_for_last_shared_admission(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     release = asyncio.Event()
+    requests: list[tuple[list[Any], list[str]]] = []
 
     def search(call_id: str) -> ToolCallReply:
         return ToolCallReply("search_library", {"query": "事务隔离"}, call_id)
@@ -384,7 +395,7 @@ async def test_parallel_children_compete_for_last_shared_admission(
         "child:budget:B": [(search("B1"),), release, (search("last-B"),), ["报告 B"]],
     }
     async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
-        route_model(monkeypatch, routes)
+        route_model(monkeypatch, routes, requests)
         sid = await create_session(client, scope="ALL")
         tid = (await submit(client, sid, "root:budget", request_id="parallel-budget")).json()["id"]
         try:
@@ -411,6 +422,47 @@ async def test_parallel_children_compete_for_last_shared_admission(
             }
             assert len(final_tools) == 2
             assert sum("本轮检索次数已达上限" in value for value in final_tools.values()) == 1
+            results = [json.loads(value) for value in final_tools.values()]
+            failures = [value for value in results if value.get("ok") is False]
+            assert len(failures) == 1
+            rejected = failures[0]
+            assert rejected["error"] == "TOOL_CALL_LIMIT"
+            assert rejected["retryable"] is False
+            assert rejected["tool_budget"] == {"limit": 6, "used": 6, "remaining": 0}
+            assert "未执行" in rejected["message"]
+            assert "未能核实" in rejected["message"]
+            admitted = next(value for value in results if value.get("ok") is not False)
+            assert admitted["tool_budget"] == {"limit": 6, "used": 6, "remaining": 0}
+            assert "未找到" in admitted["message"]
+            assert "本次检索已执行" in admitted["message"]
+            assert "重试" not in admitted["message"]
+            final_requests = [
+                (messages, tools)
+                for messages, tools in requests
+                if any(
+                    isinstance(m, ToolMessage) and m.tool_call_id in ("last-A", "last-B")
+                    for m in messages
+                )
+            ]
+            assert len(final_requests) == 2
+            for messages, tools in final_requests:
+                assert "search_library" not in tools
+                prompt = next(m.text for m in messages if isinstance(m, SystemMessage))
+                assert "剩余 0 次" in prompt
+                assert "停止补查" in prompt
+                assert "未能核实" in prompt
+                assert "引用已有原文无需继续检索" in prompt
+            assert any(
+                "search_library" in tools
+                and "剩余 1 次" in next(m.text for m in messages if isinstance(m, SystemMessage))
+                for messages, tools in requests
+            )
+            parent_messages, parent_tools = requests[-1]
+            assert "delegate_knowledge" not in parent_tools
+            assert "search_library" not in parent_tools
+            assert "保留子报告的未核实缺口" in next(
+                m.text for m in parent_messages if isinstance(m, SystemMessage)
+            )
             async with app.state.session_factory() as session:
                 assert (
                     await session.scalar(

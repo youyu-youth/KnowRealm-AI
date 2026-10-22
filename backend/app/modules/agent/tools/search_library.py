@@ -15,6 +15,7 @@ from typing import cast
 
 from langchain_core.tools import tool
 
+from app.modules.agent.budget.policy import budget_snapshot
 from app.modules.agent.budget.service import budgeted, format_output, mark_output
 from app.modules.agent.context_budget.rules import search_material
 from app.modules.agent.runtime import (
@@ -78,12 +79,14 @@ def _truncate_payload(body: dict[str, object], budget: ToolCallBudget) -> tuple[
     累计已满时不再回喂新命中，仅返回提示（模型须基于已有结果回答）。
     """
     limit = min(TOOL_RESULT_MAX_CHARS, TOOL_ROUND_OUTPUT_MAX_CHARS - budget.chars_fed)
+    body["tool_budget"] = budget_snapshot(budget)
     if limit <= 0:
         body = {
             "evidence_hits": [],
             "asset_matches": [],
             "concept_hints": [],
             "truncated": True,
+            "tool_budget": budget_snapshot(budget),
             "message": (
                 "本轮检索结果累计已达上下文预算，请基于已获得的检索结果回答，并建议收窄查询范围。"
             ),
@@ -141,7 +144,11 @@ def _payload(
 
 def _budget_rejection() -> str:
     return _payload(
-        message="本轮检索次数已达上限，请基于已获得的检索结果直接回答，并说明检索范围。"
+        message=(
+            "本轮检索次数已达上限，本次检索未执行，相关内容未能核实，不能据此认定资料不存在。"
+            "停止补查与同轮重试，基于已获得的证据回答，并分别说明实际检索范围与未核实缺口。"
+        ),
+        ok=False,
     )
 
 
@@ -206,7 +213,7 @@ async def search_library(query: str) -> str:
     }
     if not result.evidence_hits:
         body["message"] = (
-            "当前范围内未找到相关原文；可换同义词或相关关键词重试（不超过 2 次），"
-            "仍无命中请如实回答「当前资料中未找到」。"
+            "本次检索已执行，当前查询未找到相关原文；这不表示资料中不存在相关内容。"
+            "补查前请先检查共享剩余额度。"
         )
     return await format_output(lambda budget: _truncate_payload(body, budget)[0])

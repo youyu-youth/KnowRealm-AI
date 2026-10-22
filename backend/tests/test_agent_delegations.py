@@ -421,7 +421,14 @@ async def test_parent_and_child_share_six_admissions(
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     "window",
-    ["registered", "graph_completed", "result_committed", "request_completed", "provider_wait"],
+    [
+        "registered",
+        "graph_completed",
+        "result_committed",
+        "request_completed",
+        "request_completed_budget_changed",
+        "provider_wait",
+    ],
 )
 async def test_restart_reconciles_persistence_windows_without_repeating_child(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, window: str
@@ -449,7 +456,7 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
                 blocked.set()
                 await asyncio.Event().wait()
             if (
-                window == "request_completed"
+                window.startswith("request_completed")
                 and thread.startswith("agent-delegation-")
                 and any(key == "messages" for key, _value in writes)
             ):
@@ -461,6 +468,25 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
                         )
                     )
                 if completed:
+                    if window == "request_completed_budget_changed":
+                        from app.modules.agent.budget.service import admit
+                        from app.modules.agent.runtime import current_agent_runtime
+                        from app.modules.agent.turns.effects import (
+                            ToolCallIdentity,
+                            bind_tool_call_identity,
+                            reset_tool_call_identity,
+                        )
+
+                        runtime = current_agent_runtime()
+                        assert runtime is not None and runtime.execution_id is not None
+                        identity = bind_tool_call_identity(
+                            ToolCallIdentity(thread, "concurrent-budget-consumption")
+                        )
+                        try:
+                            # 模型完成但 checkpoint 未保存期间，模拟并发消费改变共享余额。
+                            await admit(runtime, "search_library", {"query": "并发消费"})
+                        finally:
+                            reset_tool_call_identity(identity)
                     blocked.set()
                     await asyncio.Event().wait()
             await put_writes(config, writes, task_id, task_path)
@@ -527,7 +553,7 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
         tmp_path,
         monkeypatch,
         replies=[]
-        if window == "request_completed"
+        if window.startswith("request_completed")
         else [["可靠子报告"], ["汇总已有子报告"]]
         if window == "provider_wait"
         else [["汇总已有子报告"]],
@@ -578,7 +604,7 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
                     f"/api/chat-turns/{turn_id}/resume", json={"decision_kind": "RETRY_AFTER_FIX"}
                 )
             ).status_code == 200
-        if window == "request_completed":
+        if window.startswith("request_completed"):
             waiting = await wait_status(client, turn_id, "WAITING_USER")
             assert waiting["waiting_reason"]["kind"] == "CHECKPOINT_MISSING"
             assert not captured
