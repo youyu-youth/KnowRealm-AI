@@ -63,6 +63,16 @@ API 类型一律 `import ... from "@knowrealm/api-types"`（禁止手写重复�
 
 `recordApi.subscribe`（原生 fetch + eventsource-parser 解析）只处理 `invalidate` 事件 → `invalidateQueries` → REST 重取；断线时非终态 Record 每 2 秒条件轮询（ADR-0008）。chat 走 `useChatTurns.ts`：POST 提交轮次、GET 订阅持久事件、显式 cancel；切换会话或卸载仅关闭订阅。持久消息与轮次是事实源，完成后失效重取；旧 rules 的 POST 执行流描述以根目录“已核实的规范差异”为准。
 
+### Agent 选择与会话创建
+
+修改 Agent 选择或对话创建入口时，从 `features/chat/api/agents.ts`、`NewChatButton.tsx` 与 `useCreateChatSession.ts` 定位。Agent 身份与 mode/scope 分开处理；会话创建后身份固定，切换身份新建会话，当前对话切换资料范围时保留 agent_id。knowledge 的能力说明与不可用入口须与后端目录及白名单一致。
+
+### 委派进度与等待选择
+
+修改子任务进度、重试或接受已有结果时，联查 `features/chat/api/chatSessions.ts` 的事件解析、`useChatTurns.ts` 的快照恢复、`ChatResponseProcess.tsx` 与 `ChatTurnWaitingCard.tsx` 的展示及动作。子任务按 execution_id / execution_attempt 区分，进度沿根轮次订阅与快照恢复；子 token/done 不作为父回答正文。
+
+不确定分支使用原 resume API 的 RETRY_DELEGATIONS / ACCEPT_PARTIAL 决定；等待快照和分支身份由服务端载荷提供。修改决定参数时同步核对后端 `agent/delegations/decisions.py` 与生成契约。
+
 ### 界面语言（zh/en）
 
 首帧 = localStorage 缓存 ?? 系统语言，后端偏好到达后校正（防闪变）；`applyLanguage` 同时更新 `<html lang>` 与托盘菜单；新增文案 zh/en 两份同交（有一致性测试防线）。

@@ -68,6 +68,7 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is 
 | 任务 | 优先入口 | 职责边界 |
 | --- | --- | --- |
 | 聊天提交、订阅、停止与返回会话 | `apps/desktop/src/features/chat/useChatTurns.ts`；`backend/app/modules/agent/turns/` | ChatTurn 管一次回答生成；历史消息查询与过程投影见 `agent/message_service.py`，Agent 装配见 `agent/graph.py` |
+| Agent 身份与知识委派 | `backend/app/modules/agent/agents.py`、`graph.py`、`delegations/`；`apps/desktop/src/features/chat/api/agents.ts` | 固定身份、共享装配与持久委派分别在此定位；修改能力边界或协作流程前读 ADR-0030，具体入口见前后端 AGENTS.md |
 | Agent 工具与受控写操作 | `backend/app/modules/agent/tools/`、`middleware/`、`operations/registry.py`；`backend/app/modules/library/proposals.py` | Tool 表达能力，Middleware 拦截调用，注册表与提案框架连接受控执行；业务规则复用领域 Service |
 | 多步业务执行、等待、取消与恢复 | `backend/app/modules/agent/runs/worker.py`；`backend/app/modules/jobs/runner.py`；`backend/app/main.py` | Run 管业务执行，ProcessingJob 管调度；启动装配与恢复接线在 lifespan，不能只检查执行体 |
 | 资料检索、共享范围与引用定位 | `backend/app/modules/library/retrieval.py`、`shared_refs.py`；`backend/app/modules/source_anchor/source_anchors.py` | 分别负责检索、共享可见性与只读边界、来源定位；新增消费方先核对既有作用域口径 |
