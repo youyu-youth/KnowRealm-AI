@@ -95,6 +95,7 @@ echarts 按需注册只在 `charts/echarts.ts`，新增图表类型只改这里�
 
 ## 测试约定
 
+- 编写浏览器或 WebView2 验收驱动器、检查布局或键盘操作时，先读 [桌面通过条件](../../docs/agents/validation.md#桌面通过条件)，复用仓库根 `scripts/desktop_acceptance_checks.py`；几何、实际键盘操作和人工视觉分别记录，按该文档汇总结果。
 - **无全局 jsdom**：需要 DOM 的测试文件首行写 `// @vitest-environment jsdom`；services 层测试走 node 环境。
 - MSW **仅测试启用**：`test/setup.ts` 全局 `server.listen({ onUnhandledRequest: "error" })`；`mocks/handlers.ts` 有 14 个兜底 handler（courses、inbox、chat、providers、preferences、usage、profile、recording-sessions、today 等），具体路由在测试内 `server.use(...)` 局部覆盖；无 mockServiceWorker.js，dev 运行不经 MSW。
 - 涉及 Tauri 的测试按需 `vi.mock` 对应 `services/tauri/*` 模块（sidecar、recording、lifecycle、onboarding、preferences 等）。

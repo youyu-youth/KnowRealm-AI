@@ -74,6 +74,7 @@ backend/
 | Agent 目录与能力装配 | `agents.py` 提供固定目录；`graph.py` 的 `resolve_agent_config` / `build_agent` 负责专业配置与共享 Harness |
 | 根轮次提交与执行 | `turns/routes.py`、`service.py`、`worker.py`；等待绑定与结果对账见 `turns/background.py` |
 | 知识委派与恢复 | `tools/delegate_knowledge.py` → `delegations/service.py`、`worker.py`；不确定请求的用户决定见 `delegations/decisions.py` |
+| 工具额度与模型收尾 | `budget/middleware.py`、`service.py`、`policy.py`；修改模型可见工具或共享额度时，联查 `context_budget/middleware.py` 的完整输入计量与恢复防重发 |
 | 受控业务执行 | `runs/`、`operations/`；知识委派不作为业务操作账本 |
 
 修改 Agent 身份、工具权限或委派调度前读 [ADR-0030](../docs/adr/0030-bounded-professional-agents-and-durable-delegation.md)；任务/报告契约及恢复场景查 [Multi-Agent spec](../.scratch/multi-agent-refactor/spec.md)。变更执行链时联查 `app/main.py`、`turns/worker.py` 与 `turns/background.py` 的启动、分派和对账接线。
