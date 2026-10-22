@@ -116,3 +116,20 @@ python -X utf8 scripts/desktop_browser_smoke.py --frontend-url http://127.0.0.1:
 ```
 
 记录实现状态、自动化、模型/网络替身、真实 API/SQLite/Worker、真实模型、真实 Tauri/WebView2 和 Windows 系统缩放，按实际取得的证据填写。浏览器 viewport/DPR/字号不能代替 Windows 缩放；供应商缺 usage 填未知；未实施的后续票不随当前票关闭。
+
+### 桌面通过条件
+
+浏览器与 WebView2 驱动器复用 [desktop_acceptance_checks.py](../../scripts/desktop_acceptance_checks.py)，从仓库 `scripts` 目录导入；只读初始化仍使用前述 `desktop_browser_smoke.py`。几何、键盘、人工视觉分别记录，脚本不默认批准人工视觉。
+
+- **几何**：将动作区滚动到可见位置后，对每个操作按钮调用 `inspect_geometry(button, card)`。函数等待连续两帧几何稳定（两秒内未稳定记 FAIL），检查上下左右视口边界、所属卡片边界、overflow 裁切祖先的可视内边界及按钮自身文字溢出，允许 1 CSS px 测量误差。每项保留矩形、视口与失败原因；逐个自动滚动按钮、`to_be_visible` 或页面 scrollWidth 不能代替此检查。该断言针对轴对齐矩形，不覆盖遮挡、复杂 clip-path 或排版美观，后者另行验收。
+- **键盘**：调用 `assert_keyboard_order(page, start, retry, accept)`，start 是动作区外已知的可聚焦控件；实际 Tab 到重试、Tab 到接受、Shift+Tab 返回，每步检查焦点。函数以 80 次 Tab 为查找上限，超限报错。之后用 `page.keyboard.press("Enter")` 激活当前焦点，检查业务状态；切换/刷新后重新验证到达路径。`focus()` 仅用于设定起点，`locator.press()` 不能证明 Tab 可达。
+- **视觉**：人工复核当前主题、中英、窄窗与字号组合的截图或实际窗口；确认按钮、文字、焦点标记和主内容可用。几何检查通过不代表视觉通过，未复核保持 `NOT_RUN`。真实系统缩放仍按前述要求单独记录。
+- **汇总与退出**：先列出本次范围所有必验项并初始化为 `NOT_RUN`，完成对应断言后再改状态。`summarize_checks` 遇任一 FAIL 返回 FAIL；空集合或含未验、未触发项返回 NOT_RUN；只有全部 PASS 才返回 PASS。异常时保留失败项、截图和错误，先写结果 JSON，再输出最终状态；FAIL/NOT_RUN 返回非零退出码。阶段性功能通过与整个桌面验收通过分别记录，矩阵失败必须进入汇总；原始历史证据另存，不用新版脚本覆盖。
+
+本机固定 HTML 自检（已安装 Python Playwright/Chromium，无需 API、模型或新依赖）：
+
+```powershell
+python -X utf8 scripts/test_desktop_acceptance_checks.py -v
+```
+
+自检覆盖正常、横向/纵向视口裁切、卡片外溢、祖先裁切、边框可视内边界、文字溢出、隐藏控件、持续变化布局、程序可聚焦但 Tab 不可达的反例、实际键盘激活及结果汇总；无浏览器运行时则记录未执行，不以跳过代替通过。
