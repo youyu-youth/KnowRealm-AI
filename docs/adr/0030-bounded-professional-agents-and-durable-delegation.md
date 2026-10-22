@@ -4,7 +4,7 @@ Status: accepted（2026-10-21，Q1～Q4/Q6 原决定及 Q7～Q9 四缺口细化�
 
 KnowRealm 从现有单一聊天 Agent 演进为 general 与本地只读 knowledge 两个专业入口，复杂任务才由 general 按需一级委派。采用独立业务 Agent/Graph、共享 DeepAgents Harness、LangGraph 图内等待及现有领域 Service/JobRunner 的分层混合架构，复用本地执行与恢复基础，避免新增所有请求必经的编排 Agent、服务部署或第二套执行系统。
 
-设计依据：[用户指定方案](../multi-agent架构设计方案-参考openswe.md)；[当前事实核对](../../.scratch/multi-agent-refactor/audit.md)、[用户决策](../../.scratch/multi-agent-refactor/grill.md)、[四缺口收敛记录](../../.scratch/multi-agent-refactor/architecture-gaps.md)、[待回写的实施规格草案](../../.scratch/multi-agent-refactor/spec.md)。本 ADR 记录已批准决定，不代表任何功能已通过验收。
+设计依据：[用户指定方案](../multi-agent架构设计方案-参考openswe.md)；[开工事实核对](../../.scratch/multi-agent-refactor/audit.md)、[用户决策](../../.scratch/multi-agent-refactor/grill.md)、[四缺口收敛记录](../../.scratch/multi-agent-refactor/architecture-gaps.md)、[已冻结实施规格](../../.scratch/multi-agent-refactor/spec.md)。本 ADR 记录已批准决定，不代表任何功能已通过验收。
 
 ## 决定
 
@@ -36,4 +36,4 @@ KnowRealm 从现有单一聊天 Agent 演进为 general 与本地只读 knowledg
 
 专业协作增加模型请求、延迟及持久身份/恢复复杂度，不预设比单 Agent 更快或更省 Token。必须验证直接调用与委派的工具面/范围一致，两个根同时等待无死锁，预算最后额度原子裁决、部分失败、取消与迟到、重放及真正重启恢复。
 
-真实 API/SQLite/Worker、模型替身、真实模型与实际 usage、浏览器、Tauri/WebView2、Windows 系统缩放分别留证。当前均未执行本功能验收；后续进度以实际工单结果为准。
+真实 API/SQLite/Worker、模型替身、真实模型与实际 usage、浏览器、Tauri/WebView2、Windows 系统缩放分别留证。01～03 已实施；04 已执行隔离真实模型对照、进程强杀恢复及浏览器检查，发现的失败和未验范围见[验收记录](../../.scratch/multi-agent-refactor/validation.md)。不以实现或部分检查通过代替完整验收。

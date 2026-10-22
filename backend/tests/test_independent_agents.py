@@ -53,6 +53,11 @@ async def test_legacy_migration_keeps_messages_and_defaults_general(
     build_partial_db(db_path, upto=55)
     sid = str(uuid4())
     with connect(db_path) as db:
+        assert db.execute("PRAGMA user_version").fetchone() == (55,)
+        assert "agent_id" not in {row[1] for row in db.execute("PRAGMA table_info(chat_sessions)")}
+        assert not db.execute(
+            "SELECT name FROM sqlite_master WHERE name='agent_delegations'"
+        ).fetchall()
         db.execute(
             "INSERT INTO chat_sessions (id, mode, scope, created_at, updated_at) "
             "VALUES (?, 'ASK', 'FREE', '2026-10-01T00:00:00.000000Z', "
@@ -64,14 +69,37 @@ async def test_legacy_migration_keeps_messages_and_defaults_general(
             "VALUES (?, ?, 'USER', '旧消息原样保留', '2026-10-01T00:00:00.000000Z')",
             (str(uuid4()), sid),
         )
-        original = db.execute("SELECT * FROM chat_messages").fetchall()
+        run_id = str(uuid4())
+        db.execute(
+            "INSERT INTO agent_runs "
+            "(id, session_id, auth_mode, status, created_at, updated_at, finished_at) "
+            "VALUES (?, ?, 'REQUEST_APPROVAL', 'COMPLETED', "
+            "'2026-10-01T00:00:00.000000Z', '2026-10-01T00:00:00.000000Z', "
+            "'2026-10-01T00:00:00.000000Z')",
+            (run_id, sid),
+        )
+        db.execute(
+            "INSERT INTO agent_operations "
+            "(id, run_id, action, level, payload_json, status, "
+            "created_at, updated_at, finished_at) "
+            "VALUES (?, ?, 'create_course', 'L1', '{}', 'SUCCEEDED', "
+            "'2026-10-01T00:00:00.000000Z', '2026-10-01T00:00:00.000000Z', "
+            "'2026-10-01T00:00:00.000000Z')",
+            (str(uuid4()), run_id),
+        )
+        original = {
+            table: db.execute(f"SELECT * FROM {table}").fetchall()
+            for table in ("chat_messages", "agent_runs", "agent_operations")
+        }
     async with turns_app(tmp_path, monkeypatch) as (_app, client, inputs):
         response = await client.get(f"/api/chat-sessions/{sid}")
         assert response.status_code == 200
         assert response.json()["agent_id"] == "general"
         with connect(db_path) as db:
             assert db.execute("SELECT agent_id FROM chat_sessions").fetchall() == [("general",)]
-            assert db.execute("SELECT * FROM chat_messages").fetchall() == original
+            for table, rows in original.items():
+                assert db.execute(f"SELECT * FROM {table}").fetchall() == rows
+            assert db.execute("SELECT count(*) FROM chat_model_requests").fetchone() == (0,)
         assert not inputs
 
 
