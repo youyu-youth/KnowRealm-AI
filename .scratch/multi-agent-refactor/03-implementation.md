@@ -113,3 +113,29 @@ Browser Use doctor 报 daemon/连接不可用，改用本机已安装的独立�
 独立基点为 `E:\workspace\project\my\KnowRealm-AI-baseline-parallel03-20261021`，未借用当前源码或依赖；对照原日志/结果已保存到本仓库 `.scratch/multi-agent-refactor/.tmp/03-baseline/`。Vitest 触发的路由生成文件仅有工作区标记、内容 diff 为空，已还原后确认基点干净才执行移除。`git worktree remove` 返回 `Directory not empty`：注册已移除，目录仍有 node_modules、packages、scripts 等残留；未换删除方式绕过，未宣称清理完成。
 
 删除本票隔离目录 `03-ui-data`、`03-ui-data-final` 和临时脚本 `03-ui-server.py`、`03-ui-check.py` 的 PowerShell 操作被自动审批拒绝（`blocked by policy`），未换方式绕过。上述资源仍在 `.scratch/multi-agent-refactor/.tmp/`，与浏览器截图/结果、测试运行日志一起保持未跟踪/忽略；均不 add/commit。
+
+## 2026-10-22：重启测试闸门退出边界
+
+基点 `e6158c950a8c63aeb85cba1416180a0ec4a9f2e6`。代码只修改 `test_restart_before_parent_wake_reuses_both_branches_and_preserves_parent_thread`，原有业务断言经 AST 对照全部保留；生产 Worker、共享 `turns_app`、API、图装配及依赖未改，本项不新增产品或 Agent 能力入口。
+
+实测发现：原正常场景可通过，但新增退出断言检出了 `registered` 窗口在 lifespan 结束后仍停驻的 checkpoint 写入任务。此外，同一父线程的两个并行 interrupt 有不同 checkpoint task ID；仅按父线程去重会造成只拦一支，重启后原“两条 interrupt”断言变为一条。因此父闸门以 `(thread_id, task_id)` 一次性拦截，子清理闸门按子线程身份一次性拦截，原拦截位置保持。
+
+具名等待事件保持未释放；记录停驻任务、窗口、根轮次、调用身份和最后观测的子状态。退出先停止新增拦截，lifespan 负责停止 Worker，再取消并回收测试注入后仍停驻的 checkpoint 任务，避免释放闸门让父业务继续。前台等待命中保留 10 秒上限，lifespan 收尾设 10 秒上限，取消后的闸门回收另设 10 秒上限；后台阻塞点不主动抛超时。恢复启动前断言停驻任务清空、Worker 已结束，且超时取消未被吞掉。进程完全卡死仍由原统一运行器兜底，不宣称协作式取消是进程硬时限。
+
+所有运行均使用统一入口 `uv run --frozen --directory backend python -m scripts.run_tests backend <文件或 node ID>`；日志位于仓库 `.pytest-tmp-runs/<运行 ID>/backend/`，包含 `tests.log` 和 `result.json`。
+
+| 验证 | 结果与证据 |
+| --- | --- |
+| 原测试两窗口 | `20261021T235426Z-50ac3020`：2 通过 |
+| 新增退出断言 | `20261021T235647Z-33eaae01`：1 失败/1 通过，检出父 checkpoint 闸门任务仍停驻 |
+| 初版仅按父线程去重 | `20261021T235805Z-2def5bc0`：1 失败/1 通过，原 interrupt 数量断言为 1 而非 2；据此改为按 checkpoint 调用身份拦截 |
+| 调整中的语法错误 | `20261021T235925Z-f34fa088`：缩进错误导致收集失败，已修正，未计入通过结果 |
+| 修正后的两窗口 | `20261021T235938Z-e898d8c4`：2 通过 |
+| 命中信号缺失注入 | `20261022T000016Z-5819a51b`：预期失败，输出 `phase='gate'`、根/调用/阻塞身份，调用阶段 11.76 秒后退出；已恢复信号 |
+| 收尾停滞注入 | `20261022T000051Z-79a9a879`：预期失败，输出 `phase='shutdown'` 与两个 COMPLETED 子状态，调用阶段 12.67 秒后退出；已移除额外等待 |
+| 首轮相关文件回归 | `20261022T000123Z-c6653858`：16 通过/1 失败；目标两个窗口通过，未改动的单槽写回故障用例在 A 仍 QUEUED 时断言 RUNNING 失败；不改写为全绿 |
+| 单槽失败项定向复跑 | `20261022T000256Z-794aecac`：1 通过；未修改该用例或放宽断言，不据此认定原时序失败根因已修复 |
+| 二轮相关文件回归 | `20261022T000325Z-4277c1b1`：16 通过/1 失败；目标两个窗口及单槽故障用例通过，未改动的 `test_reverse_completion_rejects_third_child_and_nested_delegation` 在目标测试执行前观测到 COMPLETED/QUEUED，而非 COMPLETED/RUNNING；保留失败，不扩大本次修复或归为已确认稳定历史问题 |
+| 最终范围检查 | `pwsh -NoProfile -File scripts/check-changed.ps1`：Ruff、格式、Pyright 通过，类型检查 0 errors；`git diff --check` 通过 |
+
+两次故障注入仅为本轮诊断修改，均已撤销；不保留新夹具选项、额外测试文件或新依赖。测试继续运行真实迁移 SQLite、API、Worker 和图，外部模型为替身；本次不重跑全仓前后端全量或真实模型/原生桌面验收，不覆盖前文原始全量失败记录。

@@ -784,91 +784,170 @@ async def test_stop_cancels_both_running_children_and_rejects_late_reports(
 async def test_restart_before_parent_wake_reuses_both_branches_and_preserves_parent_thread(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, window: str
 ) -> None:
-    blocked = asyncio.Event()
+    blocked, hold = asyncio.Event(), asyncio.Event()
+    gated_calls: set[tuple[str, str]] = set()
+    parked_tasks: dict[asyncio.Task[Any], str] = {}
+    child_statuses: dict[str, str] = {}
+    stopping = False
+    tid = "<not-submitted>"
+
+    def diagnostics(phase: str) -> str:
+        return (
+            f"{phase=}, {window=}, {tid=}, "
+            f"gated_calls={sorted(gated_calls)}, "
+            f"blocked_threads={sorted(set(parked_tasks.values()))}, {child_statuses=}"
+        )
+
+    async def park_once(thread: str, call_id: str) -> None:
+        key = (thread, call_id)
+        if stopping or key in gated_calls:
+            return
+        task = asyncio.current_task()
+        assert task is not None
+        gated_calls.add(key)
+        parked_tasks[task] = thread
+        blocked.set()
+        try:
+            await hold.wait()
+        finally:
+            parked_tasks.pop(task)
+
     routes = {
         "root:window": [delegates("window"), ["原两份报告汇总"]],
         "child:window:A": [["证据 A"]],
         "child:window:B": [["证据 B"]],
     }
-    async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
-        route_model(monkeypatch, routes)
-        saver = app.state.chat_checkpointer
-        put_writes, delete = saver.aput_writes, saver.adelete_thread
-        deleted: list[str] = []
-        gated_children: set[str] = set()
+    try:
+        async with (
+            asyncio.timeout(None) as shutdown_deadline,
+            turns_app(tmp_path, monkeypatch) as (app, client, captured),
+        ):
+            try:
+                route_model(monkeypatch, routes)
+                saver = app.state.chat_checkpointer
+                put_writes, delete = saver.aput_writes, saver.adelete_thread
+                deleted: list[str] = []
 
-        async def gate_writes(config: Any, writes: Any, task_id: Any, task_path: str = "") -> None:
-            thread = config.get("configurable", {}).get("thread_id", "")
-            if (
-                window == "registered"
-                and thread.startswith("chat-turn-")
-                and any(key == "__interrupt__" for key, _ in writes)
-            ):
-                blocked.set()
-                await asyncio.Event().wait()
-            await put_writes(config, writes, task_id, task_path)
+                async def gate_writes(
+                    config: Any, writes: Any, task_id: Any, task_path: str = ""
+                ) -> None:
+                    thread = config.get("configurable", {}).get("thread_id", "")
+                    if (
+                        window == "registered"
+                        and thread.startswith("chat-turn-")
+                        and any(key == "__interrupt__" for key, _ in writes)
+                    ):
+                        await park_once(thread, task_id)
+                    await put_writes(config, writes, task_id, task_path)
 
-        async def gate_cleanup(thread: str) -> None:
-            if thread.startswith("agent-delegation-"):
-                deleted.append(thread)
-                if window == "result_committed":
+                async def gate_cleanup(thread: str) -> None:
+                    if thread.startswith("agent-delegation-"):
+                        deleted.append(thread)
+                        if window == "result_committed":
+                            async with app.state.session_factory() as session:
+                                status = await session.scalar(
+                                    text("SELECT status FROM agent_delegations WHERE id=:id"),
+                                    {"id": thread.removeprefix("agent-delegation-")},
+                                )
+                            if status == "COMPLETED":
+                                await park_once(thread, thread)
+                    await delete(thread)
+
+                monkeypatch.setattr(saver, "aput_writes", gate_writes)
+                monkeypatch.setattr(saver, "adelete_thread", gate_cleanup)
+                sid = await create_session(client, scope="ALL")
+                tid = (
+                    await submit(client, sid, "root:window", request_id="parallel-window")
+                ).json()["id"]
+                try:
+                    await asyncio.wait_for(blocked.wait(), 10)
+                except TimeoutError:
+                    pytest.fail(diagnostics("gate"), pytrace=False)
+                completed = 0
+                for _ in range(100):
                     async with app.state.session_factory() as session:
-                        status = await session.scalar(
-                            text("SELECT status FROM agent_delegations WHERE id=:id"),
-                            {"id": thread.removeprefix("agent-delegation-")},
+                        child_statuses = dict(
+                            (
+                                await session.execute(
+                                    text(
+                                        "SELECT id,status FROM agent_delegations WHERE turn_id=:id"
+                                    ),
+                                    {"id": tid},
+                                )
+                            )
+                            .tuples()
+                            .all()
                         )
-                    if status == "COMPLETED" and thread not in gated_children:
-                        gated_children.add(thread)
-                        blocked.set()
-                        await asyncio.Event().wait()
-            await delete(thread)
-
-        monkeypatch.setattr(saver, "aput_writes", gate_writes)
-        monkeypatch.setattr(saver, "adelete_thread", gate_cleanup)
-        sid = await create_session(client, scope="ALL")
-        tid = (await submit(client, sid, "root:window", request_id="parallel-window")).json()["id"]
-        await asyncio.wait_for(blocked.wait(), 10)
-        completed = 0
-        for _ in range(100):
-            async with app.state.session_factory() as session:
-                completed = await session.scalar(
-                    text("SELECT count(*) FROM agent_delegations WHERE status='COMPLETED'")
-                )
-            if completed == 2:
-                break
-            await asyncio.sleep(0.05)
-        assert completed == 2 and len(captured) == 3
-        state = await snapshot(client, tid)
-        assert state["status"] == ("RUNNING" if window == "registered" else "WAITING_JOB")
-        assert (
-            await saver.aget_tuple({"configurable": {"thread_id": f"chat-turn-{tid}"}}) is not None
-        )
-        async with app.state.session_factory() as session:
-            before = (
-                await session.execute(
-                    text(
-                        "SELECT id,job_id,input_json,result_json FROM agent_delegations "
-                        "ORDER BY logical_call_id"
-                    )
-                )
-            ).all()
-            parent_input = await session.scalar(
-                text("SELECT messages_json FROM chat_context_inputs WHERE turn_id=:id"), {"id": tid}
-            )
-        assert len(before) == 2
-        for row, branch in zip(before, ("A", "B"), strict=True):
-            frozen = json.loads(row.input_json)
-            assert frozen["task"] == f"child:window:{branch}"
-            assert frozen["task_id"] == row.id
-        if window == "registered":
-            assert {f"agent-delegation-{row.id}" for row in before} <= set(deleted)
-            for row in before:
+                        completed = sum(status == "COMPLETED" for status in child_statuses.values())
+                    if completed == 2:
+                        break
+                    await asyncio.sleep(0.05)
+                assert completed == 2 and len(captured) == 3, diagnostics("results")
+                state = await snapshot(client, tid)
+                assert state["status"] == ("RUNNING" if window == "registered" else "WAITING_JOB")
                 assert (
-                    await saver.aget_tuple(
-                        {"configurable": {"thread_id": f"agent-delegation-{row.id}"}}
-                    )
-                    is None
+                    await saver.aget_tuple({"configurable": {"thread_id": f"chat-turn-{tid}"}})
+                    is not None
                 )
+                async with app.state.session_factory() as session:
+                    before = (
+                        await session.execute(
+                            text(
+                                "SELECT id,job_id,input_json,result_json FROM agent_delegations "
+                                "ORDER BY logical_call_id"
+                            )
+                        )
+                    ).all()
+                    parent_input = await session.scalar(
+                        text("SELECT messages_json FROM chat_context_inputs WHERE turn_id=:id"),
+                        {"id": tid},
+                    )
+                assert len(before) == 2
+                for row, branch in zip(before, ("A", "B"), strict=True):
+                    frozen = json.loads(row.input_json)
+                    assert frozen["task"] == f"child:window:{branch}"
+                    assert frozen["task_id"] == row.id
+                if window == "registered":
+                    assert {f"agent-delegation-{row.id}" for row in before} <= set(deleted)
+                    for row in before:
+                        assert (
+                            await saver.aget_tuple(
+                                {"configurable": {"thread_id": f"agent-delegation-{row.id}"}}
+                            )
+                            is None
+                        )
+                expected_threads = (
+                    {f"chat-turn-{tid}"}
+                    if window == "registered"
+                    else {f"agent-delegation-{row.id}" for row in before}
+                )
+                assert (
+                    {thread for thread, _call in gated_calls}
+                    == set(parked_tasks.values())
+                    == expected_threads
+                ), diagnostics("parked")
+                assert len(gated_calls) == 2, diagnostics("calls")
+                assert not hold.is_set()
+            finally:
+                # 先停止新增拦截，再由 lifespan 停止 Worker 取消现有等待，保持重启窗口。
+                stopping = True
+                shutdown_deadline.reschedule(asyncio.get_running_loop().time() + 10)
+    except TimeoutError:
+        pytest.fail(diagnostics("shutdown"), pytrace=False)
+    finally:
+        # checkpoint 写入可能独立于 Worker 留存；停机后取消闸门任务，不放行业务。
+        tasks = tuple(parked_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=10)
+            assert not pending, diagnostics("gate_cleanup")
+            for task in tasks:
+                if not task.cancelled():
+                    task.result()
+    assert not shutdown_deadline.expired(), diagnostics("shutdown")
+    assert not parked_tasks, diagnostics("stopped")
+    assert all(task.done() for task in app.state.worker_tasks), diagnostics("workers")
     async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
         route_model(monkeypatch, routes)
         result = await wait_terminal(client, tid)
