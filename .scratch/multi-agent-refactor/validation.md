@@ -15,7 +15,7 @@
 
 ## 执行环境与改动
 
-- Node `24.9.0`、pnpm `11.2.2`、uv `0.9.22`、Python `3.13.12`；LangChain `1.3.18`、LangGraph `1.2.11`、DeepAgents `0.7.13`、checkpoint-sqlite `3.1.1`、FastAPI `0.141.1`、SQLAlchemy `2.0.52`。本轮没有安装或升级依赖；锁文件 SHA256 保存在真实模型 `result.json`。
+- Node `24.9.0`、pnpm `11.2.2`、uv `0.9.22`、Python `3.13.12`；LangChain `1.3.18`、LangGraph `1.2.11`、DeepAgents `0.7.13`、checkpoint-sqlite `3.1.1`、FastAPI `0.141.1`、SQLAlchemy `2.0.52`。当前工作区没有依赖变更；基点按 frozen lockfile 独立安装，锁文件 SHA256 保存在真实模型 `result.json`。
 - 本票仅增强已有迁移回归并补交接文档：生产代码、API、schema、双语 key、rules 和用户数据配置均未修改。迁移回归新增 v55 前提检查和既有 Run/Operation 保留检查；没有扩展历史模块覆盖率。
 - 真实供应商为 `api.deepseek.com / deepseek-v4-flash`。只读核实既有配置及其有效外发同意，再在专用目录保存临时供应商配置、发送下面两份合成材料。原配置未修改，记录不包含密钥。真实供应商配置在各轮 finally 中移除。
 - 隔离资源位于本目录 `.tmp/04-*` 和仓库 `.pytest-tmp-runs/`；pytest 数据各用运行器生成的独立 basetemp。原始证据是本机文件，不随提交发布。
@@ -29,13 +29,26 @@
 | 单/双委派现有文件回归 | FAIL | `20261022T021257Z-a2d340fa/backend`：31 通过、2 失败，150.29 秒；供应商变更后子状态 FAILED≠QUEUED，双根槽峰值 1≠2 |
 | 上述两项原样定向复测 | FAIL | `20261022T021619Z-595802a6/backend`：1 通过、1 失败，26.63 秒；双根并行通过，供应商变更失败复现，不拼成首轮全绿 |
 | 增强旧库迁移回归 | PASS | `20261022T021750Z-d42f15d9/backend`：1 通过、21.73 秒；真实 v55 迁移、默认 general、历史消息/Run/Operation 逐行相同、模型请求表为 0 |
-| 分支范围检查 | FAIL，待最终复核 | `pwsh -NoProfile -File scripts/check-changed.ps1 -Base 202a4c8`，日志 `.tmp/04-check-changed.log`；前端 ESLint/Prettier/双 tsc/build 通过，新增迁移夹具一行 101 字符触发 E501，已拆字符串修正 |
+| 分支范围检查 | 最终 PASS，保留首轮失败 | `pwsh -NoProfile -File scripts/check-changed.ps1 -Base 202a4c8`；首轮 `.tmp/04-check-changed.log` 的迁移夹具一行 101 字符触发 E501，已拆字符串修正；最终 `.tmp/04-final-check-changed.log`：前端 ESLint/Prettier/双 tsc/build、后端 Ruff/格式/Pyright 全通过，0 errors / 0 warnings |
 | 当前触及 Python 静态检查 | PASS | `ruff check`、`ruff format --check`、`pyright tests/test_independent_agents.py`；格式通过，0 errors / 0 warnings |
 | API 与生成 TS 契约 | PASS | `pnpm --filter @knowrealm/api-types check`，日志 `.tmp/04-contract.log`；没有 schema 或生成类型漂移 |
-| 最终统一全量 | 执行中 | `uv run --frozen --directory backend python -m scripts.run_tests all`，`20261022T021909Z-b6881cce`；frontend：91 文件、873 项通过，856.66 秒；backend 尚未结束。双语一致性包含在该前端全量中 |
-| 独立基点对照 | NOT_RUN | 基点使用开工 HEAD `16e8096`，其生产代码与本票相同；仍须按相同入口和独立依赖实跑，不把未执行的对照写成历史失败豁免 |
+| 最终统一全量 | FAIL | `uv run --frozen --directory backend python -m scripts.run_tests all`，`20261022T021909Z-b6881cce`，总退出 1；frontend：91 文件、873 项通过，856.66 秒；backend：1480 通过、6 失败，pytest 2329.52 秒 / 运行器 2338.06 秒。双语一致性包含在前端全量中；不把后续定向通过拼成整套全绿 |
+| 独立基点对照 | FAIL | detached 开工 HEAD `16e8096`，独立 `uv sync --frozen --directory backend` / `pnpm install --frozen-lockfile`、工作区干净且无依赖 junction；相同统一入口筛选六节点，`20261022T031527Z-046290ff/backend`：3 失败 / 3 通过，77.10 秒。结果已复制 `.tmp/04-baseline-results/backend/`；不是基点全量 |
 
 迁移夹具通过生产执行器重放到 55；升级前断言 user_version=55、无 agent_id 列和 agent_delegations 表。插入旧会话、原消息及 COMPLETED Run / SUCCEEDED Operation，再经真实 lifespan 升到当前迁移。未从新库删列冒充旧库；没有声称覆盖所有旧 Run 非终态恢复形态。
+
+全量从开工提交 `16e8096` 启动，dirty=true 来自本票迁移夹具/文档；运行期间没有生产源代码改动。六项原始失败如下：
+
+| 节点（均在 backend/tests） | 全量失败形态 |
+| --- | --- |
+| `test_agent_delegations.py::test_restart_reconciles_persistence_windows_without_repeating_child[provider_wait]` | 子 FAILED≠QUEUED |
+| `test_agent_time.py::test_time_tools_share_call_budget` | 实际 ok=false，断言要求 true |
+| `test_chat_streaming.py::test_prompt_byte_identical_when_web_search_off` | captured[0][0] 仅一行，按三行解包 ValueError |
+| `test_chat_turns.py::test_active_turn_list_carries_partial_output_projection` | 观测到“部分”，断言要求“部分输出” |
+| `test_context_retrieval.py::test_source_scope_shared_ref_version_archive_and_material_budget` | 根 FAILED≠COMPLETED |
+| `test_independent_agents.py::test_knowledge_keeps_local_url_quotes[COURSE-record]` | 提交轮次前更新夹具遇到 SQLite database is locked |
+
+基点同形重现时间工具 ok=false、提示消息三行解包和共享资料检索 FAILED 三项（后者日志为 chat_compaction_failed / CHAT_STREAM_FAILED）；供应商变化、部分输出与 URL 夹具三项基点定向通过，不能据此消除当前全量红灯或称为稳定历史问题。当前同组六节点复测 `20261022T031710Z-7c6a0916/backend` 为相同 3 失败 / 3 通过，34.25 秒；供应商变化此前多次失败、此轮通过，仍是未收口的间歇场景。基点生产代码与当前相同，基点范围是 04 开工状态，不代表整个 Multi-Agent 分支对比改造前无回归。安装与复测日志留在 `.tmp/04-baseline-{uv,pnpm}.log`、`.tmp/04-baseline-results/`。
 
 ## 真实 API / SQLite / Worker 与进程重启
 
@@ -89,10 +102,30 @@
 
 `.tmp/04-browser-evidence/result.json`：真实 TCP API/SQLite/Worker，外部模型替身与官方 Tauri IPC mock。两种语言 × 六主题 × 1440/16px、900/20px、720/24px 共 36 组；主题为 LIGHT_DEFAULT、DARK_DEFAULT、LIGHT_SAGE、DARK_INK、LIGHT_RETRO_WARM、DARK_TOKYO_NIGHT。
 
-- PASS：30 组的等待卡动作完整位于视口；A 完成/B 不明显示、Tab 可聚焦动作、Enter 显式重试、再次不明后刷新恢复、Enter 接受部分结果完成均通过。
+- PASS：30 组的等待卡动作完整位于视口；A 完成/B 不明显示、程序直接聚焦动作、Enter 显式重试、再次不明后刷新恢复、Enter 接受部分结果完成均通过。此浏览器脚本没有发送 Tab/方向键/Escape；实际键盘另由下述原生路径验证，不混为此脚本的覆盖。
 - FAIL：英文 720×1000 CSS viewport / 24px 下六主题的重试/接受按钮超出右侧视口。截图和 button bounding box 可复现；document.scrollWidth 无溢出及 Playwright to_be_visible 都没有捕捉该裁切，因此初版“36 PASS”已撤销。中文同尺寸按钮几何通过，但主对话列过窄，不将其表述为完整视觉验收通过。
 - `.tmp/04-real-comparison-b70c1c10/browser-citations.json`：读取真实模型落库结果，general/knowledge 切换会话与刷新固定身份、引用跳转真实记录的 transcript/highlight 通过。真实供应商配置移除后 UI 会显示未配置引导；该只读预览临时使用不可联网的本地假配置恢复历史显示，没有新增模型调用，结束时清理。
-- NOT_RUN：真实 Tauri/WebView2，以及 Windows 125% / 150% / 200% 系统缩放。浏览器视口、字体及 IPC mock 均不替代此层；本轮没有更改系统缩放。
+- 浏览器视口、字体及 IPC mock 不代替下述原生层；本轮没有更改系统缩放。
+
+## 真实 Tauri / WebView2 与 Windows 125%
+
+通过 Tauri 官方临时配置覆盖建立独立标识 `ai.knowrealm.acceptance04.20261022`，只为该新标识创建 desktop.json，指向 `.tmp/04-native-data`；该目录是上述合成资料的独立副本。原 `ai.knowrealm.desktop/desktop.json` 与原供应商配置不修改。前端采用当前源码 Vite，Rust 壳从当前代码构建；实际 sidecar/Python/SDK/HTTP/SQLite/Worker/Graph 均为生产链。仅外部模型端改为本地 OpenAI SSE 协议替身 `127.0.0.1:43140 / acceptance04-local-stub`，用明确在途请求控制阻塞，不调用真实供应商。
+
+使用真实 WebView2 CDP 连接，没有注入 IPC mock 或使用 Emulation.setDeviceMetricsOverride。系统 `shcore.GetScaleFactorForDevice(DEVICE_PRIMARY)=125`，原生窗口 `GetDpiForWindow=120`、WebView2 DPR=1.25，运行时为 Edge/WebView2 155.0.0.0。窗口由 Win32 MoveWindow 实际调整：目标外窗逻辑宽 1440/900/720，实际 WebView 内容宽为 1426/886/706，字体手动设为 16/20/24 CSS px；字体覆盖不冒充另一种 Windows 系统缩放。
+
+证据 `.tmp/04-native-evidence/result.json`、`post-validation.json`、`model-boundary.jsonl`、截图及 `.tmp/04-system-scale.json`。以下是**功能路径**的 PASS，不表示窄窗视觉验收全绿；所有原始根/子/Job/request/决定 ID、起止时间、SQLite 状态和请求 usage 均在上述 JSON。
+
+| 原生场景 | 状态 | 本轮事实 |
+| --- | --- | --- |
+| 新建选择、固定身份与刷新 | PASS | PID 9288，实际菜单 Home/ArrowDown/Space 选择 knowledge、Escape 返回焦点，新建全部资料知识会话并刷新，身份仍 knowledge |
+| 双进度、实际退出/重启、仅重试 B | PASS | 根 `319c7636-7b11-4818-9a22-672d1253eb3d`，PID 9288 → 34660；A 已完成、B 请求在途时调用实际 exit_application，核实 Tauri 与 sidecar 均退出，再以新 PID 打开同一独立目录；WAITING_USER 后通过界面 Enter 重试、完成汇总并跳转原文，过期决定 409 |
+| 退出/重启后接受部分结果 | PASS | 根 `19a67053-1870-4ef0-b955-d20ea3ed4eed`，PID 34660 → 34772；同一阻塞条件，重启后 B 不自动重发，通过界面接受 A 结果，B CANCELLED，根完成并可定位引用 |
+| 停止、迟到防线与消费 | PASS | 根 `97b3dd9b-01de-45b9-ae4d-82b218fe28a8`，实际点击停止后根 CANCELLED，SQLite 恰有 A COMPLETED / B CANCELLED；三个场景根 seq 唯一且与 last_seq 相同，准入数分别 4/3/3。日志核对 A 始终只发一次检索和一次报告请求，重启/决定没有重跑 A |
+| 实际键盘 | PASS（该路径） | Home/ArrowDown/Space/Escape 菜单、等待卡真实 Tab → 接受按钮 / Shift+Tab → 重试按钮、Enter 决定与可见焦点；未宣称遍历全部应用快捷键 |
+| 六主题 × 中英 × 三种真实窗口/字号 | 部分 PASS，视觉 FAIL | 36 组保存实际内窗尺寸和按钮几何；按钮位于视口的测量通过，但 706px 内容宽/24px 英文截图显示按钮突出等待卡边界，输入列过窄。视口内可见不等于容器无溢出，不能将 36 组写成完整视觉通过 |
+| Windows 150% / 200% | NOT_RUN | 本轮只使用机器原有 125%，没有修改系统设置；其余两档留给真实系统切换后的复验 |
+
+本地协议替身中的 token usage 是合成数值，不能作为真实供应商用量。真实供应商账单/语义证据仅在前一节固定任务对照中；本轮未完成“原生 UI + 真实供应商故障”的组合验收。原生启动采证曾在页面目标尚未建立时连接过早，两个原始驱动器错误保留在 `04-native-decide-*.log`；改为先等待 /json/list 中实际前端 target 就绪再连接，未改生产启动流程。最后停止场景后实际退出应用，核实进程消失再清理。
 
 ## 人工桌面复现与收口
 
@@ -106,10 +139,14 @@
 ## 已发现的阻塞项
 
 1. **供应商变化恢复竞态，FAIL**：`test_restart_reconciles_persistence_windows_without_repeating_child[provider_wait]` 连续两次观测失败。持久根为 WAITING_USER/PROVIDER_CHANGED，但子为 FAILED/CHAT_TURN_RESUME_CONDITION_UNMET，预期应保留 QUEUED/PENDING 等待恢复原配置。复现根 `eceadaec-212e-4353-b1a9-8f36ad27f1db`、子 `9ef2c9d8-35c7-485e-b917-92b3eace9735`，见对应 basetemp 和日志。`delegations/worker.py` 的供应商条件拒绝进入 failure，父尚未进入等待时会提交子失败；不是请求已发出的未知恢复问题。尚未修改生产行为，须修复并保留原断言验收。
-2. **窄窗英文等待动作裁切，FAIL**：上节六主题实测，不以 DOM 可见性通过掩盖。
+2. **窄窗大字号布局，FAIL**：浏览器英文六主题按钮超出视口；真实原生 125% 英文截图中按钮突出卡片边界、输入列过窄。分别按各层实测记录，不以 DOM 可见或按钮视口内通过掩盖容器溢出。
 3. **原问题真实模型证据获取失败，FAIL**：复合检索词无原文命中；只在显式短关键词提示下完成固定对照。需要评估检索词指引或检索策略，受提示样本不证明任意问题都可靠。
 4. **双根槽峰值首次失败，定向通过**：原断言未改，尚未证实首次失败根因，不能登记成已解决的历史偶发问题。
 
 ## 当前交付判断
 
-04 不具备完整通过/关票条件：真实模型受提示对照和真正进程重启已取得可行性证据，但上述红灯、全量/基点收尾及原生/系统缩放尚未收口。不得据此宣称完整桌面交付或合并门禁通过。
+清理证据 `.tmp/04-cleanup.json`：原桌面 desktop.json 与原供应商 providers.json 的 SHA256 均与原生验收前一致；自建 Tauri、隔离 sidecar、本地模型服务、Vite 均已停止，1420/1437/9224/43137/43138/43140 无监听。临时原生 AppData 配置、供应商配置与 WebView 缓存已移除；默认应用标识的 debug 二进制已重新构建恢复，日志 `.tmp/04-default-build-restore.log`。截图、结果 JSON、日志和隔离业务库保留用于核对，均不 add/commit。
+
+本轮独立基点已执行 `git worktree remove --force`，Git 登记已移除，但绝对目录 `E:/workspace/project/my/KnowRealm-AI-baseline-multi-agent04-16e8096` 仍残留 node_modules、packages、scripts 和锁文件；未取得完整删除成功证据，不宣称清理完成，也未换删除方式继续。原基点运行记录已先复制到本票 `.tmp/04-baseline-results/`。其他原有 worktree 未动。
+
+04 不具备完整通过/关票条件：真实模型受提示对照、真正进程重启和原生 125% 主要操作路径已取得证据，但全量六项红灯、无提示检索和窄窗视觉缺陷未收口，Windows 150%/200% 及真实供应商故障组合仍未验。不得据此宣称完整桌面交付或合并门禁通过。

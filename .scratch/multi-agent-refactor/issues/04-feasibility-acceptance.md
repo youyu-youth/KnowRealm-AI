@@ -1,7 +1,7 @@
 # 04：可行性实验、验收与交接
 
 Type: task
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 03
 规格：[spec.md](../spec.md) §11～12。
 
@@ -14,13 +14,13 @@ Blocked by: 03
 ## 范围与检查
 
 - [ ] 按 docs/agents/validation.md 运行改动范围检查、相关现有回归、契约及双语一致性；新失败不得假称历史问题，基点复测采用相同入口与独立依赖。
-- [ ] 真实迁移升级：旧会话默认 general、历史消息和既有独立 Run/Operation 不丢失；按需初始化不出网。
+- [x] 真实迁移升级：生产执行器从 v55 升级，旧会话默认 general、历史消息与已完成的独立 Run/Operation 逐行保留，初始化没有模型请求（API/迁移 SQLite/Worker，外部模型替身；见 validation.md）。
 - [ ] 隔离真实 API/SQLite/Worker 执行独立 general/knowledge、多会话、双独立 ToolCall/interrupt 并行、部分/全失败、取消、迟到、重放和真正重启；覆盖仅重试中断分支/接受部分结果、等待缓存失效及过期决定拒绝、子进度恢复/根 seq 一致、线程/输入/清理不影响父或兄弟。
 - [ ] 真实模型验证实际发出两个独立委派 ToolCall、检索、合法来源、实际请求数、已知/未知 usage 和耗时；未触发项记 NOT_TRIGGERED，框架内存多 interrupt 实验不代替生产闭环或真实模型。
-- [ ] 真实 Tauri/WebView2：新建选择、固定 Agent、切会话与刷新、等待/部分失败/停止/显式重试、引用定位、退出后重启。
+- [x] 真实 Tauri/WebView2（本地模型协议替身、真实 IPC/API/SQLite/Worker）：新建选择、固定 Agent、切会话与刷新、等待/部分失败/停止/显式重试、引用定位、实际退出后重启；见 validation.md 原生场景表。此项仅表示所列功能路径通过，不包含下方视觉和未执行的系统缩放。
 - [ ] Windows 125%/150%/200%：系统设置真实缩放后检查入口、双任务进度、可操作性与溢出。浏览器 viewport/DPR/字号模拟另记。
 - [ ] 所有当前主题、中英、大字号、窄窗及键盘路径；复用现有 UI，不开发额外管理页面。
-- [ ] 按已批准 documentation-proposal.md 同步 ADR/术语/PROJECT_PROGRESS，进度 ≤200 行；权威基线如需升版先提交精确提案再改文件和交叉引用。
+- [x] 按已批准 documentation-proposal.md 更新 ADR-0030 当前状态、核对 GLOSSARY 现有三个术语、同步 PROJECT_PROGRESS（200 行）；无新增基线升版、API 或 schema 变更。
 
 ## 真实验收记录要求
 
@@ -37,3 +37,7 @@ Blocked by: 03
 ## 完成定义
 
 所要求的真实实验已执行且可追溯；缺少真实环境时准确保留未完成项并写明所需人工动作，不以模拟代勾。本票不通过增加未来 Agent、Skills/MCP 或通用配置来扩展范围。
+
+## Comments
+
+2026-10-22：本轮验收执行和证据交接完成，转 ready-for-human，**不标记完整通过或关闭**。前端全量 873 通过；后端 1480 通过 / 6 失败，六节点独立基点与当前定向均为 3 失败 / 3 通过，原全量红灯保留。真实模型受提示对照、进程强杀恢复、真实 Tauri/WebView2 与 Windows 125% 主要操作路径已执行；原问题检索失败、恢复间歇失败、窄窗大字号布局及 150%/200% 实际系统缩放仍待收口。复现、人工动作、原配置保护和基点残留目录见 [validation.md](../validation.md)；[双轴评审](../04-review.md) 与完整验收判断分开记录。
