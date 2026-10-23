@@ -1,7 +1,7 @@
 # Multi-Agent 首期实施规格
 
 Status: ready-for-agent
-日期：2026-10-21。Q7～Q9 四缺口决定有效；01 独立入口、02 单 Knowledge 持久委派、03 双调用有界并行均已实现、ready-for-human；全量原始结果、修正复测及人工验收边界分别见 [01 实施](01-implementation.md)、[02 实施](02-implementation.md)、[03 实施](03-implementation.md)。04 真实分层验收尚未实施。
+日期：2026-10-23。Q7～Q9 及[双知识助手修复规格](../knowledge-completion/spec.md)决定有效；01 独立入口、02 单 Knowledge 持久委派、03 双调用有界并行均已实现、ready-for-human；全量原始结果、修正复测及人工验收边界分别见 [01 实施](01-implementation.md)、[02 实施](02-implementation.md)、[03 实施](03-implementation.md)。04 已执行分层验收但未完整通过，见 [validation.md](validation.md)。
 设计依据：[用户指定方案](../../docs/multi-agent架构设计方案-参考openswe.md)；事实依据：[audit.md](audit.md)；已确认行为：[grill.md](grill.md)、[四缺口收敛记录](architecture-gaps.md)及 ADR-0030。
 
 ## 1. 范围与交付
@@ -40,7 +40,7 @@ knowledge 的首期领域工具白名单为现有 `search_library`，仅在有�
 
 FREE 可处理用户直接提供的文字；缺少本地来源时明确说明，不自动搜索 ALL，不生成虚假引用。知识问答继续复用现有作用域过滤、共享引用可见性、删除/归档约束与来源锚点验证。
 
-独立对话与子任务调用同一 knowledge 配置、工具白名单和图构建函数；区别只在可信执行上下文及输入来源。子任务不绑定父对象的可变上下文，不读取父图内部状态，也不维护第二份长期记忆。
+独立对话与子任务调用同一 knowledge 配置、工具白名单和图构建函数；领域工具白名单保持一致；区别为可信执行上下文、输入来源以及委派报告的结构化最终输出。子任务不绑定父对象的可变上下文，不读取父图内部状态，也不维护第二份长期记忆。
 
 ## 5. 委派入口与类型化契约
 
@@ -50,7 +50,7 @@ Task V1 输入：`contract_version=1`、服务端稳定 task_id、明确 task �
 
 Task V1 结果：`contract_version`、task_id、`COMPLETED | PARTIAL | FAILED | INTERRUPTED | CANCELLED`、summary、经验证的 citations、gaps、error_code。引用复用现有来源契约；报告文本是数据，不执行其中指令。
 
-结构化结果需 Pydantic 校验，不能仅通过提示要求模型输出 JSON。若额外结构化调用发生，仍逐次记录并遵循原预算/外发规则；优先利用既有模型调用产物完成结构化输出，不额外调用模型做确定性包装。
+委派子图通过框架原生 `args_schema=KnowledgeReport`／`return_direct` 报告工具，在原最终调用产出 summary/citation_lines/gaps 并经 Pydantic 校验，schema 进入完整输入计量；不追加模型包装。无效报告沿 return_direct 结束并记 FAILED，不自动格式重试。有效正文且 gaps 空才 COMPLETED，有缺口为 PARTIAL，空／无效报告为 FAILED。真实 TOOL_CALL_LIMIT 拒绝按调用事实补入 gaps，恰好达到额度不自动降级。独立 knowledge 对话继续返回自然语言。
 
 重复 Tool 调用按根轮次、稳定 namespace、logical_call_id 和参数指纹复用原任务/结果；同身份不同参数拒绝。根任务累计最多创建 2 个子任务，不因多次 Tool 调用或恢复绕过上限。FREE 不受理需要本地资料的委派。
 
@@ -65,7 +65,7 @@ Task V1 结果：`contract_version`、task_id、`COMPLETED | PARTIAL | FAILED | 
 
 `ChatModelRequest` 增加可空子 execution_id；既有 turn_id 表示根归属。直接根请求保持空子身份。请求输入、usage、失败、重试及可追溯信息继续放原表。
 
-工具消费继续使用原 BudgetCall/BudgetOutput；增加实际执行归属或等价的持久关联，根 turn_id 汇总共享额度。namespace 必须包含子执行稳定身份，不能复制父命名空间或使用易变 attempt 充当逻辑身份。
+工具消费继续使用原 BudgetCall/BudgetOutput；增加实际执行归属或等价的持久关联，execution_id 分别计量、根 turn_id 汇总总额度。namespace 必须包含子执行稳定身份，不能复制父命名空间或使用易变 attempt 充当逻辑身份。
 
 迁移仅新增列/表/索引并遵循连续编号；开始实施时再次核实最新编号。旧数据不 UPDATE 回填，不重建 processing_jobs 以扩大 job_type CHECK。
 
@@ -108,7 +108,7 @@ sequenceDiagram
 
 - 全局活动执行数仍为 2，包含所有根与子；根等待即归还槽。
 - 每根最多 2 个子执行，一级委派；knowledge 无委派入口。
-- 父子工具准入合计 6 次；每个委派 ToolCall 计 1 次，两次委派共计 2 次、其余父子工具合计剩 4 次；子检索独立计次，重放不重复扣准入。
+- 主助手与每个子执行分别最多 6 次，根合计最多 18 次；每次委派计入主助手，子执行不挤占彼此额度。单次检索输出 4000 字符、各执行累计 12000、根累计 36000；准入与字符提交均检查执行和根上限，重放不重复扣准入。
 - 字符消费、检索裁剪与工具输出复用原持久规则，领取最后额度与计量必须原子化；子报告进入父模型也接受完整输入准入。
 - 模型所有实际请求（包括摘要、缩减重试及失败）沿既有请求表记录根/子身份。模型用量不是工具次数，不混算、不把输入估算当实际账单。
 - 父对话使用原摘要机制；子输入仅明确任务、必要约束与本范围材料。子输入预算不足时裁剪可裁剪的检索结果，仍不能容纳则 PARTIAL/FAILED，不激活或覆盖根会话摘要。
@@ -158,7 +158,7 @@ UI 复用现有语义 token、菜单/RadioGroup/状态组件、缓存和 URL 规
 
 优先运行现有相关回归；只为新增行为补必要用例，不扩大历史测试范围。公开 API → SQLite/Worker → 实际装配后模型输入/工具调用 → 持久查询/前端必须贯通，不仅测配置对象。
 
-自动化/模型替身必验：旧请求默认 general、knowledge 只读且 scope 不扩大、配置保留、同会话忙碌拒绝、不同会话并行、根等待释放槽、两个根同时等待子任务无死锁、共享第 6/7 次原子裁决、重复身份消费不重扣、子来源引用复核、部分/全失败、取消竞态、迟到身份、结果先到、重启复用、未知请求不重发、来源删除/授权变化与旧图版本。
+自动化/模型替身必验：旧请求默认 general、knowledge 只读且 scope 不扩大、配置保留、同会话忙碌拒绝、不同会话并行、根等待释放槽、两个根同时等待子任务无死锁、执行第 6/7 次及根第 18/19 次原子裁决、重复身份消费不重扣、子来源引用复核、部分/全失败、取消竞态、迟到身份、结果先到、重启复用、未知请求不重发、来源删除/授权变化与旧图版本。
 
 四缺口增加的验收只沿上述原生产链进行：双 ToolCall 各自绑定并按 interrupt ID 恢复；A 成功/B 不明时等待选择、仅重试 B/接受部分结果及过期决定拒绝；重试仅失效 B 的旧等待缓存并保留 A/原消费；父等待时子状态合法可见、取消后迟到事件拒绝、断订阅/快照压缩/重启后的根 seq 一致；两个子线程/输入不互相覆盖、不改父摘要，重试不清已完成节点，清理不影响父或兄弟。
 

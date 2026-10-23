@@ -11,11 +11,14 @@ search_transcript 已退出模型可见工具面（迁移期记录级子串兜�
 """
 
 import json
-from typing import cast
+from itertools import zip_longest
+from typing import Annotated, cast
 
 from langchain_core.tools import tool
+from loguru import logger
+from pydantic import Field
 
-from app.modules.agent.budget.policy import budget_snapshot
+from app.modules.agent.budget.policy import budget_snapshot, output_remaining
 from app.modules.agent.budget.service import budgeted, format_output, mark_output
 from app.modules.agent.context_budget.rules import search_material
 from app.modules.agent.runtime import (
@@ -30,6 +33,7 @@ from app.modules.library.retrieval import (
     ConceptHint,
     EvidenceHit,
     LibraryRetrievalService,
+    RetrievalResult,
     RetrievalScope,
 )
 
@@ -78,7 +82,7 @@ def _truncate_payload(body: dict[str, object], budget: ToolCallBudget) -> tuple[
     量级固定且帮助理解术语）；命中截断即置 truncated=true 并附收窄提示。
     累计已满时不再回喂新命中，仅返回提示（模型须基于已有结果回答）。
     """
-    limit = min(TOOL_RESULT_MAX_CHARS, TOOL_ROUND_OUTPUT_MAX_CHARS - budget.chars_fed)
+    limit = min(TOOL_RESULT_MAX_CHARS, output_remaining(budget))
     body["tool_budget"] = budget_snapshot(budget)
     if limit <= 0:
         body = {
@@ -101,16 +105,20 @@ def _truncate_payload(body: dict[str, object], budget: ToolCallBudget) -> tuple[
     truncated = False
     while len(serialized()) > limit:
         truncated = True
+        body["truncated"] = True
+        body["message"] = "检索结果超出本轮预算已截断，可用更具体的关键词收窄查询。"
         if evidence:
             evidence.pop()
         elif assets:
             assets.pop()
         else:
             break
-    if truncated:
-        body["truncated"] = True
-        body["message"] = "检索结果超出本轮预算已截断，可用更具体的关键词收窄查询。"
     payload = serialized()
+    if len(payload) > limit:
+        # 连控制信封都放不下时只回固定提示，不再计入任何材料正文。
+        return _payload(
+            message="本执行或根任务字符额度不足，请基于已有证据回答。", truncated=True
+        ), True
     mark_output(payload)
     return payload, truncated
 
@@ -154,66 +162,93 @@ def _budget_rejection() -> str:
 
 @tool
 @budgeted(_budget_rejection)
-async def search_library(query: str) -> str:
-    """在本次对话范围的学习资料（转写、文档分片、资料正文）中检索原文片段。
+async def search_library(
+    query: str
+    | Annotated[
+        list[Annotated[str, Field(min_length=1, max_length=200)]],
+        Field(min_length=1, max_length=4),
+    ],
+) -> str:
+    """在当前挂载资料中检索可引用的原文、定义和案例。
 
-    当问题涉及范围内资料的细节、需要跨记录对比或核实原文时使用：用 2~6 个
-    关键词描述要找的内容。返回三类结果——evidence_hits 是唯一可引用的逐字
-    原文（含来源标题、时间/页码定位），引用时逐字照抄其中原文、不超过 80 字，
-    并注明 source_title；asset_matches 是标题导航命中，不可当原文引用；
-    concept_hints 是范围内已确认的课程概念说明，可帮助理解术语，但不得当作
-    原文引用。没有命中就换同义词重试（不超过 2 次）；范围内确实没有证据时
-    如实说明「当前资料中未找到」，不要编造资料中不存在的内容。
+    每项只用一个主题的短关键词（如“原子性”），不要把不同主题拼成 AND 查询。
+    多主题请传 query 列表，最多四项；各项独立检索、公平合并，合计最多八条证据。
+    evidence_hits 是可引用的逐字原文，引用逐字照抄不超过80字并注明 source_title。
+    asset_matches 仅供标题导航，concept_hints 仅供术语理解，均不可作为原文引用。
+    无命中只表示本次查询未找到，不代表资料不存在；补查前检查自身与根剩余额度。
     """
     context = current_agent_runtime()
     if context is None:
         return _payload(message="当前对话未挂载资料范围，无法检索。")
-    needle = query.strip()
-    if not needle:
-        return _payload(message="检索词不能为空。")
-    # 检索异常不炸整轮流（同 web_search 先例）：错误载荷 ok=false，模型可据此说明。
+    needles = list(
+        dict.fromkeys(item.strip() for item in ([query] if isinstance(query, str) else query))
+    )
+    if not needles or any(not item for item in needles):
+        return _payload(message="检索词不能为空。", ok=False)
+    scope = RetrievalScope(
+        scope=context.scope,
+        record_id=context.record_id,
+        library_item_id=context.library_item_id,
+        course_id=context.course_id,
+    )
     try:
         async with context.session_factory() as session:
-            result = await search_material(
-                session,
-                context.session_id,
-                RetrievalScope(
-                    scope=context.scope,
-                    record_id=context.record_id,
-                    library_item_id=context.library_item_id,
-                    course_id=context.course_id,
-                ),
-                needle,
-                SEARCH_LIBRARY_LIMIT,
-            )
+            results = [
+                await search_material(
+                    session,
+                    context.session_id,
+                    scope,
+                    needle,
+                    SEARCH_LIBRARY_LIMIT,
+                    short_query=True,
+                )
+                for needle in needles
+            ]
+            merged = RetrievalResult()
+            seen: set[str] = set()
+            for group in zip_longest(*(result.evidence_hits for result in results)):
+                for hit in group:
+                    if hit is not None and hit.segment_id not in seen:
+                        seen.add(hit.segment_id)
+                        merged.evidence_hits.append(hit)
+            del merged.evidence_hits[SEARCH_LIBRARY_LIMIT:]
+            assets_seen: set[str] = set()
+            for result in results:
+                for asset in result.asset_matches:
+                    if asset.id not in assets_seen:
+                        assets_seen.add(asset.id)
+                        merged.asset_matches.append(asset)
+                merged.concept_hints.extend(result.concept_hints)
             evidence: list[dict[str, object]] = []
-            for hit in result.evidence_hits:
+            for hit in merged.evidence_hits:
                 kind = "record" if hit.record_id else "library"
                 target = hit.record_id or hit.library_item_id
                 if target is None:
                     continue
                 _, _, version = await LibraryRetrievalService.read_source(
-                    session,
-                    RetrievalScope(
-                        scope=context.scope,
-                        record_id=context.record_id,
-                        library_item_id=context.library_item_id,
-                        course_id=context.course_id,
-                    ),
-                    kind,
-                    target,
+                    session, scope, kind, target
                 )
-                evidence.append({**_hit_payload(hit), "source_version": version})
-    except Exception:
+                item = {**_hit_payload(hit), "source_version": version}
+                if len(needles) > 1:
+                    # 批量优先保留各主题原文，重复上下文不挤掉后面的主题。
+                    item["context_window"] = ""
+                evidence.append(item)
+    except Exception as exc:
+        logger.warning(
+            "library_search_failed",
+            turn_id=context.turn_id,
+            execution_id=context.execution_id,
+            error_type=type(exc).__name__,
+        )
         return _payload(message="检索暂时失败，请稍后重试。", ok=False)
     body: dict[str, object] = {
         "evidence_hits": evidence,
-        "asset_matches": [_asset_payload(match) for match in result.asset_matches],
-        "concept_hints": [_concept_payload(hint) for hint in result.concept_hints],
+        "asset_matches": [_asset_payload(match) for match in merged.asset_matches[:8]],
+        "concept_hints": [_concept_payload(hint) for hint in merged.concept_hints[:4]],
     }
-    if not result.evidence_hits:
+    if not merged.evidence_hits:
         body["message"] = (
             "本次检索已执行，当前查询未找到相关原文；这不表示资料中不存在相关内容。"
-            "补查前请先检查共享剩余额度。"
+            "补查前请先检查自身与根剩余额度。"
         )
     return await format_output(lambda budget: _truncate_payload(body, budget)[0])

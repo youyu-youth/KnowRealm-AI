@@ -128,12 +128,12 @@ async def register(runtime: AgentRuntimeContext, task: KnowledgeTask) -> ChatTur
         system = messages[0]
         assert isinstance(system, SystemMessage)
         system.content = (
-            f"{system.content}\n本任务与父任务、其他子任务共享本轮六次工具调用，"
-            "不是本任务独享六次；委派已经消耗额度，另一个知识任务也需要检索。"
-            "优先用一至两次检索形成报告：一次精确检索，必要时再补查；"
-            "每次先用两三个核心关键词，不要将多个子主题拼成长查询；"
+            f"{system.content}\n本任务独立拥有六次工具调用，父子合计最多十八次，"
+            "委派只计入父任务；本任务与其他子任务不挤占各自的六次额度。"
+            "优先用一至两次检索取得证据，必要时在剩余额度内补查；"
+            "每项用一个主题的短关键词，多个主题用 query 列表，不拼成长查询；"
             "未命中时删减关键词，只保留核心主题补查，不要继续堆叠同义词。"
-            "基于已有有效证据回答，证据仍不足时在报告中明确缺口，避免反复换词耗尽共享额度。"
+            "基于已有有效证据回答，证据仍不足时在 KnowledgeReport.gaps 中明确缺口。"
         )
         frozen = {
             "contract_version": 1,

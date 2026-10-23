@@ -9,6 +9,9 @@ from langchain.agents.middleware.types import (  # pyright: ignore[reportMissing
 )
 from langchain_core.messages import ToolMessage
 
+from app.modules.agent.runtime import current_agent_runtime
+from app.modules.agent.tools.finish_knowledge_report import finish_knowledge_report
+
 
 class KnowledgeToolGuardMiddleware(
     AgentMiddleware[Any, Any, Any]  # pyright: ignore[reportMissingTypeStubs]
@@ -21,7 +24,13 @@ class KnowledgeToolGuardMiddleware(
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        if self._retrieval and request.tool_call["name"] == "search_library":
+        runtime = current_agent_runtime()
+        report_only = (
+            runtime is not None
+            and runtime.execution_id is not None
+            and request.tool_call["name"] == finish_knowledge_report.name
+        )
+        if report_only or (self._retrieval and request.tool_call["name"] == "search_library"):
             return await handler(request)
         return ToolMessage(
             content="本地知识助手仅可检索当前挂载资料，不支持写操作、联网或委派。",

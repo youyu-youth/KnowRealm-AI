@@ -160,12 +160,18 @@ async def search_material(
     scope: RetrievalScope,
     query: str,
     limit: int = SEARCH_LIBRARY_LIMIT,
+    *,
+    short_query: bool = False,
 ) -> RetrievalResult:
     _, rules = await context_rules(session, session_id)
     excluded = rules.excluded_source_ids
     if f"record:{scope.record_id}" in excluded or f"library:{scope.library_item_id}" in excluded:
         return RetrievalResult()
-    found = await LibraryRetrievalService.search(session, scope, query, limit)
+    found = (
+        await LibraryRetrievalService.search(session, scope, query, limit, short_query=True)
+        if short_query
+        else await LibraryRetrievalService.search(session, scope, query, limit)
+    )
     return RetrievalResult(
         evidence_hits=[
             hit

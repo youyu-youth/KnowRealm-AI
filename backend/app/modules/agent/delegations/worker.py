@@ -19,8 +19,8 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.base import utcnow
-from app.modules.agent.budget.policy import POLICY_VERSION, ToolCallBudget
-from app.modules.agent.budget.service import restore
+from app.modules.agent.budget.policy import POLICY_VERSION
+from app.modules.agent.budget.service import restore_runtime
 from app.modules.agent.citations import parse_citation_reply, parse_library_citation_reply
 from app.modules.agent.context_budget.retrieval import validate_evidence
 from app.modules.agent.context_budget.schemas import ContextPolicy, ContextRules
@@ -160,7 +160,9 @@ async def failure(session: AsyncSession, ctx: _ClaimedTurn, code: str) -> None:
     await emit_state(session, child)
 
 
-async def defer_for_parent(session: AsyncSession, ctx: _ClaimedTurn) -> None:
+async def defer_for_parent(
+    session: AsyncSession, ctx: _ClaimedTurn, *, preflight_blocked: bool = False
+) -> None:
     if not await owns_claim(session, ctx):
         return
     root = await session.get(ChatTurn, ctx.turn_id)
@@ -170,7 +172,10 @@ async def defer_for_parent(session: AsyncSession, ctx: _ClaimedTurn) -> None:
         or child is None
         or child.status != "RUNNING"
         or root.cancel_requested
-        or root.status not in ("QUEUED", "WAITING_USER", "INTERRUPTED")
+        or not (
+            root.status in ("QUEUED", "WAITING_USER", "INTERRUPTED")
+            or (preflight_blocked and root.status == "RUNNING")
+        )
     ):
         return
     job = await session.get(ProcessingJob, ctx.job_id)
@@ -235,6 +240,18 @@ async def execute(
         provider = await asyncio.to_thread(load_llm_provider, data_dir)
         blocked = await resume_blocked_reason(data_dir, frozen["execution"], provider)
         if blocked is not None or provider is None:
+            async with session_factory() as session, session.begin():
+                if await runtime.turn_write_allowed(session):
+                    parent = await session.get(ChatTurn, root.id)
+                    assert parent is not None
+                    if parent.status == "WAITING_JOB":
+                        from app.modules.agent.turns.service import ensure_turn_job
+
+                        parent.status, parent.waiting_reason = "QUEUED", None
+                        await ensure_turn_job(session, parent.id, utcnow())
+                    # 父恢复尚在校验同一供应商，不能抢先把未发请求的子任务记失败。
+                    await defer_for_parent(session, ctx, preflight_blocked=True)
+                    return
             raise CodedHTTPException(
                 code="MODEL_CONTEXT_INCOMPATIBLE"
                 if blocked and blocked[0].value == "GRAPH_INCOMPATIBLE"
@@ -255,8 +272,7 @@ async def execute(
             if chat is None:
                 raise TurnCancelledError
             await validate_sendable_chat(session, chat)
-        calls, chars = await restore(session_factory, root.id)
-        runtime.budget = ToolCallBudget(calls_used=calls, chars_fed=chars)
+        await restore_runtime(runtime)
         outcome = ChatStreamOutcome()
 
         async def consume(resume: bool) -> None:
@@ -300,6 +316,10 @@ async def execute(
                 ) from None
             await consume(False)
         content = outcome.final_text or ""
+        if outcome.knowledge_report is None:
+            raise ValueError("知识任务未返回有效结构化报告")
+        has_report = bool(outcome.knowledge_report.summary.strip())
+        gaps = list(outcome.knowledge_report.gaps)
         if runtime.scope == ChatScope.RECORD:
             record_id = runtime.record_id or ""
             async with session_factory() as session:
@@ -332,11 +352,11 @@ async def execute(
             )
         result = KnowledgeResult(
             task_id=execution_id,
-            status="COMPLETED" if content else "FAILED",
+            status=("PARTIAL" if gaps else "COMPLETED") if has_report else "FAILED",
             summary=parsed.content,
             citations=[ChatCitationOut.model_validate(item) for item in parsed.citations],
-            gaps=[] if content else ["知识任务未返回报告，缺少该分支的证据"],
-            error_code=None if content else "EMPTY_REPLY",
+            gaps=gaps if has_report else [*gaps, "知识任务未返回报告，缺少该分支的证据"],
+            error_code=None if has_report else "EMPTY_REPLY",
         )
         if await commit_result(runtime, result):
             await checkpointer.adelete_thread(thread_id(execution_id))

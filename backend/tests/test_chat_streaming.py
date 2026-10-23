@@ -1859,7 +1859,7 @@ async def test_mounted_tool_call_searches_segments_and_streams_tool_events(
         # token 用量跨工具循环两次模型调用累加（stub 每次输入 3 / 输出 4 / 合计 7）。
         rows = await chat_log_rows(tmp_path)
         assert len(rows) == 1
-        assert rows[0][3] == "chat-library-scope-v37"
+        assert rows[0][3] == "chat-library-scope-v39"
         usage = json.loads(cast(str, rows[0][4]))
         assert usage == {"input_tokens": 6, "output_tokens": 8, "total_tokens": 14}
 
@@ -1920,7 +1920,7 @@ async def test_mounted_tool_falls_back_to_substring_without_segments(
 
 
 @pytest.mark.anyio
-async def test_segmented_record_fts_miss_returns_no_hits_without_substring_fallback(
+async def test_agent_short_query_supplements_segmented_record_fts_miss(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async with streaming_chat_app(
@@ -1946,13 +1946,13 @@ async def test_segmented_record_fts_miss_returns_no_hits_without_substring_fallb
 
         events = await send_message(client, session_id, "MVC 是什么？")
 
-        # 有分片记录：FTS 未命中即如实返回（「MVC」是原文子串但非索引词，不做子串兜底）。
+        # Agent 短主题补充：即使非 FTS 整词，仍能以同范围逐字子串取得真实原文。
         assert "MVC" in "MVCC 依赖 undo 日志实现多版本读"
         assert [
             {key: payload[key] for key in ("tool", "hits", "ok")}
             for name, payload in events
             if name == "tool_result"
-        ] == [{"tool": "search_library", "hits": 0, "ok": True}]
+        ] == [{"tool": "search_library", "hits": 1, "ok": True}]
 
 
 @pytest.mark.anyio
@@ -2300,7 +2300,8 @@ async def test_prompt_byte_identical_when_web_search_off(
         # 关闭标志：提示与现状逐字一致（中性快照 + 时间提示行 + 枚举/批量指引 +
         # 语言指令，无联网指引）。时间提示行含动态时间戳（时间能力 v1），单独
         # 剥离断言形状，其余部分保持逐字比对。
-        role_line, time_line, rest = str(captured[0][0].content).split("\n", 2)
+        role_line, time_line, rest = captured[0][0].text.split("\n", 2)
+        rest = rest.split("\n本执行工具额度：", 1)[0]
         assert role_line == "你是 KnowRealm 学习助手。用户尚未建立档案，请以中性、通用的语气回答。"
         assert time_line.startswith("时间提示：当前时间 ")
         assert "get_current_time" in time_line

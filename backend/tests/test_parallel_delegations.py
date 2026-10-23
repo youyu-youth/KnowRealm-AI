@@ -19,6 +19,7 @@ from test_chat_turns import (
     ToolCallReply,
     create_session,
     snapshot,
+    structured_reply,
     submit,
     turns_app,
     wait_terminal,
@@ -42,6 +43,8 @@ def route_model(
 
     class RoutedModel(base):
         def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+            if any(getattr(item, "name", None) == "KnowledgeReport" for item in tools):
+                assert kwargs.get("tool_choice") not in ("any", "required")
             return RunnableBinding(bound=self, kwargs={"tools": tools, **kwargs})
 
         async def _astream(
@@ -80,7 +83,24 @@ def route_model(
                 for part in reply.prefix:
                     yield ChatGenerationChunk(message=AIMessageChunk(content=part))
                 await reply.release.wait()
-                reply = reply.rest
+                final = structured_reply([*reply.prefix, *reply.rest], kwargs.get("tools", []))
+                reply = final if isinstance(final, ToolCallReply) else reply.rest
+            reply = structured_reply(reply, kwargs.get("tools", []))
+            if isinstance(reply, ToolCallReply):
+                yield ChatGenerationChunk(
+                    message=AIMessageChunk(
+                        content="",
+                        tool_call_chunks=[
+                            {
+                                "name": reply.tool,
+                                "args": json.dumps(reply.args),
+                                "id": reply.call_id,
+                                "index": 0,
+                            }
+                        ],
+                    )
+                )
+                return
             for part in reply:
                 yield ChatGenerationChunk(message=AIMessageChunk(content=part))
 
@@ -176,9 +196,9 @@ async def test_two_waiting_roots_share_two_slots_and_resume_by_interrupt_id(
             task = str(next(m.content for m in reversed(messages) if isinstance(m, HumanMessage)))
             if task.startswith("root:"):
                 assert "同一条回复中发出两次 delegate_knowledge" in prompt
-                assert "父任务与所有子任务共享" in prompt
+                assert "每个子任务分别最多六次" in prompt
             else:
-                assert "不是本任务独享六次" in prompt
+                assert "本任务独立拥有六次" in prompt
                 assert "优先用一至两次检索" in prompt
                 assert "未命中时删减关键词" in prompt
                 assert "同一条回复中发出两次 delegate_knowledge" not in prompt
@@ -189,15 +209,16 @@ async def test_two_waiting_roots_share_two_slots_and_resume_by_interrupt_id(
 
 
 @pytest.mark.anyio
-async def test_sequential_second_delegation_explains_shared_budget_exhaustion(
+async def test_sequential_second_delegation_keeps_its_own_quota(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     routes = {
         "root:sequential": [
             (ToolCallReply("delegate_knowledge", {"task": "child:sequential:A"}, "delegate-A"),),
             (ToolCallReply("delegate_knowledge", {"task": "child:sequential:B"}, "delegate-B"),),
-            ["仅任务一完成，任务二因共享工具额度耗尽未安排"],
+            ["两个任务均已返回"],
         ],
+        "child:sequential:B": [["任务二报告"]],
         "child:sequential:A": [
             tuple(
                 ToolCallReply("search_library", {"query": "事务隔离"}, f"search-{index}")
@@ -216,13 +237,11 @@ async def test_sequential_second_delegation_explains_shared_budget_exhaustion(
         message = next(
             m for m in captured[-1] if isinstance(m, ToolMessage) and m.tool_call_id == "delegate-B"
         )
-        rejected = json.loads(str(message.content))
-        assert rejected["error"] == "TOOL_CALL_LIMIT"
-        assert "父任务与所有子任务共享" in rejected["message"]
-        assert "不是只能委派一个" in rejected["message"]
+        report = json.loads(str(message.content))
+        assert report["status"] == "COMPLETED"
         async with app.state.session_factory() as session:
-            assert await session.scalar(text("SELECT count(*) FROM agent_delegations")) == 1
-            assert await session.scalar(text("SELECT count(*) FROM chat_turn_budget_calls")) == 6
+            assert await session.scalar(text("SELECT count(*) FROM agent_delegations")) == 2
+            assert await session.scalar(text("SELECT count(*) FROM chat_turn_budget_calls")) == 7
 
 
 @pytest.mark.anyio
@@ -380,107 +399,84 @@ async def test_uncertain_sibling_waits_for_safe_branch_then_retries_only_selecte
 
 
 @pytest.mark.anyio
-async def test_parallel_children_compete_for_last_shared_admission(
+async def test_parallel_children_finish_at_eighteen_and_reject_each_seventh_call(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     release = asyncio.Event()
     requests: list[tuple[list[Any], list[str]]] = []
 
-    def search(call_id: str) -> ToolCallReply:
-        return ToolCallReply("search_library", {"query": "事务隔离"}, call_id)
+    def searches(branch: str, count: int) -> tuple[ToolCallReply, ...]:
+        return tuple(
+            ToolCallReply("search_library", {"query": "事务隔离"}, f"{branch}-{i}")
+            for i in range(count)
+        )
 
     routes = {
-        "root:budget": [delegates("budget"), ["汇总"]],
-        "child:budget:A": [(search("A1"), search("A2")), release, (search("last-A"),), ["报告 A"]],
-        "child:budget:B": [(search("B1"),), release, (search("last-B"),), ["报告 B"]],
+        "root:budget": [
+            tuple(ToolCallReply("get_current_time", {}, f"time-{i}") for i in range(4)),
+            delegates("budget"),
+            ["汇总"],
+        ],
+        "child:budget:A": [searches("first-A", 5), release, searches("last-A", 2), ["报告 A"]],
+        "child:budget:B": [searches("first-B", 5), release, searches("last-B", 2), ["报告 B"]],
     }
     async with turns_app(tmp_path, monkeypatch) as (app, client, captured):
         route_model(monkeypatch, routes, requests)
         sid = await create_session(client, scope="ALL")
         tid = (await submit(client, sid, "root:budget", request_id="parallel-budget")).json()["id"]
         try:
-            for _ in range(100):
-                if len(captured) == 5:
+            for _ in range(150):
+                if len(captured) == 6:
                     break
                 await asyncio.sleep(0.05)
-            assert len(captured) == 5
+            assert len(captured) == 6
             async with app.state.session_factory() as session:
                 assert (
                     await session.scalar(
                         text("SELECT count(*) FROM chat_turn_budget_calls WHERE turn_id=:id"),
                         {"id": tid},
                     )
-                    == 5
+                    == 16
                 )
             release.set()
             assert (await wait_terminal(client, tid))["status"] == "COMPLETED"
-            final_tools = {
-                m.tool_call_id: m.text
+            last = {
+                m.tool_call_id: json.loads(m.text)
                 for messages in captured
                 for m in messages
-                if isinstance(m, ToolMessage) and m.tool_call_id in ("last-A", "last-B")
+                if isinstance(m, ToolMessage) and m.tool_call_id.startswith("last-")
             }
-            assert len(final_tools) == 2
-            assert sum("本轮检索次数已达上限" in value for value in final_tools.values()) == 1
-            results = [json.loads(value) for value in final_tools.values()]
-            failures = [value for value in results if value.get("ok") is False]
-            assert len(failures) == 1
-            rejected = failures[0]
-            assert rejected["error"] == "TOOL_CALL_LIMIT"
-            assert rejected["retryable"] is False
-            assert rejected["tool_budget"] == {"limit": 6, "used": 6, "remaining": 0}
-            assert "未执行" in rejected["message"]
-            assert "未能核实" in rejected["message"]
-            admitted = next(value for value in results if value.get("ok") is not False)
-            assert admitted["tool_budget"] == {"limit": 6, "used": 6, "remaining": 0}
-            assert "未找到" in admitted["message"]
-            assert "本次检索已执行" in admitted["message"]
-            assert "重试" not in admitted["message"]
-            final_requests = [
-                (messages, tools)
-                for messages, tools in requests
-                if any(
-                    isinstance(m, ToolMessage) and m.tool_call_id in ("last-A", "last-B")
-                    for m in messages
-                )
+            assert len(last) == 4
+            assert sum(value.get("error") == "TOOL_CALL_LIMIT" for value in last.values()) == 2
+            for value in last.values():
+                assert value["tool_budget"]["used"] == 6
+                assert value["tool_budget"]["root"]["used"] <= 18
+            reports = [
+                json.loads(m.text)
+                for m in captured[-1]
+                if isinstance(m, ToolMessage) and m.name == "delegate_knowledge"
             ]
-            assert len(final_requests) == 2
-            for messages, tools in final_requests:
-                assert "search_library" not in tools
-                prompt = next(m.text for m in messages if isinstance(m, SystemMessage))
-                assert "剩余 0 次" in prompt
-                assert "停止补查" in prompt
-                assert "未能核实" in prompt
-                assert "引用已有原文无需继续检索" in prompt
-            assert any(
-                "search_library" in tools
-                and "剩余 1 次" in next(m.text for m in messages if isinstance(m, SystemMessage))
-                for messages, tools in requests
-            )
-            parent_messages, parent_tools = requests[-1]
-            assert "delegate_knowledge" not in parent_tools
-            assert "search_library" not in parent_tools
-            assert "保留子报告的未核实缺口" in next(
-                m.text for m in parent_messages if isinstance(m, SystemMessage)
-            )
+            assert len(reports) == 2
+            assert all(report["status"] == "PARTIAL" and report["gaps"] for report in reports)
+            assert "delegate_knowledge" not in requests[-1][1]
             async with app.state.session_factory() as session:
                 assert (
                     await session.scalar(
                         text("SELECT count(*) FROM chat_turn_budget_calls WHERE turn_id=:id"),
                         {"id": tid},
                     )
-                    == 6
+                    == 18
                 )
-                assert (
-                    await session.scalar(
+                counts = (
+                    await session.execute(
                         text(
-                            "SELECT count(*) FROM chat_turn_budget_calls "
-                            "WHERE turn_id=:id AND execution_id IS NOT NULL"
+                            "SELECT execution_id, count(*) AS n FROM chat_turn_budget_calls "
+                            "WHERE turn_id=:id GROUP BY execution_id"
                         ),
                         {"id": tid},
                     )
-                    == 4
-                )
+                ).all()
+                assert sorted(row.n for row in counts) == [6, 6, 6]
         finally:
             release.set()
 

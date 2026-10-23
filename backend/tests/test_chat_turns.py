@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessageChunk, AnyMessage
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
+from langchain_core.runnables import RunnableBinding
 
 from app.db.migrations import run_migrations, supported_user_version
 from app.main import create_app
@@ -50,6 +51,20 @@ class GatedReply:
 StubReply = list[str] | ToolCallReply | GatedReply | None
 
 
+def structured_reply(reply: Any, tools: Any) -> Any:
+    names = [
+        cast(dict[str, Any], tool).get("name", "") if isinstance(tool, dict) else tool.name
+        for tool in tools
+    ]
+    if isinstance(reply, (list, tuple)) and "KnowledgeReport" in names:
+        return ToolCallReply(
+            "KnowledgeReport",
+            {"summary": "".join(cast(list[str], reply)), "gaps": []},
+            "report-final",
+        )
+    return cast(Any, reply)
+
+
 class StubChatModel(BaseChatModel):
     captured: ClassVar[list[list[AnyMessage]]] = []
     replies: ClassVar[list[StubReply]] = []
@@ -76,9 +91,9 @@ class StubChatModel(BaseChatModel):
             for part in reply.prefix:
                 yield ChatGenerationChunk(message=AIMessageChunk(content=part))
             await reply.release.wait()
-            for part in reply.rest:
-                yield ChatGenerationChunk(message=AIMessageChunk(content=part))
-            return
+            final = structured_reply([*reply.prefix, *reply.rest], kwargs.get("tools", []))
+            reply = final if isinstance(final, ToolCallReply) else list(reply.rest)
+        reply = structured_reply(reply, kwargs.get("tools", []))
         if isinstance(reply, ToolCallReply):
             yield ChatGenerationChunk(
                 message=AIMessageChunk(
@@ -102,8 +117,10 @@ class StubChatModel(BaseChatModel):
     def bind(self, **kwargs: Any) -> Any:
         return self
 
-    def bind_tools(self, tools: Any, **kwargs: Any) -> "StubChatModel":
-        return self
+    def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+        if any(getattr(item, "name", None) == "KnowledgeReport" for item in tools):
+            assert kwargs.get("tool_choice") not in ("any", "required")
+        return RunnableBinding(bound=self, kwargs={"tools": tools, **kwargs})
 
 
 @pytest.fixture(scope="module")

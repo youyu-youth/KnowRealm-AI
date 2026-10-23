@@ -5,6 +5,7 @@ import json
 from langchain_core.tools import tool
 from pydantic import ValidationError
 
+from app.modules.agent.budget.policy import output_remaining
 from app.modules.agent.budget.service import budgeted, format_output, mark_output
 from app.modules.agent.context_budget.retrieval import read_context as read_source
 from app.modules.agent.context_budget.retrieval import search_context as find_sources
@@ -12,7 +13,6 @@ from app.modules.agent.context_budget.schemas import ContextReadRequest, Context
 from app.modules.agent.runtime import ToolCallBudget, current_agent_runtime
 from app.modules.agent.tools.search_library import (
     TOOL_RESULT_MAX_CHARS,
-    TOOL_ROUND_OUTPUT_MAX_CHARS,
 )
 from app.shared.errors import CodedHTTPException
 
@@ -22,7 +22,7 @@ def _rejection() -> str:
 
 
 def bounded_context_output(body: dict[str, object], budget: ToolCallBudget) -> str:
-    limit = min(TOOL_RESULT_MAX_CHARS, TOOL_ROUND_OUTPUT_MAX_CHARS - budget.chars_fed)
+    limit = min(TOOL_RESULT_MAX_CHARS, output_remaining(budget))
     payload = json.dumps(body, ensure_ascii=False)
     if len(payload) > limit:
         content = body.get("content")

@@ -46,7 +46,7 @@ from app.db.base import utcnow
 from app.modules.agent import message_service
 from app.modules.agent.auth_mode import clamp_resume_auth_mode
 from app.modules.agent.budget.policy import POLICY_VERSION
-from app.modules.agent.budget.service import restore
+from app.modules.agent.budget.service import restore, restore_runtime
 from app.modules.agent.citations import parse_citation_reply, parse_library_citation_reply
 from app.modules.agent.context import ChatContextTooLargeError
 from app.modules.agent.context_budget.compaction import CompactionWaiting
@@ -506,6 +506,7 @@ class _TurnExecutor:
             ),
         )
         outcome = ChatStreamOutcome()
+        await restore_runtime(runtime)
         stream = message_service.stream_chat_reply(
             checkpointer=self._checkpointer,
             provider=provider,

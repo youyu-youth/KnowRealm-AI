@@ -14,11 +14,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.modules.agent.budget.models import BudgetCall, BudgetOutput
 from app.modules.agent.budget.policy import (
-    MAX_TOOL_CALLS_PER_TURN,
     POLICIES,
     POLICY_VERSION,
     ToolCallBudget,
     budget_snapshot,
+    calls_remaining,
 )
 from app.modules.agent.runtime import AgentRuntimeContext, current_agent_runtime
 from app.modules.agent.turns.effects import current_tool_call_identity, effect_args_fingerprint
@@ -64,6 +64,35 @@ async def restore(
         return await totals(session, turn_id)
 
 
+async def _refresh(session: AsyncSession, runtime: AgentRuntimeContext) -> None:
+    assert runtime.turn_id is not None
+    budget = runtime.budget
+    budget.root_calls_used, budget.root_chars_fed = await totals(session, runtime.turn_id)
+    owner = BudgetCall.execution_id == runtime.execution_id
+    budget.calls_used = int(
+        await session.scalar(
+            select(func.count())
+            .select_from(BudgetCall)
+            .where(BudgetCall.turn_id == runtime.turn_id, owner)
+        )
+        or 0
+    )
+    budget.chars_fed = int(
+        await session.scalar(
+            select(func.coalesce(func.sum(BudgetOutput.chars_fed), 0))
+            .join(BudgetCall, BudgetOutput.call_id == BudgetCall.id)
+            .where(BudgetCall.turn_id == runtime.turn_id, owner)
+        )
+        or 0
+    )
+
+
+async def restore_runtime(runtime: AgentRuntimeContext) -> None:
+    if runtime.turn_id is not None:
+        async with runtime.session_factory() as session:
+            await _refresh(session, runtime)
+
+
 async def cleanup(session: AsyncSession, turn: ChatTurn) -> None:
     from app.modules.agent.turns.schemas import ChatTurnStatus
 
@@ -82,9 +111,10 @@ async def admit(runtime: AgentRuntimeContext, tool_name: str, args: object) -> s
     if runtime.execution_id is not None and runtime.turn_id is None:
         raise BudgetRejected("AGENT_CONTEXT_UNBOUND")
     if runtime.turn_id is None:
-        if runtime.budget.calls_used >= MAX_TOOL_CALLS_PER_TURN:
+        if calls_remaining(runtime.budget) == 0:
             raise BudgetRejected("TOOL_CALL_LIMIT")
         runtime.budget.calls_used += 1
+        runtime.budget.root_calls_used += 1
         return None
     if identity is None:
         raise BudgetRejected("AGENT_CONTEXT_UNBOUND")
@@ -109,8 +139,7 @@ async def admit(runtime: AgentRuntimeContext, tool_name: str, args: object) -> s
                 BudgetCall.logical_call_id == identity.logical_call_id,
             )
         )
-        calls, chars = await totals(session, runtime.turn_id)
-        runtime.budget.calls_used, runtime.budget.chars_fed = calls, chars
+        await _refresh(session, runtime)
         if existing is not None:
             if (
                 existing.tool_name,
@@ -125,7 +154,7 @@ async def admit(runtime: AgentRuntimeContext, tool_name: str, args: object) -> s
             ):
                 raise BudgetRejected("TOOL_CALL_IDENTITY_CONFLICT")
             return existing.id
-        if calls >= MAX_TOOL_CALLS_PER_TURN:
+        if calls_remaining(runtime.budget) == 0:
             raise BudgetRejected("TOOL_CALL_LIMIT")
         call_id = str(uuid4())
         session.add(
@@ -141,7 +170,8 @@ async def admit(runtime: AgentRuntimeContext, tool_name: str, args: object) -> s
             )
         )
         await session.flush()
-    runtime.budget.calls_used = calls + 1
+    runtime.budget.calls_used += 1
+    runtime.budget.root_calls_used += 1
     return call_id
 
 
@@ -155,6 +185,7 @@ async def _measure(
     if consumption.call_id is None:
         payload = producer(runtime.budget) if producer is not None else None
         runtime.budget.chars_fed += consumption.chars
+        runtime.budget.root_chars_fed += consumption.chars
         consumption.chars = 0
         return payload
     async with runtime.session_factory() as session, session.begin():
@@ -164,9 +195,7 @@ async def _measure(
         payload: str | None = None
         if producer is not None:
             # 检索裁剪与字符提交使用同一写锁，不能并发读取旧的剩余额度。
-            runtime.budget.calls_used, runtime.budget.chars_fed = await totals(
-                session, runtime.turn_id
-            )
+            await _refresh(session, runtime)
             payload = producer(runtime.budget)
         if consumption.chars and await session.get(BudgetOutput, consumption.output_id) is None:
             session.add(
@@ -177,7 +206,7 @@ async def _measure(
                 )
             )
             await session.flush()
-        runtime.budget.calls_used, runtime.budget.chars_fed = await totals(session, runtime.turn_id)
+        await _refresh(session, runtime)
     consumption.chars = 0
     return payload
 

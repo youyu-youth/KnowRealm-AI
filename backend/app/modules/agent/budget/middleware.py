@@ -11,8 +11,8 @@ from langchain.agents.middleware.types import (  # pyright: ignore[reportMissing
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
-from app.modules.agent.budget.policy import POLICIES, budget_snapshot
-from app.modules.agent.budget.service import BudgetRejected, execute, restore
+from app.modules.agent.budget.policy import POLICIES, budget_snapshot, calls_remaining
+from app.modules.agent.budget.service import BudgetRejected, execute, restore_runtime
 from app.modules.agent.middleware.cancel_guard import TurnCancelledError
 from app.modules.agent.runtime import current_agent_runtime
 
@@ -24,18 +24,16 @@ class ToolBudgetMiddleware(AgentMiddleware[Any, Any, Any]):  # pyright: ignore[r
         runtime = current_agent_runtime()
         if runtime is None:
             return await handler(request)
-        if runtime.turn_id is not None:
-            runtime.budget.calls_used, runtime.budget.chars_fed = await restore(
-                runtime.session_factory, runtime.turn_id
-            )
+        await restore_runtime(runtime)
         budget = budget_snapshot(runtime.budget)
         guidance = (
-            f"\n本轮父任务与所有子任务共享工具额度：上限 {budget['limit']} 次，"
+            f"\n本执行工具额度：上限 {budget['limit']} 次，"
             f"已用 {budget['used']} 次，剩余 {budget['remaining']} 次。"
-            "这是并发消费快照，不代表为本任务保留名额。"
+            f"根任务总额度（含父子）：{budget['root']}。"
+            "每个执行分别限额，调用同时受根总额度约束；这是并发消费快照。"
         )
         tools = request.tools
-        if budget["remaining"] == 0:
+        if calls_remaining(runtime.budget) == 0:
             tools = [
                 item
                 for item in tools

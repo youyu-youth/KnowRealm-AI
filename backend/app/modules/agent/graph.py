@@ -39,6 +39,7 @@ from app.modules.agent.budget.middleware import ToolBudgetMiddleware
 from app.modules.agent.context_budget.compaction import CompactionWaiting
 from app.modules.agent.context_budget.middleware import InputBudgetMiddleware
 from app.modules.agent.context_budget.outputs import ContextOutputMiddleware
+from app.modules.agent.delegations.schemas import KnowledgeReport
 from app.modules.agent.middleware.cancel_guard import TurnCancelGuardMiddleware
 from app.modules.agent.middleware.knowledge_guard import KnowledgeToolGuardMiddleware
 from app.modules.agent.middleware.skeleton import (
@@ -97,6 +98,7 @@ from app.modules.agent.tools.delete_course import (
     delete_course,
 )
 from app.modules.agent.tools.diff_datetime import diff_datetime
+from app.modules.agent.tools.finish_knowledge_report import finish_knowledge_report
 from app.modules.agent.tools.generate_learning_plan import (
     generate_learning_plan,
 )
@@ -174,7 +176,7 @@ from app.modules.llm.service import build_chat_model, write_llm_call_log
 from app.modules.settings.config import LlmProviderConfig
 from app.shared.errors import CodedHTTPException
 
-CHAT_PROMPT_VERSION = "chat-library-scope-v37"
+CHAT_PROMPT_VERSION = "chat-library-scope-v39"
 # 研究会话独立 prompt 版本（研究会话 V1）：研究语义进版本串；评测黄金集回归随
 # 此版本触发。工单 01 起两版随模型可见面变化同步 bump（工单 04：删除与跨课
 # 迁移三工具；工单 05：批量整理计划工具与批量指引；插队票 08：对象枚举工具
@@ -184,12 +186,12 @@ CHAT_PROMPT_VERSION = "chat-library-scope-v37"
 # 时间能力 v1：时间提示行 + 时间工具族四工具；工单 05：共享引用三工具与指引；
 # 第三阶段工单 06：计划创建类步骤与输出引用指引；工单 07：多资料建课编排
 # 指引——四类来源、建目标与末步草案产出步骤）。
-CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v38"
+CHAT_RESEARCH_PROMPT_VERSION = "chat-research-scope-v40"
 CHAT_RECURSION_LIMIT = 25
 # 图 / 工具集版本（票 02，规格 §10）：受理时随执行快照固化，续跑前比对——
 # 版本不一致即图状态语义可能变化，保守等待（GRAPH_INCOMPATIBLE）不盲目重放。
 # 工具集合、图结构或 checkpoint 状态语义变化时 bump。
-CHAT_GRAPH_VERSION = "chat-graph-v15"
+CHAT_GRAPH_VERSION = "chat-graph-v16"
 # 计入 llm_call_logs.retrieval_count 的资料检索工具（web_search 是外网检索，不混入）。
 RETRIEVAL_TOOL_NAMES = frozenset({"search_library"})
 
@@ -254,6 +256,7 @@ class ChatStreamOutcome:
     token_usage: dict[str, object] = field(default_factory=dict[str, object])
     final_text: str | None = None
     background_interrupts: dict[str, str] = field(default_factory=dict[str, str])
+    knowledge_report: KnowledgeReport | None = None
 
 
 @dataclass(frozen=True)
@@ -565,6 +568,20 @@ class _ToolCallDraft:
     id: str = ""
 
 
+def _tool_query(args: dict[str, object]) -> str:
+    query = args.get("query")
+    if isinstance(query, list):
+        return "、".join(item for item in cast(list[object], query) if isinstance(item, str))
+    return next(
+        (
+            str(args[key])
+            for key in ("query", "title", "url", "name")
+            if isinstance(args.get(key), str)
+        ),
+        "",
+    )
+
+
 def _consume_tool_call_fragments(
     drafts: dict[int, _ToolCallDraft], chunk: AIMessageChunk, segment_id: str = ""
 ) -> list[ChatToolCallEvent]:
@@ -597,14 +614,7 @@ def _consume_tool_call_fragments(
         if not isinstance(parsed, dict):
             continue
         args = cast(dict[str, object], parsed)
-        query = next(
-            (
-                args[key]
-                for key in ("query", "title", "url", "name")
-                if isinstance(args.get(key), str)
-            ),
-            "",
-        )
+        query = _tool_query(args)
         draft.emitted = True
         events.append(
             ChatToolCallEvent(
@@ -828,6 +838,44 @@ def _tool_business_events(message: ToolMessage) -> Iterator[ChatStreamEvent]:
             yield execution
 
 
+def _knowledge_report(outcome: ChatStreamOutcome, values: dict[str, Any]) -> None:
+    messages = values.get("messages", [])
+    final = messages[-1] if messages else None
+    if (
+        not isinstance(final, ToolMessage)
+        or final.name != finish_knowledge_report.name
+        or final.status == "error"
+        or not isinstance(final.content, str)
+    ):
+        raise ValueError("知识任务未返回有效结构化报告")
+    report = KnowledgeReport.model_validate_json(final.content)
+    queries = {
+        call["id"]: call["args"].get("query", call["name"])
+        for message in messages
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+    }
+    for message in messages:
+        if not isinstance(message, ToolMessage) or not isinstance(message.content, str):
+            continue
+        try:
+            payload = json.loads(message.content)
+        except (ValueError, TypeError):
+            continue
+        if (
+            isinstance(payload, dict)
+            and cast(dict[str, object], payload).get("error") == "TOOL_CALL_LIMIT"
+        ):
+            report.gaps.append(
+                f"工具额度耗尽，查询未执行：{queries.get(message.tool_call_id, message.name)}"
+            )
+    report.gaps = list(dict.fromkeys(report.gaps))
+    outcome.knowledge_report = report
+    outcome.final_text = report.summary
+    if report.citation_lines:
+        outcome.final_text = report.summary.rstrip() + "\n" + "\n".join(report.citation_lines)
+
+
 async def stream_chat_reply(
     *,
     checkpointer: BaseCheckpointSaver[str],
@@ -884,6 +932,8 @@ async def stream_chat_reply(
             web_search_enabled=runtime.web_search_provider is not None,
             research=runtime.mode == ChatMode.RESEARCH,
         )
+        if runtime.execution_id is not None:
+            base_config = replace(base_config, tools=(*base_config.tools, finish_knowledge_report))
         if cancel_check is not None:
             # 轮次取消闸门（票 01）：模型调用前 / 工具执行前的副作用前检查点。
             base_config = replace(
@@ -933,6 +983,9 @@ async def stream_chat_reply(
                 [item for task in snapshot.tasks for item in task.interrupts]
             )
             if not snapshot.next and not pending:
+                if runtime.execution_id is not None:
+                    _knowledge_report(outcome, snapshot.values)
+                    return
                 # 图已完成、业务结果未提交：仅补写（规格 §8）——最终文本与
                 # 用量取自最终图状态，不调模型（模型调用次数不增加）。
                 for message in reversed(saved_messages):
@@ -965,7 +1018,8 @@ async def stream_chat_reply(
             graph_input,  # pyright: ignore[reportArgumentType, reportUnknownArgumentType]
             config={
                 "configurable": {"thread_id": thread},
-                "recursion_limit": CHAT_RECURSION_LIMIT,
+                # 子图结构化收尾还需执行工具节点与结束边界，不增加领域工具额度。
+                "recursion_limit": CHAT_RECURSION_LIMIT + (2 if runtime.execution_id else 0),
             },
             stream_mode=["messages", "updates"],
             durability="sync",  # 调用计划先落盘，工具副作用重放才能复用同一身份。
@@ -1001,14 +1055,7 @@ async def stream_chat_reply(
                                 if call_id in emitted_calls:
                                     continue
                                 args = call["args"]
-                                query = next(
-                                    (
-                                        args[k]
-                                        for k in ("query", "title", "url", "name")
-                                        if isinstance(args.get(k), str)
-                                    ),
-                                    "",
-                                )
+                                query = _tool_query(args)
                                 emitted_calls.add(call_id)
                                 yield ChatToolCallEvent(
                                     tool=call["name"],
@@ -1043,6 +1090,9 @@ async def stream_chat_reply(
                 yield result_event
                 for event in _tool_business_events(chunk):
                     yield event
+        if runtime.execution_id is not None and not outcome.background_interrupts:
+            completed = await agent.aget_state({"configurable": {"thread_id": thread}})
+            _knowledge_report(outcome, completed.values)
     except CompactionWaiting:
         raise
     except GeneratorExit:

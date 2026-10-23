@@ -14,8 +14,10 @@ transcript 恒为事实源，B2 迁移期语义收编）；COURSE 档例外仅�
 纯文本资料无分片，FTS 路径永不命中）。
 """
 
+import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any, cast
 
 from sqlalchemy import TextClause, bindparam, text
@@ -99,42 +101,54 @@ _ITEM_DIRECT_ALL = (
 )
 
 
-def _transcript_sql(record_filter: str) -> TextClause:
+def _transcript_sql(record_filter: str, *, literal: bool = False) -> TextClause:
+    score = "0.0" if literal else "bm25(segment_search_index)"
+    match = (
+        "ts.content LIKE :needle ESCAPE '\\'" if literal else "segment_search_index MATCH :match"
+    )
+    order = "score, ts.sequence_no, ts.id" if literal else "score, ts.id"
     return text(
         "SELECT ts.id AS segment_id, ts.record_id, r.title AS source_title, "
         "ts.content, ts.sequence_no, ts.record_start_ms, ts.record_end_ms, "
-        "bm25(segment_search_index) AS score "
+        f"{score} AS score "
         "FROM segment_search_index "
         "JOIN transcript_segments ts ON ts.id = segment_search_index.entity_id "
         "JOIN transcripts t ON t.id = ts.transcript_id AND t.deleted_at IS NULL "
         "JOIN records r ON r.id = ts.record_id AND r.deleted_at IS NULL "
-        "WHERE segment_search_index MATCH :match "
+        f"WHERE {match} "
         "AND segment_search_index.entity_type = 'transcript_segment' "
         f"AND {record_filter} "
-        "ORDER BY score, ts.id LIMIT :limit"
+        f"ORDER BY {order} LIMIT :limit"
     )
 
 
-def _document_sql(record_filter: str, item_filter: str | None = None) -> TextClause:
+def _document_sql(
+    record_filter: str, item_filter: str | None = None, *, literal: bool = False
+) -> TextClause:
     """文档分片双路径：record 挂靠（记录存活 + 范围过滤）或资料直挂（条目存活 + 范围过滤）。
 
     RECORD 范围只走 record 路径（边界=该记录，不含资料直挂分片）。
     """
     item_clause = f" OR ({item_filter})" if item_filter is not None else ""
+    score = "0.0" if literal else "bm25(segment_search_index)"
+    match = (
+        "ds.content LIKE :needle ESCAPE '\\'" if literal else "segment_search_index MATCH :match"
+    )
+    order = "score, ds.sequence_no, ds.id" if literal else "score, ds.id"
     return text(
         "SELECT ds.id AS segment_id, ds.record_id, "
         "COALESCE(r.title, li.title) AS source_title, ds.library_item_id, "
-        "li.source_type AS item_source_type, ds.content, ds.sequence_no, "
-        "ds.page_no, bm25(segment_search_index) AS score "
+        "li.source_type AS item_source_type, ds.content, ds.sequence_no, ds.record_file_id, "
+        f"ds.page_no, {score} AS score "
         "FROM segment_search_index "
         "JOIN document_segments ds ON ds.id = segment_search_index.entity_id "
         "LEFT JOIN records r ON r.id = ds.record_id AND r.deleted_at IS NULL "
         "LEFT JOIN library_items li ON li.id = ds.library_item_id "
         "AND li.status = 'ACTIVE' AND li.deleted_at IS NULL "
-        "WHERE segment_search_index MATCH :match "
+        f"WHERE {match} "
         "AND segment_search_index.entity_type = 'document_segment' "
         f"AND (({record_filter}){item_clause}) "
-        "ORDER BY score, ds.id LIMIT :limit"
+        f"ORDER BY {order} LIMIT :limit"
     )
 
 
@@ -149,6 +163,25 @@ _SCOPE_SEGMENT_SQL: dict[ChatScope, tuple[TextClause, TextClause]] = {
         _document_sql(_COURSE_FILTER_DOC, _ITEM_DIRECT_COURSE),
     ),
     ChatScope.ALL: (_transcript_sql(_ALL_FILTER), _document_sql(_ALL_FILTER_DOC, _ITEM_DIRECT_ALL)),
+}
+
+_SCOPE_LITERAL_SQL = {
+    ChatScope.RECORD: (
+        _transcript_sql(_RECORD_FILTER, literal=True),
+        _document_sql(_RECORD_FILTER_DOC, literal=True),
+    ),
+    ChatScope.LIBRARY_ITEM: (
+        _transcript_sql(_ITEM_RECORD_FILTER, literal=True),
+        _document_sql(_ITEM_RECORD_FILTER_DOC, _ITEM_DIRECT_LIB, literal=True),
+    ),
+    ChatScope.COURSE: (
+        _transcript_sql(_COURSE_FILTER, literal=True),
+        _document_sql(_COURSE_FILTER_DOC, _ITEM_DIRECT_COURSE, literal=True),
+    ),
+    ChatScope.ALL: (
+        _transcript_sql(_ALL_FILTER, literal=True),
+        _document_sql(_ALL_FILTER_DOC, _ITEM_DIRECT_ALL, literal=True),
+    ),
 }
 
 # 概念扩展词专用（COURSE/ALL：概念只在其归属课程内扩展，历史语义照搬）。
@@ -206,11 +239,11 @@ _NEIGHBOR_TRANSCRIPTS_SQL = text(
     "WHERE record_id = :record_id AND sequence_no IN :seqs"
 ).bindparams(bindparam("seqs", expanding=True))
 _NEIGHBOR_DOCUMENTS_BY_RECORD_SQL = text(
-    "SELECT sequence_no, content FROM document_segments "
+    "SELECT id AS segment_id, sequence_no, content, page_no, record_file_id FROM document_segments "
     "WHERE record_id = :record_id AND sequence_no IN :seqs"
 ).bindparams(bindparam("seqs", expanding=True))
 _NEIGHBOR_DOCUMENTS_BY_ITEM_SQL = text(
-    "SELECT sequence_no, content FROM document_segments "
+    "SELECT id AS segment_id, sequence_no, content, page_no, record_file_id FROM document_segments "
     "WHERE library_item_id = :library_item_id AND record_id IS NULL "
     "AND sequence_no IN :seqs"
 ).bindparams(bindparam("seqs", expanding=True))
@@ -522,6 +555,8 @@ class LibraryRetrievalService:
         scope: RetrievalScope,
         query: str,
         limit: int = SEARCH_LIBRARY_LIMIT,
+        *,
+        short_query: bool = False,
     ) -> RetrievalResult:
         """五档 scope 检索：FTS + 概念扩展并行召回 → 去重排序 → 逐字原文 + 相邻窗口。"""
         if scope.scope not in _RETRIEVAL_SCOPES:
@@ -533,6 +568,34 @@ class LibraryRetrievalService:
         recalled = await LibraryRetrievalService._recall_segments(
             session, scope, needle, concepts, limit
         )
+        if short_query and len(needle) <= 40 and not any(c.isspace() for c in needle):
+            literal: list[_SegmentRecall] = []
+            for sql, entity in zip(
+                _SCOPE_LITERAL_SQL[scope.scope], ("transcript", "document"), strict=True
+            ):
+                rows = await session.execute(
+                    sql,
+                    {**_bind_params(scope), "needle": f"%{escape_like(needle)}%", "limit": limit},
+                )
+                literal.extend(_SegmentRecall(row, entity, "literal") for row in rows.all())
+            # 定义段优先，避免短主题只返回标题或章节末尾的汇总。
+            literal.sort(
+                key=lambda hit: (
+                    f"{needle}是指" not in hit.row.content,
+                    "是指" not in hit.row.content,
+                )
+            )
+            recalled = [*literal, *recalled]
+            recalled = await LibraryRetrievalService._with_definitions(session, recalled)
+            seen: set[tuple[str, str]] = set()
+            unique: list[_SegmentRecall] = []
+            for hit in recalled:
+                owner = hit.row.record_id or getattr(hit.row, "library_item_id", "")
+                key = (owner, hit.row.content)
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(hit)
+            recalled = unique[:limit]
         if not recalled:
             recalled = await LibraryRetrievalService._fallback_recalls(
                 session, scope, needle, limit
@@ -555,6 +618,41 @@ class LibraryRetrievalService:
                 for concept in concepts[:CONCEPT_MATCH_LIMIT]
             ],
         )
+
+    @staticmethod
+    async def _with_definitions(
+        session: AsyncSession, recalls: list[_SegmentRecall]
+    ) -> list[_SegmentRecall]:
+        expanded: list[_SegmentRecall] = []
+        for recall in recalls:
+            row = recall.row
+            if recall.entity == "document" and re.fullmatch(
+                r"(?:#{1,6}\s+.+|[-*+]\s+\*\*.+\*\*)", row.content.strip()
+            ):
+                sql = (
+                    _NEIGHBOR_DOCUMENTS_BY_RECORD_SQL
+                    if row.record_id is not None
+                    else _NEIGHBOR_DOCUMENTS_BY_ITEM_SQL
+                )
+                owner = (
+                    {"record_id": row.record_id}
+                    if row.record_id is not None
+                    else {"library_item_id": row.library_item_id}
+                )
+                for neighbor in (
+                    await session.execute(sql, {**owner, "seqs": [row.sequence_no + 1]})
+                ).all():
+                    if (
+                        neighbor.record_file_id != row.record_file_id
+                        or not neighbor.content.strip()
+                    ):
+                        continue
+                    fields = {**row._mapping, **neighbor._mapping}  # pyright: ignore[reportPrivateUsage]
+                    expanded.append(
+                        _SegmentRecall(SimpleNamespace(**fields), "document", recall.channel)
+                    )
+            expanded.append(recall)
+        return expanded
 
     @staticmethod
     async def _scope_alive(session: AsyncSession, scope: RetrievalScope) -> bool:

@@ -23,6 +23,7 @@ from test_chat_turns import (
     wait_terminal,
 )
 from test_chat_turns_background import wait_status
+from test_chat_turns_recovery import recovery_app
 
 
 @pytest.fixture(scope="module")
@@ -381,7 +382,7 @@ async def test_restart_does_not_resend_started_request(
 
 
 @pytest.mark.anyio
-async def test_parent_and_child_share_six_admissions(
+async def test_parent_and_child_have_independent_six_admissions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async with turns_app(
@@ -391,7 +392,7 @@ async def test_parent_and_child_share_six_admissions(
             ToolCallReply("delegate_knowledge", {"task": "检索事务隔离"}),
             *[
                 ToolCallReply("search_library", {"query": f"事务 隔离 {n}"}, f"search-{n}")
-                for n in range(6)
+                for n in range(7)
             ],
             ["检索完成"],
             ["汇总完成"],
@@ -402,19 +403,26 @@ async def test_parent_and_child_share_six_admissions(
             await submit(client, session_id, "委派检索", request_id="delegation-budget-1")
         ).json()["id"]
         assert (await wait_terminal(client, turn_id))["status"] == "COMPLETED"
+        reports = [
+            json.loads(m.text)
+            for m in captured[-1]
+            if isinstance(m, ToolMessage) and m.name == "delegate_knowledge"
+        ]
+        assert reports[0]["status"] == "PARTIAL"
+        assert reports[0]["gaps"]
         tool = next(
-            m for m in captured[-2] if isinstance(m, ToolMessage) and m.tool_call_id == "search-5"
+            m for m in captured[-2] if isinstance(m, ToolMessage) and m.tool_call_id == "search-6"
         )
         assert "本轮检索次数已达上限" in str(tool.content)
         async with app.state.session_factory() as session:
-            assert await session.scalar(text("SELECT count(*) FROM chat_turn_budget_calls")) == 6
+            assert await session.scalar(text("SELECT count(*) FROM chat_turn_budget_calls")) == 7
             assert (
                 await session.scalar(
                     text(
                         "SELECT count(*) FROM chat_turn_budget_calls WHERE execution_id IS NOT NULL"
                     )
                 )
-                == 5
+                == 6
             )
 
 
@@ -445,6 +453,18 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
     ) as (app, client, captured):
         saver = app.state.chat_checkpointer
         put, delete, put_writes = saver.aput, saver.adelete_thread, saver.aput_writes
+        if window == "graph_completed":
+            from app.modules.agent.delegations import worker as child_worker
+
+            commit = child_worker.commit_result
+
+            async def commit_gate(runtime: Any, result: Any) -> bool:
+                if not blocked.is_set():
+                    blocked.set()
+                    await asyncio.Event().wait()
+                return await commit(runtime, result)
+
+            monkeypatch.setattr(child_worker, "commit_result", commit_gate)
 
         async def request_gate(config: Any, writes: Any, task_id: Any, task_path: str = "") -> None:
             thread = config.get("configurable", {}).get("thread_id", "")
@@ -499,13 +519,6 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
                 child_blocked.set()
                 await asyncio.Event().wait()
             saved = await put(config, checkpoint, metadata, versions)
-            if (
-                window == "graph_completed"
-                and thread.startswith("agent-delegation-")
-                and not checkpoint["channel_values"]
-            ):
-                blocked.set()
-                await asyncio.Event().wait()
             return saved
 
         async def cleanup_gate(thread: str) -> None:
@@ -523,7 +536,7 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
                     await asyncio.Event().wait()
             await delete(thread)
 
-        # 注入只停驻公开 checkpoint I/O；业务登记、模型请求、结果提交均执行真实路径。
+        # 停驻公开 checkpoint I/O 或结果提交前边界；恢复仍执行真实业务提交。
         monkeypatch.setattr(saver, "aput", checkpoint_gate)
         monkeypatch.setattr(saver, "adelete_thread", cleanup_gate)
         monkeypatch.setattr(saver, "aput_writes", request_gate)
@@ -549,7 +562,7 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
                 await asyncio.sleep(0.05)
             assert completed
         assert len(captured) == (1 if window == "provider_wait" else 2)
-    async with turns_app(
+    async with recovery_app(
         tmp_path,
         monkeypatch,
         replies=[]
@@ -557,6 +570,9 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
         else [["可靠子报告"], ["汇总已有子报告"]]
         if window == "provider_wait"
         else [["汇总已有子报告"]],
+        provider=("https://changed.example.com/v1", "sk-changed", "changed-model")
+        if window == "provider_wait"
+        else None,
     ) as (
         app,
         client,
@@ -566,15 +582,6 @@ async def test_restart_reconciles_persistence_windows_without_repeating_child(
             from app.modules.settings.config import grant_llm_consent, save_llm_provider
             from app.modules.settings.model_budget import ModelBudgetConfig
 
-            save_llm_provider(
-                tmp_path,
-                base_url="https://changed.example.com/v1",
-                api_key="sk-changed",
-                model="changed-model",
-                clear_api_key=False,
-                model_budget=ModelBudgetConfig(context_window=128000),
-            )
-            grant_llm_consent(tmp_path)
             waiting = await wait_status(client, turn_id, "WAITING_USER")
             assert waiting["waiting_reason"]["kind"] == "PROVIDER_CHANGED"
             async with app.state.session_factory() as session:
