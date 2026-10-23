@@ -4,7 +4,7 @@
 
 Tauri 2 壳 + React 19 + Vite 7 + TanStack Router（file-based）+ Tailwind CSS 4 + shadcn/ui（Base UI 底座，style `base-nova`）。业务数据一律经 localhost sidecar API 读写，UI 不直连数据库。
 
-> 编码规范正本是根目录 `.claude/rules/desktop-*.md`（自动加载，本文不重复）。本文件记录本目录的**命令、结构与已验证现状**；rules 部分内容描述的是目标态，差异见文末 Gotchas——**不要为了对齐 rules 而主动重构现有代码**。
+> 编码规范正本是根目录 `.claude/rules/desktop-*.md`（自动加载，本文不重复）。本文件记录本目录的**命令、结构与已验证现状**；rules 部分内容描述的是目标态，差异见[根目录“已核实的规范差异”](../../AGENTS.md#已核实的规范差异)——**不要为了对齐 rules 而主动重构现有代码**。
 
 ## 常用命令
 
@@ -41,7 +41,7 @@ src/
 └── styles/              # tokens / theme / globals / animations 四件套
 ```
 
-注意：`hooks/`、`stores/` 顶层目录**不存在**；`src/routeTree.gen.ts` 由路由插件生成（勿手改）。
+注意：共享 Hook 位于 `src/hooks/`；`src/stores/` 目录不存在；`src/routeTree.gen.ts` 由路由插件生成（勿手改）。
 
 ## 关键机制
 
@@ -97,7 +97,7 @@ echarts 按需注册只在 `charts/echarts.ts`，新增图表类型只改这里�
 
 - 编写浏览器或 WebView2 验收驱动器、检查布局或键盘操作时，先读 [桌面通过条件](../../docs/agents/validation.md#桌面通过条件)，复用仓库根 `scripts/desktop_acceptance_checks.py`；几何、实际键盘操作和人工视觉分别记录，按该文档汇总结果。
 - **无全局 jsdom**：需要 DOM 的测试文件首行写 `// @vitest-environment jsdom`；services 层测试走 node 环境。
-- MSW **仅测试启用**：`test/setup.ts` 全局 `server.listen({ onUnhandledRequest: "error" })`；`mocks/handlers.ts` 有 14 个兜底 handler（courses、inbox、chat、providers、preferences、usage、profile、recording-sessions、today 等），具体路由在测试内 `server.use(...)` 局部覆盖；无 mockServiceWorker.js，dev 运行不经 MSW。
+- MSW **仅测试启用**：`test/setup.ts` 全局 `server.listen({ onUnhandledRequest: "error" })`；兜底 handler 见 `mocks/handlers.ts`，具体路由在测试内 `server.use(...)` 局部覆盖；无 mockServiceWorker.js，dev 运行不经 MSW。
 - 涉及 Tauri 的测试按需 `vi.mock` 对应 `services/tauri/*` 模块（sidecar、recording、lifecycle、onboarding、preferences 等）。
 - 组件测试用 `renderWithQuery()`（`test/test-utils.tsx`：retry:false 临时 QueryClient + i18n）。
 - eslint 的 `react-refresh/only-export-components` 已豁免 `Route` 导出（file-based 路由必需）。

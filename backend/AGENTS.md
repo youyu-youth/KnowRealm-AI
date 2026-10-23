@@ -77,28 +77,40 @@ backend/
 | 工具额度与模型收尾 | `budget/middleware.py`、`service.py`、`policy.py`；修改模型可见工具或共享额度时，联查 `context_budget/middleware.py` 的完整输入计量与恢复防重发 |
 | 受控业务执行 | `runs/`、`operations/`；知识委派不作为业务操作账本 |
 
-修改 Agent 身份、工具权限或委派调度前读 [ADR-0030](../docs/adr/0030-bounded-professional-agents-and-durable-delegation.md)；任务/报告契约及恢复场景查 [Multi-Agent spec](../.scratch/multi-agent-refactor/spec.md)。变更执行链时联查 `app/main.py`、`turns/worker.py` 与 `turns/background.py` 的启动、分派和对账接线。
+修改 Agent 身份、工具集合／参数／权限、预算策略、委派契约／调度或图状态语义前读 [ADR-0030](../docs/adr/0030-bounded-professional-agents-and-durable-delegation.md)；任务/报告契约及恢复场景查 [Multi-Agent spec](../.scratch/multi-agent-refactor/spec.md)。变更执行链时联查 `app/main.py`、`turns/worker.py` 与 `turns/background.py` 的启动、分派和对账接线。
 
 - 跨模块引用（行为与契约同规则）直达具体文件（`from app.modules.quiz.service import QuizService`）；模块间方向无环：`capture → transcript → summary → {kp, quiz, todo}`，agent/today 下游，learning/library/review_material/source_anchor/learner/learning_plan 亦下游，search 无跨模块业务依赖；平台四件套被单向依赖。
 
 - api 路由前缀：`/api/courses`、`/api/records…`（含 `GET /records/{id}/events` SSE、`/{id}/summary*` 总结读/生成/调整/确认/版本、`/{id}/transcript`、`/{id}/jobs`）、`/api/agent…`（auth-mode、runs 的 cancel/resume/undo/retry/purge 与 operations/activity）、`/api/audio-imports`、`/api/capture-batches`、`/api/chat-sessions`、`/api/document-imports`、`/api/learner`（preferences / memory-outbound）、`/api/library`、`/api/processing-jobs`、`/api/profile`、`/api/proposals`、`/api/recording-sessions`、`/api/search`、`/api/settings…`（providers/llm 与 external-processing-consents）、`/api/text-captures`、`/api/today/pending-summaries`、`/api/health`。
-- services 分组：课程与记录（course / record_service）；导入与解析（document_import / document_parser / audio_import / capture_batch）；任务域（JobRunner 骨架 + 各域 WorkerSpec 执行体、processing_job_service / lifecycle / policy、transcript_finalizer、record_invalidation、summary_derivation）；ASR（tencent_asr_client）；录音会话（recording_session_service）；清理与配置（cache_lifecycle / document_cleanup / local_config）；AI 总结（summary_service）；今日待办（today_service）；AI 对话与 Agent 受控执行（agent/session_service、runs/operations/undo 与 auth_mode）；档案（profile_service）；学习证据（learning/consumer / mastery / queries）；资料库（library/service / backfill / proposals）；复习资料（review_material/service）；全局搜索（search/service / tokenizer / web_search / integrations/tavily）；源锚点（source_anchor/source_anchors）。
+
+### Agent 能力接入检查
+
+实施前，在工单中选择本次能力的接入路径；复合能力可组合下列路径：
+
+| 能力 | 优先复用路径 |
+| --- | --- |
+| 查询、计算、读取资料 | 只读 Tool → 领域 Service |
+| 修改业务数据 | Tool → 现有受控 Operation／提案入口 → 领域 Service |
+| 耗时生成、等待外部处理 | 领域任务 → WorkerSpec／ProcessingJob；多步业务按需关联 AgentRun |
+| 需要隔离材料的知识研究 | 现有知识委派链路；后台任务本身不作为新增 Agent 的依据 |
+
+接入完成时，逐项给出本次适用检查的实现位置或验收依据：
+
+- **装配**：目标 Agent 的最终模型请求包含正确的工具及参数 schema，受影响的身份与挂载条件符合预期。
+- **范围**：资料范围、目标对象与权限由执行端校验，业务规则复用领域 Service。
+- **消费**：明确工具次数、输出字符与业务操作的计量归属，复用适用的准入和持久记账；豁免计量时说明理由。
+- **结果**：成功、错误、状态及适用的引用／回执进入既有返回与展示链路。
+- **兼容**：按变更范围检查图、提示与预算策略版本，明确旧轮次／子任务的续跑或停止方式，保留原消费和已完成结果。
+- **验证**：通过实际装配和执行入口，证明本次受影响的成功、拒绝及必要恢复分支；仅调用工具函数不算接入完成。
 
 ## agent功能代码编写向导
 
 涉及 `langchain` / `langGraph` / `Deep Agents` 等 Agent 相关代码的编写、设计、搭建时，必须先使用 **langchain mcp 工具**（`langchain-docs`，` langchain-reference`）查询官方文档与 API 参考，**复用现成能力、避免重复造轮子**；或使用 `.agents/skills/` / `.zcode/skills/` / `.claude/skills/` 下的相关 skills（langchain-* / langgraph-* / deep-agents-*）。
 
-**agent相关功能，多使用Middleware 中间件等 （优先遵循），如果框架自带的Middleware不能满足需求，则进行自定义的Middleware**
-
-**多使用Middleware 中间件等**
-
+Middleware 选用遵循[根目录 AGENTS.md 的“编码规范（重要）”](../AGENTS.md#编码规范重要)。
 
 ## KnowRealm-AI产品AI能力实现的相关准则
-**本规范仅适用于 KnowRealm-AI 产品内部的 AI / Agent 能力调用：**
-
-- KnowRealm-AI 中能通过脚本、程序逻辑或工具稳定完成的任务，应优先使用确定性方案，不调用 LLM。
-- 只有脚本难以实现，或任务涉及语义理解、推理、生成等能力时，才使用 LLM。
-- **总体原则：**KnowRealm-AI 内部脚本优先、LLM 次之，以降低 Token 消耗、延迟和运行成本。
+产品内部的 AI／Agent 调用遵循[根目录对应准则](../AGENTS.md#knowrealm-ai产品ai能力实现的相关准则)。
 
 ## 关键机制
 
@@ -108,7 +120,7 @@ backend/
 
 ### lifespan 顺序（顺序敏感）
 
-解析数据目录 → `DataDirectoryLock` 获取 `.knowrealm.lock` OS 排他锁（Windows msvcrt / POSIX flock；失败抛 `DataDirectoryInUseError`，**必须在迁移与 worker 前退出**）→ `ensure_data_dir`（files / cache / exports / backups / config）→ `run_migrations` → `create_database`（engine + session_factory）→ 过期清理（课程墓碑、staging 孤儿）→ `recover_interrupted()` + 启动 worker；退出严格逆序（stop worker → await 任务 → `engine.dispose()` → 释放目录锁）。
+完整启动与清理顺序以 `app/main.py::lifespan` 为准。目录初始化及可选归档恢复在获取目录锁、开库之前完成；获取目录锁后才进行升级前快照、迁移、开库和 Worker 恢复／启动，锁获取失败须在迁移与 Worker 启动前退出。关闭时先停止并等待 Worker，再释放数据库连接和目录锁。
 
 ### 迁移纪律
 
@@ -133,17 +145,17 @@ backend/
 
 ### 录音分片接收（ADR-0009：sidecar 拥有暂存）
 
-`recording_session_service`：multipart 分片 → 临时 `.part` 文件 + `os.replace` 原子改名 → WebM 魔数与 SHA-256 幂等校验 → 更新 `recording_sessions.chunk_paths` 有序清单；会话状态机（RECORDING / PAUSED / FINALIZING…）与崩溃恢复同在此文件。
+`app/modules/capture/recording_session.py`：multipart 分片 → 临时 `.part` 文件 + `os.replace` 原子改名 → WebM 魔数与 SHA-256 幂等校验 → 更新 `recording_sessions.chunk_paths` 有序清单；会话状态机（RECORDING / PAUSED / FINALIZING…）与崩溃恢复同在此文件。
 
 ### 配置
 
-实际配置 = 数据目录 `config/settings.json` + `config/providers.json`（`local_config.py`：tmp + replace + fsync 原子写）+ Tauri 启动参数注入。**无 pydantic-settings，不读任何 .env**。
+实际配置 = 数据目录 `config/settings.json` + `config/providers.json`（`app/modules/settings/config.py`：tmp + replace + fsync 原子写）+ Tauri 启动参数注入。**无 pydantic-settings，不读任何 .env**。
 
 ## 测试约定
 
 - **无 conftest.py**：各测试文件自带 async contextmanager fixture——`create_app(data_dir=临时目录, launch_token="test-launch-token")` → `async with app.router.lifespan_context(app)`（完整重放生产迁移链，绝不用 create_all）→ `httpx.AsyncClient(transport=ASGITransport(app))` + 固定令牌头。
 - 异步标记 `@pytest.mark.anyio`（anyio 插件，**非 pytest-asyncio**；pyproject 无 asyncio_mode 配置）。
-- `--basetemp` 前须确保 `.tmp` 父目录存在：此 pytest 在 Windows 不建父目录，删掉 `.tmp` 本体会让全量测试以 FileNotFoundError 批量假失败。
+- 测试临时目录由统一运行器分配；路径、互斥与日志约定见[验证文档的统一入口](../docs/agents/validation.md#本地与-ci-共用的测试入口)。
 - `tests/test_server_process.py`：真实子进程集成（本机无 ffmpeg 自动 skip；从 stdout 解析端口；覆盖二次 sidecar 拿锁失败 `DATA_DIRECTORY_IN_USE` 等）；ASR 场景用 `tests/sidecar_asr_fixture.py` 的假腾讯 HTTP 传输（control JSON 切换 success/pending/503 等）。
 - 数据库断言直接 `aiosqlite.connect` 查 `PRAGMA user_version` / 表结构 / 外键。
 - 全量 pyright 门禁以零错误为准。
