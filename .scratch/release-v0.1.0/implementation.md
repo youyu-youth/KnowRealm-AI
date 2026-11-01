@@ -30,3 +30,14 @@
 - 本机现用开发数据库为 63，首版仅支持到 57；验收不打开或降级开发数据库，不改变原数据目录配置。
 - GitHub Release 附 MSI 与 SHA256SUMS.txt，正式发布前重新下载并比对安装包散列值。
 - 临时驱动器、测试数据、日志及安装包均不加入提交。未修改规范/权威需求文件。
+
+## 发布结果
+
+- 正式版本：https://github.com/youyu-youth/KnowRealm-AI/releases/tag/v0.1.0 ，已取消草稿，非预发布，标记为最新版本；仓库仍为私有。
+- 标签固定发布代码提交 a22feb5990d29049692f3e4cfa9827490f8120d9，后续验收文档提交不移动标签。
+- 发布代码的 GitHub Checks 通过：https://github.com/youyu-youth/KnowRealm-AI/actions/runs/41308965123 。全量 tests job 按既有配置跳过，不宣称全量测试通过。
+- 附件仅 MSI 和 SHA256SUMS.txt。MSI 大小 169210488 字节，GitHub 服务端与本地原件、重新下载文件的 SHA256 均为 ca172e5db2faa5e9ab5317cc807729f943ff2c165fe3310b63f9408e60679209。
+- 下载验证：.scratch/release-v0.1.0/.tmp/download/result.json。强制静默修复安装因缺少管理员许可返回 1625；未修改系统策略或尝试提权。
+- 按首装验收卸载本次测试副本后，使用下载的 MSI 在当前用户重新安装，卸载与安装均返回 0。安装日志 .release-test-uninstall.log、.release-download-fresh-install.log；结果 .tmp/download/fresh-install-result.json。
+- 下载后安装目录的独立后端再次通过全部基础检查：.tmp/downloaded-installed-smoke/result.json；启动约 13 秒，重启约 10 秒，SQLite 57，未调用真实模型。
+- 发布工作目录和原 main 基点环境、临时数据与日志保留用于复查；自建桌面与后端进程已退出，原 desktop.json 与窗口配置已恢复。
