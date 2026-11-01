@@ -137,9 +137,10 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         )));
     }
     let (program, working_dir) = sidecar_program()?;
-    let mut args = vec![
-        OsString::from("-m"),
-        OsString::from("app.server"),
+    let mut args = Vec::new();
+    #[cfg(debug_assertions)]
+    args.extend([OsString::from("-m"), OsString::from("app.server")]);
+    args.extend([
         OsString::from("--port"),
         OsString::from("0"),
         OsString::from("--token"),
@@ -148,7 +149,7 @@ pub fn start(app: &AppHandle) -> Result<SidecarState, Box<dyn Error>> {
         data_dir.clone().into_os_string(),
         OsString::from("--ffmpeg"),
         ffmpeg.into_os_string(),
-    ];
+    ]);
     if let Some(archive) = import_archive {
         args.push(OsString::from("--import-archive"));
         args.push(archive.into_os_string());

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeBuildCommand": "pnpm prepare:sidecar && pnpm build"
+  },
+  "bundle": {
+    "externalBin": ["binaries/ffmpeg", "binaries/knowrealm-sidecar"],
+    "resources": {
+      "binaries/knowrealm-sidecar/_internal/": "_internal/"
+    }
+  }
+}

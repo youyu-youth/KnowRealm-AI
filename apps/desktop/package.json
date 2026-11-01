@@ -11,6 +11,8 @@
     "format:check": "prettier --check .",
     "preview": "vite preview",
     "prepare:ffmpeg": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-ffmpeg.ps1",
+    "prepare:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-sidecar.ps1",
+    "release:msi": "pnpm prepare:ffmpeg && tauri build --bundles msi --config src-tauri/tauri.release.conf.json",
     "pretauri": "pnpm prepare:ffmpeg",
     "tauri": "tauri"
   },
