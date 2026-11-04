@@ -1,0 +1,48 @@
+name: Publish fixed installer link
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published release tag
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fixed-installer-${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  upload:
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Copy the verified Windows x64 installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          release=$(gh api "repos/$GH_REPO/releases/tags/$RELEASE_TAG")
+          echo "$release" | jq -e '.draft == false and .prerelease == false' > /dev/null
+          asset=$(echo "$release" | jq -ce '[.assets[] | select(.name | test("_x64.*\\.msi$"; "i"))] | if length == 1 then .[0] else error("Expected exactly one versioned Windows x64 MSI") end')
+          name=$(echo "$asset" | jq -r '.name')
+          digest=$(echo "$asset" | jq -er '.digest | select(startswith("sha256:"))')
+          existing=$(echo "$release" | jq -r '.assets[] | select(.name == "KnowRealm-windows-x64.msi") | .digest')
+          if [ -n "$existing" ]; then
+            test "$existing" = "$digest"
+            echo "Fixed-name installer already matches the original."
+            exit 0
+          fi
+          target="$RUNNER_TEMP/fixed-installer"
+          mkdir -p "$target"
+          gh release download "$RELEASE_TAG" --pattern "$name" --dir "$target"
+          echo "${digest#sha256:}  $target/$name" | sha256sum --check
+          cp "$target/$name" "$target/KnowRealm-windows-x64.msi"
+          gh release upload "$RELEASE_TAG" "$target/KnowRealm-windows-x64.msi"
